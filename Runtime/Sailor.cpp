@@ -9,7 +9,9 @@
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
+#if defined(_WIN32)
 #include "Platform/Win32/ConsoleWindow.h"
+#endif
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "Tasks/Scheduler.h"
@@ -21,16 +23,20 @@
 #include "Containers/List.h"
 #include "Containers/Octree.h"
 #include "Engine/EngineLoop.h"
+#include <filesystem>
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "ECS/TransformECS.h"
 #include "Submodules/RenderDocApi.h"
-#include "timeApi.h"
 #include "Submodules/ImGuiApi.h"
 #include "Raytracing/PathTracer.h"
 #include "Submodules/Editor.h"
+
+#if defined(_WIN32)
+#include <timeapi.h>
+#endif
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -89,11 +95,13 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		return;
 	}
 
+#if defined(_WIN32)
 	timeBeginPeriod(1);
+#endif
 	const AppArgs params = ParseCommandLineArgs(commandLineArgs, num);
 	if (params.m_bWaitForDebugger)
 	{
-		uint32_t timeout = 5000;
+		int32_t timeout = 5000;
 		while (!::IsDebuggerPresent())
 		{
 			::Sleep(100);
@@ -107,18 +115,34 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance = new App();
 
+#if defined(_WIN32)
 	Win32::ConsoleWindow::Initialize(false);
 
 	if (params.m_bRunConsole)
 	{
 		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	}
+#endif
 
 	if (!params.m_workspace.empty())
 	{
 		s_pInstance->s_workspace = params.m_workspace;
 	}
+	else
+	{
+		const std::filesystem::path cwd = std::filesystem::current_path();
+		const bool hasContentInCwd = std::filesystem::exists(cwd / "Content");
+		const bool hasContentInParent = std::filesystem::exists(cwd / ".." / "Content");
 
+		if (hasContentInCwd)
+		{
+			s_pInstance->s_workspace = "./";
+		}
+		else if (!hasContentInParent)
+		{
+			SAILOR_LOG_ERROR("Content folder was not found from current working directory. Use --workspace <path>.");
+		}
+	}
 
 #if defined(SAILOR_BUILD_WITH_RENDER_DOC) && defined(_DEBUG)
 	if (!params.m_bIsEditor)
@@ -149,7 +173,12 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
-	s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_8, bEnableRenderValidationLayers));
+	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bEnableRenderValidationLayers));
+	if (!renderer->IsInitialized())
+	{
+		SAILOR_LOG_ERROR("App initialization aborted: renderer backend failed to initialize.");
+		return;
+	}
 
 	auto assetRegistry = s_pInstance->AddSubmodule(TSubmodule<AssetRegistry>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<DefaultAssetInfoHandler>::Make(assetRegistry));
@@ -207,6 +236,20 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 void App::Start()
 {
+	if (!s_pInstance)
+	{
+		return;
+	}
+
+	auto scheduler = GetSubmodule<Tasks::Scheduler>();
+	auto renderer = GetSubmodule<Renderer>();
+	auto pEngineLoop = App::GetSubmodule<EngineLoop>();
+	if (!scheduler || !renderer || !renderer->IsInitialized() || !pEngineLoop)
+	{
+		SAILOR_LOG_ERROR("App::Start skipped: engine subsystems are not fully initialized.");
+		return;
+	}
+
 	auto& pMainWindow = s_pInstance->m_pMainWindow;
 
 	pMainWindow->SetActive(true);
@@ -230,16 +273,14 @@ void App::Start()
 	consoleVars["octree.benchmark"] = &Sailor::RunOctreeBenchmark;
 	consoleVars["stats.memory"] = &Sailor::RHI::Renderer::MemoryStats;
 
-	FrameInputState systemInputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
-
-	auto scheduler = GetSubmodule<Tasks::Scheduler>();
-	auto renderer = GetSubmodule<Renderer>();
+	FrameInputState systemInputState = (Sailor::FrameInputState)Win32::GlobalInput::GetInputState();
 
 	while (pMainWindow->IsRunning())
 	{
 		timer.Start();
 		trackEditor.Start();
 
+#if defined(_WIN32)
 		Win32::ConsoleWindow::GetInstance()->Update();
 
 		char line[256];
@@ -254,8 +295,9 @@ void App::Start()
 				it.Value()();
 			}
 		}
+#endif
 
-		Win32::Window::ProcessWin32Msgs();
+		pMainWindow->ProcessSystemMessages();
 		renderer->FixLostDevice();
 
 		scheduler->ProcessTasksOnMainThread();
@@ -283,11 +325,9 @@ void App::Start()
 		}
 #endif
 
-		auto pEngineLoop = App::GetSubmodule<EngineLoop>();
-
 		if (bCanCreateNewFrame)
 		{
-			FrameInputState inputState = (Sailor::FrameInputState)GlobalInput::GetInputState();
+			FrameInputState inputState = (Sailor::FrameInputState)Win32::GlobalInput::GetInputState();
 			currentFrame = FrameState(pEngineLoop->GetWorld().GetRawPtr(),
 				Utils::GetCurrentTimeMs(),
 				inputState,
@@ -335,8 +375,8 @@ void App::Start()
 
 			const Stats& stats = renderer->GetStats();
 
-			CHAR Buff[256];
-			sprintf_s(Buff, "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
+			char Buff[256];
+			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
 				stats.m_gpuFps,
 				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
@@ -351,7 +391,7 @@ void App::Start()
 		}
 
 		auto oldInputState = systemInputState;
-		systemInputState = GlobalInput::GetInputState();
+		systemInputState = Win32::GlobalInput::GetInputState();
 		systemInputState.TrackForChanges(oldInputState);
 
 		SAILOR_PROFILE_END_FRAME();
@@ -364,19 +404,34 @@ void App::Start()
 void App::Stop()
 {
 	s_pInstance->m_pMainWindow->SetActive(false);
+	s_pInstance->m_pMainWindow->SetRunning(false);
 }
 
 void App::Shutdown()
 {
+	if (!s_pInstance)
+	{
+		return;
+	}
+
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
 
-	scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+	if (scheduler)
+	{
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+	}
 
 	// TODO: Redo. We have 2 frames in flight.
-	scheduler->WaitIdle(EThreadType::Render);
+	if (scheduler)
+	{
+		scheduler->WaitIdle(EThreadType::Render);
+	}
 
-	renderer->BeginConditionalDestroy();
+	if (renderer)
+	{
+		renderer->BeginConditionalDestroy();
+	}
 
 	SAILOR_LOG("Sailor Engine Releasing");
 
@@ -394,7 +449,10 @@ void App::Shutdown()
 	// We need to finish all tasks before release
 	RemoveSubmodule<ImGuiApi>();
 
-	scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+	if (scheduler)
+	{
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+	}
 
 	RemoveSubmodule<FrameGraphImporter>();
 	RemoveSubmodule<MaterialImporter>();
@@ -410,7 +468,9 @@ void App::Shutdown()
 	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
 
+#if defined(_WIN32)
 	Win32::ConsoleWindow::Shutdown();
+#endif
 
 	// Remove all left submodules
 	for (auto& pSubmodule : s_pInstance->m_submodules)
@@ -428,4 +488,9 @@ void App::Shutdown()
 TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
 {
 	return s_pInstance->m_pMainWindow;
+}
+
+Sailor::Platform::Window* App::GetMainWindowPlatform()
+{
+	return s_pInstance ? static_cast<Sailor::Platform::Window*>(s_pInstance->m_pMainWindow.GetRawPtr()) : nullptr;
 }

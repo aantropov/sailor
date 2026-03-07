@@ -116,7 +116,7 @@ namespace Sailor
 			m_root = nullptr;
 		}
 
-		TOctree(const TOctree& octree) : TOctree(octree.m_center, octree.m_root->m_size, octree.m_minSize)
+		TOctree(const TOctree& octree) : TOctree(octree.m_root->m_center, octree.m_root->m_size, octree.m_minSize)
 		{
 			m_num = octree.m_num;
 			CopyFrom_Internal(*m_root, *octree.m_root);
@@ -136,22 +136,22 @@ namespace Sailor
 
 		TOctree(TOctree&& octree)
 		{
-			Swap(this, octree);
+			Swap(*this, octree);
 		}
 
 		TOctree& operator= (TOctree&& octree)
 		{
-			Swap(this, octree);
+			Swap(*this, octree);
 			return *this;
 		}
 
-		static void Swap(TOctree&& lhs, TOctree&& rhs)
+		static void Swap(TOctree& lhs, TOctree& rhs)
 		{
-			std::swap(rhs->m_root, lhs->m_root);
-			std::swap(rhs->m_allocator, lhs->m_allocator);
-			std::swap(rhs->m_num, lhs->m_num);
-			std::swap(rhs->m_minSize, lhs->m_minSize);
-			std::swap(rhs->m_map, lhs->m_map);
+			std::swap(rhs.m_root, lhs.m_root);
+			std::swap(rhs.m_allocator, lhs.m_allocator);
+			std::swap(rhs.m_num, lhs.m_num);
+			std::swap(rhs.m_minSize, lhs.m_minSize);
+			std::swap(rhs.m_map, lhs.m_map);
 		}
 
 		void Clear()

@@ -33,8 +33,9 @@ namespace Sailor::RHI
 
 		static constexpr uint32_t MaxFramesInQueue = 2;
 
-		SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
-		SAILOR_API ~Renderer() override;
+			SAILOR_API Renderer(class Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+			SAILOR_API ~Renderer() override;
+			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 
 		SAILOR_API RHI::EMsaaSamples GetMsaaSamples() const { return m_msaaSamples; }
 		SAILOR_API RHI::EFormat GetColorFormat() const;
@@ -71,7 +72,8 @@ namespace Sailor::RHI
 
 		FrameGraphPtr m_frameGraph{};
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
-		TUniquePtr<IGraphicsDriver> m_driverInstance{};
-		Tasks::ITaskPtr m_previousRenderFrame{};
+			TUniquePtr<IGraphicsDriver> m_driverInstance{};
+			Tasks::ITaskPtr m_previousRenderFrame{};
+			bool m_bIsInitialized = false;
+		};
 	};
-};

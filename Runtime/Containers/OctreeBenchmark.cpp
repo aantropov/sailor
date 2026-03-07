@@ -63,7 +63,7 @@ namespace Sailor
 				check(bInserted);
 			}
 			tOctree.Stop();
-			SAILOR_LOG("Performance test insert:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
+			SAILOR_LOG("Performance test insert:\n\t TOctree %lldms, nodes:%zu, elements:%zu", static_cast<long long>(tOctree.ResultMs()), container.NumNodes(), container.Num());
 
 			tOctree.Clear();
 			tOctree.Start();
@@ -77,7 +77,7 @@ namespace Sailor
 				//check(bUpdated);
 			}
 			tOctree.Stop();
-			SAILOR_LOG("Performance test update:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
+			SAILOR_LOG("Performance test update:\n\t TOctree %lldms, nodes:%zu, elements:%zu", static_cast<long long>(tOctree.ResultMs()), container.NumNodes(), container.Num());
 
 			tOctree.Clear();
 			tOctree.Start();
@@ -89,13 +89,13 @@ namespace Sailor
 				//check(bRemoved);
 			}
 			tOctree.Stop();
-			SAILOR_LOG("Performance test remove:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
+			SAILOR_LOG("Performance test remove:\n\t TOctree %lldms, nodes:%zu, elements:%zu", static_cast<long long>(tOctree.ResultMs()), container.NumNodes(), container.Num());
 
 			tOctree.Clear();
 			tOctree.Start();
 			container.Resolve();
 			tOctree.Stop();
-			SAILOR_LOG("Performance test resolve:\n\t TOctree %llums, nodes:%llu, elements:%llu", tOctree.ResultMs(), container.NumNodes(), container.Num());
+			SAILOR_LOG("Performance test resolve:\n\t TOctree %lldms, nodes:%zu, elements:%zu", static_cast<long long>(tOctree.ResultMs()), container.NumNodes(), container.Num());
 		}
 	};
 

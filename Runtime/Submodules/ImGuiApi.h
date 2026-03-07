@@ -3,7 +3,7 @@
 #include "RHI/Types.h"
 #include <imgui.h>
 #include "AssetRegistry/Shader/ShaderCompiler.h"
-#include <wtypes.h>
+#include <cstdint>
 
 namespace Sailor
 {
@@ -17,7 +17,32 @@ namespace Sailor
 		void NewFrame();
 		void PrepareFrame(RHI::RHICommandListPtr transferCmdList);
 		void RenderFrame(RHI::RHICommandListPtr drawCmdList);
+#if defined(_WIN32)
 		void HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#elif defined(__APPLE__)
+		struct MacEvent
+		{
+			enum class Type : uint8_t
+			{
+				MousePos,
+				MouseButton,
+				MouseWheel,
+				Key,
+				Text,
+				Focus
+			};
+
+			Type EventType = Type::MousePos;
+			float X = 0.0f;
+			float Y = 0.0f;
+			uint32_t Key = 0;
+			int32_t Button = -1;
+			bool bPressed = false;
+			const char* TextUtf8 = nullptr;
+		};
+
+		void HandleMac(const MacEvent& event);
+#endif
 
 	protected:
 

@@ -59,7 +59,7 @@ namespace Sailor::Memory
 					memoryBlock.m_blockIndex = InvalidIndex;
 					memoryBlock.m_emptySpace = 0;
 					memoryBlock.m_blockSize = 0;
-					memoryBlock.m_layout.clear();
+					memoryBlock.m_layout.Clear();
 					memoryBlock.m_notTrackedEmptySpace = 0;
 					memoryBlock.m_bIsOutOfSync = false;
 				}
@@ -82,7 +82,7 @@ namespace Sailor::Memory
 				memoryBlock.m_blockIndex = InvalidIndex;
 				memoryBlock.m_emptySpace = 0;
 				memoryBlock.m_blockSize = 0;
-				memoryBlock.m_layout.clear();
+				memoryBlock.m_layout.Clear();
 				memoryBlock.m_notTrackedEmptySpace = 0;
 				memoryBlock.m_bIsOutOfSync = false;
 			}

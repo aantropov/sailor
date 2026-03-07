@@ -5,6 +5,14 @@
 #include "Containers/Hash.h"
 #include "Math/Transform.h"
 
+#if (defined(__x86_64__) || defined(_M_X64) || defined(__i386) || defined(_M_IX86)) && (defined(__SSE2__) || defined(_M_AMD64) || defined(_M_IX86_FP))
+#define SAILOR_USE_X86_SIMD 1
+#include <xmmintrin.h>
+#include <emmintrin.h>
+#else
+#define SAILOR_USE_X86_SIMD 0
+#endif
+
 namespace Sailor::Math
 {
 	struct Triangle
@@ -24,7 +32,11 @@ namespace Sailor::Math
 
 	struct Ray
 	{
-		Ray() { O4 = D4 = rD4 = _mm_set1_ps(1); }
+		Ray()
+		{
+			SetOrigin(vec3(0.0f));
+			SetDirection(vec3(0.0f, 0.0f, 1.0f));
+		}
 		Ray(const vec3& origin, const vec3& direction) : m_origin(origin)
 		{
 			SetDirection(direction);
@@ -34,9 +46,11 @@ namespace Sailor::Math
 		__forceinline const vec3& GetDirection() const { return m_direction; }
 		__forceinline const vec3& GetReciprocalDirection() const { return m_rDirection; }
 
+#if SAILOR_USE_X86_SIMD
 		__forceinline const __m128& GetOrigin4() const { return O4; }
 		__forceinline const __m128& GetDirection4() const { return D4; }
 		__forceinline const __m128& GetReciprocalDirection4() const { return rD4; }
+#endif
 
 		__forceinline void SetOrigin(const vec3& value) { m_origin = value; }
 		__forceinline void SetDirection(const vec3& value)
@@ -46,12 +60,15 @@ namespace Sailor::Math
 		}
 
 	protected:
-
+#if SAILOR_USE_X86_SIMD
 		union { struct { vec3 m_origin; float dummy1; }; __m128 O4; };
 		union { struct { vec3 m_direction; float dummy2; }; __m128 D4; };
 		union { struct { vec3 m_rDirection; float dummy3; }; __m128 rD4; };
-
-		friend float IntersectRayAABB(const Ray& ray, const __m128 bmin4, const __m128 bmax4, float maxRayLength);
+#else
+		vec3 m_origin{};
+		vec3 m_direction{ 0.0f, 0.0f, 1.0f };
+		vec3 m_rDirection{ 1.0f, 1.0f, 1.0f };
+#endif
 	};
 
 	struct RaycastHit

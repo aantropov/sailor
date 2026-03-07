@@ -9,7 +9,14 @@
 #include "Memory/UniquePtr.hpp"
 
 // TODO: Implement ConcurrentList
+#if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
+#elif __has_include(<tbb/concurrent_queue.h>)
+#include <tbb/concurrent_queue.h>
+namespace concurrency = tbb;
+#else
+#error "No concurrent_queue implementation found"
+#endif
 
 #define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda))
 #define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::Render))

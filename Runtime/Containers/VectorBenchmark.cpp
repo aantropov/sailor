@@ -120,11 +120,11 @@ namespace Sailor
 		{
 			SAILOR_LOG("\nClassName: %s", m_className.c_str());
 			SAILOR_LOG("Sanity check passed: %d", m_bSanityPassed);
-			SAILOR_LOG("Performance test Add/Emplace: %llums", m_addEmplace);
-			SAILOR_LOG("Performance test Insert: %llums", m_insert);
-			SAILOR_LOG("Performance test RemoveAtSwap: %llums", m_removeAtSwap);
-			SAILOR_LOG("Performance test RemoveAt: %llums", m_removeAt);
-			SAILOR_LOG("Performance test RemoveFirst: %llums\n", m_removeFirst);
+			SAILOR_LOG("Performance test Add/Emplace: %zums", m_addEmplace);
+			SAILOR_LOG("Performance test Insert: %zums", m_insert);
+			SAILOR_LOG("Performance test RemoveAtSwap: %zums", m_removeAtSwap);
+			SAILOR_LOG("Performance test RemoveAt: %zums", m_removeAt);
+			SAILOR_LOG("Performance test RemoveFirst: %zums\n", m_removeFirst);
 		}
 	};
 

@@ -2,7 +2,9 @@
 
 #include <stdio.h>
 #include <imgui.h>
+#if defined(_WIN32)
 #include <imgui_impl_win32.h>
+#endif
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -12,24 +14,105 @@
 #include "RHI/GraphicsDriver.h"
 #include "RHI/CommandList.h"
 #include "RHI/VertexDescription.h"
+#include "Sailor.h"
+#include <chrono>
+#include <cmath>
 
 using namespace Sailor;
 
+#if defined(_WIN32)
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 
+#if defined(_WIN32)
 void ImGuiApi::HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	SAILOR_PROFILE_FUNCTION();
-
 	ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
 }
+#elif defined(__APPLE__)
+static ImGuiKey SailorMapMacVirtualKey(uint32_t key)
+{
+	switch (key)
+	{
+	case 'A': return ImGuiKey_A;
+	case 'B': return ImGuiKey_B;
+	case 'C': return ImGuiKey_C;
+	case 'D': return ImGuiKey_D;
+	case 'E': return ImGuiKey_E;
+	case 'F': return ImGuiKey_F;
+	case 'G': return ImGuiKey_G;
+	case 'H': return ImGuiKey_H;
+	case 'Q': return ImGuiKey_Q;
+	case 'R': return ImGuiKey_R;
+	case 'S': return ImGuiKey_S;
+	case 'T': return ImGuiKey_T;
+	case 'U': return ImGuiKey_U;
+	case 'V': return ImGuiKey_V;
+	case 'W': return ImGuiKey_W;
+	case 'X': return ImGuiKey_X;
+	case 'Y': return ImGuiKey_Y;
+	case 'Z': return ImGuiKey_Z;
+	case VK_SHIFT: return ImGuiKey_ModShift;
+	case VK_CONTROL: return ImGuiKey_ModCtrl;
+	case VK_ESCAPE: return ImGuiKey_Escape;
+	case VK_F5: return ImGuiKey_F5;
+	case VK_F6: return ImGuiKey_F6;
+	default: return ImGuiKey_None;
+	}
+}
+
+void ImGuiApi::HandleMac(const MacEvent& event)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	switch (event.EventType)
+	{
+	case MacEvent::Type::MousePos:
+		io.AddMousePosEvent(event.X, event.Y);
+		break;
+	case MacEvent::Type::MouseButton:
+		io.AddMouseButtonEvent(event.Button, event.bPressed);
+		break;
+	case MacEvent::Type::MouseWheel:
+		io.AddMouseWheelEvent(event.X, event.Y);
+		break;
+	case MacEvent::Type::Key:
+	{
+		const ImGuiKey imguiKey = SailorMapMacVirtualKey(event.Key);
+		if (imguiKey != ImGuiKey_None)
+		{
+			io.AddKeyEvent(imguiKey, event.bPressed);
+		}
+		break;
+	}
+	case MacEvent::Type::Text:
+		if (event.TextUtf8 && event.TextUtf8[0] != '\0')
+		{
+			io.AddInputCharactersUTF8(event.TextUtf8);
+		}
+		break;
+	case MacEvent::Type::Focus:
+		io.AddFocusEvent(event.bPressed);
+		break;
+	default:
+		break;
+	}
+}
+#endif
 
 ImGuiApi::ImGuiApi(void* hWnd)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	ImGui::CreateContext();
+#if defined(_WIN32)
 	ImGui_ImplWin32_Init(hWnd);
+#else
+	(void)hWnd;
+#endif
 
 	InitInfo initInfo = {};
 	initInfo.MinImageCount = 3;
@@ -42,7 +125,9 @@ ImGuiApi::~ImGuiApi()
 {
 	SAILOR_PROFILE_FUNCTION();
 
+#if defined(_WIN32)
 	ImGui_ImplWin32_Shutdown();
+#endif
 	ImGuiApi::ImGui_Shutdown();
 }
 
@@ -54,7 +139,38 @@ void ImGuiApi::NewFrame()
 	IM_ASSERT(bd != nullptr && "Did you call ImGui_Init()?");
 	IM_UNUSED(bd);
 
+#if defined(_WIN32)
 	ImGui_ImplWin32_NewFrame();
+#elif defined(__APPLE__)
+	static auto s_prevFrameTime = std::chrono::steady_clock::now();
+	const auto now = std::chrono::steady_clock::now();
+	const float deltaTime = std::chrono::duration<float>(now - s_prevFrameTime).count();
+	s_prevFrameTime = now;
+
+	auto& window = App::GetMainWindow();
+	ImGuiIO& io = ImGui::GetIO();
+	if (window)
+	{
+		const float displayWidth = (float)window->GetWidth();
+		const float displayHeight = (float)window->GetHeight();
+		io.DisplaySize = ImVec2(displayWidth, displayHeight);
+
+		const glm::ivec2 renderArea = window->GetRenderArea();
+		if (displayWidth > 0.0f && displayHeight > 0.0f && renderArea.x > 0 && renderArea.y > 0)
+		{
+			io.DisplayFramebufferScale = ImVec2((float)renderArea.x / displayWidth, (float)renderArea.y / displayHeight);
+		}
+		else
+		{
+			io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+		}
+	}
+	io.DeltaTime = deltaTime > 0.0f ? deltaTime : (1.0f / 60.0f);
+	if (!window)
+	{
+		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+	}
+#endif
 	ImGui::NewFrame();
 }
 
@@ -244,11 +360,16 @@ void ImGuiApi::ImGui_RenderDrawData(ImDrawData* drawData, RHI::RHICommandListPtr
 				if (clipMax.x <= clipMin.x || clipMax.y <= clipMin.y)
 					continue;
 
+				const int32_t clipMinX = (int32_t)std::floor(clipMin.x);
+				const int32_t clipMinY = (int32_t)std::floor(clipMin.y);
+				const int32_t clipMaxX = (int32_t)std::ceil(clipMax.x);
+				const int32_t clipMaxY = (int32_t)std::ceil(clipMax.y);
+
 				RHI::Renderer::GetDriverCommands()->SetViewport(drawCmdList,
 					0, 0,
 					(float)width, (float)height,
-					glm::ivec2((int32_t)clipMin.x, (int32_t)clipMin.y),
-					glm::ivec2((int32_t)(clipMax.x - clipMin.x), (int32_t)(clipMax.y - clipMin.y)),
+					glm::ivec2(clipMinX, clipMinY),
+					glm::ivec2(clipMaxX - clipMinX, clipMaxY - clipMinY),
 					0, 1.0f);
 
 				// Bind DescriptorSet with font or user texture

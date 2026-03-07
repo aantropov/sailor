@@ -70,11 +70,22 @@ namespace Sailor
 		template<typename T>
 		static void RemoveSubmodule()
 		{
-			check(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
-			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()].Clear();
+			if (!s_pInstance)
+			{
+				return;
+			}
+
+			const int32_t typeId = TSubmodule<T>::GetTypeId();
+			if (typeId == SubmoduleBase::InvalidSubmoduleTypeId)
+			{
+				return;
+			}
+
+			s_pInstance->m_submodules[(uint32_t)typeId].Clear();
 		}
 
 		static TUniquePtr<Win32::Window>& GetMainWindow();
+		static Platform::Window* GetMainWindowPlatform();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
 

@@ -74,7 +74,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		driver->FillShadersLayout(m_shaderBindings, { m_pShader->GetDebugVertexShaderRHI(), m_pShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms
-		const size_t uniformsSize = std::max(256ull, m_vectorParams.Num() * sizeof(glm::vec4));
+		const size_t uniformsSize = std::max(size_t{ 256 }, m_vectorParams.Num() * sizeof(glm::vec4));
 		driver->AddBufferToShaderBindings(m_shaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -93,6 +93,11 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 		for (const auto& r : m_resourceParams)
 		{
+			if (!m_shaderBindings->HasBinding(r.First()))
+			{
+				continue;
+			}
+
 			auto rhiTexture = GetResolvedAttachment(r.First());
 			if (rhiTexture && RHI::IsDepthFormat(rhiTexture->GetFormat()))
 			{
@@ -101,6 +106,11 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					driver->UpdateShaderBinding(m_shaderBindings, r.First(), renderTarget->GetDepthAspect());
 					continue;
 				}
+			}
+
+			if (!rhiTexture)
+			{
+				rhiTexture = driver->GetDefaultTexture();
 			}
 
 			driver->UpdateShaderBinding(m_shaderBindings, r.First(), rhiTexture);
@@ -112,11 +122,21 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		if (r.m_first != "color")
 		{
+			if (!m_shaderBindings->HasBinding(r.First()))
+			{
+				continue;
+			}
+
 			RHI::RHIRenderTargetPtr rhiTexture = frameGraph->GetRenderTarget(*r.m_second);
 			RHITexturePtr target = rhiTexture;
-			if (RHI::IsDepthStencilFormat(rhiTexture->GetFormat()))
+			if (rhiTexture && RHI::IsDepthStencilFormat(rhiTexture->GetFormat()))
 			{
 				target = rhiTexture->GetDepthAspect();
+			}
+
+			if (!target)
+			{
+				target = driver->GetDefaultTexture();
 			}
 
 			driver->UpdateShaderBinding(m_shaderBindings, r.First(), target);

@@ -116,7 +116,12 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersBindings = driver->CreateShaderBindings();
 
-	TVector<RHI::RHITexturePtr> defaultTextures(MaxTexturesInScene);
+	// Extremely large descriptor arrays (MaxTexturesInScene) can exceed runtime Vulkan limits on macOS/MoltenVK
+	// and crash during vkUpdateDescriptorSets. Start with a conservative bindless table size.
+	constexpr size_t kMaxInitialTextureSamplers = 1024;
+	const size_t initialTextureSamplers = std::min(MaxTexturesInScene, kMaxInitialTextureSamplers);
+
+	TVector<RHI::RHITexturePtr> defaultTextures(initialTextureSamplers);
 	for (auto& t : defaultTextures)
 	{
 		t = driver->GetDefaultTexture();
@@ -259,7 +264,7 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 			else
 			{
 				const auto msg = "Cannot extract texture from glb! " + uid.ToString();
-				SAILOR_LOG_ERROR(msg.c_str());
+				SAILOR_LOG_ERROR("%s", msg.c_str());
 			}
 
 			return false;

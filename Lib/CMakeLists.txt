@@ -51,6 +51,12 @@ if(NOT glm_FOUND)
 	sailor_create_stub_target(glm::glm)
 endif()
 
+find_package(TBB CONFIG QUIET)
+if(NOT TBB_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "TBB")
+	sailor_create_stub_target(TBB::tbb)
+endif()
+
 find_package(unofficial-spirv-reflect CONFIG QUIET)
 if(NOT unofficial-spirv-reflect_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "unofficial-spirv-reflect")
@@ -80,12 +86,23 @@ endif()
 file(GLOB_RECURSE SAILOR_RUNTIME_SOURCES
   "${SAILOR_RUNTIME_DIR}/*.h"
   "${SAILOR_RUNTIME_DIR}/*.cpp"
+  "${SAILOR_RUNTIME_DIR}/*.mm"
   "${SAILOR_RUNTIME_DIR}/*.hpp"
   "${SAILOR_RUNTIME_DIR}/*.natvis")
 
 file(GLOB_RECURSE SAILOR_LIB_SOURCES
   "*.h"
   "*.cpp")
+
+if(APPLE)
+	list(REMOVE_ITEM SAILOR_RUNTIME_SOURCES
+		"${SAILOR_RUNTIME_DIR}/Platform/Win32/Window.cpp"
+		"${SAILOR_RUNTIME_DIR}/Platform/Win32/ConsoleWindow.cpp")
+endif()
+
+if(NOT WIN32)
+	list(REMOVE_ITEM SAILOR_LIB_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/DllMain.cpp")
+endif()
 
 source_group("" FILES ${SAILOR_LIB_SOURCES})
  
@@ -106,6 +123,7 @@ target_link_libraries(SailorLib PUBLIC
   magic_enum::magic_enum
   imgui::imgui
   glm::glm
+  TBB::tbb
   unofficial::spirv-reflect
 )
 
@@ -145,24 +163,31 @@ if(${CMAKE_BUILD_TYPE} MATCHES Release)
   target_compile_definitions(SailorLib PUBLIC _SHIPPING)
 endif()
 
-target_compile_options(SailorLib PUBLIC /permissive-)
-target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/Oi>)
-target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/Ot>)
-target_compile_options(SailorLib PUBLIC /GF)
-target_compile_options(SailorLib PUBLIC /arch:AVX2)
-target_compile_options(SailorLib PUBLIC /Zc:wchar_t)
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)
-target_compile_options(SailorLib PUBLIC /WX)
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:-O2>)
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(MSVC)
+  target_compile_options(SailorLib PUBLIC /permissive-)
+  target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/Oi>)
+  target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/Ot>)
+  target_compile_options(SailorLib PUBLIC /GF)
+  target_compile_options(SailorLib PUBLIC /arch:AVX2)
+  target_compile_options(SailorLib PUBLIC /Zc:wchar_t)
+  target_compile_options(SailorLib PUBLIC /WX)
   target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:/GT>)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+  target_compile_options(SailorLib PUBLIC $<$<NOT:$<CONFIG:DEBUG>>:-O2>)
 endif()
 
 if(WIN32)
   target_compile_definitions(SailorLib PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
   target_link_libraries(SailorLib PUBLIC Winmm.lib)
+endif()
+
+if(APPLE)
+	target_link_libraries(SailorLib PUBLIC
+		"-framework Cocoa"
+		"-framework QuartzCore"
+		"-framework Metal")
 endif()
 
 if(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT)
@@ -185,9 +210,46 @@ endif()
 if(SAILOR_BUILD_WITH_VULKAN)
   find_package(Vulkan 1.3 COMPONENTS shaderc_combined QUIET)
 
-  if(Vulkan_FOUND)
+  set(SAILOR_SHADERC_FALLBACK "")
+  set(SAILOR_MOLTENVK_FALLBACK "")
+  if(APPLE)
+    if(EXISTS "/opt/homebrew/lib/libshaderc_combined.a")
+      set(SAILOR_SHADERC_FALLBACK "/opt/homebrew/lib/libshaderc_combined.a")
+    endif()
+    if(EXISTS "/opt/homebrew/lib/libMoltenVK.dylib")
+      set(SAILOR_MOLTENVK_FALLBACK "/opt/homebrew/lib/libMoltenVK.dylib")
+    endif()
+  endif()
+  if(NOT Vulkan_FOUND)
+    find_package(Vulkan 1.3 QUIET)
+    if(Vulkan_FOUND)
+      find_library(SAILOR_SHADERC_FALLBACK NAMES shaderc_combined PATHS /opt/homebrew/lib /usr/local/lib)
+    endif()
+  endif()
+
+  if(NOT Vulkan_FOUND AND APPLE)
+    find_library(SAILOR_MOLTENVK_FALLBACK NAMES MoltenVK PATHS /opt/homebrew/lib /usr/local/lib)
+    find_library(SAILOR_SHADERC_FALLBACK NAMES shaderc_combined PATHS /opt/homebrew/lib /usr/local/lib)
+    if(SAILOR_MOLTENVK_FALLBACK AND SAILOR_SHADERC_FALLBACK)
+      set(Vulkan_FOUND TRUE)
+    endif()
+  endif()
+
+  if(Vulkan_FOUND AND (TARGET Vulkan::shaderc_combined OR SAILOR_SHADERC_FALLBACK))
     target_compile_definitions(SailorLib PUBLIC SAILOR_BUILD_WITH_VULKAN)
-    target_link_libraries(SailorLib PUBLIC Vulkan::Vulkan Vulkan::shaderc_combined)
+    if(TARGET Vulkan::Vulkan)
+      target_link_libraries(SailorLib PUBLIC Vulkan::Vulkan)
+    elseif(APPLE AND SAILOR_MOLTENVK_FALLBACK)
+      target_include_directories(SailorLib PUBLIC /opt/homebrew/include /usr/local/include)
+      target_link_libraries(SailorLib PUBLIC ${SAILOR_MOLTENVK_FALLBACK})
+      target_compile_definitions(SailorLib PUBLIC SAILOR_VULKAN_DIRECT_MOLTENVK_FALLBACK)
+    endif()
+
+    if(TARGET Vulkan::shaderc_combined)
+      target_link_libraries(SailorLib PUBLIC Vulkan::shaderc_combined)
+    else()
+      target_link_libraries(SailorLib PUBLIC ${SAILOR_SHADERC_FALLBACK})
+    endif()
   elseif(SAILOR_ALLOW_MISSING_DEPS)
     message(WARNING "Vulkan SDK 1.3+ with shaderc_combined not found. Vulkan integration is disabled for this configuration.")
   else()

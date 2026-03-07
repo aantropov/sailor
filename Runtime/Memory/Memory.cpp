@@ -1,6 +1,5 @@
 #include "Memory.h"
 #include <cstdlib>
-#include <malloc.h>
 #include <random>
 #include <fstream>
 #include <cassert>
@@ -12,7 +11,11 @@
 #include "MemoryBlockAllocator.hpp"
 #include "MemoryPoolAllocator.hpp"
 #include "MemoryMultiPoolAllocator.hpp"
+#ifdef _WIN32
 #include "psapi.h"
+#else
+#include <unistd.h>
+#endif
 
 using namespace Sailor;
 using namespace Sailor::Memory;
@@ -20,6 +23,7 @@ using Timer = Utils::Timer;
 
 size_t GetTotalUsedVirtualMemory()
 {
+#ifdef _WIN32
 	PROCESS_MEMORY_COUNTERS_EX pmc;
 	GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc));
 	SIZE_T virtualMemUsedByMe = pmc.PrivateUsage;
@@ -36,6 +40,9 @@ size_t GetTotalUsedVirtualMemory()
 	//DWORDLONG virtualMemUsed = memInfo.ullTotalVirtual - memInfo.ullAvailVirtual;
 
 	return (size_t)virtualMemUsedByMe;
+#else
+	return 0;
+#endif
 }
 
 typedef std::unordered_map<std::string, std::unordered_map<size_t, std::pair<size_t, float>>> TestResult;
@@ -464,6 +471,7 @@ public:
 
 		size_t ramSize;
 		{
+#ifdef _WIN32
 			ULONGLONG ramSizeKB;
 			if (!GetPhysicallyInstalledSystemMemory(&ramSizeKB))
 			{
@@ -471,6 +479,9 @@ public:
 				exit(0);
 			}
 			ramSize = (size_t)ramSizeKB << 10;
+#else
+			ramSize = static_cast<size_t>(sysconf(_SC_PHYS_PAGES)) * static_cast<size_t>(sysconf(_SC_PAGE_SIZE));
+#endif
 		}
 
 		timer.Start();
@@ -599,7 +610,7 @@ std::string GetJsData(std::string allocSize, std::string testName, std::vector<R
 			char buffer[1024];
 			if (bTime)
 			{
-				snprintf(buffer, sizeof(buffer), ",%llu", result.m_results[allocSize][testName][r.first].first);
+				snprintf(buffer, sizeof(buffer), ",%zu", result.m_results[allocSize][testName][r.first].first);
 			}
 			else
 			{

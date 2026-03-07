@@ -11,6 +11,10 @@
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
 #endif
+
+#if defined(__APPLE__) && !defined(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME)
+#define VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME "VK_KHR_portability_subset"
+#endif
 #include "Sailor.h"
 #include "RHI/Types.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -20,7 +24,7 @@
 
 namespace Sailor
 {
-	namespace Win32
+	namespace Platform
 	{
 		class Window;
 	}
@@ -32,7 +36,6 @@ namespace Sailor
 	}
 }
 
-using namespace Sailor::Win32;
 using namespace Sailor;
 using namespace Sailor::Memory;
 
@@ -117,7 +120,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		static constexpr VkClearDepthStencilValue DefaultClearDepthStencilValue{ 0.0f, 0 };
 		static constexpr VkClearValue DefaultClearColor{ {{0.0f,0.0f,0.0f,0.0f}} };
 
-		SAILOR_API static void Initialize(Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
+		SAILOR_API static void Initialize(Platform::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug);
 		SAILOR_API virtual ~VulkanApi() override;
 
 		SAILOR_API static void WaitIdle();
@@ -142,18 +145,23 @@ namespace Sailor::GraphicsDriver::Vulkan
 		{
 			requiredDeviceExtensions =
 			{
-				VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
 				VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-				"VK_KHR_dynamic_rendering",
-
-				//Relax the interface matching rules to allow a larger output vector to match with a smaller input vector, with additional values being discarded.
-				VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
-				VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-				VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,
-
-				VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-				//VK_EXT_DYNAMIC_RENDERING_UNUSED_ATTACHMENTS_EXTENSION_NAME
 			};
+
+#if !defined(__APPLE__)
+			requiredDeviceExtensions.Add(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+			requiredDeviceExtensions.Add("VK_KHR_dynamic_rendering");
+
+			// Relax interface matching rules for vector widths.
+			requiredDeviceExtensions.Add(VK_KHR_MAINTENANCE_4_EXTENSION_NAME);
+			requiredDeviceExtensions.Add(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
+			requiredDeviceExtensions.Add(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+			requiredDeviceExtensions.Add(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+#endif
+
+#if defined(__APPLE__)
+			requiredDeviceExtensions.Add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+#endif
 		}
 
 		SAILOR_API static VkAttachmentDescription GetDefaultColorAttachment(VkFormat imageFormat);

@@ -2,13 +2,32 @@
 
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
-#ifndef _SAILOR_IMPORT_
-# define SAILOR_API __declspec(dllexport)
+#if defined(_WIN32)
+# ifndef _SAILOR_IMPORT_
+#  define SAILOR_API __declspec(dllexport)
+# else
+#  define SAILOR_API __declspec(dllimport)
+# endif
 #else
-# define SAILOR_API __declspec(dllimport)
+# if defined(__GNUC__) || defined(__clang__)
+#  define SAILOR_API __attribute__((visibility("default")))
+# else
+#  define SAILOR_API
+# endif
+#endif
+
+#if !defined(__forceinline)
+# define __forceinline
 #endif
 
 #include <cassert>
+#include <cstdio>
+#if !defined(_WIN32)
+#include <thread>
+#include <chrono>
+#include <cstdlib>
+#include <alloca.h>
+#endif
 
 #if defined(BUILD_WITH_TRACY_PROFILER)
 #include "tracy/Tracy.hpp"
@@ -29,6 +48,78 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 #ifndef _WINDEF_
 typedef unsigned long DWORD;
+#endif
+
+#if !defined(_WIN32)
+typedef void* HWND;
+typedef void* HINSTANCE;
+typedef void* HDC;
+typedef const char* LPCSTR;
+typedef unsigned int UINT;
+typedef unsigned long WPARAM;
+typedef long LPARAM;
+typedef long LRESULT;
+#ifndef CALLBACK
+#define CALLBACK
+#endif
+struct RECT
+{
+	long left;
+	long top;
+	long right;
+	long bottom;
+};
+
+#ifndef VK_LBUTTON
+#define VK_LBUTTON 0x01
+#endif
+#ifndef VK_RBUTTON
+#define VK_RBUTTON 0x02
+#endif
+#ifndef VK_MBUTTON
+#define VK_MBUTTON 0x04
+#endif
+#ifndef VK_SHIFT
+#define VK_SHIFT 0x10
+#endif
+#ifndef VK_CONTROL
+#define VK_CONTROL 0x11
+#endif
+#ifndef VK_ESCAPE
+#define VK_ESCAPE 0x1B
+#endif
+#ifndef VK_F5
+#define VK_F5 0x74
+#endif
+#ifndef VK_F6
+#define VK_F6 0x75
+#endif
+
+inline DWORD GetCurrentThreadId()
+{
+	return (DWORD)std::hash<std::thread::id>{}(std::this_thread::get_id());
+}
+
+inline bool IsDebuggerPresent()
+{
+	return false;
+}
+
+inline void Sleep(uint32_t ms)
+{
+	std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+#ifndef _malloca
+#define _malloca(size) alloca(size)
+#endif
+#ifndef _freea
+#define _freea(ptr) (void)(ptr)
+#endif
+
+#ifndef sprintf_s
+#define sprintf_s(buffer, sizeOfBuffer, format, ...) std::snprintf(buffer, sizeOfBuffer, format, __VA_ARGS__)
+#endif
 #endif
 
 #if defined(SAILOR_PROFILING_ENABLE) && defined(BUILD_WITH_TRACY_PROFILER)
@@ -65,7 +156,7 @@ typedef unsigned long DWORD;
 
 #define checkAtCompileTime(expr, msg) static_assert(expr, #msg);
 #define check(expr) assert(expr);
-#define ensure(expr, msg, ...) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG(#msg, __VA_ARGS__); bOnce = true; }}
+#define ensure(expr, msg, ...) { static bool bOnce = false; if(!(expr) && !bOnce) { SAILOR_LOG("%s", #msg); bOnce = true; }}
 
 //Memory
 namespace Sailor::Memory

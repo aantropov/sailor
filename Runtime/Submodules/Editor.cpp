@@ -6,7 +6,9 @@
 #include "ECS/TransformECS.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
+#if defined(_WIN32)
 #include <libloaderapi.h>
+#endif
 #include <queue>
 #include <string>
 #include <ctime>
@@ -150,13 +152,18 @@ void Editor::PushMessage(const std::string& msg)
 		std::time_t now = std::time(nullptr);
 		std::tm localTime;
 
+#if defined(_WIN32)
 		errno_t err = localtime_s(&localTime, &now);
-
 		if (err != 0)
 		{
-			// TODO: Handle error
-			//throw std::runtime_error("Failed to get local time");
+			return;
 		}
+#else
+		if (!localtime_r(&now, &localTime))
+		{
+			return;
+		}
+#endif
 
 		std::ostringstream oss;
 		oss << '[' << std::put_time(&localTime, "%H:%M:%S") << "] " << msg;

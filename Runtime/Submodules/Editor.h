@@ -1,8 +1,17 @@
 #pragma once
 #include "Core/Submodule.h"
 #include <yaml-cpp/yaml.h>
+#if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
+#elif __has_include(<tbb/concurrent_queue.h>)
+#include <tbb/concurrent_queue.h>
+namespace concurrency = tbb;
+#else
+#error "No concurrent_queue implementation found"
+#endif
+#if defined(_WIN32)
 #include <wtypes.h>
+#endif
 
 namespace Sailor
 {

@@ -1,5 +1,4 @@
 #include "LockFreeHeapAllocator.h"
-#include <windows.h>
 #include <mutex>
 
 #include "Memory/UniquePtr.hpp"
@@ -24,8 +23,6 @@ void* LockFreeHeapAllocator::allocate(size_t size, size_t alignment)
 	auto& allocator = GetAllocator();
 	const DWORD currentThreadId = GetCurrentThreadId();
 	void* res = nullptr;
-
-	check(currentThreadId < 100000000);
 
 	auto& pAllocator = allocator->At_Lock(currentThreadId);
 

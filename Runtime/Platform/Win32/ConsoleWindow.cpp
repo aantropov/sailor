@@ -1,4 +1,5 @@
 #include "ConsoleWindow.h"
+#ifdef _WIN32
 #include <windows.h>
 #include <io.h>
 #include <fcntl.h>
@@ -228,3 +229,59 @@ uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
 
 	return (uint32_t)strlen(out);
 }
+#else
+
+using namespace Sailor::Win32;
+
+ConsoleWindow::ConsoleWindow(bool bInShouldAttach)
+	: m_stdout_file(0)
+	, m_stderr_file(0)
+	, m_stdin_file(0)
+	, m_bShouldAttach(bInShouldAttach)
+	, m_bufferSize(0)
+{
+}
+
+void ConsoleWindow::Initialize(bool bInShouldAttach)
+{
+	s_pInstance = new ConsoleWindow(bInShouldAttach);
+}
+
+ConsoleWindow::~ConsoleWindow() = default;
+
+void ConsoleWindow::Attach()
+{
+}
+
+void ConsoleWindow::Free()
+{
+}
+
+void ConsoleWindow::OpenWindow(const wchar_t* Title)
+{
+	(void)Title;
+}
+
+void ConsoleWindow::CloseWindow()
+{
+}
+
+void ConsoleWindow::Write(wchar_t c)
+{
+	(void)c;
+}
+
+void ConsoleWindow::Update()
+{
+}
+
+uint32_t ConsoleWindow::Read(char* OutBuffer, uint32_t BufferSize)
+{
+	if (OutBuffer && BufferSize > 0)
+	{
+		OutBuffer[0] = '\0';
+	}
+	return 0;
+}
+
+#endif

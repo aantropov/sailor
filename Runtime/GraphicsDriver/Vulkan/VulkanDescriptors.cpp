@@ -48,6 +48,7 @@ void VulkanDescriptorSetLayout::Compile()
 	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.Num();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.GetData();
 
+#if !defined(__APPLE__)
 	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
 	const VkDescriptorBindingFlags flag =
@@ -68,6 +69,10 @@ void VulkanDescriptorSetLayout::Compile()
 	bindingFlags.pBindingFlags = flags.GetData();
 
 	layoutInfo.pNext = &bindingFlags;
+#else
+	layoutInfo.flags = 0;
+	layoutInfo.pNext = nullptr;
+#endif
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
 }
@@ -90,7 +95,10 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t max
 	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.Num());
 	poolInfo.pPoolSizes = descriptorPoolSizes.GetData();
 	poolInfo.maxSets = maxSets;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+#if !defined(__APPLE__)
+	poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+#endif
 	poolInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &m_descriptorPool));
@@ -136,11 +144,44 @@ void VulkanDescriptorSet::RecalculateCompatibility()
 
 void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 {
-	VkWriteDescriptorSet descriptorWrite;
+	VkWriteDescriptorSet descriptorWrite{};
 
 	m_descriptors[index]->Apply(descriptorWrite);
 	descriptorWrite.dstSet = m_descriptorSet;
-	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
+
+	bool bValid = true;
+	switch (descriptorWrite.descriptorType)
+	{
+	case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+		bValid = (descriptorWrite.pImageInfo != nullptr) && (descriptorWrite.pImageInfo->imageView != VK_NULL_HANDLE) && (descriptorWrite.pImageInfo->sampler != VK_NULL_HANDLE);
+		break;
+	case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+	case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+	case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+		bValid = (descriptorWrite.pImageInfo != nullptr) && (descriptorWrite.pImageInfo->imageView != VK_NULL_HANDLE);
+		break;
+	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+		bValid = (descriptorWrite.pBufferInfo != nullptr) && (descriptorWrite.pBufferInfo->buffer != VK_NULL_HANDLE);
+		break;
+	case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+	case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+		bValid = (descriptorWrite.pTexelBufferView != nullptr) && (*descriptorWrite.pTexelBufferView != VK_NULL_HANDLE);
+		break;
+	default:
+		break;
+	}
+
+	if (bValid)
+	{
+		vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
+	}
+	else
+	{
+		SAILOR_LOG("Skip invalid Vulkan descriptor update: type=%u, binding=%u, arrayElement=%u", (uint32_t)descriptorWrite.descriptorType, descriptorWrite.dstBinding, descriptorWrite.dstArrayElement);
+	}
 }
 
 void VulkanDescriptorSet::Compile()
@@ -163,7 +204,7 @@ void VulkanDescriptorSet::Compile()
 		m_currentThreadId = GetCurrentThreadId();
 	}
 
-	VkWriteDescriptorSet* descriptorsWrite = reinterpret_cast<VkWriteDescriptorSet*>(_malloca(m_descriptors.Num() * sizeof(VkWriteDescriptorSet)));
+	TVector<VkWriteDescriptorSet> descriptorsWrite(m_descriptors.Num());
 
 	for (uint32_t i = 0; i < m_descriptors.Num(); i++)
 	{
@@ -171,9 +212,52 @@ void VulkanDescriptorSet::Compile()
 		descriptorsWrite[i].dstSet = m_descriptorSet;
 	}
 
+	TVector<VkWriteDescriptorSet> validWrites;
+	validWrites.Reserve(descriptorsWrite.Num());
+
+	for (auto& write : descriptorsWrite)
+	{
+		bool bValid = true;
+
+		switch (write.descriptorType)
+		{
+		case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+			bValid = (write.pImageInfo != nullptr) && (write.pImageInfo->imageView != VK_NULL_HANDLE) && (write.pImageInfo->sampler != VK_NULL_HANDLE);
+			break;
+		case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+		case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+		case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+			bValid = (write.pImageInfo != nullptr) && (write.pImageInfo->imageView != VK_NULL_HANDLE);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+		case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+		case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+			bValid = (write.pBufferInfo != nullptr) && (write.pBufferInfo->buffer != VK_NULL_HANDLE);
+			break;
+		case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+		case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+			bValid = (write.pTexelBufferView != nullptr) && (*write.pTexelBufferView != VK_NULL_HANDLE);
+			break;
+		default:
+			break;
+		}
+
+		if (bValid)
+		{
+			validWrites.Add(write);
+		}
+		else
+		{
+			SAILOR_LOG("Skip invalid Vulkan descriptor write: type=%u, binding=%u, arrayElement=%u", (uint32_t)write.descriptorType, write.dstBinding, write.dstArrayElement);
+		}
+	}
+
 	RecalculateCompatibility();
-	vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(m_descriptors.Num()), descriptorsWrite, 0, nullptr);
-	_freea(descriptorsWrite);
+	if (validWrites.Num() > 0)
+	{
+		vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(validWrites.Num()), validWrites.GetData(), 0, nullptr);
+	}
 }
 
 void VulkanDescriptorSet::Release()
@@ -277,6 +361,7 @@ VulkanDescriptorCombinedImage::VulkanDescriptorCombinedImage(uint32_t dstBinding
 void VulkanDescriptorCombinedImage::SetImageView(VulkanImageViewPtr imageView)
 {
 	m_imageView = imageView;
+	m_imageInfo.imageView = m_imageView ? *m_imageView : VK_NULL_HANDLE;
 }
 
 void VulkanDescriptorCombinedImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const
@@ -303,6 +388,7 @@ VulkanDescriptorStorageImage::VulkanDescriptorStorageImage(uint32_t dstBinding,
 void VulkanDescriptorStorageImage::SetImageView(VulkanImageViewPtr imageView)
 {
 	m_imageView = imageView;
+	m_imageInfo.imageView = m_imageView ? *m_imageView : VK_NULL_HANDLE;
 }
 
 void VulkanDescriptorStorageImage::Apply(VkWriteDescriptorSet& writeDescriptorSet) const

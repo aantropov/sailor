@@ -104,7 +104,7 @@ const FileId& AssetRegistry::GetOrLoadFile(const std::string& assetFilepath)
 const FileId& AssetRegistry::LoadFile(const std::string& assetFilepath)
 {
 	// Convert to absolute path
-	const std::string filepath = (!assetFilepath._Starts_with(GetContentFolder())) ?
+	const std::string filepath = (!assetFilepath.starts_with(GetContentFolder())) ?
 		(GetContentFolder() + Utils::SanitizeFilepath(assetFilepath)) :
 		Utils::SanitizeFilepath(assetFilepath);
 

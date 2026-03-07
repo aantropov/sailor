@@ -1,6 +1,5 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include <corecrt_io.h>
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"

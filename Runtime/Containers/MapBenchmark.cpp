@@ -132,10 +132,10 @@ namespace Sailor
 		{
 			SAILOR_LOG("\nClassName: %s", m_className.c_str());
 			SAILOR_LOG("Sanity check passed: %d", m_bSanityPassed);
-			SAILOR_LOG("Performance test operator[]: %llums", m_operator);
-			SAILOR_LOG("Performance test Remove: %llums", m_remove);
-			SAILOR_LOG("Performance test ContainsKey (misses %.2f): %llums", m_misses, m_containsKey);
-			SAILOR_LOG("Performance test ContainsValue: %llums", m_containsValue);
+			SAILOR_LOG("Performance test operator[]: %zums", m_operator);
+			SAILOR_LOG("Performance test Remove: %zums", m_remove);
+			SAILOR_LOG("Performance test ContainsKey (misses %.2f): %zums", m_misses, m_containsKey);
+			SAILOR_LOG("Performance test ContainsValue: %zums", m_containsValue);
 		}
 	};
 

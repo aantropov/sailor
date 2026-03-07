@@ -106,7 +106,7 @@ vec3 LightingModel::CalculateBTDF(const vec3& viewDirection, const vec3& worldNo
 	float geomB = GeometrySchlickGGX(nDotV, roughness);
 	float geometricTerm = geomA * geomB;
 
-	vec3 kT = (1.0f - F) * transmission * (1.0f - metallic) * sample.m_baseColor.xyz;
+	vec3 kT = (1.0f - F) * transmission * (1.0f - metallic) * vec3(sample.m_baseColor);
 
 	if (nDotL < 0.0f || nDotV < 0.0f)
 	{
@@ -152,7 +152,7 @@ vec3 LightingModel::CalculateBRDF(const vec3& viewDirection, const vec3& worldNo
 
 	float denominator = (4.0f * std::max(nDotV, 0.0f) * std::max(nDotL, 0.0f)) + 0.001f;
 	vec3 specularTerm = (F * NDF * geometricTerm) / denominator;
-	vec3 diffuseTerm = (kD * sample.m_baseColor.xyz) / glm::pi<float>();
+	vec3 diffuseTerm = (kD * vec3(sample.m_baseColor)) / glm::pi<float>();
 
 	vec3 lighting = (diffuseTerm + specularTerm);// *(vec3(1.0f) - vec3(ambientOcclusion));
 

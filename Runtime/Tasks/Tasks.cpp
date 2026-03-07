@@ -1,7 +1,8 @@
 #include "Scheduler.h"
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include <fcntl.h>
-#include <conio.h>
 #include <algorithm>
 #include <mutex>
 #include <set>

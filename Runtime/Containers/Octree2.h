@@ -116,24 +116,24 @@ namespace Sailor
 			m_root = nullptr;
 		}
 
-		TOctree2(const TOctree2& octree) {}
-		TOctree2& operator= (const TOctree2& octree) {}
+			TOctree2(const TOctree2& octree) = delete;
+			TOctree2& operator= (const TOctree2& octree) = delete;
 
-		TOctree2(TOctree2&& octree) { Swap(std::move(*this), octree); }
-		TOctree2& operator= (TOctree2&& octree)
-		{
-			Swap(std::move(*this), octree);
-			return this;
-		}
+			TOctree2(TOctree2&& octree) noexcept { Swap(*this, octree); }
+			TOctree2& operator= (TOctree2&& octree)
+			{
+				Swap(*this, octree);
+				return *this;
+			}
 
-		static void Swap(TOctree2&& lhs, TOctree2&& rhs)
-		{
-			std::swap(rhs->m_root, lhs->m_root);
-			std::swap(rhs->m_allocator, lhs->m_allocator);
-			std::swap(rhs->m_num, lhs->m_num);
-			std::swap(rhs->m_minSize, lhs->m_minSize);
-			std::swap(rhs->m_map, lhs->m_map);
-		}
+			static void Swap(TOctree2& lhs, TOctree2& rhs)
+			{
+				std::swap(rhs.m_root, lhs.m_root);
+				std::swap(rhs.m_allocator, lhs.m_allocator);
+				std::swap(rhs.m_num, lhs.m_num);
+				std::swap(rhs.m_minSize, lhs.m_minSize);
+				std::swap(rhs.m_map, lhs.m_map);
+			}
 
 		void Clear()
 		{

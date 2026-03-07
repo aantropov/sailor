@@ -23,7 +23,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-		SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
+			SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
+			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 		SAILOR_API virtual void BeginConditionalDestroy() override;
 
@@ -302,7 +303,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
 
-		GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};
+			GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};
+			bool m_bIsInitialized = false;
 
 		RHI::RHIRenderTargetPtr m_backBuffer;
 		RHI::RHIRenderTargetPtr m_depthStencilBuffer;

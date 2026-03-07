@@ -1,7 +1,8 @@
 #include "Scheduler.h"
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include <fcntl.h>
-#include <conio.h>
 #include <algorithm>
 #include <mutex>
 #include <set>
@@ -29,8 +30,12 @@ WorkerThread::WorkerThread(
 	m_pSharedTaskQueue(pTasksQueue)
 {
 	m_pThread = TUniquePtr<std::thread>::Make(&WorkerThread::Process, this);
+#if defined(_WIN32)
 	HANDLE threadHandle = m_pThread->native_handle();
 	m_threadId = ::GetThreadId(threadHandle);
+#else
+	m_threadId = (DWORD)std::hash<std::thread::id>{}(m_pThread->get_id());
+#endif
 }
 
 WorkerThread::~WorkerThread()
@@ -95,7 +100,7 @@ void WorkerThread::ProcessTask(ITaskPtr& task)
 
 void WorkerThread::SetExecFlag()
 {
-	std::unique_lock<std::mutex> lk(m_execMutex);
+	std::unique_lock<std::mutex> lk(m_sharedQueueMutex);
 	m_bExecFlag++;
 }
 
@@ -109,7 +114,9 @@ void WorkerThread::Process()
 
 	if (m_threadType == EThreadType::Render || m_threadType == EThreadType::RHI)
 	{
+#if defined(_WIN32)
 		SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+#endif
 	}
 
 	Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
@@ -118,15 +125,40 @@ void WorkerThread::Process()
 	while (!scheduler->m_bIsTerminating)
 	{
 		{
-			std::unique_lock<std::mutex> lk(m_execMutex);
+			std::unique_lock<std::mutex> lk(m_sharedQueueMutex);
 			m_refresh.wait(lk, [=, this, &pCurrentTask]()
 				{
-					const bool res = ((m_bExecFlag > 0) && (TryFetchTask(pCurrentTask) ||
-						scheduler->TryFetchNextAvailiableTask(pCurrentTask, m_threadType))) ||
-						(bool)scheduler->m_bIsTerminating;
+					bool hasTask = false;
+					if (m_bExecFlag > 0)
+					{
+						hasTask = TryFetchTask(pCurrentTask);
+
+						if (!hasTask)
+						{
+							auto& queue = scheduler->m_pSharedTaskQueue[(uint32_t)m_threadType];
+							const auto result = queue.FindIf(
+								[&](const ITaskPtr& task)
+								{
+									return task->IsReadyToStart();
+								});
+
+							if (result != -1)
+							{
+								pCurrentTask = queue[result];
+								queue.RemoveAt(result);
+								hasTask = true;
+							}
+						}
+					}
+
+					const bool res = hasTask || (bool)scheduler->m_bIsTerminating;
 					return res;
 				});
-			m_bExecFlag--;
+
+			if (m_bExecFlag > 0)
+			{
+				m_bExecFlag--;
+			}
 		}
 
 		ProcessTask(pCurrentTask);
@@ -145,7 +177,9 @@ void Scheduler::Initialize()
 	m_mainThreadId = GetCurrentThreadId();
 	m_threadTypes[m_mainThreadId] = EThreadType::Main;
 
+#if defined(_WIN32)
 	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+#endif
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;

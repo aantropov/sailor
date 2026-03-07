@@ -1,8 +1,14 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include <algorithm>
 #include <vulkan/vulkan.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
+#endif
+#ifdef __APPLE__
+#include <vulkan/vulkan_metal.h>
+#include <vulkan/vulkan_macos.h>
+#include <cstdlib>
 #endif
 #include "Containers/Map.h"
 #include "Core/LogMacros.h"
@@ -32,7 +38,6 @@
 #include "VulkanDescriptors.h"
 
 using namespace Sailor;
-using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -70,7 +75,7 @@ void PopulateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& create
 	createInfo.pfnUserCallback = VulkanDebugCallback;
 }
 
-void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool bInIsEnabledValidationLayers)
+void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSamples, bool bInIsEnabledValidationLayers)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -86,6 +91,30 @@ void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool
 	SAILOR_LOG("Num supported Vulkan extensions: %d", VulkanApi::GetNumSupportedExtensions());
 	PrintSupportedExtensions();
 
+#if defined(__APPLE__)
+	// MoltenVK clip-space fixup (historically exposed as shouldFixupClipSpace).
+	// Keep this enabled so Y conversion is handled consistently in shader conversion.
+	setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "1", 1);
+	SAILOR_LOG("MoltenVK config: MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y=1");
+#endif
+
+	uint32_t availableExtensionCount = 0;
+	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionCount, nullptr));
+	TVector<VkExtensionProperties> availableExtensions(availableExtensionCount);
+	VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &availableExtensionCount, availableExtensions.GetData()));
+
+	const auto hasInstanceExtension = [&](const char* extensionName)
+	{
+		for (const auto& extension : availableExtensions)
+		{
+			if (strcmp(extension.extensionName, extensionName) == 0)
+			{
+				return true;
+			}
+		}
+		return false;
+	};
+
 	// Create Vulkan instance
 	VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
 
@@ -95,31 +124,70 @@ void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 
 #if defined(VK_API_VERSION_1_3)
-	appInfo.apiVersion = VK_API_VERSION_1_3;
+	uint32_t requestedApiVersion = VK_API_VERSION_1_3;
 #elif defined(VK_API_VERSION_1_2)
-	appInfo.apiVersion = VK_API_VERSION_1_2;
+	uint32_t requestedApiVersion = VK_API_VERSION_1_2;
 #else
-	appInfo.apiVersion = VK_API_VERSION_1_1;
+	uint32_t requestedApiVersion = VK_API_VERSION_1_1;
 #endif
+
+	uint32_t loaderApiVersion = VK_API_VERSION_1_0;
+	const auto pfnEnumerateInstanceVersion = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
+	if (pfnEnumerateInstanceVersion)
+	{
+		pfnEnumerateInstanceVersion(&loaderApiVersion);
+	}
+
+	const uint32_t clampedRequestedApiVersion = std::min(requestedApiVersion, loaderApiVersion);
+	appInfo.apiVersion = clampedRequestedApiVersion;
+	SAILOR_LOG("Vulkan API version (requested=%u.%u.%u, loader=%u.%u.%u, initial=%u.%u.%u)",
+		VK_VERSION_MAJOR(requestedApiVersion), VK_VERSION_MINOR(requestedApiVersion), VK_VERSION_PATCH(requestedApiVersion),
+		VK_VERSION_MAJOR(loaderApiVersion), VK_VERSION_MINOR(loaderApiVersion), VK_VERSION_PATCH(loaderApiVersion),
+		VK_VERSION_MAJOR(appInfo.apiVersion), VK_VERSION_MINOR(appInfo.apiVersion), VK_VERSION_PATCH(appInfo.apiVersion));
 
 	TVector<const char*> extensions =
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
-		"VK_KHR_win32_surface",
-		"VK_KHR_get_physical_device_properties2",
-#ifdef VK_USE_PLATFORM_WIN32_KHR
+#if defined(_WIN32)
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#elif defined(__APPLE__)
+		nullptr,
 #endif
 	};
 
-	if (s_pInstance->bIsEnabledValidationLayers)
+#if defined(__APPLE__)
+	if (hasInstanceExtension(VK_EXT_METAL_SURFACE_EXTENSION_NAME))
 	{
-		extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-#ifndef _SHIPPING
-		extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-#endif
+		extensions[1] = VK_EXT_METAL_SURFACE_EXTENSION_NAME;
 	}
+	else if (hasInstanceExtension(VK_MVK_MACOS_SURFACE_EXTENSION_NAME))
+	{
+		extensions[1] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
+	}
+	else
+	{
+		SAILOR_LOG_ERROR("No supported Vulkan surface extension found for macOS.");
+		extensions[1] = VK_MVK_MACOS_SURFACE_EXTENSION_NAME;
+	}
+#endif
+
+	if (hasInstanceExtension(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME))
+	{
+		extensions.Add(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
+	}
+
+	bool bEnablePortabilityEnumeration = false;
+#if defined(__APPLE__)
+	if (hasInstanceExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
+	{
+		extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+		bEnablePortabilityEnumeration = true;
+	}
+	else
+	{
+		SAILOR_LOG("Optional Vulkan extension is not supported: %s", VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+	}
+#endif
 
 	VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 
@@ -127,22 +195,38 @@ void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool
 	createInfo.ppEnabledExtensionNames = extensions.GetData();
 	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
 	createInfo.pNext = nullptr;
+#if defined(__APPLE__) && defined(VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR)
+	if (bEnablePortabilityEnumeration)
+	{
+		createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+	}
+#endif
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo;
 	const TVector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation", "VK_LAYER_KHRONOS_synchronization2" };
 
 	if (s_pInstance->bIsEnabledValidationLayers)
 	{
-		createInfo.ppEnabledLayerNames = validationLayers.GetData();
-		createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
-
-		if (!CheckValidationLayerSupport(validationLayers))
+		if (CheckValidationLayerSupport(validationLayers))
 		{
-			SAILOR_LOG("Not all debug layers are supported");
-		}
+			extensions.Add(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#ifndef _SHIPPING
+			extensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+#endif
 
-		PopulateDebugMessengerCreateInfo(debugCreateInfo);
-		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+			createInfo.ppEnabledLayerNames = validationLayers.GetData();
+			createInfo.enabledLayerCount = (uint32_t)validationLayers.Num();
+
+			PopulateDebugMessengerCreateInfo(debugCreateInfo);
+			createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+		}
+		else
+		{
+			SAILOR_LOG("Not all debug layers are supported. Validation layers will be disabled.");
+			s_pInstance->bIsEnabledValidationLayers = false;
+			createInfo.ppEnabledLayerNames = nullptr;
+			createInfo.enabledLayerCount = 0;
+		}
 	}
 	else
 	{
@@ -150,8 +234,61 @@ void VulkanApi::Initialize(Window* viewport, RHI::EMsaaSamples msaaSamples, bool
 		createInfo.enabledLayerCount = 0;
 	}
 
+	createInfo.ppEnabledExtensionNames = extensions.GetData();
+	createInfo.enabledExtensionCount = (uint32_t)extensions.Num();
+
+	for (const auto& extensionName : extensions)
+	{
+		SAILOR_LOG("Enabling Vulkan instance extension: %s", extensionName);
+	}
+
+	TVector<uint32_t> apiVersionFallbacks;
+	apiVersionFallbacks.Add(clampedRequestedApiVersion);
+	for (uint32_t minor = VK_VERSION_MINOR(clampedRequestedApiVersion); minor > 0; --minor)
+	{
+		apiVersionFallbacks.Add(VK_MAKE_API_VERSION(0, 1, minor - 1, 0));
+	}
+
 	GetVkInstance() = 0;
-	VK_CHECK(vkCreateInstance(&createInfo, 0, &GetVkInstance()));
+	VkResult createInstanceResult = VK_ERROR_INITIALIZATION_FAILED;
+	for (const uint32_t fallbackApiVersion : apiVersionFallbacks)
+	{
+		appInfo.apiVersion = fallbackApiVersion;
+		createInstanceResult = vkCreateInstance(&createInfo, 0, &GetVkInstance());
+		SAILOR_LOG("vkCreateInstance(api=%u.%u.%u) -> %d",
+			VK_VERSION_MAJOR(fallbackApiVersion),
+			VK_VERSION_MINOR(fallbackApiVersion),
+			VK_VERSION_PATCH(fallbackApiVersion),
+			(int32_t)createInstanceResult);
+		if (createInstanceResult == VK_SUCCESS)
+		{
+			SAILOR_LOG("Created Vulkan instance with API version %u.%u.%u",
+				VK_VERSION_MAJOR(fallbackApiVersion),
+				VK_VERSION_MINOR(fallbackApiVersion),
+				VK_VERSION_PATCH(fallbackApiVersion));
+			break;
+		}
+
+		if (createInstanceResult != VK_ERROR_INCOMPATIBLE_DRIVER)
+		{
+			break;
+		}
+	}
+
+	if (createInstanceResult != VK_SUCCESS)
+	{
+#if defined(__APPLE__) && defined(SAILOR_VULKAN_DIRECT_MOLTENVK_FALLBACK)
+		if (createInstanceResult == VK_ERROR_INCOMPATIBLE_DRIVER)
+		{
+			SAILOR_LOG_ERROR("Vulkan loader is unavailable; Sailor is linked directly against MoltenVK fallback. "
+				"On this setup vkCreateInstance() is rejected by the ICD. "
+				"Install/link a Vulkan loader (libvulkan / vulkan-loader) and reconfigure CMake.");
+		}
+#endif
+		SAILOR_LOG_ERROR("Failed to create Vulkan instance. vkCreateInstance returned %d", (int32_t)createInstanceResult);
+		VulkanApi::Shutdown();
+		return;
+	}
 
 	SetupDebugCallback();
 
@@ -252,8 +389,19 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 {
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
+	if (GetVkInstance() == VK_NULL_HANDLE)
+	{
+		SAILOR_LOG_ERROR("Failed to enumerate physical devices: Vulkan instance is null.");
+		return VK_NULL_HANDLE;
+	}
+
 	uint32_t deviceCount = 0;
-	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, nullptr));
+	const VkResult enumResult = vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, nullptr);
+	if (enumResult != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("Failed to enumerate physical devices: vkEnumeratePhysicalDevices returned %d", (int32_t)enumResult);
+		return VK_NULL_HANDLE;
+	}
 
 	if (deviceCount == 0)
 	{
@@ -264,7 +412,11 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 	TVector<VkPhysicalDevice> devices(deviceCount);
 	std::multimap<int, VkPhysicalDevice> candidates;
 
-	VK_CHECK(vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.GetData()));
+	if (vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.GetData()) != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("Failed to enumerate physical devices list.");
+		return VK_NULL_HANDLE;
+	}
 
 	for (const auto& device : devices)
 	{
@@ -519,10 +671,10 @@ int VulkanApi::GetDeviceScore(VkPhysicalDevice device)
 	// Maximum possible size of textures affects graphics quality
 	score += deviceProperties.limits.maxImageDimension2D;
 
-	// Application can't function without geometry shaders
-	if (!deviceFeatures.geometryShader)
+	// Reward geometry shader support, but don't reject portability GPUs that don't expose it.
+	if (deviceFeatures.geometryShader)
 	{
-		return 0;
+		score += 128;
 	}
 
 	return score;

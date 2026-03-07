@@ -1,47 +1,52 @@
-struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
+#include "Sailor.h"
+#include "RHI/Renderer.h"
 
+#if defined(_WIN32)
 #include <wtypes.h>
 #include <shellapi.h>
-#include <iostream>
 #include <windows.h>
-
-#include "Sailor.h"
-#include "AssetRegistry/AssetRegistry.h"
+#include <vector>
+#include <string>
 
 using namespace Sailor;
 
-const char** ConvertToAnsi(LPWSTR* szArglist, int nArgs) {
+static const char** ConvertToAnsi(LPWSTR* szArglist, int nArgs)
+{
 	std::vector<std::string> ansiArgs;
+	ansiArgs.reserve(nArgs);
 
-	for (int i = 0; i < nArgs; ++i) {
-		int len = WideCharToMultiByte(CP_ACP, 0, szArglist[i], -1, NULL, 0, NULL, NULL);
+	for (int i = 0; i < nArgs; ++i)
+	{
+		const int len = WideCharToMultiByte(CP_ACP, 0, szArglist[i], -1, NULL, 0, NULL, NULL);
 		std::string str(len, '\0');
 		WideCharToMultiByte(CP_ACP, 0, szArglist[i], -1, &str[0], len, NULL, NULL);
 		ansiArgs.push_back(str);
 	}
 
-	// Create an array to hold the converted ANSI strings
 	const char** result = new const char* [nArgs];
-
-	for (int i = 0; i < nArgs; ++i) {
+	for (int i = 0; i < nArgs; ++i)
+	{
 		result[i] = _strdup(ansiArgs[i].c_str());
 	}
 
 	return result;
 }
 
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR cmdArds, int32_t num)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 {
 	int32_t nArgs = 0;
 	LPWSTR* szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
 	const char** ansiArgs = ConvertToAnsi(szArglist, nArgs);
 
+	App::Initialize(ansiArgs, nArgs);
+	if (auto renderer = App::GetSubmodule<RHI::Renderer>(); !renderer || !renderer->IsInitialized())
 	{
-		App::Initialize(ansiArgs, nArgs);
-		App::Start();
-		App::Stop();
 		App::Shutdown();
+		return 1;
 	}
+	App::Start();
+	App::Stop();
+	App::Shutdown();
 
 	for (int i = 0; i < nArgs; ++i)
 	{
@@ -57,3 +62,23 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR cmdArds, int32_t num)
 
 	return 0;
 }
+
+#else
+
+using namespace Sailor;
+
+int main(int argc, const char** argv)
+{
+	App::Initialize(argv, argc);
+	if (auto renderer = App::GetSubmodule<RHI::Renderer>(); !renderer || !renderer->IsInitialized())
+	{
+		App::Shutdown();
+		return 1;
+	}
+	App::Start();
+	App::Stop();
+	App::Shutdown();
+	return 0;
+}
+
+#endif

@@ -53,7 +53,7 @@ void LightingECS::BeginPlay()
 	for (uint32_t i = 0; i < NumCascades; i++)
 	{
 		char csmDebugName[64];
-		sprintf_s(csmDebugName, "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
+		sprintf_s(csmDebugName, sizeof(csmDebugName), "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
 		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
 			i % NumCascades == 0 ? ShadowMapFormat_Evsm : ShadowMapFormat,
@@ -404,4 +404,3 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
 	sceneView->m_rhiLightsData = m_lightsData;
 }
-

@@ -12,6 +12,7 @@ namespace Sailor::Raytracing
 	{
 		struct BVHNode //40 bytes
 		{
+#if SAILOR_USE_X86_SIMD
 			union
 			{
 				struct { vec3 m_aabbMin; uint m_leftFirst; };
@@ -22,6 +23,10 @@ namespace Sailor::Raytracing
 				struct { vec3 m_aabbMax; uint m_triCount; };
 				__m128 m_aabbMax4;
 			};
+#else
+			struct { vec3 m_aabbMin; uint m_leftFirst; };
+			struct { vec3 m_aabbMax; uint m_triCount; };
+#endif
 
 			bool IsLeaf() const { return m_triCount > 0; }
 

@@ -57,11 +57,19 @@ Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool
 {
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;
+	m_bIsInitialized = false;
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 	m_driverInstance = TUniquePtr<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>::Make();
 	m_driverInstance->Initialize(pViewport, msaaSamples, bIsDebug);
+	auto* vulkanDriver = dynamic_cast<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver*>(m_driverInstance.GetRawPtr());
+	if (!vulkanDriver || !vulkanDriver->IsInitialized())
+	{
+		SAILOR_LOG_ERROR("Renderer initialization failed: Vulkan backend is unavailable.");
+		return;
+	}
 #endif
+	m_bIsInitialized = true;
 
 	// Create default Vertices descriptions cache 
 	auto& vertexP3N3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -105,7 +113,10 @@ Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool
 
 Renderer::~Renderer()
 {
-	Renderer::GetDriver()->WaitIdle();
+	if (m_bIsInitialized && m_driverInstance)
+	{
+		Renderer::GetDriver()->WaitIdle();
+	}
 	m_driverInstance.Clear();
 }
 
@@ -142,19 +153,39 @@ void Renderer::MemoryStats()
 
 RHI::EFormat Renderer::GetColorFormat() const
 {
+	if (!m_bIsInitialized || !m_driverInstance || !Renderer::GetDriver()->GetBackBuffer())
+	{
+		return RHI::EFormat::UNDEFINED;
+	}
+
 	return Renderer::GetDriver()->GetBackBuffer()->GetFormat();
 }
 
 RHI::EFormat Renderer::GetDepthFormat() const
 {
+	if (!m_bIsInitialized || !m_driverInstance || !Renderer::GetDriver()->GetDepthBuffer())
+	{
+		return RHI::EFormat::UNDEFINED;
+	}
+
 	return Renderer::GetDriver()->GetDepthBuffer()->GetFormat();
 }
 
 void Renderer::BeginConditionalDestroy()
 {
+	if (!m_driverInstance)
+	{
+		return;
+	}
+
 	m_previousRenderFrame.Clear();
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
+	if (!m_bIsInitialized)
+	{
+		return;
+	}
+
 	Renderer::GetDriver()->WaitIdle();
 
 	m_driverInstance->BeginConditionalDestroy();
@@ -177,6 +208,11 @@ IGraphicsDriverCommands* Renderer::GetDriverCommands()
 
 void Renderer::FixLostDevice()
 {
+	if (!m_bIsInitialized || !m_driverInstance)
+	{
+		return;
+	}
+
 	if (m_driverInstance->FixLostDevice(m_pViewport))
 	{
 		m_bFrameGraphOutdated = true;
@@ -217,6 +253,10 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (!m_bIsInitialized || !m_driverInstance)
+	{
+		return false;
+	}
 
 	if (m_bForceStop ||
 		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||

@@ -50,7 +50,7 @@ namespace Sailor
 	public:
 
 		// Global constants
-		static constexpr uint32_t MaxShadowsInView = 1024;
+		static constexpr uint32_t MaxShadowsInView = 128;
 		const uint32_t LightsMaxNum = 65535;
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 

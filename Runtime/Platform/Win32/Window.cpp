@@ -290,6 +290,11 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 	}
 }
 
+void Window::ProcessSystemMessages()
+{
+	ProcessWin32Msgs();
+}
+
 glm::ivec2 Window::GetCenterPointScreen() const
 {
 	glm::ivec2 centerClient = GetCenterPointClient();

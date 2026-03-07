@@ -6,7 +6,7 @@ class SAILOR_API TSingleton
 {
 protected:
 
-	static T* s_pInstance;
+	inline static T* s_pInstance = nullptr;
 
 	TSingleton() = default;
 	virtual ~TSingleton() = default;
@@ -25,9 +25,3 @@ public:
 	}
 };
 
-#ifndef _SAILOR_IMPORT_
-
-template<typename T>
-T* TSingleton<T>::s_pInstance = nullptr;
-
-#endif

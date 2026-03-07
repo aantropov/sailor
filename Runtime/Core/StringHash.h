@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include "Containers/Hash.h"
 
 namespace Sailor
@@ -15,7 +16,14 @@ namespace Sailor
 
 		__forceinline constexpr StringHash& operator=(const StringHash& OtherId) = default;
 
-		[[nodiscard]] __forceinline constexpr explicit StringHash(std::string_view str);
+		[[nodiscard]] __forceinline constexpr explicit StringHash(std::string_view str)
+		{
+			m_hash = Sailor::fnv1a(str.data(), str.length());
+			if (!std::is_constant_evaluated())
+			{
+				AddToHashedStringsTable(*this, str);
+			}
+		}
 
 		// constructor that forces runtime evaluation to put string into hashed strings table
 		static StringHash Runtime(std::string_view str);

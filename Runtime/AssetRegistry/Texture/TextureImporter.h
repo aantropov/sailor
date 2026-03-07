@@ -42,7 +42,9 @@ namespace Sailor
 	{
 	public:
 
-		static const size_t MaxTexturesInScene = 1 << 18;
+		// Keep this in sync with runtime descriptor allocation on macOS/MoltenVK.
+		// 262144 overflows Metal argument-buffer validation in current path.
+		static const size_t MaxTexturesInScene = 8192;
 
 		using ByteCode = TVector<uint8_t>;
 

@@ -477,7 +477,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 								auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
 								for (auto& loadedShader : loadedShaders)
 								{
-									SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+									SAILOR_LOG("Update shader RHI resource: %s permutation: %u", assetInfo->GetAssetFilepath().c_str(), static_cast<uint32_t>(loadedShader.m_first));
 
 									if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
 									{
@@ -494,7 +494,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
 				for (auto& loadedShader : loadedShaders)
 				{
-					SAILOR_LOG("Update shader RHI resource: %s permutation: %lu", assetInfo->GetAssetFilepath().c_str(), loadedShader.m_first);
+					SAILOR_LOG("Update shader RHI resource: %s permutation: %u", assetInfo->GetAssetFilepath().c_str(), static_cast<uint32_t>(loadedShader.m_first));
 
 					if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
 					{
@@ -650,7 +650,7 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 					else
 					{
 						std::string str = error.substr(start + 1, i - start - 2);
-						lineNum = std::stoul(str) - 1;
+						lineNum = static_cast<uint32_t>(std::stoul(str) - 1);
 					}
 				}
 			}

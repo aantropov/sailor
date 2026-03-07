@@ -1,4 +1,7 @@
 #include "Input.h"
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -54,15 +57,47 @@ void InputState::TrackForChanges(const InputState& previousState)
 
 GlobalInput::GlobalInput()
 {
-	memset(&m_rawState, 1, sizeof(InputState));
+	memset(&m_rawState, 0, sizeof(InputState));
 }
 
 void GlobalInput::SetCursorPos(int32_t x, int32_t y)
 {
+#if defined(_WIN32)
 	::SetCursorPos(x, y);
+#else
+	(void)x;
+	(void)y;
+#endif
 }
 
 void GlobalInput::ShowCursor(bool bIsVisible)
 {
+#if defined(_WIN32)
 	::ShowCursor(bIsVisible ? TRUE : FALSE);
+#else
+	(void)bIsVisible;
+#endif
+}
+
+void GlobalInput::SetKeyState(uint32_t key, KeyState state)
+{
+	if (key < 256)
+	{
+		m_rawState.m_keyboard[key] = state;
+	}
+}
+
+void GlobalInput::SetMouseButtonState(uint32_t button, KeyState state)
+{
+	if (button < 3)
+	{
+		m_rawState.m_mouse[button] = state;
+		m_rawState.m_keyboard[button] = state;
+	}
+}
+
+void GlobalInput::SetCursorPosition(int32_t x, int32_t y)
+{
+	m_rawState.m_cursorPosition[0] = x;
+	m_rawState.m_cursorPosition[1] = y;
 }

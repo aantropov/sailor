@@ -1,7 +1,9 @@
 #include "Core/LogMacros.h"
 #include "Tasks/Tasks.h"
 #include "RenderDocApi.h"
+#if defined(_WIN32)
 #include <libloaderapi.h>
+#endif
 
 using namespace Sailor;
 
@@ -99,6 +101,9 @@ void RenderDocApi::TriggerCapture()
 #ifdef SAILOR_BUILD_WITH_RENDER_DOC
 RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 {
+#if !defined(_WIN32)
+	return nullptr;
+#else
 	SAILOR_LOG("Try to initialize RenderDocApi");
 
 	if (!g_pRenderDocAPI)
@@ -125,5 +130,6 @@ RENDERDOC_API_1_4_2* RenderDocApi::GetRenderDocAPI()
 	}
 
 	return g_pRenderDocAPI;
+#endif
 }
 #endif

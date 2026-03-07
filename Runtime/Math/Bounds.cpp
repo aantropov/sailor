@@ -263,6 +263,7 @@ bool Frustum::OverlapsAABB(const AABB& aabb) const
 // https://gamedev.ru/code/articles/FrustumCulling
 void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults) const
 {
+#if SAILOR_USE_X86_SIMD
 	float* pAabbData = reinterpret_cast<float*>(&aabb[0]);
 	int32_t* cullingResSse = &outResults[0];
 
@@ -322,10 +323,17 @@ void Frustum::OverlapsAABB(AABB* aabb, uint32_t numObjects, int32_t* outResults)
 		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
 		_mm_store_si128((__m128i*) & cullingResSse[i], intersectionResI);
 	}
+#else
+	for (uint32_t i = 0; i < numObjects; i++)
+	{
+		outResults[i] = OverlapsAABB(aabb[i]) ? 0 : 1;
+	}
+#endif
 }
 
 void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
+#if SAILOR_USE_X86_SIMD
 	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
 	int* cullingResults = &outResults[0];
 
@@ -373,10 +381,17 @@ void Frustum::ContainsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outR
 		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
 		_mm_store_si128((__m128i*) & cullingResults[i], intersectionResI);
 	}
+#else
+	for (uint32_t i = 0; i < numObjects; i++)
+	{
+		outResults[i] = ContainsSphere(spheres[i]) ? 1 : 0;
+	}
+#endif
 }
 
 void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outResults) const
 {
+#if SAILOR_USE_X86_SIMD
 	float* pSpheres = reinterpret_cast<float*>(&spheres[0]);
 	int* cullingResults = &outResults[0];
 
@@ -426,6 +441,12 @@ void Frustum::OverlapsSphere(Sphere* spheres, uint32_t numObjects, int32_t* outR
 		__m128i intersectionResI = _mm_cvtps_epi32(intersectionRes);
 		_mm_store_si128((__m128i*) & cullingResults[i], intersectionResI);
 	}
+#else
+	for (uint32_t i = 0; i < numObjects; i++)
+	{
+		outResults[i] = OverlapsSphere(spheres[i]) ? 0 : 1;
+	}
+#endif
 }
 
 float AABB::Volume() const
@@ -583,19 +604,16 @@ float Math::IntersectRayAABB(const Ray& ray, const glm::vec3& bmin, const glm::v
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	__m128 _bmin = _mm_setr_ps(bmin.x, bmin.y, bmin.z, 0.f);
-	__m128 _bmax = _mm_setr_ps(bmax.x, bmax.y, bmax.z, 0.f);
-	__m128 t1 = _mm_mul_ps(_mm_sub_ps(_bmin, ray.GetOrigin4()), ray.GetReciprocalDirection4());
-	__m128 t2 = _mm_mul_ps(_mm_sub_ps(_bmax, ray.GetOrigin4()), ray.GetReciprocalDirection4());
+	const glm::vec3 t1 = (bmin - ray.GetOrigin()) * ray.GetReciprocalDirection();
+	const glm::vec3 t2 = (bmax - ray.GetOrigin()) * ray.GetReciprocalDirection();
 
-	float vmax[4], vmin[4];
-	_mm_store_ps(vmax, _mm_max_ps(t1, t2));
-	_mm_store_ps(vmin, _mm_min_ps(t1, t2));
+	const glm::vec3 tmin3 = glm::min(t1, t2);
+	const glm::vec3 tmax3 = glm::max(t1, t2);
 
-	float tmax = glm::min(vmax[0], glm::min(vmax[1], vmax[2]));
-	float tmin = glm::max(vmin[0], glm::max(vmin[1], vmin[2]));
+	const float tmin = glm::max(tmin3.x, glm::max(tmin3.y, tmin3.z));
+	const float tmax = glm::min(tmax3.x, glm::min(tmax3.y, tmax3.z));
 
-	if (tmax >= tmin && tmin < maxRayLength && tmax > 0.f)
+	if (tmax >= tmin && tmin < maxRayLength && tmax > 0.0f)
 	{
 		return tmin;
 	}

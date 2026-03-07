@@ -61,7 +61,7 @@ void Page::Clear()
 
 size_t PoolAllocator::Page::GetMinAllowedEmptySpace() const
 {
-	return std::min(2048ull, std::max((size_t)(m_totalSize * 0.05f), SAILOR_SMALLEST_DATA_SIZE * 2ull));
+	return std::min(size_t{ 2048 }, std::max((size_t)(m_totalSize * 0.05f), static_cast<size_t>(SAILOR_SMALLEST_DATA_SIZE * 2ull)));
 }
 
 Header* Page::MoveHeader(Header* block, int64_t shift)

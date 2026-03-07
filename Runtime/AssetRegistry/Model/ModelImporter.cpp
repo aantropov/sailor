@@ -716,7 +716,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 	}
 
 	// At least one batch
-	TVector<MeshContext> batchedMeshContexts(std::max(1ull, gltfModel.materials.size()));
+	TVector<MeshContext> batchedMeshContexts(std::max<size_t>(1, gltfModel.materials.size()));
 
 	for (const auto& mesh : gltfModel.meshes)
 	{

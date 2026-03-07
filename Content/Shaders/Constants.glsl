@@ -21,6 +21,8 @@
 
 // Shadows
 #define MAX_SHADOWS_IN_VIEW 1024
-#define MAX_TEXTURES_IN_SCENE 262144
+#ifndef MAX_TEXTURES_IN_SCENE
+#define MAX_TEXTURES_IN_SCENE 8192
+#endif
 #define NUM_CSM_CASCADES 4
 const float ShadowCascadeLevels[4] = { 0.05,0.1,0.333333,0.5}; 

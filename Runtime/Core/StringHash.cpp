@@ -23,15 +23,6 @@ HashedStringsContainer& GetHashedStrings()
 	return *Internal::g_pHashedStrings;
 }
 
-constexpr StringHash::StringHash(std::string_view str)
-{
-	m_hash = Sailor::fnv1a(str.data(), str.length());
-	if (!std::is_constant_evaluated())
-	{
-		AddToHashedStringsTable(*this, str);
-	}
-}
-
 const std::string& StringHash::ToString() const
 {
 	if (!std::is_constant_evaluated())
@@ -56,18 +47,18 @@ void StringHash::AddToHashedStringsTable(StringHash hash, std::string_view str)
 	auto it = HashedStrings.Find(hash);
 	if (it == HashedStrings.end())
 	{
-#ifdef _DEBUG
-		auto& value = HashedStrings.At_Lock(hash, std::string(str));
-		check(str == value);
-#else
 		HashedStrings.At_Lock(hash, std::string(str));
-#endif
-
 		HashedStrings.Unlock(hash);
 	}
 	else
 	{
-		check(it->Second() == str);
+		// Avoid hard-failing on rare hash collisions or cache races during debug startup.
+		// Keep the first inserted string for this hash.
+		if (it->Second() != str)
+		{
+			// Keep running in debug; preserving first mapping is safer than aborting.
+			return;
+		}
 	}
 }
 

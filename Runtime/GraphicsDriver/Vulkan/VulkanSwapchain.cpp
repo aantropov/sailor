@@ -165,7 +165,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	if (const bool bHasStencil = VulkanApi::ComputeAspectFlagsForFormat(depthFormat) & VK_IMAGE_ASPECT_STENCIL_BIT)
 	{
-		m_stencilBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VK_IMAGE_ASPECT_DEPTH_BIT);
+		m_stencilBufferView = VulkanImageViewPtr::Make(m_device, m_depthBuffer, VK_IMAGE_ASPECT_STENCIL_BIT);
 		m_stencilBufferView->Compile();
 	}
 

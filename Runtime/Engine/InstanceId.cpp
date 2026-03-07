@@ -1,6 +1,10 @@
 #include "Engine/InstanceId.h"
-#include <corecrt_io.h>
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#ifdef _WIN32
 #include <combaseapi.h>
+#endif
 #include <random>
 #include <iomanip>
 
@@ -65,11 +69,19 @@ InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)
 {
 	InstanceId newComponentInstanceId;
 
+	char buffer[17];
+
+#ifdef _WIN32
 	::GUID win32;
 	CoCreateGuid(&win32);
-
-	char buffer[17];
 	sprintf_s(buffer, "%08lX%04hX%04hX", win32.Data1, win32.Data2, win32.Data3);
+#else
+	std::random_device rd;
+	std::mt19937_64 gen(rd());
+	std::uniform_int_distribution<uint64_t> dis;
+	const uint64_t randomNumber = dis(gen);
+	std::snprintf(buffer, sizeof(buffer), "%016llX", static_cast<unsigned long long>(randomNumber));
+#endif
 
 	newComponentInstanceId.m_instanceId = StringHash::Runtime(buffer);
 

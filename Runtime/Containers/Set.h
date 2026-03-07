@@ -40,11 +40,11 @@ namespace Sailor
 
 			__forceinline bool operator==(const TEntry& Other) const
 			{
-				return this->Value == Other.Value;
+				return this->m_hashCode == Other.m_hashCode;
 			}
 			__forceinline bool operator!=(const TEntry& Other) const
 			{
-				return this->Value != Other.Value;
+				return !(*this == Other);
 			}
 
 			__forceinline size_t GetHash() const { return m_hashCode; }

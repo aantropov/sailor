@@ -165,21 +165,15 @@ namespace Sailor::ECS
 
 		protected:
 
-			static bool s_bRegistered;
+			inline static bool s_bRegistered = false;
 		};
 
-		static RegistrationFactoryMethod s_registrationFactoryMethod;
+		inline static RegistrationFactoryMethod s_registrationFactoryMethod{};
 	};
 
 	template<typename T, typename R>
 	using TSystemPtr = TUniquePtr<class TSystem<T, R>>;
 
-#ifndef _SAILOR_IMPORT_
-	template<typename T, typename R>
-	typename TSystem<T, R>::RegistrationFactoryMethod TSystem<T, R>::s_registrationFactoryMethod;
 
-	template<typename T, typename R>
-	bool TSystem<T, R>::RegistrationFactoryMethod::s_bRegistered = false;
-#endif
 
 }

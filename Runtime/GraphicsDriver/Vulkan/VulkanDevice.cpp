@@ -3,13 +3,18 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include <chrono>
 #include <set>
 #include <map>
+#include <stdexcept>
 #include "Containers/Vector.h"
 #include <optional>
-#include <wtypes.h>
 #include <vulkan/vulkan.h>
-#ifdef WIN32
+#ifdef _WIN32
+#include <wtypes.h>
 #include <windows.h>
 #include <vulkan/vulkan_win32.h>
+#endif
+#ifdef __APPLE__
+#include <vulkan/vulkan_metal.h>
+#include <vulkan/vulkan_macos.h>
 #endif
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -38,7 +43,9 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "VulkanPipileneStates.h"
 #include "Tasks/Scheduler.h"
 #include "Platform/Win32/Input.h"
+#if defined(_WIN32)
 #include "Winuser.h"
+#endif
 #include "Engine/EngineLoop.h"
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "Memory/MemoryPoolAllocator.hpp"
@@ -58,7 +65,6 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 
 using namespace glm;
 using namespace Sailor;
-using namespace Sailor::Win32;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -74,13 +80,17 @@ VkSampleCountFlagBits CalculateMaxAllowedMSAASamples(VkSampleCountFlags counts)
 	return VK_SAMPLE_COUNT_1_BIT;
 }
 
-VulkanDevice::VulkanDevice(Window* pViewport, RHI::EMsaaSamples requestMsaa)
+VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples requestMsaa)
 {
 	// Create Win32 surface
 	CreateWin32Surface(pViewport);
 
 	// Pick & Create device
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
+	if (m_physicalDevice == VK_NULL_HANDLE)
+	{
+		throw std::runtime_error("Failed to pick a Vulkan physical device.");
+	}
 
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);
 
@@ -131,19 +141,56 @@ VulkanDevice::VulkanDevice(Window* pViewport, RHI::EMsaaSamples requestMsaa)
 
 	m_bIsSwapChainOutdated = false;
 
-	// Get dynamic rendering extension
-	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
-	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");
 }
 
 void VulkanDevice::vkCmdBeginRenderingKHR(VkCommandBuffer commandBuffer, const VkRenderingInfo* pRenderingInfo)
 {
-	pVkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
+	if (pVkCmdBeginRenderingKHR)
+	{
+		pVkCmdBeginRenderingKHR(commandBuffer, pRenderingInfo);
+		return;
+	}
+
+	if (pVkCmdBeginRendering)
+	{
+		pVkCmdBeginRendering(commandBuffer, pRenderingInfo);
+		return;
+	}
+
+	if (!m_bLoggedMissingBeginRendering)
+	{
+		SAILOR_LOG_ERROR(
+			"Dynamic rendering begin is unavailable. Both vkCmdBeginRenderingKHR and vkCmdBeginRendering are null. "
+			"core13=%d, khrExtension=%d",
+			(int32_t)m_bSupportsDynamicRenderingCore13,
+			(int32_t)m_bSupportsDynamicRenderingKHR);
+		m_bLoggedMissingBeginRendering = true;
+	}
 }
 
 void VulkanDevice::vkCmdEndRenderingKHR(VkCommandBuffer commandBuffer)
 {
-	pVkCmdEndRenderingKHR(commandBuffer);
+	if (pVkCmdEndRenderingKHR)
+	{
+		pVkCmdEndRenderingKHR(commandBuffer);
+		return;
+	}
+
+	if (pVkCmdEndRendering)
+	{
+		pVkCmdEndRendering(commandBuffer);
+		return;
+	}
+
+	if (!m_bLoggedMissingEndRendering)
+	{
+		SAILOR_LOG_ERROR(
+			"Dynamic rendering end is unavailable. Both vkCmdEndRenderingKHR and vkCmdEndRendering are null. "
+			"core13=%d, khrExtension=%d",
+			(int32_t)m_bSupportsDynamicRenderingCore13,
+			(int32_t)m_bSupportsDynamicRenderingKHR);
+		m_bLoggedMissingEndRendering = true;
+	}
 }
 
 VulkanDevice::~VulkanDevice()
@@ -239,7 +286,7 @@ VkFormat VulkanDevice::GetDepthFormat() const
 
 TBlockAllocator<class GlobalVulkanMemoryAllocator, class VulkanMemoryPtr>& VulkanDevice::GetMemoryAllocator(VkMemoryPropertyFlags properties, VkMemoryRequirements requirements)
 {
-	uint64_t hash{};
+	size_t hash{};
 	HashCombine(hash, properties, requirements.memoryTypeBits);
 
 	auto& pAllocator = m_memoryAllocators.At_Lock(hash);
@@ -403,8 +450,16 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	auto descriptorSizes = TVector
 	{
+#if defined(__APPLE__)
+		// MoltenVK is strict about descriptor pool capacities; lighting binds large arrays.
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 128),
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048),
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024),
+		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256)
+#else
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 32),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64)
+#endif
 	};
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 8096, descriptorSizes);
@@ -429,7 +484,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	}
 }
 
-bool VulkanDevice::RecreateSwapchain(Window* pViewport)
+bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 {
 	if (pViewport->GetWidth() == 0 || pViewport->GetHeight() == 0)
 	{
@@ -531,13 +586,54 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<const char*> deviceExtensions;
 	TVector<const char*> instanceExtensions;
 	VulkanApi::GetRequiredExtensions(deviceExtensions, instanceExtensions);
-	auto supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
+	supportedDeviceExtensions = VulkanApi::GetSupportedDeviceExtensions(physicalDevice);
 
 #ifndef _SHIPPING
-	deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+	if (supportedDeviceExtensions.Contains(std::string(VK_EXT_DEBUG_MARKER_EXTENSION_NAME)))
+	{
+		deviceExtensions.Add(VK_EXT_DEBUG_MARKER_EXTENSION_NAME);
+	}
 #endif
 
 	TVector<TVector<uint8_t>> features;
+	const auto hasDeviceExtension = [&](const char* extensionName)
+	{
+		return supportedDeviceExtensions.Contains(std::string(extensionName));
+	};
+
+	VkPhysicalDeviceFeatures2 supportedFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	VkPhysicalDeviceVulkan11Features supportedCore11{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES };
+	VkPhysicalDeviceVulkan12Features supportedCore12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
+	VkPhysicalDeviceVulkan13Features supportedCore13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
+	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT supportedAtomicFloat{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT };
+
+	supportedFeatures2.pNext = &supportedCore11;
+	supportedCore11.pNext = &supportedCore12;
+	supportedCore12.pNext = &supportedCore13;
+	supportedCore13.pNext = &supportedAtomicFloat;
+	supportedAtomicFloat.pNext = nullptr;
+
+	vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures2);
+
+	m_bSupportsDynamicRenderingCore13 =
+		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) > 1 ||
+		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) == 1 && VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion) >= 3)) &&
+		(supportedCore13.dynamicRendering == VK_TRUE);
+	m_bSupportsDynamicRenderingKHR = hasDeviceExtension(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+
+	SAILOR_LOG(
+		"Dynamic rendering capabilities: core13=%d (api=%u.%u.%u, feature=%d), extension VK_KHR_dynamic_rendering=%d",
+		(int32_t)m_bSupportsDynamicRenderingCore13,
+		VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion),
+		VK_VERSION_MINOR(m_physicalDeviceProperties.apiVersion),
+		VK_VERSION_PATCH(m_physicalDeviceProperties.apiVersion),
+		(int32_t)supportedCore13.dynamicRendering,
+		(int32_t)m_bSupportsDynamicRenderingKHR);
+
+	if (!m_bSupportsDynamicRenderingCore13 && !m_bSupportsDynamicRenderingKHR)
+	{
+		SAILOR_LOG_ERROR("Dynamic rendering is not supported by the selected device. Rendering may fail.");
+	}
 
 	/*
 	AddFeature<VkPhysicalDeviceDynamicRenderingUnusedAttachmentsFeaturesEXT>(features, [](auto& unusedAttachments)
@@ -549,7 +645,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	// We need multiply blending for clouds shadows
 	// The extension is not supported in DEBUG configuration for some reason
-	if (supportedDeviceExtensions.Contains(std::string(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME)))
+	if (hasDeviceExtension(VK_EXT_BLEND_OPERATION_ADVANCED_EXTENSION_NAME))
 	{
 		AddFeature<VkPhysicalDeviceBlendOperationAdvancedFeaturesEXT>(features, [](auto& features)
 			{
@@ -562,50 +658,53 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	// Create device that supports VK_EXT_shader_atomic_float (GL_EXT_shader_atomic_float)
 	// this allows to perform atomic operations on storage buffers
-	AddFeature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>(features, [](auto& floatFeatures)
-		{
-			floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
-			floatFeatures.shaderBufferFloat32AtomicAdd = true;
-		});
+	if (hasDeviceExtension(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME))
+	{
+		AddFeature<VkPhysicalDeviceShaderAtomicFloatFeaturesEXT>(features, [&](auto& floatFeatures)
+			{
+				floatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+				floatFeatures.shaderBufferFloat32AtomicAdd = supportedAtomicFloat.shaderBufferFloat32AtomicAdd;
+			});
+	}
 
 	AddFeature<VkPhysicalDeviceFeatures2 >(features, [&](auto& physicalDeviceFeatures2)
 		{
 			physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-			vkGetPhysicalDeviceFeatures2(m_physicalDevice, &physicalDeviceFeatures2);
+			physicalDeviceFeatures2.features = supportedFeatures2.features;
 			physicalDeviceFeatures2.features.sampleRateShading = VK_FALSE;
-			physicalDeviceFeatures2.features.multiDrawIndirect = VK_TRUE;
+			physicalDeviceFeatures2.features.multiDrawIndirect = supportedFeatures2.features.multiDrawIndirect;
 
 #ifdef SAILOR_VULKAN_MSAA_IMPACTS_TEXTURE_SAMPLING
-			physicalDeviceFeatures2.features.sampleRateShading = VK_TRUE;
+			physicalDeviceFeatures2.features.sampleRateShading = supportedFeatures2.features.sampleRateShading;
 #endif
 		});
 
 	AddFeature<VkPhysicalDeviceVulkan13Features>(features, [&](auto& core13)
 		{
 			core13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-			core13.maintenance4 = true;
-			core13.dynamicRendering = true;
-			core13.synchronization2 = true;
+			core13.maintenance4 = supportedCore13.maintenance4;
+			core13.dynamicRendering = supportedCore13.dynamicRendering;
+			core13.synchronization2 = supportedCore13.synchronization2;
 		});
 
 	AddFeature<VkPhysicalDeviceVulkan11Features>(features, [&](auto& core11)
 		{
 			core11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
-			core11.shaderDrawParameters = true;
+			core11.shaderDrawParameters = supportedCore11.shaderDrawParameters;
 		});
 
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
 		{
 			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-			core12.samplerFilterMinmax = VK_TRUE;
-			core12.descriptorBindingPartiallyBound = VK_TRUE;
-			core12.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-			core12.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-			core12.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
-			core12.descriptorBindingStorageImageUpdateAfterBind = VK_TRUE;
-			core12.descriptorBindingVariableDescriptorCount = VK_TRUE;
-			core12.descriptorIndexing = VK_TRUE;
-			core12.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+			core12.samplerFilterMinmax = supportedCore12.samplerFilterMinmax;
+			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
+			core12.descriptorBindingSampledImageUpdateAfterBind = supportedCore12.descriptorBindingSampledImageUpdateAfterBind;
+			core12.descriptorBindingStorageBufferUpdateAfterBind = supportedCore12.descriptorBindingStorageBufferUpdateAfterBind;
+			core12.descriptorBindingUniformBufferUpdateAfterBind = supportedCore12.descriptorBindingUniformBufferUpdateAfterBind;
+			core12.descriptorBindingStorageImageUpdateAfterBind = supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
+			core12.descriptorBindingVariableDescriptorCount = supportedCore12.descriptorBindingVariableDescriptorCount;
+			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
+			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
 		});
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -631,6 +730,28 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 
 	VK_CHECK(vkCreateDevice(physicalDevice, &createInfo, nullptr, &m_device));
 
+	pVkCmdBeginRenderingKHR = (PFN_vkCmdBeginRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdBeginRenderingKHR");
+	pVkCmdEndRenderingKHR = (PFN_vkCmdEndRenderingKHR)vkGetDeviceProcAddr(m_device, "vkCmdEndRenderingKHR");
+	pVkCmdBeginRendering = (PFN_vkCmdBeginRendering)vkGetDeviceProcAddr(m_device, "vkCmdBeginRendering");
+	pVkCmdEndRendering = (PFN_vkCmdEndRendering)vkGetDeviceProcAddr(m_device, "vkCmdEndRendering");
+
+	SAILOR_LOG(
+		"Dynamic rendering proc addresses: vkCmdBeginRenderingKHR=%d, vkCmdEndRenderingKHR=%d, vkCmdBeginRendering=%d, vkCmdEndRendering=%d",
+		(int32_t)(pVkCmdBeginRenderingKHR != nullptr),
+		(int32_t)(pVkCmdEndRenderingKHR != nullptr),
+		(int32_t)(pVkCmdBeginRendering != nullptr),
+		(int32_t)(pVkCmdEndRendering != nullptr));
+
+	if (!pVkCmdBeginRenderingKHR && !pVkCmdBeginRendering)
+	{
+		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering begin function pointers.");
+	}
+
+	if (!pVkCmdEndRenderingKHR && !pVkCmdEndRendering)
+	{
+		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering end function pointers.");
+	}
+
 	// Create queues
 	VkQueue presentQueue;
 	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
@@ -649,18 +770,58 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_computeQueue = VulkanQueuePtr::Make(computeQueue, m_queueFamilies.m_computeFamily.value(), 0);
 }
 
-void VulkanDevice::CreateWin32Surface(const Window* viewport)
+void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
 {
+#if defined(_WIN32)
 	VkWin32SurfaceCreateInfoKHR createInfoWin32{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	createInfoWin32.hwnd = viewport->GetHWND();
 	createInfoWin32.hinstance = viewport->GetHINSTANCE();
 	VkSurfaceKHR surface;
 	VK_CHECK(vkCreateWin32SurfaceKHR(VulkanApi::GetVkInstance(), &createInfoWin32, nullptr, &surface));
+#elif defined(__APPLE__)
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
 
+	const auto pfnCreateMacOSSurfaceMVK = reinterpret_cast<PFN_vkCreateMacOSSurfaceMVK>(vkGetInstanceProcAddr(VulkanApi::GetVkInstance(), "vkCreateMacOSSurfaceMVK"));
+	if (pfnCreateMacOSSurfaceMVK != nullptr)
+	{
+		VkMacOSSurfaceCreateInfoMVK createInfoMacOS{ VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK };
+		createInfoMacOS.pView = viewport->GetNativeView();
+		VK_CHECK(pfnCreateMacOSSurfaceMVK(VulkanApi::GetVkInstance(), &createInfoMacOS, nullptr, &surface));
+	}
+	else
+	{
+		VkMetalSurfaceCreateInfoEXT createInfoMetal{ VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT };
+		createInfoMetal.pLayer = viewport->GetMetalLayer();
+		VK_CHECK(vkCreateMetalSurfaceEXT(VulkanApi::GetVkInstance(), &createInfoMetal, nullptr, &surface));
+	}
+#else
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
+#endif
 	m_surface = VulkanSurfacePtr::Make(surface, VulkanApi::GetVkInstance());
 }
 
-void VulkanDevice::CreateSwapchain(Window* pViewport)
+VulkanStateViewportPtr VulkanDevice::CreateSwapchainViewport() const
+{
+	const float width = (float)m_swapchain->GetExtent().width;
+	const float height = (float)m_swapchain->GetExtent().height;
+
+//#if defined(__APPLE__)
+	// MoltenVK path expects shader-space Y handling; keep Vulkan viewport non-inverted.
+	return new VulkanStateViewport(0.0f, height,
+                                       width, -height,
+                                       { 0,0 },
+                                       { (uint32_t)width, (uint32_t)height },
+                                       0.0f, 1.0f);
+//#else
+//	return new VulkanStateViewport(0.0f, 0.0f,
+//		width, height,
+//		{ 0,0 },
+//		{ (uint32_t)width, (uint32_t)height },
+//		0.0f, 1.0f);
+//#endif
+}
+
+void VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 {
 	m_oldSwapchain = m_swapchain;
 
@@ -671,21 +832,8 @@ void VulkanDevice::CreateSwapchain(Window* pViewport)
 		pViewport->IsVsyncRequested(),
 		m_oldSwapchain);
 
-	const float height = (float)m_swapchain->GetExtent().height;
-	const float width = (float)m_swapchain->GetExtent().width;
-
 	pViewport->SetRenderArea(ivec2(m_swapchain->GetExtent().width, m_swapchain->GetExtent().height));
-
-	// Flip Y-axis to point up in viewport
-	// https://www.saschawillems.de/blog/2019/03/29/flipping-the-vulkan-viewport/
-	//m_viewport.y = height;
-	//m_viewport.height = -height;
-
-	m_pCurrentFrameViewport = new VulkanStateViewport(0.0f, height,
-		width, -height,
-		{ 0,0 },
-		{ (uint32_t)width, (uint32_t)height },
-		0.0f, 1.0f);
+	m_pCurrentFrameViewport = CreateSwapchainViewport();
 
 	m_bNeedToTransitSwapchainToPresent = true;
 }
@@ -709,7 +857,7 @@ void VulkanDevice::WaitIdle()
 	vkDeviceWaitIdle(m_device);
 }
 
-bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
+bool VulkanDevice::ShouldFixLostDevice(const Platform::Window* pViewport)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -724,7 +872,7 @@ bool VulkanDevice::ShouldFixLostDevice(const Win32::Window* pViewport)
 	return m_swapchain && (swapchainExtent.width != m_swapchain->GetExtent().width || swapchainExtent.height != m_swapchain->GetExtent().height);
 }
 
-void VulkanDevice::FixLostDevice(Win32::Window* pViewport)
+void VulkanDevice::FixLostDevice(Platform::Window* pViewport)
 {
 	RecreateSwapchain(pViewport);
 	m_bIsDeviceLost = false;
@@ -779,18 +927,11 @@ bool VulkanDevice::AcquireNextImage()
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
 	//////////////////////////////////////////////////
-	if (!m_pCurrentFrameViewport &&
+	if (!m_pCurrentFrameViewport ||
 		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
 			abs(m_pCurrentFrameViewport->GetViewport().height) != m_swapchain->GetExtent().height))
 	{
-		const float width = (float)m_swapchain->GetExtent().width;
-		const float height = (float)m_swapchain->GetExtent().height;
-
-		m_pCurrentFrameViewport = new VulkanStateViewport(0.0f, height,
-			width, -height,
-			{ 0,0 },
-			{ (uint32_t)width, (uint32_t)height },
-			0.0f, 1.0f);
+		m_pCurrentFrameViewport = CreateSwapchainViewport();
 	}
 
 	// Clear previous frame deps

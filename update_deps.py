@@ -27,7 +27,13 @@ def main() -> int:
     run_vcpkg('update')
     run_vcpkg('upgrade', '--no-dry-run')
 
-    triplet = 'x64-windows' if system == 'Windows' else 'x64-linux'
+    if system == 'Windows':
+        triplet = 'x64-windows'
+    elif system == 'Darwin':
+        # Prefer native Apple Silicon; fallback to Intel triplet on x86_64 Macs.
+        triplet = 'arm64-osx' if platform.machine().lower() in ('arm64', 'aarch64') else 'x64-osx'
+    else:
+        triplet = 'x64-linux'
     packages = [
         'glm',
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',

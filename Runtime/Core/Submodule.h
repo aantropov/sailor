@@ -48,11 +48,8 @@ namespace Sailor
 		TSubmodule(TSubmodule& copy) noexcept = delete;
 		TSubmodule& operator =(TSubmodule& rhs) noexcept = delete;
 
-		static int32_t s_typeId;
+		inline static int32_t s_typeId = SubmoduleBase::InvalidSubmoduleTypeId;
 	};
 
-#ifndef _SAILOR_IMPORT_
-	template<typename T>
-	int32_t TSubmodule<T>::s_typeId = SubmoduleBase::InvalidSubmoduleTypeId;
-#endif
+
 }

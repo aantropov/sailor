@@ -219,7 +219,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		for (uint32_t index = 0; index < sceneView.m_shadowMapsToUpdate.Num(); index++)
 		{
 			char debugMarker[64];
-			sprintf_s(debugMarker, "Record Shadow Map Pass %d", index);
+			sprintf_s(debugMarker, sizeof(debugMarker), "Record Shadow Map Pass %d", index);
 			SAILOR_PROFILE_SCOPE("Record Shadow Map Pass");
 
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];

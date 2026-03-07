@@ -1,12 +1,12 @@
 #include "Utils.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#if defined(_WIN32)
 #include <processthreadsapi.h>
+#endif
 
 #ifndef WIN32
 #include <unistd.h>
-#define stat _stat
-#include <ntverp.h>
 #endif
 
 #include <algorithm> 
@@ -18,7 +18,9 @@
 #include <format>
 #include <chrono>
 
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 #include "Containers/Vector.h"
 #include "Tasks/Tasks.h"
 #include "Tasks/Scheduler.h"
@@ -38,12 +40,12 @@ glm::vec4 Utils::SRGBToLinear(const glm::u8vec4& srgbIn)
 
 glm::vec4 Utils::LinearToSRGB(const glm::vec4& linearRGB)
 {
-	return vec4(LinearToSRGB(linearRGB.xyz), linearRGB.a);
+	return vec4(LinearToSRGB(glm::vec3(linearRGB)), linearRGB.a);
 }
 
 glm::vec4 Utils::SRGBToLinear(const glm::vec4& srgbIn)
 {
-	return vec4(SRGBToLinear(srgbIn.xyz), srgbIn.a);
+	return vec4(SRGBToLinear(glm::vec3(srgbIn)), srgbIn.a);
 }
 
 glm::vec3 Utils::LinearToSRGB(const glm::vec3& linearRGB)
@@ -141,6 +143,7 @@ std::wstring Utils::UTF8_to_wchar(const char* in)
 
 DWORD Utils::GetRandomColorHex()
 {
+#if defined(_WIN32)
 	COLORREF res = RGB(
 		(BYTE)(rand() % 255), // red component of color
 		(BYTE)(rand() % 255), // green component of color
@@ -148,6 +151,12 @@ DWORD Utils::GetRandomColorHex()
 	);
 
 	return (DWORD)res;
+#else
+	const uint8_t r = (uint8_t)(rand() % 255);
+	const uint8_t g = (uint8_t)(rand() % 255);
+	const uint8_t b = (uint8_t)(rand() % 255);
+	return (DWORD)(r | (g << 8) | (b << 16));
+#endif
 }
 
 std::string Utils::GetCurrentThreadName()
@@ -168,26 +177,40 @@ std::string Utils::GetCurrentThreadName()
 
 void Utils::SetThreadName(size_t dwThreadID, const std::string& threadName)
 {
+#if defined(_WIN32)
 	SetThreadDescription(
 		(HANDLE)(dwThreadID),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+#else
+	(void)dwThreadID;
+	(void)threadName;
+#endif
 }
 
 void Utils::SetThreadName(const std::string& threadName)
 {
+#if defined(_WIN32)
 	SetThreadDescription(
 		GetCurrentThread(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+#else
+	(void)threadName;
+#endif
 }
 
 void Utils::SetThreadName(std::thread* thread, const std::string& threadName)
 {
+#if defined(_WIN32)
 	SetThreadDescription(
 		(HANDLE)thread->native_handle(),
 		UTF8_to_wchar(threadName.c_str()).c_str()
 	);
+#else
+	(void)thread;
+	(void)threadName;
+#endif
 }
 
 std::string Utils::RemoveFileExtension(const std::string& filename)
@@ -338,6 +361,7 @@ int64_t Utils::GetCurrentTimeNano()
 
 void Utils::Timer::Start()
 {
+#if defined(_WIN32)
 	LARGE_INTEGER li;
 	if (!QueryPerformanceFrequency(&li))
 	{
@@ -348,15 +372,23 @@ void Utils::Timer::Start()
 
 	QueryPerformanceCounter(&li);
 	m_counterStart = li.QuadPart;
+#else
+	m_pcFrequence = 1000.0;
+	m_counterStart = Utils::GetCurrentTimeMicro();
+#endif
 
 	m_bIsStarted = true;
 }
 
 void Utils::Timer::Stop()
 {
+#if defined(_WIN32)
 	LARGE_INTEGER li;
 	QueryPerformanceCounter(&li);
 	m_counterEnd = li.QuadPart;
+#else
+	m_counterEnd = Utils::GetCurrentTimeMicro();
+#endif
 
 	m_counterAcc += m_counterEnd - m_counterStart;
 
@@ -367,11 +399,19 @@ int64_t Utils::Timer::ResultMs() const
 {
 	if (m_bIsStarted)
 	{
+#if defined(_WIN32)
 		LARGE_INTEGER li;
 		QueryPerformanceCounter(&li);
 		return int64_t(double(li.QuadPart - m_counterStart) / m_pcFrequence);
+#else
+		return int64_t((Utils::GetCurrentTimeMicro() - m_counterStart) / 1000);
+#endif
 	}
+#if defined(_WIN32)
 	return int64_t(double(m_counterEnd - m_counterStart) / m_pcFrequence);
+#else
+	return int64_t((m_counterEnd - m_counterStart) / 1000);
+#endif
 }
 
 int64_t Utils::Timer::ResultAccumulatedMs() const
@@ -383,12 +423,20 @@ int64_t Utils::Timer::ResultAccumulatedMs() const
 
 	if (m_bIsStarted)
 	{
+#if defined(_WIN32)
 		LARGE_INTEGER li;
 		QueryPerformanceCounter(&li);
 		return int64_t(double(li.QuadPart - m_counterStart + m_counterAcc) / m_pcFrequence);
+#else
+		return int64_t((Utils::GetCurrentTimeMicro() - m_counterStart + m_counterAcc) / 1000);
+#endif
 	}
 
+#if defined(_WIN32)
 	return int64_t((double)m_counterAcc / m_pcFrequence);
+#else
+	return int64_t(m_counterAcc / 1000);
+#endif
 }
 
 void Utils::Timer::Clear()
@@ -491,6 +539,7 @@ WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 {
 	WindowSizeAndPosition result = {};
 
+#if defined(_WIN32)
 	if (GetWindowRect(hwnd, &result.m_windowRect))
 	{
 		result.m_width = result.m_windowRect.right - result.m_windowRect.left;
@@ -504,6 +553,9 @@ WindowSizeAndPosition Utils::GetWindowSizeAndPosition(HWND hwnd)
 		result.m_clientWidth = result.m_clientRect.right - result.m_clientRect.left;
 		result.m_clientHeight = result.m_clientRect.bottom - result.m_clientRect.top;
 	}
+#else
+	(void)hwnd;
+#endif
 
 	return result;
 }
