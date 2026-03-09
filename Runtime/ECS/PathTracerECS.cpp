@@ -16,11 +16,6 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (!m_bPathTracingEnabled)
-	{
-		return nullptr;
-	}
-
 	TVector<Raytracing::LightProxy> lightProxies;
 	if (auto* pLightingEcs = GetWorld()->GetECS<LightingECS>())
 	{
@@ -125,6 +120,49 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 	}
 
 	return nullptr;
+}
+
+void PathTracerECS::CopySceneView(RHI::RHISceneViewPtr& outSceneView)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	outSceneView->m_pathTracerProxies.Clear();
+	outSceneView->m_pathTracerLights.Clear();
+
+	if (auto* pLightingEcs = GetWorld()->GetECS<LightingECS>())
+	{
+		pLightingEcs->GetLightProxies(outSceneView->m_pathTracerLights);
+	}
+
+	for (auto& data : m_components)
+	{
+		if (!data.m_bIsActive || !data.m_options.m_bEnabled || !data.m_worldBounds.IsValid())
+		{
+			continue;
+		}
+
+		GameObjectPtr pOwnerGameObject = data.m_owner.StaticCast<GameObject>();
+		auto pMeshRenderer = pOwnerGameObject ? pOwnerGameObject->GetComponent<MeshRendererComponent>() : MeshRendererComponentPtr();
+		ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
+		if (!pModel || !pModel->IsReady() || !pModel->HasBLAS() || pModel->GetBLASTriangles().Num() == 0)
+		{
+			continue;
+		}
+
+		RHI::RHIPathTracerProxy proxy{};
+		proxy.m_model = pModel;
+		proxy.m_worldBounds = data.m_worldBounds;
+		proxy.m_worldMatrix = data.m_worldMatrix;
+		proxy.m_inverseWorldMatrix = data.m_inverseWorldMatrix;
+		proxy.m_frameLastChange = data.m_frameLastChange;
+
+		if (pMeshRenderer)
+		{
+			proxy.m_materials = pMeshRenderer->GetMaterials();
+		}
+
+		outSceneView->m_pathTracerProxies.Add(std::move(proxy));
+	}
 }
 
 bool PathTracerECS::InitializePathTracer(Raytracing::PathTracer& outPathTracer, size_t componentHandle)

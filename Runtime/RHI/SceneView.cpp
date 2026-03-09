@@ -1,4 +1,4 @@
-#include "SceneView.h"
+﻿#include "SceneView.h"
 #include "ECS/CameraECS.h"
 #include "ECS/TransformECS.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -52,6 +52,8 @@ void RHISceneView::Clear()
 	m_drawImGui.Clear();
 	m_debugDraw.Clear();
 	m_snapshots.Clear();
+	m_pathTracerProxies.Clear();
+	m_pathTracerLights.Clear();
 }
 
 TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const
@@ -161,9 +163,12 @@ void RHISceneView::PrepareSnapshots()
 
 		res.m_deltaTime = m_deltaTime;
 		res.m_frame = m_world->GetCurrentFrame();
+		res.m_cameraIndex = i;
 		res.m_cameraTransform = m_cameraTransforms[i];
 		res.m_camera = TUniquePtr<CameraData>::Make();
 		*res.m_camera = camera;
+		res.m_pathTracerProxies = m_pathTracerProxies;
+		res.m_pathTracerLights = m_pathTracerLights;
 
 		res.m_totalNumLights = m_totalNumLights;
 		res.m_rhiLightsData = m_rhiLightsData;

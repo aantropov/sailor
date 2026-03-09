@@ -17,6 +17,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <functional>
+#include <thread>
 
 #include <stb_image.h>
 #include <tiny_gltf.h>
@@ -42,6 +43,41 @@ namespace
 	constexpr uint32_t DefaultGroupSize = 32;
 	constexpr float DefaultAspectRatio = 4.0f / 3.0f;
 	constexpr float DefaultHfov = glm::radians(60.0f);
+
+	__forceinline uint32_t XorShift32(uint32_t& state)
+	{
+		state ^= state << 13;
+		state ^= state >> 17;
+		state ^= state << 5;
+		return state;
+	}
+
+	__forceinline uint32_t NextRandomU32()
+	{
+		thread_local uint32_t s_rngState = 0u;
+		if (s_rngState == 0u)
+		{
+			const uint64_t tidHash = (uint64_t)std::hash<std::thread::id>{}(std::this_thread::get_id());
+			s_rngState = (uint32_t)((tidHash ^ (tidHash >> 32)) | 1u);
+		}
+
+		return XorShift32(s_rngState);
+	}
+
+	__forceinline uint32_t NextRandomRange(uint32_t maxExclusive)
+	{
+		return maxExclusive > 0u ? (NextRandomU32() % maxExclusive) : 0u;
+	}
+
+	__forceinline float NextRandom01()
+	{
+		return (float)(NextRandomU32() & 0x00FFFFFFu) / 16777216.0f;
+	}
+
+	__forceinline vec2 NextRandomVec2_01()
+	{
+		return vec2(NextRandom01(), NextRandom01());
+	}
 
 	__forceinline vec3 ComputeRayOriginBias(const vec3& worldPoint, const vec3& geometricNormal, float biasBase, float biasScale)
 	{
@@ -668,9 +704,121 @@ bool PathTracer::InitializeScene(const TVector<SceneInstance>& instances,
 	return m_instances.Num() > 0;
 }
 
+void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent)
+{
+	if (image.Num() == 0 || extent.x == 0 || extent.y == 0 || image.Num() < (size_t)extent.x * (size_t)extent.y)
+	{
+		return;
+	}
+
+	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	for (uint32_t y = 0; y < extent.y; y++)
+	{
+		for (uint32_t x = 0; x < extent.x; x++)
+		{
+			const u8vec4 src = image[x + y * extent.x];
+			const vec3 linear = Utils::SRGBToLinear(vec3(src) * (1.0f / 255.0f));
+			m_runtimeEnvironment.SetPixel(x, y, linear);
+		}
+	}
+
+	m_bHasRuntimeEnvironment = true;
+}
+
+void PathTracer::SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
+{
+	if (image.Num() == 0 || extent.x == 0 || extent.y == 0 || image.Num() < (size_t)extent.x * (size_t)extent.y)
+	{
+		return;
+	}
+
+	m_runtimeEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	for (uint32_t y = 0; y < extent.y; y++)
+	{
+		for (uint32_t x = 0; x < extent.x; x++)
+		{
+			const vec4 src = image[x + y * extent.x];
+			m_runtimeEnvironment.SetPixel(x, y, vec3(src));
+		}
+	}
+
+	m_bHasRuntimeEnvironment = true;
+}
+
+void PathTracer::SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent)
+{
+	if (image.Num() == 0 || extent.x == 0 || extent.y == 0 || image.Num() < (size_t)extent.x * (size_t)extent.y)
+	{
+		return;
+	}
+
+	m_runtimeDiffuseEnvironment.Initialize<vec3>(extent.x, extent.y, 3, SamplerClamping::Repeat);
+	for (uint32_t y = 0; y < extent.y; y++)
+	{
+		for (uint32_t x = 0; x < extent.x; x++)
+		{
+			const vec4 src = image[x + y * extent.x];
+			m_runtimeDiffuseEnvironment.SetPixel(x, y, vec3(src));
+		}
+	}
+
+	m_bHasRuntimeDiffuseEnvironment = true;
+}
+
+void PathTracer::ClearRuntimeEnvironment()
+{
+	m_runtimeEnvironment.m_data.Clear();
+	m_runtimeEnvironment.m_width = 0;
+	m_runtimeEnvironment.m_height = 0;
+	m_runtimeEnvironment.m_channels = 3;
+	m_runtimeEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_bHasRuntimeEnvironment = false;
+
+	m_runtimeDiffuseEnvironment.m_data.Clear();
+	m_runtimeDiffuseEnvironment.m_width = 0;
+	m_runtimeDiffuseEnvironment.m_height = 0;
+	m_runtimeDiffuseEnvironment.m_channels = 3;
+	m_runtimeDiffuseEnvironment.m_clamping = SamplerClamping::Clamp;
+	m_bHasRuntimeDiffuseEnvironment = false;
+}
+
+vec3 PathTracer::SampleRuntimeEnvironment(const vec3& direction) const
+{
+	if (!m_bHasRuntimeEnvironment || m_runtimeEnvironment.m_width <= 0 || m_runtimeEnvironment.m_height <= 0)
+	{
+		return vec3(0.0f);
+	}
+
+	const vec3 dir = glm::normalize(direction);
+	const float phi = atan2(dir.z, dir.x);
+	const float theta = acos(glm::clamp(dir.y, -1.0f, 1.0f));
+	const float u = (phi + Pi) / (2.0f * Pi);
+	const float v = theta / Pi;
+
+	return m_runtimeEnvironment.Sample<vec3>(vec2(u, v));
+}
+
+vec3 PathTracer::SampleRuntimeDiffuseEnvironment(const vec3& direction) const
+{
+	if (!m_bHasRuntimeDiffuseEnvironment || m_runtimeDiffuseEnvironment.m_width <= 0 || m_runtimeDiffuseEnvironment.m_height <= 0)
+	{
+		return SampleRuntimeEnvironment(direction);
+	}
+
+	const vec3 dir = glm::normalize(direction);
+	const float phi = atan2(dir.z, dir.x);
+	const float theta = acos(glm::clamp(dir.y, -1.0f, 1.0f));
+	const float u = (phi + Pi) / (2.0f * Pi);
+	const float v = theta / Pi;
+
+	return m_runtimeDiffuseEnvironment.Sample<vec3>(vec2(u, v));
+}
+
 bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 {
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImage.Clear();
+	m_lastRenderedExtent = glm::uvec2(0, 0);
 
 	const bool bUseInstances = m_instances.Num() > 0;
 	if (!bUseInstances && m_triangles.Num() == 0)
@@ -811,7 +959,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
+									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : NextRandomVec2_01();
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 									ray.SetDirection(glm::normalize(pixelDir));
 									SceneHit primaryHit{};
@@ -877,11 +1025,17 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 		}
 	}
 
-	const uint32_t Channels = 4;
-	if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+	m_lastRenderedImage = outSrgb;
+	m_lastRenderedExtent = glm::uvec2(width, height);
+
+	if (!params.m_output.empty())
 	{
-		SAILOR_LOG_ERROR("Raytracing WriteImage error");
-		return false;
+		const uint32_t Channels = 4;
+		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+		{
+			SAILOR_LOG_ERROR("Raytracing WriteImage error");
+			return false;
+		}
 	}
 
 	return true;
@@ -891,6 +1045,8 @@ void PathTracer::Run(const PathTracer::Params& params)
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_lastRaytraceTimeMs = 0.0;
+	m_lastRenderedImage.Clear();
+	m_lastRenderedExtent = glm::uvec2(0, 0);
 
 	auto* pAssetRegistry = App::GetSubmodule<AssetRegistry>();
 	auto* pModelImporter = App::GetSubmodule<ModelImporter>();
@@ -1156,7 +1312,7 @@ void PathTracer::Run(const PathTracer::Params& params)
 								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : glm::linearRand(vec2(0, 0), vec2(1.0f, 1.0f));
+									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : NextRandomVec2_01();
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 
 									ray.SetDirection(glm::normalize(pixelDir));
@@ -1263,10 +1419,16 @@ void PathTracer::Run(const PathTracer::Params& params)
 			}
 		}
 
-		const uint32_t Channels = 4;
-		if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+		m_lastRenderedImage = outSrgb;
+		m_lastRenderedExtent = glm::uvec2(width, height);
+
+		if (!params.m_output.empty())
 		{
-			SAILOR_LOG("Raytracing WriteImage error");
+			const uint32_t Channels = 4;
+			if (!stbi_write_png(params.m_output.string().c_str(), width, height, Channels, outSrgb.GetData(), width * Channels))
+			{
+				SAILOR_LOG("Raytracing WriteImage error");
+			}
 		}
 	}
 }
@@ -1479,8 +1641,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	uint32_t randSeedX = glm::linearRand(0, 680);
-	uint32_t randSeedY = glm::linearRand(0, 680);
+	uint32_t randSeedX = NextRandomRange(681u);
+	uint32_t randSeedY = NextRandomRange(681u);
 
 	vec3 res = vec3(0);
 	SceneHit hit{};
@@ -1564,8 +1726,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			}
 		}
 
-		// Ambient lighting
-		if (params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f)
+		// Ambient / environment lighting
+		if (params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f || m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment)
 		{
 			SAILOR_PROFILE_SCOPE("Ambient lighting");
 
@@ -1584,13 +1746,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					const vec2 randomSample = NextVec2_Linear();
 					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
 					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
-
-					vec3 att = TraceSky(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight, params, environmentIor, hit.m_instanceIndex, hit.m_triangleIndex);
-					if (att != vec3(0, 0, 0))
+					Ray skyRay(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
+					SceneHit skyOccluder{};
+					if (!IntersectScene(skyRay, skyOccluder, std::numeric_limits<float>::max(), hit.m_instanceIndex, hit.m_triangleIndex))
 					{
+						const vec3 env = (m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment) ? SampleRuntimeDiffuseEnvironment(toLight) : params.m_ambient;
 						const float angle = glm::max(0.0f, glm::dot(toLight, worldNormal));
-						att *= LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample);
-						ambient1 += glm::clamp((att * params.m_ambient * angle) / pdfHemisphere,
+						const vec3 value = LightingModel::CalculateBRDF(viewDirection, worldNormal, toLight, sample) * env;
+						ambient1 += glm::clamp((value * angle) / pdfHemisphere,
 							vec3(0, 0, 0), vec3(10, 10, 10));
 					}
 				}
@@ -1645,7 +1808,8 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				SceneHit hitLight{};
 				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
 				{
-					vec3 value = glm::clamp(term * params.m_ambient, vec3(0, 0, 0), vec3(10, 10, 10));
+					const vec3 env = (m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment) ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient;
+					vec3 value = glm::clamp(term * env, vec3(0, 0, 0), vec3(10, 10, 10));
 
 					// Ambient lighting
 					ambient2 += value;
@@ -1732,7 +1896,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 	}
 	else
 	{
-		res = params.m_ambient;
+		if (m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment)
+		{
+			res = m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(ray.GetDirection()) : SampleRuntimeDiffuseEnvironment(ray.GetDirection());
+		}
+		else
+		{
+			res = params.m_ambient;
+		}
 	}
 
 	return res;
@@ -1802,7 +1973,7 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 
 vec2 PathTracer::NextVec2_Linear()
 {
-	return vec2(glm::linearRand(0.0f, 1.0f), glm::linearRand(0.0f, 1.0f));
+	return NextRandomVec2_01();
 }
 
 vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
@@ -1937,12 +2108,12 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	if (randSeedX >= 688)
 	{
-		randSeedX = glm::linearRand(0u, 680u);
+		randSeedX = NextRandomRange(681u);
 	}
 
 	if (randSeedY >= 688)
 	{
-		randSeedY = glm::linearRand(0u, 680u);
+		randSeedY = NextRandomRange(681u);
 	}
 
 	vec2 res = vec2(BlueNoiseData[randSeedX++], BlueNoiseData[randSeedY++]);

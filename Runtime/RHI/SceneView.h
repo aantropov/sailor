@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "Core/Defines.h"
 #include "Memory/Memory.h"
 #include "Containers/Octree.h"
@@ -7,6 +7,7 @@
 #include "RHI/Material.h"
 #include "ECS/CameraECS.h"
 #include "Math/Math.h"
+#include "Raytracing/LightingModel.h"
 
 namespace Sailor::RHI
 {
@@ -54,6 +55,16 @@ namespace Sailor::RHI
 
 	};
 
+	struct RHIPathTracerProxy
+	{
+		ModelPtr m_model{};
+		Math::AABB m_worldBounds{};
+		glm::mat4 m_worldMatrix{ 1.0f };
+		glm::mat4 m_inverseWorldMatrix{ 1.0f };
+		TVector<MaterialPtr> m_materials{};
+		uint64_t m_frameLastChange = 0ull;
+	};
+
 	struct RHIUpdateShadowMapCommand
 	{
 		uint32_t m_lighMatrixIndex{};
@@ -69,9 +80,12 @@ namespace Sailor::RHI
 	{
 		float m_deltaTime = 0.0f;
 		uint64_t m_frame = 0ull;
+		uint32_t m_cameraIndex = 0u;
 		Math::Transform m_cameraTransform{};
 		TUniquePtr<CameraData> m_camera{};
 		TVector<RHISceneViewProxy> m_proxies{};
+		TVector<RHIPathTracerProxy> m_pathTracerProxies{};
+		TVector<Raytracing::LightProxy> m_pathTracerLights{};
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
@@ -102,6 +116,8 @@ namespace Sailor::RHI
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;
+		TVector<RHIPathTracerProxy> m_pathTracerProxies;
+		TVector<Raytracing::LightProxy> m_pathTracerLights;
 
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;

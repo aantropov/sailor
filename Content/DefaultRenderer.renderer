@@ -273,6 +273,26 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+
+############################
+- name: PathTracerPass
+############################
+  float:
+  - enabled: 1
+  - samplesPerFrame: 2
+  - maxBounces: 4
+  - maxAccumFrames: 0
+  - blend: 1
+  - resetOnCameraMove: 1
+  - movePosThreshold: 0.001
+  - moveRotThreshold: 0.00005
+  - environmentCaptureInterval: 8
+  - environmentCaptureHeight: 256
+  - environmentCaptureWidth: 512
+  renderTargets:
+  - color: Main
+  - environment: g_envCubemap
+  - environmentDiffuse: g_irradianceCubemap
   
 ############################
 - name: RenderScene

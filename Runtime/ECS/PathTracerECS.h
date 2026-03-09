@@ -8,6 +8,7 @@
 #include "Math/Bounds.h"
 #include "Containers/Octree.h"
 #include "AssetRegistry/FileId.h"
+#include "RHI/SceneView.h"
 
 namespace Sailor
 {
@@ -83,8 +84,12 @@ namespace Sailor
 	public:
 
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		void CopySceneView(RHI::RHISceneViewPtr& outSceneView);
 		bool InitializePathTracer(Raytracing::PathTracer& outPathTracer, size_t componentHandle = (size_t)-1);
 		bool RenderScene(const Raytracing::PathTracer::Params& params, size_t componentHandle = (size_t)-1);
+		double GetLastPathTraceTimeMs() const { return m_lastPathTraceTimeMs; }
+		const TVector<u8vec4>& GetLastPathTraceImage() const { return m_pathTracer.GetLastRenderedImage(); }
+		glm::uvec2 GetLastPathTraceImageExtent() const { return m_pathTracer.GetLastRenderedExtent(); }
 		bool IntersectProxyRay(size_t componentHandle, const Math::Ray& worldRay, Math::RaycastHit& outHit, float maxRayLength = FLT_MAX) const;
 		bool IntersectSceneRay(const Math::Ray& worldRay, Math::RaycastHit& outHit, size_t& outComponentHandle, float maxRayLength = FLT_MAX) const;
 		void SetPathTracingEnabled(bool bEnabled) { m_bPathTracingEnabled = bEnabled; }
@@ -94,6 +99,7 @@ namespace Sailor
 	protected:
 
 		bool m_bPathTracingEnabled = false;
+		double m_lastPathTraceTimeMs = 0.0;
 		TOctree<size_t> m_proxyOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
 		Raytracing::PathTracer m_pathTracer{};
 	};

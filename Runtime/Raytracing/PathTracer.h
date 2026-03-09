@@ -59,8 +59,14 @@ namespace Sailor::Raytracing
 		bool InitializeScene(const TVector<SceneInstance>& instances,
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies);
+		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
+		void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		void ClearRuntimeEnvironment();
 		bool RenderPreparedScene(const Params& params);
 		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
+		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
+		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }
 
 		void Run(const Params& params);
 
@@ -89,6 +95,8 @@ namespace Sailor::Raytracing
 			uint32_t ignoreInstance, uint32_t ignoreTriangle) const;
 		vec3 Raytrace(const Math::Ray& r, uint32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle,
 			const Params& params, float inAcc, float environmentIor = 1.0f) const;
+		vec3 SampleRuntimeEnvironment(const vec3& direction) const;
+		vec3 SampleRuntimeDiffuseEnvironment(const vec3& direction) const;
 
 
 		TVector<DirectionalLight> m_directionalLights{};
@@ -104,5 +112,11 @@ namespace Sailor::Raytracing
 		uint32_t m_cachedMaterialsCount = 0;
 		bool m_bMaterialsFullyResolved = false;
 		double m_lastRaytraceTimeMs = 0.0;
+		TVector<u8vec4> m_lastRenderedImage{};
+		glm::uvec2 m_lastRenderedExtent{ 0, 0 };
+		CombinedSampler2D m_runtimeEnvironment{};
+		CombinedSampler2D m_runtimeDiffuseEnvironment{};
+		bool m_bHasRuntimeEnvironment = false;
+		bool m_bHasRuntimeDiffuseEnvironment = false;
 	};
 }

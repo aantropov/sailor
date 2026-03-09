@@ -174,7 +174,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		SAILOR_PROFILE_SCOPE("Process snapshot");
 
 		auto cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
-		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
+		auto transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 
 		driver->SetDebugName(cmdList, "FrameGraph:Graphics");
 		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
@@ -309,7 +309,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					SAILOR_PROFILE_SCOPE("Create new command lists");
 
 					cmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
-					transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Compute);
+					transferCmdList = renderer->GetDriver()->CreateCommandList(false, RHI::ECommandListQueue::Graphics);
 
 					driver->SetDebugName(cmdList, "FrameGraph:Graphics");
 					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
