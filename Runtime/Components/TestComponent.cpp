@@ -141,6 +141,33 @@ void TestComponent::Tick(float deltaTime)
 
 	//ImGui::ShowDemoWindow();
 
+	auto renderer = App::GetSubmodule<Sailor::RHI::Renderer>();
+	const auto& rendererStats = renderer->GetStats();
+
+	static float cpuAccumulatedTime = 0.0f;
+	static uint32_t cpuFrames = 0;
+	static float cpuFps = 0.0f;
+
+	cpuAccumulatedTime += deltaTime;
+	cpuFrames++;
+	if (cpuAccumulatedTime >= 0.25f)
+	{
+		cpuFps = static_cast<float>(cpuFrames) / cpuAccumulatedTime;
+		cpuAccumulatedTime = 0.0f;
+		cpuFrames = 0;
+	}
+
+	const float cpuFrameMs = deltaTime * 1000.0f;
+	const size_t gpuHeapUsageMb = rendererStats.m_gpuHeapUsage / (1024 * 1024);
+	const size_t gpuHeapBudgetMb = rendererStats.m_gpuHeapBudget / (1024 * 1024);
+
+	ImGui::Begin("Performance");
+	ImGui::Text("CPU: %.1f fps (%.2f ms)", cpuFps, cpuFrameMs);
+	ImGui::Text("GPU: %u fps", rendererStats.m_gpuFps);
+	ImGui::Text("GPU memory: %zu / %zu MB", gpuHeapUsageMb, gpuHeapBudgetMb);
+	ImGui::Text("Submitted cmd buffers: %u", rendererStats.m_numSubmittedCommandBuffers);
+	ImGui::End();
+
 	auto& transform = GetOwner()->GetTransformComponent();
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
