@@ -1,4 +1,4 @@
-﻿using SailorEditor.Helpers;
+using SailorEditor.Helpers;
 using SailorEditor.Services;
 
 namespace SailorEditor.Views
@@ -8,10 +8,10 @@ namespace SailorEditor.Views
         public SceneView()
         {
             InitializeComponent();
-            MauiProgram.GetService<EngineService>().RunProcess(false, "");
 
             Loaded += (sender, args) =>
             {
+                MauiProgram.GetService<EngineService>().RunProcess(false, "");
                 isRunning = true;
 
                 Dispatcher.StartTimer(TimeSpan.FromMilliseconds(500), () =>

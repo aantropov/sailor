@@ -51,6 +51,35 @@
                              Clicked="OnPlayDebugButtonClicked"
                              Grid.Column="1"/>
             </Grid>
+
+            <Grid Grid.Column="2" HorizontalOptions="End" VerticalOptions="Center" Margin="0" Padding="0" HeightRequest="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <ImageButton Source="application_export_24.png"
+                             HeightRequest="24"
+                             WidthRequest="24"
+                             Aspect="AspectFit"
+                             Padding="0"
+                             Margin="0"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Clicked="OnPathTraceSceneButtonClicked"
+                             Grid.Column="0"/>
+
+                <ImageButton Source="application_export.png"
+                             HeightRequest="24"
+                             WidthRequest="24"
+                             Aspect="AspectFit"
+                             Padding="0"
+                             Margin="0"
+                             HorizontalOptions="Center"
+                             VerticalOptions="Center"
+                             Clicked="OnPathTraceSelectionButtonClicked"
+                             Grid.Column="1"/>
+            </Grid>
         </Grid>
     </Frame>
 

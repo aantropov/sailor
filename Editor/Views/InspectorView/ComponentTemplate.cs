@@ -5,7 +5,6 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Views;
 using SailorEngine;
-using Windows.Foundation.Collections;
 using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor;

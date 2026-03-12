@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:SailorEditor"
              x:Class="SailorEditor.MainPage"
+             x:DataType="local:MainPage"
              Title=""
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:controls="clr-namespace:SailorEditor.Controls">
@@ -14,8 +15,8 @@
             <MenuFlyoutItem Text ="Exit"></MenuFlyoutItem>
         </MenuBarItem>
         <MenuBarItem Text="Preferences">
-            <MenuFlyoutItem Text="Light Theme" Command="{Binding ChangeThemeCommand}" CommandParameter="LightThemeStyle" />
-            <MenuFlyoutItem Text="Dark Theme" Command="{Binding ChangeThemeCommand}" CommandParameter="DarkThemeStyle" />
+            <MenuFlyoutItem Text="Light Theme" x:DataType="local:MainPage" Command="{Binding ChangeThemeCommand}" CommandParameter="LightThemeStyle" />
+            <MenuFlyoutItem Text="Dark Theme" x:DataType="local:MainPage" Command="{Binding ChangeThemeCommand}" CommandParameter="DarkThemeStyle" />
         </MenuBarItem>
     </ContentPage.MenuBarItems>
 

@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.ViewModels;
 using System.Numerics;
 using YamlDotNet.Core.Events;
@@ -15,6 +15,7 @@ using System.Text.RegularExpressions;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using System.ComponentModel;
+using System.Linq;
 
 namespace SailorEngine
 {
@@ -22,7 +23,9 @@ namespace SailorEngine
     {
         public string Typename { get; set; }
 
+#pragma warning disable CS0067
         public event PropertyChangedEventHandler PropertyChanged;
+#pragma warning restore CS0067
     }
 
     public class Property<T> : PropertyBase
@@ -183,49 +186,21 @@ namespace SailorEngine
             try
             {
                 var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
+                if (rootNode?.EngineTypes == null)
+                    return res;
 
-                foreach (var component in rootNode.EngineTypes)
+                var cdoByType = new Dictionary<string, ComponentDefaultValuesNode>();
+                foreach (var cdo in rootNode.Cdos ?? new List<ComponentDefaultValuesNode>())
                 {
-                    var newComponent = new ComponentType
-                    {
-                        Name = component.Typename
-                    };
+                    if (string.IsNullOrEmpty(cdo?.Typename))
+                        continue;
 
-                    if (component.Properties == null)
-                        component.Properties = new();
-
-                    foreach (var property in component.Properties)
-                    {
-                        var genericMatch = Regex.Match(property.Value, @"<(.+?)>");
-                        string genericType = genericMatch.Success ? genericType = genericMatch.Groups[1].Value : "";
-
-                        PropertyBase newProperty = property.Value switch
-                        {
-                            "struct glm::qua<float,0>" => new RotationProperty(rootNode.Cdos.Find((a) => a.Typename == component.Typename).DefaultValues[property.Key] as Quat ?? default),
-                            "struct glm::vec<2,float,0>" => new Vec2Property(),
-                            "struct glm::vec<3,float,0>" => new Vec3Property(),
-                            "struct glm::vec<4,float,0>" => new Vec4Property(),
-                            "float" => new FloatProperty(),
-                            var value when value.StartsWith("class Sailor::TObjectPtr") => new ObjectPtrProperty()
-                            {
-                                GenericTypename = genericType,
-                                GenericType = GetEditorType(genericType)
-                            },
-                            var value when value.Contains("TObjectPtr") => new InstanceIdProperty(),
-                            var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
-                            _ => throw new InvalidOperationException($"Unexpected property type: {property.Value}")
-                        };
-
-                        newComponent.Properties[property.Key] = newProperty;
-                    }
-
-                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
-                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
-
-                    res.Components[component.Typename] = newComponent;
+                    // Keep first occurrence; avoid hard failure on duplicates.
+                    if (!cdoByType.ContainsKey(cdo.Typename))
+                        cdoByType[cdo.Typename] = cdo;
                 }
 
-                foreach (var enumNode in rootNode.Enums)
+                foreach (var enumNode in rootNode.Enums ?? Enumerable.Empty<Dictionary<string, List<string>>>())
                 {
                     foreach (var enumEntry in enumNode)
                     {
@@ -233,6 +208,84 @@ namespace SailorEngine
                     }
                 }
 
+                // Pass 1: register all component types first.
+                foreach (var component in rootNode.EngineTypes)
+                {
+                    if (string.IsNullOrEmpty(component.Typename))
+                        continue;
+
+                    if (!res.Components.ContainsKey(component.Typename))
+                    {
+                        res.Components[component.Typename] = new ComponentType { Name = component.Typename };
+                    }
+                }
+
+                // Pass 2: resolve properties/defaults after all types are known.
+                foreach (var component in rootNode.EngineTypes)
+                {
+                    if (string.IsNullOrEmpty(component.Typename))
+                        continue;
+
+                    var newComponent = res.Components[component.Typename];
+
+                    if (component.Properties == null)
+                        component.Properties = new();
+
+                    cdoByType.TryGetValue(component.Typename, out var cdoNode);
+
+                    foreach (var property in component.Properties)
+                    {
+                        try
+                        {
+                            var genericMatch = Regex.Match(property.Value, @"<(.+?)>");
+                            string genericType = genericMatch.Success ? genericMatch.Groups[1].Value : "";
+
+                            Quat defaultQuat = default;
+                            if (cdoNode != null &&
+                                cdoNode.DefaultValues != null &&
+                                cdoNode.DefaultValues.TryGetValue(property.Key, out var defaultQuatObj))
+                            {
+                                if (defaultQuatObj is Quat q)
+                                {
+                                    defaultQuat = q;
+                                }
+                                else if (defaultQuatObj is Rotation r)
+                                {
+                                    defaultQuat = r.Quat;
+                                }
+                            }
+
+                            PropertyBase newProperty = property.Value switch
+                            {
+                                "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
+                                "struct glm::vec<2,float,0>" => new Vec2Property(),
+                                "struct glm::vec<3,float,0>" => new Vec3Property(),
+                                "struct glm::vec<4,float,0>" => new Vec4Property(),
+                                "float" => new FloatProperty(),
+                                var value when value.Contains("TObjectPtr") => new ObjectPtrProperty()
+                                {
+                                    GenericTypename = genericType,
+                                    GenericType = GetEditorType(genericType)
+                                },
+                                var value when value.Contains("InstanceId") => new InstanceIdProperty(),
+                                var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
+                                _ => null
+                            };
+
+                            if (newProperty != null)
+                            {
+                                newComponent.Properties[property.Key] = newProperty;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"EngineTypes: failed to import property '{property.Key}' for '{component.Typename}': {ex.Message}");
+                        }
+                    }
+
+                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
+                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+                }
             }
             catch (Exception ex)
             {
@@ -699,6 +752,22 @@ namespace SailorEditor
         public object ReadYaml(IParser parser, Type type)
         {
             var objPtr = new ObjectPtr();
+
+            if (parser.Current is Scalar scalar)
+            {
+                var value = scalar.Value ?? string.Empty;
+                var normalized = value.Trim();
+
+                if (string.IsNullOrEmpty(normalized) ||
+                    normalized == "~" ||
+                    normalized.Equals("null", StringComparison.OrdinalIgnoreCase) ||
+                    normalized == FileId.NullFileId ||
+                    normalized == InstanceId.NullInstanceId)
+                {
+                    parser.MoveNext();
+                    return objPtr;
+                }
+            }
 
             parser.Consume<MappingStart>();
 
