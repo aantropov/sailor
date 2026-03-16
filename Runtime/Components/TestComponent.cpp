@@ -5,6 +5,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/LightComponent.h"
+#include "Components/PathTracerProxyComponent.h"
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
@@ -16,6 +17,11 @@
 
 #include "RHI/Texture.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
+#include "ECS/PathTracerECS.h"
+#include "Raytracing/PathTracer.h"
+#include "Core/LogMacros.h"
+#include <cstring>
+#include <cstdio>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -373,6 +379,7 @@ void TestComponent::Tick(float deltaTime)
 		ImGui::End();
 
 		ImGui::Begin("Sky Settings");
+
 		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds density", &skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
 		ImGui::SliderFloat("Clouds coverage", &skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
@@ -419,4 +426,97 @@ void TestComponent::Tick(float deltaTime)
 			}
 		}
 	}
+
+	ImGui::Begin("Path Tracer");
+	int32_t pathTraceHeight = (int32_t)m_pathTraceHeight;
+	int32_t pathTraceSamplesPerPixel = (int32_t)m_pathTraceSamplesPerPixel;
+	int32_t pathTraceMaxBounces = (int32_t)m_pathTraceMaxBounces;
+	float pathTraceRayBiasBase = m_pathTraceRayBiasBase;
+	float pathTraceRayBiasScale = m_pathTraceRayBiasScale;
+
+	if (ImGui::SliderInt("Height", &pathTraceHeight, 64, 4320))
+	{
+		m_pathTraceHeight = (uint32_t)(std::max)(1, pathTraceHeight);
+	}
+
+	if (ImGui::SliderInt("Samples Per Pixel", &pathTraceSamplesPerPixel, 1, 1024))
+	{
+		m_pathTraceSamplesPerPixel = (uint32_t)(std::max)(1, pathTraceSamplesPerPixel);
+	}
+
+	if (ImGui::SliderInt("Max Bounces", &pathTraceMaxBounces, 0, 32))
+	{
+		m_pathTraceMaxBounces = (uint32_t)(std::max)(0, pathTraceMaxBounces);
+	}
+
+	if (ImGui::SliderFloat("Ray Bias Base", &pathTraceRayBiasBase, 0.0f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
+	{
+		m_pathTraceRayBiasBase = (std::max)(0.0f, pathTraceRayBiasBase);
+	}
+
+	if (ImGui::SliderFloat("Ray Bias Scale", &pathTraceRayBiasScale, 0.00001f, 0.01f, "%.6f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat))
+	{
+		m_pathTraceRayBiasScale = (std::max)(0.0f, pathTraceRayBiasScale);
+	}
+
+	char outputPath[512];
+	memset(outputPath, 0, sizeof(outputPath));
+	std::snprintf(outputPath, sizeof(outputPath), "%s", m_pathTraceOutputPath.c_str());
+	if (ImGui::InputText("Output", outputPath, IM_ARRAYSIZE(outputPath)))
+	{
+		m_pathTraceOutputPath = outputPath;
+	}
+
+	if (ImGui::Button("Path Trace"))
+	{
+		size_t numAdded = 0;
+		for (auto& gameObject : GetWorld()->GetGameObjects())
+		{
+			if (!gameObject)
+			{
+				continue;
+			}
+
+			if (!gameObject->GetComponent<PathTracerProxyComponent>())
+			{
+				auto proxy = gameObject->AddComponent<PathTracerProxyComponent>();
+				if (proxy)
+				{
+					proxy->SetEnabled(true);
+					numAdded++;
+				}
+			}
+		}
+
+		bool bRendered = false;
+		auto* pPathTracerEcs = GetWorld()->GetECS<PathTracerECS>();
+		Raytracing::PathTracer::Params params{};
+		params.m_output = m_pathTraceOutputPath;
+		params.m_height = m_pathTraceHeight;
+		params.m_maxBounces = m_pathTraceMaxBounces;
+		params.m_rayBiasBase = m_pathTraceRayBiasBase;
+		params.m_rayBiasScale = m_pathTraceRayBiasScale;
+
+		if (m_pathTraceSamplesPerPixel > 0)
+		{
+			params.m_msaa = m_pathTraceSamplesPerPixel <= 32 ? std::min(4u, m_pathTraceSamplesPerPixel) : 8u;
+			params.m_numSamples = std::max(1u, (uint32_t)std::lround(m_pathTraceSamplesPerPixel / (float)params.m_msaa));
+		}
+
+		bRendered = false;
+		m_pathTraceLastExecutionMs = 0.0;
+
+		m_pathTraceStatus = bRendered ?
+			("Saved: " + m_pathTraceOutputPath + " (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)") :
+			("Path trace failed (added proxies: " + std::to_string(numAdded) + ", time: " + std::to_string(m_pathTraceLastExecutionMs) + " ms)");
+
+		SAILOR_LOG("Path trace %s in %.3f ms (output: %s)", bRendered ? "succeeded" : "failed", m_pathTraceLastExecutionMs, m_pathTraceOutputPath.c_str());
+	}
+
+	if (!m_pathTraceStatus.empty())
+	{
+		ImGui::Text("%s", m_pathTraceStatus.c_str());
+	}
+	ImGui::Text("Last path trace time: %.2f ms (%.2f s)", m_pathTraceLastExecutionMs, m_pathTraceLastExecutionMs * 0.001);
+	ImGui::End();
 }

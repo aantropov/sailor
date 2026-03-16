@@ -5,6 +5,11 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 #include "Sailor.h"
 #include "Submodules/Editor.h"
 #include "Core/Reflection.h"
+#include "Engine/InstanceId.h"
+#include "Containers/Vector.h"
+#include "Containers/Set.h"
+#include "Containers/Map.h"
+#include "Containers/List.h"
 
 extern "C"
 {
@@ -136,10 +141,61 @@ extern "C"
 		return editor->UpdateObject(instanceId, strYamlNode);
 	}
 
+	SAILOR_API bool RenderPathTracedImage(char* strOutputPath, char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
+	{
+		SAILOR_PROFILE_FUNCTION();
+
+		if (!strOutputPath || strOutputPath[0] == '\0')
+		{
+			return false;
+		}
+
+		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
+		if (!editor)
+		{
+			return false;
+		}
+
+		Sailor::InstanceId instanceId{};
+		if (strInstanceId && strInstanceId[0] != '\0')
+		{
+			YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+			instanceId.Deserialize(instanceIdYaml);
+		}
+
+		const std::string outputPath = strOutputPath;
+		const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
+		editor->PushMessage(bSuccess ?
+			("Path tracer export succeeded: " + outputPath) :
+			("Path tracer export failed: " + outputPath));
+
+		return bSuccess;
+	}
+
 	SAILOR_API void ShowMainWindow(bool bShow)
 	{
 		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
 		editor->ShowMainWindow(bShow);
+	}
+
+	SAILOR_API void RunVectorBenchmark()
+	{
+		Sailor::RunVectorBenchmark();
+	}
+
+	SAILOR_API void RunSetBenchmark()
+	{
+		Sailor::RunSetBenchmark();
+	}
+
+	SAILOR_API void RunMapBenchmark()
+	{
+		Sailor::RunMapBenchmark();
+	}
+
+	SAILOR_API void RunListBenchmark()
+	{
+		Sailor::RunListBenchmark();
 	}
 }
 

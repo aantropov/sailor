@@ -420,12 +420,22 @@ RHI::RHIBufferPtr VulkanGraphicsDriver::CreateBuffer_Immediate(const void* pData
 
 void VulkanGraphicsDriver::CopyBufferToImage(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr src, RHI::RHITexturePtr dst)
 {
-	cmd->m_vulkan.m_commandBuffer->CopyBufferToImage(*src->m_vulkan.m_buffer, dst->m_vulkan.m_image, dst->GetExtent().x, dst->GetExtent().y, 1, 0u);
+	cmd->m_vulkan.m_commandBuffer->CopyBufferToImage(*src->m_vulkan.m_buffer, dst->m_vulkan.m_image,
+		dst->GetExtent().x, dst->GetExtent().y, 1, 0u);
 }
 
 void VulkanGraphicsDriver::CopyImageToBuffer(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHIBufferPtr dst)
 {
-	cmd->m_vulkan.m_commandBuffer->CopyImageToBuffer(*dst->m_vulkan.m_buffer, src->m_vulkan.m_image, src->GetExtent().x, src->GetExtent().y, 1, 0u);
+	uint32_t mipLevel = 0u;
+	uint32_t baseArrayLayer = 0u;
+	if (src->m_vulkan.m_imageView)
+	{
+		mipLevel = src->m_vulkan.m_imageView->m_subresourceRange.baseMipLevel;
+		baseArrayLayer = src->m_vulkan.m_imageView->m_subresourceRange.baseArrayLayer;
+	}
+
+	cmd->m_vulkan.m_commandBuffer->CopyImageToBuffer(*dst->m_vulkan.m_buffer, src->m_vulkan.m_image,
+		src->GetExtent().x, src->GetExtent().y, 1, mipLevel, baseArrayLayer, 0u);
 }
 
 void VulkanGraphicsDriver::CopyBuffer_Immediate(RHI::RHIBufferPtr src, RHI::RHIBufferPtr dst, size_t size)
@@ -655,20 +665,39 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 		arrayLayers = 6;
 	}
 
-	outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(cmdList->m_vulkan.m_commandBuffer,
-		m_vkInstance->GetMainDevice(),
-		pData,
-		size,
-		vkExtent,
-		mipLevels,
-		(VkImageType)type,
-		(VkFormat)format,
-		VK_IMAGE_TILING_OPTIMAL,
-		(uint32_t)usage,
-		VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		(VkImageLayout)layout,
-		flags,
-		arrayLayers);
+	if (pData && size > 0)
+	{
+		outTexture->m_vulkan.m_image = m_vkInstance->CreateImageUpload(cmdList->m_vulkan.m_commandBuffer,
+			m_vkInstance->GetMainDevice(),
+			pData,
+			size,
+			vkExtent,
+			mipLevels,
+			(VkImageType)type,
+			(VkFormat)format,
+			VK_IMAGE_TILING_OPTIMAL,
+			(uint32_t)usage,
+			VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+			(VkImageLayout)layout,
+			flags,
+			arrayLayers);
+	}
+	else
+	{
+		outTexture->m_vulkan.m_image = m_vkInstance->CreateImage(
+			m_vkInstance->GetMainDevice(),
+			vkExtent,
+			mipLevels,
+			(VkImageType)type,
+			(VkFormat)format,
+			VK_IMAGE_TILING_OPTIMAL,
+			(uint32_t)usage,
+			VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
+			VK_SAMPLE_COUNT_1_BIT,
+			(VkImageLayout)layout,
+			flags,
+			arrayLayers);
+	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 
@@ -1828,7 +1857,7 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	VkImage vkHandle = *image->m_vulkan.m_image;
 	if (!imageBarriers.ContainsKey(vkHandle))
 	{
-		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
+		imageBarriers[vkHandle] = TPair(image, (RHI::EImageLayout)image->m_vulkan.m_image->m_initialLayout);
 	}
 
 	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();

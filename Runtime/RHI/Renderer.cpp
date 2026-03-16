@@ -20,6 +20,7 @@
 #include "ECS/CameraECS.h"
 #include "ECS/LightingECS.h"
 #include "ECS/AnimationECS.h"
+#include "ECS/PathTracerECS.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -292,6 +293,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		rhiSceneView->m_world = world;
 		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+		if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
+		{
+			pathTracerEcs->CopySceneView(rhiSceneView);
+		}
 		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);

@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Engine/Types.h"
 #include <glm/glm.hpp>
 
 using namespace Sailor;
@@ -11,6 +12,28 @@ namespace Sailor::Raytracing
 	{
 		vec3 m_direction{ 0.0f, -1.0f, 0.0f };
 		vec3 m_intensity{ 1.0f,1.0f,1.0f };
+	};
+
+	struct LightProxy
+	{
+		ELightType m_type = ELightType::Point;
+		vec3 m_worldPosition{ 0.0f, 0.0f, 0.0f };
+		vec3 m_direction{ 0.0f, -1.0f, 0.0f };
+		vec3 m_intensity{ 1.0f, 1.0f, 1.0f };
+		vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
+		vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
+		vec2 m_cutOff{ 0.0f, 0.0f };
+
+		bool operator==(const LightProxy& rhs) const
+		{
+			return m_type == rhs.m_type &&
+				m_worldPosition == rhs.m_worldPosition &&
+				m_direction == rhs.m_direction &&
+				m_intensity == rhs.m_intensity &&
+				m_attenuation == rhs.m_attenuation &&
+				m_bounds == rhs.m_bounds &&
+				m_cutOff == rhs.m_cutOff;
+		}
 	};
 
 	class LightingModel

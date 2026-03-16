@@ -16,6 +16,8 @@ YAML::Node ModelAssetInfo::Serialize() const
 
 	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
 	SERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
+	SERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
+	SERIALIZE_PROPERTY(outData, m_bGenerateBLAS);
 	SERIALIZE_PROPERTY(outData, m_unitScale);
 	SERIALIZE_PROPERTY(outData, m_materials);
 	SERIALIZE_PROPERTY(outData, m_animations);
@@ -29,6 +31,8 @@ void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 
 	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
 	DESERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
+	DESERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
+	DESERIALIZE_PROPERTY(outData, m_bGenerateBLAS);
 	DESERIALIZE_PROPERTY(outData, m_unitScale);
 	DESERIALIZE_PROPERTY(outData, m_materials);
 	DESERIALIZE_PROPERTY(outData, m_animations);

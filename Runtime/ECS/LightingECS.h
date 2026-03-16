@@ -9,6 +9,7 @@
 #include "Components/Component.h"
 #include "Memory/Memory.h"
 #include "RHI/SceneView.h"
+#include "Raytracing/LightingModel.h"
 
 namespace Sailor
 {
@@ -85,6 +86,7 @@ namespace Sailor
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
+		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }

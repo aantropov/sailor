@@ -42,6 +42,7 @@
 # CMake folders
 Build/
 Built/
+build*/
 
 # Sailor Debug/Release folders
 Cache/

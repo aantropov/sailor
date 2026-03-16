@@ -166,7 +166,8 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			shaderData.m_attenuation = lightData.m_attenuation;
 			shaderData.m_bounds = lightData.m_bounds;
 			shaderData.m_intensity = lightData.m_intensity;
-			shaderData.m_direction = ownerTransform.GetForwardVector();
+
+			shaderData.m_direction = glm::normalize(ownerTransform.GetForwardVector());
 			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
 			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
 			shaderDataBatch.Emplace(std::move(shaderData));
@@ -404,3 +405,38 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
 	sceneView->m_rhiLightsData = m_lightsData;
 }
+
+void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const
+{
+	outLights.Clear();
+	outLights.Reserve(m_components.Num());
+
+	for (const auto& light : m_components)
+	{
+		if (!light.m_bIsActive)
+		{
+			continue;
+		}
+
+		ObjectPtr owner = light.m_owner;
+		auto pOwner = owner.StaticCast<GameObject>();
+		if (!pOwner)
+		{
+			continue;
+		}
+
+		const auto& transform = pOwner->GetTransformComponent();
+
+		Raytracing::LightProxy lightProxy{};
+		lightProxy.m_type = light.m_type;
+		lightProxy.m_worldPosition = transform.GetWorldPosition();
+		lightProxy.m_direction = glm::normalize(transform.GetForwardVector());
+		lightProxy.m_intensity = light.m_intensity;
+		lightProxy.m_attenuation = light.m_attenuation;
+		lightProxy.m_bounds = light.m_bounds;
+		lightProxy.m_cutOff = vec2(glm::cos(glm::radians(light.m_cutOff.x)), glm::cos(glm::radians(light.m_cutOff.y)));
+
+		outLights.Add(lightProxy);
+	}
+}
+

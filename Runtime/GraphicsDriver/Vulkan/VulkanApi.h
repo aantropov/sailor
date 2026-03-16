@@ -192,7 +192,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanDevicePtr device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 		SAILOR_API static VulkanBufferPtr CreateBuffer(VulkanCommandBufferPtr& cmdBuffer, VulkanDevicePtr device, const void* pData, VkDeviceSize size, VkBufferUsageFlags usage, VkSharingMode sharingMode = VkSharingMode::VK_SHARING_MODE_CONCURRENT);
 
-		SAILOR_API static VulkanImagePtr CreateImage(
+		SAILOR_API static VulkanImagePtr CreateImageUpload(
 			VulkanCommandBufferPtr& cmdBuffer,
 			VulkanDevicePtr device,
 			const void* pData,

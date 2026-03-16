@@ -273,6 +273,17 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+
+############################
+- name: CPUPathTracerNode
+############################
+  float:
+  - enabled: 1
+  - samplesPerFrame: 4
+  - maxBounces: 2
+  - blend: 1
+  renderTargets:
+  - color: Main
   
 ############################
 - name: RenderScene

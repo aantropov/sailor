@@ -166,6 +166,7 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 		if (!bShouldUpdateEnvCubemap && !bShouldUpdateIrradianceCubemap)
 		{
+			frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
 			frameGraph->SetSampler("g_envCubemap", envCubemap);
 			frameGraph->SetSampler("g_irradianceCubemap", irradianceCubemap);
 
@@ -175,6 +176,8 @@ void EnvironmentNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		// Create all textures/cubemaps
+		frameGraph->SetSampler("g_rawEnvCubemap", rawEnvCubemap);
+
 		if (bShouldUpdateEnvCubemap)
 		{
 			envCubemap = RHI::Renderer::GetDriver()->CreateCubemap(ivec2(EnvMapSize, EnvMapSize),

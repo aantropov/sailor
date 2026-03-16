@@ -20,6 +20,7 @@ namespace Sailor
 	using ComponentPtr = TObjectPtr<class Component>;
 	using CameraComponentPtr = TObjectPtr<class CameraComponent>;
 	using MeshRendererComponentPtr = TObjectPtr<class MeshRendererComponent>;
+	using PathTracerProxyComponentPtr = TObjectPtr<class PathTracerProxyComponent>;
 
 	enum class EMobilityType : uint8_t
 	{

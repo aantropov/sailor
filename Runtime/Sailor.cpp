@@ -81,6 +81,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_world = Utils::GetArgValue(args, i, num);
 		}
+		else if (arg == "--pathtracer")
+		{
+			params.m_bRunPathTracer = true;
+		}
 	}
 
 	return params;
@@ -205,6 +209,25 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	assetRegistry->ScanContentFolder();
 
+	if (params.m_bRunPathTracer)
+	{
+		Raytracing::PathTracer::Params pathTracerParams{};
+		Raytracing::PathTracer::ParseCommandLineArgs(pathTracerParams, commandLineArgs, num);
+
+		if (pathTracerParams.m_pathToModel.empty())
+		{
+			SAILOR_LOG_ERROR("PathTracer mode requires --in <modelPath> and --out <imagePath>.");
+		}
+		else
+		{
+			Raytracing::PathTracer tracer;
+			tracer.Run(pathTracerParams);
+		}
+
+		s_pInstance->m_bSkipMainLoop = true;
+		return;
+	}
+
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
 	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
@@ -237,6 +260,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 void App::Start()
 {
 	if (!s_pInstance)
+	{
+		return;
+	}
+
+	if (s_pInstance->m_bSkipMainLoop)
 	{
 		return;
 	}

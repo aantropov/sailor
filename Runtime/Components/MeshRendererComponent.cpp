@@ -35,18 +35,6 @@ void MeshRendererComponent::EndPlay()
 	GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>()->UnregisterComponent(m_handle);
 }
 
-void MeshRendererComponent::LoadModel(const std::string& path)
-{
-	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(path))
-	{
-		ModelPtr model;
-
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), model);
-
-		SetModel(model);
-	}
-}
-
 void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);

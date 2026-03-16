@@ -54,6 +54,95 @@ void Model::Flush()
 	m_bIsReady = true;
 }
 
+bool Model::BuildBLAS()
+{
+	m_blas.Clear();
+	m_blasTriangles.Clear();
+
+	if (m_cpuMeshes.Num() == 0)
+	{
+		return false;
+	}
+
+	size_t expectedNumTriangles = 0;
+	for (const auto& mesh : m_cpuMeshes)
+	{
+		expectedNumTriangles += mesh.m_indices.Num() / 3;
+	}
+
+	if (expectedNumTriangles == 0)
+	{
+		return false;
+	}
+
+	m_blasTriangles.Reserve(expectedNumTriangles);
+
+	for (const auto& mesh : m_cpuMeshes)
+	{
+		for (size_t i = 0; i + 2 < mesh.m_indices.Num(); i += 3)
+		{
+			const uint32_t i0 = mesh.m_indices[i + 0];
+			const uint32_t i1 = mesh.m_indices[i + 1];
+			const uint32_t i2 = mesh.m_indices[i + 2];
+
+			const auto& v0 = mesh.m_vertices[i0];
+			const auto& v1 = mesh.m_vertices[i1];
+			const auto& v2 = mesh.m_vertices[i2];
+
+			Math::Triangle tri{};
+			tri.m_vertices[0] = v0.m_position;
+			tri.m_vertices[1] = v1.m_position;
+			tri.m_vertices[2] = v2.m_position;
+
+			tri.m_normals[0] = glm::normalize(v0.m_normal);
+			tri.m_normals[1] = glm::normalize(v1.m_normal);
+			tri.m_normals[2] = glm::normalize(v2.m_normal);
+
+			tri.m_tangent[0] = glm::normalize(v0.m_tangent);
+			tri.m_tangent[1] = glm::normalize(v1.m_tangent);
+			tri.m_tangent[2] = glm::normalize(v2.m_tangent);
+
+			tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
+			tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
+			tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
+
+			tri.m_uvs[0] = v0.m_texcoord;
+			tri.m_uvs[1] = v1.m_texcoord;
+			tri.m_uvs[2] = v2.m_texcoord;
+			tri.m_uvs2[0] = tri.m_uvs[0];
+			tri.m_uvs2[1] = tri.m_uvs[1];
+			tri.m_uvs2[2] = tri.m_uvs[2];
+
+			tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(mesh.m_materialIndex, 255)));
+			tri.m_centroid = (tri.m_vertices[0] + tri.m_vertices[1] + tri.m_vertices[2]) / 3.0f;
+
+			m_blasTriangles.Add(tri);
+		}
+	}
+
+	if (m_blasTriangles.Num() == 0)
+	{
+		return false;
+	}
+
+	m_blas = TSharedPtr<Raytracing::BVH>::Make((uint32_t)m_blasTriangles.Num());
+	m_blas->BuildBVH(m_blasTriangles);
+	return true;
+}
+
+void Model::ProceedCpuMeshes(bool bShouldGenerateBLAS, bool bShouldKeepCpuBuffers)
+{
+	if (bShouldGenerateBLAS)
+	{
+		BuildBLAS();
+	}
+
+	if (!bShouldKeepCpuBuffers)
+	{
+		m_cpuMeshes.Clear();
+	}
+}
+
 bool Model::IsReady() const
 {
 	return m_bIsReady;
@@ -106,7 +195,8 @@ FileId CreateTextureAsset(const std::string& filepath,
 	bool bShouldGenerateMips = true,
 	RHI::EFormat format = RHI::EFormat::R8G8B8A8_SRGB,
 	RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
-	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear)
+	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+	bool bShouldKeepCpuBuffers = false)
 {
 	FileId newFileId = FileId::CreateNewFileId();
 
@@ -118,6 +208,7 @@ FileId CreateTextureAsset(const std::string& filepath,
 	newTexture["clamping"] = clamping;
 	newTexture["filtration"] = filtration;
 	newTexture["format"] = format;
+	newTexture["bShouldKeepCpuBuffers"] = bShouldKeepCpuBuffers;
 
 	std::ofstream assetFile(filepath);
 	assetFile << newTexture;
@@ -221,31 +312,31 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
 			data.m_samplers.Add("baseColorSampler",
-				CreateTextureAsset(materialName + "_baseColorTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index));
+				CreateTextureAsset(materialName + "_baseColorTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.normalTexture.index != -1)
 		{
 			data.m_samplers.Add("normalSampler",
-				CreateTextureAsset(materialName + "_normalTexture.png.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
+				CreateTextureAsset(materialName + "_normalTexture.png.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.emissiveTexture.index != -1)
 		{
 			data.m_samplers.Add("emissiveSampler",
-				CreateTextureAsset(materialName + "_emissionTexture.png.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index));
+				CreateTextureAsset(materialName + "_emissionTexture.png.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
 		{
 			data.m_samplers.Add("ormSampler",
-				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index));
+				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.occlusionTexture.index != -1)
 		{
 			data.m_samplers.Add("occlusionSampler",
-				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index));
+				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		auto ccIt = material.extensions.find("KHR_materials_clearcoat");
@@ -273,7 +364,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					if (idx != -1)
 					{
 						data.m_samplers.Add("clearcoatSampler",
-							CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+							CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -287,7 +378,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					if (idx != -1)
 					{
 						data.m_samplers.Add("clearcoatRoughnessSampler",
-							CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+							CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -305,7 +396,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					if (idx != -1)
 					{
 						data.m_samplers.Add("clearcoatNormalSampler",
-							CreateTextureAsset(materialName + "_clearcoatNormalTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_UNORM));
+							CreateTextureAsset(materialName + "_clearcoatNormalTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 				data.m_uniformsFloat.Add("material.clearcoatNormalScale", (float)scale);
@@ -344,7 +435,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					if (idx != -1)
 					{
 						data.m_samplers.Add("sheenColorSampler",
-							CreateTextureAsset(materialName + "_sheenColorTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+							CreateTextureAsset(materialName + "_sheenColorTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -358,7 +449,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					if (idx != -1)
 					{
 						data.m_samplers.Add("sheenRoughnessSampler",
-							CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx));
+							CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -436,6 +527,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ModelAssetInfoPtr pAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid);
 
 	// Check promises first
 	auto& promise = m_promises.At_Lock(uid, nullptr);
@@ -444,62 +536,93 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 	// Check loaded assets
 	if (loadedModel)
 	{
-		outModel = loadedModel;
-		auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
+		const bool bNeedCpuBuffers = pAssetInfo && pAssetInfo->ShouldKeepCpuBuffers() && !loadedModel->HasCpuMeshes();
+		if (bNeedCpuBuffers && !promise)
+		{
+			loadedModel = nullptr;
+		}
+		else
+		{
+			outModel = loadedModel;
+			auto res = promise ? promise : Tasks::TaskPtr<ModelPtr>::Make(outModel);
 
-		m_loadedModels.Unlock(uid);
-		m_promises.Unlock(uid);
+			m_loadedModels.Unlock(uid);
+			m_promises.Unlock(uid);
 
-		return res;
+			return res;
+		}
 	}
 
 	// There is no promise, we need to load model
-	if (ModelAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
+	if (pAssetInfo)
 	{
-		SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+		SAILOR_PROFILE_TEXT(pAssetInfo->GetAssetFilepath().c_str());
 
-		ModelPtr model = ModelPtr::Make(m_allocator, uid);
+		ModelPtr pModel = ModelPtr::Make(m_allocator, uid);
 
 		// The way to drop qualifiers inside lambda
-		auto& boundsSphere = model->m_boundsSphere;
-		auto& boundsAabb = model->m_boundsAabb;
+		auto& boundsSphere = pModel->m_boundsSphere;
+		auto& boundsAabb = pModel->m_boundsAabb;
 
 		struct Data
 		{
 			TVector<MeshContext> m_parsedMeshes;
 			TVector<glm::mat4> m_inverseBind;
 			bool m_bIsImported = false;
+			bool m_bShouldKeepCpuBuffers = false;
+			bool m_bShouldGenerateBLAS = false;
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
-			[model, assetInfo, &boundsAabb, &boundsSphere]()
+			[pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
-				TSharedPtr<Data> res = TSharedPtr<Data>::Make();
-				res->m_bIsImported = ImportModel(assetInfo, res->m_parsedMeshes, boundsAabb, boundsSphere, res->m_inverseBind);
-				return res;
-			})->Then<ModelPtr>([model](TSharedPtr<Data> data) mutable
+				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
+				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
+				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
+				pData->m_bIsImported = ImportModel(pAssetInfo, pData->m_parsedMeshes, boundsAabb, boundsSphere, pData->m_inverseBind);
+				return pData;
+			})->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
 				{
-					if (data->m_bIsImported)
+					if (pData->m_bIsImported)
 					{
-						for (const auto& mesh : data->m_parsedMeshes)
+						pModel->m_meshes.Clear();
+						pModel->m_cpuMeshes.Clear();
+						pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
+						if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
 						{
-							RHI::RHIMeshPtr ptr = RHI::Renderer::GetDriver()->CreateMesh();
-							ptr->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
-							ptr->m_bounds = mesh.bounds;
-							RHI::Renderer::GetDriver()->UpdateMesh(ptr,
+							pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
+						}
+
+						for (auto& mesh : pData->m_parsedMeshes)
+						{
+							RHI::RHIMeshPtr pMesh = RHI::Renderer::GetDriver()->CreateMesh();
+							pMesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
+							pMesh->m_bounds = mesh.bounds;
+							RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
 								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
 								mesh.outIndices.GetData(), sizeof(uint32_t) * mesh.outIndices.Num());
 
-							model->m_meshes.Emplace(ptr);
+							pModel->m_meshes.Emplace(pMesh);
+
+							if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
+							{
+								Model::MeshCpuData cpuMesh{};
+								cpuMesh.m_vertices = std::move(mesh.outVertices);
+								cpuMesh.m_indices = std::move(mesh.outIndices);
+								cpuMesh.m_bounds = mesh.bounds;
+								cpuMesh.m_materialIndex = mesh.materialIndex;
+								pModel->m_cpuMeshes.Add(std::move(cpuMesh));
+							}
 						}
 
-						model->m_inverseBind = std::move(data->m_inverseBind);
-						model->Flush();
+						pModel->m_inverseBind = std::move(pData->m_inverseBind);
+						pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
+						pModel->Flush();
 					}
-					return model;
+					return pModel;
 				}, "Update RHI Meshes", EThreadType::RHI)->ToTaskWithResult();
 
-			outModel = loadedModel = model;
+			outModel = loadedModel = pModel;
 			promise->Run();
 
 			m_loadedModels.Unlock(uid);
@@ -731,12 +854,14 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 				pMeshContext = &batchedMeshContexts[std::max(primitive.material, 0)];
 				startIndex = (uint32_t)pMeshContext->outVertices.Num();
 				indicesStart = (uint32_t)pMeshContext->outIndices.Num();
+				pMeshContext->materialIndex = primitive.material;
 			}
 			else
 			{
 				outParsedMeshes.Add(MeshContext());
 				pMeshContext = &(*outParsedMeshes.Last());
 				indicesStart = (uint32_t)pMeshContext->outIndices.Num();
+				pMeshContext->materialIndex = primitive.material;
 			}
 
 			const tinygltf::Accessor& posAccessor = gltfModel.accessors[primitive.attributes.find("POSITION")->second];
@@ -1066,3 +1191,5 @@ void ModelImporter::CollectGarbage()
 		m_promises.Remove(uid);
 	}
 }
+
+
