@@ -116,7 +116,10 @@ Renderer::~Renderer()
 {
 	if (m_bIsInitialized && m_driverInstance)
 	{
-		Renderer::GetDriver()->WaitIdle();
+		if (auto scheduler = App::GetSubmodule<Tasks::Scheduler>())
+		{
+			Renderer::GetDriver()->WaitIdle();
+		}
 	}
 	m_driverInstance.Clear();
 }
@@ -174,21 +177,31 @@ RHI::EFormat Renderer::GetDepthFormat() const
 
 void Renderer::BeginConditionalDestroy()
 {
+	m_bForceStop = true;
+
 	if (!m_driverInstance)
 	{
 		return;
 	}
 
-	m_previousRenderFrame.Clear();
-	m_frameGraph.Clear();
-	m_cachedSceneViews.Clear();
 	if (!m_bIsInitialized)
 	{
+		m_previousRenderFrame.Clear();
+		m_frameGraph.Clear();
+		m_cachedSceneViews.Clear();
 		return;
+	}
+
+	if (m_previousRenderFrame.IsValid())
+	{
+		m_previousRenderFrame->Wait();
+		m_previousRenderFrame.Clear();
 	}
 
 	Renderer::GetDriver()->WaitIdle();
 
+	m_frameGraph.Clear();
+	m_cachedSceneViews.Clear();
 	m_driverInstance->BeginConditionalDestroy();
 }
 
@@ -322,6 +335,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
 			{
 				SAILOR_PROFILE_SCOPE("Render Frame");
+				if (m_bForceStop)
+				{
+					return;
+				}
 
 				auto frameInstance = frame;
 				static Utils::Timer timer;
@@ -426,10 +443,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					if (it != list.end())
 					{
 						(*it).m_second = true;
-					}
-					else
-					{
-						check(false);
 					}
 
 					m_cachedSceneViews.Unlock(rhiSceneView->m_world);

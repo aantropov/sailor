@@ -96,13 +96,16 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 	m_vkInstance->GetMainDevice()->Shutdown();
 
 	// Waiting finishing releasing of rendering resources
-	App::GetSubmodule<Tasks::Scheduler>()->WaitIdle(
-		{
-			EThreadType::Render,
-			EThreadType::RHI,
-			EThreadType::Main,
-			EThreadType::Worker
-		});
+	if (auto scheduler = App::GetSubmodule<Tasks::Scheduler>())
+	{
+		scheduler->WaitIdle(
+			{
+				EThreadType::Render,
+				EThreadType::RHI,
+				EThreadType::Main,
+				EThreadType::Worker
+			});
+	}
 
 	check(m_cachedDescriptorSets.Num() == 0);
 

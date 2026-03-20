@@ -89,11 +89,22 @@ namespace Sailor
 		static Platform::Window* GetMainWindowPlatform();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
+		static const std::string& GetLoadedWorldPath()
+		{
+			static const std::string empty;
+			return s_pInstance ? s_pInstance->m_args.m_world : empty;
+		}
+		static const char* GetBuildConfig();
+		static const char* GetEngineVersion() { return "unknown"; }
+		static int32_t GetExitCode();
+		static void SetExitCode(int32_t exitCode);
 
 	protected:
 
 		TUniquePtr<Win32::Window> m_pMainWindow;
 		bool m_bSkipMainLoop = false;
+		int32_t m_exitCode = 0;
+		AppArgs m_args{};
 
 	private:
 

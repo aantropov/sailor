@@ -118,6 +118,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance = new App();
+	s_pInstance->m_args = params;
 
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Initialize(false);
@@ -374,6 +375,13 @@ void App::Start()
 			frameCounter++;
 		}
 
+		pEngineLoop->ProcessPendingWorldExits();
+		if (pEngineLoop->GetWorlds().IsEmpty())
+		{
+			Stop();
+			break;
+		}
+
 		// Collect garbage
 		uint32_t index = 0;
 		while (auto submodule = GetSubmodule(index))
@@ -447,18 +455,17 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
-	}
-
-	// TODO: Redo. We have 2 frames in flight.
-	if (scheduler)
-	{
-		scheduler->WaitIdle(EThreadType::Render);
+		scheduler->ProcessTasksOnMainThread();
 	}
 
 	if (renderer)
 	{
 		renderer->BeginConditionalDestroy();
+	}
+
+	if (scheduler)
+	{
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 	}
 
 	SAILOR_LOG("Sailor Engine Releasing");
@@ -479,7 +486,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		scheduler->ProcessTasksOnMainThread();
 	}
 
 	RemoveSubmodule<FrameGraphImporter>();
@@ -493,8 +500,8 @@ void App::Shutdown()
 
 	RemoveSubmodule<AssetRegistry>();
 
-	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
+	RemoveSubmodule<Renderer>();
 
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Shutdown();
@@ -521,4 +528,28 @@ TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
 Sailor::Platform::Window* App::GetMainWindowPlatform()
 {
 	return s_pInstance ? static_cast<Sailor::Platform::Window*>(s_pInstance->m_pMainWindow.GetRawPtr()) : nullptr;
+}
+
+int32_t App::GetExitCode()
+{
+	return s_pInstance ? s_pInstance->m_exitCode : 0;
+}
+
+const char* App::GetBuildConfig()
+{
+#if defined(_DEBUG)
+	return "Debug";
+#elif defined(_SHIPPING)
+	return "Release";
+#else
+	return "Unknown";
+#endif
+}
+
+void App::SetExitCode(int32_t exitCode)
+{
+	if (s_pInstance)
+	{
+		s_pInstance->m_exitCode = (std::max)(s_pInstance->m_exitCode, exitCode);
+	}
 }

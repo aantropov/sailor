@@ -382,3 +382,9 @@ frame:
   renderTargets:
   - color: BackBuffer
   - depthStencil: DepthBuffer
+
+#############################
+- name: CopyTextureToRam
+#############################
+  renderTargets:
+  - src: Secondary

@@ -48,6 +48,39 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 	return newWorld;
 }
 
+bool EngineLoop::ExitWorld(WorldPtr world)
+{
+	if (!world)
+	{
+		return false;
+	}
+
+	if (m_pendingWorldsToExit.Contains(world))
+	{
+		return true;
+	}
+
+	m_pendingWorldsToExit.Add(world);
+	return true;
+}
+
+void EngineLoop::ProcessPendingWorldExits()
+{
+	for (auto* world : m_pendingWorldsToExit)
+	{
+		const size_t index = m_worlds.FindIf([&](const auto& it) { return it.GetRawPtr() == world; });
+		if (index == -1)
+		{
+			continue;
+		}
+
+		m_worlds[index]->Clear();
+		m_worlds.RemoveAt(index);
+	}
+
+	m_pendingWorldsToExit.Clear();
+}
+
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
