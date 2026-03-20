@@ -42,6 +42,7 @@ def main() -> int:
         'refl-cpp',
         'spirv-reflect',
         'stb',
+        'tbb',
         'tinygltf',
         'tracy',
         'yaml-cpp',
