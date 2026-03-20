@@ -22,5 +22,5 @@ jobs:
       - name: Install MAUI workload
         run: dotnet workload install maui
 
-      - name: Build Editor
-        run: dotnet build Editor/SailorEditor.csproj -c Release
+      - name: Build Editor (Windows)
+        run: dotnet build Editor/SailorEditor.csproj -c Release -f net9.0-windows10.0.19041.0
