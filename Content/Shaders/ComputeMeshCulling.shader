@@ -124,14 +124,15 @@ glslCompute: |
    
     // Step 2: Perform culling (split instances by threads)
     uint globalIndex = gl_GlobalInvocationID.x;
-    uint threadCount = GPU_CULLING_GROUP_SIZE;
+    uint threadCount = gl_NumWorkGroups.x * GPU_CULLING_GROUP_SIZE;
     uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
+    uint instanceEnd = PushConstants.firstInstanceIndex + PushConstants.numInstances;
         
     for (uint i = 0; i < instancePerThread; i++)
     {
         uint instanceId = PushConstants.firstInstanceIndex + i + globalIndex * instancePerThread;
         
-        if(instanceId >= PushConstants.numInstances)
+        if(instanceId >= instanceEnd)
         {
             break;
         }

@@ -49,3 +49,6 @@ Cache/
 Binaries/
 out/
 
+
+.DS_Store
+*.DS_Store.asset

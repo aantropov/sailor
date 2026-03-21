@@ -106,3 +106,14 @@ void LightComponent::SetLightType(ELightType value)
 		lightData.MarkDirty();
 	}
 }
+
+void LightComponent::SetShadowType(RHI::EShadowType value)
+{
+	LightData& lightData = GetData();
+
+	if (value != lightData.m_shadowType)
+	{
+		lightData.m_shadowType = value;
+		lightData.MarkDirty();
+	}
+}

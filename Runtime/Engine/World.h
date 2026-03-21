@@ -74,6 +74,7 @@ namespace Sailor
 	protected:
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
+		void DestroyGameObjectHierarchy(GameObjectPtr root);
 
 		float m_time{};
 		float m_smoothDeltaTime = 0.016f;

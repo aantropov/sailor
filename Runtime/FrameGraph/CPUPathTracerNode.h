@@ -18,6 +18,7 @@ namespace Sailor::Framegraph
 			const RHI::RHISceneViewSnapshot& sceneView) override;
 
 		SAILOR_API virtual void Clear() override;
+		SAILOR_API bool GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const;
 
 	protected:
 		struct CubemapReadbackState

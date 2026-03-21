@@ -13,6 +13,7 @@
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
+#include "RHI/Renderer.h"
 
 #include <thread>
 #include <chrono>
@@ -66,12 +67,20 @@ bool EngineLoop::ExitWorld(WorldPtr world)
 
 void EngineLoop::ProcessPendingWorldExits()
 {
+	auto renderer = App::GetSubmodule<RHI::Renderer>();
+
 	for (auto* world : m_pendingWorldsToExit)
 	{
 		const size_t index = m_worlds.FindIf([&](const auto& it) { return it.GetRawPtr() == world; });
 		if (index == -1)
 		{
 			continue;
+		}
+
+		if (renderer && renderer->IsInitialized())
+		{
+			renderer->GetDriver()->WaitIdle();
+			renderer->RemoveSceneView(world);
 		}
 
 		m_worlds[index]->Clear();

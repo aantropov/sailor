@@ -45,3 +45,28 @@ void MeshRendererComponent::SetModel(const ModelPtr& model)
 		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(model->GetFileId(), GetMaterials());
 	}
 }
+
+bool MeshRendererComponent::LoadModel(const std::string& path)
+{
+	auto assetRegistry = App::GetSubmodule<AssetRegistry>();
+	auto modelImporter = App::GetSubmodule<ModelImporter>();
+	if (!assetRegistry || !modelImporter)
+	{
+		return false;
+	}
+
+	const FileId modelId = assetRegistry->GetOrLoadFile(path);
+	if (!modelId)
+	{
+		return false;
+	}
+
+	ModelPtr model;
+	if (!modelImporter->LoadModel_Immediate(modelId, model) || !model)
+	{
+		return false;
+	}
+
+	SetModel(model);
+	return true;
+}

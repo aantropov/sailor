@@ -153,6 +153,10 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	// Keep this enabled so Y conversion is handled consistently in shader conversion.
 	setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "1", 1);
 	SAILOR_LOG("MoltenVK config: MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y=1");
+
+	// Prefer Metal argument buffers on macOS for descriptor-heavy paths.
+	setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
+	SAILOR_LOG("MoltenVK config: MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1");
 #endif
 
 	uint32_t availableExtensionCount = 0;

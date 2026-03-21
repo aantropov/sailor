@@ -32,12 +32,15 @@ namespace Sailor
 		SAILOR_API void Finish(bool bPassed, const std::string& message = "");
 		SAILOR_API void MarkPassed();
 		SAILOR_API void MarkFailed(const std::string& message);
+		SAILOR_API void AddJournalEvent(const char* eventName, const std::string& message, int64_t durationMs = 0) const;
 
 		SAILOR_API bool IsFinished() const { return m_bFinished; }
 		SAILOR_API const std::string& GetTestRunId() const { return m_testRunId; }
+		SAILOR_API int64_t GetStartTimeMs() const { return m_startTimeMs; }
 
 		SAILOR_API static std::string GetTestsCacheFolder();
 		SAILOR_API static bool CaptureScreenshot(const std::string& outputFilename, std::string& outError);
+		SAILOR_API static bool SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, const std::string& outputFilename, std::string& outError);
 
 	private:
 

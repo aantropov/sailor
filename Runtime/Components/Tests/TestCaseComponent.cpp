@@ -217,6 +217,40 @@ bool TestCaseComponent::CaptureScreenshot(const std::string& outputFilename, std
 	return true;
 }
 
+bool TestCaseComponent::SaveImageToPng(const TVector<glm::u8vec4>& data, glm::uvec2 extent, const std::string& outputFilename, std::string& outError)
+{
+	if (extent.x == 0 || extent.y == 0)
+	{
+		outError = "Image extent is invalid.";
+		return false;
+	}
+
+	if (data.Num() < (size_t)extent.x * (size_t)extent.y)
+	{
+		outError = "Image data is incomplete.";
+		return false;
+	}
+
+	std::error_code ec;
+	const std::filesystem::path outputPath = std::filesystem::path(GetTestsCacheFolder()) / EnsurePngExtension(outputFilename);
+	std::filesystem::create_directories(outputPath.parent_path(), ec);
+
+	constexpr uint32_t Channels = 4;
+	if (!stbi_write_png(outputPath.string().c_str(), (int)extent.x, (int)extent.y, Channels, data.GetData(), (int)extent.x * (int)Channels))
+	{
+		outError = "Cannot write image to " + outputPath.string();
+		return false;
+	}
+
+	outError.clear();
+	return true;
+}
+
+void TestCaseComponent::AddJournalEvent(const char* eventName, const std::string& message, int64_t durationMs) const
+{
+	AppendJournalEvent(eventName, message, durationMs);
+}
+
 void TestCaseComponent::AppendJournalEvent(const char* eventName, const std::string& message, int64_t durationMs) const
 {
 	std::error_code ec;

@@ -511,6 +511,25 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->EndDebugRegion(commandList);
 }
 
+bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const
+{
+	const auto& image = m_pathTracer.GetLastRenderedImage();
+	const glm::uvec2 extent = m_pathTracer.GetLastRenderedExtent();
+	if (extent.x == 0 || extent.y == 0 || image.Num() == 0)
+	{
+		return false;
+	}
+
+	if (image.Num() < (size_t)extent.x * (size_t)extent.y)
+	{
+		return false;
+	}
+
+	outExtent = extent;
+	outImage = image;
+	return true;
+}
+
 void CPUPathTracerNode::Clear()
 {
 	m_extent = glm::uvec2(0u, 0u);

@@ -1,0 +1,103 @@
+name: EmptyWorldStartupShutdown
+prefabs:
+  - gameObjects:
+      - name: EmptyWorldStartupShutdown
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: D90C929A09C1F02781C7
+        components:
+          - 0
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: EmptyWorldStartupShutdown
+          screenshotName: EmptyWorldStartupShutdown
+          captureAfterFrames: 16
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 71FF0747009317C8_D90C929A09C1F02781C7
+  - gameObjects:
+      - name: Camera
+        position:
+          - 0
+          - 130
+          - 420
+          - 1
+        rotation:
+          - 0.0697564706
+          - 0
+          - 0
+          - 0.997564077
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 1C686F709829826082C8
+        components:
+          - 0
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 1
+          zFar: 20000
+          fileId: NullFileId
+          instanceId: 93F034F9784C5265_1C686F709829826082C8
+  - gameObjects:
+      - name: Sun
+        position:
+          - 0
+          - 300
+          - 200
+          - 1
+        rotation:
+          - 0.183012709
+          - 0.683012724
+          - 0.183012709
+          - 0.683012724
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 210B5A989F3E1BF694FC
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 5
+            - 5
+            - 5
+          attenuation:
+            - 1
+            - 0.0219999999
+            - 0.00190000003
+          lightType: Directional
+          bounds:
+            - 100
+            - 100
+            - 100
+          cutOff:
+            - 30
+            - 45
+          fileId: NullFileId
+          instanceId: 21EDB035AC31897E_210B5A989F3E1BF694FC

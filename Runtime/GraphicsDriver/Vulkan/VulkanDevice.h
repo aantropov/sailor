@@ -78,6 +78,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void FixLostDevice(Platform::Window* pViewport);
 
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
+		SAILOR_API bool IsDescriptorUpdateAfterBindSupported() const { return m_bSupportsDescriptorUpdateAfterBind; }
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
@@ -163,6 +164,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkSampleCountFlagBits m_maxAllowedMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		bool m_bSupportsMultiDrawIndirect = false;
+		bool m_bSupportsDescriptorUpdateAfterBind = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 

@@ -118,7 +118,7 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	// Extremely large descriptor arrays (MaxTexturesInScene) can exceed runtime Vulkan limits on macOS/MoltenVK
 	// and crash during vkUpdateDescriptorSets. Start with a conservative bindless table size.
-	constexpr size_t kMaxInitialTextureSamplers = 1024;
+	constexpr size_t kMaxInitialTextureSamplers = 256;
 	const size_t initialTextureSamplers = std::min(MaxTexturesInScene, kMaxInitialTextureSamplers);
 
 	TVector<RHI::RHITexturePtr> defaultTextures(initialTextureSamplers);

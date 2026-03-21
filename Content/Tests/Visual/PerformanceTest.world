@@ -1,0 +1,48 @@
+name: PerformanceTest
+prefabs:
+  - gameObjects:
+      - name: PerformanceRunner
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 9FD54079743D95319186
+        components:
+          - 0
+          - 1
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: PerformanceTest
+          screenshotName: PerformanceTest.png
+          captureAfterFrames: 96
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 7B67CF9BFFDF80C333D8CF4D0B5BEB52_9FD54079743D95319186
+      - typename: Sailor::PerformanceTestSetupComponent
+        overrideProperties:
+          gridSize: 3
+          spawnPointLights: true
+          directionalLightIntensity: 4
+          baseColor:
+            - 0.5
+            - 0.5
+            - 0.5
+          colorVariance:
+            - 0
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: 4A67E063B315A44100E1A2FF5E091BF8_9FD54079743D95319186

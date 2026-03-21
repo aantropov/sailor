@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "Containers/Set.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
 
@@ -109,31 +110,18 @@ void World::Tick(FrameState& frameState)
 	for (auto& el : m_pendingDestroyObjects)
 	{
 		if (!el)
+		{
 			continue;
+		}
 
 		check(el->m_bPendingDestroy);
 
-		TVector<GameObjectPtr> destroyingObjects;
-		destroyingObjects.Reserve(el->GetChildren().Num() + 1);
-
-		destroyingObjects.Add(el);
-		while (destroyingObjects.Num() > 0)
+		if (!m_objectsMap.ContainsKey(el->m_instanceId))
 		{
-			auto go = destroyingObjects[0];
-			destroyingObjects.RemoveAt(0);
-
-			ComponentsToResolveDependencies.RemoveAll([&](const auto& el) { return el.m_first->m_instanceId.GameObjectId() == go->GetInstanceId(); });
-
-			go->RemoveAllComponents();
-
-			go->EndPlay();
-			destroyingObjects.AddRange(go->GetChildren());
-
-			m_objectsMap.Remove(go->m_instanceId);
-			m_objects.RemoveFirst(go);
-
-			go.DestroyObject(m_allocator);
+			continue;
 		}
+
+		DestroyGameObjectHierarchy(el);
 	}
 
 	m_pendingDestroyObjects.Clear();
@@ -183,12 +171,21 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 		gameObjects.Add(gameObject);
 	}
 
-	for (auto& go : gameObjects)
+	for (uint32_t goIndex = 0; goIndex < gameObjects.Num(); goIndex++)
 	{
-		for (uint32_t i = 0; i < go->m_components.Num(); i++)
+		auto& go = gameObjects[goIndex];
+		check(goIndex < prefab->m_gameObjects.Num());
+		const auto& prefabGo = prefab->m_gameObjects[goIndex];
+
+		for (uint32_t componentOrder = 0; componentOrder < go->m_components.Num(); componentOrder++)
 		{
-			auto& newComp = go->m_components[i];
-			const ReflectedData& reflection = prefab->m_components[i];
+			check(componentOrder < prefabGo.m_components.Num());
+
+			auto& newComp = go->m_components[componentOrder];
+			const uint32_t componentIndex = prefabGo.m_components[componentOrder];
+			check(componentIndex < prefab->m_components.Num());
+
+			const ReflectedData& reflection = prefab->m_components[componentIndex];
 
 			// Resolve internal dependencies first
 			bool bResolved = newComp->ResolveRefs(reflection, internalDependencies, false);
@@ -243,6 +240,50 @@ void World::ResolveExternalDependencies()
 	}
 }
 
+void World::DestroyGameObjectHierarchy(GameObjectPtr root)
+{
+	if (!root)
+	{
+		return;
+	}
+
+	TVector<GameObjectPtr> destroyingObjects;
+	destroyingObjects.Reserve(root->GetChildren().Num() + 1);
+	destroyingObjects.Add(root);
+
+	while (!destroyingObjects.IsEmpty())
+	{
+		auto go = destroyingObjects[destroyingObjects.Num() - 1];
+		destroyingObjects.RemoveLast();
+
+		if (!go || !m_objectsMap.ContainsKey(go->m_instanceId))
+		{
+			continue;
+		}
+
+		for (size_t idx = 0; idx < ComponentsToResolveDependencies.Num();)
+		{
+			const auto& el = ComponentsToResolveDependencies[idx];
+			if (el.m_first->m_instanceId.GameObjectId() == go->m_instanceId)
+			{
+				ComponentsToResolveDependencies.RemoveAt(idx);
+				continue;
+			}
+
+			idx++;
+		}
+
+		destroyingObjects.AddRange(go->GetChildren());
+
+		go->RemoveAllComponents();
+		go->EndPlay();
+
+		m_objectsMap.Remove(go->m_instanceId);
+		m_objects.RemoveFirst(go);
+		go.DestroyObject(m_allocator);
+	}
+}
+
 GameObjectPtr World::NewGameObject(const std::string& name, const InstanceId& instanceId)
 {
 	auto newObject = GameObjectPtr::Make(m_allocator, this, name);
@@ -289,28 +330,15 @@ void World::Clear()
 {
 	ComponentsToResolveDependencies.Clear();
 
-	for (auto& el : m_objects)
+	TVector<GameObjectPtr> objectsToDestroy = m_objects;
+	for (auto& go : objectsToDestroy)
 	{
-		if (!el)
-			continue;
-
-		TVector<GameObjectPtr> destroyingObjects;
-		destroyingObjects.Reserve(el->GetChildren().Num() + 1);
-
-		destroyingObjects.Add(el);
-		while (destroyingObjects.Num() > 0)
+		if (!go || !m_objectsMap.ContainsKey(go->m_instanceId))
 		{
-			auto go = destroyingObjects[0];
-			destroyingObjects.RemoveAtSwap(0);
-
-			go->RemoveAllComponents();
-
-			go->EndPlay();
-			destroyingObjects.AddRange(go->GetChildren());
-
-			m_objectsMap.Remove(go->m_instanceId);
-			go.DestroyObject(m_allocator);
+			continue;
 		}
+
+		DestroyGameObjectHierarchy(go);
 	}
 
 	m_objects.Clear();

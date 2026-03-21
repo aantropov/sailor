@@ -48,31 +48,31 @@ void VulkanDescriptorSetLayout::Compile()
 	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.Num();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.GetData();
 
-#if !defined(__APPLE__)
-	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-
-	const VkDescriptorBindingFlags flag =
-		//VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
-		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-		VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-		VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-
-	TVector<VkDescriptorBindingFlags> flags(layoutInfo.bindingCount);
-
-	for (auto& f : flags)
+	if (m_device->IsDescriptorUpdateAfterBindSupported())
 	{
-		f = flag;
+		layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+
+		const VkDescriptorBindingFlags flag =
+			VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+			VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+
+		TVector<VkDescriptorBindingFlags> flags(layoutInfo.bindingCount);
+		for (auto& f : flags)
+		{
+			f = flag;
+		}
+
+		VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
+		bindingFlags.bindingCount = layoutInfo.bindingCount;
+		bindingFlags.pBindingFlags = flags.GetData();
+		layoutInfo.pNext = &bindingFlags;
 	}
-
-	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
-	bindingFlags.bindingCount = layoutInfo.bindingCount;
-	bindingFlags.pBindingFlags = flags.GetData();
-
-	layoutInfo.pNext = &bindingFlags;
-#else
-	layoutInfo.flags = 0;
-	layoutInfo.pNext = nullptr;
-#endif
+	else
+	{
+		layoutInfo.flags = 0;
+		layoutInfo.pNext = nullptr;
+	}
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
 }
@@ -96,9 +96,10 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t max
 	poolInfo.pPoolSizes = descriptorPoolSizes.GetData();
 	poolInfo.maxSets = maxSets;
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-#if !defined(__APPLE__)
-	poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-#endif
+	if (m_device->IsDescriptorUpdateAfterBindSupported())
+	{
+		poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+	}
 	poolInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &m_descriptorPool));
@@ -117,7 +118,7 @@ VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 	VulkanDescriptorSetLayoutPtr descriptorSetLayout,
 	TVector<VulkanDescriptorPtr> descriptors) :
 	m_descriptors(std::move(descriptors)),
-	m_device(pDevice),	
+	m_device(pDevice),
 	m_descriptorPool(pool),
 	m_descriptorSetLayout(descriptorSetLayout)
 {
@@ -249,7 +250,7 @@ void VulkanDescriptorSet::Compile()
 		}
 		else
 		{
-			SAILOR_LOG("Skip invalid Vulkan descriptor write: type=%u, binding=%u, arrayElement=%u", (uint32_t)write.descriptorType, write.dstBinding, write.dstArrayElement);
+			SAILOR_LOG_ERROR("Invalid Vulkan descriptor write: type=%u, binding=%u, count=%u, arrayElement=%u, pImageInfo=%p, pBufferInfo=%p, pTexelBufferView=%p", (uint32_t)write.descriptorType, write.dstBinding, write.descriptorCount, write.dstArrayElement, write.pImageInfo, write.pBufferInfo, write.pTexelBufferView);
 		}
 	}
 

@@ -23,6 +23,7 @@ namespace Sailor
 
 		SAILOR_API const ModelPtr& GetModel() const { return GetData().GetModel(); }
 		SAILOR_API void SetModel(const ModelPtr& model);
+		SAILOR_API bool LoadModel(const std::string& path);
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
