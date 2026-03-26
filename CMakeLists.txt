@@ -24,6 +24,10 @@ endif()
 
 set(BUILD_SHARED_LIBS OFF)
 
+if (MSVC)
+  add_compile_options(/Zc:preprocessor)
+endif()
+
 message("cxx Flags:" ${CMAKE_CXX_FLAGS})
 
 add_subdirectory(Exec)
