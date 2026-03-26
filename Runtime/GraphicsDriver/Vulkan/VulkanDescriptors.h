@@ -12,7 +12,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 	class VulkanDescriptorSetLayout : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
 	public:
-		SAILOR_API VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings);
+		SAILOR_API VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings, int32_t variableDescriptorBinding = -1);
 
 		VulkanDescriptorSetLayout() = delete;
 
@@ -34,6 +34,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		VulkanDevicePtr m_device{};
 		VkDescriptorSetLayout m_descriptorSetLayout{};
+		int32_t m_variableDescriptorBinding = -1;
 	};
 
 	class VulkanDescriptorPool : public RHI::RHIResource
@@ -135,7 +136,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanDescriptorSet(VulkanDevicePtr pDevice,
 			VulkanDescriptorPoolPtr pool,
 			VulkanDescriptorSetLayoutPtr descriptorSetLayout,
-			TVector<VulkanDescriptorPtr> descriptors);
+			TVector<VulkanDescriptorPtr> descriptors,
+			uint32_t variableDescriptorCount = 0);
 
 		/// VkDescriptorSetAllocateInfo settings
 		VulkanDescriptorSetLayoutPtr m_setLayout;
@@ -163,6 +165,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanDescriptorSetLayoutPtr m_descriptorSetLayout{};
 
 		size_t m_compatibilityHashCode = 0;
+		uint32_t m_variableDescriptorCount = 0;
 
 		DWORD m_currentThreadId = 0;
 	};

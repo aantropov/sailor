@@ -62,10 +62,19 @@ void LightingECS::BeginPlay()
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}
 
-	TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
-	for (uint32_t i = 0; i < MaxShadowsInView; i++)
+	TVector<RHI::RHITexturePtr> shadowMaps;
+	shadowMaps.Reserve(std::max<uint32_t>(1u, static_cast<uint32_t>(m_csmShadowMaps.Num())));
+
+	if (m_csmShadowMaps.Num() == 0)
 	{
-		shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+		shadowMaps.Add(m_defaultShadowMap);
+	}
+	else
+	{
+		for (uint32_t i = 0; i < m_csmShadowMaps.Num(); i++)
+		{
+			shadowMaps.Add(m_csmShadowMaps[i]);
+		}
 	}
 
 	m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_lightsData, "shadowMaps", shadowMaps, 8);

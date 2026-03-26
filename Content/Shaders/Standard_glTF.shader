@@ -13,6 +13,7 @@ defines:
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
+  #extension GL_EXT_nonuniform_qualifier : require
 
 glslVertex: |
   layout(location=DefaultPositionBinding) in vec3 inPosition;
@@ -137,7 +138,7 @@ glslVertex: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
   layout(set=1, binding=9) uniform sampler2D g_aoSampler;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
@@ -150,7 +151,7 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
 
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
@@ -298,7 +299,7 @@ glslFragment: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
   layout(set=1, binding=9) uniform sampler2D g_aoSampler;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
@@ -316,7 +317,7 @@ glslFragment: |
   //layout(set=3, binding=3) uniform sampler2D normalSampler;
   //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
@@ -540,13 +541,13 @@ glslFragment: |
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
     {
-      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[material.baseColorSampler], vin.texcoord);
+      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[nonuniformEXT(material.baseColorSampler)], vin.texcoord);
     }
     material.baseColorFactor *= vin.color;
 
     if(material.ormSampler != 0)
     {
-      vec4 orm = texture(textureSamplers[material.ormSampler], vin.texcoord);
+      vec4 orm = texture(textureSamplers[nonuniformEXT(material.ormSampler)], vin.texcoord);
       material.metallicFactor = material.metallicFactor * orm.b;
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
@@ -554,7 +555,7 @@ glslFragment: |
     float occlusion = texture(g_aoSampler, viewportUv).r;
     if(material.occlusionSampler != 0)
     {
-      float occlusionTex = texture(textureSamplers[material.occlusionSampler], vin.texcoord).r;
+      float occlusionTex = texture(textureSamplers[nonuniformEXT(material.occlusionSampler)], vin.texcoord).r;
       float mixed = mix(1.0, occlusionTex, material.occlusionStrength);
       occlusion = min(occlusion, mixed);
     }
@@ -562,34 +563,34 @@ glslFragment: |
 
     if(material.emissiveSampler != 0)
     {
-      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[material.emissiveSampler], vin.texcoord);
+      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[nonuniformEXT(material.emissiveSampler)], vin.texcoord);
     }
 
   #ifdef CLEAR_COAT
     if(material.clearcoatSampler != 0)
     {
-      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[material.clearcoatSampler], vin.texcoord).r;
+      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatSampler)], vin.texcoord).r;
     }
     if(material.clearcoatRoughnessSampler != 0)
     {
-      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[material.clearcoatRoughnessSampler], vin.texcoord).g;
+      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatRoughnessSampler)], vin.texcoord).g;
     }
   #endif
   #ifdef SHEEN
     if(material.sheenColorSampler != 0)
     {
-      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[material.sheenColorSampler], vin.texcoord).rgb;
+      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[nonuniformEXT(material.sheenColorSampler)], vin.texcoord).rgb;
     }
     if(material.sheenRoughnessSampler != 0)
     {
-      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[material.sheenRoughnessSampler], vin.texcoord).g;
+      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.sheenRoughnessSampler)], vin.texcoord).g;
     }
   #endif
 
     vec3 normal;
     if(material.normalSampler != 0)
     {
-      normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0) * material.normalScale;
+      normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0) * material.normalScale;
       normal = normalize(vin.tangentBasis * normal);
     }
     else
@@ -601,7 +602,7 @@ glslFragment: |
     vec3 clearcoatNormal = normal;
     if(material.clearcoatNormalSampler != 0)
     {
-      clearcoatNormal = normalize(2.0 * texture(textureSamplers[material.clearcoatNormalSampler], vin.texcoord).rgb - 1.0) * material.clearcoatNormalScale;
+      clearcoatNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.clearcoatNormalSampler)], vin.texcoord).rgb - 1.0) * material.clearcoatNormalScale;
       clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));

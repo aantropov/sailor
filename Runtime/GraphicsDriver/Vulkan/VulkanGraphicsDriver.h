@@ -23,8 +23,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-			SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
-			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
+        SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
+        SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 		SAILOR_API virtual void BeginConditionalDestroy() override;
 

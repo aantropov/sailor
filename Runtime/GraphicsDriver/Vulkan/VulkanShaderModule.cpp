@@ -1,5 +1,6 @@
 #include "VulkanShaderModule.h"
 #include "RHI/Types.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 
 #include <spirv_reflect.h>
 
@@ -109,8 +110,11 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			RHI::ShaderLayoutBinding& rhiBinding = binding[reflBinding.binding].m_first = {};
 			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding].m_second = {};
 
+			const bool bVariableDescriptorCount = reflBinding.count == 0;
+			const uint32_t descriptorCount = bVariableDescriptorCount ? 1u : reflBinding.count;
+
 			layoutBinding = VulkanApi::CreateDescriptorSetLayoutBinding(reflBinding.binding,
-				static_cast<VkDescriptorType>(reflBinding.descriptor_type), reflBinding.count);
+				static_cast<VkDescriptorType>(reflBinding.descriptor_type), descriptorCount);
 
 			/*for (uint32_t i_dim = 0; i_dim < reflBinding.array.dims_count; ++i_dim)
 			{
@@ -126,8 +130,9 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			rhiBinding.m_binding = reflBinding.binding;
 			rhiBinding.m_size = reflBinding.block.size;
 			rhiBinding.m_set = reflBinding.set;
-			rhiBinding.m_arrayCount = reflBinding.count;
+			rhiBinding.m_arrayCount = descriptorCount;
 			rhiBinding.m_paddedSize = reflBinding.block.padded_size;
+			rhiBinding.m_bVariableDescriptorCount = bVariableDescriptorCount;
 			rhiBinding.m_textureType = (RHI::ETextureType)reflBinding.image.dim;
 
 			uint32_t membersSize = 0;

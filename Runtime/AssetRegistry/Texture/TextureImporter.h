@@ -77,6 +77,7 @@ namespace Sailor
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
 		SAILOR_API size_t GetTextureIndex(FileId uid);
+		SAILOR_API size_t GetTextureSamplersCount() const { return m_textureSamplersCurrentIndex.load(); }
 
 	protected:
 

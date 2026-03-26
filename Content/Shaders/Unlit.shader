@@ -110,7 +110,7 @@ glslVertex: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
   layout(set=1, binding=9) uniform sampler2D g_aoSampler;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
@@ -123,7 +123,7 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
   void main() 
   {
@@ -243,7 +243,7 @@ glslFragment: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
   layout(set=1, binding=9) uniform sampler2D g_aoSampler;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
@@ -256,7 +256,7 @@ glslFragment: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
   MaterialData GetMaterialData()
   {

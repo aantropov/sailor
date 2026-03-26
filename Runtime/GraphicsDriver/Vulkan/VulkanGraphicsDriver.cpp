@@ -18,6 +18,7 @@
 #include "VulkanImageView.h"
 #include "VulkanImage.h"
 #include "VulkanCommandBuffer.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "VulkanPipeline.h"
 #include "VulkanPipileneStates.h"
 #include "VulkanShaderModule.h"
@@ -1026,6 +1027,8 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	auto device = m_vkInstance->GetMainDevice();
 	TVector<VulkanDescriptorPtr> descriptors;
 	TVector<VkDescriptorSetLayoutBinding> descriptionSetLayouts;
+	int32_t variableDescriptorBinding = -1;
+	uint32_t variableDescriptorCount = 0;
 
 	for (const auto& binding : bindings->GetShaderBindings())
 	{
@@ -1058,6 +1061,12 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 					index++;
 				}
 
+				if (binding.m_second->GetLayout().m_bVariableDescriptorCount)
+				{
+					variableDescriptorBinding = static_cast<int32_t>(binding.m_second->m_vulkan.m_descriptorSetLayout.binding);
+					variableDescriptorCount = std::max(variableDescriptorCount, static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num()));
+				}
+
 				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
 			}
 			else if (binding.m_second->m_vulkan.m_valueBinding)
@@ -1082,8 +1091,9 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	// VK_KHR_descriptor_update_template
 	bindings->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
 		device->GetCurrentThreadContext().m_descriptorPool,
-		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts),
-		descriptors);
+		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts, variableDescriptorBinding),
+		descriptors,
+		variableDescriptorCount);
 
 	bindings->m_vulkan.m_descriptorSet->Compile();
 
@@ -1557,9 +1567,11 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 	layout.m_name = name;
 	layout.m_type = RHI::EShaderBindingType::CombinedImageSampler;
 	layout.m_arrayCount = (uint32_t)array.Num();
+	layout.m_bVariableDescriptorCount = false;
 
 	binding->SetLayout(layout);
-	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type, layout.m_arrayCount);
+	binding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type,
+		layout.m_bVariableDescriptorCount ? glm::max(1u, layout.m_arrayCount) : layout.m_arrayCount);
 	binding->SetTextureBindings(array);
 
 	pShaderBindings->UpdateLayoutShaderBinding(layout);
@@ -1664,12 +1676,29 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			}
 		}
 
-		// Add new texture binding
-		check(dstArrayElement == 0);
+		// Add or grow texture binding array and recreate descriptor set.
+		auto textures = textureBinding->GetTextureBindings();
+		const uint32_t newSize = std::max<uint32_t>(dstArrayElement + 1, static_cast<uint32_t>(textures.Num()));
+		if (textures.Num() != newSize)
+		{
+			textures.Resize(newSize);
+			for (uint32_t i = 0; i < textures.Num(); i++)
+			{
+				if (!textures[i])
+				{
+					textures[i] = GetDefaultTexture();
+				}
+			}
+		}
+		textures[dstArrayElement] = value;
 
-		textureBinding->SetTextureBindings({ value });
-		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layoutBindings[index].m_binding, (VkDescriptorType)layoutBindings[index].m_type);
-		textureBinding->SetLayout(layoutBindings[index]);
+		auto layout = layoutBindings[index];
+		layout.m_arrayCount = static_cast<uint32_t>(textures.Num());
+		textureBinding->SetTextureBindings(textures);
+		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type,
+			layout.m_bVariableDescriptorCount ? glm::max(1u, layout.m_arrayCount) : layout.m_arrayCount);
+		textureBinding->SetLayout(layout);
+		bindings->UpdateLayoutShaderBinding(layout);
 		UpdateDescriptorSet(bindings);
 
 		return;

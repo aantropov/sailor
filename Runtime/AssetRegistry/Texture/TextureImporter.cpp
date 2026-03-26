@@ -116,16 +116,8 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersBindings = driver->CreateShaderBindings();
 
-	// Extremely large descriptor arrays (MaxTexturesInScene) can exceed runtime Vulkan limits on macOS/MoltenVK
-	// and crash during vkUpdateDescriptorSets. Start with a conservative bindless table size.
-	constexpr size_t kMaxInitialTextureSamplers = 256;
-	const size_t initialTextureSamplers = std::min(MaxTexturesInScene, kMaxInitialTextureSamplers);
-
-	TVector<RHI::RHITexturePtr> defaultTextures(initialTextureSamplers);
-	for (auto& t : defaultTextures)
-	{
-		t = driver->GetDefaultTexture();
-	}
+	TVector<RHI::RHITexturePtr> defaultTextures(1);
+	defaultTextures[0] = driver->GetDefaultTexture();
 
 	m_textureSamplersCurrentIndex = 1;
 

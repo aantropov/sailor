@@ -1368,6 +1368,11 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	if (!descriptorSet)
+	{
+		return false;
+	}
+
 	if (pipelineLayout->m_descriptionSetLayouts.Num() <= binding)
 	{
 		return false;
@@ -1400,7 +1405,8 @@ TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLay
 	SAILOR_PROFILE_FUNCTION();
 	TVector<bool> res(descriptorSets.Num());
 
-	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
+	const uint32_t numSets = (uint32_t)std::min(descriptorSets.Num(), pipelineLayout->m_descriptionSetLayouts.Num());
+	for (uint32_t i = 0; i < numSets; i++)
 	{
 		res[i] = IsCompatible(pipelineLayout, descriptorSets[i], i);
 	}
