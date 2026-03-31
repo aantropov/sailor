@@ -100,8 +100,8 @@ namespace Sailor
 	{
 	public:
 
-		virtual YAML::Node Serialize() const;
-		virtual void Deserialize(const YAML::Node& inData);
+		SAILOR_API virtual YAML::Node Serialize() const;
+		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
 
 		// instances can be obtained only through calls to Get()
 		template <typename T>

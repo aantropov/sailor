@@ -13,6 +13,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "Core/LogMacros.h"
 #include "Containers/Hash.h"
 #include <cmath>
 #include <cstring>
@@ -287,13 +288,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		state.m_bPendingGpuReadback = false;
 	};
 
-	applyCubemapReadback(m_environmentReadback, false);
-	applyCubemapReadback(m_diffuseEnvironmentReadback, true);
-	queueCubemapReadback(m_environmentReadback, frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>());
-	queueCubemapReadback(m_diffuseEnvironmentReadback, frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>());
-
 	RHI::RHIResourcePtr colorResource = GetRHIResource("color");
-
 	RHI::RHISurfacePtr dstSurface = colorResource.DynamicCast<RHISurface>();
 	RHI::RHITexturePtr dst = dstSurface ? dstSurface->GetResolved() : colorResource.DynamicCast<RHI::RHITexture>();
 	const bool bUseMsaaTarget = dstSurface && dstSurface->NeedsResolve();
@@ -303,6 +298,17 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		commands->EndDebugRegion(commandList);
 		return;
 	}
+
+	if (!sceneView.m_camera)
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
+	applyCubemapReadback(m_environmentReadback, false);
+	applyCubemapReadback(m_diffuseEnvironmentReadback, true);
+	queueCubemapReadback(m_environmentReadback, frameGraph->GetSampler("g_rawEnvCubemap").DynamicCast<RHICubemap>());
+	queueCubemapReadback(m_diffuseEnvironmentReadback, frameGraph->GetSampler("g_irradianceCubemap").DynamicCast<RHICubemap>());
 
 	const uint32_t spp = (std::max)(1u, (uint32_t)std::lround(getFloatParam("samplesPerFrame", 1.0f)));
 	const uint32_t maxBounces = (std::max)(0u, (uint32_t)std::lround(getFloatParam("maxBounces", 2.0f)));

@@ -443,10 +443,10 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 {
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
-	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	check(m_queueFamilies.IsComplete());
+	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
 	auto descriptorSizes = TVector
 	{
@@ -708,12 +708,18 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
 
+
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
 		{
 			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 			core12.samplerFilterMinmax = supportedCore12.samplerFilterMinmax;
-			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
+			core12.runtimeDescriptorArray = supportedCore12.runtimeDescriptorArray;
+			core12.shaderSampledImageArrayNonUniformIndexing = supportedCore12.shaderSampledImageArrayNonUniformIndexing;
+			core12.shaderStorageBufferArrayNonUniformIndexing = supportedCore12.shaderStorageBufferArrayNonUniformIndexing;
+			core12.shaderStorageImageArrayNonUniformIndexing = supportedCore12.shaderStorageImageArrayNonUniformIndexing;
+			core12.shaderUniformBufferArrayNonUniformIndexing = supportedCore12.shaderUniformBufferArrayNonUniformIndexing;
 			core12.descriptorBindingSampledImageUpdateAfterBind = supportedCore12.descriptorBindingSampledImageUpdateAfterBind;
+			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
 			core12.descriptorBindingStorageBufferUpdateAfterBind = supportedCore12.descriptorBindingStorageBufferUpdateAfterBind;
 			core12.descriptorBindingUniformBufferUpdateAfterBind = supportedCore12.descriptorBindingUniformBufferUpdateAfterBind;
 			core12.descriptorBindingStorageImageUpdateAfterBind = supportedCore12.descriptorBindingStorageImageUpdateAfterBind;

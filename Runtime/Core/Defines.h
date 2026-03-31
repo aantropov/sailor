@@ -6,8 +6,9 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 # ifndef _SAILOR_IMPORT_
 #  define SAILOR_API __declspec(dllexport)
 # else
-#  define SAILOR_API __declspec(dllimport)
+#  define SAILOR_API
 # endif
+# pragma comment(lib, "mincore.lib")
 #else
 # if defined(__GNUC__) || defined(__clang__)
 #  define SAILOR_API __attribute__((visibility("default")))
@@ -16,7 +17,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 # endif
 #endif
 
-#if !defined(__forceinline)
+#if !defined(_MSC_VER) && !defined(__forceinline)
 # define __forceinline
 #endif
 

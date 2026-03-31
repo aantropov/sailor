@@ -29,6 +29,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API size_t GetHash() const;
 		SAILOR_API bool operator==(const VulkanDescriptorSetLayout& rhs) const;
+		SAILOR_API bool HasVariableDescriptorBinding() const { return m_variableDescriptorBinding != -1; }
+		SAILOR_API int32_t GetVariableDescriptorBinding() const { return m_variableDescriptorBinding; }
 
 	protected:
 

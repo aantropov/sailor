@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "Memory/RefPtr.hpp"
 #include "Containers/Set.h"
+#include <spirv_reflect.h>
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
@@ -34,6 +35,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	protected:
 
+		SAILOR_API static bool IsRuntimeArrayBinding(const SpvReflectDescriptorBinding& reflBinding);
 		SAILOR_API void ReflectDescriptorSetBindings(const RHI::ShaderByteCode& code);
 
 		TSet<uint32_t> m_vertexAttributeBindings;

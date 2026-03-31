@@ -1,7 +1,5 @@
 #include "VulkanShaderModule.h"
 #include "RHI/Types.h"
-#include "AssetRegistry/Texture/TextureImporter.h"
-
 #include <spirv_reflect.h>
 
 using namespace Sailor;
@@ -47,6 +45,29 @@ VulkanShaderStage::VulkanShaderStage(VkShaderStageFlagBits stage, const std::str
 	m_entryPointName(entryPointName)
 {
 	m_module = VulkanShaderModulePtr::Make(pDevice, spirv);
+}
+
+bool VulkanShaderStage::IsRuntimeArrayBinding(const SpvReflectDescriptorBinding& reflBinding)
+{
+	if (reflBinding.count == 0)
+	{
+		return true;
+	}
+
+	if (reflBinding.array.dims_count > 0 &&
+		reflBinding.array.dims[reflBinding.array.dims_count - 1] == SPV_REFLECT_ARRAY_DIM_RUNTIME)
+	{
+		return true;
+	}
+
+	if (reflBinding.type_description &&
+		reflBinding.type_description->traits.array.dims_count > 0 &&
+		reflBinding.type_description->traits.array.dims[reflBinding.type_description->traits.array.dims_count - 1] == SPV_REFLECT_ARRAY_DIM_RUNTIME)
+	{
+		return true;
+	}
+
+	return false;
 }
 
 void VulkanShaderStage::Apply(VkPipelineShaderStageCreateInfo& stageInfo) const
@@ -110,8 +131,8 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			RHI::ShaderLayoutBinding& rhiBinding = binding[reflBinding.binding].m_first = {};
 			VkDescriptorSetLayoutBinding& layoutBinding = binding[reflBinding.binding].m_second = {};
 
-			const bool bVariableDescriptorCount = reflBinding.count == 0;
-			const uint32_t descriptorCount = bVariableDescriptorCount ? 1u : reflBinding.count;
+			const bool bVariableDescriptorCount = VulkanShaderStage::IsRuntimeArrayBinding(reflBinding);
+			const uint32_t descriptorCount = std::max(1u, reflBinding.count);
 
 			layoutBinding = VulkanApi::CreateDescriptorSetLayoutBinding(reflBinding.binding,
 				static_cast<VkDescriptorType>(reflBinding.descriptor_type), descriptorCount);

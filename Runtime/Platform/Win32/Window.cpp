@@ -394,25 +394,23 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	case WM_MBUTTONDOWN:
 	case WM_MBUTTONUP:
 	{
-		GlobalInput::m_rawState.m_cursorPosition[0] = (int32_t)LOWORD(lParam);
-		GlobalInput::m_rawState.m_cursorPosition[1] = (int32_t)HIWORD(lParam);
+		GlobalInput::SetCursorPosition((int32_t)LOWORD(lParam), (int32_t)HIWORD(lParam));
 
 		if (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP)
-			GlobalInput::m_rawState.m_keyboard[0] = (msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			GlobalInput::SetMouseButtonState(0, msg == WM_LBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP)
-			GlobalInput::m_rawState.m_keyboard[1] = (msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			GlobalInput::SetMouseButtonState(1, msg == WM_RBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		if (msg == WM_MBUTTONDOWN || msg == WM_MBUTTONUP)
-			GlobalInput::m_rawState.m_keyboard[2] = (msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
+			GlobalInput::SetMouseButtonState(2, msg == WM_MBUTTONDOWN ? KeyState::Pressed : KeyState::Up);
 
 		return FALSE;
 	}
 
 	case WM_MOUSEMOVE:
 	{
-		GlobalInput::m_rawState.m_cursorPosition[0] = (int32_t)LOWORD(lParam);
-		GlobalInput::m_rawState.m_cursorPosition[1] = (int32_t)HIWORD(lParam);
+		GlobalInput::SetCursorPosition((int32_t)LOWORD(lParam), (int32_t)HIWORD(lParam));
 		return FALSE;
 	}
 
@@ -421,7 +419,7 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
 		{
-			GlobalInput::m_rawState.m_keyboard[wParam] = KeyState::Pressed;
+			GlobalInput::SetKeyState((uint32_t)wParam, KeyState::Pressed);
 		}
 
 		return FALSE;
@@ -431,7 +429,7 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		if (wParam < 256)
 		{
-			GlobalInput::m_rawState.m_keyboard[wParam] = KeyState::Up;
+			GlobalInput::SetKeyState((uint32_t)wParam, KeyState::Up);
 		}
 
 		return FALSE;

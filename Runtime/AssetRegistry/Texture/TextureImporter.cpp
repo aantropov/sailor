@@ -121,7 +121,7 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	m_textureSamplersCurrentIndex = 1;
 
-	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0);
+	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
 	m_textureSamplersBindings->RecalculateCompatibility();
 }
 

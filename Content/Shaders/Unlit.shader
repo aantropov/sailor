@@ -110,8 +110,8 @@ glslVertex: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
-  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -243,8 +243,8 @@ glslFragment: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[];
-  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {

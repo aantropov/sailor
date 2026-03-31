@@ -1,6 +1,5 @@
 #pragma once
 #include <cstdint>
-#include <optional>
 #include <string>
 #include "Containers/Vector.h"
 #include <cassert>
@@ -178,7 +177,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API static bool CreateDescriptorSetLayouts(VulkanDevicePtr device,
 			const TVector<VulkanShaderStagePtr>& shaders,
 			TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
-			TVector<RHI::ShaderLayoutBinding>& outRhiLayout);
+			TVector<RHI::ShaderLayoutBinding>& outRhiLayout,
+			const TVector<uint32_t>* optionalVariableDescriptorCount = nullptr);
 
 		SAILOR_API static VkDescriptorSetLayoutBinding CreateDescriptorSetLayoutBinding(
 			uint32_t              binding = 0,

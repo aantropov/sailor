@@ -52,19 +52,32 @@ void VulkanDescriptorSetLayout::Compile()
 	const bool bHasVariableDescriptorBinding = m_variableDescriptorBinding != -1;
 	TVector<VkDescriptorBindingFlags> bindingFlagsStorage;
 	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags{};
+	const bool bUseUpdateAfterBind = m_device->IsDescriptorUpdateAfterBindSupported();
 
-	if (m_device->IsDescriptorUpdateAfterBindSupported() && !bHasVariableDescriptorBinding)
+	if (layoutInfo.bindingCount > 0 && (bUseUpdateAfterBind || bHasVariableDescriptorBinding))
 	{
-		layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-
-		const VkDescriptorBindingFlags flag =
-			VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-			VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-			VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+		if (bUseUpdateAfterBind)
+		{
+			layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+		}
 
 		bindingFlagsStorage.Resize(layoutInfo.bindingCount);
 		for (uint32_t i = 0; i < bindingFlagsStorage.Num(); i++)
 		{
+			VkDescriptorBindingFlags flag =
+				VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+				VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+			if (bUseUpdateAfterBind)
+			{
+				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+			}
+
+			if ((int32_t)m_descriptorSetLayoutBindings[i].binding == m_variableDescriptorBinding)
+			{
+				flag |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+			}
+
 			bindingFlagsStorage[i] = flag;
 		}
 
@@ -199,13 +212,23 @@ void VulkanDescriptorSet::Compile()
 		m_descriptorSetLayout->Compile();
 
 		VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
+		VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountInfo{};
+		uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
 
 		VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
 		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
 		descriptSetAllocateInfo.descriptorSetCount = 1;
-
 		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
+		descriptSetAllocateInfo.pNext = nullptr;
+
+		if (m_descriptorSetLayout->HasVariableDescriptorBinding())
+		{
+			variableDescriptorCountInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+			variableDescriptorCountInfo.descriptorSetCount = 1;
+			variableDescriptorCountInfo.pDescriptorCounts = &variableDescriptorCount;
+			descriptSetAllocateInfo.pNext = &variableDescriptorCountInfo;
+		}
 
 		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
 

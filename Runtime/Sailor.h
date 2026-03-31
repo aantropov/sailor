@@ -35,22 +35,34 @@ namespace Sailor
 
 	public:
 
-		static const std::string& GetWorkspace() { return s_workspace; }
+		SAILOR_API static App* GetInstance();
+		SAILOR_API static const std::string& GetWorkspace();
 
 		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
+		SAILOR_API static bool IsRendererInitialized();
 
-		static SubmoduleBase* GetSubmodule(uint32_t index) { return s_pInstance->m_submodules[index].GetRawPtr(); }
+		static SubmoduleBase* GetSubmodule(uint32_t index)
+		{
+			auto* instance = GetInstance();
+			return instance ? instance->m_submodules[index].GetRawPtr() : nullptr;
+		}
 
 		template<typename T>
 		static T* GetSubmodule()
 		{
+			auto* instance = GetInstance();
+			if (!instance)
+			{
+				return nullptr;
+			}
+
 			const int32_t typeId = TSubmodule<T>::GetTypeId();
 			if (typeId != SubmoduleBase::InvalidSubmoduleTypeId)
 			{
-				return s_pInstance->m_submodules[(uint32_t)typeId].StaticCast<T>();
+				return instance->m_submodules[(uint32_t)typeId].StaticCast<T>();
 			}
 			return nullptr;
 		}
@@ -58,12 +70,14 @@ namespace Sailor
 		template<typename T>
 		static T* AddSubmodule(TUniquePtr<TSubmodule<T>>&& submodule)
 		{
+			auto* instance = GetInstance();
 			check(submodule);
+			check(instance);
 			check(TSubmodule<T>::GetTypeId() != SubmoduleBase::InvalidSubmoduleTypeId);
-			check(!s_pInstance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
+			check(!instance->m_submodules[(uint32_t)TSubmodule<T>::GetTypeId()]);
 
 			T* rawPtr = static_cast<T*>(submodule.GetRawPtr());
-			s_pInstance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
+			instance->m_submodules[TSubmodule<T>::GetTypeId()] = std::move(submodule);
 
 			return rawPtr;
 		}
@@ -71,7 +85,8 @@ namespace Sailor
 		template<typename T>
 		static void RemoveSubmodule()
 		{
-			if (!s_pInstance)
+			auto* instance = GetInstance();
+			if (!instance)
 			{
 				return;
 			}
@@ -82,22 +97,18 @@ namespace Sailor
 				return;
 			}
 
-			s_pInstance->m_submodules[(uint32_t)typeId].Clear();
+			instance->m_submodules[(uint32_t)typeId].Clear();
 		}
 
-		static TUniquePtr<Win32::Window>& GetMainWindow();
-		static Platform::Window* GetMainWindowPlatform();
+		SAILOR_API static TUniquePtr<Win32::Window>& GetMainWindow();
+		SAILOR_API static Platform::Window* GetMainWindowPlatform();
 		static const char* GetApplicationName() { return "SailorEngine"; }
 		static const char* GetEngineName() { return "SailorEngine"; }
-		static const std::string& GetLoadedWorldPath()
-		{
-			static const std::string empty;
-			return s_pInstance ? s_pInstance->m_args.m_world : empty;
-		}
-		static const char* GetBuildConfig();
+		SAILOR_API static const std::string& GetLoadedWorldPath();
+		SAILOR_API static const char* GetBuildConfig();
 		static const char* GetEngineVersion() { return "unknown"; }
-		static int32_t GetExitCode();
-		static void SetExitCode(int32_t exitCode);
+		SAILOR_API static int32_t GetExitCode();
+		SAILOR_API static void SetExitCode(int32_t exitCode);
 
 	protected:
 

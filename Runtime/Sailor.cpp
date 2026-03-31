@@ -44,6 +44,16 @@ using namespace Sailor::RHI;
 App* App::s_pInstance = nullptr;
 std::string App::s_workspace = "../";
 
+App* App::GetInstance()
+{
+	return s_pInstance;
+}
+
+const std::string& App::GetWorkspace()
+{
+	return s_workspace;
+}
+
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
 	AppArgs params{};
@@ -131,7 +141,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	if (!params.m_workspace.empty())
 	{
-		s_pInstance->s_workspace = params.m_workspace;
+		s_pInstance->s_workspace = Utils::SanitizeFilepath(params.m_workspace);
+		if (!s_pInstance->s_workspace.ends_with("/"))
+		{
+			s_pInstance->s_workspace += "/";
+		}
 	}
 	else
 	{
@@ -518,6 +532,27 @@ void App::Shutdown()
 
 	delete s_pInstance;
 	s_pInstance = nullptr;
+}
+
+bool App::IsRendererInitialized()
+{
+	if (!s_pInstance)
+	{
+		return false;
+	}
+
+	if (auto renderer = s_pInstance->GetSubmodule<RHI::Renderer>())
+	{
+		return renderer->IsInitialized();
+	}
+
+	return false;
+}
+
+const std::string& App::GetLoadedWorldPath()
+{
+	static const std::string empty;
+	return s_pInstance ? s_pInstance->m_args.m_world : empty;
 }
 
 TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
