@@ -44,6 +44,16 @@ using namespace Sailor::RHI;
 App* App::s_pInstance = nullptr;
 std::string App::s_workspace = "../";
 
+App* App::GetInstance()
+{
+	return s_pInstance;
+}
+
+const std::string& App::GetWorkspace()
+{
+	return s_workspace;
+}
+
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
 	AppArgs params{};
@@ -81,6 +91,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_world = Utils::GetArgValue(args, i, num);
 		}
+		else if (arg == "--pathtracer")
+		{
+			params.m_bRunPathTracer = true;
+		}
 	}
 
 	return params;
@@ -114,6 +128,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance = new App();
+	s_pInstance->m_args = params;
 
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Initialize(false);
@@ -126,7 +141,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	if (!params.m_workspace.empty())
 	{
-		s_pInstance->s_workspace = params.m_workspace;
+		s_pInstance->s_workspace = Utils::SanitizeFilepath(params.m_workspace);
+		if (!s_pInstance->s_workspace.ends_with("/"))
+		{
+			s_pInstance->s_workspace += "/";
+		}
 	}
 	else
 	{
@@ -205,6 +224,25 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	assetRegistry->ScanContentFolder();
 
+	if (params.m_bRunPathTracer)
+	{
+		Raytracing::PathTracer::Params pathTracerParams{};
+		Raytracing::PathTracer::ParseCommandLineArgs(pathTracerParams, commandLineArgs, num);
+
+		if (pathTracerParams.m_pathToModel.empty())
+		{
+			SAILOR_LOG_ERROR("PathTracer mode requires --in <modelPath> and --out <imagePath>.");
+		}
+		else
+		{
+			Raytracing::PathTracer tracer;
+			tracer.Run(pathTracerParams);
+		}
+
+		s_pInstance->m_bSkipMainLoop = true;
+		return;
+	}
+
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
 	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
 
@@ -237,6 +275,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 void App::Start()
 {
 	if (!s_pInstance)
+	{
+		return;
+	}
+
+	if (s_pInstance->m_bSkipMainLoop)
 	{
 		return;
 	}
@@ -346,6 +389,13 @@ void App::Start()
 			frameCounter++;
 		}
 
+		pEngineLoop->ProcessPendingWorldExits();
+		if (pEngineLoop->GetWorlds().IsEmpty())
+		{
+			Stop();
+			break;
+		}
+
 		// Collect garbage
 		uint32_t index = 0;
 		while (auto submodule = GetSubmodule(index))
@@ -419,18 +469,17 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
-	}
-
-	// TODO: Redo. We have 2 frames in flight.
-	if (scheduler)
-	{
-		scheduler->WaitIdle(EThreadType::Render);
+		scheduler->ProcessTasksOnMainThread();
 	}
 
 	if (renderer)
 	{
 		renderer->BeginConditionalDestroy();
+	}
+
+	if (scheduler)
+	{
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
 	}
 
 	SAILOR_LOG("Sailor Engine Releasing");
@@ -451,7 +500,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		scheduler->ProcessTasksOnMainThread();
 	}
 
 	RemoveSubmodule<FrameGraphImporter>();
@@ -465,8 +514,8 @@ void App::Shutdown()
 
 	RemoveSubmodule<AssetRegistry>();
 
-	RemoveSubmodule<Renderer>();
 	RemoveSubmodule<Tasks::Scheduler>();
+	RemoveSubmodule<Renderer>();
 
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Shutdown();
@@ -485,6 +534,27 @@ void App::Shutdown()
 	s_pInstance = nullptr;
 }
 
+bool App::IsRendererInitialized()
+{
+	if (!s_pInstance)
+	{
+		return false;
+	}
+
+	if (auto renderer = s_pInstance->GetSubmodule<RHI::Renderer>())
+	{
+		return renderer->IsInitialized();
+	}
+
+	return false;
+}
+
+const std::string& App::GetLoadedWorldPath()
+{
+	static const std::string empty;
+	return s_pInstance ? s_pInstance->m_args.m_world : empty;
+}
+
 TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
 {
 	return s_pInstance->m_pMainWindow;
@@ -493,4 +563,28 @@ TUniquePtr<Sailor::Win32::Window>& App::GetMainWindow()
 Sailor::Platform::Window* App::GetMainWindowPlatform()
 {
 	return s_pInstance ? static_cast<Sailor::Platform::Window*>(s_pInstance->m_pMainWindow.GetRawPtr()) : nullptr;
+}
+
+int32_t App::GetExitCode()
+{
+	return s_pInstance ? s_pInstance->m_exitCode : 0;
+}
+
+const char* App::GetBuildConfig()
+{
+#if defined(_DEBUG)
+	return "Debug";
+#elif defined(_SHIPPING)
+	return "Release";
+#else
+	return "Unknown";
+#endif
+}
+
+void App::SetExitCode(int32_t exitCode)
+{
+	if (s_pInstance)
+	{
+		s_pInstance->m_exitCode = (std::max)(s_pInstance->m_exitCode, exitCode);
+	}
 }

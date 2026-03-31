@@ -378,6 +378,16 @@ void Sailor::Win32::Window::ProcessMacMsgs()
 
 		[NSApp updateWindows];
 
+		for (auto* pWindow : g_windows)
+		{
+			if (!pWindow || !pWindow->m_hWnd)
+			{
+				continue;
+			}
+
+			NSWindow* window = (__bridge NSWindow*)pWindow->m_hWnd;
+			pWindow->SetIsIconic(window ? [window isMiniaturized] : false);
+		}
 	}
 }
 
@@ -441,25 +451,7 @@ void Window::Destroy()
 
 bool Window::IsIconic() const
 {
-	NSWindow* window = (__bridge NSWindow*)m_hWnd;
-	if (!window)
-	{
-		return false;
-	}
-
-	__block bool bMiniaturized = false;
-	if ([NSThread isMainThread])
-	{
-		bMiniaturized = [window isMiniaturized];
-	}
-	else
-	{
-		dispatch_sync(dispatch_get_main_queue(), ^{
-			bMiniaturized = [window isMiniaturized];
-		});
-	}
-
-	return bMiniaturized;
+	return m_bIsIconic;
 }
 
 void* Window::GetMetalLayer() const

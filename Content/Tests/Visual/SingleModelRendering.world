@@ -1,0 +1,132 @@
+name: SingleModelRendering
+prefabs:
+  - gameObjects:
+      - name: SingleModelRendering
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 10010010010010010000
+        components:
+          - 0
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: SingleModelRendering
+          screenshotName: SingleModelRendering
+          captureAfterFrames: 64
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 3D5C42D92E7A4F1BA17A582A2AEF2D10_10010010010010010000
+  - gameObjects:
+      - name: Camera
+        position:
+          - 0
+          - 130
+          - 4200
+          - 1
+        rotation:
+          - 0.015470634
+          - 0
+          - 0
+          - 0.999880323
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 10010010010010010001
+        components:
+          - 0
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 1
+          zFar: 20000
+          fileId: NullFileId
+          instanceId: 9A6AC30A438F49F69E4B73D72A53EF01_10010010010010010001
+  - gameObjects:
+      - name: Duck
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 10010010010010010002
+        components:
+          - 0
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{14A75BF9-09AC-49EE-A0DF-2945F4B452A6}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: C6D7369D31E44A56B5D8C1CA0B94A7F1_10010010010010010002
+  - gameObjects:
+      - name: Sun
+        position:
+          - 0
+          - 300
+          - 200
+          - 1
+        rotation:
+          - 0.183012709
+          - 0.683012724
+          - 0.183012709
+          - 0.683012724
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 10010010010010010003
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 17
+            - 17
+            - 17
+          attenuation:
+            - 1
+            - 0.0219999999
+            - 0.00190000003
+          lightType: Directional
+          bounds:
+            - 100
+            - 100
+            - 100
+          cutOff:
+            - 30
+            - 45
+          fileId: NullFileId
+          instanceId: B0276F99885E4CFA8CF34F0D9F404A2A_10010010010010010003

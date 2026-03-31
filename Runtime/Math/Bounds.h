@@ -56,7 +56,11 @@ namespace Sailor::Math
 		__forceinline void SetDirection(const vec3& value)
 		{
 			m_direction = value;
-			m_rDirection = 1.0f / m_direction;
+
+			constexpr float inf = std::numeric_limits<float>::infinity();
+			m_rDirection.x = value.x != 0.0f ? 1.0f / value.x : inf;
+			m_rDirection.y = value.y != 0.0f ? 1.0f / value.y : inf;
+			m_rDirection.z = value.z != 0.0f ? 1.0f / value.z : inf;
 		}
 
 	protected:

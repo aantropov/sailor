@@ -30,6 +30,8 @@ namespace Sailor
 
 		SAILOR_API TSharedPtr<World> CreateEmptyWorld(std::string name, EWorldBehaviourMask mask);
 		SAILOR_API TSharedPtr<World> InstantiateWorld(WorldPrefabPtr worldPrefab, EWorldBehaviourMask mask);
+		SAILOR_API bool ExitWorld(WorldPtr world);
+		SAILOR_API void ProcessPendingWorldExits();
 
 		SAILOR_API const TVector<TSharedPtr<World>>& GetWorlds() const { return m_worlds; }
 		SAILOR_API TSharedPtr<World> GetWorld() const { return m_worlds[0]; }
@@ -38,5 +40,6 @@ namespace Sailor
 
 		uint32_t m_cpuFps = 0u;
 		TVector<TSharedPtr<World>> m_worlds;
+		TVector<WorldPtr> m_pendingWorldsToExit;
 	};
 }

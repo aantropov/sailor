@@ -30,7 +30,7 @@ namespace Sailor
 
 	public:
 
-		virtual YAML::Node Serialize() const override;
+		SAILOR_API virtual YAML::Node Serialize() const override;
 
 		virtual void Deserialize(const YAML::Node& inData) override
 		{

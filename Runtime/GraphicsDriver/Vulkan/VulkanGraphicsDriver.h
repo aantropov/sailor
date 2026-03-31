@@ -23,8 +23,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 	{
 	public:
 
-			SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
-			SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
+        SAILOR_API virtual void Initialize(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug) override;
+        SAILOR_API bool IsInitialized() const { return m_bIsInitialized; }
 		SAILOR_API virtual ~VulkanGraphicsDriver() override;
 		SAILOR_API virtual void BeginConditionalDestroy() override;
 
@@ -112,8 +112,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding) override;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset) override;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) override;
-		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
+		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount = false, uint32_t variableDescriptorUpperBound = 0) override;
 
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding) override;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding) override;
@@ -246,11 +246,13 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		// Vulkan specific
 		SAILOR_API void Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr dstBuffer, const void* data, size_t size, size_t offset = 0);
-		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData);
+		SAILOR_API VulkanComputePipelinePtr GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData,
+			const TVector<uint32_t>* optionalVariableDescriptorCount = nullptr);
 		SAILOR_API TVector<bool> IsCompatible(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& bindings) const;
 		SAILOR_API TVector<VulkanDescriptorSetPtr> GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout,
 			//const TVector<TVector<RHI::ShaderLayoutBinding>>& shaderLayoutBindings,
 			const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings);
+		SAILOR_API TVector<uint32_t> CollectOptionalVariableDescriptorCount(const TVector<VulkanShaderStagePtr>& shaders, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
 
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetUniformBufferAllocator(const std::string& uniformTypeId);
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();

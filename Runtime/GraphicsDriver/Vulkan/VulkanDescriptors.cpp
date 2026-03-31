@@ -9,9 +9,10 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
-VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings) :
+VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings, int32_t variableDescriptorBinding) :
 	m_descriptorSetLayoutBindings(std::move(descriptorSetLayoutBindings)),
-	m_device(pDevice)
+	m_device(pDevice),
+	m_variableDescriptorBinding(variableDescriptorBinding)
 {
 }
 
@@ -48,31 +49,48 @@ void VulkanDescriptorSetLayout::Compile()
 	layoutInfo.bindingCount = (uint32_t)m_descriptorSetLayoutBindings.Num();
 	layoutInfo.pBindings = m_descriptorSetLayoutBindings.GetData();
 
-#if !defined(__APPLE__)
-	layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+	const bool bHasVariableDescriptorBinding = m_variableDescriptorBinding != -1;
+	TVector<VkDescriptorBindingFlags> bindingFlagsStorage;
+	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags{};
+	const bool bUseUpdateAfterBind = m_device->IsDescriptorUpdateAfterBindSupported();
 
-	const VkDescriptorBindingFlags flag =
-		//VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT |
-		VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-		VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-		VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-
-	TVector<VkDescriptorBindingFlags> flags(layoutInfo.bindingCount);
-
-	for (auto& f : flags)
+	if (layoutInfo.bindingCount > 0 && (bUseUpdateAfterBind || bHasVariableDescriptorBinding))
 	{
-		f = flag;
+		if (bUseUpdateAfterBind)
+		{
+			layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+		}
+
+		bindingFlagsStorage.Resize(layoutInfo.bindingCount);
+		for (uint32_t i = 0; i < bindingFlagsStorage.Num(); i++)
+		{
+			VkDescriptorBindingFlags flag =
+				VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+				VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
+
+			if (bUseUpdateAfterBind)
+			{
+				flag |= VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+			}
+
+			if ((int32_t)m_descriptorSetLayoutBindings[i].binding == m_variableDescriptorBinding)
+			{
+				flag |= VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT;
+			}
+
+			bindingFlagsStorage[i] = flag;
+		}
+
+		bindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
+		bindingFlags.bindingCount = layoutInfo.bindingCount;
+		bindingFlags.pBindingFlags = bindingFlagsStorage.GetData();
+		layoutInfo.pNext = &bindingFlags;
 	}
-
-	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlags = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT };
-	bindingFlags.bindingCount = layoutInfo.bindingCount;
-	bindingFlags.pBindingFlags = flags.GetData();
-
-	layoutInfo.pNext = &bindingFlags;
-#else
-	layoutInfo.flags = 0;
-	layoutInfo.pNext = nullptr;
-#endif
+	else
+	{
+		layoutInfo.flags = 0;
+		layoutInfo.pNext = nullptr;
+	}
 
 	VK_CHECK(vkCreateDescriptorSetLayout(*m_device, &layoutInfo, nullptr, &m_descriptorSetLayout));
 }
@@ -96,9 +114,10 @@ VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t max
 	poolInfo.pPoolSizes = descriptorPoolSizes.GetData();
 	poolInfo.maxSets = maxSets;
 	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-#if !defined(__APPLE__)
-	poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-#endif
+	if (m_device->IsDescriptorUpdateAfterBindSupported())
+	{
+		poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+	}
 	poolInfo.pNext = nullptr;
 
 	VK_CHECK(vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &m_descriptorPool));
@@ -115,11 +134,13 @@ VulkanDescriptorPool::~VulkanDescriptorPool()
 VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
 	VulkanDescriptorPoolPtr pool,
 	VulkanDescriptorSetLayoutPtr descriptorSetLayout,
-	TVector<VulkanDescriptorPtr> descriptors) :
+	TVector<VulkanDescriptorPtr> descriptors,
+	uint32_t variableDescriptorCount) :
 	m_descriptors(std::move(descriptors)),
-	m_device(pDevice),	
+	m_device(pDevice),
 	m_descriptorPool(pool),
-	m_descriptorSetLayout(descriptorSetLayout)
+	m_descriptorSetLayout(descriptorSetLayout),
+	m_variableDescriptorCount(variableDescriptorCount)
 {
 	RecalculateCompatibility();
 }
@@ -191,13 +212,23 @@ void VulkanDescriptorSet::Compile()
 		m_descriptorSetLayout->Compile();
 
 		VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
+		VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountInfo{};
+		uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
 
 		VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
 		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
 		descriptSetAllocateInfo.descriptorSetCount = 1;
-
 		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
+		descriptSetAllocateInfo.pNext = nullptr;
+
+		if (m_descriptorSetLayout->HasVariableDescriptorBinding())
+		{
+			variableDescriptorCountInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO;
+			variableDescriptorCountInfo.descriptorSetCount = 1;
+			variableDescriptorCountInfo.pDescriptorCounts = &variableDescriptorCount;
+			descriptSetAllocateInfo.pNext = &variableDescriptorCountInfo;
+		}
 
 		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
 
@@ -249,7 +280,7 @@ void VulkanDescriptorSet::Compile()
 		}
 		else
 		{
-			SAILOR_LOG("Skip invalid Vulkan descriptor write: type=%u, binding=%u, arrayElement=%u", (uint32_t)write.descriptorType, write.dstBinding, write.dstArrayElement);
+			SAILOR_LOG_ERROR("Invalid Vulkan descriptor write: type=%u, binding=%u, count=%u, arrayElement=%u, pImageInfo=%p, pBufferInfo=%p, pTexelBufferView=%p", (uint32_t)write.descriptorType, write.dstBinding, write.descriptorCount, write.dstArrayElement, write.pImageInfo, write.pBufferInfo, write.pTexelBufferView);
 		}
 	}
 

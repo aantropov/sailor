@@ -114,7 +114,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	std::string temp;
 	TryGetString("GPUCulling", temp);
-	const bool bGpuCullingEnabled = temp == "true";
+	const bool bGpuCullingRequested = temp == "true";
+	bool bGpuCullingEnabled = bGpuCullingRequested;
 
 	const std::string QueueTag = GetString("Tag");
 
@@ -132,15 +133,23 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			}
 		}
 
-		if (!m_computeMeshCullingBindings.IsValid())
+		bGpuCullingEnabled = m_pComputeMeshCullingShader && m_pComputeMeshCullingShader->IsReady();
+
+		RHI::RHITexturePtr depthHighZ;
+		if (bGpuCullingEnabled)
 		{
-			auto depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+			depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+			bGpuCullingEnabled = depthHighZ.IsValid();
+		}
+
+		if (bGpuCullingEnabled && !m_computeMeshCullingBindings.IsValid())
+		{
 			m_computeMeshCullingBindings = driver->CreateShaderBindings();
 			driver->AddSamplerToShaderBindings(m_computeMeshCullingBindings, "depthHighZ", depthHighZ, 0);
 		}
 	}
 
-	if (m_numMeshes == 0 || (bGpuCullingEnabled && !m_pComputeMeshCullingShader.IsValid()))
+	if (m_numMeshes == 0)
 	{
 		m_syncSharedResources.Unlock();
 		return;
@@ -178,6 +187,17 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		const auto viewport = glm::ivec4(0, colorAttachment->GetTarget()->GetExtent().y, colorAttachment->GetTarget()->GetExtent().x, -colorAttachment->GetTarget()->GetExtent().y);
 		const auto scissor = glm::uvec4(0, 0, colorAttachment->GetTarget()->GetExtent().x, colorAttachment->GetTarget()->GetExtent().y);
 
+		RHI::RHIShaderPtr cullingComputeShader;
+		if (bGpuCullingEnabled)
+		{
+#ifdef _DEBUG
+			cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
+#else
+			cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+#endif
+			bGpuCullingEnabled = cullingComputeShader.IsValid();
+		}
+
 		auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
 			{
@@ -201,6 +221,14 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			{
 				m_cullingIndirectBufferBinding[i] = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 			}
+		}
+		if (bGpuCullingEnabled)
+		{
+			bGpuCullingEnabled =
+				m_computeMeshCullingBindings.IsValid() && m_computeMeshCullingBindings->IsReady() &&
+				m_perInstanceData.IsValid() && m_perInstanceData->IsReady() &&
+				!m_cullingIndirectBufferBinding.IsEmpty() && m_cullingIndirectBufferBinding[0].IsValid() && m_cullingIndirectBufferBinding[0]->IsReady() &&
+				sceneView.m_frameBindings.IsValid() && sceneView.m_frameBindings->IsReady();
 		}
 
 		TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
@@ -248,13 +276,14 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record draw calls in secondary command list");
 					commands->BeginSecondaryCommandList(cmdList, true, true);
 
-					if (bGpuCullingEnabled)
-					{
-						auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+					const bool bCanDispatchCulling = bGpuCullingEnabled && cullingComputeShader.IsValid() &&
+				m_computeMeshCullingBindings.IsValid() && m_computeMeshCullingBindings->IsReady() &&
+				m_perInstanceData.IsValid() && m_perInstanceData->IsReady() &&
+				m_cullingIndirectBufferBinding[i + 1].IsValid() && m_cullingIndirectBufferBinding[i + 1]->IsReady() &&
+				sceneView.m_frameBindings.IsValid() && sceneView.m_frameBindings->IsReady();
 
-#ifdef _DEBUG
-						cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
-#endif
+					if (bCanDispatchCulling)
+					{
 						RHIRecordDrawCallGPUCulling(start,
 							end,
 							vecBatches,
@@ -318,13 +347,14 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				0.0f,
 				true);
 
-			if (bGpuCullingEnabled)
-			{
-				auto cullingComputeShader = m_pComputeMeshCullingShader->GetComputeShaderRHI();
+			const bool bCanDispatchCulling = bGpuCullingEnabled && cullingComputeShader.IsValid() &&
+			m_computeMeshCullingBindings.IsValid() && m_computeMeshCullingBindings->IsReady() &&
+			m_perInstanceData.IsValid() && m_perInstanceData->IsReady() &&
+			m_cullingIndirectBufferBinding[0].IsValid() && m_cullingIndirectBufferBinding[0]->IsReady() &&
+			sceneView.m_frameBindings.IsValid() && sceneView.m_frameBindings->IsReady();
 
-#ifdef _DEBUG
-				cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
-#endif
+			if (bCanDispatchCulling)
+			{
 				RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 					(uint32_t)vecBatches.Num(),
 					vecBatches,
@@ -377,8 +407,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				0.0f,
 				true);
 		}
-	}
 
+	}
 	commands->EndDebugRegion(commandList);
 
 	m_syncSharedResources.Unlock();

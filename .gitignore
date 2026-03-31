@@ -42,9 +42,13 @@
 # CMake folders
 Build/
 Built/
+build*/
 
 # Sailor Debug/Release folders
 Cache/
 Binaries/
 out/
 
+
+.DS_Store
+*.DS_Store.asset

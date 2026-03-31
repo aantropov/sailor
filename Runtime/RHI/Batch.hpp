@@ -185,7 +185,9 @@ namespace Sailor::RHI
 
 		commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
 		{
-			commands->Dispatch(transferCmdList, computeCullingShader, RHI::Renderer::GPUCullingGroupSize, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+			const uint32_t maxWorkItems = (std::max)(constants.m_numBatches, constants.m_numInstances);
+			const uint32_t dispatchGroupsX = (std::max)(1u, (maxWorkItems + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
+			commands->Dispatch(transferCmdList, computeCullingShader, dispatchGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
 		}
 		commands->EndDebugRegion(transferCmdList);
 	}

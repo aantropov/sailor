@@ -1,0 +1,51 @@
+name: DynamicMaterials
+prefabs:
+  - gameObjects:
+      - name: DynamicMaterialsRunner
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 9FD54079743D95319187
+        components:
+          - 0
+          - 1
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: DynamicMaterials
+          screenshotName: DynamicMaterials.png
+          captureAfterFrames: 96
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: 7B67CF9BFFDF80C333D8CF4D0B5BEB53_9FD54079743D95319187
+      - typename: Sailor::PerformanceTestSetupComponent
+        overrideProperties:
+          gridSize: 2
+          spacing: 180
+          baseColor:
+            - 0.5
+            - 0.5
+            - 0.5
+          colorVariance:
+            - 0
+            - 0
+            - 0
+          boxScale: 60
+          rotationSpeedDeg: 0
+          directionalLightIntensity: 17
+          spawnPointLights: false
+          fileId: NullFileId
+          instanceId: 4A67E063B315A44100E1A2FF5E091BF9_9FD54079743D95319187

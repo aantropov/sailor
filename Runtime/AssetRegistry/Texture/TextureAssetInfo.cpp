@@ -20,6 +20,7 @@ YAML::Node TextureAssetInfo::Serialize() const
 	SERIALIZE_PROPERTY(outData, m_filtration);
 	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
 	SERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
+	SERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
 	SERIALIZE_PROPERTY(outData, m_format);
 	SERIALIZE_PROPERTY(outData, m_glbTextureIndex);
 
@@ -35,6 +36,7 @@ void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 	DESERIALIZE_PROPERTY(outData, m_filtration);
 	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
 	DESERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
+	DESERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
 	DESERIALIZE_PROPERTY(outData, m_format);
 	DESERIALIZE_PROPERTY(outData, m_glbTextureIndex);
 }

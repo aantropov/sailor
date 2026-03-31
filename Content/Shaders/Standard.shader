@@ -10,6 +10,7 @@ defines:
 glslCommon: |
   #version 460
   #extension GL_ARB_separate_shader_objects : enable
+  #extension GL_EXT_nonuniform_qualifier : require
 
 glslVertex: |
   layout(location=DefaultPositionBinding) in vec3 inPosition;
@@ -110,8 +111,8 @@ glslVertex: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
-  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -123,7 +124,7 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
   void main() 
   {
@@ -234,8 +235,8 @@ glslFragment: |
       uint instance[];
   } shadowIndices;
   
-  layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
-  layout(set=1, binding=9) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=8) uniform sampler2D g_aoSampler;
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -252,7 +253,7 @@ glslFragment: |
   //layout(set=3, binding=3) uniform sampler2D normalSampler;
   //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[MAX_TEXTURES_IN_SCENE];
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
   MaterialData GetMaterialData()
   {
@@ -385,12 +386,12 @@ glslFragment: |
     const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(textureSamplers[material.albedoSampler], vin.texcoord) * vin.color;
-    material.metallic = material.metallic * texture(textureSamplers[material.metalnessSampler], vin.texcoord).r;
-    material.roughness = material.roughness * texture(textureSamplers[material.roughnessSampler], vin.texcoord).r;
+    material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(material.albedoSampler)], vin.texcoord) * vin.color;
+    material.metallic = material.metallic * texture(textureSamplers[nonuniformEXT(material.metalnessSampler)], vin.texcoord).r;
+    material.roughness = material.roughness * texture(textureSamplers[nonuniformEXT(material.roughnessSampler)], vin.texcoord).r;
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    vec3 normal = normalize(2.0 * texture(textureSamplers[material.normalSampler], vin.texcoord).rgb - 1.0);    
+    vec3 normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0);    
     normal = normalize(vin.tangentBasis * normal);
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);

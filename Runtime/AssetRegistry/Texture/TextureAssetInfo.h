@@ -21,6 +21,7 @@ namespace Sailor
 		SAILOR_API RHI::ETextureFormat GetFormat() const { return m_format; }
 		SAILOR_API bool ShouldGenerateMips() const { return m_bShouldGenerateMips; }
 		SAILOR_API bool ShouldSupportStorageBinding() const { return m_bShouldSupportStorageBinding; }
+		SAILOR_API bool ShouldKeepCpuBuffers() const { return m_bShouldKeepCpuBuffers; }
 		SAILOR_API bool StoredInGlb() const { return m_glbTextureIndex != -1; }
 		SAILOR_API int32_t GetGlbTextureIndex() const { return m_glbTextureIndex; }
 
@@ -35,6 +36,7 @@ namespace Sailor
 
 		bool m_bShouldGenerateMips = true;
 		bool m_bShouldSupportStorageBinding = false;
+		bool m_bShouldKeepCpuBuffers = false;
 
 		// We support the loading of textures from glb
 		int32_t m_glbTextureIndex = -1;

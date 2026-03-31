@@ -205,7 +205,7 @@ public partial class MaterialFile : AssetFile
                 var preloadTasks = new List<Task>();
                 foreach (var tex in Samplers)
                 {
-                    var task = Task.Run(async () =>
+                    var task = Task.Run(() =>
                     {
                         var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
                         if (file != null)
@@ -230,7 +230,7 @@ public partial class MaterialFile : AssetFile
         return true;
     }
 
-    public override async Task Save()
+    public override Task Save()
     {
         using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAsset))
@@ -244,9 +244,10 @@ public partial class MaterialFile : AssetFile
         }
 
         IsDirty = false;
+        return Task.CompletedTask;
     }
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -307,6 +308,7 @@ public partial class MaterialFile : AssetFile
         }
 
         IsDirty = false;
+        return Task.CompletedTask;
     }
 
     public ICommand AddSamplerCommand { get; }
@@ -356,7 +358,7 @@ public partial class MaterialFile : AssetFile
         }
     }
 
-    private async Task OnClearSampler(string key)
+    private Task OnClearSampler(string key)
     {
         foreach (var uniform in Samplers)
         {
@@ -366,9 +368,15 @@ public partial class MaterialFile : AssetFile
                 break;
             }
         }
+
+        return Task.CompletedTask;
     }
 
-    private async Task OnClearShader() => Shader = FileId.NullFileId;
+    private Task OnClearShader()
+    {
+        Shader = FileId.NullFileId;
+        return Task.CompletedTask;
+    }
 }
 
 public class MaterialFileYamlConverter : IYamlTypeConverter

@@ -13,6 +13,7 @@
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
+#include "RHI/Renderer.h"
 
 #include <thread>
 #include <chrono>
@@ -46,6 +47,47 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 	m_worlds.Emplace(newWorld);
 
 	return newWorld;
+}
+
+bool EngineLoop::ExitWorld(WorldPtr world)
+{
+	if (!world)
+	{
+		return false;
+	}
+
+	if (m_pendingWorldsToExit.Contains(world))
+	{
+		return true;
+	}
+
+	m_pendingWorldsToExit.Add(world);
+	return true;
+}
+
+void EngineLoop::ProcessPendingWorldExits()
+{
+	auto renderer = App::GetSubmodule<RHI::Renderer>();
+
+	for (auto* world : m_pendingWorldsToExit)
+	{
+		const size_t index = m_worlds.FindIf([&](const auto& it) { return it.GetRawPtr() == world; });
+		if (index == -1)
+		{
+			continue;
+		}
+
+		if (renderer && renderer->IsInitialized())
+		{
+			renderer->GetDriver()->WaitIdle();
+			renderer->RemoveSceneView(world);
+		}
+
+		m_worlds[index]->Clear();
+		m_worlds.RemoveAt(index);
+	}
+
+	m_pendingWorldsToExit.Clear();
 }
 
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)

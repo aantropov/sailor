@@ -1,5 +1,6 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include <algorithm>
+#include <cstring>
 #include <vulkan/vulkan.h>
 #ifdef _WIN32
 #include <windows.h>
@@ -38,6 +39,62 @@
 #include "VulkanDescriptors.h"
 
 using namespace Sailor;
+
+namespace
+{
+	static uint32_t GetBytesPerPixel(VkFormat format)
+	{
+		switch (format)
+		{
+		case VK_FORMAT_R8G8B8A8_UNORM:
+		case VK_FORMAT_R8G8B8A8_SNORM:
+		case VK_FORMAT_R8G8B8A8_USCALED:
+		case VK_FORMAT_R8G8B8A8_SSCALED:
+		case VK_FORMAT_R8G8B8A8_UINT:
+		case VK_FORMAT_R8G8B8A8_SINT:
+		case VK_FORMAT_R8G8B8A8_SRGB:
+		case VK_FORMAT_B8G8R8A8_UNORM:
+		case VK_FORMAT_B8G8R8A8_SNORM:
+		case VK_FORMAT_B8G8R8A8_USCALED:
+		case VK_FORMAT_B8G8R8A8_SSCALED:
+		case VK_FORMAT_B8G8R8A8_UINT:
+		case VK_FORMAT_B8G8R8A8_SINT:
+		case VK_FORMAT_B8G8R8A8_SRGB:
+		case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+		case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
+		case VK_FORMAT_A2R10G10B10_USCALED_PACK32:
+		case VK_FORMAT_A2R10G10B10_SSCALED_PACK32:
+		case VK_FORMAT_A2R10G10B10_UINT_PACK32:
+		case VK_FORMAT_A2R10G10B10_SINT_PACK32:
+		case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+		case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+		case VK_FORMAT_A2B10G10R10_USCALED_PACK32:
+		case VK_FORMAT_A2B10G10R10_SSCALED_PACK32:
+		case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+		case VK_FORMAT_A2B10G10R10_SINT_PACK32:
+		case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+		case VK_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+			return 4u;
+
+		case VK_FORMAT_R16G16B16A16_UNORM:
+		case VK_FORMAT_R16G16B16A16_SNORM:
+		case VK_FORMAT_R16G16B16A16_USCALED:
+		case VK_FORMAT_R16G16B16A16_SSCALED:
+		case VK_FORMAT_R16G16B16A16_UINT:
+		case VK_FORMAT_R16G16B16A16_SINT:
+		case VK_FORMAT_R16G16B16A16_SFLOAT:
+			return 8u;
+
+		case VK_FORMAT_R32G32B32A32_UINT:
+		case VK_FORMAT_R32G32B32A32_SINT:
+		case VK_FORMAT_R32G32B32A32_SFLOAT:
+			return 16u;
+
+		default:
+			return 0u;
+		}
+	}
+}
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -96,6 +153,10 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 	// Keep this enabled so Y conversion is handled consistently in shader conversion.
 	setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "1", 1);
 	SAILOR_LOG("MoltenVK config: MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y=1");
+
+	// Prefer Metal argument buffers on macOS for descriptor-heavy paths.
+	setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "1", 1);
+	SAILOR_LOG("MoltenVK config: MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS=1");
 #endif
 
 	uint32_t availableExtensionCount = 0;
@@ -1062,7 +1123,7 @@ void VulkanApi::CopyBuffer_Immediate(VulkanDevicePtr device, VulkanBufferMemoryP
 	fence->Wait();
 }
 
-VulkanImagePtr VulkanApi::CreateImage(
+VulkanImagePtr VulkanApi::CreateImageUpload(
 	VulkanCommandBufferPtr& cmdBuffer,
 	VulkanDevicePtr device,
 	const void* pData,
@@ -1195,7 +1256,7 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 	auto cmdBuffer = device->CreateCommandBuffer();
 	device->SetDebugName(VkObjectType::VK_OBJECT_TYPE_COMMAND_BUFFER, (uint64_t)(VkCommandBuffer)*cmdBuffer, "VulkanApi::CreateImage_Immediate");
 	cmdBuffer->BeginCommandList(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-	VulkanImagePtr res = CreateImage(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
+	VulkanImagePtr res = CreateImageUpload(cmdBuffer, device, pData, size, extent, mipLevels, type, format, tiling, usage, sharingMode, defaultLayout, flags, arrayLayers);
 	cmdBuffer->EndCommandList();
 
 	auto fence = VulkanFencePtr::Make(device);
@@ -1307,6 +1368,11 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 {
 	SAILOR_PROFILE_FUNCTION();
 
+	if (!descriptorSet)
+	{
+		return false;
+	}
+
 	if (pipelineLayout->m_descriptionSetLayouts.Num() <= binding)
 	{
 		return false;
@@ -1314,24 +1380,66 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
 
-
-	size_t numDescriptorsInLayout = 0;
-	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+	for (const VulkanDescriptorPtr& descriptor : descriptorSet->m_descriptors)
 	{
-		if (!descriptorSet->LikelyContains(layoutBinding) || numDescriptorsInLayout > descriptorSet->m_descriptors.Num())
+		const size_t layoutIndex = layout->m_descriptorSetLayoutBindings.FindIf(
+			[&descriptor](const VkDescriptorSetLayoutBinding& layoutBinding)
+			{
+				return layoutBinding.binding == descriptor->GetBinding() && layoutBinding.descriptorType == descriptor->GetType();
+			});
+
+		if (layoutIndex == -1)
 		{
 			return false;
 		}
 
-		numDescriptorsInLayout += layoutBinding.descriptorCount;
-
-		// Heavy and slow, TODO: should we more carefully check the compatibility of descriptor sets and layouts?
-		/*if (!descriptorSet->m_descriptors.ContainsIf([&](const auto& lhs) { return lhs->GetBinding() == layoutBinding.binding && lhs->GetType() == layoutBinding.descriptorType; }))
+		const auto& layoutBinding = layout->m_descriptorSetLayoutBindings[layoutIndex];
+		if (descriptor->GetArrayElement() >= layoutBinding.descriptorCount)
 		{
 			return false;
-		}*/
+		}
 	}
-	return descriptorSet->m_descriptors.Num() == numDescriptorsInLayout;
+
+	size_t expectedDescriptorsCount = 0;
+	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+	{
+		if (!descriptorSet->LikelyContains(layoutBinding))
+		{
+			return false;
+		}
+
+		size_t matchedDescriptors = 0;
+		for (const VulkanDescriptorPtr& descriptor : descriptorSet->m_descriptors)
+		{
+			if (descriptor->GetBinding() == layoutBinding.binding && descriptor->GetType() == layoutBinding.descriptorType)
+			{
+				matchedDescriptors++;
+			}
+		}
+
+		const bool bIsVariableDescriptorBinding = layout->HasVariableDescriptorBinding() &&
+			layout->GetVariableDescriptorBinding() == (int32_t)layoutBinding.binding;
+
+		if (bIsVariableDescriptorBinding)
+		{
+			if (matchedDescriptors == 0 || matchedDescriptors > layoutBinding.descriptorCount)
+			{
+				return false;
+			}
+
+			expectedDescriptorsCount += matchedDescriptors;
+		}
+		else if (matchedDescriptors != layoutBinding.descriptorCount)
+		{
+			return false;
+		}
+		else
+		{
+			expectedDescriptorsCount += layoutBinding.descriptorCount;
+		}
+	}
+
+	return descriptorSet->m_descriptors.Num() == expectedDescriptorsCount;
 }
 
 TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, const TVector<VulkanDescriptorSetPtr>& descriptorSets)
@@ -1339,7 +1447,8 @@ TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLay
 	SAILOR_PROFILE_FUNCTION();
 	TVector<bool> res(descriptorSets.Num());
 
-	for (uint32_t i = 0; i < pipelineLayout->m_descriptionSetLayouts.Num(); i++)
+	const uint32_t numSets = (uint32_t)std::min(descriptorSets.Num(), pipelineLayout->m_descriptionSetLayouts.Num());
+	for (uint32_t i = 0; i < numSets; i++)
 	{
 		res[i] = IsCompatible(pipelineLayout, descriptorSets[i], i);
 	}
@@ -1350,7 +1459,8 @@ TVector<bool> VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLay
 bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 	const TVector<VulkanShaderStagePtr>& shaders,
 	TVector<VulkanDescriptorSetLayoutPtr>& outVulkanLayouts,
-	TVector<RHI::ShaderLayoutBinding>& outRhiLayout)
+	TVector<RHI::ShaderLayoutBinding>& outRhiLayout,
+	const TVector<uint32_t>* optionalVariableDescriptorCount)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -1403,7 +1513,44 @@ bool VulkanApi::CreateDescriptorSetLayouts(VulkanDevicePtr device,
 
 	for (uint32_t i = 0; i < vulkanLayouts.Num(); i++)
 	{
-		outVulkanLayouts[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]));
+		uint32_t maxBindingInSet = 0;
+		for (const auto& layoutBinding : vulkanLayouts[i])
+		{
+			maxBindingInSet = std::max(maxBindingInSet, layoutBinding.binding);
+		}
+
+		for (uint32_t j = 0; j < rhiLayouts[i].Num(); j++)
+		{
+			auto& rhiBinding = rhiLayouts[i][j];
+			auto& layoutBinding = vulkanLayouts[i][j];
+			const uint32_t maxSlots = (optionalVariableDescriptorCount && i < optionalVariableDescriptorCount->Num()) ?
+				std::max(0u, (*optionalVariableDescriptorCount)[i]) : 0u;
+			const bool bCanPromoteToVariableDescriptor =
+				rhiBinding.m_binding == maxBindingInSet &&
+				(rhiBinding.m_type == RHI::EShaderBindingType::CombinedImageSampler || rhiBinding.m_type == RHI::EShaderBindingType::StorageImage);
+
+			if ((rhiBinding.m_bVariableDescriptorCount || bCanPromoteToVariableDescriptor) && maxSlots > 0)
+			{
+				check(rhiBinding.m_binding == maxBindingInSet);
+
+				rhiBinding.m_bVariableDescriptorCount = true;
+				rhiBinding.m_arrayCount = maxSlots;
+				layoutBinding.descriptorCount = maxSlots;
+			}
+		}
+
+		int32_t variableDescriptorBinding = -1;
+
+		for (const auto& rhiBinding : rhiLayouts[i])
+		{
+			if (rhiBinding.m_bVariableDescriptorCount)
+			{
+				variableDescriptorBinding = static_cast<int32_t>(rhiBinding.m_binding);
+				break;
+			}
+		}
+
+		outVulkanLayouts[i] = VulkanDescriptorSetLayoutPtr::Make(device, std::move(vulkanLayouts[i]), variableDescriptorBinding);
 	}
 
 	for (uint32_t i = 0; i < rhiLayouts.Num(); i++)

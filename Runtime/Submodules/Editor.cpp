@@ -4,6 +4,9 @@
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "ECS/TransformECS.h"
+#include "ECS/PathTracerECS.h"
+#include "Components/PathTracerProxyComponent.h"
+#include "Raytracing/PathTracer.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #if defined(_WIN32)
@@ -14,6 +17,7 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <cmath>
 #include "Platform/Win32/Window.h"
 
 using namespace Sailor;
@@ -141,6 +145,31 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			//}
 		}
 	}
+
+	return false;
+}
+
+bool Editor::RenderPathTracedImage(const InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || outputPath.empty())
+	{
+		return false;
+	}
+
+	Raytracing::PathTracer::Params params{};
+	params.m_output = outputPath;
+	params.m_height = height;
+	params.m_maxBounces = maxBounces;
+
+	if (samplesPerPixel > 0)
+	{
+		params.m_msaa = samplesPerPixel <= 32 ? std::min(4u, samplesPerPixel) : 8u;
+		params.m_numSamples = std::max(1u, (uint32_t)std::lround(samplesPerPixel / (float)params.m_msaa));
+	}
+
+	Raytracing::PathTracer::ParseCommandLineArgs(params, nullptr, 0);
 
 	return false;
 }

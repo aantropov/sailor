@@ -9,7 +9,6 @@ using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 using System.Windows.Input;
 using SailorEngine;
-using Windows.ApplicationModel.VoiceCommands;
 
 namespace SailorEditor.ViewModels;
 
@@ -39,9 +38,6 @@ public partial class GameObject : ObservableObject, ICloneable
         using (var writer = new StringWriter())
         {
             var serializer = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(new InstanceIdYamlConverter())
-                .WithTypeConverter(new RotationYamlConverter())
-                .WithTypeConverter(new Vec4YamlConverter())
                 .Build();
 
             var yaml = serializer.Serialize(this);

@@ -859,6 +859,7 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	RHI::ShaderByteCode debugComputeFragmentSpirv;
 	if (!GetSpirvCode(pShader->GetFileId(), permutation, debugVertexSpirv, debugFragmentSpirv, debugComputeFragmentSpirv, true))
 	{
+		SAILOR_LOG_ERROR("UpdateRHIResource failed to get DEBUG spirv for shader %s permutation %u", pShader->GetFileId().ToString().c_str(), permutation);
 		return false;
 	}
 
@@ -867,6 +868,7 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 	RHI::ShaderByteCode computeByteCode;
 	if (!GetSpirvCode(pShader->GetFileId(), permutation, vertexByteCode, fragmentByteCode, computeByteCode, false))
 	{
+		SAILOR_LOG_ERROR("UpdateRHIResource failed to get RELEASE spirv for shader %s permutation %u", pShader->GetFileId().ToString().c_str(), permutation);
 		return false;
 	}
 

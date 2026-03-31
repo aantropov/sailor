@@ -443,10 +443,10 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 {
 	TUniquePtr<ThreadContext> context = TUniquePtr<ThreadContext>::Make();
 
-	VulkanQueueFamilyIndices queueFamilyIndices = VulkanApi::FindQueueFamilies(m_physicalDevice, m_surface);
-	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
-	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), queueFamilyIndices.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	check(m_queueFamilies.IsComplete());
+	context->m_commandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_graphicsFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_transferCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_transferFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
+	context->m_computeCommandPool = VulkanCommandPoolPtr::Make(VulkanDevicePtr(this), m_queueFamilies.m_computeFamily.value(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT);
 
 	auto descriptorSizes = TVector
 	{
@@ -606,6 +606,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	VkPhysicalDeviceVulkan12Features supportedCore12{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES };
 	VkPhysicalDeviceVulkan13Features supportedCore13{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT supportedAtomicFloat{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT };
+	VkPhysicalDeviceProperties2 supportedProperties2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+	VkPhysicalDeviceVulkan12Properties supportedCore12Properties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES };
 
 	supportedFeatures2.pNext = &supportedCore11;
 	supportedCore11.pNext = &supportedCore12;
@@ -613,7 +615,11 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	supportedCore13.pNext = &supportedAtomicFloat;
 	supportedAtomicFloat.pNext = nullptr;
 
+	supportedProperties2.pNext = &supportedCore12Properties;
+	supportedCore12Properties.pNext = nullptr;
+
 	vkGetPhysicalDeviceFeatures2(physicalDevice, &supportedFeatures2);
+	vkGetPhysicalDeviceProperties2(physicalDevice, &supportedProperties2);
 
 	m_bSupportsDynamicRenderingCore13 =
 		(VK_VERSION_MAJOR(m_physicalDeviceProperties.apiVersion) > 1 ||
@@ -693,12 +699,27 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 			core11.shaderDrawParameters = supportedCore11.shaderDrawParameters;
 		});
 
+	m_bSupportsDescriptorUpdateAfterBind =
+		supportedCore12.descriptorIndexing &&
+		supportedCore12.descriptorBindingPartiallyBound &&
+		supportedCore12.descriptorBindingUpdateUnusedWhilePending &&
+		supportedCore12.descriptorBindingSampledImageUpdateAfterBind &&
+		supportedCore12.descriptorBindingStorageBufferUpdateAfterBind &&
+		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
+		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
+
+
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
 		{
 			core12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 			core12.samplerFilterMinmax = supportedCore12.samplerFilterMinmax;
-			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
+			core12.runtimeDescriptorArray = supportedCore12.runtimeDescriptorArray;
+			core12.shaderSampledImageArrayNonUniformIndexing = supportedCore12.shaderSampledImageArrayNonUniformIndexing;
+			core12.shaderStorageBufferArrayNonUniformIndexing = supportedCore12.shaderStorageBufferArrayNonUniformIndexing;
+			core12.shaderStorageImageArrayNonUniformIndexing = supportedCore12.shaderStorageImageArrayNonUniformIndexing;
+			core12.shaderUniformBufferArrayNonUniformIndexing = supportedCore12.shaderUniformBufferArrayNonUniformIndexing;
 			core12.descriptorBindingSampledImageUpdateAfterBind = supportedCore12.descriptorBindingSampledImageUpdateAfterBind;
+			core12.descriptorBindingPartiallyBound = supportedCore12.descriptorBindingPartiallyBound;
 			core12.descriptorBindingStorageBufferUpdateAfterBind = supportedCore12.descriptorBindingStorageBufferUpdateAfterBind;
 			core12.descriptorBindingUniformBufferUpdateAfterBind = supportedCore12.descriptorBindingUniformBufferUpdateAfterBind;
 			core12.descriptorBindingStorageImageUpdateAfterBind = supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
@@ -706,6 +727,9 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
 			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
 		});
+
+	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", (int32_t)m_bSupportsDescriptorUpdateAfterBind);
+	SAILOR_LOG("maxDescriptorSetUpdateAfterBindSamplers = %d", (int32_t)supportedCore12Properties.maxDescriptorSetUpdateAfterBindSamplers);
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.Num());

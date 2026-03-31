@@ -35,18 +35,6 @@ void MeshRendererComponent::EndPlay()
 	GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>()->UnregisterComponent(m_handle);
 }
 
-void MeshRendererComponent::LoadModel(const std::string& path)
-{
-	if (auto modelFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(path))
-	{
-		ModelPtr model;
-
-		App::GetSubmodule<ModelImporter>()->LoadModel(modelFileId->GetFileId(), model);
-
-		SetModel(model);
-	}
-}
-
 void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);
@@ -56,4 +44,29 @@ void MeshRendererComponent::SetModel(const ModelPtr& model)
 	{
 		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(model->GetFileId(), GetMaterials());
 	}
+}
+
+bool MeshRendererComponent::LoadModel(const std::string& path)
+{
+	auto assetRegistry = App::GetSubmodule<AssetRegistry>();
+	auto modelImporter = App::GetSubmodule<ModelImporter>();
+	if (!assetRegistry || !modelImporter)
+	{
+		return false;
+	}
+
+	const FileId modelId = assetRegistry->GetOrLoadFile(path);
+	if (!modelId)
+	{
+		return false;
+	}
+
+	ModelPtr model;
+	if (!modelImporter->LoadModel_Immediate(modelId, model) || !model)
+	{
+		return false;
+	}
+
+	SetModel(model);
+	return true;
 }

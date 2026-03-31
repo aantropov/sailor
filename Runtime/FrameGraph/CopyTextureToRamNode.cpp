@@ -28,9 +28,12 @@ void CopyTextureToRamNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandL
 	if ((m_texture = GetResolvedAttachment("src")))
 	{
 		commands->ImageMemoryBarrier(commandList, m_texture, EImageLayout::TransferSrcOptimal);
-		if (!m_cpuBuffer || m_cpuBuffer->GetSize() < m_texture->GetSize())
+		const uint64_t baseSize = m_texture->GetSize();
+		const uint64_t rowPaddingWorstCase = 256ull * (uint64_t)m_texture->GetExtent().y;
+		const uint64_t requiredSize = baseSize + rowPaddingWorstCase;
+		if (!m_cpuBuffer || m_cpuBuffer->GetSize() < requiredSize)
 		{
-			m_cpuBuffer = driver->CreateBuffer(m_texture->GetSize() + 512u, RHI::EBufferUsageBit::BufferTransferDst_Bit,
+			m_cpuBuffer = driver->CreateBuffer(requiredSize, RHI::EBufferUsageBit::BufferTransferDst_Bit,
 				RHI::EMemoryPropertyBit::HostCoherent | RHI::EMemoryPropertyBit::HostVisible);
 		}
 

@@ -177,7 +177,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		}
 	}
 
-	if (m_numMeshes == 0 || (bGpuCullingEnabled && !m_pComputeMeshCullingShader.IsValid()))
+	if (m_numMeshes == 0 || (bGpuCullingEnabled && !m_pComputeMeshCullingShader->IsReady()))
 	{
 		m_syncSharedResources.Unlock();
 		return;

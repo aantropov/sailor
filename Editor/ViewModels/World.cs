@@ -20,9 +20,9 @@ public partial class World : AssetFile
     [ObservableProperty]
     ObservableList<Prefab> prefabs = [];
 
-    public override async Task Save() => await Save(new WorldYamlConverter());
+    public override Task Save() => Save(new WorldYamlConverter());
 
-    public override async Task Revert()
+    public override Task Revert()
     {
         try
         {
@@ -49,6 +49,7 @@ public partial class World : AssetFile
         }
 
         IsDirty = false;
+        return Task.CompletedTask;
     }
 }
 
@@ -59,12 +60,6 @@ public class WorldYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var commonConverters = new List<IYamlTypeConverter> {
-                new RotationYamlConverter(),
-                new Vec4YamlConverter(),
-                new Vec3YamlConverter(),
-                new Vec2YamlConverter(),
-                new InstanceIdYamlConverter(),
-                new FileIdYamlConverter(),
                 new ComponentTypeYamlConverter(),
                 new ViewModels.ComponentYamlConverter()
             };
@@ -99,12 +94,6 @@ public class WorldYamlConverter : IYamlTypeConverter
         var world = (World)value;
 
         var commonConverters = new List<IYamlTypeConverter> {
-                new RotationYamlConverter(),
-                new Vec4YamlConverter(),
-                new Vec3YamlConverter(),
-                new Vec2YamlConverter(),
-                new InstanceIdYamlConverter(),
-                new FileIdYamlConverter(),
                 new ComponentTypeYamlConverter(),
                 new ViewModels.ComponentYamlConverter()
             };

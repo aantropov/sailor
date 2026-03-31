@@ -1,14 +1,14 @@
 #include "Sailor.h"
 #include "RHI/Renderer.h"
 
+using namespace Sailor;
+
 #if defined(_WIN32)
 #include <wtypes.h>
 #include <shellapi.h>
 #include <windows.h>
 #include <vector>
 #include <string>
-
-using namespace Sailor;
 
 static const char** ConvertToAnsi(LPWSTR* szArglist, int nArgs)
 {
@@ -45,6 +45,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 		return 1;
 	}
 	App::Start();
+	const int32_t exitCode = App::GetExitCode();
 	App::Stop();
 	App::Shutdown();
 
@@ -60,12 +61,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 		LocalFree(szArglist);
 	}
 
-	return 0;
+	return exitCode;
 }
 
 #else
-
-using namespace Sailor;
 
 int main(int argc, const char** argv)
 {
@@ -76,9 +75,10 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 	App::Start();
+	const int32_t exitCode = App::GetExitCode();
 	App::Stop();
 	App::Shutdown();
-	return 0;
+	return exitCode;
 }
 
 #endif

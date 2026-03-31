@@ -354,6 +354,7 @@ namespace Sailor::RHI
 
 	SAILOR_API bool IsDepthFormat(ETextureFormat textureFormat);
 	SAILOR_API bool IsDepthStencilFormat(ETextureFormat textureFormat);
+	SAILOR_API bool IsFloatFormat(ETextureFormat textureFormat);
 
 	enum ETextureUsageBit : uint8_t
 	{
@@ -614,6 +615,7 @@ namespace Sailor::RHI
 		uint32_t m_set = 0u;
 		uint32_t m_arrayCount = 0u;
 		uint32_t m_paddedSize = 0u;
+		bool m_bVariableDescriptorCount = false;
 
 		ETextureType m_textureType{};
 
@@ -641,7 +643,8 @@ namespace Sailor::RHI
 				m_arrayCount == rhs.m_arrayCount &&
 				m_members == rhs.m_members &&
 				m_name == rhs.m_name &&
-				m_paddedSize == rhs.m_paddedSize;
+				m_paddedSize == rhs.m_paddedSize &&
+				m_bVariableDescriptorCount == rhs.m_bVariableDescriptorCount;
 		}
 
 		SAILOR_API bool IsArray() const { return m_arrayCount; }

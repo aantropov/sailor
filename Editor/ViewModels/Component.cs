@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
 using SailorEngine;
 using YamlDotNet.Core.Events;
@@ -98,11 +98,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
             .WithTypeConverter(new ComponentTypeYamlConverter())
-            .WithTypeConverter(new FileIdYamlConverter())
-            .WithTypeConverter(new RotationYamlConverter())
-            .WithTypeConverter(new Vec4YamlConverter())
-            .WithTypeConverter(new Vec3YamlConverter())
-            .WithTypeConverter(new Vec2YamlConverter())
+            .WithTypeConverter(new ComponentYamlConverter())
             .Build();
 
         var component = new Component();
@@ -167,13 +163,9 @@ public class ComponentYamlConverter : IYamlTypeConverter
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
-        var serializer = SerializationUtils.CreateSerializerBuilder()
-            .WithTypeConverter(new Vec3YamlConverter())
-            .WithTypeConverter(new Vec4YamlConverter())
-            .WithTypeConverter(new FileIdYamlConverter())
-            .WithTypeConverter(new InstanceIdYamlConverter())
-            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
+        var serializer = SerializationUtils.CreateSerializerBuilder()            
             .Build();
+
         var component = (Component)value;
 
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));

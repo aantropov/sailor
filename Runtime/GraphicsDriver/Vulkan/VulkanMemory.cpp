@@ -38,8 +38,8 @@ VulkanMemoryPtr GlobalVulkanMemoryAllocator::Allocate(size_t size)
 
 	if (m_memoryProperties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	{
-		m_totalDeviceMemoryAllocated += size;
-		SAILOR_LOG("Allocate GPU device memory: %.2fmb, total used: %.2fmb", (float)size / (1024.0f * 1024.0f), (float)m_totalDeviceMemoryAllocated / (1024.0f * 1024.0f));
+		const size_t totalUsed = m_totalDeviceMemoryAllocated.fetch_add(size, std::memory_order_relaxed) + size;
+		SAILOR_LOG("Allocate GPU device memory: %.2fmb, total used: %.2fmb", (double)size / (1024.0 * 1024.0), (double)totalUsed / (1024.0 * 1024.0));
 	}
 	else
 	{
@@ -53,8 +53,11 @@ void GlobalVulkanMemoryAllocator::Free(VulkanMemoryPtr pData, size_t size)
 {
 	if (m_memoryProperties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	{
-		m_totalDeviceMemoryAllocated -= pData.m_size;
-		SAILOR_LOG("Free GPU device memory: %.2fmb, total used: %.2fmb", (float)pData.m_size / (1024.0f * 1024.0f), (float)m_totalDeviceMemoryAllocated / (1024.0f * 1024.0f));
+		const size_t allocationSize = pData.m_size;
+		const size_t prevTotal = m_totalDeviceMemoryAllocated.load(std::memory_order_relaxed);
+		const size_t clampedSize = allocationSize > prevTotal ? prevTotal : allocationSize;
+		const size_t totalUsed = m_totalDeviceMemoryAllocated.fetch_sub(clampedSize, std::memory_order_relaxed) - clampedSize;
+		SAILOR_LOG("Free GPU device memory: %.2fmb, total used: %.2fmb", (double)allocationSize / (1024.0 * 1024.0), (double)totalUsed / (1024.0 * 1024.0));
 	}
 	else
 	{
