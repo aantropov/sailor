@@ -151,7 +151,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void CreateLogicalDevice(VkPhysicalDevice physicalDevice);
 		SAILOR_API void CreateWin32Surface(const Platform::Window* pViewport);
-		SAILOR_API void CreateSwapchain(Platform::Window* pViewport);
+		SAILOR_API bool CreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API bool RecreateSwapchain(Platform::Window* pViewport);
 		SAILOR_API VulkanStateViewportPtr CreateSwapchainViewport() const;
 		SAILOR_API void CreateDefaultRenderPass();

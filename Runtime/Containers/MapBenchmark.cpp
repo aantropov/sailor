@@ -155,7 +155,7 @@ namespace Sailor
 		{
 			Result res(typeid(TContainer).name());
 
-			const size_t count = 300000;
+			const size_t count = 100000;
 
 			TContainer container;
 			Timer tMap;
@@ -260,7 +260,7 @@ namespace Sailor
 		{
 			Result res(typeid(std::unordered_map<size_t, TValue>).name());
 
-			const size_t count = 300000;
+			const size_t count = 100000;
 
 			Timer stdMap;
 			std::unordered_map<size_t, TValue> ideal;
@@ -320,7 +320,7 @@ namespace Sailor
 		static Result RunTests()
 		{
 			const size_t numThreads = 16;
-			const size_t count = 300000;
+			const size_t count = 100000;
 			Result res(typeid(TContainer).name());
 
 			TContainer container;

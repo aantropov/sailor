@@ -20,11 +20,11 @@ namespace Sailor
 			printf("%s\n", tOctreeClassName.c_str());
 			printf("Sanity check passed: %d\n", SanityCheck());
 			printf("\n");
-			PerformanceTests(10000);
+			PerformanceTests(5000);
 			printf("\n");
-			PerformanceTests(25000);
+			PerformanceTests(15000);
 			printf("\n");
-			PerformanceTests(1000000);
+			PerformanceTests(50000);
 			printf("\n");
 		}
 

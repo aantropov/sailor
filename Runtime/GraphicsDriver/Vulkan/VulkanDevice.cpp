@@ -495,7 +495,12 @@ bool VulkanDevice::RecreateSwapchain(Platform::Window* pViewport)
 
 	CleanupSwapChain();
 
-	CreateSwapchain(pViewport);
+	if (!CreateSwapchain(pViewport))
+	{
+		m_bIsSwapChainOutdated = true;
+		return false;
+	}
+
 	CreateDefaultRenderPass();
 
 	m_frameDeps.Clear();
@@ -845,8 +850,19 @@ VulkanStateViewportPtr VulkanDevice::CreateSwapchainViewport() const
 //#endif
 }
 
-void VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
+bool VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 {
+	VulkanQueueFamilyIndices indices = VulkanApi::FindQueueFamilies(GetPhysicalDevice(), m_surface);
+	if (!indices.m_graphicsFamily.has_value() || !indices.m_presentFamily.has_value())
+	{
+		SAILOR_LOG_ERROR("VulkanDevice::CreateSwapchain skipped: queue family discovery failed. graphics=%d, present=%d, width=%u, height=%u",
+			(int32_t)indices.m_graphicsFamily.has_value(),
+			(int32_t)indices.m_presentFamily.has_value(),
+			pViewport->GetWidth(),
+			pViewport->GetHeight());
+		return false;
+	}
+
 	m_oldSwapchain = m_swapchain;
 
 	m_swapchain = VulkanSwapchainPtr::Make(
@@ -860,6 +876,7 @@ void VulkanDevice::CreateSwapchain(Platform::Window* pViewport)
 	m_pCurrentFrameViewport = CreateSwapchainViewport();
 
 	m_bNeedToTransitSwapchainToPresent = true;
+	return true;
 }
 
 void VulkanDevice::CleanupSwapChain()

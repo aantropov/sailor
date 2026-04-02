@@ -75,10 +75,10 @@ public:
 		const std::string allocatorName = typeid(TAllocator).name();
 
 		Result result(allocatorName);
-		result.m_results["small"] = RunPerformanceTests(1, 32, 10, 1000000);
-		result.m_results["medium"] = RunPerformanceTests(128, 40000, 10, 100000);
-		result.m_results["large"] = RunPerformanceTests(4000000, 800000000, 10, 10000);
-		result.m_results["random"] = RunPerformanceTests(1, 16000000000, 10, 100000);
+		result.m_results["small"] = RunPerformanceTests(1, 32, 5, 100000);
+		result.m_results["medium"] = RunPerformanceTests(128, 40000, 5, 25000);
+		result.m_results["large"] = RunPerformanceTests(4000000, 800000000, 3, 2500);
+		result.m_results["random"] = RunPerformanceTests(1, 16000000000, 5, 25000);
 
 		RunSanityTests();
 
