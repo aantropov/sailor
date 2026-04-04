@@ -7,6 +7,7 @@
 #include "Engine/World.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
 
@@ -96,12 +97,19 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
 					viewProxy.m_skeletonOffset = ecsData.GetSkeletonOffset();
 					viewProxy.m_overrideMaterials.Clear();
+#if defined(__APPLE__)
+					viewProxy.m_materialTextureSamplers.Clear();
+#endif
 					viewProxy.m_frame = ecsData.GetFrameLastChange();
 					viewProxy.m_bCastShadows = ecsData.ShouldCastShadow();
 					viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
 					viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
+#if defined(__APPLE__)
+					viewProxy.m_materialTextureSamplers.Reserve(viewProxy.m_meshes.Num());
+					auto textureImporter = App::GetSubmodule<TextureImporter>();
+#endif
 					// TODO: Should we check AABB for each mesh in model?
 
 					for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
@@ -112,6 +120,21 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 						if (material && material->IsReady() && !bSkipMaterials)
 						{
 							viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+#if defined(__APPLE__)
+							TSet<uint32_t> requestedTextures;
+							requestedTextures.Insert(0u);
+
+							if (textureImporter)
+							{
+								for (const auto& sampler : material->GetSamplers())
+								{
+									const uint32_t textureIndex = sampler.m_second ? (uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
+									requestedTextures.Insert(textureIndex);
+								}
+							}
+
+							viewProxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
+#endif
 						}
 					}
 

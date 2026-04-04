@@ -159,6 +159,10 @@ namespace Sailor::GraphicsDriver::Vulkan
 	protected:
 		SAILOR_API ~VulkanDescriptorSet() override;
 
+		static const VkDescriptorSetLayoutBinding* FindLayoutBinding(const VulkanDescriptorSetLayoutPtr& layout, uint32_t binding, VkDescriptorType descriptorType);
+		static uint32_t GetEffectiveDescriptorCount(const VulkanDescriptorSetLayoutPtr& layout, const VkDescriptorSetLayoutBinding& layoutBinding, uint32_t variableDescriptorCount);
+		static bool ValidateDescriptorWrite(const VulkanDescriptorSetLayoutPtr& layout, const VkWriteDescriptorSet& write, uint32_t variableDescriptorCount, const char* context);
+
 		SAILOR_API void RecalculateCompatibility();
 
 		VulkanDevicePtr m_device{};

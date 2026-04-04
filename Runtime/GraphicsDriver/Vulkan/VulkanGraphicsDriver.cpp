@@ -1112,7 +1112,15 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 				if (binding.m_second->GetLayout().m_bVariableDescriptorCount)
 				{
 					variableDescriptorBinding = static_cast<int32_t>(binding.m_second->m_vulkan.m_descriptorSetLayout.binding);
-					variableDescriptorCount = std::max(variableDescriptorCount, static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num()));
+					const uint32_t plannedTextureSlots = (std::max)(1u, binding.m_second->GetLayout().m_arrayCount);
+					const uint32_t actualTextureSlots = static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num());
+#ifdef _DEBUG
+					if (actualTextureSlots > plannedTextureSlots)
+					{
+						check(false);
+					}
+#endif
+					variableDescriptorCount = std::max(variableDescriptorCount, (std::min)(plannedTextureSlots, actualTextureSlots));
 				}
 
 				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
@@ -2700,7 +2708,15 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 						if (materialLayout->HasVariableDescriptorBinding() &&
 							materialLayout->GetVariableDescriptorBinding() == (int32_t)matchedLayoutBinding.binding)
 						{
-							variableDescriptorCount = std::max(variableDescriptorCount, static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num()));
+							const uint32_t actualTextureSlots = static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num());
+#ifdef _DEBUG
+							if (actualTextureSlots > matchedLayoutBinding.descriptorCount)
+							{
+								check(false);
+							}
+#endif
+							const uint32_t emittedTextureSlots = (std::min)(matchedLayoutBinding.descriptorCount, actualTextureSlots);
+							variableDescriptorCount = std::max(variableDescriptorCount, (std::max)(1u, emittedTextureSlots));
 						}
 
 						numDescriptors++;

@@ -205,8 +205,9 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			m_indirectBuffers.Resize(NumShadowPasses);
 		}
 
-		auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+		auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 			{
+				auto material = batch.m_material;
 				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
 				return sets;
 			};

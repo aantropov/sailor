@@ -10,7 +10,7 @@ namespace Sailor
 
 	public:
 		SAILOR_API virtual void BeginPlay() override;
-		SAILOR_API virtual void EndPlay() override { Component::EndPlay(); }
+		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API virtual void Tick(float deltaTime) override;
 
 		SAILOR_API uint32_t GetGridSize() const { return m_gridSize; }
@@ -51,6 +51,11 @@ namespace Sailor
 		float m_rotationSpeedDeg = 10.0f;
 		float m_directionalLightIntensity = 320.0f;
 		bool m_bSpawnPointLights = true;
+
+		float m_minFps = FLT_MAX;
+		float m_maxFps = 0.0f;
+		double m_sumFps = 0.0;
+		uint64_t m_numFpsSamples = 0;
 	};
 }
 

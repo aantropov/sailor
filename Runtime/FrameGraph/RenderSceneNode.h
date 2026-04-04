@@ -42,6 +42,36 @@ namespace Sailor::Framegraph
 
 	protected:
 
+		// macOS/MoltenVK has a much tighter practical limit on bound texture descriptors.
+		// We cache texture binding sets and split batches so they fit those limits.
+		struct TextureBindingCacheKey
+		{
+			TVector<uint32_t> m_requestedTextures;
+
+			bool operator==(const TextureBindingCacheKey& rhs) const { return m_requestedTextures == rhs.m_requestedTextures; }
+
+			size_t GetHash() const
+			{
+				size_t hash = 0;
+				for (const uint32_t textureIndex : m_requestedTextures)
+				{
+					HashCombine(hash, textureIndex);
+				}
+				return hash;
+			}
+		};
+
+		struct TextureBindingCacheEntry
+		{
+			RHI::RHIShaderBindingSetPtr m_textureBindings;
+			uint32_t m_textureSetSize = 1;
+			uint64_t m_lastUsedFrame = 0;
+		};
+
+		RHI::RHIShaderBindingSetPtr GetTextureBindingSet(const TSet<uint32_t>& requestedTextures, uint64_t frame, uint32_t& outSupportedMeshesPerBatch);
+		void EvictTextureBindingCache(uint64_t frame);
+		static uint32_t CalculatePlannedTextureSlotCount(const TVector<uint32_t>& requestedTextures);
+
 		static const char* m_name;
 
 		uint32_t m_numMeshes = 0;
@@ -57,6 +87,14 @@ namespace Sailor::Framegraph
 		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 		ShaderSetPtr m_pComputeMeshCullingShader{};
 		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
+
+		// Shared cache across platforms; macOS relies on it most because of descriptor pressure.
+		TMap<TextureBindingCacheKey, TextureBindingCacheEntry> m_textureBindingCache;
+
+		// macOS/MoltenVK has a much tighter practical limit on the amount of bound texture descriptors.
+		// RenderScene uses these constants to keep batch-local texture sets within stable limits.
+		static constexpr uint32_t MaxTextureSlotsPerBatch = 1024u;
+		static constexpr uint64_t MaxTextureBindingCacheUnusedFrames = 5u;
 	};
 
 	template class TFrameGraphNode<RenderSceneNode>;

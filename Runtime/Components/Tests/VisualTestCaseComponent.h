@@ -18,6 +18,8 @@ namespace Sailor
 
 		SAILOR_API uint32_t GetCaptureAfterFrames() const { return m_captureAfterFrames; }
 		SAILOR_API void SetCaptureAfterFrames(uint32_t value) { m_captureAfterFrames = value; }
+		SAILOR_API float GetMinRunTimeSeconds() const { return m_minRunTimeSeconds; }
+		SAILOR_API void SetMinRunTimeSeconds(float value) { m_minRunTimeSeconds = value; }
 
 		SAILOR_API bool GetEnablePathTracer() const { return m_bEnablePathTracer; }
 		SAILOR_API void SetEnablePathTracer(bool value) { m_bEnablePathTracer = value; }
@@ -39,6 +41,7 @@ namespace Sailor
 
 		std::string m_screenshotName = "visual-test";
 		uint32_t m_captureAfterFrames = 8;
+		float m_minRunTimeSeconds = 0.0f;
 		bool m_bEnablePathTracer = false;
 		bool m_bEnablePathTracerNode = true;
 		float m_samplesPerFrame = 1.0f;
@@ -52,6 +55,7 @@ namespace Sailor
 
 		uint32_t m_framesSinceStart = 0;
 		uint32_t m_framesAfterCaptureRequest = 0;
+		int64_t m_startTimeMs = 0;
 		bool m_bCaptureRequested = false;
 	};
 }
@@ -66,6 +70,8 @@ REFL_AUTO(
 
 	func(GetCaptureAfterFrames, property("captureAfterFrames"), SkipCDO()),
 	func(SetCaptureAfterFrames, property("captureAfterFrames"), SkipCDO()),
+	func(GetMinRunTimeSeconds, property("minRunTimeSeconds"), SkipCDO()),
+	func(SetMinRunTimeSeconds, property("minRunTimeSeconds"), SkipCDO()),
 	func(GetEnablePathTracer, property("enablePathTracer"), SkipCDO()),
 	func(SetEnablePathTracer, property("enablePathTracer"), SkipCDO()),
 	func(GetEnablePathTracerNode, property("enablePathTracerNode"), SkipCDO()),

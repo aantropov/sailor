@@ -32,6 +32,8 @@ namespace Sailor
 		SAILOR_API void Finish(bool bPassed, const std::string& message = "");
 		SAILOR_API void MarkPassed();
 		SAILOR_API void MarkFailed(const std::string& message);
+
+	public:
 		SAILOR_API void AddJournalEvent(const char* eventName, const std::string& message, int64_t durationMs = 0) const;
 
 		SAILOR_API bool IsFinished() const { return m_bFinished; }

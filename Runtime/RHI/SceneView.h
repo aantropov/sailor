@@ -50,6 +50,9 @@ namespace Sailor::RHI
 
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
+#if defined(__APPLE__)
+		TVector<TSet<uint32_t>> m_materialTextureSamplers;
+#endif
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;

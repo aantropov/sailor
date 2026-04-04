@@ -9,6 +9,66 @@
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
+const VkDescriptorSetLayoutBinding* VulkanDescriptorSet::FindLayoutBinding(const VulkanDescriptorSetLayoutPtr& layout, uint32_t binding, VkDescriptorType descriptorType)
+{
+	for (const auto& layoutBinding : layout->m_descriptorSetLayoutBindings)
+	{
+		if (layoutBinding.binding == binding && layoutBinding.descriptorType == descriptorType)
+		{
+			return &layoutBinding;
+		}
+	}
+
+	return nullptr;
+}
+
+uint32_t VulkanDescriptorSet::GetEffectiveDescriptorCount(const VulkanDescriptorSetLayoutPtr& layout, const VkDescriptorSetLayoutBinding& layoutBinding, uint32_t variableDescriptorCount)
+{
+	const bool bIsVariableDescriptorBinding = layout->HasVariableDescriptorBinding() &&
+		layout->GetVariableDescriptorBinding() == static_cast<int32_t>(layoutBinding.binding);
+
+	if (!bIsVariableDescriptorBinding)
+	{
+		return layoutBinding.descriptorCount;
+	}
+
+	return std::min(layoutBinding.descriptorCount, (std::max)(1u, variableDescriptorCount));
+}
+
+bool VulkanDescriptorSet::ValidateDescriptorWrite(const VulkanDescriptorSetLayoutPtr& layout, const VkWriteDescriptorSet& write, uint32_t variableDescriptorCount, const char* context)
+{
+	const auto* layoutBinding = FindLayoutBinding(layout, write.dstBinding, write.descriptorType);
+	if (!layoutBinding)
+	{
+		SAILOR_LOG_ERROR("%s: missing layout binding for descriptor write. binding=%u, type=%u, count=%u, arrayElement=%u",
+			context,
+			write.dstBinding,
+			static_cast<uint32_t>(write.descriptorType),
+			write.descriptorCount,
+			write.dstArrayElement);
+		return false;
+	}
+
+	const uint32_t allowedDescriptorCount = GetEffectiveDescriptorCount(layout, *layoutBinding, variableDescriptorCount);
+	if (write.dstArrayElement >= allowedDescriptorCount ||
+		write.descriptorCount > allowedDescriptorCount ||
+		write.dstArrayElement + write.descriptorCount > allowedDescriptorCount)
+	{
+		SAILOR_LOG_ERROR("%s: descriptor write exceeds layout. binding=%u, type=%u, count=%u, arrayElement=%u, allowed=%u, layoutCount=%u, variableCount=%u",
+			context,
+			write.dstBinding,
+			static_cast<uint32_t>(write.descriptorType),
+			write.descriptorCount,
+			write.dstArrayElement,
+			allowedDescriptorCount,
+			layoutBinding->descriptorCount,
+			variableDescriptorCount);
+		return false;
+	}
+
+	return true;
+}
+
 VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevicePtr pDevice, TVector<VkDescriptorSetLayoutBinding> descriptorSetLayoutBindings, int32_t variableDescriptorBinding) :
 	m_descriptorSetLayoutBindings(std::move(descriptorSetLayoutBindings)),
 	m_device(pDevice),
@@ -170,6 +230,14 @@ void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 	m_descriptors[index]->Apply(descriptorWrite);
 	descriptorWrite.dstSet = m_descriptorSet;
 
+	const auto* variableLayoutBinding = m_descriptorSetLayout->HasVariableDescriptorBinding() ?
+		FindLayoutBinding(m_descriptorSetLayout, static_cast<uint32_t>(m_descriptorSetLayout->GetVariableDescriptorBinding()), descriptorWrite.descriptorType) :
+		nullptr;
+	const uint32_t variableDescriptorCount = variableLayoutBinding ?
+		(std::min)(variableLayoutBinding->descriptorCount, (std::max)(1u, m_variableDescriptorCount)) :
+		(std::max)(1u, m_variableDescriptorCount);
+
+#ifdef _DEBUG
 	bool bValid = true;
 	switch (descriptorWrite.descriptorType)
 	{
@@ -195,25 +263,48 @@ void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 		break;
 	}
 
-	if (bValid)
-	{
-		vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
-	}
-	else
-	{
-		SAILOR_LOG("Skip invalid Vulkan descriptor update: type=%u, binding=%u, arrayElement=%u", (uint32_t)descriptorWrite.descriptorType, descriptorWrite.dstBinding, descriptorWrite.dstArrayElement);
-	}
+	bValid = bValid && ValidateDescriptorWrite(m_descriptorSetLayout, descriptorWrite, variableDescriptorCount, "VulkanDescriptorSet::UpdateDescriptor");
+	check(bValid);
+#endif
+
+	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
 }
 
 void VulkanDescriptorSet::Compile()
 {
+	uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
+
 	if (!m_descriptorSet)
 	{
 		m_descriptorSetLayout->Compile();
 
 		VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
 		VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountInfo{};
-		uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
+		if (m_descriptorSetLayout->HasVariableDescriptorBinding())
+		{
+			const int32_t variableBinding = m_descriptorSetLayout->GetVariableDescriptorBinding();
+			const auto* layoutBinding = FindLayoutBinding(m_descriptorSetLayout, static_cast<uint32_t>(variableBinding), VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+			if (!layoutBinding)
+			{
+				for (const auto& candidate : m_descriptorSetLayout->m_descriptorSetLayoutBindings)
+				{
+					if (candidate.binding == static_cast<uint32_t>(variableBinding))
+					{
+						layoutBinding = &candidate;
+						break;
+					}
+				}
+			}
+
+			if (layoutBinding && variableDescriptorCount > layoutBinding->descriptorCount)
+			{
+				SAILOR_LOG_ERROR("VulkanDescriptorSet::Compile: variable descriptor count exceeds layout. requested=%u, layout=%u, binding=%u",
+					variableDescriptorCount,
+					layoutBinding->descriptorCount,
+					layoutBinding->binding);
+				variableDescriptorCount = layoutBinding->descriptorCount;
+			}
+		}
 
 		VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
 		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -276,12 +367,18 @@ void VulkanDescriptorSet::Compile()
 
 		if (bValid)
 		{
-			validWrites.Add(write);
+			bValid = ValidateDescriptorWrite(m_descriptorSetLayout, write, variableDescriptorCount, "VulkanDescriptorSet::Compile");
+			if (bValid)
+			{
+				validWrites.Add(write);
+			}
 		}
-		else
+#ifdef _DEBUG
+		if (!bValid)
 		{
-			SAILOR_LOG_ERROR("Invalid Vulkan descriptor write: type=%u, binding=%u, count=%u, arrayElement=%u, pImageInfo=%p, pBufferInfo=%p, pTexelBufferView=%p", (uint32_t)write.descriptorType, write.dstBinding, write.descriptorCount, write.dstArrayElement, write.pImageInfo, write.pBufferInfo, write.pTexelBufferView);
+			check(false);
 		}
+#endif
 	}
 
 	RecalculateCompatibility();

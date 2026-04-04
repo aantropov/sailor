@@ -244,8 +244,9 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
-	auto shaderBindingsByMaterial = [&](RHIMaterialPtr material)
+	auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 		{
+			auto material = batch.m_material;
 			TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
 
 			if (material->GetRenderState().IsRequiredCustomDepthShader())

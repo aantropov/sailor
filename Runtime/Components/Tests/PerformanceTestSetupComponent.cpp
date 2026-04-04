@@ -2,6 +2,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/LightComponent.h"
+#include "Components/Tests/TestCaseComponent.h"
 #include "ECS/TransformECS.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Engine/GameObject.h"
@@ -10,6 +11,7 @@
 #include "RHI/Renderer.h"
 #include <cfloat>
 #include <cmath>
+#include <sstream>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
@@ -46,13 +48,60 @@ namespace
 void PerformanceTestSetupComponent::BeginPlay()
 {
 	Component::BeginPlay();
+	m_minFps = FLT_MAX;
+	m_maxFps = 0.0f;
+	m_sumFps = 0.0;
+	m_numFpsSamples = 0;
 	SpawnGrid();
 	SpawnLights();
 	EnsureCamera();
 }
 
+void PerformanceTestSetupComponent::EndPlay()
+{
+	if (m_numFpsSamples > 0)
+	{
+		const double avgFps = m_sumFps / (double)m_numFpsSamples;
+		std::ostringstream ss;
+		ss.setf(std::ios::fixed);
+		ss.precision(2);
+		ss << "min=" << m_minFps
+		   << " avg=" << (float)avgFps
+		   << " max=" << m_maxFps
+		   << " samples=" << (unsigned long long)m_numFpsSamples;
+		const std::string fpsSummary = ss.str();
+
+		if (auto owner = GetOwner())
+		{
+			if (auto testCase = owner->GetComponent<TestCaseComponent>())
+			{
+				testCase->AddJournalEvent("PerformanceStats", fpsSummary, 0);
+			}
+			else
+			{
+				SAILOR_LOG("PerformanceTest FPS: %s", fpsSummary.c_str());
+			}
+		}
+		else
+		{
+			SAILOR_LOG("PerformanceTest FPS: %s", fpsSummary.c_str());
+		}
+	}
+
+	Component::EndPlay();
+}
+
 void PerformanceTestSetupComponent::Tick(float deltaTime)
 {
+	if (deltaTime > FLT_EPSILON)
+	{
+		const float fps = 1.0f / deltaTime;
+		m_minFps = (std::min)(m_minFps, fps);
+		m_maxFps = (std::max)(m_maxFps, fps);
+		m_sumFps += fps;
+		m_numFpsSamples++;
+	}
+
 	if (!m_bAppliedRuntimeColors)
 	{
 		m_bAppliedRuntimeColors = ApplyRuntimeMaterialColors();
@@ -190,35 +239,43 @@ void PerformanceTestSetupComponent::SpawnLights()
 	{
 		const glm::vec3 palette[] =
 		{
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
-			glm::vec3(1.0f),
+			glm::vec3(1.0f, 0.3f, 0.3f),
+			glm::vec3(0.3f, 1.0f, 0.3f),
+			glm::vec3(0.3f, 0.5f, 1.0f),
+			glm::vec3(1.0f, 0.9f, 0.3f),
+			glm::vec3(1.0f, 0.3f, 1.0f),
+			glm::vec3(0.3f, 1.0f, 1.0f),
+			glm::vec3(1.0f, 0.6f, 0.2f),
+			glm::vec3(0.8f, 0.8f, 1.0f),
 		};
-		const uint32_t lightsCount = 16;
-		const float radius = extent * 1.15f;
-		for (uint32_t i = 0; i < lightsCount; i++)
-		{
-			const float angle = glm::two_pi<float>() * ((float)i / (float)lightsCount);
-			const float yLayer = (i % 2 == 0) ? extent * 0.20f : extent * 0.55f;
-			auto lightGo = GetWorld()->Instantiate("PerfPointLight");
-			auto& transform = lightGo->GetTransformComponent();
-			transform.SetPosition(glm::vec4(
-				cos(angle) * radius,
-				yLayer,
-				sin(angle) * radius,
-				1.0f));
 
-			auto light = lightGo->AddComponent<LightComponent>();
-			light->SetLightType(ELightType::Point);
-			light->SetIntensity(palette[i % (sizeof(palette) / sizeof(palette[0]))] * 60.0f);
-			light->SetBounds(glm::vec3(700.0f));
-			light->SetAttenuation(glm::vec3(1.0f, 0.020f, 0.0010f));
-			light->SetShadowType(RHI::EShadowType::None);
+		const uint32_t lightGrid = 4;
+		const glm::vec3 minPos(-extent * 0.75f, extent * 0.10f, -extent * 0.75f);
+		const glm::vec3 maxPos(extent * 0.75f, extent * 0.85f, extent * 0.75f);
+
+		for (uint32_t z = 0; z < lightGrid; z++)
+		{
+			for (uint32_t y = 0; y < lightGrid; y++)
+			{
+				for (uint32_t x = 0; x < lightGrid; x++)
+				{
+					const glm::vec3 t(
+						lightGrid > 1 ? (float)x / (float)(lightGrid - 1) : 0.5f,
+						lightGrid > 1 ? (float)y / (float)(lightGrid - 1) : 0.5f,
+						lightGrid > 1 ? (float)z / (float)(lightGrid - 1) : 0.5f);
+
+					auto lightGo = GetWorld()->Instantiate("PerfPointLight");
+					auto& transform = lightGo->GetTransformComponent();
+					transform.SetPosition(glm::vec4(glm::mix(minPos, maxPos, t), 1.0f));
+
+					auto light = lightGo->AddComponent<LightComponent>();
+					light->SetLightType(ELightType::Point);
+					light->SetIntensity(palette[(x + y * lightGrid + z * lightGrid * lightGrid) % (sizeof(palette) / sizeof(palette[0]))] * 45.0f);
+					light->SetBounds(glm::vec3(450.0f));
+					light->SetAttenuation(glm::vec3(1.0f, 0.030f, 0.0015f));
+					light->SetShadowType(RHI::EShadowType::None);
+				}
+			}
 		}
 	}
 

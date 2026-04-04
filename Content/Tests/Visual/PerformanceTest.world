@@ -28,12 +28,13 @@ prefabs:
           testName: PerformanceTest
           screenshotName: PerformanceTest.png
           captureAfterFrames: 96
+          minRunTimeSeconds: 10
           quitAfterFinish: true
           fileId: NullFileId
           instanceId: 7B67CF9BFFDF80C333D8CF4D0B5BEB52_9FD54079743D95319186
       - typename: Sailor::PerformanceTestSetupComponent
         overrideProperties:
-          gridSize: 3
+          gridSize: 15
           spawnPointLights: true
           directionalLightIntensity: 4
           baseColor:

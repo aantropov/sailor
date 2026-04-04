@@ -2,6 +2,7 @@
 #include "FrameGraph/CPUPathTracerNode.h"
 #include "FrameGraph/CopyTextureToRamNode.h"
 #include "RHI/Renderer.h"
+#include "Core/Utils.h"
 
 using namespace Sailor;
 
@@ -13,6 +14,7 @@ namespace
 void VisualTestCaseComponent::BeginPlay()
 {
 	TestCaseComponent::BeginPlay();
+	m_startTimeMs = Utils::GetCurrentTimeMs();
 
 	if (m_bEnablePathTracer)
 	{
@@ -20,7 +22,7 @@ void VisualTestCaseComponent::BeginPlay()
 	}
 }
 
-void VisualTestCaseComponent::Tick(float)
+void VisualTestCaseComponent::Tick(float deltaTime)
 {
 	if (IsFinished())
 	{
@@ -43,7 +45,8 @@ void VisualTestCaseComponent::Tick(float)
 
 	if (!m_bCaptureRequested)
 	{
-		if (m_framesSinceStart < m_captureAfterFrames)
+		const int64_t elapsedMs = Utils::GetCurrentTimeMs() - m_startTimeMs;
+		if (m_framesSinceStart < m_captureAfterFrames || elapsedMs < (int64_t)(m_minRunTimeSeconds * 1000.0f))
 		{
 			return;
 		}

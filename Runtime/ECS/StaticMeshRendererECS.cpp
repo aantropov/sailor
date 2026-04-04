@@ -3,6 +3,7 @@
 #include "Engine/GameObject.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Material.h"
 #include "RHI/Fence.h"
 #include "Components/AnimatorComponent.h"
@@ -128,10 +129,31 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						proxy.m_bCastShadows = data.ShouldCastShadow();
 
 						proxy.m_overrideMaterials.Clear();
+#if defined(__APPLE__)
+						proxy.m_materialTextureSamplers.Clear();
+						proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
+						auto textureImporter = App::GetSubmodule<TextureImporter>();
+#endif
 						for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 						{
 							size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
-							proxy.m_overrideMaterials.Add(data.GetMaterials()[materialIndex]->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
+							auto& material = data.GetMaterials()[materialIndex];
+							proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
+#if defined(__APPLE__)
+							TSet<uint32_t> requestedTextures;
+							requestedTextures.Insert(0u);
+
+							if (textureImporter)
+							{
+								for (const auto& sampler : material->GetSamplers())
+								{
+									const uint32_t textureIndex = sampler.m_second ? (uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
+									requestedTextures.Insert(textureIndex);
+								}
+							}
+
+							proxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
+#endif
 						}
 
 						adjustedBounds.Apply(proxy.m_worldMatrix);
