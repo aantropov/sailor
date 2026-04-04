@@ -1,6 +1,4 @@
 #include "Sailor.h"
-#include "RHI/Renderer.h"
-
 using namespace Sailor;
 
 #if defined(_WIN32)
@@ -39,7 +37,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 	const char** ansiArgs = ConvertToAnsi(szArglist, nArgs);
 
 	App::Initialize(ansiArgs, nArgs);
-	if (auto renderer = App::GetSubmodule<RHI::Renderer>(); !renderer || !renderer->IsInitialized())
+	if (!App::IsRendererInitialized())
 	{
 		App::Shutdown();
 		return 1;
@@ -69,7 +67,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int32_t)
 int main(int argc, const char** argv)
 {
 	App::Initialize(argv, argc);
-	if (auto renderer = App::GetSubmodule<RHI::Renderer>(); !renderer || !renderer->IsInitialized())
+	if (!App::IsRendererInitialized())
 	{
 		App::Shutdown();
 		return 1;

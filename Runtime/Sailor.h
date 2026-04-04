@@ -43,6 +43,13 @@ namespace Sailor
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
 		SAILOR_API static bool IsRendererInitialized();
+		SAILOR_API static bool HasEditor();
+		SAILOR_API static void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
+		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
+		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
+		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
+		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
+		SAILOR_API static void ShowMainWindow(bool bShow);
 
 		static SubmoduleBase* GetSubmodule(uint32_t index)
 		{
@@ -53,6 +60,8 @@ namespace Sailor
 		template<typename T>
 		static T* GetSubmodule()
 		{
+			// Header-only template statics are not ABI-stable across binary boundaries.
+			// Use exported App accessors from external modules instead of GetSubmodule<T>().
 			auto* instance = GetInstance();
 			if (!instance)
 			{

@@ -3,9 +3,7 @@ struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error
 // dllmain.cpp : Defines the entry point for the DLL application.
 #include <windows.h>
 #include "Sailor.h"
-#include "Submodules/Editor.h"
 #include "Core/Reflection.h"
-#include "Engine/InstanceId.h"
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
 #include "Containers/Map.h"
@@ -36,73 +34,19 @@ extern "C"
 	SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 	{
 		SAILOR_PROFILE_FUNCTION();
-
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-
-		RECT rect{};
-		rect.left = windowPosX;
-		rect.right = windowPosX + width;
-
-		rect.bottom = windowPosY + height;
-		rect.top = windowPosY;
-
-		editor->SetViewport(rect);
+		Sailor::App::SetEditorViewport(windowPosX, windowPosY, width, height);
 	}
 
 	SAILOR_API uint32_t GetMessages(char** messages, uint32_t num)
 	{
 		SAILOR_PROFILE_FUNCTION();
-
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-		uint32_t numMsg = std::min((uint32_t)editor->NumMessages(), num);
-
-		for (uint32_t i = 0; i < numMsg; i++)
-		{
-			std::string msg;
-			if (editor->PullMessage(msg))
-			{
-				messages[i] = new char[msg.size() + 1];
-				if (messages[i] == nullptr)
-				{
-					// Handle allocation failure
-					return i;
-				}
-
-				std::copy(msg.begin(), msg.end(), messages[i]);
-				messages[i][msg.size()] = '\0';
-			}
-			else
-			{
-				return i;
-			}
-		}
-
-		return numMsg;
+		return Sailor::App::PullEditorMessages(messages, num);
 	}
 
 	SAILOR_API uint32_t SerializeCurrentWorld(char** yamlNode)
 	{
 		SAILOR_PROFILE_FUNCTION();
-
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-		auto node = editor->SerializeWorld();
-
-		if (!node.IsNull())
-		{
-			std::string serializedNode = YAML::Dump(node);
-			size_t length = serializedNode.length();
-
-			yamlNode[0] = new char[length + 1];
-			strcpy_s(yamlNode[0], length + 1, serializedNode.c_str());
-			yamlNode[0][length] = '\0';
-
-			return static_cast<uint32_t>(length);
-		}
-		else
-		{
-			yamlNode[0] = nullptr;
-			return 0;
-		}
+		return Sailor::App::SerializeCurrentWorld(yamlNode);
 	}
 
 	SAILOR_API uint32_t SerializeEngineTypes(char** yamlNode)
@@ -132,13 +76,7 @@ extern "C"
 	SAILOR_API bool UpdateObject(char* strInstanceId, char* strYamlNode)
 	{
 		SAILOR_PROFILE_FUNCTION();
-
-		Sailor::InstanceId instanceId;
-		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
-		instanceId.Deserialize(instanceIdYaml);
-
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-		return editor->UpdateObject(instanceId, strYamlNode);
+		return Sailor::App::UpdateEditorObject(strInstanceId, strYamlNode);
 	}
 
 	SAILOR_API bool RenderPathTracedImage(char* strOutputPath, char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
@@ -150,32 +88,17 @@ extern "C"
 			return false;
 		}
 
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-		if (!editor)
+		if (!Sailor::App::HasEditor())
 		{
 			return false;
 		}
 
-		Sailor::InstanceId instanceId{};
-		if (strInstanceId && strInstanceId[0] != '\0')
-		{
-			YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
-			instanceId.Deserialize(instanceIdYaml);
-		}
-
-		const std::string outputPath = strOutputPath;
-		const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
-		editor->PushMessage(bSuccess ?
-			("Path tracer export succeeded: " + outputPath) :
-			("Path tracer export failed: " + outputPath));
-
-		return bSuccess;
+		return Sailor::App::RenderPathTracedImage(strOutputPath, strInstanceId, height, samplesPerPixel, maxBounces);
 	}
 
 	SAILOR_API void ShowMainWindow(bool bShow)
 	{
-		auto editor = Sailor::App::GetSubmodule<Sailor::Editor>();
-		editor->ShowMainWindow(bShow);
+		Sailor::App::ShowMainWindow(bShow);
 	}
 
 	SAILOR_API void RunVectorBenchmark()
