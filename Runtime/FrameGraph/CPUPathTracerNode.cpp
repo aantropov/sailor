@@ -15,6 +15,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Core/LogMacros.h"
 #include "Containers/Hash.h"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -24,6 +25,26 @@ using namespace Sailor::Framegraph;
 
 namespace
 {
+	static bool NearlyEqual(float a, float b, float epsilon = 1e-4f)
+	{
+		return std::abs(a - b) <= epsilon;
+	}
+
+	static bool NearlyEqual(const vec3& a, const vec3& b, float epsilon = 1e-4f)
+	{
+		return glm::length(a - b) <= epsilon;
+	}
+
+	static u8vec4 LinearToU8(const vec4& color)
+	{
+		const vec4 clamped = glm::clamp(color, vec4(0.0f), vec4(1.0f));
+		return u8vec4(
+			(uint8_t)glm::round(clamped.r * 255.0f),
+			(uint8_t)glm::round(clamped.g * 255.0f),
+			(uint8_t)glm::round(clamped.b * 255.0f),
+			(uint8_t)glm::round(clamped.a * 255.0f));
+	}
+
 	static float HalfToFloat(uint16_t h)
 	{
 		const uint32_t sign = (uint32_t)(h & 0x8000u) << 16u;
@@ -312,6 +333,7 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	const uint32_t spp = (std::max)(1u, (uint32_t)std::lround(getFloatParam("samplesPerFrame", 1.0f)));
 	const uint32_t maxBounces = (std::max)(0u, (uint32_t)std::lround(getFloatParam("maxBounces", 2.0f)));
+	const uint64_t maxAccumulatedSamples = (uint64_t)(std::max)(0.0f, getFloatParam("maxAccumulatedSamples", 0.0f));
 	const float blend = glm::clamp(getFloatParam("blend", 1.0f), 0.0f, 1.0f);
 	const float rayBiasBase = (std::max)(0.0f, getFloatParam("rayBiasBase", getFloatParam("shadowBias", 0.0f)));
 	const float rayBiasScale = (std::max)(0.0f, getFloatParam("rayBiasScale", 3e-4f));
@@ -343,63 +365,138 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	params.m_runtimeAspectRatio = aspect;
 	params.m_runtimeHFov = 2.0f * atan(tan(verticalFov * 0.5f) * aspect);
 
-	if (sceneView.m_pathTracerTLASInstances.Num() == 0 ||
-		!m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
-		!m_pathTracer.RenderPreparedScene(params))
+	const bool bCameraChanged = !m_bHasAccumulationState ||
+		!NearlyEqual(m_lastCameraPosition, params.m_runtimeCameraPos) ||
+		!NearlyEqual(m_lastCameraForward, params.m_runtimeCameraForward) ||
+		!NearlyEqual(m_lastCameraUp, params.m_runtimeCameraUp) ||
+		!NearlyEqual(m_lastCameraAspect, params.m_runtimeAspectRatio) ||
+		!NearlyEqual(m_lastCameraHFov, params.m_runtimeHFov);
+
+	if (bCameraChanged)
 	{
-		commands->EndDebugRegion(commandList);
-		return;
+		m_accumulatedImage.Clear();
+		m_accumulatedDisplayImage.Clear();
+		m_accumulatedSamples = 0ull;
 	}
 
-	const auto& image = m_pathTracer.GetLastRenderedImage();
-	const glm::uvec2 imageExtent = m_pathTracer.GetLastRenderedExtent();
-	if (image.Num() == 0 || imageExtent.x == 0 || imageExtent.y == 0)
+	const bool bHasAccumulatedResult = m_extent.x > 0u && m_extent.y > 0u && m_accumulatedDisplayImage.Num() > 0;
+	const bool bReachedAccumulationLimit = maxAccumulatedSamples > 0ull && m_accumulatedSamples >= maxAccumulatedSamples;
+	const bool bShouldRenderNewSamples = !bReachedAccumulationLimit || !bHasAccumulatedResult;
+
+	if (bShouldRenderNewSamples)
 	{
-		commands->EndDebugRegion(commandList);
-		return;
-	}
-
-	if (m_extent != imageExtent)
-	{
-		m_extent = imageExtent;
-	}
-
-	const size_t uploadSizeRequired = image.Num() * sizeof(u8vec4);
-
-	if (!m_uploadBuffer || m_uploadBuffer->GetSize() != uploadSizeRequired)
-	{
-		m_uploadBuffer = driver->CreateBuffer(uploadSizeRequired,
-			EBufferUsageBit::BufferTransferSrc_Bit,
-			EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
-	}
-	uint8_t* uploadPtr = reinterpret_cast<uint8_t*>(m_uploadBuffer->GetPointer());
-
-	std::memcpy(uploadPtr, image.GetData(), uploadSizeRequired);
-
-	if (!m_runtimeTexture ||
-		(uint32_t)m_runtimeTexture->GetExtent().x != m_extent.x ||
-		(uint32_t)m_runtimeTexture->GetExtent().y != m_extent.y)
-	{
-		m_runtimeTexture = driver->CreateTexture(
-			nullptr,
-			0,
-			glm::ivec3((int32_t)m_extent.x, (int32_t)m_extent.y, 1),
-			1,
-			ETextureType::Texture2D,
-			ETextureFormat::R8G8B8A8_UNORM,
-			ETextureFiltration::Nearest,
-			ETextureClamping::Clamp,
-			ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
-		if (!m_runtimeTexture)
+		if (sceneView.m_pathTracerTLASInstances.Num() == 0 ||
+			!m_pathTracer.InitializeScene(sceneView.m_pathTracerTLASInstances, sceneView.m_pathTracerMaterials, sceneView.m_pathTracerLights) ||
+			!m_pathTracer.RenderPreparedScene(params))
 		{
 			commands->EndDebugRegion(commandList);
 			return;
 		}
+
+		const auto& image = m_pathTracer.GetLastRenderedImage();
+		const glm::uvec2 imageExtent = m_pathTracer.GetLastRenderedExtent();
+		if (image.Num() == 0 || imageExtent.x == 0 || imageExtent.y == 0)
+		{
+			commands->EndDebugRegion(commandList);
+			return;
+		}
+
+		if (m_extent != imageExtent)
+		{
+			m_extent = imageExtent;
+			m_accumulatedImage.Clear();
+			m_accumulatedDisplayImage.Clear();
+			m_accumulatedSamples = 0ull;
+		}
+
+		if (m_accumulatedImage.Num() != image.Num())
+		{
+			m_accumulatedImage.Resize(image.Num());
+			m_accumulatedDisplayImage.Resize(image.Num());
+			std::fill(m_accumulatedImage.begin(), m_accumulatedImage.end(), vec4(0.0f));
+			std::fill(m_accumulatedDisplayImage.begin(), m_accumulatedDisplayImage.end(), u8vec4(0u));
+			m_accumulatedSamples = 0ull;
+		}
+
+		const float currentSamples = (float)m_accumulatedSamples;
+		const float newSamples = (float)spp;
+		const float totalSamples = currentSamples + newSamples;
+		for (size_t i = 0; i < image.Num(); ++i)
+		{
+			const u8vec4 src = image[i];
+			const vec4 newColor(
+				(float)src.r / 255.0f,
+				(float)src.g / 255.0f,
+				(float)src.b / 255.0f,
+				(float)src.a / 255.0f);
+
+			if (m_accumulatedSamples == 0ull)
+			{
+				m_accumulatedImage[i] = newColor;
+			}
+			else
+			{
+				m_accumulatedImage[i] = (m_accumulatedImage[i] * currentSamples + newColor * newSamples) / totalSamples;
+			}
+
+			m_accumulatedDisplayImage[i] = LinearToU8(m_accumulatedImage[i]);
+		}
+		m_accumulatedSamples += spp;
+		if (maxAccumulatedSamples > 0ull)
+		{
+			m_accumulatedSamples = (std::min)(m_accumulatedSamples, maxAccumulatedSamples);
+		}
+
+		const size_t uploadSizeRequired = m_accumulatedDisplayImage.Num() * sizeof(u8vec4);
+
+		if (!m_uploadBuffer || m_uploadBuffer->GetSize() != uploadSizeRequired)
+		{
+			m_uploadBuffer = driver->CreateBuffer(uploadSizeRequired,
+				EBufferUsageBit::BufferTransferSrc_Bit,
+				EMemoryPropertyBit::HostCoherent | EMemoryPropertyBit::HostVisible);
+		}
+		uint8_t* uploadPtr = reinterpret_cast<uint8_t*>(m_uploadBuffer->GetPointer());
+
+		std::memcpy(uploadPtr, m_accumulatedDisplayImage.GetData(), uploadSizeRequired);
+
+		if (!m_runtimeTexture ||
+			(uint32_t)m_runtimeTexture->GetExtent().x != m_extent.x ||
+			(uint32_t)m_runtimeTexture->GetExtent().y != m_extent.y)
+		{
+			m_runtimeTexture = driver->CreateTexture(
+				nullptr,
+				0,
+				glm::ivec3((int32_t)m_extent.x, (int32_t)m_extent.y, 1),
+				1,
+				ETextureType::Texture2D,
+				ETextureFormat::R8G8B8A8_UNORM,
+				ETextureFiltration::Nearest,
+				ETextureClamping::Clamp,
+				ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit);
+			if (!m_runtimeTexture)
+			{
+				commands->EndDebugRegion(commandList);
+				return;
+			}
+		}
+
+		commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::TransferDstOptimal);
+		commands->CopyBufferToImage(commandList, m_uploadBuffer, m_runtimeTexture);
+		commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::ShaderReadOnlyOptimal);
 	}
 
-	commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::TransferDstOptimal);
-	commands->CopyBufferToImage(commandList, m_uploadBuffer, m_runtimeTexture);
-	commands->ImageMemoryBarrier(commandList, m_runtimeTexture, EImageLayout::ShaderReadOnlyOptimal);
+	if (!m_runtimeTexture || m_extent.x == 0u || m_extent.y == 0u || m_accumulatedDisplayImage.Num() == 0)
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
+	m_lastCameraPosition = params.m_runtimeCameraPos;
+	m_lastCameraForward = params.m_runtimeCameraForward;
+	m_lastCameraUp = params.m_runtimeCameraUp;
+	m_lastCameraAspect = params.m_runtimeAspectRatio;
+	m_lastCameraHFov = params.m_runtimeHFov;
+	m_bHasAccumulationState = true;
 
 	if (!m_pShader.IsInited())
 	{
@@ -519,8 +616,8 @@ void CPUPathTracerNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm::uvec2& outExtent) const
 {
-	const auto& image = m_pathTracer.GetLastRenderedImage();
-	const glm::uvec2 extent = m_pathTracer.GetLastRenderedExtent();
+	const auto& image = m_accumulatedDisplayImage;
+	const glm::uvec2 extent = m_extent;
 	if (extent.x == 0 || extent.y == 0 || image.Num() == 0)
 	{
 		return false;
@@ -539,6 +636,15 @@ bool CPUPathTracerNode::GetLastRenderedImage(TVector<glm::u8vec4>& outImage, glm
 void CPUPathTracerNode::Clear()
 {
 	m_extent = glm::uvec2(0u, 0u);
+	m_accumulatedImage.Clear();
+	m_accumulatedDisplayImage.Clear();
+	m_accumulatedSamples = 0ull;
+	m_bHasAccumulationState = false;
+	m_lastCameraPosition = glm::vec3(0.0f);
+	m_lastCameraForward = glm::vec3(0.0f, 0.0f, -1.0f);
+	m_lastCameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+	m_lastCameraAspect = 0.0f;
+	m_lastCameraHFov = 0.0f;
 	m_runtimeTexture.Clear();
 	m_currentFrameTexture.Clear();
 	m_uploadBuffer.Clear();

@@ -33,6 +33,7 @@
 #include "Submodules/ImGuiApi.h"
 #include "Raytracing/PathTracer.h"
 #include "Submodules/Editor.h"
+#include "Engine/InstanceId.h"
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -547,6 +548,141 @@ bool App::IsRendererInitialized()
 	}
 
 	return false;
+}
+
+bool App::HasEditor()
+{
+	if (!s_pInstance)
+	{
+		return false;
+	}
+
+	return s_pInstance->GetSubmodule<Editor>() != nullptr;
+}
+
+void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
+{
+	if (auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr)
+	{
+		RECT rect{};
+		rect.left = windowPosX;
+		rect.right = windowPosX + width;
+		rect.bottom = windowPosY + height;
+		rect.top = windowPosY;
+
+		editor->SetViewport(rect);
+	}
+}
+
+uint32_t App::PullEditorMessages(char** messages, uint32_t num)
+{
+	auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr;
+	if (!editor || !messages)
+	{
+		return 0;
+	}
+
+	uint32_t numMsg = std::min((uint32_t)editor->NumMessages(), num);
+
+	for (uint32_t i = 0; i < numMsg; i++)
+	{
+		std::string msg;
+		if (editor->PullMessage(msg))
+		{
+			messages[i] = new char[msg.size() + 1];
+			if (messages[i] == nullptr)
+			{
+				return i;
+			}
+
+			std::copy(msg.begin(), msg.end(), messages[i]);
+			messages[i][msg.size()] = '\0';
+		}
+		else
+		{
+			return i;
+		}
+	}
+
+	return numMsg;
+}
+
+uint32_t App::SerializeCurrentWorld(char** yamlNode)
+{
+	auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr;
+	if (!editor || !yamlNode)
+	{
+		return 0;
+	}
+
+	auto node = editor->SerializeWorld();
+
+	if (!node.IsNull())
+	{
+		std::string serializedNode = YAML::Dump(node);
+		size_t length = serializedNode.length();
+
+		yamlNode[0] = new char[length + 1];
+		strcpy_s(yamlNode[0], length + 1, serializedNode.c_str());
+		yamlNode[0][length] = '\0';
+
+		return static_cast<uint32_t>(length);
+	}
+
+	yamlNode[0] = nullptr;
+	return 0;
+}
+
+bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
+{
+	auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr;
+	if (!editor || !strInstanceId || !strYamlNode)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+	instanceId.Deserialize(instanceIdYaml);
+
+	return editor->UpdateObject(instanceId, strYamlNode);
+}
+
+bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
+{
+	if (!strOutputPath || strOutputPath[0] == '\0')
+	{
+		return false;
+	}
+
+	auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr;
+	if (!editor)
+	{
+		return false;
+	}
+
+	InstanceId instanceId{};
+	if (strInstanceId && strInstanceId[0] != '\0')
+	{
+		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+		instanceId.Deserialize(instanceIdYaml);
+	}
+
+	const std::string outputPath = strOutputPath;
+	const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
+	editor->PushMessage(bSuccess ?
+		("Path tracer export succeeded: " + outputPath) :
+		("Path tracer export failed: " + outputPath));
+
+	return bSuccess;
+}
+
+void App::ShowMainWindow(bool bShow)
+{
+	if (auto editor = s_pInstance ? s_pInstance->GetSubmodule<Editor>() : nullptr)
+	{
+		editor->ShowMainWindow(bShow);
+	}
 }
 
 const std::string& App::GetLoadedWorldPath()

@@ -279,9 +279,10 @@ frame:
 ############################
   float:
   - enabled: 1
-  - samplesPerFrame: 4
+  - samplesPerFrame: 1
   - maxBounces: 2
   - blend: 1
+  - maxAccumulatedSamples: 32
   renderTargets:
   - color: Main
   

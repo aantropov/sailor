@@ -41,6 +41,15 @@ namespace Sailor::Framegraph
 		Raytracing::PathTracer m_pathTracer{};
 		CubemapReadbackState m_environmentReadback{};
 		CubemapReadbackState m_diffuseEnvironmentReadback{};
+		TVector<glm::vec4> m_accumulatedImage{};
+		TVector<glm::u8vec4> m_accumulatedDisplayImage{};
+		uint64_t m_accumulatedSamples = 0ull;
+		glm::vec3 m_lastCameraPosition{ 0.0f };
+		glm::vec3 m_lastCameraForward{ 0.0f, 0.0f, -1.0f };
+		glm::vec3 m_lastCameraUp{ 0.0f, 1.0f, 0.0f };
+		float m_lastCameraAspect = 0.0f;
+		float m_lastCameraHFov = 0.0f;
+		bool m_bHasAccumulationState = false;
 
 		glm::uvec2 m_extent{ 0u, 0u };
 
