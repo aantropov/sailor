@@ -9,6 +9,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <limits>
 
 using namespace glm;
 
@@ -37,6 +38,30 @@ namespace Sailor::Math
 	const glm::vec4 vec4_Back = -vec4_Forward;
 	const glm::vec4 vec4_Down = -vec4_Up;
 	const glm::vec4 vec4_Left = -vec4_Right;
+
+	template<typename T, qualifier Q>
+	__forceinline vec<3, T, Q> SafeNormalize(const vec<3, T, Q>& value, const vec<3, T, Q>& fallback = vec<3, T, Q>(0))
+	{
+		const T len2 = glm::dot(value, value);
+		if (len2 <= std::numeric_limits<T>::epsilon() || !glm::all(glm::isfinite(value)))
+		{
+			return fallback;
+		}
+
+		return value * glm::inversesqrt(len2);
+	}
+
+	template<typename T, qualifier Q>
+	__forceinline vec<4, T, Q> SafeNormalize(const vec<4, T, Q>& value, const vec<4, T, Q>& fallback = vec<4, T, Q>(0))
+	{
+		const T len2 = glm::dot(value, value);
+		if (len2 <= std::numeric_limits<T>::epsilon() || !glm::all(glm::isfinite(value)))
+		{
+			return fallback;
+		}
+
+		return value * glm::inversesqrt(len2);
+	}
 
 	const quat quat_Identity = quat(1.0, 0.0, 0.0, 0.0);
 	const mat4 mat4_Identity = mat4(1);

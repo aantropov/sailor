@@ -312,12 +312,7 @@ void PerformanceTestSetupComponent::EnsureCamera()
 	const glm::vec3 cameraPosition(0.0f, extent * 1.1f, extent * 2.6f);
 	transform.SetPosition(glm::vec4(cameraPosition, 1.0f));
 
-	glm::vec3 forward = glm::normalize(-cameraPosition);
-	const bool bValidForward = std::isfinite(forward.x) && std::isfinite(forward.y) && std::isfinite(forward.z) && glm::length(forward) >= FLT_EPSILON;
-	if (!bValidForward)
-	{
-		forward = glm::vec3(0.0f, -0.2f, -1.0f);
-	}
+	glm::vec3 forward = Math::SafeNormalize(-cameraPosition, glm::vec3(0.0f, -0.2f, -1.0f));
 
 	const glm::quat rotation = glm::quatLookAt(forward, glm::vec3(0.0f, 1.0f, 0.0f));
 	transform.SetRotation(rotation);

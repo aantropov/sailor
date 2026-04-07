@@ -211,7 +211,7 @@ void TestComponent::Tick(float deltaTime)
 
 	if (glm::length(delta) > 0)
 	{
-		vec4 shift = vec4(glm::normalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+		vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
 
 		const vec4 newPosition = transform.GetPosition() + shift;
 

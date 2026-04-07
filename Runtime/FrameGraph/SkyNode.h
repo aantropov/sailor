@@ -47,7 +47,7 @@ namespace Sailor::Framegraph
 
 		struct SkyParams
 		{
-			glm::vec4 m_lightDirection = normalize(glm::vec4(0, -1, 1, 0));
+			glm::vec4 m_lightDirection = Math::SafeNormalize(glm::vec4(0.0f, -1.0f, 1.0f, 0.0f), glm::vec4(0.0f, -1.0f, 0.0f, 0.0f));
 			float m_cloudsAttenuation1 = 0.3f;
 			float m_cloudsAttenuation2 = 0.06f;
 			float m_cloudsDensity = 0.3f;
