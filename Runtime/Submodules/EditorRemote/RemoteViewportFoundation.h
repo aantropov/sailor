@@ -474,6 +474,11 @@ namespace Sailor::EditorRemote
 			m_transportReady = false;
 		}
 
+		void ResetTransportReady()
+		{
+			m_transportReady = false;
+		}
+
 		GuardDecision AcknowledgeTransportReady(ConnectionEpoch connectionEpoch, SurfaceGeneration generation)
 		{
 			if (connectionEpoch != m_connectionEpoch)

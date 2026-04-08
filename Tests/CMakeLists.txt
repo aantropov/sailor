@@ -4,14 +4,27 @@ add_executable(RemoteViewportFoundationTests
     RemoteViewportFoundationTests.cpp
 )
 
+add_executable(RemoteViewportContractTests
+    RemoteViewportContractTests.cpp
+)
+
 target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
+target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_include_directories(RemoteViewportFoundationTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(RemoteViewportContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 
 add_test(
     NAME RemoteViewportFoundationTests
     COMMAND RemoteViewportFoundationTests
+)
+
+add_test(
+    NAME RemoteViewportContractTests
+    COMMAND RemoteViewportContractTests
 )
 
 add_test(
