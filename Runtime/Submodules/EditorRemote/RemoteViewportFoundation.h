@@ -2,8 +2,10 @@
 
 #include <compare>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace Sailor::EditorRemote
 {
@@ -100,6 +102,22 @@ namespace Sailor::EditorRemote
 		Lost,
 		Terminating,
 		Disposed,
+	};
+
+	enum class DiagnosticSeverity : uint8_t
+	{
+		Info = 0,
+		Warning,
+		Error,
+	};
+
+	enum class DiagnosticCategory : uint8_t
+	{
+		None = 0,
+		Lifecycle,
+		Timeout,
+		Backoff,
+		Failure,
 	};
 
 	enum class InputKind : uint8_t
@@ -252,6 +270,61 @@ namespace Sailor::EditorRemote
 		auto operator<=>(const ViewportDescriptor&) const = default;
 	};
 
+	struct WindowsSharedSurfaceHandle
+	{
+		uint64_t m_sharedTextureHandle = 0;
+		uint64_t m_keyedMutexHandle = 0;
+		uint64_t m_sharedFenceHandle = 0;
+		uint64_t m_allocationId = 0;
+		uint32_t m_rowPitch = 0;
+		uint32_t m_planeCount = 1;
+
+		bool IsValid() const
+		{
+			return m_sharedTextureHandle != 0;
+		}
+
+		auto operator<=>(const WindowsSharedSurfaceHandle&) const = default;
+	};
+
+	enum class CrossApiSyncKind : uint8_t
+	{
+		None = 0,
+		CpuDeviceIdle,
+		MetalSharedEvent
+	};
+
+	struct FrameSyncMetadata
+	{
+		uint64_t m_acquireValue = 0;
+		uint64_t m_releaseValue = 0;
+		uint64_t m_crossApiAcquireValue = 0;
+		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
+		bool m_requiresExplicitRelease = false;
+		bool m_crossApiCpuWaited = false;
+
+		auto operator<=>(const FrameSyncMetadata&) const = default;
+	};
+
+	struct MacIOSurfaceHandle
+	{
+		uint32_t m_surfaceId = 0;
+		uint64_t m_registryId = 0;
+		uintptr_t m_surfaceObject = 0;
+		uint32_t m_planeIndex = 0;
+		uint32_t m_planeCount = 1;
+		uint32_t m_bytesPerRow = 0;
+		uint32_t m_bytesPerElement = 0;
+		bool m_framebufferOnly = false;
+
+		bool IsValid() const
+		{
+			return m_surfaceObject != 0 || m_surfaceId != 0 || m_registryId != 0;
+		}
+
+		auto operator<=>(const MacIOSurfaceHandle&) const = default;
+	};
+
 	struct TransportDescriptor
 	{
 		TransportType m_transportType = TransportType::Unknown;
@@ -262,6 +335,8 @@ namespace Sailor::EditorRemote
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		uint32_t m_usageFlags = 0;
 		bool m_ready = false;
+		std::vector<WindowsSharedSurfaceHandle> m_nativeHandles{};
+		std::vector<MacIOSurfaceHandle> m_macSurfaces{};
 
 		Failure Validate() const
 		{
@@ -272,6 +347,14 @@ namespace Sailor::EditorRemote
 			if (m_protocolVersion == 0 || m_width == 0 || m_height == 0 || m_pixelFormat == PixelFormat::Unknown)
 			{
 				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Transport descriptor requires protocol version, extents, and format");
+			}
+			if (m_transportType == TransportType::WinSharedHandle && (m_nativeHandles.empty() || !m_nativeHandles.front().IsValid()))
+			{
+				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Windows shared-handle transport requires at least one valid native handle");
+			}
+			if (m_transportType == TransportType::MacIOSurface && (m_macSurfaces.empty() || !m_macSurfaces.front().IsValid()))
+			{
+				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Mac IOSurface transport requires at least one valid IOSurface handle");
 			}
 			return Failure::Ok();
 		}
@@ -289,6 +372,7 @@ namespace Sailor::EditorRemote
 		uint32_t m_height = 0;
 		uint32_t m_statusFlags = 0;
 		uint64_t m_timestampNs = 0;
+		FrameSyncMetadata m_sync{};
 
 		Failure Validate() const
 		{
@@ -367,6 +451,83 @@ namespace Sailor::EditorRemote
 		}
 
 		auto operator<=>(const ProtocolMessage&) const = default;
+	};
+
+	struct TimeoutPolicy
+	{
+		uint64_t m_transportReadyTimeoutMs = 1000;
+		uint64_t m_reconnectTimeoutMs = 5000;
+		uint64_t m_rendererRecoveryTimeoutMs = 2000;
+		uint64_t m_gracefulDestroyTimeoutMs = 1000;
+
+		bool IsValid() const
+		{
+			return m_transportReadyTimeoutMs > 0 && m_reconnectTimeoutMs > 0 && m_rendererRecoveryTimeoutMs > 0 && m_gracefulDestroyTimeoutMs > 0;
+		}
+
+		auto operator<=>(const TimeoutPolicy&) const = default;
+	};
+
+	struct RetryBackoffState
+	{
+		uint32_t m_attempt = 0;
+		uint64_t m_delayMs = 0;
+
+		auto operator<=>(const RetryBackoffState&) const = default;
+	};
+
+	inline constexpr RetryBackoffState NextReconnectBackoff(uint32_t attempt, uint64_t baseDelayMs = 100, uint64_t maxDelayMs = 5000)
+	{
+		const auto boundedAttempt = attempt > 31 ? 31u : attempt;
+		const auto multiplier = uint64_t{1} << boundedAttempt;
+		const auto delay = baseDelayMs * multiplier;
+		return { attempt + 1, delay > maxDelayMs ? maxDelayMs : delay };
+	}
+
+	struct TimeoutCheckpoint
+	{
+		uint64_t m_startedAtMs = 0;
+		uint64_t m_deadlineMs = 0;
+		bool m_armed = false;
+
+		void Reset()
+		{
+			m_startedAtMs = 0;
+			m_deadlineMs = 0;
+			m_armed = false;
+		}
+
+		void Arm(uint64_t nowMs, uint64_t timeoutMs)
+		{
+			m_startedAtMs = nowMs;
+			m_deadlineMs = nowMs + timeoutMs;
+			m_armed = true;
+		}
+
+		bool HasExpired(uint64_t nowMs) const
+		{
+			return m_armed && nowMs >= m_deadlineMs;
+		}
+
+		auto operator<=>(const TimeoutCheckpoint&) const = default;
+	};
+
+	struct SessionDiagnostics
+	{
+		ViewportId m_viewportId = 0;
+		ConnectionEpoch m_connectionEpoch = 0;
+		SurfaceGeneration m_generation = 0;
+		TransportType m_transportType = TransportType::Unknown;
+		SessionState m_state = SessionState::Created;
+		FrameIndex m_lastGoodFrameIndex = 0;
+		size_t m_resizeCount = 0;
+		uint32_t m_recoveryAttemptCount = 0;
+		std::optional<Failure> m_lastFailure{};
+		DiagnosticCategory m_lastCategory = DiagnosticCategory::None;
+		DiagnosticSeverity m_lastSeverity = DiagnosticSeverity::Info;
+		std::string m_lastEvent;
+
+		auto operator<=>(const SessionDiagnostics&) const = default;
 	};
 
 	class SessionStateMachine
