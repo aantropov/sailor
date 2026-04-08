@@ -35,6 +35,17 @@ namespace Sailor::EditorRemote
 		auto operator<=>(const BridgeConnectionInfo&) const = default;
 	};
 
+	class IViewportTransportBackend
+	{
+	public:
+		virtual ~IViewportTransportBackend() = default;
+		virtual Failure EnsureSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, TransportDescriptor& outTransport) = 0;
+		virtual Failure BeginFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation) = 0;
+		virtual Failure ExportFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, FramePacket& outFrame) = 0;
+		virtual Failure ReleaseSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation) = 0;
+		virtual Failure GetLastFailure() const = 0;
+	};
+
 	class RemoteViewportSession
 	{
 	public:
@@ -61,6 +72,20 @@ namespace Sailor::EditorRemote
 		Failure BeginNegotiation()
 		{
 			return m_state.TransitionTo(SessionState::Negotiating);
+		}
+
+		Failure EnsureBackendTransport(IViewportTransportBackend& backend)
+		{
+			TransportDescriptor transport{};
+			auto result = backend.EnsureSurface(m_descriptor, m_connectionEpoch, m_guards.GetGeneration(), transport);
+			if (!result.IsOk())
+			{
+				m_failure = backend.GetLastFailure();
+				return result;
+			}
+
+			m_failure = Failure::Ok();
+			return MarkTransportReady(transport);
 		}
 
 		Failure MarkTransportReady(const TransportDescriptor& transport)
@@ -138,6 +163,27 @@ namespace Sailor::EditorRemote
 			return Failure::Ok();
 		}
 
+		Failure PublishFrameFromBackend(IViewportTransportBackend& backend)
+		{
+			auto beginResult = backend.BeginFrame(m_descriptor, m_connectionEpoch, m_guards.GetGeneration());
+			if (!beginResult.IsOk())
+			{
+				m_failure = backend.GetLastFailure();
+				return beginResult;
+			}
+
+			FramePacket frame{};
+			auto exportResult = backend.ExportFrame(m_descriptor, m_connectionEpoch, m_guards.GetGeneration(), frame);
+			if (!exportResult.IsOk())
+			{
+				m_failure = backend.GetLastFailure();
+				return exportResult;
+			}
+
+			m_failure = Failure::Ok();
+			return PublishFrame(frame);
+		}
+
 		Failure HandleInput(const InputPacket& input)
 		{
 			auto decision = m_guards.AcceptInput(input);
@@ -175,6 +221,20 @@ namespace Sailor::EditorRemote
 			m_lastPublishedFrameIndex = 0;
 			m_failure = Failure::Ok();
 			return m_state.TransitionTo(SessionState::Negotiating);
+		}
+
+		Failure ReleaseBackendTransport(IViewportTransportBackend& backend)
+		{
+			auto result = backend.ReleaseSurface(m_descriptor.m_viewportId, m_connectionEpoch, m_guards.GetGeneration());
+			if (!result.IsOk())
+			{
+				m_failure = backend.GetLastFailure();
+				return result;
+			}
+
+			m_failure = Failure::Ok();
+			m_guards.ResetTransportReady();
+			return Failure::Ok();
 		}
 
 		Failure Destroy()

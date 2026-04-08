@@ -59,6 +59,100 @@ namespace
 		return input;
 	}
 
+	class FakeViewportTransportBackend : public IViewportTransportBackend
+	{
+	public:
+		Failure EnsureSurface(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, TransportDescriptor& outTransport) override
+		{
+			m_ensureCalls.push_back({ viewport.m_viewportId, epoch, generation });
+			if (!m_nextEnsureFailure.IsOk())
+			{
+				m_lastFailure = m_nextEnsureFailure;
+				auto failure = m_nextEnsureFailure;
+				m_nextEnsureFailure = Failure::Ok();
+				return failure;
+			}
+
+			outTransport = MakeTransport(viewport);
+			m_lastFailure = Failure::Ok();
+			return Failure::Ok();
+		}
+
+		Failure BeginFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation) override
+		{
+			m_beginCalls.push_back({ viewport.m_viewportId, epoch, generation });
+			if (!m_nextBeginFailure.IsOk())
+			{
+				m_lastFailure = m_nextBeginFailure;
+				auto failure = m_nextBeginFailure;
+				m_nextBeginFailure = Failure::Ok();
+				return failure;
+			}
+
+			m_lastFailure = Failure::Ok();
+			return Failure::Ok();
+		}
+
+		Failure ExportFrame(const ViewportDescriptor& viewport, ConnectionEpoch epoch, SurfaceGeneration generation, FramePacket& outFrame) override
+		{
+			m_exportCalls.push_back({ viewport.m_viewportId, epoch, generation });
+			if (!m_nextExportFailure.IsOk())
+			{
+				m_lastFailure = m_nextExportFailure;
+				auto failure = m_nextExportFailure;
+				m_nextExportFailure = Failure::Ok();
+				return failure;
+			}
+
+			outFrame.m_viewportId = viewport.m_viewportId;
+			outFrame.m_connectionEpoch = epoch;
+			outFrame.m_generation = generation;
+			outFrame.m_width = viewport.m_width;
+			outFrame.m_height = viewport.m_height;
+			outFrame.m_timestampNs = ++m_exportedFrameCounter;
+			m_lastFailure = Failure::Ok();
+			return Failure::Ok();
+		}
+
+		Failure ReleaseSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation) override
+		{
+			m_releaseCalls.push_back({ viewportId, epoch, generation });
+			if (!m_nextReleaseFailure.IsOk())
+			{
+				m_lastFailure = m_nextReleaseFailure;
+				auto failure = m_nextReleaseFailure;
+				m_nextReleaseFailure = Failure::Ok();
+				return failure;
+			}
+
+			m_lastFailure = Failure::Ok();
+			return Failure::Ok();
+		}
+
+		Failure GetLastFailure() const override
+		{
+			return m_lastFailure;
+		}
+
+		struct Call
+		{
+			ViewportId m_viewportId = 0;
+			ConnectionEpoch m_epoch = 0;
+			SurfaceGeneration m_generation = 0;
+		};
+
+		std::vector<Call> m_ensureCalls{};
+		std::vector<Call> m_beginCalls{};
+		std::vector<Call> m_exportCalls{};
+		std::vector<Call> m_releaseCalls{};
+		Failure m_nextEnsureFailure = Failure::Ok();
+		Failure m_nextBeginFailure = Failure::Ok();
+		Failure m_nextExportFailure = Failure::Ok();
+		Failure m_nextReleaseFailure = Failure::Ok();
+		Failure m_lastFailure = Failure::Ok();
+		uint64_t m_exportedFrameCounter = 0;
+	};
+
 	void TestRemoteViewportSessionLifecycle()
 	{
 		auto viewport = MakeViewport();
@@ -83,6 +177,48 @@ namespace
 		Require(!session.IsVisible(), "visibility flag should update");
 		Require(session.SetVisible(true).IsOk(), "session should resume when visible");
 		Require(session.GetState() == SessionState::Active, "visible session should return active");
+	}
+
+	void TestRemoteViewportSessionBackendContract()
+	{
+		auto viewport = MakeViewport(5, 1600, 900);
+		RemoteViewportSession session{ viewport, 9 };
+		FakeViewportTransportBackend backend{};
+
+		Require(session.BeginNegotiation().IsOk(), "backend-driven session should start negotiation");
+		Require(session.EnsureBackendTransport(backend).IsOk(), "backend should provide transport descriptor");
+		Require(session.IsReady(), "backend transport should mark session ready");
+		Require(backend.m_ensureCalls.size() == 1, "ensure should be invoked exactly once");
+		Require(backend.m_ensureCalls.front().m_generation == 1, "initial ensure should use generation one");
+
+		Require(session.PublishFrameFromBackend(backend).IsOk(), "backend should drive frame export");
+		Require(session.GetLastPublishedFrameIndex() == 1, "exported frame should publish through session");
+		Require(backend.m_beginCalls.size() == 1 && backend.m_exportCalls.size() == 1, "frame publish should invoke begin and export once");
+
+		Require(session.ReleaseBackendTransport(backend).IsOk(), "backend release should succeed");
+		Require(!session.IsReady(), "release should invalidate ready state");
+		Require(backend.m_releaseCalls.size() == 1, "release should hit backend exactly once");
+	}
+
+	void TestRemoteViewportSessionBackendFailurePropagation()
+	{
+		auto viewport = MakeViewport(6);
+		RemoteViewportSession session{ viewport, 4 };
+		FakeViewportTransportBackend backend{};
+		Require(session.BeginNegotiation().IsOk(), "negotiation should start before backend failure tests");
+
+		backend.m_nextEnsureFailure = Failure::FromDomain(ErrorDomain::Transport, 41, "ensure failed");
+		Require(!session.EnsureBackendTransport(backend).IsOk(), "backend ensure failure should surface");
+		Require(session.GetFailure().m_nativeCode == 41, "session should retain backend ensure failure");
+
+		Require(session.EnsureBackendTransport(backend).IsOk(), "backend ensure should recover after injected failure");
+		backend.m_nextExportFailure = Failure::FromDomain(ErrorDomain::Transport, 42, "export failed");
+		Require(!session.PublishFrameFromBackend(backend).IsOk(), "backend export failure should surface");
+		Require(session.GetFailure().m_nativeCode == 42, "session should retain backend export failure");
+
+		backend.m_nextReleaseFailure = Failure::FromDomain(ErrorDomain::Transport, 43, "release failed");
+		Require(!session.ReleaseBackendTransport(backend).IsOk(), "backend release failure should surface");
+		Require(session.GetFailure().m_nativeCode == 43, "session should retain backend release failure");
 	}
 
 	void TestRemoteViewportSessionResizeFailureAndRecreate()
@@ -238,6 +374,8 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "RemoteViewportSessionLifecycle", TestRemoteViewportSessionLifecycle },
+		{ "RemoteViewportSessionBackendContract", TestRemoteViewportSessionBackendContract },
+		{ "RemoteViewportSessionBackendFailurePropagation", TestRemoteViewportSessionBackendFailurePropagation },
 		{ "RemoteViewportSessionResizeFailureAndRecreate", TestRemoteViewportSessionResizeFailureAndRecreate },
 		{ "ViewportSessionManagerLifecycleAndEpochCleanup", TestViewportSessionManagerLifecycleAndEpochCleanup },
 		{ "EditorBridgeServerNegotiationRoutingAndDisconnect", TestEditorBridgeServerNegotiationRoutingAndDisconnect },
