@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string_view>
 
 #include "RemoteViewportFoundation.h"
 
@@ -83,17 +84,33 @@ namespace Sailor::EditorRemote
 	{
 		uint64_t m_rendererTextureToken = 0;
 		uint64_t m_producerCopyToken = 0;
+		uint64_t m_crossApiWaitValue = 0;
 		bool m_usedRendererIntermediateTexture = false;
 		bool m_usedGpuCopyIntoProducerTexture = false;
 		bool m_usedCpuUploadIntoProducerTexture = false;
+		bool m_waitedOnCrossApiSharedEvent = false;
 	};
 
+	inline uintptr_t SelectMacVulkanSemaphoreForMetalExport(std::string_view rendererTargetDebugName, uintptr_t dedicatedRendererSemaphoreHandle, uintptr_t fallbackRenderFinishedSemaphoreHandle, bool& outUsedDedicatedSemaphore)
+	{
+		outUsedDedicatedSemaphore = false;
+		if (rendererTargetDebugName == "Renderer.SceneView.Main.Resolved" && dedicatedRendererSemaphoreHandle != 0)
+		{
+			outUsedDedicatedSemaphore = true;
+			return dedicatedRendererSemaphoreHandle;
+		}
+
+		return fallbackRenderFinishedSemaphoreHandle;
+	}
+
+	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat pixelFormat);
 	Failure CreateMacIOSurfaceProducerTexture(uintptr_t surfaceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uint32_t planeIndex, uintptr_t& outDeviceObject, uintptr_t& outTextureObject);
 	Failure CreateMacRendererIntermediateTexture(uintptr_t deviceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uintptr_t& outTextureObject);
 	Failure UploadMacRendererPatternToIntermediateTexture(uintptr_t textureObject, uint32_t width, uint32_t height, const MacNativeBridgeProducerPattern& pattern);
 	Failure UploadMacRendererBytesToProducerTexture(uintptr_t destinationTextureObject, uint32_t width, uint32_t height, const void* bytes, uint32_t bytesPerRow, MacNativeBridgeRendererFrameInfo& outFrameInfo);
-	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t deviceObject, uintptr_t sourceTextureObject, uintptr_t destinationTextureObject, uint32_t width, uint32_t height, MacNativeBridgeRendererFrameInfo& outFrameInfo);
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited);
+	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t deviceObject, uintptr_t sourceTextureObject, uintptr_t destinationTextureObject, uint32_t width, uint32_t height, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject = 0, uint64_t sharedEventValue = 0);
+	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited);
+	void SetMacVulkanMetalInteropTestMode(bool enabled);
 	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t vulkanDeviceHandle, uintptr_t vulkanImageHandle, uintptr_t vulkanImageViewHandle, PixelFormat pixelFormat, uintptr_t& outTextureObject);
 	void ReleaseMacIOSurfaceProducerTexture(uintptr_t& inOutDeviceObject, uintptr_t& inOutTextureObject);
 	void ReleaseMacRendererIntermediateTexture(uintptr_t& inOutTextureObject);

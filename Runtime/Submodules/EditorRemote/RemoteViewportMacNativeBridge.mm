@@ -5,6 +5,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
 #import <IOSurface/IOSurface.h>
+#import <dispatch/dispatch.h>
 #define VK_USE_PLATFORM_METAL_EXT 1
 #include "../../../External/renderdoc/renderdoc/driver/vulkan/official/vulkan.h"
 #include <dlfcn.h>
@@ -57,6 +58,29 @@ namespace Sailor::EditorRemote
 		{
 			static uint64_t s_value = 0;
 			return ++s_value;
+		}
+
+		template <typename TFn>
+		auto RunOnMainThreadSync(TFn&& fn) -> decltype(fn())
+		{
+			using TResult = decltype(fn());
+			if ([NSThread isMainThread])
+			{
+				return fn();
+			}
+
+			__block TResult result{};
+			dispatch_sync(dispatch_get_main_queue(), ^
+			{
+				result = fn();
+			});
+			return result;
+		}
+
+		bool& MacVulkanMetalInteropTestMode()
+		{
+			static bool s_enabled = false;
+			return s_enabled;
 		}
 
 		id<MTLTexture> CreateSyntheticSourceTexture(id<MTLDevice> device, const FramePacket& frame, const MacNativeLayerBinding& binding)
@@ -126,6 +150,24 @@ namespace Sailor::EditorRemote
 		}
 	}
 
+
+	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat pixelFormat)
+	{
+		const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
+		if (metalPixelFormat == MTLPixelFormatInvalid)
+		{
+			return 64u;
+		}
+
+		id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+		if (device == nil)
+		{
+			return 64u;
+		}
+
+		const NSUInteger alignment = [device minimumLinearTextureAlignmentForPixelFormat:metalPixelFormat];
+		return alignment > 0 ? static_cast<uint32_t>(alignment) : 64u;
+	}
 
 	Failure CreateMacIOSurfaceProducerTexture(uintptr_t surfaceObject, uint32_t width, uint32_t height, PixelFormat pixelFormat, uint32_t planeIndex, uintptr_t& outDeviceObject, uintptr_t& outTextureObject)
 	{
@@ -261,7 +303,7 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t deviceObject, uintptr_t sourceTextureObject, uintptr_t destinationTextureObject, uint32_t width, uint32_t height, MacNativeBridgeRendererFrameInfo& outFrameInfo)
+	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t deviceObject, uintptr_t sourceTextureObject, uintptr_t destinationTextureObject, uint32_t width, uint32_t height, MacNativeBridgeRendererFrameInfo& outFrameInfo, uintptr_t sharedEventObject, uint64_t sharedEventValue)
 	{
 		if (deviceObject == 0 || sourceTextureObject == 0 || destinationTextureObject == 0 || width == 0 || height == 0)
 		{
@@ -288,6 +330,24 @@ namespace Sailor::EditorRemote
 			return WriteProducerFailure(1018, "macOS producer GPU copy could not create a Metal command buffer");
 		}
 
+		if (sharedEventObject != 0)
+		{
+			id<MTLSharedEvent> sharedEvent = (__bridge id<MTLSharedEvent>)reinterpret_cast<void*>(sharedEventObject);
+			if (sharedEvent == nil)
+			{
+				return WriteProducerFailure(1029, "macOS producer GPU copy resolved the exported Metal shared event to nil");
+			}
+			if (sharedEventValue == 0)
+			{
+				return WriteProducerFailure(1030, "macOS producer GPU copy requires a non-zero Metal shared-event wait value");
+			}
+			if (![commandBuffer respondsToSelector:@selector(encodeWaitForEvent:value:)])
+			{
+				return WriteProducerFailure(1031, "macOS producer GPU copy cannot encode a Metal shared-event wait on this runtime");
+			}
+			[commandBuffer encodeWaitForEvent:sharedEvent value:sharedEventValue];
+		}
+
 		id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
 		if (blitEncoder == nil)
 		{
@@ -301,14 +361,17 @@ namespace Sailor::EditorRemote
 
 		outFrameInfo.m_rendererTextureToken = NextRendererTextureToken();
 		outFrameInfo.m_producerCopyToken = NextProducerCopyToken();
+		outFrameInfo.m_crossApiWaitValue = sharedEventValue;
 		outFrameInfo.m_usedRendererIntermediateTexture = true;
 		outFrameInfo.m_usedGpuCopyIntoProducerTexture = true;
 		outFrameInfo.m_usedCpuUploadIntoProducerTexture = false;
+		outFrameInfo.m_waitedOnCrossApiSharedEvent = sharedEventObject != 0 && sharedEventValue != 0;
 		return Failure::Ok();
 	}
 
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
+	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t vulkanDeviceHandle, uintptr_t vulkanSemaphoreHandle, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
 	{
+		outSharedEventObject = 0;
 		outAcquireValue = 0;
 		outSyncKind = CrossApiSyncKind::None;
 		outCpuWaited = false;
@@ -317,8 +380,41 @@ namespace Sailor::EditorRemote
 			return WriteProducerFailure(1026, "macOS Vulkan->Metal sync requires a live Vulkan device");
 		}
 
+		if (MacVulkanMetalInteropTestMode() && vulkanSemaphoreHandle != 0)
+		{
+			outSharedEventObject = 0x1;
+			outAcquireValue = 1;
+			outSyncKind = CrossApiSyncKind::MetalSharedEvent;
+			outCpuWaited = false;
+			return Failure::Ok();
+		}
+
 		const auto device = static_cast<VkDevice>(reinterpret_cast<VkDevice_T*>(vulkanDeviceHandle));
+		auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(dlsym(RTLD_DEFAULT, "vkGetDeviceProcAddr"));
 		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
+		if (getDeviceProcAddr != nullptr && vulkanSemaphoreHandle != 0)
+		{
+			auto exportMetalObjects = reinterpret_cast<PFN_vkExportMetalObjectsEXT>(getDeviceProcAddr(device, "vkExportMetalObjectsEXT"));
+			if (exportMetalObjects != nullptr)
+			{
+				VkExportMetalSharedEventInfoEXT sharedEventInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_SHARED_EVENT_INFO_EXT };
+				sharedEventInfo.semaphore = static_cast<VkSemaphore>(reinterpret_cast<VkSemaphore_T*>(vulkanSemaphoreHandle));
+
+				VkExportMetalObjectsInfoEXT exportInfo{ VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECTS_INFO_EXT };
+				exportInfo.pNext = &sharedEventInfo;
+				exportMetalObjects(device, &exportInfo);
+				if (sharedEventInfo.mtlSharedEvent != nil)
+				{
+					CFRetain((__bridge CFTypeRef)sharedEventInfo.mtlSharedEvent);
+					outSharedEventObject = reinterpret_cast<uintptr_t>((__bridge void*)sharedEventInfo.mtlSharedEvent);
+					outAcquireValue = 1;
+					outSyncKind = CrossApiSyncKind::MetalSharedEvent;
+					outCpuWaited = false;
+					return Failure::Ok();
+				}
+			}
+		}
+
 		if (waitIdle == nullptr)
 		{
 			return Failure::FromDomain(ErrorDomain::Capability, 1027, "macOS Vulkan->Metal sync requires vkDeviceWaitIdle from the live Vulkan loader");
@@ -334,6 +430,11 @@ namespace Sailor::EditorRemote
 		outSyncKind = CrossApiSyncKind::CpuDeviceIdle;
 		outCpuWaited = true;
 		return Failure::Ok();
+	}
+
+	void SetMacVulkanMetalInteropTestMode(bool enabled)
+	{
+		MacVulkanMetalInteropTestMode() = enabled;
 	}
 
 	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t vulkanDeviceHandle, uintptr_t vulkanImageHandle, uintptr_t vulkanImageViewHandle, PixelFormat pixelFormat, uintptr_t& outTextureObject)
@@ -411,93 +512,96 @@ namespace Sailor::EditorRemote
 
 	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, MacNativeLayerBinding& inOutBinding)
 	{
-		if (!hostHandle.IsValid())
+		return RunOnMainThreadSync([&]() -> Failure
 		{
-			return MakeFailure(2101, "macOS native layer binding requires a valid host handle");
-		}
+			if (!hostHandle.IsValid())
+			{
+				return MakeFailure(2101, "macOS native layer binding requires a valid host handle");
+			}
 
-		CAMetalLayer* metalLayer = nil;
-		NSView* view = nil;
-		bool hostOwnsLayer = false;
+			CAMetalLayer* metalLayer = nil;
+			NSView* view = nil;
+			bool hostOwnsLayer = false;
 
-		switch (hostHandle.m_kind)
-		{
-		case MacNativeHostHandleKind::NSView:
-			view = (__bridge NSView*)reinterpret_cast<void*>(hostHandle.m_value);
-			if (view == nil)
+			switch (hostHandle.m_kind)
 			{
-				return MakeFailure(2102, "macOS native host NSView handle resolved to nil");
+			case MacNativeHostHandleKind::NSView:
+				view = (__bridge NSView*)reinterpret_cast<void*>(hostHandle.m_value);
+				if (view == nil)
+				{
+					return MakeFailure(2102, "macOS native host NSView handle resolved to nil");
+				}
+				if ([view.layer isKindOfClass:[CAMetalLayer class]])
+				{
+					metalLayer = (CAMetalLayer*)view.layer;
+				}
+				else
+				{
+					metalLayer = [CAMetalLayer layer];
+					view.wantsLayer = YES;
+					view.layer = metalLayer;
+					hostOwnsLayer = true;
+				}
+				break;
+			case MacNativeHostHandleKind::CAMetalLayer:
+				metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(hostHandle.m_value);
+				if (metalLayer == nil)
+				{
+					return MakeFailure(2103, "macOS native host CAMetalLayer handle resolved to nil");
+				}
+				break;
+			default:
+				return MakeFailure(2104, "macOS native layer binding does not support the supplied host handle kind");
 			}
-			if ([view.layer isKindOfClass:[CAMetalLayer class]])
-			{
-				metalLayer = (CAMetalLayer*)view.layer;
-			}
-			else
-			{
-				metalLayer = [CAMetalLayer layer];
-				view.wantsLayer = YES;
-				view.layer = metalLayer;
-				hostOwnsLayer = true;
-			}
-			break;
-		case MacNativeHostHandleKind::CAMetalLayer:
-			metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(hostHandle.m_value);
-			if (metalLayer == nil)
-			{
-				return MakeFailure(2103, "macOS native host CAMetalLayer handle resolved to nil");
-			}
-			break;
-		default:
-			return MakeFailure(2104, "macOS native layer binding does not support the supplied host handle kind");
-		}
 
-		id<MTLDevice> device = metalLayer.device;
-		if (device == nil)
-		{
-			device = MTLCreateSystemDefaultDevice();
+			id<MTLDevice> device = metalLayer.device;
 			if (device == nil)
 			{
-				return MakeFailure(2105, "macOS native layer binding could not create a Metal device");
+				device = MTLCreateSystemDefaultDevice();
+				if (device == nil)
+				{
+					return MakeFailure(2105, "macOS native layer binding could not create a Metal device");
+				}
+				metalLayer.device = device;
 			}
-			metalLayer.device = device;
-		}
 
-		id<MTLCommandQueue> commandQueue = [device newCommandQueue];
-		if (commandQueue == nil)
-		{
-			return MakeFailure(2107, "macOS native layer binding could not create a Metal command queue");
-		}
+			id<MTLCommandQueue> commandQueue = [device newCommandQueue];
+			if (commandQueue == nil)
+			{
+				return MakeFailure(2107, "macOS native layer binding could not create a Metal command queue");
+			}
 
-		const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
-		if (metalPixelFormat == MTLPixelFormatInvalid)
-		{
-			return MakeFailure(2106, "macOS native layer binding only supports BGRA8 transport in this slice");
-		}
+			const auto metalPixelFormat = ToMetalPixelFormat(pixelFormat);
+			if (metalPixelFormat == MTLPixelFormatInvalid)
+			{
+				return MakeFailure(2106, "macOS native layer binding only supports BGRA8 transport in this slice");
+			}
 
-		metalLayer.pixelFormat = metalPixelFormat;
-		metalLayer.framebufferOnly = NO;
-		metalLayer.drawableSize = CGSizeMake(width, height);
-		if (view != nil)
-		{
-			metalLayer.contentsScale = view.window != nil ? view.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
-		}
+			metalLayer.pixelFormat = metalPixelFormat;
+			metalLayer.framebufferOnly = NO;
+			metalLayer.drawableSize = CGSizeMake(width, height);
+			if (view != nil)
+			{
+				metalLayer.contentsScale = view.window != nil ? view.window.backingScaleFactor : NSScreen.mainScreen.backingScaleFactor;
+			}
 
-		inOutBinding.m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
-		inOutBinding.m_layerObject = reinterpret_cast<uintptr_t>((__bridge void*)metalLayer);
-		inOutBinding.m_drawableObject = 0;
-		inOutBinding.m_deviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
-		inOutBinding.m_commandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)commandQueue);
-		inOutBinding.m_importedIOSurfaceObject = 0;
-		inOutBinding.m_lastSourceTextureObject = 0;
-		inOutBinding.m_width = width;
-		inOutBinding.m_height = height;
-		inOutBinding.m_pixelFormat = pixelFormat;
-		inOutBinding.m_hostOwnsLayer = hostOwnsLayer;
-		inOutBinding.m_bindingToken++;
-		inOutBinding.m_presentToken = 0;
-		inOutBinding.m_sourceTextureToken = 0;
-		inOutBinding.m_usesSyntheticSourceTexture = false;
-		return Failure::Ok();
+			inOutBinding.m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
+			inOutBinding.m_layerObject = reinterpret_cast<uintptr_t>((__bridge void*)metalLayer);
+			inOutBinding.m_drawableObject = 0;
+			inOutBinding.m_deviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
+			inOutBinding.m_commandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)commandQueue);
+			inOutBinding.m_importedIOSurfaceObject = 0;
+			inOutBinding.m_lastSourceTextureObject = 0;
+			inOutBinding.m_width = width;
+			inOutBinding.m_height = height;
+			inOutBinding.m_pixelFormat = pixelFormat;
+			inOutBinding.m_hostOwnsLayer = hostOwnsLayer;
+			inOutBinding.m_bindingToken++;
+			inOutBinding.m_presentToken = 0;
+			inOutBinding.m_sourceTextureToken = 0;
+			inOutBinding.m_usesSyntheticSourceTexture = false;
+			return Failure::Ok();
+		});
 	}
 
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult)
@@ -525,7 +629,10 @@ namespace Sailor::EditorRemote
 			return MakeFailure(2115, "macOS native layer present resolved the Metal command queue to nil");
 		}
 
-		id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
+		id<CAMetalDrawable> drawable = RunOnMainThreadSync([&]() -> id<CAMetalDrawable>
+		{
+			return [metalLayer nextDrawable];
+		});
 		if (drawable == nil)
 		{
 			return MakeFailure(2113, "macOS native layer present could not acquire a drawable");
@@ -590,6 +697,11 @@ namespace Sailor::EditorRemote
 		inOutBinding = {};
 	}
 #else
+	uint32_t GetMacIOSurfaceBytesPerRowAlignment(PixelFormat)
+	{
+		return 64u;
+	}
+
 	Failure CreateMacIOSurfaceProducerTexture(uintptr_t, uint32_t, uint32_t, PixelFormat, uint32_t, uintptr_t& outDeviceObject, uintptr_t& outTextureObject)
 	{
 		outDeviceObject = 0;
@@ -613,17 +725,22 @@ namespace Sailor::EditorRemote
 		return Failure::Ok();
 	}
 
-	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t, uintptr_t, uintptr_t, uint32_t, uint32_t, MacNativeBridgeRendererFrameInfo&)
+	Failure CopyMacRendererIntermediateToProducerTexture(uintptr_t, uintptr_t, uintptr_t, uint32_t, uint32_t, MacNativeBridgeRendererFrameInfo&, uintptr_t, uint64_t)
 	{
 		return Failure::Ok();
 	}
 
-	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
+	Failure SynchronizeMacVulkanRenderTargetForMetalExport(uintptr_t, uintptr_t, uintptr_t& outSharedEventObject, uint64_t& outAcquireValue, CrossApiSyncKind& outSyncKind, bool& outCpuWaited)
 	{
+		outSharedEventObject = 0;
 		outAcquireValue = 0;
 		outSyncKind = CrossApiSyncKind::None;
 		outCpuWaited = false;
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS Vulkan->Metal sync is unavailable on this platform");
+	}
+
+	void SetMacVulkanMetalInteropTestMode(bool)
+	{
 	}
 
 	Failure ExportMacMetalTextureFromVulkanRenderTarget(uintptr_t, uintptr_t, uintptr_t, PixelFormat, uintptr_t& outTextureObject)

@@ -14,6 +14,7 @@
 #endif
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Tasks/Scheduler.h"
 #include "RHI/Buffer.h"
 #include "RHI/Fence.h"
@@ -63,9 +64,9 @@ namespace
 	{
 		switch (format)
 		{
-		case RHI::EFormat::R8G8B8A8_UNorm:
+		case RHI::EFormat::R8G8B8A8_UNORM:
 			return PixelFormat::R8G8B8A8_UNorm;
-		case RHI::EFormat::B8G8R8A8_UNorm:
+		case RHI::EFormat::B8G8R8A8_UNORM:
 			return PixelFormat::B8G8R8A8_UNorm;
 		case RHI::EFormat::R16G16B16A16_SFLOAT:
 			return PixelFormat::R16G16B16A16_Float;
@@ -121,7 +122,7 @@ namespace
 
 	std::shared_ptr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
 	{
-		auto* driver = RHI::Renderer::GetDriver();
+		auto& driver = RHI::Renderer::GetDriver();
 		auto* commands = RHI::Renderer::GetDriverCommands();
 		if (!driver || !commands || !renderTarget)
 		{
@@ -203,6 +204,13 @@ namespace
 			return false;
 		}
 
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+		if (!renderTarget->m_vulkan.m_image || !renderTarget->m_vulkan.m_imageView)
+		{
+			return false;
+		}
+#endif
+
 		const auto extent = renderTarget->GetExtent();
 		if (extent.x <= 0 || extent.y <= 0)
 		{
@@ -223,26 +231,37 @@ namespace
 		outSource.m_debugName = debugName;
 
 #if defined(__APPLE__)
-		if (renderTarget->m_vulkan.m_image && renderTarget->m_vulkan.m_image->GetDevice())
+		const auto vulkanDeviceHandle = renderTarget->GetNativeDeviceHandle();
+		if (vulkanDeviceHandle != 0)
 		{
-			const auto vulkanDeviceHandle = reinterpret_cast<uintptr_t>(static_cast<VkDevice>(*renderTarget->m_vulkan.m_image->GetDevice()));
+			uintptr_t vulkanSemaphoreHandle = 0;
+			if (auto* driver = RHI::Renderer::GetDriver().DynamicCast<GraphicsDriver::Vulkan::VulkanGraphicsDriver>())
+			{
+				const auto dedicatedSemaphoreHandle = reinterpret_cast<uintptr_t>(driver->GetLastSubmittedSceneViewMainResolvedSemaphoreHandle());
+				const auto fallbackSemaphoreHandle = reinterpret_cast<uintptr_t>(driver->GetLastSubmittedRenderFinishedSemaphoreHandle());
+				bool usedDedicatedSemaphore = false;
+				vulkanSemaphoreHandle = SelectMacVulkanSemaphoreForMetalExport(debugName, dedicatedSemaphoreHandle, fallbackSemaphoreHandle, usedDedicatedSemaphore);
+			}
+
+			uintptr_t crossApiSharedEventObject = 0;
 			uint64_t crossApiAcquireValue = 0;
 			CrossApiSyncKind crossApiSyncKind = CrossApiSyncKind::None;
 			bool crossApiCpuWaited = false;
-			auto syncResult = SynchronizeMacVulkanRenderTargetForMetalExport(vulkanDeviceHandle, crossApiAcquireValue, crossApiSyncKind, crossApiCpuWaited);
+			auto syncResult = SynchronizeMacVulkanRenderTargetForMetalExport(vulkanDeviceHandle, vulkanSemaphoreHandle, crossApiSharedEventObject, crossApiAcquireValue, crossApiSyncKind, crossApiCpuWaited);
 			if (syncResult.IsOk())
 			{
 				uintptr_t exportedTextureObject = 0;
 				auto exportResult = ExportMacMetalTextureFromVulkanRenderTarget(
 					vulkanDeviceHandle,
-					reinterpret_cast<uintptr_t>(static_cast<VkImage>(*renderTarget->m_vulkan.m_image)),
-					renderTarget->m_vulkan.m_imageView ? reinterpret_cast<uintptr_t>(static_cast<VkImageView>(*renderTarget->m_vulkan.m_imageView)) : 0,
+					renderTarget->GetNativeImageHandle(),
+					renderTarget->GetNativeImageViewHandle(),
 					*pixelFormat,
 					exportedTextureObject);
 				if (exportResult.IsOk() && exportedTextureObject != 0)
 				{
 					outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedMetalTexture;
 					outSource.m_textureObject = exportedTextureObject;
+					outSource.m_crossApiSharedEventObject = crossApiSharedEventObject;
 					outSource.m_crossApiAcquireValue = crossApiAcquireValue;
 					outSource.m_crossApiSyncKind = crossApiSyncKind;
 					outSource.m_crossApiCpuWaited = crossApiCpuWaited;
@@ -879,12 +898,21 @@ void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t w
 
 bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
 {
+#if !defined(__APPLE__)
 		SetEditorViewport(windowPosX, windowPosY, width, height);
+#endif
 
-		if (!s_pInstance || !HasEditor())
+		if (!s_pInstance)
 		{
 			return false;
 		}
+
+#if defined(_WIN32)
+		if (!HasEditor())
+		{
+			return false;
+		}
+#endif
 
 		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
 		auto& binding = g_remoteViewportBindings[viewportId];
@@ -904,8 +932,8 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 			binding->m_binding.Create();
 			binding->m_created = true;
 		}
-		else if (binding->m_lastRect.right - binding->m_lastRect.left != static_cast<LONG>(width) ||
-			binding->m_lastRect.bottom - binding->m_lastRect.top != static_cast<LONG>(height))
+		else if (binding->m_lastRect.right - binding->m_lastRect.left != static_cast<decltype(binding->m_lastRect.right)>(width) ||
+			binding->m_lastRect.bottom - binding->m_lastRect.top != static_cast<decltype(binding->m_lastRect.bottom)>(height))
 		{
 			binding->m_binding.Resize(std::max(width, 1u), std::max(height, 1u));
 		}
@@ -959,6 +987,29 @@ bool App::RetryEditorRemoteViewport(uint64_t viewportId)
 			it->second->Pump();
 		}
 		return true;
+}
+
+bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue)
+{
+#if defined(__APPLE__)
+		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+		auto& binding = g_remoteViewportBindings[viewportId];
+		if (!binding)
+		{
+			binding = std::make_unique<RemoteViewportBinding>(MakeRemoteViewportDescriptor(viewportId, 1u, 1u));
+		}
+
+		Sailor::EditorRemote::MacNativeHostHandle hostHandle{};
+		hostHandle.m_kind = static_cast<Sailor::EditorRemote::MacNativeHostHandleKind>(hostHandleKind);
+		hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
+		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, hostHandle);
+		return true;
+#else
+		(void)viewportId;
+		(void)hostHandleKind;
+		(void)hostHandleValue;
+		return false;
+#endif
 }
 
 uint32_t App::PullEditorMessages(char** messages, uint32_t num)

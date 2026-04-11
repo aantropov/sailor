@@ -6,94 +6,97 @@ namespace SailorEngine
 {
     public class EngineAppInterop
     {
-#if DEBUG
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Initialize(string[] commandLineArgs, int num);
+#if MACCATALYST
+        static EngineAppInterop()
+        {
+            NativeLibrary.SetDllImportResolver(typeof(EngineAppInterop).Assembly, static (libraryName, assembly, searchPath) =>
+            {
+                if (libraryName != EngineLibrary)
+                {
+                    return IntPtr.Zero;
+                }
 
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Start();
+                var bundledPath = Path.Combine(AppContext.BaseDirectory, "..", "Resources", $"{EngineLibrary}.dylib");
+                bundledPath = Path.GetFullPath(bundledPath);
 
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Stop();
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Shutdown();
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint GetMessages(nint[] messages, uint num);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint SerializeCurrentWorld(nint[] yamlNode);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint SerializeEngineTypes(nint[] yamlNode);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void ShowMainWindow(bool bShow);
-
-        [DllImport("../../../../../Sailor-RelWithDebInfo.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
-
-#else
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Initialize(string[] commandLineArgs, int num);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Start();
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Stop();
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void Shutdown();
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint GetMessages(nint[] messages, uint num);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint SerializeCurrentWorld(nint[] yamlNode);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern uint SerializeEngineTypes(nint[] yamlNode);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void ShowMainWindow(bool bShow);
-
-        [DllImport("../../../../../Sailor-Release.dll", CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)]
-        public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
+                return File.Exists(bundledPath)
+                    ? NativeLibrary.Load(bundledPath)
+                    : IntPtr.Zero;
+            });
+        }
 #endif
+#if MACCATALYST
+#if DEBUG
+        const string EngineLibrary = "Sailor-Debug";
+#else
+        const string EngineLibrary = "Sailor-Release";
+#endif
+#elif DEBUG
+        const string EngineLibrary = "../../../../../Sailor-RelWithDebInfo.dll";
+#else
+        const string EngineLibrary = "../../../../../Sailor-Release.dll";
+#endif
+
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Initialize(string[] commandLineArgs, int num);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Start();
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Stop();
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEngineTypes(nint[] yamlNode);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpsertRemoteViewport(ulong viewportId, uint windowPosX, uint windowPosY, uint width, uint height, [MarshalAs(UnmanagedType.I1)] bool visible, [MarshalAs(UnmanagedType.I1)] bool focused);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyRemoteViewport(ulong viewportId);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportState(ulong viewportId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RetryRemoteViewport(ulong viewportId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetRemoteViewportMacHostHandle(ulong viewportId, uint hostHandleKind, ulong hostHandleValue);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
     }
 }
 
 namespace SailorEditor.Services
 {
+    public enum RemoteViewportSessionState : uint
+    {
+        Created = 0,
+        Negotiating = 1,
+        Ready = 2,
+        Active = 3,
+        Paused = 4,
+        Resizing = 5,
+        Recovering = 6,
+        Lost = 7,
+        Terminating = 8,
+        Disposed = 9
+    }
+
     internal class EngineService
     {
+        public const ulong SceneViewportId = 1;
+
         readonly object interopLock = new();
         readonly object runLock = new();
         bool isRunning = false;
 
-        public string EngineContentDirectory { get { return Path.Combine(EngineWorkingDirectory, "..", "Content"); } }
+        readonly string repoRoot = ResolveRepoRoot();
 
-        public string EngineCacheDirectory { get { return Path.Combine(EngineWorkingDirectory, "..", "Cache"); } }
+        public string EngineContentDirectory { get { return Path.Combine(repoRoot, "Content"); } }
 
-        public string EngineWorkingDirectory { get { return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..")) + "\\"; } }
+        public string EngineCacheDirectory { get { return Path.Combine(repoRoot, "Cache"); } }
 
-        public string PathToEngineExecDebug { get { return EngineWorkingDirectory + "SailorEngine-Debug.exe"; } }
+        public string EngineWorkingDirectory { get { return repoRoot + Path.DirectorySeparatorChar; } }
 
-        public string PathToEngineExec { get { return EngineWorkingDirectory + "SailorEngine-Release.exe"; } }
+        public string PathToEngineExecDebug { get { return Path.Combine(EngineWorkingDirectory, "SailorEngine-Debug.exe"); } }
+
+        public string PathToEngineExec { get { return Path.Combine(EngineWorkingDirectory, "SailorEngine-Release.exe"); } }
 
         public Rect Viewport { get; set; } = new Rect(0, 0, 1024, 768);
 
@@ -104,9 +107,91 @@ namespace SailorEditor.Services
 
         public static void ShowMainWindow(bool bShow) => EngineAppInterop.ShowMainWindow(bShow);
 
+        static string ResolveRepoRoot()
+        {
+            var current = new DirectoryInfo(AppContext.BaseDirectory);
+            while (current != null)
+            {
+                if (Directory.Exists(Path.Combine(current.FullName, "Content")) &&
+                    Directory.Exists(Path.Combine(current.FullName, "Editor")) &&
+                    Directory.Exists(Path.Combine(current.FullName, "Runtime")))
+                {
+                    return current.FullName;
+                }
+
+                current = current.Parent;
+            }
+
+            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
+        }
+
+        public void BindMacRemoteViewportHost(ulong viewportId, nint hostHandle)
+        {
+#if MACCATALYST
+            if (hostHandle == nint.Zero)
+            {
+                return;
+            }
+
+            lock (interopLock)
+            {
+                EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle);
+            }
+#endif
+        }
+
+        public bool TryUpdateRemoteViewport(ulong viewportId, Rect rect, bool visible, bool focused)
+        {
+#if WINDOWS || MACCATALYST
+            if (rect.IsEmpty)
+            {
+                return false;
+            }
+
+            lock (interopLock)
+            {
+                return EngineAppInterop.UpsertRemoteViewport(viewportId, (uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height, visible, focused);
+            }
+#else
+            return false;
+#endif
+        }
+
+        public void DestroyRemoteViewport(ulong viewportId)
+        {
+#if WINDOWS || MACCATALYST
+            lock (interopLock)
+            {
+                EngineAppInterop.DestroyRemoteViewport(viewportId);
+            }
+#endif
+        }
+
+        public RemoteViewportSessionState GetRemoteViewportState(ulong viewportId)
+        {
+#if WINDOWS || MACCATALYST
+            lock (interopLock)
+            {
+                return (RemoteViewportSessionState)EngineAppInterop.GetRemoteViewportState(viewportId);
+            }
+#else
+            return RemoteViewportSessionState.Created;
+#endif
+        }
+
+        public void RetryRemoteViewport(ulong viewportId)
+        {
+#if WINDOWS || MACCATALYST
+            lock (interopLock)
+            {
+                EngineAppInterop.RetryRemoteViewport(viewportId);
+            }
+#endif
+        }
+
         public void RunProcess(bool bDebug, string commandlineArgs)
         {
-#if WINDOWS
+#if WINDOWS || MACCATALYST
             lock (runLock)
             {
                 if (isRunning)
@@ -118,11 +203,13 @@ namespace SailorEditor.Services
             nint handle = 0;
             try
             {
+#if WINDOWS
                 var window = Application.Current?.Windows?.FirstOrDefault();
                 if (window?.Handler?.PlatformView is MauiWinUIWindow mauiWindow)
                 {
                     handle = mauiWindow.WindowHandle;
                 }
+#endif
             }
             catch (Exception ex)
             {
@@ -134,6 +221,7 @@ namespace SailorEditor.Services
                 return;
             }
 
+#if WINDOWS
             if (handle == 0)
             {
                 lock (runLock)
@@ -142,10 +230,16 @@ namespace SailorEditor.Services
                 }
                 return;
             }
+#endif
 
+            string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + Path.DirectorySeparatorChar).Replace("\\", "/");
+#if WINDOWS
             string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
-            string workspace = (Path.GetFullPath(Path.Combine(EngineWorkingDirectory, "..")) + "\\").Replace("\\", "/");
-            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world" }.Concat(commandArgs.Split(" ")).ToArray();
+            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world" }.Concat(commandArgs.Split(" ", StringSplitOptions.RemoveEmptyEntries)).ToArray();
+#else
+            string commandArgs = $"--noconsole --editor {commandlineArgs}";
+            var args = new string[] { "SailorEditor", "--workspace", workspace, "--world", "Editor.world" }.Concat(commandArgs.Split(" ", StringSplitOptions.RemoveEmptyEntries)).ToArray();
+#endif
 
             try
             {
@@ -168,10 +262,20 @@ namespace SailorEditor.Services
                 {
                     try
                     {
+#if MACCATALYST
+                        await MainThread.InvokeOnMainThreadAsync(() =>
+                        {
+                            lock (interopLock)
+                            {
+                                EngineAppInterop.Initialize(args, args.Length);
+                            }
+                        });
+#else
                         lock (interopLock)
                         {
                             EngineAppInterop.Initialize(args, args.Length);
                         }
+#endif
 
                     // Required startup order:
                     // 1) engine types, 2) world, 3) initial messages
@@ -195,9 +299,12 @@ namespace SailorEditor.Services
 
                     StartPeriodicTask(async () =>
                     {
-                        lock (interopLock)
+                        if (!TryUpdateRemoteViewport(SceneViewportId, Viewport, visible: true, focused: false))
                         {
-                            EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
+                            lock (interopLock)
+                            {
+                                EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
+                            }
                         }
                     }, 500, 100, cts.Token);
 
@@ -222,6 +329,7 @@ namespace SailorEditor.Services
                         EngineAppInterop.Stop();
 
                         cts.Cancel();
+                        DestroyRemoteViewport(SceneViewportId);
 
                         lock (interopLock)
                         {

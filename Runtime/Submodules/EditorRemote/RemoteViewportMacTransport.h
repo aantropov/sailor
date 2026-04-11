@@ -19,6 +19,16 @@
 
 namespace Sailor::EditorRemote
 {
+	inline constexpr uint32_t AlignMacIOSurfaceStride(const uint32_t value, const uint32_t alignment)
+	{
+		if (alignment <= 1u)
+		{
+			return value;
+		}
+
+		const uint32_t remainder = value % alignment;
+		return remainder == 0u ? value : (value + alignment - remainder);
+	}
 
 	struct MacViewportSurfaceKey
 	{
@@ -72,6 +82,7 @@ namespace Sailor::EditorRemote
 		uintptr_t m_sourceObject = 0;
 		uint64_t m_sourceToken = 0;
 		uint64_t m_crossApiAcquireValue = 0;
+		uintptr_t m_crossApiSharedEventObject = 0;
 		uint32_t m_width = 0;
 		uint32_t m_height = 0;
 		uint32_t m_bytesPerRow = 0;
@@ -126,6 +137,7 @@ namespace Sailor::EditorRemote
 		uint64_t m_lastAcquireValue = 0;
 		uint64_t m_lastReleaseValue = 0;
 		uint64_t m_lastCrossApiAcquireValue = 0;
+		uintptr_t m_sharedEventObject = 0;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
 		bool m_requiresHostRelease = false;
 		bool m_crossApiCpuWaited = false;
@@ -218,8 +230,13 @@ namespace Sailor::EditorRemote
 			allocation.m_plane.m_planeCount = 1;
 			allocation.m_plane.m_width = viewport.m_width;
 			allocation.m_plane.m_height = viewport.m_height;
-			allocation.m_plane.m_bytesPerRow = viewport.m_width * 4u;
 			allocation.m_plane.m_bytesPerElement = 4u;
+#if defined(__APPLE__)
+			const uint32_t minimumStrideAlignment = std::max(GetMacIOSurfaceBytesPerRowAlignment(viewport.m_pixelFormat), allocation.m_plane.m_bytesPerElement);
+			allocation.m_plane.m_bytesPerRow = AlignMacIOSurfaceStride(viewport.m_width * allocation.m_plane.m_bytesPerElement, minimumStrideAlignment);
+#else
+			allocation.m_plane.m_bytesPerRow = viewport.m_width * allocation.m_plane.m_bytesPerElement;
+#endif
 
 #if defined(__APPLE__)
 			CFMutableDictionaryRef properties = CFDictionaryCreateMutable(kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -253,6 +270,7 @@ namespace Sailor::EditorRemote
 			setIntProperty(kIOSurfaceHeight, static_cast<int32_t>(viewport.m_height));
 			setIntProperty(kIOSurfaceBytesPerElement, static_cast<int32_t>(allocation.m_plane.m_bytesPerElement));
 			setIntProperty(kIOSurfaceBytesPerRow, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow));
+			setIntProperty(kIOSurfaceAllocSize, static_cast<int32_t>(allocation.m_plane.m_bytesPerRow * allocation.m_plane.m_height));
 			setIntProperty(kIOSurfacePixelFormat, static_cast<int32_t>('BGRA'));
 
 			IOSurfaceRef surface = IOSurfaceCreate(properties);
@@ -290,6 +308,7 @@ namespace Sailor::EditorRemote
 			exportMetadata.m_handle.m_surfaceId = allocation.m_surfaceId;
 			exportMetadata.m_handle.m_registryId = allocation.m_registryId;
 			exportMetadata.m_handle.m_surfaceObject = allocation.m_surfaceObject;
+			exportMetadata.m_handle.m_sharedEventObject = 0;
 			exportMetadata.m_handle.m_planeIndex = allocation.m_plane.m_planeIndex;
 			exportMetadata.m_handle.m_planeCount = allocation.m_plane.m_planeCount;
 			exportMetadata.m_handle.m_bytesPerRow = allocation.m_plane.m_bytesPerRow;
@@ -351,7 +370,7 @@ namespace Sailor::EditorRemote
 			if (rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture)
 			{
 				sourceTextureObject = rendererSource.m_textureObject;
-				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, sourceTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo);
+				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, sourceTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
 				if (rendererSource.m_releaseTextureObjectAfterUse)
 				{
 					ReleaseMacExportedTexture(sourceTextureObject);
@@ -389,6 +408,13 @@ namespace Sailor::EditorRemote
 				}
 				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo);
 			}
+			if (rendererSource.m_crossApiSharedEventObject != 0)
+			{
+#if defined(__APPLE__)
+				CFRelease(reinterpret_cast<CFTypeRef>(rendererSource.m_crossApiSharedEventObject));
+#endif
+				rendererSource.m_crossApiSharedEventObject = 0;
+			}
 			if (!copyResult.IsOk())
 			{
 				m_lastFailure = copyResult;
@@ -403,8 +429,14 @@ namespace Sailor::EditorRemote
 			if (state.m_lastExport.has_value())
 			{
 				state.m_lastExport->m_lastCrossApiAcquireValue = rendererSource.m_crossApiAcquireValue;
+				state.m_lastExport->m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
+				state.m_lastExport->m_handle.m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
 				state.m_lastExport->m_crossApiSyncKind = rendererSource.m_crossApiSyncKind;
 				state.m_lastExport->m_crossApiCpuWaited = rendererSource.m_crossApiCpuWaited;
+			}
+			if (!state.m_transport.m_macSurfaces.empty())
+			{
+				state.m_transport.m_macSurfaces.front().m_sharedEventObject = rendererSource.m_crossApiSharedEventObject;
 			}
 			state.m_frameBegun = true;
 			m_liveAllocations[state.m_key] = *state.m_nativeAllocation;
