@@ -50,6 +50,7 @@ namespace SailorEngine
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyRemoteViewport(ulong viewportId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportState(ulong viewportId);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportDiagnostics(ulong viewportId, nint[] diagnostics);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RetryRemoteViewport(ulong viewportId);
         [return: MarshalAs(UnmanagedType.I1)]
@@ -186,6 +187,25 @@ namespace SailorEditor.Services
             {
                 EngineAppInterop.RetryRemoteViewport(viewportId);
             }
+#endif
+        }
+
+        public string GetRemoteViewportDiagnostics(ulong viewportId)
+        {
+#if WINDOWS || MACCATALYST
+            lock (interopLock)
+            {
+                nint[] textPtr = new nint[1];
+                uint length = EngineAppInterop.GetRemoteViewportDiagnostics(viewportId, textPtr);
+                if (length == 0 || textPtr[0] == nint.Zero)
+                {
+                    return string.Empty;
+                }
+
+                return Marshal.PtrToStringAnsi(textPtr[0], (int)length) ?? string.Empty;
+            }
+#else
+            return string.Empty;
 #endif
         }
 

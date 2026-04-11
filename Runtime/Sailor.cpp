@@ -23,6 +23,7 @@
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
 #include "Containers/Set.h"
+#include <sstream>
 #include "Containers/Map.h"
 #include "Containers/List.h"
 #include "Containers/Octree.h"
@@ -969,6 +970,51 @@ uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
 		}
 
 		return static_cast<uint32_t>(it->second->m_binding.GetRuntimeSession().GetState());
+}
+
+uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
+{
+		if (!diagnostics)
+		{
+			return 0;
+		}
+
+		viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+		auto it = g_remoteViewportBindings.find(viewportId);
+		if (it == g_remoteViewportBindings.end())
+		{
+			diagnostics[0] = nullptr;
+			return 0;
+		}
+
+		const auto& info = it->second->m_binding.GetRuntimeSession().GetDiagnostics();
+		std::ostringstream ss;
+		ss << "state=" << static_cast<uint32_t>(info.m_state)
+			<< " epoch=" << info.m_connectionEpoch
+			<< " gen=" << info.m_generation
+			<< " transport=" << static_cast<uint32_t>(info.m_transportType)
+			<< " lastGoodFrame=" << info.m_lastGoodFrameIndex
+			<< " recoveries=" << info.m_recoveryAttemptCount
+			<< " resizes=" << info.m_resizeCount;
+
+		if (!info.m_lastEvent.empty())
+		{
+			ss << " event=" << info.m_lastEvent;
+		}
+
+		if (info.m_lastFailure.has_value() && !info.m_lastFailure->IsOk())
+		{
+			ss << " failure=[result=" << static_cast<uint32_t>(info.m_lastFailure->m_code)
+				<< " nativeCode=" << info.m_lastFailure->m_nativeCode
+				<< " scope=" << static_cast<uint32_t>(info.m_lastFailure->m_scope)
+				<< " message='" << info.m_lastFailure->m_message << "']";
+		}
+
+		const std::string text = ss.str();
+		diagnostics[0] = new char[text.size() + 1];
+		memcpy(diagnostics[0], text.c_str(), text.size());
+		diagnostics[0][text.size()] = '\0';
+		return static_cast<uint32_t>(text.size());
 }
 
 bool App::RetryEditorRemoteViewport(uint64_t viewportId)

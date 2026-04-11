@@ -89,6 +89,12 @@ namespace SailorEditor.Services
                 try
                 {
                     var newAssetInfo = ReadAssetFile(assetInfo, parentFolderId);
+                    if (newAssetInfo.FileId == null || newAssetInfo.FileId.IsEmpty())
+                    {
+                        Console.WriteLine($"[AssetsService] Skip asset with empty FileId: {assetInfo.FullName}");
+                        continue;
+                    }
+
                     Assets[newAssetInfo.FileId] = newAssetInfo;
                 }
                 catch (Exception ex)

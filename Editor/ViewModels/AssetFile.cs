@@ -57,8 +57,8 @@ public partial class AssetFile : ObservableObject, ICloneable
 
             var intermediateObject = deserializer.Deserialize<AssetFile>(yaml);
 
-            FileId = intermediateObject.FileId;
-            Filename = intermediateObject.Filename;
+            FileId = intermediateObject.FileId ?? new FileId();
+            Filename = intermediateObject.Filename ?? new FileId();
 
             DisplayName = Filename;
 

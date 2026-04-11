@@ -3,33 +3,43 @@
              x:Name="this"
              x:Class="SailorEditor.Views.SceneView">
 
-    <Frame x:Name="Viewport">
-        <ScrollView>
-            <VerticalStackLayout
-            Spacing="25"
-            Padding="30,0"
-            VerticalOptions="Center">
+    <Grid>
+        <Border x:Name="Viewport"
+                BackgroundColor="#111111"
+                Stroke="#2A2A2A"
+                StrokeThickness="1"
+                Padding="0">
+            <Grid>
+                <ContentView x:Name="NativeViewportContainer" />
 
-                <!-- CheckBox with Label on the same line 
-                <HorizontalStackLayout HorizontalOptions="Center">
-                    <CheckBox x:Name="WaitForDebuggerAttachedCheckBox" />
-                    <Label Text="WaitForDebuggerAttached" VerticalOptions="Center"/>
-                </HorizontalStackLayout>
-
-                 
-                <HorizontalStackLayout HorizontalOptions="Center">
-                    <CheckBox x:Name="RunDebugConfigurationCheckBox" IsChecked="False" />
-                    <Label Text="RunDebugConfiguration" VerticalOptions="Center"/>
-                </HorizontalStackLayout>
-
-                <Button
-                x:Name="RunSailorEngine"
-                Text="Run Sailor Engine Process"
-                Clicked="OnRunSailorEngineClicked"
-                HorizontalOptions="Center" />
-                -->
-
-            </VerticalStackLayout>
-        </ScrollView>
-    </Frame>
+                <Border x:Name="ViewportStatusOverlay"
+                        StrokeThickness="1"
+                        Stroke="#3A3A3A"
+                        BackgroundColor="#AA111111"
+                        Padding="12"
+                        HorizontalOptions="Start"
+                        VerticalOptions="Start"
+                        Margin="12">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Remote viewport"
+                               FontAttributes="Bold"
+                               TextColor="White" />
+                        <Label x:Name="ViewportStatusText"
+                               Text="Starting…"
+                               TextColor="#D0D0D0" />
+                        <Label x:Name="ViewportDiagnosticsText"
+                               Text=""
+                               FontSize="11"
+                               LineBreakMode="WordWrap"
+                               MaxLines="4"
+                               TextColor="#A8A8A8" />
+                        <Button x:Name="RetryRemoteViewportButton"
+                                Text="Retry"
+                                IsVisible="False"
+                                Clicked="OnRetryRemoteViewportClicked" />
+                    </VerticalStackLayout>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
 </ContentView>

@@ -37,6 +37,36 @@ extern "C"
 		Sailor::App::SetEditorViewport(windowPosX, windowPosY, width, height);
 	}
 
+	SAILOR_API bool UpsertRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::UpsertEditorRemoteViewport(viewportId, windowPosX, windowPosY, width, height, bVisible, bFocused);
+	}
+
+	SAILOR_API bool DestroyRemoteViewport(uint64_t viewportId)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::DestroyEditorRemoteViewport(viewportId);
+	}
+
+	SAILOR_API uint32_t GetRemoteViewportState(uint64_t viewportId)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::GetEditorRemoteViewportState(viewportId);
+	}
+
+	SAILOR_API uint32_t GetRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::GetEditorRemoteViewportDiagnostics(viewportId, diagnostics);
+	}
+
+	SAILOR_API bool RetryRemoteViewport(uint64_t viewportId)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::RetryEditorRemoteViewport(viewportId);
+	}
+
 	SAILOR_API uint32_t GetMessages(char** messages, uint32_t num)
 	{
 		SAILOR_PROFILE_FUNCTION();

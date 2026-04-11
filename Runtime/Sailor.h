@@ -45,6 +45,12 @@ namespace Sailor
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static void SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height);
+		SAILOR_API static bool UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused);
+		SAILOR_API static bool DestroyEditorRemoteViewport(uint64_t viewportId);
+		SAILOR_API static uint32_t GetEditorRemoteViewportState(uint64_t viewportId);
+		SAILOR_API static uint32_t GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics);
+		SAILOR_API static bool RetryEditorRemoteViewport(uint64_t viewportId);
+		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
