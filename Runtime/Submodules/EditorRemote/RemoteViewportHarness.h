@@ -2,6 +2,7 @@
 
 #include <array>
 #include <deque>
+#include <optional>
 
 #include "RemoteViewportFoundation.h"
 
@@ -114,6 +115,23 @@ namespace Sailor::EditorRemote
 			auto message = m_engineToEditor.front();
 			m_engineToEditor.pop_front();
 			HandleEditorMessage(message);
+		}
+
+		void EngineReceiveExternalCommand(const ProtocolMessage& message)
+		{
+			HandleEngineMessage(message);
+		}
+
+		std::optional<ProtocolMessage> PopEngineEventForExternalEditor()
+		{
+			if (m_engineToEditor.empty())
+			{
+				return std::nullopt;
+			}
+
+			auto message = m_engineToEditor.front();
+			m_engineToEditor.pop_front();
+			return message;
 		}
 
 		void EngineBeginInFlightFrame()

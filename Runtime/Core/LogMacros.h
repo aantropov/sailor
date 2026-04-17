@@ -2,14 +2,13 @@
 #include <string>
 #include <iostream>
 #include <cstdio>
+#include "Submodules/Editor.h"
 #if defined(_WIN32)
 #include <windows.h>
-#include "Submodules/Editor.h"
+#endif
+
 #define SAILOR_PUSH_EDITOR_MESSAGE(buffer) \
 	if(auto editor = App::GetSubmodule<Editor>()) { editor->PushMessage(std::string(buffer)); }
-#else
-#define SAILOR_PUSH_EDITOR_MESSAGE(buffer)
-#endif
 
 #if defined(_WIN32)
 #define SAILOR_SNPRINTF sprintf_s

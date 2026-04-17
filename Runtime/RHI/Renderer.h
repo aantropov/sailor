@@ -54,6 +54,7 @@ namespace Sailor::RHI
 
 		SAILOR_API void BeginConditionalDestroy();
 		SAILOR_API void RefreshFrameGraph() { m_bFrameGraphOutdated = true; }
+		SAILOR_API bool EnsureFrameGraph();
 
 		SAILOR_API FrameGraphPtr GetFrameGraph() { return m_frameGraph; }
 

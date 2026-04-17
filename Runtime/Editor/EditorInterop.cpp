@@ -1,0 +1,148 @@
+#include "Sailor.h"
+
+#include "AssetRegistry/AssetRegistry.h"
+#include "Core/Reflection.h"
+#include "Engine/InstanceId.h"
+#include "Submodules/Editor.h"
+
+#include <algorithm>
+#include <cstring>
+#include <filesystem>
+
+using namespace Sailor;
+
+uint32_t App::PullEditorMessages(char** messages, uint32_t num)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !messages)
+	{
+		return 0;
+	}
+
+	uint32_t numMsg = std::min(static_cast<uint32_t>(editor->NumMessages()), num);
+	for (uint32_t i = 0; i < numMsg; i++)
+	{
+		std::string msg;
+		if (editor->PullMessage(msg))
+		{
+			messages[i] = new char[msg.size() + 1];
+			if (messages[i] == nullptr)
+			{
+				return i;
+			}
+
+			std::copy(msg.begin(), msg.end(), messages[i]);
+			messages[i][msg.size()] = '\0';
+		}
+		else
+		{
+			return i;
+		}
+	}
+
+	return numMsg;
+}
+
+uint32_t App::SerializeCurrentWorld(char** yamlNode)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !yamlNode)
+	{
+		return 0;
+	}
+
+	auto node = editor->SerializeWorld();
+	if (!node.IsNull())
+	{
+		std::string serializedNode = YAML::Dump(node);
+		size_t length = serializedNode.length();
+
+		yamlNode[0] = new char[length + 1];
+		memcpy(yamlNode[0], serializedNode.c_str(), length);
+		yamlNode[0][length] = '\0';
+
+		return static_cast<uint32_t>(length);
+	}
+
+	yamlNode[0] = nullptr;
+	return 0;
+}
+
+uint32_t App::SerializeEngineTypes(char** yamlNode)
+{
+	if (!yamlNode)
+	{
+		return 0;
+	}
+
+	auto node = Reflection::ExportEngineTypes();
+	if (!node.IsNull())
+	{
+		std::string serializedNode = YAML::Dump(node);
+		size_t length = serializedNode.length();
+
+		std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
+		AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", serializedNode);
+
+		yamlNode[0] = new char[length + 1];
+		memcpy(yamlNode[0], serializedNode.c_str(), length);
+		yamlNode[0][length] = '\0';
+
+		return static_cast<uint32_t>(length);
+	}
+
+	yamlNode[0] = nullptr;
+	return 0;
+}
+
+bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId || !strYamlNode)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+	instanceId.Deserialize(instanceIdYaml);
+
+	return editor->UpdateObject(instanceId, strYamlNode);
+}
+
+bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
+{
+	if (!strOutputPath || strOutputPath[0] == '\0')
+	{
+		return false;
+	}
+
+	auto editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		return false;
+	}
+
+	InstanceId instanceId{};
+	if (strInstanceId && strInstanceId[0] != '\0')
+	{
+		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
+		instanceId.Deserialize(instanceIdYaml);
+	}
+
+	const std::string outputPath = strOutputPath;
+	const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
+	editor->PushMessage(bSuccess ?
+		("Path tracer export succeeded: " + outputPath) :
+		("Path tracer export failed: " + outputPath));
+
+	return bSuccess;
+}
+
+void App::ShowMainWindow(bool bShow)
+{
+	if (auto editor = GetSubmodule<Editor>())
+	{
+		editor->ShowMainWindow(bShow);
+	}
+}

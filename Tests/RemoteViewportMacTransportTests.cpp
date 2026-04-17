@@ -521,8 +521,9 @@ namespace
 		source.m_textureObject = rendererTextureObject;
 		source.m_sourceToken = 0xbeefull;
 		source.m_crossApiAcquireValue = 77ull;
-		source.m_crossApiSyncKind = CrossApiSyncKind::CpuDeviceIdle;
-		source.m_crossApiCpuWaited = true;
+		source.m_crossApiSharedEventObject = 0;
+		source.m_crossApiSyncKind = CrossApiSyncKind::MetalSharedEvent;
+		source.m_crossApiCpuWaited = false;
 		source.m_width = viewport.m_width;
 		source.m_height = viewport.m_height;
 		source.m_pixelFormat = viewport.m_pixelFormat;
@@ -547,9 +548,9 @@ namespace
 		Require(backend.BeginFrame(viewport, 34, 1).IsOk(), "cross-api sync validation should begin frame");
 		FramePacket frame{};
 		Require(backend.ExportFrame(viewport, 34, 1, frame).IsOk(), "cross-api sync validation should export frame");
-		Require(frame.m_sync.m_crossApiSyncKind == CrossApiSyncKind::CpuDeviceIdle, "exported frame should preserve the explicit Vulkan->Metal sync kind");
+		Require(frame.m_sync.m_crossApiSyncKind == CrossApiSyncKind::MetalSharedEvent, "exported frame should preserve the Metal shared-event sync kind when supplied");
 		Require(frame.m_sync.m_crossApiAcquireValue == 77ull, "exported frame should preserve the explicit Vulkan->Metal acquire value");
-		Require(frame.m_sync.m_crossApiCpuWaited, "exported frame should preserve that the current explicit Vulkan->Metal seam blocks on CPU");
+		Require(!frame.m_sync.m_crossApiCpuWaited, "exported frame should preserve that Metal shared-event metadata avoids claiming CPU fallback");
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 34, 1).IsOk(), "cross-api sync validation should release the live provider allocation");
 		Require(bootstrapProvider.ReleaseSurface(bootstrapState).IsOk(), "cross-api sync validation should release the bootstrap allocation");
 		ReleaseMacRendererIntermediateTexture(rendererTextureObject);

@@ -5,6 +5,7 @@ using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.Collections.Generic;
+using YamlDotNet.Core;
 
 namespace SailorEditor.Services
 {
@@ -62,6 +63,52 @@ namespace SailorEditor.Services
             return newAssetFile;
         }
 
+        private void TryPopulateAssetMetadataFromYaml(AssetFile assetFile)
+        {
+            if (assetFile.AssetInfo == null || !assetFile.AssetInfo.Exists)
+            {
+                return;
+            }
+
+            if (assetFile.FileId != null && !assetFile.FileId.IsEmpty() && assetFile.Filename != null && !assetFile.Filename.IsEmpty())
+            {
+                return;
+            }
+
+            try
+            {
+                using var reader = new StreamReader(assetFile.AssetInfo.FullName);
+                var yaml = new YamlStream();
+                yaml.Load(reader);
+                if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root)
+                {
+                    return;
+                }
+
+                if ((assetFile.FileId == null || assetFile.FileId.IsEmpty()) && root.Children.TryGetValue(new YamlScalarNode("fileId"), out var fileIdNode))
+                {
+                    var value = fileIdNode?.ToString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        assetFile.FileId = new FileId(value);
+                    }
+                }
+
+                if ((assetFile.Filename == null || assetFile.Filename.IsEmpty()) && root.Children.TryGetValue(new YamlScalarNode("filename"), out var filenameNode))
+                {
+                    var value = filenameNode?.ToString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        assetFile.Filename = new FileId(value);
+                    }
+                }
+            }
+            catch (YamlException ex)
+            {
+                Console.WriteLine($"[AssetsService] Failed to parse metadata from YAML: {assetFile.AssetInfo.FullName} :: {ex.Message}");
+            }
+        }
+
         private void ReadDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
         {
             foreach (var directory in Directory.GetDirectories(directoryPath))
@@ -89,6 +136,7 @@ namespace SailorEditor.Services
                 try
                 {
                     var newAssetInfo = ReadAssetFile(assetInfo, parentFolderId);
+                    TryPopulateAssetMetadataFromYaml(newAssetInfo);
                     if (newAssetInfo.FileId == null || newAssetInfo.FileId.IsEmpty())
                     {
                         Console.WriteLine($"[AssetsService] Skip asset with empty FileId: {assetInfo.FullName}");

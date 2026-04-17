@@ -123,9 +123,14 @@ public class ComponentYamlConverter : IYamlTypeConverter
                             if (parser.Current is Scalar scalar)
                             {
                                 string key = scalar.Value;
-                                var propType = component.Typename.Properties[key];
 
                                 parser.MoveNext();
+                                if (component.Typename?.Properties == null ||
+                                    !component.Typename.Properties.TryGetValue(key, out var propType))
+                                {
+                                    deserializer.Deserialize<object>(parser);
+                                    continue;
+                                }
 
                                 ObservableObject value = propType switch
                                 {

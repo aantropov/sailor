@@ -14,7 +14,7 @@
                 <RowDefinition Height="25"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <Label Text="Folder" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
+            <Label Text="Content" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
             <controls:TreeView Margin="4" x:Name="FolderTree" Grid.Row="1" Grid.Column="0"/>
         </Grid>
     </Frame>

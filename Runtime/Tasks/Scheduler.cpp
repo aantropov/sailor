@@ -531,6 +531,20 @@ bool Scheduler::IsRendererThread() const
 	return m_renderingThreadId == GetCurrentThreadId();
 }
 
+bool Scheduler::HasThread(DWORD threadId) const
+{
+	if (m_mainThreadId == threadId)
+	{
+		return true;
+	}
+
+	return m_workerThreads.FindIf(
+		[&](const auto& worker)
+		{
+			return worker->GetThreadId() == threadId;
+		}) != -1;
+}
+
 uint16_t Scheduler::AcquireTaskSyncBlock()
 {
 	uint16_t last = 0;

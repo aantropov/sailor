@@ -33,8 +33,8 @@ public partial class World : AssetFile
 
             var intermediateObject = deserializer.Deserialize<World>(yaml);
 
-            FileId = intermediateObject.FileId;
-            Filename = intermediateObject.Filename;
+            FileId = intermediateObject.FileId ?? new FileId();
+            Filename = intermediateObject.Filename ?? new FileId();
 
             DisplayName = Asset.Name;
 
@@ -45,7 +45,7 @@ public partial class World : AssetFile
         }
         catch (Exception ex)
         {
-            DisplayName = ex.Message;
+            SetLoadError(ex);
         }
 
         IsDirty = false;

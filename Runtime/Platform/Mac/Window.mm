@@ -10,6 +10,7 @@
 #import <objc/runtime.h>
 
 #include <algorithm>
+#include <cmath>
 
 using namespace Sailor;
 using namespace Sailor::Win32;
@@ -294,7 +295,11 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	@autoreleasepool
 	{
 		[NSApplication sharedApplication];
-		[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		const bool bRunsInsideEditor = App::IsEditorMode();
+		if (!bRunsInsideEditor)
+		{
+			[NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+		}
 
 		const NSWindowStyleMask style = parentHwnd == nullptr ?
 			(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable) :
@@ -324,31 +329,54 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		window.delegate = delegate;
 		objc_setAssociatedObject(window, "sailor_delegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-		[window makeKeyAndOrderFront:nil];
-		[NSApp activateIgnoringOtherApps:YES];
+		if (!bRunsInsideEditor)
+		{
+			[window makeKeyAndOrderFront:nil];
+			[NSApp activateIgnoringOtherApps:YES];
+			m_bIsShown = true;
+		}
+		else
+		{
+			[window orderOut:nil];
+			m_bIsShown = false;
+		}
 
 		m_hWnd = (HWND)(__bridge void*)window;
-		m_bIsShown = true;
 	}
 
 	g_windows.Add(this);
-	printf("Window created\n");
+	printf("%s\n", App::IsEditorMode() ? "Hidden editor rendering surface created" : "Window created");
 	return true;
 }
 
 void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
-	m_width = width;
-	m_height = height;
-	m_bIsFullscreen = bInIsFullScreen;
+	if (![NSThread isMainThread])
+	{
+		dispatch_sync(dispatch_get_main_queue(), ^
+		{
+			ChangeWindowSize(width, height, bInIsFullScreen);
+		});
+		return;
+	}
 
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	if (!window)
 	{
+		m_width = width;
+		m_height = height;
+		m_bIsFullscreen = bInIsFullScreen;
 		return;
 	}
 
-	[window setContentSize:NSMakeSize(width, height)];
+	const CGFloat backingScale = App::IsEditorMode() ? std::max<CGFloat>(1.0, [window backingScaleFactor]) : 1.0;
+	const int32_t contentWidth = std::max<int32_t>(1, (int32_t)std::round((CGFloat)width / backingScale));
+	const int32_t contentHeight = std::max<int32_t>(1, (int32_t)std::round((CGFloat)height / backingScale));
+	m_width = contentWidth;
+	m_height = contentHeight;
+	m_bIsFullscreen = bInIsFullScreen;
+
+	[window setContentSize:NSMakeSize(contentWidth, contentHeight)];
 
 	const bool bIsCurrentlyFullScreen = (([window styleMask] & NSWindowStyleMaskFullScreen) != 0);
 	if (bInIsFullScreen != bIsCurrentlyFullScreen)

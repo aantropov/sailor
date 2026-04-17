@@ -30,6 +30,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "RHI/Renderer.h"
+#include "Sailor.h"
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -47,6 +48,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 
 	m_backBuffer = RHI::RHIRenderTargetPtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
 	m_depthStencilBuffer = RHI::RHIRenderTargetPtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::DepthStencilAttachmentOptimal);
+	RefreshSwapchainTargets();
 
 	if (RenderDocApi* renderDocApi = App::GetSubmodule<RenderDocApi>())
 	{
@@ -148,6 +150,28 @@ uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
 	return m_vkInstance->GetMainDevice()->GetNumSubmittedCommandBufers();
 }
 
+VkSemaphore VulkanGraphicsDriver::GetLastSubmittedRenderFinishedSemaphoreHandle() const
+{
+	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return VK_NULL_HANDLE;
+	}
+
+	const auto semaphore = m_vkInstance->GetMainDevice()->GetLastSubmittedRenderFinishedSemaphore();
+	return semaphore ? static_cast<VkSemaphore>(*semaphore) : VK_NULL_HANDLE;
+}
+
+VkSemaphore VulkanGraphicsDriver::GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const
+{
+	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return VK_NULL_HANDLE;
+	}
+
+	const auto semaphore = m_vkInstance->GetMainDevice()->GetLastSubmittedSceneViewMainResolvedSemaphore();
+	return semaphore ? static_cast<VkSemaphore>(*semaphore) : VK_NULL_HANDLE;
+}
+
 bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
@@ -173,6 +197,7 @@ bool VulkanGraphicsDriver::FixLostDevice(Win32::Window* pViewport)
 				SAILOR_PROFILE_SCOPE("Fix lost device");
 				m_vkInstance->WaitIdle();
 				m_vkInstance->GetMainDevice()->FixLostDevice(pViewport);
+				RefreshSwapchainTargets();
 				m_cachedMsaaRenderTargets.Clear();
 				m_temporaryRenderTargets.Clear();
 			};
@@ -258,6 +283,53 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::GetDepthBuffer() const
 	return m_depthStencilBuffer;
 }
 
+void VulkanGraphicsDriver::RefreshSwapchainTargets()
+{
+	if (!m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return;
+	}
+
+	auto backBufferView = m_vkInstance->GetMainDevice()->GetBackBuffer();
+	if (m_backBuffer && backBufferView)
+	{
+		m_backBuffer->m_vulkan.m_imageView = backBufferView;
+		m_backBuffer->m_vulkan.m_image = backBufferView->m_image;
+	}
+
+	auto depthBufferView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
+	if (!m_depthStencilBuffer || !depthBufferView)
+	{
+		return;
+	}
+
+	if (m_depthStencilBuffer->m_vulkan.m_imageView == depthBufferView)
+	{
+		return;
+	}
+
+	m_depthStencilBuffer->m_vulkan.m_imageView = depthBufferView;
+	m_depthStencilBuffer->m_vulkan.m_image = depthBufferView->m_image;
+	m_depthStencilBuffer->m_depthAspect.Clear();
+	m_depthStencilBuffer->m_stencilAspect.Clear();
+
+	if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
+	{
+		m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
+		m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
+	}
+
+	if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
+	{
+		m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
+		m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
+	}
+}
+
 bool VulkanGraphicsDriver::AcquireNextImage()
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -267,32 +339,7 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 	}
 
 	const bool bRes = m_vkInstance->GetMainDevice()->AcquireNextImage();
-
-	m_backBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetBackBuffer();
-	m_backBuffer->m_vulkan.m_image = m_backBuffer->m_vulkan.m_imageView->m_image;
-
-	if (m_depthStencilBuffer->m_vulkan.m_imageView != m_vkInstance->GetMainDevice()->GetDepthBuffer())
-	{
-		m_depthStencilBuffer->m_vulkan.m_imageView = m_vkInstance->GetMainDevice()->GetDepthBuffer();
-		m_depthStencilBuffer->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_imageView->m_image;
-
-		if (RHI::IsDepthFormat(m_depthStencilBuffer->GetFormat()))
-		{
-			m_depthStencilBuffer->m_depthAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_depthAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_DEPTH_BIT);
-			m_depthStencilBuffer->m_depthAspect->m_vulkan.m_imageView->Compile();
-		}
-
-		if (RHI::IsDepthStencilFormat(m_depthStencilBuffer->GetFormat()))
-		{
-			m_depthStencilBuffer->m_stencilAspect = RHI::RHITexturePtr::Make(m_depthStencilBuffer->GetFiltration(), m_depthStencilBuffer->GetClamping(), false, m_depthStencilBuffer->GetDefaultLayout());
-			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image = m_depthStencilBuffer->m_vulkan.m_image;
-			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView = VulkanImageViewPtr::Make(m_vkInstance->GetMainDevice(), m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_image, VK_IMAGE_ASPECT_STENCIL_BIT);
-			m_depthStencilBuffer->m_stencilAspect->m_vulkan.m_imageView->Compile();
-		}
-	}
-
+	RefreshSwapchainTargets();
 	return bRes;
 }
 
@@ -2603,6 +2650,20 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 {
 	auto device = m_vkInstance->GetMainDevice();
 	auto pStateViewport = device->GetCurrentFrameViewport();
+
+#if defined(__APPLE__)
+	if (Sailor::App::HasEditor())
+	{
+		const glm::ivec2 renderArea = Sailor::App::GetMainWindow()->GetRenderArea();
+		const float width = (float)std::max(renderArea.x, 1);
+		const float height = (float)std::max(renderArea.y, 1);
+		pStateViewport = new VulkanStateViewport(0.0f, height,
+			width, -height,
+			{ 0, 0 },
+			{ (uint32_t)width, (uint32_t)height },
+			0.0f, 1.0f);
+	}
+#endif
 
 	cmd->m_vulkan.m_commandBuffer->SetViewport(pStateViewport);
 	cmd->m_vulkan.m_commandBuffer->SetScissor(pStateViewport);

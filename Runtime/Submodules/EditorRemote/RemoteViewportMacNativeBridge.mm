@@ -8,6 +8,7 @@
 #import <dispatch/dispatch.h>
 #define VK_USE_PLATFORM_METAL_EXT 1
 #include "../../../External/renderdoc/renderdoc/driver/vulkan/official/vulkan.h"
+#include <algorithm>
 #include <dlfcn.h>
 #endif
 
@@ -392,7 +393,8 @@ namespace Sailor::EditorRemote
 		const auto device = static_cast<VkDevice>(reinterpret_cast<VkDevice_T*>(vulkanDeviceHandle));
 		auto getDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(dlsym(RTLD_DEFAULT, "vkGetDeviceProcAddr"));
 		auto waitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(dlsym(RTLD_DEFAULT, "vkDeviceWaitIdle"));
-		if (getDeviceProcAddr != nullptr && vulkanSemaphoreHandle != 0)
+		constexpr bool kEnableBinarySemaphoreSharedEventInterop = false;
+		if (kEnableBinarySemaphoreSharedEventInterop && getDeviceProcAddr != nullptr && vulkanSemaphoreHandle != 0)
 		{
 			auto exportMetalObjects = reinterpret_cast<PFN_vkExportMetalObjectsEXT>(getDeviceProcAddr(device, "vkExportMetalObjectsEXT"));
 			if (exportMetalObjects != nullptr)
@@ -604,8 +606,109 @@ namespace Sailor::EditorRemote
 		});
 	}
 
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence)
+	{
+		outEvidence = {};
+		outEvidence.m_width = width;
+		outEvidence.m_height = height;
+		if (!surfaceHandle.IsValid() || surfaceHandle.m_surfaceObject == 0 || width == 0 || height == 0)
+		{
+			return MakeFailure(2120, "macOS frame evidence capture requires a valid IOSurface handle");
+		}
+
+		IOSurfaceRef ioSurface = (__bridge IOSurfaceRef)reinterpret_cast<void*>(surfaceHandle.m_surfaceObject);
+		if (ioSurface == nullptr)
+		{
+			return MakeFailure(2121, "macOS frame evidence capture resolved IOSurface to nil");
+		}
+
+		const kern_return_t lockResult = IOSurfaceLock(ioSurface, kIOSurfaceLockReadOnly, nullptr);
+		if (lockResult != KERN_SUCCESS)
+		{
+			return MakeFailure(2122, "macOS frame evidence capture could not lock IOSurface");
+		}
+
+		auto unlockSurface = [&]()
+		{
+			IOSurfaceUnlock(ioSurface, kIOSurfaceLockReadOnly, nullptr);
+		};
+
+		const uint8_t* baseAddress = static_cast<const uint8_t*>(IOSurfaceGetBaseAddressOfPlane(ioSurface, surfaceHandle.m_planeIndex));
+		if (baseAddress == nullptr)
+		{
+			baseAddress = static_cast<const uint8_t*>(IOSurfaceGetBaseAddress(ioSurface));
+		}
+		const size_t bytesPerRow = surfaceHandle.m_bytesPerRow != 0 ? surfaceHandle.m_bytesPerRow : IOSurfaceGetBytesPerRowOfPlane(ioSurface, surfaceHandle.m_planeIndex);
+		if (bytesPerRow == 0)
+		{
+			unlockSurface();
+			return MakeFailure(2123, "macOS frame evidence capture could not resolve IOSurface row stride");
+		}
+		if (baseAddress == nullptr)
+		{
+			unlockSurface();
+			return MakeFailure(2124, "macOS frame evidence capture could not resolve IOSurface base address");
+		}
+
+		auto sampleAt = [&](uint32_t x, uint32_t y)
+		{
+			MacNativeSurfacePixelSample sample{};
+			const size_t offset = static_cast<size_t>(y) * bytesPerRow + static_cast<size_t>(x) * 4u;
+			const uint8_t* pixel = baseAddress + offset;
+			sample.m_b = pixel[0];
+			sample.m_g = pixel[1];
+			sample.m_r = pixel[2];
+			sample.m_a = pixel[3];
+			return sample;
+		};
+
+		outEvidence.m_topLeft = sampleAt(0, 0);
+		outEvidence.m_center = sampleAt(width / 2u, height / 2u);
+		outEvidence.m_bottomRight = sampleAt(width > 0 ? width - 1u : 0u, height > 0 ? height - 1u : 0u);
+		uint64_t lumaSum = 0;
+		uint32_t minLuma = 255;
+		uint32_t maxLuma = 0;
+		uint32_t checksum = 2166136261u;
+		constexpr uint32_t kGridSize = 8;
+		for (uint32_t yIndex = 0; yIndex < kGridSize; yIndex++)
+		{
+			const uint32_t y = height == 1 ? 0 : static_cast<uint32_t>((static_cast<uint64_t>(height - 1u) * yIndex) / (kGridSize - 1u));
+			for (uint32_t xIndex = 0; xIndex < kGridSize; xIndex++)
+			{
+				const uint32_t x = width == 1 ? 0 : static_cast<uint32_t>((static_cast<uint64_t>(width - 1u) * xIndex) / (kGridSize - 1u));
+				const auto sample = sampleAt(x, y);
+				const uint32_t luma = (static_cast<uint32_t>(sample.m_r) * 54u + static_cast<uint32_t>(sample.m_g) * 183u + static_cast<uint32_t>(sample.m_b) * 19u) >> 8u;
+				outEvidence.m_sampledPixelCount++;
+				if (sample.m_r != 0 || sample.m_g != 0 || sample.m_b != 0)
+				{
+					outEvidence.m_nonBlackPixelCount++;
+				}
+				lumaSum += luma;
+				minLuma = std::min(minLuma, luma);
+				maxLuma = std::max(maxLuma, luma);
+				checksum ^= static_cast<uint32_t>(sample.m_r) | (static_cast<uint32_t>(sample.m_g) << 8u) | (static_cast<uint32_t>(sample.m_b) << 16u) | (static_cast<uint32_t>(sample.m_a) << 24u);
+				checksum *= 16777619u;
+			}
+		}
+		outEvidence.m_averageLuma = outEvidence.m_sampledPixelCount != 0 ? static_cast<uint32_t>(lumaSum / outEvidence.m_sampledPixelCount) : 0;
+		outEvidence.m_maxLuma = maxLuma;
+		outEvidence.m_checksum = checksum;
+		outEvidence.m_hasReadablePixels = true;
+		outEvidence.m_hasVisualVariance = minLuma != maxLuma || outEvidence.m_topLeft != outEvidence.m_center || outEvidence.m_center != outEvidence.m_bottomRight;
+		unlockSurface();
+		return Failure::Ok();
+	}
+
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult)
 	{
+		if (![NSThread isMainThread])
+		{
+			return RunOnMainThreadSync([&]() -> Failure
+			{
+				return PresentMacNativeLayerFrame(inOutBinding, surfaceHandle, frame, outResult);
+			});
+		}
+
 		if (!inOutBinding.IsValid())
 		{
 			return MakeFailure(2111, "macOS native layer present requires a valid CAMetalLayer binding");
@@ -773,6 +876,11 @@ namespace Sailor::EditorRemote
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding&, const MacIOSurfaceHandle&, const FramePacket&, MacNativeBridgePresentResult&)
 	{
 		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS native layer present is unavailable on this platform");
+	}
+
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle&, uint32_t, uint32_t, MacNativeSurfaceFrameEvidence&)
+	{
+		return Failure::FromDomain(ErrorDomain::Capability, 2199, "macOS frame evidence capture is unavailable on this platform");
 	}
 
 	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding)

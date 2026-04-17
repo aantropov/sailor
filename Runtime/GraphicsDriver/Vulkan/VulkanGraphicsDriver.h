@@ -38,6 +38,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual bool AcquireNextImage() override;
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const override;
+		SAILOR_API VkSemaphore GetLastSubmittedRenderFinishedSemaphoreHandle() const;
+		SAILOR_API VkSemaphore GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
 
@@ -286,6 +288,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		};
 
 		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
+		SAILOR_API void RefreshSwapchainTargets();
 
 		// The resources that are used as default
 		VulkanImageViewPtr m_vkDefaultTexture;

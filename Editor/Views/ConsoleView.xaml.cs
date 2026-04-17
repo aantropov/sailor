@@ -1,11 +1,13 @@
 ﻿using SailorEditor.Services;
-using SailorEditor.Utility;
+using System.Collections.ObjectModel;
 
 namespace SailorEditor.Views
 {
     public partial class ConsoleView : ContentView
     {
-        public ObservableList<Observable<string>> MessageQueue { get; private set; } = new ObservableList<Observable<string>>();
+        private const int MaxMessages = 1000;
+
+        public ObservableCollection<string> MessageQueue { get; } = new();
 
         public ConsoleView()
         {
@@ -13,32 +15,46 @@ namespace SailorEditor.Views
             BindingContext = this;
 
             MauiProgram.GetService<EngineService>().OnPullMessagesAction += OnUpdateMessageQueue;
+            Unloaded += OnUnloaded;
         }
 
         public void OnUpdateMessageQueue(string[] messages)
         {
-            foreach (var el in messages)
-                MessageQueue.Add(el);
+            if (!MainThread.IsMainThread)
+            {
+                MainThread.BeginInvokeOnMainThread(() => OnUpdateMessageQueue(messages));
+                return;
+            }
 
-            _ = UpdateMessagesStack();
+            foreach (var el in messages)
+            {
+                if (!string.IsNullOrEmpty(el))
+                {
+                    MessageQueue.Add(el);
+                }
+            }
+
+            while (MessageQueue.Count > MaxMessages)
+            {
+                MessageQueue.RemoveAt(0);
+            }
+
+            _ = ScrollToLastMessage();
         }
 
-        private async Task UpdateMessagesStack()
+        private async Task ScrollToLastMessage()
         {
-            MessagesStack.Children.Clear();
-            foreach (var message in MessageQueue)
-            {
-                MessagesStack.Children.Add(new Label { Text = message });
-            }
+            if (MessageQueue.Count == 0)
+                return;
 
-            if (MessagesStack.Children.Count > 0)
-            {
-                // Wait while layout is complete
-                await Task.Delay(100);
+            await Task.Yield();
+            await Task.Delay(16);
 
-                var lastChild = MessagesStack.Children[MessagesStack.Children.Count - 1];
-                await ScrollView.ScrollToAsync((Element)lastChild, ScrollToPosition.End, true);
-            }
+            if (MessagesStack.Children.Count == 0)
+                return;
+
+            var lastChild = MessagesStack.Children[MessagesStack.Children.Count - 1];
+            await ScrollView.ScrollToAsync((Element)lastChild, ScrollToPosition.End, false);
         }
 
         private void OnLabelTapped(object sender, EventArgs e)
@@ -55,6 +71,12 @@ namespace SailorEditor.Views
         {
             // Display alert to confirm the text has been copied
             await Application.Current.MainPage.DisplayAlert(title, message, cancel);
+        }
+
+        private void OnUnloaded(object sender, EventArgs e)
+        {
+            MauiProgram.GetService<EngineService>().OnPullMessagesAction -= OnUpdateMessageQueue;
+            Unloaded -= OnUnloaded;
         }
     }
 }

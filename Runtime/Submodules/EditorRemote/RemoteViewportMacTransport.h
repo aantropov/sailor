@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -167,6 +168,8 @@ namespace Sailor::EditorRemote
 		MacNativeHostHandle m_hostHandle{};
 		std::optional<MacNativeLayerBinding> m_layerBinding{};
 		std::optional<MacIOSurfaceHandle> m_importedSurface{};
+		MacNativeSurfaceFrameEvidence m_lastFrameEvidence{};
+		bool m_hasFrameEvidence = false;
 		bool m_usesRealCAMetalLayer = false;
 
 		bool IsValid() const
@@ -361,6 +364,26 @@ namespace Sailor::EditorRemote
 				{
 					m_lastFailure = sourceResult;
 					return sourceResult;
+				}
+
+				if (!rendererSource.IsValid())
+				{
+					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1004, "macOS renderer source is temporarily unavailable");
+					return m_lastFailure;
+				}
+
+				if (rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
+					rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height)
+				{
+					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1005, "macOS renderer source extents do not match the current IOSurface");
+					return m_lastFailure;
+				}
+
+				if (rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
+					rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
+				{
+					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
+					return m_lastFailure;
 				}
 			}
 
@@ -773,6 +796,17 @@ namespace Sailor::EditorRemote
 			}
 
 			state.m_presentedFrameCount++;
+			const bool shouldCaptureEvidence = !state.m_hasFrameEvidence || state.m_presentedFrameCount <= 3 || (state.m_presentedFrameCount % 60u) == 0u;
+			if (shouldCaptureEvidence && state.m_importedSurface.has_value())
+			{
+				MacNativeSurfaceFrameEvidence evidence{};
+				auto evidenceResult = CaptureMacIOSurfaceFrameEvidence(*state.m_importedSurface, state.m_width, state.m_height, evidence);
+				if (evidenceResult.IsOk())
+				{
+					state.m_lastFrameEvidence = evidence;
+					state.m_hasFrameEvidence = true;
+				}
+			}
 			m_lastPresentedFrame = frame;
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
@@ -801,6 +835,40 @@ namespace Sailor::EditorRemote
 		{
 			auto it = m_importedStates.find(viewportId);
 			return it != m_importedStates.end() ? &it->second : nullptr;
+		}
+
+		std::string BuildViewportSummary(ViewportId viewportId) const
+		{
+			auto it = m_importedStates.find(viewportId);
+			if (it == m_importedStates.end())
+			{
+				return {};
+			}
+
+			const auto& state = it->second;
+			std::ostringstream ss;
+			ss << "nativeLayer=" << (state.m_usesRealCAMetalLayer ? 1 : 0)
+				<< " host=" << static_cast<uint32_t>(state.m_hostHandle.m_kind)
+				<< " presentCount=" << state.m_presentedFrameCount
+				<< " drawableToken=" << state.m_currentDrawableToken
+				<< " size=" << state.m_width << "x" << state.m_height;
+			if (state.m_hasFrameEvidence)
+			{
+				const auto& evidence = state.m_lastFrameEvidence;
+				const bool hasNonBlackEvidence = evidence.m_nonBlackPixelCount != 0;
+				const uint32_t nonBlackPct = evidence.m_sampledPixelCount != 0 ? (evidence.m_nonBlackPixelCount * 100u) / evidence.m_sampledPixelCount : 0u;
+				ss << " readable=" << (evidence.m_hasReadablePixels ? 1 : 0)
+					<< " nonBlack=" << (hasNonBlackEvidence ? 1 : 0)
+					<< " variance=" << (evidence.m_hasVisualVariance ? 1 : 0)
+					<< " avgLuma=" << evidence.m_averageLuma
+					<< " maxLuma=" << evidence.m_maxLuma
+					<< " nonBlackPct=" << nonBlackPct
+					<< " checksum=" << evidence.m_checksum
+					<< " tl=" << static_cast<uint32_t>(evidence.m_topLeft.m_r) << "," << static_cast<uint32_t>(evidence.m_topLeft.m_g) << "," << static_cast<uint32_t>(evidence.m_topLeft.m_b)
+					<< " c=" << static_cast<uint32_t>(evidence.m_center.m_r) << "," << static_cast<uint32_t>(evidence.m_center.m_g) << "," << static_cast<uint32_t>(evidence.m_center.m_b)
+					<< " br=" << static_cast<uint32_t>(evidence.m_bottomRight.m_r) << "," << static_cast<uint32_t>(evidence.m_bottomRight.m_g) << "," << static_cast<uint32_t>(evidence.m_bottomRight.m_b);
+			}
+			return ss.str();
 		}
 
 		const std::optional<FramePacket>& GetLastPresentedFrame() const { return m_lastPresentedFrame; }

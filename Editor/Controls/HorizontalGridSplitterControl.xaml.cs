@@ -32,7 +32,9 @@ public partial class HorizontalGridSplitterControl : ContentView
         e.Data.Properties.Add("Source", Splitter);
         Splitter.IsVisible = false;
 
+#if WINDOWS
         EngineService.ShowMainWindow(false);
+#endif
     }
 
     private void OnDragOver(object sender, DragEventArgs e)
@@ -48,7 +50,9 @@ public partial class HorizontalGridSplitterControl : ContentView
     {
         Splitter.IsVisible = true;
 
+#if WINDOWS
         EngineService.ShowMainWindow(true);
+#endif
     }
 
     public void UpdateSplitterPosition(object sender, DragEventArgs e)
@@ -69,11 +73,13 @@ public partial class HorizontalGridSplitterControl : ContentView
 
             var newHeight = newPosition - offset;
 
+#if WINDOWS
             if (DeviceInfo.Platform == DevicePlatform.WinUI)
             {
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsCaptionVisible = false;
                 e.PlatformArgs.DragEventArgs.DragUIOverride!.IsGlyphVisible = false;
             }
+#endif
 
             Splitter.IsVisible = true;
 

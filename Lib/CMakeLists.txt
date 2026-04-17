@@ -187,10 +187,16 @@ if(WIN32)
 endif()
 
 if(APPLE)
+	find_library(SAILOR_COCOA_FRAMEWORK Cocoa REQUIRED)
+	find_library(SAILOR_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+	find_library(SAILOR_METAL_FRAMEWORK Metal REQUIRED)
+	find_library(SAILOR_IOSURFACE_FRAMEWORK IOSurface REQUIRED)
+
 	target_link_libraries(SailorLib PUBLIC
-		"-framework Cocoa"
-		"-framework QuartzCore"
-		"-framework Metal")
+		${SAILOR_COCOA_FRAMEWORK}
+		${SAILOR_QUARTZCORE_FRAMEWORK}
+		${SAILOR_METAL_FRAMEWORK}
+		${SAILOR_IOSURFACE_FRAMEWORK})
 endif()
 
 if(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT)
@@ -278,4 +284,8 @@ endif()
 
 set_target_properties(SailorLib PROPERTIES PREFIX "")
 set_target_properties(SailorLib PROPERTIES DEBUG_POSTFIX "")
-set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor-${CMAKE_BUILD_TYPE}")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME "Sailor")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_DEBUG "Sailor-Debug")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_RELEASE "Sailor-Release")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_RELWITHDEBINFO "Sailor-RelWithDebInfo")
+set_target_properties(SailorLib PROPERTIES OUTPUT_NAME_MINSIZEREL "Sailor-MinSizeRel")

@@ -311,6 +311,7 @@ namespace Sailor::EditorRemote
 		uint32_t m_surfaceId = 0;
 		uint64_t m_registryId = 0;
 		uintptr_t m_surfaceObject = 0;
+		uintptr_t m_sharedEventObject = 0;
 		uint32_t m_planeIndex = 0;
 		uint32_t m_planeCount = 1;
 		uint32_t m_bytesPerRow = 0;
@@ -526,6 +527,7 @@ namespace Sailor::EditorRemote
 		DiagnosticCategory m_lastCategory = DiagnosticCategory::None;
 		DiagnosticSeverity m_lastSeverity = DiagnosticSeverity::Info;
 		std::string m_lastEvent;
+		std::string m_nativePresenterSummary;
 
 		auto operator<=>(const SessionDiagnostics&) const = default;
 	};

@@ -9,12 +9,27 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <cmath>
 #include <limits>
 
 using namespace glm;
 
 namespace Sailor::Math
 {
+	template<glm::length_t L, typename T, qualifier Q>
+	__forceinline bool AllFinite(const vec<L, T, Q>& value)
+	{
+		for (glm::length_t i = 0; i < L; i++)
+		{
+			if (!std::isfinite(static_cast<double>(value[i])))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	const float Pi = 3.1415926f;
 
 	const glm::vec3 vec3_Zero = glm::vec3(0, 0, 0);
@@ -43,7 +58,7 @@ namespace Sailor::Math
 	__forceinline vec<3, T, Q> SafeNormalize(const vec<3, T, Q>& value, const vec<3, T, Q>& fallback = vec<3, T, Q>(0))
 	{
 		const T len2 = glm::dot(value, value);
-		if (len2 <= std::numeric_limits<T>::epsilon() || !glm::all(glm::isfinite(value)))
+		if (len2 <= std::numeric_limits<T>::epsilon() || !AllFinite(value))
 		{
 			return fallback;
 		}
@@ -55,7 +70,7 @@ namespace Sailor::Math
 	__forceinline vec<4, T, Q> SafeNormalize(const vec<4, T, Q>& value, const vec<4, T, Q>& fallback = vec<4, T, Q>(0))
 	{
 		const T len2 = glm::dot(value, value);
-		if (len2 <= std::numeric_limits<T>::epsilon() || !glm::all(glm::isfinite(value)))
+		if (len2 <= std::numeric_limits<T>::epsilon() || !AllFinite(value))
 		{
 			return fallback;
 		}

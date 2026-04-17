@@ -165,6 +165,40 @@ namespace
 		Require(reconnect.m_code == ResultCode::ReconnectRequired, "connection failure wrapper should classify as reconnect");
 		Require(reconnect.m_scope == FailureScope::Connection, "connection failure should be connection-scoped");
 	}
+	void TestTimeoutBackoffAndDiagnosticsHelpers()
+	{
+		TimeoutPolicy policy{};
+		Require(policy.IsValid(), "default timeout policy should be valid");
+
+		TimeoutCheckpoint checkpoint{};
+		checkpoint.Arm(10, 25);
+		Require(!checkpoint.HasExpired(34), "checkpoint should not expire before deadline");
+		Require(checkpoint.HasExpired(35), "checkpoint should expire at deadline");
+		checkpoint.Reset();
+		Require(!checkpoint.HasExpired(100), "reset checkpoint should disarm expiration");
+
+		auto first = NextReconnectBackoff(0, 100, 1000);
+		auto second = NextReconnectBackoff(first.m_attempt, 100, 1000);
+		auto capped = NextReconnectBackoff(8, 100, 1000);
+		Require(first.m_attempt == 1 && first.m_delayMs == 100, "first reconnect attempt should use base delay");
+		Require(second.m_attempt == 2 && second.m_delayMs == 200, "second reconnect attempt should double delay");
+		Require(capped.m_delayMs == 1000, "reconnect backoff should cap at max delay");
+
+		SessionDiagnostics diagnostics{};
+		diagnostics.m_viewportId = 9;
+		diagnostics.m_connectionEpoch = 2;
+		diagnostics.m_generation = 3;
+		diagnostics.m_transportType = TransportType::MailboxCpuCopy;
+		diagnostics.m_state = SessionState::Recovering;
+		diagnostics.m_lastGoodFrameIndex = 17;
+		diagnostics.m_resizeCount = 1;
+		diagnostics.m_recoveryAttemptCount = 2;
+		diagnostics.m_lastCategory = DiagnosticCategory::Timeout;
+		diagnostics.m_lastSeverity = DiagnosticSeverity::Warning;
+		diagnostics.m_lastEvent = "ReconnectTimeout";
+		Require(diagnostics.m_lastSeverity == DiagnosticSeverity::Warning, "diagnostic severity should be stored");
+	}
+
 }
 
 int main()
@@ -174,6 +208,7 @@ int main()
 		{ "SessionStateTransitions", TestSessionStateTransitions },
 		{ "GenerationAndEpochGuards", TestGenerationAndEpochGuards },
 		{ "FailureClassification", TestFailureClassification },
+		{ "TimeoutBackoffAndDiagnosticsHelpers", TestTimeoutBackoffAndDiagnosticsHelpers },
 	};
 
 	for (const auto& test : tests)

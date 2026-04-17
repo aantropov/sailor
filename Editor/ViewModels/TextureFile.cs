@@ -64,7 +64,7 @@ public partial class TextureFile : AssetFile
             }
             catch (Exception ex)
             {
-                DisplayName = ex.Message;
+                SetLoadError(ex);
             }
 
             IsLoaded = Texture != null && !Texture.IsEmpty;
@@ -84,8 +84,8 @@ public partial class TextureFile : AssetFile
 
             var intermediateObject = deserializer.Deserialize<TextureFile>(yaml);
 
-            FileId = intermediateObject.FileId;
-            Filename = intermediateObject.Filename;
+            FileId = intermediateObject.FileId ?? new FileId();
+            Filename = intermediateObject.Filename ?? new FileId();
             Filtration = intermediateObject.Filtration;
             Format = intermediateObject.Format;
             Clamping = intermediateObject.Clamping;
@@ -99,7 +99,7 @@ public partial class TextureFile : AssetFile
         }
         catch (Exception ex)
         {
-            DisplayName = ex.Message;
+            SetLoadError(ex);
         }
 
         IsDirty = false;

@@ -138,6 +138,7 @@ namespace Sailor
 
 			SAILOR_API bool IsMainThread() const;
 			SAILOR_API bool IsRendererThread() const;
+			SAILOR_API bool HasThread(DWORD threadId) const;
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }

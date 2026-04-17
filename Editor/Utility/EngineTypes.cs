@@ -108,6 +108,8 @@ namespace SailorEngine
 
         public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
+        public override string ToString() => Value ?? NullInstanceId;
+
         public static implicit operator string(InstanceId ts) => ts?.Value;
 
         public static implicit operator InstanceId(string val) => new() { Value = val };
@@ -147,6 +149,8 @@ namespace SailorEngine
 
         public override int GetHashCode() => Value?.GetHashCode() ?? 0;
 
+        public override string ToString() => Value ?? NullFileId;
+
         public static implicit operator string(FileId ts) => ts?.Value;
 
         public static implicit operator FileId(string val) => new() { Value = val };
@@ -167,14 +171,74 @@ namespace SailorEngine
         {
             Type editorType = engineType switch
             {
+                "Sailor::Model" => typeof(ModelFile),
                 "class Sailor::Model" => typeof(ModelFile),
+                "Sailor::Texture" => typeof(TextureFile),
                 "class Sailor::Texture" => typeof(TextureFile),
+                "Sailor::Material" => typeof(MaterialFile),
                 "class Sailor::Material" => typeof(MaterialFile),
+                "Sailor::Shader" => typeof(ShaderFile),
                 "class Sailor::Shader" => typeof(ShaderFile),
                 _ => null
             };
 
             return editorType;
+        }
+
+        static string NormalizePropertyType(string engineType)
+        {
+            return engineType switch
+            {
+                "f" => "float",
+                "N3glm3quaIfLNS_9qualifierE0EEE" => "struct glm::qua<float,0>",
+                "N3glm3vecILi2EfLNS_9qualifierE0EEE" => "struct glm::vec<2,float,0>",
+                "N3glm3vecILi3EfLNS_9qualifierE0EEE" => "struct glm::vec<3,float,0>",
+                "N3glm3vecILi4EfLNS_9qualifierE0EEE" => "struct glm::vec<4,float,0>",
+                _ => engineType
+            };
+        }
+
+        static string GetGenericTypeName(string engineType)
+        {
+            var genericMatch = Regex.Match(engineType, @"<(.+?)>");
+            if (genericMatch.Success)
+            {
+                return genericMatch.Groups[1].Value;
+            }
+
+            return engineType switch
+            {
+                "N6Sailor10TObjectPtrINS_5ModelEEE" => "Sailor::Model",
+                "N6Sailor10TObjectPtrINS_7TextureEEE" => "Sailor::Texture",
+                "N6Sailor10TObjectPtrINS_8MaterialEEE" => "Sailor::Material",
+                "N6Sailor10TObjectPtrINS_6ShaderEEE" => "Sailor::Shader",
+                "N6Sailor10TObjectPtrINS_9AnimationEEE" => "Sailor::Animation",
+                "N6Sailor10TObjectPtrINS_21MeshRendererComponentEEE" => "Sailor::MeshRendererComponent",
+                _ => ""
+            };
+        }
+
+        static void AddEnumAlias(Dictionary<string, List<string>> enums, string alias, string source)
+        {
+            if (!enums.ContainsKey(alias) && enums.TryGetValue(source, out var values))
+            {
+                enums[alias] = values;
+            }
+        }
+
+        static void AddEnumAliases(Dictionary<string, List<string>> enums)
+        {
+            AddEnumAlias(enums, "enum Sailor::EMobilityType", "N6Sailor13EMobilityTypeE");
+            AddEnumAlias(enums, "enum Sailor::ELightType", "N6Sailor10ELightTypeE");
+            AddEnumAlias(enums, "enum Sailor::EAnimationPlayMode", "N6Sailor18EAnimationPlayModeE");
+            AddEnumAlias(enums, "enum Sailor::RHI::EFormat", "N6Sailor3RHI7EFormatE");
+            AddEnumAlias(enums, "enum Sailor::RHI::ETextureFiltration", "N6Sailor3RHI18ETextureFiltrationE");
+            AddEnumAlias(enums, "enum Sailor::RHI::ETextureClamping", "N6Sailor3RHI16ETextureClampingE");
+            AddEnumAlias(enums, "enum Sailor::RHI::EFillMode", "N6Sailor3RHI9EFillModeE");
+            AddEnumAlias(enums, "enum Sailor::RHI::ECullMode", "N6Sailor3RHI9ECullModeE");
+            AddEnumAlias(enums, "enum Sailor::RHI::EBlendMode", "N6Sailor3RHI10EBlendModeE");
+            AddEnumAlias(enums, "enum Sailor::RHI::EDepthCompare", "N6Sailor3RHI13EDepthCompareE");
+            AddEnumAlias(enums, "enum Sailor::RHI::EShadowType", "N6Sailor3RHI11EShadowTypeE");
         }
 
         public static EngineTypes FromYaml(string yamlContent)
@@ -207,6 +271,7 @@ namespace SailorEngine
                         res.Enums[enumEntry.Key] = enumEntry.Value;
                     }
                 }
+                AddEnumAliases(res.Enums);
 
                 // Pass 1: register all component types first.
                 foreach (var component in rootNode.EngineTypes)
@@ -237,8 +302,8 @@ namespace SailorEngine
                     {
                         try
                         {
-                            var genericMatch = Regex.Match(property.Value, @"<(.+?)>");
-                            string genericType = genericMatch.Success ? genericMatch.Groups[1].Value : "";
+                            string propertyType = NormalizePropertyType(property.Value);
+                            string genericType = GetGenericTypeName(property.Value);
 
                             Quat defaultQuat = default;
                             if (cdoNode != null &&
@@ -255,7 +320,7 @@ namespace SailorEngine
                                 }
                             }
 
-                            PropertyBase newProperty = property.Value switch
+                            PropertyBase newProperty = propertyType switch
                             {
                                 "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
                                 "struct glm::vec<2,float,0>" => new Vec2Property(),
@@ -269,6 +334,7 @@ namespace SailorEngine
                                 },
                                 var value when value.Contains("InstanceId") => new InstanceIdProperty(),
                                 var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
+                                var value when res.Enums.ContainsKey(value) => new EnumProperty() { Typename = value },
                                 _ => null
                             };
 

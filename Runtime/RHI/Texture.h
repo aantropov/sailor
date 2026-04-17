@@ -37,6 +37,11 @@ namespace Sailor::RHI
 		SAILOR_API EFormat GetFormat() const;
 		SAILOR_API glm::ivec2 GetExtent() const;
 		SAILOR_API EImageLayout GetDefaultLayout() const { return m_defaultLayout; }
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+		SAILOR_API uintptr_t GetNativeDeviceHandle() const;
+		SAILOR_API uintptr_t GetNativeImageHandle() const;
+		SAILOR_API uintptr_t GetNativeImageViewHandle() const;
+#endif
 
 		// The render resource must already be in the specified layout.
 		SAILOR_API void ForceSetDefaultLayout(EImageLayout newLayout) { m_defaultLayout = newLayout; }

@@ -200,6 +200,125 @@ namespace
 		Require(session.GetState() == SessionState::Paused, "hidden desired state should keep recovered session paused after ready");
 		Require(host.m_transportEpoch == 2, "host should import transport for the replayed epoch");
 	}
+	void TestEditorViewportSessionDiagnosticsAndTimeouts()
+	{
+		RemoteViewportHarness harness{ MakeViewport() };
+		HarnessBackedClient client{ harness };
+		RecordingHost host{};
+		EditorViewportSession session{ MakeViewport(), client, host };
+
+		Require(session.Create().IsOk(), "create should arm transport timeout");
+		Require(session.TickTimeouts(1000).IsOk(), "transport timeout should be handled");
+		Require(session.GetState() == SessionState::Recovering, "transport timeout should enter recovering state");
+		Require(session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout, "diagnostics should mark transport timeout");
+
+		Require(session.HandleDisconnect(3).IsOk(), "disconnect should start reconnect flow");
+		auto backoff1 = session.ScheduleReconnectAttempt();
+		auto backoff2 = session.ScheduleReconnectAttempt();
+		Require(backoff1.m_delayMs == 100 && backoff2.m_delayMs == 200, "editor reconnect backoff should double between attempts");
+		Require(session.TickTimeouts(5000).IsOk(), "reconnect timeout should be handled");
+		Require(session.GetState() == SessionState::Lost, "reconnect timeout should promote editor session to lost");
+		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Connection, "diagnostics should retain connection-scoped timeout");
+	}
+
+	void TestEditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration()
+	{
+		RemoteViewportHarness harness{ MakeViewport() };
+		HarnessBackedClient client{ harness };
+		RecordingHost host{};
+		EditorViewportSession session{ MakeViewport(), client, host };
+
+		Require(session.Create().IsOk(), "resize storm should create initial session");
+		DrainHarnessEvents(harness, session);
+
+		for (uint32_t i = 0; i < 32; ++i)
+		{
+			Require(session.Resize(1280 + i * 8, 720 + i * 4).IsOk(), "resize storm should accept sequential resizes");
+
+			FramePacket staleFrame{};
+			staleFrame.m_viewportId = 7;
+			staleFrame.m_connectionEpoch = session.GetConnectionEpoch();
+			staleFrame.m_generation = session.GetGeneration() - 1;
+			staleFrame.m_frameIndex = 1000 + i;
+			staleFrame.m_width = 1280;
+			staleFrame.m_height = 720;
+			ProtocolMessage stale = ProtocolMessage::MakeFrameReady(staleFrame);
+			Require(!session.HandleMessage(stale).IsOk(), "resize storm should reject stale-generation frame immediately");
+
+			DrainHarnessEvents(harness, session);
+		}
+
+		harness.EngineInjectFrameReady();
+		DrainHarnessEvents(harness, session);
+		Require(session.IsReady(), "resize storm should end with negotiated latest generation");
+		Require(session.GetGeneration() == 33, "resize storm should monotonically advance generation");
+		Require(session.GetRejectedFrameCount(GuardDecision::RejectStaleGeneration) == 32, "resize storm should count each rejected stale frame");
+		Require(session.GetAcceptedFrameCount() == 1, "resize storm should present only the final active-generation frame in this scenario");
+		Require(host.m_transportGeneration == 33, "host should import only the latest negotiated generation at the end of the storm");
+		Require(session.GetLastPresentedFrameIndex() == 1, "resize storm should reset presentation tracking to the final negotiated generation only");
+	}
+
+	void TestEditorViewportSessionReconnectLoopReplaysStateWithoutGhostFrames()
+	{
+		RemoteViewportHarness harness{ MakeViewport() };
+		HarnessBackedClient client{ harness };
+		RecordingHost host{};
+		EditorViewportSession session{ MakeViewport(), client, host };
+
+		Require(session.Create().IsOk(), "reconnect loop should create session");
+		DrainHarnessEvents(harness, session);
+		Require(session.SetVisible(false).IsOk(), "reconnect loop should preserve hidden desired state");
+		Require(session.SetFocused(true).IsOk(), "reconnect loop should preserve focused desired state");
+
+		for (ConnectionEpoch epoch = 2; epoch < 8; ++epoch)
+		{
+			Require(session.HandleDisconnect(epoch).IsOk(), "disconnect loop should enter recovering");
+
+			FramePacket staleFrame{};
+			staleFrame.m_viewportId = 7;
+			staleFrame.m_connectionEpoch = epoch - 1;
+			staleFrame.m_generation = 1;
+			staleFrame.m_frameIndex = 500 + epoch;
+			staleFrame.m_width = 1280;
+			staleFrame.m_height = 720;
+			Require(!session.HandleMessage(ProtocolMessage::MakeFrameReady(staleFrame)).IsOk(), "reconnect loop should reject stale-epoch ghost frames");
+
+			auto sentBeforeReplay = client.m_sent.size();
+			Require(session.ReplayDesiredState().IsOk(), "reconnect loop should replay desired state after disconnect");
+			Require(client.m_sent.size() == sentBeforeReplay + 3, "reconnect loop should replay create + suspend + focus each time");
+			DrainHarnessEvents(harness, session);
+			Require(session.GetState() == SessionState::Paused, "hidden desired state should remain paused after reconnect");
+			Require(host.m_transportEpoch == epoch, "host should import transport for the current reconnect epoch");
+		}
+
+		Require(session.GetRejectedFrameCount(GuardDecision::RejectStaleEpoch) == 6, "reconnect loop should count each ghost frame rejection");
+		Require(session.GetDiagnostics().m_recoveryAttemptCount == 6, "reconnect loop should record one recovery attempt per disconnect");
+	}
+
+	void TestEditorViewportSessionFrameFloodPresentsLatestFrameWithoutStateDrift()
+	{
+		RemoteViewportHarness harness{ MakeViewport() };
+		HarnessBackedClient client{ harness };
+		RecordingHost host{};
+		EditorViewportSession session{ MakeViewport(), client, host };
+
+		Require(session.Create().IsOk(), "frame flood should create session");
+		DrainHarnessEvents(harness, session);
+
+		constexpr size_t kFrameFloodCount = 128;
+		for (size_t i = 0; i < kFrameFloodCount; ++i)
+		{
+			harness.EngineInjectFrameReady();
+			DrainHarnessEvents(harness, session);
+		}
+
+		Require(session.GetAcceptedFrameCount() == kFrameFloodCount, "frame flood should accept every current-generation frame");
+		Require(host.m_presentedFrames.size() == kFrameFloodCount, "frame flood should present each accepted frame without queue buildup in host contract");
+		Require(session.GetLastPresentedFrameIndex() == kFrameFloodCount, "frame flood should retain the newest sequentially delivered frame index");
+		Require(session.GetDiagnostics().m_lastGoodFrameIndex == kFrameFloodCount, "frame flood diagnostics should stay aligned with latest frame");
+		Require(session.GetState() == SessionState::Active, "frame flood should not perturb active state");
+	}
+
 }
 
 int main()
@@ -208,6 +327,10 @@ int main()
 		{ "EditorViewportSessionCreateHandshakeAndVisibilityReplay", TestEditorViewportSessionCreateHandshakeAndVisibilityReplay },
 		{ "EditorViewportSessionResizeDropsStaleGenerationFrames", TestEditorViewportSessionResizeDropsStaleGenerationFrames },
 		{ "EditorViewportSessionReconnectReplaysDesiredStateAndFocus", TestEditorViewportSessionReconnectReplaysDesiredStateAndFocus },
+		{ "EditorViewportSessionDiagnosticsAndTimeouts", TestEditorViewportSessionDiagnosticsAndTimeouts },
+		{ "EditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration", TestEditorViewportSessionResizeStormRejectsStaleFramesAndEndsOnLatestGeneration },
+		{ "EditorViewportSessionReconnectLoopReplaysStateWithoutGhostFrames", TestEditorViewportSessionReconnectLoopReplaysStateWithoutGhostFrames },
+		{ "EditorViewportSessionFrameFloodPresentsLatestFrameWithoutStateDrift", TestEditorViewportSessionFrameFloodPresentsLatestFrameWithoutStateDrift },
 	};
 
 	for (const auto& test : tests)

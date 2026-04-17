@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using SailorEngine;
+using SailorEditor.Services;
 using SailorEditor.Utility;
 using System.Reflection;
 using Microsoft.Maui.Storage;
@@ -51,8 +52,6 @@ public partial class AssetFile : ObservableObject, ICloneable
             var yaml = File.ReadAllText(AssetInfo.FullName);
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new AssetFileYamlConverter())
-            .WithTypeConverter(new InstanceIdYamlConverter())
-            .WithTypeConverter(new FileIdYamlConverter())
             .Build();
 
             var intermediateObject = deserializer.Deserialize<AssetFile>(yaml);
@@ -67,10 +66,24 @@ public partial class AssetFile : ObservableObject, ICloneable
         }
         catch (Exception ex)
         {
-            DisplayName = ex.Message;
+            SetLoadError(ex);
         }
 
         return Task.CompletedTask;
+    }
+
+    protected void SetLoadError(Exception ex)
+    {
+        LoadError = ex.Message;
+
+        if (string.IsNullOrWhiteSpace(DisplayName) || DisplayName == LoadError)
+        {
+            DisplayName = Asset?.Name ?? AssetInfo?.Name ?? Filename?.Value ?? FileId?.Value ?? GetType().Name;
+        }
+
+        var message = $"[{GetType().Name}] {DisplayName}: {ex.Message}";
+        Console.WriteLine(message);
+        MauiProgram.GetService<EngineService>()?.PushConsoleMessage(message);
     }
 
     public void Open() => Process.Start(new ProcessStartInfo(Asset.FullName) { UseShellExecute = true });
@@ -93,6 +106,9 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     [ObservableProperty]
     protected string displayName;
+
+    [ObservableProperty]
+    string loadError = string.Empty;
 
     [ObservableProperty]
     FileId fileId;

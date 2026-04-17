@@ -46,12 +46,12 @@ renderTargets:
 - name: HalfDepth
   format: D32_SFLOAT_S8_UINT
   width: ViewportWidth/2
-  height: ViewportWidth/2
+  height: ViewportHeight/2
   
 - name: DepthHighZ
   format: R32_SFLOAT
   width: ViewportWidth/2
-  height: ViewportWidth/2
+  height: ViewportHeight/2
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
   reduction: Min
@@ -59,17 +59,17 @@ renderTargets:
 - name: AO
   format: R8_UNORM
   width: ViewportWidth/2
-  height: ViewportWidth/2
+  height: ViewportHeight/2
 
 - name: TemporaryR8
   format: R8_UNORM
   width: ViewportWidth
-  height: ViewportWidth
+  height: ViewportHeight
 
 - name: g_AO
   format: R8_UNORM
   width: ViewportWidth
-  height: ViewportWidth
+  height: ViewportHeight
   
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT

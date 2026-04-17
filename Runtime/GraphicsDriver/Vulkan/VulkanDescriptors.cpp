@@ -392,7 +392,8 @@ void VulkanDescriptorSet::Release()
 {
 	DWORD currentThreadId = GetCurrentThreadId();
 
-	if (m_currentThreadId == currentThreadId)
+	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	if (m_currentThreadId == currentThreadId || !scheduler || !scheduler->HasThread(m_currentThreadId))
 	{
 		vkFreeDescriptorSets(*m_device, *m_descriptorPool, 1, &m_descriptorSet);
 	}
@@ -414,7 +415,7 @@ void VulkanDescriptorSet::Release()
 				}
 			});
 
-				App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+				scheduler->Run(pReleaseResource, m_currentThreadId);
 	}
 }
 

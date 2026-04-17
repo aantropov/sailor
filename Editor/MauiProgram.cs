@@ -3,6 +3,10 @@ using Microsoft.Extensions.Logging;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using CommunityToolkit.Maui;
+using SailorEditor.Controls;
+#if MACCATALYST
+using SailorEditor.Platforms.MacCatalyst;
+#endif
 
 namespace SailorEditor
 {
@@ -16,6 +20,12 @@ namespace SailorEditor
             builder
                 .UseMauiApp<App>()
                 .UseMauiCommunityToolkit()
+#if MACCATALYST
+                .ConfigureMauiHandlers(handlers =>
+                {
+                    handlers.AddHandler<NativeSceneViewport, NativeSceneViewportHandler>();
+                })
+#endif
                 .ConfigureFonts(fonts =>
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

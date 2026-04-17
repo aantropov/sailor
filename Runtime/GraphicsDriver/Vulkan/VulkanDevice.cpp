@@ -218,6 +218,7 @@ void VulkanDevice::BeginConditionalDestroy()
 	}
 
 	m_renderFinishedSemaphores.Clear();
+	m_sceneViewMainResolvedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_syncImages.Clear();
 	m_syncFences.Clear();
@@ -251,8 +252,16 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 		VkDescriptorPool pool = *res->m_descriptorPool;
 		SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_POOL, (uint64_t)pool, Utils::GetCurrentThreadName());
 #endif 
-		// We don't want to create ThreadContext for each thread, only for Main, RHI and Render
-		check(m_threadContext.Num() <= App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2);
+		// Same-process editor interop adds a managed engine thread and can touch Vulkan from
+		// MAUI-triggered viewport probing before work moves fully onto engine scheduler threads.
+		size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2;
+#if defined(__APPLE__)
+		if (App::HasEditor())
+		{
+			maxThreadContexts += 4;
+		}
+#endif
+		check(m_threadContext.Num() <= maxThreadContexts);
 	}
 	m_threadContext.Unlock(threadId);
 
@@ -480,6 +489,7 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	{
 		m_imageAvailableSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_renderFinishedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
+		m_sceneViewMainResolvedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_syncFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
@@ -1048,8 +1058,10 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 		submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
 		submitInfo.pCommandBuffers = &commandBuffers[0];
 
-		VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
-		submitInfo.signalSemaphoreCount = 1;
+		m_lastSubmittedRenderFinishedSemaphore = m_renderFinishedSemaphores[m_currentFrame];
+		m_lastSubmittedSceneViewMainResolvedSemaphore = m_sceneViewMainResolvedSemaphores[m_currentFrame];
+		VkSemaphore signalSemaphores[] = { *m_lastSubmittedRenderFinishedSemaphore, *m_lastSubmittedSceneViewMainResolvedSemaphore };
+		submitInfo.signalSemaphoreCount = 2;
 		submitInfo.pSignalSemaphores = signalSemaphores;
 
 		m_syncFences[m_currentFrame]->Reset();

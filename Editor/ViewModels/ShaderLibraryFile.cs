@@ -32,7 +32,6 @@ public class ShaderLibraryFileYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new FileIdYamlConverter())
             .Build();
 
         var assetFile = new ShaderLibraryFile();

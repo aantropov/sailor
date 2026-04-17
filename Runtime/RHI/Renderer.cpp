@@ -264,6 +264,33 @@ void Renderer::RemoveSceneView(WorldPtr worldPtr)
 	m_cachedSceneViews.Remove(worldPtr);
 }
 
+bool Renderer::EnsureFrameGraph()
+{
+	if (m_frameGraph && !m_bFrameGraphOutdated)
+	{
+		return true;
+	}
+
+	if (!m_bIsInitialized || !m_driverInstance || !m_pViewport || m_pViewport->IsIconic())
+	{
+		return false;
+	}
+
+	m_frameGraph.Clear();
+
+	if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+	{
+		App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
+	}
+	else
+	{
+		SAILOR_LOG_ERROR("Renderer::EnsureFrameGraph failed: DefaultRenderer.renderer asset info was not found.");
+	}
+
+	m_bFrameGraphOutdated = false;
+	return m_frameGraph.IsValid();
+}
+
 bool Renderer::PushFrame(const Sailor::FrameState& frame)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -284,16 +311,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		m_previousRenderFrame.Clear();
 	}
 
-	if ((!m_frameGraph || m_bFrameGraphOutdated) && !m_pViewport->IsIconic())
+	if (!EnsureFrameGraph() || !m_frameGraph)
 	{
-		m_frameGraph.Clear();
-
-		if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
-		{
-			App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
-		}
-
-		m_bFrameGraphOutdated = false;
+		return false;
 	}
 
 	WorldPtr world = frame.GetWorld();
@@ -318,7 +338,14 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
 
 		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
+#if defined(__APPLE__)
+		if (!App::HasEditor())
+		{
+			rhiSceneView->PrepareDebugDrawCommandLists(world);
+		}
+#else
 		rhiSceneView->PrepareDebugDrawCommandLists(world);
+#endif
 		rhiSceneView->PrepareSnapshots();
 	}
 

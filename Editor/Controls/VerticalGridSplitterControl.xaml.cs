@@ -32,7 +32,9 @@ public partial class VerticalGridSplitterControl : ContentView
         e.Data.Properties.Add("Source", Splitter);
         Splitter.IsVisible = false;
 
+#if WINDOWS
         EngineService.ShowMainWindow(false);
+#endif
     }
 
     private void OnDragOver(object sender, DragEventArgs e)
@@ -48,7 +50,9 @@ public partial class VerticalGridSplitterControl : ContentView
     {
         Splitter.IsVisible = true;
 
+#if WINDOWS
         EngineService.ShowMainWindow(true);
+#endif
     }
 
     public void UpdateSplitterPosition(object sender, DragEventArgs e)

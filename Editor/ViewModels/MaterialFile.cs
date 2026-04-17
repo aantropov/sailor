@@ -221,7 +221,7 @@ public partial class MaterialFile : AssetFile
             }
             catch (Exception ex)
             {
-                DisplayName = ex.Message;
+                SetLoadError(ex);
             }
 
             IsLoaded = true;
@@ -259,8 +259,8 @@ public partial class MaterialFile : AssetFile
             .Build();
 
             var intermediateObjectAssetInfo = deserializerAssetInfo.Deserialize<AssetFile>(yamlAssetInfo);
-            FileId = intermediateObjectAssetInfo.FileId;
-            Filename = intermediateObjectAssetInfo.Filename;
+            FileId = intermediateObjectAssetInfo.FileId ?? new FileId();
+            Filename = intermediateObjectAssetInfo.Filename ?? new FileId();
 
             // Asset
             var yamlAsset = File.ReadAllText(Asset.FullName);
@@ -304,7 +304,7 @@ public partial class MaterialFile : AssetFile
         }
         catch (Exception ex)
         {
-            DisplayName = ex.Message;
+            SetLoadError(ex);
         }
 
         IsDirty = false;
@@ -386,9 +386,9 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
     public object ReadYaml(IParser parser, Type type)
     {
         var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new ObservableListConverter<Observable<FileId>>([new FileIdYamlConverter(), new ObservableObjectYamlConverter<FileId>()]))
-            .WithTypeConverter(new ObservableListConverter<Uniform<FileId>>([new FileIdYamlConverter(), new UniformYamlConverter<FileId>()]))
-            .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>([new Vec4YamlConverter(), new UniformYamlConverter<Vec4>()]))
+            .WithTypeConverter(new ObservableListConverter<Observable<FileId>>([new ObservableObjectYamlConverter<FileId>()]))
+            .WithTypeConverter(new ObservableListConverter<Uniform<FileId>>([new UniformYamlConverter<FileId>()]))
+            .WithTypeConverter(new ObservableListConverter<Uniform<Vec4>>([new UniformYamlConverter<Vec4>()]))
             .WithTypeConverter(new ObservableListConverter<Uniform<float>>([new UniformYamlConverter<float>()]))
             .WithTypeConverter(new ObservableListConverter<Observable<string>>([new ObservableObjectYamlConverter<string>()]))
             .Build();

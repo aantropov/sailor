@@ -28,9 +28,10 @@
                 BindableLayout.ItemsSource="{Binding MessageQueue}">
                     <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="x:Object">
-                            <Label Text="{Binding .}" 
+                            <Label Text="{Binding .}"
+                               LineBreakMode="WordWrap"
                                VerticalOptions="Start"
-                               HorizontalOptions="StartAndExpand">
+                               HorizontalOptions="Fill">
                                 <Label.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnLabelTapped" />
                                 </Label.GestureRecognizers>

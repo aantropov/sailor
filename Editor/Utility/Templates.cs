@@ -23,16 +23,16 @@ static class Templates
 {
     public const int ThumbnailSize = 128;
 
-    public static Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
+    public static Microsoft.Maui.Controls.Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
     {
-        var editor = new Editor
+        var editor = new Microsoft.Maui.Controls.Editor
         {
             FontSize = 12,
             IsReadOnly = true,
-            AutoSize = EditorAutoSizeOption.TextChanges
+            AutoSize = Microsoft.Maui.Controls.EditorAutoSizeOption.TextChanges
         };
 
-        editor.Bind(Editor.TextProperty, getter: prop);
+        editor.Bind(Microsoft.Maui.Controls.Editor.TextProperty, getter: prop);
         return editor;
     }
 

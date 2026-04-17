@@ -202,7 +202,10 @@ void RHISceneView::PrepareSnapshots()
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
 		res.m_proxies = TraceScene(frustum, false);
 
-		res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
+		if (i < m_debugDraw.Num())
+		{
+			res.m_debugDrawSecondaryCmdList = m_debugDraw[i];
+		}
 		m_snapshots.Emplace(std::move(res));
 	}
 }

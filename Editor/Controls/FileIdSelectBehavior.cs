@@ -47,7 +47,11 @@ public class FileIdSelectBehavior : Behavior<Label>
         {
             if (BoundProperty is FileId fileId)
             {
-                MauiProgram.GetService<SelectionService>().SelectObject(MauiProgram.GetService<AssetsService>().Assets[fileId]);
+                var assets = MauiProgram.GetService<AssetsService>().Assets;
+                if (assets.TryGetValue(fileId, out var asset))
+                {
+                    MauiProgram.GetService<SelectionService>().SelectObject(asset);
+                }
             }
         }
     }

@@ -70,6 +70,34 @@ namespace Sailor::EditorRemote
 	};
 
 
+	struct MacNativeSurfacePixelSample
+	{
+		uint8_t m_b = 0;
+		uint8_t m_g = 0;
+		uint8_t m_r = 0;
+		uint8_t m_a = 0;
+
+		auto operator<=>(const MacNativeSurfacePixelSample&) const = default;
+	};
+
+	struct MacNativeSurfaceFrameEvidence
+	{
+		uint32_t m_width = 0;
+		uint32_t m_height = 0;
+		uint32_t m_sampledPixelCount = 0;
+		uint32_t m_nonBlackPixelCount = 0;
+		uint32_t m_averageLuma = 0;
+		uint32_t m_maxLuma = 0;
+		uint32_t m_checksum = 0;
+		MacNativeSurfacePixelSample m_topLeft{};
+		MacNativeSurfacePixelSample m_center{};
+		MacNativeSurfacePixelSample m_bottomRight{};
+		bool m_hasReadablePixels = false;
+		bool m_hasVisualVariance = false;
+
+		auto operator<=>(const MacNativeSurfaceFrameEvidence&) const = default;
+	};
+
 	struct MacNativeBridgeProducerPattern
 	{
 		ViewportId m_viewportId = 0;
@@ -90,6 +118,39 @@ namespace Sailor::EditorRemote
 		bool m_usedCpuUploadIntoProducerTexture = false;
 		bool m_waitedOnCrossApiSharedEvent = false;
 	};
+
+	inline uint32_t GetMacRendererSourceSelectionPriority(std::string_view rendererTargetDebugName)
+	{
+		if (rendererTargetDebugName == "Renderer.SceneView.Main.Resolved")
+		{
+			return 0;
+		}
+		if (rendererTargetDebugName == "Renderer.SceneView.Secondary.Resolved")
+		{
+			return 1;
+		}
+		if (rendererTargetDebugName == "Renderer.SceneView.BackBuffer.Resolved")
+		{
+			return 2;
+		}
+		if (rendererTargetDebugName == "Renderer.SceneView.Main.Target")
+		{
+			return 3;
+		}
+		if (rendererTargetDebugName == "Renderer.SceneView.Secondary.Target")
+		{
+			return 4;
+		}
+		if (rendererTargetDebugName == "Renderer.SceneView.BackBuffer.Target")
+		{
+			return 5;
+		}
+		if (rendererTargetDebugName == "Renderer.Driver.BackBuffer")
+		{
+			return 6;
+		}
+		return 0xffu;
+	}
 
 	inline uintptr_t SelectMacVulkanSemaphoreForMetalExport(std::string_view rendererTargetDebugName, uintptr_t dedicatedRendererSemaphoreHandle, uintptr_t fallbackRenderFinishedSemaphoreHandle, bool& outUsedDedicatedSemaphore)
 	{
@@ -118,5 +179,6 @@ namespace Sailor::EditorRemote
 
 	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, MacNativeLayerBinding& inOutBinding);
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult);
+	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence);
 	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding);
 }

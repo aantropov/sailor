@@ -21,7 +21,6 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	SAILOR_PROFILE_FUNCTION();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
-	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	auto colorAttachmentSurface = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
 	auto colorAttachmentRT = GetRHIResource("color").DynamicCast<RHI::RHIRenderTarget>();
@@ -33,10 +32,12 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
 	}
 
-	if (!colorAttachmentSurface && !colorAttachmentRT)
+	if (!commands || !commandList || !target || !depthAttachment || (!colorAttachmentSurface && !colorAttachmentRT) || !sceneView.m_debugDrawSecondaryCmdList)
 	{
 		return;
 	}
+
+	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
 
 	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ? EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 
@@ -48,10 +49,17 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		while (!sceneView.m_debugDrawSecondaryCmdList->IsFinished());
 	}
 
+	auto debugDrawCommandList = sceneView.m_debugDrawSecondaryCmdList->GetResult();
+	if (!debugDrawCommandList)
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
 	if (colorAttachmentSurface)
 	{
 		commands->RenderSecondaryCommandBuffers(commandList,
-			TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList->GetResult()},
+			TVector<RHI::RHICommandListPtr> {debugDrawCommandList},
 			TVector<RHI::RHISurfacePtr>{ colorAttachmentSurface },
 			depthAttachment,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
@@ -64,7 +72,7 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	else
 	{
 		commands->RenderSecondaryCommandBuffers(commandList,
-			TVector<RHI::RHICommandListPtr> {sceneView.m_debugDrawSecondaryCmdList->GetResult()},
+			TVector<RHI::RHICommandListPtr> {debugDrawCommandList},
 			TVector<RHI::RHITexturePtr>{ colorAttachmentRT },
 			depthAttachment,
 			glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),

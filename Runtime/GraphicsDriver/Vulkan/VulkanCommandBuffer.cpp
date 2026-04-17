@@ -58,14 +58,15 @@ VulkanCommandBuffer::~VulkanCommandBuffer()
 			}
 		});
 
-			if (m_currentThreadId == currentThreadId)
+			auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
+			if (m_currentThreadId == currentThreadId || !scheduler || !scheduler->HasThread(m_currentThreadId))
 			{
 				pReleaseResource->Execute();
 				m_device.Clear();
 			}
 			else
 			{
-				App::GetSubmodule<Tasks::Scheduler>()->Run(pReleaseResource, m_currentThreadId);
+				scheduler->Run(pReleaseResource, m_currentThreadId);
 			}
 			ClearDependencies();
 }
@@ -1046,4 +1047,3 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImagePtr image, VkFormat form
 	m_numRecordedCommands++;
 	m_gpuCost += 1;
 }
-

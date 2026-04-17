@@ -278,6 +278,27 @@ namespace
 		Require(cleanedUp.size() == 2, "cleanup hook should run for both destroyed sessions");
 	}
 
+	void TestViewportSessionManagerReplacementStormPrunesEpochBookkeeping()
+	{
+		ViewportSessionManager manager{};
+
+		for (ConnectionEpoch epoch = 21; epoch < 53; ++epoch)
+		{
+			auto& session = manager.CreateOrReplaceSession(MakeViewport(91, 1280 + static_cast<uint32_t>(epoch), 720), epoch);
+			Require(session.GetConnectionEpoch() == epoch, "replacement storm should keep latest epoch on session");
+			Require(manager.GetSessionCount() == 1, "replacement storm should not multiply live sessions");
+		}
+
+		for (ConnectionEpoch epoch = 21; epoch < 52; ++epoch)
+		{
+			Require(manager.GetViewportCountForEpoch(epoch) == 0, "replacement storm should prune superseded epoch bookkeeping");
+		}
+
+		Require(manager.GetViewportCountForEpoch(52) == 1, "latest replacement should retain exactly one epoch binding");
+		Require(manager.DestroySessionsForEpoch(52) == 1, "latest epoch cleanup should destroy replaced viewport exactly once");
+		Require(manager.GetSessionCount() == 0, "replacement storm cleanup should leave manager empty");
+	}
+
 	void TestEditorBridgeServerNegotiationRoutingAndDisconnect()
 	{
 		EditorBridgeServer server{};
@@ -368,6 +389,71 @@ namespace
 		facade.ReleaseSession(44);
 		Require(renderBridge.m_released.size() == 1 && renderBridge.m_released.front() == 44, "facade should release viewport binding explicitly");
 	}
+	void TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics()
+	{
+		auto viewport = MakeViewport(77, 1024, 768);
+		RemoteViewportSession session{ viewport, 5 };
+		Require(session.BeginNegotiation().IsOk(), "negotiation should arm transport timeout");
+		Require(session.TickTimeouts(1000).IsOk(), "timeout transition should be accepted");
+		Require(session.GetState() == SessionState::Recovering, "transport ready timeout should enter recovering");
+		Require(session.GetDiagnostics().m_lastCategory == DiagnosticCategory::Timeout, "diagnostics should classify transport timeout");
+		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Session, "transport timeout should be session-scoped");
+
+		auto backoff1 = session.ScheduleReconnectAttempt();
+		auto backoff2 = session.ScheduleReconnectAttempt();
+		Require(backoff1.m_delayMs == 100 && backoff2.m_delayMs == 200, "reconnect backoff should be bounded exponential");
+
+		Failure disconnect = Failure::FromDomain(ErrorDomain::Connection, 9, "connection dropped");
+		Require(session.MarkFailure(disconnect).IsOk(), "connection failure should be accepted");
+		Require(session.TickTimeouts(5000).IsOk(), "reconnect timeout transition should be accepted");
+		Require(session.GetState() == SessionState::Lost, "reconnect timeout should enter lost");
+		Require(session.GetDiagnostics().m_lastFailure.has_value() && session.GetDiagnostics().m_lastFailure->m_scope == FailureScope::Connection, "diagnostics should retain connection-scoped timeout failure");
+	}
+
+	void TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters()
+	{
+		auto viewport = MakeViewport(88, 1920, 1080);
+		RemoteViewportSession session{ viewport, 13 };
+		Require(session.BeginNegotiation().IsOk(), "flood test negotiation should start");
+		Require(session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "flood test transport should become ready");
+
+		constexpr size_t kFrameFloodCount = 256;
+		for (size_t i = 0; i < kFrameFloodCount; ++i)
+		{
+			FramePacket frame{};
+			Require(session.PublishFrame(frame).IsOk(), "frame flood should keep accepting current-generation frames");
+		}
+
+		Require(session.GetLastPublishedFrameIndex() == kFrameFloodCount, "frame flood should retain latest published frame index only");
+		Require(session.GetDiagnostics().m_lastGoodFrameIndex == kFrameFloodCount, "diagnostics should track latest frame without drift");
+		Require(session.GetState() == SessionState::Active, "frame flood should keep ready session active");
+	}
+
+	void TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState()
+	{
+		auto viewport = MakeViewport(89, 1280, 720);
+		RemoteViewportSession session{ viewport, 30 };
+		Require(session.BeginNegotiation().IsOk(), "loop test should start negotiation");
+		Require(session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "loop test should become ready");
+
+		for (ConnectionEpoch epoch = 31; epoch < 39; ++epoch)
+		{
+			Failure disconnect = Failure::FromDomain(ErrorDomain::Connection, 70 + static_cast<int32_t>(epoch), "disconnect loop");
+			Require(session.MarkFailure(disconnect).IsOk(), "disconnect loop should enter lost state");
+			Require(session.GetState() == SessionState::Lost, "connection-scoped failure should transition to lost");
+			Require(session.Recreate(epoch).IsOk(), "recreate loop should start new negotiation epoch");
+			Require(session.GetConnectionEpoch() == epoch, "recreate loop should advance epoch deterministically");
+			Require(session.GetGeneration() == 1, "recreate loop should reset generation to one");
+			Require(!session.HasFailure(), "recreate loop should clear retained failures");
+			Require(session.MarkTransportReady(MakeTransport(viewport)).IsOk(), "recreated session should renegotiate transport");
+			FramePacket frame{};
+			Require(session.PublishFrame(frame).IsOk(), "recreated session should publish immediately after ready");
+		}
+
+		Require(session.GetDiagnostics().m_recoveryAttemptCount == 16, "disconnect loop should count both failure and recreate recovery attempts without blowup");
+		Require(session.GetLastPublishedFrameIndex() == 1, "each recreate loop should reset frame indexing for the new epoch");
+	}
+
 }
 
 int main()
@@ -378,8 +464,12 @@ int main()
 		{ "RemoteViewportSessionBackendFailurePropagation", TestRemoteViewportSessionBackendFailurePropagation },
 		{ "RemoteViewportSessionResizeFailureAndRecreate", TestRemoteViewportSessionResizeFailureAndRecreate },
 		{ "ViewportSessionManagerLifecycleAndEpochCleanup", TestViewportSessionManagerLifecycleAndEpochCleanup },
+		{ "ViewportSessionManagerReplacementStormPrunesEpochBookkeeping", TestViewportSessionManagerReplacementStormPrunesEpochBookkeeping },
 		{ "EditorBridgeServerNegotiationRoutingAndDisconnect", TestEditorBridgeServerNegotiationRoutingAndDisconnect },
 		{ "EditorRenderFacadeBoundary", TestEditorRenderFacadeBoundary },
+		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
+		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },
+		{ "RemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState", TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState },
 	};
 
 	for (const auto& test : tests)

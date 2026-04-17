@@ -3,8 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:views="clr-namespace:SailorEditor.Views"
              xmlns:models="clr-namespace:SailorEditor.ViewModels"
+             xmlns:controls="clr-namespace:SailorEditor.Controls"
              x:DataType="models:AssetFile"
              x:Class="SailorEditor.Views.ControlPanelView">
+
+    <ContentView.Resources>
+        <controls:StringNotEmptyConverter x:Key="StringNotEmptyConverter" />
+    </ContentView.Resources>
 
     <VerticalStackLayout Spacing="5" Padding="10">
         <!-- Display Name Label -->
@@ -16,6 +21,13 @@
                 <views:DisplayNameBehavior />
             </Label.Behaviors>
         </Label>
+
+        <Label Text="{Binding LoadError}"
+               IsVisible="{Binding LoadError, Converter={StaticResource StringNotEmptyConverter}}"
+               TextColor="IndianRed"
+               FontSize="12"
+               LineBreakMode="WordWrap"
+               MaxLines="3" />
 
         <!-- Buttons -->
         <HorizontalStackLayout Spacing="10"

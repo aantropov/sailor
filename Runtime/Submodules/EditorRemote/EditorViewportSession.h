@@ -51,9 +51,11 @@ namespace Sailor::EditorRemote
 		size_t GetRejectedFrameCount(GuardDecision reason) const { return m_rejectedFrameCounts[static_cast<size_t>(reason)]; }
 		const std::optional<FramePacket>& GetLastFrame() const { return m_lastFrame; }
 		const std::optional<InputPacket>& GetLastForwardedInput() const { return m_lastForwardedInput; }
+		const SessionDiagnostics& GetDiagnostics() const { return m_diagnostics; }
 
 		Failure Create()
 		{
+			RefreshDiagnostics();
 			auto validation = m_desiredViewport.Validate();
 			if (!validation.IsOk())
 			{
@@ -70,6 +72,8 @@ namespace Sailor::EditorRemote
 			}
 
 			m_hasIssuedCreate = true;
+			ArmTransportReadyTimeout(0);
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "CreateRequested");
 			return SendViewportCommand(CommandType::CreateViewport, m_desiredViewport);
 		}
 
@@ -86,6 +90,9 @@ namespace Sailor::EditorRemote
 			m_guards.AdvanceGeneration();
 			m_lastPresentedFrameIndex = 0;
 			m_lastFrame.reset();
+			++m_diagnostics.m_resizeCount;
+			ArmTransportReadyTimeout(0);
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ResizeRequested");
 
 			auto transition = m_state.TransitionTo(SessionState::Resizing);
 			if (!transition.IsOk())
@@ -104,7 +111,12 @@ namespace Sailor::EditorRemote
 		Failure Destroy()
 		{
 			m_guards.ResetTransportReady();
+			m_transportType = TransportType::Unknown;
+			m_transportReadyTimeout.Reset();
+			m_reconnectTimeout.Reset();
 			m_host.ResetViewport(m_desiredViewport.m_viewportId);
+			RecordDiagnostic(DiagnosticCategory::Failure, DiagnosticSeverity::Warning, "Disconnected");
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "DestroyRequested");
 			auto result = m_state.Destroy();
 			if (!m_hasIssuedCreate)
 			{
@@ -193,8 +205,12 @@ namespace Sailor::EditorRemote
 
 		Failure HandleDisconnect(ConnectionEpoch nextEpoch)
 		{
+			++m_recoveryAttemptCount;
 			m_connectionEpoch = nextEpoch;
 			m_guards.BeginNewConnectionEpoch(nextEpoch);
+			m_transportType = TransportType::Unknown;
+			m_transportReadyTimeout.Reset();
+			ArmReconnectTimeout(0);
 			m_lastPresentedFrameIndex = 0;
 			m_lastFrame.reset();
 			m_host.ResetViewport(m_desiredViewport.m_viewportId);
@@ -223,6 +239,7 @@ namespace Sailor::EditorRemote
 			}
 
 			auto createResult = Create();
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "ReplayDesiredState");
 			if (!createResult.IsOk())
 			{
 				return createResult;
@@ -246,6 +263,35 @@ namespace Sailor::EditorRemote
 			}
 
 			return Failure::Ok();
+		}
+
+		Failure TickTimeouts(uint64_t nowMs)
+		{
+			if (m_transportReadyTimeout.HasExpired(nowMs))
+			{
+				m_transportReadyTimeout.Reset();
+				auto failure = Failure::FromDomain(ErrorDomain::Session, 1, "Transport ready timeout");
+				m_lastFailure = failure;
+				RecordDiagnostic(DiagnosticCategory::Timeout, DiagnosticSeverity::Warning, "TransportReadyTimeout", failure);
+				return m_state.TransitionTo(SessionState::Recovering);
+			}
+
+			if (m_reconnectTimeout.HasExpired(nowMs))
+			{
+				m_reconnectTimeout.Reset();
+				auto failure = Failure::FromDomain(ErrorDomain::Connection, 1, "Reconnect timeout");
+				m_lastFailure = failure;
+				RecordDiagnostic(DiagnosticCategory::Timeout, DiagnosticSeverity::Error, "ReconnectTimeout", failure);
+				return m_state.TransitionTo(SessionState::Lost);
+			}
+			return Failure::Ok();
+		}
+
+		RetryBackoffState ScheduleReconnectAttempt()
+		{
+			m_reconnectBackoff = NextReconnectBackoff(m_reconnectBackoff.m_attempt);
+			RecordDiagnostic(DiagnosticCategory::Backoff, DiagnosticSeverity::Info, "ReconnectBackoffScheduled");
+			return m_reconnectBackoff;
 		}
 
 	private:
@@ -287,8 +333,16 @@ namespace Sailor::EditorRemote
 			auto hostResult = m_host.ImportTransport(m_desiredViewport, transport, m_connectionEpoch, m_guards.GetGeneration());
 			if (!hostResult.IsOk())
 			{
-				return m_host.GetLastFailure();
+				m_lastFailure = m_host.GetLastFailure();
+				RecordDiagnostic(DiagnosticCategory::Failure, DiagnosticSeverity::Error, "HostImportFailed", m_lastFailure);
+				return m_lastFailure;
 			}
+
+			m_transportType = transport.m_transportType;
+			m_transportReadyTimeout.Reset();
+			m_reconnectTimeout.Reset();
+			RefreshDiagnostics();
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "TransportReady");
 
 			auto readyResult = m_state.TransitionTo(SessionState::Ready);
 			if (!readyResult.IsOk())
@@ -304,30 +358,68 @@ namespace Sailor::EditorRemote
 			if (decision != GuardDecision::Accept)
 			{
 				++m_rejectedFrameCounts[static_cast<size_t>(decision)];
-				return Failure::FromDomain(ErrorDomain::Session, static_cast<int32_t>(decision), "Frame rejected by editor session guards");
+				auto failure = Failure::FromDomain(ErrorDomain::Session, static_cast<int32_t>(decision), "Frame rejected by editor session guards");
+				m_lastFailure = failure;
+				RecordDiagnostic(DiagnosticCategory::Failure, DiagnosticSeverity::Warning, "FrameRejected", failure);
+				return failure;
 			}
 
 			auto acceptResult = m_host.AcceptFrame(frame);
 			if (!acceptResult.IsOk())
 			{
-				return m_host.GetLastFailure();
+				m_lastFailure = m_host.GetLastFailure();
+				RecordDiagnostic(DiagnosticCategory::Failure, DiagnosticSeverity::Error, "AcceptFrameFailed", m_lastFailure);
+				return m_lastFailure;
 			}
 			auto presentResult = m_host.PresentLatestFrame(m_desiredViewport.m_viewportId);
 			if (!presentResult.IsOk())
 			{
-				return m_host.GetLastFailure();
+				m_lastFailure = m_host.GetLastFailure();
+				RecordDiagnostic(DiagnosticCategory::Failure, DiagnosticSeverity::Error, "PresentFailed", m_lastFailure);
+				return m_lastFailure;
 			}
 
 			m_lastFrame = frame;
 			m_lastPresentedFrameIndex = frame.m_frameIndex;
 			++m_acceptedFrameCount;
+			RefreshDiagnostics();
+			RecordDiagnostic(DiagnosticCategory::Lifecycle, DiagnosticSeverity::Info, "FramePresented");
 			return Failure::Ok();
 		}
 
 		Failure HandleFailure(const Failure& failure)
 		{
+			m_lastFailure = failure;
+			RecordDiagnostic(DiagnosticCategory::Failure, failure.m_scope == FailureScope::Session ? DiagnosticSeverity::Warning : DiagnosticSeverity::Error, "SessionFailed", failure);
 			return m_state.TransitionTo(failure.m_scope == FailureScope::Session ? SessionState::Recovering : SessionState::Lost);
 		}
+
+		void RefreshDiagnostics()
+		{
+			m_diagnostics.m_viewportId = m_desiredViewport.m_viewportId;
+			m_diagnostics.m_connectionEpoch = m_connectionEpoch;
+			m_diagnostics.m_generation = m_guards.GetGeneration();
+			m_diagnostics.m_transportType = m_transportType;
+			m_diagnostics.m_state = m_state.GetState();
+			m_diagnostics.m_lastGoodFrameIndex = m_lastPresentedFrameIndex;
+			m_diagnostics.m_recoveryAttemptCount = m_recoveryAttemptCount;
+			m_diagnostics.m_lastFailure = m_lastFailure.IsOk() ? std::optional<Failure>{} : std::optional<Failure>{ m_lastFailure };
+		}
+
+		void RecordDiagnostic(DiagnosticCategory category, DiagnosticSeverity severity, std::string event, const Failure& failure = Failure::Ok())
+		{
+			RefreshDiagnostics();
+			m_diagnostics.m_lastCategory = category;
+			m_diagnostics.m_lastSeverity = severity;
+			m_diagnostics.m_lastEvent = std::move(event);
+			if (!failure.IsOk())
+			{
+				m_diagnostics.m_lastFailure = failure;
+			}
+		}
+
+		void ArmTransportReadyTimeout(uint64_t nowMs) { m_transportReadyTimeout.Arm(nowMs, m_timeoutPolicy.m_transportReadyTimeoutMs); }
+		void ArmReconnectTimeout(uint64_t nowMs) { m_reconnectTimeout.Arm(nowMs, m_timeoutPolicy.m_reconnectTimeoutMs); }
 
 		ViewportDescriptor m_desiredViewport{};
 		IEditorViewportClient& m_client;
@@ -343,5 +435,13 @@ namespace Sailor::EditorRemote
 		bool m_visible = true;
 		bool m_focused = false;
 		bool m_hasIssuedCreate = false;
+		TransportType m_transportType = TransportType::Unknown;
+		TimeoutPolicy m_timeoutPolicy{};
+		TimeoutCheckpoint m_transportReadyTimeout{};
+		TimeoutCheckpoint m_reconnectTimeout{};
+		RetryBackoffState m_reconnectBackoff{};
+		uint32_t m_recoveryAttemptCount = 0;
+		Failure m_lastFailure = Failure::Ok();
+		SessionDiagnostics m_diagnostics{};
 	};
 }

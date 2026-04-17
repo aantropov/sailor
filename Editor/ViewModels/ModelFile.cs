@@ -69,8 +69,8 @@ public partial class ModelFile : AssetFile
 
             var intermediateObject = deserializer.Deserialize<ModelFile>(yaml);
 
-            FileId = intermediateObject.FileId;
-            Filename = intermediateObject.Filename;
+            FileId = intermediateObject.FileId ?? new FileId();
+            Filename = intermediateObject.Filename ?? new FileId();
             ShouldGenerateMaterials = intermediateObject.ShouldGenerateMaterials;
             ShouldBatchByMaterial = intermediateObject.ShouldBatchByMaterial;
             UnitScale = intermediateObject.UnitScale;
@@ -85,7 +85,7 @@ public partial class ModelFile : AssetFile
         }
         catch (Exception ex)
         {
-            DisplayName = ex.Message;
+            SetLoadError(ex);
         }
 
         IsDirty = false;
