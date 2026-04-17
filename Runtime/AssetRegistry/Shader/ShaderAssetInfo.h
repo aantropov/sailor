@@ -8,10 +8,14 @@ namespace Sailor
 {
 	class ShaderAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(ShaderAssetInfo)
+
 	public:
 		SAILOR_API virtual ~ShaderAssetInfo() = default;
 
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
+
+	private:
 	};
 
 	using ShaderAssetInfoPtr = ShaderAssetInfo*;
@@ -31,3 +35,9 @@ namespace Sailor
 		SAILOR_API ~ShaderAssetInfoHandler() override = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::ShaderAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename)
+)

@@ -125,8 +125,7 @@ namespace SailorEditor.Controls
         {
             if (e.Action != NotifyCollectionChangedAction.Add)
             {
-                //TODO: Reintate this...
-                //parent.Children.Clear();
+                parent.Children.Clear();
                 AddItems(childTreeViewItems, parent, parentTreeViewItem);
             }
             else

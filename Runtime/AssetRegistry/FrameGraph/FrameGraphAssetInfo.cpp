@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include <iostream>
 
 using namespace Sailor;

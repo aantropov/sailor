@@ -9,6 +9,8 @@ namespace Sailor
 {
 	class MaterialAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(MaterialAssetInfo)
+
 	public:
 		virtual SAILOR_API ~MaterialAssetInfo() = default;
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
@@ -33,3 +35,9 @@ namespace Sailor
 		SAILOR_API virtual ~MaterialAssetInfoHandler() = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::MaterialAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename)
+)

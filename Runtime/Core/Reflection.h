@@ -1,41 +1,15 @@
 #pragma once
 #include "Containers/Concepts.h"
 #include "Core/Defines.h"
+#include "Core/IReflectable.h"
 #include <refl.hpp>
+#include "Engine/Object.h"
 #include "Engine/Types.h"
 #include "Memory/ObjectPtr.hpp"
 #include "YamlSerializable.h"
-#include "AssetRegistry/AssetRegistry.h"
 
 using refl::reflect;
 using refl::descriptor::type_descriptor;
-
-namespace Sailor
-{
-	template<typename T>
-	struct IsObjectPtr_type : std::false_type {};
-
-	template<typename R>
-	struct IsObjectPtr_type<TObjectPtr<R>> : std::true_type { using base_type = R; };
-
-	template<typename T>
-	inline constexpr bool IsObjectPtr = IsObjectPtr_type<T>::value;
-
-	template<typename T>
-	class TObjectPtr;
-
-	template<typename T>
-	struct TemplateParameter;
-
-	template<typename T>
-	struct TemplateParameter<TObjectPtr<T>>
-	{
-		using type = T;
-	};
-
-	template<typename T>
-	using TemplateParameter_t = typename TemplateParameter<T>::type;
-}
 
 #define SAILOR_REFLECTABLE(__CLASSNAME__) \
 	public: \
@@ -69,14 +43,14 @@ namespace Sailor
 		{ \
 			if (!s_bRegistered) \
 			{ \
-				if constexpr (IsDefaultConstructible<__CLASSNAME__>) \
+				Reflection::RegisterType(type.Name(), &type); \
+				if constexpr (IsDefaultConstructible<__CLASSNAME__> && IsBaseOf<Object, __CLASSNAME__>) \
 				{ \
 					auto placementNew = [](void* ptr) mutable \
 					{ \
 						return new (ptr) __CLASSNAME__(); \
 					}; \
 					Reflection::RegisterFactoryMethod(type, placementNew); \
-					Reflection::RegisterType(type.Name(), &type); \
 					Reflection::RegisterCDO<__CLASSNAME__>(type); \
 				} \
 				s_bRegistered = true; \
@@ -87,6 +61,8 @@ namespace Sailor
 	}; \
 	static inline volatile RegistrationFactoryMethod s_registrationFactoryMethod{ GetStaticTypeInfo() }; \
 	private: \
+	template<typename T> \
+	friend struct ::refl_impl::metadata::type_info__; \
 
 namespace Sailor
 {
@@ -185,149 +161,126 @@ namespace Sailor
 		friend class Reflection;
 	};
 
-	class SAILOR_API IReflectable
+	template<typename TPropertyType>
+	__forceinline TPropertyType IReflectable::ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
 	{
-	public:
+		using ElementType = TemplateParameter_t<TPropertyType>;
 
-		virtual const TypeInfo& GetTypeInfo() const = 0;
-		virtual ReflectedData GetReflectedData() const = 0;
-		virtual void ApplyReflection(const ReflectedData& reflection) = 0;
-		virtual bool ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) { return true; }
-
-	protected:
-
-		static ObjectPtr ResolveExternalDependency(const InstanceId& componentInstanceId, const TMap<InstanceId, ObjectPtr>& resolveContext);
-
-		template<typename TPropertyType>
-		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
+		TPropertyType v{};
+		if (node["fileId"])
 		{
-			using ElementType = TemplateParameter_t<TPropertyType>;
-
-			TPropertyType v{};
-			if (node["fileId"])
+			if (FileId fileId = node["fileId"].as<FileId>())
 			{
-				if (FileId fileId = node["fileId"].as<FileId>())
-				{
-					v = App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<ElementType>(fileId, bImmediate);
-				}
+				v = ResolveAssetDependency(fileId, bImmediate).DynamicCast<ElementType>();
 			}
+		}
 
-			if (node["instanceId"])
+		if (node["instanceId"])
+		{
+			InstanceId instanceId = node["instanceId"].as<InstanceId>();
+
+			if (instanceId)
 			{
-				InstanceId instanceId = node["instanceId"].as<InstanceId>();
+				check(!v);
 
-				if (instanceId)
+				if (resolveContext.ContainsKey(instanceId))
 				{
-					// We expect only one of instanceId and fileId is filled
-					check(!v);
-
-					// Resolve internal dependencies
-					if (resolveContext.ContainsKey(instanceId))
-					{
-						if (auto objPtr = resolveContext[instanceId])
-						{
-							v = objPtr.DynamicCast<ElementType>();
-						}
-					}
-					// Resolve external dependencies
-					else if (auto objPtr = ResolveExternalDependency(instanceId, resolveContext))
+					if (auto objPtr = resolveContext[instanceId])
 					{
 						v = objPtr.DynamicCast<ElementType>();
 					}
 				}
+				else if (auto objPtr = ResolveExternalDependency(instanceId, resolveContext))
+				{
+					v = objPtr.DynamicCast<ElementType>();
+				}
 			}
-
-			return v;
 		}
 
-		template<typename T>
-		static bool ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true)
-		{
-			bool bResolved = true;
-			for_each(refl::reflect<T>().members, [&](auto member)
-				{
-					if constexpr (is_writable(member))
-					{
-						const std::string displayName = get_display_name(member);
-						if (reflection.GetProperties().ContainsKey(displayName))
-						{
-							const YAML::Node& node = reflection.GetProperties()[displayName];
-							if (node.IsDefined() && !node.IsNull())
-							{
-								if constexpr (is_field(member))
-								{
-									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
-									if constexpr (Sailor::IsObjectPtr<PropertyType>)
-									{
-										if (!member(*ptr))
-										{
-											auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
-											bResolved &= (bool)resolved;
+		return v;
+	}
 
-											member(*ptr) = resolved;
-										}
+	template<typename T>
+	bool IReflectable::ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
+	{
+		bool bResolved = true;
+		for_each(refl::reflect<T>().members, [&](auto member)
+			{
+				if constexpr (is_writable(member))
+				{
+					const std::string displayName = get_display_name(member);
+					if (reflection.GetProperties().ContainsKey(displayName))
+					{
+						const YAML::Node& node = reflection.GetProperties()[displayName];
+						if (node.IsDefined() && !node.IsNull())
+						{
+							if constexpr (is_field(member))
+							{
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
+								if constexpr (Sailor::IsObjectPtr<PropertyType>)
+								{
+									if (!member(*ptr))
+									{
+										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+										bResolved &= (bool)resolved;
+
+										member(*ptr) = resolved;
 									}
 								}
-								else if constexpr (refl::descriptor::is_function(member))
+							}
+							else if constexpr (refl::descriptor::is_function(member))
+							{
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
+								if constexpr (Sailor::IsObjectPtr<PropertyType>)
 								{
-									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
-									if constexpr (Sailor::IsObjectPtr<PropertyType>)
-									{
-										// Should we check the previous value?
-										//if (!get_reader(member)(*ptr))
-										{
-											auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
-											bResolved &= (bool)resolved;
+									auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+									bResolved &= (bool)resolved;
 
-											member(*ptr, resolved);
-										}
-									}
+									member(*ptr, resolved);
 								}
 							}
 						}
 					}
-				});
+				}
+			});
 
-			return bResolved;
-		}
+		return bResolved;
+	}
 
-		template<typename T>
-		static void ApplyReflection_Impl(T* ptr, const ReflectedData& reflection)
-		{
-			for_each(refl::reflect<T>().members, [&](auto member)
+	template<typename T>
+	void IReflectable::ApplyReflection_Impl(T* ptr, const ReflectedData& reflection)
+	{
+		for_each(refl::reflect<T>().members, [&](auto member)
+			{
+				if constexpr (is_writable(member))
 				{
-					if constexpr (is_writable(member))
+					const std::string displayName = get_display_name(member);
+					if (reflection.GetProperties().ContainsKey(displayName))
 					{
-						const std::string displayName = get_display_name(member);
-						if (reflection.GetProperties().ContainsKey(displayName))
+						const YAML::Node& node = reflection.GetProperties()[displayName];
+						if (node.IsDefined())
 						{
-							const YAML::Node& node = reflection.GetProperties()[displayName];
-							if (node.IsDefined())
+							if constexpr (is_field(member))
 							{
-								if constexpr (is_field(member))
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
+								if constexpr (!Sailor::IsObjectPtr<PropertyType>)
 								{
-									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
-									if constexpr (!Sailor::IsObjectPtr<PropertyType>)
-									{
-										/* ObjectPtrs are resolved in ResolveObjects function */
-										member(*ptr) = node.as<PropertyType>();
-									}
+									member(*ptr) = node.as<PropertyType>();
 								}
-								else if constexpr (refl::descriptor::is_function(member))
+							}
+							else if constexpr (refl::descriptor::is_function(member))
+							{
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
+								if constexpr (!Sailor::IsObjectPtr<PropertyType>)
 								{
-									using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
-									if constexpr (!Sailor::IsObjectPtr<PropertyType>)
-									{
-										/* ObjectPtrs are resolved in ResolveObjects function */
-										member(*ptr, node.as<PropertyType>());
-									}
+									member(*ptr, node.as<PropertyType>());
 								}
 							}
 						}
 					}
-				});
-		}
-	};
+				}
+			});
+	}
 
 	namespace Internal
 	{

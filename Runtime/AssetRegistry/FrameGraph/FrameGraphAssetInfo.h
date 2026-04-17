@@ -9,9 +9,13 @@ namespace Sailor
 {
 	class FrameGraphAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(FrameGraphAssetInfo)
+
 	public:
 		SAILOR_API virtual ~FrameGraphAssetInfo() = default;
 		IAssetInfoHandler* GetHandler() override;
+
+	private:
 	};
 
 	using FrameGraphAssetInfoPtr = FrameGraphAssetInfo*;
@@ -28,3 +32,9 @@ namespace Sailor
 		virtual ~FrameGraphAssetInfoHandler() = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::FrameGraphAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename)
+)

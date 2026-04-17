@@ -1,22 +1,18 @@
 #include "AnimationAssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AnimationImporter.h"
+#include "Core/Reflection.h"
 
 using namespace Sailor;
 
 YAML::Node AnimationAssetInfo::Serialize() const
 {
-	YAML::Node outData = AssetInfo::Serialize();
-	SERIALIZE_PROPERTY(outData, m_animationIndex);
-	SERIALIZE_PROPERTY(outData, m_skinIndex);
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void AnimationAssetInfo::Deserialize(const YAML::Node& inData)
 {
-	AssetInfo::Deserialize(inData);
-	DESERIALIZE_PROPERTY(inData, m_animationIndex);
-	DESERIALIZE_PROPERTY(inData, m_skinIndex);
+	DeserializeReflectedAssetInfo(*this, inData);
 }
 
 IAssetInfoHandler* AnimationAssetInfo::GetHandler()

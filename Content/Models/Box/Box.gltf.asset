@@ -1,10 +1,10 @@
-fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+fileId: '{2387902B-538E-4191-93D6-53503B5571B1}'
 filename: Box.gltf
 bShouldGenerateMaterials: true
 bShouldBatchByMaterial: true
 bShouldKeepCpuBuffers: false
 bGenerateBLAS: true
-unitScale: 1
+unitScale: 2
 materials:
-  - "{607948CB-4F49-4EF8-8B49-57E350DB38B1}"
-animations: ~
+- '{607948CB-4F49-4EF8-8B49-57E350DB38B6}'
+animations: []

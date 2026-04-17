@@ -251,63 +251,68 @@ public partial class MaterialFile : AssetFile
     {
         try
         {
-            // Asset Info
-            var yamlAssetInfo = File.ReadAllText(AssetInfo.FullName);
+            RunWithoutDirtyTracking(() =>
+            {
+                LoadAssetPropertiesFromAssetInfo();
 
-            var deserializerAssetInfo = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new AssetFileYamlConverter())
-            .Build();
+                // Asset Info
+                var yamlAssetInfo = File.ReadAllText(AssetInfo.FullName);
 
-            var intermediateObjectAssetInfo = deserializerAssetInfo.Deserialize<AssetFile>(yamlAssetInfo);
-            FileId = intermediateObjectAssetInfo.FileId ?? new FileId();
-            Filename = intermediateObjectAssetInfo.Filename ?? new FileId();
+                var deserializerAssetInfo = SerializationUtils.CreateDeserializerBuilder()
+                .WithTypeConverter(new AssetFileYamlConverter())
+                .Build();
 
-            // Asset
-            var yamlAsset = File.ReadAllText(Asset.FullName);
+                var intermediateObjectAssetInfo = deserializerAssetInfo.Deserialize<AssetFile>(yamlAssetInfo);
+                FileId = intermediateObjectAssetInfo.FileId ?? new FileId();
+                Filename = intermediateObjectAssetInfo.Filename ?? new FileId();
 
-            var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new MaterialFileYamlConverter())
-            .Build();
+                // Asset
+                var yamlAsset = File.ReadAllText(Asset.FullName);
 
-            var intermediateObject = deserializer.Deserialize<MaterialFile>(yamlAsset);
+                var deserializer = SerializationUtils.CreateDeserializerBuilder()
+                .WithTypeConverter(new MaterialFileYamlConverter())
+                .Build();
 
-            RenderQueue = intermediateObject.RenderQueue;
-            DepthBias = intermediateObject.DepthBias;
-            SupportMultisampling = intermediateObject.SupportMultisampling;
-            CustomDepthShader = intermediateObject.CustomDepthShader;
-            EnableDepthTest = intermediateObject.EnableDepthTest;
-            EnableZWrite = intermediateObject.EnableZWrite;
-            CullMode = intermediateObject.CullMode;
-            BlendMode = intermediateObject.BlendMode;
-            FillMode = intermediateObject.FillMode;
-            Shader = intermediateObject.Shader;
-            Samplers = intermediateObject.Samplers;
-            UniformsVec4 = intermediateObject.UniformsVec4;
-            UniformsFloat = intermediateObject.UniformsFloat;
-            ShaderDefines = intermediateObject.ShaderDefines;
+                var intermediateObject = deserializer.Deserialize<MaterialFile>(yamlAsset);
 
-            DisplayName = Asset.Name;
+                RenderQueue = intermediateObject.RenderQueue;
+                DepthBias = intermediateObject.DepthBias;
+                SupportMultisampling = intermediateObject.SupportMultisampling;
+                CustomDepthShader = intermediateObject.CustomDepthShader;
+                EnableDepthTest = intermediateObject.EnableDepthTest;
+                EnableZWrite = intermediateObject.EnableZWrite;
+                CullMode = intermediateObject.CullMode;
+                BlendMode = intermediateObject.BlendMode;
+                FillMode = intermediateObject.FillMode;
+                Shader = intermediateObject.Shader;
+                Samplers = intermediateObject.Samplers;
+                UniformsVec4 = intermediateObject.UniformsVec4;
+                UniformsFloat = intermediateObject.UniformsFloat;
+                ShaderDefines = intermediateObject.ShaderDefines;
 
-            ShaderDefines.CollectionChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
-            ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
+                DisplayName = Asset.Name;
 
-            UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
-            UniformsFloat.ItemChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
+                ShaderDefines.CollectionChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
+                ShaderDefines.ItemChanged += (a, e) => MarkDirty(nameof(ShaderDefines));
 
-            UniformsVec4.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
-            UniformsVec4.ItemChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
+                UniformsFloat.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
+                UniformsFloat.ItemChanged += (a, e) => MarkDirty(nameof(UniformsFloat));
 
-            Samplers.CollectionChanged += (a, e) => MarkDirty(nameof(Samplers));
-            Samplers.ItemChanged += (a, e) => MarkDirty(nameof(Samplers));
+                UniformsVec4.CollectionChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
+                UniformsVec4.ItemChanged += (a, e) => MarkDirty(nameof(UniformsVec4));
 
-            IsLoaded = false;
+                Samplers.CollectionChanged += (a, e) => MarkDirty(nameof(Samplers));
+                Samplers.ItemChanged += (a, e) => MarkDirty(nameof(Samplers));
+
+                IsLoaded = false;
+            });
         }
         catch (Exception ex)
         {
             SetLoadError(ex);
         }
 
-        IsDirty = false;
+        ResetDirtyState();
         return Task.CompletedTask;
     }
 
@@ -336,9 +341,23 @@ public partial class MaterialFile : AssetFile
     private void OnAddUniformFloat() => UniformsFloat.Add(new UniformFloat { Key = "material.newFloatVariable" });
     private void OnRemoveUniformFloat(UniformFloat uniform) => UniformsFloat.Remove(uniform);
     private void OnClearUniformsFloat() => UniformsFloat.Clear();
-    private void OnAddShaderDefine() => ShaderDefines.Add(new Observable<string>("New Define"));
-    private void OnRemoveShaderDefine(Observable<string> shaderDefine) => ShaderDefines.Remove(shaderDefine);
-    private void OnClearShaderDefines() => ShaderDefines.Clear();
+    private void OnAddShaderDefine()
+    {
+        ShaderDefines.Add(new Observable<string>("New Define"));
+        OnPropertyChanged(nameof(ShaderDefines));
+    }
+
+    private void OnRemoveShaderDefine(Observable<string> shaderDefine)
+    {
+        ShaderDefines.Remove(shaderDefine);
+        OnPropertyChanged(nameof(ShaderDefines));
+    }
+
+    private void OnClearShaderDefines()
+    {
+        ShaderDefines.Clear();
+        OnPropertyChanged(nameof(ShaderDefines));
+    }
     private void OnSelectSampler(string key)
     {
         var assetService = MauiProgram.GetService<AssetsService>();

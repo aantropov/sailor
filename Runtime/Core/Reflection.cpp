@@ -3,8 +3,135 @@
 #include "Containers/ConcurrentMap.h"
 #include "RHI/Types.h"
 #include "Engine/GameObject.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
+#include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
+#include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "AssetRegistry/Model/ModelAssetInfo.h"
+#include "AssetRegistry/Prefab/PrefabAssetInfo.h"
+#include "AssetRegistry/Shader/ShaderAssetInfo.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
+#include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 
 using namespace Sailor;
+
+namespace
+{
+	template<typename TProperty>
+	std::string GetAssetPropertyTypeName()
+	{
+		using PropertyType = ::refl::trait::remove_qualifiers_t<TProperty>;
+
+		if constexpr (std::is_same_v<PropertyType, FileId>)
+		{
+			return "FileId";
+		}
+		else if constexpr (std::is_same_v<PropertyType, std::string>)
+		{
+			return "string";
+		}
+		else if constexpr (std::is_same_v<PropertyType, bool>)
+		{
+			return "bool";
+		}
+		else if constexpr (std::is_same_v<PropertyType, float>)
+		{
+			return "float";
+		}
+		else if constexpr (std::is_same_v<PropertyType, int32_t>)
+		{
+			return "int32";
+		}
+		else if constexpr (std::is_same_v<PropertyType, TVector<FileId>>)
+		{
+			return "List<FileId>";
+		}
+		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureClamping>)
+		{
+			return "enum Sailor::RHI::ETextureClamping";
+		}
+		else if constexpr (std::is_same_v<PropertyType, RHI::ESamplerReductionMode>)
+		{
+			return "enum Sailor::RHI::ESamplerReductionMode";
+		}
+		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureFiltration>)
+		{
+			return "enum Sailor::RHI::ETextureFiltration";
+		}
+		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureFormat>)
+		{
+			return "enum Sailor::RHI::EFormat";
+		}
+		else
+		{
+			return TypeInfo::Get<PropertyType>().Name();
+		}
+	}
+
+	YAML::Node MakeStringSequence(std::initializer_list<const char*> values)
+	{
+		YAML::Node node;
+		for (const char* value : values)
+		{
+			node.push_back(value);
+		}
+		return node;
+	}
+
+	template<typename TAssetInfo>
+	YAML::Node ExportAssetInfoType(const std::string& typeName, std::initializer_list<const char*> extensions)
+	{
+		YAML::Node node;
+		node["typename"] = typeName;
+		node["extensions"] = MakeStringSequence(extensions);
+
+		YAML::Node properties(YAML::NodeType::Sequence);
+		TVector<std::string> exportedPropertyNames;
+		TAssetInfo* empty = nullptr;
+		for_each(refl::reflect<TAssetInfo>().members, [&](auto member)
+			{
+				if constexpr (is_writable(member))
+				{
+					using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
+					const std::string propertyName = NormalizeAssetInfoFieldName(get_display_name(member));
+
+					if (exportedPropertyNames.Contains(propertyName))
+					{
+						return;
+					}
+
+					exportedPropertyNames.Add(propertyName);
+
+					YAML::Node propertyNode;
+					propertyNode["name"] = propertyName;
+					propertyNode["type"] = GetAssetPropertyTypeName<PropertyType>();
+					properties.push_back(propertyNode);
+				}
+			});
+
+		node["properties"] = properties;
+
+		return node;
+	}
+
+	TVector<YAML::Node> ExportAssetInfoTypes()
+	{
+		TVector<YAML::Node> nodes;
+
+		nodes.Add(ExportAssetInfoType<AssetInfo>("Sailor::AssetInfo", {}));
+		nodes.Add(ExportAssetInfoType<TextureAssetInfo>("Sailor::TextureAssetInfo", { "png", "bmp", "tga", "jpg", "gif", "psd", "dds", "hdr" }));
+		nodes.Add(ExportAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo", { "glb", "gltf" }));
+		nodes.Add(ExportAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo", { "anim" }));
+		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
+		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader" }));
+		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
+		nodes.Add(ExportAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo", { "prefab" }));
+		nodes.Add(ExportAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo", { "world" }));
+
+		return nodes;
+	}
+}
 
 namespace Sailor::Internal
 {
@@ -178,14 +305,21 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Add(ReflectEnumValues<RHI::EFormat>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureFiltration>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureClamping>());
+	nodes.Add(ReflectEnumValues<RHI::ESamplerReductionMode>());
 	nodes.Add(ReflectEnumValues<RHI::EFillMode>());
 	nodes.Add(ReflectEnumValues<RHI::ECullMode>());
 	nodes.Add(ReflectEnumValues<RHI::EBlendMode>());
 	nodes.Add(ReflectEnumValues<RHI::EDepthCompare>());
 
 	yamlTypes["enums"] = nodes;
+	yamlTypes["assetTypes"] = ExportAssetInfoTypes();
 
 	return yamlTypes;
+}
+
+ObjectPtr IReflectable::ResolveAssetDependency(const FileId& fileId, bool bImmediate)
+{
+	return App::GetSubmodule<AssetRegistry>()->LoadAssetFromFile<Object>(fileId, bImmediate);
 }
 
 ObjectPtr IReflectable::ResolveExternalDependency(const InstanceId& componentInstanceId, const TMap<InstanceId, ObjectPtr>& resolveContext)

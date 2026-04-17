@@ -5,19 +5,23 @@
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
+#include "Core/Reflection.h"
 
 namespace Sailor
 {
 	class IAssetFactory;
 	class IAssetInfoHandler;
 
-	class AssetInfo : IYamlSerializable
+	class AssetInfo : public IYamlSerializable, public IReflectable
 	{
+		SAILOR_REFLECTABLE(AssetInfo)
 
 	public:
 
 		SAILOR_API AssetInfo();
 		SAILOR_API virtual ~AssetInfo() = default;
+
+		SAILOR_API std::string GetAssetInfoType() const;
 
 		SAILOR_API const FileId& GetFileId() const { return m_fileId; }
 
@@ -108,3 +112,71 @@ namespace Sailor
 		virtual ~DefaultAssetInfoHandler() override = default;
 	};
 }
+
+namespace Sailor
+{
+	inline std::string NormalizeAssetInfoFieldName(const std::string& fieldName)
+	{
+		if (fieldName == "m_assetFilename")
+		{
+			return "filename";
+		}
+
+		if (fieldName.rfind("m_", 0) == 0)
+		{
+			return fieldName.substr(2);
+		}
+
+		return fieldName;
+	}
+
+	template<typename TAssetInfo>
+	YAML::Node SerializeReflectedAssetInfo(const TAssetInfo& assetInfo)
+	{
+		YAML::Node outData;
+		outData["assetInfoType"] = assetInfo.GetAssetInfoType();
+
+		for_each(refl::reflect(assetInfo).members, [&](auto member)
+			{
+				if constexpr (is_readable(member))
+				{
+					const std::string displayName = NormalizeAssetInfoFieldName(get_display_name(member));
+					outData[displayName] = member(assetInfo);
+				}
+			});
+
+		return outData;
+	}
+
+	template<typename TAssetInfo>
+	void DeserializeReflectedAssetInfo(TAssetInfo& assetInfo, const YAML::Node& inData)
+	{
+		for_each(refl::reflect(assetInfo).members, [&](auto member)
+			{
+				if constexpr (is_writable(member))
+				{
+					const std::string displayName = NormalizeAssetInfoFieldName(get_display_name(member));
+					const YAML::Node& node = inData[displayName];
+					if (node.IsDefined())
+					{
+						if constexpr (is_field(member))
+						{
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(assetInfo))>;
+							member(assetInfo) = node.as<PropertyType>();
+						}
+						else if constexpr (refl::descriptor::is_function(member))
+						{
+							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(assetInfo))>;
+							member(assetInfo, node.as<PropertyType>());
+						}
+					}
+				}
+			});
+	}
+}
+
+REFL_AUTO(
+	type(Sailor::AssetInfo),
+	field(m_fileId),
+	field(m_assetFilename)
+)

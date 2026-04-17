@@ -26,29 +26,34 @@ public partial class World : AssetFile
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new WorldYamlConverter())
-            .Build();
+            RunWithoutDirtyTracking(() =>
+            {
+                LoadAssetPropertiesFromAssetInfo();
 
-            var intermediateObject = deserializer.Deserialize<World>(yaml);
+                var yaml = File.ReadAllText(AssetInfo.FullName);
+                var deserializer = SerializationUtils.CreateDeserializerBuilder()
+                .WithTypeConverter(new WorldYamlConverter())
+                .Build();
 
-            FileId = intermediateObject.FileId ?? new FileId();
-            Filename = intermediateObject.Filename ?? new FileId();
+                var intermediateObject = deserializer.Deserialize<World>(yaml);
 
-            DisplayName = Asset.Name;
+                FileId = intermediateObject.FileId ?? new FileId();
+                Filename = intermediateObject.Filename ?? new FileId();
 
-            Prefabs.CollectionChanged += (a, e) => MarkDirty(nameof(Prefabs));
-            Prefabs.ItemChanged += (a, e) => MarkDirty(nameof(Prefabs));
+                DisplayName = Asset.Name;
 
-            IsLoaded = false;
+                Prefabs.CollectionChanged += (a, e) => MarkDirty(nameof(Prefabs));
+                Prefabs.ItemChanged += (a, e) => MarkDirty(nameof(Prefabs));
+
+                IsLoaded = false;
+            });
         }
         catch (Exception ex)
         {
             SetLoadError(ex);
         }
 
-        IsDirty = false;
+        ResetDirtyState();
         return Task.CompletedTask;
     }
 }

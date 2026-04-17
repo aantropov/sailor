@@ -23,6 +23,11 @@ namespace SailorEditor.Services
         {
             if (obj != null)
             {
+                if (SelectedItems.Count == 1 && ReferenceEquals(SelectedItems[0], obj))
+                {
+                    return;
+                }
+
                 if (obj is AssetFile assetFile)
                 {
                     await assetFile.LoadDependentResources();
@@ -30,10 +35,14 @@ namespace SailorEditor.Services
 
                 SelectedItems.Clear();
                 SelectedItems.Add(obj);
+                SelectedItem = obj;
 
                 OnSelectAssetAction?.Invoke(obj);
             }
         }
+
+        [ObservableProperty]
+        private ObservableObject selectedItem;
 
         [ObservableProperty]
         private ObservableList<INotifyPropertyChanged> selectedItems = [];

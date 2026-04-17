@@ -5,20 +5,19 @@
 #include <fstream>
 #include "Core/Utils.h"
 #include "WorldPrefabImporter.h"
+#include "Core/Reflection.h"
 #include <iostream>
 
 using namespace Sailor;
 
 YAML::Node WorldPrefabAssetInfo::Serialize() const
 {
-	YAML::Node outData;
-	outData = AssetInfo::Serialize();
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void WorldPrefabAssetInfo::Deserialize(const YAML::Node& outData)
 {
-	AssetInfo::Deserialize(outData);
+	DeserializeReflectedAssetInfo(*this, outData);
 }
 
 WorldPrefabAssetInfoHandler::WorldPrefabAssetInfoHandler(AssetRegistry* assetRegistry)

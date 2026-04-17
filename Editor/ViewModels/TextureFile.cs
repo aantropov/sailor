@@ -18,6 +18,7 @@ public partial class TextureFile : AssetFile
     public List<string> TextureFiltrationType { get; set; } = [];
     public List<string> TextureClampingType { get; set; } = [];
     public List<string> TextureFormatType { get; set; } = [];
+    public List<string> SamplerReductionType { get; set; } = ["Average", "Min", "Max"];
 
     [ObservableProperty]
     string filtration;
@@ -33,6 +34,12 @@ public partial class TextureFile : AssetFile
 
     [ObservableProperty]
     bool shouldSupportStorageBinding;
+
+    [ObservableProperty]
+    bool shouldKeepCpuBuffers;
+
+    [ObservableProperty]
+    string samplerReduction = "Average";
 
     [ObservableProperty]
     int glbTextureIndex = -1;
@@ -52,6 +59,10 @@ public partial class TextureFile : AssetFile
                 TextureFiltrationType = engineTypes.Enums["enum Sailor::RHI::ETextureFiltration"];
                 TextureClampingType = engineTypes.Enums["enum Sailor::RHI::ETextureClamping"];
                 TextureFormatType = engineTypes.Enums["enum Sailor::RHI::EFormat"];
+                if (engineTypes.Enums.TryGetValue("enum Sailor::RHI::ESamplerReductionMode", out var samplerReductionType))
+                {
+                    SamplerReductionType = samplerReductionType;
+                }
 
                 if (GlbTextureIndex != -1)
                 {
@@ -77,32 +88,39 @@ public partial class TextureFile : AssetFile
     {
         try
         {
-            var yaml = File.ReadAllText(AssetInfo.FullName);
-            var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new TextureFileYamlConverter())
-            .Build();
+            RunWithoutDirtyTracking(() =>
+            {
+                LoadAssetPropertiesFromAssetInfo();
 
-            var intermediateObject = deserializer.Deserialize<TextureFile>(yaml);
+                var yaml = File.ReadAllText(AssetInfo.FullName);
+                var deserializer = SerializationUtils.CreateDeserializerBuilder()
+                .WithTypeConverter(new TextureFileYamlConverter())
+                .Build();
 
-            FileId = intermediateObject.FileId ?? new FileId();
-            Filename = intermediateObject.Filename ?? new FileId();
-            Filtration = intermediateObject.Filtration;
-            Format = intermediateObject.Format;
-            Clamping = intermediateObject.Clamping;
-            ShouldGenerateMips = intermediateObject.ShouldGenerateMips;
-            ShouldSupportStorageBinding = intermediateObject.ShouldSupportStorageBinding;
-            GlbTextureIndex = intermediateObject.GlbTextureIndex;
+                var intermediateObject = deserializer.Deserialize<TextureFile>(yaml);
 
-            DisplayName = GlbTextureIndex == -1 ? Asset.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
+                FileId = intermediateObject.FileId ?? new FileId();
+                Filename = intermediateObject.Filename ?? new FileId();
+                Filtration = intermediateObject.Filtration;
+                Format = intermediateObject.Format;
+                Clamping = intermediateObject.Clamping;
+                ShouldGenerateMips = intermediateObject.ShouldGenerateMips;
+                ShouldSupportStorageBinding = intermediateObject.ShouldSupportStorageBinding;
+                ShouldKeepCpuBuffers = intermediateObject.ShouldKeepCpuBuffers;
+                SamplerReduction = intermediateObject.SamplerReduction;
+                GlbTextureIndex = intermediateObject.GlbTextureIndex;
 
-            IsLoaded = false;
+                DisplayName = GlbTextureIndex == -1 ? Asset.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
+
+                IsLoaded = false;
+            });
         }
         catch (Exception ex)
         {
             SetLoadError(ex);
         }
 
-        IsDirty = false;
+        ResetDirtyState();
         return Task.CompletedTask;
     }
 }
@@ -150,6 +168,12 @@ public class TextureFileYamlConverter : IYamlTypeConverter
                         break;
                     case "bShouldSupportStorageBinding":
                         textureFile.ShouldSupportStorageBinding = deserializer.Deserialize<bool>(parser);
+                        break;
+                    case "bShouldKeepCpuBuffers":
+                        textureFile.ShouldKeepCpuBuffers = deserializer.Deserialize<bool>(parser);
+                        break;
+                    case "reduction":
+                        textureFile.SamplerReduction = deserializer.Deserialize<string>(parser);
                         break;
                     case "glbTextureIndex":
                         textureFile.GlbTextureIndex = deserializer.Deserialize<int>(parser);
@@ -201,6 +225,12 @@ public class TextureFileYamlConverter : IYamlTypeConverter
 
             emitter.Emit(new Scalar(null, "bShouldSupportStorageBinding"));
             emitter.Emit(new Scalar(null, textureFile.ShouldSupportStorageBinding.ToString().ToLower()));
+
+            emitter.Emit(new Scalar(null, "bShouldKeepCpuBuffers"));
+            emitter.Emit(new Scalar(null, textureFile.ShouldKeepCpuBuffers.ToString().ToLower()));
+
+            emitter.Emit(new Scalar(null, "reduction"));
+            emitter.Emit(new Scalar(null, textureFile.SamplerReduction));
 
             emitter.Emit(new Scalar(null, "glbTextureIndex"));
             emitter.Emit(new Scalar(null, textureFile.GlbTextureIndex.ToString().ToLower()));

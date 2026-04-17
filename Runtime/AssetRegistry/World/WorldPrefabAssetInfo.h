@@ -9,6 +9,8 @@ namespace Sailor
 {
 	class WorldPrefabAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(WorldPrefabAssetInfo)
+
 	public:
 		SAILOR_API virtual ~WorldPrefabAssetInfo() = default;
 
@@ -37,3 +39,9 @@ namespace Sailor
 		virtual ~WorldPrefabAssetInfoHandler() = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::WorldPrefabAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename)
+)

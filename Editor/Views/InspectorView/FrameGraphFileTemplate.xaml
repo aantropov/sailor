@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<DataTemplate xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+              xmlns:views="clr-namespace:SailorEditor.Views"
+              xmlns:vm="clr-namespace:SailorEditor.ViewModels"
+              xmlns:controls="clr-namespace:SailorEditor.Controls"
+              x:DataType="vm:FrameGraphFile"
+              x:Class="SailorEditor.FrameGraphFileTemplate">
+
+    <VerticalStackLayout x:Name="Root" Spacing="10">
+        <VerticalStackLayout.Resources>
+            <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+        </VerticalStackLayout.Resources>
+
+        <views:ControlPanelView />
+
+        <Label Text="Samplers" FontAttributes="Bold" />
+        <HorizontalStackLayout>
+            <Button Text="+" Command="{Binding AddSamplerCommand}" />
+            <Button Text="Clear" Command="{Binding ClearSamplersCommand}" />
+        </HorizontalStackLayout>
+        <CollectionView ItemsSource="{Binding Samplers}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphSampler">
+                    <Grid ColumnSpacing="6" Padding="0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="260" />
+                        </Grid.ColumnDefinitions>
+                        <Button Grid.Column="0" Text="-" Command="{Binding BindingContext.RemoveSamplerCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
+                        <Entry Grid.Column="1" Text="{Binding Name}" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="2" Text="{Binding FileId}" Placeholder="fileId" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="3" Text="{Binding Path}" Placeholder="path" ReturnType="Done" Completed="OnEntryCompleted" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Label Text="Global Floats" FontAttributes="Bold" />
+        <HorizontalStackLayout>
+            <Button Text="+" Command="{Binding AddFloatCommand}" />
+            <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
+        </HorizontalStackLayout>
+        <CollectionView ItemsSource="{Binding Floats}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphScalar">
+                    <HorizontalStackLayout Spacing="6">
+                        <Button Text="-" Command="{Binding BindingContext.RemoveFloatCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
+                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Text="{Binding Value}" WidthRequest="180" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                    </HorizontalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Label Text="Render Targets" FontAttributes="Bold" />
+        <HorizontalStackLayout>
+            <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
+            <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
+        </HorizontalStackLayout>
+        <CollectionView ItemsSource="{Binding RenderTargets}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphRenderTarget">
+                    <Grid ColumnSpacing="6" RowSpacing="4" Padding="0,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="160" />
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="140" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Button Grid.RowSpan="3" Grid.Column="0" Text="-" Command="{Binding BindingContext.RemoveRenderTargetCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
+                        <Entry Grid.Column="1" Text="{Binding Name}" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="2" Text="{Binding Format}" Placeholder="format" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="3" Text="{Binding Width}" Placeholder="width" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="4" Text="{Binding Height}" Placeholder="height" ReturnType="Done" Completed="OnEntryCompleted" />
+
+                        <Entry Grid.Row="1" Grid.Column="1" Text="{Binding Clamping}" Placeholder="clamping" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Row="1" Grid.Column="2" Text="{Binding Filtration}" Placeholder="filtration" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Row="1" Grid.Column="3" Text="{Binding Reduction}" Placeholder="reduction" ReturnType="Done" Completed="OnEntryCompleted" />
+                        <Entry Grid.Row="1" Grid.Column="4" Text="{Binding MaxMipLevel}" Placeholder="max mip" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+
+                        <HorizontalStackLayout Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Spacing="10">
+                            <Label Text="Surface" VerticalOptions="Center" />
+                            <CheckBox IsChecked="{Binding IsSurface}" />
+                            <Label Text="Compute" VerticalOptions="Center" />
+                            <CheckBox IsChecked="{Binding IsCompatibleWithComputeShaders}" />
+                            <Label Text="Mips" VerticalOptions="Center" />
+                            <CheckBox IsChecked="{Binding GenerateMips}" />
+                        </HorizontalStackLayout>
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <Label Text="Frame Nodes" FontAttributes="Bold" />
+        <HorizontalStackLayout>
+            <Button Text="+" Command="{Binding AddNodeCommand}" />
+            <Button Text="Clear" Command="{Binding ClearNodesCommand}" />
+        </HorizontalStackLayout>
+        <CollectionView ItemsSource="{Binding Nodes}">
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphNode">
+                    <VerticalStackLayout Spacing="6" Padding="0,8">
+                        <HorizontalStackLayout Spacing="6">
+                            <Button Text="-" Command="{Binding BindingContext.RemoveNodeCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
+                            <Entry Text="{Binding Name}" WidthRequest="220" Placeholder="node name" FontAttributes="Bold" ReturnType="Done" Completed="OnEntryCompleted" />
+                        </HorizontalStackLayout>
+
+                        <Label Text="Render Targets" FontAttributes="Bold" FontSize="12" />
+                        <HorizontalStackLayout>
+                            <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
+                            <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
+                        </HorizontalStackLayout>
+                        <CollectionView ItemsSource="{Binding RenderTargets}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FrameGraphTargetBinding">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveRenderTargetCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
+                                        <Entry Text="{Binding Key}" WidthRequest="160" Placeholder="slot" ReturnType="Done" Completed="OnEntryCompleted" />
+                                        <Entry Text="{Binding Value}" WidthRequest="220" Placeholder="target" ReturnType="Done" Completed="OnEntryCompleted" />
+                                    </HorizontalStackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <Label Text="Strings" FontAttributes="Bold" FontSize="12" />
+                        <HorizontalStackLayout>
+                            <Button Text="+" Command="{Binding AddStringCommand}" />
+                            <Button Text="Clear" Command="{Binding ClearStringsCommand}" />
+                        </HorizontalStackLayout>
+                        <CollectionView ItemsSource="{Binding Strings}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FrameGraphScalar">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveStringCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
+                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                                        <Entry Text="{Binding Value}" WidthRequest="260" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" />
+                                    </HorizontalStackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <Label Text="Floats" FontAttributes="Bold" FontSize="12" />
+                        <HorizontalStackLayout>
+                            <Button Text="+" Command="{Binding AddFloatCommand}" />
+                            <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
+                        </HorizontalStackLayout>
+                        <CollectionView ItemsSource="{Binding Floats}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FrameGraphScalar">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveFloatCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
+                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                                        <Entry Text="{Binding Value}" WidthRequest="180" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                                    </HorizontalStackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+
+                        <Label Text="Vec4" FontAttributes="Bold" FontSize="12" />
+                        <HorizontalStackLayout>
+                            <Button Text="+" Command="{Binding AddVec4Command}" />
+                            <Button Text="Clear" Command="{Binding ClearVec4Command}" />
+                        </HorizontalStackLayout>
+                        <CollectionView ItemsSource="{Binding Vec4}">
+                            <CollectionView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:FrameGraphVec4Value">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveVec4Command, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
+                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
+                                        <Entry Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                                        <Entry Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                                        <Entry Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                                        <Entry Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+                                    </HorizontalStackLayout>
+                                </DataTemplate>
+                            </CollectionView.ItemTemplate>
+                        </CollectionView>
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </VerticalStackLayout>
+</DataTemplate>

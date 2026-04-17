@@ -1,18 +1,17 @@
-bEnableDepthTest: true
-bEnableZWrite: true
+renderQueue: Opaque
+depthBias: 0
 bSupportMultisampling: true
 bCustomDepthShader: false
-depthBias: 0
-renderQueue: Opaque
-defines: ~
+bEnableDepthTest: true
+bEnableZWrite: true
 cullMode: Back
 blendMode: None
 fillMode: Fill
-shaderUid: "{E42B1499-8C0C-47E3-9584-E7BB6CD821FC}"
-samplers: ~
+shaderUid: '{1A4BA353-FDA4-4F65-941F-D9FFEE4630A0}'
+samplers: {}
 uniformsVec4:
   material.albedo:
-  - 0.5
+  - 1
   - 0.5
   - 0.5
   - 1
@@ -34,3 +33,4 @@ uniformsVec4:
 uniformsFloat:
   material.roughness: 1
   material.metallic: 0
+defines: []

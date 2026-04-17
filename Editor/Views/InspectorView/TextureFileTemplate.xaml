@@ -56,6 +56,8 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <!-- Generate Mips -->
@@ -67,16 +69,22 @@
             <CheckBox IsChecked="{Binding ShouldSupportStorageBinding}" Grid.Row="1" Grid.Column="1" />
 
             <!-- Filtration -->
-            <Label Text="Filtration" Grid.Row="2" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureFiltrationType}" SelectedItem="{Binding Filtration}" Grid.Row="2" Grid.Column="1" />
+            <Label Text="Keep CPU Buffers" Grid.Row="2" Grid.Column="0" VerticalOptions="Center" />
+            <CheckBox IsChecked="{Binding ShouldKeepCpuBuffers}" Grid.Row="2" Grid.Column="1" />
+
+            <Label Text="Filtration" Grid.Row="3" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureFiltrationType}" SelectedItem="{Binding Filtration}" Grid.Row="3" Grid.Column="1" />
 
             <!-- Clamping -->
-            <Label Text="Clamping" Grid.Row="3" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureClampingType}" SelectedItem="{Binding Clamping}" Grid.Row="3" Grid.Column="1" />
+            <Label Text="Clamping" Grid.Row="4" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureClampingType}" SelectedItem="{Binding Clamping}" Grid.Row="4" Grid.Column="1" />
 
             <!-- Format -->
-            <Label Text="Format" Grid.Row="4" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureFormatType}" SelectedItem="{Binding Format}" Grid.Row="4" Grid.Column="1" />
+            <Label Text="Format" Grid.Row="5" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding TextureFormatType}" SelectedItem="{Binding Format}" Grid.Row="5" Grid.Column="1" />
+
+            <Label Text="Sampler Reduction" Grid.Row="6" Grid.Column="0" VerticalOptions="Center" />
+            <Picker ItemsSource="{Binding SamplerReductionType}" SelectedItem="{Binding SamplerReduction}" Grid.Row="6" Grid.Column="1" />
         </Grid>
     </Grid>
 </DataTemplate>

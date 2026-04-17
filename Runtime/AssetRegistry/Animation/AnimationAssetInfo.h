@@ -8,6 +8,8 @@ namespace Sailor
 
 	class AnimationAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(AnimationAssetInfo)
+
 	public:
 		SAILOR_API virtual ~AnimationAssetInfo() = default;
 
@@ -35,3 +37,11 @@ namespace Sailor
 		IAssetFactory* GetFactory() override;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::AnimationAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename),
+	field(m_animationIndex),
+	field(m_skinIndex)
+)

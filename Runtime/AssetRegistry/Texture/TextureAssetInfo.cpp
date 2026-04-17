@@ -6,39 +6,18 @@
 #include "Core/Utils.h"
 #include <iostream>
 #include "TextureImporter.h"
+#include "Core/Reflection.h"
 
 using namespace Sailor;
 
 YAML::Node TextureAssetInfo::Serialize() const
 {
-	YAML::Node outData;
-
-	outData = AssetInfo::Serialize();
-
-	SERIALIZE_PROPERTY(outData, m_clamping);
-	SERIALIZE_PROPERTY(outData, m_reduction);
-	SERIALIZE_PROPERTY(outData, m_filtration);
-	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
-	SERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
-	SERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
-	SERIALIZE_PROPERTY(outData, m_format);
-	SERIALIZE_PROPERTY(outData, m_glbTextureIndex);
-
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void TextureAssetInfo::Deserialize(const YAML::Node& outData)
 {
-	AssetInfo::Deserialize(outData);
-
-	DESERIALIZE_PROPERTY(outData, m_clamping);
-	DESERIALIZE_PROPERTY(outData, m_reduction);
-	DESERIALIZE_PROPERTY(outData, m_filtration);
-	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMips);
-	DESERIALIZE_PROPERTY(outData, m_bShouldSupportStorageBinding);
-	DESERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
-	DESERIALIZE_PROPERTY(outData, m_format);
-	DESERIALIZE_PROPERTY(outData, m_glbTextureIndex);
+	DeserializeReflectedAssetInfo(*this, outData);
 }
 
 TextureAssetInfoHandler::TextureAssetInfoHandler(AssetRegistry* assetRegistry)

@@ -23,6 +23,7 @@
             <local:ShaderLibraryFileTemplate x:Key="ShaderLibraryFileTemplate" />
             <local:MaterialFileTemplate x:Key="MaterialFileTemplate" />
             <local:ModelFileTemplate x:Key="ModelFileTemplate" />
+            <local:FrameGraphFileTemplate x:Key="FrameGraphFileTemplate" />
             <local:GameObjectTemplate x:Key="GameObjectTemplate" />
 
             <local:InspectorTemplateSelector x:Key="InspectorTemplateSelector"
@@ -31,6 +32,7 @@
                                           ShaderFileTemplate="{StaticResource ShaderFileTemplate}"                                          
                                           MaterialFileTemplate ="{StaticResource MaterialFileTemplate}"
                                           ModelFileTemplate ="{StaticResource ModelFileTemplate}"
+                                          FrameGraphFileTemplate="{StaticResource FrameGraphFileTemplate}"
                                           ShaderLibraryFileTemplate="{StaticResource ShaderLibraryFileTemplate}"
                                           GameObjectTemplate ="{StaticResource GameObjectTemplate}"/>
         </ResourceDictionary>
@@ -53,7 +55,7 @@
                     Spacing="5"
                     VerticalOptions="Start"
                     HorizontalOptions="StartAndExpand">
-                    <CollectionView x:Name="InspectedItem" ItemsSource="{Binding SelectedItems}" ItemTemplate="{StaticResource InspectorTemplateSelector}" />
+                    <ContentView x:Name="InspectedItemHost" />
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>

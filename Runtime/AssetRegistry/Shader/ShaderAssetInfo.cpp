@@ -6,6 +6,7 @@
 #include "Core/Utils.h"
 #include <iostream>
 #include "ShaderCompiler.h"
+#include "Core/Reflection.h"
 
 using namespace Sailor;
 

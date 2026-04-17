@@ -1,27 +1,48 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
+using System.ComponentModel;
 
 namespace SailorEditor.Views
 {
     public partial class InspectorView : ContentView
     {
+        readonly SelectionService selectionViewModel;
+
         public InspectorView()
         {
             InitializeComponent();
 
-            var selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.OnSelectAssetAction += RefreshInspector;
+            selectionViewModel = MauiProgram.GetService<SelectionService>();
+            selectionViewModel.PropertyChanged += OnSelectionChanged;
             this.BindingContext = selectionViewModel;
+            RefreshInspector();
         }
 
-        private void RefreshInspector(object file)
+        void OnSelectionChanged(object sender, PropertyChangedEventArgs args)
         {
-            // If we don't do that then TemplateSelector is not called
+            if (args.PropertyName == nameof(SelectionService.SelectedItem))
+            {
+                RefreshInspector();
+            }
+        }
 
-            var refresh = InspectedItem.ItemsSource;
-            InspectedItem.ItemsSource = null;
-            InspectedItem.ItemsSource = refresh;
+        void RefreshInspector()
+        {
+            if (selectionViewModel.SelectedItem == null)
+            {
+                InspectedItemHost.Content = null;
+                return;
+            }
+
+            var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
+            var template = selector.SelectTemplate(selectionViewModel.SelectedItem, InspectedItemHost);
+            var content = template.CreateContent();
+            if (content is View view)
+            {
+                view.BindingContext = selectionViewModel.SelectedItem;
+                InspectedItemHost.Content = view;
+            }
         }
     }
 }

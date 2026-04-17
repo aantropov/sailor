@@ -8,6 +8,7 @@
 #include "RHI/VertexDescription.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"

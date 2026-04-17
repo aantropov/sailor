@@ -5,20 +5,19 @@
 #include <fstream>
 #include "Core/Utils.h"
 #include "PrefabImporter.h"
+#include "Core/Reflection.h"
 #include <iostream>
 
 using namespace Sailor;
 
 YAML::Node PrefabAssetInfo::Serialize() const
 {
-	YAML::Node outData;
-	outData = AssetInfo::Serialize();
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void PrefabAssetInfo::Deserialize(const YAML::Node& outData)
 {
-	AssetInfo::Deserialize(outData);
+	DeserializeReflectedAssetInfo(*this, outData);
 }
 
 IAssetInfoHandler* PrefabAssetInfo::GetHandler()

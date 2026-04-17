@@ -6,6 +6,7 @@
 #include <iostream>
 #include "MaterialImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/Reflection.h"
 
 using namespace Sailor;
 

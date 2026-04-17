@@ -3,24 +3,24 @@
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include <iostream>
 
 using namespace Sailor;
 
+std::string AssetInfo::GetAssetInfoType() const
+{
+	return GetTypeInfo().Name();
+}
+
 YAML::Node AssetInfo::Serialize() const
 {
-	YAML::Node outData;
-	const std::string filename = std::filesystem::path(GetAssetFilepath()).filename().string();
-
-	outData["fileId"] = m_fileId;
-	outData["filename"] = filename;
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void AssetInfo::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = inData["fileId"].as<FileId>();
-	m_assetFilename = inData["filename"].as<std::string>();
+	DeserializeReflectedAssetInfo(*this, inData);
 }
 
 void AssetInfo::SaveMetaFile()

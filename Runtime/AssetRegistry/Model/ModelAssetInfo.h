@@ -10,6 +10,8 @@ namespace Sailor
 {
 	class ModelAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(ModelAssetInfo)
+
 	public:
 		SAILOR_API virtual ~ModelAssetInfo() = default;
 
@@ -24,8 +26,10 @@ namespace Sailor
 
 		SAILOR_API const TVector<FileId>& GetDefaultMaterials() const { return m_materials; }
 		SAILOR_API TVector<FileId>& GetDefaultMaterials() { return m_materials; }
+		SAILOR_API const TVector<FileId>& GetDefaultMaterialsMetadata() const { return m_materials; }
 		SAILOR_API const TVector<FileId>& GetAnimations() const { return m_animations; }
 		SAILOR_API TVector<FileId>& GetAnimations() { return m_animations; }
+		SAILOR_API const TVector<FileId>& GetAnimationsMetadata() const { return m_animations; }
 
 		SAILOR_API virtual IAssetInfoHandler* GetHandler() override;
 
@@ -57,3 +61,16 @@ namespace Sailor
 		virtual ~ModelAssetInfoHandler() = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::ModelAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename),
+	field(m_bShouldGenerateMaterials),
+	field(m_bShouldBatchByMaterial),
+	field(m_bShouldKeepCpuBuffers),
+	field(m_bGenerateBLAS),
+	field(m_unitScale),
+	field(m_materials),
+	field(m_animations)
+)

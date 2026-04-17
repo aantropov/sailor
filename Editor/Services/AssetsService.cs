@@ -34,22 +34,41 @@ namespace SailorEditor.Services
             FileInfo assetFile = new(Path.ChangeExtension(assetInfo.FullName, null));
 
             var extension = Path.GetExtension(assetFile.FullName);
+            var assetInfoType = TryReadScalar(assetInfo, "assetInfoType");
 
-            AssetFile newAssetFile = extension switch
+            AssetFile newAssetFile = assetInfoType switch
             {
-                ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
-                ".obj" or ".gltf" or ".glb" => new ModelFile(),
-                ".shader" => new ShaderFile(),
-                ".mat" => new MaterialFile(),
-                ".glsl" => new ShaderLibraryFile(),
-                _ => new AssetFile()
+                "Sailor::TextureAssetInfo" => new TextureFile(),
+                "Sailor::ModelAssetInfo" => new ModelFile(),
+                "Sailor::AnimationAssetInfo" => new AnimationFile(),
+                "Sailor::PrefabAssetInfo" => new PrefabFile(),
+                "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
+                "Sailor::ShaderAssetInfo" => new ShaderFile(),
+                "Sailor::MaterialAssetInfo" => new MaterialFile(),
+                "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
+                _ => CreateAssetFileByExtension(extension)
             };
+
+            newAssetFile.AssetInfoTypeName = assetInfoType;
+
+            var engineTypes = MauiProgram.GetService<EngineService>()?.EngineTypes;
+            AssetType assetType = null;
+            if (!string.IsNullOrEmpty(assetInfoType))
+            {
+                engineTypes?.AssetTypes?.TryGetValue(assetInfoType, out assetType);
+            }
+
+            if (assetType == null)
+            {
+                engineTypes?.AssetTypesByExtension?.TryGetValue(extension.TrimStart('.').ToLowerInvariant(), out assetType);
+            }
 
             newAssetFile.Id = Files.Count + 1;
             newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
+            newAssetFile.AssetType = assetType;
             newAssetFile.IsDirty = false;
 
             _ = newAssetFile.Revert();
@@ -61,6 +80,42 @@ namespace SailorEditor.Services
             }
 
             return newAssetFile;
+        }
+
+        private static AssetFile CreateAssetFileByExtension(string extension) => extension switch
+        {
+            ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
+            ".obj" or ".gltf" or ".glb" => new ModelFile(),
+            ".anim" => new AnimationFile(),
+            ".prefab" => new PrefabFile(),
+            ".world" => new WorldFile(),
+            ".shader" => new ShaderFile(),
+            ".mat" => new MaterialFile(),
+            ".renderer" => new FrameGraphFile(),
+            ".glsl" => new ShaderLibraryFile(),
+            _ => new AssetFile()
+        };
+
+        private static string TryReadScalar(FileInfo assetInfo, string fieldName)
+        {
+            try
+            {
+                using var reader = new StreamReader(assetInfo.FullName);
+                var yaml = new YamlStream();
+                yaml.Load(reader);
+                if (yaml.Documents.Count > 0 &&
+                    yaml.Documents[0].RootNode is YamlMappingNode root &&
+                    root.Children.TryGetValue(new YamlScalarNode(fieldName), out var node))
+                {
+                    return node?.ToString();
+                }
+            }
+            catch (YamlException ex)
+            {
+                Console.WriteLine($"[AssetsService] Failed to read {fieldName}: {assetInfo.FullName} :: {ex.Message}");
+            }
+
+            return null;
         }
 
         private void TryPopulateAssetMetadataFromYaml(AssetFile assetFile)
@@ -83,6 +138,11 @@ namespace SailorEditor.Services
                 if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode root)
                 {
                     return;
+                }
+
+                if (string.IsNullOrEmpty(assetFile.AssetInfoTypeName) && root.Children.TryGetValue(new YamlScalarNode("assetInfoType"), out var assetInfoTypeNode))
+                {
+                    assetFile.AssetInfoTypeName = assetInfoTypeNode?.ToString();
                 }
 
                 if ((assetFile.FileId == null || assetFile.FileId.IsEmpty()) && root.Children.TryGetValue(new YamlScalarNode("fileId"), out var fileIdNode))

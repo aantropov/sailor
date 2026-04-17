@@ -162,9 +162,18 @@ namespace SailorEngine
         public Dictionary<string, PropertyBase> Properties { get; set; } = [];
     };
 
+    public class AssetType
+    {
+        public string Name { get; set; }
+        public List<string> Extensions { get; set; } = [];
+        public Dictionary<string, PropertyBase> Properties { get; set; } = [];
+    };
+
     class EngineTypes
     {
         public Dictionary<string, ComponentType> Components { get; private set; } = [];
+        public Dictionary<string, AssetType> AssetTypes { get; private set; } = [];
+        public Dictionary<string, AssetType> AssetTypesByExtension { get; private set; } = [];
         public Dictionary<string, List<string>> Enums { get; private set; } = [];
 
         public static Type GetEditorType(string engineType)
@@ -234,6 +243,7 @@ namespace SailorEngine
             AddEnumAlias(enums, "enum Sailor::RHI::EFormat", "N6Sailor3RHI7EFormatE");
             AddEnumAlias(enums, "enum Sailor::RHI::ETextureFiltration", "N6Sailor3RHI18ETextureFiltrationE");
             AddEnumAlias(enums, "enum Sailor::RHI::ETextureClamping", "N6Sailor3RHI16ETextureClampingE");
+            AddEnumAlias(enums, "enum Sailor::RHI::ESamplerReductionMode", "N6Sailor3RHI21ESamplerReductionModeE");
             AddEnumAlias(enums, "enum Sailor::RHI::EFillMode", "N6Sailor3RHI9EFillModeE");
             AddEnumAlias(enums, "enum Sailor::RHI::ECullMode", "N6Sailor3RHI9ECullModeE");
             AddEnumAlias(enums, "enum Sailor::RHI::EBlendMode", "N6Sailor3RHI10EBlendModeE");
@@ -272,6 +282,30 @@ namespace SailorEngine
                     }
                 }
                 AddEnumAliases(res.Enums);
+
+                foreach (var assetTypeNode in rootNode.AssetTypes ?? Enumerable.Empty<AssetTypeNode>())
+                {
+                    if (string.IsNullOrEmpty(assetTypeNode.Typename))
+                        continue;
+
+                    var assetType = new AssetType
+                    {
+                        Name = assetTypeNode.Typename,
+                        Extensions = assetTypeNode.Extensions ?? []
+                    };
+
+                    foreach (var property in EnumerateAssetTypeProperties(assetTypeNode.Properties))
+                    {
+                        var propertyType = property.Type;
+                        assetType.Properties[property.Name] = CreateAssetProperty(propertyType);
+                    }
+
+                    res.AssetTypes[assetType.Name] = assetType;
+                    foreach (var extension in assetType.Extensions)
+                    {
+                        res.AssetTypesByExtension[extension.TrimStart('.').ToLowerInvariant()] = assetType;
+                    }
+                }
 
                 // Pass 1: register all component types first.
                 foreach (var component in rootNode.EngineTypes)
@@ -320,13 +354,12 @@ namespace SailorEngine
                                 }
                             }
 
-                            PropertyBase newProperty = propertyType switch
+                            PropertyBase newProperty = CreateCommonProperty(propertyType) ?? propertyType switch
                             {
                                 "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
                                 "struct glm::vec<2,float,0>" => new Vec2Property(),
                                 "struct glm::vec<3,float,0>" => new Vec3Property(),
                                 "struct glm::vec<4,float,0>" => new Vec4Property(),
-                                "float" => new FloatProperty(),
                                 var value when value.Contains("TObjectPtr") => new ObjectPtrProperty()
                                 {
                                     GenericTypename = genericType,
@@ -360,11 +393,35 @@ namespace SailorEngine
             return res;
         }
 
+        static PropertyBase CreateAssetProperty(string propertyType)
+        {
+            return CreateCommonProperty(propertyType) ?? propertyType switch
+            {
+                "FileId" => new FileIdProperty(),
+                "List<FileId>" => new Property<List<FileId>>(),
+                var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
+                _ => throw new InvalidDataException($"Unsupported asset property type: {propertyType}")
+            };
+        }
+
+        static PropertyBase CreateCommonProperty(string propertyType)
+        {
+            return propertyType switch
+            {
+                "string" => new Property<string>(),
+                "bool" => new Property<bool>(),
+                "int32" => new Property<int>(),
+                "float" => new FloatProperty(),
+                _ => null
+            };
+        }
+
         public class RootNode
         {
             public List<EngineTypeNode> EngineTypes { get; set; }
             public List<ComponentDefaultValuesNode> Cdos { get; set; }
             public List<Dictionary<string, List<string>>> Enums { get; set; }
+            public List<AssetTypeNode> AssetTypes { get; set; }
         }
 
         public class EngineTypeNode
@@ -377,6 +434,40 @@ namespace SailorEngine
         {
             public string Typename { get; set; }
             public Dictionary<string, object> DefaultValues { get; set; }
+        }
+
+        public class AssetTypeNode
+        {
+            public string Typename { get; set; }
+            public List<string> Extensions { get; set; }
+            public object Properties { get; set; }
+        }
+
+        public class AssetTypePropertyNode
+        {
+            public string Name { get; set; }
+            public string Type { get; set; }
+        }
+
+        static IEnumerable<AssetTypePropertyNode> EnumerateAssetTypeProperties(object properties)
+        {
+            if (properties is not IEnumerable<object> propertyList)
+            {
+                yield break;
+            }
+
+            foreach (var property in propertyList)
+            {
+                if (property is Dictionary<object, object> propertyNode)
+                {
+                    var name = propertyNode.TryGetValue("name", out var nameValue) ? nameValue?.ToString() : null;
+                    var type = propertyNode.TryGetValue("type", out var typeValue) ? typeValue?.ToString() : null;
+                    if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(type))
+                    {
+                        yield return new AssetTypePropertyNode { Name = name, Type = type };
+                    }
+                }
+            }
         }
     };
 }

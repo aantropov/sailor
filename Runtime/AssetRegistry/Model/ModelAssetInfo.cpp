@@ -5,37 +5,19 @@
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
+#include "Core/Reflection.h"
 #include <iostream>
 
 using namespace Sailor;
 
 YAML::Node ModelAssetInfo::Serialize() const
 {
-	YAML::Node outData;
-	outData = AssetInfo::Serialize();
-
-	SERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
-	SERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
-	SERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
-	SERIALIZE_PROPERTY(outData, m_bGenerateBLAS);
-	SERIALIZE_PROPERTY(outData, m_unitScale);
-	SERIALIZE_PROPERTY(outData, m_materials);
-	SERIALIZE_PROPERTY(outData, m_animations);
-
-	return outData;
+	return SerializeReflectedAssetInfo(*this);
 }
 
 void ModelAssetInfo::Deserialize(const YAML::Node& outData)
 {
-	AssetInfo::Deserialize(outData);
-
-	DESERIALIZE_PROPERTY(outData, m_bShouldGenerateMaterials);
-	DESERIALIZE_PROPERTY(outData, m_bShouldBatchByMaterial);
-	DESERIALIZE_PROPERTY(outData, m_bShouldKeepCpuBuffers);
-	DESERIALIZE_PROPERTY(outData, m_bGenerateBLAS);
-	DESERIALIZE_PROPERTY(outData, m_unitScale);
-	DESERIALIZE_PROPERTY(outData, m_materials);
-	DESERIALIZE_PROPERTY(outData, m_animations);
+	DeserializeReflectedAssetInfo(*this, outData);
 }
 
 ModelAssetInfoHandler::ModelAssetInfoHandler(AssetRegistry* assetRegistry)

@@ -9,6 +9,8 @@ namespace Sailor
 {
 	class TextureAssetInfo final : public AssetInfo
 	{
+		SAILOR_REFLECTABLE(TextureAssetInfo)
+
 	public:
 		SAILOR_API virtual ~TextureAssetInfo() = default;
 
@@ -59,3 +61,17 @@ namespace Sailor
 		SAILOR_API virtual ~TextureAssetInfoHandler() = default;
 	};
 }
+
+REFL_AUTO(
+	type(Sailor::TextureAssetInfo, bases<Sailor::AssetInfo>),
+	field(m_fileId),
+	field(m_assetFilename),
+	field(m_clamping),
+	field(m_reduction),
+	field(m_filtration),
+	field(m_bShouldGenerateMips),
+	field(m_bShouldSupportStorageBinding),
+	field(m_bShouldKeepCpuBuffers),
+	field(m_format),
+	field(m_glbTextureIndex)
+)
