@@ -1,13 +1,12 @@
 using SailorEditor.Layout;
 using SailorEditor.Panels;
-using System.Text.Json;
 
 namespace SailorEditor.Editor.Tests;
 
 public class LayoutContractsTests
 {
     [Fact]
-    public void EditorLayout_MinimalGraph_RoundTripsThroughJson()
+    public void EditorLayout_MinimalGraph_PreservesExpectedStructure()
     {
         var panelId = PanelId.New();
         var layout = new EditorLayout(
@@ -20,13 +19,10 @@ public class LayoutContractsTests
                     GroupId: "left-tools")),
             MainWindow: new WindowBounds(10, 20, 1600, 900));
 
-        var json = JsonSerializer.Serialize(layout);
-        var restored = JsonSerializer.Deserialize<EditorLayout>(json);
-
-        Assert.NotNull(restored);
-        Assert.Equal(1, restored!.Version);
-        var tabs = Assert.IsType<TabGroupNode>(restored.Root.Content);
+        Assert.Equal(1, layout.Version);
+        var tabs = Assert.IsType<TabGroupNode>(layout.Root.Content);
         Assert.Equal(panelId, tabs.ActivePanelId);
         Assert.Single(tabs.Panels);
+        Assert.Equal("Hierarchy", tabs.Panels[0].PanelTypeId.Value);
     }
 }

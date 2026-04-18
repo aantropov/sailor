@@ -1,5 +1,4 @@
 using SailorEditor.Panels;
-using System.Text.Json.Serialization;
 
 namespace SailorEditor.Layout;
 
@@ -11,8 +10,6 @@ public sealed record EditorLayout(
 
 public sealed record LayoutRoot(LayoutNode Content);
 
-[JsonDerivedType(typeof(SplitNode), typeDiscriminator: "split")]
-[JsonDerivedType(typeof(TabGroupNode), typeDiscriminator: "tabs")]
 public abstract record LayoutNode;
 
 public enum SplitOrientation
