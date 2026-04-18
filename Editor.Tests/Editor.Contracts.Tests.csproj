@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
+    <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
+    <Compile Include="..\Editor\Commands\CommandContracts.cs" Link="Commands\CommandContracts.cs" />
+    <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
+    <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
+    <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
+    <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
+    <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />
+  </ItemGroup>
+</Project>
