@@ -4,6 +4,9 @@ using SailorEditor.Helpers;
 using SailorEditor.Services;
 using CommunityToolkit.Maui;
 using SailorEditor.Controls;
+using SailorEditor.Panels;
+using SailorEditor.Shell;
+using SailorEditor.State;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -37,6 +40,10 @@ namespace SailorEditor
             builder.Services.AddSingleton<WorldService>();
             builder.Services.AddSingleton<EngineService>();
             builder.Services.AddSingleton<EditorContextMenuService>();
+            builder.Services.AddSingleton<PanelRegistry>();
+            builder.Services.AddSingleton<ShellState>();
+            builder.Services.AddSingleton<IEditorShellLayoutStore, YamlEditorShellLayoutStore>();
+            builder.Services.AddSingleton<EditorShellHost>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

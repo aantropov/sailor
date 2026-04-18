@@ -2,65 +2,27 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:SailorEditor"
+             xmlns:views="clr-namespace:SailorEditor.Views"
+             xmlns:shell="clr-namespace:SailorEditor.Shell"
              x:Class="SailorEditor.MainPage"
              x:DataType="local:MainPage"
-             Title=""
-             xmlns:views="clr-namespace:SailorEditor.Views"
-             xmlns:controls="clr-namespace:SailorEditor.Controls">
+             Title="Sailor Editor">
 
-    <ContentPage.MenuBarItems>
-        <MenuBarItem Text = "File">
-            <MenuFlyoutItem Text ="Save" ></MenuFlyoutItem>
-            <MenuFlyoutSeparator/>
-            <MenuFlyoutItem Text ="Exit"></MenuFlyoutItem>
-        </MenuBarItem>
-        <MenuBarItem Text="Preferences">
-            <MenuFlyoutItem Text="Light Theme" x:DataType="local:MainPage" Command="{Binding ChangeThemeCommand}" CommandParameter="LightThemeStyle" />
-            <MenuFlyoutItem Text="Dark Theme" x:DataType="local:MainPage" Command="{Binding ChangeThemeCommand}" CommandParameter="DarkThemeStyle" />
-        </MenuBarItem>
-    </ContentPage.MenuBarItems>
+    <Grid RowSpacing="0" ColumnSpacing="0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-    <ContentPage.Content>
-        <Grid RowSpacing="0" ColumnSpacing="0">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
+        <views:ToolbarView Grid.Row="0"/>
+        <shell:ShellLayoutView x:Name="ShellLayoutHost" Grid.Row="1"/>
 
-            <views:ToolbarView Grid.Row="0"/>
-
-            <Grid Grid.Row="1" RowSpacing="0" ColumnSpacing="0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="300"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="300"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="300"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="200"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <views:ContentFolderView Grid.Row="0" Grid.Column="0"/>
-                <views:HierarchyView Grid.Row="0" Grid.Column="2"/>
-
-                <controls:HorizontalGridSplitterControl Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3"/>
-
-                <views:InspectorView Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Grid.RowSpan="3"/>
-
-                <controls:VerticalGridSplitterControl Grid.Row="0" Grid.Column="1"/>
-                <controls:VerticalGridSplitterControl Grid.Row="0" Grid.Column="3" Grid.RowSpan="5"/>
-
-                <views:SceneView x:Name="SceneView" Grid.Column="4" Grid.RowSpan="3"/>
-                <views:ConsoleView Grid.Row="5" Grid.Column="4"/>
-                <controls:HorizontalGridSplitterControl Grid.Row="3" Grid.Column="4"/>
+        <Border Grid.Row="2" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
+            <Grid ColumnDefinitions="Auto,*">
+                <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>
+                <Label x:Name="StatusTextLabel" Grid.Column="1" Text="Ready"/>
             </Grid>
-        </Grid>
-    </ContentPage.Content>
-
+        </Border>
+    </Grid>
 </ContentPage>

@@ -18,6 +18,7 @@
   <ItemGroup>
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
+    <Compile Include="..\Editor\Layout\LayoutOperations.cs" Link="Layout\LayoutOperations.cs" />
     <Compile Include="..\Editor\Commands\CommandContracts.cs" Link="Commands\CommandContracts.cs" />
     <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
     <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
