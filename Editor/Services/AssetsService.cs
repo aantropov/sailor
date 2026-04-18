@@ -6,6 +6,8 @@ using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
 using System.Collections.Generic;
 using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
+using SailorEditor.Helpers;
 
 namespace SailorEditor.Services
 {
@@ -18,6 +20,47 @@ namespace SailorEditor.Services
 
         public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
 
+        public string GetFolderPath(AssetFolder folder)
+        {
+            if (folder == null)
+            {
+                return MauiProgram.GetService<EngineService>().EngineContentDirectory;
+            }
+
+            var parts = new Stack<string>();
+            var current = folder;
+            while (current != null)
+            {
+                parts.Push(current.Name);
+                current = Folders.FirstOrDefault(x => x.Id == current.ParentFolderId);
+            }
+
+            return Path.Combine(MauiProgram.GetService<EngineService>().EngineContentDirectory, Path.Combine(parts.ToArray()));
+        }
+
+        public PrefabFile CreatePrefabAsset(AssetFolder targetFolder, GameObject root, bool overwrite = false, PrefabFile existingPrefab = null)
+        {
+            var worldService = MauiProgram.GetService<WorldService>();
+            var prefab = worldService.CreatePrefabFromSubHierarchy(root, out var externalRefs);
+            var folderPath = existingPrefab?.Asset?.DirectoryName ?? GetFolderPath(targetFolder);
+            Directory.CreateDirectory(folderPath);
+
+            var prefabName = existingPrefab?.Asset?.Name ?? GetUniqueAssetName(folderPath, root.Name, ".prefab");
+            var prefabPath = existingPrefab?.Asset?.FullName ?? Path.Combine(folderPath, prefabName);
+            var assetInfoPath = prefabPath + ".asset";
+            var fileId = existingPrefab?.FileId ?? new FileId($"{{{Guid.NewGuid().ToString().ToUpperInvariant()}}}");
+
+            WritePrefab(prefabPath, prefab);
+            WritePrefabAssetInfo(assetInfoPath, fileId, Path.GetFileName(prefabPath), externalRefs);
+
+            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            var created = Assets.TryGetValue(fileId, out var asset) && asset is PrefabFile prefabFile
+                ? prefabFile
+                : null;
+
+            return created;
+        }
+
         public void AddProjectRoot(string projectRoot)
         {
             Folders = [];
@@ -27,6 +70,62 @@ namespace SailorEditor.Services
             ReadDirectory(Root, projectRoot, -1);
 
             Files = new HashSet<AssetFile>([.. Assets.Values]).ToList();
+        }
+
+        static string GetUniqueAssetName(string folderPath, string baseName, string extension)
+        {
+            var sanitized = string.Join("_", baseName.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            if (string.IsNullOrWhiteSpace(sanitized))
+            {
+                sanitized = "Prefab";
+            }
+
+            var fileName = sanitized + extension;
+            var index = 1;
+            while (File.Exists(Path.Combine(folderPath, fileName)) || File.Exists(Path.Combine(folderPath, fileName + ".asset")))
+            {
+                fileName = $"{sanitized}_{index++}{extension}";
+            }
+
+            return fileName;
+        }
+
+        static void WritePrefab(string path, Prefab prefab)
+        {
+            var commonConverters = new List<IYamlTypeConverter> {
+                new ComponentTypeYamlConverter(),
+                new ViewModels.ComponentYamlConverter()
+            };
+
+            var serializerBuilder = SerializationUtils.CreateSerializerBuilder()
+                .WithTypeConverter(new ObservableListConverter<GameObject>(commonConverters.ToArray()))
+                .WithTypeConverter(new ObservableListConverter<Component>(commonConverters.ToArray()));
+
+            commonConverters.ForEach(converter => serializerBuilder.WithTypeConverter(converter));
+
+            var serializer = serializerBuilder.Build();
+            File.WriteAllText(path, serializer.Serialize(prefab));
+        }
+
+        static void WritePrefabAssetInfo(string path, FileId fileId, string filename, List<InstanceId> externalRefs)
+        {
+            var root = new YamlMappingNode
+            {
+                { "assetInfoType", "Sailor::PrefabAssetInfo" },
+                { "fileId", fileId.Value },
+                { "filename", filename }
+            };
+
+            if (externalRefs.Count > 0)
+            {
+                var warnings = new YamlSequenceNode();
+                warnings.Add($"Prefab contains scene references: {string.Join(", ", externalRefs.Select(x => x.Value))}");
+                root.Add("warnings", warnings);
+            }
+
+            var yaml = new YamlStream(new YamlDocument(root));
+            using var writer = new StreamWriter(new FileStream(path, FileMode.Create));
+            yaml.Save(writer, false);
         }
 
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId)

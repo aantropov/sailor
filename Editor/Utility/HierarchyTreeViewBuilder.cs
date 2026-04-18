@@ -16,28 +16,34 @@ namespace SailorEditor.Helpers
             int groupId = 0;
             foreach (var prefab in prefabs)
             {
-                var groups = new List<TreeViewItemGroup<GameObject, Component>>();
-                foreach (var gameObject in prefab)
+                var groupsByPrefabIndex = new Dictionary<int, TreeViewItemGroup<GameObject, Component>>();
+
+                for (var gameObjectIndex = 0; gameObjectIndex < prefab.Count; gameObjectIndex++)
                 {
-                    var itemGroup = new TreeViewItemGroup<GameObject, Component>();
-                    itemGroup.Model = gameObject;
-                    itemGroup.GroupId = groupId;
-                    itemGroup.Key = gameObject.Name;
+                    var gameObject = prefab[gameObjectIndex];
+                    var itemGroup = new TreeViewItemGroup<GameObject, Component>
+                    {
+                        Model = gameObject,
+                        GroupId = groupId,
+                        Key = gameObject.Name
+                    };
+
+                    groupsByPrefabIndex[gameObjectIndex] = itemGroup;
+                    groupId++;
+                }
+
+                for (var gameObjectIndex = 0; gameObjectIndex < prefab.Count; gameObjectIndex++)
+                {
+                    var gameObject = prefab[gameObjectIndex];
+                    var itemGroup = groupsByPrefabIndex[gameObjectIndex];
 
                     if (gameObject.ParentIndex == uint.MaxValue)
                     {
                         worldGroup.ChildrenGroups.Add(itemGroup);
                     }
-
-                    groups.Add(itemGroup);
-                    groupId++;
-                }
-
-                foreach (var gameObject in groups)
-                {
-                    if (gameObject.Model.ParentIndex != uint.MaxValue)
+                    else if (groupsByPrefabIndex.TryGetValue((int)gameObject.ParentIndex, out var parentGroup))
                     {
-                        groups[(int)gameObject.Model.ParentIndex].ChildrenGroups.Add(gameObject);
+                        parentGroup.ChildrenGroups.Add(itemGroup);
                     }
                 }
             }

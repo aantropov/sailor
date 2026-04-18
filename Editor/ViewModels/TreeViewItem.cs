@@ -17,6 +17,11 @@ public class TreeViewItem<TModel> : TreeViewItemBase
 
     public override TModel1 GetModel<TModel1>()
     {
+        if (Model == null)
+        {
+            return default;
+        }
+
         if (Model is TModel1 model)
         {
             return model;
@@ -31,6 +36,7 @@ abstract public class TreeViewItemGroupBase
 {
     abstract public IEnumerable<TreeViewItemGroupBase> ChildrenGroupsBase { get; }
     abstract public IEnumerable<TreeViewItemBase> ChildrenItemsBase { get; }
+    public abstract TModel GetModel<TModel>();
 
     public string Key { get; set; }
     public int GroupId { get; set; }
@@ -45,4 +51,19 @@ public class TreeViewItemGroup<TGroupModel, TItemModel> : TreeViewItemGroupBase
     public TGroupModel Model { get; set; }
     public override IEnumerable<TreeViewItemGroup<TGroupModel, TItemModel>> ChildrenGroupsBase { get => ChildrenGroups; }
     public override IEnumerable<TreeViewItem<TItemModel>> ChildrenItemsBase { get => ChildrenItems; }
+
+    public override TModel GetModel<TModel>()
+    {
+        if (Model == null)
+        {
+            return default;
+        }
+
+        if (Model is TModel model)
+        {
+            return model;
+        }
+
+        throw new InvalidCastException($"Model is not of type {typeof(TModel)}");
+    }
 }

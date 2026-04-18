@@ -42,6 +42,8 @@ namespace Sailor
 		RECT GetViewport() const { return m_windowRect; }
 
 		bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
+		bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
+		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
 		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 
 	protected:

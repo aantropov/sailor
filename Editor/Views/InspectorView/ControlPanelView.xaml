@@ -29,6 +29,13 @@
                LineBreakMode="WordWrap"
                MaxLines="3" />
 
+        <Label Text="{Binding LoadWarning}"
+               IsVisible="{Binding LoadWarning, Converter={StaticResource StringNotEmptyConverter}}"
+               TextColor="Goldenrod"
+               FontSize="12"
+               LineBreakMode="WordWrap"
+               MaxLines="3" />
+
         <!-- Buttons -->
         <HorizontalStackLayout Spacing="10"
                                HorizontalOptions="Start"

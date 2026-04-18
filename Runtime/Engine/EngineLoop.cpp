@@ -42,9 +42,8 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 		newWorld->Instantiate(prefab);
 	}
 
-	newWorld->ResolveExternalDependencies();
-
 	m_worlds.Emplace(newWorld);
+	ProcessPendingDependencyResolution();
 
 	return newWorld;
 }
@@ -90,6 +89,14 @@ void EngineLoop::ProcessPendingWorldExits()
 	m_pendingWorldsToExit.Clear();
 }
 
+void EngineLoop::ProcessPendingDependencyResolution()
+{
+	for (auto& world : m_worlds)
+	{
+		world->ResolveExternalDependencies();
+	}
+}
+
 void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -100,6 +107,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	timer.Start();
 
 	App::GetSubmodule<ImGuiApi>()->NewFrame();
+	ProcessPendingDependencyResolution();
 
 	for (auto& world : m_worlds)
 	{

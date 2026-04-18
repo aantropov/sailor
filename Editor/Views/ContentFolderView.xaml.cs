@@ -3,6 +3,7 @@ using SailorEditor.Helpers;
 using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Utility;
 
 namespace SailorEditor.Views
 {
@@ -18,6 +19,7 @@ namespace SailorEditor.Views
             PopulateTreeView();
 
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
+            FolderTree.DropRequested += OnContentDropRequested;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectAssetAction += SelectAssetFile;
@@ -57,6 +59,44 @@ namespace SailorEditor.Views
             if (selectionChanged.Model is TreeViewItem<AssetFile> assetFile)
             {
                 MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
+            }
+        }
+
+        private async void OnContentDropRequested(object sender, TreeViewDropRequest request)
+        {
+            if (request.Source is not GameObject gameObject)
+            {
+                return;
+            }
+
+            switch (request.Target)
+            {
+                case null:
+                    service.CreatePrefabAsset(null, gameObject);
+                    PopulateTreeView();
+                    request.Handled = true;
+                    break;
+
+                case AssetFolder folder:
+                    service.CreatePrefabAsset(folder, gameObject);
+                    PopulateTreeView();
+                    request.Handled = true;
+                    break;
+
+                case PrefabFile prefab:
+                    request.Handled = true;
+                    var overwrite = await Application.Current.MainPage.DisplayAlert(
+                        "Overwrite prefab",
+                        $"Overwrite {prefab.DisplayName} with {gameObject.DisplayName}?",
+                        "Overwrite",
+                        "Cancel");
+
+                    if (overwrite)
+                    {
+                        service.CreatePrefabAsset(null, gameObject, overwrite: true, existingPrefab: prefab);
+                        PopulateTreeView();
+                    }
+                    break;
             }
         }
 

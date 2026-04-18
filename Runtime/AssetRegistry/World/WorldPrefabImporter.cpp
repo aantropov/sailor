@@ -63,6 +63,11 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 
 	for (auto& go : gameObjects)
 	{
+		if (go->GetParent())
+		{
+			continue;
+		}
+
 		auto prefab = Prefab::FromGameObject(go);
 		if (!go->GetFileId())
 		{

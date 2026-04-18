@@ -57,7 +57,7 @@ public class ComponentTemplate : DataTemplate
                                 else if (!ptr.InstanceId.IsEmpty() || objectPtr.CouldBeInstantiated)
                                 {
                                     propertyEditor = Templates.InstanceIdEditor(ptr,
-                                        nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value);
+                                        nameof(ObjectPtr.InstanceId), (ObjectPtr vm) => ptr.InstanceId, (p, value) => p.InstanceId = value, objectPtr.GenericTypename);
                                 }
                                 else
                                 {
@@ -75,6 +75,7 @@ public class ComponentTemplate : DataTemplate
                                 Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                                 Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
                                 Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
+                                Observable<InstanceId> observableInstanceId => Templates.InstanceIdEditor(component.OverrideProperties[property.Key], nameof(Observable<InstanceId>.Value), (Observable<InstanceId> vm) => vm.Value, (vm, value) => vm.Value = value),
                                 _ => new Label { Text = "Unsupported property type" }
                             };
                     }

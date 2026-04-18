@@ -61,6 +61,9 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void FreeInteropString(nint text);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ReparentObject(string strInstanceId, string strParentInstanceId, [MarshalAs(UnmanagedType.I1)] bool bKeepWorldTransform);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
@@ -676,6 +679,52 @@ namespace SailorEditor.Services
             {
                 return EngineAppInterop.UpdateObject(stringId, yamlChanges);
             }
+        }
+
+        public bool ReparentObject(InstanceId instanceId, InstanceId parentId, bool keepWorldTransform = true)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            var stringParentId = parentId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.ReparentObject(stringId, stringParentId, keepWorldTransform);
+            }
+
+            if (result)
+            {
+                string serializedWorld = SerializeWorld();
+                if (!string.IsNullOrEmpty(serializedWorld))
+                {
+                    MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                }
+            }
+
+            return result;
+        }
+
+        public bool InstantiatePrefab(FileId prefabId, InstanceId parentId = null)
+        {
+            var stringFileId = prefabId?.Value ?? string.Empty;
+            var stringParentId = parentId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.InstantiatePrefab(stringFileId, stringParentId);
+            }
+
+            if (result)
+            {
+                string serializedWorld = SerializeWorld();
+                if (!string.IsNullOrEmpty(serializedWorld))
+                {
+                    MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                }
+            }
+
+            return result;
         }
 
         public bool ExportPathTracedImage(string outputPath, InstanceId targetInstance = null, uint height = 720, uint samplesPerPixel = 64, uint maxBounces = 4)

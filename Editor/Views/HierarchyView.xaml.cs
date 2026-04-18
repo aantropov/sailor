@@ -21,6 +21,7 @@ namespace SailorEditor.Views
 
             service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
+            HierarchyTree.DropRequested += OnHierarchyDropRequested;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectInstanceAction += SelectInstance;
@@ -70,13 +71,40 @@ namespace SailorEditor.Views
             }
         }
 
+        private void OnHierarchyDropRequested(object sender, Utility.TreeViewDropRequest request)
+        {
+            if (request.Target is null)
+            {
+                request.Handled = request.Source switch
+                {
+                    GameObject source => service.ReparentToRoot(source, keepWorldTransform: true),
+                    PrefabFile prefab => MauiProgram.GetService<EngineService>().InstantiatePrefab(prefab.FileId),
+                    _ => false
+                };
+                return;
+            }
+
+            if (request.Target is not GameObject target)
+            {
+                return;
+            }
+
+            request.Handled = request.Source switch
+            {
+                GameObject source => service.Reparent(source, target, keepWorldTransform: true),
+                PrefabFile prefab => MauiProgram.GetService<EngineService>().InstantiatePrefab(prefab.FileId, target.InstanceId),
+                _ => false
+            };
+        }
+
         private void PopulateHierarchyView(World world)
         {
             var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
             var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs()
             {
                 ItemImage = "blue_document_attribute_c.png",
-                GroupImage = "blue_document.png"
+                GroupImage = "blue_document.png",
+                ExpandGroupsByDefault = true
             });
 
             //HierarchyTree.StackLayout.Children.Clear();

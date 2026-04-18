@@ -1,6 +1,7 @@
 #include "Sailor.h"
 
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/FileId.h"
 #include "Core/Reflection.h"
 #include "Engine/InstanceId.h"
 #include "Submodules/Editor.h"
@@ -108,6 +109,46 @@ bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 	instanceId.Deserialize(instanceIdYaml);
 
 	return editor->UpdateObject(instanceId, strYamlNode);
+}
+
+bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+
+	InstanceId parentInstanceId;
+	if (strParentInstanceId && strParentInstanceId[0] != '\0')
+	{
+		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
+	}
+
+	return editor->ReparentObject(instanceId, parentInstanceId, bKeepWorldTransform);
+}
+
+bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strFileId)
+	{
+		return false;
+	}
+
+	FileId fileId;
+	fileId.Deserialize(YAML::Node(std::string(strFileId)));
+
+	InstanceId parentInstanceId;
+	if (strParentInstanceId && strParentInstanceId[0] != '\0')
+	{
+		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
+	}
+
+	return editor->InstantiatePrefab(fileId, parentInstanceId);
 }
 
 bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)

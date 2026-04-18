@@ -99,6 +99,16 @@ extern "C"
 		return Sailor::App::UpdateEditorObject(strInstanceId, strYamlNode);
 	}
 
+	SAILOR_API bool ReparentObject(char* strInstanceId, char* strParentInstanceId, bool bKeepWorldTransform)
+	{
+		return Sailor::App::ReparentEditorObject(strInstanceId, strParentInstanceId, bKeepWorldTransform);
+	}
+
+	SAILOR_API bool InstantiatePrefab(char* strFileId, char* strParentInstanceId)
+	{
+		return Sailor::App::InstantiateEditorPrefab(strFileId, strParentInstanceId);
+	}
+
 	SAILOR_API bool RenderPathTracedImage(char* strOutputPath, char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
 	{
 		if (!strOutputPath || strOutputPath[0] == '\0' || !Sailor::App::HasEditor())

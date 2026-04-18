@@ -1,4 +1,5 @@
-﻿using SailorEditor.ViewModels;
+﻿using SailorEditor.Utility;
+using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
@@ -10,6 +11,7 @@ namespace SailorEditor.Controls
 
         public string ItemImage { get; set; } = "blueprint.png";
         public string GroupImage { get; set; } = "folder.png";
+        public bool ExpandGroupsByDefault { get; set; } = false;
     };
 
     public class TreeView : ScrollView
@@ -23,6 +25,7 @@ namespace SailorEditor.Controls
         public StackLayout StackLayout { get => _StackLayout; }
 
         private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical };
+        private readonly DropGestureRecognizer _RootDropGestureRecognizer = new();
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered
         private IList<TreeViewNode> _RootNodes = new ObservableCollection<TreeViewNode>();
@@ -77,10 +80,33 @@ namespace SailorEditor.Controls
         /// Occurs when the user selects a TreeViewItem
         /// </summary>
         public event EventHandler SelectedItemChanged;
+        public event EventHandler<TreeViewDropRequest> DropRequested;
 
         public TreeView()
         {
             Content = _StackLayout;
+            _RootDropGestureRecognizer.Drop += OnRootDrop;
+            GestureRecognizers.Add(_RootDropGestureRecognizer);
+        }
+
+        private void OnRootDrop(object sender, DropEventArgs e)
+        {
+            if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
+            {
+                return;
+            }
+
+            var request = new TreeViewDropRequest
+            {
+                Source = source,
+                Target = null
+            };
+
+            RequestDrop(request);
+            if (request.Handled)
+            {
+                e.Handled = true;
+            }
         }
 
         private void RemoveSelectionRecursive(IEnumerable<TreeViewNode> nodes)
@@ -119,6 +145,11 @@ namespace SailorEditor.Controls
             child.SelectionBoxView.Color = child.SelectedBackgroundColor;
             child.SelectionBoxView.Opacity = child.SelectedBackgroundOpacity;
             RemoveSelectionRecursive(RootNodes);
+        }
+
+        internal void RequestDrop(TreeViewDropRequest request)
+        {
+            DropRequested?.Invoke(this, request);
         }
 
         internal static void RenderNodes(IEnumerable<TreeViewNode> childTreeViewItems, StackLayout parent, NotifyCollectionChangedEventArgs e, TreeViewNode parentTreeViewItem)
@@ -192,7 +223,7 @@ namespace SailorEditor.Controls
         {
             var rootNodes = new ObservableCollection<TreeViewNode>();
 
-            foreach (var itemGroup in groupModel.ChildrenGroupsBase.OrderBy(xig => xig.Key))
+            foreach (var itemGroup in groupModel.ChildrenGroupsBase)
             {
                 var label = new Label
                 {
@@ -209,6 +240,11 @@ namespace SailorEditor.Controls
                 foreach (var item in itemGroup.ChildrenItemsBase)
                 {
                     TreeView.PopulateItem(groupTreeViewNode.ChildrenList, item, args);
+                }
+
+                if (args.ExpandGroupsByDefault && groupTreeViewNode.ChildrenList.Count > 0)
+                {
+                    groupTreeViewNode.IsExpanded = true;
                 }
             }
 

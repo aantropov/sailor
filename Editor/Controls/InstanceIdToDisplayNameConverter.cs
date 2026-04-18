@@ -24,7 +24,17 @@ public class InstanceIdToDisplayNameConverter : IValueConverter
         }
 
         var worldService = MauiProgram.GetService<WorldService>();
-        return worldService.GetComponent(id).DisplayName;
+        if (worldService.TryGetComponent(id, out var component))
+        {
+            return component.DisplayName;
+        }
+
+        if (worldService.TryGetGameObject(id, out var gameObject))
+        {
+            return gameObject.DisplayName;
+        }
+
+        return id.Value;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

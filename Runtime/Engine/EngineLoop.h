@@ -32,6 +32,7 @@ namespace Sailor
 		SAILOR_API TSharedPtr<World> InstantiateWorld(WorldPrefabPtr worldPrefab, EWorldBehaviourMask mask);
 		SAILOR_API bool ExitWorld(WorldPtr world);
 		SAILOR_API void ProcessPendingWorldExits();
+		SAILOR_API void ProcessPendingDependencyResolution();
 
 		SAILOR_API const TVector<TSharedPtr<World>>& GetWorlds() const { return m_worlds; }
 		SAILOR_API TSharedPtr<World> GetWorld() const { return m_worlds[0]; }

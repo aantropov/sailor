@@ -22,7 +22,8 @@ public partial class AssetFile : ObservableObject, ICloneable
             if (!suppressDirtyTracking &&
                 args.PropertyName != nameof(IsDirty) &&
                 args.PropertyName != nameof(CanOpenAssetFile) &&
-                args.PropertyName != nameof(LoadError))
+                args.PropertyName != nameof(LoadError) &&
+                args.PropertyName != nameof(LoadWarning))
             {
                 IsDirty = true;
             }
@@ -170,11 +171,17 @@ public partial class AssetFile : ObservableObject, ICloneable
         originalAssetInfoNodes.Clear();
         ReadOnlyAssetProperties.Clear();
         TransientAssetProperties.Clear();
+        LoadWarning = string.Empty;
         if (stream.Documents.Count > 0 && stream.Documents[0].RootNode is YamlMappingNode root)
         {
             if (root.Children.TryGetValue(new YamlScalarNode("assetInfoType"), out var assetInfoType))
             {
                 AssetInfoTypeName = FormatYamlFieldValue(assetInfoType);
+            }
+
+            if (root.Children.TryGetValue(new YamlScalarNode("warnings"), out var warnings))
+            {
+                LoadWarning = FormatYamlFieldValue(warnings);
             }
 
             AssetType = ResolveAssetType();
@@ -456,6 +463,9 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     [ObservableProperty]
     string loadError = string.Empty;
+
+    [ObservableProperty]
+    string loadWarning = string.Empty;
 
     [ObservableProperty]
     FileId fileId;

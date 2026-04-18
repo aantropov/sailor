@@ -195,7 +195,7 @@ static class Templates
         return stackLayout;
     }
 
-    public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter)
+    public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
     {
         var valueEntry = new Label
         {
@@ -214,6 +214,13 @@ static class Templates
         var selectBehavior = new InstanceIdSelectBehavior();
         selectBehavior.SetBinding(InstanceIdSelectBehavior.BoundPropertyProperty, new Binding(bindingPath));
 
+        var dragAndDropBehavior = new InstanceIdDragAndDropBehaviour
+        {
+            ExpectedTypename = expectedTypename ?? string.Empty
+        };
+        dragAndDropBehavior.SetBinding(InstanceIdDragAndDropBehaviour.BoundPropertyProperty, new Binding(bindingPath));
+
+        valueEntry.Behaviors.Add(dragAndDropBehavior);
         valueEntry.Behaviors.Add(selectBehavior);
 
         var stackLayout = new HorizontalStackLayout();

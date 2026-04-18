@@ -9,6 +9,9 @@
 #include "Raytracing/PathTracer.h"
 #include "Editor.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/FileId.h"
+#include "Math/Transform.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
 #endif
@@ -147,6 +150,99 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 	}
 
 	return false;
+}
+
+bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& parentInstanceId, bool bKeepWorldTransform)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world)
+	{
+		return false;
+	}
+
+	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
+	if (!object)
+	{
+		return false;
+	}
+
+	auto gameObject = object.DynamicCast<GameObject>();
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	GameObjectPtr parentGameObject;
+	if (parentInstanceId)
+	{
+		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
+		parentGameObject = parentObject.DynamicCast<GameObject>();
+		if (!parentGameObject || parentGameObject == gameObject)
+		{
+			return false;
+		}
+	}
+
+	const glm::mat4 oldWorldMatrix = gameObject->GetTransformComponent().GetCachedWorldMatrix();
+	glm::mat4 parentWorldMatrix = glm::identity<glm::mat4>();
+	if (parentGameObject)
+	{
+		parentWorldMatrix = parentGameObject->GetTransformComponent().GetCachedWorldMatrix();
+	}
+
+	gameObject->SetParent(parentGameObject);
+
+	if (bKeepWorldTransform)
+	{
+		const glm::mat4 localMatrix = parentGameObject ? glm::inverse(parentWorldMatrix) * oldWorldMatrix : oldWorldMatrix;
+		const auto localTransform = Math::Transform::FromMatrix(localMatrix);
+		auto& transform = gameObject->GetTransformComponent();
+		transform.SetPosition(localTransform.m_position);
+		transform.SetRotation(localTransform.m_rotation);
+		transform.SetScale(localTransform.m_scale);
+	}
+
+	return true;
+}
+
+bool Editor::InstantiatePrefab(const FileId& prefabId, const InstanceId& parentInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world)
+	{
+		return false;
+	}
+
+	auto prefabImporter = App::GetSubmodule<PrefabImporter>();
+	if (!prefabImporter)
+	{
+		return false;
+	}
+
+	PrefabPtr prefab;
+	if (!prefabImporter->LoadPrefab_Immediate(prefabId, prefab) || !prefab || !prefab->IsReady())
+	{
+		return false;
+	}
+
+	auto root = m_world->Instantiate(prefab);
+	if (!root)
+	{
+		return false;
+	}
+
+	if (parentInstanceId)
+	{
+		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
+		if (auto parentGameObject = parentObject.DynamicCast<GameObject>())
+		{
+			root->SetParent(parentGameObject);
+		}
+	}
+
+	return true;
 }
 
 bool Editor::RenderPathTracedImage(const InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)

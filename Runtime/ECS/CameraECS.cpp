@@ -15,13 +15,15 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 	{
 		if (data.m_bIsActive)
 		{
+			const auto& transformComponent = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+			const auto& worldMatrix = transformComponent.GetCachedWorldMatrix();
+
 			// The origin
 			const mat4 origin = glm::mat4(1);// glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
-			data.m_viewMatrix = origin * glm::inverse(data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetCachedWorldMatrix());
+			data.m_viewMatrix = origin * glm::inverse(worldMatrix);
 
-			const Sailor::Math::Transform& transform = data.m_owner.StaticCast<GameObject>()->GetTransformComponent().GetTransform();
 			m_rhiCameras.Add(data);
-			m_rhiCameraTransforms.Add(transform);
+			m_rhiCameraTransforms.Add(Math::Transform::FromMatrix(worldMatrix));
 		}
 	}
 
@@ -70,7 +72,7 @@ bool CameraECS::TryGetActiveCamera(Math::Transform& outCameraTransform, CameraDa
 			continue;
 		}
 
-		outCameraTransform = pOwner->GetTransformComponent().GetTransform();
+		outCameraTransform = Math::Transform::FromMatrix(pOwner->GetTransformComponent().GetCachedWorldMatrix());
 		outCameraData = data;
 		return true;
 	}

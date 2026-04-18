@@ -1,4 +1,5 @@
-﻿using SailorEditor.ViewModels;
+﻿using SailorEditor.Utility;
+using SailorEditor.ViewModels;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 
@@ -203,7 +204,6 @@ namespace SailorEditor.Controls
 
             _MainGrid.Children.Add(_ContentStackLayout);
             _MainGrid.Children.Add(_ChildrenStackLayout);
-
             base.Children.Add(_MainGrid);
 
             HorizontalOptions = LayoutOptions.Fill;
@@ -216,12 +216,11 @@ namespace SailorEditor.Controls
         {
             if (BindingContext is TreeViewItemBase item)
             {
-                e.Data.Properties["DragItem"] = item.GetModel<object>();
+                e.Data.Properties[EditorDragDrop.DragItemKey] = item.GetModel<object>();
             }
             else if (BindingContext is TreeViewItemGroupBase group)
             {
-                // TODO
-                e.Cancel = true;
+                e.Data.Properties[EditorDragDrop.DragItemKey] = group.GetModel<object>();
             }
             else
             {
@@ -231,7 +230,40 @@ namespace SailorEditor.Controls
 
         private void OnDrop(object sender, DropEventArgs e)
         {
-        // TODO
+            if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
+            {
+                return;
+            }
+
+            var target = BindingContext switch
+            {
+                TreeViewItemBase item => item.GetModel<object>(),
+                TreeViewItemGroupBase group => group.GetModel<object>(),
+                _ => null
+            };
+
+            if (target == null || ReferenceEquals(source, target))
+            {
+                return;
+            }
+
+            var request = new TreeViewDropRequest
+            {
+                Source = source,
+                Target = target
+            };
+
+            RequestDrop(request);
+            if (request.Handled)
+            {
+                e.Handled = true;
+            }
+        }
+
+        private void RequestDrop(TreeViewDropRequest request)
+        {
+            ParentTreeViewItem?.RequestDrop(request);
+            ParentTreeView?.RequestDrop(request);
         }
 
         public void Select()

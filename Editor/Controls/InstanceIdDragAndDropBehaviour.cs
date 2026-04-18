@@ -1,22 +1,18 @@
-﻿using SailorEditor.Services;
-using SailorEditor.ViewModels;
-using SailorEditor;
-using System.Globalization;
-using SailorEngine;
+using SailorEditor.Services;
 using SailorEditor.Utility;
-using Microsoft.Maui.Controls;
+using SailorEditor.ViewModels;
+using SailorEngine;
 
 namespace SailorEditor.Controls;
 
-public class FileIdDragAndDropBehaviour : Behavior<Label>
+public class InstanceIdDragAndDropBehaviour : Behavior<Label>
 {
     private DragGestureRecognizer _dragGestureRecognizer;
     private DropGestureRecognizer _dropGestureRecognizer;
-
     private Label _associatedLabel;
 
     public static readonly BindableProperty BoundPropertyProperty =
-        BindableProperty.Create(nameof(BoundProperty), typeof(object), typeof(FileIdDragAndDropBehaviour), null, BindingMode.TwoWay);
+        BindableProperty.Create(nameof(BoundProperty), typeof(object), typeof(InstanceIdDragAndDropBehaviour), null, BindingMode.TwoWay);
 
     public object BoundProperty
     {
@@ -24,13 +20,13 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
         set => SetValue(BoundPropertyProperty, value);
     }
 
-    public static readonly BindableProperty SupportedTypeProperty =
-        BindableProperty.Create(nameof(SupportedType), typeof(Type), typeof(FileIdDragAndDropBehaviour), null);
+    public static readonly BindableProperty ExpectedTypenameProperty =
+        BindableProperty.Create(nameof(ExpectedTypename), typeof(string), typeof(InstanceIdDragAndDropBehaviour), string.Empty);
 
-    public Type SupportedType
+    public string ExpectedTypename
     {
-        get => (Type)GetValue(SupportedTypeProperty);
-        set => SetValue(SupportedTypeProperty, value);
+        get => (string)GetValue(ExpectedTypenameProperty);
+        set => SetValue(ExpectedTypenameProperty, value);
     }
 
     protected override void OnAttachedTo(Label bindable)
@@ -39,7 +35,6 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
 
         _associatedLabel = bindable;
         _associatedLabel.BindingContextChanged += OnBindingContextChanged;
-
         BindingContext = _associatedLabel.BindingContext;
 
         _dragGestureRecognizer = new DragGestureRecognizer();
@@ -55,13 +50,13 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
     protected override void OnDetachingFrom(Label bindable)
     {
         base.OnDetachingFrom(bindable);
+
         _associatedLabel.BindingContextChanged -= OnBindingContextChanged;
         _associatedLabel = null;
     }
 
-    private void OnBindingContextChanged(object sender, System.EventArgs e)
+    private void OnBindingContextChanged(object sender, EventArgs e)
     {
-        var bindingContext = _associatedLabel.BindingContext;
         BindingContext = _associatedLabel.BindingContext;
     }
 
@@ -69,35 +64,38 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
     {
         if (BoundProperty != null)
         {
-            e.Data.Properties.Add(EditorDragDrop.DragItemKey, BoundProperty);
+            e.Data.Properties[EditorDragDrop.DragItemKey] = BoundProperty;
         }
     }
 
     private void OnDrop(object sender, DropEventArgs e)
     {
-        if (sender != this && e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var droppedItem))
+        if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var droppedItem))
         {
-            FileId fileId = droppedItem switch
-            {
-                FileId id => id,
-                AssetFile asset => asset.FileId,
-                _ => null
-            };
-
-            if (fileId != null)
-            {
-                var assetService = MauiProgram.GetService<AssetsService>();
-
-                if (assetService.Assets.TryGetValue(fileId, out var asset))
-                {
-                    if (SupportedType == null || SupportedType.IsInstanceOfType(asset))
-                    {
-                        BoundProperty = fileId;
-                    }
-                }
-            }
+            return;
         }
 
-        e.Handled = true;
+        if (droppedItem is not GameObject gameObject)
+        {
+            return;
+        }
+
+        var instanceId = ResolveInstanceId(gameObject);
+        if (instanceId != null)
+        {
+            BoundProperty = instanceId;
+            e.Handled = true;
+        }
+    }
+
+    private InstanceId ResolveInstanceId(GameObject gameObject)
+    {
+        if (string.IsNullOrWhiteSpace(ExpectedTypename) || ExpectedTypename.EndsWith("GameObject", StringComparison.Ordinal))
+        {
+            return gameObject.InstanceId;
+        }
+
+        var component = MauiProgram.GetService<WorldService>().FindComponent(gameObject, ExpectedTypename);
+        return component?.InstanceId;
     }
 }

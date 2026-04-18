@@ -193,6 +193,10 @@ void TransformECS::CalculateMatrices(TransformComponent& parent)
 	{
 		parent.m_cachedWorldMatrix = parent.m_cachedRelativeMatrix;
 	}
+	else
+	{
+		parent.m_cachedWorldMatrix = m_components[parent.m_parent].GetCachedWorldMatrix() * parent.m_cachedRelativeMatrix;
+	}
 
 	const glm::mat4x4& parentMatrix = parent.GetCachedWorldMatrix();
 
