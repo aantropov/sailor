@@ -131,6 +131,79 @@ bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentI
 	return editor->ReparentObject(instanceId, parentInstanceId, bKeepWorldTransform);
 }
 
+bool App::CreateEditorGameObject(const char* strParentInstanceId)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor)
+	{
+		return false;
+	}
+
+	InstanceId parentInstanceId;
+	if (strParentInstanceId && strParentInstanceId[0] != '\0')
+	{
+		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
+	}
+
+	return editor->CreateGameObject(parentInstanceId);
+}
+
+bool App::DestroyEditorObject(const char* strInstanceId)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+
+	return editor->DestroyObject(instanceId);
+}
+
+bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+
+	return editor->ResetComponentToDefaults(instanceId);
+}
+
+bool App::AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId || !strComponentTypeName)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+
+	return editor->AddComponent(instanceId, strComponentTypeName);
+}
+
+bool App::RemoveEditorComponent(const char* strInstanceId)
+{
+	auto editor = GetSubmodule<Editor>();
+	if (!editor || !strInstanceId)
+	{
+		return false;
+	}
+
+	InstanceId instanceId;
+	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+
+	return editor->RemoveComponent(instanceId);
+}
+
 bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
 {
 	auto editor = GetSubmodule<Editor>();

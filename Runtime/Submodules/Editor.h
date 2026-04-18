@@ -43,6 +43,11 @@ namespace Sailor
 
 		bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
 		bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
+		bool CreateGameObject(const class InstanceId& parentInstanceId);
+		bool DestroyObject(const class InstanceId& instanceId);
+		bool ResetComponentToDefaults(const class InstanceId& instanceId);
+		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName);
+		bool RemoveComponent(const class InstanceId& instanceId);
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
 		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 

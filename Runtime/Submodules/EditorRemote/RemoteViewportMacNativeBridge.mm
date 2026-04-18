@@ -61,6 +61,26 @@ namespace Sailor::EditorRemote
 			return ++s_value;
 		}
 
+		uintptr_t RetainObjectiveCObject(id object)
+		{
+			if (object == nil)
+			{
+				return 0;
+			}
+
+			CFRetain((__bridge CFTypeRef)object);
+			return reinterpret_cast<uintptr_t>((__bridge void*)object);
+		}
+
+		void ReleaseObjectiveCObject(uintptr_t& inOutObject)
+		{
+			if (inOutObject != 0)
+			{
+				CFRelease(reinterpret_cast<CFTypeRef>(inOutObject));
+				inOutObject = 0;
+			}
+		}
+
 		template <typename TFn>
 		auto RunOnMainThreadSync(TFn&& fn) -> decltype(fn())
 		{
@@ -516,6 +536,9 @@ namespace Sailor::EditorRemote
 	{
 		return RunOnMainThreadSync([&]() -> Failure
 		{
+			const uint64_t nextBindingToken = inOutBinding.m_bindingToken + 1;
+			ResetMacNativeLayerBinding(inOutBinding);
+
 			if (!hostHandle.IsValid())
 			{
 				return MakeFailure(2101, "macOS native layer binding requires a valid host handle");
@@ -588,17 +611,17 @@ namespace Sailor::EditorRemote
 			}
 
 			inOutBinding.m_hostObject = hostHandle.m_kind == MacNativeHostHandleKind::NSView ? hostHandle.m_value : 0;
-			inOutBinding.m_layerObject = reinterpret_cast<uintptr_t>((__bridge void*)metalLayer);
+			inOutBinding.m_layerObject = RetainObjectiveCObject(metalLayer);
 			inOutBinding.m_drawableObject = 0;
-			inOutBinding.m_deviceObject = reinterpret_cast<uintptr_t>((__bridge void*)device);
-			inOutBinding.m_commandQueueObject = reinterpret_cast<uintptr_t>((__bridge void*)commandQueue);
+			inOutBinding.m_deviceObject = RetainObjectiveCObject(device);
+			inOutBinding.m_commandQueueObject = RetainObjectiveCObject(commandQueue);
 			inOutBinding.m_importedIOSurfaceObject = 0;
 			inOutBinding.m_lastSourceTextureObject = 0;
 			inOutBinding.m_width = width;
 			inOutBinding.m_height = height;
 			inOutBinding.m_pixelFormat = pixelFormat;
 			inOutBinding.m_hostOwnsLayer = hostOwnsLayer;
-			inOutBinding.m_bindingToken++;
+			inOutBinding.m_bindingToken = nextBindingToken;
 			inOutBinding.m_presentToken = 0;
 			inOutBinding.m_sourceTextureToken = 0;
 			inOutBinding.m_usesSyntheticSourceTexture = false;
@@ -797,6 +820,9 @@ namespace Sailor::EditorRemote
 
 	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding)
 	{
+		ReleaseObjectiveCObject(inOutBinding.m_commandQueueObject);
+		ReleaseObjectiveCObject(inOutBinding.m_deviceObject);
+		ReleaseObjectiveCObject(inOutBinding.m_layerObject);
 		inOutBinding = {};
 	}
 #else

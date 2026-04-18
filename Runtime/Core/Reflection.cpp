@@ -207,6 +207,7 @@ YAML::Node TypeInfo::Serialize() const
 	YAML::Node res{};
 
 	::Serialize(res, "typename", m_name);
+	::Serialize(res, "base", m_base);
 	::Serialize(res, "properties", m_props);
 
 	return res;
@@ -215,6 +216,7 @@ YAML::Node TypeInfo::Serialize() const
 void TypeInfo::Deserialize(const YAML::Node& inData)
 {
 	::Deserialize(inData, "typename", m_name);
+	::Deserialize(inData, "base", m_base);
 	::Deserialize(inData, "properties", m_props);
 }
 

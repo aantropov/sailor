@@ -16,7 +16,7 @@ public partial class GameObject : ObservableObject, ICloneable
 {
     public GameObject()
     {
-        AddNewComponent = new Command(OnAddNewComponent);
+        AddNewComponent = new Command(async () => await OnAddNewComponent());
         ClearComponentsCommand = new Command(OnClearComponents);
 
         PropertyChanged += (s, args) =>
@@ -53,6 +53,12 @@ public partial class GameObject : ObservableObject, ICloneable
 
     public void Initialize()
     {
+        InstanceId ??= InstanceId.NullInstanceId;
+        Position ??= new Vec4();
+        Rotation ??= new Rotation();
+        Scale ??= new Vec4();
+        ComponentIndices ??= [];
+
         Scale.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Scale));
         Position.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Position));
         Rotation.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Rotation));
@@ -96,11 +102,48 @@ public partial class GameObject : ObservableObject, ICloneable
     [YamlIgnore]
     public ICommand ClearComponentsCommand { get; }
 
-    void OnAddNewComponent() { }
+    async Task OnAddNewComponent()
+    {
+        var componentTypeName = await Views.AddComponentDialogPage.ShowAsync(
+            MauiProgram.GetService<EngineService>().EngineTypes.Components.Values
+                .Where(IsComponentType)
+                .Select(type => type.Name)
+                .OrderBy(name => name)
+                .ToList());
+
+        if (!string.IsNullOrWhiteSpace(componentTypeName))
+        {
+            MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName);
+        }
+    }
+
+    static bool IsComponentType(ComponentType type)
+    {
+        var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+        var baseType = type.Base;
+
+        while (!string.IsNullOrEmpty(baseType))
+        {
+            if (baseType == "Sailor::Component")
+            {
+                return true;
+            }
+
+            baseType = engineTypes.Components[baseType].Base;
+        }
+
+        return false;
+    }
+
     void OnClearComponents() { }
 
     [ObservableProperty]
     string name = string.Empty;
+
+    partial void OnNameChanged(string value)
+    {
+        OnPropertyChanged(nameof(DisplayName));
+    }
 
     [ObservableProperty]
     InstanceId instanceId = InstanceId.NullInstanceId;

@@ -159,6 +159,7 @@ namespace SailorEngine
     public class ComponentType
     {
         public string Name { get; set; }
+        public string Base { get; set; }
         public Dictionary<string, PropertyBase> Properties { get; set; } = [];
     };
 
@@ -315,7 +316,11 @@ namespace SailorEngine
 
                     if (!res.Components.ContainsKey(component.Typename))
                     {
-                        res.Components[component.Typename] = new ComponentType { Name = component.Typename };
+                        res.Components[component.Typename] = new ComponentType
+                        {
+                            Name = component.Typename,
+                            Base = component.Base
+                        };
                     }
                 }
 
@@ -427,6 +432,7 @@ namespace SailorEngine
         public class EngineTypeNode
         {
             public string Typename { get; set; }
+            public string Base { get; set; }
             public Dictionary<string, string> Properties { get; set; }
         }
 

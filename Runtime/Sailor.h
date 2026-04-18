@@ -59,6 +59,11 @@ namespace Sailor
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
+		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId);
+		SAILOR_API static bool DestroyEditorObject(const char* strInstanceId);
+		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
+		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName);
+		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
 		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 		SAILOR_API static void ShowMainWindow(bool bShow);

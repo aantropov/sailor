@@ -14,18 +14,59 @@ public class ComponentTemplate : DataTemplate
     {
         LoadTemplate = () =>
         {
-            var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } } };
+            var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } }, BackgroundColor = Colors.Transparent };
 
             props.BindingContextChanged += (sender, args) =>
             {
                 var component = (Component)((Grid)sender).BindingContext;
                 props.Children.Clear();
 
+                props.GestureRecognizers.Clear();
+                var dragGesture = new DragGestureRecognizer();
+                dragGesture.DragStarting += (dragSender, dragArgs) =>
+                {
+                    dragArgs.Data.Properties[EditorDragDrop.DragItemKey] = component;
+                };
+                props.GestureRecognizers.Add(dragGesture);
+
+                var header = new Grid
+                {
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition { Width = GridLength.Auto },
+                        new ColumnDefinition { Width = GridLength.Star }
+                    }
+                };
+
+                var removeButton = new Button { Text = "-", WidthRequest = 32, HeightRequest = 32 };
+                removeButton.Clicked += (buttonSender, clickArgs) => MauiProgram.GetService<WorldService>().RemoveComponent(component);
+
                 var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
                 nameLabel.Behaviors.Add(new DisplayNameBehavior());
                 nameLabel.Text = component.Typename.Name;
 
-                Templates.AddGridRow(props, nameLabel, GridLength.Auto);
+                var resetFlyout = MauiProgram.GetService<EditorContextMenuService>().CreateFlyout(new EditorContextMenuItem
+                    {
+                        Text = "Reset to Defaults",
+                        Command = new Command(() => MauiProgram.GetService<WorldService>().ResetComponentToDefaults(component))
+                    });
+                FlyoutBase.SetContextFlyout(props, resetFlyout);
+                FlyoutBase.SetContextFlyout(nameLabel, resetFlyout);
+
+                var contextGesture = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
+                contextGesture.Tapped += (gestureSender, gestureArgs) =>
+                {
+                    MauiProgram.GetService<EditorContextMenuService>().Show(new EditorContextMenuItem
+                    {
+                        Text = "Reset to Defaults",
+                        Command = new Command(() => MauiProgram.GetService<WorldService>().ResetComponentToDefaults(component))
+                    });
+                };
+                props.GestureRecognizers.Add(contextGesture);
+
+                header.Add(removeButton, 0, 0);
+                header.Add(nameLabel, 1, 0);
+                Templates.AddGridRow(props, header, GridLength.Auto);
 
                 var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
 

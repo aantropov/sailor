@@ -26,7 +26,7 @@ namespace SailorEditor.Controls
         };
 
         private readonly StackLayout _ContentStackLayout = new() { Orientation = StackOrientation.Horizontal };
-        private readonly ContentView _ContentView = new() { HorizontalOptions = LayoutOptions.Fill, };
+        private readonly ContentView _ContentView = new() { HorizontalOptions = LayoutOptions.Fill, BackgroundColor = Colors.Transparent };
         private readonly StackLayout _ChildrenStackLayout = new()
         {
             Orientation = StackOrientation.Vertical,
@@ -36,6 +36,7 @@ namespace SailorEditor.Controls
 
         private IList<TreeViewNode> _Children = new ObservableCollection<TreeViewNode>();
         private readonly TapGestureRecognizer _TapGestureRecognizer = new();
+        private readonly TapGestureRecognizer _ContextGestureRecognizer = new() { Buttons = ButtonsMask.Secondary };
         private readonly TapGestureRecognizer _ExpandButtonGestureRecognizer = new();
         private readonly TapGestureRecognizer _DoubleClickGestureRecognizer = new();
         private readonly DragGestureRecognizer _DragGestureRecognizer = new();
@@ -127,6 +128,17 @@ namespace SailorEditor.Controls
             set => _ContentView.Content = value;
         }
 
+        public void SetContextFlyout(MenuFlyout flyout)
+        {
+            FlyoutBase.SetContextFlyout(this, flyout);
+            FlyoutBase.SetContextFlyout(_ContentStackLayout, flyout);
+            FlyoutBase.SetContextFlyout(_ContentView, flyout);
+            if (_ContentView.Content is VisualElement content)
+            {
+                FlyoutBase.SetContextFlyout(content, flyout);
+            }
+        }
+
         public IList<TreeViewNode> ChildrenList
         {
             get => _Children;
@@ -168,11 +180,16 @@ namespace SailorEditor.Controls
         /// </summary>
         public TreeViewNode()
         {
+            BackgroundColor = Colors.Transparent;
+
             var itemsSource = (ObservableCollection<TreeViewNode>)_Children;
             itemsSource.CollectionChanged += ItemsSource_CollectionChanged;
 
             _TapGestureRecognizer.Tapped += TapGestureRecognizer_Tapped;
             GestureRecognizers.Add(_TapGestureRecognizer);
+
+            _ContextGestureRecognizer.Tapped += ContextGestureRecognizer_Tapped;
+            _ContentView.GestureRecognizers.Add(_ContextGestureRecognizer);
 
             _MainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _MainGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -324,6 +341,12 @@ namespace SailorEditor.Controls
             {
                 ChildSelected(this);
             }
+        }
+
+        private void ContextGestureRecognizer_Tapped(object sender, TappedEventArgs e)
+        {
+            ChildSelected(this);
+            ParentTreeView?.RequestContext(this);
         }
 
         private void DoubleClick(object sender, EventArgs e)

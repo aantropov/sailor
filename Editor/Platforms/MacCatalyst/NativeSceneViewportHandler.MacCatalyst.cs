@@ -152,6 +152,9 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
     {
         readonly WeakReference<NativeSceneViewportHandler> owner;
         readonly UIHoverGestureRecognizer hoverRecognizer;
+        readonly UITapGestureRecognizer primaryClickRecognizer;
+        readonly UITapGestureRecognizer secondaryClickRecognizer;
+        readonly UIPanGestureRecognizer mouseDragRecognizer;
         NativeSceneViewportInputModifier activeMouseModifiers = NativeSceneViewportInputModifier.None;
 
         public NativeSceneViewportPlatformView(NativeSceneViewportHandler handler)
@@ -161,6 +164,21 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             MultipleTouchEnabled = true;
             hoverRecognizer = new UIHoverGestureRecognizer(this, new Selector("handleHover:"));
             AddGestureRecognizer(hoverRecognizer);
+
+            primaryClickRecognizer = new UITapGestureRecognizer(this, new Selector("handlePrimaryClick:"))
+            {
+                ButtonMaskRequired = UIEventButtonMask.Primary
+            };
+            AddGestureRecognizer(primaryClickRecognizer);
+
+            secondaryClickRecognizer = new UITapGestureRecognizer(this, new Selector("handleSecondaryClick:"))
+            {
+                ButtonMaskRequired = UIEventButtonMask.Secondary
+            };
+            AddGestureRecognizer(secondaryClickRecognizer);
+
+            mouseDragRecognizer = new UIPanGestureRecognizer(this, new Selector("handleMouseDrag:"));
+            AddGestureRecognizer(mouseDragRecognizer);
         }
 
         public override bool CanBecomeFirstResponder => true;
@@ -170,6 +188,40 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         {
             var point = recognizer.LocationInView(this);
             PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
+        }
+
+        [Export("handlePrimaryClick:")]
+        public void HandlePrimaryClick(UITapGestureRecognizer recognizer)
+        {
+            if (recognizer.State != UIGestureRecognizerState.Ended)
+            {
+                return;
+            }
+
+            BecomeFirstResponder();
+            PublishFocus(true);
+            var point = recognizer.LocationInView(this);
+            PublishMouseClick(point, 0);
+        }
+
+        [Export("handleSecondaryClick:")]
+        public void HandleSecondaryClick(UITapGestureRecognizer recognizer)
+        {
+            if (recognizer.State != UIGestureRecognizerState.Ended)
+            {
+                return;
+            }
+
+            BecomeFirstResponder();
+            PublishFocus(true);
+            var point = recognizer.LocationInView(this);
+            PublishMouseClick(point, 1);
+        }
+
+        [Export("handleMouseDrag:")]
+        public void HandleMouseDrag(UIPanGestureRecognizer recognizer)
+        {
+            HandleMouseDrag(recognizer, 0, NativeSceneViewportInputModifier.MouseLeft);
         }
 
         public override void TouchesBegan(NSSet touches, UIEvent? evt)
@@ -269,6 +321,39 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 Modifiers: activeMouseModifiers,
                 Pressed: pressed);
             Publish(input);
+        }
+
+        void PublishMouseClick(CGPoint point, uint button)
+        {
+            var modifier = button == 1 ? NativeSceneViewportInputModifier.MouseRight : NativeSceneViewportInputModifier.MouseLeft;
+            activeMouseModifiers |= modifier;
+            PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, true);
+            activeMouseModifiers &= ~modifier;
+            PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, false);
+        }
+
+        void HandleMouseDrag(UIPanGestureRecognizer recognizer, uint button, NativeSceneViewportInputModifier modifier)
+        {
+            var point = recognizer.LocationInView(this);
+            switch (recognizer.State)
+            {
+                case UIGestureRecognizerState.Began:
+                    BecomeFirstResponder();
+                    PublishFocus(true);
+                    activeMouseModifiers |= modifier;
+                    PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, true);
+                    break;
+                case UIGestureRecognizerState.Changed:
+                    activeMouseModifiers |= modifier;
+                    PublishPointer(NativeSceneViewportInputKind.PointerMove, point, button, false);
+                    break;
+                case UIGestureRecognizerState.Ended:
+                case UIGestureRecognizerState.Cancelled:
+                case UIGestureRecognizerState.Failed:
+                    PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, false);
+                    activeMouseModifiers &= ~modifier;
+                    break;
+            }
         }
 
         void PublishPresses(NSSet<UIPress> presses, bool pressed)

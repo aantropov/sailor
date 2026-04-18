@@ -20,6 +20,7 @@ namespace SailorEditor.Views
 
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
             FolderTree.DropRequested += OnContentDropRequested;
+            FolderTree.ContextRequested += OnContentContextRequested;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectAssetAction += SelectAssetFile;
@@ -97,6 +98,43 @@ namespace SailorEditor.Views
                         PopulateTreeView();
                     }
                     break;
+            }
+        }
+
+        private void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
+        {
+            var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
+            if (args.Model is TreeViewItem<AssetFile> assetItem)
+            {
+                contextMenu.Show(new EditorContextMenuItem
+                {
+                    Text = "Rename",
+                    Command = new Command(async () => await RenameAsset(assetItem.Model))
+                });
+            }
+        }
+
+        private async Task RenameAsset(AssetFile assetFile)
+        {
+            var newName = await Application.Current.MainPage.DisplayPromptAsync(
+                "Rename asset",
+                "New asset name",
+                "OK",
+                "Cancel",
+                initialValue: assetFile.Asset?.Name ?? assetFile.DisplayName);
+
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                return;
+            }
+
+            if (service.RenameAsset(assetFile, newName))
+            {
+                PopulateTreeView();
+            }
+            else
+            {
+                await Application.Current.MainPage.DisplayAlert("Rename failed", "Asset with this name already exists or the name is invalid.", "OK");
             }
         }
 

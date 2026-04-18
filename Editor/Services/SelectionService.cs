@@ -19,11 +19,11 @@ namespace SailorEditor.Services
             }
         }
 
-        public async void SelectObject(ObservableObject obj)
+        public async void SelectObject(ObservableObject obj, bool force = false)
         {
             if (obj != null)
             {
-                if (SelectedItems.Count == 1 && ReferenceEquals(SelectedItems[0], obj))
+                if (!force && SelectedItems.Count == 1 && ReferenceEquals(SelectedItems[0], obj))
                 {
                     return;
                 }
@@ -39,6 +39,13 @@ namespace SailorEditor.Services
 
                 OnSelectAssetAction?.Invoke(obj);
             }
+        }
+
+        public void ClearSelection()
+        {
+            SelectedItems.Clear();
+            SelectedItem = null;
+            OnSelectAssetAction?.Invoke(null);
         }
 
         [ObservableProperty]

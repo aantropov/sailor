@@ -326,6 +326,17 @@ void World::Destroy(GameObjectPtr object)
 	}
 }
 
+void World::DestroyImmediate(GameObjectPtr object)
+{
+	if (!object || !m_objectsMap.ContainsKey(object->m_instanceId))
+	{
+		return;
+	}
+
+	object->SetParent(GameObjectPtr());
+	DestroyGameObjectHierarchy(object);
+}
+
 void World::Clear()
 {
 	ComponentsToResolveDependencies.Clear();

@@ -28,6 +28,19 @@ TransformComponent& GameObject::GetTransformComponent()
 
 void GameObject::SetParent(GameObjectPtr parent)
 {
+	for (auto current = parent; current.IsValid(); current = current->m_parent)
+	{
+		if (current == m_self)
+		{
+			return;
+		}
+	}
+
+	if (m_parent == parent)
+	{
+		return;
+	}
+
 	if (m_parent.IsValid())
 	{
 		m_parent->m_children.RemoveFirst(m_self);

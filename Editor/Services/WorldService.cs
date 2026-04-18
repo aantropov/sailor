@@ -52,6 +52,55 @@ namespace SailorEditor.Services
             return GetComponents(gameObject).FirstOrDefault(component => component.Typename.Name == componentTypeName);
         }
 
+        public bool CreateGameObject(GameObject parent = null)
+        {
+            return MauiProgram.GetService<EngineService>().CreateGameObject(parent?.InstanceId);
+        }
+
+        public bool RemoveGameObject(GameObject gameObject)
+        {
+            if (gameObject == null)
+            {
+                return false;
+            }
+
+            var result = MauiProgram.GetService<EngineService>().DestroyObject(gameObject.InstanceId);
+            if (result)
+            {
+                MauiProgram.GetService<SelectionService>().ClearSelection();
+            }
+
+            return result;
+        }
+
+        public bool ResetComponentToDefaults(Component component)
+        {
+            return component != null && MauiProgram.GetService<EngineService>().ResetComponentToDefaults(component.InstanceId);
+        }
+
+        public bool AddComponent(GameObject gameObject, string componentTypeName)
+        {
+            return gameObject != null &&
+                !string.IsNullOrWhiteSpace(componentTypeName) &&
+                MauiProgram.GetService<EngineService>().AddComponent(gameObject.InstanceId, componentTypeName);
+        }
+
+        public bool RemoveComponent(Component component)
+        {
+            if (component == null)
+            {
+                return false;
+            }
+
+            var result = MauiProgram.GetService<EngineService>().RemoveComponent(component.InstanceId);
+            if (result && ReferenceEquals(MauiProgram.GetService<SelectionService>().SelectedItem, component))
+            {
+                MauiProgram.GetService<SelectionService>().ClearSelection();
+            }
+
+            return result;
+        }
+
         public bool Reparent(GameObject child, GameObject newParent, bool keepWorldTransform = true)
         {
             if (child == null || newParent == null || ReferenceEquals(child, newParent) || IsDescendantOf(newParent, child))
@@ -157,24 +206,27 @@ namespace SailorEditor.Services
             int prefabIndex = 0;
             foreach (var prefab in world.Prefabs)
             {
+                prefab.GameObjects ??= [];
+                prefab.Components ??= [];
+
                 var newPrefab = new Prefab();
                 foreach (var go in prefab.GameObjects)
                 {
                     var gameObject = go;
+                    gameObject.Initialize();
                     gameObjectsDict[go.InstanceId] = gameObject;
 
                     gameObject.PrefabIndex = prefabIndex;
-                    foreach (var i in go.ComponentIndices)
+                    foreach (var i in go.ComponentIndices ?? [])
                     {
                         var component = prefab.Components[i];
+                        component.Initialize();
                         componentsDict[component.InstanceId] = component;
                         component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
 
-                        component.Initialize();
                         newPrefab.Components.Add(component);
                     }
 
-                    gameObject.Initialize();
                     newPrefab.GameObjects.Add(gameObject);
                 }
 
@@ -185,6 +237,36 @@ namespace SailorEditor.Services
             }
 
             OnUpdateWorldAction?.Invoke(Current);
+            RefreshSelection();
+        }
+
+        void RefreshSelection()
+        {
+            var selectionService = MauiProgram.GetService<SelectionService>();
+            var selectedItem = selectionService.SelectedItem;
+
+            if (selectedItem is GameObject selectedGameObject)
+            {
+                if (TryGetGameObject(selectedGameObject.InstanceId, out var refreshedGameObject))
+                {
+                    selectionService.SelectObject(refreshedGameObject, force: true);
+                }
+                else
+                {
+                    selectionService.ClearSelection();
+                }
+            }
+            else if (selectedItem is Component selectedComponent)
+            {
+                if (TryGetComponent(selectedComponent.InstanceId, out var refreshedComponent))
+                {
+                    selectionService.SelectObject(refreshedComponent, force: true);
+                }
+                else
+                {
+                    selectionService.ClearSelection();
+                }
+            }
         }
 
         void MoveSubHierarchyToPrefab(GameObject root, Prefab targetPrefab)

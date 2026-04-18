@@ -36,6 +36,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<SelectionService>();
             builder.Services.AddSingleton<WorldService>();
             builder.Services.AddSingleton<EngineService>();
+            builder.Services.AddSingleton<EditorContextMenuService>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

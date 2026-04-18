@@ -88,6 +88,7 @@ namespace Sailor
 		}
 
 		const std::string& Name() const { return m_name; }
+		const std::string& Base() const { return m_base; }
 		const TMap<std::string, std::string>& Properties() const { return m_props; }
 
 		size_t Size() const { return m_size; }
@@ -99,6 +100,7 @@ namespace Sailor
 	private:
 
 		std::string m_name;
+		std::string m_base;
 		size_t m_size;
 		TMap<std::string, std::string> m_props;
 
@@ -111,6 +113,14 @@ namespace Sailor
 			m_size = sizeof(T);
 
 			T* empty = nullptr;// reinterpret_cast<T*>(_malloca(m_size));
+
+			refl::util::for_each(refl::util::reflect_types(refl::descriptor::get_declared_base_types(td)), [&](auto base)
+				{
+					if (m_base.empty())
+					{
+						m_base = base.name.c_str();
+					}
+				});
 
 			for_each(td.members, [&](auto member)
 				{
@@ -212,14 +222,18 @@ namespace Sailor
 					if (reflection.GetProperties().ContainsKey(displayName))
 					{
 						const YAML::Node& node = reflection.GetProperties()[displayName];
-						if (node.IsDefined() && !node.IsNull())
+						if (node.IsDefined())
 						{
 							if constexpr (is_field(member))
 							{
 								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*ptr))>;
 								if constexpr (Sailor::IsObjectPtr<PropertyType>)
 								{
-									if (!member(*ptr))
+									if (node.IsNull())
+									{
+										member(*ptr) = PropertyType();
+									}
+									else
 									{
 										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
 										bResolved &= (bool)resolved;
@@ -233,10 +247,17 @@ namespace Sailor
 								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*ptr))>;
 								if constexpr (Sailor::IsObjectPtr<PropertyType>)
 								{
-									auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
-									bResolved &= (bool)resolved;
+									if (node.IsNull())
+									{
+										member(*ptr, PropertyType());
+									}
+									else
+									{
+										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
+										bResolved &= (bool)resolved;
 
-									member(*ptr, resolved);
+										member(*ptr, resolved);
+									}
 								}
 							}
 						}

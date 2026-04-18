@@ -104,6 +104,31 @@ extern "C"
 		return Sailor::App::ReparentEditorObject(strInstanceId, strParentInstanceId, bKeepWorldTransform);
 	}
 
+	SAILOR_API bool CreateGameObject(char* strParentInstanceId)
+	{
+		return Sailor::App::CreateEditorGameObject(strParentInstanceId);
+	}
+
+	SAILOR_API bool DestroyObject(char* strInstanceId)
+	{
+		return Sailor::App::DestroyEditorObject(strInstanceId);
+	}
+
+	SAILOR_API bool ResetComponentToDefaults(char* strInstanceId)
+	{
+		return Sailor::App::ResetEditorComponentToDefaults(strInstanceId);
+	}
+
+	SAILOR_API bool AddComponent(char* strInstanceId, char* strComponentTypeName)
+	{
+		return Sailor::App::AddEditorComponent(strInstanceId, strComponentTypeName);
+	}
+
+	SAILOR_API bool RemoveComponent(char* strInstanceId)
+	{
+		return Sailor::App::RemoveEditorComponent(strInstanceId);
+	}
+
 	SAILOR_API bool InstantiatePrefab(char* strFileId, char* strParentInstanceId)
 	{
 		return Sailor::App::InstantiateEditorPrefab(strFileId, strParentInstanceId);

@@ -37,6 +37,7 @@ namespace Sailor
 		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab);
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
 		SAILOR_API void Destroy(GameObjectPtr object);
+		SAILOR_API void DestroyImmediate(GameObjectPtr object);
 
 		SAILOR_API void Tick(class FrameState& frameState);
 

@@ -63,6 +63,17 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ReparentObject(string strInstanceId, string strParentInstanceId, [MarshalAs(UnmanagedType.I1)] bool bKeepWorldTransform);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateGameObject(string strParentInstanceId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyObject(string strInstanceId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ResetComponentToDefaults(string strInstanceId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool AddComponent(string strInstanceId, string strComponentTypeName);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RemoveComponent(string strInstanceId);
+        [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
         [return: MarshalAs(UnmanagedType.I1)]
@@ -681,6 +692,22 @@ namespace SailorEditor.Services
             }
         }
 
+        public void RefreshCurrentWorld()
+        {
+            string serializedWorld = SerializeWorld();
+            if (!string.IsNullOrEmpty(serializedWorld))
+            {
+                if (MainThread.IsMainThread)
+                {
+                    OnUpdateCurrentWorldAction?.Invoke(serializedWorld);
+                }
+                else
+                {
+                    MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
+                }
+            }
+        }
+
         public bool ReparentObject(InstanceId instanceId, InstanceId parentId, bool keepWorldTransform = true)
         {
             var stringId = instanceId?.Value ?? string.Empty;
@@ -694,11 +721,97 @@ namespace SailorEditor.Services
 
             if (result)
             {
-                string serializedWorld = SerializeWorld();
-                if (!string.IsNullOrEmpty(serializedWorld))
-                {
-                    MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-                }
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool CreateGameObject(InstanceId parentId = null)
+        {
+            var stringParentId = parentId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.CreateGameObject(stringParentId);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool DestroyObject(InstanceId instanceId)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.DestroyObject(stringId);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool ResetComponentToDefaults(InstanceId instanceId)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.ResetComponentToDefaults(stringId);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool AddComponent(InstanceId instanceId, string componentTypeName)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.AddComponent(stringId, componentTypeName ?? string.Empty);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool RemoveComponent(InstanceId instanceId)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.RemoveComponent(stringId);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
             }
 
             return result;
@@ -717,11 +830,7 @@ namespace SailorEditor.Services
 
             if (result)
             {
-                string serializedWorld = SerializeWorld();
-                if (!string.IsNullOrEmpty(serializedWorld))
-                {
-                    MainThread.BeginInvokeOnMainThread(() => OnUpdateCurrentWorldAction?.Invoke(serializedWorld));
-                }
+                RefreshCurrentWorld();
             }
 
             return result;

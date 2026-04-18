@@ -11,6 +11,7 @@
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/FileId.h"
+#include "Core/Reflection.h"
 #include "Math/Transform.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
@@ -24,6 +25,22 @@
 #include "Platform/Win32/Window.h"
 
 using namespace Sailor;
+
+namespace
+{
+	bool IsDescendantOf(GameObjectPtr object, GameObjectPtr possibleParent)
+	{
+		for (auto current = object; current.IsValid(); current = current->GetParent())
+		{
+			if (current == possibleParent)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
 
 Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
 	m_editorPort(editorPort),
@@ -182,6 +199,11 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 		{
 			return false;
 		}
+
+		if (IsDescendantOf(parentGameObject, gameObject))
+		{
+			return false;
+		}
 	}
 
 	const glm::mat4 oldWorldMatrix = gameObject->GetTransformComponent().GetCachedWorldMatrix();
@@ -204,6 +226,144 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 	}
 
 	return true;
+}
+
+bool Editor::CreateGameObject(const InstanceId& parentInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world)
+	{
+		return false;
+	}
+
+	auto gameObject = m_world->Instantiate("GameObject");
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	if (parentInstanceId)
+	{
+		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
+		if (auto parentGameObject = parentObject.DynamicCast<GameObject>())
+		{
+			gameObject->SetParent(parentGameObject);
+		}
+	}
+
+	return true;
+}
+
+bool Editor::DestroyObject(const InstanceId& instanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || !instanceId)
+	{
+		return false;
+	}
+
+	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
+	auto gameObject = object.DynamicCast<GameObject>();
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	m_world->DestroyImmediate(gameObject);
+	return true;
+}
+
+bool Editor::ResetComponentToDefaults(const InstanceId& instanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || !instanceId || instanceId.ComponentId() == InstanceId::Invalid)
+	{
+		return false;
+	}
+
+	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
+	auto gameObject = object.DynamicCast<GameObject>();
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	for (uint32_t i = 0; i < gameObject->GetComponents().Num(); i++)
+	{
+		auto component = gameObject->GetComponent(i);
+		if (component->GetInstanceId().ComponentId() != instanceId.ComponentId())
+		{
+			continue;
+		}
+
+		const ReflectedData& defaults = Reflection::GetCDO(component->GetTypeInfo().Name());
+		component->ApplyReflection(defaults);
+		component->ResolveRefs(defaults, m_world->GetObjects(), true);
+		return true;
+	}
+
+	return false;
+}
+
+bool Editor::AddComponent(const InstanceId& instanceId, const std::string& componentTypeName)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || !instanceId || componentTypeName.empty())
+	{
+		return false;
+	}
+
+	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
+	auto gameObject = object.DynamicCast<GameObject>();
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	const TypeInfo& componentType = Reflection::GetTypeByName(componentTypeName);
+	auto component = Reflection::CreateObject<Component>(componentType, m_world->GetAllocator());
+	if (!component)
+	{
+		return false;
+	}
+
+	gameObject->AddComponentRaw(component);
+	const ReflectedData& defaults = Reflection::GetCDO(componentTypeName);
+	component->ApplyReflection(defaults);
+	component->ResolveRefs(defaults, m_world->GetObjects(), true);
+	return true;
+}
+
+bool Editor::RemoveComponent(const InstanceId& instanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || !instanceId || instanceId.ComponentId() == InstanceId::Invalid)
+	{
+		return false;
+	}
+
+	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
+	auto gameObject = object.DynamicCast<GameObject>();
+	if (!gameObject)
+	{
+		return false;
+	}
+
+	for (uint32_t i = 0; i < gameObject->GetComponents().Num(); i++)
+	{
+		auto component = gameObject->GetComponent(i);
+		if (component->GetInstanceId().ComponentId() == instanceId.ComponentId())
+		{
+			return gameObject->RemoveComponent(component);
+		}
+	}
+
+	return false;
 }
 
 bool Editor::InstantiatePrefab(const FileId& prefabId, const InstanceId& parentInstanceId)

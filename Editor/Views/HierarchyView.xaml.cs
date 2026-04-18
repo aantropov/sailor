@@ -21,6 +21,7 @@ namespace SailorEditor.Views
 
             service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
+            HierarchyTree.ContextRequested += OnHierarchyContextRequested;
             HierarchyTree.DropRequested += OnHierarchyDropRequested;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
@@ -97,6 +98,45 @@ namespace SailorEditor.Views
             };
         }
 
+        private void OnHierarchyContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
+        {
+            var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
+            var model = args.Model switch
+            {
+                TreeViewItemGroup<GameObject, Component> group => group.Model,
+                TreeViewItem<GameObject> item => item.Model,
+                _ => null
+            };
+
+            if (model is GameObject gameObject)
+            {
+                contextMenu.Show(
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Child GameObject",
+                        Command = new Command(() => service.CreateGameObject(gameObject))
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Rename",
+                        Command = new Command(async () => await RenameGameObject(gameObject))
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Remove",
+                        IsDestructive = true,
+                        Command = new Command(() => service.RemoveGameObject(gameObject))
+                    });
+                return;
+            }
+
+            contextMenu.Show(new EditorContextMenuItem
+            {
+                Text = "Create new GameObject",
+                Command = new Command(() => service.CreateGameObject())
+            });
+        }
+
         private void PopulateHierarchyView(World world)
         {
             var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
@@ -109,6 +149,80 @@ namespace SailorEditor.Views
 
             //HierarchyTree.StackLayout.Children.Clear();
             HierarchyTree.RootNodes = rootNodes;
+            FlyoutBase.SetContextFlyout(HierarchyTree, CreateHierarchyContextFlyout(null));
+            foreach (var node in rootNodes)
+            {
+                AttachHierarchyContextFlyouts(node);
+            }
+        }
+
+        void AttachHierarchyContextFlyouts(TreeViewNode node)
+        {
+            var model = node.BindingContext switch
+            {
+                TreeViewItemGroup<GameObject, Component> group => group.Model,
+                TreeViewItem<GameObject> item => item.Model,
+                _ => null
+            };
+
+            if (model is GameObject gameObject)
+            {
+                node.SetContextFlyout(CreateHierarchyContextFlyout(gameObject));
+            }
+
+            foreach (var child in node.ChildrenList)
+            {
+                AttachHierarchyContextFlyouts(child);
+            }
+        }
+
+        MenuFlyout CreateHierarchyContextFlyout(GameObject gameObject)
+        {
+            var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
+            if (gameObject == null)
+            {
+                return contextMenu.CreateFlyout(new EditorContextMenuItem
+                {
+                    Text = "Create new GameObject",
+                    Command = new Command(() => service.CreateGameObject())
+                });
+            }
+
+            return contextMenu.CreateFlyout(
+                new EditorContextMenuItem
+                {
+                    Text = "Create Child GameObject",
+                    Command = new Command(() => service.CreateGameObject(gameObject))
+                },
+                new EditorContextMenuItem
+                {
+                    Text = "Rename",
+                    Command = new Command(async () => await RenameGameObject(gameObject))
+                },
+                new EditorContextMenuItem
+                {
+                    Text = "Remove",
+                    IsDestructive = true,
+                    Command = new Command(() => service.RemoveGameObject(gameObject))
+                });
+        }
+
+        async Task RenameGameObject(GameObject gameObject)
+        {
+            var newName = await Application.Current.MainPage.DisplayPromptAsync(
+                "Rename GameObject",
+                "New name",
+                "OK",
+                "Cancel",
+                initialValue: gameObject.Name);
+
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                return;
+            }
+
+            gameObject.Name = newName.Trim();
+            MauiProgram.GetService<EngineService>().RefreshCurrentWorld();
         }
     }
 }

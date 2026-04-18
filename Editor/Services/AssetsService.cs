@@ -61,6 +61,53 @@ namespace SailorEditor.Services
             return created;
         }
 
+        public bool RenameAsset(AssetFile assetFile, string newName)
+        {
+            if (assetFile?.AssetInfo == null || string.IsNullOrWhiteSpace(newName))
+            {
+                return false;
+            }
+
+            var sanitizedName = string.Join("_", newName.Trim().Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            if (string.IsNullOrWhiteSpace(sanitizedName))
+            {
+                return false;
+            }
+
+            var oldAssetPath = assetFile.Asset?.FullName;
+            var oldAssetInfoPath = assetFile.AssetInfo.FullName;
+            var directory = Path.GetDirectoryName(oldAssetInfoPath);
+            var oldExtension = assetFile.Asset?.Extension ?? Path.GetExtension(Path.ChangeExtension(oldAssetInfoPath, null));
+            var requestedExtension = Path.GetExtension(sanitizedName);
+            var targetAssetFileName = string.IsNullOrEmpty(requestedExtension) ? sanitizedName + oldExtension : sanitizedName;
+            var targetAssetPath = Path.Combine(directory, targetAssetFileName);
+            var targetAssetInfoPath = targetAssetPath + ".asset";
+
+            if (!string.Equals(oldAssetPath, targetAssetPath, StringComparison.OrdinalIgnoreCase) && File.Exists(targetAssetPath))
+            {
+                return false;
+            }
+
+            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, StringComparison.OrdinalIgnoreCase) && File.Exists(targetAssetInfoPath))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(oldAssetPath) && File.Exists(oldAssetPath) && !string.Equals(oldAssetPath, targetAssetPath, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Move(oldAssetPath, targetAssetPath);
+            }
+
+            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Move(oldAssetInfoPath, targetAssetInfoPath);
+            }
+
+            UpdateAssetInfoFilename(targetAssetInfoPath, targetAssetFileName);
+            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            return true;
+        }
+
         public void AddProjectRoot(string projectRoot)
         {
             Folders = [];
@@ -125,6 +172,31 @@ namespace SailorEditor.Services
 
             var yaml = new YamlStream(new YamlDocument(root));
             using var writer = new StreamWriter(new FileStream(path, FileMode.Create));
+            yaml.Save(writer, false);
+        }
+
+        static void UpdateAssetInfoFilename(string assetInfoPath, string filename)
+        {
+            var yaml = new YamlStream();
+            using (var reader = new StreamReader(assetInfoPath))
+            {
+                yaml.Load(reader);
+            }
+
+            YamlMappingNode root;
+            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping)
+            {
+                root = new YamlMappingNode();
+                yaml = new YamlStream(new YamlDocument(root));
+            }
+            else
+            {
+                root = mapping;
+            }
+
+            root.Children[new YamlScalarNode("filename")] = new YamlScalarNode(filename);
+
+            using var writer = new StreamWriter(new FileStream(assetInfoPath, FileMode.Create));
             yaml.Save(writer, false);
         }
 

@@ -75,6 +75,16 @@ public class InstanceIdDragAndDropBehaviour : Behavior<Label>
             return;
         }
 
+        if (droppedItem is Component component)
+        {
+            if (MatchesExpectedType(component.Typename?.Name))
+            {
+                BoundProperty = component.InstanceId;
+                e.Handled = true;
+            }
+            return;
+        }
+
         if (droppedItem is not GameObject gameObject)
         {
             return;
@@ -97,5 +107,12 @@ public class InstanceIdDragAndDropBehaviour : Behavior<Label>
 
         var component = MauiProgram.GetService<WorldService>().FindComponent(gameObject, ExpectedTypename);
         return component?.InstanceId;
+    }
+
+    private bool MatchesExpectedType(string typename)
+    {
+        return string.IsNullOrWhiteSpace(ExpectedTypename) ||
+            string.Equals(ExpectedTypename, typename, StringComparison.Ordinal) ||
+            ExpectedTypename.EndsWith("::" + typename?.Split("::").LastOrDefault(), StringComparison.Ordinal);
     }
 }

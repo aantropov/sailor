@@ -22,10 +22,17 @@ namespace SailorEditor.Controls
             public object Model { get; set; }
         }
 
+        public class OnContextRequestedEventArgs : EventArgs
+        {
+            public TreeViewNode Node { get; set; }
+            public object Model { get; set; }
+        }
+
         public StackLayout StackLayout { get => _StackLayout; }
 
-        private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical };
+        private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical, BackgroundColor = Colors.Transparent };
         private readonly DropGestureRecognizer _RootDropGestureRecognizer = new();
+        private readonly TapGestureRecognizer _RootContextGestureRecognizer = new() { Buttons = ButtonsMask.Secondary };
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered
         private IList<TreeViewNode> _RootNodes = new ObservableCollection<TreeViewNode>();
@@ -80,13 +87,23 @@ namespace SailorEditor.Controls
         /// Occurs when the user selects a TreeViewItem
         /// </summary>
         public event EventHandler SelectedItemChanged;
+        public event EventHandler<OnContextRequestedEventArgs> ContextRequested;
         public event EventHandler<TreeViewDropRequest> DropRequested;
 
         public TreeView()
         {
+            BackgroundColor = Colors.Transparent;
             Content = _StackLayout;
             _RootDropGestureRecognizer.Drop += OnRootDrop;
             GestureRecognizers.Add(_RootDropGestureRecognizer);
+
+            _RootContextGestureRecognizer.Tapped += OnRootContextRequested;
+            GestureRecognizers.Add(_RootContextGestureRecognizer);
+        }
+
+        private void OnRootContextRequested(object sender, TappedEventArgs e)
+        {
+            ContextRequested?.Invoke(this, new OnContextRequestedEventArgs());
         }
 
         private void OnRootDrop(object sender, DropEventArgs e)
@@ -150,6 +167,15 @@ namespace SailorEditor.Controls
         internal void RequestDrop(TreeViewDropRequest request)
         {
             DropRequested?.Invoke(this, request);
+        }
+
+        internal void RequestContext(TreeViewNode node)
+        {
+            ContextRequested?.Invoke(this, new OnContextRequestedEventArgs()
+            {
+                Node = node,
+                Model = node?.BindingContext
+            });
         }
 
         internal static void RenderNodes(IEnumerable<TreeViewNode> childTreeViewItems, StackLayout parent, NotifyCollectionChangedEventArgs e, TreeViewNode parentTreeViewItem)
