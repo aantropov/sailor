@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using YamlDotNet.Core;
 using YamlDotNet.Core.Events;
 using SailorEditor.Helpers;
+using SailorEditor.Content;
 
 namespace SailorEditor.Services
 {
@@ -348,11 +349,12 @@ namespace SailorEditor.Services
             foreach (var directory in Directory.GetDirectories(directoryPath))
             {
                 var dirInfo = new DirectoryInfo(directory);
+                var relativeDirectoryPath = Path.GetRelativePath(MauiProgram.GetService<EngineService>().EngineContentDirectory, directory);
                 var folder = new AssetFolder
                 {
                     ProjectRootId = root.Id,
                     Name = dirInfo.Name,
-                    Id = Folders.Count + 1,
+                    Id = ProjectContentFolderIds.FromRelativePath(relativeDirectoryPath),
                     ParentFolderId = parentFolderId
                 };
 
