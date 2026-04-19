@@ -2,6 +2,7 @@
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using System.ComponentModel;
+using SailorEngine;
 
 namespace SailorEditor.Views
 {
@@ -40,6 +41,12 @@ namespace SailorEditor.Views
                 return;
             }
 
+            if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
+            {
+                existingView.BindingContext = inspectorProjection.SelectedItem;
+                return;
+            }
+
             var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
             var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
             var content = template.CreateContent();
@@ -49,5 +56,25 @@ namespace SailorEditor.Views
                 InspectedItemHost.Content = view;
             }
         }
+
+        static bool AreEquivalentSelection(object? current, object? next)
+        {
+            if (ReferenceEquals(current, next))
+            {
+                return true;
+            }
+
+            return TryGetInstanceId(current) is { } currentId &&
+                   TryGetInstanceId(next) is { } nextId &&
+                   current.GetType() == next.GetType() &&
+                   currentId == nextId;
+        }
+
+        static InstanceId? TryGetInstanceId(object? item) => item switch
+        {
+            GameObject gameObject => gameObject.InstanceId,
+            Component component => component.InstanceId,
+            _ => null,
+        };
     }
 }
