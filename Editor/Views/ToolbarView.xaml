@@ -3,89 +3,120 @@
              x:Name="this"
              x:Class="SailorEditor.Views.ToolbarView">
 
-    <Frame Padding="0" HasShadow="False" HeightRequest="24">
-        <Grid ColumnSpacing="5" RowSpacing="0" Margin="0" Padding="0"
-              HeightRequest="24" VerticalOptions="Center" HorizontalOptions="FillAndExpand">
+    <ContentView.Resources>
+        <Style x:Key="ToolbarIconButtonStyle" TargetType="ImageButton">
+            <Setter Property="BackgroundColor" Value="Transparent"/>
+            <Setter Property="BorderWidth" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="HeightRequest" Value="16"/>
+            <Setter Property="WidthRequest" Value="16"/>
+            <Setter Property="MinimumHeightRequest" Value="16"/>
+            <Setter Property="MinimumWidthRequest" Value="16"/>
+            <Setter Property="Aspect" Value="AspectFit"/>
+            <Setter Property="HorizontalOptions" Value="Center"/>
+            <Setter Property="VerticalOptions" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ToolbarGlyphButtonStyle" TargetType="Button">
+            <Setter Property="BackgroundColor" Value="Transparent"/>
+            <Setter Property="BorderWidth" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="WidthRequest" Value="18"/>
+            <Setter Property="HeightRequest" Value="18"/>
+            <Setter Property="MinimumWidthRequest" Value="18"/>
+            <Setter Property="MinimumHeightRequest" Value="18"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextColor" Value="#D8D8D8"/>
+        </Style>
+    </ContentView.Resources>
+
+    <Border StrokeThickness="1"
+            Stroke="#35363A"
+            BackgroundColor="#202124"
+            Padding="8,4"
+            Margin="0"
+            MinimumHeightRequest="28"
+            StrokeShape="RoundRectangle 0">
+        <Grid ColumnSpacing="10"
+              RowSpacing="0"
+              Margin="0"
+              Padding="0"
+              HeightRequest="20"
+              VerticalOptions="Center"
+              HorizontalOptions="FillAndExpand">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <ImageButton Source="disk_24.png"
-                         HeightRequest="24"
-                         WidthRequest="24"
-                         Aspect="AspectFit"
-                         Padding="0"
-                         Margin="0"
-                         HorizontalOptions="Start"
-                         VerticalOptions="Center"
-                         Clicked="OnSaveButtonClicked" 
-                         Grid.Column="0"/>
+            <Border Grid.Column="0"
+                    StrokeThickness="1"
+                    Stroke="#2B2C30"
+                    BackgroundColor="#252629"
+                    Padding="6,2"
+                    StrokeShape="RoundRectangle 4">
+                <ImageButton Source="disk_24.png"
+                             Style="{StaticResource ToolbarIconButtonStyle}"
+                             Clicked="OnSaveButtonClicked"/>
+            </Border>
 
-            <Grid Grid.Column="1" HorizontalOptions="Center" VerticalOptions="Center" Margin="0" Padding="0" HeightRequest="24">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <HorizontalStackLayout Grid.Column="1"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   Spacing="6">
+                <Border StrokeThickness="1"
+                        Stroke="#2B2C30"
+                        BackgroundColor="#252629"
+                        Padding="6,2"
+                        StrokeShape="RoundRectangle 4">
+                    <HorizontalStackLayout Spacing="6">
+                        <Button Text="↶"
+                                Style="{StaticResource ToolbarGlyphButtonStyle}"
+                                Clicked="OnUndoButtonClicked"/>
+                        <Button Text="↷"
+                                Style="{StaticResource ToolbarGlyphButtonStyle}"
+                                Clicked="OnRedoButtonClicked"/>
+                    </HorizontalStackLayout>
+                </Border>
 
-                <Button Text="↶" WidthRequest="32" HeightRequest="24" Padding="0" Margin="0" Clicked="OnUndoButtonClicked" Grid.Column="0"/>
-                <Button Text="↷" WidthRequest="32" HeightRequest="24" Padding="0" Margin="0" Clicked="OnRedoButtonClicked" Grid.Column="1"/>
+                <Border StrokeThickness="1"
+                        Stroke="#2B2C30"
+                        BackgroundColor="#252629"
+                        Padding="6,2"
+                        StrokeShape="RoundRectangle 4">
+                    <HorizontalStackLayout Spacing="6">
+                        <ImageButton Source="arrow_24.png"
+                                     Style="{StaticResource ToolbarIconButtonStyle}"
+                                     Clicked="OnPlayButtonClicked"/>
+                        <ImageButton Source="bug__arrow.png"
+                                     Style="{StaticResource ToolbarIconButtonStyle}"
+                                     Clicked="OnPlayDebugButtonClicked"/>
+                    </HorizontalStackLayout>
+                </Border>
+            </HorizontalStackLayout>
 
-                <ImageButton Source="arrow_24.png"
-                             HeightRequest="24"
-                             WidthRequest="24"
-                             Aspect="AspectFit"
-                             Padding="0"
-                             Margin="0"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center"
-                             Clicked="OnPlayButtonClicked"
-                             Grid.Column="2"/>
+            <Border Grid.Column="2"
+                    StrokeThickness="1"
+                    Stroke="#2B2C30"
+                    BackgroundColor="#252629"
+                    Padding="6,2"
+                    StrokeShape="RoundRectangle 4">
+                <HorizontalStackLayout Spacing="6">
+                    <ImageButton Source="application_export_24.png"
+                                 Style="{StaticResource ToolbarIconButtonStyle}"
+                                 Clicked="OnPathTraceSceneButtonClicked"/>
 
-                <ImageButton Source="bug__arrow.png"
-                             HeightRequest="24"
-                             WidthRequest="24"
-                             Aspect="AspectFit"
-                             Padding="0"
-                             Margin="0"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center"
-                             Clicked="OnPlayDebugButtonClicked"
-                             Grid.Column="3"/>
-            </Grid>
-
-            <Grid Grid.Column="2" HorizontalOptions="End" VerticalOptions="Center" Margin="0" Padding="0" HeightRequest="24">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-
-                <ImageButton Source="application_export_24.png"
-                             HeightRequest="24"
-                             WidthRequest="24"
-                             Aspect="AspectFit"
-                             Padding="0"
-                             Margin="0"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center"
-                             Clicked="OnPathTraceSceneButtonClicked"
-                             Grid.Column="0"/>
-
-                <ImageButton Source="application_export.png"
-                             HeightRequest="24"
-                             WidthRequest="24"
-                             Aspect="AspectFit"
-                             Padding="0"
-                             Margin="0"
-                             HorizontalOptions="Center"
-                             VerticalOptions="Center"
-                             Clicked="OnPathTraceSelectionButtonClicked"
-                             Grid.Column="1"/>
-            </Grid>
+                    <ImageButton Source="application_export.png"
+                                 Style="{StaticResource ToolbarIconButtonStyle}"
+                                 Clicked="OnPathTraceSelectionButtonClicked"/>
+                </HorizontalStackLayout>
+            </Border>
         </Grid>
-    </Frame>
+    </Border>
 
 </ContentView>

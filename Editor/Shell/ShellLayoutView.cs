@@ -8,15 +8,16 @@ namespace SailorEditor.Shell;
 
 public sealed class ShellLayoutView : ContentView
 {
-    static readonly Color TabStripBackground = Color.FromArgb("#252526");
-    static readonly Color TabStripBorder = Color.FromArgb("#3C3C3C");
-    static readonly Color PanelBackground = Color.FromArgb("#1E1E1E");
-    static readonly Color ActiveTabBackground = Color.FromArgb("#1E1E1E");
-    static readonly Color InactiveTabBackground = Color.FromArgb("#2D2D30");
-    static readonly Color HoverTabBackground = Color.FromArgb("#343438");
-    static readonly Color ActiveTabText = Color.FromArgb("#F3F3F3");
-    static readonly Color InactiveTabText = Color.FromArgb("#B9B9B9");
-    static readonly Color CloseButtonText = Color.FromArgb("#9A9A9A");
+    static readonly Color TabStripBackground = Color.FromArgb("#202124");
+    static readonly Color TabStripBorder = Color.FromArgb("#35363A");
+    static readonly Color PanelBackground = Color.FromArgb("#1B1C1F");
+    static readonly Color ActiveTabBackground = Color.FromArgb("#1B1C1F");
+    static readonly Color InactiveTabBackground = Color.FromArgb("#202124");
+    static readonly Color HoverTabBackground = Color.FromArgb("#2A2B2F");
+    static readonly Color ActiveTabText = Color.FromArgb("#F1F1F1");
+    static readonly Color InactiveTabText = Color.FromArgb("#A8A8AC");
+    static readonly Color CloseButtonText = Color.FromArgb("#7F8085");
+    static readonly Color ActiveTabAccent = Color.FromArgb("#4D8DFF");
 
     public static readonly BindableProperty HostProperty = BindableProperty.Create(
         nameof(Host), typeof(EditorShellHost), typeof(ShellLayoutView), propertyChanged: OnHostChanged);
@@ -130,8 +131,8 @@ public sealed class ShellLayoutView : ContentView
 
         var tabBar = new HorizontalStackLayout
         {
-            Spacing = 1,
-            Padding = new Thickness(6, 6, 6, 0),
+            Spacing = 0,
+            Padding = new Thickness(4, 2, 4, 0),
             BackgroundColor = TabStripBackground
         };
 
@@ -180,7 +181,7 @@ public sealed class ShellLayoutView : ContentView
         var title = new Label
         {
             Text = panel.Title,
-            FontSize = 12,
+            FontSize = 11,
             LineBreakMode = LineBreakMode.TailTruncation,
             VerticalTextAlignment = TextAlignment.Center,
             TextColor = textColor,
@@ -190,12 +191,14 @@ public sealed class ShellLayoutView : ContentView
         var close = new Button
         {
             Text = "×",
-            FontSize = 11,
-            WidthRequest = 18,
-            HeightRequest = 18,
+            FontSize = 10,
+            WidthRequest = 14,
+            HeightRequest = 14,
+            MinimumWidthRequest = 14,
+            MinimumHeightRequest = 14,
             Padding = 0,
             Margin = 0,
-            CornerRadius = 9,
+            CornerRadius = 0,
             BackgroundColor = Colors.Transparent,
             TextColor = isActive ? InactiveTabText : CloseButtonText,
             BorderWidth = 0
@@ -209,9 +212,9 @@ public sealed class ShellLayoutView : ContentView
                 new ColumnDefinition { Width = GridLength.Star },
                 new ColumnDefinition { Width = GridLength.Auto }
             },
-            ColumnSpacing = 2,
-            Padding = new Thickness(12, 6, 8, 6),
-            MinimumWidthRequest = 92
+            ColumnSpacing = 1,
+            Padding = new Thickness(10, 3, 6, 3),
+            MinimumWidthRequest = 72
         };
         tabContent.Children.Add(title);
         tabContent.Children.Add(close);
@@ -220,16 +223,13 @@ public sealed class ShellLayoutView : ContentView
         var tab = new Border
         {
             BackgroundColor = isActive ? ActiveTabBackground : InactiveTabBackground,
-            Stroke = isActive ? TabStripBorder : Color.FromArgb("#303033"),
-            StrokeThickness = 1,
+            Stroke = isActive ? ActiveTabAccent : Colors.Transparent,
+            StrokeThickness = isActive ? 1 : 0,
             Padding = 0,
-            Margin = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(6, 6, 0, 0) },
+            Margin = new Thickness(0, 0, 1, 0),
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },
             Content = tabContent
         };
-
-        if (isActive)
-            tab.StrokeThickness = 1;
 
         var focusTap = new TapGestureRecognizer();
         focusTap.Tapped += async (_, _) =>
