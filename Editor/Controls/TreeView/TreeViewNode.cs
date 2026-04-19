@@ -44,7 +44,7 @@ namespace SailorEditor.Controls
 
         internal readonly BoxView SelectionBoxView = new() { Color = Colors.Blue, Opacity = .5, IsVisible = false };
 
-        private TreeView ParentTreeView => Parent?.Parent as TreeView;
+        private TreeView ParentTreeView => FindParentTreeView();
         private double IndentWidth => Depth * SpacerWidth;
         private int SpacerWidth { get; } = 30;
         private int Depth => ParentTreeViewItem?.Depth + 1 ?? 0;
@@ -289,8 +289,29 @@ namespace SailorEditor.Controls
 
         private void RequestDrop(TreeViewDropRequest request)
         {
-            ParentTreeViewItem?.RequestDrop(request);
+            if (ParentTreeViewItem is not null)
+            {
+                ParentTreeViewItem.RequestDrop(request);
+                return;
+            }
+
             ParentTreeView?.RequestDrop(request);
+        }
+
+        private TreeView? FindParentTreeView()
+        {
+            Element? current = this;
+            while (current is not null)
+            {
+                if (current is TreeView treeView)
+                {
+                    return treeView;
+                }
+
+                current = current.Parent;
+            }
+
+            return null;
         }
 
         public void Select()
@@ -301,7 +322,12 @@ namespace SailorEditor.Controls
         private void ChildSelected(TreeViewNode child)
         {
             //Um? How does this work? The method here is a private method so how are we calling it?
-            ParentTreeViewItem?.ChildSelected(child);
+            if (ParentTreeViewItem is not null)
+            {
+                ParentTreeViewItem.ChildSelected(child);
+                return;
+            }
+
             ParentTreeView?.ChildSelected(child);
         }
 
