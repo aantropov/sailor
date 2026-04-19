@@ -3,7 +3,31 @@
 Date: 2026-04-18
 Project: Sailor Editor
 Depends on: `docs/plans/2026-04-18-editor-shell-refactor-design.md`
-Status: Drafted after approved design
+Status: Substantially delivered; closed as "done enough" for v1 on 2026-04-19
+
+## Status Update — 2026-04-19
+
+This plan is no longer a strict forward-looking task list.
+
+Delivered in the implementation that landed after this plan was written:
+- shell foundation and YAML-first layout persistence
+- shell skeleton with dockable panels and shell state rebuild fixes
+- workflow/content/settings/AI slices integrated into the new shell
+- scene viewport lifecycle isolation and scene focus/selection routing scaffolding
+- hierarchy projection and inspector explicit-commit editing flow
+- drag/drop command routing and destructive world/component undo restoration
+- selected-object scene gizmos exposed through the world debug command list
+
+Accepted scope cut for v1:
+- selected-object gizmos are considered sufficient via the world debug command list path
+- the originally implied full gizmo/manipulator framework with dedicated interactive transaction work is deferred
+
+Still deferred follow-up work after this refactor milestone:
+- fuller manipulator/tooling architecture beyond the current selected-object gizmo path
+- more polish/test coverage around shell UX and scene interactions where needed
+- any broader AI/editor ambitions beyond the integrated v1 shell panel/workflow slice
+
+The rest of this document remains useful as implementation history and decomposition notes, but some tasks below were partially merged, reordered, or cut during delivery.
 
 ## Execution Mode
 
@@ -577,22 +601,26 @@ Commit:
 - `editor: route scene selection through command flow`
 
 ### Task 4.5 — Add transform/gizmo interactive transactions
+Status: deferred by accepted v1 scope cut on 2026-04-19
 Expected effort: 2–5 minutes
 
-Do:
+Original intent:
 - Represent transform manipulations as interactive transactions
 - Ensure undo produces one meaningful history action
 
-Verify:
-- Integration tests for gizmo transaction grouping
+V1 replacement that actually shipped:
+- selected-object gizmos are exposed through the world debug command list
+- this is the current "done enough" completion point for scene gizmos in the shell refactor milestone
 
-Commit:
-- `editor: add scene transform transactions`
+Deferred follow-up:
+- dedicated manipulator architecture
+- richer gizmo interaction model and transaction grouping/tests
 
 ### Phase 4 exit criteria
 - Scene lives as a real shell panel
 - Viewport survives layout/focus changes
-- Scene selection and transform edits integrate with the shared command/history model
+- Scene selection integrates with the shared command/history model
+- selected-object gizmos are available through the debug-command path
 
 ## Phase 5 — Project/Content + Unified Settings
 

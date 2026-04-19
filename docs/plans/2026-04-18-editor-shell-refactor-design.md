@@ -2,7 +2,24 @@
 
 Date: 2026-04-18
 Project: Sailor Editor
-Status: Approved design
+Status: Approved design; implementation largely landed by 2026-04-19
+
+## Closure Note — 2026-04-19
+
+This design was directionally correct, but the shipped result is intentionally narrower than some of the original wording implied.
+
+What actually landed:
+- MAUI editor shell refactor with persistent dock/tab layout foundations
+- command/history-based workflow slices across hierarchy, inspector, content, settings, AI, and scene integration
+- scene viewport lifecycle and selection/focus routing updates
+- selected-object scene gizmos via the world debug command list
+
+What v1 explicitly does not claim yet:
+- a full standalone gizmo/manipulator framework
+- dedicated interactive gizmo transaction architecture matching the original idealized Phase 4 wording
+- every planned polish/testing item from this document
+
+For repo status and the accepted v1 scope cut, treat the implementation plan as the authoritative closure note.
 
 ## Goal
 
