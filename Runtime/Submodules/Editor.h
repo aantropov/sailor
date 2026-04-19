@@ -27,6 +27,7 @@ namespace Sailor
 		Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
 
 		void SetWorld(class World* world) { m_world = world; }
+		class World* GetWorld() const { return m_world; }
 
 		void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);

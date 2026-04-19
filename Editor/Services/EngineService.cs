@@ -1,6 +1,7 @@
 using SailorEngine;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
+using YamlDotNet.Serialization;
 
 namespace SailorEngine
 {
@@ -75,6 +76,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RemoveComponent(string strInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetEditorSelection(string strSelectionYaml);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
@@ -834,6 +837,25 @@ namespace SailorEditor.Services
             }
 
             return result;
+        }
+
+        public bool UpdateEditorSelection(IEnumerable<InstanceId?> selection)
+        {
+            var yaml = BuildEditorSelectionYaml(selection);
+
+            lock (interopLock)
+            {
+                return EngineAppInterop.SetEditorSelection(yaml);
+            }
+        }
+
+        public static string BuildEditorSelectionYaml(IEnumerable<InstanceId?> selection)
+        {
+            var serializer = new SerializerBuilder().Build();
+            return serializer.Serialize(selection?
+                .Where(id => id is not null && !id.IsEmpty())
+                .Select(id => id!.Value)
+                .ToArray() ?? Array.Empty<string>());
         }
 
         public bool ExportPathTracedImage(string outputPath, InstanceId targetInstance = null, uint height = 720, uint samplesPerPixel = 64, uint maxBounces = 4)

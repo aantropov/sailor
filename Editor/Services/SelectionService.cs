@@ -20,6 +20,7 @@ namespace SailorEditor.Services
             {
                 var selectedId = string.IsNullOrWhiteSpace(snapshot.SelectedId) ? InstanceId.NullInstanceId : new InstanceId(snapshot.SelectedId);
                 SelectedInstanceId = selectedId;
+                SyncEditorSelectionToRuntime();
             };
         }
 
@@ -95,6 +96,11 @@ namespace SailorEditor.Services
 
             if (raiseAssetAction)
                 OnSelectAssetAction?.Invoke(obj);
+        }
+
+        void SyncEditorSelectionToRuntime()
+        {
+            MauiProgram.GetService<EngineService>().UpdateEditorSelection([SelectedInstanceId]);
         }
 
         static string? TryGetSelectionId(ObservableObject obj) => obj switch

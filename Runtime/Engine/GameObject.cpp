@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
+#include <algorithm>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -97,7 +98,22 @@ void GameObject::EditorTick(float deltaTime)
 	{
 		auto& el = m_components[i];
 		el->EditorTick(deltaTime);
-		el->OnGizmo();
+	}
+}
+
+void GameObject::DrawEditorSelectedGizmo()
+{
+	auto& transform = GetTransformComponent();
+	const glm::vec4 worldPosition = transform.GetWorldPosition();
+	const glm::vec4 localScale = transform.GetScale();
+	const float axisSize = std::max(25.0f,
+		std::max(std::abs(localScale.x), std::max(std::abs(localScale.y), std::abs(localScale.z))) * 100.0f);
+
+	GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, transform.GetCachedWorldMatrix(), axisSize);
+
+	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
+	{
+		m_components[i]->OnGizmo();
 	}
 }
 

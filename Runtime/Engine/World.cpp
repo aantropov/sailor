@@ -92,6 +92,14 @@ void World::Tick(FrameState& frameState)
 		{
 			el->EditorTick(deltaTime);
 		}
+
+		for (auto& el : m_objects)
+		{
+			if (el && IsEditorSelected(el->GetInstanceId().GameObjectId()))
+			{
+				el->DrawEditorSelectedGizmo();
+			}
+		}
 	}
 
 	if (bShouldEcsTick)
@@ -240,6 +248,30 @@ void World::ResolveExternalDependencies()
 	}
 }
 
+void World::SetEditorSelection(const TVector<InstanceId>& selection)
+{
+	m_editorSelection.Clear();
+
+	for (const auto& instanceId : selection)
+	{
+		if (!instanceId)
+		{
+			continue;
+		}
+
+		const InstanceId gameObjectId = instanceId.GameObjectId();
+		if (gameObjectId)
+		{
+			m_editorSelection.Insert(gameObjectId);
+		}
+	}
+}
+
+bool World::IsEditorSelected(const InstanceId& instanceId) const
+{
+	return instanceId && m_editorSelection.Contains(instanceId.GameObjectId());
+}
+
 void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 {
 	if (!root)
@@ -354,6 +386,7 @@ void World::Clear()
 
 	m_objects.Clear();
 	m_pendingDestroyObjects.Clear();
+	m_editorSelection.Clear();
 	m_pDebugContext.Clear();
 
 	for (const auto& ecs : m_ecs)

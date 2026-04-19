@@ -67,6 +67,8 @@ namespace Sailor
 		SAILOR_API const std::string& GetName() const { return m_name; }
 
 		SAILOR_API void ResolveExternalDependencies();
+		SAILOR_API void SetEditorSelection(const TVector<InstanceId>& selection);
+		SAILOR_API bool IsEditorSelected(const InstanceId& instanceId) const;
 
 		SAILOR_API ObjectPtr GetObjectByInstanceId(const InstanceId& instanceId) const;
 
@@ -87,6 +89,7 @@ namespace Sailor
 
 		TVector<GameObjectPtr> m_objects;
 		TMap<InstanceId, ObjectPtr> m_objectsMap;
+		TSet<InstanceId> m_editorSelection;
 
 		TVector<size_t> m_sortedEcs;
 		TMap<size_t, Sailor::ECS::TBaseSystemPtr> m_ecs;

@@ -65,6 +65,7 @@ namespace Sailor
 		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName);
 		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
+		SAILOR_API static bool SetEditorSelection(const char* strSelectionYaml);
 		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 		SAILOR_API static void ShowMainWindow(bool bShow);
 

@@ -224,6 +224,35 @@ bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentIn
 	return editor->InstantiatePrefab(fileId, parentInstanceId);
 }
 
+bool App::SetEditorSelection(const char* strSelectionYaml)
+{
+	auto editor = GetSubmodule<Editor>();
+	auto* world = editor ? editor->GetWorld() : nullptr;
+	if (!world || !strSelectionYaml)
+	{
+		return false;
+	}
+
+	TVector<InstanceId> selection;
+	const YAML::Node yaml = YAML::Load(strSelectionYaml);
+	if (yaml && yaml.IsSequence())
+	{
+		selection.Reserve(yaml.size());
+		for (const auto& entry : yaml)
+		{
+			InstanceId instanceId{};
+			instanceId.Deserialize(entry);
+			if (instanceId)
+			{
+				selection.Add(instanceId);
+			}
+		}
+	}
+
+	world->SetEditorSelection(selection);
+	return true;
+}
+
 bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
 {
 	if (!strOutputPath || strOutputPath[0] == '\0')
