@@ -13,6 +13,8 @@ namespace SailorEditor.Services
 {
     public class AssetsService
     {
+        public event Action? Changed;
+
         public ProjectRoot Root { get; private set; }
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<FileId, AssetFile> Assets { get; private set; }
@@ -117,6 +119,7 @@ namespace SailorEditor.Services
             ReadDirectory(Root, projectRoot, -1);
 
             Files = new HashSet<AssetFile>([.. Assets.Values]).ToList();
+            Changed?.Invoke();
         }
 
         static string GetUniqueAssetName(string folderPath, string baseName, string extension)

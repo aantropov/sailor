@@ -1,11 +1,12 @@
-﻿using SailorEditor.Controls;
-using SailorEditor.Helpers;
-using SailorEditor.ViewModels;
-using SailorEditor.Services;
-using CommunityToolkit.Mvvm.ComponentModel;
-using SailorEditor.Utility;
-using SailorEditor.Content;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Commands;
+using SailorEditor.Content;
+using SailorEditor.Controls;
+using SailorEditor.Helpers;
+using SailorEditor.Services;
+using SailorEditor.Utility;
+using SailorEditor.ViewModels;
+using SailorEngine;
 
 namespace SailorEditor.Views
 {
@@ -15,6 +16,8 @@ namespace SailorEditor.Views
         readonly ProjectContentStore contentStore;
         readonly ICommandDispatcher dispatcher;
         readonly IActionContextProvider contextProvider;
+        bool suppressSelectionChanged;
+
         public ContentFolderView()
         {
             InitializeComponent();
@@ -24,8 +27,9 @@ namespace SailorEditor.Views
             dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             contextProvider = MauiProgram.GetService<IActionContextProvider>();
 
-            PopulateTreeView();
+            PopulateTreeView(contentStore.Projection);
 
+            contentStore.ProjectionChanged += PopulateTreeView;
             FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
             FolderTree.DropRequested += OnContentDropRequested;
             FolderTree.ContextRequested += OnContentContextRequested;
@@ -34,36 +38,29 @@ namespace SailorEditor.Views
             selectionViewModel.OnSelectAssetAction += SelectAssetFile;
         }
 
-        private void SelectAssetFile(ObservableObject obj)
+        void SelectAssetFile(ObservableObject obj)
         {
-            if (obj is AssetFile file)
+            if (obj is not AssetFile file || file.FileId is null || file.FileId.IsEmpty())
             {
-                if (FolderTree.SelectedItem != null)
-                {
-                    var assetFile = FolderTree.SelectedItem.BindingContext as TreeViewItem<AssetFile>;
-
-                    if (assetFile.Model.FileId == file.FileId)
-                    {
-                        return;
-                    }
-                }
-
-                foreach (var el in FolderTree.RootNodes)
-                {
-                    var res = el.FindFileRecursive(file);
-
-                    if (res != null)
-                    {
-                        res.Select();
-                        FolderTree.SelectedItem = res;
-                        break;
-                    }
-                }
+                return;
             }
+
+            var currentFileId = (FolderTree.SelectedItem?.BindingContext as TreeViewItem<AssetFile>)?.Model.FileId;
+            if (currentFileId == file.FileId)
+            {
+                return;
+            }
+
+            contentStore.SelectAsset(file.FileId.Value);
         }
 
-        public static void OnSelectTreeViewNode(object sender, EventArgs args)
+        void OnSelectTreeViewNode(object sender, EventArgs args)
         {
+            if (suppressSelectionChanged)
+            {
+                return;
+            }
+
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
             switch (selectionChanged?.Model)
             {
@@ -82,7 +79,7 @@ namespace SailorEditor.Views
             }
         }
 
-        private async void OnContentDropRequested(object sender, TreeViewDropRequest request)
+        async void OnContentDropRequested(object sender, TreeViewDropRequest request)
         {
             if (request.Source is not GameObject gameObject)
             {
@@ -114,12 +111,9 @@ namespace SailorEditor.Views
                     }
                     break;
             }
-
-            if (request.Handled)
-                PopulateTreeView();
         }
 
-        private void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
+        void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
         {
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
             if (args.Model is TreeViewItem<AssetFile> assetItem)
@@ -139,7 +133,7 @@ namespace SailorEditor.Views
             }
         }
 
-        private async Task RenameAsset(AssetFile assetFile)
+        async Task RenameAsset(AssetFile assetFile)
         {
             var newName = await Application.Current.MainPage.DisplayPromptAsync(
                 "Rename asset",
@@ -157,17 +151,13 @@ namespace SailorEditor.Views
                 new RenameAssetCommand(assetFile, newName),
                 contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(RenameAsset))));
 
-            if (result.Succeeded)
-            {
-                PopulateTreeView();
-            }
-            else
+            if (!result.Succeeded)
             {
                 await Application.Current.MainPage.DisplayAlert("Rename failed", "Asset with this name already exists or the name is invalid.", "OK");
             }
         }
 
-        private async Task DeleteAsset(AssetFile assetFile)
+        async Task DeleteAsset(AssetFile assetFile)
         {
             var confirmed = await Application.Current.MainPage.DisplayAlert(
                 "Delete asset",
@@ -182,18 +172,81 @@ namespace SailorEditor.Views
                 new DeleteAssetCommand(assetFile),
                 contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DeleteAsset))));
 
-            if (result.Succeeded)
-                PopulateTreeView();
-            else
+            if (!result.Succeeded)
+            {
                 await Application.Current.MainPage.DisplayAlert("Delete failed", result.Message ?? "Unable to delete asset.", "OK");
+            }
         }
 
-        private void PopulateTreeView()
+        void PopulateTreeView(ProjectContentProjection projection)
         {
-            contentStore.Refresh();
-            var foldersModel = FolderTreeViewBuilder.PopulateDirectory(service);
+            var foldersById = service.Folders.ToDictionary(x => x.Id);
+            var assetsByFileId = service.Files
+                .Where(x => x.FileId is not null && !x.FileId.IsEmpty())
+                .ToDictionary(x => x.FileId!.Value, StringComparer.Ordinal);
+
+            var foldersModel = FolderTreeViewBuilder.PopulateDirectory(projection, foldersById, assetsByFileId);
             var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs());
             FolderTree.RootNodes = rootNodes;
+            RestoreSelection(projection);
+        }
+
+        void RestoreSelection(ProjectContentProjection projection)
+        {
+            TreeViewNode? selectedNode = null;
+            if (!string.IsNullOrWhiteSpace(projection.State.SelectedAssetFileId))
+            {
+                selectedNode = FindAssetNode(projection.State.SelectedAssetFileId);
+            }
+
+            selectedNode ??= projection.State.CurrentFolderId is { } folderId
+                ? FindFolderNode(folderId)
+                : null;
+
+            suppressSelectionChanged = true;
+            try
+            {
+                if (selectedNode is null)
+                {
+                    FolderTree.SelectedItem = null;
+                    return;
+                }
+
+                selectedNode.Select();
+                FolderTree.SelectedItem = selectedNode;
+            }
+            finally
+            {
+                suppressSelectionChanged = false;
+            }
+        }
+
+        TreeViewNode? FindAssetNode(string fileId)
+        {
+            foreach (var node in FolderTree.RootNodes)
+            {
+                var match = node.FindFileRecursive(new AssetFile { FileId = new FileId(fileId) });
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
+        }
+
+        TreeViewNode? FindFolderNode(int folderId)
+        {
+            foreach (var node in FolderTree.RootNodes)
+            {
+                var match = node.FindFolderRecursive(folderId);
+                if (match != null)
+                {
+                    return match;
+                }
+            }
+
+            return null;
         }
     }
 }

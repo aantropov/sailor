@@ -9,41 +9,48 @@ public sealed class ProjectContentStore
     public ProjectContentStore(AssetsService assetsService)
     {
         _assetsService = assetsService;
-        Projection = ProjectContentProjectionBuilder.Build(_assetsService.Root.Name, CreateFolderSnapshots(), CreateAssetSnapshots(), State);
+        _assetsService.Changed += OnAssetsChanged;
+        Projection = BuildProjection(State);
     }
+
+    public event Action<ProjectContentProjection>? ProjectionChanged;
 
     public ProjectContentState State { get; private set; } = new();
     public ProjectContentProjection Projection { get; private set; }
 
-    public ProjectContentProjection Refresh()
-    {
-        Projection = ProjectContentProjectionBuilder.Build(_assetsService.Root.Name, CreateFolderSnapshots(), CreateAssetSnapshots(), State);
-        return Projection;
-    }
+    public ProjectContentProjection Refresh() => Update(State, force: true);
 
-    public ProjectContentProjection SelectFolder(int? folderId)
-    {
-        State = State with { CurrentFolderId = folderId };
-        return Refresh();
-    }
+    public ProjectContentProjection SelectFolder(int? folderId) => Update(State with { CurrentFolderId = folderId, SelectedAssetFileId = null });
 
     public ProjectContentProjection SelectAsset(string? fileId)
     {
-        State = State with { SelectedAssetFileId = fileId };
-        return Refresh();
+        var asset = CreateAssetSnapshots().FirstOrDefault(x => x.FileId == fileId);
+        var folderId = asset is null ? State.CurrentFolderId : asset.FolderId == -1 ? null : asset.FolderId;
+        return Update(State with { CurrentFolderId = folderId, SelectedAssetFileId = fileId });
     }
 
-    public ProjectContentProjection SetFilter(string? filter)
+    public ProjectContentProjection SetFilter(string? filter) => Update(State with { Filter = filter });
+
+    public ProjectContentProjection SetSort(ProjectContentSortMode sortMode) => Update(State with { SortMode = sortMode });
+
+    void OnAssetsChanged() => Update(State, force: true);
+
+    ProjectContentProjection Update(ProjectContentState state, bool force = false)
     {
-        State = State with { Filter = filter };
-        return Refresh();
+        if (!force && state == State)
+            return Projection;
+
+        State = state;
+        Projection = BuildProjection(State);
+        ProjectionChanged?.Invoke(Projection);
+        return Projection;
     }
 
-    public ProjectContentProjection SetSort(ProjectContentSortMode sortMode)
-    {
-        State = State with { SortMode = sortMode };
-        return Refresh();
-    }
+    ProjectContentProjection BuildProjection(ProjectContentState state) => ProjectContentProjectionBuilder.Build(
+        _assetsService.Root.Name,
+        CreateFolderSnapshots(),
+        CreateAssetSnapshots(),
+        state);
 
     IReadOnlyList<ProjectContentFolderSnapshot> CreateFolderSnapshots() => _assetsService.Folders
         .Select(x => new ProjectContentFolderSnapshot(x.Id, x.Name, x.ParentFolderId))

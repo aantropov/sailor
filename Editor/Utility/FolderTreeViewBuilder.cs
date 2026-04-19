@@ -1,51 +1,39 @@
-﻿using SailorEditor.ViewModels;
-using SailorEditor.Services;
-using SailorEditor.Controls;
-using CommunityToolkit.Maui.Core.Primitives;
+﻿using SailorEditor.Controls;
+using SailorEditor.Content;
+using SailorEditor.ViewModels;
 
 namespace SailorEditor.Helpers
 {
     public static class FolderTreeViewBuilder
     {
-        private static TreeViewItemGroup<AssetFolder, AssetFile> FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
+        private static TreeViewItemGroup<AssetFolder, AssetFile>? FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
         {
             if (group.GroupId == folder.ParentFolderId)
                 return group;
 
-            if (group.ChildrenGroups != null)
+            foreach (var currentGroup in group.ChildrenGroups)
             {
-                foreach (var currentGroup in group.ChildrenGroups)
-                {
-                    var search = FindParentFolder(currentGroup, folder);
-
-                    if (search != null)
-                        return search;
-                }
+                var search = FindParentFolder(currentGroup, folder);
+                if (search != null)
+                    return search;
             }
 
             return null;
         }
 
-        public static TreeViewNode FindItemRecursive<T>(this TreeViewNode parent, T id)
+        public static TreeViewNode? FindItemRecursive<T>(this TreeViewNode parent, T id)
             where T : IComparable<T>
         {
-            var item = parent.BindingContext as TreeViewItem<T>;
-
-            if (item != null)
+            if (parent.BindingContext is TreeViewItem<T> item && item.Model.Equals(id))
             {
-                if (item.Model.Equals(id))
-                {
-                    return parent;
-                }
+                return parent;
             }
 
-            var group = parent.BindingContext as TreeViewItemGroup<AssetFolder, AssetFile>;
-            if (group != null)
+            if (parent.BindingContext is TreeViewItemGroup<AssetFolder, AssetFile>)
             {
                 foreach (var el in parent.ChildrenList)
                 {
-                    var res = FindItemRecursive<T>(el, id);
-
+                    var res = FindItemRecursive(el, id);
                     if (res != null)
                         return res;
                 }
@@ -54,25 +42,38 @@ namespace SailorEditor.Helpers
             return null;
         }
 
-        public static TreeViewNode FindFileRecursive(this TreeViewNode parent, AssetFile id)
+        public static TreeViewNode? FindFolderRecursive(this TreeViewNode parent, int folderId)
         {
-            var assetFile = parent.BindingContext as TreeViewItem<AssetFile>;
-
-            if (assetFile != null)
+            if (parent.BindingContext is TreeViewItemGroup<AssetFolder, AssetFile> folder && folder.Model?.Id == folderId)
             {
-                if (assetFile.Model.FileId == id.FileId)
+                return parent;
+            }
+
+            if (parent.BindingContext is TreeViewItemGroup<AssetFolder, AssetFile>)
+            {
+                foreach (var el in parent.ChildrenList)
                 {
-                    return parent;
+                    var res = FindFolderRecursive(el, folderId);
+                    if (res != null)
+                        return res;
                 }
             }
 
-            var assetFolder = parent.BindingContext as TreeViewItemGroup<AssetFolder, AssetFile>;
-            if (assetFolder != null)
+            return null;
+        }
+
+        public static TreeViewNode? FindFileRecursive(this TreeViewNode parent, AssetFile id)
+        {
+            if (parent.BindingContext is TreeViewItem<AssetFile> assetFile && assetFile.Model.FileId == id.FileId)
+            {
+                return parent;
+            }
+
+            if (parent.BindingContext is TreeViewItemGroup<AssetFolder, AssetFile>)
             {
                 foreach (var el in parent.ChildrenList)
                 {
                     var res = FindFileRecursive(el, id);
-
                     if (res != null)
                         return res;
                 }
@@ -81,66 +82,78 @@ namespace SailorEditor.Helpers
             return null;
         }
 
-        public static TreeViewItemGroup<AssetFolder, AssetFile> PopulateDirectory(AssetsService service)
+        public static TreeViewItemGroup<AssetFolder, AssetFile> PopulateDirectory(
+            ProjectContentProjection projection,
+            IReadOnlyDictionary<int, AssetFolder> foldersById,
+            IReadOnlyDictionary<string, AssetFile> assetsByFileId)
         {
-            var projectRoot = service.Root;
-            var folders = service.Folders.OrderBy(x => x.ParentFolderId);
-            var assets = service.Files;
-
-            var projectRootGroup = new TreeViewItemGroup<AssetFolder, AssetFile>();
-            projectRootGroup.Key = projectRoot.Name;
-
-            foreach (var folder in folders)
+            var projectRootGroup = new TreeViewItemGroup<AssetFolder, AssetFile>
             {
-                var itemGroup = new TreeViewItemGroup<AssetFolder, AssetFile>();
-                itemGroup.Model = folder;
-                itemGroup.GroupId = folder.Id;
-                itemGroup.Key = folder.Name;
+                Key = projection.Root.Name
+            };
 
-                // Assets first
-                var assetsInFolder = assets.Where(x => x.FolderId == folder.Id);
-
-                foreach (var file in assetsInFolder)
+            var groupsById = new Dictionary<int, TreeViewItemGroup<AssetFolder, AssetFile>>();
+            foreach (var projectionFolder in projection.Folders.OrderBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase))
+            {
+                if (projectionFolder.FolderId is not { } folderId || !foldersById.TryGetValue(folderId, out var folder))
                 {
-                    var item = new TreeViewItem<AssetFile>();
-                    item.Model = file;
-                    item.ItemId = file.Id;
-                    item.Key = file.DisplayName;
-
-                    itemGroup.ChildrenItems.Add(item);
+                    continue;
                 }
 
-                // Folders now
+                var itemGroup = new TreeViewItemGroup<AssetFolder, AssetFile>
+                {
+                    Model = folder,
+                    GroupId = folder.Id,
+                    Key = projectionFolder.Name
+                };
+
+                groupsById[folder.Id] = itemGroup;
                 if (folder.ParentFolderId == -1)
                 {
                     projectRootGroup.ChildrenGroups.Add(itemGroup);
+                    continue;
                 }
-                else
+
+                if (groupsById.TryGetValue(folder.ParentFolderId, out var parentGroup))
                 {
-                    TreeViewItemGroup<AssetFolder, AssetFile> parentGroup = null;
+                    parentGroup.ChildrenGroups.Add(itemGroup);
+                    continue;
+                }
 
-                    foreach (var group in projectRootGroup.ChildrenGroups)
-                    {
-                        parentGroup = FindParentFolder(group, folder);
+                parentGroup = projectRootGroup.ChildrenGroups
+                    .Select(group => FindParentFolder(group, folder))
+                    .FirstOrDefault(group => group != null);
 
-                        if (parentGroup != null)
-                        {
-                            parentGroup.ChildrenGroups.Add(itemGroup);
-                            break;
-                        }
-                    }
+                if (parentGroup != null)
+                {
+                    parentGroup.ChildrenGroups.Add(itemGroup);
                 }
             }
 
-            var assetsInRootFolder = assets.Where(x => x.FolderId == -1);
-            foreach (var file in assetsInRootFolder)
+            foreach (var projectionAsset in projection.VisibleAssets)
             {
-                var item = new TreeViewItem<AssetFile>();
-                item.Model = file;
-                item.ItemId = file.Id;
-                item.Key = file.DisplayName;
+                if (!assetsByFileId.TryGetValue(projectionAsset.FileId, out var file))
+                {
+                    continue;
+                }
 
-                projectRootGroup.ChildrenItems.Add(item);
+                var item = new TreeViewItem<AssetFile>
+                {
+                    Model = file,
+                    ItemId = file.Id,
+                    Key = projectionAsset.DisplayName
+                };
+
+                if (projectionAsset.FolderId == -1)
+                {
+                    projectRootGroup.ChildrenItems.Add(item);
+                    continue;
+                }
+
+                if (groupsById.TryGetValue(projectionAsset.FolderId, out var folderGroup))
+                {
+                    folderGroup.ChildrenItems.Add(item);
+                }
             }
 
             return projectRootGroup;
