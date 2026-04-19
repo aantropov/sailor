@@ -31,6 +31,7 @@ namespace SailorEditor.Views
         readonly Stopwatch uiUpdateStopwatch = Stopwatch.StartNew();
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
+        readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
 #if MACCATALYST
@@ -108,6 +109,7 @@ namespace SailorEditor.Views
                         focusCoordinator.SetViewportFocus(true);
                     }
 
+                    var remoteModifiers = (RemoteViewportInputModifier)input.Modifiers;
                     viewportAdapter.SendInput(
                         (RemoteViewportInputKind)input.Kind,
                         input.PointerX,
@@ -116,10 +118,26 @@ namespace SailorEditor.Views
                         input.WheelDeltaY,
                         input.KeyCode,
                         input.Button,
-                        (RemoteViewportInputModifier)input.Modifiers,
+                        remoteModifiers,
                         input.Pressed,
                         input.Focused,
                         input.Captured);
+
+                    var shellState = MauiProgram.GetService<State.ShellState>();
+                    var selectionResult = selectionRouter.HandleInput(input, shellState.Focus.SelectionOwner == $"scene:{EngineService.SceneViewportId}");
+                    if (selectionResult.Handled)
+                    {
+                        var selectionService = MauiProgram.GetService<SelectionService>();
+                        if (selectionResult.ClearSelection)
+                        {
+                            selectionService.ClearSelection();
+                        }
+                        else if (!string.IsNullOrWhiteSpace(selectionResult.SelectedId))
+                        {
+                            selectionService.SelectInstance(new InstanceId(selectionResult.SelectedId));
+                        }
+                    }
+
                     UpdateViewportIntegration();
                 };
 

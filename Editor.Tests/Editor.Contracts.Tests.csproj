@@ -30,6 +30,7 @@
     <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
+    <Compile Include="SceneSelectionRoutingTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="SceneTestShellStateStub.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
@@ -43,6 +44,7 @@
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
     <Compile Include="..\Editor\Scene\SceneViewportLifecycle.cs" Link="Scene\SceneViewportLifecycle.cs" />
+    <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
     <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />
     <Compile Include="..\Editor\AI\AIOperatorService.cs" Link="AI\AIOperatorService.cs" />
     <Compile Include="..\Editor\AI\EditorAIContextProvider.cs" Link="AI\EditorAIContextProvider.cs" />
