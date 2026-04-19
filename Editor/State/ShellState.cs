@@ -104,6 +104,16 @@ public sealed class ShellState : INotifyPropertyChanged
         };
     }
 
+    public void FocusViewport(string? viewportId, string? selectionOwner = null, string? keyboardInputOwner = null)
+    {
+        Focus = Focus with
+        {
+            FocusedViewportId = viewportId,
+            SelectionOwner = selectionOwner,
+            KeyboardInputOwner = keyboardInputOwner
+        };
+    }
+
     bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))

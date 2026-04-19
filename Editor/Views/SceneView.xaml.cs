@@ -2,6 +2,7 @@
 using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.Controls;
+using SailorEditor.Scene;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
@@ -28,6 +29,8 @@ namespace SailorEditor.Views
         uint lastAppliedRenderTargetHeight = 0;
         string lastViewportStatusText = string.Empty;
         readonly Stopwatch uiUpdateStopwatch = Stopwatch.StartNew();
+        readonly SceneViewportLifecycleAdapter viewportAdapter;
+        readonly SceneShellFocusCoordinator focusCoordinator;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
 #if MACCATALYST
@@ -39,9 +42,15 @@ namespace SailorEditor.Views
         public SceneView()
         {
             InitializeComponent();
+            viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(MauiProgram.GetService<EngineService>()), EngineService.SceneViewportId);
+            focusCoordinator = new SceneShellFocusCoordinator(MauiProgram.GetService<State.ShellState>(), $"scene:{EngineService.SceneViewportId}");
 
             var tapGesture = new TapGestureRecognizer();
-            tapGesture.Tapped += (sender, args) => isFocused = true;
+            tapGesture.Tapped += (sender, args) =>
+            {
+                isFocused = true;
+                focusCoordinator.SetViewportFocus(true);
+            };
             GestureRecognizers.Add(tapGesture);
 
             SizeChanged += (sender, args) =>
@@ -52,7 +61,8 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isFocused = false;
-                MauiProgram.GetService<EngineService>().SendRemoteViewportInput(EngineService.SceneViewportId, RemoteViewportInputKind.Focus, focused: false);
+                focusCoordinator.SetViewportFocus(false);
+                viewportAdapter.SendInput(RemoteViewportInputKind.Focus, focused: false);
             };
 
 #if MACCATALYST
@@ -69,7 +79,6 @@ namespace SailorEditor.Views
                     Console.WriteLine($"[SceneView] native host handle changed: 0x{handle.ToInt64():X}");
                     if (handle != nint.Zero)
                     {
-                        MauiProgram.GetService<EngineService>().BindMacRemoteViewportHost(EngineService.SceneViewportId, handle);
                         QueueViewportRetry();
                     }
                 };
@@ -90,15 +99,15 @@ namespace SailorEditor.Views
                     if (input.Kind == NativeSceneViewportInputKind.Focus)
                     {
                         isFocused = input.Focused;
+                        focusCoordinator.SetViewportFocus(isFocused);
                     }
                     else
                     {
                         isFocused = true;
+                        focusCoordinator.SetViewportFocus(true);
                     }
 
-                    var engineService = MauiProgram.GetService<EngineService>();
-                    engineService.SendRemoteViewportInput(
-                        EngineService.SceneViewportId,
+                    viewportAdapter.SendInput(
                         (RemoteViewportInputKind)input.Kind,
                         input.PointerX,
                         input.PointerY,
@@ -166,24 +175,23 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isRunning = false;
-                MauiProgram.GetService<EngineService>().DestroyRemoteViewport(EngineService.SceneViewportId);
+                focusCoordinator.ReleaseIfOwned();
+                viewportAdapter.Destroy();
             };
         }
 
         void UpdateViewportIntegration()
         {
-            var engineService = MauiProgram.GetService<EngineService>();
-            var rect = Viewport.GetAbsolutePositionWin();
-            var editorViewportAlreadySet = false;
+            var remoteRect = Viewport.GetAbsolutePositionWin();
+            var editorRect = new SceneViewportRect(remoteRect.X, remoteRect.Y, remoteRect.Width, remoteRect.Height);
+            var renderTarget = default(SceneViewportRenderTarget);
 #if MACCATALYST
             if (UseNativeViewportHost)
             {
                 if (nativeHostHandle == nint.Zero)
                 {
                     if (ViewportStatusOverlay.IsVisible)
-                    {
                         SetLabelText(ViewportStatusText, "Waiting for native CAMetalLayer host…");
-                    }
                     return;
                 }
 
@@ -192,9 +200,7 @@ namespace SailorEditor.Views
                 if (logicalViewportWidth <= 1 || logicalViewportHeight <= 1)
                 {
                     if (ViewportStatusOverlay.IsVisible)
-                    {
                         SetLabelText(ViewportStatusText, $"Waiting for native viewport layout… host={nativeHostHandle != nint.Zero} size={logicalViewportWidth:0.##}x{logicalViewportHeight:0.##}");
-                    }
                     return;
                 }
 
@@ -214,39 +220,36 @@ namespace SailorEditor.Views
                     Console.WriteLine($"[SceneView] viewport sizes: logical={logicalViewportWidth:0.##}x{logicalViewportHeight:0.##} scale={nativeViewportScale:0.##} render={renderWidth}x{renderHeight}");
                     QueueViewportRetry(TimeSpan.FromMilliseconds(350));
                 }
-                engineService.BindMacRemoteViewportHost(EngineService.SceneViewportId, nativeHostHandle);
-                engineService.Viewport = new Rect(0, 0, Math.Max(1, logicalViewportWidth), Math.Max(1, logicalViewportHeight));
-                editorViewportAlreadySet = true;
-                engineService.SetEditorRenderTargetSize(renderWidth, renderHeight);
-                rect = new Rect(0, 0, renderWidth, renderHeight);
+
+                editorRect = new SceneViewportRect(0, 0, Math.Max(1, logicalViewportWidth), Math.Max(1, logicalViewportHeight));
+                remoteRect = new Rect(0, 0, renderWidth, renderHeight);
+                renderTarget = new SceneViewportRenderTarget(renderWidth, renderHeight);
             }
 #endif
 
-            if (rect.IsEmpty)
+            if (remoteRect.IsEmpty)
             {
                 if (ViewportStatusOverlay.IsVisible)
-                {
                     SetLabelText(ViewportStatusText, "Waiting for viewport host…");
-                }
                 return;
             }
 
-            if (!editorViewportAlreadySet)
-            {
-                engineService.Viewport = rect;
-            }
-            var updated = engineService.TryUpdateRemoteViewport(EngineService.SceneViewportId, rect, visible: IsVisible, focused: isFocused);
-            if (!updated && !editorViewportAlreadySet)
-            {
-                engineService.Viewport = rect;
-            }
+            var updated = viewportAdapter.Sync(new SceneViewportFrame(
+                new SceneViewportRect(remoteRect.X, remoteRect.Y, remoteRect.Width, remoteRect.Height),
+                editorRect,
+                renderTarget,
+                IsVisible,
+                isFocused,
+                nativeHostHandle));
+
+            if (!updated)
+                viewportAdapter.Sync(new SceneViewportFrame(editorRect, editorRect, renderTarget, IsVisible, isFocused, nativeHostHandle));
         }
 
         void UpdateViewportStatus()
         {
-            var engineService = MauiProgram.GetService<EngineService>();
-            var state = engineService.GetRemoteViewportState(EngineService.SceneViewportId);
-            var diagnostics = engineService.GetRemoteViewportDiagnostics(EngineService.SceneViewportId);
+            var state = viewportAdapter.GetState();
+            var diagnostics = viewportAdapter.GetDiagnostics();
 
 #if MACCATALYST
             if (!UseNativeViewportHost)
@@ -360,11 +363,9 @@ namespace SailorEditor.Views
                     return;
                 }
 
-                var engineService = MauiProgram.GetService<EngineService>();
                 nativeViewportHost?.RequestLayoutUpdate(width, height, nativeViewportScale);
-                engineService.BindMacRemoteViewportHost(EngineService.SceneViewportId, nativeHostHandle);
                 UpdateViewportIntegration();
-                engineService.RetryRemoteViewport(EngineService.SceneViewportId);
+                viewportAdapter.Retry();
 
                 if (uiUpdateStopwatch.ElapsedMilliseconds < viewportRetryUntilMs)
                 {
@@ -376,7 +377,7 @@ namespace SailorEditor.Views
 
         void OnRetryRemoteViewportClicked(object sender, EventArgs e)
         {
-            MauiProgram.GetService<EngineService>().RetryRemoteViewport(EngineService.SceneViewportId);
+            viewportAdapter.Retry();
         }
 
         sealed class ParsedViewportDiagnostics
