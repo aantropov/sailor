@@ -28,6 +28,8 @@ static class Templates
     }
 
     public const int ThumbnailSize = 128;
+    public const double InspectorLabelColumnWidth = 140;
+    public const double InspectorFieldSpacing = 6;
 
     public static Microsoft.Maui.Controls.Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
     {
@@ -103,7 +105,7 @@ static class Templates
 
     public static View EntryField<TBindingContext, TSource>(Expression<Func<TBindingContext, TSource>> getter, Action<TBindingContext, TSource> setter, IValueConverter valueConverter = null)
     {
-        var entry = new Entry { FontSize = 12 };
+        var entry = CreateInspectorEntry();
         entry.Bind<Entry, TBindingContext, TSource, string>(Entry.TextProperty, getter: getter, setter: setter, mode: BindingMode.TwoWay, converter: valueConverter);
         return entry;
     }
@@ -119,6 +121,53 @@ static class Templates
             converter: new FileIdToFilenameConverter());
 
         return label;
+    }
+
+    static Entry CreateInspectorEntry()
+    {
+        return new Entry
+        {
+            FontSize = 12,
+            HorizontalOptions = LayoutOptions.Fill,
+            MinimumWidthRequest = 0
+        };
+    }
+
+    static Grid CreateInlineFieldGrid(params View[] views)
+    {
+        var grid = new Grid
+        {
+            ColumnSpacing = InspectorFieldSpacing,
+            HorizontalOptions = LayoutOptions.Fill,
+            MinimumWidthRequest = 0
+        };
+
+        for (var i = 0; i < views.Length; i++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+            var view = views[i];
+            if (view is VisualElement element)
+            {
+                element.HorizontalOptions = LayoutOptions.Fill;
+                element.MinimumWidthRequest = 0;
+            }
+
+            grid.Add(view, i, 0);
+        }
+
+        return grid;
+    }
+
+    static Label CreateInspectorValueLabel()
+    {
+        return new Label
+        {
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Center,
+            LineBreakMode = LineBreakMode.WordWrap,
+            MaxLines = 3,
+            MinimumWidthRequest = 0
+        };
     }
 
     public static View TextureEditor<TBindingContext>(Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
@@ -149,11 +198,7 @@ static class Templates
             converter: new FileIdToPreviewTextureConverter(),
             getter: static (Uniform<FileId> vm) => vm.Value);
 
-        var valueEntry = new Label
-        {
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
+        var valueEntry = CreateInspectorValueLabel();
 
         valueEntry.Bind<Label, Uniform<FileId>, FileId, string>(Label.TextProperty,
             mode: BindingMode.Default,
@@ -162,10 +207,22 @@ static class Templates
 
         valueEntry.Behaviors.Add(new FileIdSelectBehavior());
 
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { selectButton, image, valueEntry } });
-
-        return stackLayout;
+        return new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Star }
+            },
+            ColumnSpacing = InspectorFieldSpacing,
+            Children =
+            {
+                { selectButton, 0, 0 },
+                { image, 1, 0 },
+                { valueEntry, 2, 0 }
+            }
+        };
     }
 
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
@@ -177,11 +234,7 @@ static class Templates
             CommitInspectorBindingContext(bindingContext);
         };
 
-        var valueEntry = new Label
-        {
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
+        var valueEntry = CreateInspectorValueLabel();
 
         valueEntry.BindingContext = bindingContext;
 
@@ -201,19 +254,25 @@ static class Templates
         valueEntry.Behaviors.Add(dragAndDropBehaviour);
         valueEntry.Behaviors.Add(selectBehavior);
 
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { clearButton, valueEntry } });
-
-        return stackLayout;
+        return new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Star }
+            },
+            ColumnSpacing = InspectorFieldSpacing,
+            Children =
+            {
+                { clearButton, 0, 0 },
+                { valueEntry, 1, 0 }
+            }
+        };
     }
 
     public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
     {
-        var valueEntry = new Label
-        {
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
+        var valueEntry = CreateInspectorValueLabel();
 
         valueEntry.BindingContext = bindingContext;
 
@@ -235,84 +294,57 @@ static class Templates
         valueEntry.Behaviors.Add(dragAndDropBehavior);
         valueEntry.Behaviors.Add(selectBehavior);
 
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout { Children = { valueEntry } });
-
-        return stackLayout;
+        return new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Star }
+            },
+            Children =
+            {
+                { valueEntry, 0, 0 }
+            }
+        };
     }
 
     public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
     {
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout
-        {
-            Children =
-            {
-                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value)
-            }
-        });
-
-        return stackLayout;
+        return CreateInlineFieldGrid(
+            FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value));
     }
 
     public static View Vec3Editor<TBindingContext>(Func<TBindingContext, Vec3> convert)
     {
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout
-        {
-            Children =
-            {
-                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value)
-            }
-        });
-
-        return stackLayout;
+        return CreateInlineFieldGrid(
+            FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value));
     }
 
     public static View RotationEditor<TBindingContext>(Func<TBindingContext, Rotation> convert)
     {
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout
-        {
-            Children =
-            {
-                FloatEditor((TBindingContext vm) => convert(vm).Yaw, (TBindingContext vm, float value) => convert(vm).Yaw = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Pitch, (TBindingContext vm, float value) => convert(vm).Pitch = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Roll, (TBindingContext vm, float value) => convert(vm).Roll = value)
-            }
-        });
-
-        return stackLayout;
+        return CreateInlineFieldGrid(
+            FloatEditor((TBindingContext vm) => convert(vm).Yaw, (TBindingContext vm, float value) => convert(vm).Yaw = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Pitch, (TBindingContext vm, float value) => convert(vm).Pitch = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Roll, (TBindingContext vm, float value) => convert(vm).Roll = value));
     }
 
     public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
     {
-        var stackLayout = new HorizontalStackLayout();
-        stackLayout.Children.Add(new HorizontalStackLayout
-        {
-            Children =
-            {
-                FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
-                FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value),
-                FloatEditor((TBindingContext vm) => convert(vm).W, (TBindingContext vm, float value) => convert(vm).W = value)
-            }
-        });
-
-        return stackLayout;
+        return CreateInlineFieldGrid(
+            FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Y, (TBindingContext vm, float value) => convert(vm).Y = value),
+            FloatEditor((TBindingContext vm) => convert(vm).Z, (TBindingContext vm, float value) => convert(vm).Z = value),
+            FloatEditor((TBindingContext vm) => convert(vm).W, (TBindingContext vm, float value) => convert(vm).W = value));
     }
 
     public static View FloatEditor<TBindingContext>(Expression<Func<TBindingContext, float>> getter, Action<TBindingContext, float> setter)
     {
-        var value = new Entry
-        {
-            Keyboard = Keyboard.Numeric,
-            ReturnType = ReturnType.Done,
-            IsTextPredictionEnabled = false,
-        };
+        var value = CreateInspectorEntry();
+        value.Keyboard = Keyboard.Numeric;
+        value.ReturnType = ReturnType.Done;
+        value.IsTextPredictionEnabled = false;
 
         value.Completed += (sender, args) =>
         {
@@ -501,9 +533,35 @@ static class Templates
 
     public static void AddGridRowWithLabel(Grid grid, string labelText, View contentView, Microsoft.Maui.GridLength gridLength)
     {
+        if (grid.ColumnDefinitions.Count == 0)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(InspectorLabelColumnWidth) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+        }
+        else if (grid.ColumnDefinitions.Count == 1)
+        {
+            grid.ColumnDefinitions[0].Width = new GridLength(InspectorLabelColumnWidth);
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
+        }
+
         grid.RowDefinitions.Add(new Microsoft.Maui.Controls.RowDefinition { Height = gridLength });
 
-        var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, HorizontalOptions = LayoutOptions.Start };
+        var label = new Label
+        {
+            Text = labelText,
+            VerticalOptions = LayoutOptions.Center,
+            HorizontalOptions = LayoutOptions.Start,
+            LineBreakMode = LineBreakMode.WordWrap,
+            MaxLines = 2,
+            Margin = new Thickness(0, 4, 0, 4)
+        };
+
+        if (contentView is VisualElement element)
+        {
+            element.HorizontalOptions = LayoutOptions.Fill;
+            element.MinimumWidthRequest = 0;
+            element.Margin = new Thickness(0, 2, 0, 2);
+        }
 
         grid.Add(label, 0, grid.RowDefinitions.Count - 1);
         grid.Add(contentView, 1, grid.RowDefinitions.Count - 1);

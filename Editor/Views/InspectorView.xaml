@@ -38,7 +38,7 @@
         </ResourceDictionary>
     </ContentView.Resources>
 
-    <Frame>
+    <Frame Padding="8">
         <Grid RowSpacing="0" ColumnSpacing="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -50,12 +50,13 @@
             </Grid.RowDefinitions>
 
             <Label Text="Inspector" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25" Grid.Row="0" Grid.Column="0"/>
-            <ScrollView Grid.Row="1" Grid.Column="0">
+            <ScrollView Grid.Row="1" Grid.Column="0" HorizontalOptions="Fill" Orientation="Vertical">
                 <VerticalStackLayout
-                    Spacing="5"
+                    Spacing="8"
+                    Padding="0,4,0,0"
                     VerticalOptions="Start"
-                    HorizontalOptions="StartAndExpand">
-                    <ContentView x:Name="InspectedItemHost" />
+                    HorizontalOptions="Fill">
+                    <ContentView x:Name="InspectedItemHost" HorizontalOptions="Fill" />
                 </VerticalStackLayout>
             </ScrollView>
         </Grid>

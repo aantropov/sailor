@@ -14,7 +14,19 @@ public class ComponentTemplate : DataTemplate
     {
         LoadTemplate = () =>
         {
-            var props = new Grid { ColumnDefinitions = { new ColumnDefinition { Width = GridLength.Auto } }, BackgroundColor = Colors.Transparent };
+            var props = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(Templates.InspectorLabelColumnWidth) },
+                    new ColumnDefinition { Width = GridLength.Star }
+                },
+                ColumnSpacing = Templates.InspectorFieldSpacing,
+                RowSpacing = 4,
+                BackgroundColor = Colors.Transparent,
+                HorizontalOptions = LayoutOptions.Fill,
+                MinimumWidthRequest = 0
+            };
 
             props.BindingContextChanged += (sender, args) =>
             {
