@@ -54,6 +54,7 @@ namespace SailorEditor.Controls
         private double _SelectedBackgroundOpacity = .3;
 
         public event EventHandler Expanded;
+        public event EventHandler Collapsed;
 
         /// <summary>
         /// Occurs when the user double clicks on the node
@@ -76,12 +77,21 @@ namespace SailorEditor.Controls
             get => _ChildrenStackLayout.IsVisible;
             set
             {
+                if (_ChildrenStackLayout.IsVisible == value)
+                {
+                    return;
+                }
+
                 _ChildrenStackLayout.IsVisible = value;
 
                 Render();
                 if (value)
                 {
-                    Expanded?.Invoke(this, new EventArgs());
+                    Expanded?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    Collapsed?.Invoke(this, EventArgs.Empty);
                 }
             }
         }

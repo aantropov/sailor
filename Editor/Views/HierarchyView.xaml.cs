@@ -2,11 +2,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Commands;
 using SailorEditor.Controls;
-using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
+using SailorEditor.Workflow;
 using SailorEngine;
-using System.Collections.ObjectModel;
 
 namespace SailorEditor.Views
 {
@@ -155,20 +154,91 @@ namespace SailorEditor.Views
         private void PopulateHierarchyView(World world)
         {
             projectionService.Refresh();
-            var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
-            var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs()
-            {
-                ItemImage = "blue_document_attribute_c.png",
-                GroupImage = "blue_document.png",
-                ExpandGroupsByDefault = true
-            });
 
-            //HierarchyTree.StackLayout.Children.Clear();
+            var lookup = world.Prefabs
+                .SelectMany(prefab => prefab.GameObjects)
+                .Where(gameObject => gameObject.InstanceId is not null && !gameObject.InstanceId.IsEmpty())
+                .ToDictionary(gameObject => gameObject.InstanceId!.Value, StringComparer.Ordinal);
+
+            var rootNodes = projectionService.Roots
+                .Select(node => CreateHierarchyNode(node, lookup))
+                .Where(node => node is not null)
+                .Cast<TreeViewNode>()
+                .ToList();
+
             HierarchyTree.RootNodes = rootNodes;
             FlyoutBase.SetContextFlyout(HierarchyTree, CreateHierarchyContextFlyout(null));
             foreach (var node in rootNodes)
             {
                 AttachHierarchyContextFlyouts(node);
+            }
+
+            var selectedId = projectionService.Roots.SelectMany(EnumerateProjectionNodes).FirstOrDefault(node => node.IsSelected)?.Id;
+            if (!string.IsNullOrWhiteSpace(selectedId) && lookup.TryGetValue(selectedId, out var selectedGameObject) && selectedGameObject.InstanceId is not null)
+            {
+                SelectInstance(selectedGameObject.InstanceId);
+            }
+        }
+
+        TreeViewNode? CreateHierarchyNode(HierarchyProjectionNode projection, IReadOnlyDictionary<string, GameObject> lookup)
+        {
+            if (!lookup.TryGetValue(projection.Id, out var gameObject))
+            {
+                return null;
+            }
+
+            var node = new TreeViewNode
+            {
+                BindingContext = new TreeViewItemGroup<GameObject, Component>
+                {
+                    Model = gameObject,
+                    Key = projection.Label
+                },
+                Content = new StackLayout
+                {
+                    Children =
+                    {
+                        new ResourceImage
+                        {
+                            Resource = "blue_document.png",
+                            HeightRequest = 16,
+                            WidthRequest = 16
+                        },
+                        new Label
+                        {
+                            Text = projection.Label,
+                            VerticalOptions = LayoutOptions.Center
+                        }
+                    },
+                    Orientation = StackOrientation.Horizontal
+                }
+            };
+
+            node.ExpandButtonTemplate = new DataTemplate(() => new ExpandButtonContent { BindingContext = node });
+
+            var children = projection.Children
+                .Select(child => CreateHierarchyNode(child, lookup))
+                .Where(child => child is not null)
+                .Cast<TreeViewNode>()
+                .ToList();
+
+            node.ChildrenList = children;
+            node.IsExpanded = projection.IsExpanded;
+            if (gameObject.InstanceId is not null)
+            {
+                node.Expanded += (_, _) => projectionService.SetExpanded(gameObject.InstanceId, true);
+                node.Collapsed += (_, _) => projectionService.SetExpanded(gameObject.InstanceId, false);
+            }
+
+            return node;
+        }
+
+        static IEnumerable<HierarchyProjectionNode> EnumerateProjectionNodes(HierarchyProjectionNode node)
+        {
+            yield return node;
+            foreach (var child in node.Children.SelectMany(EnumerateProjectionNodes))
+            {
+                yield return child;
             }
         }
 
