@@ -87,29 +87,14 @@ namespace SailorEditor.Views
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
             var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(HierarchyView)));
+            var target = request.Target as GameObject;
 
-            if (request.Target is null)
-            {
-                request.Handled = request.Source switch
-                {
-                    GameObject source => service.ReparentToRoot(source, keepWorldTransform: true),
-                    PrefabFile prefab => dispatcher.DispatchAsync(new InstantiatePrefabAssetCommand(prefab), context).GetAwaiter().GetResult().Succeeded,
-                    _ => false
-                };
-                return;
-            }
-
-            if (request.Target is not GameObject target)
+            if (!EditorDragDrop.TryCreateSceneDropCommand(request.Source, target, out var command) || command is null)
             {
                 return;
             }
 
-            request.Handled = request.Source switch
-            {
-                GameObject source => service.Reparent(source, target, keepWorldTransform: true),
-                PrefabFile prefab => dispatcher.DispatchAsync(new InstantiatePrefabAssetCommand(prefab, target), context).GetAwaiter().GetResult().Succeeded,
-                _ => false
-            };
+            request.Handled = dispatcher.DispatchAsync(command, context).GetAwaiter().GetResult().Succeeded;
         }
 
         private void OnHierarchyContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)

@@ -77,24 +77,14 @@ public class FileIdDragAndDropBehaviour : Behavior<Label>
     {
         if (sender != this && e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var droppedItem))
         {
-            FileId fileId = droppedItem switch
+            var assetService = MauiProgram.GetService<AssetsService>();
+            if (EditorDragDrop.TryResolveAssetFileId(
+                droppedItem,
+                SupportedType,
+                fileId => assetService.Assets.TryGetValue(fileId, out var asset) ? asset : null,
+                out var fileId))
             {
-                FileId id => id,
-                AssetFile asset => asset.FileId,
-                _ => null
-            };
-
-            if (fileId != null)
-            {
-                var assetService = MauiProgram.GetService<AssetsService>();
-
-                if (assetService.Assets.TryGetValue(fileId, out var asset))
-                {
-                    if (SupportedType == null || SupportedType.IsInstanceOfType(asset))
-                    {
-                        BoundProperty = fileId;
-                    }
-                }
+                BoundProperty = fileId;
             }
         }
 

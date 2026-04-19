@@ -34,6 +34,8 @@
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
+    <Compile Include="EditorDragDropRoutingTests.cs" />
+    <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
@@ -54,5 +56,6 @@
     <Compile Include="..\Editor\AI\EditorAIContextProvider.cs" Link="AI\EditorAIContextProvider.cs" />
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
+    <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
   </ItemGroup>
 </Project>

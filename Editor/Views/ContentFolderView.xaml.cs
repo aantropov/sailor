@@ -81,36 +81,28 @@ namespace SailorEditor.Views
 
         async void OnContentDropRequested(object sender, TreeViewDropRequest request)
         {
-            if (request.Source is not GameObject gameObject)
+            if (!EditorDragDrop.TryCreateContentDropCommand(request.Source, request.Target, out var command, out var requiresConfirmation) || command is null)
             {
                 return;
             }
 
-            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
-            switch (request.Target)
+            if (requiresConfirmation && request.Target is PrefabFile prefab && request.Source is GameObject gameObject)
             {
-                case null:
-                    request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject), context)).Succeeded;
-                    break;
+                request.Handled = true;
+                var overwrite = await Application.Current.MainPage.DisplayAlert(
+                    "Overwrite prefab",
+                    $"Overwrite {prefab.DisplayName} with {gameObject.DisplayName}?",
+                    "Overwrite",
+                    "Cancel");
 
-                case AssetFolder folder:
-                    request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject, folder), context)).Succeeded;
-                    break;
-
-                case PrefabFile prefab:
-                    request.Handled = true;
-                    var overwrite = await Application.Current.MainPage.DisplayAlert(
-                        "Overwrite prefab",
-                        $"Overwrite {prefab.DisplayName} with {gameObject.DisplayName}?",
-                        "Overwrite",
-                        "Cancel");
-
-                    if (overwrite)
-                    {
-                        request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject, existingPrefab: prefab), context)).Succeeded;
-                    }
-                    break;
+                if (!overwrite)
+                {
+                    return;
+                }
             }
+
+            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
+            request.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
         }
 
         void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
