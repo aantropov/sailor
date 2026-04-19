@@ -48,7 +48,13 @@ build*/
 Cache/
 Binaries/
 out/
+Editor.Tests/bin/
+Editor.Tests/obj/
 
+# Local/editor-generated files
+imgui.ini
+*.ExecPlan.md
+Cache\\Temp.world
 
 .DS_Store
 *.DS_Store.asset
