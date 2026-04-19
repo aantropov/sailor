@@ -8,15 +8,15 @@ namespace SailorEditor.Shell;
 
 public sealed class ShellLayoutView : ContentView
 {
-    static readonly Color TabStripBackground = Color.FromArgb("#202124");
-    static readonly Color TabStripBorder = Color.FromArgb("#35363A");
-    static readonly Color PanelBackground = Color.FromArgb("#1B1C1F");
-    static readonly Color ActiveTabBackground = Color.FromArgb("#1B1C1F");
-    static readonly Color InactiveTabBackground = Color.FromArgb("#202124");
-    static readonly Color HoverTabBackground = Color.FromArgb("#2A2B2F");
+    static readonly Color TabStripBackground = Color.FromArgb("#16171A");
+    static readonly Color TabStripBorder = Color.FromArgb("#292A2E");
+    static readonly Color PanelBackground = Color.FromArgb("#17181B");
+    static readonly Color ActiveTabBackground = Color.FromArgb("#1C1D21");
+    static readonly Color InactiveTabBackground = Color.FromArgb("#16171A");
+    static readonly Color HoverTabBackground = Color.FromArgb("#232428");
     static readonly Color ActiveTabText = Color.FromArgb("#F1F1F1");
-    static readonly Color InactiveTabText = Color.FromArgb("#A8A8AC");
-    static readonly Color CloseButtonText = Color.FromArgb("#7F8085");
+    static readonly Color InactiveTabText = Color.FromArgb("#90939A");
+    static readonly Color CloseButtonText = Color.FromArgb("#6C6E75");
     static readonly Color ActiveTabAccent = Color.FromArgb("#4D8DFF");
 
     public static readonly BindableProperty HostProperty = BindableProperty.Create(
@@ -132,7 +132,7 @@ public sealed class ShellLayoutView : ContentView
         var tabBar = new HorizontalStackLayout
         {
             Spacing = 0,
-            Padding = new Thickness(4, 2, 4, 0),
+            Padding = new Thickness(2, 2, 2, 0),
             BackgroundColor = TabStripBackground
         };
 
@@ -181,21 +181,22 @@ public sealed class ShellLayoutView : ContentView
         var title = new Label
         {
             Text = panel.Title,
-            FontSize = 11,
+            FontSize = 10,
             LineBreakMode = LineBreakMode.TailTruncation,
             VerticalTextAlignment = TextAlignment.Center,
             TextColor = textColor,
-            Margin = new Thickness(0, 0, 4, 0)
+            Margin = new Thickness(0, 0, 4, 0),
+            MaxLines = 1
         };
 
         var close = new Button
         {
             Text = "×",
-            FontSize = 10,
-            WidthRequest = 14,
-            HeightRequest = 14,
-            MinimumWidthRequest = 14,
-            MinimumHeightRequest = 14,
+            FontSize = 9,
+            WidthRequest = 12,
+            HeightRequest = 12,
+            MinimumWidthRequest = 12,
+            MinimumHeightRequest = 12,
             Padding = 0,
             Margin = 0,
             CornerRadius = 0,
@@ -212,9 +213,10 @@ public sealed class ShellLayoutView : ContentView
                 new ColumnDefinition { Width = GridLength.Star },
                 new ColumnDefinition { Width = GridLength.Auto }
             },
-            ColumnSpacing = 1,
-            Padding = new Thickness(10, 3, 6, 3),
-            MinimumWidthRequest = 72
+            ColumnSpacing = 0,
+            Padding = new Thickness(8, 2, 4, 2),
+            MinimumWidthRequest = 64,
+            HeightRequest = 20
         };
         tabContent.Children.Add(title);
         tabContent.Children.Add(close);
@@ -223,8 +225,8 @@ public sealed class ShellLayoutView : ContentView
         var tab = new Border
         {
             BackgroundColor = isActive ? ActiveTabBackground : InactiveTabBackground,
-            Stroke = isActive ? ActiveTabAccent : Colors.Transparent,
-            StrokeThickness = isActive ? 1 : 0,
+            Stroke = isActive ? ActiveTabAccent : TabStripBorder,
+            StrokeThickness = isActive ? 1 : 0.5,
             Padding = 0,
             Margin = new Thickness(0, 0, 1, 0),
             StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },

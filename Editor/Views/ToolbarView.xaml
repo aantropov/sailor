@@ -10,10 +10,10 @@
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="HeightRequest" Value="16"/>
-            <Setter Property="WidthRequest" Value="16"/>
-            <Setter Property="MinimumHeightRequest" Value="16"/>
-            <Setter Property="MinimumWidthRequest" Value="16"/>
+            <Setter Property="HeightRequest" Value="14"/>
+            <Setter Property="WidthRequest" Value="14"/>
+            <Setter Property="MinimumHeightRequest" Value="14"/>
+            <Setter Property="MinimumWidthRequest" Value="14"/>
             <Setter Property="Aspect" Value="AspectFit"/>
             <Setter Property="HorizontalOptions" Value="Center"/>
             <Setter Property="VerticalOptions" Value="Center"/>
@@ -25,56 +25,65 @@
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="WidthRequest" Value="18"/>
-            <Setter Property="HeightRequest" Value="18"/>
-            <Setter Property="MinimumWidthRequest" Value="18"/>
-            <Setter Property="MinimumHeightRequest" Value="18"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="TextColor" Value="#D8D8D8"/>
+            <Setter Property="WidthRequest" Value="16"/>
+            <Setter Property="HeightRequest" Value="16"/>
+            <Setter Property="MinimumWidthRequest" Value="16"/>
+            <Setter Property="MinimumHeightRequest" Value="16"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextColor" Value="#CFCFD2"/>
         </Style>
     </ContentView.Resources>
 
     <Border StrokeThickness="1"
-            Stroke="#35363A"
-            BackgroundColor="#202124"
-            Padding="8,4"
+            Stroke="#2B2C30"
+            BackgroundColor="#18191B"
+            Padding="6,2"
             Margin="0"
-            MinimumHeightRequest="28"
+            MinimumHeightRequest="22"
             StrokeShape="RoundRectangle 0">
-        <Grid ColumnSpacing="10"
+        <Grid ColumnSpacing="8"
               RowSpacing="0"
               Margin="0"
               Padding="0"
-              HeightRequest="20"
+              HeightRequest="16"
               VerticalOptions="Center"
               HorizontalOptions="FillAndExpand">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0"
+            <Label Grid.Column="0"
+                   Text="SAILOR"
+                   FontSize="10"
+                   FontAttributes="Bold"
+                   TextColor="#8F949C"
+                   VerticalTextAlignment="Center"
+                   Margin="0,0,2,0"/>
+
+            <Border Grid.Column="1"
                     StrokeThickness="1"
-                    Stroke="#2B2C30"
-                    BackgroundColor="#252629"
-                    Padding="6,2"
-                    StrokeShape="RoundRectangle 4">
+                    Stroke="#25262A"
+                    BackgroundColor="#1F2023"
+                    Padding="4,1"
+                    StrokeShape="RoundRectangle 3">
                 <ImageButton Source="disk_24.png"
                              Style="{StaticResource ToolbarIconButtonStyle}"
                              Clicked="OnSaveButtonClicked"/>
             </Border>
 
-            <HorizontalStackLayout Grid.Column="1"
+            <HorizontalStackLayout Grid.Column="2"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"
-                                   Spacing="6">
+                                   Spacing="4">
                 <Border StrokeThickness="1"
-                        Stroke="#2B2C30"
-                        BackgroundColor="#252629"
-                        Padding="6,2"
-                        StrokeShape="RoundRectangle 4">
-                    <HorizontalStackLayout Spacing="6">
+                        Stroke="#25262A"
+                        BackgroundColor="#1F2023"
+                        Padding="4,1"
+                        StrokeShape="RoundRectangle 3">
+                    <HorizontalStackLayout Spacing="4">
                         <Button Text="↶"
                                 Style="{StaticResource ToolbarGlyphButtonStyle}"
                                 Clicked="OnUndoButtonClicked"/>
@@ -85,11 +94,11 @@
                 </Border>
 
                 <Border StrokeThickness="1"
-                        Stroke="#2B2C30"
-                        BackgroundColor="#252629"
-                        Padding="6,2"
-                        StrokeShape="RoundRectangle 4">
-                    <HorizontalStackLayout Spacing="6">
+                        Stroke="#25262A"
+                        BackgroundColor="#1F2023"
+                        Padding="4,1"
+                        StrokeShape="RoundRectangle 3">
+                    <HorizontalStackLayout Spacing="4">
                         <ImageButton Source="arrow_24.png"
                                      Style="{StaticResource ToolbarIconButtonStyle}"
                                      Clicked="OnPlayButtonClicked"/>
@@ -100,13 +109,13 @@
                 </Border>
             </HorizontalStackLayout>
 
-            <Border Grid.Column="2"
+            <Border Grid.Column="3"
                     StrokeThickness="1"
-                    Stroke="#2B2C30"
-                    BackgroundColor="#252629"
-                    Padding="6,2"
-                    StrokeShape="RoundRectangle 4">
-                <HorizontalStackLayout Spacing="6">
+                    Stroke="#25262A"
+                    BackgroundColor="#1F2023"
+                    Padding="4,1"
+                    StrokeShape="RoundRectangle 3">
+                <HorizontalStackLayout Spacing="4">
                     <ImageButton Source="application_export_24.png"
                                  Style="{StaticResource ToolbarIconButtonStyle}"
                                  Clicked="OnPathTraceSceneButtonClicked"/>
