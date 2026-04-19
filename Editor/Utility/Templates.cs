@@ -21,6 +21,12 @@ using System;
 namespace SailorEditor.Helpers;
 static class Templates
 {
+    static void CommitInspectorBindingContext(object? bindingContext)
+    {
+        if (bindingContext is IInspectorEditable editable && editable.HasPendingInspectorChanges)
+            editable.CommitInspectorChanges();
+    }
+
     public const int ThumbnailSize = 128;
 
     public static Microsoft.Maui.Controls.Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
@@ -74,6 +80,7 @@ static class Templates
         }
 
         picker.Bind<Picker, TBinding, TEnum, string>(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay, new EnumToStringConverter<TEnum>());
+        picker.SelectedIndexChanged += (sender, _) => CommitInspectorBindingContext(((Picker)sender).BindingContext);
         return picker;
     }
 
@@ -90,6 +97,7 @@ static class Templates
         }
 
         picker.Bind(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay);
+        picker.SelectedIndexChanged += (sender, _) => CommitInspectorBindingContext(((Picker)sender).BindingContext);
         return picker;
     }
 
@@ -163,7 +171,11 @@ static class Templates
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
     {
         var clearButton = new Button { Text = "Clear" };
-        clearButton.Clicked += (sender, e) => setter((TBindingContext)bindingContext, new FileId());
+        clearButton.Clicked += (sender, e) =>
+        {
+            setter((TBindingContext)bindingContext, new FileId());
+            CommitInspectorBindingContext(bindingContext);
+        };
 
         var valueEntry = new Label
         {
@@ -302,7 +314,13 @@ static class Templates
             IsTextPredictionEnabled = false,
         };
 
-        value.Completed += (sender, args) => { ((Entry)sender).Unfocus(); };
+        value.Completed += (sender, args) =>
+        {
+            var entry = (Entry)sender;
+            CommitInspectorBindingContext(entry.BindingContext);
+            entry.Unfocus();
+        };
+        value.Unfocused += (sender, args) => CommitInspectorBindingContext(((Entry)sender).BindingContext);
 
         value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
             getter: getter,

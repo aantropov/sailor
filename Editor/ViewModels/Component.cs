@@ -12,42 +12,51 @@ using System.Runtime.CompilerServices;
 using SailorEditor.Services;
 using System.Globalization;
 using System;
+using SailorEditor.Workflow;
 
 namespace SailorEditor.ViewModels;
 
-public partial class Component : ObservableObject, ICloneable
+public partial class Component : ObservableObject, ICloneable, IInspectorEditable
 {
+    readonly InspectorAutoCommitController _autoCommit = new(
+        propertyName => propertyName == nameof(IsDirty),
+        propertyName => false);
+
     public Component()
     {
         PropertyChanged += (s, args) =>
         {
-            if (args.PropertyName != nameof(IsDirty))
+            var decision = _autoCommit.OnPropertyChanged(args.PropertyName);
+            if (decision.MarkDirty)
                 IsDirty = true;
-
-            if (args.PropertyName == nameof(OverrideProperties))
-                CommitChanges();
         };
     }
 
-    void CommitChanges()
+    public bool CommitInspectorChanges()
     {
-        if (!IsDirty || !isInited)
-            return;
+        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty) || !isInited)
+            return false;
 
         var yamlComponent = EditorYaml.SerializeComponent(this);
         var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
         var contextProvider = MauiProgram.GetService<IActionContextProvider>();
         var result = dispatcher.DispatchAsync(
             new UpdateComponentCommand(this, _lastCommittedYaml ?? yamlComponent, yamlComponent, $"Edit {Typename?.Name}"),
-            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitChanges))))
+            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
             .GetAwaiter()
             .GetResult();
 
         if (result.Succeeded)
+        {
             _lastCommittedYaml = yamlComponent;
+            IsDirty = false;
+            return true;
+        }
 
-        IsDirty = false;
+        return false;
     }
+
+    public bool HasPendingInspectorChanges => IsDirty;
 
     public void Initialize()
     {
@@ -58,6 +67,7 @@ public partial class Component : ObservableObject, ICloneable
         IsDirty = false;
         _lastCommittedYaml = EditorYaml.SerializeComponent(this);
         isInited = true;
+        _autoCommit.MarkInitialized();
     }
 
     public object Clone() => new Component();

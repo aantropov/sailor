@@ -1,5 +1,6 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.Services;
+using SailorEditor.ViewModels;
 using System.ComponentModel;
 
 namespace SailorEditor.Views
@@ -28,6 +29,11 @@ namespace SailorEditor.Views
 
         void RefreshInspector()
         {
+            if (InspectedItemHost.Content?.BindingContext is IInspectorEditable editable && editable.HasPendingInspectorChanges)
+            {
+                editable.CommitInspectorChanges();
+            }
+
             if (inspectorProjection.SelectedItem == null)
             {
                 InspectedItemHost.Content = null;

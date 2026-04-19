@@ -53,5 +53,6 @@
     <Compile Include="..\Editor\AI\AIOperatorService.cs" Link="AI\AIOperatorService.cs" />
     <Compile Include="..\Editor\AI\EditorAIContextProvider.cs" Link="AI\EditorAIContextProvider.cs" />
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
+    <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
   </ItemGroup>
 </Project>

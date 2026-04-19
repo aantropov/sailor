@@ -60,4 +60,55 @@ public sealed class WorkflowProjectionTests
         Assert.Single(selected.Components);
         Assert.Equal("Transform", selected.Components[0].DisplayName);
     }
+
+    [Fact]
+    public void InspectorAutoCommitController_IgnoresConfiguredProperties()
+    {
+        var controller = new InspectorAutoCommitController(
+            propertyName => propertyName == "IsDirty",
+            propertyName => true);
+        controller.MarkInitialized();
+
+        var decision = controller.OnPropertyChanged("IsDirty");
+
+        Assert.Equal(InspectorAutoCommitDecision.None, decision);
+    }
+
+    [Fact]
+    public void InspectorAutoCommitController_DoesNotMarkDirtyUntilInitialized()
+    {
+        var controller = new InspectorAutoCommitController(
+            propertyName => propertyName == "IsDirty",
+            propertyName => propertyName == "OverrideProperties");
+
+        var decision = controller.OnPropertyChanged("OverrideProperties");
+
+        Assert.Equal(InspectorAutoCommitDecision.None, decision);
+    }
+
+    [Fact]
+    public void InspectorAutoCommitController_MarksDirtyAfterInitialization()
+    {
+        var controller = new InspectorAutoCommitController(
+            propertyName => propertyName == "IsDirty",
+            propertyName => propertyName == "OverrideProperties");
+        controller.MarkInitialized();
+
+        var decision = controller.OnPropertyChanged("DisplayName");
+
+        Assert.True(decision.MarkDirty);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public void InspectorAutoCommitController_ExplicitCommitRequiresPendingChanges(bool isDirty, bool expected)
+    {
+        var controller = new InspectorAutoCommitController(
+            propertyName => propertyName == "IsDirty",
+            propertyName => true);
+        controller.MarkInitialized();
+
+        Assert.Equal(expected, controller.ShouldCommitPendingChanges(isDirty));
+    }
 }

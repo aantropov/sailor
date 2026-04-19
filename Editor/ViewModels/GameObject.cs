@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Commands;
 using SailorEditor.Utility;
 using System.Xml.Linq;
@@ -8,13 +8,24 @@ using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 using System.Runtime.CompilerServices;
 using SailorEditor.Services;
+using SailorEditor.Workflow;
 using System.Windows.Input;
 using SailorEngine;
 
 namespace SailorEditor.ViewModels;
 
-public partial class GameObject : ObservableObject, ICloneable
+public interface IInspectorEditable
 {
+    bool HasPendingInspectorChanges { get; }
+    bool CommitInspectorChanges();
+}
+
+public partial class GameObject : ObservableObject, ICloneable, IInspectorEditable
+{
+    readonly InspectorAutoCommitController _autoCommit = new(
+        propertyName => propertyName == nameof(IsDirty),
+        propertyName => false);
+
     public GameObject()
     {
         AddNewComponent = new Command(async () => await OnAddNewComponent());
@@ -22,32 +33,37 @@ public partial class GameObject : ObservableObject, ICloneable
 
         PropertyChanged += (s, args) =>
         {
-            if (args.PropertyName != nameof(IsDirty))
+            var decision = _autoCommit.OnPropertyChanged(args.PropertyName);
+            if (decision.MarkDirty)
                 IsDirty = true;
-
-            CommitChanges();
         };
     }
 
-    public void CommitChanges()
+    public bool CommitInspectorChanges()
     {
-        if (!IsDirty || !isInited)
-            return;
+        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty) || !isInited)
+            return false;
 
         var yamlGameObject = EditorYaml.SerializeGameObject(this);
         var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
         var contextProvider = MauiProgram.GetService<IActionContextProvider>();
         var result = dispatcher.DispatchAsync(
             new UpdateGameObjectCommand(this, _lastCommittedYaml ?? yamlGameObject, yamlGameObject, $"Edit {Name}"),
-            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitChanges))))
+            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
             .GetAwaiter()
             .GetResult();
 
         if (result.Succeeded)
+        {
             _lastCommittedYaml = yamlGameObject;
+            IsDirty = false;
+            return true;
+        }
 
-        IsDirty = false;
+        return false;
     }
+
+    public bool HasPendingInspectorChanges => IsDirty;
 
     public void Initialize()
     {
@@ -61,12 +77,10 @@ public partial class GameObject : ObservableObject, ICloneable
         Position.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Position));
         Rotation.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Rotation));
 
-        //foreach (var component in Components)
-        //    component.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Components));
-
         IsDirty = false;
         _lastCommittedYaml = EditorYaml.SerializeGameObject(this);
         isInited = true;
+        _autoCommit.MarkInitialized();
     }
 
     [YamlIgnore]
