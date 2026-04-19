@@ -62,6 +62,18 @@ public sealed class SceneViewportLifecycleTests
         Assert.Null(shellState.Focus.KeyboardInputOwner);
     }
 
+    [Theory]
+    [InlineData(RemoteViewportSessionState.Active, "Remote viewport active")]
+    [InlineData(RemoteViewportSessionState.Ready, "Remote viewport ready")]
+    [InlineData(RemoteViewportSessionState.Recovering, "Remote viewport reconnecting…")]
+    [InlineData(RemoteViewportSessionState.Lost, "Remote viewport unavailable — retrying session")]
+    [InlineData(RemoteViewportSessionState.Created, "Remote viewport unavailable")]
+    public void StatusText_DescribesViewportStateWithoutLegacyFallback(RemoteViewportSessionState state, string expected)
+    {
+        Assert.Equal(expected, SceneViewportStatusText.Describe(state));
+        Assert.DoesNotContain("legacy", SceneViewportStatusText.Describe(state), StringComparison.OrdinalIgnoreCase);
+    }
+
     sealed class FakeSceneViewportBackend : ISceneViewportBackend
     {
         public ulong BoundViewportId { get; private set; }

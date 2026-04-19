@@ -266,19 +266,7 @@ namespace SailorEditor.Views
             }
 #endif
 
-            SetLabelText(ViewportStatusText, state switch
-            {
-                RemoteViewportSessionState.Active => "Remote viewport active",
-                RemoteViewportSessionState.Ready => "Remote viewport ready",
-                RemoteViewportSessionState.Negotiating => "Connecting remote viewport…",
-                RemoteViewportSessionState.Resizing => "Resizing remote viewport…",
-                RemoteViewportSessionState.Recovering => "Remote viewport reconnecting…",
-                RemoteViewportSessionState.Lost => "Remote viewport lost — using legacy embedded viewport fallback",
-                RemoteViewportSessionState.Paused => "Remote viewport paused",
-                RemoteViewportSessionState.Terminating => "Remote viewport terminating…",
-                RemoteViewportSessionState.Disposed => "Remote viewport disposed",
-                _ => "Using legacy embedded viewport fallback"
-            });
+            SetLabelText(ViewportStatusText, SceneViewportStatusText.Describe(state));
 
             if (!string.Equals(lastViewportStatusText, ViewportStatusText.Text, StringComparison.Ordinal))
             {

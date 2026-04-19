@@ -1,3 +1,4 @@
+using SailorEditor.Panels;
 using SailorEditor.Services;
 using SailorEditor.State;
 
@@ -112,12 +113,40 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
         => backend.SendInput(viewportId, kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, modifiers, pressed, focused, captured);
 }
 
-public sealed class SceneShellFocusCoordinator(ShellState shellState, string viewportId)
+public static class SceneViewportStatusText
+{
+    public static string Describe(RemoteViewportSessionState state) => state switch
+    {
+        RemoteViewportSessionState.Active => "Remote viewport active",
+        RemoteViewportSessionState.Ready => "Remote viewport ready",
+        RemoteViewportSessionState.Negotiating => "Connecting remote viewport…",
+        RemoteViewportSessionState.Resizing => "Resizing remote viewport…",
+        RemoteViewportSessionState.Recovering => "Remote viewport reconnecting…",
+        RemoteViewportSessionState.Lost => "Remote viewport unavailable — retrying session",
+        RemoteViewportSessionState.Paused => "Remote viewport paused",
+        RemoteViewportSessionState.Terminating => "Remote viewport terminating…",
+        RemoteViewportSessionState.Disposed => "Remote viewport disposed",
+        _ => "Remote viewport unavailable"
+    };
+}
+
+public readonly record struct SceneShellFocusTarget(
+    PanelId? PanelId = null,
+    string? GroupId = null,
+    PanelId? ActiveDocumentPanelId = null);
+
+public sealed class SceneShellFocusCoordinator(ShellState shellState, string viewportId, Func<SceneShellFocusTarget>? focusTargetProvider = null)
 {
     public void SetViewportFocus(bool isFocused)
     {
         if (isFocused)
         {
+            var focusTarget = focusTargetProvider?.Invoke();
+            if (focusTarget?.PanelId is { } panelId)
+            {
+                shellState.FocusPanel(panelId, focusTarget.Value.GroupId, focusTarget.Value.ActiveDocumentPanelId ?? panelId);
+            }
+
             shellState.FocusViewport(viewportId, selectionOwner: viewportId, keyboardInputOwner: viewportId);
             return;
         }
