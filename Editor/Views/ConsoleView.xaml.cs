@@ -1,5 +1,6 @@
 ﻿using SailorEditor.Services;
 using System.Collections.ObjectModel;
+using SailorEditor.AI;
 
 namespace SailorEditor.Views
 {
@@ -15,6 +16,7 @@ namespace SailorEditor.Views
             BindingContext = this;
 
             MauiProgram.GetService<EngineService>().OnPullMessagesAction += OnUpdateMessageQueue;
+            MauiProgram.GetService<AIOperatorService>().AuditTrail.CollectionChanged += OnAiAuditChanged;
             Unloaded += OnUnloaded;
         }
 
@@ -40,6 +42,19 @@ namespace SailorEditor.Views
             }
 
             _ = ScrollToLastMessage();
+        }
+
+        private void OnAiAuditChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.NewItems is null)
+                return;
+
+            var messages = e.NewItems
+                .OfType<AIActionAuditEntry>()
+                .Select(x => $"[AI] {x.State} • {x.Title} • {x.Summary ?? string.Join(", ", x.Items.Select(i => i.CommandName))}")
+                .ToArray();
+
+            OnUpdateMessageQueue(messages);
         }
 
         private async Task ScrollToLastMessage()
@@ -76,6 +91,7 @@ namespace SailorEditor.Views
         private void OnUnloaded(object sender, EventArgs e)
         {
             MauiProgram.GetService<EngineService>().OnPullMessagesAction -= OnUpdateMessageQueue;
+            MauiProgram.GetService<AIOperatorService>().AuditTrail.CollectionChanged -= OnAiAuditChanged;
             Unloaded -= OnUnloaded;
         }
     }

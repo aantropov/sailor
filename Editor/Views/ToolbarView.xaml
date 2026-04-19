@@ -27,7 +27,12 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+
+                <Button Text="↶" WidthRequest="32" HeightRequest="24" Padding="0" Margin="0" Clicked="OnUndoButtonClicked" Grid.Column="0"/>
+                <Button Text="↷" WidthRequest="32" HeightRequest="24" Padding="0" Margin="0" Clicked="OnRedoButtonClicked" Grid.Column="1"/>
 
                 <ImageButton Source="arrow_24.png"
                              HeightRequest="24"
@@ -38,7 +43,7 @@
                              HorizontalOptions="Center"
                              VerticalOptions="Center"
                              Clicked="OnPlayButtonClicked"
-                             Grid.Column="0"/>
+                             Grid.Column="2"/>
 
                 <ImageButton Source="bug__arrow.png"
                              HeightRequest="24"
@@ -49,7 +54,7 @@
                              HorizontalOptions="Center"
                              VerticalOptions="Center"
                              Clicked="OnPlayDebugButtonClicked"
-                             Grid.Column="1"/>
+                             Grid.Column="3"/>
             </Grid>
 
             <Grid Grid.Column="2" HorizontalOptions="End" VerticalOptions="Center" Margin="0" Padding="0" HeightRequest="24">

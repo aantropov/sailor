@@ -4,17 +4,25 @@ using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
+using SailorEditor.Content;
+using SailorEditor.Commands;
 
 namespace SailorEditor.Views
 {
     public partial class ContentFolderView : ContentView
     {
-        AssetsService service;
+        readonly AssetsService service;
+        readonly ProjectContentStore contentStore;
+        readonly ICommandDispatcher dispatcher;
+        readonly IActionContextProvider contextProvider;
         public ContentFolderView()
         {
             InitializeComponent();
 
-            this.service = MauiProgram.GetService<AssetsService>();
+            service = MauiProgram.GetService<AssetsService>();
+            contentStore = MauiProgram.GetService<ProjectContentStore>();
+            dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            contextProvider = MauiProgram.GetService<IActionContextProvider>();
 
             PopulateTreeView();
 
@@ -57,9 +65,20 @@ namespace SailorEditor.Views
         public static void OnSelectTreeViewNode(object sender, EventArgs args)
         {
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
-            if (selectionChanged.Model is TreeViewItem<AssetFile> assetFile)
+            switch (selectionChanged?.Model)
             {
-                MauiProgram.GetService<SelectionService>().SelectObject(assetFile.Model);
+                case TreeViewItem<AssetFile> assetFile:
+                    MauiProgram.GetService<ProjectContentStore>().SelectAsset(assetFile.Model.FileId?.Value);
+                    MauiProgram.GetService<ICommandDispatcher>()
+                        .DispatchAsync(
+                            new OpenAssetCommand(assetFile.Model),
+                            MauiProgram.GetService<IActionContextProvider>().GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))))
+                        .GetAwaiter()
+                        .GetResult();
+                    break;
+                case TreeViewItemGroup<AssetFolder, AssetFile> folder:
+                    MauiProgram.GetService<ProjectContentStore>().SelectFolder(folder.Model?.Id);
+                    break;
             }
         }
 
@@ -70,18 +89,15 @@ namespace SailorEditor.Views
                 return;
             }
 
+            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
             switch (request.Target)
             {
                 case null:
-                    service.CreatePrefabAsset(null, gameObject);
-                    PopulateTreeView();
-                    request.Handled = true;
+                    request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject), context)).Succeeded;
                     break;
 
                 case AssetFolder folder:
-                    service.CreatePrefabAsset(folder, gameObject);
-                    PopulateTreeView();
-                    request.Handled = true;
+                    request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject, folder), context)).Succeeded;
                     break;
 
                 case PrefabFile prefab:
@@ -94,11 +110,13 @@ namespace SailorEditor.Views
 
                     if (overwrite)
                     {
-                        service.CreatePrefabAsset(null, gameObject, overwrite: true, existingPrefab: prefab);
-                        PopulateTreeView();
+                        request.Handled = (await dispatcher.DispatchAsync(new CreatePrefabAssetCommand(gameObject, existingPrefab: prefab), context)).Succeeded;
                     }
                     break;
             }
+
+            if (request.Handled)
+                PopulateTreeView();
         }
 
         private void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
@@ -106,11 +124,18 @@ namespace SailorEditor.Views
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
             if (args.Model is TreeViewItem<AssetFile> assetItem)
             {
-                contextMenu.Show(new EditorContextMenuItem
-                {
-                    Text = "Rename",
-                    Command = new Command(async () => await RenameAsset(assetItem.Model))
-                });
+                contextMenu.Show(
+                    new EditorContextMenuItem
+                    {
+                        Text = "Rename",
+                        Command = new Command(async () => await RenameAsset(assetItem.Model))
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Delete",
+                        IsDestructive = true,
+                        Command = new Command(async () => await DeleteAsset(assetItem.Model))
+                    });
             }
         }
 
@@ -128,7 +153,11 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (service.RenameAsset(assetFile, newName))
+            var result = await dispatcher.DispatchAsync(
+                new RenameAssetCommand(assetFile, newName),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(RenameAsset))));
+
+            if (result.Succeeded)
             {
                 PopulateTreeView();
             }
@@ -138,8 +167,30 @@ namespace SailorEditor.Views
             }
         }
 
+        private async Task DeleteAsset(AssetFile assetFile)
+        {
+            var confirmed = await Application.Current.MainPage.DisplayAlert(
+                "Delete asset",
+                $"Delete {assetFile.DisplayName}?",
+                "Delete",
+                "Cancel");
+
+            if (!confirmed)
+                return;
+
+            var result = await dispatcher.DispatchAsync(
+                new DeleteAssetCommand(assetFile),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DeleteAsset))));
+
+            if (result.Succeeded)
+                PopulateTreeView();
+            else
+                await Application.Current.MainPage.DisplayAlert("Delete failed", result.Message ?? "Unable to delete asset.", "OK");
+        }
+
         private void PopulateTreeView()
         {
+            contentStore.Refresh();
             var foldersModel = FolderTreeViewBuilder.PopulateDirectory(service);
             var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs());
             FolderTree.RootNodes = rootNodes;

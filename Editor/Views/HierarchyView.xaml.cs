@@ -1,5 +1,6 @@
 ﻿using CommunityToolkit.Maui.Markup;
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Commands;
 using SailorEditor.Controls;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
@@ -12,12 +13,14 @@ namespace SailorEditor.Views
     public partial class HierarchyView : ContentView
     {
         WorldService service;
+        readonly HierarchyProjectionService projectionService;
 
         public HierarchyView()
         {
             InitializeComponent();
 
             this.service = MauiProgram.GetService<WorldService>();
+            projectionService = MauiProgram.GetService<HierarchyProjectionService>();
 
             service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
@@ -30,24 +33,31 @@ namespace SailorEditor.Views
 
         private void SelectInstance(InstanceId id)
         {
-            if (!id.IsEmpty())
+            if (id == null || id.IsEmpty())
             {
-                if (HierarchyTree.SelectedItem.BindingContext is TreeViewItem<Component> component)
-                {
-                    if (component.Model.InstanceId != id)
-                    {
-                        foreach (var el in HierarchyTree.RootNodes)
-                        {
-                            var res = el.FindItemRecursive(id);
+                return;
+            }
 
-                            if (res != null)
-                            {
-                                res.Select();
-                                HierarchyTree.SelectedItem = res;
-                                break;
-                            }
-                        }
-                    }
+            var currentId = HierarchyTree.SelectedItem?.BindingContext switch
+            {
+                TreeViewItem<Component> component => component.Model.InstanceId,
+                TreeViewItemGroup<GameObject, Component> gameObject => gameObject.Model.InstanceId,
+                _ => InstanceId.NullInstanceId
+            };
+
+            if (currentId == id)
+            {
+                return;
+            }
+
+            foreach (var el in HierarchyTree.RootNodes)
+            {
+                var res = el.FindItemRecursive(id);
+                if (res != null)
+                {
+                    res.Select();
+                    HierarchyTree.SelectedItem = res;
+                    break;
                 }
             }
         }
@@ -57,16 +67,17 @@ namespace SailorEditor.Views
             var selectionChanged = args as TreeView.OnSelectItemEventArgs;
             if (selectionChanged != null)
             {
-                var selectionService = MauiProgram.GetService<SelectionService>();
+                var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+                var contextProvider = MauiProgram.GetService<IActionContextProvider>();
 
                 switch (selectionChanged.Model)
                 {
                     case TreeViewItem<Component> component:
-                        selectionService.SelectObject(component.Model);
+                        dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: component.Model), contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)))).GetAwaiter().GetResult();
                         break;
 
                     case TreeViewItemGroup<GameObject, Component> gameObject:
-                        selectionService.SelectObject(gameObject.Model);
+                        dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: gameObject.Model), contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)))).GetAwaiter().GetResult();
                         break;
                 }
             }
@@ -74,12 +85,16 @@ namespace SailorEditor.Views
 
         private void OnHierarchyDropRequested(object sender, Utility.TreeViewDropRequest request)
         {
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(HierarchyView)));
+
             if (request.Target is null)
             {
                 request.Handled = request.Source switch
                 {
                     GameObject source => service.ReparentToRoot(source, keepWorldTransform: true),
-                    PrefabFile prefab => MauiProgram.GetService<EngineService>().InstantiatePrefab(prefab.FileId),
+                    PrefabFile prefab => dispatcher.DispatchAsync(new InstantiatePrefabAssetCommand(prefab), context).GetAwaiter().GetResult().Succeeded,
                     _ => false
                 };
                 return;
@@ -93,7 +108,7 @@ namespace SailorEditor.Views
             request.Handled = request.Source switch
             {
                 GameObject source => service.Reparent(source, target, keepWorldTransform: true),
-                PrefabFile prefab => MauiProgram.GetService<EngineService>().InstantiatePrefab(prefab.FileId, target.InstanceId),
+                PrefabFile prefab => dispatcher.DispatchAsync(new InstantiatePrefabAssetCommand(prefab, target), context).GetAwaiter().GetResult().Succeeded,
                 _ => false
             };
         }
@@ -139,6 +154,7 @@ namespace SailorEditor.Views
 
         private void PopulateHierarchyView(World world)
         {
+            projectionService.Refresh();
             var gameObjectsModel = HierarchyTreeViewBuilder.PopulateWorld(service);
             var rootNodes = Controls.TreeView.PopulateGroup(gameObjectsModel, new TreeViewPopulateArgs()
             {
@@ -221,8 +237,7 @@ namespace SailorEditor.Views
                 return;
             }
 
-            gameObject.Name = newName.Trim();
-            MauiProgram.GetService<EngineService>().RefreshCurrentWorld();
+            service.RenameGameObject(gameObject, newName.Trim());
         }
     }
 }

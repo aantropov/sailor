@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Commands;
 using SailorEditor.ViewModels;
 using YamlDotNet.Serialization.NamingConventions;
 using YamlDotNet.Serialization;
@@ -54,7 +55,14 @@ namespace SailorEditor.Services
 
         public bool CreateGameObject(GameObject parent = null)
         {
-            return MauiProgram.GetService<EngineService>().CreateGameObject(parent?.InstanceId);
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new CreateGameObjectCommand(parent?.InstanceId),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CreateGameObject))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public bool RemoveGameObject(GameObject gameObject)
@@ -64,25 +72,53 @@ namespace SailorEditor.Services
                 return false;
             }
 
-            var result = MauiProgram.GetService<EngineService>().DestroyObject(gameObject.InstanceId);
-            if (result)
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new DestroyGameObjectCommand(gameObject),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RemoveGameObject))))
+                .GetAwaiter()
+                .GetResult();
+            if (result.Succeeded)
             {
                 MauiProgram.GetService<SelectionService>().ClearSelection();
             }
 
-            return result;
+            return result.Succeeded;
         }
 
         public bool ResetComponentToDefaults(Component component)
         {
-            return component != null && MauiProgram.GetService<EngineService>().ResetComponentToDefaults(component.InstanceId);
+            if (component == null)
+            {
+                return false;
+            }
+
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new ResetComponentToDefaultsCommand(component),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(ResetComponentToDefaults))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public bool AddComponent(GameObject gameObject, string componentTypeName)
         {
-            return gameObject != null &&
-                !string.IsNullOrWhiteSpace(componentTypeName) &&
-                MauiProgram.GetService<EngineService>().AddComponent(gameObject.InstanceId, componentTypeName);
+            if (gameObject == null || string.IsNullOrWhiteSpace(componentTypeName))
+            {
+                return false;
+            }
+
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new AddComponentCommand(gameObject, componentTypeName),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(AddComponent))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public bool RemoveComponent(Component component)
@@ -92,13 +128,41 @@ namespace SailorEditor.Services
                 return false;
             }
 
-            var result = MauiProgram.GetService<EngineService>().RemoveComponent(component.InstanceId);
-            if (result && ReferenceEquals(MauiProgram.GetService<SelectionService>().SelectedItem, component))
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new RemoveComponentCommand(component),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RemoveComponent))))
+                .GetAwaiter()
+                .GetResult();
+            if (result.Succeeded && ReferenceEquals(MauiProgram.GetService<SelectionService>().SelectedItem, component))
             {
                 MauiProgram.GetService<SelectionService>().ClearSelection();
             }
 
-            return result;
+            return result.Succeeded;
+        }
+
+        public bool RenameGameObject(GameObject gameObject, string newName)
+        {
+            if (gameObject == null || string.IsNullOrWhiteSpace(newName))
+            {
+                return false;
+            }
+
+            var yamlBefore = EditorYaml.SerializeGameObject(gameObject);
+            var clone = (GameObject)gameObject.Clone();
+            clone.Name = newName.Trim();
+            var yamlAfter = EditorYaml.SerializeGameObject(clone);
+
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new UpdateGameObjectCommand(gameObject, yamlBefore, yamlAfter, $"Rename {gameObject.Name}"),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RenameGameObject))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public bool Reparent(GameObject child, GameObject newParent, bool keepWorldTransform = true)
@@ -108,7 +172,14 @@ namespace SailorEditor.Services
                 return false;
             }
 
-            return MauiProgram.GetService<EngineService>().ReparentObject(child.InstanceId, newParent.InstanceId, keepWorldTransform);
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new ReparentGameObjectCommand(child, newParent, keepWorldTransform),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(Reparent))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public bool ReparentToRoot(GameObject child, bool keepWorldTransform = true)
@@ -118,7 +189,14 @@ namespace SailorEditor.Services
                 return false;
             }
 
-            return MauiProgram.GetService<EngineService>().ReparentObject(child.InstanceId, null, keepWorldTransform);
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var result = dispatcher.DispatchAsync(
+                new ReparentGameObjectCommand(child, null, keepWorldTransform),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ReparentToRoot))))
+                .GetAwaiter()
+                .GetResult();
+            return result.Succeeded;
         }
 
         public IEnumerable<GameObject> EnumerateSubHierarchy(GameObject root)

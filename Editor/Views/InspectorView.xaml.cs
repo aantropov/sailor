@@ -1,5 +1,4 @@
 ﻿using SailorEditor.Helpers;
-using SailorEditor.ViewModels;
 using SailorEditor.Services;
 using System.ComponentModel;
 
@@ -7,21 +6,21 @@ namespace SailorEditor.Views
 {
     public partial class InspectorView : ContentView
     {
-        readonly SelectionService selectionViewModel;
+        readonly InspectorProjectionService inspectorProjection;
 
         public InspectorView()
         {
             InitializeComponent();
 
-            selectionViewModel = MauiProgram.GetService<SelectionService>();
-            selectionViewModel.PropertyChanged += OnSelectionChanged;
-            this.BindingContext = selectionViewModel;
+            inspectorProjection = MauiProgram.GetService<InspectorProjectionService>();
+            inspectorProjection.PropertyChanged += OnProjectionChanged;
+            this.BindingContext = inspectorProjection;
             RefreshInspector();
         }
 
-        void OnSelectionChanged(object sender, PropertyChangedEventArgs args)
+        void OnProjectionChanged(object sender, PropertyChangedEventArgs args)
         {
-            if (args.PropertyName == nameof(SelectionService.SelectedItem))
+            if (args.PropertyName == nameof(InspectorProjectionService.SelectedItem) || args.PropertyName == nameof(InspectorProjectionService.Current))
             {
                 RefreshInspector();
             }
@@ -29,18 +28,18 @@ namespace SailorEditor.Views
 
         void RefreshInspector()
         {
-            if (selectionViewModel.SelectedItem == null)
+            if (inspectorProjection.SelectedItem == null)
             {
                 InspectedItemHost.Content = null;
                 return;
             }
 
             var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
-            var template = selector.SelectTemplate(selectionViewModel.SelectedItem, InspectedItemHost);
+            var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
             var content = template.CreateContent();
             if (content is View view)
             {
-                view.BindingContext = selectionViewModel.SelectedItem;
+                view.BindingContext = inspectorProjection.SelectedItem;
                 InspectedItemHost.Content = view;
             }
         }

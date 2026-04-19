@@ -4,26 +4,43 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="YamlDotNet" Version="15.1.1" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="GlobalUsings.cs" />
+    <Compile Include="CommandContractsTests.cs" />
+    <Compile Include="HistoryContractsTests.cs" />
+    <Compile Include="LayoutContractsTests.cs" />
+    <Compile Include="LayoutOperationsTests.cs" />
+    <Compile Include="PanelContractsTests.cs" />
+    <Compile Include="ProjectContentProjectionTests.cs" />
+    <Compile Include="AIOperatorTests.cs" />
+    <Compile Include="SettingsContractsTests.cs" />
+    <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
     <Compile Include="..\Editor\Layout\LayoutOperations.cs" Link="Layout\LayoutOperations.cs" />
     <Compile Include="..\Editor\Commands\CommandContracts.cs" Link="Commands\CommandContracts.cs" />
     <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
     <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
+    <Compile Include="..\Editor\Settings\UnifiedSettingsStore.cs" Link="Settings\UnifiedSettingsStore.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
     <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />
+    <Compile Include="..\Editor\AI\AIOperatorService.cs" Link="AI\AIOperatorService.cs" />
+    <Compile Include="..\Editor\AI\EditorAIContextProvider.cs" Link="AI\EditorAIContextProvider.cs" />
+    <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
   </ItemGroup>
 </Project>

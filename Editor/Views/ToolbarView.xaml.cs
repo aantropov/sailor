@@ -1,4 +1,5 @@
-﻿using SailorEditor.Services;
+﻿using SailorEditor.Commands;
+using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using System;
@@ -24,6 +25,8 @@ namespace SailorEditor.Views
         {
         }
 
+        private async void OnUndoButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<ICommandHistoryService>().UndoAsync(new CommandOrigin(CommandOriginKind.UI, "ToolbarUndo"));
+        private async void OnRedoButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<ICommandHistoryService>().RedoAsync(new CommandOrigin(CommandOriginKind.UI, "ToolbarRedo"));
         private void OnPlayButtonClicked(object sender, EventArgs e) => RunWorld(false);
         private void OnPlayDebugButtonClicked(object sender, EventArgs e) => RunWorld(true);
         private async void OnPathTraceSceneButtonClicked(object sender, EventArgs e) => await ExportPathTracedImage(false);

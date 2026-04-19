@@ -1,3 +1,4 @@
+using SailorEditor.Commands;
 using SailorEditor.Shell;
 using SailorEditor.Styles;
 using System.ComponentModel;
@@ -41,7 +42,12 @@ public partial class MainPage : ContentPage
     {
         MenuBarItems.Clear();
 
+        var history = MauiProgram.GetService<ICommandHistoryService>();
+
         var file = new MenuBarItem { Text = "File" };
+        file.Add(new MenuFlyoutItem { Text = "Undo" , Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
+        file.Add(new MenuFlyoutItem { Text = "Redo", Command = new Command(async () => await history.RedoAsync(new CommandOrigin(CommandOriginKind.Menu, "Redo"))) });
+        file.Add(new MenuFlyoutSeparator());
         file.Add(new MenuFlyoutItem { Text = "Save Layout", Command = new Command(async () => await _shellHost.SaveLayoutAsync()) });
         file.Add(new MenuFlyoutItem { Text = "Reset Layout", Command = new Command(async () => await _shellHost.ResetLayoutAsync()) });
         file.Add(new MenuFlyoutSeparator());

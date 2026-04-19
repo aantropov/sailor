@@ -38,7 +38,10 @@ public class LayoutOperationsTests
         var updated = LayoutOperations.HidePanel(layout.Root.Content, rightTabs.Panels[0].PanelId);
         var collapsedRoot = Assert.IsType<SplitNode>(updated);
 
-        Assert.Equal(2, collapsedRoot.Children.Count);
+        Assert.Equal(3, collapsedRoot.Children.Count);
+        var remainingRightTabs = Assert.IsType<TabGroupNode>(collapsedRoot.Children[2]);
+        Assert.Single(remainingRightTabs.Panels);
+        Assert.Equal("AI", remainingRightTabs.Panels[0].PanelTypeId.Value);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Commands;
 using SailorEditor.Utility;
 using SailorEngine;
 using YamlDotNet.Core.Events;
@@ -33,22 +34,18 @@ public partial class Component : ObservableObject, ICloneable
         if (!IsDirty || !isInited)
             return;
 
-        string yamlComponent = string.Empty;
+        var yamlComponent = EditorYaml.SerializeComponent(this);
+        var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+        var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+        var result = dispatcher.DispatchAsync(
+            new UpdateComponentCommand(this, _lastCommittedYaml ?? yamlComponent, yamlComponent, $"Edit {Typename?.Name}"),
+            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitChanges))))
+            .GetAwaiter()
+            .GetResult();
 
-        using (var writer = new StringWriter())
-        {
-            var serializer = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(new ComponentYamlConverter())
-                .Build();
+        if (result.Succeeded)
+            _lastCommittedYaml = yamlComponent;
 
-            var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
-
-            yamlComponent = writer.ToString();
-        }
-
-
-        MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
         IsDirty = false;
     }
 
@@ -59,6 +56,7 @@ public partial class Component : ObservableObject, ICloneable
         OverrideProperties.ValueChanged += (s, args) => OnPropertyChanged(nameof(OverrideProperties));
 
         IsDirty = false;
+        _lastCommittedYaml = EditorYaml.SerializeComponent(this);
         isInited = true;
     }
 
@@ -78,6 +76,9 @@ public partial class Component : ObservableObject, ICloneable
 
     [YamlIgnore]
     protected bool isDirty = false;
+
+    [YamlIgnore]
+    string? _lastCommittedYaml;
 
     [ObservableProperty]
     protected string displayName;

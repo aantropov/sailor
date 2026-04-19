@@ -24,8 +24,8 @@ public sealed class PanelRegistry : IPanelDescriptorRegistry
         Register(new PanelDescriptor(KnownPanelTypes.Inspector, "Inspector", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new InspectorView()));
         Register(new PanelDescriptor(KnownPanelTypes.Content, "Content", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Left), () => new ContentFolderView()));
         Register(new PanelDescriptor(KnownPanelTypes.Console, "Console", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Bottom), () => new ConsoleView()));
-        Register(new PanelDescriptor(KnownPanelTypes.Settings, "Settings", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new PlaceholderPanelView("Settings", "Unified settings shell surface placeholder.")));
-        Register(new PanelDescriptor(KnownPanelTypes.AI, "AI", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new PlaceholderPanelView("AI", "Native AI panel placeholder.")));
+        Register(new PanelDescriptor(KnownPanelTypes.Settings, "Settings", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new SettingsPanelView()));
+        Register(new PanelDescriptor(KnownPanelTypes.AI, "AI", PanelRole.Tool, false, new(TargetGroupId: "right-inspector", DefaultPosition: DockPosition.Right), () => new AIPanelView()));
     }
 
     public void Register(PanelDescriptor descriptor) => _descriptors[descriptor.TypeId] = descriptor;

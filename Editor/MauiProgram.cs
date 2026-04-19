@@ -7,6 +7,11 @@ using SailorEditor.Controls;
 using SailorEditor.Panels;
 using SailorEditor.Shell;
 using SailorEditor.State;
+using SailorEditor.Commands;
+using SailorEditor.History;
+using SailorEditor.Content;
+using SailorEditor.Settings;
+using SailorEditor.AI;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -36,14 +41,27 @@ namespace SailorEditor
                 });
 
             builder.Services.AddSingleton<AssetsService>();
+            builder.Services.AddSingleton<ProjectContentStore>();
             builder.Services.AddSingleton<SelectionService>();
             builder.Services.AddSingleton<WorldService>();
+            builder.Services.AddSingleton<HierarchyProjectionService>();
+            builder.Services.AddSingleton<InspectorProjectionService>();
             builder.Services.AddSingleton<EngineService>();
             builder.Services.AddSingleton<EditorContextMenuService>();
             builder.Services.AddSingleton<PanelRegistry>();
             builder.Services.AddSingleton<ShellState>();
+            builder.Services.AddSingleton<IUndoRedoHistory, InMemoryUndoRedoHistory>();
+            builder.Services.AddSingleton<IActionContextProvider, EditorActionContextProvider>();
+            builder.Services.AddSingleton<EditorCommandDispatcher>();
+            builder.Services.AddSingleton<ICommandDispatcher>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
+            builder.Services.AddSingleton<ICommandHistoryService>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
+            builder.Services.AddSingleton<ITransactionScopeFactory>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
             builder.Services.AddSingleton<IEditorShellLayoutStore, YamlEditorShellLayoutStore>();
+            builder.Services.AddSingleton(sp => new UnifiedSettingsStore(EditorSettingsCatalog.Definitions));
             builder.Services.AddSingleton<EditorShellHost>();
+            builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();
+            builder.Services.AddSingleton<IAIActionPlanner, HeuristicAIActionPlanner>();
+            builder.Services.AddSingleton<AIOperatorService>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

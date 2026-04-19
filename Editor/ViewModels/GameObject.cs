@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Commands;
 using SailorEditor.Utility;
 using System.Xml.Linq;
 using YamlDotNet.Core.Events;
@@ -33,20 +34,17 @@ public partial class GameObject : ObservableObject, ICloneable
         if (!IsDirty || !isInited)
             return;
 
-        string yamlComponent = string.Empty;
+        var yamlGameObject = EditorYaml.SerializeGameObject(this);
+        var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+        var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+        var result = dispatcher.DispatchAsync(
+            new UpdateGameObjectCommand(this, _lastCommittedYaml ?? yamlGameObject, yamlGameObject, $"Edit {Name}"),
+            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitChanges))))
+            .GetAwaiter()
+            .GetResult();
 
-        using (var writer = new StringWriter())
-        {
-            var serializer = SerializationUtils.CreateSerializerBuilder()
-                .Build();
-
-            var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
-
-            yamlComponent = writer.ToString();
-        }
-
-        MauiProgram.GetService<EngineService>().CommitChanges(InstanceId, yamlComponent);
+        if (result.Succeeded)
+            _lastCommittedYaml = yamlGameObject;
 
         IsDirty = false;
     }
@@ -67,6 +65,7 @@ public partial class GameObject : ObservableObject, ICloneable
         //    component.PropertyChanged += (a, e) => OnPropertyChanged(nameof(Components));
 
         IsDirty = false;
+        _lastCommittedYaml = EditorYaml.SerializeGameObject(this);
         isInited = true;
     }
 
@@ -172,4 +171,7 @@ public partial class GameObject : ObservableObject, ICloneable
 
     [YamlIgnore]
     protected bool isDirty = false;
+
+    [YamlIgnore]
+    string? _lastCommittedYaml;
 }

@@ -58,6 +58,11 @@ public interface ICommandDispatcher
     Task<CommandResult> DispatchAsync(IEditorCommand command, ActionContext context, CancellationToken cancellationToken = default);
 }
 
+public interface IActionContextProvider
+{
+    ActionContext GetCurrentContext(CommandOrigin? origin = null, IReadOnlyDictionary<string, string?>? metadata = null);
+}
+
 public interface ITransactionScope : IAsyncDisposable
 {
     string Description { get; }

@@ -11,6 +11,7 @@ public static class LayoutOperations
         var inspectorPanel = new PanelReference(PanelId.New(), new PanelTypeId("Inspector"));
         var scenePanel = new PanelReference(PanelId.New(), new PanelTypeId("Scene"));
         var consolePanel = new PanelReference(PanelId.New(), new PanelTypeId("Console"));
+        var aiPanel = new PanelReference(PanelId.New(), new PanelTypeId("AI"));
 
         return new EditorLayout(
             1,
@@ -34,7 +35,7 @@ public static class LayoutOperations
                             ],
                             [0.72, 0.28],
                             MinSizes: [280, 140]),
-                        new TabGroupNode(PanelRole.Tool, [inspectorPanel], inspectorPanel.PanelId, "right-inspector")
+                        new TabGroupNode(PanelRole.Tool, [inspectorPanel, aiPanel], inspectorPanel.PanelId, "right-inspector")
                     ],
                     [0.22, 0.56, 0.22],
                     MinSizes: [220, 320, 220])),
