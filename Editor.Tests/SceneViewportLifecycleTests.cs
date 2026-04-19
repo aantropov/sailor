@@ -62,6 +62,25 @@ public sealed class SceneViewportLifecycleTests
         Assert.Null(shellState.Focus.KeyboardInputOwner);
     }
 
+    [Fact]
+    public void FocusCoordinator_PromotesScenePanelToActiveDocumentWhenViewportClaimsFocus()
+    {
+        var shellState = new ShellState();
+        shellState.FocusPanel(new PanelId("console"), "bottom-console", activeDocument: null);
+        var scenePanelId = new PanelId("scene-panel");
+        var sut = new SceneShellFocusCoordinator(
+            shellState,
+            "scene:1",
+            () => new SceneShellFocusTarget(scenePanelId, "center-docs", scenePanelId));
+
+        sut.SetViewportFocus(true);
+
+        Assert.Equal(scenePanelId, shellState.Focus.FocusedPanelId);
+        Assert.Equal("center-docs", shellState.Focus.ActiveTabGroupId);
+        Assert.Equal(scenePanelId, shellState.Focus.ActiveDocumentPanelId);
+        Assert.Equal("scene:1", shellState.Focus.FocusedViewportId);
+    }
+
     [Theory]
     [InlineData(RemoteViewportSessionState.Active, "Remote viewport active")]
     [InlineData(RemoteViewportSessionState.Ready, "Remote viewport ready")]

@@ -43,7 +43,8 @@ namespace SailorEditor.Views
         {
             InitializeComponent();
             viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(MauiProgram.GetService<EngineService>()), EngineService.SceneViewportId);
-            focusCoordinator = new SceneShellFocusCoordinator(MauiProgram.GetService<State.ShellState>(), $"scene:{EngineService.SceneViewportId}");
+            var shellState = MauiProgram.GetService<State.ShellState>();
+            focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
             var tapGesture = new TapGestureRecognizer();
             tapGesture.Tapped += (sender, args) =>
@@ -178,6 +179,14 @@ namespace SailorEditor.Views
                 focusCoordinator.ReleaseIfOwned();
                 viewportAdapter.Destroy();
             };
+        }
+
+        SceneShellFocusTarget ResolveFocusTarget(State.ShellState shellState)
+        {
+            var panel = shellState.OpenPanels.FirstOrDefault(x => ReferenceEquals(x.View, this));
+            return panel is null
+                ? default
+                : new SceneShellFocusTarget(panel.PanelId, panel.GroupId, panel.Role == Panels.PanelRole.Document ? panel.PanelId : shellState.Focus.ActiveDocumentPanelId);
         }
 
         void UpdateViewportIntegration()
