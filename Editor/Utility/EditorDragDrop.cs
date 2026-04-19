@@ -1,6 +1,7 @@
 using SailorEditor.Commands;
 using SailorEditor.ViewModels;
 using SailorEngine;
+using System;
 
 namespace SailorEditor.Utility;
 
@@ -34,7 +35,7 @@ public static class EditorDragDrop
     {
         command = source switch
         {
-            GameObject gameObject when target is null || (!ReferenceEquals(gameObject, target) && !IsDescendantOf(target, gameObject))
+            GameObject gameObject when CanReparent(gameObject, target)
                 => new ReparentGameObjectCommand(gameObject, target, keepWorldTransform: true),
             PrefabFile prefab when target is null || target.InstanceId is not null
                 => new InstantiatePrefabAssetCommand(prefab, target),
@@ -62,6 +63,40 @@ public static class EditorDragDrop
         return true;
     }
 
+    static bool CanReparent(GameObject source, GameObject? target)
+    {
+        if (target is null)
+            return source.ParentIndex != uint.MaxValue;
+
+        if (ReferenceEquals(source, target) || HasSameInstanceId(source, target))
+            return false;
+
+        if (HasSameParent(source, target))
+            return false;
+
+        return !IsDescendantOf(target, source);
+    }
+
+    static bool HasSameParent(GameObject source, GameObject target)
+    {
+        if (source.ParentIndex == uint.MaxValue)
+            return false;
+
+        if (source.PrefabIndex != target.PrefabIndex)
+            return false;
+
+        var prefab = MauiProgram.GetService<Services.WorldService>().Current.Prefabs[source.PrefabIndex];
+        if ((int)source.ParentIndex >= prefab.GameObjects.Count)
+            return false;
+
+        return ReferenceEquals(prefab.GameObjects[(int)source.ParentIndex], target) || HasSameInstanceId(prefab.GameObjects[(int)source.ParentIndex], target);
+    }
+
+    static bool HasSameInstanceId(GameObject? left, GameObject? right)
+        => left?.InstanceId is not null
+            && right?.InstanceId is not null
+            && string.Equals(left.InstanceId.Value, right.InstanceId.Value, StringComparison.Ordinal);
+
     static bool IsDescendantOf(GameObject? candidate, GameObject parent)
     {
         if (candidate is null)
@@ -75,7 +110,7 @@ public static class EditorDragDrop
         while (current.ParentIndex != uint.MaxValue)
         {
             current = prefab.GameObjects[(int)current.ParentIndex];
-            if (ReferenceEquals(current, parent))
+            if (ReferenceEquals(current, parent) || HasSameInstanceId(current, parent))
                 return true;
         }
 

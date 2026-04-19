@@ -41,6 +41,7 @@ namespace SailorEditor.Controls
         private readonly TapGestureRecognizer _DoubleClickGestureRecognizer = new();
         private readonly DragGestureRecognizer _DragGestureRecognizer = new();
         private readonly DropGestureRecognizer _DropGestureRecognizer = new();
+        private readonly DropGestureRecognizer _NodeDropGestureRecognizer = new();
 
         internal readonly BoxView SelectionBoxView = new() { Color = Colors.Blue, Opacity = .5, IsVisible = false };
 
@@ -225,6 +226,9 @@ namespace SailorEditor.Controls
 
             _DropGestureRecognizer.Drop += OnDrop;
             _ContentView.GestureRecognizers.Add(_DropGestureRecognizer);
+
+            _NodeDropGestureRecognizer.Drop += OnDrop;
+            GestureRecognizers.Add(_NodeDropGestureRecognizer);
 
             _MainGrid.SetRow((IView)_ChildrenStackLayout, 1);
             _MainGrid.SetColumn((IView)_ChildrenStackLayout, 0);

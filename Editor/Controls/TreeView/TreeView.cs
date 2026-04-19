@@ -32,6 +32,7 @@ namespace SailorEditor.Controls
 
         private readonly StackLayout _StackLayout = new() { Orientation = StackOrientation.Vertical, BackgroundColor = Colors.Transparent };
         private readonly DropGestureRecognizer _RootDropGestureRecognizer = new();
+        private readonly DropGestureRecognizer _StackDropGestureRecognizer = new();
         private readonly TapGestureRecognizer _RootContextGestureRecognizer = new() { Buttons = ButtonsMask.Secondary };
 
         //TODO: This initializes the list, but there is nothing listening to INotifyCollectionChanged so no nodes will get rendered
@@ -96,6 +97,9 @@ namespace SailorEditor.Controls
             Content = _StackLayout;
             _RootDropGestureRecognizer.Drop += OnRootDrop;
             GestureRecognizers.Add(_RootDropGestureRecognizer);
+
+            _StackDropGestureRecognizer.Drop += OnRootDrop;
+            _StackLayout.GestureRecognizers.Add(_StackDropGestureRecognizer);
 
             _RootContextGestureRecognizer.Tapped += OnRootContextRequested;
             GestureRecognizers.Add(_RootContextGestureRecognizer);

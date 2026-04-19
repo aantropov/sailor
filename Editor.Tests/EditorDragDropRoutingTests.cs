@@ -76,4 +76,32 @@ public sealed class EditorDragDropRoutingTests
         Assert.False(resolved);
         Assert.Null(command);
     }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RejectsNoOpReparentToSameParent()
+    {
+        var parent = new GameObject { InstanceId = new InstanceId("go-parent"), PrefabIndex = 0 };
+        var child = new GameObject { InstanceId = new InstanceId("go-child"), PrefabIndex = 0, ParentIndex = 0 };
+        var worldService = SailorEditor.MauiProgram.GetService<SailorEditor.Services.WorldService>();
+        worldService.Current.Prefabs.Clear();
+        worldService.Current.Prefabs.Add(new SailorEditor.Services.PrefabState());
+        worldService.Current.Prefabs[0].GameObjects.Add(parent);
+        worldService.Current.Prefabs[0].GameObjects.Add(child);
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(child, parent, out var command);
+
+        Assert.False(resolved);
+        Assert.Null(command);
+    }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RoutesReparentToRootOnlyWhenParentActuallyChanges()
+    {
+        var root = new GameObject { InstanceId = new InstanceId("go-root"), PrefabIndex = 0, ParentIndex = uint.MaxValue };
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(root, null, out var command);
+
+        Assert.False(resolved);
+        Assert.Null(command);
+    }
 }
