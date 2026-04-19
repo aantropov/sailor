@@ -26,11 +26,13 @@ public sealed partial class InspectorProjectionService : ObservableObject
                 Refresh();
         };
         _worldService.OnUpdateWorldAction += _ => Refresh();
+
+        Refresh();
     }
 
     public void Refresh()
     {
-        SelectedItem = _selectionService.SelectedItem;
+        SelectedItem = ResolveSelectedItem();
         Current = SelectedItem switch
         {
             GameObject gameObject => InspectorProjectionBuilder.Build(
@@ -47,6 +49,21 @@ public sealed partial class InspectorProjectionService : ObservableObject
                 Array.Empty<InspectorComponentProjection>()),
             _ => InspectorProjection.Empty
         };
+    }
+
+    object? ResolveSelectedItem()
+    {
+        var selectedInstanceId = _selectionService.SelectedInstanceId;
+        if (selectedInstanceId is not null && !selectedInstanceId.IsEmpty())
+        {
+            if (_worldService.TryGetGameObject(selectedInstanceId, out var gameObject))
+                return gameObject;
+
+            if (_worldService.TryGetComponent(selectedInstanceId, out var component))
+                return component;
+        }
+
+        return _selectionService.SelectedItem;
     }
 
     GameObject? ResolveOwner(Component component)
