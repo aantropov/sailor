@@ -53,6 +53,7 @@
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <Label Grid.Column="0"
@@ -123,6 +124,26 @@
                     <ImageButton Source="application_export.png"
                                  Style="{StaticResource ToolbarIconButtonStyle}"
                                  Clicked="OnPathTraceSelectionButtonClicked"/>
+                </HorizontalStackLayout>
+            </Border>
+
+            <Border Grid.Column="4"
+                    StrokeThickness="1"
+                    Stroke="#25262A"
+                    BackgroundColor="#1F2023"
+                    Padding="6,1"
+                    StrokeShape="RoundRectangle 3">
+                <HorizontalStackLayout Spacing="6">
+                    <Button Text="Panels"
+                            Style="{StaticResource ToolbarGlyphButtonStyle}"
+                            WidthRequest="44"
+                            MinimumWidthRequest="44"
+                            Clicked="OnPanelsButtonClicked"/>
+                    <Button Text="Settings"
+                            Style="{StaticResource ToolbarGlyphButtonStyle}"
+                            WidthRequest="52"
+                            MinimumWidthRequest="52"
+                            Clicked="OnSettingsButtonClicked"/>
                 </HorizontalStackLayout>
             </Border>
         </Grid>

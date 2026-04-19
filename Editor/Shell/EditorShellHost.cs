@@ -80,6 +80,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         ApplyLayout(layout);
         await SaveLayoutAsync(cancellationToken);
         await FocusPanelAsync(reference.PanelId, cancellationToken);
+        StatusText = $"Opened {descriptor.Title} • dock: {targetGroupId}";
     }
 
     public ValueTask FocusPanelAsync(PanelId panelId, CancellationToken cancellationToken = default)

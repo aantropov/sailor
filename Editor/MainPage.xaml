@@ -19,10 +19,15 @@
         <shell:ShellLayoutView x:Name="ShellLayoutHost" Grid.Row="1"/>
 
         <Border Grid.Row="2" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
-            <Grid ColumnDefinitions="Auto,*">
-                <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>
-                <Label x:Name="StatusTextLabel" Grid.Column="1" Text="Ready"/>
-            </Grid>
+            <VerticalStackLayout Spacing="2">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>
+                    <Label x:Name="StatusTextLabel" Grid.Column="1" Text="Ready"/>
+                </Grid>
+                <Label Text="Panels open into preset docks as tabs. Use the Panels / Settings buttons or Window menu. Click a tab to focus it, × to close it, and Reset Layout if the shell gets messy."
+                       FontSize="11"
+                       TextColor="#90939A"/>
+            </VerticalStackLayout>
         </Border>
     </Grid>
 </ContentPage>
