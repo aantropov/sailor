@@ -54,6 +54,8 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
     {
         State.Layout = layout;
         RebuildOpenPanels(layout.Root.Content);
+        RaisePropertyChanged(nameof(CurrentLayout));
+        RaisePropertyChanged(nameof(State));
         StatusText = $"Layout loaded • {State.OpenPanels.Count} panels";
     }
 
@@ -88,6 +90,8 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         if (State.TryGetPanel(panelId, out var instance))
         {
             State.FocusPanel(panelId, instance.GroupId, instance.Role == PanelRole.Document ? panelId : null);
+            RaisePropertyChanged(nameof(CurrentLayout));
+            RaisePropertyChanged(nameof(State));
             StatusText = $"Focused {instance.Title}";
         }
 
@@ -161,13 +165,16 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         _ => "right-inspector"
     };
 
+    void RaisePropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+
     bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
             return false;
 
         field = value;
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        RaisePropertyChanged(propertyName);
         return true;
     }
 }

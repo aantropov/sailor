@@ -35,6 +35,7 @@
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
+    <Compile Include="EditorShellHostNotificationTests.cs" />
     <Compile Include="EditorDragDropRoutingTests.cs" />
     <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
