@@ -54,4 +54,30 @@ public class LayoutOperationsTests
         Assert.Equal(1.0, resized.SizeRatios.Sum(), 3);
         Assert.True(resized.SizeRatios[0] > resized.SizeRatios[1]);
     }
+
+    [Fact]
+    public void ResizeAtPath_UpdatesNestedSplitRatios()
+    {
+        var nested = new SplitNode(
+            SplitOrientation.Vertical,
+            [new TabGroupNode(PanelRole.Tool, [], null), new TabGroupNode(PanelRole.Tool, [], null)],
+            [0.6, 0.4]);
+        var root = new SplitNode(
+            SplitOrientation.Horizontal,
+            [nested, new TabGroupNode(PanelRole.Tool, [], null)],
+            [0.7, 0.3]);
+
+        var updated = Assert.IsType<SplitNode>(LayoutOperations.ResizeAtPath(root, [0], 0, -0.1));
+        var updatedNested = Assert.IsType<SplitNode>(updated.Children[0]);
+
+        Assert.Equal([0.5, 0.5], updatedNested.SizeRatios, new DoubleComparer(3));
+        Assert.Equal(root.SizeRatios, updated.SizeRatios);
+    }
+
+    sealed class DoubleComparer(int precision) : IEqualityComparer<double>
+    {
+        public bool Equals(double x, double y) => Math.Abs(x - y) < Math.Pow(10, -precision);
+
+        public int GetHashCode(double obj) => obj.GetHashCode();
+    }
 }

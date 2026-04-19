@@ -63,6 +63,19 @@ public static class LayoutOperations
     public static LayoutNode InsertTabbed(LayoutNode root, string groupId, PanelReference panel)
         => ReplaceNode(root, node => node is TabGroupNode tabs && tabs.GroupId == groupId, node => AddPanelToGroup((TabGroupNode)node, panel));
 
+    public static LayoutNode MovePanelToGroup(LayoutNode root, PanelId panelId, string targetGroupId)
+    {
+        if (TryFindPanel(root, panelId, out var panel, out var sourceGroupId))
+        {
+            if (string.Equals(sourceGroupId, targetGroupId, StringComparison.Ordinal))
+                return root;
+
+            return InsertTabbed(RemovePanel(root, panelId), targetGroupId, panel);
+        }
+
+        return root;
+    }
+
     public static LayoutNode HidePanel(LayoutNode root, PanelId panelId) => Cleanup(RemovePanel(root, panelId));
 
     public static LayoutNode RemovePanel(LayoutNode root, PanelId panelId)
@@ -82,6 +95,33 @@ public static class LayoutOperations
             return EmptyNode.Instance;
 
         return tabs with { Panels = panels, ActivePanelId = panels.Any(x => x.PanelId == tabs.ActivePanelId) ? tabs.ActivePanelId : panels[0].PanelId };
+    }
+
+    static bool TryFindPanel(LayoutNode node, PanelId panelId, out PanelReference panel, out string? groupId)
+    {
+        switch (node)
+        {
+            case TabGroupNode tabs:
+                panel = tabs.Panels.FirstOrDefault(x => x.PanelId == panelId)!;
+                if (panel is not null)
+                {
+                    groupId = tabs.GroupId;
+                    return true;
+                }
+                break;
+
+            case SplitNode split:
+                foreach (var child in split.Children)
+                {
+                    if (TryFindPanel(child, panelId, out panel, out groupId))
+                        return true;
+                }
+                break;
+        }
+
+        panel = null!;
+        groupId = null;
+        return false;
     }
 
     static LayoutNode Cleanup(LayoutNode node)
@@ -109,12 +149,31 @@ public static class LayoutOperations
             return split;
 
         var ratios = split.SizeRatios.ToArray();
-        var left = Math.Clamp(ratios[leadingIndex] + delta, minRatio, 1 - minRatio);
-        var right = Math.Clamp(ratios[leadingIndex + 1] - delta, minRatio, 1 - minRatio);
+        var pairTotal = split.SizeRatios[leadingIndex] + split.SizeRatios[leadingIndex + 1];
+        var minSize = Math.Min(minRatio, pairTotal / 2d);
+        var left = Math.Clamp(ratios[leadingIndex] + delta, minSize, pairTotal - minSize);
+        var right = Math.Clamp(ratios[leadingIndex + 1] - delta, minSize, pairTotal - minSize);
         var sum = left + right;
-        ratios[leadingIndex] = left / sum * (split.SizeRatios[leadingIndex] + split.SizeRatios[leadingIndex + 1]);
-        ratios[leadingIndex + 1] = right / sum * (split.SizeRatios[leadingIndex] + split.SizeRatios[leadingIndex + 1]);
+        ratios[leadingIndex] = left / sum * pairTotal;
+        ratios[leadingIndex + 1] = right / sum * pairTotal;
         return split with { SizeRatios = NormalizeRatios(ratios, ratios.Length) };
+    }
+
+    public static LayoutNode ResizeAtPath(LayoutNode root, IReadOnlyList<int> splitPath, int leadingIndex, double delta, double minRatio = 0.1)
+    {
+        if (splitPath.Count == 0)
+            return root is SplitNode split ? Resize(split, leadingIndex, delta, minRatio) : root;
+
+        if (root is not SplitNode current)
+            return root;
+
+        var childIndex = splitPath[0];
+        if (childIndex < 0 || childIndex >= current.Children.Count)
+            return root;
+
+        var updatedChildren = current.Children.ToArray();
+        updatedChildren[childIndex] = ResizeAtPath(updatedChildren[childIndex], splitPath.Skip(1).ToArray(), leadingIndex, delta, minRatio);
+        return current with { Children = updatedChildren };
     }
 
     public static double[] NormalizeRatios(IReadOnlyList<double> ratios, int count)

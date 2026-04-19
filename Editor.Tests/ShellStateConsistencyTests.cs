@@ -64,6 +64,37 @@ public sealed class ShellStateConsistencyTests
         Assert.Equal(scenePanelId, shellState.Focus.ActiveDocumentPanelId);
     }
 
+    [Fact]
+    public async Task ResizeSplitAsync_UpdatesLayoutRatiosAndPersists()
+    {
+        var panelRegistry = new PanelRegistry();
+        var shellState = new ShellState();
+        var layoutStore = new InMemoryLayoutStore();
+        var shellHost = new EditorShellHost(panelRegistry, layoutStore, shellState);
+
+        var leftPanelId = new PanelId("left-panel");
+        var rightPanelId = new PanelId("right-panel");
+        var initialLayout = new EditorLayout(
+            1,
+            new LayoutRoot(
+                new SplitNode(
+                    SplitOrientation.Horizontal,
+                    [
+                        new TabGroupNode(PanelRole.Tool, [new PanelReference(leftPanelId, KnownPanelTypes.Content)], leftPanelId, "left"),
+                        new TabGroupNode(PanelRole.Tool, [new PanelReference(rightPanelId, KnownPanelTypes.Inspector)], rightPanelId, "right")
+                    ],
+                    [0.5, 0.5])));
+
+        shellHost.ApplyLayout(initialLayout);
+
+        await shellHost.ResizeSplitAsync([], 0, 0.15);
+
+        var updated = Assert.IsType<SplitNode>(shellHost.CurrentLayout!.Root.Content);
+        Assert.Equal(0.65, updated.SizeRatios[0], 3);
+        Assert.Equal(0.35, updated.SizeRatios[1], 3);
+        Assert.NotNull(layoutStore.Layout);
+    }
+
     static PanelInstance CreatePanel(PanelId panelId, PanelTypeId panelTypeId, PanelRole role, string groupId)
         => new(panelId, panelTypeId, panelTypeId.Value, role, new Microsoft.Maui.Controls.Label(), true, groupId);
 

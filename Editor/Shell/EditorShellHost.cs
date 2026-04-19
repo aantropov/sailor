@@ -108,6 +108,36 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         await SaveLayoutAsync(cancellationToken);
     }
 
+    public async Task MovePanelToGroupAsync(PanelId panelId, string targetGroupId, CancellationToken cancellationToken = default)
+    {
+        if (CurrentLayout is null || string.IsNullOrWhiteSpace(targetGroupId))
+            return;
+
+        var updatedRoot = LayoutOperations.MovePanelToGroup(CurrentLayout.Root.Content, panelId, targetGroupId);
+        if (ReferenceEquals(updatedRoot, CurrentLayout.Root.Content))
+            return;
+
+        var updated = CurrentLayout with { Root = new LayoutRoot(updatedRoot) };
+        ApplyLayout(updated);
+        await SaveLayoutAsync(cancellationToken);
+        await FocusPanelAsync(panelId, cancellationToken);
+
+        if (State.TryGetPanel(panelId, out var instance))
+            StatusText = $"Moved {instance.Title} • dock: {targetGroupId}";
+    }
+
+    public async Task ResizeSplitAsync(IReadOnlyList<int> splitPath, int leadingIndex, double delta, CancellationToken cancellationToken = default)
+    {
+        if (CurrentLayout is null || Math.Abs(delta) < double.Epsilon)
+            return;
+
+        var updatedRoot = LayoutOperations.ResizeAtPath(CurrentLayout.Root.Content, splitPath, leadingIndex, delta);
+        var updatedLayout = CurrentLayout with { Root = new LayoutRoot(updatedRoot) };
+        ApplyLayout(updatedLayout);
+        await SaveLayoutAsync(cancellationToken);
+        StatusText = "Layout resized";
+    }
+
     public async Task SaveLayoutAsync(CancellationToken cancellationToken = default)
     {
         if (CurrentLayout is null)
