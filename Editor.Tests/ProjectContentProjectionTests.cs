@@ -11,6 +11,8 @@ public class ProjectContentProjectionTests
         {
             new ProjectContentFolderSnapshot(1, "Materials", -1),
             new ProjectContentFolderSnapshot(2, "Models", -1),
+            new ProjectContentFolderSnapshot(3, "Wood", 1),
+            new ProjectContentFolderSnapshot(4, "Metal", 1),
         };
 
         var assets = new[]
@@ -26,6 +28,7 @@ public class ProjectContentProjectionTests
             assets,
             new ProjectContentState(CurrentFolderId: 1, Filter: "m", SortMode: ProjectContentSortMode.NameDescending));
 
+        Assert.Equal(["Metal", "Wood"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.Equal(["wood", "metal"], projection.VisibleAssets.Select(x => x.DisplayName).ToArray());
         Assert.Equal(1, projection.State.CurrentFolderId);
         Assert.Equal("/Content/Materials", projection.Folders.Single(x => x.FolderId == 1).FullPath);
@@ -41,6 +44,7 @@ public class ProjectContentProjectionTests
             new ProjectContentState(CurrentFolderId: 99));
 
         Assert.Null(projection.State.CurrentFolderId);
+        Assert.Equal(["Textures"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.Single(projection.CurrentFolderAssets);
     }
 }

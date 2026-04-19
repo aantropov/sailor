@@ -22,12 +22,13 @@ public sealed record ProjectContentAssetItem(string FileId, string DisplayName, 
 public sealed record ProjectContentProjection(
     ProjectContentFolderItem Root,
     IReadOnlyList<ProjectContentFolderItem> Folders,
+    IReadOnlyList<ProjectContentFolderItem> VisibleFolders,
     IReadOnlyList<ProjectContentAssetItem> VisibleAssets,
     ProjectContentState State)
 {
-    public IReadOnlyList<ProjectContentAssetItem> CurrentFolderAssets => State.CurrentFolderId is { } folderId
-        ? VisibleAssets.Where(x => x.FolderId == folderId).ToArray()
-        : VisibleAssets.Where(x => x.FolderId == -1).ToArray();
+    public IReadOnlyList<ProjectContentFolderItem> CurrentFolderFolders => VisibleFolders;
+
+    public IReadOnlyList<ProjectContentAssetItem> CurrentFolderAssets => VisibleAssets;
 }
 
 public static class ProjectContentProjectionBuilder
@@ -44,6 +45,11 @@ public static class ProjectContentProjectionBuilder
             .OrderBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var visibleFolders = folderItems
+            .Where(folder => MatchesFolder(folder, normalizedState.CurrentFolderId))
+            .OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         var assetItems = assets
             .Where(asset => !string.IsNullOrWhiteSpace(asset.FileId))
             .Select(asset => new ProjectContentAssetItem(asset.FileId, asset.DisplayName, asset.Extension, asset.FolderId, asset.FullPath, asset.AssetInfoTypeName))
@@ -57,9 +63,12 @@ public static class ProjectContentProjectionBuilder
         return new ProjectContentProjection(
             new ProjectContentFolderItem(null, Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), rootPath, null, true),
             folderItems,
+            visibleFolders,
             assetItems,
             normalizedState);
     }
+
+    static bool MatchesFolder(ProjectContentFolderItem folder, int? folderId) => (folderId ?? -1) == (folder.ParentFolderId ?? -1);
 
     static bool MatchesFolder(ProjectContentAssetItem asset, int? folderId) => (folderId ?? -1) == asset.FolderId;
 

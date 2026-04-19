@@ -6,21 +6,6 @@ namespace SailorEditor.Helpers
 {
     public static class FolderTreeViewBuilder
     {
-        private static TreeViewItemGroup<AssetFolder, AssetFile>? FindParentFolder(TreeViewItemGroup<AssetFolder, AssetFile> group, AssetFolder folder)
-        {
-            if (group.GroupId == folder.ParentFolderId)
-                return group;
-
-            foreach (var currentGroup in group.ChildrenGroups)
-            {
-                var search = FindParentFolder(currentGroup, folder);
-                if (search != null)
-                    return search;
-            }
-
-            return null;
-        }
-
         public static TreeViewNode? FindItemRecursive<T>(this TreeViewNode parent, T id)
             where T : IComparable<T>
         {
@@ -93,7 +78,7 @@ namespace SailorEditor.Helpers
             };
 
             var groupsById = new Dictionary<int, TreeViewItemGroup<AssetFolder, AssetFile>>();
-            foreach (var projectionFolder in projection.Folders.OrderBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase))
+            foreach (var projectionFolder in projection.VisibleFolders.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase))
             {
                 if (projectionFolder.FolderId is not { } folderId || !foldersById.TryGetValue(folderId, out var folder))
                 {
@@ -108,26 +93,7 @@ namespace SailorEditor.Helpers
                 };
 
                 groupsById[folder.Id] = itemGroup;
-                if (folder.ParentFolderId == -1)
-                {
-                    projectRootGroup.ChildrenGroups.Add(itemGroup);
-                    continue;
-                }
-
-                if (groupsById.TryGetValue(folder.ParentFolderId, out var parentGroup))
-                {
-                    parentGroup.ChildrenGroups.Add(itemGroup);
-                    continue;
-                }
-
-                parentGroup = projectRootGroup.ChildrenGroups
-                    .Select(group => FindParentFolder(group, folder))
-                    .FirstOrDefault(group => group != null);
-
-                if (parentGroup != null)
-                {
-                    parentGroup.ChildrenGroups.Add(itemGroup);
-                }
+                projectRootGroup.ChildrenGroups.Add(itemGroup);
             }
 
             foreach (var projectionAsset in projection.VisibleAssets)
