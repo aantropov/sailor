@@ -2,11 +2,22 @@ using SailorEditor.Controls;
 using SailorEditor.Layout;
 using SailorEditor.Panels;
 using SailorEditor.State;
+using MauiGrid = Microsoft.Maui.Controls.Grid;
 
 namespace SailorEditor.Shell;
 
 public sealed class ShellLayoutView : ContentView
 {
+    static readonly Color TabStripBackground = Color.FromArgb("#252526");
+    static readonly Color TabStripBorder = Color.FromArgb("#3C3C3C");
+    static readonly Color PanelBackground = Color.FromArgb("#1E1E1E");
+    static readonly Color ActiveTabBackground = Color.FromArgb("#1E1E1E");
+    static readonly Color InactiveTabBackground = Color.FromArgb("#2D2D30");
+    static readonly Color HoverTabBackground = Color.FromArgb("#343438");
+    static readonly Color ActiveTabText = Color.FromArgb("#F3F3F3");
+    static readonly Color InactiveTabText = Color.FromArgb("#B9B9B9");
+    static readonly Color CloseButtonText = Color.FromArgb("#9A9A9A");
+
     public static readonly BindableProperty HostProperty = BindableProperty.Create(
         nameof(Host), typeof(EditorShellHost), typeof(ShellLayoutView), propertyChanged: OnHostChanged);
 
@@ -51,7 +62,7 @@ public sealed class ShellLayoutView : ContentView
 
     View BuildSplit(SplitNode split)
     {
-        var grid = new Grid { RowSpacing = 0, ColumnSpacing = 0, BackgroundColor = Colors.Transparent };
+        var grid = new MauiGrid { RowSpacing = 0, ColumnSpacing = 0, BackgroundColor = Colors.Transparent };
         var ratios = LayoutOperations.NormalizeRatios(split.SizeRatios, split.Children.Count);
 
         if (split.Orientation == SplitOrientation.Horizontal)
@@ -66,12 +77,12 @@ public sealed class ShellLayoutView : ContentView
             for (var i = 0; i < split.Children.Count; i++)
             {
                 grid.Children.Add(BuildNode(split.Children[i]));
-                Grid.SetColumn(grid.Children[^1], i * 2);
+                MauiGrid.SetColumn(grid.Children[^1], i * 2);
                 if (i < split.Children.Count - 1)
                 {
                     var splitter = new VerticalGridSplitterControl();
                     grid.Children.Add(splitter);
-                    Grid.SetColumn(splitter, i * 2 + 1);
+                    MauiGrid.SetColumn(splitter, i * 2 + 1);
                 }
             }
         }
@@ -87,12 +98,12 @@ public sealed class ShellLayoutView : ContentView
             for (var i = 0; i < split.Children.Count; i++)
             {
                 grid.Children.Add(BuildNode(split.Children[i]));
-                Grid.SetRow(grid.Children[^1], i * 2);
+                MauiGrid.SetRow(grid.Children[^1], i * 2);
                 if (i < split.Children.Count - 1)
                 {
                     var splitter = new HorizontalGridSplitterControl();
                     grid.Children.Add(splitter);
-                    Grid.SetRow(splitter, i * 2 + 1);
+                    MauiGrid.SetRow(splitter, i * 2 + 1);
                 }
             }
         }
@@ -111,34 +122,42 @@ public sealed class ShellLayoutView : ContentView
         var active = panelInstances.FirstOrDefault(x => x.PanelId == tabs.ActivePanelId) ?? panelInstances.FirstOrDefault();
         var contentHost = new ContentView
         {
-            Content = active?.View ?? new Label { Text = "No panel" },
+            Content = active?.View ?? new Label { Text = "No panel", Margin = 12, TextColor = InactiveTabText },
             HorizontalOptions = LayoutOptions.Fill,
-            VerticalOptions = LayoutOptions.Fill
+            VerticalOptions = LayoutOptions.Fill,
+            BackgroundColor = Colors.Transparent
         };
 
-        var tabBar = new HorizontalStackLayout { Spacing = 4, Padding = new Thickness(6, 4) };
-        foreach (var panel in panelInstances)
+        var tabBar = new HorizontalStackLayout
         {
-            var button = new Button
-            {
-                Text = panel.Title,
-                Padding = new Thickness(10, 4),
-                FontSize = 12,
-                BackgroundColor = panel.PanelId == active?.PanelId ? Colors.DimGray : Colors.Transparent
-            };
-            button.Clicked += async (_, _) =>
-            {
-                await Host!.FocusPanelAsync(panel.PanelId);
-                contentHost.Content = panel.View;
-            };
-            tabBar.Children.Add(button);
+            Spacing = 1,
+            Padding = new Thickness(6, 6, 6, 0),
+            BackgroundColor = TabStripBackground
+        };
 
-            var close = new Button { Text = "×", FontSize = 12, Padding = new Thickness(6, 2), BackgroundColor = Colors.Transparent };
-            close.Clicked += async (_, _) => await Host!.ClosePanelAsync(panel.PanelId);
-            tabBar.Children.Add(close);
-        }
+        foreach (var panel in panelInstances)
+            tabBar.Children.Add(CreateTab(panel, active, contentHost));
 
-        return new Grid
+        var tabHeader = new Border
+        {
+            StrokeThickness = 1,
+            Stroke = TabStripBorder,
+            BackgroundColor = TabStripBackground,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },
+            Content = tabBar
+        };
+
+        var contentBorder = new Border
+        {
+            StrokeThickness = 1,
+            Stroke = TabStripBorder,
+            BackgroundColor = PanelBackground,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },
+            Content = contentHost,
+            Margin = new Thickness(0, -1, 0, 0)
+        };
+
+        return new MauiGrid
         {
             RowDefinitions =
             {
@@ -147,32 +166,97 @@ public sealed class ShellLayoutView : ContentView
             },
             Children =
             {
-                new Border
-                {
-                    StrokeThickness = 1,
-                    Stroke = Colors.DimGray,
-                    BackgroundColor = Color.FromArgb("#1E1E1E"),
-                    Content = tabBar
-                },
-                new Border
-                {
-                    StrokeThickness = 1,
-                    Stroke = Colors.DimGray,
-                    BackgroundColor = Colors.Transparent,
-                    Content = contentHost,
-                    Margin = new Thickness(0, -1, 0, 0)
-                }
+                tabHeader,
+                contentBorder
             }
         }.AssignRows();
+    }
+
+    View CreateTab(PanelInstance panel, PanelInstance? active, ContentView contentHost)
+    {
+        var isActive = panel.PanelId == active?.PanelId;
+        var textColor = isActive ? ActiveTabText : InactiveTabText;
+
+        var title = new Label
+        {
+            Text = panel.Title,
+            FontSize = 12,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            VerticalTextAlignment = TextAlignment.Center,
+            TextColor = textColor,
+            Margin = new Thickness(0, 0, 4, 0)
+        };
+
+        var close = new Button
+        {
+            Text = "×",
+            FontSize = 11,
+            WidthRequest = 18,
+            HeightRequest = 18,
+            Padding = 0,
+            Margin = 0,
+            CornerRadius = 9,
+            BackgroundColor = Colors.Transparent,
+            TextColor = isActive ? InactiveTabText : CloseButtonText,
+            BorderWidth = 0
+        };
+        close.Clicked += async (_, _) => await Host!.ClosePanelAsync(panel.PanelId);
+
+        var tabContent = new MauiGrid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = GridLength.Auto }
+            },
+            ColumnSpacing = 2,
+            Padding = new Thickness(12, 6, 8, 6),
+            MinimumWidthRequest = 92
+        };
+        tabContent.Children.Add(title);
+        tabContent.Children.Add(close);
+        MauiGrid.SetColumn(close, 1);
+
+        var tab = new Border
+        {
+            BackgroundColor = isActive ? ActiveTabBackground : InactiveTabBackground,
+            Stroke = isActive ? TabStripBorder : Color.FromArgb("#303033"),
+            StrokeThickness = 1,
+            Padding = 0,
+            Margin = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(6, 6, 0, 0) },
+            Content = tabContent
+        };
+
+        if (isActive)
+            tab.StrokeThickness = 1;
+
+        var focusTap = new TapGestureRecognizer();
+        focusTap.Tapped += async (_, _) =>
+        {
+            await Host!.FocusPanelAsync(panel.PanelId);
+            contentHost.Content = panel.View;
+        };
+        tab.GestureRecognizers.Add(focusTap);
+
+        if (!isActive)
+        {
+            var hover = new PointerGestureRecognizer();
+            hover.PointerEntered += (_, _) => tab.BackgroundColor = HoverTabBackground;
+            hover.PointerExited += (_, _) => tab.BackgroundColor = InactiveTabBackground;
+            tab.GestureRecognizers.Add(hover);
+        }
+
+        return tab;
     }
 }
 
 file static class ShellLayoutViewGridExtensions
 {
-    public static Grid AssignRows(this Grid grid)
+    public static MauiGrid AssignRows(this MauiGrid grid)
     {
-        if (grid.Children.Count > 0) Grid.SetRow(grid.Children[0], 0);
-        if (grid.Children.Count > 1) Grid.SetRow(grid.Children[1], 1);
+        if (grid.Children.Count > 0) MauiGrid.SetRow(grid.Children[0], 0);
+        if (grid.Children.Count > 1) MauiGrid.SetRow(grid.Children[1], 1);
         return grid;
     }
 }
