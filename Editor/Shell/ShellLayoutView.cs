@@ -11,13 +11,13 @@ public sealed class ShellLayoutView : ContentView
     static readonly Color TabStripBackground = Color.FromArgb("#16171A");
     static readonly Color TabStripBorder = Color.FromArgb("#292A2E");
     static readonly Color PanelBackground = Color.FromArgb("#17181B");
-    static readonly Color ActiveTabBackground = Color.FromArgb("#1C1D21");
+    static readonly Color ActiveTabBackground = Color.FromArgb("#202226");
     static readonly Color InactiveTabBackground = Color.FromArgb("#16171A");
-    static readonly Color HoverTabBackground = Color.FromArgb("#232428");
-    static readonly Color ActiveTabText = Color.FromArgb("#F1F1F1");
-    static readonly Color InactiveTabText = Color.FromArgb("#90939A");
+    static readonly Color HoverTabBackground = Color.FromArgb("#202226");
+    static readonly Color ActiveTabText = Color.FromArgb("#E3E5E8");
+    static readonly Color InactiveTabText = Color.FromArgb("#8B8E95");
     static readonly Color CloseButtonText = Color.FromArgb("#6C6E75");
-    static readonly Color ActiveTabAccent = Color.FromArgb("#4D8DFF");
+    static readonly Color ActiveTabAccent = Color.FromArgb("#5B5E66");
 
     public static readonly BindableProperty HostProperty = BindableProperty.Create(
         nameof(Host), typeof(EditorShellHost), typeof(ShellLayoutView), propertyChanged: OnHostChanged);
