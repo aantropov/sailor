@@ -42,6 +42,15 @@ namespace SailorEditor.Views
         {
             if (obj is not AssetFile file || file.FileId is null || file.FileId.IsEmpty())
             {
+                suppressSelectionChanged = true;
+                try
+                {
+                    FolderTree.SelectedItem = null;
+                }
+                finally
+                {
+                    suppressSelectionChanged = false;
+                }
                 return;
             }
 

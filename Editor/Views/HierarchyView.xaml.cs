@@ -34,6 +34,7 @@ namespace SailorEditor.Views
         {
             if (id == null || id.IsEmpty())
             {
+                HierarchyTree.SelectedItem = null;
                 return;
             }
 
@@ -162,6 +163,10 @@ namespace SailorEditor.Views
             if (!string.IsNullOrWhiteSpace(selectedId) && lookup.TryGetValue(selectedId, out var selectedGameObject) && selectedGameObject.InstanceId is not null)
             {
                 SelectInstance(selectedGameObject.InstanceId);
+            }
+            else
+            {
+                HierarchyTree.SelectedItem = null;
             }
         }
 

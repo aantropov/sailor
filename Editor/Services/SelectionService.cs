@@ -93,9 +93,10 @@ namespace SailorEditor.Services
 
             if (raiseInstanceAction && SelectedInstanceId is not null && !SelectedInstanceId.IsEmpty())
                 OnSelectInstanceAction?.Invoke(SelectedInstanceId);
+            else if (SelectedInstanceId is null || SelectedInstanceId.IsEmpty())
+                OnSelectInstanceAction?.Invoke(InstanceId.NullInstanceId);
 
-            if (raiseAssetAction)
-                OnSelectAssetAction?.Invoke(obj);
+            OnSelectAssetAction?.Invoke(raiseAssetAction ? obj : null);
         }
 
         void SyncEditorSelectionToRuntime()
