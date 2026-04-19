@@ -121,7 +121,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
 
     void RebuildOpenPanels(LayoutNode root)
     {
-        State.OpenPanels.Clear();
+        State.ResetPanels();
         Traverse(root);
     }
 

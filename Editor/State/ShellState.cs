@@ -44,16 +44,33 @@ public sealed class ShellState : INotifyPropertyChanged
 
     public bool TryGetPanel(PanelId panelId, out PanelInstance instance) => _panelLookup.TryGetValue(panelId, out instance!);
 
+    public void ResetPanels()
+    {
+        _panelLookup.Clear();
+        OpenPanels.Clear();
+        Focus = Focus with
+        {
+            FocusedPanelId = null,
+            ActiveTabGroupId = null,
+            ActiveDocumentPanelId = null
+        };
+    }
+
     public PanelInstance OpenPanel(PanelInstance instance, string? groupId = null)
     {
         var normalized = instance with { GroupId = groupId ?? instance.GroupId, IsVisible = true };
         _panelLookup[normalized.PanelId] = normalized;
 
-        var existingIndex = OpenPanels.IndexOf(OpenPanels.FirstOrDefault(x => x.PanelId == normalized.PanelId));
-        if (existingIndex >= 0)
+        var existing = OpenPanels.FirstOrDefault(x => x.PanelId == normalized.PanelId);
+        if (existing is not null)
+        {
+            var existingIndex = OpenPanels.IndexOf(existing);
             OpenPanels[existingIndex] = normalized;
+        }
         else
+        {
             OpenPanels.Add(normalized);
+        }
 
         FocusPanel(normalized.PanelId, normalized.GroupId, normalized.Role == PanelRole.Document ? normalized.PanelId : Focus.ActiveDocumentPanelId);
         return normalized;

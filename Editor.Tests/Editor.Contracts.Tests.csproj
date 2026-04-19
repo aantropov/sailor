@@ -32,8 +32,10 @@
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneSelectionRoutingTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
-    <Compile Include="SceneTestShellStateStub.cs" />
+    <Compile Include="ShellHostTestStubs.cs" />
+    <Compile Include="ShellStateConsistencyTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
+    <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
     <Compile Include="..\Editor\Layout\LayoutOperations.cs" Link="Layout\LayoutOperations.cs" />
     <Compile Include="..\Editor\Commands\CommandContracts.cs" Link="Commands\CommandContracts.cs" />
@@ -42,6 +44,8 @@
     <Compile Include="..\Editor\Settings\UnifiedSettingsStore.cs" Link="Settings\UnifiedSettingsStore.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
+    <Compile Include="..\Editor\Shell\EditorShellHost.cs" Link="Shell\EditorShellHost.cs" />
+    <Compile Include="..\Editor\State\ShellState.cs" Link="State\ShellState.cs" />
     <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
     <Compile Include="..\Editor\Scene\SceneViewportLifecycle.cs" Link="Scene\SceneViewportLifecycle.cs" />
     <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
