@@ -75,6 +75,11 @@ public interface IAIEditorContextProvider
     AIEditorContextSnapshot GetCurrentContext();
 }
 
+public interface IAIAgentInstructionsProvider
+{
+    string Instructions { get; }
+}
+
 public interface IAIActionPlanner
 {
     Task<AIPlanResponse> PlanAsync(string prompt, AIEditorContextSnapshot context, CancellationToken cancellationToken = default);

@@ -2,7 +2,9 @@ using SailorEditor.Commands;
 
 namespace SailorEditor.AI;
 
-public sealed class EditorAIContextProvider(IActionContextProvider actionContextProvider) : IAIEditorContextProvider
+public sealed class EditorAIContextProvider(
+    IActionContextProvider actionContextProvider,
+    IAIAgentInstructionsProvider instructionsProvider) : IAIEditorContextProvider
 {
     public AIEditorContextSnapshot GetCurrentContext()
     {
@@ -12,6 +14,7 @@ public sealed class EditorAIContextProvider(IActionContextProvider actionContext
             ["originKind"] = context.Origin?.Kind.ToString(),
             ["originSource"] = context.Origin?.Source,
             ["originActor"] = context.Origin?.Actor,
+            ["agentInstructions"] = instructionsProvider.Instructions,
         };
 
         return new AIEditorContextSnapshot(

@@ -7,6 +7,7 @@ public sealed class AIOperatorService
 {
     readonly IAIActionPlanner _planner;
     readonly IAIEditorContextProvider _aiContextProvider;
+    readonly IAIAgentInstructionsProvider _instructionsProvider;
     readonly IActionContextProvider _actionContextProvider;
     readonly ICommandDispatcher _dispatcher;
     readonly Dictionary<string, AIProposedAction> _proposalLookup = new();
@@ -14,13 +15,16 @@ public sealed class AIOperatorService
     public AIOperatorService(
         IAIActionPlanner planner,
         IAIEditorContextProvider aiContextProvider,
+        IAIAgentInstructionsProvider instructionsProvider,
         IActionContextProvider actionContextProvider,
         ICommandDispatcher dispatcher)
     {
         _planner = planner;
         _aiContextProvider = aiContextProvider;
+        _instructionsProvider = instructionsProvider;
         _actionContextProvider = actionContextProvider;
         _dispatcher = dispatcher;
+        Initialize();
     }
 
     public ObservableCollection<AIConversationEntry> Conversation { get; } = new();
@@ -30,6 +34,16 @@ public sealed class AIOperatorService
     public ObservableCollection<AIActionAuditEntry> AuditTrail { get; } = new();
 
     public AIEditorContextSnapshot CurrentContext => _aiContextProvider.GetCurrentContext();
+
+    public string AgentInstructions => _instructionsProvider.Instructions;
+
+    void Initialize()
+    {
+        Conversation.Add(new AIConversationEntry(
+            "system",
+            "Sailor AI agent instructions loaded from AI/AGENT.md.",
+            DateTimeOffset.UtcNow));
+    }
 
     public async Task<AIPlanResponse> SubmitPromptAsync(string prompt, CancellationToken cancellationToken = default)
     {

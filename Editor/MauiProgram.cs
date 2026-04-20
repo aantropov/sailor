@@ -60,6 +60,7 @@ namespace SailorEditor
             builder.Services.AddSingleton(sp => new UnifiedSettingsStore(EditorSettingsCatalog.Definitions));
             builder.Services.AddSingleton<EditorSettingsPersistenceStore>();
             builder.Services.AddSingleton<EditorShellHost>();
+            builder.Services.AddSingleton<IAIAgentInstructionsProvider, MarkdownAIAgentInstructionsProvider>();
             builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();
             builder.Services.AddSingleton<IAIActionPlanner, HeuristicAIActionPlanner>();
             builder.Services.AddSingleton<AIOperatorService>();

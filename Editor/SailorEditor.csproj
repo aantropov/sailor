@@ -217,6 +217,10 @@
 	  <PackageReference Update="Microsoft.Maui.Controls.Compatibility" Version="8.0.7" />
 	</ItemGroup>
 
+	<ItemGroup>
+	  <Content Include="AI\AGENT.md" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
 	<ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst' and '$(Configuration)' == 'Debug'">
 	  <Content Include="..\build-mac-vcpkg\Lib\Debug\Sailor-Debug.dylib" Link="Sailor-Debug.dylib" CopyToOutputDirectory="PreserveNewest" />
 	</ItemGroup>
