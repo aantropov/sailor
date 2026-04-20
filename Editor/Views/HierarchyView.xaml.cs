@@ -1,26 +1,30 @@
-﻿using CommunityToolkit.Maui.Markup;
-using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Maui.Markup;
 using SailorEditor.Commands;
 using SailorEditor.Controls;
 using SailorEditor.Services;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
 using SailorEngine;
+using System.Collections.ObjectModel;
 
 namespace SailorEditor.Views
 {
     public partial class HierarchyView : ContentView
     {
-        WorldService service;
+        readonly WorldService service;
         readonly HierarchyProjectionService projectionService;
+        readonly ObservableCollection<TreeViewNode> rootNodes = [];
+        bool isApplyingSelectionFromService;
 
         public HierarchyView()
         {
             InitializeComponent();
 
-            this.service = MauiProgram.GetService<WorldService>();
+            service = MauiProgram.GetService<WorldService>();
             projectionService = MauiProgram.GetService<HierarchyProjectionService>();
 
+            HierarchyTree.RootNodes = rootNodes;
             service.OnUpdateWorldAction += PopulateHierarchyView;
             HierarchyTree.SelectedItemChanged += OnSelectTreeViewNode;
             HierarchyTree.ContextRequested += OnHierarchyContextRequested;
@@ -28,6 +32,9 @@ namespace SailorEditor.Views
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectInstanceAction += SelectInstance;
+
+            FlyoutBase.SetContextFlyout(HierarchyTree, CreateHierarchyContextFlyout(null));
+            MainThread.BeginInvokeOnMainThread(() => PopulateHierarchyView(service.Current));
         }
 
         private void SelectInstance(InstanceId id)
@@ -38,13 +45,7 @@ namespace SailorEditor.Views
                 return;
             }
 
-            var currentId = HierarchyTree.SelectedItem?.BindingContext switch
-            {
-                TreeViewItem<Component> component => component.Model.InstanceId,
-                TreeViewItemGroup<GameObject, Component> gameObject => gameObject.Model.InstanceId,
-                _ => InstanceId.NullInstanceId
-            };
-
+            var currentId = GetNodeInstanceId(HierarchyTree.SelectedItem);
             if (currentId == id)
             {
                 return;
@@ -52,38 +53,84 @@ namespace SailorEditor.Views
 
             foreach (var el in HierarchyTree.RootNodes)
             {
-                var res = el.FindItemRecursive(id);
+                var res = FindInstanceNodeRecursive(el, id);
                 if (res != null)
                 {
-                    res.Select();
-                    HierarchyTree.SelectedItem = res;
+                    isApplyingSelectionFromService = true;
+                    try
+                    {
+                        ExpandAncestors(res);
+                        res.Select();
+                        HierarchyTree.SelectedItem = res;
+                    }
+                    finally
+                    {
+                        isApplyingSelectionFromService = false;
+                    }
                     break;
                 }
             }
         }
 
-        public static void OnSelectTreeViewNode(object sender, EventArgs args)
+        static InstanceId GetNodeInstanceId(TreeViewNode? node)
         {
-            var selectionChanged = args as TreeView.OnSelectItemEventArgs;
-            if (selectionChanged != null)
+            return node?.BindingContext switch
             {
-                var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
-                var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+                TreeViewItem<Component> component => component.Model.InstanceId ?? InstanceId.NullInstanceId,
+                TreeViewItem<GameObject> gameObject => gameObject.Model.InstanceId ?? InstanceId.NullInstanceId,
+                TreeViewItemGroup<GameObject, Component> gameObject => gameObject.Model.InstanceId ?? InstanceId.NullInstanceId,
+                _ => InstanceId.NullInstanceId
+            };
+        }
 
-                switch (selectionChanged.Model)
+        static TreeViewNode? FindInstanceNodeRecursive(TreeViewNode parent, InstanceId id)
+        {
+            if (GetNodeInstanceId(parent) == id)
+            {
+                return parent;
+            }
+
+            foreach (var child in parent.ChildrenList)
+            {
+                var result = FindInstanceNodeRecursive(child, id);
+                if (result != null)
                 {
-                    case TreeViewItem<Component> component:
-                        dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: component.Model), contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)))).GetAwaiter().GetResult();
-                        break;
-
-                    case TreeViewItemGroup<GameObject, Component> gameObject:
-                        dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: gameObject.Model), contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)))).GetAwaiter().GetResult();
-                        break;
+                    return result;
                 }
+            }
+
+            return null;
+        }
+
+        public async void OnSelectTreeViewNode(object sender, EventArgs args)
+        {
+            if (isApplyingSelectionFromService)
+            {
+                return;
+            }
+
+            if (args is not TreeView.OnSelectItemEventArgs selectionChanged)
+            {
+                return;
+            }
+
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(HierarchyView)));
+
+            switch (selectionChanged.Model)
+            {
+                case TreeViewItem<Component> component:
+                    await dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: component.Model), context);
+                    break;
+
+                case TreeViewItemGroup<GameObject, Component> gameObject:
+                    await dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: gameObject.Model), context);
+                    break;
             }
         }
 
-        private void OnHierarchyDropRequested(object sender, Utility.TreeViewDropRequest request)
+        private void OnHierarchyDropRequested(object sender, TreeViewDropRequest request)
         {
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
@@ -146,18 +193,18 @@ namespace SailorEditor.Views
                 .Where(gameObject => gameObject.InstanceId is not null && !gameObject.InstanceId.IsEmpty())
                 .ToDictionary(gameObject => gameObject.InstanceId!.Value, StringComparer.Ordinal);
 
-            var rootNodes = projectionService.Roots
-                .Select(node => CreateHierarchyNode(node, lookup))
+            var existingRootNodesById = IndexNodes(rootNodes);
+            var desiredRootNodes = projectionService.Roots
+                .Select(node =>
+                {
+                    existingRootNodesById.TryGetValue(node.Id, out var existingNode);
+                    return ReconcileHierarchyNode(node, lookup, existingNode);
+                })
                 .Where(node => node is not null)
                 .Cast<TreeViewNode>()
                 .ToList();
 
-            HierarchyTree.RootNodes = rootNodes;
-            FlyoutBase.SetContextFlyout(HierarchyTree, CreateHierarchyContextFlyout(null));
-            foreach (var node in rootNodes)
-            {
-                AttachHierarchyContextFlyouts(node);
-            }
+            ReplaceNodes(rootNodes, desiredRootNodes);
 
             var selectedId = projectionService.Roots.SelectMany(EnumerateProjectionNodes).FirstOrDefault(node => node.IsSelected)?.Id;
             if (!string.IsNullOrWhiteSpace(selectedId) && lookup.TryGetValue(selectedId, out var selectedGameObject) && selectedGameObject.InstanceId is not null)
@@ -170,57 +217,121 @@ namespace SailorEditor.Views
             }
         }
 
-        TreeViewNode? CreateHierarchyNode(HierarchyProjectionNode projection, IReadOnlyDictionary<string, GameObject> lookup)
+        TreeViewNode? ReconcileHierarchyNode(HierarchyProjectionNode projection, IReadOnlyDictionary<string, GameObject> lookup, TreeViewNode? existingNode)
         {
-            if (!lookup.TryGetValue(projection.Id, out var gameObject))
+            if (!lookup.TryGetValue(projection.Id, out var gameObject) || gameObject.InstanceId is null)
             {
                 return null;
             }
 
-            var node = new TreeViewNode
-            {
-                BindingContext = new TreeViewItemGroup<GameObject, Component>
-                {
-                    Model = gameObject,
-                    Key = projection.Label
-                },
-                Content = new StackLayout
-                {
-                    Children =
-                    {
-                        new ResourceImage
-                        {
-                            Resource = "blue_document.png",
-                            HeightRequest = 16,
-                            WidthRequest = 16
-                        },
-                        new Label
-                        {
-                            Text = projection.Label,
-                            VerticalOptions = LayoutOptions.Center
-                        }
-                    },
-                    Orientation = StackOrientation.Horizontal
-                }
-            };
+            var node = existingNode ?? CreateHierarchyNode(gameObject, projection.Label);
+            UpdateHierarchyNode(node, gameObject, projection.Label);
 
-            node.ExpandButtonTemplate = new DataTemplate(() => new ExpandButtonContent { BindingContext = node });
+            var existingChildrenById = node.ChildrenList
+                .Select(child => new { child, id = GetNodeInstanceId(child)?.Value })
+                .Where(x => !string.IsNullOrWhiteSpace(x.id))
+                .GroupBy(x => x.id!, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.First().child, StringComparer.Ordinal);
 
-            var children = projection.Children
-                .Select(child => CreateHierarchyNode(child, lookup))
+            var desiredChildren = projection.Children
+                .Select(childProjection =>
+                {
+                    existingChildrenById.TryGetValue(childProjection.Id, out var childNode);
+                    return ReconcileHierarchyNode(childProjection, lookup, childNode);
+                })
                 .Where(child => child is not null)
                 .Cast<TreeViewNode>()
                 .ToList();
 
-            node.ChildrenList = children;
-            node.IsExpanded = projection.IsExpanded;
+            ReplaceNodes(node.ChildrenList, desiredChildren);
+            node.SetExpandedSilently(projection.IsExpanded);
+            return node;
+        }
+
+        TreeViewNode CreateHierarchyNode(GameObject gameObject, string label)
+        {
+            var node = new TreeViewNode();
             if (gameObject.InstanceId is not null)
             {
                 node.Expanded += (_, _) => projectionService.SetExpanded(gameObject.InstanceId, true);
                 node.Collapsed += (_, _) => projectionService.SetExpanded(gameObject.InstanceId, false);
             }
 
+            UpdateHierarchyNode(node, gameObject, label);
             return node;
+        }
+
+        void UpdateHierarchyNode(TreeViewNode node, GameObject gameObject, string label)
+        {
+            node.BindingContext = new TreeViewItemGroup<GameObject, Component>
+            {
+                Model = gameObject,
+                Key = label
+            };
+            node.Content = CreateHierarchyNodeContent(label);
+            node.ExpandButtonTemplate = new DataTemplate(() => new ExpandButtonContent { BindingContext = node });
+            node.SetContextFlyout(CreateHierarchyContextFlyout(gameObject));
+        }
+
+        static View CreateHierarchyNodeContent(string label)
+        {
+            return new StackLayout
+            {
+                Children =
+                {
+                    new ResourceImage
+                    {
+                        Resource = "blue_document.png",
+                        HeightRequest = 16,
+                        WidthRequest = 16
+                    },
+                    new Label
+                    {
+                        Text = label,
+                        VerticalOptions = LayoutOptions.Center
+                    }
+                },
+                Orientation = StackOrientation.Horizontal
+            };
+        }
+
+        static Dictionary<string, TreeViewNode> IndexNodes(IEnumerable<TreeViewNode> nodes)
+        {
+            var result = new Dictionary<string, TreeViewNode>(StringComparer.Ordinal);
+            foreach (var node in nodes)
+            {
+                var instanceId = GetNodeInstanceId(node)?.Value;
+                if (!string.IsNullOrWhiteSpace(instanceId))
+                {
+                    result[instanceId] = node;
+                }
+
+                foreach (var pair in IndexNodes(node.ChildrenList))
+                {
+                    result[pair.Key] = pair.Value;
+                }
+            }
+
+            return result;
+        }
+
+        static void ReplaceNodes(IList<TreeViewNode> target, IReadOnlyList<TreeViewNode> desired)
+        {
+            if (target is ObservableCollection<TreeViewNode> observable)
+            {
+                observable.Clear();
+                foreach (var node in desired)
+                {
+                    observable.Add(node);
+                }
+                return;
+            }
+
+            target.Clear();
+            foreach (var node in desired)
+            {
+                target.Add(node);
+            }
         }
 
         static IEnumerable<HierarchyProjectionNode> EnumerateProjectionNodes(HierarchyProjectionNode node)
@@ -232,23 +343,13 @@ namespace SailorEditor.Views
             }
         }
 
-        void AttachHierarchyContextFlyouts(TreeViewNode node)
+        static void ExpandAncestors(TreeViewNode node)
         {
-            var model = node.BindingContext switch
+            var parent = node.ParentTreeViewItem;
+            while (parent is not null)
             {
-                TreeViewItemGroup<GameObject, Component> group => group.Model,
-                TreeViewItem<GameObject> item => item.Model,
-                _ => null
-            };
-
-            if (model is GameObject gameObject)
-            {
-                node.SetContextFlyout(CreateHierarchyContextFlyout(gameObject));
-            }
-
-            foreach (var child in node.ChildrenList)
-            {
-                AttachHierarchyContextFlyouts(child);
+                parent.SetExpandedSilently(true);
+                parent = parent.ParentTreeViewItem;
             }
         }
 
