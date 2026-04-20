@@ -1,3 +1,4 @@
+using SailorEditor.Controls;
 using SailorEditor.Layout;
 using SailorEditor.Panels;
 using SailorEditor.State;
@@ -8,16 +9,20 @@ namespace SailorEditor.Shell;
 
 public sealed class ShellLayoutView : ContentView
 {
+    const string DragPanelIdKey = "ShellLayoutView.PanelId";
+    const string DragSourceGroupIdKey = "ShellLayoutView.SourceGroupId";
+
     static readonly Color TabStripBackground = Color.FromArgb("#16171A");
     static readonly Color TabStripBorder = Color.FromArgb("#292A2E");
     static readonly Color PanelBackground = Color.FromArgb("#17181B");
     static readonly Color ActiveTabBackground = Color.FromArgb("#1C1D21");
     static readonly Color InactiveTabBackground = Color.FromArgb("#16171A");
     static readonly Color HoverTabBackground = Color.FromArgb("#232428");
+    static readonly Color DropTargetTabBackground = Color.FromArgb("#263854");
+    static readonly Color DropTargetTabStripBackground = Color.FromArgb("#1D2633");
     static readonly Color ActiveTabText = Color.FromArgb("#F1F1F1");
     static readonly Color InactiveTabText = Color.FromArgb("#90939A");
     static readonly Color CloseButtonText = Color.FromArgb("#6C6E75");
-    static readonly Color ActiveTabAccent = Color.FromArgb("#4D8DFF");
     static readonly Color SplitterColor = Color.FromArgb("#2A2C31");
     static readonly Color SplitterHoverColor = Color.FromArgb("#4D8DFF");
 
@@ -279,9 +284,11 @@ public sealed class ShellLayoutView : ContentView
             Padding = new Thickness(2, 2, 2, 0),
             BackgroundColor = TabStripBackground
         };
+        AttachGroupDropTarget(tabBar, tabs.GroupId, () => tabBar.BackgroundColor, color => tabBar.BackgroundColor = color);
 
+        var tabStateUpdaters = new List<Action<PanelId>>();
         foreach (var panel in panelInstances)
-            tabBar.Children.Add(CreateTab(panel, active, contentHost));
+            tabBar.Children.Add(CreateTab(panel, active, contentHost, tabs.GroupId, tabStateUpdaters));
 
         var tabHeader = new Border
         {
@@ -291,6 +298,7 @@ public sealed class ShellLayoutView : ContentView
             StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },
             Content = tabBar
         };
+        AttachGroupDropTarget(tabHeader, tabs.GroupId, () => tabHeader.BackgroundColor, color => tabHeader.BackgroundColor = color);
 
         var contentBorder = new Border
         {
@@ -317,7 +325,7 @@ public sealed class ShellLayoutView : ContentView
         }.AssignRows();
     }
 
-    View CreateTab(PanelInstance panel, PanelInstance? active, ContentView contentHost)
+    View CreateTab(PanelInstance panel, PanelInstance? active, ContentView contentHost, string? groupId, IList<Action<PanelId>> tabStateUpdaters)
     {
         var isActive = panel.PanelId == active?.PanelId;
         var textColor = isActive ? ActiveTabText : InactiveTabText;
@@ -369,32 +377,156 @@ public sealed class ShellLayoutView : ContentView
         var tab = new Border
         {
             BackgroundColor = isActive ? ActiveTabBackground : InactiveTabBackground,
-            Stroke = isActive ? ActiveTabAccent : TabStripBorder,
-            StrokeThickness = isActive ? 1 : 0.5,
+            Stroke = TabStripBorder,
+            StrokeThickness = 0.5,
             Padding = 0,
             Margin = new Thickness(0, 0, 1, 0),
             StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(0) },
             Content = tabContent
         };
 
-        var focusTap = new TapGestureRecognizer();
-        focusTap.Tapped += async (_, _) =>
+        var currentIsActive = isActive;
+        void SetActiveTab(PanelId activePanelId)
         {
-            await Host!.FocusPanelAsync(panel.PanelId);
+            currentIsActive = panel.PanelId == activePanelId;
+            tab.BackgroundColor = currentIsActive ? ActiveTabBackground : InactiveTabBackground;
+            title.TextColor = currentIsActive ? ActiveTabText : InactiveTabText;
+            close.TextColor = currentIsActive ? InactiveTabText : CloseButtonText;
+        }
+
+        tabStateUpdaters.Add(SetActiveTab);
+
+        async void ActivateTab()
+        {
+            foreach (var update in tabStateUpdaters)
+                update(panel.PanelId);
+
             contentHost.Content = panel.View;
-        };
+            await Host!.FocusPanelLocalAsync(panel.PanelId);
+        }
+
+        var focusTap = new TapGestureRecognizer();
+        focusTap.Tapped += (_, _) => ActivateTab();
         tab.GestureRecognizers.Add(focusTap);
+
+        var contentFocusTap = new TapGestureRecognizer();
+        contentFocusTap.Tapped += (_, _) => ActivateTab();
+        tabContent.GestureRecognizers.Add(contentFocusTap);
+
+        var drag = new DragGestureRecognizer();
+        drag.DragStarting += (_, e) =>
+        {
+            e.Data.Properties[DragPanelIdKey] = panel.PanelId.Value;
+            if (!string.IsNullOrWhiteSpace(groupId))
+                e.Data.Properties[DragSourceGroupIdKey] = groupId!;
+        };
+        tab.GestureRecognizers.Add(drag);
+
+        AttachGroupDropTarget(tab, groupId, () => tab.BackgroundColor, color => tab.BackgroundColor = color);
 
         if (!isActive)
         {
             var hover = new PointerGestureRecognizer();
-            hover.PointerEntered += (_, _) => tab.BackgroundColor = HoverTabBackground;
-            hover.PointerExited += (_, _) => tab.BackgroundColor = InactiveTabBackground;
+            hover.PointerEntered += (_, _) =>
+            {
+                if (!currentIsActive)
+                    tab.BackgroundColor = HoverTabBackground;
+            };
+            hover.PointerExited += (_, _) =>
+            {
+                if (!currentIsActive)
+                    tab.BackgroundColor = InactiveTabBackground;
+            };
             tab.GestureRecognizers.Add(hover);
         }
 
         return tab;
     }
+
+    void AttachGroupDropTarget(View view, string? targetGroupId, Func<Color?> getBackground, Action<Color?> setBackground)
+    {
+        var drop = new DropGestureRecognizer();
+        Color? restoreBackground = null;
+
+        drop.DragOver += (_, e) =>
+        {
+			if (CanAcceptDrop(e.Data.Properties, targetGroupId))
+			{
+				restoreBackground ??= getBackground();
+				setBackground(view is Border ? DropTargetTabBackground : DropTargetTabStripBackground);
+				e.AcceptedOperation = DataPackageOperation.Copy;
+			}
+        };
+
+        drop.DragLeave += (_, _) =>
+        {
+            if (restoreBackground is not null)
+            {
+                setBackground(restoreBackground);
+                restoreBackground = null;
+            }
+        };
+
+        drop.Drop += async (_, e) =>
+        {
+            try
+            {
+                if (TryGetDraggedPanelId(e.Data.Properties, out var panelId) && !string.IsNullOrWhiteSpace(targetGroupId))
+                {
+                    await Host!.MovePanelToGroupAsync(panelId, targetGroupId!);
+                    e.Handled = true;
+                }
+            }
+            finally
+            {
+                if (restoreBackground is not null)
+                {
+                    setBackground(restoreBackground);
+                    restoreBackground = null;
+                }
+            }
+        };
+
+        view.GestureRecognizers.Add(drop);
+    }
+
+    static bool CanAcceptDrop(DataPackagePropertySet properties, string? targetGroupId)
+    {
+        return CanAcceptDropCore(properties.TryGetValue, targetGroupId);
+    }
+
+    static bool CanAcceptDrop(DataPackagePropertySetView properties, string? targetGroupId)
+    {
+        return CanAcceptDropCore(properties.TryGetValue, targetGroupId);
+    }
+
+    static bool CanAcceptDropCore(TryGetDragProperty tryGetProperty, string? targetGroupId)
+    {
+        if (string.IsNullOrWhiteSpace(targetGroupId) || !TryGetDraggedPanelId(tryGetProperty, out _))
+            return false;
+
+        if (tryGetProperty(DragSourceGroupIdKey, out var source) && source is string sourceGroupId)
+            return !string.Equals(sourceGroupId, targetGroupId, StringComparison.Ordinal);
+
+        return true;
+    }
+
+    static bool TryGetDraggedPanelId(DataPackagePropertySetView properties, out PanelId panelId)
+    {
+        return TryGetDraggedPanelId(properties.TryGetValue, out panelId);
+    }
+
+    static bool TryGetDraggedPanelId(TryGetDragProperty tryGetProperty, out PanelId panelId)
+    {
+        panelId = default;
+        if (!tryGetProperty(DragPanelIdKey, out var raw) || raw is not string value || string.IsNullOrWhiteSpace(value))
+            return false;
+
+        panelId = new PanelId(value);
+        return true;
+    }
+
+    delegate bool TryGetDragProperty(string key, out object value);
 }
 
 file static class ShellLayoutViewGridExtensions
