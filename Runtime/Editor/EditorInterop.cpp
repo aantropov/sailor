@@ -2,7 +2,10 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
+#include "Engine/EngineLoop.h"
+#include "Engine/World.h"
 #include "Engine/InstanceId.h"
 #include "Submodules/Editor.h"
 
@@ -94,6 +97,42 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 
 	yamlNode[0] = nullptr;
 	return 0;
+}
+
+bool App::LoadEditorWorld(const char* strFileId)
+{
+	auto editor = GetSubmodule<Editor>();
+	auto engineLoop = GetSubmodule<EngineLoop>();
+	auto assetRegistry = GetSubmodule<AssetRegistry>();
+	if (!editor || !engineLoop || !assetRegistry || !strFileId || strFileId[0] == '\0')
+	{
+		return false;
+	}
+
+	FileId fileId;
+	fileId.Deserialize(YAML::Load(strFileId));
+
+	auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
+	if (!worldPrefab || !worldPrefab->IsReady())
+	{
+		return false;
+	}
+
+	auto oldWorld = editor->GetWorld();
+	auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
+	if (!newWorld)
+	{
+		return false;
+	}
+
+	editor->SetWorld(newWorld.GetRawPtr());
+	if (oldWorld)
+	{
+		engineLoop->ExitWorld(oldWorld);
+		engineLoop->ProcessPendingWorldExits();
+	}
+
+	return true;
 }
 
 bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)

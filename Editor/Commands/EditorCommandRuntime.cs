@@ -155,7 +155,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         _history.Push(merged);
     }
 
-    internal void Complete(TransactionScope scope)
+    void Complete(TransactionScope scope)
     {
         var popped = _transactions.Pop();
         if (!ReferenceEquals(scope, popped) || scope.Entries.Count == 0)
@@ -172,7 +172,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
             PushWithMerge(entry);
     }
 
-    internal void Cancel(TransactionScope scope)
+    void Cancel(TransactionScope scope)
     {
         if (_transactions.Count > 0 && ReferenceEquals(_transactions.Peek(), scope))
             _transactions.Pop();

@@ -1,8 +1,12 @@
 #nullable enable
 using SailorEditor.Helpers;
+using SailorEditor.Commands;
 using SailorEditor.Services;
 using SailorEditor.Controls;
 using SailorEditor.Scene;
+using SailorEditor.Utility;
+using SailorEditor.Workflow;
+using SailorEngine;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
@@ -12,6 +16,7 @@ namespace SailorEditor.Views
     {
         bool isRunning = false;
         bool isFocused = false;
+        bool isPlayMode = false;
         bool viewportRetryQueued = false;
         long viewportRetryUntilMs = -1;
         NativeSceneViewport? nativeViewportHost;
@@ -50,10 +55,13 @@ namespace SailorEditor.Views
             var tapGesture = new TapGestureRecognizer();
             tapGesture.Tapped += (sender, args) =>
             {
-                isFocused = true;
-                focusCoordinator.SetViewportFocus(true);
+                SetSceneFocus(true, sendRemoteFocus: true);
             };
             GestureRecognizers.Add(tapGesture);
+
+            GestureRecognizers.Add(CreateSceneDropGesture());
+            Viewport.GestureRecognizers.Add(CreateSceneDropGesture());
+            NativeViewportContainer.GestureRecognizers.Add(CreateSceneDropGesture());
 
             SizeChanged += (sender, args) =>
             {
@@ -62,9 +70,7 @@ namespace SailorEditor.Views
             };
             Unloaded += (sender, args) =>
             {
-                isFocused = false;
-                focusCoordinator.SetViewportFocus(false);
-                viewportAdapter.SendInput(RemoteViewportInputKind.Focus, focused: false);
+                SetSceneFocus(false, sendRemoteFocus: true);
             };
 
 #if MACCATALYST
@@ -100,13 +106,11 @@ namespace SailorEditor.Views
                 {
                     if (input.Kind == NativeSceneViewportInputKind.Focus)
                     {
-                        isFocused = input.Focused;
-                        focusCoordinator.SetViewportFocus(isFocused);
+                        SetSceneFocus(input.Focused, sendRemoteFocus: false);
                     }
                     else
                     {
-                        isFocused = true;
-                        focusCoordinator.SetViewportFocus(true);
+                        SetSceneFocus(true, sendRemoteFocus: false);
                     }
 
                     var remoteModifiers = (RemoteViewportInputModifier)input.Modifiers;
@@ -205,6 +209,66 @@ namespace SailorEditor.Views
             return panel is null
                 ? default
                 : new SceneShellFocusTarget(panel.PanelId, panel.GroupId, panel.Role == Panels.PanelRole.Document ? panel.PanelId : shellState.Focus.ActiveDocumentPanelId);
+        }
+
+        async void OnSceneDrop(object? sender, DropEventArgs e)
+        {
+            if (e.Handled || !e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
+            {
+                return;
+            }
+
+            if (!EditorDragDrop.TryCreateSceneDropCommand(source, null, out var command) || command is null)
+            {
+                return;
+            }
+
+            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(SceneView)));
+            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
+        }
+
+        DropGestureRecognizer CreateSceneDropGesture()
+        {
+            var gesture = new DropGestureRecognizer();
+            gesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            gesture.Drop += OnSceneDrop;
+            return gesture;
+        }
+
+        void SetSceneFocus(bool focused, bool sendRemoteFocus)
+        {
+            if (isFocused == focused)
+            {
+                if (sendRemoteFocus)
+                    viewportAdapter.SendInput(RemoteViewportInputKind.Focus, focused: focused);
+                UpdateFocusVisual();
+                return;
+            }
+
+            isFocused = focused;
+            focusCoordinator.SetViewportFocus(focused);
+            if (sendRemoteFocus)
+                viewportAdapter.SendInput(RemoteViewportInputKind.Focus, focused: focused);
+            UpdateFocusVisual();
+            UpdateViewportIntegration();
+        }
+
+        void UpdateFocusVisual()
+        {
+            if (isPlayMode)
+            {
+                Viewport.Stroke = Color.FromArgb("#C84747");
+            }
+            else if (isFocused)
+            {
+                Viewport.Stroke = Color.FromArgb("#8A8A8A");
+            }
+            else
+            {
+                Viewport.Stroke = Color.FromArgb("#1A1A1A");
+            }
         }
 
         void UpdateViewportIntegration()

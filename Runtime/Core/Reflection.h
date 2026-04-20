@@ -6,10 +6,16 @@
 #include "Engine/Object.h"
 #include "Engine/Types.h"
 #include "Memory/ObjectPtr.hpp"
+#include "RHI/Types.h"
 #include "YamlSerializable.h"
 
 using refl::reflect;
 using refl::descriptor::type_descriptor;
+
+namespace Sailor::RHI
+{
+	enum class EShadowType : uint32_t;
+}
 
 #define SAILOR_REFLECTABLE(__CLASSNAME__) \
 	public: \
@@ -97,6 +103,91 @@ namespace Sailor
 		// TODO: Should we optimize that?
 		bool operator==(const TypeInfo& rhs) const { return m_name == rhs.Name(); }
 
+		template<typename TEnum>
+		static std::string GetReflectedEnumTypeName()
+		{
+			using EnumType = ::refl::trait::remove_qualifiers_t<TEnum>;
+
+			std::string enumName = std::string(magic_enum::enum_type_name<EnumType>());
+			constexpr const char* enumClassPrefix = "enum class ";
+			constexpr const char* enumPrefix = "enum ";
+
+			if (enumName.rfind(enumClassPrefix, 0) == 0)
+			{
+				enumName.erase(0, std::char_traits<char>::length(enumClassPrefix));
+			}
+			else if (enumName.rfind(enumPrefix, 0) == 0)
+			{
+				enumName.erase(0, std::char_traits<char>::length(enumPrefix));
+			}
+
+			if (enumName.find("::") == std::string::npos)
+			{
+				if constexpr (
+					std::is_same_v<EnumType, RHI::EFormat> ||
+					std::is_same_v<EnumType, RHI::ETextureFiltration> ||
+					std::is_same_v<EnumType, RHI::ETextureClamping> ||
+					std::is_same_v<EnumType, RHI::ESamplerReductionMode> ||
+					std::is_same_v<EnumType, RHI::EFillMode> ||
+					std::is_same_v<EnumType, RHI::ECullMode> ||
+					std::is_same_v<EnumType, RHI::EBlendMode> ||
+					std::is_same_v<EnumType, RHI::EDepthCompare> ||
+					std::is_same_v<EnumType, RHI::EShadowType>)
+				{
+					enumName = "Sailor::RHI::" + enumName;
+				}
+				else
+				{
+					enumName = "Sailor::" + enumName;
+				}
+			}
+
+			return "enum " + enumName;
+		}
+
+		template<typename TProperty>
+		static std::string GetReflectedPropertyTypeName()
+		{
+			using PropertyType = ::refl::trait::remove_qualifiers_t<TProperty>;
+
+			if constexpr (std::is_same_v<PropertyType, FileId>)
+			{
+				return "FileId";
+			}
+			else if constexpr (std::is_same_v<PropertyType, InstanceId>)
+			{
+				return "InstanceId";
+			}
+			else if constexpr (std::is_same_v<PropertyType, std::string>)
+			{
+				return "string";
+			}
+			else if constexpr (std::is_same_v<PropertyType, bool>)
+			{
+				return "bool";
+			}
+			else if constexpr (std::is_same_v<PropertyType, float>)
+			{
+				return "float";
+			}
+			else if constexpr (std::is_same_v<PropertyType, int32_t>)
+			{
+				return "int32";
+			}
+			else if constexpr (std::is_same_v<PropertyType, TVector<FileId>>)
+			{
+				return "List<FileId>";
+			}
+			else if constexpr (std::is_enum_v<PropertyType>)
+			{
+				return GetReflectedEnumTypeName<PropertyType>();
+			}
+			else
+			{
+				return typeid(PropertyType).name();
+			}
+		}
+
 	private:
 
 		std::string m_name;
@@ -132,7 +223,7 @@ namespace Sailor
 						{
 							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
 
-							m_props[displayName] = typeid(PropertyType).name();
+							m_props[displayName] = GetReflectedPropertyTypeName<PropertyType>();
 						}
 					}
 				});
@@ -141,6 +232,7 @@ namespace Sailor
 		}
 
 		friend class ReflectedData;
+		friend class Reflection;
 	};
 
 	class ReflectedData final : public IYamlSerializable
@@ -399,7 +491,7 @@ namespace Sailor
 				values.Add(std::string(value));
 			}
 
-			std::string enumName = typeid(TEnum).name();
+			std::string enumName = TypeInfo::GetReflectedEnumTypeName<TEnum>();
 			res[enumName] = values;
 
 			return res;

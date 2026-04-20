@@ -40,7 +40,7 @@
         <HorizontalStackLayout Spacing="10"
                                HorizontalOptions="Start"
                                VerticalOptions="Start">
-            <Button Text="Open" HeightRequest="30" WidthRequest="80" 
+            <Button Text="Open Externally" HeightRequest="30" WidthRequest="130"
                     IsVisible="{Binding CanOpenAssetFile}"
                     Clicked="OnOpenButtonClicked" />
 

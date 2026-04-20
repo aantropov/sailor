@@ -15,7 +15,9 @@ namespace SailorEditor.Views
             InitializeComponent();
             BindingContext = this;
 
-            MauiProgram.GetService<EngineService>().OnPullMessagesAction += OnUpdateMessageQueue;
+            var engineService = MauiProgram.GetService<EngineService>();
+            OnUpdateMessageQueue(engineService.GetRecentConsoleMessages());
+            engineService.OnPullMessagesAction += OnUpdateMessageQueue;
             MauiProgram.GetService<AIOperatorService>().AuditTrail.CollectionChanged += OnAiAuditChanged;
             Unloaded += OnUnloaded;
         }
@@ -65,11 +67,7 @@ namespace SailorEditor.Views
             await Task.Yield();
             await Task.Delay(16);
 
-            if (MessagesStack.Children.Count == 0)
-                return;
-
-            var lastChild = MessagesStack.Children[MessagesStack.Children.Count - 1];
-            await ScrollView.ScrollToAsync((Element)lastChild, ScrollToPosition.End, false);
+            MessagesCollection.ScrollTo(MessageQueue.Count - 1, position: ScrollToPosition.End, animate: false);
         }
 
         private void OnLabelTapped(object sender, EventArgs e)

@@ -1,6 +1,7 @@
 using SailorEditor.Controls;
 using SailorEditor.Layout;
 using SailorEditor.Panels;
+using SailorEditor.Services;
 using SailorEditor.State;
 using Microsoft.Maui.Controls.Shapes;
 using MauiGrid = Microsoft.Maui.Controls.Grid;
@@ -268,6 +269,8 @@ public sealed class ShellLayoutView : ContentView
             .Where(x => x is not null && x.IsVisible)
             .Cast<PanelInstance>()
             .ToArray();
+        if (panelInstances.Length == 0)
+            return new MauiGrid { BackgroundColor = Colors.Transparent };
 
         var active = panelInstances.FirstOrDefault(x => x.PanelId == tabs.ActivePanelId) ?? panelInstances.FirstOrDefault();
         var contentHost = new ContentView
@@ -285,6 +288,7 @@ public sealed class ShellLayoutView : ContentView
             BackgroundColor = TabStripBackground
         };
         AttachGroupDropTarget(tabBar, tabs.GroupId, () => tabBar.BackgroundColor, color => tabBar.BackgroundColor = color);
+        AttachTabStripContextMenu(tabBar, tabs.GroupId);
 
         var tabStateUpdaters = new List<Action<PanelId>>();
         foreach (var panel in panelInstances)
@@ -299,6 +303,7 @@ public sealed class ShellLayoutView : ContentView
             Content = tabBar
         };
         AttachGroupDropTarget(tabHeader, tabs.GroupId, () => tabHeader.BackgroundColor, color => tabHeader.BackgroundColor = color);
+        AttachTabStripContextMenu(tabHeader, tabs.GroupId);
 
         var contentBorder = new Border
         {
@@ -405,11 +410,11 @@ public sealed class ShellLayoutView : ContentView
             await Host!.FocusPanelLocalAsync(panel.PanelId);
         }
 
-        var focusTap = new TapGestureRecognizer();
+        var focusTap = new TapGestureRecognizer { Buttons = ButtonsMask.Primary };
         focusTap.Tapped += (_, _) => ActivateTab();
         tab.GestureRecognizers.Add(focusTap);
 
-        var contentFocusTap = new TapGestureRecognizer();
+        var contentFocusTap = new TapGestureRecognizer { Buttons = ButtonsMask.Primary };
         contentFocusTap.Tapped += (_, _) => ActivateTab();
         tabContent.GestureRecognizers.Add(contentFocusTap);
 
@@ -423,6 +428,8 @@ public sealed class ShellLayoutView : ContentView
         tab.GestureRecognizers.Add(drag);
 
         AttachGroupDropTarget(tab, groupId, () => tab.BackgroundColor, color => tab.BackgroundColor = color);
+        AttachTabStripContextMenu(tab, groupId);
+        AttachTabStripContextMenu(tabContent, groupId);
 
         if (!isActive)
         {
@@ -443,6 +450,37 @@ public sealed class ShellLayoutView : ContentView
         return tab;
     }
 
+    void AttachTabStripContextMenu(View view, string? targetGroupId)
+    {
+        if (string.IsNullOrWhiteSpace(targetGroupId))
+            return;
+
+        var contextTap = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
+        contextTap.Tapped += (_, _) => ShowAddTabMenu(targetGroupId);
+        view.GestureRecognizers.Add(contextTap);
+        FlyoutBase.SetContextFlyout(view, MauiProgram.GetService<EditorContextMenuService>().CreateFlyout(CreateAddTabMenuItems(targetGroupId)));
+    }
+
+    void ShowAddTabMenu(string targetGroupId)
+    {
+        MauiProgram.GetService<EditorContextMenuService>().Show(CreateAddTabMenuItems(targetGroupId));
+    }
+
+    EditorContextMenuItem[] CreateAddTabMenuItems(string targetGroupId)
+    {
+        if (Host is null)
+            return [];
+
+        return Host.PanelDescriptors
+            .OrderBy(x => x.Title)
+            .Select(descriptor => new EditorContextMenuItem
+            {
+                Text = $"Add new tab - {descriptor.Title}",
+                Command = new Command(async () => await Host.OpenPanelInGroupAsync(descriptor.TypeId, targetGroupId))
+            })
+            .ToArray();
+    }
+
     void AttachGroupDropTarget(View view, string? targetGroupId, Func<Color?> getBackground, Action<Color?> setBackground)
     {
         var drop = new DropGestureRecognizer();
@@ -450,12 +488,12 @@ public sealed class ShellLayoutView : ContentView
 
         drop.DragOver += (_, e) =>
         {
-			if (CanAcceptDrop(e.Data.Properties, targetGroupId))
-			{
-				restoreBackground ??= getBackground();
-				setBackground(view is Border ? DropTargetTabBackground : DropTargetTabStripBackground);
-				e.AcceptedOperation = DataPackageOperation.Copy;
-			}
+            if (CanAcceptDrop(e.Data.Properties, targetGroupId))
+            {
+                restoreBackground ??= getBackground();
+                setBackground(view is Border ? DropTargetTabBackground : DropTargetTabStripBackground);
+                e.AcceptedOperation = DataPackageOperation.Copy;
+            }
         };
 
         drop.DragLeave += (_, _) =>

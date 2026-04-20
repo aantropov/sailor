@@ -47,6 +47,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEngineTypes(nint[] yamlNode);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetEditorRenderTargetSize(uint width, uint height);
         [return: MarshalAs(UnmanagedType.I1)]
@@ -750,11 +752,6 @@ namespace SailorEditor.Services
                 result = EngineAppInterop.UpdateObject(stringId, yamlChanges);
             }
 
-            if (result)
-            {
-                RefreshCurrentWorld();
-            }
-
             return result;
         }
 
@@ -893,6 +890,24 @@ namespace SailorEditor.Services
             lock (interopLock)
             {
                 result = EngineAppInterop.InstantiatePrefab(stringFileId, stringParentId);
+            }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool LoadWorld(FileId worldId)
+        {
+            var stringFileId = worldId?.Value ?? string.Empty;
+            bool result;
+
+            lock (interopLock)
+            {
+                result = EngineAppInterop.LoadEditorWorld(stringFileId);
             }
 
             if (result)

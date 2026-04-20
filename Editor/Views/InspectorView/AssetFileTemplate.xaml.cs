@@ -70,8 +70,7 @@ public partial class AssetFileTemplate : DataTemplate
 
     static View CreateFieldEditor(AssetFile asset, string fieldName, ObservableObject value)
     {
-        PropertyBase property = null;
-        asset.AssetType?.Properties.TryGetValue(fieldName, out property);
+        var property = asset.AssetType.Properties[fieldName];
         if (asset.ReadOnlyAssetProperties.Contains(fieldName))
         {
             return CreateReadOnlyEditor(value);
@@ -80,14 +79,11 @@ public partial class AssetFileTemplate : DataTemplate
         if (property is EnumProperty enumProperty && value is Observable<string> observableEnum)
         {
             var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
-            if (engineTypes.Enums.TryGetValue(enumProperty.Typename, out var values))
-            {
-                var picker = Templates.EnumPicker<Observable<string>>(values,
-                    static (Observable<string> vm) => vm.Value,
-                    static (vm, selected) => vm.Value = selected);
-                picker.BindingContext = observableEnum;
-                return picker;
-            }
+            var picker = Templates.EnumPicker<Observable<string>>(engineTypes.Enums[enumProperty.Typename],
+                static (Observable<string> vm) => vm.Value,
+                static (vm, selected) => vm.Value = selected);
+            picker.BindingContext = observableEnum;
+            return picker;
         }
 
         if ((property is FileIdProperty || value is Observable<FileId>) && value is Observable<FileId> observableFileId)

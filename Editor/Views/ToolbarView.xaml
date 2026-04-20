@@ -10,10 +10,10 @@
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="HeightRequest" Value="14"/>
-            <Setter Property="WidthRequest" Value="14"/>
-            <Setter Property="MinimumHeightRequest" Value="14"/>
-            <Setter Property="MinimumWidthRequest" Value="14"/>
+            <Setter Property="HeightRequest" Value="18"/>
+            <Setter Property="WidthRequest" Value="18"/>
+            <Setter Property="MinimumHeightRequest" Value="18"/>
+            <Setter Property="MinimumWidthRequest" Value="18"/>
             <Setter Property="Aspect" Value="AspectFit"/>
             <Setter Property="HorizontalOptions" Value="Center"/>
             <Setter Property="VerticalOptions" Value="Center"/>
@@ -25,27 +25,27 @@
             <Setter Property="CornerRadius" Value="0"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Margin" Value="0"/>
-            <Setter Property="WidthRequest" Value="16"/>
-            <Setter Property="HeightRequest" Value="16"/>
-            <Setter Property="MinimumWidthRequest" Value="16"/>
-            <Setter Property="MinimumHeightRequest" Value="16"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="WidthRequest" Value="22"/>
+            <Setter Property="HeightRequest" Value="22"/>
+            <Setter Property="MinimumWidthRequest" Value="22"/>
+            <Setter Property="MinimumHeightRequest" Value="22"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="TextColor" Value="#CFCFD2"/>
         </Style>
     </ContentView.Resources>
 
     <Border StrokeThickness="1"
-            Stroke="#2B2C30"
-            BackgroundColor="#18191B"
-            Padding="6,2"
+            Stroke="#363A40"
+            BackgroundColor="#202328"
+            Padding="8,5"
             Margin="0"
-            MinimumHeightRequest="22"
+            MinimumHeightRequest="36"
             StrokeShape="RoundRectangle 0">
         <Grid ColumnSpacing="8"
               RowSpacing="0"
               Margin="0"
               Padding="0"
-              HeightRequest="16"
+              HeightRequest="26"
               VerticalOptions="Center"
               HorizontalOptions="FillAndExpand">
             <Grid.ColumnDefinitions>
@@ -58,7 +58,7 @@
 
             <Label Grid.Column="0"
                    Text="SAILOR"
-                   FontSize="10"
+                   FontSize="11"
                    FontAttributes="Bold"
                    TextColor="#8F949C"
                    VerticalTextAlignment="Center"
@@ -66,9 +66,9 @@
 
             <Border Grid.Column="1"
                     StrokeThickness="1"
-                    Stroke="#25262A"
-                    BackgroundColor="#1F2023"
-                    Padding="4,1"
+                    Stroke="#3B3F46"
+                    BackgroundColor="#2A2E35"
+                    Padding="6,3"
                     StrokeShape="RoundRectangle 3">
                 <ImageButton Source="disk_24.png"
                              Style="{StaticResource ToolbarIconButtonStyle}"
@@ -80,9 +80,9 @@
                                    VerticalOptions="Center"
                                    Spacing="4">
                 <Border StrokeThickness="1"
-                        Stroke="#25262A"
-                        BackgroundColor="#1F2023"
-                        Padding="4,1"
+                        Stroke="#3B3F46"
+                        BackgroundColor="#2A2E35"
+                        Padding="6,3"
                         StrokeShape="RoundRectangle 3">
                     <HorizontalStackLayout Spacing="4">
                         <Button Text="↶"
@@ -95,9 +95,9 @@
                 </Border>
 
                 <Border StrokeThickness="1"
-                        Stroke="#25262A"
-                        BackgroundColor="#1F2023"
-                        Padding="4,1"
+                        Stroke="#3B3F46"
+                        BackgroundColor="#2A2E35"
+                        Padding="6,3"
                         StrokeShape="RoundRectangle 3">
                     <HorizontalStackLayout Spacing="4">
                         <ImageButton Source="arrow_24.png"
@@ -112,9 +112,9 @@
 
             <Border Grid.Column="3"
                     StrokeThickness="1"
-                    Stroke="#25262A"
-                    BackgroundColor="#1F2023"
-                    Padding="4,1"
+                    Stroke="#3B3F46"
+                    BackgroundColor="#2A2E35"
+                    Padding="6,3"
                     StrokeShape="RoundRectangle 3">
                 <HorizontalStackLayout Spacing="4">
                     <ImageButton Source="application_export_24.png"
@@ -129,20 +129,25 @@
 
             <Border Grid.Column="4"
                     StrokeThickness="1"
-                    Stroke="#25262A"
-                    BackgroundColor="#1F2023"
-                    Padding="6,1"
+                    Stroke="#3B3F46"
+                    BackgroundColor="#2A2E35"
+                    Padding="8,3"
                     StrokeShape="RoundRectangle 3">
                 <HorizontalStackLayout Spacing="6">
-                    <Button Text="Panels"
+                    <Button Text="Save Layout"
                             Style="{StaticResource ToolbarGlyphButtonStyle}"
-                            WidthRequest="44"
-                            MinimumWidthRequest="44"
-                            Clicked="OnPanelsButtonClicked"/>
+                            WidthRequest="86"
+                            MinimumWidthRequest="86"
+                            Clicked="OnSaveLayoutButtonClicked"/>
+                    <Button Text="Reset Layout"
+                            Style="{StaticResource ToolbarGlyphButtonStyle}"
+                            WidthRequest="92"
+                            MinimumWidthRequest="92"
+                            Clicked="OnResetLayoutButtonClicked"/>
                     <Button Text="Settings"
                             Style="{StaticResource ToolbarGlyphButtonStyle}"
-                            WidthRequest="52"
-                            MinimumWidthRequest="52"
+                            WidthRequest="68"
+                            MinimumWidthRequest="68"
                             Clicked="OnSettingsButtonClicked"/>
                 </HorizontalStackLayout>
             </Border>

@@ -26,6 +26,8 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
 
     public EditorLayout? CurrentLayout => State.Layout;
 
+    public IReadOnlyCollection<PanelDescriptor> PanelDescriptors => _registry.GetAllDescriptors();
+
     public string StatusText
     {
         get => _statusText;
@@ -52,6 +54,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
 
     public void ApplyLayout(EditorLayout layout)
     {
+        layout = layout with { Root = new LayoutRoot(LayoutOperations.CleanupEmptyGroups(layout.Root.Content)) };
         State.Layout = layout;
         RebuildOpenPanels(layout.Root.Content);
         RaisePropertyChanged(nameof(CurrentLayout));
@@ -60,6 +63,9 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
     }
 
     public async ValueTask OpenPanelAsync(PanelTypeId panelTypeId, CancellationToken cancellationToken = default)
+        => await OpenPanelInGroupAsync(panelTypeId, null, cancellationToken);
+
+    public async ValueTask OpenPanelInGroupAsync(PanelTypeId panelTypeId, string? targetGroupId, CancellationToken cancellationToken = default)
     {
         if (!_registry.TryGetDescriptor(panelTypeId, out var descriptor))
             return;
@@ -67,13 +73,19 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         var existing = State.OpenPanels.FirstOrDefault(x => x.PanelTypeId == panelTypeId);
         if (existing is not null)
         {
+            if (!string.IsNullOrWhiteSpace(targetGroupId) && !string.Equals(existing.GroupId, targetGroupId, StringComparison.Ordinal))
+            {
+                await MovePanelToGroupAsync(existing.PanelId, targetGroupId!, cancellationToken);
+                return;
+            }
+
             State.OpenPanel(existing with { IsVisible = true }, existing.GroupId);
             await FocusPanelAsync(existing.PanelId, cancellationToken);
             return;
         }
 
         var reference = new PanelReference(PanelId.New(), panelTypeId);
-        var targetGroupId = descriptor.DefaultDockPreference.TargetGroupId ?? GuessDefaultGroupId(panelTypeId);
+        targetGroupId ??= descriptor.DefaultDockPreference.TargetGroupId ?? GuessDefaultGroupId(panelTypeId);
         var updatedRoot = CurrentLayout is null
             ? LayoutOperations.CreateDefaultLayout().Root.Content
             : LayoutOperations.InsertTabbed(CurrentLayout.Root.Content, targetGroupId, reference);
@@ -86,12 +98,18 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
     }
 
     public ValueTask FocusPanelAsync(PanelId panelId, CancellationToken cancellationToken = default)
+        => FocusPanelAsync(panelId, activateLayout: true);
+
+    public ValueTask FocusPanelLocalAsync(PanelId panelId)
+        => FocusPanelAsync(panelId, activateLayout: false);
+
+    ValueTask FocusPanelAsync(PanelId panelId, bool activateLayout)
     {
         if (State.TryGetPanel(panelId, out var instance))
         {
             State.FocusPanel(panelId, instance.GroupId, instance.Role == PanelRole.Document ? panelId : null);
-            RaisePropertyChanged(nameof(CurrentLayout));
-            RaisePropertyChanged(nameof(State));
+            if (activateLayout)
+                ActivatePanelInLayout(panelId);
             StatusText = $"Focused {instance.Title}";
         }
 
@@ -160,6 +178,19 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         Traverse(root);
     }
 
+    void ActivatePanelInLayout(PanelId panelId)
+    {
+        if (CurrentLayout is null)
+            return;
+
+        var updatedRoot = LayoutOperations.ActivatePanel(CurrentLayout.Root.Content, panelId);
+        if (Equals(updatedRoot, CurrentLayout.Root.Content))
+            return;
+
+        State.Layout = CurrentLayout with { Root = new LayoutRoot(updatedRoot) };
+        RaisePropertyChanged(nameof(CurrentLayout));
+    }
+
     void Traverse(LayoutNode node)
     {
         switch (node)
@@ -192,6 +223,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         "Inspector" => "right-inspector",
         "Hierarchy" => "left-bottom",
         "Content" => "left-top",
+        "EditorPerformance" => "bottom-console",
         _ => "right-inspector"
     };
 

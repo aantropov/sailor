@@ -76,7 +76,19 @@ public static class LayoutOperations
         return root;
     }
 
+    public static LayoutNode ActivatePanel(LayoutNode root, PanelId panelId)
+    {
+        return root switch
+        {
+            TabGroupNode tabs when tabs.Panels.Any(x => x.PanelId == panelId) => tabs with { ActivePanelId = panelId },
+            SplitNode split => split with { Children = split.Children.Select(x => ActivatePanel(x, panelId)).ToArray() },
+            _ => root
+        };
+    }
+
     public static LayoutNode HidePanel(LayoutNode root, PanelId panelId) => Cleanup(RemovePanel(root, panelId));
+
+    public static LayoutNode CleanupEmptyGroups(LayoutNode root) => Cleanup(root);
 
     public static LayoutNode RemovePanel(LayoutNode root, PanelId panelId)
     {
@@ -128,6 +140,7 @@ public static class LayoutOperations
     {
         return node switch
         {
+            TabGroupNode tabs when tabs.Panels.Count == 0 => EmptyNode.Instance,
             SplitNode split => CleanupSplit(split),
             _ => node
         };

@@ -15,12 +15,15 @@ public sealed class AddComponentDialogPage : ContentPage
         this.componentTypes = componentTypes.ToList();
 
         Title = "Add Component";
-        BackgroundColor = Colors.Black;
+        BackgroundColor = Color.FromArgb("#24272D");
 
         var searchBar = new SearchBar
         {
             Placeholder = "Filter by component name",
-            Margin = new Thickness(12, 12, 12, 4)
+            Margin = new Thickness(12, 12, 12, 4),
+            TextColor = Colors.White,
+            PlaceholderColor = Color.FromArgb("#9AA3AE"),
+            BackgroundColor = Color.FromArgb("#30343B")
         };
 
         listView = new ListView
@@ -28,7 +31,21 @@ public sealed class AddComponentDialogPage : ContentPage
             ItemsSource = filteredTypes,
             SelectionMode = ListViewSelectionMode.Single,
             Margin = new Thickness(12, 4),
-            HeightRequest = 420
+            HeightRequest = 420,
+            BackgroundColor = Color.FromArgb("#30343B"),
+            SeparatorColor = Color.FromArgb("#454B55"),
+            ItemTemplate = new DataTemplate(() =>
+            {
+                var label = new Label
+                {
+                    TextColor = Colors.White,
+                    Padding = new Thickness(10, 6),
+                    VerticalTextAlignment = TextAlignment.Center,
+                    LineBreakMode = LineBreakMode.TailTruncation
+                };
+                label.SetBinding(Label.TextProperty, ".");
+                return new ViewCell { View = label };
+            })
         };
 
         listView.ItemSelected += (sender, args) =>
@@ -46,10 +63,22 @@ public sealed class AddComponentDialogPage : ContentPage
 
         searchBar.TextChanged += (sender, args) => ApplyFilter(args.NewTextValue);
 
-        var okButton = new Button { Text = "OK", WidthRequest = 120 };
+        var okButton = new Button
+        {
+            Text = "OK",
+            WidthRequest = 120,
+            TextColor = Colors.White,
+            BackgroundColor = Color.FromArgb("#3D5A80")
+        };
         okButton.Clicked += async (sender, args) => await Complete(selectedType);
 
-        var cancelButton = new Button { Text = "Cancel", WidthRequest = 120 };
+        var cancelButton = new Button
+        {
+            Text = "Cancel",
+            WidthRequest = 120,
+            TextColor = Colors.White,
+            BackgroundColor = Color.FromArgb("#3A3F47")
+        };
         cancelButton.Clicked += async (sender, args) => await Complete(null);
 
         Content = new VerticalStackLayout

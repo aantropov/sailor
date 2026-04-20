@@ -296,7 +296,8 @@ public sealed class SettingsPanelView : ContentView
         {
             BindingContext = row,
             Keyboard = keyboard,
-            Placeholder = placeholder
+            Placeholder = placeholder,
+            IsPassword = row.Definition.Entry.IsSecret
         };
         entry.SetBinding(Entry.TextProperty, nameof(SettingsEditorRow.DraftText), mode: BindingMode.TwoWay);
         return entry;

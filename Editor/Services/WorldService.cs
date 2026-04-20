@@ -20,6 +20,7 @@ namespace SailorEditor.Services
         }
 
         public World Current { get; private set; } = new World();
+        public WorldFile CurrentWorldAsset { get; private set; }
 
         [ObservableProperty]
         ObservableList<ObservableList<GameObject>> gameObjects = new();
@@ -176,6 +177,50 @@ namespace SailorEditor.Services
             return result.Succeeded;
         }
 
+        public bool SaveCurrentWorld()
+        {
+            var worldAsset = CurrentWorldAsset ?? ResolveCurrentWorldAsset();
+            if (worldAsset?.Asset?.FullName == null)
+            {
+                return false;
+            }
+
+            File.WriteAllText(worldAsset.Asset.FullName, SerializeCurrentWorld());
+            worldAsset.IsDirty = false;
+            return true;
+        }
+
+        public bool LoadWorld(WorldFile worldFile)
+        {
+            if (worldFile?.FileId is null || worldFile.FileId.IsEmpty())
+            {
+                return false;
+            }
+
+            if (!MauiProgram.GetService<EngineService>().LoadWorld(worldFile.FileId))
+            {
+                return false;
+            }
+
+            CurrentWorldAsset = worldFile;
+            MauiProgram.GetService<SelectionService>().ClearSelection();
+            return true;
+        }
+
+        WorldFile ResolveCurrentWorldAsset()
+        {
+            var assets = MauiProgram.GetService<AssetsService>();
+            var byName = assets.Files
+                .OfType<WorldFile>()
+                .FirstOrDefault(x => string.Equals(Path.GetFileNameWithoutExtension(x.Asset?.Name), Current?.Name, StringComparison.OrdinalIgnoreCase));
+
+            CurrentWorldAsset = byName ?? assets.Files
+                .OfType<WorldFile>()
+                .FirstOrDefault(x => string.Equals(x.Asset?.Name, "Editor.world", StringComparison.OrdinalIgnoreCase));
+
+            return CurrentWorldAsset;
+        }
+
         public bool Reparent(GameObject child, GameObject newParent, bool keepWorldTransform = true)
         {
             if (child == null || newParent == null || ReferenceEquals(child, newParent) || IsDescendantOf(newParent, child))
@@ -208,6 +253,144 @@ namespace SailorEditor.Services
                 .GetAwaiter()
                 .GetResult();
             return result.Succeeded;
+        }
+
+        public bool ApplyReparentLocal(InstanceId childId, InstanceId newParentId, bool keepWorldTransform = true)
+        {
+            if (!TryGetGameObject(childId, out var child))
+            {
+                return false;
+            }
+
+            GameObject newParent = null;
+            if (newParentId is not null && !newParentId.IsEmpty())
+            {
+                if (!TryGetGameObject(newParentId, out newParent) || ReferenceEquals(child, newParent) || IsDescendantOf(newParent, child))
+                {
+                    return false;
+                }
+            }
+
+            var worldPosition = keepWorldTransform ? GetWorldPosition(child) : Vector3.Zero;
+            var worldRotation = keepWorldTransform ? GetWorldRotation(child) : Quaternion.Identity;
+
+            if (newParent is not null && child.PrefabIndex != newParent.PrefabIndex)
+            {
+                MoveSubHierarchyToPrefab(child, Current.Prefabs[newParent.PrefabIndex]);
+            }
+
+            var prefab = Current.Prefabs[child.PrefabIndex];
+            child.ParentIndex = newParent is null
+                ? uint.MaxValue
+                : (uint)prefab.GameObjects.IndexOf(newParent);
+
+            if (keepWorldTransform)
+            {
+                ApplyLocalTransformFromWorld(child, newParent, worldPosition, worldRotation);
+            }
+
+            OnUpdateWorldAction?.Invoke(Current);
+            RefreshSelection();
+            return true;
+        }
+
+        public bool ApplyGameObjectYamlLocal(InstanceId instanceId, string yaml)
+        {
+            if (instanceId is null || instanceId.IsEmpty() || string.IsNullOrWhiteSpace(yaml))
+            {
+                return false;
+            }
+
+            if (!TryGetGameObject(instanceId, out var current) || current.PrefabIndex < 0 || current.PrefabIndex >= Current.Prefabs.Count)
+            {
+                return false;
+            }
+
+            var prefab = Current.Prefabs[current.PrefabIndex];
+            var objectIndex = prefab.GameObjects.IndexOf(current);
+            if (objectIndex < 0)
+            {
+                return false;
+            }
+
+            var updated = DeserializeGameObject(yaml);
+            if (updated is null)
+            {
+                return false;
+            }
+
+            updated.Initialize();
+            updated.PrefabIndex = current.PrefabIndex;
+
+            prefab.GameObjects[objectIndex] = updated;
+            gameObjectsDict.Remove(current.InstanceId);
+            gameObjectsDict[updated.InstanceId] = updated;
+
+            foreach (var componentIndex in current.ComponentIndices ?? [])
+            {
+                if (componentIndex >= 0 && componentIndex < prefab.Components.Count)
+                {
+                    componentOwnersDict.Remove(prefab.Components[componentIndex].InstanceId);
+                }
+            }
+
+            foreach (var componentIndex in updated.ComponentIndices ?? [])
+            {
+                if (componentIndex >= 0 && componentIndex < prefab.Components.Count)
+                {
+                    var component = prefab.Components[componentIndex];
+                    componentOwnersDict[component.InstanceId] = updated;
+                    component.DisplayName = $"{updated.DisplayName} ({component.Typename.Name})";
+                }
+            }
+
+            OnUpdateWorldAction?.Invoke(Current);
+            RefreshSelection();
+            return true;
+        }
+
+        public bool ApplyComponentYamlLocal(InstanceId instanceId, string yaml)
+        {
+            if (instanceId is null || instanceId.IsEmpty() || string.IsNullOrWhiteSpace(yaml))
+            {
+                return false;
+            }
+
+            if (!TryGetComponent(instanceId, out var current) || !componentOwnersDict.TryGetValue(instanceId, out var owner))
+            {
+                return false;
+            }
+
+            if (owner.PrefabIndex < 0 || owner.PrefabIndex >= Current.Prefabs.Count)
+            {
+                return false;
+            }
+
+            var prefab = Current.Prefabs[owner.PrefabIndex];
+            var componentIndex = prefab.Components.IndexOf(current);
+            if (componentIndex < 0)
+            {
+                return false;
+            }
+
+            var updated = DeserializeComponent(yaml);
+            if (updated is null)
+            {
+                return false;
+            }
+
+            updated.Initialize();
+            updated.DisplayName = $"{owner.DisplayName} ({updated.Typename.Name})";
+
+            prefab.Components[componentIndex] = updated;
+            componentsDict.Remove(current.InstanceId);
+            componentsDict[updated.InstanceId] = updated;
+            componentOwnersDict.Remove(current.InstanceId);
+            componentOwnersDict[updated.InstanceId] = owner;
+
+            OnUpdateWorldAction?.Invoke(Current);
+            RefreshSelection();
+            return true;
         }
 
         public IEnumerable<GameObject> EnumerateSubHierarchy(GameObject root)
@@ -494,6 +677,33 @@ namespace SailorEditor.Services
             return result.LengthSquared() > 0.0f ? Quaternion.Normalize(result) : Quaternion.Identity;
         }
 
+        static Quat ToSailorQuat(Quaternion rotation)
+        {
+            rotation = rotation.LengthSquared() > 0.0f ? Quaternion.Normalize(rotation) : Quaternion.Identity;
+            return new Quat { X = rotation.X, Y = rotation.Y, Z = rotation.Z, W = rotation.W };
+        }
+
+        void ApplyLocalTransformFromWorld(GameObject child, GameObject parent, Vector3 worldPosition, Quaternion worldRotation)
+        {
+            var localPosition = worldPosition;
+            var localRotation = worldRotation;
+
+            if (parent is not null)
+            {
+                var parentWorldRotation = GetWorldRotation(parent);
+                localPosition = Vector3.Transform(worldPosition - GetWorldPosition(parent), Quaternion.Inverse(parentWorldRotation));
+                localRotation = Quaternion.Normalize(Quaternion.Inverse(parentWorldRotation) * worldRotation);
+            }
+
+            child.Position ??= new Vec4();
+            child.Position.X = localPosition.X;
+            child.Position.Y = localPosition.Y;
+            child.Position.Z = localPosition.Z;
+
+            child.Rotation ??= new Rotation();
+            child.Rotation.Quat = ToSailorQuat(localRotation);
+        }
+
         static GameObject CloneGameObject(GameObject gameObject)
         {
             return new GameObject
@@ -515,6 +725,21 @@ namespace SailorEditor.Services
                 .Build()
                 .Serialize(component);
 
+            return SerializationUtils.CreateDeserializerBuilder()
+                .WithTypeConverter(new ComponentYamlConverter())
+                .Build()
+                .Deserialize<Component>(yaml);
+        }
+
+        static GameObject DeserializeGameObject(string yaml)
+        {
+            return SerializationUtils.CreateDeserializerBuilder()
+                .Build()
+                .Deserialize<GameObject>(yaml);
+        }
+
+        static Component DeserializeComponent(string yaml)
+        {
             return SerializationUtils.CreateDeserializerBuilder()
                 .WithTypeConverter(new ComponentYamlConverter())
                 .Build()

@@ -82,7 +82,10 @@ static class Templates
         }
 
         picker.Bind<Picker, TBinding, TEnum, string>(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay, new EnumToStringConverter<TEnum>());
-        picker.SelectedIndexChanged += (sender, _) => CommitInspectorBindingContext(((Picker)sender).BindingContext);
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            picker.SelectedIndexChanged += (sender, _) => CommitInspectorBindingContext(((Picker)sender).BindingContext);
+        });
         return picker;
     }
 
@@ -93,13 +96,45 @@ static class Templates
             FontSize = 12
         };
 
-        foreach (var value in enumValues)
+        var values = enumValues ?? [];
+        foreach (var value in values)
         {
-            picker.Items.Add(value.ToString());
+            picker.Items.Add(value);
         }
 
-        picker.Bind(Picker.SelectedItemProperty, getter: getter, setter: setter, BindingMode.TwoWay);
-        picker.SelectedIndexChanged += (sender, _) => CommitInspectorBindingContext(((Picker)sender).BindingContext);
+        var compiledGetter = getter.Compile();
+        bool bUpdating = false;
+
+        void RefreshSelectedItem()
+        {
+            if (picker.BindingContext is not TBinding context)
+            {
+                return;
+            }
+
+            var value = EnumValueUtils.Normalize(compiledGetter(context));
+            var index = values.FindIndex(x => string.Equals(x, value, StringComparison.Ordinal));
+            bUpdating = true;
+            picker.SelectedIndex = index;
+            bUpdating = false;
+        }
+
+        picker.BindingContextChanged += (sender, _) => RefreshSelectedItem();
+        picker.SelectedIndexChanged += (sender, _) =>
+        {
+            if (bUpdating || picker.BindingContext is not TBinding context)
+            {
+                return;
+            }
+
+            if (picker.SelectedIndex >= 0 && picker.SelectedIndex < values.Count)
+            {
+                setter(context, values[picker.SelectedIndex]);
+                CommitInspectorBindingContext(context);
+            }
+        };
+
+        MainThread.BeginInvokeOnMainThread(RefreshSelectedItem);
         return picker;
     }
 
@@ -146,7 +181,7 @@ static class Templates
         {
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Star });
             var view = views[i];
-            if (view is VisualElement element)
+            if (view is View element)
             {
                 element.HorizontalOptions = LayoutOptions.Fill;
                 element.MinimumWidthRequest = 0;
@@ -207,7 +242,7 @@ static class Templates
 
         valueEntry.Behaviors.Add(new FileIdSelectBehavior());
 
-        return new Grid
+        var grid = new Grid
         {
             ColumnDefinitions =
             {
@@ -215,14 +250,14 @@ static class Templates
                 new ColumnDefinition { Width = GridLength.Auto },
                 new ColumnDefinition { Width = GridLength.Star }
             },
-            ColumnSpacing = InspectorFieldSpacing,
-            Children =
-            {
-                { selectButton, 0, 0 },
-                { image, 1, 0 },
-                { valueEntry, 2, 0 }
-            }
+            ColumnSpacing = InspectorFieldSpacing
         };
+
+        grid.Add(selectButton, 0, 0);
+        grid.Add(image, 1, 0);
+        grid.Add(valueEntry, 2, 0);
+
+        return grid;
     }
 
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
@@ -254,20 +289,20 @@ static class Templates
         valueEntry.Behaviors.Add(dragAndDropBehaviour);
         valueEntry.Behaviors.Add(selectBehavior);
 
-        return new Grid
+        var grid = new Grid
         {
             ColumnDefinitions =
             {
                 new ColumnDefinition { Width = GridLength.Auto },
                 new ColumnDefinition { Width = GridLength.Star }
             },
-            ColumnSpacing = InspectorFieldSpacing,
-            Children =
-            {
-                { clearButton, 0, 0 },
-                { valueEntry, 1, 0 }
-            }
+            ColumnSpacing = InspectorFieldSpacing
         };
+
+        grid.Add(clearButton, 0, 0);
+        grid.Add(valueEntry, 1, 0);
+
+        return grid;
     }
 
     public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
@@ -294,17 +329,17 @@ static class Templates
         valueEntry.Behaviors.Add(dragAndDropBehavior);
         valueEntry.Behaviors.Add(selectBehavior);
 
-        return new Grid
+        var grid = new Grid
         {
             ColumnDefinitions =
             {
                 new ColumnDefinition { Width = GridLength.Star }
-            },
-            Children =
-            {
-                { valueEntry, 0, 0 }
             }
         };
+
+        grid.Add(valueEntry, 0, 0);
+
+        return grid;
     }
 
     public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
@@ -556,7 +591,7 @@ static class Templates
             Margin = new Thickness(0, 4, 0, 4)
         };
 
-        if (contentView is VisualElement element)
+        if (contentView is View element)
         {
             element.HorizontalOptions = LayoutOptions.Fill;
             element.MinimumWidthRequest = 0;

@@ -10,17 +10,48 @@ namespace SailorEditor.ViewModels;
 
 public class ShaderFile : AssetFile
 {
-    public string Includes { get; set; }
+    string includes;
+    string defines;
+    string glslCommonShader;
+    string glslVertexShader;
+    string glslFragmentShader;
+    string glslComputeShader;
 
-    public string Defines { get; set; }
+    public string Includes
+    {
+        get => includes;
+        set => SetProperty(ref includes, value);
+    }
 
-    public string GlslCommonShader { get; set; }
+    public string Defines
+    {
+        get => defines;
+        set => SetProperty(ref defines, value);
+    }
 
-    public string GlslVertexShader { get; set; }
+    public string GlslCommonShader
+    {
+        get => glslCommonShader;
+        set => SetProperty(ref glslCommonShader, value);
+    }
 
-    public string GlslFragmentShader { get; set; }
+    public string GlslVertexShader
+    {
+        get => glslVertexShader;
+        set => SetProperty(ref glslVertexShader, value);
+    }
 
-    public string GlslComputeShader { get; set; }
+    public string GlslFragmentShader
+    {
+        get => glslFragmentShader;
+        set => SetProperty(ref glslFragmentShader, value);
+    }
+
+    public string GlslComputeShader
+    {
+        get => glslComputeShader;
+        set => SetProperty(ref glslComputeShader, value);
+    }
 
     public override Task<bool> LoadDependentResources()
     {
@@ -29,43 +60,53 @@ public class ShaderFile : AssetFile
 
         try
         {
-            using var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Open);
-            using var reader = new StreamReader(yamlAssetInfo);
-            var yaml = new YamlStream();
-            yaml.Load(reader);
-
-            var root = (YamlMappingNode)yaml.Documents[0].RootNode;
-
-            foreach (var e in root.Children)
+            LoadRuntimeDataWithoutDirtyTracking(() =>
             {
-                switch (e.Key.ToString())
-                {
-                    case "includes":
-                        Includes += e.Value.ToString();
-                        break;
-                    case "defines":
-                        Defines += e.Value.ToString();
-                        break;
-                    case "glslVertex":
-                        GlslVertexShader = e.Value.ToString();
-                        break;
-                    case "glslFragment":
-                        GlslFragmentShader = e.Value.ToString();
-                        break;
-                    case "glslCommon":
-                        GlslCommonShader = e.Value.ToString();
-                        break;
-                    case "glslCompute":
-                        GlslComputeShader = e.Value.ToString();
-                        break;
-                }
-            }
+                Includes = string.Empty;
+                Defines = string.Empty;
+                GlslCommonShader = string.Empty;
+                GlslVertexShader = string.Empty;
+                GlslFragmentShader = string.Empty;
+                GlslComputeShader = string.Empty;
 
-            yamlAssetInfo.Close();
+                using var yamlAssetInfo = new FileStream(Asset.FullName, FileMode.Open);
+                using var reader = new StreamReader(yamlAssetInfo);
+                var yaml = new YamlStream();
+                yaml.Load(reader);
+
+                var root = (YamlMappingNode)yaml.Documents[0].RootNode;
+
+                foreach (var e in root.Children)
+                {
+                    switch (e.Key.ToString())
+                    {
+                        case "includes":
+                            Includes += e.Value.ToString();
+                            break;
+                        case "defines":
+                            Defines += e.Value.ToString();
+                            break;
+                        case "glslVertex":
+                            GlslVertexShader = e.Value.ToString();
+                            break;
+                        case "glslFragment":
+                            GlslFragmentShader = e.Value.ToString();
+                            break;
+                        case "glslCommon":
+                            GlslCommonShader = e.Value.ToString();
+                            break;
+                        case "glslCompute":
+                            GlslComputeShader = e.Value.ToString();
+                            break;
+                    }
+                }
+
+                yamlAssetInfo.Close();
+            });
         }
         catch (Exception e)
         {
-            DisplayName = e.ToString();
+            SetLoadError(e);
             return Task.FromResult(false);
         }
 

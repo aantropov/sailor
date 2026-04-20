@@ -89,6 +89,11 @@ extern "C"
 		return Sailor::App::SerializeEngineTypes(yamlNode);
 	}
 
+	SAILOR_API bool LoadEditorWorld(char* strFileId)
+	{
+		return Sailor::App::LoadEditorWorld(strFileId);
+	}
+
 	SAILOR_API void FreeInteropString(char* text)
 	{
 		delete[] text;
@@ -132,6 +137,11 @@ extern "C"
 	SAILOR_API bool InstantiatePrefab(char* strFileId, char* strParentInstanceId)
 	{
 		return Sailor::App::InstantiateEditorPrefab(strFileId, strParentInstanceId);
+	}
+
+	SAILOR_API bool SetEditorSelection(char* strSelectionYaml)
+	{
+		return Sailor::App::SetEditorSelection(strSelectionYaml);
 	}
 
 	SAILOR_API bool RenderPathTracedImage(char* strOutputPath, char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)

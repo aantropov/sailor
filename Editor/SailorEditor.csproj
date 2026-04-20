@@ -132,8 +132,8 @@
 	  <Compile Update="Views\InspectorView\ModelFileTemplate.xaml.cs">
 	    <DependentUpon>ModelFileTemplate.xaml</DependentUpon>
 	  </Compile>
-	  <Compile Update="Views\InspectorView\ShaderFileTemplate .xaml.cs">
-	    <DependentUpon>ShaderFileTemplate .xaml</DependentUpon>
+	  <Compile Update="Views\InspectorView\ShaderFileTemplate.xaml.cs">
+	    <DependentUpon>ShaderFileTemplate.xaml</DependentUpon>
 	  </Compile>
 	  <Compile Update="Views\InspectorView\ShaderLibraryFileTemplate.xaml.cs">
 	    <DependentUpon>ShaderLibraryFileTemplate.xaml</DependentUpon>
@@ -196,7 +196,7 @@
 	  <MauiXaml Update="Views\InspectorView\ModelFileTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
-	  <MauiXaml Update="Views\InspectorView\ShaderFileTemplate .xaml">
+	  <MauiXaml Update="Views\InspectorView\ShaderFileTemplate.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	  <MauiXaml Update="Views\InspectorView\ShaderLibraryFileTemplate.xaml">

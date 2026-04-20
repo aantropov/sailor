@@ -4,6 +4,8 @@ using SailorEditor.Utility;
 using SailorEditor.Workflow;
 using SailorEngine;
 using System.Collections.ObjectModel;
+using GameObject = SailorEditor.ViewModels.GameObject;
+using World = SailorEditor.ViewModels.World;
 
 namespace SailorEditor.Views
 {
@@ -33,11 +35,20 @@ namespace SailorEditor.Views
             selectionViewModel.OnSelectInstanceAction += SelectInstance;
 
             var rootDropGesture = new DropGestureRecognizer();
-            rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Move;
+            rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
             rootDropGesture.Drop += OnHierarchyRootDrop;
-            HierarchyRootDropZone.GestureRecognizers.Add(rootDropGesture);
+            HierarchyDropSurface.GestureRecognizers.Add(rootDropGesture);
+
+            var listRootDropGesture = new DropGestureRecognizer();
+            listRootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            listRootDropGesture.Drop += OnHierarchyRootDrop;
+            HierarchyList.GestureRecognizers.Add(listRootDropGesture);
+            HierarchyRootDropOverlay.GestureRecognizers.Add(CreateRootDropGesture());
+            HierarchyDropSurface.SizeChanged += (_, _) => UpdateRootDropOverlay();
 
             FlyoutBase.SetContextFlyout(HierarchyList, CreateHierarchyContextFlyout(null));
+            FlyoutBase.SetContextFlyout(HierarchyDropSurface, CreateHierarchyContextFlyout(null));
+            FlyoutBase.SetContextFlyout(HierarchyRootDropOverlay, CreateHierarchyContextFlyout(null));
             HierarchyList.ItemTemplate = CreateItemTemplate();
 
             MainThread.BeginInvokeOnMainThread(() => PopulateHierarchyView(service.Current));
@@ -87,13 +98,18 @@ namespace SailorEditor.Views
             await dispatcher.DispatchAsync(new SelectObjectCommand(selectedObject: gameObject), context);
         }
 
-        void OnHierarchyRootDrop(object? sender, DropEventArgs e)
+        async void OnHierarchyRootDrop(object? sender, DropEventArgs e)
         {
-            HandleDrop(e, null);
+            await HandleDrop(e, null);
         }
 
-        void HandleDrop(DropEventArgs e, GameObject? target)
+        async Task HandleDrop(DropEventArgs e, GameObject? target)
         {
+            if (e.Handled)
+            {
+                return;
+            }
+
             if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
             {
                 return;
@@ -105,10 +121,14 @@ namespace SailorEditor.Views
 
             if (!EditorDragDrop.TryCreateSceneDropCommand(source, target, out var command) || command is null)
             {
+                if (source is GameObject)
+                {
+                    e.Handled = true;
+                }
                 return;
             }
 
-            e.Handled = dispatcher.DispatchAsync(command, context).GetAwaiter().GetResult().Succeeded;
+            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
         }
 
         void ToggleRowExpansion(HierarchyListRow row)
@@ -141,6 +161,7 @@ namespace SailorEditor.Views
             }
 
             ReplaceRows(visibleRows, projectionService.VisibleRows);
+            UpdateRootDropOverlay();
 
             suppressSelectionChanged = true;
             try
@@ -151,6 +172,25 @@ namespace SailorEditor.Views
             {
                 suppressSelectionChanged = false;
             }
+        }
+
+        DropGestureRecognizer CreateRootDropGesture()
+        {
+            var gesture = new DropGestureRecognizer();
+            gesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            gesture.Drop += OnHierarchyRootDrop;
+            return gesture;
+        }
+
+        void UpdateRootDropOverlay()
+        {
+            const double rowHeight = 26.0;
+            const double listMargin = 4.0;
+            var overlayTop = listMargin + visibleRows.Count * rowHeight;
+            var overlayHeight = Math.Max(0.0, HierarchyDropSurface.Height - overlayTop - listMargin);
+            HierarchyRootDropOverlay.TranslationY = overlayTop;
+            HierarchyRootDropOverlay.HeightRequest = overlayHeight;
+            HierarchyRootDropOverlay.IsVisible = overlayHeight > 1.0;
         }
 
         static void ReplaceRows(ObservableCollection<HierarchyListRow> target, IReadOnlyList<HierarchyListRow> desired)
@@ -223,8 +263,8 @@ namespace SailorEditor.Views
                 border.GestureRecognizers.Add(dragGesture);
 
                 var dropGesture = new DropGestureRecognizer();
-                dropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Move;
-                dropGesture.Drop += (_, e) =>
+                dropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+                dropGesture.Drop += async (_, e) =>
                 {
                     if (border.BindingContext is not HierarchyListRow row)
                     {
@@ -232,7 +272,7 @@ namespace SailorEditor.Views
                     }
 
                     gameObjectsById.TryGetValue(row.InstanceId, out var target);
-                    HandleDrop(e, target);
+                    await HandleDrop(e, target);
                 };
                 border.GestureRecognizers.Add(dropGesture);
 
@@ -264,7 +304,7 @@ namespace SailorEditor.Views
             {
                 return contextMenu.CreateFlyout(new EditorContextMenuItem
                 {
-                    Text = "Create new GameObject",
+                    Text = "New GameObject",
                     Command = new Command(() => service.CreateGameObject())
                 });
             }
@@ -272,7 +312,7 @@ namespace SailorEditor.Views
             return contextMenu.CreateFlyout(
                 new EditorContextMenuItem
                 {
-                    Text = "Create Child GameObject",
+                    Text = "New GameObject",
                     Command = new Command(() => service.CreateGameObject(gameObject))
                 },
                 new EditorContextMenuItem

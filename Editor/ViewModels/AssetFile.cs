@@ -68,6 +68,8 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     public virtual Task<bool> LoadDependentResources() => Task.FromResult(true);
 
+    public virtual Task PrepareInspectorResources() => Task.CompletedTask;
+
     public virtual Task Save()
     {
         if (!AssetProperties.Any())
@@ -129,6 +131,18 @@ public partial class AssetFile : ObservableObject, ICloneable
         finally
         {
             suppressDirtyTracking = false;
+        }
+    }
+
+    protected void LoadRuntimeDataWithoutDirtyTracking(Action action)
+    {
+        var wasDirty = IsDirty;
+
+        RunWithoutDirtyTracking(action);
+
+        if (!wasDirty)
+        {
+            ResetDirtyState();
         }
     }
 

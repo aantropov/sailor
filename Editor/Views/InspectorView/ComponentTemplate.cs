@@ -30,8 +30,16 @@ public class ComponentTemplate : DataTemplate
 
             props.BindingContextChanged += (sender, args) =>
             {
-                var component = (Component)((Grid)sender).BindingContext;
+                if (((Grid)sender).BindingContext is not Component component)
+                {
+                    props.Children.Clear();
+                    props.RowDefinitions.Clear();
+                    props.GestureRecognizers.Clear();
+                    return;
+                }
+
                 props.Children.Clear();
+                props.RowDefinitions.Clear();
 
                 props.GestureRecognizers.Clear();
                 var dragGesture = new DragGestureRecognizer();
@@ -43,11 +51,14 @@ public class ComponentTemplate : DataTemplate
 
                 var header = new Grid
                 {
+                    HorizontalOptions = LayoutOptions.Fill,
+                    MinimumWidthRequest = 0,
                     ColumnDefinitions =
                     {
                         new ColumnDefinition { Width = GridLength.Auto },
                         new ColumnDefinition { Width = GridLength.Star }
-                    }
+                    },
+                    ColumnSpacing = Templates.InspectorFieldSpacing
                 };
 
                 var removeButton = new Button { Text = "-", WidthRequest = 32, HeightRequest = 32 };
@@ -55,7 +66,7 @@ public class ComponentTemplate : DataTemplate
 
                 var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
                 nameLabel.Behaviors.Add(new DisplayNameBehavior());
-                nameLabel.Text = component.Typename.Name;
+                nameLabel.Text = FormatComponentTypeName(component.Typename.Name);
 
                 var resetFlyout = MauiProgram.GetService<EditorContextMenuService>().CreateFlyout(new EditorContextMenuItem
                     {
@@ -79,6 +90,7 @@ public class ComponentTemplate : DataTemplate
                 header.Add(removeButton, 0, 0);
                 header.Add(nameLabel, 1, 0);
                 Templates.AddGridRow(props, header, GridLength.Auto);
+                Grid.SetColumnSpan(header, props.ColumnDefinitions.Count);
 
                 var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
 
@@ -139,5 +151,13 @@ public class ComponentTemplate : DataTemplate
 
             return props;
         };
+    }
+
+    static string FormatComponentTypeName(string typeName)
+    {
+        const string prefix = "Sailor::";
+        return !string.IsNullOrWhiteSpace(typeName) && typeName.StartsWith(prefix, StringComparison.Ordinal)
+            ? typeName[prefix.Length..]
+            : typeName;
     }
 }

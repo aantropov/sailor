@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.History;
 using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
@@ -51,7 +52,15 @@ public sealed class UpdateGameObjectCommand(GameObject gameObject, string before
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(afterYaml));
     public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default) { Apply(beforeYaml); return ValueTask.CompletedTask; }
-    CommandResult Apply(string yaml) => MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml) ? CommandResult.Success() : CommandResult.Failure();
+    CommandResult Apply(string yaml)
+    {
+        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
+            return CommandResult.Failure();
+
+        return MauiProgram.GetService<WorldService>().ApplyGameObjectYamlLocal(_instanceId, yaml)
+            ? CommandResult.Success()
+            : CommandResult.Failure();
+    }
 }
 
 public sealed class UpdateComponentCommand(Component component, string beforeYaml, string afterYaml, string description = "Edit component") : IUndoableEditorCommand
@@ -63,7 +72,15 @@ public sealed class UpdateComponentCommand(Component component, string beforeYam
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(afterYaml));
     public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default) { Apply(beforeYaml); return ValueTask.CompletedTask; }
-    CommandResult Apply(string yaml) => MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml) ? CommandResult.Success() : CommandResult.Failure();
+    CommandResult Apply(string yaml)
+    {
+        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
+            return CommandResult.Failure();
+
+        return MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, yaml)
+            ? CommandResult.Success()
+            : CommandResult.Failure();
+    }
 }
 
 public sealed class CreateGameObjectCommand(InstanceId? parentId = null) : IUndoableEditorCommand
@@ -99,7 +116,7 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
     readonly InstanceId? _parentId = gameObject.ParentIndex == uint.MaxValue
         ? null
         : MauiProgram.GetService<WorldService>().Current.Prefabs[gameObject.PrefabIndex].GameObjects[(int)gameObject.ParentIndex].InstanceId;
-    readonly SailorEditor.ViewModels.PrefabFile? _prefabSnapshot = MauiProgram.GetService<AssetsService>().CreatePrefabAsset(MauiProgram.GetService<AssetsService>().Root, gameObject);
+    readonly SailorEditor.ViewModels.PrefabFile? _prefabSnapshot = MauiProgram.GetService<AssetsService>().CreatePrefabAsset(null, gameObject);
     InstanceId _activeInstanceId = gameObject.InstanceId;
 
     public string Name => nameof(DestroyGameObjectCommand);
@@ -142,29 +159,46 @@ public sealed class ReparentGameObjectCommand(GameObject child, GameObject? newP
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _childId is not null && !_childId.IsEmpty();
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
-        => Task.FromResult(MauiProgram.GetService<EngineService>().ReparentObject(_childId, _newParentId, keepWorldTransform) ? CommandResult.Success() : CommandResult.Failure());
+    {
+        var engine = MauiProgram.GetService<EngineService>();
+        if (!engine.ReparentObject(_childId, _newParentId, keepWorldTransform))
+            return Task.FromResult(CommandResult.Failure());
+
+        return Task.FromResult(CommandResult.Success());
+    }
+
     public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        MauiProgram.GetService<EngineService>().ReparentObject(_childId, _oldParentId, keepWorldTransform);
+        var engine = MauiProgram.GetService<EngineService>();
+        engine.ReparentObject(_childId, _oldParentId, keepWorldTransform);
+
         return ValueTask.CompletedTask;
     }
 }
 
 public sealed class AddComponentCommand(GameObject gameObject, string componentTypeName) : IUndoableEditorCommand
 {
+    readonly InstanceId _ownerId = gameObject.InstanceId;
     InstanceId? _componentId;
     public string Name => nameof(AddComponentCommand);
     public string Description => $"Add {componentTypeName}";
     public IHistoryMergePolicy? MergePolicy => null;
-    public bool CanExecute(ActionContext context) => !string.IsNullOrWhiteSpace(componentTypeName);
+    public bool CanExecute(ActionContext context) => _ownerId is not null && !_ownerId.IsEmpty() && !string.IsNullOrWhiteSpace(componentTypeName);
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var world = MauiProgram.GetService<WorldService>();
-        var before = world.GetComponents(gameObject).Select(x => x.InstanceId?.Value).ToHashSet();
-        var ok = MauiProgram.GetService<EngineService>().AddComponent(gameObject.InstanceId, componentTypeName);
+        if (!world.TryGetGameObject(_ownerId, out var owner))
+            return Task.FromResult(CommandResult.Failure("Owner not found"));
+
+        var before = world.GetComponents(owner).Select(x => x.InstanceId?.Value).ToHashSet();
+        var ok = MauiProgram.GetService<EngineService>().AddComponent(_ownerId, componentTypeName);
         if (!ok)
             return Task.FromResult(CommandResult.Failure());
-        var created = world.GetComponents(gameObject).FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
+
+        if (!world.TryGetGameObject(_ownerId, out var refreshedOwner))
+            return Task.FromResult(CommandResult.Success());
+
+        var created = world.GetComponents(refreshedOwner).FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
         _componentId = created?.InstanceId;
         return Task.FromResult(CommandResult.Success(value: _componentId));
     }
@@ -178,7 +212,7 @@ public sealed class AddComponentCommand(GameObject gameObject, string componentT
 
 public sealed class RemoveComponentCommand(Component component) : IUndoableEditorCommand
 {
-    readonly InstanceId _ownerId = component.OverrideProperties.TryGetValue("owner", out var owner) ? (owner as Observable<InstanceId>)?.Value : null;
+    readonly InstanceId _ownerId = MauiProgram.GetService<WorldService>().FindOwner(component)?.InstanceId;
     readonly string _beforeYaml = EditorYaml.SerializeComponent(component);
     readonly string _componentTypeName = component.Typename?.Name ?? string.Empty;
     readonly InstanceId _originalInstanceId = component.InstanceId;
@@ -204,7 +238,10 @@ public sealed class RemoveComponentCommand(Component component) : IUndoableEdito
         if (!engine.AddComponent(_ownerId, _componentTypeName))
             return ValueTask.CompletedTask;
 
-        var restored = world.GetComponents(owner)
+        if (!world.TryGetGameObject(_ownerId, out var refreshedOwner))
+            return ValueTask.CompletedTask;
+
+        var restored = world.GetComponents(refreshedOwner)
             .FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
 
         if (restored is null)
@@ -244,7 +281,11 @@ public sealed class ResetComponentToDefaultsCommand(Component component) : IUndo
     }
     public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, _beforeYaml);
+        if (MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, _beforeYaml))
+        {
+            MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, _beforeYaml);
+        }
+
         return ValueTask.CompletedTask;
     }
 }

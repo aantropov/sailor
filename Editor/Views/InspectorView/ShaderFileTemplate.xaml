@@ -22,11 +22,9 @@
         </Grid.RowDefinitions>
 
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
-        
-        <!-- Properties Label -->
+
         <Label Text="Properties" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
 
-        <!-- Properties Grid -->
         <Grid Grid.Row="2" Grid.ColumnSpan="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
@@ -44,10 +42,8 @@
             <Editor Text="{Binding Defines}" Grid.Row="1" Grid.Column="1" FontSize="12" IsReadOnly="True" AutoSize="TextChanges" />
         </Grid>
 
-        <!-- Code Label -->
         <Label Text="Code" FontAttributes="Bold" Grid.Row="3" Grid.ColumnSpan="2" />
 
-        <!-- Shader Code Views -->
         <Grid Grid.Row="4" Grid.ColumnSpan="2">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />

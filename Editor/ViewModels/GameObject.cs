@@ -28,8 +28,8 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     public GameObject()
     {
-        AddNewComponent = new Command(async () => await OnAddNewComponent());
-        ClearComponentsCommand = new Command(OnClearComponents);
+        AddNewComponent = new Command(async () => await AddComponentFromInspectorAsync());
+        ClearComponentsCommand = new Command(ClearComponentsFromInspector);
 
         PropertyChanged += (s, args) =>
         {
@@ -63,6 +63,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         return false;
     }
 
+    [YamlIgnore]
     public bool HasPendingInspectorChanges => IsDirty;
 
     public void Initialize()
@@ -115,7 +116,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
     [YamlIgnore]
     public ICommand ClearComponentsCommand { get; }
 
-    async Task OnAddNewComponent()
+    public async Task AddComponentFromInspectorAsync()
     {
         var componentTypeName = await Views.AddComponentDialogPage.ShowAsync(
             MauiProgram.GetService<EngineService>().EngineTypes.Components.Values
@@ -126,12 +127,17 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
         if (!string.IsNullOrWhiteSpace(componentTypeName))
         {
-            MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName);
+            await Task.Run(() => MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName));
         }
     }
 
     static bool IsComponentType(ComponentType type)
     {
+        if (type.Name == "Sailor::Component")
+        {
+            return false;
+        }
+
         var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
         var baseType = type.Base;
 
@@ -148,7 +154,17 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         return false;
     }
 
-    void OnClearComponents() { }
+    public async void ClearComponentsFromInspector()
+    {
+        var components = Components.ToList();
+        await Task.Run(() =>
+        {
+            foreach (var component in components)
+            {
+                MauiProgram.GetService<WorldService>().RemoveComponent(component);
+            }
+        });
+    }
 
     [ObservableProperty]
     string name = string.Empty;

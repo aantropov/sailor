@@ -11,6 +11,7 @@ public readonly record struct EditorPerfSample(string Name, TimeSpan Duration)
 
 public static class EditorPerf
 {
+    static readonly RingBufferedBatcher<EditorPerfSample> _samples = new(256);
     static Action<EditorPerfSample> _sink = sample => Debug.WriteLine(sample.ToString());
 
     public static Action<EditorPerfSample> Sink
@@ -19,7 +20,15 @@ public static class EditorPerf
         set => _sink = value ?? (_ => { });
     }
 
-    public static EditorPerfScope Scope(string name) => new(name, Sink);
+    public static EditorPerfScope Scope(string name) => new(name, Record);
+
+    public static EditorPerfSample[] Snapshot() => _samples.Snapshot();
+
+    static void Record(EditorPerfSample sample)
+    {
+        _samples.EnqueueRange([sample]);
+        Sink(sample);
+    }
 }
 
 public sealed class EditorPerfScope : IDisposable

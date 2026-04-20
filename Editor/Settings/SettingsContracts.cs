@@ -5,6 +5,7 @@ public enum SettingsScope
     Project,
     Editor,
     Engine,
+    AI,
 }
 
 public sealed record SettingsCategory(
@@ -20,7 +21,8 @@ public sealed record SettingsEntry(
     SettingsScope Scope,
     string? Description = null,
     bool RequiresRestart = false,
-    IReadOnlyList<string>? AllowedValues = null);
+    IReadOnlyList<string>? AllowedValues = null,
+    bool IsSecret = false);
 
 public enum SettingsValueKind
 {

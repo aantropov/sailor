@@ -6,10 +6,10 @@
               xmlns:vm="clr-namespace:SailorEditor.ViewModels"
               xmlns:controls="clr-namespace:SailorEditor.Controls"
               xmlns:local="clr-namespace:SailorEditor"
-              x:DataType="vm:ModelFile"
+              x:DataType="vm:GameObject"
               x:Class="SailorEditor.GameObjectTemplate">
 
-    <Grid ColumnSpacing="8" RowSpacing="6" HorizontalOptions="Fill">
+    <Grid x:Name="Root" ColumnSpacing="8" RowSpacing="6" HorizontalOptions="Fill">
         <Grid.Resources>
             <ResourceDictionary>
                 <controls:FloatValueConverter x:Key="FloatValueConverter"/>
@@ -34,41 +34,42 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
-
         <!-- Properties Label -->
-        <Label Text="Transform" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
+        <Label Text="Transform" FontAttributes="Bold" Grid.Row="0" Grid.ColumnSpan="2" />
 
-        <Label Text="Position" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Grid Grid.Row="2" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <Label Text="Position" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
+        <Grid Grid.Row="1" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Position.X, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Position.Y, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Position.Z, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
-        <Label Text="Rotation" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
-        <Grid Grid.Row="3" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <Label Text="Rotation" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <Grid Grid.Row="2" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Rotation.Yaw, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Rotation.Pitch, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Rotation.Roll, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
-        <Label Text="Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <Grid Grid.Row="4" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <Label Text="Scale" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
+        <Grid Grid.Row="3" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Scale.X, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Scale.Y, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
 
-        <Label Text="Components" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
+        <Label Text="Components" FontAttributes="Bold" Grid.Row="4" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
-            <Button Text="+" Command="{Binding AddNewComponent, Source={RelativeSource AncestorType={x:Type vm:GameObject}}}"  />
-            <Button Text="Clear" Width ="40" Command="{Binding ClearComponentsCommand, Source={RelativeSource AncestorType={x:Type vm:GameObject}}}"/>
+        <HorizontalStackLayout Grid.Row="5" Grid.ColumnSpan="2">
+            <Button Text="+"
+                    Clicked="OnAddComponentClicked" />
+            <Button Text="Clear"
+                    Width ="40"
+                    Clicked="OnClearComponentsClicked"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
+        <CollectionView Grid.Row="6" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
 
     </Grid>
 </DataTemplate>

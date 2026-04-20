@@ -7,39 +7,24 @@
 
     <Frame>
         <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-
-            <Label Text="Console" 
-               HorizontalOptions="StartAndExpand" 
-               VerticalOptions="Start" 
-               HeightRequest="25"  
-               Grid.Row="0" 
-               Grid.Column="0"/>
-
-            <ScrollView x:Name="ScrollView" Grid.Row="1" Grid.Column="0">
-                <VerticalStackLayout
-                x:Name="MessagesStack"
-                Spacing="5"
-                VerticalOptions="Start"
-                HorizontalOptions="StartAndExpand"
-                BindableLayout.ItemsSource="{Binding MessageQueue}">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="x:Object">
-                            <Label Text="{Binding .}"
+            <CollectionView x:Name="MessagesCollection"
+                            Grid.Row="0"
+                            Grid.Column="0"
+                            ItemsSource="{Binding MessageQueue}"
+                            SelectionMode="None">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Label Text="{Binding .}"
                                LineBreakMode="WordWrap"
                                VerticalOptions="Start"
                                HorizontalOptions="Fill">
-                                <Label.GestureRecognizers>
-                                    <TapGestureRecognizer Tapped="OnLabelTapped" />
-                                </Label.GestureRecognizers>
-                            </Label>
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </VerticalStackLayout>
-            </ScrollView>
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnLabelTapped" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
         </Grid>
     </Frame>
 </ContentView>

@@ -2,20 +2,29 @@
 using SailorEditor.Commands;
 using SailorEditor.Content;
 using SailorEditor.Controls;
-using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
+using SailorEditor.Workflow;
 using SailorEngine;
+using System.Collections.ObjectModel;
+using GameObject = SailorEditor.ViewModels.GameObject;
 
 namespace SailorEditor.Views
 {
     public partial class ContentFolderView : ContentView
     {
+        const double IndentWidth = 14.0;
+        const string RootRowId = "folder:root";
+
         readonly AssetsService service;
         readonly ProjectContentStore contentStore;
         readonly ICommandDispatcher dispatcher;
         readonly IActionContextProvider contextProvider;
+        readonly ObservableCollection<ContentListRow> visibleRows = [];
+        readonly HashSet<int> expandedFolderIds = [];
+        readonly Dictionary<string, object> rowModelsById = new(StringComparer.Ordinal);
+        bool isRootExpanded = true;
         bool suppressSelectionChanged;
 
         public ContentFolderView()
@@ -27,23 +36,26 @@ namespace SailorEditor.Views
             dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             contextProvider = MauiProgram.GetService<IActionContextProvider>();
 
-            SortPicker.ItemsSource = Enum.GetValues<ProjectContentSortMode>().Cast<object>().ToList();
-            SortPicker.SelectedItem = contentStore.State.SortMode;
-            FilterSearchBar.Text = contentStore.State.Filter;
+            if (!string.IsNullOrEmpty(contentStore.State.Filter))
+            {
+                contentStore.SetFilter(string.Empty);
+            }
 
-            PopulateTreeView(contentStore.Projection);
+            ContentList.ItemsSource = visibleRows;
+            ContentList.SelectionChanged += OnContentSelectionChanged;
+            ContentList.ItemTemplate = CreateItemTemplate();
 
-            contentStore.ProjectionChanged += PopulateTreeView;
-            FolderTree.SelectedItemChanged += OnSelectTreeViewNode;
-            FolderTree.DropRequested += OnContentDropRequested;
-            FolderTree.ContextRequested += OnContentContextRequested;
-            CurrentFoldersView.SelectionChanged += OnCurrentFolderSelectionChanged;
-            CurrentAssetsView.SelectionChanged += OnCurrentAssetSelectionChanged;
-            FilterSearchBar.TextChanged += OnFilterTextChanged;
-            SortPicker.SelectedIndexChanged += OnSortChanged;
+            var rootDropGesture = new DropGestureRecognizer();
+            rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            rootDropGesture.Drop += async (_, e) => await HandleContentDrop(e, null);
+            ContentDropSurface.GestureRecognizers.Add(rootDropGesture);
+
+            contentStore.ProjectionChanged += PopulateRows;
 
             var selectionViewModel = MauiProgram.GetService<SelectionService>();
             selectionViewModel.OnSelectAssetAction += SelectAssetFile;
+
+            PopulateRows(contentStore.Projection);
         }
 
         void SelectAssetFile(ObservableObject obj)
@@ -53,8 +65,7 @@ namespace SailorEditor.Views
                 suppressSelectionChanged = true;
                 try
                 {
-                    FolderTree.SelectedItem = null;
-                    CurrentAssetsView.SelectedItem = null;
+                    ContentList.SelectedItem = null;
                 }
                 finally
                 {
@@ -63,115 +74,84 @@ namespace SailorEditor.Views
                 return;
             }
 
-            var currentFileId = (FolderTree.SelectedItem?.BindingContext as TreeViewItem<AssetFile>)?.Model.FileId;
-            if (currentFileId == file.FileId)
-            {
-                return;
-            }
-
+            EnsureFolderVisible(file.FolderId);
             contentStore.SelectAsset(file.FileId.Value);
         }
 
-        void OnFilterTextChanged(object? sender, TextChangedEventArgs e)
-        {
-            if (string.Equals(e.NewTextValue, contentStore.State.Filter, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            contentStore.SetFilter(e.NewTextValue);
-        }
-
-        void OnSortChanged(object? sender, EventArgs e)
-        {
-            if (SortPicker.SelectedItem is not ProjectContentSortMode sortMode || sortMode == contentStore.State.SortMode)
-            {
-                return;
-            }
-
-            contentStore.SetSort(sortMode);
-        }
-
-        void OnCurrentFolderSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        async void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)
         {
             if (suppressSelectionChanged)
             {
                 return;
             }
 
-            if (e.CurrentSelection.FirstOrDefault() is ProjectContentFolderItem folder)
-            {
-                contentStore.SelectFolder(folder.FolderId);
-            }
-
-            CurrentFoldersView.SelectedItem = null;
-        }
-
-        void OnCurrentAssetSelectionChanged(object? sender, SelectionChangedEventArgs e)
-        {
-            if (suppressSelectionChanged)
+            if (args.CurrentSelection.FirstOrDefault() is not ContentListRow row ||
+                !rowModelsById.TryGetValue(row.Id, out var model))
             {
                 return;
             }
 
-            if (e.CurrentSelection.FirstOrDefault() is ProjectContentAssetItem asset)
-            {
-                OpenAssetById(asset.FileId);
-            }
-
-            CurrentAssetsView.SelectedItem = null;
+            await SelectRow(row, false);
         }
 
-        void OpenAssetById(string fileId)
+        async Task SelectRow(ContentListRow row, bool updateCollectionSelection)
         {
-            if (!service.Files.Any(x => x.FileId?.Value == fileId))
+            if (!rowModelsById.TryGetValue(row.Id, out var model))
             {
                 return;
             }
 
-            var assetFile = service.Files.First(x => x.FileId?.Value == fileId);
-            contentStore.SelectAsset(fileId);
-            dispatcher.DispatchAsync(
-                    new OpenAssetCommand(assetFile),
-                    contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))))
-                .GetAwaiter()
-                .GetResult();
-        }
-
-        void OnSelectTreeViewNode(object sender, EventArgs args)
-        {
-            if (suppressSelectionChanged)
+            if (updateCollectionSelection)
             {
-                return;
+                suppressSelectionChanged = true;
+                try
+                {
+                    ContentList.SelectedItem = row;
+                }
+                finally
+                {
+                    suppressSelectionChanged = false;
+                }
             }
 
-            var selectionChanged = args as TreeView.OnSelectItemEventArgs;
-            switch (selectionChanged?.Model)
+            switch (model)
             {
-                case TreeViewItem<AssetFile> assetFile:
-                    contentStore.SelectAsset(assetFile.Model.FileId?.Value);
-                    dispatcher.DispatchAsync(
-                            new OpenAssetCommand(assetFile.Model),
-                            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))))
-                        .GetAwaiter()
-                        .GetResult();
+                case AssetFile assetFile:
+                    MauiProgram.GetService<SelectionService>().SelectObject(assetFile, force: true);
+                    contentStore.SelectAsset(assetFile.FileId?.Value);
+                    await dispatcher.DispatchAsync(
+                        new OpenAssetCommand(assetFile),
+                        contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))));
                     break;
-                case TreeViewItemGroup<AssetFolder, AssetFile> folder:
-                    contentStore.SelectFolder(folder.Model?.Id);
+                case AssetFolder folder:
+                    contentStore.SelectFolder(folder.Id);
+                    break;
+                case ProjectContentFolderItem:
+                    contentStore.SelectFolder(null);
                     break;
             }
         }
 
-        async void OnContentDropRequested(object sender, TreeViewDropRequest request)
+        async Task HandleContentDrop(DropEventArgs e, object target)
         {
-            if (!EditorDragDrop.TryCreateContentDropCommand(request.Source, request.Target, out var command, out var requiresConfirmation) || command is null)
+            if (e.Handled)
             {
                 return;
             }
 
-            if (requiresConfirmation && request.Target is PrefabFile prefab && request.Source is GameObject gameObject)
+            if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
             {
-                request.Handled = true;
+                return;
+            }
+
+            if (!EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out var requiresConfirmation) || command is null)
+            {
+                return;
+            }
+
+            if (requiresConfirmation && target is PrefabFile prefab && source is GameObject gameObject)
+            {
+                e.Handled = true;
                 var overwrite = await Application.Current.MainPage.DisplayAlert(
                     "Overwrite prefab",
                     $"Overwrite {prefab.DisplayName} with {gameObject.DisplayName}?",
@@ -185,26 +165,48 @@ namespace SailorEditor.Views
             }
 
             var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
-            request.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
+            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
         }
 
-        void OnContentContextRequested(object sender, TreeView.OnContextRequestedEventArgs args)
+        async Task OpenWorldWithConfirmation(WorldFile worldFile)
         {
-            var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
-            if (args.Model is TreeViewItem<AssetFile> assetItem)
+            var page = Application.Current?.Windows?.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+            if (page is null)
             {
-                contextMenu.Show(
-                    new EditorContextMenuItem
-                    {
-                        Text = "Rename",
-                        Command = new Command(async () => await RenameAsset(assetItem.Model))
-                    },
-                    new EditorContextMenuItem
-                    {
-                        Text = "Delete",
-                        IsDestructive = true,
-                        Command = new Command(async () => await DeleteAsset(assetItem.Model))
-                    });
+                return;
+            }
+
+            var open = await page.DisplayAlert(
+                "Open world",
+                $"Open {worldFile.DisplayName} as the current editor world?",
+                "Open",
+                "Cancel");
+
+            if (!open)
+            {
+                return;
+            }
+
+            var worldService = MauiProgram.GetService<WorldService>();
+            var history = MauiProgram.GetService<ICommandHistoryService>();
+            if (history.CanUndo)
+            {
+                var save = await page.DisplayAlert(
+                    "Save current world",
+                    "The current world has editor changes. Save it before opening another world?",
+                    "Save",
+                    "Discard");
+
+                if (save && !worldService.SaveCurrentWorld())
+                {
+                    await page.DisplayAlert("Save failed", "Unable to save the current world asset.", "OK");
+                    return;
+                }
+            }
+
+            if (!worldService.LoadWorld(worldFile))
+            {
+                await page.DisplayAlert("Open world failed", $"Unable to open {worldFile.DisplayName}.", "OK");
             }
         }
 
@@ -253,77 +255,283 @@ namespace SailorEditor.Views
             }
         }
 
-        void PopulateTreeView(ProjectContentProjection projection)
+        void ToggleFolder(ContentListRow row)
         {
-            var expandedFolderIds = CaptureExpandedFolderIds(FolderTree.RootNodes);
+            if (row.Id == RootRowId)
+            {
+                isRootExpanded = !isRootExpanded;
+                PopulateRows(contentStore.Projection);
+                return;
+            }
+
+            if (!TryParseFolderId(row.Id, out var folderId))
+            {
+                return;
+            }
+
+            if (expandedFolderIds.Contains(folderId))
+            {
+                expandedFolderIds.Remove(folderId);
+            }
+            else
+            {
+                expandedFolderIds.Add(folderId);
+            }
+
+            PopulateRows(contentStore.Projection);
+        }
+
+        void PopulateRows(ProjectContentProjection projection)
+        {
+            rowModelsById.Clear();
+
             var foldersById = service.Folders.ToDictionary(x => x.Id);
-            var assetsByFileId = service.Files
+            var assetsByFolder = service.Files
                 .Where(x => x.FileId is not null && !x.FileId.IsEmpty())
-                .ToDictionary(x => x.FileId!.Value, StringComparer.Ordinal);
+                .GroupBy(x => x.FolderId)
+                .ToDictionary(x => x.Key, x => x.OrderBy(asset => asset.DisplayName, StringComparer.OrdinalIgnoreCase).ToArray());
+            var foldersByParent = service.Folders
+                .GroupBy(x => x.ParentFolderId)
+                .ToDictionary(x => x.Key, x => x.OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase).ToArray());
 
-            var foldersModel = FolderTreeViewBuilder.PopulateDirectory(projection, foldersById, assetsByFileId);
-            var rootNodes = Controls.TreeView.PopulateGroup(foldersModel, new TreeViewPopulateArgs());
-            FolderTree.RootNodes = rootNodes;
-            RestoreExpandedFolders(expandedFolderIds);
-            RestoreSelection(projection);
-            UpdateBrowserSurface(projection);
+            var rows = new List<ContentListRow>();
+            rowModelsById[RootRowId] = projection.Root;
+            rows.Add(new ContentListRow(
+                RootRowId,
+                0,
+                projection.Root.Name,
+                "folder_open_24.png",
+                HasChildren(foldersByParent, assetsByFolder, -1),
+                isRootExpanded,
+                IsSelectedRoot(projection)));
+
+            if (isRootExpanded)
+            {
+                AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, 1, projection);
+            }
+
+            ReplaceRows(visibleRows, rows);
+            RestoreSelection();
         }
 
-        void UpdateBrowserSurface(ProjectContentProjection projection)
+        void AppendChildren(
+            List<ContentListRow> rows,
+            IReadOnlyDictionary<int, AssetFolder[]> foldersByParent,
+            IReadOnlyDictionary<int, AssetFile[]> assetsByFolder,
+            IReadOnlyDictionary<int, AssetFolder> foldersById,
+            int parentFolderId,
+            int depth,
+            ProjectContentProjection projection)
         {
-            var currentFolder = GetCurrentFolder(projection);
-            CurrentFolderTitle.Text = currentFolder.Name;
-            CurrentFolderPath.Text = currentFolder.FullPath;
-            CurrentFolderSummary.Text = $"{projection.CurrentFolderFolders.Count} folders • {projection.CurrentFolderAssets.Count} assets";
-
-            if (!string.Equals(FilterSearchBar.Text, projection.State.Filter, StringComparison.Ordinal))
+            if (foldersByParent.TryGetValue(parentFolderId, out var folders))
             {
-                FilterSearchBar.Text = projection.State.Filter;
+                foreach (var folder in folders)
+                {
+                    var id = FolderRowId(folder.Id);
+                    var isExpanded = expandedFolderIds.Contains(folder.Id);
+                    rowModelsById[id] = folder;
+                    rows.Add(new ContentListRow(
+                        id,
+                        depth,
+                        folder.Name,
+                        isExpanded ? "folder_open_24.png" : "folder_24.png",
+                        HasChildren(foldersByParent, assetsByFolder, folder.Id),
+                        isExpanded,
+                        projection.State.SelectedAssetFileId is null && projection.State.CurrentFolderId == folder.Id));
+
+                    if (isExpanded)
+                    {
+                        AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, folder.Id, depth + 1, projection);
+                    }
+                }
             }
 
-            if (SortPicker.SelectedItem is not ProjectContentSortMode selectedSort || selectedSort != projection.State.SortMode)
+            if (assetsByFolder.TryGetValue(parentFolderId, out var assets))
             {
-                SortPicker.SelectedItem = projection.State.SortMode;
+                foreach (var asset in assets)
+                {
+                    var id = AssetRowId(asset.FileId.Value);
+                    rowModelsById[id] = asset;
+                    rows.Add(new ContentListRow(
+                        id,
+                        depth,
+                        asset.DisplayName,
+                        GetAssetIcon(asset),
+                        false,
+                        false,
+                        string.Equals(projection.State.SelectedAssetFileId, asset.FileId.Value, StringComparison.Ordinal)));
+                }
             }
-
-            CurrentFoldersView.ItemsSource = projection.CurrentFolderFolders;
-            CurrentAssetsView.ItemsSource = projection.CurrentFolderAssets;
         }
 
-        ProjectContentFolderItem GetCurrentFolder(ProjectContentProjection projection)
+        DataTemplate CreateItemTemplate()
         {
-            if (projection.State.CurrentFolderId is not { } folderId)
+            return new DataTemplate(() =>
             {
-                return projection.Root;
-            }
+                var expandLabel = new Label
+                {
+                    WidthRequest = 12,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    FontSize = 10,
+                    Margin = new Thickness(0, 0, 4, 0),
+                    TextColor = Color.FromArgb("#D7DCE2")
+                };
+                expandLabel.SetBinding(Label.TextProperty, nameof(ContentListRow.ExpandGlyph));
+                expandLabel.SetBinding(IsVisibleProperty, nameof(ContentListRow.HasChildren));
+                var expandTap = new TapGestureRecognizer();
+                expandTap.Tapped += (_, _) =>
+                {
+                    if (expandLabel.BindingContext is ContentListRow row)
+                    {
+                        ToggleFolder(row);
+                    }
+                };
+                expandLabel.GestureRecognizers.Add(expandTap);
 
-            return projection.Folders.FirstOrDefault(x => x.FolderId == folderId) ?? projection.Root;
+                var icon = new ResourceImage
+                {
+                    WidthRequest = 16,
+                    HeightRequest = 16,
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalOptions = LayoutOptions.Center
+                };
+                icon.SetBinding(ResourceImage.ResourceProperty, nameof(ContentListRow.Icon));
+
+                var nameLabel = new Label
+                {
+                    VerticalTextAlignment = TextAlignment.Center,
+                    LineBreakMode = LineBreakMode.TailTruncation,
+                    TextColor = Color.FromArgb("#DDE3EA")
+                };
+                nameLabel.SetBinding(Label.TextProperty, nameof(ContentListRow.Label));
+
+                var rowLayout = new HorizontalStackLayout
+                {
+                    Spacing = 0,
+                    Padding = new Thickness(4, 2),
+                    HeightRequest = 24,
+                    VerticalOptions = LayoutOptions.Center,
+                    HorizontalOptions = LayoutOptions.Fill
+                };
+                rowLayout.Children.Add(expandLabel);
+                rowLayout.Children.Add(icon);
+                rowLayout.Children.Add(nameLabel);
+
+                var border = new Border
+                {
+                    StrokeThickness = 0,
+                    Padding = 0,
+                    Margin = new Thickness(2, 1),
+                    Content = rowLayout
+                };
+
+                var dragGesture = new DragGestureRecognizer();
+                dragGesture.DragStarting += (_, e) =>
+                {
+                    if (border.BindingContext is ContentListRow row &&
+                        rowModelsById.TryGetValue(row.Id, out var model) &&
+                        model is AssetFile assetFile)
+                    {
+                        e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
+                    }
+                };
+                border.GestureRecognizers.Add(dragGesture);
+
+                var dropGesture = new DropGestureRecognizer();
+                dropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+                dropGesture.Drop += async (_, e) =>
+                {
+                    object target = null;
+                    if (border.BindingContext is ContentListRow row && rowModelsById.TryGetValue(row.Id, out var model))
+                    {
+                        target = model is ProjectContentFolderItem ? null : model;
+                    }
+
+                    await HandleContentDrop(e, target);
+                };
+                border.GestureRecognizers.Add(dropGesture);
+
+                var singleTap = new TapGestureRecognizer { NumberOfTapsRequired = 1 };
+                singleTap.Tapped += async (_, _) =>
+                {
+                    if (border.BindingContext is ContentListRow row)
+                    {
+                        await SelectRow(row, true);
+                    }
+                };
+                border.GestureRecognizers.Add(singleTap);
+
+                var doubleTap = new TapGestureRecognizer { NumberOfTapsRequired = 2 };
+                doubleTap.Tapped += async (_, _) =>
+                {
+                    if (border.BindingContext is not ContentListRow row || !rowModelsById.TryGetValue(row.Id, out var model))
+                    {
+                        return;
+                    }
+
+                    switch (model)
+                    {
+                        case WorldFile worldFile:
+                            await OpenWorldWithConfirmation(worldFile);
+                            break;
+                        case AssetFolder or ProjectContentFolderItem:
+                            ToggleFolder(row);
+                            break;
+                    }
+                };
+                border.GestureRecognizers.Add(doubleTap);
+
+                var contextTap = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
+                contextTap.Tapped += (_, _) =>
+                {
+                    if (border.BindingContext is ContentListRow row && rowModelsById.TryGetValue(row.Id, out var model))
+                    {
+                        ShowContextMenu(model);
+                    }
+                };
+                border.GestureRecognizers.Add(contextTap);
+
+                border.BindingContextChanged += (_, _) =>
+                {
+                    if (border.BindingContext is ContentListRow row)
+                    {
+                        rowLayout.Margin = new Thickness(row.Depth * IndentWidth, 0, 0, 0);
+                        border.BackgroundColor = row.IsSelected ? Color.FromArgb("#334C6FFF") : Colors.Transparent;
+                    }
+                };
+
+                return border;
+            });
         }
 
-        void RestoreSelection(ProjectContentProjection projection)
+        void ShowContextMenu(object model)
         {
-            TreeViewNode? selectedNode = null;
-            if (!string.IsNullOrWhiteSpace(projection.State.SelectedAssetFileId))
+            var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
+            if (model is AssetFile assetFile)
             {
-                selectedNode = FindAssetNode(projection.State.SelectedAssetFileId);
+                contextMenu.Show(
+                    new EditorContextMenuItem
+                    {
+                        Text = "Rename",
+                        Command = new Command(async () => await RenameAsset(assetFile))
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Delete",
+                        IsDestructive = true,
+                        Command = new Command(async () => await DeleteAsset(assetFile))
+                    });
             }
+        }
 
-            selectedNode ??= projection.State.CurrentFolderId is { } folderId
-                ? FindFolderNode(folderId)
-                : null;
-
+        void RestoreSelection()
+        {
+            var selected = visibleRows.FirstOrDefault(row => row.IsSelected);
             suppressSelectionChanged = true;
             try
             {
-                if (selectedNode is null)
-                {
-                    FolderTree.SelectedItem = null;
-                    return;
-                }
-
-                ExpandAncestors(selectedNode);
-                selectedNode.Select();
-                FolderTree.SelectedItem = selectedNode;
+                ContentList.SelectedItem = selected;
             }
             finally
             {
@@ -331,71 +539,65 @@ namespace SailorEditor.Views
             }
         }
 
-        TreeViewNode? FindAssetNode(string fileId)
+        void EnsureFolderVisible(int folderId)
         {
-            foreach (var node in FolderTree.RootNodes)
+            isRootExpanded = true;
+
+            var foldersById = service.Folders.ToDictionary(x => x.Id);
+            var currentFolderId = folderId;
+            while (currentFolderId != -1 && foldersById.TryGetValue(currentFolderId, out var folder))
             {
-                var match = node.FindFileRecursive(new AssetFile { FileId = new FileId(fileId) });
-                if (match != null)
-                {
-                    return match;
-                }
-            }
-
-            return null;
-        }
-
-        TreeViewNode? FindFolderNode(int folderId)
-        {
-            foreach (var node in FolderTree.RootNodes)
-            {
-                var match = node.FindFolderRecursive(folderId);
-                if (match != null)
-                {
-                    return match;
-                }
-            }
-
-            return null;
-        }
-
-        static HashSet<int> CaptureExpandedFolderIds(IEnumerable<TreeViewNode> nodes)
-        {
-            var expandedFolderIds = new HashSet<int>();
-            foreach (var node in nodes)
-            {
-                if (node.IsExpanded &&
-                    node.BindingContext is TreeViewItemGroup<AssetFolder, AssetFile> folder &&
-                    folder.Model is not null)
-                {
-                    expandedFolderIds.Add(folder.Model.Id);
-                }
-
-                foreach (var childFolderId in CaptureExpandedFolderIds(node.ChildrenList))
-                {
-                    expandedFolderIds.Add(childFolderId);
-                }
-            }
-
-            return expandedFolderIds;
-        }
-
-        void RestoreExpandedFolders(HashSet<int> expandedFolderIds)
-        {
-            foreach (var folderId in expandedFolderIds)
-            {
-                FindFolderNode(folderId)?.SetExpandedSilently(true);
+                expandedFolderIds.Add(folder.Id);
+                currentFolderId = folder.ParentFolderId;
             }
         }
 
-        static void ExpandAncestors(TreeViewNode node)
+        static bool IsSelectedRoot(ProjectContentProjection projection)
+            => projection.State.SelectedAssetFileId is null && projection.State.CurrentFolderId is null;
+
+        static bool HasChildren(
+            IReadOnlyDictionary<int, AssetFolder[]> foldersByParent,
+            IReadOnlyDictionary<int, AssetFile[]> assetsByFolder,
+            int folderId)
+            => (foldersByParent.TryGetValue(folderId, out var folders) && folders.Length > 0) ||
+               (assetsByFolder.TryGetValue(folderId, out var assets) && assets.Length > 0);
+
+        static string GetAssetIcon(AssetFile asset) => asset switch
         {
-            var parent = node.ParentTreeViewItem;
-            while (parent is not null)
+            TextureFile => "image_24.png",
+            ModelFile => "box_24.png",
+            AnimationFile => "film_24.png",
+            PrefabFile => "blueprint.png",
+            WorldFile => "globe_24.png",
+            ShaderFile or ShaderLibraryFile => "script_24.png",
+            MaterialFile => "color_swatch_24.png",
+            FrameGraphFile => "application_sidebar_list_24.png",
+            _ => "document_24.png"
+        };
+
+        static string FolderRowId(int folderId) => $"folder:{folderId}";
+
+        static string AssetRowId(string fileId) => $"asset:{fileId}";
+
+        static bool TryParseFolderId(string id, out int folderId)
+        {
+            folderId = default;
+            return id.StartsWith("folder:", StringComparison.Ordinal) &&
+                int.TryParse(id["folder:".Length..], out folderId);
+        }
+
+        static void ReplaceRows(ObservableCollection<ContentListRow> target, IReadOnlyList<ContentListRow> desired)
+        {
+            target.Clear();
+            foreach (var row in desired)
             {
-                parent.SetExpandedSilently(true);
-                parent = parent.ParentTreeViewItem;
+                target.Add(row);
             }
         }
+    }
+
+    public sealed record ContentListRow(string Id, int Depth, string Label, string Icon, bool HasChildren, bool IsExpanded, bool IsSelected)
+    {
+        public string ExpandGlyph => IsExpanded ? "−" : "+";
     }
 }

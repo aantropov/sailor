@@ -63,6 +63,11 @@ namespace SailorEditor.Views
 
         static bool AreEquivalentSelection(object? current, object? next)
         {
+            if (current is AssetFile || next is AssetFile)
+            {
+                return false;
+            }
+
             if (ReferenceEquals(current, next))
             {
                 return true;

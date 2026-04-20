@@ -228,30 +228,6 @@ namespace SailorEngine
             };
         }
 
-        static void AddEnumAlias(Dictionary<string, List<string>> enums, string alias, string source)
-        {
-            if (!enums.ContainsKey(alias) && enums.TryGetValue(source, out var values))
-            {
-                enums[alias] = values;
-            }
-        }
-
-        static void AddEnumAliases(Dictionary<string, List<string>> enums)
-        {
-            AddEnumAlias(enums, "enum Sailor::EMobilityType", "N6Sailor13EMobilityTypeE");
-            AddEnumAlias(enums, "enum Sailor::ELightType", "N6Sailor10ELightTypeE");
-            AddEnumAlias(enums, "enum Sailor::EAnimationPlayMode", "N6Sailor18EAnimationPlayModeE");
-            AddEnumAlias(enums, "enum Sailor::RHI::EFormat", "N6Sailor3RHI7EFormatE");
-            AddEnumAlias(enums, "enum Sailor::RHI::ETextureFiltration", "N6Sailor3RHI18ETextureFiltrationE");
-            AddEnumAlias(enums, "enum Sailor::RHI::ETextureClamping", "N6Sailor3RHI16ETextureClampingE");
-            AddEnumAlias(enums, "enum Sailor::RHI::ESamplerReductionMode", "N6Sailor3RHI21ESamplerReductionModeE");
-            AddEnumAlias(enums, "enum Sailor::RHI::EFillMode", "N6Sailor3RHI9EFillModeE");
-            AddEnumAlias(enums, "enum Sailor::RHI::ECullMode", "N6Sailor3RHI9ECullModeE");
-            AddEnumAlias(enums, "enum Sailor::RHI::EBlendMode", "N6Sailor3RHI10EBlendModeE");
-            AddEnumAlias(enums, "enum Sailor::RHI::EDepthCompare", "N6Sailor3RHI13EDepthCompareE");
-            AddEnumAlias(enums, "enum Sailor::RHI::EShadowType", "N6Sailor3RHI11EShadowTypeE");
-        }
-
         public static EngineTypes FromYaml(string yamlContent)
         {
             var deserializer = SerializationUtils.CreateDeserializerBuilder().Build();
@@ -282,7 +258,6 @@ namespace SailorEngine
                         res.Enums[enumEntry.Key] = enumEntry.Value;
                     }
                 }
-                AddEnumAliases(res.Enums);
 
                 foreach (var assetTypeNode in rootNode.AssetTypes ?? Enumerable.Empty<AssetTypeNode>())
                 {

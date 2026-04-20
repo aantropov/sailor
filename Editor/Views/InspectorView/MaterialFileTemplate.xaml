@@ -68,13 +68,25 @@
         <CheckBox IsChecked="{Binding EnableZWrite}" Grid.Row="6" Grid.Column="1"/>
 
         <Label Text="Cull Mode" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
-        <Picker ItemsSource="{Binding CullModeEnumValues}" SelectedItem="{Binding CullMode}" Grid.Row="7" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding CullModeEnumValues}" Grid.Row="7" Grid.Column="1">
+            <Picker.Behaviors>
+                <controls:EnumPickerBehavior Values="{Binding CullModeEnumValues}" Value="{Binding CullMode, Mode=TwoWay}"/>
+            </Picker.Behaviors>
+        </Picker>
 
         <Label Text="Blend Mode" VerticalOptions="Center" Grid.Row="8" Grid.Column="0"/>
-        <Picker ItemsSource="{Binding BlendModeEnumValues}" SelectedItem="{Binding BlendMode}" Grid.Row="8" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding BlendModeEnumValues}" Grid.Row="8" Grid.Column="1">
+            <Picker.Behaviors>
+                <controls:EnumPickerBehavior Values="{Binding BlendModeEnumValues}" Value="{Binding BlendMode, Mode=TwoWay}"/>
+            </Picker.Behaviors>
+        </Picker>
 
         <Label Text="Fill Mode" VerticalOptions="Center" Grid.Row="9" Grid.Column="0"/>
-        <Picker ItemsSource="{Binding FillModeEnumValues}" SelectedItem="{Binding FillMode}" Grid.Row="9" Grid.Column="1"/>
+        <Picker ItemsSource="{Binding FillModeEnumValues}" Grid.Row="9" Grid.Column="1">
+            <Picker.Behaviors>
+                <controls:EnumPickerBehavior Values="{Binding FillModeEnumValues}" Value="{Binding FillMode, Mode=TwoWay}"/>
+            </Picker.Behaviors>
+        </Picker>
 
         <Label Text="Shader" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
         <HorizontalStackLayout Grid.Row="10" Grid.Column="1">

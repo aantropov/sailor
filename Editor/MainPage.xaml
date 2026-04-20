@@ -24,7 +24,7 @@
                     <Label Text="Status" FontAttributes="Bold" Margin="0,0,8,0"/>
                     <Label x:Name="StatusTextLabel" Grid.Column="1" Text="Ready"/>
                 </Grid>
-                <Label Text="Panels open into preset docks as tabs. Use the Panels / Settings buttons or Window menu. Click a tab to focus it, × to close it, and Reset Layout if the shell gets messy."
+                <Label Text="Right-click a tab strip to add panels. Click a tab to focus it, × to close it, and Reset Layout if the shell gets messy."
                        FontSize="11"
                        TextColor="#90939A"/>
             </VerticalStackLayout>

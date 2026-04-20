@@ -67,14 +67,16 @@ public sealed class CreatePrefabAssetCommand(GameObject gameObject, AssetFolder?
     }
 }
 
-public sealed class InstantiatePrefabAssetCommand(PrefabFile prefabFile, GameObject? parent = null) : IEditorCommand
+public sealed class InstantiatePrefabAssetCommand(AssetFile prefabFile, GameObject? parent = null) : IEditorCommand
 {
+    readonly FileId prefabFileId = prefabFile?.FileId;
+
     public string Name => nameof(InstantiatePrefabAssetCommand);
-    public bool CanExecute(ActionContext context) => prefabFile?.FileId is not null && !prefabFile.FileId.IsEmpty();
+    public bool CanExecute(ActionContext context) => prefabFileId is not null && !prefabFileId.IsEmpty();
 
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        var ok = MauiProgram.GetService<EngineService>().InstantiatePrefab(prefabFile.FileId, parent?.InstanceId);
-        return Task.FromResult(ok ? CommandResult.Success(value: prefabFile.FileId) : CommandResult.Failure("Instantiate prefab failed"));
+        var ok = MauiProgram.GetService<EngineService>().InstantiatePrefab(prefabFileId, parent?.InstanceId);
+        return Task.FromResult(ok ? CommandResult.Success(value: prefabFileId) : CommandResult.Failure("Instantiate prefab failed"));
     }
 }

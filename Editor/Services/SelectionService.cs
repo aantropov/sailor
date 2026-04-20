@@ -3,13 +3,15 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
 using SailorEngine;
-using System.ComponentModel;
+using Component = SailorEditor.ViewModels.Component;
+using INotifyPropertyChanged = System.ComponentModel.INotifyPropertyChanged;
 
 namespace SailorEditor.Services
 {
     public partial class SelectionService : ObservableObject
     {
         readonly SelectionStore _selectionStore = new();
+        int selectionRequestVersion = 0;
 
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
         public event Action<ObservableObject> OnSelectAssetAction = delegate { };
@@ -18,7 +20,11 @@ namespace SailorEditor.Services
         {
             _selectionStore.Changed += snapshot =>
             {
-                var selectedId = string.IsNullOrWhiteSpace(snapshot.SelectedId) ? InstanceId.NullInstanceId : new InstanceId(snapshot.SelectedId);
+                var selectedId = InstanceId.NullInstanceId;
+                if (!string.IsNullOrWhiteSpace(snapshot.SelectedId))
+                {
+                    selectedId = new InstanceId(snapshot.SelectedId);
+                }
                 SelectedInstanceId = selectedId;
                 SyncEditorSelectionToRuntime();
             };
@@ -67,13 +73,29 @@ namespace SailorEditor.Services
                 return;
             }
 
+            var requestVersion = ++selectionRequestVersion;
+            _selectionStore.Select(TryGetSelectionId(obj), obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
+
+            if (obj is AssetFile selectedAssetFile)
+            {
+                await selectedAssetFile.PrepareInspectorResources();
+                if (requestVersion != selectionRequestVersion)
+                {
+                    return;
+                }
+            }
+
+            UpdateSelection(obj, raiseInstanceAction: obj is GameObject or Component, raiseAssetAction: true);
+
             if (obj is AssetFile assetFile)
             {
                 await assetFile.LoadDependentResources();
+                if (ReferenceEquals(SelectedItem, obj))
+                {
+                    UpdateSelection(obj, raiseInstanceAction: false, raiseAssetAction: true);
+                    OnPropertyChanged(nameof(SelectedItem));
+                }
             }
-
-            _selectionStore.Select(TryGetSelectionId(obj), obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
-            UpdateSelection(obj, raiseInstanceAction: obj is GameObject or Component, raiseAssetAction: true);
         }
 
         public void ClearSelection()

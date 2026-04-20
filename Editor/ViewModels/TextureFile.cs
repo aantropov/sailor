@@ -15,10 +15,17 @@ public partial class TextureFile : AssetFile
 {
     public bool IsImageLoaded { get => !Texture.IsEmpty; }
 
-    public List<string> TextureFiltrationType { get; set; } = [];
-    public List<string> TextureClampingType { get; set; } = [];
-    public List<string> TextureFormatType { get; set; } = [];
-    public List<string> SamplerReductionType { get; set; } = ["Average", "Min", "Max"];
+    [ObservableProperty]
+    List<string> textureFiltrationType = [];
+
+    [ObservableProperty]
+    List<string> textureClampingType = [];
+
+    [ObservableProperty]
+    List<string> textureFormatType = [];
+
+    [ObservableProperty]
+    List<string> samplerReductionType = ["Average", "Min", "Max"];
 
     [ObservableProperty]
     string filtration;
@@ -44,34 +51,52 @@ public partial class TextureFile : AssetFile
     [ObservableProperty]
     int glbTextureIndex = -1;
 
+    void LoadTextureEnumTypes()
+    {
+        var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
+        TextureFiltrationType = engineTypes.Enums["enum Sailor::RHI::ETextureFiltration"];
+        TextureClampingType = engineTypes.Enums["enum Sailor::RHI::ETextureClamping"];
+        TextureFormatType = engineTypes.Enums["enum Sailor::RHI::EFormat"];
+        SamplerReductionType = engineTypes.Enums["enum Sailor::RHI::ESamplerReductionMode"];
+
+        OnPropertyChanged(nameof(Filtration));
+        OnPropertyChanged(nameof(Clamping));
+        OnPropertyChanged(nameof(Format));
+        OnPropertyChanged(nameof(SamplerReduction));
+    }
+
+    public override Task PrepareInspectorResources()
+    {
+        LoadRuntimeDataWithoutDirtyTracking(LoadTextureEnumTypes);
+        return Task.CompletedTask;
+    }
+
     public ImageSource Texture { get; private set; } = null;
 
     public override Task Save() => Save(new TextureFileYamlConverter());
 
-    public override Task<bool> LoadDependentResources()
+    public override async Task<bool> LoadDependentResources()
     {
         if (!IsLoaded)
         {
             try
             {
-                var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+                await PrepareInspectorResources();
 
-                TextureFiltrationType = engineTypes.Enums["enum Sailor::RHI::ETextureFiltration"];
-                TextureClampingType = engineTypes.Enums["enum Sailor::RHI::ETextureClamping"];
-                TextureFormatType = engineTypes.Enums["enum Sailor::RHI::EFormat"];
-                if (engineTypes.Enums.TryGetValue("enum Sailor::RHI::ESamplerReductionMode", out var samplerReductionType))
+                LoadRuntimeDataWithoutDirtyTracking(() =>
                 {
-                    SamplerReductionType = samplerReductionType;
-                }
-
-                if (GlbTextureIndex != -1)
-                {
-                    MemoryStream textureStream = null;
-                    GlbExtractor.ExtractTextureFromGLB(Asset.FullName, GlbTextureIndex, out textureStream);
-                    Texture = ImageSource.FromStream(() => textureStream);
-                }
-                else
-                    Texture = ImageSource.FromFile(Asset.FullName);
+                    if (GlbTextureIndex != -1)
+                    {
+                        MemoryStream textureStream = null;
+                        GlbExtractor.ExtractTextureFromGLB(Asset.FullName, GlbTextureIndex, out textureStream);
+                        Texture = ImageSource.FromStream(() => textureStream);
+                    }
+                    else
+                    {
+                        Texture = ImageSource.FromFile(Asset.FullName);
+                    }
+                });
             }
             catch (Exception ex)
             {
@@ -81,7 +106,7 @@ public partial class TextureFile : AssetFile
             IsLoaded = Texture != null && !Texture.IsEmpty;
         }
 
-        return Task.FromResult(true);
+        return true;
     }
 
     public override Task Revert()
@@ -101,13 +126,13 @@ public partial class TextureFile : AssetFile
 
                 FileId = intermediateObject.FileId ?? new FileId();
                 Filename = intermediateObject.Filename ?? new FileId();
-                Filtration = intermediateObject.Filtration;
-                Format = intermediateObject.Format;
-                Clamping = intermediateObject.Clamping;
+                Filtration = EnumValueUtils.Normalize(intermediateObject.Filtration);
+                Format = EnumValueUtils.Normalize(intermediateObject.Format);
+                Clamping = EnumValueUtils.Normalize(intermediateObject.Clamping);
                 ShouldGenerateMips = intermediateObject.ShouldGenerateMips;
                 ShouldSupportStorageBinding = intermediateObject.ShouldSupportStorageBinding;
                 ShouldKeepCpuBuffers = intermediateObject.ShouldKeepCpuBuffers;
-                SamplerReduction = intermediateObject.SamplerReduction;
+                SamplerReduction = EnumValueUtils.Normalize(intermediateObject.SamplerReduction);
                 GlbTextureIndex = intermediateObject.GlbTextureIndex;
 
                 DisplayName = GlbTextureIndex == -1 ? Asset.Name : $"{AssetInfo.Name} (Texture {GlbTextureIndex})";
@@ -155,13 +180,13 @@ public class TextureFileYamlConverter : IYamlTypeConverter
                         textureFile.Filename = deserializer.Deserialize<string>(parser);
                         break;
                     case "filtration":
-                        textureFile.Filtration = deserializer.Deserialize<string>(parser);
+                        textureFile.Filtration = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "format":
-                        textureFile.Format = deserializer.Deserialize<string>(parser);
+                        textureFile.Format = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "clamping":
-                        textureFile.Clamping = deserializer.Deserialize<string>(parser);
+                        textureFile.Clamping = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "bShouldGenerateMips":
                         textureFile.ShouldGenerateMips = deserializer.Deserialize<bool>(parser);
@@ -173,7 +198,7 @@ public class TextureFileYamlConverter : IYamlTypeConverter
                         textureFile.ShouldKeepCpuBuffers = deserializer.Deserialize<bool>(parser);
                         break;
                     case "reduction":
-                        textureFile.SamplerReduction = deserializer.Deserialize<string>(parser);
+                        textureFile.SamplerReduction = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "glbTextureIndex":
                         textureFile.GlbTextureIndex = deserializer.Deserialize<int>(parser);

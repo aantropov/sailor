@@ -49,6 +49,12 @@ def default_target_framework(host_os: str) -> str:
     raise RuntimeError("Unsupported host OS")
 
 
+def default_runtime(host_os: str) -> str | None:
+    if host_os == "mac" and platform.machine() == "arm64":
+        return "maccatalyst-arm64"
+    return None
+
+
 def prepare_env(dotnet_path: str) -> dict[str, str]:
     env = os.environ.copy()
     dotnet_dir = str(Path(dotnet_path).resolve().parent)
@@ -85,7 +91,7 @@ def remove_generated_imgui_ini(config: str, output: Path | None) -> None:
             print(f"Removed generated file before build: {imgui_ini}")
 
 
-def sync_engine_library(config: str, output: Path | None) -> None:
+def sync_engine_library(config: str, output: Path | None, runtime: str | None) -> None:
     library_name = "Sailor-Debug.dylib" if config == "Debug" else "Sailor-Release.dylib"
     source = REPO_ROOT / "build-mac-vcpkg" / "Lib" / config / library_name
     if not source.exists():
@@ -106,6 +112,8 @@ def sync_engine_library(config: str, output: Path | None) -> None:
 
         for app in root.rglob("SailorEditor.app"):
             app = app.resolve()
+            if runtime and runtime not in app.parts:
+                continue
             if app in seen:
                 continue
             seen.add(app)
@@ -124,6 +132,7 @@ def main() -> int:
     parser.add_argument("--framework", default=default_target_framework(host_os), help="Target framework to build")
     parser.add_argument("--config", default="Debug", choices=["Debug", "Release"], help="Build configuration")
     parser.add_argument("--publish", action="store_true", help="Run 'dotnet publish' instead of 'dotnet build'")
+    parser.add_argument("--runtime", default=default_runtime(host_os), help="Optional .NET runtime identifier, for example maccatalyst-arm64")
     parser.add_argument("--build-engine", action="store_true", help="Build SailorLib first using build_engine.py")
     parser.add_argument("--output", type=Path, default=None, help="Optional output directory")
     parser.add_argument("--self-contained", action="store_true", help="Publish self-contained app when supported")
@@ -139,13 +148,15 @@ def main() -> int:
     env = prepare_env(dotnet)
 
     command = [dotnet, "publish" if args.publish else "build", str(EDITOR_PROJECT), "-f", args.framework, "-c", args.config]
+    if args.runtime:
+        command += ["-r", args.runtime]
     if args.output:
         command += ["-o", str(args.output.resolve())]
     if args.self_contained and args.publish:
         command += ["--self-contained", "true"]
 
     run(command, env=env)
-    sync_engine_library(args.config, args.output)
+    sync_engine_library(args.config, args.output, args.runtime)
 
     print("\nDone.")
     print(f"Framework: {args.framework}")

@@ -35,8 +35,6 @@ public sealed class AIPanelView : ContentView
                 Spacing = 8,
                 Children =
                 {
-                    new Label { Text = "AI Operator", FontAttributes = FontAttributes.Bold, FontSize = 18 },
-                    new Label { Text = "Native shell panel. Plans commands, previews actions, requires approval for mutations, and executes through the command bus.", Opacity = 0.8 },
                     _contextLabel,
                     _responseLabel,
                     _promptEntry,

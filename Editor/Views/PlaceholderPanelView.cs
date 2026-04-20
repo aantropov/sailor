@@ -1,5 +1,7 @@
 namespace SailorEditor.Views;
 
+using Microsoft.Maui.Controls.Shapes;
+
 public sealed class PlaceholderPanelView : ContentView
 {
     public PlaceholderPanelView(string title, string description)

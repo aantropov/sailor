@@ -56,6 +56,7 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
         return false;
     }
 
+    [YamlIgnore]
     public bool HasPendingInspectorChanges => IsDirty;
 
     public void Initialize()

@@ -6,6 +6,7 @@
               xmlns:utility="clr-namespace:SailorEditor.Utility"
               xmlns:models="clr-namespace:SailorEditor.ViewModels"
               xmlns:services="clr-namespace:SailorEditor.Services"
+              xmlns:controls="clr-namespace:SailorEditor.Controls"
               xmlns:local="clr-namespace:SailorEditor"
               x:DataType="models:TextureFile"
               x:Class="SailorEditor.TextureFileTemplate">
@@ -73,18 +74,34 @@
             <CheckBox IsChecked="{Binding ShouldKeepCpuBuffers}" Grid.Row="2" Grid.Column="1" />
 
             <Label Text="Filtration" Grid.Row="3" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureFiltrationType}" SelectedItem="{Binding Filtration}" Grid.Row="3" Grid.Column="1" />
+            <Picker ItemsSource="{Binding TextureFiltrationType}" Grid.Row="3" Grid.Column="1">
+                <Picker.Behaviors>
+                    <controls:EnumPickerBehavior Values="{Binding TextureFiltrationType}" Value="{Binding Filtration, Mode=TwoWay}"/>
+                </Picker.Behaviors>
+            </Picker>
 
             <!-- Clamping -->
             <Label Text="Clamping" Grid.Row="4" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureClampingType}" SelectedItem="{Binding Clamping}" Grid.Row="4" Grid.Column="1" />
+            <Picker ItemsSource="{Binding TextureClampingType}" Grid.Row="4" Grid.Column="1">
+                <Picker.Behaviors>
+                    <controls:EnumPickerBehavior Values="{Binding TextureClampingType}" Value="{Binding Clamping, Mode=TwoWay}"/>
+                </Picker.Behaviors>
+            </Picker>
 
             <!-- Format -->
             <Label Text="Format" Grid.Row="5" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding TextureFormatType}" SelectedItem="{Binding Format}" Grid.Row="5" Grid.Column="1" />
+            <Picker ItemsSource="{Binding TextureFormatType}" Grid.Row="5" Grid.Column="1">
+                <Picker.Behaviors>
+                    <controls:EnumPickerBehavior Values="{Binding TextureFormatType}" Value="{Binding Format, Mode=TwoWay}"/>
+                </Picker.Behaviors>
+            </Picker>
 
             <Label Text="Sampler Reduction" Grid.Row="6" Grid.Column="0" VerticalOptions="Center" />
-            <Picker ItemsSource="{Binding SamplerReductionType}" SelectedItem="{Binding SamplerReduction}" Grid.Row="6" Grid.Column="1" />
+            <Picker ItemsSource="{Binding SamplerReductionType}" Grid.Row="6" Grid.Column="1">
+                <Picker.Behaviors>
+                    <controls:EnumPickerBehavior Values="{Binding SamplerReductionType}" Value="{Binding SamplerReduction, Mode=TwoWay}"/>
+                </Picker.Behaviors>
+            </Picker>
         </Grid>
     </Grid>
 </DataTemplate>

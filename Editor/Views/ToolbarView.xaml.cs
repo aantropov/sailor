@@ -69,7 +69,8 @@ namespace SailorEditor.Views
         private void OnPlayDebugButtonClicked(object sender, EventArgs e) => RunWorld(true);
         private async void OnPathTraceSceneButtonClicked(object sender, EventArgs e) => await ExportPathTracedImage(false);
         private async void OnPathTraceSelectionButtonClicked(object sender, EventArgs e) => await ExportPathTracedImage(true);
-        private async void OnPanelsButtonClicked(object sender, EventArgs e) => await OpenPanelPickerAsync();
+        private async void OnSaveLayoutButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<EditorShellHost>().SaveLayoutAsync();
+        private async void OnResetLayoutButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<EditorShellHost>().ResetLayoutAsync();
         private async void OnSettingsButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<EditorShellHost>().OpenPanelAsync(KnownPanelTypes.Settings);
 
         void RunWorld(bool bDebug)
@@ -89,27 +90,6 @@ namespace SailorEditor.Views
 
                 engineService.RunWorld("../Cache/Temp.world", bDebug);
             });
-        }
-
-        async Task OpenPanelPickerAsync()
-        {
-            var shellHost = MauiProgram.GetService<EditorShellHost>();
-            var registry = MauiProgram.GetService<PanelRegistry>();
-            var page = Application.Current?.Windows?.FirstOrDefault()?.Page;
-
-            if (page is null)
-                return;
-
-            var descriptors = registry.GetAllDescriptors().OrderBy(x => x.Role).ThenBy(x => x.Title).ToArray();
-            var orderedButtons = descriptors.Select(x => x.Title).ToArray();
-            var picked = await page.DisplayActionSheet("Open panel", "Cancel", null, orderedButtons);
-
-            if (string.IsNullOrWhiteSpace(picked) || picked == "Cancel")
-                return;
-
-            var descriptor = descriptors.FirstOrDefault(x => x.Title == picked);
-            if (descriptor is not null)
-                await shellHost.OpenPanelAsync(descriptor.TypeId);
         }
 
         async Task ExportPathTracedImage(bool bSelectedOnly)

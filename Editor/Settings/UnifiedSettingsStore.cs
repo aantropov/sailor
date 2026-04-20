@@ -164,7 +164,7 @@ public sealed class UnifiedSettingsStore : ISettingsStore
     };
 
     static IReadOnlyList<SettingsScope> DefaultResolutionOrder() =>
-        [SettingsScope.Project, SettingsScope.Editor, SettingsScope.Engine];
+        [SettingsScope.Project, SettingsScope.Editor, SettingsScope.Engine, SettingsScope.AI];
 
     static bool TryConvertBool(object value, out bool result)
     {
@@ -268,7 +268,13 @@ public static class EditorSettingsCatalog
             DefaultValue: 1.0,
             Validator: value => value is double d && d >= 0.25 && d <= 2.0
                 ? SettingsValidationResult.Success
-                : new SettingsValidationResult([new SettingsValidationMessage("engine.renderScale", "Render Scale must be between 0.25 and 2.0.", SettingsValidationSeverity.Error)]))
+                : new SettingsValidationResult([new SettingsValidationMessage("engine.renderScale", "Render Scale must be between 0.25 and 2.0.", SettingsValidationSeverity.Error)])),
+        new(
+            new SettingsEntry("ai.llmVendor", "LLM Vendor", SettingsValueKind.Enum, SettingsScope.AI, "AI provider used by the editor assistant.", AllowedValues: ["None", "OpenAI", "Anthropic", "Ollama", "Custom"]),
+            DefaultValue: "None"),
+        new(
+            new SettingsEntry("ai.llmApiKey", "LLM API Key", SettingsValueKind.String, SettingsScope.AI, "API key for the selected LLM vendor. Stored in the editor settings file.", IsSecret: true),
+            DefaultValue: string.Empty)
     ];
 
     public static SettingsCategory CreateCategoryTree() => new(
@@ -279,5 +285,6 @@ public static class EditorSettingsCatalog
             new SettingsCategory("project", "Project", Entries: Definitions.Where(x => x.Entry.Scope == SettingsScope.Project).Select(x => x.Entry).ToArray()),
             new SettingsCategory("editor", "Editor", Entries: Definitions.Where(x => x.Entry.Scope == SettingsScope.Editor).Select(x => x.Entry).ToArray()),
             new SettingsCategory("engine", "Engine", Entries: Definitions.Where(x => x.Entry.Scope == SettingsScope.Engine).Select(x => x.Entry).ToArray()),
+            new SettingsCategory("ai", "AI", Entries: Definitions.Where(x => x.Entry.Scope == SettingsScope.AI).Select(x => x.Entry).ToArray()),
         ]);
 }

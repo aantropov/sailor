@@ -52,6 +52,9 @@ public sealed partial class InspectorProjectionService : ObservableObject
                 Array.Empty<InspectorComponentProjection>()),
             _ => InspectorProjection.Empty
         };
+
+        OnPropertyChanged(nameof(SelectedItem));
+        OnPropertyChanged(nameof(Current));
     }
 
     object? ResolveSelectedItem()

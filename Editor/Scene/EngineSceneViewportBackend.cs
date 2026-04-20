@@ -2,7 +2,7 @@ using SailorEditor.Services;
 
 namespace SailorEditor.Scene;
 
-public sealed class EngineSceneViewportBackend(EngineService engineService) : ISceneViewportBackend
+internal sealed class EngineSceneViewportBackend(EngineService engineService) : ISceneViewportBackend
 {
     public void BindMacHost(ulong viewportId, nint hostHandle) => engineService.BindMacRemoteViewportHost(viewportId, hostHandle);
 

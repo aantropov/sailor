@@ -13,6 +13,7 @@
 #include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
+#include "RHI/SceneView.h"
 
 using namespace Sailor;
 
@@ -23,50 +24,7 @@ namespace
 	{
 		using PropertyType = ::refl::trait::remove_qualifiers_t<TProperty>;
 
-		if constexpr (std::is_same_v<PropertyType, FileId>)
-		{
-			return "FileId";
-		}
-		else if constexpr (std::is_same_v<PropertyType, std::string>)
-		{
-			return "string";
-		}
-		else if constexpr (std::is_same_v<PropertyType, bool>)
-		{
-			return "bool";
-		}
-		else if constexpr (std::is_same_v<PropertyType, float>)
-		{
-			return "float";
-		}
-		else if constexpr (std::is_same_v<PropertyType, int32_t>)
-		{
-			return "int32";
-		}
-		else if constexpr (std::is_same_v<PropertyType, TVector<FileId>>)
-		{
-			return "List<FileId>";
-		}
-		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureClamping>)
-		{
-			return "enum Sailor::RHI::ETextureClamping";
-		}
-		else if constexpr (std::is_same_v<PropertyType, RHI::ESamplerReductionMode>)
-		{
-			return "enum Sailor::RHI::ESamplerReductionMode";
-		}
-		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureFiltration>)
-		{
-			return "enum Sailor::RHI::ETextureFiltration";
-		}
-		else if constexpr (std::is_same_v<PropertyType, RHI::ETextureFormat>)
-		{
-			return "enum Sailor::RHI::EFormat";
-		}
-		else
-		{
-			return TypeInfo::Get<PropertyType>().Name();
-		}
+		return TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
 	}
 
 	YAML::Node MakeStringSequence(std::initializer_list<const char*> values)
@@ -312,6 +270,7 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Add(ReflectEnumValues<RHI::ECullMode>());
 	nodes.Add(ReflectEnumValues<RHI::EBlendMode>());
 	nodes.Add(ReflectEnumValues<RHI::EDepthCompare>());
+	nodes.Add(ReflectEnumValues<RHI::EShadowType>());
 
 	yamlTypes["enums"] = nodes;
 	yamlTypes["assetTypes"] = ExportAssetInfoTypes();

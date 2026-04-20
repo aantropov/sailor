@@ -45,12 +45,10 @@
             </Grid.ColumnDefinitions>
 
             <Grid.RowDefinitions>
-                <RowDefinition Height="25"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Label Text="Inspector" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25" Grid.Row="0" Grid.Column="0"/>
-            <ScrollView Grid.Row="1" Grid.Column="0" HorizontalOptions="Fill" Orientation="Vertical">
+            <ScrollView Grid.Row="0" Grid.Column="0" HorizontalOptions="Fill" Orientation="Vertical">
                 <VerticalStackLayout
                     Spacing="8"
                     Padding="0,4,0,0"

@@ -11,6 +11,7 @@ public static class KnownPanelTypes
     public static readonly PanelTypeId Console = new("Console");
     public static readonly PanelTypeId Settings = new("Settings");
     public static readonly PanelTypeId AI = new("AI");
+    public static readonly PanelTypeId EditorPerformance = new("EditorPerformance");
 }
 
 public sealed class PanelRegistry : IPanelDescriptorRegistry
@@ -26,6 +27,7 @@ public sealed class PanelRegistry : IPanelDescriptorRegistry
         Register(new PanelDescriptor(KnownPanelTypes.Console, "Console", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Bottom), () => new ConsoleView()));
         Register(new PanelDescriptor(KnownPanelTypes.Settings, "Settings", PanelRole.Tool, false, new(DefaultPosition: DockPosition.Right), () => new SettingsPanelView()));
         Register(new PanelDescriptor(KnownPanelTypes.AI, "AI", PanelRole.Tool, false, new(TargetGroupId: "right-inspector", DefaultPosition: DockPosition.Right), () => new AIPanelView()));
+        Register(new PanelDescriptor(KnownPanelTypes.EditorPerformance, "Editor Performance", PanelRole.Tool, false, new(TargetGroupId: "bottom-console", DefaultPosition: DockPosition.Bottom), () => new EditorPerformanceView()));
     }
 
     public void Register(PanelDescriptor descriptor) => _descriptors[descriptor.TypeId] = descriptor;

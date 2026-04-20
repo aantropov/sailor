@@ -185,9 +185,29 @@ public partial class MaterialFile : AssetFile
     [ObservableProperty]
     ObservableList<Observable<string>> shaderDefines = [];
 
-    public List<string> FillModeEnumValues { get; set; } = [];
-    public List<string> CullModeEnumValues { get; set; } = [];
-    public List<string> BlendModeEnumValues { get; set; } = [];
+    [ObservableProperty]
+    List<string> fillModeEnumValues = [];
+
+    [ObservableProperty]
+    List<string> cullModeEnumValues = [];
+
+    [ObservableProperty]
+    List<string> blendModeEnumValues = [];
+
+    void LoadMaterialEnumTypes()
+    {
+        var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
+
+        FillModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EFillMode"];
+        CullModeEnumValues = engineTypes.Enums["enum Sailor::RHI::ECullMode"];
+        BlendModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EBlendMode"];
+    }
+
+    public override Task PrepareInspectorResources()
+    {
+        LoadRuntimeDataWithoutDirtyTracking(LoadMaterialEnumTypes);
+        return Task.CompletedTask;
+    }
 
     public override async Task<bool> LoadDependentResources()
     {
@@ -195,11 +215,7 @@ public partial class MaterialFile : AssetFile
         {
             try
             {
-                var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
-
-                FillModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EFillMode"];
-                CullModeEnumValues = engineTypes.Enums["enum Sailor::RHI::ECullMode"];
-                BlendModeEnumValues = engineTypes.Enums["enum Sailor::RHI::EBlendMode"];
+                await PrepareInspectorResources();
 
                 var AssetService = MauiProgram.GetService<AssetsService>();
                 var preloadTasks = new List<Task>();
@@ -281,9 +297,9 @@ public partial class MaterialFile : AssetFile
                 CustomDepthShader = intermediateObject.CustomDepthShader;
                 EnableDepthTest = intermediateObject.EnableDepthTest;
                 EnableZWrite = intermediateObject.EnableZWrite;
-                CullMode = intermediateObject.CullMode;
-                BlendMode = intermediateObject.BlendMode;
-                FillMode = intermediateObject.FillMode;
+                CullMode = EnumValueUtils.Normalize(intermediateObject.CullMode);
+                BlendMode = EnumValueUtils.Normalize(intermediateObject.BlendMode);
+                FillMode = EnumValueUtils.Normalize(intermediateObject.FillMode);
                 Shader = intermediateObject.Shader;
                 Samplers = intermediateObject.Samplers;
                 UniformsVec4 = intermediateObject.UniformsVec4;
@@ -444,13 +460,13 @@ public class MaterialFileYamlConverter : IYamlTypeConverter
                         assetFile.EnableZWrite = deserializer.Deserialize<bool>(parser);
                         break;
                     case "cullMode":
-                        assetFile.CullMode = deserializer.Deserialize<string>(parser);
+                        assetFile.CullMode = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "blendMode":
-                        assetFile.BlendMode = deserializer.Deserialize<string>(parser);
+                        assetFile.BlendMode = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "fillMode":
-                        assetFile.FillMode = deserializer.Deserialize<string>(parser);
+                        assetFile.FillMode = EnumValueUtils.Normalize(deserializer.Deserialize<string>(parser));
                         break;
                     case "shaderUid":
                         assetFile.Shader = deserializer.Deserialize<FileId>(parser);

@@ -1,4 +1,5 @@
 using SailorEditor.Commands;
+using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEngine;
 using System;
@@ -33,26 +34,36 @@ public static class EditorDragDrop
 
     public static bool TryCreateSceneDropCommand(object? source, GameObject? target, out IEditorCommand? command)
     {
-        command = source switch
-        {
-            GameObject gameObject when CanReparent(gameObject, target)
-                => new ReparentGameObjectCommand(gameObject, target, keepWorldTransform: true),
-            PrefabFile prefab when target is null || target.InstanceId is not null
-                => new InstantiatePrefabAssetCommand(prefab, target),
-            _ => null
-        };
+        var currentSource = source is GameObject sourceGameObject ? ResolveCurrentGameObject(sourceGameObject) : null;
+        var currentTarget = target is not null ? ResolveCurrentGameObject(target) : null;
 
-        return command is not null;
+        command = null;
+
+        if (source is GameObject && currentSource is not null && CanReparent(currentSource, currentTarget))
+        {
+            command = new ReparentGameObjectCommand(currentSource, currentTarget, keepWorldTransform: true);
+            return true;
+        }
+
+        if (TryResolvePrefabAsset(source, out var prefab) && (currentTarget is null || currentTarget.InstanceId is not null))
+        {
+            command = new InstantiatePrefabAssetCommand(prefab, currentTarget);
+            return true;
+        }
+
+        return false;
     }
 
     public static bool TryCreateContentDropCommand(object? source, object? target, out CreatePrefabAssetCommand? command, out bool requiresConfirmation)
     {
         requiresConfirmation = false;
+        var currentSource = source is GameObject gameObject ? ResolveCurrentGameObject(gameObject) : null;
+
         command = source switch
         {
-            GameObject gameObject when target is null => new CreatePrefabAssetCommand(gameObject),
-            GameObject gameObject when target is AssetFolder folder => new CreatePrefabAssetCommand(gameObject, folder),
-            GameObject gameObject when target is PrefabFile prefab => new CreatePrefabAssetCommand(gameObject, existingPrefab: prefab),
+            GameObject when currentSource is not null && target is null => new CreatePrefabAssetCommand(currentSource),
+            GameObject when currentSource is not null && target is AssetFolder folder => new CreatePrefabAssetCommand(currentSource, folder),
+            GameObject when currentSource is not null && target is PrefabFile prefab => new CreatePrefabAssetCommand(currentSource, existingPrefab: prefab),
             _ => null
         };
 
@@ -61,6 +72,32 @@ public static class EditorDragDrop
 
         requiresConfirmation = target is PrefabFile;
         return true;
+    }
+
+    static GameObject? ResolveCurrentGameObject(GameObject gameObject)
+    {
+        if (gameObject.InstanceId is null || gameObject.InstanceId.IsEmpty())
+            return gameObject;
+
+        var world = MauiProgram.GetService<WorldService>();
+        return world.TryGetGameObject(gameObject.InstanceId, out var current) ? current : null;
+    }
+
+    static bool TryResolvePrefabAsset(object? source, out AssetFile prefab)
+    {
+        prefab = null;
+        if (source is not AssetFile assetFile || assetFile.FileId is null || assetFile.FileId.IsEmpty())
+            return false;
+
+        if (assetFile is PrefabFile ||
+            string.Equals(assetFile.AssetInfoTypeName, "Sailor::PrefabAssetInfo", StringComparison.Ordinal) ||
+            string.Equals(assetFile.Asset?.Extension, ".prefab", StringComparison.OrdinalIgnoreCase))
+        {
+            prefab = assetFile;
+            return true;
+        }
+
+        return false;
     }
 
     static bool CanReparent(GameObject source, GameObject? target)
@@ -116,11 +153,4 @@ public static class EditorDragDrop
 
         return false;
     }
-}
-
-public sealed class TreeViewDropRequest
-{
-    public object? Source { get; init; }
-    public object? Target { get; init; }
-    public bool Handled { get; set; }
 }
