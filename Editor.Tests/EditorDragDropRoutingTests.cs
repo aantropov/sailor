@@ -95,6 +95,43 @@ public sealed class EditorDragDropRoutingTests
     }
 
     [Fact]
+    public void TryCreateSceneDropCommand_RoutesReparentToRoot_WhenSourceCurrentlyHasParent()
+    {
+        var parent = new GameObject { InstanceId = new InstanceId("go-parent"), PrefabIndex = 0, ParentIndex = uint.MaxValue };
+        var child = new GameObject { InstanceId = new InstanceId("go-child"), PrefabIndex = 0, ParentIndex = 0 };
+        var worldService = SailorEditor.MauiProgram.GetService<SailorEditor.Services.WorldService>();
+        worldService.Current.Prefabs.Clear();
+        worldService.Current.Prefabs.Add(new SailorEditor.Services.PrefabState());
+        worldService.Current.Prefabs[0].GameObjects.Add(parent);
+        worldService.Current.Prefabs[0].GameObjects.Add(child);
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(child, null, out var command);
+
+        Assert.True(resolved);
+        Assert.NotNull(command);
+        Assert.IsType<ReparentGameObjectCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RejectsReparentIntoOwnDescendant()
+    {
+        var root = new GameObject { InstanceId = new InstanceId("go-root"), PrefabIndex = 0, ParentIndex = uint.MaxValue };
+        var child = new GameObject { InstanceId = new InstanceId("go-child"), PrefabIndex = 0, ParentIndex = 0 };
+        var grandChild = new GameObject { InstanceId = new InstanceId("go-grandchild"), PrefabIndex = 0, ParentIndex = 1 };
+        var worldService = SailorEditor.MauiProgram.GetService<SailorEditor.Services.WorldService>();
+        worldService.Current.Prefabs.Clear();
+        worldService.Current.Prefabs.Add(new SailorEditor.Services.PrefabState());
+        worldService.Current.Prefabs[0].GameObjects.Add(root);
+        worldService.Current.Prefabs[0].GameObjects.Add(child);
+        worldService.Current.Prefabs[0].GameObjects.Add(grandChild);
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(root, grandChild, out var command);
+
+        Assert.False(resolved);
+        Assert.Null(command);
+    }
+
+    [Fact]
     public void TryCreateSceneDropCommand_RoutesReparentToRootOnlyWhenParentActuallyChanges()
     {
         var root = new GameObject { InstanceId = new InstanceId("go-root"), PrefabIndex = 0, ParentIndex = uint.MaxValue };

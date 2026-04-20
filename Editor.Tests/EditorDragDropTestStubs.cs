@@ -13,6 +13,7 @@ namespace SailorEngine
     public sealed class InstanceId(string value = "")
     {
         public string Value { get; set; } = value;
+        public bool IsEmpty() => string.IsNullOrWhiteSpace(Value);
     }
 }
 
@@ -41,6 +42,14 @@ namespace SailorEditor.Services
     public sealed class WorldService
     {
         public WorldState Current { get; } = new();
+
+        public bool TryGetGameObject(SailorEngine.InstanceId? instanceId, out SailorEditor.ViewModels.GameObject? gameObject)
+        {
+            gameObject = Current.Prefabs
+                .SelectMany(prefab => prefab.GameObjects)
+                .FirstOrDefault(go => go.InstanceId is not null && instanceId is not null && string.Equals(go.InstanceId.Value, instanceId.Value, StringComparison.Ordinal));
+            return gameObject is not null;
+        }
     }
 
     public sealed class WorldState

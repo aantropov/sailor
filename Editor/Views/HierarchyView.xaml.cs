@@ -35,7 +35,7 @@ namespace SailorEditor.Views
             var rootDropGesture = new DropGestureRecognizer();
             rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Move;
             rootDropGesture.Drop += OnHierarchyRootDrop;
-            HierarchyList.GestureRecognizers.Add(rootDropGesture);
+            HierarchyRootDropZone.GestureRecognizers.Add(rootDropGesture);
 
             FlyoutBase.SetContextFlyout(HierarchyList, CreateHierarchyContextFlyout(null));
             HierarchyList.ItemTemplate = CreateItemTemplate();

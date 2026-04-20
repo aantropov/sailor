@@ -2,10 +2,27 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="SailorEditor.Views.HierarchyView">
     <Frame>
-        <CollectionView x:Name="HierarchyList"
-                        Margin="4"
-                        SelectionMode="Single"
-                        VerticalOptions="Fill"
-                        HorizontalOptions="Fill" />
+        <Grid RowSpacing="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <CollectionView x:Name="HierarchyList"
+                            Grid.Row="0"
+                            Margin="4,4,4,0"
+                            SelectionMode="Single"
+                            VerticalOptions="Fill"
+                            HorizontalOptions="Fill" />
+
+            <Border x:Name="HierarchyRootDropZone"
+                    Grid.Row="1"
+                    Margin="4,0,4,4"
+                    MinimumHeightRequest="96"
+                    StrokeThickness="0"
+                    BackgroundColor="Transparent"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill" />
+        </Grid>
     </Frame>
 </ContentView>
