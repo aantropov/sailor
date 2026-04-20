@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
 
@@ -32,6 +33,8 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
     public void Refresh()
     {
+        using var perfScope = EditorPerf.Scope("InspectorProjectionService.Refresh");
+
         SelectedItem = ResolveSelectedItem();
         Current = SelectedItem switch
         {
@@ -66,17 +69,5 @@ public sealed partial class InspectorProjectionService : ObservableObject
         return _selectionService.SelectedItem;
     }
 
-    GameObject? ResolveOwner(Component component)
-    {
-        foreach (var prefab in _worldService.Current.Prefabs)
-        {
-            foreach (var gameObject in prefab.GameObjects)
-            {
-                if (_worldService.GetComponents(gameObject).Any(x => x.InstanceId == component.InstanceId))
-                    return gameObject;
-            }
-        }
-
-        return null;
-    }
+    GameObject? ResolveOwner(Component component) => _worldService.FindOwner(component);
 }

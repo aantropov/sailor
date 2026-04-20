@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
 using SailorEngine;
@@ -42,14 +43,25 @@ public sealed partial class HierarchyProjectionService : ObservableObject
 
     public void Refresh()
     {
+        using var perfScope = EditorPerf.Scope("HierarchyProjectionService.Refresh");
+
         var items = _worldService.Current.Prefabs
             .SelectMany(prefab => prefab.GameObjects.Select((gameObject, index) => new { prefab, gameObject, index }))
             .Select(x => new HierarchySourceItem(
                 x.gameObject.InstanceId?.Value ?? string.Empty,
                 x.gameObject.Name,
-                x.gameObject.ParentIndex == uint.MaxValue ? null : x.prefab.GameObjects[(int)x.gameObject.ParentIndex].InstanceId?.Value))
+                ResolveParentId(x.prefab, x.gameObject)))
             .Where(x => !string.IsNullOrWhiteSpace(x.Id));
 
         Roots = HierarchyProjectionBuilder.Build(items, _expandedIds, _selectionService.SelectedInstanceId?.Value);
+    }
+
+    static string? ResolveParentId(Prefab prefab, GameObject gameObject)
+    {
+        if (gameObject.ParentIndex == uint.MaxValue || gameObject.ParentIndex >= prefab.GameObjects.Count)
+            return null;
+
+        var parent = prefab.GameObjects[(int)gameObject.ParentIndex];
+        return parent.InstanceId is not null && !parent.InstanceId.IsEmpty() ? parent.InstanceId.Value : null;
     }
 }

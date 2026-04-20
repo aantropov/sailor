@@ -2,6 +2,8 @@ using SailorEngine;
 using System.Runtime.InteropServices;
 using System.Diagnostics;
 using YamlDotNet.Serialization;
+using SailorEditor.Utility;
+using System.Threading;
 
 namespace SailorEngine
 {
@@ -130,7 +132,10 @@ namespace SailorEditor.Services
 
         readonly object interopLock = new();
         readonly object runLock = new();
+        readonly RingBufferedBatcher<string> consoleMessages = new(MaxBufferedConsoleMessages);
+        int consoleDispatchScheduled = 0;
         bool isRunning = false;
+        const int MaxBufferedConsoleMessages = 1000;
 
         readonly string repoRoot = ResolveRepoRoot();
 
@@ -184,6 +189,8 @@ namespace SailorEditor.Services
 
         public EngineTypes EngineTypes { get; private set; } = new();
 
+        public string[] GetRecentConsoleMessages() => consoleMessages.Snapshot();
+
         public void PushConsoleMessage(string message)
         {
             if (string.IsNullOrWhiteSpace(message))
@@ -191,7 +198,54 @@ namespace SailorEditor.Services
                 return;
             }
 
-            MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke([message]));
+            PublishConsoleMessages([message]);
+        }
+
+        void PublishConsoleMessages(string[] messages)
+        {
+            if (messages.Length == 0)
+            {
+                return;
+            }
+
+            var filtered = messages.Where(message => !string.IsNullOrWhiteSpace(message)).ToArray();
+            if (filtered.Length == 0)
+            {
+                return;
+            }
+
+            consoleMessages.EnqueueRange(filtered);
+            ScheduleConsoleDispatch();
+        }
+
+        void ScheduleConsoleDispatch()
+        {
+            if (Interlocked.Exchange(ref consoleDispatchScheduled, 1) != 0)
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(FlushConsoleMessages);
+        }
+
+        void FlushConsoleMessages()
+        {
+            try
+            {
+                var pending = consoleMessages.DrainPending();
+                if (pending.Length > 0)
+                {
+                    OnPullMessagesAction?.Invoke(pending);
+                }
+            }
+            finally
+            {
+                Interlocked.Exchange(ref consoleDispatchScheduled, 0);
+                if (consoleMessages.HasPending)
+                {
+                    ScheduleConsoleDispatch();
+                }
+            }
         }
 
         public static void ShowMainWindow(bool bShow) => EngineAppInterop.ShowMainWindow(bShow);
@@ -460,7 +514,7 @@ namespace SailorEditor.Services
                     var bootstrapMessages = PullMessages();
                     if (bootstrapMessages != null)
                     {
-                        MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(bootstrapMessages));
+                        PublishConsoleMessages(bootstrapMessages);
                     }
 
 #if !MACCATALYST
@@ -481,7 +535,7 @@ namespace SailorEditor.Services
                         var messages = PullMessages();
                         if (messages != null)
                         {
-                            MainThread.BeginInvokeOnMainThread(() => OnPullMessagesAction?.Invoke(messages));
+                            PublishConsoleMessages(messages);
                         }
                     }, 300, 500, cts.Token);
 
@@ -689,14 +743,24 @@ namespace SailorEditor.Services
         public bool CommitChanges(InstanceId id, string yamlChanges)
         {
             var stringId = id.Value.ToString();
+            bool result;
+
             lock (interopLock)
             {
-                return EngineAppInterop.UpdateObject(stringId, yamlChanges);
+                result = EngineAppInterop.UpdateObject(stringId, yamlChanges);
             }
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
         }
 
         public void RefreshCurrentWorld()
         {
+            using var perfScope = EditorPerf.Scope("EngineService.RefreshCurrentWorld");
             string serializedWorld = SerializeWorld();
             if (!string.IsNullOrEmpty(serializedWorld))
             {

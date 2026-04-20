@@ -186,6 +186,7 @@ namespace SailorEditor.Views
 
         private void PopulateHierarchyView(World world)
         {
+            using var perfScope = EditorPerf.Scope("HierarchyView.PopulateHierarchyView");
             projectionService.Refresh();
 
             var lookup = world.Prefabs

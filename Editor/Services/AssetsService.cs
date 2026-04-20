@@ -113,6 +113,8 @@ namespace SailorEditor.Services
 
         public void AddProjectRoot(string projectRoot)
         {
+            using var perfScope = EditorPerf.Scope("AssetsService.AddProjectRoot");
+
             Folders = [];
             Assets = [];
 

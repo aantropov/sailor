@@ -1,8 +1,10 @@
 ﻿using SailorEditor.Helpers;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
-using System.ComponentModel;
+using SailorEditor.Utility;
 using SailorEngine;
+using Component = SailorEditor.ViewModels.Component;
+using PropertyChangedEventArgs = System.ComponentModel.PropertyChangedEventArgs;
 
 namespace SailorEditor.Views
 {
@@ -30,6 +32,8 @@ namespace SailorEditor.Views
 
         void RefreshInspector()
         {
+            using var perfScope = EditorPerf.Scope("InspectorView.RefreshInspector");
+
             if (InspectedItemHost.Content?.BindingContext is IInspectorEditable editable && editable.HasPendingInspectorChanges)
             {
                 editable.CommitInspectorChanges();
@@ -62,6 +66,11 @@ namespace SailorEditor.Views
             if (ReferenceEquals(current, next))
             {
                 return true;
+            }
+
+            if (current is GameObject or Component || next is GameObject or Component)
+            {
+                return false;
             }
 
             return TryGetInstanceId(current) is { } currentId &&

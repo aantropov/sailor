@@ -16,6 +16,7 @@ namespace SailorEditor.Services
         {
             public Dictionary<InstanceId, Component> Components { get; } = new();
             public Dictionary<InstanceId, GameObject> GameObjects { get; } = new();
+            public Dictionary<InstanceId, GameObject> ComponentOwners { get; } = new();
         }
 
         public World Current { get; private set; } = new World();
@@ -51,6 +52,16 @@ namespace SailorEditor.Services
         public Component FindComponent(GameObject gameObject, string componentTypeName)
         {
             return GetComponents(gameObject).FirstOrDefault(component => component.Typename.Name == componentTypeName);
+        }
+
+        public GameObject FindOwner(Component component)
+        {
+            if (component?.InstanceId is null || component.InstanceId.IsEmpty())
+            {
+                return null;
+            }
+
+            return componentOwnersDict.TryGetValue(component.InstanceId, out var owner) ? owner : null;
         }
 
         public bool CreateGameObject(GameObject parent = null)
@@ -256,6 +267,8 @@ namespace SailorEditor.Services
 
         public void PopulateWorld(string yaml)
         {
+            using var perfScope = EditorPerf.Scope("WorldService.PopulateWorld");
+
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
             .WithTypeConverter(new WorldYamlConverter())
             .Build();
@@ -279,6 +292,7 @@ namespace SailorEditor.Services
             // Rebuild only this world's lookup caches.
             cache.Components.Clear();
             cache.GameObjects.Clear();
+            cache.ComponentOwners.Clear();
             currentCache = cache;
 
             int prefabIndex = 0;
@@ -300,6 +314,7 @@ namespace SailorEditor.Services
                         var component = prefab.Components[i];
                         component.Initialize();
                         componentsDict[component.InstanceId] = component;
+                        componentOwnersDict[component.InstanceId] = gameObject;
                         component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
 
                         newPrefab.Components.Add(component);
@@ -571,5 +586,6 @@ namespace SailorEditor.Services
 
         Dictionary<InstanceId, Component> componentsDict => currentCache.Components;
         Dictionary<InstanceId, GameObject> gameObjectsDict => currentCache.GameObjects;
+        Dictionary<InstanceId, GameObject> componentOwnersDict => currentCache.ComponentOwners;
     }
 }
