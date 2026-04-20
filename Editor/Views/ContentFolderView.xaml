@@ -2,20 +2,124 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Name="this"
              x:Class="SailorEditor.Views.ContentFolderView"
-             xmlns:controls="clr-namespace:SailorEditor.Controls">
+             xmlns:controls="clr-namespace:SailorEditor.Controls"
+             xmlns:content="clr-namespace:SailorEditor.Content">
 
     <Frame>
-        <Grid RowSpacing="0" ColumnSpacing="0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
+        <Grid RowSpacing="8" ColumnSpacing="0" Padding="4">
             <Grid.RowDefinitions>
-                <RowDefinition Height="25"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="2*"/>
+                <RowDefinition Height="3*"/>
             </Grid.RowDefinitions>
-            <Label Text="Content" HorizontalOptions="StartAndExpand" VerticalOptions="Start" HeightRequest="25"  Grid.Row="0" Grid.Column="0"/>
-            <controls:TreeView Margin="4" x:Name="FolderTree" Grid.Row="1" Grid.Column="0"/>
+
+            <VerticalStackLayout Grid.Row="0" Spacing="2">
+                <Label x:Name="CurrentFolderTitle"
+                       Text="Content"
+                       FontAttributes="Bold"
+                       FontSize="16" />
+                <Label x:Name="CurrentFolderPath"
+                       Text="/"
+                       FontSize="11"
+                       Opacity="0.7"
+                       LineBreakMode="TailTruncation" />
+            </VerticalStackLayout>
+
+            <Grid Grid.Row="1" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="180"/>
+                </Grid.ColumnDefinitions>
+
+                <SearchBar x:Name="FilterSearchBar"
+                           Grid.Column="0"
+                           Placeholder="Search current folder assets" />
+
+                <Picker x:Name="SortPicker"
+                        Grid.Column="1"
+                        Title="Sort" />
+            </Grid>
+
+            <controls:TreeView Margin="0,4,0,0"
+                               x:Name="FolderTree"
+                               Grid.Row="2"/>
+
+            <Grid Grid.Row="3" RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="2*"/>
+                </Grid.RowDefinitions>
+
+                <Label x:Name="CurrentFolderSummary"
+                       Grid.Row="0"
+                       FontSize="11"
+                       Opacity="0.7"
+                       Text="0 folders • 0 assets" />
+
+                <Label Grid.Row="1"
+                       Text="Folders"
+                       FontAttributes="Bold"
+                       FontSize="12" />
+
+                <CollectionView x:Name="CurrentFoldersView"
+                                Grid.Row="2"
+                                SelectionMode="Single"
+                                EmptyView="No subfolders in this location.">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="content:ProjectContentFolderItem">
+                            <Border StrokeThickness="1"
+                                    Padding="10,6"
+                                    Margin="0,2">
+                                <HorizontalStackLayout Spacing="8">
+                                    <Label Text="📁" />
+                                    <VerticalStackLayout Spacing="0">
+                                        <Label Text="{Binding Name}"
+                                               FontAttributes="Bold" />
+                                        <Label Text="{Binding FullPath}"
+                                               FontSize="11"
+                                               Opacity="0.7"
+                                               LineBreakMode="TailTruncation" />
+                                    </VerticalStackLayout>
+                                </HorizontalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <Label Grid.Row="3"
+                       Text="Assets"
+                       FontAttributes="Bold"
+                       FontSize="12" />
+
+                <CollectionView x:Name="CurrentAssetsView"
+                                Grid.Row="4"
+                                SelectionMode="Single"
+                                EmptyView="No assets match this folder/filter.">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="content:ProjectContentAssetItem">
+                            <Border StrokeThickness="1"
+                                    Padding="10,6"
+                                    Margin="0,2">
+                                <VerticalStackLayout Spacing="1">
+                                    <Label Text="{Binding DisplayName}"
+                                           FontAttributes="Bold" />
+                                    <Label Text="{Binding AssetInfoTypeName}"
+                                           FontSize="11"
+                                           Opacity="0.7" />
+                                    <Label Text="{Binding FullPath}"
+                                           FontSize="11"
+                                           Opacity="0.7"
+                                           LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+            </Grid>
         </Grid>
     </Frame>
 </ContentView>
