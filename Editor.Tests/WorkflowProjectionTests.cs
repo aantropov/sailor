@@ -45,6 +45,46 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void HierarchyProjection_Flatten_OnlyEmitsVisibleRows_WithDepth()
+    {
+        var roots = HierarchyProjectionBuilder.Build(
+        [
+            new HierarchySourceItem("root", "Root", null),
+            new HierarchySourceItem("child-a", "Child A", "root"),
+            new HierarchySourceItem("child-b", "Child B", "root"),
+            new HierarchySourceItem("grandchild", "Grandchild", "child-a")
+        ],
+        new HashSet<string> { "root" },
+        "child-b");
+
+        var rows = HierarchyProjectionBuilder.Flatten(roots);
+
+        Assert.Collection(
+            rows,
+            row =>
+            {
+                Assert.Equal("root", row.InstanceId);
+                Assert.Equal(0, row.Depth);
+                Assert.True(row.HasChildren);
+                Assert.True(row.IsExpanded);
+            },
+            row =>
+            {
+                Assert.Equal("child-a", row.InstanceId);
+                Assert.Equal(1, row.Depth);
+                Assert.True(row.HasChildren);
+                Assert.False(row.IsExpanded);
+            },
+            row =>
+            {
+                Assert.Equal("child-b", row.InstanceId);
+                Assert.Equal(1, row.Depth);
+                Assert.False(row.HasChildren);
+                Assert.True(row.IsSelected);
+            });
+    }
+
+    [Fact]
     public void InspectorProjection_UsesEmptyProjectionForNoSelection()
     {
         var empty = InspectorProjectionBuilder.Build(null, SelectionTargetKind.None, null, null, null);

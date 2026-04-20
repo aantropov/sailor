@@ -15,6 +15,9 @@ public sealed partial class HierarchyProjectionService : ObservableObject
     [ObservableProperty]
     IReadOnlyList<HierarchyProjectionNode> roots = Array.Empty<HierarchyProjectionNode>();
 
+    [ObservableProperty]
+    IReadOnlyList<HierarchyListRow> visibleRows = Array.Empty<HierarchyListRow>();
+
     public HierarchyProjectionService(WorldService worldService, SelectionService selectionService)
     {
         _worldService = worldService;
@@ -41,6 +44,26 @@ public sealed partial class HierarchyProjectionService : ObservableObject
         Refresh();
     }
 
+    public void EnsureVisible(InstanceId instanceId)
+    {
+        if (instanceId is null || instanceId.IsEmpty())
+            return;
+
+        var parentById = _worldService.Current.Prefabs
+            .SelectMany(prefab => prefab.GameObjects.Select(gameObject => new { gameObject, parentId = ResolveParentId(prefab, gameObject) }))
+            .Where(x => x.gameObject.InstanceId is not null && !x.gameObject.InstanceId.IsEmpty())
+            .ToDictionary(x => x.gameObject.InstanceId!.Value, x => x.parentId, StringComparer.Ordinal);
+
+        var currentId = instanceId.Value;
+        while (parentById.TryGetValue(currentId, out var parentId) && !string.IsNullOrWhiteSpace(parentId))
+        {
+            _expandedIds.Add(parentId);
+            currentId = parentId;
+        }
+
+        Refresh();
+    }
+
     public void Refresh()
     {
         using var perfScope = EditorPerf.Scope("HierarchyProjectionService.Refresh");
@@ -54,6 +77,7 @@ public sealed partial class HierarchyProjectionService : ObservableObject
             .Where(x => !string.IsNullOrWhiteSpace(x.Id));
 
         Roots = HierarchyProjectionBuilder.Build(items, _expandedIds, _selectionService.SelectedInstanceId?.Value);
+        VisibleRows = HierarchyProjectionBuilder.Flatten(Roots);
     }
 
     static string? ResolveParentId(Prefab prefab, GameObject gameObject)
