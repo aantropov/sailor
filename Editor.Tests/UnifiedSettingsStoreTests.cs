@@ -59,4 +59,49 @@ public class UnifiedSettingsStoreTests
                 File.Delete(path);
         }
     }
+
+    [Fact]
+    public async Task LoadAsync_NormalizesYamlScalarTypes()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"sailor-editor-settings-{Guid.NewGuid():N}.yaml");
+        try
+        {
+            await File.WriteAllTextAsync(path, """
+engine:
+  engine.renderScale: 1.5
+  engine.vsync: false
+editor:
+  editor.theme: Light
+""");
+
+            var store = new UnifiedSettingsStore(EditorSettingsCatalog.Definitions);
+            await store.LoadAsync(path);
+
+            var renderScale = EditorSettingsCatalog.Definitions.Single(x => x.Entry.Key == "engine.renderScale").Entry;
+            var vsync = EditorSettingsCatalog.Definitions.Single(x => x.Entry.Key == "engine.vsync").Entry;
+
+            Assert.Equal(1.5, Assert.IsType<double>(store.Resolve(renderScale).Value));
+            Assert.False(Assert.IsType<bool>(store.Resolve(vsync).Value));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ResetValue_RemovesStoredOverrideAndFallsBackToDefault()
+    {
+        var store = new UnifiedSettingsStore(EditorSettingsCatalog.Definitions);
+        var theme = EditorSettingsCatalog.Definitions.Single(x => x.Entry.Key == "editor.theme").Entry;
+
+        await store.SetValueAsync(theme, SettingsScope.Editor, "Light");
+        store.ResetValue(theme, SettingsScope.Editor);
+
+        var resolved = store.Resolve(theme);
+        Assert.Equal("Dark", resolved.Value);
+        Assert.Null(resolved.SourceScope);
+        Assert.True(resolved.IsDefault);
+    }
 }

@@ -58,6 +58,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<ITransactionScopeFactory>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
             builder.Services.AddSingleton<IEditorShellLayoutStore, YamlEditorShellLayoutStore>();
             builder.Services.AddSingleton(sp => new UnifiedSettingsStore(EditorSettingsCatalog.Definitions));
+            builder.Services.AddSingleton<EditorSettingsPersistenceStore>();
             builder.Services.AddSingleton<EditorShellHost>();
             builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();
             builder.Services.AddSingleton<IAIActionPlanner, HeuristicAIActionPlanner>();

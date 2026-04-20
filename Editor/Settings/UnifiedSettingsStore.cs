@@ -1,3 +1,4 @@
+using System.Globalization;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -37,13 +38,23 @@ public sealed class UnifiedSettingsStore : ISettingsStore
 
     public ValueTask SetValueAsync(SettingsEntry entry, SettingsScope scope, object? value, CancellationToken cancellationToken = default)
     {
-        var result = Validate(entry, value);
+        var normalized = NormalizeForStorage(entry, value);
+        var result = Validate(entry, normalized);
         if (!result.IsValid)
             throw new InvalidOperationException(string.Join(Environment.NewLine, result.Messages.Select(x => x.Message)));
 
-        _values[scope][entry.Key] = value;
+        _values[scope][entry.Key] = normalized;
         return ValueTask.CompletedTask;
     }
+
+    public object? GetStoredValue(SettingsEntry entry, SettingsScope scope)
+        => _values[scope].TryGetValue(entry.Key, out var value) ? value : null;
+
+    public void ResetValue(SettingsEntry entry, SettingsScope scope)
+        => _values[scope].Remove(entry.Key);
+
+    public void ResetScope(SettingsScope scope)
+        => _values[scope].Clear();
 
     public EffectiveSettingsValue Resolve(SettingsEntry entry)
     {
@@ -59,22 +70,38 @@ public sealed class UnifiedSettingsStore : ISettingsStore
 
     public SettingsValidationResult Validate(SettingsEntry entry, object? value)
     {
+        var normalized = NormalizeForStorage(entry, value);
         var definition = GetDefinition(entry.Key);
         var messages = new List<SettingsValidationMessage>();
 
-        if (definition.Entry.AllowedValues is { Count: > 0 } allowedValues && value is string stringValue && !allowedValues.Contains(stringValue))
+        if (definition.Entry.AllowedValues is { Count: > 0 } allowedValues && normalized is string stringValue && !allowedValues.Contains(stringValue))
         {
             messages.Add(new SettingsValidationMessage(entry.Key, $"'{stringValue}' is not an allowed value.", SettingsValidationSeverity.Error));
         }
 
-        if (!MatchesKind(entry.ValueKind, value))
+        if (!MatchesKind(entry.ValueKind, normalized))
             messages.Add(new SettingsValidationMessage(entry.Key, $"Value does not match {entry.ValueKind}.", SettingsValidationSeverity.Error));
 
-        var custom = definition.Validator?.Invoke(value);
+        var custom = definition.Validator?.Invoke(normalized);
         if (custom is not null)
             messages.AddRange(custom.Messages);
 
         return messages.Count == 0 ? SettingsValidationResult.Success : new SettingsValidationResult(messages);
+    }
+
+    public object? NormalizeForStorage(SettingsEntry entry, object? value)
+    {
+        if (value is null)
+            return null;
+
+        return entry.ValueKind switch
+        {
+            SettingsValueKind.Boolean => TryConvertBool(value, out var booleanValue) ? booleanValue : value,
+            SettingsValueKind.Integer => TryConvertInt(value, out var integerValue) ? integerValue : value,
+            SettingsValueKind.Float => TryConvertDouble(value, out var doubleValue) ? doubleValue : value,
+            SettingsValueKind.String or SettingsValueKind.Enum or SettingsValueKind.Path => value.ToString(),
+            _ => value
+        };
     }
 
     public async Task SaveAsync(string path, CancellationToken cancellationToken = default)
@@ -83,6 +110,11 @@ public sealed class UnifiedSettingsStore : ISettingsStore
         var model = _values.ToDictionary(
             x => x.Key.ToString().ToLowerInvariant(),
             x => (IReadOnlyDictionary<string, object?>)new Dictionary<string, object?>(x.Value));
+
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
+
         await File.WriteAllTextAsync(path, serializer.Serialize(model), cancellationToken);
     }
 
@@ -102,7 +134,16 @@ public sealed class UnifiedSettingsStore : ISettingsStore
 
             _values[scope].Clear();
             foreach (var pair in values)
-                _values[scope][pair.Key] = pair.Value;
+            {
+                if (!_definitions.TryGetValue(pair.Key, out var definition))
+                    continue;
+
+                var normalized = NormalizeForStorage(definition.Entry, pair.Value);
+                if (!Validate(definition.Entry, normalized).IsValid)
+                    continue;
+
+                _values[scope][pair.Key] = normalized;
+            }
         }
     }
 
@@ -124,6 +165,89 @@ public sealed class UnifiedSettingsStore : ISettingsStore
 
     static IReadOnlyList<SettingsScope> DefaultResolutionOrder() =>
         [SettingsScope.Project, SettingsScope.Editor, SettingsScope.Engine];
+
+    static bool TryConvertBool(object value, out bool result)
+    {
+        switch (value)
+        {
+            case bool booleanValue:
+                result = booleanValue;
+                return true;
+            case string stringValue when bool.TryParse(stringValue, out var parsed):
+                result = parsed;
+                return true;
+            default:
+                result = default;
+                return false;
+        }
+    }
+
+    static bool TryConvertInt(object value, out int result)
+    {
+        switch (value)
+        {
+            case int integerValue:
+                result = integerValue;
+                return true;
+            case long longValue when longValue is <= int.MaxValue and >= int.MinValue:
+                result = (int)longValue;
+                return true;
+            case double doubleValue when Math.Abs(doubleValue % 1) < double.Epsilon && doubleValue is <= int.MaxValue and >= int.MinValue:
+                result = (int)doubleValue;
+                return true;
+            case string stringValue when int.TryParse(stringValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed):
+                result = parsed;
+                return true;
+            default:
+                result = default;
+                return false;
+        }
+    }
+
+    static bool TryConvertDouble(object value, out double result)
+    {
+        switch (value)
+        {
+            case float floatValue:
+                result = floatValue;
+                return true;
+            case double doubleValue:
+                result = doubleValue;
+                return true;
+            case decimal decimalValue:
+                result = (double)decimalValue;
+                return true;
+            case int integerValue:
+                result = integerValue;
+                return true;
+            case long longValue:
+                result = longValue;
+                return true;
+            case string stringValue when double.TryParse(stringValue, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out var parsed):
+                result = parsed;
+                return true;
+            default:
+                result = default;
+                return false;
+        }
+    }
+}
+
+public sealed class EditorSettingsPersistenceStore
+{
+    readonly string _settingsPath;
+
+    public EditorSettingsPersistenceStore(string? settingsPath = null)
+    {
+        var appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        _settingsPath = settingsPath ?? Path.Combine(appDataDirectory, "SailorEditor", "Settings", "editor-settings.yaml");
+    }
+
+    public ValueTask LoadAsync(UnifiedSettingsStore store, CancellationToken cancellationToken = default)
+        => new(store.LoadAsync(_settingsPath, cancellationToken));
+
+    public ValueTask SaveAsync(UnifiedSettingsStore store, CancellationToken cancellationToken = default)
+        => new(store.SaveAsync(_settingsPath, cancellationToken));
 }
 
 public static class EditorSettingsCatalog
