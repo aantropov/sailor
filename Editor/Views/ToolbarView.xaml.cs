@@ -23,8 +23,44 @@ namespace SailorEditor.Views
             BindingContext = this;
         }
 
-        private void OnSaveButtonClicked(object sender, EventArgs e)
+        private async void OnSaveButtonClicked(object sender, EventArgs e)
         {
+            var selectionService = MauiProgram.GetService<SelectionService>();
+            var selected = selectionService.SelectedItem;
+
+            switch (selected)
+            {
+                case AssetFile assetFile when assetFile.IsDirty:
+                    await Task.Yield();
+                    await assetFile.Save();
+                    await DisplayStatus("Save", $"Saved {assetFile.DisplayName}");
+                    return;
+
+                case IInspectorEditable editable when editable.HasPendingInspectorChanges:
+                    if (editable.CommitInspectorChanges())
+                    {
+                        await DisplayStatus("Save", "Committed inspector changes.");
+                    }
+                    else
+                    {
+                        await DisplayStatus("Save", "Nothing was committed.");
+                    }
+                    return;
+
+                case AssetFile assetFile:
+                    await DisplayStatus("Save", $"{assetFile.DisplayName} has no pending changes.");
+                    return;
+            }
+
+            var dirtyAsset = MauiProgram.GetService<AssetsService>().Files.FirstOrDefault(x => x.IsDirty);
+            if (dirtyAsset != null)
+            {
+                await dirtyAsset.Save();
+                await DisplayStatus("Save", $"Saved {dirtyAsset.DisplayName}");
+                return;
+            }
+
+            await DisplayStatus("Save", "Nothing to save.");
         }
 
         private async void OnUndoButtonClicked(object sender, EventArgs e) => await MauiProgram.GetService<ICommandHistoryService>().UndoAsync(new CommandOrigin(CommandOriginKind.UI, "ToolbarUndo"));

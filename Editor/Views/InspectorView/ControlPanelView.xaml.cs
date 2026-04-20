@@ -23,6 +23,7 @@ public partial class ControlPanelView : ContentView
     {
         if (sender is Button { BindingContext: AssetFile assetFile })
         {
+            await Task.Yield();
             await assetFile.Save();
         }
     }
