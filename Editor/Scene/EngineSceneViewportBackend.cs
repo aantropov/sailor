@@ -9,7 +9,7 @@ internal sealed class EngineSceneViewportBackend(EngineService engineService) : 
     public bool TryUpdateViewport(ulong viewportId, SceneViewportRect rect, bool visible, bool focused)
         => engineService.TryUpdateRemoteViewport(viewportId, new Rect(rect.X, rect.Y, rect.Width, rect.Height), visible, focused);
 
-    public void SetEditorViewport(SceneViewportRect rect) => engineService.Viewport = new Rect(rect.X, rect.Y, rect.Width, rect.Height);
+    public void SetEditorViewport(SceneViewportRect rect) => engineService.SetViewport(new Rect(rect.X, rect.Y, rect.Width, rect.Height));
 
     public void SetRenderTargetSize(uint width, uint height) => engineService.SetEditorRenderTargetSize(width, height);
 

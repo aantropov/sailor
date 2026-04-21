@@ -110,7 +110,7 @@ bool App::LoadEditorWorld(const char* strFileId)
 	}
 
 	FileId fileId;
-	fileId.Deserialize(YAML::Load(strFileId));
+	fileId.Deserialize(YAML::Node(std::string(strFileId)));
 
 	auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
 	if (!worldPrefab || !worldPrefab->IsReady())

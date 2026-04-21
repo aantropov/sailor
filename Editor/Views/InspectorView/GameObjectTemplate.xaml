@@ -62,11 +62,8 @@
         <Label Text="Components" FontAttributes="Bold" Grid.Row="4" Grid.ColumnSpan="2" />
 
         <HorizontalStackLayout Grid.Row="5" Grid.ColumnSpan="2">
-            <Button Text="+"
+            <Button Text="Add Component"
                     Clicked="OnAddComponentClicked" />
-            <Button Text="Clear"
-                    Width ="40"
-                    Clicked="OnClearComponentsClicked"/>
         </HorizontalStackLayout>
 
         <CollectionView Grid.Row="6" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />

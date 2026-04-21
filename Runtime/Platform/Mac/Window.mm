@@ -100,6 +100,11 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 		return;
 	}
 
+	if (App::IsEditorMode())
+	{
+		return;
+	}
+
 	NSWindow* window = (NSWindow*)notification.object;
 	NSRect contentRect = [window.contentView bounds];
 	self.sailorWindow->ChangeWindowSize((int32_t)contentRect.size.width, (int32_t)contentRect.size.height, false);
@@ -369,9 +374,39 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 		return;
 	}
 
-	const CGFloat backingScale = App::IsEditorMode() ? std::max<CGFloat>(1.0, [window backingScaleFactor]) : 1.0;
-	const int32_t contentWidth = std::max<int32_t>(1, (int32_t)std::round((CGFloat)width / backingScale));
-	const int32_t contentHeight = std::max<int32_t>(1, (int32_t)std::round((CGFloat)height / backingScale));
+	if (App::IsEditorMode())
+	{
+		m_width = std::max<int32_t>(1, width);
+		m_height = std::max<int32_t>(1, height);
+		m_bIsFullscreen = bInIsFullScreen;
+
+		NSView* contentView = window.contentView;
+		if (contentView)
+		{
+			const CGFloat backingScale = std::max<CGFloat>(window.backingScaleFactor, 1.0);
+			const CGFloat logicalWidth = std::max<CGFloat>(1.0, (CGFloat)m_width / backingScale);
+			const CGFloat logicalHeight = std::max<CGFloat>(1.0, (CGFloat)m_height / backingScale);
+			contentView.wantsLayer = YES;
+			contentView.frame = NSMakeRect(0.0, 0.0, logicalWidth, logicalHeight);
+			[window setContentSize:NSMakeSize(logicalWidth, logicalHeight)];
+
+			CAMetalLayer* metalLayer = [contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)contentView.layer : nil;
+			if (!metalLayer)
+			{
+				metalLayer = [CAMetalLayer layer];
+				contentView.layer = metalLayer;
+			}
+
+			metalLayer.contentsScale = backingScale;
+			metalLayer.frame = contentView.bounds;
+			metalLayer.drawableSize = CGSizeMake((CGFloat)m_width, (CGFloat)m_height);
+		}
+
+		return;
+	}
+
+	const int32_t contentWidth = std::max<int32_t>(1, width);
+	const int32_t contentHeight = std::max<int32_t>(1, height);
 	m_width = contentWidth;
 	m_height = contentHeight;
 	m_bIsFullscreen = bInIsFullScreen;

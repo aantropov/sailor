@@ -376,13 +376,26 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->SetDebugName(m_pSunTexture, "Sun");
 	}
 
+	const float cloudsSize = std::min(App::GetMainWindow()->GetRenderArea().x * CloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * CloudsResolutionFactor);
+	const glm::ivec2 desiredCloudsExtent(std::max(1.0f, cloudsSize), std::max(1.0f, cloudsSize));
+
+	if (m_pCloudsTexture && m_pCloudsTexture->GetExtent() != desiredCloudsExtent)
+	{
+		m_pCloudsTexture.Clear();
+		m_pShaderBindings.Clear();
+		m_pSkyMaterial.Clear();
+		m_pComposeMaterial.Clear();
+		m_pCloudsMaterial.Clear();
+		m_pSunShaftsMaterial.Clear();
+		m_pBlitCloudsBindings.Clear();
+		m_pBlitCloudsMaterial.Clear();
+	}
+
 	if (!m_pCloudsTexture)
 	{
-		const float size = std::min(App::GetMainWindow()->GetRenderArea().x * CloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * CloudsResolutionFactor);
-
 		m_pCloudsTexture = driver->CreateRenderTarget(
 			commandList,
-			glm::ivec2(size, size),
+			desiredCloudsExtent,
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
 			ETextureFiltration::Linear,

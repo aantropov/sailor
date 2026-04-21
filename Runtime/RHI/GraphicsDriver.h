@@ -77,6 +77,9 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
 			const TVector<RHISemaphorePtr>& waitSemaphores = {}) const = 0;
+		SAILOR_API virtual bool SubmitFrameWithoutPresent(
+			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
+			const TVector<RHISemaphorePtr>& waitSemaphores = {}) = 0;
 
 		SAILOR_API virtual void SetDebugName(RHIResourcePtr resource, const std::string& name) = 0;
 		SAILOR_API virtual void WaitIdle() = 0;

@@ -21,6 +21,11 @@ float:
   
 ############################
 renderTargets:
+- name: DepthBuffer
+  format: D32_SFLOAT_S8_UINT
+  width: ViewportWidth
+  height: ViewportHeight
+
 - name: Main
   format: R16G16B16A16_SFLOAT
   width: ViewportWidth
@@ -390,13 +395,6 @@ frame:
 #############################
   renderTargets:
   - src: EditorOutput
-
-#############################
-- name: Blit
-#############################
-  renderTargets:
-  - src: EditorOutput
-  - dst: BackBuffer
 
 #############################
 - name: CopyTextureToRam

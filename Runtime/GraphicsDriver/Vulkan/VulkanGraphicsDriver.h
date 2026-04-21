@@ -38,6 +38,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API virtual bool AcquireNextImage() override;
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const override;
+		SAILOR_API virtual bool SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
 		SAILOR_API VkSemaphore GetLastSubmittedRenderFinishedSemaphoreHandle() const;
 		SAILOR_API VkSemaphore GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const;
 

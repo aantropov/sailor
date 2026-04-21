@@ -70,7 +70,12 @@ public partial class AssetFileTemplate : DataTemplate
 
     static View CreateFieldEditor(AssetFile asset, string fieldName, ObservableObject value)
     {
-        var property = asset.AssetType.Properties[fieldName];
+        asset.AssetType.Properties.TryGetValue(fieldName, out var property);
+        if (property is null)
+        {
+            return CreateReadOnlyEditor(value);
+        }
+
         if (asset.ReadOnlyAssetProperties.Contains(fieldName))
         {
             return CreateReadOnlyEditor(value);

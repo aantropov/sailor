@@ -31,12 +31,6 @@ public partial class GameObjectTemplate : DataTemplate
             await gameObject.AddComponentFromInspectorAsync();
     }
 
-    void OnClearComponentsClicked(object sender, EventArgs e)
-    {
-        if (ResolveGameObject(sender) is GameObject gameObject)
-            gameObject.ClearComponentsFromInspector();
-    }
-
     static GameObject ResolveGameObject(object sender)
     {
         if (sender is BindableObject { BindingContext: GameObject direct })

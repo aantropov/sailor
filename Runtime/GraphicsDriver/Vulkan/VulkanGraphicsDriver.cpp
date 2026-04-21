@@ -359,6 +359,22 @@ bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	return m_vkInstance->GetMainDevice()->PresentFrame(state, primaryBuffers, vkWaitSemaphores);
 }
 
+bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
+	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
+	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
+{
+	SAILOR_PROFILE_FUNCTION();
+	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return false;
+	}
+
+	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
+	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
+
+	return m_vkInstance->GetMainDevice()->SubmitFrameWithoutPresent(primaryBuffers, vkWaitSemaphores);
+}
+
 void VulkanGraphicsDriver::WaitIdle()
 {
 	SAILOR_PROFILE_FUNCTION();

@@ -95,27 +95,34 @@ void EditorComponent::EditorTick(float deltaTime)
 		transform.SetPosition(newPosition);
 	}
 
-	if (GetWorld()->GetInput().IsKeyDown(VK_LBUTTON))
+	if (GetWorld()->GetInput().IsKeyDown(VK_RBUTTON))
 	{
-		const float smoothFactor = 0.9f;
-		const float speed = 50.0f;
-		const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
+		if (GetWorld()->GetInput().IsKeyPressed(VK_RBUTTON))
+		{
+			m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
+		}
+		else
+		{
+			const float smoothFactor = 0.9f;
+			const float speed = 50.0f;
+			const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
 
-		vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
-		vec2 shift = deltaCursorPos * speed * smoothDeltaTime;
+			vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
+			vec2 shift = deltaCursorPos * speed * smoothDeltaTime;
 
-		float adjustedYawSpeed = shift.x / (cos(glm::radians(m_pitch)) + 0.1f);
+			float adjustedYawSpeed = shift.x / (cos(glm::radians(m_pitch)) + 0.1f);
 
-		float targetYaw = m_yaw + adjustedYawSpeed;
-		float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
+			float targetYaw = m_yaw + adjustedYawSpeed;
+			float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
 
-		m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor);
-		m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor);
+			m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor);
+			m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor);
 
-		glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
-		glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
+			glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
+			glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
 
-		transform.SetRotation(hRotation * vRotation);
+			transform.SetRotation(hRotation * vRotation);
+		}
 	}
 
 	m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();

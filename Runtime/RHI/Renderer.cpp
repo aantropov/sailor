@@ -278,13 +278,14 @@ bool Renderer::EnsureFrameGraph()
 
 	m_frameGraph.Clear();
 
-	if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>("DefaultRenderer.renderer"))
+	const char* frameGraphAssetPath = App::HasEditor() ? "EditorRenderer.renderer" : "DefaultRenderer.renderer";
+	if (auto frameGraphFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<AssetInfoPtr>(frameGraphAssetPath))
 	{
 		App::GetSubmodule<FrameGraphImporter>()->Instantiate_Immediate(frameGraphFileId->GetFileId(), m_frameGraph);
 	}
 	else
 	{
-		SAILOR_LOG_ERROR("Renderer::EnsureFrameGraph failed: DefaultRenderer.renderer asset info was not found.");
+		SAILOR_LOG_ERROR("Renderer::EnsureFrameGraph failed: %s asset info was not found.", frameGraphAssetPath);
 	}
 
 	m_bFrameGraphOutdated = false;
@@ -300,7 +301,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 	}
 
 	if (m_bForceStop ||
-		m_driverInstance->ShouldFixLostDevice(m_pViewport) ||
+		(!App::HasEditor() && m_driverInstance->ShouldFixLostDevice(m_pViewport)) ||
 		App::GetSubmodule<Tasks::Scheduler>()->GetNumTasks(EThreadType::Render) > MaxFramesInQueue)
 	{
 		return false;
@@ -338,15 +339,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
 
 		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-#if defined(__APPLE__)
-		if (!App::HasEditor())
-		{
-			rhiSceneView->PrepareDebugDrawCommandLists(world);
-		}
-#else
 		rhiSceneView->PrepareDebugDrawCommandLists(world);
-#endif
 		rhiSceneView->PrepareSnapshots();
+
 	}
 
 	{
@@ -393,7 +388,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						}
 					};
 
-				if (m_driverInstance->AcquireNextImage())
+				const bool bHasSwapchainImage = m_driverInstance->AcquireNextImage();
+				if (bHasSwapchainImage || App::HasEditor())
 				{
 					RHISemaphorePtr chainSemaphore{};
 
@@ -401,8 +397,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 					{
-						rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-						rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
+						if (!App::HasEditor())
+						{
+							rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
+							rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
+						}
 
 						RHISemaphorePtr signalSemaphore{};
 
@@ -428,7 +427,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						}
 					}
 
-					if (m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
+					if (bHasSwapchainImage && m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
 					{
 						totalFramesCount++;
 						timer.Stop();
@@ -452,7 +451,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 					else
 					{
-						m_stats.m_gpuFps = 0;
+						if (!(App::HasEditor() && !bHasSwapchainImage && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate)))
+						{
+							m_stats.m_gpuFps = 0;
+						}
 					}
 				}
 				else

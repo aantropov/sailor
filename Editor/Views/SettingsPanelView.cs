@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using Microsoft.Maui.Controls.Shapes;
 using SailorEditor.Settings;
 
 namespace SailorEditor.Views;
@@ -22,23 +21,28 @@ public sealed class SettingsPanelView : ContentView
     {
         _store = MauiProgram.GetService<UnifiedSettingsStore>();
         _persistence = MauiProgram.GetService<EditorSettingsPersistenceStore>();
-        _scopePicker = new Picker { Title = "Category", ItemsSource = Enum.GetValues<SettingsScope>().Cast<object>().ToList(), SelectedIndex = 0 };
+        _scopePicker = new Picker
+        {
+            Title = "Category",
+            ItemsSource = Enum.GetValues<SettingsScope>().Cast<object>().ToList(),
+            SelectedItem = SettingsScope.Editor
+        };
         _searchBar = new SearchBar { Placeholder = "Search settings" };
         _statusLabel = new Label { Margin = new Thickness(8, 0), FontSize = 11, Opacity = 0.8 };
-        _entriesLayout = new VerticalStackLayout { Spacing = 8, Padding = new Thickness(8, 0, 8, 8) };
+        _entriesLayout = new VerticalStackLayout { Spacing = 6, Padding = new Thickness(8, 0, 8, 8) };
 
         _scopePicker.SelectedIndexChanged += (_, _) => Refresh();
         _searchBar.TextChanged += (_, _) => Refresh();
         Loaded += OnLoaded;
 
-        var title = new Label { Text = "Settings", FontAttributes = FontAttributes.Bold, Margin = new Thickness(8, 8, 8, 0) };
         var toolbar = new HorizontalStackLayout
         {
-            Margin = new Thickness(8, 4),
+            Margin = new Thickness(8, 8, 8, 4),
             Spacing = 8,
             Children =
             {
                 _scopePicker,
+                _searchBar,
                 CreateToolbarButton("Apply", async () => await ApplyAllAsync()),
                 CreateToolbarButton("Revert", RevertAll),
                 CreateToolbarButton("Reset Scope", async () => await ResetScopeAsync())
@@ -53,19 +57,15 @@ public sealed class SettingsPanelView : ContentView
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star)
             ]
         };
 
-        Grid.SetRow(toolbar, 1);
-        Grid.SetRow(_searchBar, 2);
-        Grid.SetRow(_statusLabel, 3);
-        Grid.SetRow(scroll, 4);
+        Grid.SetRow(toolbar, 0);
+        Grid.SetRow(_statusLabel, 1);
+        Grid.SetRow(scroll, 2);
 
-        root.Children.Add(title);
         root.Children.Add(toolbar);
-        root.Children.Add(_searchBar);
         root.Children.Add(_statusLabel);
         root.Children.Add(scroll);
         Content = root;
@@ -92,7 +92,7 @@ public sealed class SettingsPanelView : ContentView
         _rows.Clear();
         _entriesLayout.Children.Clear();
 
-        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Project;
+        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Editor;
         var rows = EditorSettingsCatalog.Definitions
             .Where(definition => definition.Entry.Scope == selectedScope)
             .Where(definition => string.IsNullOrWhiteSpace(_searchBar.Text)
@@ -155,7 +155,7 @@ public sealed class SettingsPanelView : ContentView
 
     async Task ResetScopeAsync()
     {
-        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Project;
+        var selectedScope = _scopePicker.SelectedItem is SettingsScope scope ? scope : SettingsScope.Editor;
         _store.ResetScope(selectedScope);
         await _persistence.SaveAsync(_store);
         Refresh();
@@ -189,10 +189,6 @@ public sealed class SettingsPanelView : ContentView
         key.SetBinding(Label.TextProperty, nameof(SettingsEditorRow.Key));
         key.BindingContext = row;
 
-        var description = new Label { FontSize = 12, Opacity = 0.85 };
-        description.SetBinding(Label.TextProperty, nameof(SettingsEditorRow.Description));
-        description.BindingContext = row;
-
         var source = new Label { FontSize = 11, Opacity = 0.7 };
         source.SetBinding(Label.TextProperty, nameof(SettingsEditorRow.SourceText));
         source.BindingContext = row;
@@ -204,6 +200,8 @@ public sealed class SettingsPanelView : ContentView
         var dirty = new Label { FontSize = 11, TextColor = Colors.Goldenrod };
         dirty.SetBinding(Label.TextProperty, nameof(SettingsEditorRow.DirtyText));
         dirty.BindingContext = row;
+
+        ToolTipProperties.SetText(title, row.Description);
 
         var actions = new HorizontalStackLayout
         {
@@ -238,15 +236,36 @@ public sealed class SettingsPanelView : ContentView
         };
 
         var editor = CreateEditor(row);
-        var meta = new VerticalStackLayout { Spacing = 2, Children = { title, key, description, source, dirty, validation } };
-
-        return new Border
+        var meta = new VerticalStackLayout
         {
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 6 },
-            Padding = new Thickness(10, 8),
-            Content = new VerticalStackLayout { Spacing = 8, Children = { meta, editor, actions } }
+            Spacing = 2,
+            HorizontalOptions = LayoutOptions.Fill,
+            Children = { title, key, source, dirty, validation }
         };
+
+        var editorColumn = new VerticalStackLayout
+        {
+            Spacing = 6,
+            HorizontalOptions = LayoutOptions.Fill,
+            Children = { editor, actions }
+        };
+
+        var rowGrid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) }
+            },
+            ColumnSpacing = 12,
+            Padding = new Thickness(0, 4),
+            HorizontalOptions = LayoutOptions.Fill
+        };
+
+        rowGrid.Add(meta, 0, 0);
+        rowGrid.Add(editorColumn, 1, 0);
+
+        return rowGrid;
     }
 
     View CreateEditor(SettingsEditorRow row)

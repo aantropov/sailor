@@ -2,6 +2,7 @@
 using SailorEditor.Helpers;
 using SailorEditor.Commands;
 using SailorEditor.Services;
+using SailorEditor.Settings;
 using SailorEditor.Controls;
 using SailorEditor.Scene;
 using SailorEditor.Utility;
@@ -16,6 +17,7 @@ namespace SailorEditor.Views
     {
         bool isRunning = false;
         bool isFocused = false;
+        bool isInputCaptured = false;
         bool isPlayMode = false;
         bool viewportRetryQueued = false;
         long viewportRetryUntilMs = -1;
@@ -24,6 +26,8 @@ namespace SailorEditor.Views
         double nativeViewportWidth = 0;
         double nativeViewportHeight = 0;
         double nativeViewportScale = 1;
+        uint nativeDrawableWidth = 0;
+        uint nativeDrawableHeight = 0;
         double lastRequestedNativeViewportWidth = -1;
         double lastRequestedNativeViewportHeight = -1;
         double lastRequestedNativeViewportScale = -1;
@@ -37,6 +41,7 @@ namespace SailorEditor.Views
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
+        readonly UnifiedSettingsStore settingsStore;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
 #if MACCATALYST
@@ -48,16 +53,20 @@ namespace SailorEditor.Views
         public SceneView()
         {
             InitializeComponent();
+            settingsStore = MauiProgram.GetService<UnifiedSettingsStore>();
             viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(MauiProgram.GetService<EngineService>()), EngineService.SceneViewportId);
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
+#if !MACCATALYST
             var tapGesture = new TapGestureRecognizer();
             tapGesture.Tapped += (sender, args) =>
             {
                 SetSceneFocus(true, sendRemoteFocus: true);
+                nativeViewportHost?.RequestInputFocus();
             };
             GestureRecognizers.Add(tapGesture);
+#endif
 
             GestureRecognizers.Add(CreateSceneDropGesture());
             Viewport.GestureRecognizers.Add(CreateSceneDropGesture());
@@ -90,12 +99,14 @@ namespace SailorEditor.Views
                         QueueViewportRetry();
                     }
                 };
-                nativeViewportHost.HostLayoutChanged += (width, height, scale) =>
+                nativeViewportHost.HostLayoutChanged += (width, height, scale, drawableWidth, drawableHeight) =>
                 {
                     nativeViewportWidth = width;
                     nativeViewportHeight = height;
                     nativeViewportScale = scale > 0 ? scale : 1;
-                    Console.WriteLine($"[SceneView] native host layout: {width:0.##}x{height:0.##} scale={nativeViewportScale:0.##}");
+                    nativeDrawableWidth = drawableWidth;
+                    nativeDrawableHeight = drawableHeight;
+                    Console.WriteLine($"[SceneView] native host layout: {width:0.##}x{height:0.##} scale={nativeViewportScale:0.##} drawable={nativeDrawableWidth}x{nativeDrawableHeight}");
                     QueueViewportRetry();
                     if (isRunning)
                     {
@@ -104,16 +115,73 @@ namespace SailorEditor.Views
                 };
                 nativeViewportHost.InputReceived += input =>
                 {
+                    var captured = input.Captured || isInputCaptured;
+
                     if (input.Kind == NativeSceneViewportInputKind.Focus)
                     {
                         SetSceneFocus(input.Focused, sendRemoteFocus: false);
+                        if (!input.Focused)
+                        {
+                            isInputCaptured = false;
+                        }
                     }
-                    else
+                    else if (input.Kind == NativeSceneViewportInputKind.PointerButton)
                     {
-                        SetSceneFocus(true, sendRemoteFocus: false);
+                        SetSceneFocus(true, sendRemoteFocus: true);
+                        nativeViewportHost?.RequestInputFocus();
+                        if (input.Pressed)
+                        {
+                            isInputCaptured = true;
+                            captured = true;
+                        }
+                    }
+                    else if (input.Kind == NativeSceneViewportInputKind.Key)
+                    {
+                        SetSceneFocus(true, sendRemoteFocus: true);
+                    }
+                    else if (!isFocused && !isInputCaptured)
+                    {
+                        return;
+                    }
+
+                    if (input.Kind == NativeSceneViewportInputKind.Capture)
+                    {
+                        isInputCaptured = input.Captured;
+                        captured = input.Captured;
+                    }
+
+                    if (input.Kind == NativeSceneViewportInputKind.PointerButton && !input.Pressed)
+                    {
+                        captured = isInputCaptured;
+                        isInputCaptured = false;
+                    }
+
+                    if (!isFocused && !captured && input.Kind != NativeSceneViewportInputKind.Focus)
+                    {
+                        return;
+                    }
+
+                    if (input.Kind == NativeSceneViewportInputKind.Focus && !input.Focused)
+                    {
+                        foreach (var button in new uint[] { 0, 1, 2 })
+                        {
+                            viewportAdapter.SendInput(
+                                RemoteViewportInputKind.PointerButton,
+                                input.PointerX,
+                                input.PointerY,
+                                input.WheelDeltaX,
+                                input.WheelDeltaY,
+                                input.KeyCode,
+                                button,
+                                RemoteViewportInputModifier.None,
+                                false,
+                                false,
+                                false);
+                        }
                     }
 
                     var remoteModifiers = (RemoteViewportInputModifier)input.Modifiers;
+                    var focused = input.Kind == NativeSceneViewportInputKind.Focus ? input.Focused : isFocused;
                     viewportAdapter.SendInput(
                         (RemoteViewportInputKind)input.Kind,
                         input.PointerX,
@@ -124,28 +192,12 @@ namespace SailorEditor.Views
                         input.Button,
                         remoteModifiers,
                         input.Pressed,
-                        input.Focused,
-                        input.Captured);
-
-                    var shellState = MauiProgram.GetService<State.ShellState>();
-                    var selectionResult = selectionRouter.HandleInput(input, shellState.Focus.SelectionOwner == $"scene:{EngineService.SceneViewportId}");
-                    if (selectionResult.Handled)
-                    {
-                        var selectionService = MauiProgram.GetService<SelectionService>();
-                        if (selectionResult.ClearSelection)
-                        {
-                            selectionService.ClearSelection();
-                        }
-                        else if (!string.IsNullOrWhiteSpace(selectionResult.SelectedId))
-                        {
-                            selectionService.SelectInstance(new InstanceId(selectionResult.SelectedId));
-                        }
-                    }
+                        focused,
+                        captured);
 
                     UpdateViewportIntegration();
                 };
 
-                ViewportStatusOverlay.IsVisible = true;
                 NativeViewportContainer.Content = nativeViewportHost;
                 RequestNativeViewportLayout();
             }
@@ -273,6 +325,11 @@ namespace SailorEditor.Views
 
         void UpdateViewportIntegration()
         {
+            if (nativeViewportHost != null)
+            {
+                nativeViewportHost.MouseSensitivity = ResolveViewportMouseSensitivity();
+            }
+
             var remoteRect = Viewport.GetAbsolutePositionWin();
             var editorRect = new SceneViewportRect(remoteRect.X, remoteRect.Y, remoteRect.Width, remoteRect.Height);
             var renderTarget = default(SceneViewportRenderTarget);
@@ -295,8 +352,8 @@ namespace SailorEditor.Views
                     return;
                 }
 
-                var renderWidth = (uint)Math.Max(1, Math.Round(logicalViewportWidth * nativeViewportScale));
-                var renderHeight = (uint)Math.Max(1, Math.Round(logicalViewportHeight * nativeViewportScale));
+                var renderWidth = nativeDrawableWidth > 1 ? nativeDrawableWidth : (uint)Math.Max(1, Math.Round(logicalViewportWidth * nativeViewportScale));
+                var renderHeight = nativeDrawableHeight > 1 ? nativeDrawableHeight : (uint)Math.Max(1, Math.Round(logicalViewportHeight * nativeViewportScale));
                 if (Math.Abs(lastAppliedLogicalViewportWidth - logicalViewportWidth) >= 0.5 ||
                     Math.Abs(lastAppliedLogicalViewportHeight - logicalViewportHeight) >= 0.5 ||
                     Math.Abs(lastAppliedNativeViewportScale - nativeViewportScale) >= 0.01 ||
@@ -335,6 +392,19 @@ namespace SailorEditor.Views
 
             if (!updated)
                 viewportAdapter.Sync(new SceneViewportFrame(editorRect, editorRect, renderTarget, IsVisible, isFocused, nativeHostHandle));
+        }
+
+        double ResolveViewportMouseSensitivity()
+        {
+            var value = settingsStore.Resolve(EditorSettingsCatalog.EditorViewportMouseSensitivity.Entry).Value;
+            return value switch
+            {
+                double d => d,
+                float f => f,
+                int i => i,
+                long l => l,
+                _ => 1.0
+            };
         }
 
         void UpdateViewportStatus()

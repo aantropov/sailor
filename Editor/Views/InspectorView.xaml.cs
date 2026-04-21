@@ -11,6 +11,8 @@ namespace SailorEditor.Views
     public partial class InspectorView : ContentView
     {
         readonly InspectorProjectionService inspectorProjection;
+        bool isRefreshingInspector;
+        bool isCommittingInspectorChanges;
 
         public InspectorView()
         {
@@ -34,30 +36,55 @@ namespace SailorEditor.Views
         {
             using var perfScope = EditorPerf.Scope("InspectorView.RefreshInspector");
 
-            if (InspectedItemHost.Content?.BindingContext is IInspectorEditable editable && editable.HasPendingInspectorChanges)
+            if (isRefreshingInspector)
             {
-                editable.CommitInspectorChanges();
-            }
-
-            if (inspectorProjection.SelectedItem == null)
-            {
-                InspectedItemHost.Content = null;
                 return;
             }
 
-            if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
-            {
-                existingView.BindingContext = inspectorProjection.SelectedItem;
-                return;
-            }
+            isRefreshingInspector = true;
 
-            var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
-            var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
-            var content = template.CreateContent();
-            if (content is View view)
+            try
             {
-                view.BindingContext = inspectorProjection.SelectedItem;
-                InspectedItemHost.Content = view;
+                if (!isCommittingInspectorChanges &&
+                    InspectedItemHost.Content?.BindingContext is IInspectorEditable editable &&
+                    editable.HasPendingInspectorChanges)
+                {
+                    isCommittingInspectorChanges = true;
+
+                    try
+                    {
+                        editable.CommitInspectorChanges();
+                    }
+                    finally
+                    {
+                        isCommittingInspectorChanges = false;
+                    }
+                }
+
+                if (inspectorProjection.SelectedItem == null)
+                {
+                    InspectedItemHost.Content = null;
+                    return;
+                }
+
+                if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
+                {
+                    existingView.BindingContext = inspectorProjection.SelectedItem;
+                    return;
+                }
+
+                var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
+                var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
+                var content = template.CreateContent();
+                if (content is View view)
+                {
+                    view.BindingContext = inspectorProjection.SelectedItem;
+                    InspectedItemHost.Content = view;
+                }
+            }
+            finally
+            {
+                isRefreshingInspector = false;
             }
         }
 

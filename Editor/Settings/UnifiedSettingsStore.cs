@@ -252,6 +252,13 @@ public sealed class EditorSettingsPersistenceStore
 
 public static class EditorSettingsCatalog
 {
+    public static readonly SettingsDefinition EditorViewportMouseSensitivity = new(
+        new SettingsEntry("editor.viewportMouseSensitivity", "Viewport Mouse Sensitivity", SettingsValueKind.Float, SettingsScope.Editor, "Mouse sensitivity for scene viewport camera input."),
+        DefaultValue: 1.0,
+        Validator: value => value is double d && d >= 0.05 && d <= 10.0
+            ? SettingsValidationResult.Success
+            : new SettingsValidationResult([new SettingsValidationMessage("editor.viewportMouseSensitivity", "Viewport Mouse Sensitivity must be between 0.05 and 10.0.", SettingsValidationSeverity.Error)]));
+
     public static readonly SettingsDefinition[] Definitions =
     [
         new(
@@ -260,6 +267,7 @@ public static class EditorSettingsCatalog
         new(
             new SettingsEntry("editor.theme", "Theme", SettingsValueKind.Enum, SettingsScope.Editor, "Editor appearance.", AllowedValues: ["Dark", "Light"]),
             DefaultValue: "Dark"),
+        EditorViewportMouseSensitivity,
         new(
             new SettingsEntry("engine.vsync", "VSync", SettingsValueKind.Boolean, SettingsScope.Engine, "Toggle runtime vertical sync."),
             DefaultValue: true),

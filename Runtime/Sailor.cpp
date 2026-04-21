@@ -33,6 +33,7 @@
 #include "ECS/ECS.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/EditorReadbackNode.h"
 #include "ECS/TransformECS.h"
 #include "Submodules/RenderDocApi.h"
 #include "Submodules/ImGuiApi.h"

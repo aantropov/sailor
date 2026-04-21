@@ -6,6 +6,7 @@
 #include "Core/Reflection.h"
 #include "ECS/ECS.h"
 #include "Engine/InstanceId.h"
+#include "FrameGraph/EditorReadbackNode.h"
 #include "FrameGraph/RHIFrameGraph.h"
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "Platform/Win32/Input.h"
@@ -20,6 +21,7 @@
 #include "Tasks/Scheduler.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -180,6 +182,61 @@ namespace
 		return outBytes;
 	}
 
+	bool TryAcquireEditorReadbackFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
+	{
+		auto* renderer = App::GetSubmodule<RHI::Renderer>();
+		FrameGraphPtr frameGraph{};
+		if (renderer)
+		{
+			frameGraph = renderer->GetFrameGraph();
+		}
+
+		auto rhiFrameGraph = frameGraph ? frameGraph->GetRHI() : nullptr;
+		auto readbackNode = rhiFrameGraph ? rhiFrameGraph->GetGraphNode("EditorReadback").DynamicCast<Framegraph::EditorReadbackNode>() : nullptr;
+
+		auto cpuBuffer = readbackNode ? readbackNode->GetBuffer() : RHIBufferPtr{};
+		auto texture = readbackNode ? readbackNode->GetTexture() : RHITexturePtr{};
+		const auto* src = cpuBuffer ? reinterpret_cast<const uint8_t*>(cpuBuffer->GetPointer()) : nullptr;
+
+		const bool available = readbackNode && cpuBuffer && texture && src;
+		if (available)
+		{
+			const auto pixelFormat = ToRemotePixelFormat(texture->GetFormat());
+			if (!pixelFormat.has_value())
+			{
+				return false;
+			}
+
+			const glm::ivec2 extent = texture->GetExtent();
+			outSource = MacRendererFrameSource{};
+			outSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+			outSource.m_sourceObject = reinterpret_cast<uintptr_t>(texture.GetRawPtr());
+			outSource.m_sourceToken = texture.GetHash();
+			outSource.m_width = static_cast<uint32_t>(extent.x);
+			outSource.m_height = static_cast<uint32_t>(extent.y);
+			outSource.m_pixelFormat = *pixelFormat;
+			outSource.m_bytesPerRow = readbackNode->GetBytesPerRow();
+			outSource.m_debugName = "EditorReadback";
+			const size_t totalBytes = static_cast<size_t>(outSource.m_bytesPerRow) * static_cast<size_t>(outSource.m_height);
+			outSource.m_cpuBytes = std::make_shared<std::vector<uint8_t>>(src, src + totalBytes);
+		}
+
+		if (outSummary)
+		{
+			std::ostringstream ss;
+			ss << "editorReadback=" << (readbackNode ? 1 : 0)
+				<< " available=" << (available ? 1 : 0);
+			if (available)
+			{
+				ss << " srcSize=" << outSource.m_width << "x" << outSource.m_height
+					<< " srcPitch=" << outSource.m_bytesPerRow;
+			}
+			*outSummary = ss.str();
+		}
+
+		return available;
+	}
+
 	bool TryFillRendererFrameSourceFromTarget(const char* debugName, const RHI::RHIRenderTargetPtr& renderTarget, MacRendererFrameSource& outSource)
 	{
 		if (!renderTarget)
@@ -242,6 +299,11 @@ namespace
 
 	bool TryAcquireFrameGraphFrameSource(MacRendererFrameSource& outSource, std::string* outSummary = nullptr)
 	{
+		if (TryAcquireEditorReadbackFrameSource(outSource, outSummary))
+		{
+			return true;
+		}
+
 		outSource = MacRendererFrameSource{};
 		auto* renderer = App::GetSubmodule<RHI::Renderer>();
 		FrameGraphPtr frameGraph{};
@@ -259,23 +321,31 @@ namespace
 
 		constexpr Candidate candidates[] =
 		{
+			{ "Renderer.SceneView.EditorOutput", "EditorOutput" },
 			{ "Renderer.SceneView.Main", "Main" },
 			{ "Renderer.SceneView.BackBuffer", "BackBuffer" },
 			{ "Renderer.SceneView.Secondary", "Secondary" }
 		};
 
-		const char* selectedSurface = nullptr;
+		const char* selectedResource = nullptr;
 		for (const auto& candidate : candidates)
 		{
 			auto surface = rhiFrameGraph ? rhiFrameGraph->GetSurface(candidate.m_surfaceName) : nullptr;
 			if (TryFillRendererFrameSourceFromSurface(candidate.m_name, surface, outSource))
 			{
-				selectedSurface = candidate.m_surfaceName;
+				selectedResource = candidate.m_surfaceName;
+				break;
+			}
+
+			auto renderTarget = rhiFrameGraph ? rhiFrameGraph->GetRenderTarget(candidate.m_surfaceName) : nullptr;
+			if (TryFillRendererFrameSourceFromTarget(candidate.m_name, renderTarget, outSource))
+			{
+				selectedResource = candidate.m_surfaceName;
 				break;
 			}
 		}
 
-		const bool acquired = selectedSurface != nullptr;
+		const bool acquired = selectedResource != nullptr;
 
 		if (outSummary)
 		{
@@ -285,7 +355,7 @@ namespace
 				<< " available=" << (acquired ? 1 : 0);
 			if (acquired)
 			{
-				ss << " surface=" << selectedSurface
+				ss << " surface=" << selectedResource
 					<< " srcSize=" << outSource.m_width << "x" << outSource.m_height
 					<< " srcPitch=" << outSource.m_bytesPerRow;
 			}
@@ -342,6 +412,7 @@ namespace
 		bool m_visible = true;
 		bool m_focused = false;
 		uint64_t m_nowMs = 0;
+		Failure m_lastPumpFailure = Failure::Ok();
 		std::mutex m_mutex{};
 
 		explicit RemoteViewportBinding(ViewportDescriptor descriptor) :
@@ -352,7 +423,25 @@ namespace
 
 		void Pump()
 		{
-			m_binding.PumpFrame();
+			auto result = m_binding.PumpFrame();
+			if (!result.IsOk())
+			{
+				if (m_lastPumpFailure.m_code != result.m_code ||
+					m_lastPumpFailure.m_nativeCode != result.m_nativeCode ||
+					m_lastPumpFailure.m_message != result.m_message)
+				{
+					SAILOR_LOG_ERROR("Remote viewport pump failed: code=%d native=%d scope=%d message=%s",
+						(int32_t)result.m_code,
+						result.m_nativeCode,
+						(int32_t)result.m_scope,
+						result.m_message.c_str());
+				}
+				m_lastPumpFailure = result;
+			}
+			else
+			{
+				m_lastPumpFailure = Failure::Ok();
+			}
 			m_binding.GetRuntimeSession().TickTimeouts(++m_nowMs);
 		}
 
@@ -376,6 +465,8 @@ namespace
 	};
 
 	std::unordered_map<ViewportId, std::shared_ptr<RemoteViewportBinding>> g_remoteViewportBindings;
+	std::unordered_map<ViewportId, Sailor::EditorRemote::MacNativeHostHandle> g_pendingRemoteViewportHostHandles;
+	std::unordered_map<ViewportId, std::array<bool, 3>> g_remoteViewportMouseButtons;
 	std::mutex g_remoteViewportBindingsMutex;
 	std::mutex g_editorViewportMutex;
 	RECT g_pendingEditorViewport{};
@@ -399,12 +490,84 @@ namespace
 		return descriptor;
 	}
 
+	bool HasInputModifier(InputModifier modifiers, InputModifier modifier)
+	{
+		return (static_cast<uint16_t>(modifiers & modifier) != 0);
+	}
+
+	void SyncEditorMouseButtons(const InputPacket& input, ImGuiApi* imGui)
+	{
+		using Sailor::Win32::GlobalInput;
+		using Sailor::Win32::KeyState;
+
+		auto& state = g_remoteViewportMouseButtons[input.m_viewportId];
+
+		std::array<bool, 3> desired =
+		{
+			HasInputModifier(input.m_modifiers, InputModifier::MouseLeft),
+			HasInputModifier(input.m_modifiers, InputModifier::MouseRight),
+			HasInputModifier(input.m_modifiers, InputModifier::MouseMiddle)
+		};
+
+		if (input.m_kind == InputKind::PointerButton && input.m_keyCode < desired.size())
+		{
+			desired[input.m_keyCode] = input.m_pressed;
+		}
+		else if (input.m_kind == InputKind::Focus && !input.m_focused)
+		{
+			desired = { false, false, false };
+		}
+
+		for (uint32_t i = 0; i < desired.size(); i++)
+		{
+			if (state[i] == desired[i])
+			{
+				continue;
+			}
+
+			state[i] = desired[i];
+			GlobalInput::SetMouseButtonState(i, desired[i] ? KeyState::Pressed : KeyState::Up);
+
+#if defined(__APPLE__)
+			if (imGui)
+			{
+				ImGuiApi::MacEvent event{};
+				event.EventType = ImGuiApi::MacEvent::Type::MouseButton;
+				event.Button = static_cast<int32_t>(i);
+				event.bPressed = desired[i];
+				imGui->HandleMac(event);
+			}
+#else
+			(void)imGui;
+#endif
+		}
+	}
+
 	void DispatchEditorInputToRuntime(const InputPacket& input)
 	{
 		using Sailor::Win32::GlobalInput;
 		using Sailor::Win32::KeyState;
 
 		const KeyState state = input.m_pressed ? KeyState::Pressed : KeyState::Up;
+
+#if defined(__APPLE__)
+		auto* imGui = App::GetSubmodule<ImGuiApi>();
+#else
+		ImGuiApi* imGui = nullptr;
+#endif
+
+		switch (input.m_kind)
+		{
+		case InputKind::PointerMove:
+		case InputKind::PointerButton:
+		case InputKind::PointerWheel:
+		case InputKind::Focus:
+			SyncEditorMouseButtons(input, imGui);
+			break;
+		default:
+			break;
+		}
+
 		switch (input.m_kind)
 		{
 		case InputKind::PointerMove:
@@ -412,10 +575,6 @@ namespace
 			break;
 		case InputKind::PointerButton:
 			GlobalInput::SetCursorPosition(static_cast<int32_t>(input.m_pointerX), static_cast<int32_t>(input.m_pointerY));
-			if (input.m_keyCode < 3)
-			{
-				GlobalInput::SetMouseButtonState(input.m_keyCode, state);
-			}
 			break;
 		case InputKind::PointerWheel:
 			GlobalInput::SetCursorPosition(static_cast<int32_t>(input.m_pointerX), static_cast<int32_t>(input.m_pointerY));
@@ -431,7 +590,7 @@ namespace
 		}
 
 #if defined(__APPLE__)
-		if (auto* imGui = App::GetSubmodule<ImGuiApi>())
+		if (imGui)
 		{
 			ImGuiApi::MacEvent event{};
 			switch (input.m_kind)
@@ -440,11 +599,6 @@ namespace
 				event.EventType = ImGuiApi::MacEvent::Type::MousePos;
 				event.X = input.m_pointerX;
 				event.Y = input.m_pointerY;
-				break;
-			case InputKind::PointerButton:
-				event.EventType = ImGuiApi::MacEvent::Type::MouseButton;
-				event.Button = static_cast<int32_t>(input.m_keyCode);
-				event.bPressed = input.m_pressed;
 				break;
 			case InputKind::PointerWheel:
 				event.EventType = ImGuiApi::MacEvent::Type::MouseWheel;
@@ -529,6 +683,7 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 		{
 			renderer->GetDriver()->WaitIdle();
 		}
+		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
 		mainWindow->SetRenderArea(requestedWindowArea);
 		{
 			std::lock_guard lock(g_editorViewportMutex);
@@ -539,6 +694,7 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 	}
 	else
 	{
+		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
 		mainWindow->SetRenderArea(requestedWindowArea);
 		std::lock_guard lock(g_editorViewportMutex);
 		g_editorRemoteViewportRenderArea = requestedWindowArea;
@@ -548,8 +704,6 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 		std::lock_guard lock(g_editorViewportMutex);
 		g_appliedEditorRenderArea = requestedWindowArea;
 	}
-	const glm::ivec2 remoteRenderArea = GetEditorRemoteViewportRenderArea(requestedWindowArea.x, requestedWindowArea.y);
-	SAILOR_LOG("Applied editor viewport area: window=%dx%d render=%dx%d", requestedWindowArea.x, requestedWindowArea.y, remoteRenderArea.x, remoteRenderArea.y);
 	return true;
 }
 
@@ -669,6 +823,10 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	{
 		return true;
 	}
+	if (const auto hostIt = g_pendingRemoteViewportHostHandles.find(viewportId); hostIt != g_pendingRemoteViewportHostHandles.end())
+	{
+		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, hostIt->second);
+	}
 	if (!binding->m_created)
 	{
 		binding->m_binding.Create();
@@ -754,11 +912,11 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 	std::unique_lock bindingLock(it->second->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
-		const std::string text = "state=3 busy=1";
-		diagnostics[0] = new char[text.size() + 1];
-		memcpy(diagnostics[0], text.c_str(), text.size());
-		diagnostics[0][text.size()] = '\0';
-		return static_cast<uint32_t>(text.size());
+		static constexpr const char* kBusyDiagnostics = "busy";
+		constexpr size_t kBusyDiagnosticsLen = 4;
+		diagnostics[0] = new char[kBusyDiagnosticsLen + 1];
+		memcpy(diagnostics[0], kBusyDiagnostics, kBusyDiagnosticsLen + 1);
+		return static_cast<uint32_t>(kBusyDiagnosticsLen);
 	}
 
 	auto info = it->second->m_binding.GetRuntimeSession().GetDiagnostics();
@@ -856,21 +1014,23 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 #if defined(__APPLE__)
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
 	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto& binding = g_remoteViewportBindings[viewportId];
-	if (!binding)
+	Sailor::EditorRemote::MacNativeHostHandle hostHandle{};
+	hostHandle.m_kind = static_cast<Sailor::EditorRemote::MacNativeHostHandleKind>(hostHandleKind);
+	hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
+	g_pendingRemoteViewportHostHandles[viewportId] = hostHandle;
+
+	auto it = g_remoteViewportBindings.find(viewportId);
+	if (it == g_remoteViewportBindings.end() || !it->second)
 	{
-		binding = std::make_shared<RemoteViewportBinding>(MakeRemoteViewportDescriptor(viewportId, 1u, 1u));
+		return true;
 	}
 
-	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
+	std::unique_lock bindingLock(it->second->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return true;
 	}
-	Sailor::EditorRemote::MacNativeHostHandle hostHandle{};
-	hostHandle.m_kind = static_cast<Sailor::EditorRemote::MacNativeHostHandleKind>(hostHandleKind);
-	hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
-	binding->m_binding.GetHost().BindNativeHostHandle(viewportId, hostHandle);
+	it->second->m_binding.GetHost().BindNativeHostHandle(viewportId, hostHandle);
 	return true;
 #else
 	(void)viewportId;

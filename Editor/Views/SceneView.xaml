@@ -15,6 +15,8 @@
                              VerticalOptions="Fill" />
 
                 <Border x:Name="ViewportStatusOverlay"
+                        IsVisible="False"
+                        InputTransparent="True"
                         StrokeThickness="1"
                         Stroke="#3A3A3A"
                         BackgroundColor="#CC111111"

@@ -5,11 +5,12 @@ using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Views;
 using SailorEngine;
-using YamlDotNet.Core.Tokens;
 
 namespace SailorEditor;
 public class ComponentTemplate : DataTemplate
 {
+    static readonly HashSet<string> CompactComponents = [];
+
     public ComponentTemplate()
     {
         LoadTemplate = () =>
@@ -18,8 +19,8 @@ public class ComponentTemplate : DataTemplate
             {
                 ColumnDefinitions =
                 {
-                    new ColumnDefinition { Width = new GridLength(Templates.InspectorLabelColumnWidth) },
-                    new ColumnDefinition { Width = GridLength.Star }
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                    new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) }
                 },
                 ColumnSpacing = Templates.InspectorFieldSpacing,
                 RowSpacing = 4,
@@ -61,36 +62,76 @@ public class ComponentTemplate : DataTemplate
                     ColumnSpacing = Templates.InspectorFieldSpacing
                 };
 
-                var removeButton = new Button { Text = "-", WidthRequest = 32, HeightRequest = 32 };
-                removeButton.Clicked += (buttonSender, clickArgs) => MauiProgram.GetService<WorldService>().RemoveComponent(component);
+                var compactButton = new Button
+                {
+                    Text = "-",
+                    WidthRequest = 24,
+                    HeightRequest = 24,
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0),
+                    BackgroundColor = Colors.Transparent,
+                    BorderWidth = 0,
+                    MinimumHeightRequest = 24,
+                    MinimumWidthRequest = 24
+                };
 
                 var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
                 nameLabel.Behaviors.Add(new DisplayNameBehavior());
                 nameLabel.Text = FormatComponentTypeName(component.Typename.Name);
 
-                var resetFlyout = MauiProgram.GetService<EditorContextMenuService>().CreateFlyout(new EditorContextMenuItem
-                    {
-                        Text = "Reset to Defaults",
-                        Command = new Command(() => MauiProgram.GetService<WorldService>().ResetComponentToDefaults(component))
-                    });
-                FlyoutBase.SetContextFlyout(props, resetFlyout);
-                FlyoutBase.SetContextFlyout(nameLabel, resetFlyout);
+                var worldService = MauiProgram.GetService<WorldService>();
+                var contextMenuService = MauiProgram.GetService<EditorContextMenuService>();
+                var componentKey = component.InstanceId?.ToString() ?? component.GetHashCode().ToString();
+                var isCompact = CompactComponents.Contains(componentKey);
 
-                var contextGesture = new TapGestureRecognizer { Buttons = ButtonsMask.Secondary };
-                contextGesture.Tapped += (gestureSender, gestureArgs) =>
+                compactButton.Text = isCompact ? "+" : "-";
+                compactButton.Clicked += (buttonSender, clickArgs) =>
                 {
-                    MauiProgram.GetService<EditorContextMenuService>().Show(new EditorContextMenuItem
+                    if (CompactComponents.Contains(componentKey))
+                    {
+                        CompactComponents.Remove(componentKey);
+                    }
+                    else
+                    {
+                        CompactComponents.Add(componentKey);
+                    }
+
+                    if (props.BindingContext is Component reboundComponent)
+                    {
+                        props.BindingContext = null;
+                        props.BindingContext = reboundComponent;
+                    }
+                };
+
+                var contextItems = new[]
+                {
+                    new EditorContextMenuItem
                     {
                         Text = "Reset to Defaults",
-                        Command = new Command(() => MauiProgram.GetService<WorldService>().ResetComponentToDefaults(component))
-                    });
+                        Command = new Command(() => worldService.ResetComponentToDefaults(component))
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Remove Component",
+                        Command = new Command(() => worldService.RemoveComponent(component))
+                    }
                 };
-                props.GestureRecognizers.Add(contextGesture);
 
-                header.Add(removeButton, 0, 0);
+                var flyout = contextMenuService.CreateFlyout(contextItems);
+                FlyoutBase.SetContextFlyout(props, flyout);
+                FlyoutBase.SetContextFlyout(header, flyout);
+                FlyoutBase.SetContextFlyout(nameLabel, flyout);
+                FlyoutBase.SetContextFlyout(compactButton, flyout);
+
+                header.Add(compactButton, 0, 0);
                 header.Add(nameLabel, 1, 0);
                 Templates.AddGridRow(props, header, GridLength.Auto);
                 Grid.SetColumnSpan(header, props.ColumnDefinitions.Count);
+
+                if (isCompact)
+                {
+                    return;
+                }
 
                 var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
 

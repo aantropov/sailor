@@ -67,6 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanSemaphorePtr GetLastSubmittedSceneViewMainResolvedSemaphore() const { return m_lastSubmittedSceneViewMainResolvedSemaphore; }
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
+		SAILOR_API bool SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
 		SAILOR_API VulkanCommandBufferPtr CreateCommandBuffer(RHI::ECommandListQueue queue = RHI::ECommandListQueue::Graphics);

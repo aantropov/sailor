@@ -1125,6 +1125,83 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	return submitResult == VK_SUCCESS && presentResult == VK_SUCCESS;
 }
 
+bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
+{
+	m_frameDeps[m_currentFrame].Clear();
+
+	TVector<VkCommandBuffer> commandBuffers;
+	if (primaryCommandBuffers.Num() > 0)
+	{
+		for (const auto& cmdBuffer : primaryCommandBuffers)
+		{
+			commandBuffers.Add(*cmdBuffer);
+			m_frameDeps[m_currentFrame].Add(cmdBuffer);
+		}
+	}
+
+	TVector<VkSemaphore> waitSemaphores;
+	if (semaphoresToWait.Num() > 0)
+	{
+		waitSemaphores.Reserve(semaphoresToWait.Num());
+		for (const auto& semaphore : semaphoresToWait)
+		{
+			waitSemaphores.Add(*semaphore);
+			m_frameDeps[m_currentFrame].Add(semaphore);
+		}
+	}
+
+	if (commandBuffers.Num() == 0)
+	{
+		m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+		m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
+		m_numSubmittedCommandBuffersAcc = 0;
+		return true;
+	}
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
+	submitInfo.pWaitSemaphores = waitSemaphores.Num() > 0 ? &waitSemaphores[0] : nullptr;
+
+	VkPipelineStageFlags* waitStages = waitSemaphores.Num() > 0 ?
+		reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags))) : nullptr;
+	for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
+	{
+		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	}
+
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
+	submitInfo.pCommandBuffers = &commandBuffers[0];
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = nullptr;
+
+	m_syncFences[m_currentFrame]->Reset();
+	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+	m_numSubmittedCommandBuffersAcc += static_cast<uint32_t>(commandBuffers.Num());
+
+	if (waitStages)
+	{
+		_freea(waitStages);
+	}
+
+	if (submitResult == VK_SUCCESS)
+	{
+		m_syncFences[m_currentFrame]->Wait();
+	}
+
+	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
+	m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
+	m_numSubmittedCommandBuffersAcc = 0;
+
+	if (submitResult == VK_ERROR_DEVICE_LOST)
+	{
+		m_bIsDeviceLost = true;
+	}
+
+	return submitResult == VK_SUCCESS;
+}
+
 void VulkanDevice::GetOccupiedVideoMemory(VkMemoryHeapFlags memFlags, size_t& outHeapBudget, size_t& outHeapUsage)
 {
 	VkPhysicalDeviceMemoryBudgetPropertiesEXT memBudget;

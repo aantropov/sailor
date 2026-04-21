@@ -8,6 +8,32 @@ using namespace Sailor::Win32;
 
 InputState GlobalInput::m_rawState;
 
+namespace
+{
+	bool TryGetMouseButtonIndex(uint32_t button, uint32_t& index)
+	{
+		if (button == 0 || button == VK_LBUTTON)
+		{
+			index = 0;
+			return true;
+		}
+
+		if (button == VK_RBUTTON)
+		{
+			index = 1;
+			return true;
+		}
+
+		if (button == VK_MBUTTON)
+		{
+			index = 2;
+			return true;
+		}
+
+		return false;
+	}
+}
+
 bool InputState::IsKeyDown(uint32_t key) const
 {
 	return m_keyboard[key] != KeyState::Up;
@@ -21,12 +47,14 @@ bool InputState::IsKeyPressed(uint32_t key) const
 
 bool InputState::IsButtonDown(uint32_t button) const
 {
-	return m_keyboard[button] != KeyState::Up;
+	uint32_t index = 0;
+	return TryGetMouseButtonIndex(button, index) && m_mouse[index] != KeyState::Up;
 }
 
 bool InputState::IsButtonClick(uint32_t button) const
 {
-	bool pressed = (m_keyboard[button] == KeyState::Pressed);
+	uint32_t index = 0;
+	bool pressed = TryGetMouseButtonIndex(button, index) && m_mouse[index] == KeyState::Pressed;
 	return pressed;
 }
 
@@ -48,7 +76,7 @@ void InputState::TrackForChanges(const InputState& previousState)
 
 	for (uint32_t i = 0; i < 3; i++)
 	{
-		if (m_mouse[i] == KeyState::Pressed && previousState.m_mouse[i] == KeyState::Pressed)
+		if (m_mouse[i] == KeyState::Pressed && (previousState.m_mouse[i] == KeyState::Pressed || previousState.m_mouse[i] == KeyState::Down))
 		{
 			m_mouse[i] = KeyState::Down;
 		}
@@ -92,7 +120,8 @@ void GlobalInput::SetMouseButtonState(uint32_t button, KeyState state)
 	if (button < 3)
 	{
 		m_rawState.m_mouse[button] = state;
-		m_rawState.m_keyboard[button] = state;
+		const uint32_t key = button == 0 ? VK_LBUTTON : button == 1 ? VK_RBUTTON : VK_MBUTTON;
+		m_rawState.m_keyboard[key] = state;
 	}
 }
 

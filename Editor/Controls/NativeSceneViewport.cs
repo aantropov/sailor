@@ -41,22 +41,25 @@ public readonly record struct NativeSceneViewportInputEvent(
 public interface INativeSceneViewportLayoutHost
 {
     void RequestLayoutUpdate(double width, double height, double contentsScale);
+    void RequestInputFocus();
 }
 
 public class NativeSceneViewport : View
 {
     public event Action<nint>? HostHandleChanged;
-    public event Action<double, double, double>? HostLayoutChanged;
+    public event Action<double, double, double, uint, uint>? HostLayoutChanged;
     public event Action<NativeSceneViewportInputEvent>? InputReceived;
+
+    public double MouseSensitivity { get; set; } = 1.0;
 
     internal void UpdateHostHandle(nint handle)
     {
         HostHandleChanged?.Invoke(handle);
     }
 
-    internal void UpdateHostLayout(double width, double height, double contentsScale)
+    internal void UpdateHostLayout(double width, double height, double contentsScale, uint drawableWidth, uint drawableHeight)
     {
-        HostLayoutChanged?.Invoke(width, height, contentsScale);
+        HostLayoutChanged?.Invoke(width, height, contentsScale, drawableWidth, drawableHeight);
     }
 
     internal void PublishInput(NativeSceneViewportInputEvent input)
@@ -69,6 +72,14 @@ public class NativeSceneViewport : View
         if (Handler is INativeSceneViewportLayoutHost layoutHost)
         {
             layoutHost.RequestLayoutUpdate(width, height, contentsScale);
+        }
+    }
+
+    public void RequestInputFocus()
+    {
+        if (Handler is INativeSceneViewportLayoutHost layoutHost)
+        {
+            layoutHost.RequestInputFocus();
         }
     }
 }
