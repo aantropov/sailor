@@ -28,7 +28,8 @@ Visit the Wiki to explore everything you need to get started, understand the eng
 </p>
 
 ### Editor
-<img src="https://github.com/user-attachments/assets/fdf66abd-8b83-40e3-b881-48b950734c34" width="800" />
+<img width="1131" height="837" alt="Screenshot 2026-05-22 at 22 51 40" src="https://github.com/user-attachments/assets/1b313ae5-1eda-42eb-8a0e-99cdf976d932" />
+
 
 ## Features
 
