@@ -5,6 +5,9 @@
         public AppShell()
         {
             InitializeComponent();
+#if MACCATALYST
+            Title = string.Empty;
+#endif
         }
     }
 }
