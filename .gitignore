@@ -54,6 +54,7 @@ Editor.Tests/obj/
 # Local/editor-generated files
 imgui.ini
 *.ExecPlan.md
+Docs/Plans/
 Cache\\Temp.world
 
 .DS_Store
