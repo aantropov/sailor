@@ -16,6 +16,12 @@ public partial class MainPage : ContentPage
     {
         _shellHost = shellHost;
         InitializeComponent();
+#if MACCATALYST
+        Title = string.Empty;
+        ToolbarHost.IsVisible = false;
+        ToolbarHost.HeightRequest = 0;
+        Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific.Page.SetUseSafeArea(this, false);
+#endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
         BuildMenus();

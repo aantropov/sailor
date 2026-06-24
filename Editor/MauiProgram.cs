@@ -47,6 +47,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<HierarchyProjectionService>();
             builder.Services.AddSingleton<InspectorProjectionService>();
             builder.Services.AddSingleton<EngineService>();
+            builder.Services.AddSingleton<EditorToolbarActions>();
             builder.Services.AddSingleton<EditorContextMenuService>();
             builder.Services.AddSingleton<PanelRegistry>();
             builder.Services.AddSingleton<ShellState>();

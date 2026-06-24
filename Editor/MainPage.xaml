@@ -15,7 +15,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <views:ToolbarView Grid.Row="0"/>
+        <views:ToolbarView x:Name="ToolbarHost" Grid.Row="0"/>
         <shell:ShellLayoutView x:Name="ShellLayoutHost" Grid.Row="1"/>
 
         <Border Grid.Row="2" StrokeThickness="1" Stroke="DimGray" BackgroundColor="#1E1E1E" Padding="10,6">
