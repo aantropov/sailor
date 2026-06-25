@@ -10,6 +10,9 @@ namespace SailorEditor.Platforms.MacCatalyst
 {
     public static class MacCatalystWindowChrome
     {
+        const string NewWorkspaceItem = "SailorEditorToolbarNewWorkspace";
+        const string OpenWorkspaceItem = "SailorEditorToolbarOpenWorkspace";
+        const string SaveWorkspaceItem = "SailorEditorToolbarSaveWorkspace";
         const string SaveItem = "SailorEditorToolbarSave";
         const string UndoItem = "SailorEditorToolbarUndo";
         const string RedoItem = "SailorEditorToolbarRedo";
@@ -22,6 +25,10 @@ namespace SailorEditor.Platforms.MacCatalyst
         const string SettingsItem = "SailorEditorToolbarSettings";
         static readonly string[] ToolbarItems =
         [
+            NewWorkspaceItem,
+            OpenWorkspaceItem,
+            SaveWorkspaceItem,
+            NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
             SaveItem,
             UndoItem,
             RedoItem,
@@ -168,31 +175,36 @@ namespace SailorEditor.Platforms.MacCatalyst
             {
                 return itemIdentifier switch
                 {
-                    SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", actions => actions.SaveAsync()),
-                    UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", actions => actions.UndoAsync()),
-                    RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", actions => actions.RedoAsync()),
-                    PlayItem => CreateItem(PlayItem, "Play", "play.fill", actions =>
+                    NewWorkspaceItem => CreateItem(NewWorkspaceItem, "New Workspace", "doc.badge.plus", () => MauiProgram.GetService<WorkspaceUiService>().NewWorkspaceAsync()),
+                    OpenWorkspaceItem => CreateItem(OpenWorkspaceItem, "Open Workspace", "folder", () => MauiProgram.GetService<WorkspaceUiService>().OpenWorkspaceAsync()),
+                    SaveWorkspaceItem => CreateItem(SaveWorkspaceItem, "Save Workspace", "externaldrive.badge.checkmark", () => MauiProgram.GetService<WorkspaceUiService>().SaveWorkspaceAsync()),
+                    SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()),
+                    UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", () => MauiProgram.GetService<EditorToolbarActions>().UndoAsync()),
+                    RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", () => MauiProgram.GetService<EditorToolbarActions>().RedoAsync()),
+                    PlayItem => CreateItem(PlayItem, "Play", "play.fill", () =>
                     {
+                        var actions = MauiProgram.GetService<EditorToolbarActions>();
                         actions.RunWorld(false);
                         return Task.CompletedTask;
                     }),
-                    DebugItem => CreateItem(DebugItem, "Debug", "ladybug.fill", actions =>
+                    DebugItem => CreateItem(DebugItem, "Debug", "ladybug.fill", () =>
                     {
+                        var actions = MauiProgram.GetService<EditorToolbarActions>();
                         actions.RunWorld(true);
                         return Task.CompletedTask;
                     }),
-                    TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", actions => actions.ExportPathTracedImageAsync(false)),
-                    TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", actions => actions.ExportPathTracedImageAsync(true)),
-                    SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", actions => actions.SaveLayoutAsync()),
-                    ResetLayoutItem => CreateItem(ResetLayoutItem, "Reset Layout", "arrow.counterclockwise", actions => actions.ResetLayoutAsync()),
-                    SettingsItem => CreateItem(SettingsItem, "Settings", "gearshape", actions => actions.OpenSettingsAsync()),
+                    TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(false)),
+                    TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(true)),
+                    SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", () => MauiProgram.GetService<EditorToolbarActions>().SaveLayoutAsync()),
+                    ResetLayoutItem => CreateItem(ResetLayoutItem, "Reset Layout", "arrow.counterclockwise", () => MauiProgram.GetService<EditorToolbarActions>().ResetLayoutAsync()),
+                    SettingsItem => CreateItem(SettingsItem, "Settings", "gearshape", () => MauiProgram.GetService<EditorToolbarActions>().OpenSettingsAsync()),
                     _ => new NSToolbarItem(itemIdentifier)
                 };
             }
 
-            NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<EditorToolbarActions, Task> action)
+            NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<Task> action)
             {
-                var target = new ToolbarActionTarget(() => action(MauiProgram.GetService<EditorToolbarActions>()));
+                var target = new ToolbarActionTarget(action);
                 actionTargets[identifier] = target;
 
                 var barButton = CreateButton(label, symbolName, target);
@@ -227,7 +239,7 @@ namespace SailorEditor.Platforms.MacCatalyst
                 [Export("invoke:")]
                 public async void Invoke(NSObject sender)
                 {
-                    await action();
+                    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(action);
                 }
             }
         }

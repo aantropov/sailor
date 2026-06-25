@@ -71,9 +71,9 @@ public partial class MainPage : ContentPage
         var history = MauiProgram.GetService<ICommandHistoryService>();
 
         var file = new MenuBarItem { Text = "File" };
-        file.Add(new MenuFlyoutItem { Text = "New Workspace...", Command = new Command(async () => await _workspaceUi.NewWorkspaceAsync()) });
-        file.Add(new MenuFlyoutItem { Text = "Open Workspace...", Command = new Command(async () => await _workspaceUi.OpenWorkspaceAsync()) });
-        file.Add(new MenuFlyoutItem { Text = "Save Workspace", Command = new Command(async () => await _workspaceUi.SaveWorkspaceAsync()) });
+        file.Add(CreateWorkspaceMenuItem("New Workspace...", () => _workspaceUi.NewWorkspaceAsync()));
+        file.Add(CreateWorkspaceMenuItem("Open Workspace...", () => _workspaceUi.OpenWorkspaceAsync()));
+        file.Add(CreateWorkspaceMenuItem("Save Workspace", () => _workspaceUi.SaveWorkspaceAsync()));
         file.Add(BuildRecentWorkspacesMenu());
         file.Add(new MenuFlyoutSeparator());
         file.Add(new MenuFlyoutItem { Text = "Undo" , Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
@@ -114,14 +114,32 @@ public partial class MainPage : ContentPage
 
         foreach (var workspace in _workspaceUi.Projection.RecentWorkspaces)
         {
-            recent.Add(new MenuFlyoutItem
-            {
-                Text = $"{workspace.Name} - {workspace.DisplayPath}",
-                Command = new Command(async () => await _workspaceUi.OpenWorkspaceAsync(workspace.ManifestPath))
-            });
+            var manifestPath = workspace.ManifestPath;
+            recent.Add(CreateWorkspaceMenuItem(
+                $"{workspace.Name} - {workspace.DisplayPath}",
+                () => _workspaceUi.OpenWorkspaceAsync(manifestPath)));
         }
 
         return recent;
+    }
+
+    MenuFlyoutItem CreateWorkspaceMenuItem(string text, Func<Task> action)
+    {
+        var item = new MenuFlyoutItem { Text = text };
+        item.Clicked += async (_, _) => await RunWorkspaceMenuActionAsync(action);
+        return item;
+    }
+
+    async Task RunWorkspaceMenuActionAsync(Func<Task> action)
+    {
+        try
+        {
+            await MainThread.InvokeOnMainThreadAsync(action);
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Workspace", ex.Message, "OK");
+        }
     }
 
     void UpdateStatusText()

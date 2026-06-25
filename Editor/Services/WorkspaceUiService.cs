@@ -152,7 +152,9 @@ internal sealed class WorkspaceUiService
     }
 
     static Page? GetPage()
-        => Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+        => Microsoft.Maui.Controls.Shell.Current?.CurrentPage
+            ?? Application.Current?.Windows.FirstOrDefault()?.Page
+            ?? Application.Current?.MainPage;
 
     static string FormatError(WorkspaceLifecycleResult result)
     {
