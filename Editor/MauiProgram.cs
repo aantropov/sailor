@@ -54,6 +54,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<WorkspaceTemplateService>();
             builder.Services.AddSingleton(_ => new RecentWorkspaceStore());
             builder.Services.AddSingleton<WorkspaceLifecycleService>();
+            builder.Services.AddSingleton<WorkspaceUiService>();
             builder.Services.AddSingleton<PanelRegistry>();
             builder.Services.AddSingleton<ShellState>();
             builder.Services.AddSingleton<IUndoRedoHistory, InMemoryUndoRedoHistory>();

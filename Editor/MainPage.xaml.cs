@@ -1,4 +1,5 @@
 using SailorEditor.Commands;
+using SailorEditor.Services;
 using SailorEditor.Shell;
 using SailorEditor.Styles;
 using System.ComponentModel;
@@ -9,12 +10,15 @@ namespace SailorEditor;
 public partial class MainPage : ContentPage
 {
     readonly EditorShellHost _shellHost;
+    readonly WorkspaceUiService _workspaceUi;
+    bool _workspaceUiInitialized;
 
     public ICommand ChangeThemeCommand => new Command<string>(ChangeTheme);
 
     public MainPage(EditorShellHost shellHost)
     {
         _shellHost = shellHost;
+        _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         InitializeComponent();
 #if MACCATALYST
         Title = string.Empty;
@@ -24,24 +28,40 @@ public partial class MainPage : ContentPage
 #endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
+        _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
         BuildMenus();
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        if (!_workspaceUiInitialized)
+        {
+            _workspaceUiInitialized = true;
+            await _workspaceUi.InitializeAsync();
+        }
+
         if (_shellHost.CurrentLayout is null)
             await _shellHost.InitializeAsync();
         ShellLayoutHost.Rebuild();
-        StatusTextLabel.Text = _shellHost.StatusText;
+        UpdateStatusText();
     }
 
     void OnShellHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(EditorShellHost.StatusText))
-            MainThread.BeginInvokeOnMainThread(() => StatusTextLabel.Text = _shellHost.StatusText);
+            MainThread.BeginInvokeOnMainThread(UpdateStatusText);
         if (e.PropertyName == nameof(EditorShellHost.CurrentLayout))
             MainThread.BeginInvokeOnMainThread(() => ShellLayoutHost.Rebuild());
+    }
+
+    void OnWorkspaceProjectionChanged(object? sender, EventArgs e)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            BuildMenus();
+            UpdateStatusText();
+        });
     }
 
     void BuildMenus()
@@ -51,6 +71,11 @@ public partial class MainPage : ContentPage
         var history = MauiProgram.GetService<ICommandHistoryService>();
 
         var file = new MenuBarItem { Text = "File" };
+        file.Add(new MenuFlyoutItem { Text = "New Workspace...", Command = new Command(async () => await _workspaceUi.NewWorkspaceAsync()) });
+        file.Add(new MenuFlyoutItem { Text = "Open Workspace...", Command = new Command(async () => await _workspaceUi.OpenWorkspaceAsync()) });
+        file.Add(new MenuFlyoutItem { Text = "Save Workspace", Command = new Command(async () => await _workspaceUi.SaveWorkspaceAsync()) });
+        file.Add(BuildRecentWorkspacesMenu());
+        file.Add(new MenuFlyoutSeparator());
         file.Add(new MenuFlyoutItem { Text = "Undo" , Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
         file.Add(new MenuFlyoutItem { Text = "Redo", Command = new Command(async () => await history.RedoAsync(new CommandOrigin(CommandOriginKind.Menu, "Redo"))) });
         file.Add(new MenuFlyoutSeparator());
@@ -76,6 +101,35 @@ public partial class MainPage : ContentPage
         MenuBarItems.Add(file);
         MenuBarItems.Add(window);
         MenuBarItems.Add(preferences);
+    }
+
+    MenuFlyoutSubItem BuildRecentWorkspacesMenu()
+    {
+        var recent = new MenuFlyoutSubItem { Text = "Open Recent Workspace" };
+        if (_workspaceUi.Projection.RecentWorkspaces.Count == 0)
+        {
+            recent.Add(new MenuFlyoutItem { Text = "No recent workspaces", IsEnabled = false });
+            return recent;
+        }
+
+        foreach (var workspace in _workspaceUi.Projection.RecentWorkspaces)
+        {
+            recent.Add(new MenuFlyoutItem
+            {
+                Text = $"{workspace.Name} - {workspace.DisplayPath}",
+                Command = new Command(async () => await _workspaceUi.OpenWorkspaceAsync(workspace.ManifestPath))
+            });
+        }
+
+        return recent;
+    }
+
+    void UpdateStatusText()
+    {
+        var projection = _workspaceUi.Projection;
+        StatusTextLabel.Text = projection.HasActiveWorkspace
+            ? $"Workspace: {projection.ActiveWorkspaceName} - {projection.ActiveWorkspacePath}"
+            : _shellHost.StatusText;
     }
 
     void ChangeTheme(string theme)
