@@ -7,6 +7,7 @@ on:
 env:
   BUILD_TYPE: Release
   VCPKG_ROOT: ${{ github.workspace }}/External/vcpkg
+  VCPKG_OVERLAY_TRIPLETS: ${{ github.workspace }}/.github/vcpkg-triplets
 
 jobs:
   build:
@@ -29,13 +30,16 @@ jobs:
         restore-keys: |
           vcpkg-${{ runner.os }}-installed-
 
+    - name: Show CMake version
+      run: cmake --version
+
     - name: Install dependencies
       run: python update_deps.py
 
     - name: Install Vulkan SDK
       uses: humbletim/install-vulkan-sdk@v1.2
       with:
-        version: 1.3.275.0        
+        version: 1.3.296.0
         cache: true
 
 

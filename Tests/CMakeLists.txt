@@ -16,27 +16,35 @@ add_executable(EditorViewportSessionTests
     EditorViewportSessionTests.cpp
 )
 
-add_executable(RemoteViewportWindowsTransportTests
-    RemoteViewportWindowsTransportTests.cpp
-)
+if(WIN32)
+    add_executable(RemoteViewportWindowsTransportTests
+        RemoteViewportWindowsTransportTests.cpp
+    )
+endif()
 
-add_executable(RemoteViewportMacTransportTests
-    RemoteViewportMacTransportTests.cpp
-    ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
-)
+if(APPLE)
+    add_executable(RemoteViewportMacTransportTests
+        RemoteViewportMacTransportTests.cpp
+        ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
+    )
 
-add_executable(RemoteViewportMacNativeBridgeTests
-    RemoteViewportMacNativeBridgeTests.mm
-    ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
-)
+    add_executable(RemoteViewportMacNativeBridgeTests
+        RemoteViewportMacNativeBridgeTests.mm
+        ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
+    )
+endif()
 
 target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
-target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
-target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
-target_compile_features(RemoteViewportMacNativeBridgeTests PRIVATE cxx_std_20)
+if(WIN32)
+    target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
+endif()
+if(APPLE)
+    target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
+    target_compile_features(RemoteViewportMacNativeBridgeTests PRIVATE cxx_std_20)
+endif()
 target_include_directories(RemoteViewportFoundationTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
@@ -49,17 +57,19 @@ target_include_directories(RemoteViewportRuntimeTests PRIVATE
 target_include_directories(EditorViewportSessionTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
-target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
-)
-target_include_directories(RemoteViewportMacTransportTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
-)
-target_include_directories(RemoteViewportMacNativeBridgeTests PRIVATE
-    ${SAILOR_RUNTIME_DIR}
-)
+if(WIN32)
+    target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}
+    )
+endif()
 
 if(APPLE)
+    target_include_directories(RemoteViewportMacTransportTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}
+    )
+    target_include_directories(RemoteViewportMacNativeBridgeTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}
+    )
     target_link_libraries(RemoteViewportMacTransportTests PRIVATE
         "-framework Cocoa"
         "-framework QuartzCore"
@@ -92,20 +102,24 @@ add_test(
     COMMAND EditorViewportSessionTests
 )
 
-add_test(
-    NAME RemoteViewportWindowsTransportTests
-    COMMAND RemoteViewportWindowsTransportTests
-)
+if(WIN32)
+    add_test(
+        NAME RemoteViewportWindowsTransportTests
+        COMMAND RemoteViewportWindowsTransportTests
+    )
+endif()
 
-add_test(
-    NAME RemoteViewportMacTransportTests
-    COMMAND RemoteViewportMacTransportTests
-)
+if(APPLE)
+    add_test(
+        NAME RemoteViewportMacTransportTests
+        COMMAND RemoteViewportMacTransportTests
+    )
 
-add_test(
-    NAME RemoteViewportMacNativeBridgeTests
-    COMMAND RemoteViewportMacNativeBridgeTests
-)
+    add_test(
+        NAME RemoteViewportMacNativeBridgeTests
+        COMMAND RemoteViewportMacNativeBridgeTests
+    )
+endif()
 
 add_test(
     NAME ProcessNoCrash
@@ -116,4 +130,3 @@ add_test(
     NAME ContainerBenchmarks
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/container_benchmarks_test.py
 )
-
