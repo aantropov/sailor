@@ -3,6 +3,7 @@ using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEngine;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SailorEditor.Utility;
 
@@ -83,7 +84,7 @@ public static class EditorDragDrop
         return world.TryGetGameObject(gameObject.InstanceId, out var current) ? current : null;
     }
 
-    static bool TryResolvePrefabAsset(object? source, out AssetFile prefab)
+    static bool TryResolvePrefabAsset(object? source, [NotNullWhen(true)] out AssetFile? prefab)
     {
         prefab = null;
         if (source is not AssetFile assetFile || assetFile.FileId is null || assetFile.FileId.IsEmpty())

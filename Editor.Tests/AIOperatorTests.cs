@@ -8,15 +8,17 @@ public class AIOperatorTests
     [Fact]
     public void EditorAIContextProvider_ShapesSelectionAndOriginMetadata()
     {
-        var provider = new EditorAIContextProvider(new StubActionContextProvider(new ActionContext(
-            ActiveWorldId: "MainWorld",
-            ActiveSelectionIds: new[] { "go-1", "cmp-2" },
-            ActivePanelId: "AI",
-            ActiveDocumentId: "Scene",
-            FocusedViewportId: "SceneViewport",
-            CurrentAssetId: "asset-1",
-            IsPlayMode: true,
-            Origin: new CommandOrigin(CommandOriginKind.Panel, "AIPanel", "tester"))));
+        var provider = new EditorAIContextProvider(
+            new StubActionContextProvider(new ActionContext(
+                ActiveWorldId: "MainWorld",
+                ActiveSelectionIds: new[] { "go-1", "cmp-2" },
+                ActivePanelId: "AI",
+                ActiveDocumentId: "Scene",
+                FocusedViewportId: "SceneViewport",
+                CurrentAssetId: "asset-1",
+                IsPlayMode: true,
+                Origin: new CommandOrigin(CommandOriginKind.Panel, "AIPanel", "tester"))),
+            new StaticAgentInstructionsProvider());
 
         var snapshot = provider.GetCurrentContext();
 
@@ -38,6 +40,7 @@ public class AIOperatorTests
                 AIEditorContextSnapshot.Empty,
                 new[] { new AIProposedAction("create-1", "Create GameObject", new[] { new StubCommand("Create") }, AIActionSafety.ConfirmRequired, "Create through command bus") })),
             new StaticAIContextProvider(),
+            new StaticAgentInstructionsProvider(),
             new StubActionContextProvider(new ActionContext()),
             dispatcher);
 
@@ -57,6 +60,7 @@ public class AIOperatorTests
         var service = new AIOperatorService(
             new StaticPlanner(new AIPlanResponse("open console", "Safe action ready.", AIEditorContextSnapshot.Empty, new[] { proposal })),
             new StaticAIContextProvider(),
+            new StaticAgentInstructionsProvider(),
             new StubActionContextProvider(new ActionContext(ActivePanelId: "AI")),
             dispatcher);
 
@@ -75,6 +79,11 @@ public class AIOperatorTests
     sealed class StaticAIContextProvider : IAIEditorContextProvider
     {
         public AIEditorContextSnapshot GetCurrentContext() => AIEditorContextSnapshot.Empty;
+    }
+
+    sealed class StaticAgentInstructionsProvider : IAIAgentInstructionsProvider
+    {
+        public string Instructions => "Test instructions";
     }
 
     sealed class StaticPlanner(AIPlanResponse response) : IAIActionPlanner
