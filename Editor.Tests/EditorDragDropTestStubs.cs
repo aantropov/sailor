@@ -22,6 +22,8 @@ namespace SailorEditor.ViewModels
     public class AssetFile
     {
         public SailorEngine.FileId? FileId { get; set; }
+        public string AssetInfoTypeName { get; set; } = string.Empty;
+        public FileInfo? Asset { get; set; }
     }
 
     public sealed class MaterialFile : AssetFile;
@@ -72,7 +74,7 @@ namespace SailorEditor.Commands
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
     }
 
-    public sealed class InstantiatePrefabAssetCommand(SailorEditor.ViewModels.PrefabFile prefabFile, SailorEditor.ViewModels.GameObject? parent = null) : IEditorCommand
+    public sealed class InstantiatePrefabAssetCommand(SailorEditor.ViewModels.AssetFile prefabFile, SailorEditor.ViewModels.GameObject? parent = null) : IEditorCommand
     {
         public string Name => nameof(InstantiatePrefabAssetCommand);
         public bool CanExecute(ActionContext context) => true;

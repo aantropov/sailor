@@ -19,4 +19,5 @@ namespace SailorEditor.Views
     public sealed class ConsoleView : Microsoft.Maui.Controls.ContentView;
     public sealed class SettingsPanelView : Microsoft.Maui.Controls.ContentView;
     public sealed class AIPanelView : Microsoft.Maui.Controls.ContentView;
+    public sealed class EditorPerformanceView : Microsoft.Maui.Controls.ContentView;
 }
