@@ -27,6 +27,7 @@
     <Compile Include="ProjectContentProjectionTests.cs" />
     <Compile Include="ProjectContentFolderIdsTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
+    <Compile Include="WorkspaceLifecycleTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />
@@ -51,6 +52,7 @@
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellHost.cs" Link="Shell\EditorShellHost.cs" />
     <Compile Include="..\Editor\State\ShellState.cs" Link="State\ShellState.cs" />

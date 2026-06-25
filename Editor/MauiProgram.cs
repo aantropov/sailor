@@ -12,6 +12,7 @@ using SailorEditor.History;
 using SailorEditor.Content;
 using SailorEditor.Settings;
 using SailorEditor.AI;
+using SailorEditor.Workspace;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -49,6 +50,10 @@ namespace SailorEditor
             builder.Services.AddSingleton<EngineService>();
             builder.Services.AddSingleton<EditorToolbarActions>();
             builder.Services.AddSingleton<EditorContextMenuService>();
+            builder.Services.AddSingleton<WorkspaceManifestSerializer>();
+            builder.Services.AddSingleton<WorkspaceTemplateService>();
+            builder.Services.AddSingleton(_ => new RecentWorkspaceStore());
+            builder.Services.AddSingleton<WorkspaceLifecycleService>();
             builder.Services.AddSingleton<PanelRegistry>();
             builder.Services.AddSingleton<ShellState>();
             builder.Services.AddSingleton<IUndoRedoHistory, InMemoryUndoRedoHistory>();
