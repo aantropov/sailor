@@ -20,6 +20,7 @@ namespace SailorEditor.Services
         public List<AssetFolder> Folders { get; private set; }
         public Dictionary<FileId, AssetFile> Assets { get; private set; }
         public List<AssetFile> Files { get; private set; } = new();
+        public string CurrentProjectRootPath { get; private set; }
 
         public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
 
@@ -27,7 +28,7 @@ namespace SailorEditor.Services
         {
             if (folder == null)
             {
-                return MauiProgram.GetService<EngineService>().EngineContentDirectory;
+                return CurrentProjectRootPath;
             }
 
             var parts = new Stack<string>();
@@ -38,7 +39,7 @@ namespace SailorEditor.Services
                 current = Folders.FirstOrDefault(x => x.Id == current.ParentFolderId);
             }
 
-            return Path.Combine(MauiProgram.GetService<EngineService>().EngineContentDirectory, Path.Combine(parts.ToArray()));
+            return Path.Combine(CurrentProjectRootPath, Path.Combine(parts.ToArray()));
         }
 
         public PrefabFile CreatePrefabAsset(AssetFolder targetFolder, GameObject root, bool overwrite = false, PrefabFile existingPrefab = null)
@@ -56,7 +57,7 @@ namespace SailorEditor.Services
             WritePrefab(prefabPath, prefab);
             WritePrefabAssetInfo(assetInfoPath, fileId, Path.GetFileName(prefabPath), externalRefs);
 
-            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            Refresh();
             var created = Assets.TryGetValue(fileId, out var asset) && asset is PrefabFile prefabFile
                 ? prefabFile
                 : null;
@@ -107,9 +108,11 @@ namespace SailorEditor.Services
             }
 
             UpdateAssetInfoFilename(targetAssetInfoPath, targetAssetFileName);
-            AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            Refresh();
             return true;
         }
+
+        public void Refresh() => AddProjectRoot(CurrentProjectRootPath);
 
         public void AddProjectRoot(string projectRoot)
         {
@@ -118,8 +121,11 @@ namespace SailorEditor.Services
             Folders = [];
             Assets = [];
 
-            Root = new ProjectRoot { Name = projectRoot, Id = 1 };
-            ReadDirectory(Root, projectRoot, -1);
+            CurrentProjectRootPath = Path.GetFullPath(projectRoot);
+            Directory.CreateDirectory(CurrentProjectRootPath);
+
+            Root = new ProjectRoot { Name = CurrentProjectRootPath, Id = 1 };
+            ReadDirectory(Root, CurrentProjectRootPath, -1);
 
             Files = new HashSet<AssetFile>([.. Assets.Values]).ToList();
             Changed?.Invoke();
@@ -351,7 +357,7 @@ namespace SailorEditor.Services
             foreach (var directory in Directory.GetDirectories(directoryPath))
             {
                 var dirInfo = new DirectoryInfo(directory);
-                var relativeDirectoryPath = Path.GetRelativePath(MauiProgram.GetService<EngineService>().EngineContentDirectory, directory);
+                var relativeDirectoryPath = Path.GetRelativePath(CurrentProjectRootPath, directory);
                 var folder = new AssetFolder
                 {
                     ProjectRootId = root.Id,

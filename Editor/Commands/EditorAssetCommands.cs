@@ -42,7 +42,7 @@ public sealed class DeleteAssetCommand(AssetFile assetFile) : IEditorCommand
             if (assetFile.AssetInfo.Exists)
                 File.Delete(assetFile.AssetInfo.FullName);
 
-            MauiProgram.GetService<AssetsService>().AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            MauiProgram.GetService<AssetsService>().Refresh();
             MauiProgram.GetService<SelectionService>().ClearSelection();
             return Task.FromResult(CommandResult.Success());
         }

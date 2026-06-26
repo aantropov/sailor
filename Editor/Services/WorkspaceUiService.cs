@@ -8,6 +8,7 @@ internal sealed class WorkspaceUiService
 {
     readonly WorkspaceLifecycleService _workspaceLifecycle;
     readonly EngineService _engineService;
+    readonly AssetsService _assetsService;
     static readonly FilePickerFileType WorkspaceManifestFileType = new(new Dictionary<DevicePlatform, IEnumerable<string>>
     {
         { DevicePlatform.WinUI, [".sailor"] },
@@ -16,10 +17,11 @@ internal sealed class WorkspaceUiService
         { DevicePlatform.Android, ["*/*"] }
     });
 
-    public WorkspaceUiService(WorkspaceLifecycleService workspaceLifecycle, EngineService engineService)
+    public WorkspaceUiService(WorkspaceLifecycleService workspaceLifecycle, EngineService engineService, AssetsService assetsService)
     {
         _workspaceLifecycle = workspaceLifecycle;
         _engineService = engineService;
+        _assetsService = assetsService;
     }
 
     public WorkspaceUiProjection Projection { get; private set; } = WorkspaceUiProjection.Empty;
@@ -137,6 +139,8 @@ internal sealed class WorkspaceUiService
         }
 
         await RefreshAsync(cancellationToken);
+        if (result.Session is not null)
+            _assetsService.AddProjectRoot(result.Session.ContentDirectory);
         MauiProgram.GetService<EditorShellHost>().SetStatus(successMessage);
 #if MACCATALYST
         SailorEditor.AppDelegate.RequestMenuRebuild();
