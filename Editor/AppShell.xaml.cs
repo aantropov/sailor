@@ -5,7 +5,7 @@
         public AppShell()
         {
             InitializeComponent();
-            Title = "Sailor Editor";
+            Title = "New Workspace";
         }
     }
 }

@@ -167,8 +167,8 @@ public partial class MainPage : ContentPage
 
     static string BuildWindowTitle(WorkspaceUiProjection projection)
         => projection.HasActiveWorkspace
-            ? $"{projection.ActiveWorkspaceName} - Sailor Editor"
-            : "Sailor Editor";
+            ? projection.ActiveWorkspaceName
+            : "New Workspace";
 
     void ChangeTheme(string theme)
     {

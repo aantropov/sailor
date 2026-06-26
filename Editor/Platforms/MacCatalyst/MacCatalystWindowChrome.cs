@@ -10,6 +10,7 @@ namespace SailorEditor.Platforms.MacCatalyst
 {
     public static class MacCatalystWindowChrome
     {
+        const string TitleItem = "SailorEditorToolbarTitle";
         const string SaveItem = "SailorEditorToolbarSave";
         const string UndoItem = "SailorEditorToolbarUndo";
         const string RedoItem = "SailorEditorToolbarRedo";
@@ -22,6 +23,7 @@ namespace SailorEditor.Platforms.MacCatalyst
         const string SettingsItem = "SailorEditorToolbarSettings";
         static readonly string[] ToolbarItems =
         [
+            TitleItem,
             SaveItem,
             UndoItem,
             RedoItem,
@@ -45,11 +47,13 @@ namespace SailorEditor.Platforms.MacCatalyst
         static readonly NativeToolbarDelegate ToolbarDelegate = new();
         static readonly NSToolbar CompactToolbar = CreateCompactToolbar();
         static NSObject? windowVisibleObserver;
-        static string currentTitle = "Sailor Editor";
+        static UILabel? titleLabel;
+        static string currentTitle = "New Workspace";
 
         public static void SetTitle(string title)
         {
-            currentTitle = string.IsNullOrWhiteSpace(title) ? "Sailor Editor" : title;
+            currentTitle = string.IsNullOrWhiteSpace(title) ? "New Workspace" : title;
+            UpdateTitleLabel();
             ApplySoon();
         }
 
@@ -97,7 +101,7 @@ namespace SailorEditor.Platforms.MacCatalyst
                 }
 
                 windowScene.Title = currentTitle;
-                titlebar.TitleVisibility = UITitlebarTitleVisibility.Visible;
+                titlebar.TitleVisibility = UITitlebarTitleVisibility.Hidden;
                 titlebar.Toolbar = CompactToolbar;
 
                 if (OperatingSystem.IsMacOSVersionAtLeast(12))
@@ -105,6 +109,16 @@ namespace SailorEditor.Platforms.MacCatalyst
                     titlebar.ToolbarStyle = UITitlebarToolbarStyle.UnifiedCompact;
                 }
             }
+
+            UpdateTitleLabel();
+        }
+
+        static void UpdateTitleLabel()
+        {
+            if (titleLabel is null)
+                return;
+
+            titleLabel.Text = currentTitle;
         }
 
         static NSToolbar CreateCompactToolbar()
@@ -147,6 +161,7 @@ namespace SailorEditor.Platforms.MacCatalyst
             {
                 return itemIdentifier switch
                 {
+                    TitleItem => CreateTitleItem(),
                     SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()),
                     UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", () => MauiProgram.GetService<EditorToolbarActions>().UndoAsync()),
                     RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", () => MauiProgram.GetService<EditorToolbarActions>().RedoAsync()),
@@ -169,6 +184,28 @@ namespace SailorEditor.Platforms.MacCatalyst
                     SettingsItem => CreateItem(SettingsItem, "Settings", "gearshape", () => MauiProgram.GetService<EditorToolbarActions>().OpenSettingsAsync()),
                     _ => new NSToolbarItem(itemIdentifier)
                 };
+            }
+
+            static NSToolbarItem CreateTitleItem()
+            {
+                titleLabel = new UILabel
+                {
+                    Text = currentTitle,
+                    TextColor = UIColor.White,
+                    Font = UIFont.BoldSystemFontOfSize(13),
+                    LineBreakMode = UILineBreakMode.TailTruncation,
+                    Lines = 1,
+                    TextAlignment = UITextAlignment.Left,
+                    TranslatesAutoresizingMaskIntoConstraints = false
+                };
+                titleLabel.WidthAnchor.ConstraintGreaterThanOrEqualTo(140).Active = true;
+                titleLabel.WidthAnchor.ConstraintLessThanOrEqualTo(320).Active = true;
+
+                var item = NSToolbarItem.Create(TitleItem, new UIBarButtonItem(titleLabel));
+                item.Label = currentTitle;
+                item.PaletteLabel = currentTitle;
+                item.ToolTip = currentTitle;
+                return item;
             }
 
             NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<Task> action)
