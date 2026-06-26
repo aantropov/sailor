@@ -133,13 +133,10 @@ namespace SailorEditor.Services
             await MauiProgram.GetService<EditorShellHost>().OpenPanelAsync(KnownPanelTypes.Settings);
         }
 
-        static async Task DisplayStatus(string title, string message)
+        static Task DisplayStatus(string title, string message)
         {
-            var page = Application.Current?.Windows?.FirstOrDefault()?.Page;
-            if (page != null)
-            {
-                await page.DisplayAlert(title, message, "OK");
-            }
+            MauiProgram.GetService<EditorShellHost>().SetStatus(message);
+            return Task.CompletedTask;
         }
     }
 }

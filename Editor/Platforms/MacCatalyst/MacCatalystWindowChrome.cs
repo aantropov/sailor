@@ -10,6 +10,7 @@ namespace SailorEditor.Platforms.MacCatalyst
 {
     public static class MacCatalystWindowChrome
     {
+        const string TitleItem = "SailorEditorToolbarTitle";
         const string SaveItem = "SailorEditorToolbarSave";
         const string UndoItem = "SailorEditorToolbarUndo";
         const string RedoItem = "SailorEditorToolbarRedo";
@@ -29,6 +30,7 @@ namespace SailorEditor.Platforms.MacCatalyst
             PlayItem,
             DebugItem,
             NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
+            TitleItem,
             TraceSceneItem,
             TraceSelectionItem,
             SaveLayoutItem,
@@ -45,6 +47,15 @@ namespace SailorEditor.Platforms.MacCatalyst
         static readonly NativeToolbarDelegate ToolbarDelegate = new();
         static readonly NSToolbar CompactToolbar = CreateCompactToolbar();
         static NSObject? windowVisibleObserver;
+        static UILabel? titleLabel;
+        static string currentTitle = "New Workspace";
+
+        public static void SetTitle(string title)
+        {
+            currentTitle = string.IsNullOrWhiteSpace(title) ? "New Workspace" : title;
+            UpdateTitleLabel();
+            ApplySoon();
+        }
 
         public static void UseCompactTitlebar(MauiWindow window)
         {
@@ -79,7 +90,7 @@ namespace SailorEditor.Platforms.MacCatalyst
         {
             foreach (var window in Application.Current?.Windows ?? [])
             {
-                window.Title = string.Empty;
+                window.Title = currentTitle;
             }
 
             foreach (var scene in UIApplication.SharedApplication.ConnectedScenes)
@@ -89,6 +100,7 @@ namespace SailorEditor.Platforms.MacCatalyst
                     continue;
                 }
 
+                windowScene.Title = currentTitle;
                 titlebar.TitleVisibility = UITitlebarTitleVisibility.Hidden;
                 titlebar.Toolbar = CompactToolbar;
 
@@ -98,34 +110,15 @@ namespace SailorEditor.Platforms.MacCatalyst
                 }
             }
 
-            CollapseTopSafeArea();
+            UpdateTitleLabel();
         }
 
-        static void CollapseTopSafeArea()
+        static void UpdateTitleLabel()
         {
-            foreach (var scene in UIApplication.SharedApplication.ConnectedScenes)
-            {
-                if (scene is not UIWindowScene windowScene)
-                {
-                    continue;
-                }
-
-                foreach (var window in windowScene.Windows)
-                {
-                    CollapseTopSafeArea(window);
-                }
-            }
-        }
-
-        static void CollapseTopSafeArea(UIWindow window)
-        {
-            if (window.RootViewController is null)
-            {
+            if (titleLabel is null)
                 return;
-            }
 
-            var topInset = window.SafeAreaInsets.Top;
-            window.RootViewController.AdditionalSafeAreaInsets = new UIEdgeInsets(-topInset, 0, 0, 0);
+            titleLabel.Text = currentTitle;
         }
 
         static NSToolbar CreateCompactToolbar()
@@ -168,31 +161,56 @@ namespace SailorEditor.Platforms.MacCatalyst
             {
                 return itemIdentifier switch
                 {
-                    SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", actions => actions.SaveAsync()),
-                    UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", actions => actions.UndoAsync()),
-                    RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", actions => actions.RedoAsync()),
-                    PlayItem => CreateItem(PlayItem, "Play", "play.fill", actions =>
+                    TitleItem => CreateTitleItem(),
+                    SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()),
+                    UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", () => MauiProgram.GetService<EditorToolbarActions>().UndoAsync()),
+                    RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", () => MauiProgram.GetService<EditorToolbarActions>().RedoAsync()),
+                    PlayItem => CreateItem(PlayItem, "Play", "play.fill", () =>
                     {
+                        var actions = MauiProgram.GetService<EditorToolbarActions>();
                         actions.RunWorld(false);
                         return Task.CompletedTask;
                     }),
-                    DebugItem => CreateItem(DebugItem, "Debug", "ladybug.fill", actions =>
+                    DebugItem => CreateItem(DebugItem, "Debug", "ladybug.fill", () =>
                     {
+                        var actions = MauiProgram.GetService<EditorToolbarActions>();
                         actions.RunWorld(true);
                         return Task.CompletedTask;
                     }),
-                    TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", actions => actions.ExportPathTracedImageAsync(false)),
-                    TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", actions => actions.ExportPathTracedImageAsync(true)),
-                    SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", actions => actions.SaveLayoutAsync()),
-                    ResetLayoutItem => CreateItem(ResetLayoutItem, "Reset Layout", "arrow.counterclockwise", actions => actions.ResetLayoutAsync()),
-                    SettingsItem => CreateItem(SettingsItem, "Settings", "gearshape", actions => actions.OpenSettingsAsync()),
+                    TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(false)),
+                    TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(true)),
+                    SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", () => MauiProgram.GetService<EditorToolbarActions>().SaveLayoutAsync()),
+                    ResetLayoutItem => CreateItem(ResetLayoutItem, "Reset Layout", "arrow.counterclockwise", () => MauiProgram.GetService<EditorToolbarActions>().ResetLayoutAsync()),
+                    SettingsItem => CreateItem(SettingsItem, "Settings", "gearshape", () => MauiProgram.GetService<EditorToolbarActions>().OpenSettingsAsync()),
                     _ => new NSToolbarItem(itemIdentifier)
                 };
             }
 
-            NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<EditorToolbarActions, Task> action)
+            static NSToolbarItem CreateTitleItem()
             {
-                var target = new ToolbarActionTarget(() => action(MauiProgram.GetService<EditorToolbarActions>()));
+                titleLabel = new UILabel
+                {
+                    Text = currentTitle,
+                    TextColor = UIColor.White,
+                    Font = UIFont.BoldSystemFontOfSize(13),
+                    LineBreakMode = UILineBreakMode.TailTruncation,
+                    Lines = 1,
+                    TextAlignment = UITextAlignment.Left,
+                    TranslatesAutoresizingMaskIntoConstraints = false
+                };
+                titleLabel.WidthAnchor.ConstraintGreaterThanOrEqualTo(140).Active = true;
+                titleLabel.WidthAnchor.ConstraintLessThanOrEqualTo(320).Active = true;
+
+                var item = NSToolbarItem.Create(TitleItem, new UIBarButtonItem(titleLabel));
+                item.Label = currentTitle;
+                item.PaletteLabel = currentTitle;
+                item.ToolTip = currentTitle;
+                return item;
+            }
+
+            NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<Task> action)
+            {
+                var target = new ToolbarActionTarget(action);
                 actionTargets[identifier] = target;
 
                 var barButton = CreateButton(label, symbolName, target);
@@ -227,7 +245,7 @@ namespace SailorEditor.Platforms.MacCatalyst
                 [Export("invoke:")]
                 public async void Invoke(NSObject sender)
                 {
-                    await action();
+                    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(action);
                 }
             }
         }

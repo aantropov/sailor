@@ -36,6 +36,12 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    public void SetStatus(string message)
+    {
+        if (!string.IsNullOrWhiteSpace(message))
+            StatusText = message;
+    }
+
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         EditorLayout layout;

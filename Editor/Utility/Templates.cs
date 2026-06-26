@@ -32,6 +32,7 @@ static class Templates
     public const double InspectorFieldSpacing = 6;
 
     public static Microsoft.Maui.Controls.Editor ReadOnlyTextView<T>(Expression<Func<T, string>> prop)
+        where T : class
     {
         var editor = new Microsoft.Maui.Controls.Editor
         {
@@ -62,13 +63,16 @@ static class Templates
     }
 
     public static CheckBox CheckBox<T>(Expression<Func<T, bool>> getter, Action<T, bool> setter)
+        where T : class
     {
         var checkBox = new Microsoft.Maui.Controls.CheckBox();
         checkBox.Bind(Microsoft.Maui.Controls.CheckBox.IsCheckedProperty, getter: getter, setter: setter);
         return checkBox;
     }
 
-    public static Picker EnumPicker<TBinding, TEnum>(Expression<Func<TBinding, TEnum>> getter, Action<TBinding, TEnum> setter) where TEnum : struct
+    public static Picker EnumPicker<TBinding, TEnum>(Expression<Func<TBinding, TEnum>> getter, Action<TBinding, TEnum> setter)
+        where TBinding : class
+        where TEnum : struct
     {
         var picker = new Picker
         {
@@ -139,6 +143,7 @@ static class Templates
     }
 
     public static View EntryField<TBindingContext, TSource>(Expression<Func<TBindingContext, TSource>> getter, Action<TBindingContext, TSource> setter, IValueConverter valueConverter = null)
+        where TBindingContext : class
     {
         var entry = CreateInspectorEntry();
         entry.Bind<Entry, TBindingContext, TSource, string>(Entry.TextProperty, getter: getter, setter: setter, mode: BindingMode.TwoWay, converter: valueConverter);
@@ -146,6 +151,7 @@ static class Templates
     }
 
     public static View FileIdLabel<TBindingContext>(string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter)
+        where TBindingContext : class
     {
         var label = new Label();
         label.Behaviors.Add(new FileIdSelectBehavior());
@@ -261,6 +267,7 @@ static class Templates
     }
 
     public static View FileIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, FileId>> getter, Action<TBindingContext, FileId> setter, Type supportedType = null)
+        where TBindingContext : class
     {
         var clearButton = new Button { Text = "Clear" };
         clearButton.Clicked += (sender, e) =>
@@ -306,6 +313,7 @@ static class Templates
     }
 
     public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
+        where TBindingContext : class
     {
         var valueEntry = CreateInspectorValueLabel();
 
@@ -343,6 +351,7 @@ static class Templates
     }
 
     public static View Vec2Editor<TBindingContext>(Func<TBindingContext, Vec2> convert)
+        where TBindingContext : class
     {
         return CreateInlineFieldGrid(
             FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
@@ -350,6 +359,7 @@ static class Templates
     }
 
     public static View Vec3Editor<TBindingContext>(Func<TBindingContext, Vec3> convert)
+        where TBindingContext : class
     {
         return CreateInlineFieldGrid(
             FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
@@ -358,6 +368,7 @@ static class Templates
     }
 
     public static View RotationEditor<TBindingContext>(Func<TBindingContext, Rotation> convert)
+        where TBindingContext : class
     {
         return CreateInlineFieldGrid(
             FloatEditor((TBindingContext vm) => convert(vm).Yaw, (TBindingContext vm, float value) => convert(vm).Yaw = value),
@@ -366,6 +377,7 @@ static class Templates
     }
 
     public static View Vec4Editor<TBindingContext>(Func<TBindingContext, Vec4> convert)
+        where TBindingContext : class
     {
         return CreateInlineFieldGrid(
             FloatEditor((TBindingContext vm) => convert(vm).X, (TBindingContext vm, float value) => convert(vm).X = value),
@@ -375,6 +387,7 @@ static class Templates
     }
 
     public static View FloatEditor<TBindingContext>(Expression<Func<TBindingContext, float>> getter, Action<TBindingContext, float> setter)
+        where TBindingContext : class
     {
         var value = CreateInspectorEntry();
         value.Keyboard = Keyboard.Numeric;
@@ -405,7 +418,7 @@ static class Templates
         string labelText,
         string defaultKey = default,
         T defaultValue = default)
-    where TBindingContext : ICloneable, INotifyPropertyChanged
+    where TBindingContext : class, ICloneable, INotifyPropertyChanged
     where T : IComparable<T>
     {
         Func<TBindingContext, ObservableCollection<Uniform<T>>> dictGetter = getter.Compile();
@@ -476,7 +489,7 @@ static class Templates
         string labelText,
         T defaultElement = default,
         IValueConverter converter = null)
-    where TBindingContext : ICloneable, INotifyPropertyChanged
+    where TBindingContext : class, ICloneable, INotifyPropertyChanged
     where T : ICloneable, IComparable<T>
     {
         var label = new Label { Text = labelText, VerticalOptions = LayoutOptions.Center, FontAttributes = FontAttributes.Bold };

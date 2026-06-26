@@ -1,87 +1,87 @@
-using SailorEditor.Commands;
+#if MACCATALYST
+using SailorEditor.Platforms.MacCatalyst;
+#endif
+using SailorEditor.Services;
 using SailorEditor.Shell;
-using SailorEditor.Styles;
+using SailorEditor.Workspace;
 using System.ComponentModel;
-using System.Windows.Input;
 
 namespace SailorEditor;
 
 public partial class MainPage : ContentPage
 {
     readonly EditorShellHost _shellHost;
-
-    public ICommand ChangeThemeCommand => new Command<string>(ChangeTheme);
+    readonly WorkspaceUiService _workspaceUi;
+    bool _workspaceUiInitialized;
 
     public MainPage(EditorShellHost shellHost)
     {
         _shellHost = shellHost;
+        _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         InitializeComponent();
 #if MACCATALYST
-        Title = string.Empty;
         ToolbarHost.IsVisible = false;
         ToolbarHost.HeightRequest = 0;
-        Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific.Page.SetUseSafeArea(this, false);
 #endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
-        BuildMenus();
+        _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
+        UpdateWindowTitle();
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        if (!_workspaceUiInitialized)
+        {
+            _workspaceUiInitialized = true;
+            await _workspaceUi.InitializeAsync();
+        }
+
         if (_shellHost.CurrentLayout is null)
             await _shellHost.InitializeAsync();
         ShellLayoutHost.Rebuild();
-        StatusTextLabel.Text = _shellHost.StatusText;
+        UpdateStatusText();
     }
 
     void OnShellHostPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(EditorShellHost.StatusText))
-            MainThread.BeginInvokeOnMainThread(() => StatusTextLabel.Text = _shellHost.StatusText);
+            MainThread.BeginInvokeOnMainThread(UpdateStatusText);
         if (e.PropertyName == nameof(EditorShellHost.CurrentLayout))
             MainThread.BeginInvokeOnMainThread(() => ShellLayoutHost.Rebuild());
     }
 
-    void BuildMenus()
+    void OnWorkspaceProjectionChanged(object? sender, EventArgs e)
     {
-        MenuBarItems.Clear();
-
-        var history = MauiProgram.GetService<ICommandHistoryService>();
-
-        var file = new MenuBarItem { Text = "File" };
-        file.Add(new MenuFlyoutItem { Text = "Undo" , Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
-        file.Add(new MenuFlyoutItem { Text = "Redo", Command = new Command(async () => await history.RedoAsync(new CommandOrigin(CommandOriginKind.Menu, "Redo"))) });
-        file.Add(new MenuFlyoutSeparator());
-        file.Add(new MenuFlyoutItem { Text = "Save Layout", Command = new Command(async () => await _shellHost.SaveLayoutAsync()) });
-        file.Add(new MenuFlyoutItem { Text = "Reset Layout", Command = new Command(async () => await _shellHost.ResetLayoutAsync()) });
-        file.Add(new MenuFlyoutSeparator());
-        file.Add(new MenuFlyoutItem { Text = "Exit" });
-
-        var window = new MenuBarItem { Text = "Window" };
-        foreach (var panel in MauiProgram.GetService<Panels.PanelRegistry>().GetAllDescriptors().OrderBy(x => x.Title))
+        MainThread.BeginInvokeOnMainThread(() =>
         {
-            window.Add(new MenuFlyoutItem
-            {
-                Text = panel.Title,
-                Command = new Command(async () => await _shellHost.OpenPanelAsync(panel.TypeId))
-            });
-        }
-
-        var preferences = new MenuBarItem { Text = "Preferences" };
-        preferences.Add(new MenuFlyoutItem { Text = "Light Theme", Command = ChangeThemeCommand, CommandParameter = "LightThemeStyle" });
-        preferences.Add(new MenuFlyoutItem { Text = "Dark Theme", Command = ChangeThemeCommand, CommandParameter = "DarkThemeStyle" });
-
-        MenuBarItems.Add(file);
-        MenuBarItems.Add(window);
-        MenuBarItems.Add(preferences);
+            UpdateStatusText();
+            UpdateWindowTitle();
+        });
     }
 
-    void ChangeTheme(string theme)
+    void UpdateStatusText()
     {
-        var mergedDictionaries = Application.Current!.Resources.MergedDictionaries;
-        mergedDictionaries.Clear();
-        mergedDictionaries.Add(theme == "LightThemeStyle" ? new LightThemeStyle() : new DarkThemeStyle());
+        var projection = _workspaceUi.Projection;
+        StatusTextLabel.Text = projection.HasActiveWorkspace
+            ? $"{_shellHost.StatusText} • Workspace: {projection.ActiveWorkspaceName} - {projection.ActiveWorkspacePath}"
+            : _shellHost.StatusText;
     }
+
+    void UpdateWindowTitle()
+    {
+        var title = BuildWindowTitle(_workspaceUi.Projection);
+        Title = title;
+        if (Application.Current?.Windows.FirstOrDefault() is { } window)
+            window.Title = title;
+#if MACCATALYST
+        MacCatalystWindowChrome.SetTitle(title);
+#endif
+    }
+
+    static string BuildWindowTitle(WorkspaceUiProjection projection)
+        => projection.HasActiveWorkspace
+            ? projection.ActiveWorkspaceName
+            : "New Workspace";
 }

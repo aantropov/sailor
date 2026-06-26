@@ -7,7 +7,8 @@ public sealed record WorkspaceCreateRequest(
     string Name,
     string WorkspaceDirectory,
     string EnginePath,
-    string? WorkspaceId = null);
+    string? WorkspaceId = null,
+    string? ManifestPath = null);
 
 public sealed record WorkspaceSession(
     string WorkspaceRoot,
@@ -60,12 +61,16 @@ public class WorkspaceTemplateService
     public virtual async Task<WorkspaceSession> CreateAsync(WorkspaceCreateRequest request, CancellationToken cancellationToken = default)
     {
         var workspaceRoot = Path.GetFullPath(request.WorkspaceDirectory);
-        ValidateCleanWorkspaceDirectory(workspaceRoot);
+        var manifestPath = string.IsNullOrWhiteSpace(request.ManifestPath)
+            ? Path.Combine(workspaceRoot, ManifestFileName)
+            : Path.GetFullPath(request.ManifestPath);
 
+        EnsureInsideWorkspace(workspaceRoot, manifestPath, nameof(WorkspaceCreateRequest.ManifestPath));
+        ValidateCleanWorkspaceDirectory(workspaceRoot, manifestPath);
         Directory.CreateDirectory(workspaceRoot);
 
         var manifest = WorkspaceManifest.CreateDefault(request.Name, request.EnginePath, request.WorkspaceId);
-        var session = CreateSession(workspaceRoot, manifest);
+        var session = CreateSession(workspaceRoot, manifest, manifestPath);
 
         EnsureInsideWorkspace(workspaceRoot, session.ContentDirectory, nameof(WorkspaceManifest.ContentPath));
         EnsureInsideWorkspace(workspaceRoot, session.SourceDirectory, nameof(WorkspaceManifest.SourcePath));
@@ -97,14 +102,18 @@ public class WorkspaceTemplateService
             ResolveWorkspacePath(root, manifest.CachePath));
     }
 
-    static void ValidateCleanWorkspaceDirectory(string workspaceRoot)
+    static void ValidateCleanWorkspaceDirectory(string workspaceRoot, string allowedManifestPath)
     {
         if (!Directory.Exists(workspaceRoot))
             return;
 
-        if (Directory.EnumerateFileSystemEntries(workspaceRoot).Any())
+        var allowed = NormalizePath(allowedManifestPath);
+        if (Directory.EnumerateFileSystemEntries(workspaceRoot).Any(x => !string.Equals(NormalizePath(x), allowed, PathComparison)))
             throw new InvalidOperationException($"Workspace directory is not empty: {workspaceRoot}");
     }
+
+    static string NormalizePath(string path)
+        => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     static string ResolveWorkspacePath(string workspaceRoot, string relativePath)
     {
@@ -166,6 +175,23 @@ public sealed class RecentWorkspaceStore
         try
         {
             var yaml = await File.ReadAllTextAsync(_path, cancellationToken);
+            var entries = _deserializer.Deserialize<List<RecentWorkspaceEntry>>(yaml) ?? [];
+            return Normalize(entries);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    public IReadOnlyList<RecentWorkspaceEntry> Load()
+    {
+        if (!File.Exists(_path))
+            return [];
+
+        try
+        {
+            var yaml = File.ReadAllText(_path);
             var entries = _deserializer.Deserialize<List<RecentWorkspaceEntry>>(yaml) ?? [];
             return Normalize(entries);
         }
