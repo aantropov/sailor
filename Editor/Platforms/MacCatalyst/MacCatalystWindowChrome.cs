@@ -23,7 +23,6 @@ namespace SailorEditor.Platforms.MacCatalyst
         const string SettingsItem = "SailorEditorToolbarSettings";
         static readonly string[] ToolbarItems =
         [
-            TitleItem,
             SaveItem,
             UndoItem,
             RedoItem,
@@ -31,6 +30,7 @@ namespace SailorEditor.Platforms.MacCatalyst
             PlayItem,
             DebugItem,
             NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
+            TitleItem,
             TraceSceneItem,
             TraceSelectionItem,
             SaveLayoutItem,

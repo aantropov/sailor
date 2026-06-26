@@ -109,7 +109,7 @@ public partial class MainPage : ContentPage
 
     MenuFlyoutSubItem BuildRecentWorkspacesMenu()
     {
-        var recent = new MenuFlyoutSubItem { Text = "Open Recent Workspace" };
+        var recent = new MenuFlyoutSubItem { Text = "Recent Workspaces" };
         if (_workspaceUi.Projection.RecentWorkspaces.Count == 0)
         {
             recent.Add(new MenuFlyoutItem { Text = "No recent workspaces", IsEnabled = false });
