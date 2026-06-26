@@ -1,5 +1,6 @@
 #if MACCATALYST
 using Foundation;
+using System.Runtime.InteropServices;
 using UniformTypeIdentifiers;
 using UIKit;
 #endif
@@ -146,6 +147,10 @@ internal sealed class WorkspaceUiService
     static async Task<string?> PickWorkspaceDirectoryAsync(Page page, CancellationToken cancellationToken)
     {
 #if MACCATALYST
+        var macFolder = await MainThread.InvokeOnMainThreadAsync(TryPickWorkspaceDirectoryWithMacOpenPanel);
+        if (!string.IsNullOrWhiteSpace(macFolder))
+            return macFolder;
+
         var picker = await MainThread.InvokeOnMainThreadAsync(() =>
         {
             var presenter = Platform.GetCurrentUIViewController();
@@ -191,6 +196,39 @@ internal sealed class WorkspaceUiService
     }
 
 #if MACCATALYST
+    static string? TryPickWorkspaceDirectoryWithMacOpenPanel()
+    {
+        var openPanelClass = ObjC.objc_getClass("NSOpenPanel");
+        if (openPanelClass == IntPtr.Zero)
+            return null;
+
+        var panel = ObjC.SendIntPtr(openPanelClass, "openPanel");
+        if (panel == IntPtr.Zero)
+            return null;
+
+        using var title = new NSString("New Workspace");
+        using var message = new NSString("Choose an empty folder for the new Sailor workspace.");
+        using var prompt = new NSString("Create");
+
+        ObjC.SendBool(panel, "setAllowsMultipleSelection:", false);
+        ObjC.SendBool(panel, "setCanChooseDirectories:", true);
+        ObjC.SendBool(panel, "setCanChooseFiles:", false);
+        ObjC.SendBool(panel, "setCanCreateDirectories:", true);
+        ObjC.SendIntPtr(panel, "setTitle:", title.Handle);
+        ObjC.SendIntPtr(panel, "setMessage:", message.Handle);
+        ObjC.SendIntPtr(panel, "setPrompt:", prompt.Handle);
+
+        const nint NSModalResponseOK = 1;
+        if (ObjC.SendNInt(panel, "runModal") != NSModalResponseOK)
+            return null;
+
+        var urlHandle = ObjC.SendIntPtr(panel, "URL");
+        if (urlHandle == IntPtr.Zero)
+            return null;
+
+        return ObjCRuntime.Runtime.GetNSObject<NSUrl>(urlHandle)?.Path;
+    }
+
     static async Task<string?> AwaitPickedFolderAsync(UIDocumentPickerViewController picker, CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -230,6 +268,41 @@ internal sealed class WorkspaceUiService
             completion.TrySetResult(null);
             controller.DismissViewController(true, null);
         }
+    }
+
+    static class ObjC
+    {
+        const string ObjCLibrary = "/usr/lib/libobjc.A.dylib";
+
+        [DllImport(ObjCLibrary)]
+        public static extern IntPtr objc_getClass(string name);
+
+        [DllImport(ObjCLibrary)]
+        static extern IntPtr sel_registerName(string name);
+
+        [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
+        static extern IntPtr objc_msgSend_IntPtr(IntPtr receiver, IntPtr selector);
+
+        [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
+        static extern nint objc_msgSend_nint(IntPtr receiver, IntPtr selector);
+
+        [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
+        static extern void objc_msgSend_bool(IntPtr receiver, IntPtr selector, bool value);
+
+        [DllImport(ObjCLibrary, EntryPoint = "objc_msgSend")]
+        static extern void objc_msgSend_IntPtrArg(IntPtr receiver, IntPtr selector, IntPtr value);
+
+        public static IntPtr SendIntPtr(IntPtr receiver, string selector)
+            => objc_msgSend_IntPtr(receiver, sel_registerName(selector));
+
+        public static nint SendNInt(IntPtr receiver, string selector)
+            => objc_msgSend_nint(receiver, sel_registerName(selector));
+
+        public static void SendBool(IntPtr receiver, string selector, bool value)
+            => objc_msgSend_bool(receiver, sel_registerName(selector), value);
+
+        public static void SendIntPtr(IntPtr receiver, string selector, IntPtr value)
+            => objc_msgSend_IntPtrArg(receiver, sel_registerName(selector), value);
     }
 #endif
 
