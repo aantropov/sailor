@@ -75,13 +75,13 @@ internal sealed class WorkspaceUiService
         {
             picked = await FilePicker.Default.PickAsync(new PickOptions
             {
-                PickerTitle = "Open Sailor workspace",
+                PickerTitle = "Load Sailor workspace",
                 FileTypes = WorkspaceManifestFileType
             });
         }
         catch (Exception ex)
         {
-            await page.DisplayAlert("Open Workspace", ex.Message, "OK");
+            await page.DisplayAlert("Load Workspace", ex.Message, "OK");
             return;
         }
 
@@ -90,7 +90,7 @@ internal sealed class WorkspaceUiService
 
         if (!string.Equals(Path.GetExtension(picked.FullPath), ".sailor", StringComparison.OrdinalIgnoreCase))
         {
-            await page.DisplayAlert("Open Workspace", "Select a .sailor workspace manifest.", "OK");
+            await page.DisplayAlert("Load Workspace", "Select a .sailor workspace manifest.", "OK");
             return;
         }
 
@@ -106,7 +106,7 @@ internal sealed class WorkspaceUiService
     {
         var result = await _workspaceLifecycle.OpenAsync(manifestPath, cancellationToken);
         var name = result.Session?.Manifest.Name ?? Path.GetFileNameWithoutExtension(manifestPath);
-        await ApplyResultAsync("Open Workspace", result, $"Opened workspace '{name}'.", cancellationToken);
+        await ApplyResultAsync("Load Workspace", result, $"Loaded workspace '{name}'.", cancellationToken);
     }
 
     public async Task SaveWorkspaceAsync(CancellationToken cancellationToken = default)
