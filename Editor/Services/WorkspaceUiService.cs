@@ -1,4 +1,5 @@
 using CommunityToolkit.Maui.Storage;
+using SailorEditor.Shell;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
@@ -136,8 +137,7 @@ internal sealed class WorkspaceUiService
         }
 
         await RefreshAsync(cancellationToken);
-        if (page is not null)
-            await page.DisplayAlert(title, successMessage, "OK");
+        MauiProgram.GetService<EditorShellHost>().SetStatus(successMessage);
     }
 
     void SetProjection(WorkspaceUiProjection projection)
