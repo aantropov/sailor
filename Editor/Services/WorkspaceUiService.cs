@@ -138,6 +138,9 @@ internal sealed class WorkspaceUiService
 
         await RefreshAsync(cancellationToken);
         MauiProgram.GetService<EditorShellHost>().SetStatus(successMessage);
+#if MACCATALYST
+        SailorEditor.AppDelegate.RequestMenuRebuild();
+#endif
     }
 
     void SetProjection(WorkspaceUiProjection projection)

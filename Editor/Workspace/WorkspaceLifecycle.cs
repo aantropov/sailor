@@ -184,6 +184,23 @@ public sealed class RecentWorkspaceStore
         }
     }
 
+    public IReadOnlyList<RecentWorkspaceEntry> Load()
+    {
+        if (!File.Exists(_path))
+            return [];
+
+        try
+        {
+            var yaml = File.ReadAllText(_path);
+            var entries = _deserializer.Deserialize<List<RecentWorkspaceEntry>>(yaml) ?? [];
+            return Normalize(entries);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
     public async Task SaveAsync(IReadOnlyList<RecentWorkspaceEntry> entries, CancellationToken cancellationToken = default)
     {
         var directory = Path.GetDirectoryName(_path);
