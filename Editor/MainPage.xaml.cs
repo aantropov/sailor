@@ -72,7 +72,7 @@ public partial class MainPage : ContentPage
 
         var file = new MenuBarItem { Text = "File" };
         file.Add(CreateWorkspaceMenuItem("New Workspace...", () => _workspaceUi.NewWorkspaceAsync()));
-        file.Add(CreateWorkspaceMenuItem("Open Workspace...", () => _workspaceUi.OpenWorkspaceAsync()));
+        file.Add(CreateWorkspaceMenuItem("Load Workspace...", () => _workspaceUi.OpenWorkspaceAsync()));
         file.Add(CreateWorkspaceMenuItem("Save Workspace", () => _workspaceUi.SaveWorkspaceAsync()));
         file.Add(BuildRecentWorkspacesMenu());
         file.Add(new MenuFlyoutSeparator());
@@ -105,7 +105,7 @@ public partial class MainPage : ContentPage
 
     MenuFlyoutSubItem BuildRecentWorkspacesMenu()
     {
-        var recent = new MenuFlyoutSubItem { Text = "Open Recent Workspace" };
+        var recent = new MenuFlyoutSubItem { Text = "Load Recent Workspace" };
         if (_workspaceUi.Projection.RecentWorkspaces.Count == 0)
         {
             recent.Add(new MenuFlyoutItem { Text = "No recent workspaces", IsEnabled = false });

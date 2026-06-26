@@ -51,7 +51,6 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
@@ -71,39 +70,12 @@
                     BackgroundColor="#2A2E35"
                     Padding="6,3"
                     StrokeShape="RoundRectangle 3">
-                <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                    <ImageButton Source="blue_document_24.png"
-                                 Style="{StaticResource ToolbarIconButtonStyle}"
-                                 Clicked="OnNewWorkspaceButtonClicked"/>
-                    <ImageButton Source="folder_open_24.png"
-                                 Style="{StaticResource ToolbarIconButtonStyle}"
-                                 Clicked="OnOpenWorkspaceButtonClicked"/>
-                    <ImageButton Source="disk_black_24.png"
-                                 Style="{StaticResource ToolbarIconButtonStyle}"
-                                 Clicked="OnSaveWorkspaceButtonClicked"/>
-                    <Label x:Name="WorkspaceNameLabel"
-                           Text="No workspace"
-                           FontSize="11"
-                           TextColor="#CFCFD2"
-                           WidthRequest="160"
-                           LineBreakMode="TailTruncation"
-                           VerticalTextAlignment="Center"
-                           Margin="3,0,0,0"/>
-                </HorizontalStackLayout>
-            </Border>
-
-            <Border Grid.Column="2"
-                    StrokeThickness="1"
-                    Stroke="#3B3F46"
-                    BackgroundColor="#2A2E35"
-                    Padding="6,3"
-                    StrokeShape="RoundRectangle 3">
                 <ImageButton Source="disk_24.png"
                              Style="{StaticResource ToolbarIconButtonStyle}"
                              Clicked="OnSaveButtonClicked"/>
             </Border>
 
-            <HorizontalStackLayout Grid.Column="3"
+            <HorizontalStackLayout Grid.Column="2"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"
                                    Spacing="4">
@@ -138,7 +110,7 @@
                 </Border>
             </HorizontalStackLayout>
 
-            <Border Grid.Column="4"
+            <Border Grid.Column="3"
                     StrokeThickness="1"
                     Stroke="#3B3F46"
                     BackgroundColor="#2A2E35"
@@ -155,7 +127,7 @@
                 </HorizontalStackLayout>
             </Border>
 
-            <Border Grid.Column="5"
+            <Border Grid.Column="4"
                     StrokeThickness="1"
                     Stroke="#3B3F46"
                     BackgroundColor="#2A2E35"

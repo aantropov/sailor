@@ -10,9 +10,6 @@ namespace SailorEditor.Platforms.MacCatalyst
 {
     public static class MacCatalystWindowChrome
     {
-        const string NewWorkspaceItem = "SailorEditorToolbarNewWorkspace";
-        const string OpenWorkspaceItem = "SailorEditorToolbarOpenWorkspace";
-        const string SaveWorkspaceItem = "SailorEditorToolbarSaveWorkspace";
         const string SaveItem = "SailorEditorToolbarSave";
         const string UndoItem = "SailorEditorToolbarUndo";
         const string RedoItem = "SailorEditorToolbarRedo";
@@ -25,10 +22,6 @@ namespace SailorEditor.Platforms.MacCatalyst
         const string SettingsItem = "SailorEditorToolbarSettings";
         static readonly string[] ToolbarItems =
         [
-            NewWorkspaceItem,
-            OpenWorkspaceItem,
-            SaveWorkspaceItem,
-            NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
             SaveItem,
             UndoItem,
             RedoItem,
@@ -175,9 +168,6 @@ namespace SailorEditor.Platforms.MacCatalyst
             {
                 return itemIdentifier switch
                 {
-                    NewWorkspaceItem => CreateItem(NewWorkspaceItem, "New Workspace", "doc.badge.plus", () => MauiProgram.GetService<WorkspaceUiService>().NewWorkspaceAsync()),
-                    OpenWorkspaceItem => CreateItem(OpenWorkspaceItem, "Open Workspace", "folder", () => MauiProgram.GetService<WorkspaceUiService>().OpenWorkspaceAsync()),
-                    SaveWorkspaceItem => CreateItem(SaveWorkspaceItem, "Save Workspace", "externaldrive.badge.checkmark", () => MauiProgram.GetService<WorkspaceUiService>().SaveWorkspaceAsync()),
                     SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()),
                     UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", () => MauiProgram.GetService<EditorToolbarActions>().UndoAsync()),
                     RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", () => MauiProgram.GetService<EditorToolbarActions>().RedoAsync()),

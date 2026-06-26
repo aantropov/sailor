@@ -1,3 +1,8 @@
+#if MACCATALYST
+using Foundation;
+using UniformTypeIdentifiers;
+using UIKit;
+#endif
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
@@ -6,6 +11,13 @@ internal sealed class WorkspaceUiService
 {
     readonly WorkspaceLifecycleService _workspaceLifecycle;
     readonly EngineService _engineService;
+    static readonly FilePickerFileType WorkspaceManifestFileType = new(new Dictionary<DevicePlatform, IEnumerable<string>>
+    {
+        { DevicePlatform.WinUI, [".sailor"] },
+        { DevicePlatform.MacCatalyst, ["public.data"] },
+        { DevicePlatform.iOS, ["public.data"] },
+        { DevicePlatform.Android, ["*/*"] }
+    });
 
     public WorkspaceUiService(WorkspaceLifecycleService workspaceLifecycle, EngineService engineService)
     {
@@ -34,34 +46,13 @@ internal sealed class WorkspaceUiService
         if (page is null)
             return;
 
-        var name = await page.DisplayPromptAsync(
-            "New Workspace",
-            "Workspace name",
-            "Next",
-            "Cancel",
-            "Project name");
-        name = name?.Trim();
-        if (string.IsNullOrWhiteSpace(name))
-            return;
-
-        var defaultDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Documents",
-            "Sailor",
-            SanitizeDirectoryName(name));
-
-        var directory = await page.DisplayPromptAsync(
-            "New Workspace",
-            "Workspace directory",
-            "Create",
-            "Cancel",
-            "Path",
-            -1,
-            Keyboard.Text,
-            defaultDirectory);
-        directory = directory?.Trim();
+        var directory = await PickWorkspaceDirectoryAsync(page, cancellationToken);
         if (string.IsNullOrWhiteSpace(directory))
             return;
+
+        var name = Path.GetFileName(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(name))
+            name = "SailorWorkspace";
 
         var result = await _workspaceLifecycle.CreateAsync(
             new WorkspaceCreateRequest(name, directory, _engineService.EngineWorkingDirectory),
@@ -81,12 +72,13 @@ internal sealed class WorkspaceUiService
         {
             picked = await FilePicker.Default.PickAsync(new PickOptions
             {
-                PickerTitle = "Open Sailor workspace"
+                PickerTitle = "Load Sailor workspace",
+                FileTypes = WorkspaceManifestFileType
             });
         }
         catch (Exception ex)
         {
-            await page.DisplayAlert("Open Workspace", ex.Message, "OK");
+            await page.DisplayAlert("Load Workspace", ex.Message, "OK");
             return;
         }
 
@@ -95,7 +87,7 @@ internal sealed class WorkspaceUiService
 
         if (!string.Equals(Path.GetExtension(picked.FullPath), ".sailor", StringComparison.OrdinalIgnoreCase))
         {
-            await page.DisplayAlert("Open Workspace", "Select a .sailor workspace manifest.", "OK");
+            await page.DisplayAlert("Load Workspace", "Select a .sailor workspace manifest.", "OK");
             return;
         }
 
@@ -111,7 +103,7 @@ internal sealed class WorkspaceUiService
     {
         var result = await _workspaceLifecycle.OpenAsync(manifestPath, cancellationToken);
         var name = result.Session?.Manifest.Name ?? Path.GetFileNameWithoutExtension(manifestPath);
-        await ApplyResultAsync("Open Workspace", result, $"Opened workspace '{name}'.", cancellationToken);
+        await ApplyResultAsync("Load Workspace", result, $"Loaded workspace '{name}'.", cancellationToken);
     }
 
     public async Task SaveWorkspaceAsync(CancellationToken cancellationToken = default)
@@ -151,6 +143,96 @@ internal sealed class WorkspaceUiService
         ProjectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    static async Task<string?> PickWorkspaceDirectoryAsync(Page page, CancellationToken cancellationToken)
+    {
+#if MACCATALYST
+        var picker = await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var presenter = Platform.GetCurrentUIViewController();
+            if (presenter is null)
+                return null;
+
+            var picker = new UIDocumentPickerViewController([UTTypes.Folder], false)
+            {
+                AllowsMultipleSelection = false
+            };
+            presenter.PresentViewController(picker, true, null);
+            return picker;
+        });
+
+        if (picker is null)
+            return null;
+
+        return await AwaitPickedFolderAsync(picker, cancellationToken);
+#else
+        return await PickWorkspaceDirectoryFallbackAsync(page, cancellationToken);
+#endif
+    }
+
+    static async Task<string?> PickWorkspaceDirectoryFallbackAsync(Page page, CancellationToken cancellationToken)
+    {
+        var defaultDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Documents",
+            "Sailor",
+            "SailorWorkspace");
+
+        var directory = await page.DisplayPromptAsync(
+            "New Workspace",
+            "Workspace directory",
+            "Create",
+            "Cancel",
+            "Path",
+            -1,
+            Keyboard.Text,
+            defaultDirectory);
+
+        return cancellationToken.IsCancellationRequested ? null : directory?.Trim();
+    }
+
+#if MACCATALYST
+    static async Task<string?> AwaitPickedFolderAsync(UIDocumentPickerViewController picker, CancellationToken cancellationToken)
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pickerDelegate = new WorkspaceFolderPickerDelegate(completion);
+        picker.Delegate = pickerDelegate;
+
+        using var registration = cancellationToken.Register(() =>
+        {
+            completion.TrySetResult(null);
+            MainThread.BeginInvokeOnMainThread(() => picker.DismissViewController(true, null));
+        });
+
+        var selectedPath = await completion.Task;
+        picker.Delegate = null;
+        pickerDelegate.Dispose();
+        picker.Dispose();
+        return selectedPath;
+    }
+
+    sealed class WorkspaceFolderPickerDelegate : UIDocumentPickerDelegate
+    {
+        readonly TaskCompletionSource<string?> completion;
+
+        public WorkspaceFolderPickerDelegate(TaskCompletionSource<string?> completion)
+        {
+            this.completion = completion;
+        }
+
+        public override void DidPickDocument(UIDocumentPickerViewController controller, NSUrl[] urls)
+        {
+            completion.TrySetResult(urls.FirstOrDefault()?.Path);
+            controller.DismissViewController(true, null);
+        }
+
+        public override void WasCancelled(UIDocumentPickerViewController controller)
+        {
+            completion.TrySetResult(null);
+            controller.DismissViewController(true, null);
+        }
+    }
+#endif
+
     static Page? GetPage()
         => Microsoft.Maui.Controls.Shell.Current?.CurrentPage
             ?? Application.Current?.Windows.FirstOrDefault()?.Page
@@ -167,10 +249,4 @@ internal sealed class WorkspaceUiService
         return "Workspace operation failed.";
     }
 
-    static string SanitizeDirectoryName(string name)
-    {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sanitized = new string(name.Select(x => invalid.Contains(x) ? '-' : x).ToArray()).Trim();
-        return string.IsNullOrWhiteSpace(sanitized) ? "SailorWorkspace" : sanitized;
-    }
 }
