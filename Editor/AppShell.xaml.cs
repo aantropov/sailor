@@ -5,9 +5,7 @@
         public AppShell()
         {
             InitializeComponent();
-#if MACCATALYST
-            Title = string.Empty;
-#endif
+            Title = "Sailor Editor";
         }
     }
 }

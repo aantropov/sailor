@@ -42,16 +42,23 @@ internal sealed class WorkspaceUiService
         if (page is null)
             return;
 
-        var directory = await PickWorkspaceDirectoryAsync(page, cancellationToken);
-        if (string.IsNullOrWhiteSpace(directory))
+        var manifestPath = await PickWorkspaceManifestPathAsync(page, cancellationToken);
+        if (string.IsNullOrWhiteSpace(manifestPath))
             return;
 
-        var name = Path.GetFileName(Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        var directory = Path.GetDirectoryName(Path.GetFullPath(manifestPath));
+        if (string.IsNullOrWhiteSpace(directory))
+        {
+            await page.DisplayAlert("New Workspace", $"Workspace manifest path is invalid: {manifestPath}", "OK");
+            return;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(manifestPath);
         if (string.IsNullOrWhiteSpace(name))
             name = "SailorWorkspace";
 
         var result = await _workspaceLifecycle.CreateAsync(
-            new WorkspaceCreateRequest(name, directory, _engineService.EngineWorkingDirectory),
+            new WorkspaceCreateRequest(name, directory, _engineService.EngineWorkingDirectory, ManifestPath: manifestPath),
             cancellationToken);
 
         await ApplyResultAsync("New Workspace", result, $"Created workspace '{name}'.", cancellationToken);
@@ -139,12 +146,17 @@ internal sealed class WorkspaceUiService
         ProjectionChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    static async Task<string?> PickWorkspaceDirectoryAsync(Page page, CancellationToken cancellationToken)
+    static async Task<string?> PickWorkspaceManifestPathAsync(Page page, CancellationToken cancellationToken)
     {
         try
         {
+            using var stream = new MemoryStream();
             var result = await MainThread.InvokeOnMainThreadAsync(
-                () => FolderPicker.Default.PickAsync("Choose an empty folder for the new Sailor workspace.", cancellationToken));
+                () => FileSaver.Default.SaveAsync(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "SailorWorkspace.sailor",
+                    stream,
+                    cancellationToken));
             if (result.IsCancelled)
                 return null;
             if (!result.IsSuccessful)
@@ -154,7 +166,17 @@ internal sealed class WorkspaceUiService
                 return null;
             }
 
-            return result.Folder.Path;
+            if (string.IsNullOrWhiteSpace(result.FilePath))
+                return null;
+
+            var manifestPath = Path.GetFullPath(result.FilePath);
+            if (!string.Equals(Path.GetExtension(manifestPath), ".sailor", StringComparison.OrdinalIgnoreCase))
+            {
+                await page.DisplayAlert("New Workspace", "Save the workspace manifest with a .sailor extension.", "OK");
+                return null;
+            }
+
+            return manifestPath;
         }
         catch (Exception ex)
         {

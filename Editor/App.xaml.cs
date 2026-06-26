@@ -18,8 +18,9 @@ namespace SailorEditor
             var window = base.CreateWindow(state);
             window.MinimumWidth = 1024;
             window.MinimumHeight = 768;
+            window.Title = "Sailor Editor";
 #if MACCATALYST
-            window.Title = string.Empty;
+            MacCatalystWindowChrome.SetTitle(window.Title);
             MacCatalystWindowChrome.UseCompactTitlebar(window);
 #endif
 

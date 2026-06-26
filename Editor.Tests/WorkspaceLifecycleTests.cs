@@ -41,6 +41,38 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task CreateAsync_UsesRequestedManifestPath()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("Sandbox.sailor");
+
+        var result = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id", manifestPath));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(Path.GetFullPath(manifestPath), result.Session!.ManifestPath);
+        Assert.True(File.Exists(manifestPath));
+        Assert.False(File.Exists(workspace.File(WorkspaceTemplateService.ManifestFileName)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_AllowsSelectedManifestPlaceholder()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("Sandbox.sailor");
+        await File.WriteAllTextAsync(manifestPath, string.Empty);
+
+        var result = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id", manifestPath));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal("Sandbox", result.Session!.Manifest.Name);
+        Assert.Contains("manifestVersion", await File.ReadAllTextAsync(manifestPath));
+    }
+
+    [Fact]
     public async Task OpenAsync_PreservesOpenedManifestPath()
     {
         using var workspace = TempWorkspace.Create();

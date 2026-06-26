@@ -1,7 +1,11 @@
 using SailorEditor.Commands;
+#if MACCATALYST
+using SailorEditor.Platforms.MacCatalyst;
+#endif
 using SailorEditor.Services;
 using SailorEditor.Shell;
 using SailorEditor.Styles;
+using SailorEditor.Workspace;
 using System.ComponentModel;
 using System.Windows.Input;
 
@@ -21,15 +25,14 @@ public partial class MainPage : ContentPage
         _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         InitializeComponent();
 #if MACCATALYST
-        Title = string.Empty;
         ToolbarHost.IsVisible = false;
         ToolbarHost.HeightRequest = 0;
-        Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific.Page.SetUseSafeArea(this, false);
 #endif
         ShellLayoutHost.Host = _shellHost;
         _shellHost.PropertyChanged += OnShellHostPropertyChanged;
         _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
         BuildMenus();
+        UpdateWindowTitle();
     }
 
     protected override async void OnAppearing()
@@ -61,6 +64,7 @@ public partial class MainPage : ContentPage
         {
             BuildMenus();
             UpdateStatusText();
+            UpdateWindowTitle();
         });
     }
 
@@ -149,6 +153,22 @@ public partial class MainPage : ContentPage
             ? $"Workspace: {projection.ActiveWorkspaceName} - {projection.ActiveWorkspacePath}"
             : _shellHost.StatusText;
     }
+
+    void UpdateWindowTitle()
+    {
+        var title = BuildWindowTitle(_workspaceUi.Projection);
+        Title = title;
+        if (Application.Current?.Windows.FirstOrDefault() is { } window)
+            window.Title = title;
+#if MACCATALYST
+        MacCatalystWindowChrome.SetTitle(title);
+#endif
+    }
+
+    static string BuildWindowTitle(WorkspaceUiProjection projection)
+        => projection.HasActiveWorkspace
+            ? $"{projection.ActiveWorkspaceName} - Sailor Editor"
+            : "Sailor Editor";
 
     void ChangeTheme(string theme)
     {

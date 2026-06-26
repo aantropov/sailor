@@ -45,6 +45,13 @@ namespace SailorEditor.Platforms.MacCatalyst
         static readonly NativeToolbarDelegate ToolbarDelegate = new();
         static readonly NSToolbar CompactToolbar = CreateCompactToolbar();
         static NSObject? windowVisibleObserver;
+        static string currentTitle = "Sailor Editor";
+
+        public static void SetTitle(string title)
+        {
+            currentTitle = string.IsNullOrWhiteSpace(title) ? "Sailor Editor" : title;
+            ApplySoon();
+        }
 
         public static void UseCompactTitlebar(MauiWindow window)
         {
@@ -79,7 +86,7 @@ namespace SailorEditor.Platforms.MacCatalyst
         {
             foreach (var window in Application.Current?.Windows ?? [])
             {
-                window.Title = string.Empty;
+                window.Title = currentTitle;
             }
 
             foreach (var scene in UIApplication.SharedApplication.ConnectedScenes)
@@ -89,7 +96,8 @@ namespace SailorEditor.Platforms.MacCatalyst
                     continue;
                 }
 
-                titlebar.TitleVisibility = UITitlebarTitleVisibility.Hidden;
+                windowScene.Title = currentTitle;
+                titlebar.TitleVisibility = UITitlebarTitleVisibility.Visible;
                 titlebar.Toolbar = CompactToolbar;
 
                 if (OperatingSystem.IsMacOSVersionAtLeast(12))
@@ -97,35 +105,6 @@ namespace SailorEditor.Platforms.MacCatalyst
                     titlebar.ToolbarStyle = UITitlebarToolbarStyle.UnifiedCompact;
                 }
             }
-
-            CollapseTopSafeArea();
-        }
-
-        static void CollapseTopSafeArea()
-        {
-            foreach (var scene in UIApplication.SharedApplication.ConnectedScenes)
-            {
-                if (scene is not UIWindowScene windowScene)
-                {
-                    continue;
-                }
-
-                foreach (var window in windowScene.Windows)
-                {
-                    CollapseTopSafeArea(window);
-                }
-            }
-        }
-
-        static void CollapseTopSafeArea(UIWindow window)
-        {
-            if (window.RootViewController is null)
-            {
-                return;
-            }
-
-            var topInset = window.SafeAreaInsets.Top;
-            window.RootViewController.AdditionalSafeAreaInsets = new UIEdgeInsets(-topInset, 0, 0, 0);
         }
 
         static NSToolbar CreateCompactToolbar()
