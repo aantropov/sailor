@@ -89,6 +89,26 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task OpenAsync_ResolvesContentDirectoryFromManifest()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("custom.sailor");
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            ContentPath = "ProjectContent"
+        };
+        await serializer.SaveAsync(manifestPath, manifest);
+
+        var result = await service.OpenAsync(manifestPath);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(Path.GetFullPath(workspace.Directory("ProjectContent")), result.Session!.ContentDirectory);
+    }
+
+    [Fact]
     public async Task SaveAsync_PersistsManifestUpdates()
     {
         using var workspace = TempWorkspace.Create();

@@ -47,4 +47,33 @@ public class ProjectContentProjectionTests
         Assert.Equal(["Textures"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.Single(projection.CurrentFolderAssets);
     }
+
+    [Fact]
+    public void Build_UsesActiveWorkspaceRootForFolderPaths()
+    {
+        var repoRoot = Path.Combine(Path.DirectorySeparatorChar.ToString(), "repo", "Content");
+        var workspaceRoot = Path.Combine(Path.DirectorySeparatorChar.ToString(), "workspaces", "Sandbox", "Content");
+        var folders = new[]
+        {
+            new ProjectContentFolderSnapshot(1, "Materials", -1),
+            new ProjectContentFolderSnapshot(2, "Wood", 1),
+        };
+
+        var repoProjection = ProjectContentProjectionBuilder.Build(
+            repoRoot,
+            folders,
+            [new ProjectContentAssetSnapshot("{R}", "repo-material", ".mat", 1, Path.Combine(repoRoot, "Materials", "repo-material.mat"))],
+            new ProjectContentState(CurrentFolderId: 1));
+
+        var workspaceProjection = ProjectContentProjectionBuilder.Build(
+            workspaceRoot,
+            folders,
+            [new ProjectContentAssetSnapshot("{W}", "workspace-material", ".mat", 1, Path.Combine(workspaceRoot, "Materials", "workspace-material.mat"))],
+            new ProjectContentState(CurrentFolderId: 1));
+
+        Assert.Equal(Path.Combine(repoRoot, "Materials"), repoProjection.Folders.Single(x => x.FolderId == 1).FullPath);
+        Assert.Equal(Path.Combine(workspaceRoot, "Materials"), workspaceProjection.Folders.Single(x => x.FolderId == 1).FullPath);
+        Assert.Equal(["repo-material"], repoProjection.VisibleAssets.Select(x => x.DisplayName).ToArray());
+        Assert.Equal(["workspace-material"], workspaceProjection.VisibleAssets.Select(x => x.DisplayName).ToArray());
+    }
 }
