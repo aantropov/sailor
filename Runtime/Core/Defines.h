@@ -2,18 +2,24 @@
 
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
+// SAILOR_API keeps legacy export-only behavior for template-heavy headers.
+// SAILOR_SHARED_API marks concrete types that cross the shared-library boundary.
 #if defined(_WIN32)
 # ifndef _SAILOR_IMPORT_
 #  define SAILOR_API __declspec(dllexport)
+#  define SAILOR_SHARED_API __declspec(dllexport)
 # else
 #  define SAILOR_API
+#  define SAILOR_SHARED_API __declspec(dllimport)
 # endif
 # pragma comment(lib, "mincore.lib")
 #else
 # if defined(__GNUC__) || defined(__clang__)
 #  define SAILOR_API __attribute__((visibility("default")))
+#  define SAILOR_SHARED_API __attribute__((visibility("default")))
 # else
 #  define SAILOR_API
+#  define SAILOR_SHARED_API
 # endif
 #endif
 

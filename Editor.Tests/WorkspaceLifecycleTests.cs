@@ -20,7 +20,15 @@ public sealed class WorkspaceLifecycleTests
         Assert.True(Directory.Exists(workspace.Directory("Source")));
         Assert.True(Directory.Exists(workspace.Directory("Generated")));
         Assert.True(Directory.Exists(workspace.Directory("Cache")));
+        Assert.True(Directory.Exists(workspace.Directory("Cache/Build")));
+        Assert.True(Directory.Exists(workspace.Directory("Binaries")));
+        Assert.True(File.Exists(workspace.File(".gitignore")));
+        Assert.True(File.Exists(workspace.File("Generated/CMakeLists.txt")));
+        Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.h")));
+        Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.cpp")));
         Assert.Equal("workspace-id", result.Session.Manifest.WorkspaceId);
+        Assert.Equal(workspace.Directory("Cache/Build"), result.Session.BuildDirectory);
+        Assert.Equal(workspace.Directory("Binaries"), result.Session.LogicOutputDirectory);
     }
 
     [Fact]
@@ -54,6 +62,28 @@ public sealed class WorkspaceLifecycleTests
         Assert.Equal(Path.GetFullPath(manifestPath), result.Session!.ManifestPath);
         Assert.True(File.Exists(manifestPath));
         Assert.False(File.Exists(workspace.File(WorkspaceTemplateService.ManifestFileName)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_UsesRequestedInstalledEngineReference()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var engineInstall = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+
+        var result = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            engineInstall.Root,
+            "workspace-id",
+            EngineReferenceKind: WorkspaceEngineReferenceKinds.Installed));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(WorkspaceEngineReferenceKinds.Installed, result.Session!.Manifest.EngineReferenceKind);
+        var cmake = await File.ReadAllTextAsync(workspace.File("Generated/CMakeLists.txt"));
+        Assert.Contains("find_package(Sailor CONFIG REQUIRED)", cmake);
+        Assert.DoesNotContain("add_subdirectory", cmake);
     }
 
     [Fact]
@@ -129,6 +159,25 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task OpenAndSave_DoNotOverwriteGeneratedProjectFiles()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id"));
+        var session = Assert.IsType<WorkspaceSession>(created.Session);
+        var cmakePath = workspace.File("Generated/CMakeLists.txt");
+        await File.WriteAllTextAsync(cmakePath, "user-edited project");
+
+        var saved = await service.SaveAsync(session);
+        var reopened = await service.OpenAsync(session.ManifestPath);
+
+        Assert.True(saved.Succeeded, saved.Error);
+        Assert.True(reopened.Succeeded, reopened.Error);
+        Assert.Equal("user-edited project", await File.ReadAllTextAsync(cmakePath));
+    }
+
+    [Fact]
     public async Task SaveAsync_RejectsManifestPathsOutsideWorkspace()
     {
         using var workspace = TempWorkspace.Create();
@@ -159,6 +208,26 @@ public sealed class WorkspaceLifecycleTests
         {
             Manifest = created.Session.Manifest with { ContentPath = "../Content" }
         };
+
+        var result = await service.SaveAsync(unsafeSession);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("outside", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(nameof(WorkspaceManifest.BuildPath))]
+    [InlineData(nameof(WorkspaceManifest.LogicOutputPath))]
+    public async Task SaveAsync_RejectsLogicProjectPathsOutsideWorkspace(string field)
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id"));
+        var unsafeManifest = field == nameof(WorkspaceManifest.BuildPath)
+            ? created.Session!.Manifest with { BuildPath = "../Build" }
+            : created.Session!.Manifest with { LogicOutputPath = "../Binaries" };
+        var unsafeSession = created.Session! with { Manifest = unsafeManifest };
 
         var result = await service.SaveAsync(unsafeSession);
 
@@ -223,7 +292,11 @@ public sealed class WorkspaceLifecycleTests
             workspace.Directory("Content"),
             workspace.Directory("Source"),
             workspace.Directory("Generated"),
-            workspace.Directory("Cache"));
+            workspace.Directory("Cache"))
+        {
+            BuildDirectory = workspace.Directory("Cache/Build"),
+            LogicOutputDirectory = workspace.Directory("Binaries")
+        };
         var second = first with
         {
             ManifestPath = workspace.File("second.sailor"),

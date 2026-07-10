@@ -21,6 +21,10 @@ public sealed class WorkspaceManifestTests
         Assert.Equal("Source", manifest.SourcePath);
         Assert.Equal("Generated", manifest.GeneratedProjectPath);
         Assert.Equal("Cache", manifest.CachePath);
+        Assert.Equal(WorkspaceEngineReferenceKinds.Source, manifest.EngineReferenceKind);
+        Assert.Equal("Cache/Build", manifest.BuildPath);
+        Assert.Equal("Binaries", manifest.LogicOutputPath);
+        Assert.Equal("SailorGame", manifest.LogicModuleName);
     }
 
     [Fact]
@@ -33,7 +37,11 @@ public sealed class WorkspaceManifestTests
             ContentPath = "./Game\\Content\\",
             SourcePath = "Game\\Source",
             GeneratedProjectPath = "./Generated\\Project\\",
-            CachePath = "Cache\\"
+            CachePath = "Cache\\",
+            EngineReferenceKind = " INSTALLED ",
+            BuildPath = ".\\Cache\\Build Output\\",
+            LogicOutputPath = ".\\Game Binaries\\",
+            LogicModuleName = " SandboxLogic "
         };
 
         try
@@ -48,12 +56,79 @@ public sealed class WorkspaceManifestTests
             Assert.Equal("Game/Source", result.Manifest.SourcePath);
             Assert.Equal("Generated/Project", result.Manifest.GeneratedProjectPath);
             Assert.Equal("Cache", result.Manifest.CachePath);
+            Assert.Equal(WorkspaceEngineReferenceKinds.Installed, result.Manifest.EngineReferenceKind);
+            Assert.Equal("Cache/Build Output", result.Manifest.BuildPath);
+            Assert.Equal("Game Binaries", result.Manifest.LogicOutputPath);
+            Assert.Equal("SandboxLogic", result.Manifest.LogicModuleName);
         }
         finally
         {
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Fact]
+    public void Deserialize_OldVersionOneManifestUsesLogicProjectDefaults()
+    {
+        var serializer = new WorkspaceManifestSerializer();
+
+        var result = serializer.Deserialize("""
+manifestVersion: 1
+workspaceId: workspace-id
+name: Sandbox
+enginePath: ../Sailor
+contentPath: Content
+sourcePath: Source
+generatedProjectPath: Generated
+cachePath: Cache
+""");
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal(WorkspaceEngineReferenceKinds.Source, result.Manifest.EngineReferenceKind);
+        Assert.Equal("Cache/Build", result.Manifest.BuildPath);
+        Assert.Equal("Binaries", result.Manifest.LogicOutputPath);
+        Assert.Equal("SailorGame", result.Manifest.LogicModuleName);
+    }
+
+    [Theory]
+    [InlineData("git", false)]
+    [InlineData("source", true)]
+    [InlineData("installed", true)]
+    public void Validate_RequiresSupportedEngineReferenceKind(string engineReferenceKind, bool expectedValid)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            EngineReferenceKind = engineReferenceKind
+        };
+
+        var validation = serializer.Validate(manifest);
+
+        Assert.Equal(expectedValid, validation.IsValid);
+        Assert.Equal(!expectedValid, validation.Issues.Any(x => x.Field == nameof(WorkspaceManifest.EngineReferenceKind)));
+    }
+
+    [Theory]
+    [InlineData("SailorGame", true)]
+    [InlineData("_Sandbox2", true)]
+    [InlineData("2Sandbox", false)]
+    [InlineData("Sandbox-Logic", false)]
+    [InlineData("Sandbox Logic", false)]
+    [InlineData("Module.Name", false)]
+    public void Validate_RequiresCIdentifierForLogicModuleName(string moduleName, bool expectedValid)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            LogicModuleName = moduleName
+        };
+
+        var validation = serializer.Validate(manifest);
+
+        Assert.Equal(expectedValid, validation.IsValid);
+        Assert.Equal(!expectedValid, validation.Issues.Any(x => x.Field == nameof(WorkspaceManifest.LogicModuleName)));
     }
 
     [Fact]

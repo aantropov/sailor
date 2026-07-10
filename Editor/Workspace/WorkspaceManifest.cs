@@ -16,8 +16,16 @@ public sealed record WorkspaceManifest
     public string SourcePath { get; init; } = string.Empty;
     public string GeneratedProjectPath { get; init; } = string.Empty;
     public string CachePath { get; init; } = string.Empty;
+    public string EngineReferenceKind { get; init; } = WorkspaceEngineReferenceKinds.Source;
+    public string BuildPath { get; init; } = "Cache/Build";
+    public string LogicOutputPath { get; init; } = "Binaries";
+    public string LogicModuleName { get; init; } = "SailorGame";
 
-    public static WorkspaceManifest CreateDefault(string name, string enginePath, string? workspaceId = null) => new()
+    public static WorkspaceManifest CreateDefault(
+        string name,
+        string enginePath,
+        string? workspaceId = null,
+        string engineReferenceKind = WorkspaceEngineReferenceKinds.Source) => new()
     {
         ManifestVersion = CurrentVersion,
         WorkspaceId = string.IsNullOrWhiteSpace(workspaceId) ? Guid.NewGuid().ToString("D") : workspaceId.Trim(),
@@ -26,8 +34,24 @@ public sealed record WorkspaceManifest
         ContentPath = "Content",
         SourcePath = "Source",
         GeneratedProjectPath = "Generated",
-        CachePath = "Cache"
+        CachePath = "Cache",
+        EngineReferenceKind = WorkspaceEngineReferenceKinds.Normalize(engineReferenceKind),
+        BuildPath = "Cache/Build",
+        LogicOutputPath = "Binaries",
+        LogicModuleName = "SailorGame"
     };
+}
+
+public static class WorkspaceEngineReferenceKinds
+{
+    public const string Source = "source";
+    public const string Installed = "installed";
+
+    public static bool IsSupported(string value)
+        => value is Source or Installed;
+
+    public static string Normalize(string? value)
+        => value?.Trim().ToLowerInvariant() ?? string.Empty;
 }
 
 public sealed record WorkspaceManifestIssue(string Field, string Message);
@@ -96,7 +120,8 @@ public sealed class WorkspaceManifestSerializer
 
     public async Task SaveAsync(string path, WorkspaceManifest manifest, CancellationToken cancellationToken = default)
     {
-        var validation = Validate(manifest);
+        var normalized = Normalize(manifest);
+        var validation = Validate(normalized);
         if (!validation.IsValid)
             throw new InvalidOperationException($"Workspace manifest is invalid: {string.Join("; ", validation.Issues.Select(x => x.Message))}");
 
@@ -104,7 +129,7 @@ public sealed class WorkspaceManifestSerializer
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
-        await File.WriteAllTextAsync(path, Serialize(manifest), cancellationToken);
+        await File.WriteAllTextAsync(path, Serialize(normalized), cancellationToken);
     }
 
     public async Task<WorkspaceManifestLoadResult> LoadAsync(string path, CancellationToken cancellationToken = default)
@@ -130,6 +155,25 @@ public sealed class WorkspaceManifestSerializer
         AddRequiredStringIssue(issues, nameof(WorkspaceManifest.SourcePath), manifest.SourcePath);
         AddRequiredStringIssue(issues, nameof(WorkspaceManifest.GeneratedProjectPath), manifest.GeneratedProjectPath);
         AddRequiredStringIssue(issues, nameof(WorkspaceManifest.CachePath), manifest.CachePath);
+        AddRequiredStringIssue(issues, nameof(WorkspaceManifest.EngineReferenceKind), manifest.EngineReferenceKind);
+        AddRequiredStringIssue(issues, nameof(WorkspaceManifest.BuildPath), manifest.BuildPath);
+        AddRequiredStringIssue(issues, nameof(WorkspaceManifest.LogicOutputPath), manifest.LogicOutputPath);
+        AddRequiredStringIssue(issues, nameof(WorkspaceManifest.LogicModuleName), manifest.LogicModuleName);
+
+        if (!string.IsNullOrWhiteSpace(manifest.EngineReferenceKind) &&
+            !WorkspaceEngineReferenceKinds.IsSupported(manifest.EngineReferenceKind))
+        {
+            issues.Add(new WorkspaceManifestIssue(
+                nameof(WorkspaceManifest.EngineReferenceKind),
+                $"EngineReferenceKind must be '{WorkspaceEngineReferenceKinds.Source}' or '{WorkspaceEngineReferenceKinds.Installed}'."));
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.LogicModuleName) && !IsCIdentifier(manifest.LogicModuleName))
+        {
+            issues.Add(new WorkspaceManifestIssue(
+                nameof(WorkspaceManifest.LogicModuleName),
+                "LogicModuleName must be a valid C identifier."));
+        }
 
         return issues.Count == 0
             ? WorkspaceManifestValidationResult.Success
@@ -144,7 +188,11 @@ public sealed class WorkspaceManifestSerializer
         ContentPath = WorkspaceManifestPaths.Normalize(manifest.ContentPath),
         SourcePath = WorkspaceManifestPaths.Normalize(manifest.SourcePath),
         GeneratedProjectPath = WorkspaceManifestPaths.Normalize(manifest.GeneratedProjectPath),
-        CachePath = WorkspaceManifestPaths.Normalize(manifest.CachePath)
+        CachePath = WorkspaceManifestPaths.Normalize(manifest.CachePath),
+        EngineReferenceKind = WorkspaceEngineReferenceKinds.Normalize(manifest.EngineReferenceKind),
+        BuildPath = WorkspaceManifestPaths.Normalize(manifest.BuildPath),
+        LogicOutputPath = WorkspaceManifestPaths.Normalize(manifest.LogicOutputPath),
+        LogicModuleName = NormalizeText(manifest.LogicModuleName)
     };
 
     static string NormalizeText(string? value) => value?.Trim() ?? string.Empty;
@@ -154,4 +202,15 @@ public sealed class WorkspaceManifestSerializer
         if (string.IsNullOrWhiteSpace(value))
             issues.Add(new WorkspaceManifestIssue(field, $"{field} is required."));
     }
+
+    static bool IsCIdentifier(string value)
+    {
+        if (value.Length == 0 || !IsAsciiLetterOrUnderscore(value[0]))
+            return false;
+
+        return value.Skip(1).All(x => IsAsciiLetterOrUnderscore(x) || x is >= '0' and <= '9');
+    }
+
+    static bool IsAsciiLetterOrUnderscore(char value)
+        => value == '_' || value is >= 'A' and <= 'Z' || value is >= 'a' and <= 'z';
 }

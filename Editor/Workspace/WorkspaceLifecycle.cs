@@ -8,7 +8,8 @@ public sealed record WorkspaceCreateRequest(
     string WorkspaceDirectory,
     string EnginePath,
     string? WorkspaceId = null,
-    string? ManifestPath = null);
+    string? ManifestPath = null,
+    string EngineReferenceKind = WorkspaceEngineReferenceKinds.Source);
 
 public sealed record WorkspaceSession(
     string WorkspaceRoot,
@@ -17,7 +18,11 @@ public sealed record WorkspaceSession(
     string ContentDirectory,
     string SourceDirectory,
     string GeneratedProjectDirectory,
-    string CacheDirectory);
+    string CacheDirectory)
+{
+    public string BuildDirectory { get; init; } = string.Empty;
+    public string LogicOutputDirectory { get; init; } = string.Empty;
+}
 
 public sealed record WorkspaceLifecycleResult(
     WorkspaceSession? Session,
@@ -52,10 +57,19 @@ public class WorkspaceTemplateService
     public const string ManifestFileName = "workspace.sailor";
 
     readonly WorkspaceManifestSerializer _serializer;
+    readonly WorkspaceProjectGenerator _projectGenerator;
 
     public WorkspaceTemplateService(WorkspaceManifestSerializer serializer)
+        : this(serializer, new WorkspaceProjectGenerator())
+    {
+    }
+
+    public WorkspaceTemplateService(
+        WorkspaceManifestSerializer serializer,
+        WorkspaceProjectGenerator projectGenerator)
     {
         _serializer = serializer;
+        _projectGenerator = projectGenerator;
     }
 
     public virtual async Task<WorkspaceSession> CreateAsync(WorkspaceCreateRequest request, CancellationToken cancellationToken = default)
@@ -69,19 +83,28 @@ public class WorkspaceTemplateService
         ValidateCleanWorkspaceDirectory(workspaceRoot, manifestPath);
         Directory.CreateDirectory(workspaceRoot);
 
-        var manifest = WorkspaceManifest.CreateDefault(request.Name, request.EnginePath, request.WorkspaceId);
+        var manifest = WorkspaceManifest.CreateDefault(
+            request.Name,
+            request.EnginePath,
+            request.WorkspaceId,
+            request.EngineReferenceKind);
         var session = CreateSession(workspaceRoot, manifest, manifestPath);
 
         EnsureInsideWorkspace(workspaceRoot, session.ContentDirectory, nameof(WorkspaceManifest.ContentPath));
         EnsureInsideWorkspace(workspaceRoot, session.SourceDirectory, nameof(WorkspaceManifest.SourcePath));
         EnsureInsideWorkspace(workspaceRoot, session.GeneratedProjectDirectory, nameof(WorkspaceManifest.GeneratedProjectPath));
         EnsureInsideWorkspace(workspaceRoot, session.CacheDirectory, nameof(WorkspaceManifest.CachePath));
+        EnsureInsideWorkspace(workspaceRoot, session.BuildDirectory, nameof(WorkspaceManifest.BuildPath));
+        EnsureInsideWorkspace(workspaceRoot, session.LogicOutputDirectory, nameof(WorkspaceManifest.LogicOutputPath));
 
         Directory.CreateDirectory(session.ContentDirectory);
         Directory.CreateDirectory(session.SourceDirectory);
         Directory.CreateDirectory(session.GeneratedProjectDirectory);
         Directory.CreateDirectory(session.CacheDirectory);
+        Directory.CreateDirectory(session.BuildDirectory);
+        Directory.CreateDirectory(session.LogicOutputDirectory);
 
+        await _projectGenerator.GenerateAsync(session, cancellationToken);
         await _serializer.SaveAsync(session.ManifestPath, manifest, cancellationToken);
         return session;
     }
@@ -99,7 +122,11 @@ public class WorkspaceTemplateService
             ResolveWorkspacePath(root, manifest.ContentPath),
             ResolveWorkspacePath(root, manifest.SourcePath),
             ResolveWorkspacePath(root, manifest.GeneratedProjectPath),
-            ResolveWorkspacePath(root, manifest.CachePath));
+            ResolveWorkspacePath(root, manifest.CachePath))
+        {
+            BuildDirectory = ResolveWorkspacePath(root, manifest.BuildPath),
+            LogicOutputDirectory = ResolveWorkspacePath(root, manifest.LogicOutputPath)
+        };
     }
 
     static void ValidateCleanWorkspaceDirectory(string workspaceRoot, string allowedManifestPath)

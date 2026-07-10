@@ -11,7 +11,18 @@ env:
 
 jobs:
   build:
+    name: Build (${{ matrix.compiler }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - compiler: MSVC
+          cmake_toolset_argument: ""
+          sailor_toolset: ""
+        - compiler: clang-cl
+          cmake_toolset_argument: -T ClangCL
+          sailor_toolset: ClangCL
 
     steps:
     - name: Checkout repository
@@ -26,8 +37,9 @@ jobs:
         path: |
           ${{ env.VCPKG_ROOT }}/installed
           ${{ env.VCPKG_ROOT }}/packages
-        key: vcpkg-${{ runner.os }}-installed-${{ env.BUILD_TYPE }}
+        key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-installed-${{ env.BUILD_TYPE }}
         restore-keys: |
+          vcpkg-${{ runner.os }}-${{ matrix.compiler }}-installed-
           vcpkg-${{ runner.os }}-installed-
 
     - name: Show CMake version
@@ -44,7 +56,7 @@ jobs:
 
 
     - name: Configure CMake
-      run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+      run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 ${{ matrix.cmake_toolset_argument }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
 
     - name: Build
       run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -52,3 +64,22 @@ jobs:
     - name: Test
       working-directory: build
       run: ctest -C ${{ env.BUILD_TYPE }}
+
+    - name: Install Sailor CMake package
+      run: cmake --install build --config ${{ env.BUILD_TYPE }} --prefix build/install
+
+    - name: Set up .NET 9
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 9.0.x
+
+    - name: Validate generated workspace projects
+      run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj --configuration Release --filter "FullyQualifiedName~WorkspaceProjectGeneratorIntegrationTests"
+      env:
+        SAILOR_RUN_CMAKE_INTEGRATION: 1
+        SAILOR_ENGINE_SOURCE_DIR: ${{ github.workspace }}
+        SAILOR_ENGINE_INSTALL_PREFIX: ${{ github.workspace }}/build/install
+        SAILOR_CMAKE_GENERATOR: Visual Studio 17 2022
+        SAILOR_CMAKE_ARCHITECTURE: x64
+        SAILOR_CMAKE_TOOLSET: ${{ matrix.sailor_toolset }}
+        SAILOR_CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake

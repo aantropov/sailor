@@ -6,6 +6,11 @@
 #include "ObjectAllocator.hpp"
 #include "Core/YamlSerializable.h"
 
+#if defined(_MSC_VER)
+# pragma warning(push)
+# pragma warning(disable: 4251)
+#endif
+
 namespace Sailor
 {
 	class Object;
@@ -20,7 +25,7 @@ namespace Sailor
 	// from the proper ownership, like World destroys GameObject, GameObject destroy Component
 	// and all TObjectPtr pointers to destroyed objects aren't become dangling
 
-	class TObjectPtrBase : public IYamlSerializable
+	class SAILOR_SHARED_API TObjectPtrBase : public IYamlSerializable
 	{
 	protected:
 
@@ -30,20 +35,24 @@ namespace Sailor
 
 	public:
 
-		SAILOR_API virtual YAML::Node Serialize() const override;
+		virtual YAML::Node Serialize() const override;
 
 		virtual void Deserialize(const YAML::Node& inData) override
 		{
 			check(0);
 		}
 
-		SAILOR_API bool IsValid() const noexcept;
+		bool IsValid() const noexcept;
 
-		SAILOR_API bool IsInited() const noexcept { return m_pRawPtr != nullptr || m_pControlBlock != nullptr; }
+		bool IsInited() const noexcept { return m_pRawPtr != nullptr || m_pControlBlock != nullptr; }
 
 		// Only if you know what you're doing
-		SAILOR_API void ForcelyDestroyObject();
+		void ForcelyDestroyObject();
 	};
+
+#if defined(_MSC_VER)
+# pragma warning(pop)
+#endif
 
 	template<typename T>
 	class TObjectPtr final : public TObjectPtrBase

@@ -112,11 +112,18 @@ ComponentPtr Reflection::CreateCDO(const TypeInfo& pType)
 			Internal::g_cdoAllocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		}});
 
-		check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
+	check(Internal::g_pCdos && !Internal::g_pCdos->ContainsKey(typeName));
 
-		auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
+	auto cdo = CreateObject<Component>(pType, Internal::g_cdoAllocator);
 
-		return cdo;
+	return cdo;
+}
+
+void Reflection::StoreCDO(const std::string& typeName, ReflectedData&& reflectedCdo)
+{
+	auto& cdoInfo = Internal::g_pCdos->At_Lock(typeName);
+	cdoInfo = std::move(reflectedCdo);
+	Internal::g_pCdos->Unlock(typeName);
 }
 
 void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew)
@@ -158,6 +165,11 @@ const TypeInfo& Reflection::GetTypeByName(const std::string& typeName)
 	check(Internal::g_pReflectionTypes && Internal::g_pReflectionTypes->ContainsKey(typeName));
 
 	return *(*Internal::g_pReflectionTypes)[typeName];
+}
+
+const ReflectedData& Reflection::GetCDO(const std::string& typeName)
+{
+	return (*Internal::g_pCdos)[typeName];
 }
 
 YAML::Node TypeInfo::Serialize() const

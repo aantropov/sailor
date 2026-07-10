@@ -11,7 +11,7 @@
 
 namespace Sailor
 {
-	class SAILOR_API IYamlSerializable
+	class SAILOR_SHARED_API IYamlSerializable
 	{
 	public:
 

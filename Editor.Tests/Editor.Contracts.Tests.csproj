@@ -30,6 +30,7 @@
     <Compile Include="ProjectContentPathPolicyTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
+    <Compile Include="WorkspaceProjectGeneratorTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
@@ -58,6 +59,7 @@
     <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceProjectGenerator.cs" Link="Workspace\WorkspaceProjectGenerator.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceUiContracts.cs" Link="Workspace\WorkspaceUiContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellHost.cs" Link="Shell\EditorShellHost.cs" />

@@ -19,25 +19,25 @@ namespace Sailor::RHI
 
 #define SAILOR_REFLECTABLE(__CLASSNAME__) \
 	public: \
-	static const TypeInfo& GetStaticTypeInfo() \
+	static const ::Sailor::TypeInfo& GetStaticTypeInfo() \
 	{ \
-		return TypeInfo::Get<__CLASSNAME__>(); \
+		return ::Sailor::TypeInfo::Get<__CLASSNAME__>(); \
 	} \
-	virtual const TypeInfo& GetTypeInfo() const override \
+	virtual const ::Sailor::TypeInfo& GetTypeInfo() const override \
 	{ \
-		return TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+		return ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
 	} \
-	virtual ReflectedData GetReflectedData() const override \
+	virtual ::Sailor::ReflectedData GetReflectedData() const override \
 	{ \
-		TypeInfo typeInfo = TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		ReflectedData res = Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
+		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
 		return res; \
 	} \
-	virtual void ApplyReflection(const ReflectedData& reflection) override \
+	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
 	{ \
 		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
 	} \
-	virtual bool ResolveRefs(const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true) override \
+	virtual bool ResolveRefs(const ::Sailor::ReflectedData& reflection, const ::Sailor::TMap<::Sailor::InstanceId, ::Sailor::ObjectPtr>& resolveContext, bool bImmediate = true) override \
 	{ \
 		return __CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
 	} \
@@ -45,19 +45,19 @@ namespace Sailor::RHI
 	class SAILOR_API RegistrationFactoryMethod \
 	{ \
 	public: \
-		RegistrationFactoryMethod(const TypeInfo& type) \
+		RegistrationFactoryMethod(const ::Sailor::TypeInfo& type) \
 		{ \
 			if (!s_bRegistered) \
 			{ \
-				Reflection::RegisterType(type.Name(), &type); \
-				if constexpr (IsDefaultConstructible<__CLASSNAME__> && IsBaseOf<Object, __CLASSNAME__>) \
+				::Sailor::Reflection::RegisterType(type.Name(), &type); \
+				if constexpr (::Sailor::IsDefaultConstructible<__CLASSNAME__> && ::Sailor::IsBaseOf<::Sailor::Object, __CLASSNAME__>) \
 				{ \
 					auto placementNew = [](void* ptr) mutable \
 					{ \
 						return new (ptr) __CLASSNAME__(); \
 					}; \
-					Reflection::RegisterFactoryMethod(type, placementNew); \
-					Reflection::RegisterCDO<__CLASSNAME__>(type); \
+					::Sailor::Reflection::RegisterFactoryMethod(type, placementNew); \
+					::Sailor::Reflection::RegisterCDO<__CLASSNAME__>(type); \
 				} \
 				s_bRegistered = true; \
 			} \
@@ -78,12 +78,17 @@ namespace Sailor
 		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
 	}
 
-	class TypeInfo : public IYamlSerializable
+#if defined(_MSC_VER)
+# pragma warning(push)
+# pragma warning(disable: 4251)
+#endif
+
+	class SAILOR_SHARED_API TypeInfo : public IYamlSerializable
 	{
 	public:
 
-		SAILOR_API virtual YAML::Node Serialize() const;
-		SAILOR_API virtual void Deserialize(const YAML::Node& inData);
+		virtual YAML::Node Serialize() const;
+		virtual void Deserialize(const YAML::Node& inData);
 
 		// instances can be obtained only through calls to Get()
 		template <typename T>
@@ -235,7 +240,7 @@ namespace Sailor
 		friend class Reflection;
 	};
 
-	class ReflectedData final : public IYamlSerializable
+	class SAILOR_SHARED_API ReflectedData final : public IYamlSerializable
 	{
 	public:
 
@@ -262,6 +267,10 @@ namespace Sailor
 
 		friend class Reflection;
 	};
+
+#if defined(_MSC_VER)
+# pragma warning(pop)
+#endif
 
 	template<typename TPropertyType>
 	__forceinline TPropertyType IReflectable::ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
@@ -421,9 +430,7 @@ namespace Sailor
 
 			auto cdo = CreateCDO(pType);
 
-			auto& cdoInfo = Internal::g_pCdos->At_Lock(typeName);
-			cdoInfo = Reflection::ReflectCDO<T>(cdo.DynamicCast<T>().GetRawPtr());
-			Internal::g_pCdos->Unlock(typeName);
+			StoreCDO(typeName, Reflection::ReflectCDO<T>(cdo.DynamicCast<T>().GetRawPtr()));
 
 			// We don't store CDOs
 			cdo.ForcelyDestroyObject();
@@ -434,7 +441,7 @@ namespace Sailor
 		template<typename T = Object>
 		static const ReflectedData& GetCDO(TObjectPtr<T> objPtr) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T> { return GetCDO(objPtr->GetTypeInfo().Name()); }
 
-		static const ReflectedData& GetCDO(const std::string& typeName) { return (*Internal::g_pCdos)[typeName]; }
+		static const ReflectedData& GetCDO(const std::string& typeName);
 
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
@@ -498,6 +505,7 @@ namespace Sailor
 		}
 
 		static ComponentPtr CreateCDO(const TypeInfo& pType);
+		static void StoreCDO(const std::string& typeName, ReflectedData&& reflectedCdo);
 
 		template<typename T>
 		static ReflectedData ReflectCDO(const T* ptr) requires IsBaseOf<IReflectable, T>

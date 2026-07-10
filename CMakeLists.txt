@@ -3,6 +3,15 @@ project(Sailor VERSION 0.1)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(SAILOR_IS_TOP_LEVEL ON)
+else()
+  set(SAILOR_IS_TOP_LEVEL OFF)
+endif()
+
+option(SAILOR_BUILD_EXECUTABLE "Build the standalone Sailor executable" ${SAILOR_IS_TOP_LEVEL})
+option(SAILOR_BUILD_TESTS "Build Sailor tests" ${SAILOR_IS_TOP_LEVEL})
+
 option(SAILOR_BUILD_WITH_TRACY_PROFILER "Build with tracy profile" OFF)
 option(SAILOR_MEMORY_USE_LOCK_FREE_HEAP_ALLOCATOR_AS_DEFAULT "Use LockFreeHeapAllocator as default" ON)
 option(SAILOR_MEMORY_HEAP_DISABLE_FREE "Custom allocator disable free memory" OFF)
@@ -30,9 +39,13 @@ endif()
 
 message("cxx Flags:" ${CMAKE_CXX_FLAGS})
 
-add_subdirectory(Exec)
+if(SAILOR_BUILD_EXECUTABLE)
+  add_subdirectory(Exec)
+endif()
+
 add_subdirectory(Lib)
 
-
-enable_testing()
-add_subdirectory(Tests)
+if(SAILOR_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(Tests)
+endif()
