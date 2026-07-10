@@ -213,7 +213,7 @@ namespace SailorEditor.Views
                     return;
                 }
 #endif
-                MauiProgram.GetService<EngineService>().RunProcess(false, "");
+                MauiProgram.GetService<EngineService>().RunProcess(false);
                 RequestNativeViewportLayout();
 
                 Dispatcher.StartTimer(TimeSpan.FromMilliseconds(50), () =>

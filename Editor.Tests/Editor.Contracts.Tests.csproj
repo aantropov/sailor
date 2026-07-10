@@ -42,6 +42,7 @@
     <Compile Include="EditorDragDropRoutingTests.cs" />
     <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="EditorPerfTests.cs" />
+    <Compile Include="EngineLaunchContractTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
@@ -68,5 +69,6 @@
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
+    <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
   </ItemGroup>
 </Project>
