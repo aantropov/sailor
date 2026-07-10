@@ -223,8 +223,7 @@ public partial class MaterialFile : AssetFile
                 {
                     var task = Task.Run(() =>
                     {
-                        var file = AssetService.Files.Find((el) => el.FileId == tex.Value.Value);
-                        if (file != null)
+                        if (AssetService.Assets.TryGetValue(tex.Value.Value, out var file))
                         {
                             _ = file.LoadDependentResources();
                         }
@@ -248,6 +247,8 @@ public partial class MaterialFile : AssetFile
 
     public override Task Save()
     {
+        EnsureWritable();
+
         using (var yamlAsset = new FileStream(Asset.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAsset))
         {

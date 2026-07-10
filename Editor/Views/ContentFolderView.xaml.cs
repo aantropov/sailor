@@ -62,6 +62,7 @@ namespace SailorEditor.Views
         {
             if (obj is not AssetFile file || file.FileId is null || file.FileId.IsEmpty())
             {
+                contentStore.SelectAsset(null);
                 suppressSelectionChanged = true;
                 try
                 {
@@ -75,7 +76,7 @@ namespace SailorEditor.Views
             }
 
             EnsureFolderVisible(file.FolderId);
-            contentStore.SelectAsset(file.FileId.Value);
+            contentStore.SelectAsset(file);
         }
 
         async void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)
@@ -118,7 +119,7 @@ namespace SailorEditor.Views
             {
                 case AssetFile assetFile:
                     MauiProgram.GetService<SelectionService>().SelectObject(assetFile, force: true);
-                    contentStore.SelectAsset(assetFile.FileId?.Value);
+                    contentStore.SelectAsset(assetFile);
                     await dispatcher.DispatchAsync(
                         new OpenAssetCommand(assetFile),
                         contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(ContentFolderView))));
@@ -138,6 +139,9 @@ namespace SailorEditor.Views
             {
                 return;
             }
+
+            if (target is AssetFolder { IsReadOnly: true } or AssetFile { IsReadOnly: true })
+                return;
 
             if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
             {
@@ -334,10 +338,12 @@ namespace SailorEditor.Views
                         id,
                         depth,
                         folder.Name,
-                        isExpanded ? "folder_open_24.png" : "folder_24.png",
+                        folder.IsReadOnly ? "lock_24.png" : isExpanded ? "folder_open_24.png" : "folder_24.png",
                         HasChildren(foldersByParent, assetsByFolder, folder.Id),
                         isExpanded,
-                        projection.State.SelectedAssetFileId is null && projection.State.CurrentFolderId == folder.Id));
+                        projection.State.SelectedAssetPath is null
+                            && projection.State.SelectedAssetFileId is null
+                            && projection.State.CurrentFolderId == folder.Id));
 
                     if (isExpanded)
                     {
@@ -350,7 +356,8 @@ namespace SailorEditor.Views
             {
                 foreach (var asset in assets)
                 {
-                    var id = AssetRowId(asset.FileId.Value);
+                    var assetPath = GetAssetPath(asset);
+                    var id = AssetRowId(assetPath);
                     rowModelsById[id] = asset;
                     rows.Add(new ContentListRow(
                         id,
@@ -359,7 +366,7 @@ namespace SailorEditor.Views
                         GetAssetIcon(asset),
                         false,
                         false,
-                        string.Equals(projection.State.SelectedAssetFileId, asset.FileId.Value, StringComparison.Ordinal)));
+                        string.Equals(projection.State.SelectedAssetPath, assetPath, ProjectContentPathPolicy.PathComparison)));
                 }
             }
         }
@@ -439,7 +446,13 @@ namespace SailorEditor.Views
                 border.GestureRecognizers.Add(dragGesture);
 
                 var dropGesture = new DropGestureRecognizer();
-                dropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+                dropGesture.DragOver += (_, e) =>
+                {
+                    var isReadOnly = border.BindingContext is ContentListRow row
+                        && rowModelsById.TryGetValue(row.Id, out var model)
+                        && model is AssetFolder { IsReadOnly: true } or AssetFile { IsReadOnly: true };
+                    e.AcceptedOperation = isReadOnly ? DataPackageOperation.None : DataPackageOperation.Copy;
+                };
                 dropGesture.Drop += async (_, e) =>
                 {
                     object target = null;
@@ -508,7 +521,7 @@ namespace SailorEditor.Views
         void ShowContextMenu(object model)
         {
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
-            if (model is AssetFile assetFile)
+            if (model is AssetFile { IsReadOnly: false } assetFile)
             {
                 contextMenu.Show(
                     new EditorContextMenuItem
@@ -553,7 +566,9 @@ namespace SailorEditor.Views
         }
 
         static bool IsSelectedRoot(ProjectContentProjection projection)
-            => projection.State.SelectedAssetFileId is null && projection.State.CurrentFolderId is null;
+            => projection.State.SelectedAssetPath is null
+                && projection.State.SelectedAssetFileId is null
+                && projection.State.CurrentFolderId is null;
 
         static bool HasChildren(
             IReadOnlyDictionary<int, AssetFolder[]> foldersByParent,
@@ -577,7 +592,10 @@ namespace SailorEditor.Views
 
         static string FolderRowId(int folderId) => $"folder:{folderId}";
 
-        static string AssetRowId(string fileId) => $"asset:{fileId}";
+        static string AssetRowId(string assetPath) => $"asset:{assetPath}";
+
+        static string GetAssetPath(AssetFile asset)
+            => asset.AssetInfo?.FullName ?? asset.Asset?.FullName ?? $"asset-{asset.Id}";
 
         static bool TryParseFolderId(string id, out int folderId)
         {

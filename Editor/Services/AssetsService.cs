@@ -14,6 +14,15 @@ namespace SailorEditor.Services
 {
     public class AssetsService
     {
+        const int ActiveProjectRootId = 1;
+        const int EngineProjectRootId = 2;
+
+        readonly string _engineContentDirectory;
+        ProjectContentFolderIdAllocator _folderIdAllocator = new();
+        HashSet<string> _visitedDirectories = new(ProjectContentPathPolicy.PathComparer);
+        int _nextAssetId = 1;
+        int _assetOverrideCount;
+
         public event Action? Changed;
 
         public ProjectRoot Root { get; private set; }
@@ -22,13 +31,24 @@ namespace SailorEditor.Services
         public List<AssetFile> Files { get; private set; } = new();
         public string CurrentProjectRootPath { get; private set; }
 
-        public AssetsService() => AddProjectRoot(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+        public AssetsService()
+        {
+            var engineContentDirectory = Path.GetFullPath(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            Directory.CreateDirectory(engineContentDirectory);
+            _engineContentDirectory = ProjectContentPathPolicy.NormalizeRoot(engineContentDirectory);
+            AddProjectRoot(_engineContentDirectory);
+        }
 
-        public string GetFolderPath(AssetFolder folder)
+        public string GetFolderPath(AssetFolder? folder)
         {
             if (folder == null)
             {
                 return CurrentProjectRootPath;
+            }
+
+            if (!string.IsNullOrWhiteSpace(folder.FullPath))
+            {
+                return folder.FullPath;
             }
 
             var parts = new Stack<string>();
@@ -42,11 +62,17 @@ namespace SailorEditor.Services
             return Path.Combine(CurrentProjectRootPath, Path.Combine(parts.ToArray()));
         }
 
-        public PrefabFile CreatePrefabAsset(AssetFolder targetFolder, GameObject root, bool overwrite = false, PrefabFile existingPrefab = null)
+        public PrefabFile? CreatePrefabAsset(AssetFolder? targetFolder, GameObject root, bool overwrite = false, PrefabFile? existingPrefab = null)
         {
+            if ((targetFolder?.IsReadOnly ?? false) || (existingPrefab?.IsReadOnly ?? false))
+                return null;
+
             var worldService = MauiProgram.GetService<WorldService>();
             var prefab = worldService.CreatePrefabFromSubHierarchy(root, out var externalRefs);
             var folderPath = existingPrefab?.Asset?.DirectoryName ?? GetFolderPath(targetFolder);
+            if (!ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, folderPath))
+                return null;
+
             Directory.CreateDirectory(folderPath);
 
             var prefabName = existingPrefab?.Asset?.Name ?? GetUniqueAssetName(folderPath, root.Name, ".prefab");
@@ -67,7 +93,7 @@ namespace SailorEditor.Services
 
         public bool RenameAsset(AssetFile assetFile, string newName)
         {
-            if (assetFile?.AssetInfo == null || string.IsNullOrWhiteSpace(newName))
+            if (!CanModifyAsset(assetFile) || string.IsNullOrWhiteSpace(newName))
             {
                 return false;
             }
@@ -87,22 +113,22 @@ namespace SailorEditor.Services
             var targetAssetPath = Path.Combine(directory, targetAssetFileName);
             var targetAssetInfoPath = targetAssetPath + ".asset";
 
-            if (!string.Equals(oldAssetPath, targetAssetPath, StringComparison.OrdinalIgnoreCase) && File.Exists(targetAssetPath))
+            if (!string.Equals(oldAssetPath, targetAssetPath, ProjectContentPathPolicy.PathComparison) && File.Exists(targetAssetPath))
             {
                 return false;
             }
 
-            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, StringComparison.OrdinalIgnoreCase) && File.Exists(targetAssetInfoPath))
+            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, ProjectContentPathPolicy.PathComparison) && File.Exists(targetAssetInfoPath))
             {
                 return false;
             }
 
-            if (!string.IsNullOrEmpty(oldAssetPath) && File.Exists(oldAssetPath) && !string.Equals(oldAssetPath, targetAssetPath, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(oldAssetPath) && File.Exists(oldAssetPath) && !string.Equals(oldAssetPath, targetAssetPath, ProjectContentPathPolicy.PathComparison))
             {
                 File.Move(oldAssetPath, targetAssetPath);
             }
 
-            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, ProjectContentPathPolicy.PathComparison))
             {
                 File.Move(oldAssetInfoPath, targetAssetInfoPath);
             }
@@ -110,6 +136,28 @@ namespace SailorEditor.Services
             UpdateAssetInfoFilename(targetAssetInfoPath, targetAssetFileName);
             Refresh();
             return true;
+        }
+
+        public bool DeleteAsset(AssetFile assetFile)
+        {
+            if (!CanModifyAsset(assetFile))
+                return false;
+
+            try
+            {
+                if (assetFile.Asset?.Exists == true)
+                    File.Delete(assetFile.Asset.FullName);
+                if (assetFile.AssetInfo.Exists)
+                    File.Delete(assetFile.AssetInfo.FullName);
+
+                Refresh();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AssetsService] Failed to delete asset: {ex.Message}");
+                return false;
+            }
         }
 
         public void Refresh() => AddProjectRoot(CurrentProjectRootPath);
@@ -120,15 +168,62 @@ namespace SailorEditor.Services
 
             Folders = [];
             Assets = [];
+            Files = [];
+            _folderIdAllocator = new ProjectContentFolderIdAllocator();
+            _visitedDirectories = new HashSet<string>(ProjectContentPathPolicy.PathComparer);
+            _nextAssetId = 1;
+            _assetOverrideCount = 0;
 
-            CurrentProjectRootPath = Path.GetFullPath(projectRoot);
-            Directory.CreateDirectory(CurrentProjectRootPath);
+            var requestedRoot = Path.GetFullPath(projectRoot);
+            Directory.CreateDirectory(requestedRoot);
+            CurrentProjectRootPath = ProjectContentPathPolicy.NormalizeRoot(requestedRoot);
 
             Root = new ProjectRoot { Name = CurrentProjectRootPath, Id = 1 };
-            ReadDirectory(Root, CurrentProjectRootPath, -1);
+            if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
+            {
+                ReadDirectory(Root, CurrentProjectRootPath, CurrentProjectRootPath, -1, useRootedFolderIds: false, isReadOnly: false);
+            }
+            else
+            {
+                var workspaceRoot = new ProjectRoot { Name = "Workspace Content", Id = ActiveProjectRootId };
+                var engineRoot = new ProjectRoot { Name = "Engine Content", Id = EngineProjectRootId };
 
-            Files = new HashSet<AssetFile>([.. Assets.Values]).ToList();
+                AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.WorkspaceContentRootId, CurrentProjectRootPath, isReadOnly: false);
+                AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: true);
+
+                ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: true);
+                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.WorkspaceContentRootId, useRootedFolderIds: true, isReadOnly: false);
+            }
+
+            if (_assetOverrideCount > 0)
+                Console.WriteLine($"[AssetsService] Resolved {_assetOverrideCount} duplicate asset IDs; workspace content takes precedence when present.");
+
             Changed?.Invoke();
+        }
+
+        void AddContentRootFolder(ProjectRoot root, int folderId, string rootPath, bool isReadOnly)
+        {
+            Folders.Add(new AssetFolder
+            {
+                ProjectRootId = root.Id,
+                Name = root.Name,
+                Id = folderId,
+                ParentFolderId = -1,
+                FullPath = rootPath,
+                IsReadOnly = isReadOnly
+            });
+        }
+
+        public bool CanModifyAsset(AssetFile? assetFile)
+        {
+            if (assetFile is null || assetFile.IsReadOnly || assetFile.AssetInfo is null)
+                return false;
+
+            if (!ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, assetFile.AssetInfo.FullName))
+                return false;
+
+            return assetFile.Asset is null
+                || ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, assetFile.Asset.FullName);
         }
 
         static string GetUniqueAssetName(string folderPath, string baseName, string extension)
@@ -212,7 +307,7 @@ namespace SailorEditor.Services
             yaml.Save(writer, false);
         }
 
-        private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId)
+        private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId, int projectRootId, bool isReadOnly)
         {
             FileInfo assetFile = new(Path.ChangeExtension(assetInfo.FullName, null));
 
@@ -246,13 +341,15 @@ namespace SailorEditor.Services
                 engineTypes?.AssetTypesByExtension?.TryGetValue(extension.TrimStart('.').ToLowerInvariant(), out assetType);
             }
 
-            newAssetFile.Id = Files.Count + 1;
+            newAssetFile.Id = _nextAssetId++;
             newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
+            newAssetFile.ProjectRootId = projectRootId;
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
             newAssetFile.AssetType = assetType;
             newAssetFile.IsDirty = false;
+            newAssetFile.IsReadOnly = isReadOnly;
 
             _ = newAssetFile.Revert();
 
@@ -352,34 +449,55 @@ namespace SailorEditor.Services
             }
         }
 
-        private void ReadDirectory(ProjectRoot root, string directoryPath, int parentFolderId)
+        private void ReadDirectory(
+            ProjectRoot root,
+            string rootPath,
+            string directoryPath,
+            int parentFolderId,
+            bool useRootedFolderIds,
+            bool isReadOnly)
         {
-            foreach (var directory in Directory.GetDirectories(directoryPath))
+            var canonicalDirectoryPath = ProjectContentPathPolicy.NormalizeRoot(directoryPath);
+            var visitKey = $"{root.Id}:{canonicalDirectoryPath}";
+            if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, canonicalDirectoryPath) || !_visitedDirectories.Add(visitKey))
+                return;
+
+            foreach (var directory in Directory.GetDirectories(directoryPath).Order(ProjectContentPathPolicy.PathComparer))
             {
+                var canonicalChildPath = ProjectContentPathPolicy.NormalizeRoot(directory);
+                if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, canonicalChildPath)
+                    || _visitedDirectories.Contains($"{root.Id}:{canonicalChildPath}"))
+                    continue;
+
                 var dirInfo = new DirectoryInfo(directory);
-                var relativeDirectoryPath = Path.GetRelativePath(CurrentProjectRootPath, directory);
+                var relativeDirectoryPath = Path.GetRelativePath(rootPath, directory);
                 var folder = new AssetFolder
                 {
                     ProjectRootId = root.Id,
                     Name = dirInfo.Name,
-                    Id = ProjectContentFolderIds.FromRelativePath(relativeDirectoryPath),
-                    ParentFolderId = parentFolderId
+                    Id = _folderIdAllocator.Allocate(root.Id, relativeDirectoryPath, useRootedFolderIds),
+                    ParentFolderId = parentFolderId,
+                    FullPath = canonicalChildPath,
+                    IsReadOnly = isReadOnly
                 };
 
                 Folders.Add(folder);
 
-                ReadDirectory(root, directory, folder.Id);
+                ReadDirectory(root, rootPath, directory, folder.Id, useRootedFolderIds, isReadOnly);
             }
 
-            foreach (var file in Directory.GetFiles(directoryPath))
+            foreach (var file in Directory.GetFiles(directoryPath).Order(ProjectContentPathPolicy.PathComparer))
             {
+                if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, file))
+                    continue;
+
                 var assetInfo = new FileInfo(file);
-                if (assetInfo.Extension != ".asset")
+                if (!string.Equals(assetInfo.Extension, ".asset", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 try
                 {
-                    var newAssetInfo = ReadAssetFile(assetInfo, parentFolderId);
+                    var newAssetInfo = ReadAssetFile(assetInfo, parentFolderId, root.Id, isReadOnly);
                     TryPopulateAssetMetadataFromYaml(newAssetInfo);
                     if (newAssetInfo.FileId == null || newAssetInfo.FileId.IsEmpty())
                     {
@@ -387,7 +505,19 @@ namespace SailorEditor.Services
                         continue;
                     }
 
-                    Assets[newAssetInfo.FileId] = newAssetInfo;
+                    Files.Add(newAssetInfo);
+                    if (Assets.ContainsKey(newAssetInfo.FileId))
+                    {
+                        _assetOverrideCount++;
+                        if (ProjectContentAssetResolutionPolicy.ShouldReplace(
+                            Assets[newAssetInfo.FileId].IsReadOnly,
+                            newAssetInfo.IsReadOnly))
+                            Assets[newAssetInfo.FileId] = newAssetInfo;
+                    }
+                    else
+                    {
+                        Assets.Add(newAssetInfo.FileId, newAssetInfo);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -395,5 +525,6 @@ namespace SailorEditor.Services
                 }
             }
         }
+
     }
 }

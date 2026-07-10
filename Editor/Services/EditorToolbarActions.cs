@@ -17,6 +17,10 @@ namespace SailorEditor.Services
 
             switch (selected)
             {
+                case AssetFile { IsReadOnly: true } readOnlyAsset:
+                    await DisplayStatus("Save", $"{readOnlyAsset.DisplayName} belongs to read-only engine content.");
+                    return;
+
                 case AssetFile assetFile when assetFile.IsDirty:
                     await Task.Yield();
                     await assetFile.Save();
@@ -39,7 +43,7 @@ namespace SailorEditor.Services
                     return;
             }
 
-            var dirtyAsset = MauiProgram.GetService<AssetsService>().Files.FirstOrDefault(x => x.IsDirty);
+            var dirtyAsset = MauiProgram.GetService<AssetsService>().Files.FirstOrDefault(x => x.IsDirty && !x.IsReadOnly);
             if (dirtyAsset != null)
             {
                 await dirtyAsset.Save();

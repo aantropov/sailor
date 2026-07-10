@@ -79,6 +79,7 @@ namespace SailorEditor.Views
                 if (content is View view)
                 {
                     view.BindingContext = inspectorProjection.SelectedItem;
+                    view.IsEnabled = inspectorProjection.SelectedItem is not AssetFile { IsReadOnly: true };
                     InspectedItemHost.Content = view;
                 }
             }

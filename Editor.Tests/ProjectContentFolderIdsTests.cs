@@ -22,4 +22,29 @@ public class ProjectContentFolderIdsTests
         Assert.NotEqual(materials, nested);
         Assert.NotEqual(models, nested);
     }
+
+    [Fact]
+    public void FromRootedRelativePath_IsDistinctAcrossContentRoots()
+    {
+        var workspaceMaterials = ProjectContentFolderIds.FromRootedRelativePath(1, "Materials");
+        var engineMaterials = ProjectContentFolderIds.FromRootedRelativePath(2, "Materials");
+
+        Assert.NotEqual(workspaceMaterials, engineMaterials);
+        Assert.NotEqual(ProjectContentFolderIds.WorkspaceContentRootId, workspaceMaterials);
+        Assert.NotEqual(ProjectContentFolderIds.EngineContentRootId, engineMaterials);
+    }
+
+    [Fact]
+    public void Allocator_ProbesPastAnExistingFolderId()
+    {
+        var allocator = new ProjectContentFolderIdAllocator();
+        var original = ProjectContentFolderIds.FromRootedRelativePath(1, "Materials");
+        allocator.Reserve(original);
+
+        var allocated = allocator.Allocate(1, "Materials", useRootedFolderIds: true);
+
+        Assert.NotEqual(original, allocated);
+        Assert.NotEqual(ProjectContentFolderIds.WorkspaceContentRootId, allocated);
+        Assert.NotEqual(ProjectContentFolderIds.EngineContentRootId, allocated);
+    }
 }

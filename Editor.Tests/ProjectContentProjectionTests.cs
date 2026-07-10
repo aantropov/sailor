@@ -76,4 +76,68 @@ public class ProjectContentProjectionTests
         Assert.Equal(["repo-material"], repoProjection.VisibleAssets.Select(x => x.DisplayName).ToArray());
         Assert.Equal(["workspace-material"], workspaceProjection.VisibleAssets.Select(x => x.DisplayName).ToArray());
     }
+
+    [Fact]
+    public void Build_UsesFolderSnapshotFullPathForMultipleRoots()
+    {
+        var workspaceRoot = Path.Combine(Path.DirectorySeparatorChar.ToString(), "workspaces", "Sandbox", "Content");
+        var engineRoot = Path.Combine(Path.DirectorySeparatorChar.ToString(), "repo", "Content");
+        var workspaceMaterialsId = ProjectContentFolderIds.FromRootedRelativePath(1, "Materials");
+        var engineMaterialsId = ProjectContentFolderIds.FromRootedRelativePath(2, "Materials");
+        var folders = new[]
+        {
+            new ProjectContentFolderSnapshot(ProjectContentFolderIds.WorkspaceContentRootId, "Workspace Content", -1, workspaceRoot),
+            new ProjectContentFolderSnapshot(workspaceMaterialsId, "Materials", ProjectContentFolderIds.WorkspaceContentRootId, Path.Combine(workspaceRoot, "Materials")),
+            new ProjectContentFolderSnapshot(ProjectContentFolderIds.EngineContentRootId, "Engine Content", -1, engineRoot, IsReadOnly: true),
+            new ProjectContentFolderSnapshot(engineMaterialsId, "Materials", ProjectContentFolderIds.EngineContentRootId, Path.Combine(engineRoot, "Materials"), IsReadOnly: true),
+        };
+
+        var projection = ProjectContentProjectionBuilder.Build(
+            workspaceRoot,
+            folders,
+            [],
+            new ProjectContentState());
+
+        Assert.Equal(
+            [Path.Combine(engineRoot, "Materials"), Path.Combine(workspaceRoot, "Materials")],
+            projection.Folders.Where(x => x.Name == "Materials").Select(x => x.FullPath).Order(StringComparer.OrdinalIgnoreCase).ToArray());
+        Assert.True(projection.Folders.Single(x => x.FolderId == ProjectContentFolderIds.EngineContentRootId).IsReadOnly);
+        Assert.False(projection.Folders.Single(x => x.FolderId == ProjectContentFolderIds.WorkspaceContentRootId).IsReadOnly);
+    }
+
+    [Fact]
+    public void Build_KeepsDuplicateFileIdsDistinctByMountedPath()
+    {
+        var workspacePath = Path.Combine(Path.GetTempPath(), "workspace", "Content", "Materials", "wood.mat");
+        var enginePath = Path.Combine(Path.GetTempPath(), "engine", "Content", "Materials", "wood.mat");
+        var assets = new[]
+        {
+            new ProjectContentAssetSnapshot("{WOOD}", "wood", ".mat", 1, workspacePath, ProjectRootId: 1),
+            new ProjectContentAssetSnapshot("{WOOD}", "wood", ".mat", 2, enginePath, ProjectRootId: 2, IsReadOnly: true),
+        };
+
+        var projection = ProjectContentProjectionBuilder.Build(
+            Path.Combine(Path.GetTempPath(), "workspace", "Content"),
+            [new ProjectContentFolderSnapshot(2, "Engine Materials", -1, Path.GetDirectoryName(enginePath), IsReadOnly: true)],
+            assets,
+            new ProjectContentState(CurrentFolderId: 2, SelectedAssetFileId: "{WOOD}", SelectedAssetPath: enginePath));
+
+        Assert.Single(projection.VisibleAssets);
+        Assert.Equal(enginePath, projection.VisibleAssets[0].FullPath);
+        Assert.True(projection.VisibleAssets[0].IsReadOnly);
+        Assert.Equal(enginePath, projection.State.SelectedAssetPath);
+    }
+
+    [Fact]
+    public void Build_ClearsSelectionThatIsMissingAfterRootSwitch()
+    {
+        var projection = ProjectContentProjectionBuilder.Build(
+            Path.Combine(Path.GetTempPath(), "workspace-b", "Content"),
+            [],
+            [],
+            new ProjectContentState(SelectedAssetFileId: "{OLD}", SelectedAssetPath: Path.Combine(Path.GetTempPath(), "workspace-a", "Content", "old.mat")));
+
+        Assert.Null(projection.State.SelectedAssetFileId);
+        Assert.Null(projection.State.SelectedAssetPath);
+    }
 }
