@@ -24,8 +24,10 @@
     <Compile Include="LayoutContractsTests.cs" />
     <Compile Include="LayoutOperationsTests.cs" />
     <Compile Include="PanelContractsTests.cs" />
+    <Compile Include="ProjectContentAssetResolutionPolicyTests.cs" />
     <Compile Include="ProjectContentProjectionTests.cs" />
     <Compile Include="ProjectContentFolderIdsTests.cs" />
+    <Compile Include="ProjectContentPathPolicyTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
@@ -50,8 +52,10 @@
     <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
     <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
     <Compile Include="..\Editor\Settings\UnifiedSettingsStore.cs" Link="Settings\UnifiedSettingsStore.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentAssetResolutionPolicy.cs" Link="Content\ProjectContentAssetResolutionPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceUiContracts.cs" Link="Workspace\WorkspaceUiContracts.cs" />

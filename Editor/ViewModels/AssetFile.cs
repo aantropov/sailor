@@ -43,6 +43,9 @@ public partial class AssetFile : ObservableObject, ICloneable
     public int FolderId { get; set; }
 
     [YamlIgnore]
+    public int ProjectRootId { get; set; }
+
+    [YamlIgnore]
     public bool CanOpenAssetFile { get => !IsDirty; }
 
     [YamlIgnore]
@@ -72,6 +75,8 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     public virtual Task Save()
     {
+        EnsureWritable();
+
         if (!AssetProperties.Any())
         {
             return Save(new AssetFileYamlConverter());
@@ -454,6 +459,9 @@ public partial class AssetFile : ObservableObject, ICloneable
     public bool IsLoaded { get; set; }
 
     [YamlIgnore]
+    public bool IsReadOnly { get; set; }
+
+    [YamlIgnore]
     public bool IsDirty
     {
         get => isDirty;
@@ -489,6 +497,8 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     protected Task Save(IYamlTypeConverter converter)
     {
+        EnsureWritable();
+
         using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
         using (var writer = new StreamWriter(yamlAssetInfo))
         {
@@ -502,6 +512,12 @@ public partial class AssetFile : ObservableObject, ICloneable
 
         IsDirty = false;
         return Task.CompletedTask;
+    }
+
+    protected void EnsureWritable()
+    {
+        if (IsReadOnly)
+            throw new InvalidOperationException($"{DisplayName} belongs to read-only engine content.");
     }
 }
 

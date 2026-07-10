@@ -1,4 +1,5 @@
 using CommunityToolkit.Maui.Storage;
+using SailorEditor.Content;
 using SailorEditor.Shell;
 using SailorEditor.Workspace;
 
@@ -140,7 +141,11 @@ internal sealed class WorkspaceUiService
 
         await RefreshAsync(cancellationToken);
         if (result.Session is not null)
+        {
+            if (!ProjectContentPathPolicy.IsSamePath(_assetsService.CurrentProjectRootPath, result.Session.ContentDirectory))
+                MauiProgram.GetService<SelectionService>().ClearSelection();
             _assetsService.AddProjectRoot(result.Session.ContentDirectory);
+        }
         MauiProgram.GetService<EditorShellHost>().SetStatus(successMessage);
 #if MACCATALYST
         SailorEditor.AppDelegate.RequestMenuRebuild();

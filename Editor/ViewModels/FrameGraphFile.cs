@@ -56,6 +56,7 @@ public partial class FrameGraphFile : AssetFile
 
     public override Task Save()
     {
+        EnsureWritable();
         SaveRendererAsset();
         return base.Save();
     }

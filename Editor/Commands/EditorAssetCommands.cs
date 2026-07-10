@@ -19,11 +19,13 @@ public sealed class OpenAssetCommand(AssetFile assetFile) : IEditorCommand
 public sealed class RenameAssetCommand(AssetFile assetFile, string newName) : IEditorCommand
 {
     public string Name => nameof(RenameAssetCommand);
-    public bool CanExecute(ActionContext context) => assetFile is not null && !string.IsNullOrWhiteSpace(newName);
+    public bool CanExecute(ActionContext context) => assetFile is not null && !assetFile.IsReadOnly && !string.IsNullOrWhiteSpace(newName);
 
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var success = MauiProgram.GetService<AssetsService>().RenameAsset(assetFile, newName);
+        if (success)
+            MauiProgram.GetService<SelectionService>().ClearSelection();
         return Task.FromResult(success ? CommandResult.Success(value: assetFile.FileId) : CommandResult.Failure("Rename failed"));
     }
 }
@@ -31,32 +33,27 @@ public sealed class RenameAssetCommand(AssetFile assetFile, string newName) : IE
 public sealed class DeleteAssetCommand(AssetFile assetFile) : IEditorCommand
 {
     public string Name => nameof(DeleteAssetCommand);
-    public bool CanExecute(ActionContext context) => assetFile?.AssetInfo?.Exists == true;
+    public bool CanExecute(ActionContext context) => assetFile is { IsReadOnly: false, AssetInfo.Exists: true };
 
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        try
+        var success = MauiProgram.GetService<AssetsService>().DeleteAsset(assetFile);
+        if (success)
         {
-            if (assetFile.Asset?.Exists == true)
-                File.Delete(assetFile.Asset.FullName);
-            if (assetFile.AssetInfo.Exists)
-                File.Delete(assetFile.AssetInfo.FullName);
-
-            MauiProgram.GetService<AssetsService>().Refresh();
             MauiProgram.GetService<SelectionService>().ClearSelection();
             return Task.FromResult(CommandResult.Success());
         }
-        catch (Exception ex)
-        {
-            return Task.FromResult(CommandResult.Failure(ex.Message));
-        }
+
+        return Task.FromResult(CommandResult.Failure("Delete failed"));
     }
 }
 
 public sealed class CreatePrefabAssetCommand(GameObject gameObject, AssetFolder? targetFolder = null, PrefabFile? existingPrefab = null) : IEditorCommand
 {
     public string Name => nameof(CreatePrefabAssetCommand);
-    public bool CanExecute(ActionContext context) => gameObject is not null;
+    public bool CanExecute(ActionContext context) => gameObject is not null
+        && targetFolder?.IsReadOnly != true
+        && existingPrefab?.IsReadOnly != true;
 
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {

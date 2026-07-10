@@ -180,7 +180,8 @@ namespace SailorEditor.Services
         public bool SaveCurrentWorld()
         {
             var worldAsset = CurrentWorldAsset ?? ResolveCurrentWorldAsset();
-            if (worldAsset?.Asset?.FullName == null)
+            var assetsService = MauiProgram.GetService<AssetsService>();
+            if (worldAsset?.Asset?.FullName == null || !assetsService.CanModifyAsset(worldAsset))
             {
                 return false;
             }
@@ -210,12 +211,11 @@ namespace SailorEditor.Services
         WorldFile ResolveCurrentWorldAsset()
         {
             var assets = MauiProgram.GetService<AssetsService>();
-            var byName = assets.Files
-                .OfType<WorldFile>()
+            var resolvedWorldAssets = assets.Assets.Values.OfType<WorldFile>();
+            var byName = resolvedWorldAssets
                 .FirstOrDefault(x => string.Equals(Path.GetFileNameWithoutExtension(x.Asset?.Name), Current?.Name, StringComparison.OrdinalIgnoreCase));
 
-            CurrentWorldAsset = byName ?? assets.Files
-                .OfType<WorldFile>()
+            CurrentWorldAsset = byName ?? resolvedWorldAssets
                 .FirstOrDefault(x => string.Equals(x.Asset?.Name, "Editor.world", StringComparison.OrdinalIgnoreCase));
 
             return CurrentWorldAsset;

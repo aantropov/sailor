@@ -1,7 +1,16 @@
 namespace SailorEditor.Content;
 
-public sealed record ProjectContentFolderSnapshot(int Id, string Name, int ParentFolderId);
-public sealed record ProjectContentAssetSnapshot(string FileId, string DisplayName, string Extension, int FolderId, string FullPath, string? AssetInfoTypeName = null);
+public sealed record ProjectContentFolderSnapshot(int Id, string Name, int ParentFolderId, string? FullPath = null, bool IsReadOnly = false);
+public sealed record ProjectContentAssetSnapshot(
+    string FileId,
+    string DisplayName,
+    string Extension,
+    int FolderId,
+    string FullPath,
+    string? AssetInfoTypeName = null,
+    string IdentityPath = "",
+    int ProjectRootId = 0,
+    bool IsReadOnly = false);
 
 public enum ProjectContentSortMode
 {
@@ -12,12 +21,22 @@ public enum ProjectContentSortMode
 public sealed record ProjectContentState(
     int? CurrentFolderId = null,
     string? SelectedAssetFileId = null,
+    string? SelectedAssetPath = null,
     string? Filter = null,
     ProjectContentSortMode SortMode = ProjectContentSortMode.NameAscending);
 
-public sealed record ProjectContentFolderItem(int? FolderId, string Name, string FullPath, int? ParentFolderId, bool IsRoot = false);
+public sealed record ProjectContentFolderItem(int? FolderId, string Name, string FullPath, int? ParentFolderId, bool IsRoot = false, bool IsReadOnly = false);
 
-public sealed record ProjectContentAssetItem(string FileId, string DisplayName, string Extension, int FolderId, string FullPath, string? AssetInfoTypeName = null);
+public sealed record ProjectContentAssetItem(
+    string FileId,
+    string DisplayName,
+    string Extension,
+    int FolderId,
+    string FullPath,
+    string? AssetInfoTypeName = null,
+    string IdentityPath = "",
+    int ProjectRootId = 0,
+    bool IsReadOnly = false);
 
 public sealed record ProjectContentProjection(
     ProjectContentFolderItem Root,
@@ -39,9 +58,9 @@ public static class ProjectContentProjectionBuilder
         IReadOnlyList<ProjectContentAssetSnapshot> assets,
         ProjectContentState state)
     {
-        var normalizedState = NormalizeState(folders, state);
+        var normalizedState = NormalizeState(folders, assets, state);
         var folderItems = folders
-            .Select(folder => new ProjectContentFolderItem(folder.Id, folder.Name, BuildFolderPath(rootPath, folder, folders), folder.ParentFolderId))
+            .Select(folder => new ProjectContentFolderItem(folder.Id, folder.Name, BuildFolderPath(rootPath, folder, folders), folder.ParentFolderId, IsReadOnly: folder.IsReadOnly))
             .OrderBy(x => x.FullPath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -52,7 +71,16 @@ public static class ProjectContentProjectionBuilder
 
         var assetItems = assets
             .Where(asset => !string.IsNullOrWhiteSpace(asset.FileId))
-            .Select(asset => new ProjectContentAssetItem(asset.FileId, asset.DisplayName, asset.Extension, asset.FolderId, asset.FullPath, asset.AssetInfoTypeName))
+            .Select(asset => new ProjectContentAssetItem(
+                asset.FileId,
+                asset.DisplayName,
+                asset.Extension,
+                asset.FolderId,
+                asset.FullPath,
+                asset.AssetInfoTypeName,
+                asset.IdentityPath,
+                asset.ProjectRootId,
+                asset.IsReadOnly))
             .Where(asset => MatchesFolder(asset, normalizedState.CurrentFolderId) && MatchesFilter(asset, normalizedState.Filter))
             .OrderBy(asset => asset.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -82,14 +110,32 @@ public static class ProjectContentProjectionBuilder
             || (asset.AssetInfoTypeName?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
-    static ProjectContentState NormalizeState(IReadOnlyList<ProjectContentFolderSnapshot> folders, ProjectContentState state)
+    static ProjectContentState NormalizeState(
+        IReadOnlyList<ProjectContentFolderSnapshot> folders,
+        IReadOnlyList<ProjectContentAssetSnapshot> assets,
+        ProjectContentState state)
     {
         var folderExists = state.CurrentFolderId is null or -1 || folders.Any(x => x.Id == state.CurrentFolderId);
-        return folderExists ? state : state with { CurrentFolderId = null };
+        var assetExists = string.IsNullOrWhiteSpace(state.SelectedAssetPath)
+            ? string.IsNullOrWhiteSpace(state.SelectedAssetFileId) || assets.Any(x => x.FileId == state.SelectedAssetFileId)
+            : assets.Any(x => string.Equals(
+                string.IsNullOrWhiteSpace(x.IdentityPath) ? x.FullPath : x.IdentityPath,
+                state.SelectedAssetPath,
+                ProjectContentPathPolicy.PathComparison));
+
+        return state with
+        {
+            CurrentFolderId = folderExists ? state.CurrentFolderId : null,
+            SelectedAssetFileId = assetExists ? state.SelectedAssetFileId : null,
+            SelectedAssetPath = assetExists ? state.SelectedAssetPath : null
+        };
     }
 
     static string BuildFolderPath(string rootPath, ProjectContentFolderSnapshot folder, IReadOnlyList<ProjectContentFolderSnapshot> folders)
     {
+        if (!string.IsNullOrWhiteSpace(folder.FullPath))
+            return folder.FullPath;
+
         var parts = new Stack<string>();
         ProjectContentFolderSnapshot? current = folder;
         while (current is not null)
