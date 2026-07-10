@@ -103,6 +103,49 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task CreateAsync_InvalidRequestLeavesWorkspaceReusable()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+
+        var failed = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id",
+            EngineReferenceKind: "unsupported"));
+        var retried = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id"));
+
+        Assert.False(failed.Succeeded);
+        Assert.Contains("EngineReferenceKind", failed.Error, StringComparison.Ordinal);
+        Assert.True(retried.Succeeded, retried.Error);
+    }
+
+    [Fact]
+    public async Task CreateAsync_CancellationRollsBackAndRestoresManifestPlaceholder()
+    {
+        using var workspace = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var template = new WorkspaceTemplateService(serializer);
+        var manifestPath = workspace.File("Sandbox.sailor");
+        await File.WriteAllTextAsync(manifestPath, "selected manifest placeholder");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => template.CreateAsync(
+            new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id", manifestPath),
+            cancellation.Token));
+
+        Assert.Equal("selected manifest placeholder", await File.ReadAllTextAsync(manifestPath));
+        Assert.Equal(manifestPath, Assert.Single(Directory.EnumerateFileSystemEntries(workspace.Root)));
+    }
+
+    [Fact]
     public async Task OpenAsync_PreservesOpenedManifestPath()
     {
         using var workspace = TempWorkspace.Create();

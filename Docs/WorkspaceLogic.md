@@ -74,7 +74,9 @@ cmake -S Generated -B Cache/Build -DCMAKE_BUILD_TYPE=Release
 cmake --build Cache/Build --config Release --target SailorGame
 ```
 
-For a default Windows Release workspace, the resulting module and import library are `Binaries/Release/SailorGame.dll` and `Binaries/Release/SailorGame.lib`. Link and compile PDB outputs use the same configuration directory. Debug and other configurations use their matching subdirectory. Reconfigure after changing the engine reference, paths, or module name in the workspace manifest.
+For a default Windows Release workspace, the resulting module and import library are `Binaries/Release/SailorGame.dll` and `Binaries/Release/SailorGame.lib`. Link and compile PDB outputs use the same configuration directory. Debug and other configurations use their matching subdirectory.
+
+The engine reference, paths, and module name are creation-time inputs copied into `Generated/CMakeLists.txt`. Opening or saving a workspace does not regenerate that file. If those manifest values are edited later, update the corresponding CMake values before reconfiguring.
 
 ## SDK Limitations
 

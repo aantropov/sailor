@@ -2,9 +2,15 @@ using System.Text;
 
 namespace SailorEditor.Workspace;
 
+public sealed record WorkspaceProjectGenerationResult(
+    IReadOnlyList<string> CreatedFiles,
+    IReadOnlyList<string> CreatedDirectories);
+
 public sealed class WorkspaceProjectGenerator
 {
-    public async Task GenerateAsync(WorkspaceSession session, CancellationToken cancellationToken = default)
+    public async Task<WorkspaceProjectGenerationResult> GenerateAsync(
+        WorkspaceSession session,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -24,14 +30,35 @@ public sealed class WorkspaceProjectGenerator
                 throw new InvalidOperationException($"Workspace project file already exists and will not be overwritten: {path}");
         }
 
-        foreach (var directory in GetProjectDirectories(session, componentsDirectory))
-        {
-            EnsureInsideWorkspace(session.WorkspaceRoot, directory);
-            Directory.CreateDirectory(directory);
-        }
+        var createdFiles = new List<string>();
+        var createdDirectories = new List<string>();
 
-        foreach (var (path, content) in generatedFiles)
-            await WriteNewFileAsync(path, content, cancellationToken);
+        try
+        {
+            foreach (var directory in GetProjectDirectories(session, componentsDirectory))
+            {
+                EnsureInsideWorkspace(session.WorkspaceRoot, directory);
+                CreateDirectoryTracked(session.WorkspaceRoot, directory, createdDirectories);
+            }
+
+            foreach (var (path, content) in generatedFiles)
+                await WriteNewFileAsync(path, content, createdFiles, cancellationToken);
+
+            return new WorkspaceProjectGenerationResult(createdFiles.ToArray(), createdDirectories.ToArray());
+        }
+        catch (Exception generationError)
+        {
+            try
+            {
+                Rollback(new WorkspaceProjectGenerationResult(createdFiles, createdDirectories));
+            }
+            catch (Exception rollbackError)
+            {
+                throw new AggregateException("Workspace project generation failed and could not be rolled back.", generationError, rollbackError);
+            }
+
+            throw;
+        }
     }
 
     static IEnumerable<string> GetProjectDirectories(WorkspaceSession session, string componentsDirectory)
@@ -201,7 +228,11 @@ public sealed class WorkspaceProjectGenerator
             .Concat(["/.vs/", "/.idea/", string.Empty]));
     }
 
-    static async Task WriteNewFileAsync(string path, string content, CancellationToken cancellationToken)
+    static async Task WriteNewFileAsync(
+        string path,
+        string content,
+        ICollection<string> createdFiles,
+        CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(
             path,
@@ -210,14 +241,54 @@ public sealed class WorkspaceProjectGenerator
             FileShare.None,
             bufferSize: 4096,
             options: FileOptions.Asynchronous);
+        createdFiles.Add(path);
         await using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         await writer.WriteAsync(content.AsMemory(), cancellationToken);
     }
 
+    static void CreateDirectoryTracked(string workspaceRoot, string path, ICollection<string> createdDirectories)
+    {
+        var root = NormalizePath(workspaceRoot);
+        var current = NormalizePath(path);
+        var missingDirectories = new Stack<string>();
+
+        while (!Directory.Exists(current))
+        {
+            EnsureInsideWorkspace(root, current);
+            missingDirectories.Push(current);
+            if (string.Equals(root, current, PathComparison))
+                break;
+
+            current = Directory.GetParent(current)?.FullName
+                ?? throw new InvalidOperationException($"Generated directory has no parent: {path}");
+        }
+
+        while (missingDirectories.TryPop(out var directory))
+        {
+            Directory.CreateDirectory(directory);
+            createdDirectories.Add(directory);
+        }
+    }
+
+    internal static void Rollback(WorkspaceProjectGenerationResult result)
+    {
+        foreach (var path in result.CreatedFiles.Reverse())
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+
+        foreach (var directory in result.CreatedDirectories.Reverse())
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                Directory.Delete(directory);
+        }
+    }
+
     static void EnsureInsideWorkspace(string workspaceRoot, string path)
     {
-        var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var root = NormalizePath(workspaceRoot);
+        var fullPath = NormalizePath(path);
 
         if (string.Equals(root, fullPath, PathComparison))
             return;
@@ -225,6 +296,9 @@ public sealed class WorkspaceProjectGenerator
         if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, PathComparison))
             throw new InvalidOperationException($"Generated path resolves outside the workspace root: {path}");
     }
+
+    static string NormalizePath(string path)
+        => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
     static StringComparison PathComparison => OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase

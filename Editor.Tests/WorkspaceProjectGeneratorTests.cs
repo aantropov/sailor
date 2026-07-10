@@ -110,6 +110,30 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("void SandboxLogic::SampleComponent::BeginPlay()", source);
     }
 
+    [Fact]
+    public async Task Rollback_RemovesTrackedArtifactsAndPreservesUntrackedContent()
+    {
+        using var workspace = TempWorkspace.Create();
+        var sourceDirectory = workspace.Directory("Source");
+        var componentsDirectory = workspace.Directory("Source/Components");
+        var generatedDirectory = workspace.Directory("Generated");
+        Directory.CreateDirectory(componentsDirectory);
+        Directory.CreateDirectory(generatedDirectory);
+        var trackedFile = workspace.File("Source/Components/SampleComponent.h");
+        var untrackedFile = workspace.File("Source/UserComponent.cpp");
+        await File.WriteAllTextAsync(trackedFile, "generated");
+        await File.WriteAllTextAsync(untrackedFile, "user-owned");
+
+        WorkspaceProjectGenerator.Rollback(new WorkspaceProjectGenerationResult(
+            [trackedFile],
+            [sourceDirectory, componentsDirectory, generatedDirectory]));
+
+        Assert.False(File.Exists(trackedFile));
+        Assert.True(File.Exists(untrackedFile));
+        Assert.True(Directory.Exists(sourceDirectory));
+        Assert.False(Directory.Exists(generatedDirectory));
+    }
+
     static WorkspaceSession CreateSession(string workspaceRoot, WorkspaceManifest manifest)
     {
         var serializer = new WorkspaceManifestSerializer();
