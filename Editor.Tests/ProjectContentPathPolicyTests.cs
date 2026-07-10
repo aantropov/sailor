@@ -41,6 +41,34 @@ public class ProjectContentPathPolicyTests
         }
         finally
         {
+            if (Directory.Exists(linkPath))
+                Directory.Delete(linkPath);
+            if (Directory.Exists(testRoot))
+                Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void IsSamePath_ResolvesSymlinkTargetAliases()
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+
+        var testRoot = Path.Combine(Path.GetTempPath(), $"sailor-path-alias-{Guid.NewGuid():N}");
+        var contentRoot = Path.Combine(testRoot, "Content");
+        var linkPath = Path.Combine(contentRoot, "Cycle");
+
+        try
+        {
+            Directory.CreateDirectory(contentRoot);
+            Directory.CreateSymbolicLink(linkPath, contentRoot);
+
+            Assert.True(ProjectContentPathPolicy.IsSamePath(contentRoot, linkPath));
+        }
+        finally
+        {
+            if (Directory.Exists(linkPath))
+                Directory.Delete(linkPath);
             if (Directory.Exists(testRoot))
                 Directory.Delete(testRoot, recursive: true);
         }

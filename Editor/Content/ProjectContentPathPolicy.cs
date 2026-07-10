@@ -31,7 +31,7 @@ public static class ProjectContentPathPolicy
             var resolved = info?.LinkTarget is not null
                 ? info.ResolveLinkTarget(returnFinalTarget: true)
                 : null;
-            current = resolved?.FullName ?? next;
+            current = resolved is null ? next : NormalizeRoot(resolved.FullName);
         }
 
         return TrimTrailingSeparators(current);
