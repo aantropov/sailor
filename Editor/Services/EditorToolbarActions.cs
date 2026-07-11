@@ -71,15 +71,13 @@ namespace SailorEditor.Services
 
             Task.Run(() =>
             {
+                var launchContext = engineService.GetLaunchContext();
                 string world = worldService.SerializeCurrentWorld();
+                Directory.CreateDirectory(launchContext.CacheDirectory);
 
-                using (var yamlAssetInfo = new FileStream(engineService.EngineCacheDirectory + "\\Temp.world", FileMode.OpenOrCreate))
-                using (var writer = new StreamWriter(yamlAssetInfo))
-                {
-                    writer.Write(world);
-                }
+                File.WriteAllText(launchContext.TempWorldFilePath, world);
 
-                engineService.RunWorld("../Cache/Temp.world", debug);
+                engineService.RunWorld("../Cache/Temp.world", debug, launchContext);
             });
         }
 

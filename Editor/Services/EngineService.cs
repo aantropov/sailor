@@ -3,7 +3,9 @@ using System.Runtime.InteropServices;
 using System.Diagnostics;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
+using SailorEditor.Workspace;
 using System.Threading;
+using System.Globalization;
 
 namespace SailorEngine
 {
@@ -140,6 +142,12 @@ namespace SailorEditor.Services
         const int MaxBufferedConsoleMessages = 1000;
 
         readonly string repoRoot = ResolveRepoRoot();
+        readonly WorkspaceLifecycleService workspaceLifecycle;
+
+        public EngineService(WorkspaceLifecycleService workspaceLifecycle)
+        {
+            this.workspaceLifecycle = workspaceLifecycle;
+        }
 
         public string EngineContentDirectory => Path.Combine(repoRoot, "Content");
 
@@ -158,7 +166,10 @@ namespace SailorEditor.Services
 
         public string EngineWorkingDirectory => repoRoot + Path.DirectorySeparatorChar;
 
-        public string EngineTypesCacheFilePath => Path.Combine(repoRoot, "Cache", "EngineTypes.yaml");
+        public string EngineTypesCacheFilePath => GetLaunchContext().EngineTypesCacheFilePath;
+
+        public EngineLaunchContext GetLaunchContext()
+            => EngineLaunchContract.Resolve(workspaceLifecycle.Current?.WorkspaceRoot, EngineWorkingDirectory);
 
         public string PathToEngineExecDebug
         {
@@ -407,7 +418,7 @@ namespace SailorEditor.Services
 #endif
         }
 
-        public void RunProcess(bool bDebug, string commandlineArgs)
+        public void RunProcess(bool bDebug, params string[] commandLineArgs)
         {
 #if WINDOWS || MACCATALYST
             lock (runLock)
@@ -450,18 +461,32 @@ namespace SailorEditor.Services
                 return;
             }
 
-            string workspace = EngineWorkingDirectory.Replace("\\", "/");
+            var launchContext = GetLaunchContext();
 #if WINDOWS
-            string commandArgs = $"--noconsole --hwnd {handle} --editor " + commandlineArgs;
-            var args = new string[] { bDebug ? PathToEngineExecDebug : PathToEngineExec, "--workspace", workspace, "--world Editor.world" }.Concat(commandArgs.Split(" ", StringSplitOptions.RemoveEmptyEntries)).ToArray();
+            var extraArguments = new[]
+            {
+                "--noconsole",
+                "--hwnd",
+                handle.ToInt64().ToString(CultureInfo.InvariantCulture),
+                "--editor"
+            }.Concat(commandLineArgs ?? Array.Empty<string>());
+            var args = launchContext.BuildInteropArguments(
+                bDebug ? PathToEngineExecDebug : PathToEngineExec,
+                "Editor.world",
+                extraArguments).ToArray();
 #else
-            string commandArgs = $"--noconsole --editor {commandlineArgs}";
-            var args = new string[] { "SailorEditor", "--workspace", workspace, "--world", "Editor.world" }.Concat(commandArgs.Split(" ", StringSplitOptions.RemoveEmptyEntries)).ToArray();
+            var extraArguments = new[] { "--noconsole", "--editor" }
+                .Concat(commandLineArgs ?? Array.Empty<string>());
+            var args = launchContext.BuildInteropArguments(
+                "SailorEditor",
+                "Editor.world",
+                extraArguments).ToArray();
 #endif
+            Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
 
             try
             {
-                TryLoadEngineTypesFromFile("startup cache");
+                TryLoadEngineTypesFromFile("startup cache", launchContext.EngineTypesCacheFilePath);
 
                 //ProcessStartInfo startInfo = new ProcessStartInfo
                 //{
@@ -499,12 +524,12 @@ namespace SailorEditor.Services
                     string serializedEngineTypes = SerializeEngineTypes();
                     if (!string.IsNullOrEmpty(serializedEngineTypes))
                     {
-                        SaveEngineTypesToFile(serializedEngineTypes);
+                        SaveEngineTypesToFile(serializedEngineTypes, launchContext.EngineTypesCacheFilePath);
                         EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
                     }
                     else
                     {
-                        TryLoadEngineTypesFromFile("empty interop export");
+                        TryLoadEngineTypesFromFile("empty interop export", launchContext.EngineTypesCacheFilePath);
                     }
 
                     string serializedWorld = SerializeWorld();
@@ -563,7 +588,7 @@ namespace SailorEditor.Services
                     catch (Exception ex)
                     {
                         Console.WriteLine($"SailorEngine task failed: {ex.Message}");
-                        TryLoadEngineTypesFromFile("engine startup failed");
+                        TryLoadEngineTypesFromFile("engine startup failed", launchContext.EngineTypesCacheFilePath);
                     }
                     finally
                     {
@@ -687,16 +712,16 @@ namespace SailorEditor.Services
             }
         }
 
-        bool TryLoadEngineTypesFromFile(string reason)
+        bool TryLoadEngineTypesFromFile(string reason, string cacheFilePath)
         {
             try
             {
-                if (!File.Exists(EngineTypesCacheFilePath))
+                if (!File.Exists(cacheFilePath))
                 {
                     return false;
                 }
 
-                string yaml = File.ReadAllText(EngineTypesCacheFilePath);
+                string yaml = File.ReadAllText(cacheFilePath);
                 if (string.IsNullOrWhiteSpace(yaml))
                 {
                     return false;
@@ -709,7 +734,7 @@ namespace SailorEditor.Services
                 }
 
                 EngineTypes = engineTypes;
-                Console.WriteLine($"Loaded engine types from cache ({reason}): {EngineTypesCacheFilePath}");
+                Console.WriteLine($"Loaded engine types from cache ({reason}): {cacheFilePath}");
                 return true;
             }
             catch (Exception ex)
@@ -719,7 +744,7 @@ namespace SailorEditor.Services
             }
         }
 
-        void SaveEngineTypesToFile(string yaml)
+        void SaveEngineTypesToFile(string yaml, string cacheFilePath)
         {
             if (string.IsNullOrWhiteSpace(yaml))
             {
@@ -728,13 +753,13 @@ namespace SailorEditor.Services
 
             try
             {
-                string directory = Path.GetDirectoryName(EngineTypesCacheFilePath);
+                string directory = Path.GetDirectoryName(cacheFilePath);
                 if (!string.IsNullOrEmpty(directory))
                 {
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllText(EngineTypesCacheFilePath, yaml);
+                File.WriteAllText(cacheFilePath, yaml);
             }
             catch (Exception ex)
             {
@@ -947,21 +972,24 @@ namespace SailorEditor.Services
         }
 
         public void RunWorld(string world, bool bDebug)
+            => RunWorld(world, bDebug, GetLaunchContext());
+
+        public void RunWorld(string world, bool bDebug, EngineLaunchContext launchContext)
         {
             try
             {
-                string workspace = (EngineWorkingDirectory + Path.DirectorySeparatorChar).Replace("\\", "/");
-                string arguments = $"--workspace {workspace} --world {world}";
-
                 ProcessStartInfo startInfo = new ProcessStartInfo
                 {
                     FileName = bDebug ? PathToEngineExecDebug : PathToEngineExec,
-                    Arguments = arguments,
                     WorkingDirectory = EngineWorkingDirectory,
                     UseShellExecute = false
                 };
 
+                foreach (var argument in launchContext.BuildArguments(world))
+                    startInfo.ArgumentList.Add(argument);
+
                 Process process = new Process { StartInfo = startInfo };
+                Console.WriteLine($"Starting SailorEngine process with workspace: {launchContext.WorkspaceRoot}");
                 process.Start();
             }
             catch (Exception ex)
