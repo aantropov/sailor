@@ -934,7 +934,7 @@ namespace Sailor::RHI
 
 namespace std
 {
-	template<> struct std::hash<Sailor::RHI::VertexP3N3T3B3UV2C4 >
+	template<> struct hash<Sailor::RHI::VertexP3N3T3B3UV2C4 >
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3T3B3UV2C4 const& vertex) const
 		{
@@ -944,7 +944,7 @@ namespace std
 		}
 	};
 
-	template<> struct std::hash<Sailor::RHI::VertexP3N3T3B3UV2C4I4W4>
+	template<> struct hash<Sailor::RHI::VertexP3N3T3B3UV2C4I4W4>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3T3B3UV2C4I4W4 const& vertex) const
 		{
@@ -954,7 +954,7 @@ namespace std
 		}
 	};
 
-	template<> struct std::hash<Sailor::RHI::VertexP3N3UV2C4>
+	template<> struct hash<Sailor::RHI::VertexP3N3UV2C4>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::VertexP3N3UV2C4 const& vertex) const
 		{
@@ -964,7 +964,7 @@ namespace std
 		}
 	};
 
-	template<> struct std::hash<Sailor::RHI::RenderState>
+	template<> struct hash<Sailor::RHI::RenderState>
 	{
 		SAILOR_API size_t operator()(Sailor::RHI::RenderState const& state) const
 		{

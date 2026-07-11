@@ -284,7 +284,7 @@ namespace Sailor::Math
 namespace std
 {
 	template<>
-	struct std::hash<Sailor::Math::AABB>
+	struct hash<Sailor::Math::AABB>
 	{
 		SAILOR_API size_t operator()(Sailor::Math::AABB const& instance) const
 		{

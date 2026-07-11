@@ -341,7 +341,7 @@ namespace Sailor
 namespace std
 {
 	template<typename T>
-	struct std::hash<Sailor::TObjectPtr<T>>
+	struct hash<Sailor::TObjectPtr<T>>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TObjectPtr<T>& p) const
 		{
