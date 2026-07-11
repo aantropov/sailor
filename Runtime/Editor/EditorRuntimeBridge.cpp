@@ -623,7 +623,7 @@ namespace
 #endif
 	}
 
-	glm::ivec2 GetEditorRemoteViewportRenderArea(uint32_t fallbackWidth, uint32_t fallbackHeight)
+	[[maybe_unused]] glm::ivec2 GetEditorRemoteViewportRenderArea(uint32_t fallbackWidth, uint32_t fallbackHeight)
 	{
 		std::lock_guard lock(g_editorViewportMutex);
 		if (g_editorRemoteViewportRenderArea.x > 0 && g_editorRemoteViewportRenderArea.y > 0)
@@ -634,7 +634,7 @@ namespace
 		return glm::ivec2(std::max<uint32_t>(fallbackWidth, 1u), std::max<uint32_t>(fallbackHeight, 1u));
 	}
 
-	glm::ivec2 GetAppliedEditorRenderArea()
+	[[maybe_unused]] glm::ivec2 GetAppliedEditorRenderArea()
 	{
 		std::lock_guard lock(g_editorViewportMutex);
 		return g_appliedEditorRenderArea;
