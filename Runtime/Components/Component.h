@@ -8,7 +8,12 @@
 #include "Core/Reflection.h"
 
 namespace Sailor
-{	
+{
+	class Component;
+
+	template<>
+	SAILOR_SHARED_API const TypeInfo& TypeInfo::Get<Component>();
+
 	// All components are tracked
 	class Component : public Object, public IReflectable
 	{
