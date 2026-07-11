@@ -230,6 +230,7 @@ void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 	m_descriptors[index]->Apply(descriptorWrite);
 	descriptorWrite.dstSet = m_descriptorSet;
 
+#ifdef _DEBUG
 	const auto* variableLayoutBinding = m_descriptorSetLayout->HasVariableDescriptorBinding() ?
 		FindLayoutBinding(m_descriptorSetLayout, static_cast<uint32_t>(m_descriptorSetLayout->GetVariableDescriptorBinding()), descriptorWrite.descriptorType) :
 		nullptr;
@@ -237,7 +238,6 @@ void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
 		(std::min)(variableLayoutBinding->descriptorCount, (std::max)(1u, m_variableDescriptorCount)) :
 		(std::max)(1u, m_variableDescriptorCount);
 
-#ifdef _DEBUG
 	bool bValid = true;
 	switch (descriptorWrite.descriptorType)
 	{
