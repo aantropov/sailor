@@ -42,7 +42,7 @@ using namespace Sailor;
 
 namespace
 {
-	static uint32_t GetBytesPerPixel(VkFormat format)
+	[[maybe_unused]] static uint32_t GetBytesPerPixel(VkFormat format)
 	{
 		switch (format)
 		{
