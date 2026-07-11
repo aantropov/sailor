@@ -118,40 +118,14 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     public async Task AddComponentFromInspectorAsync()
     {
+        var editorTypes = MauiProgram.GetService<EngineService>().EngineTypes;
         var componentTypeName = await Views.AddComponentDialogPage.ShowAsync(
-            MauiProgram.GetService<EngineService>().EngineTypes.Components.Values
-                .Where(IsComponentType)
-                .Select(type => type.Name)
-                .OrderBy(name => name)
-                .ToList());
+            editorTypes.GetComponentTypeNames());
 
         if (!string.IsNullOrWhiteSpace(componentTypeName))
         {
             await Task.Run(() => MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName));
         }
-    }
-
-    static bool IsComponentType(ComponentType type)
-    {
-        if (type.Name == "Sailor::Component")
-        {
-            return false;
-        }
-
-        var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
-        var baseType = type.Base;
-
-        while (!string.IsNullOrEmpty(baseType))
-        {
-            if (baseType == "Sailor::Component")
-            {
-                return true;
-            }
-
-            baseType = engineTypes.Components[baseType].Base;
-        }
-
-        return false;
     }
 
     public async void ClearComponentsFromInspector()

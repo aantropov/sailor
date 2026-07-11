@@ -7,6 +7,7 @@
 #include "Workspace/WorkspaceModuleManager.h"
 
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -95,6 +96,100 @@ namespace
 			}
 		}
 		return false;
+	}
+
+	YAML::Node FindMetadataEntry(
+		const YAML::Node& entries,
+		const std::string& typeName)
+	{
+		for (const YAML::Node& entry : entries)
+		{
+			if (entry["typename"] && entry["typename"].as<std::string>() == typeName)
+			{
+				return entry;
+			}
+		}
+
+		return YAML::Node(YAML::NodeType::Undefined);
+	}
+
+	void TestEditorMetadataMergeRollback(
+		const YAML::Node& engineMetadata,
+		const YAML::Node& workspaceMetadata)
+	{
+		std::string collisionTypeName;
+		for (const YAML::Node& type : engineMetadata["engineTypes"])
+		{
+			const std::string typeName = type["typename"].as<std::string>();
+			if (FindMetadataEntry(engineMetadata["cdos"], typeName).IsDefined())
+			{
+				collisionTypeName = typeName;
+				break;
+			}
+		}
+		Require(!collisionTypeName.empty(), "engine metadata should contain a type with a default object");
+
+		YAML::Node duplicateMetadata = YAML::Clone(workspaceMetadata);
+		duplicateMetadata["engineTypes"][0]["typename"] = collisionTypeName;
+		duplicateMetadata["cdos"][0]["typename"] = collisionTypeName;
+
+		YAML::Node output;
+		output["sentinel"] = "unchanged";
+		std::string error;
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				duplicateMetadata,
+				output,
+				error),
+			"editor metadata merge should reject engine/workspace type collisions");
+		Require(error.find(collisionTypeName) != std::string::npos,
+			"editor metadata collision diagnostic should identify the conflicting type");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed duplicate merge must not partially mutate its output");
+
+		YAML::Node malformedMetadata = YAML::Clone(workspaceMetadata);
+		malformedMetadata["assetTypes"] = YAML::Node(YAML::NodeType::Map);
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				malformedMetadata,
+				output,
+				error),
+			"editor metadata merge should reject malformed workspace sections");
+		Require(!error.empty(), "malformed editor metadata should return a diagnostic");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed malformed merge must not partially mutate its output");
+
+		std::string collisionExtension;
+		for (const YAML::Node& assetTypeNode : engineMetadata["assetTypes"])
+		{
+			if (assetTypeNode["extensions"].IsSequence() && assetTypeNode["extensions"].size() > 0)
+			{
+				collisionExtension = assetTypeNode["extensions"][0].as<std::string>();
+				break;
+			}
+		}
+		Require(!collisionExtension.empty(), "engine metadata should expose an asset extension for collision testing");
+		std::transform(collisionExtension.begin(), collisionExtension.end(), collisionExtension.begin(), [](unsigned char character)
+			{
+				return static_cast<char>(std::toupper(character));
+			});
+
+		YAML::Node extensionCollision = YAML::Clone(workspaceMetadata);
+		YAML::Node assetType;
+		assetType["typename"] = "WorkspaceFixture::CollidingAsset";
+		assetType["extensions"].push_back(" ." + collisionExtension + " ");
+		assetType["properties"] = YAML::Node(YAML::NodeType::Sequence);
+		extensionCollision["assetTypes"].push_back(assetType);
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				extensionCollision,
+				output,
+				error),
+			"editor metadata merge should reject normalized asset extension collisions");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed extension merge must not partially mutate its output");
 	}
 
 	void TestDiscoveryFailures(const std::filesystem::path& tempRoot, const std::string& config)
@@ -393,6 +488,17 @@ namespace
 		Require(engineComponentType != nullptr, "engine Component TypeInfo should be registered");
 		Require(!ContainsEngineType(engineTypesBefore, FixtureTypeName),
 			"workspace fixture must not be present before module registration");
+		WorkspaceModuleManager engineOnlyManager;
+		YAML::Node engineOnlyEditorTypes;
+		std::string metadataError;
+		Require(engineOnlyManager.BuildEditorTypeMetadata(
+				engineTypesBefore,
+				engineOnlyEditorTypes,
+				metadataError),
+			"unconfigured workspace should build engine-only editor metadata: " + metadataError);
+		Require(engineOnlyEditorTypes["engineTypes"].size() == engineTypesBefore["engineTypes"].size() &&
+			!ContainsEngineType(engineOnlyEditorTypes, FixtureTypeName),
+			"unconfigured editor metadata should remain engine-only");
 
 		const std::filesystem::path root = tempRoot / "registered";
 		WriteManifest(root, FixtureModuleName);
@@ -406,6 +512,21 @@ namespace
 			"workspace fixture type should be visible in unified reflection lookup");
 		Require(Reflection::TryGetTypeByName("Sailor::Component") == engineComponentType,
 			"loading a workspace DLL must not replace host engine type registration");
+
+		YAML::Node editorTypes;
+		Require(manager.BuildEditorTypeMetadata(engineTypesBefore, editorTypes, metadataError),
+			"active workspace should build combined editor metadata: " + metadataError);
+		Require(editorTypes["engineTypes"].size() == engineTypesBefore["engineTypes"].size() + 1,
+			"combined editor metadata should append the workspace type exactly once");
+		Require(ContainsEngineType(editorTypes, FixtureTypeName),
+			"combined editor metadata should expose the workspace component FQN");
+		Require(editorTypes["moduleName"].as<std::string>() == FixtureModuleName,
+			"combined editor metadata should identify the active workspace module");
+		const YAML::Node editorDefaults = FindMetadataEntry(editorTypes["cdos"], FixtureTypeName);
+		Require(editorDefaults.IsDefined() &&
+			editorDefaults["defaultValues"]["moveSpeed"].as<float>() == 5.0f,
+			"combined editor metadata should expose workspace component defaults");
+		TestEditorMetadataMergeRollback(engineTypesBefore, YAML::Load(manager.GetMetadata()));
 
 		const TypeInfo* fixtureType = Reflection::TryGetTypeByName(FixtureTypeName);
 		Require(fixtureType != nullptr, "workspace fixture TypeInfo should be discoverable by name");
@@ -426,6 +547,27 @@ namespace
 				"workspace component construction should preserve validated structured defaults");
 			Require(reflected.GetProperties()["nullableComponent"].IsNull(),
 				"workspace component construction should preserve a null object reference");
+		}
+		{
+			YAML::Node serializedComponent;
+			serializedComponent["typename"] = FixtureTypeName;
+			serializedComponent["overrideProperties"]["moveSpeed"] = 12.5f;
+
+			ReflectedData deserializedComponent;
+			deserializedComponent.Deserialize(serializedComponent);
+			Require(deserializedComponent.IsValid() &&
+				deserializedComponent.GetTypeInfo().Name() == FixtureTypeName,
+				"workspace component deserialization should preserve its exact FQN");
+
+			ComponentPtr roundTrippedComponent = Reflection::CreateObject<Component>(*fixtureType, allocator);
+			Require(static_cast<bool>(roundTrippedComponent) &&
+				Reflection::ApplyReflection(roundTrippedComponent.GetRawPtr(), deserializedComponent),
+				"workspace component should be recreated and populated from serialized reflection");
+			const YAML::Node roundTrippedYaml = roundTrippedComponent->GetReflectedData().Serialize();
+			Require(roundTrippedYaml["typename"].as<std::string>() == FixtureTypeName &&
+				roundTrippedYaml["overrideProperties"]["moveSpeed"].as<float>() == 12.5f,
+				"workspace component round trip should preserve type identity and scalar values");
+			roundTrippedComponent.ForcelyDestroyObject();
 		}
 		Require(Reflection::GetCDO(FixtureTypeName).GetProperties()["moveSpeed"].as<float>() == 5.0f,
 			"workspace registry should preserve metadata defaults");
@@ -456,6 +598,12 @@ namespace
 			"workspace type should be removed before its library closes");
 		Require(Reflection::TryGetTypeByName("Sailor::Component") == engineComponentType,
 			"workspace unload must preserve host engine type registration");
+		YAML::Node editorTypesAfterUnload;
+		Require(manager.BuildEditorTypeMetadata(engineTypesBefore, editorTypesAfterUnload, metadataError),
+			"unloaded workspace should rebuild a fresh engine-only editor catalog: " + metadataError);
+		Require(!ContainsEngineType(editorTypesAfterUnload, FixtureTypeName) &&
+			editorTypesAfterUnload["engineTypes"].size() == engineTypesBefore["engineTypes"].size(),
+			"workspace unload must remove custom entries from editor metadata");
 		const auto& reload = collisionManager.Load(collisionRoot, {}, config);
 		Require(reload.IsSuccess(), "workspace module should reload after owner cleanup: " + reload.m_message);
 		Require(collisionManager.Unload(), "reloaded workspace fixture should unload cleanly");

@@ -218,6 +218,10 @@ namespace Sailor
 			{
 				return "int32";
 			}
+			else if constexpr (std::is_same_v<PropertyType, uint32_t>)
+			{
+				return "uint32";
+			}
 			else if constexpr (std::is_same_v<PropertyType, TVector<FileId>>)
 			{
 				return "List<FileId>";

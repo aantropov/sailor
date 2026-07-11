@@ -118,6 +118,12 @@ The dynamic library is opened before asset importers scan `Content`. Static engi
 
 Standalone startup treats a configured module or requested-world activation failure as fatal and returns a nonzero exit code. Editor startup reports the same error but remains available with an empty world so the project can be repaired. During shutdown, worlds, importers, the asset registry, scheduler, and remaining submodules are destroyed before workspace registrations are removed and the library is closed. Runtime hot reload and live workspace switching are not supported by this contract.
 
+## Editor Type Metadata
+
+`SerializeEngineTypes` remains the legacy engine-only C export. Editor consumers use the distinct `SerializeEditorTypes` export, which starts from a fresh engine snapshot and appends the validated metadata of the active workspace module. The combined document keeps each custom component's fully-qualified `typename`, reflected properties, and default object values.
+
+The merge validates all four catalogs before publishing a result. Type and CDO identities use `typename`, enum identities use their map key, and asset-type identities use `typename`. Duplicate entries, engine/workspace collisions, malformed sections, or mismatched workspace type/default sets reject the complete merge without returning a partial catalog. A missing, failed, or unloaded workspace module produces a fresh engine-only editor snapshot so custom types cannot survive through stale runtime state.
+
 ## SDK Limitations
 
 `Sailor::Runtime` is a consistent CMake target name, not a cross-version C++ ABI guarantee. Build the engine and game module with compatible compiler versions, toolsets, configurations, and C runtime settings.

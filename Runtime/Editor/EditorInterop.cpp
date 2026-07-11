@@ -8,10 +8,12 @@
 #include "Engine/World.h"
 #include "Engine/InstanceId.h"
 #include "Submodules/Editor.h"
+#include "Workspace/WorkspaceModuleManager.h"
 
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <utility>
 
 using namespace Sailor;
 
@@ -97,6 +99,43 @@ uint32_t App::SerializeEngineTypes(char** yamlNode)
 
 	yamlNode[0] = nullptr;
 	return 0;
+}
+
+uint32_t App::SerializeEditorTypes(char** yamlNode)
+{
+	if (!yamlNode)
+	{
+		return 0;
+	}
+
+	yamlNode[0] = nullptr;
+	YAML::Node editorTypes = Reflection::ExportEngineTypes();
+	if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
+	{
+		YAML::Node combinedTypes;
+		std::string mergeError;
+		if (app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(editorTypes, combinedTypes, mergeError))
+		{
+			editorTypes = std::move(combinedTypes);
+		}
+		else
+		{
+			SAILOR_LOG_ERROR("Failed to merge workspace editor type metadata: %s", mergeError.c_str());
+		}
+	}
+
+	if (editorTypes.IsNull())
+	{
+		return 0;
+	}
+
+	const std::string serializedNode = YAML::Dump(editorTypes);
+	const size_t length = serializedNode.length();
+	yamlNode[0] = new char[length + 1];
+	memcpy(yamlNode[0], serializedNode.c_str(), length);
+	yamlNode[0][length] = '\0';
+
+	return static_cast<uint32_t>(length);
 }
 
 bool App::LoadEditorWorld(const char* strFileId)

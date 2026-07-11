@@ -399,6 +399,12 @@ namespace
 			after["engineTypes"].size() == engineTypeCount,
 			"workspace metadata export should preserve the engine registry contents");
 	}
+
+	void TestStablePropertyNames()
+	{
+		Require(TypeInfo::GetReflectedPropertyTypeName<uint32_t>() == "uint32",
+			"workspace metadata should use a platform-independent uint32 property name");
+	}
 }
 
 int main()
@@ -409,6 +415,7 @@ int main()
 		{ "RepeatedAndConcurrentCalls", TestRepeatedAndConcurrentCalls },
 		{ "FactoryInvocationLease", TestFactoryInvocationLease },
 		{ "EngineRegistryRemainsEngineOnly", TestEngineRegistryRemainsEngineOnly },
+		{ "StablePropertyNames", TestStablePropertyNames },
 	};
 
 	for (const auto& test : tests)

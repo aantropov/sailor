@@ -32,6 +32,7 @@
     <Compile Include="WorkspaceLifecycleTests.cs" />
     <Compile Include="WorkspaceProjectGeneratorTests.cs" />
     <Compile Include="EngineTypeMetadataContractTests.cs" />
+    <Compile Include="EditorTypeCatalogContractTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
@@ -63,6 +64,8 @@
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceProjectGenerator.cs" Link="Workspace\WorkspaceProjectGenerator.cs" />
     <Compile Include="..\Editor\Utility\EngineTypeMetadataContract.cs" Link="Utility\EngineTypeMetadataContract.cs" />
+    <Compile Include="..\Editor\Utility\EditorComponentScalarCodec.cs" Link="Utility\EditorComponentScalarCodec.cs" />
+    <Compile Include="..\Editor\Utility\EditorComponentYamlContract.cs" Link="Utility\EditorComponentYamlContract.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceUiContracts.cs" Link="Workspace\WorkspaceUiContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellHost.cs" Link="Shell\EditorShellHost.cs" />
