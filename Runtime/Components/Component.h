@@ -31,6 +31,8 @@ namespace Sailor
 
 		SAILOR_API GameObjectPtr GetOwner() const { return m_owner; }
 		SAILOR_API WorldPtr GetWorld() const;
+		const FileId& GetReflectedFileId() const { return GetFileId(); }
+		const InstanceId& GetReflectedInstanceId() const { return GetInstanceId(); }
 
 		// Components become valid only when BeginPlay is called
 		SAILOR_API virtual bool IsValid() const override { return m_bBeginPlayCalled; }
@@ -52,6 +54,6 @@ namespace Sailor
 
 REFL_AUTO(
 	type(Sailor::Component, bases<Sailor::IReflectable>),
-	func(GetFileId, property("fileId")),
-	func(GetInstanceId, property("instanceId"))
+	func(GetReflectedFileId, property("fileId")),
+	func(GetReflectedInstanceId, property("instanceId"))
 )
