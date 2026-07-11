@@ -452,7 +452,7 @@ VulkanDescriptorBuffer::VulkanDescriptorBuffer(uint32_t dstBinding,
 	m_range(range)
 {
 	// If we're using storage buffer then we can operate with the whole range
-	if (const bool bIsStorageBuffer = bufferType == RHI::EShaderBindingType::StorageBuffer)
+	if (bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		m_range = VK_WHOLE_SIZE;
 	}
