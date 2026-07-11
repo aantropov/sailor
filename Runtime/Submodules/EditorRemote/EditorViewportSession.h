@@ -34,8 +34,8 @@ namespace Sailor::EditorRemote
 			m_desiredViewport(std::move(descriptor)),
 			m_client(client),
 			m_host(host),
-			m_connectionEpoch(epoch),
-			m_guards(epoch, 1)
+			m_guards(epoch, 1),
+			m_connectionEpoch(epoch)
 		{
 		}
 
