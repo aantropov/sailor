@@ -261,6 +261,7 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 			maxThreadContexts += 4;
 		}
 #endif
+		(void)maxThreadContexts;
 		check(m_threadContext.Num() <= maxThreadContexts);
 	}
 	m_threadContext.Unlock(threadId);
