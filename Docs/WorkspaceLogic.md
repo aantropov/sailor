@@ -12,6 +12,8 @@ Source/
   Components/
     SampleComponent.cpp
     SampleComponent.h
+  WorkspaceModule.cpp
+  WorkspaceTypes.h
 Generated/
   CMakeLists.txt
 Cache/
@@ -21,6 +23,8 @@ Binaries/
 ```
 
 `Generated/CMakeLists.txt` is created with the workspace and is not overwritten when the workspace is opened or saved. It can be edited when the project needs custom CMake behavior, while game code remains under `Source/`. Build-system intermediates belong in `Cache/Build`; configuration-specific logic modules are written to `Binaries/<CONFIG>/`.
+
+`WorkspaceTypes.h` is the explicit list of reflected game types exported by the module. Add each new reflected component to its `TWorkspaceTypeList`. `WorkspaceModule.cpp` defines the versioned metadata entry point; both files are created once and remain user-editable.
 
 Generated logic projects target 64-bit Windows and accept MSVC or clang-cl. Configuration stops with a diagnostic when the platform, architecture, or compiler front end does not match that contract.
 
@@ -77,6 +81,23 @@ cmake --build Cache/Build --config Release --target SailorGame
 For a default Windows Release workspace, the resulting module and import library are `Binaries/Release/SailorGame.dll` and `Binaries/Release/SailorGame.lib`. Link and compile PDB outputs use the same configuration directory. Debug and other configurations use their matching subdirectory.
 
 The engine reference, paths, and module name are creation-time inputs copied into `Generated/CMakeLists.txt`. Opening or saving a workspace does not regenerate that file. If those manifest values are edited later, update the corresponding CMake values before reconfiguring.
+
+## Reflection Metadata Contract
+
+Workspace modules export one C ABI function:
+
+```cpp
+uint32_t SailorGetWorkspaceTypeMetadataV1(
+    char* destination,
+    uint64_t destinationCapacity,
+    uint64_t* outPayloadSize) noexcept;
+```
+
+The caller first passes a null destination and zero capacity to query the required UTF-8 YAML byte count. The function returns `BufferTooSmall`, writes the exact non-null-terminated size, and never transfers allocation ownership across the DLL boundary. A second call with an adequate caller-owned buffer returns `Success`. Invalid pointers/capacities and serialization failures use explicit result codes from `WorkspaceModuleApi.h`; exceptions never cross the ABI.
+
+The YAML document uses `metadataVersion: 1`, identifies `moduleName`, and preserves the existing consumer keys `timeStamp`, `engineTypes`, `cdos`, `enums`, and `assetTypes`. The generated sample exports `moveSpeed: float` with a default value of `5.0`.
+
+Game modules compile with `SAILOR_WORKSPACE_MODULE`, which enables `SAILOR_WORKSPACE_REFLECTABLE`; every reflected game type must use that macro so it does not install a static registration helper. Engine types continue using `SAILOR_REFLECTABLE` unchanged, and `Reflection::ExportEngineTypes()` remains engine-only. Loading the DLL, validating the ABI, and explicitly registering accepted game types belong to the runtime module lifecycle rather than this export contract.
 
 ## SDK Limitations
 

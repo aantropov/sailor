@@ -21,7 +21,9 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("set(SAILOR_BUILD_EXECUTABLE OFF", cmake);
         Assert.Contains("set(SAILOR_BUILD_TESTS OFF", cmake);
         Assert.Contains("target_link_libraries(SailorGame PRIVATE Sailor::Runtime)", cmake);
-        Assert.Contains("WINDOWS_EXPORT_ALL_SYMBOLS ON", cmake);
+        Assert.Contains("SAILOR_WORKSPACE_MODULE", cmake);
+        Assert.Contains("SAILOR_WORKSPACE_MODULE_EXPORTS", cmake);
+        Assert.DoesNotContain("WINDOWS_EXPORT_ALL_SYMBOLS", cmake);
         Assert.Contains("if(NOT WIN32)", cmake);
         Assert.Contains("if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)", cmake);
         Assert.Contains("CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL \"MSVC\"", cmake);
@@ -31,6 +33,8 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Binaries", cmake);
         Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.h")));
         Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.cpp")));
+        Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
+        Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.True(File.Exists(workspace.File(".gitignore")));
         Assert.True(Directory.Exists(workspace.Directory("Cache/Build")));
         Assert.True(Directory.Exists(workspace.Directory("Binaries")));
@@ -104,10 +108,18 @@ public sealed class WorkspaceProjectGeneratorTests
 
         var header = await File.ReadAllTextAsync(workspace.File("Source/Components/SampleComponent.h"));
         var source = await File.ReadAllTextAsync(workspace.File("Source/Components/SampleComponent.cpp"));
+        var workspaceTypes = await File.ReadAllTextAsync(workspace.File("Source/WorkspaceTypes.h"));
+        var workspaceModule = await File.ReadAllTextAsync(workspace.File("Source/WorkspaceModule.cpp"));
         Assert.Contains("namespace SandboxLogic", header);
         Assert.Contains("class SampleComponent final : public Sailor::Component", header);
-        Assert.Contains("type(SandboxLogic::SampleComponent, bases<Sailor::Component>)", header);
+        Assert.Contains("SAILOR_WORKSPACE_REFLECTABLE(SampleComponent)", header);
+        Assert.Contains("float m_moveSpeed = 5.0f", header);
+        Assert.Contains("func(GetMoveSpeed, property(\"moveSpeed\"))", header);
         Assert.Contains("void SandboxLogic::SampleComponent::BeginPlay()", source);
+        Assert.Contains("TWorkspaceTypeList<SampleComponent>", workspaceTypes);
+        Assert.Contains("SailorGetWorkspaceTypeMetadataV1", workspaceModule);
+        Assert.Contains("ExportWorkspaceTypeMetadataV1<SandboxLogic::WorkspaceTypes>", workspaceModule);
+        Assert.Contains("\"SandboxLogic\"", workspaceModule);
     }
 
     [Fact]

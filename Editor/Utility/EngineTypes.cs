@@ -236,12 +236,12 @@ namespace SailorEngine
 
             try
             {
-                var rootNode = deserializer.Deserialize<RootNode>(yamlContent);
+                var rootNode = deserializer.Deserialize<EngineTypeMetadataContract>(yamlContent);
                 if (rootNode?.EngineTypes == null)
                     return res;
 
-                var cdoByType = new Dictionary<string, ComponentDefaultValuesNode>();
-                foreach (var cdo in rootNode.Cdos ?? new List<ComponentDefaultValuesNode>())
+                var cdoByType = new Dictionary<string, EngineTypeMetadataDefaults>();
+                foreach (var cdo in rootNode.Cdos ?? new List<EngineTypeMetadataDefaults>())
                 {
                     if (string.IsNullOrEmpty(cdo?.Typename))
                         continue;
@@ -259,7 +259,7 @@ namespace SailorEngine
                     }
                 }
 
-                foreach (var assetTypeNode in rootNode.AssetTypes ?? Enumerable.Empty<AssetTypeNode>())
+                foreach (var assetTypeNode in rootNode.AssetTypes ?? Enumerable.Empty<EngineTypeMetadataAssetType>())
                 {
                     if (string.IsNullOrEmpty(assetTypeNode.Typename))
                         continue;
@@ -396,41 +396,7 @@ namespace SailorEngine
             };
         }
 
-        public class RootNode
-        {
-            public List<EngineTypeNode> EngineTypes { get; set; }
-            public List<ComponentDefaultValuesNode> Cdos { get; set; }
-            public List<Dictionary<string, List<string>>> Enums { get; set; }
-            public List<AssetTypeNode> AssetTypes { get; set; }
-        }
-
-        public class EngineTypeNode
-        {
-            public string Typename { get; set; }
-            public string Base { get; set; }
-            public Dictionary<string, string> Properties { get; set; }
-        }
-
-        public class ComponentDefaultValuesNode
-        {
-            public string Typename { get; set; }
-            public Dictionary<string, object> DefaultValues { get; set; }
-        }
-
-        public class AssetTypeNode
-        {
-            public string Typename { get; set; }
-            public List<string> Extensions { get; set; }
-            public object Properties { get; set; }
-        }
-
-        public class AssetTypePropertyNode
-        {
-            public string Name { get; set; }
-            public string Type { get; set; }
-        }
-
-        static IEnumerable<AssetTypePropertyNode> EnumerateAssetTypeProperties(object properties)
+        static IEnumerable<EngineTypeMetadataAssetProperty> EnumerateAssetTypeProperties(object properties)
         {
             if (properties is not IEnumerable<object> propertyList)
             {
@@ -445,7 +411,7 @@ namespace SailorEngine
                     var type = propertyNode.TryGetValue("type", out var typeValue) ? typeValue?.ToString() : null;
                     if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(type))
                     {
-                        yield return new AssetTypePropertyNode { Name = name, Type = type };
+                        yield return new EngineTypeMetadataAssetProperty { Name = name, Type = type };
                     }
                 }
             }

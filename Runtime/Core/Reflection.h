@@ -17,30 +17,7 @@ namespace Sailor::RHI
 	enum class EShadowType : uint32_t;
 }
 
-#define SAILOR_REFLECTABLE(__CLASSNAME__) \
-	public: \
-	static const ::Sailor::TypeInfo& GetStaticTypeInfo() \
-	{ \
-		return ::Sailor::TypeInfo::Get<__CLASSNAME__>(); \
-	} \
-	virtual const ::Sailor::TypeInfo& GetTypeInfo() const override \
-	{ \
-		return ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-	} \
-	virtual ::Sailor::ReflectedData GetReflectedData() const override \
-	{ \
-		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
-		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
-		return res; \
-	} \
-	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
-	{ \
-		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
-	} \
-	virtual bool ResolveRefs(const ::Sailor::ReflectedData& reflection, const ::Sailor::TMap<::Sailor::InstanceId, ::Sailor::ObjectPtr>& resolveContext, bool bImmediate = true) override \
-	{ \
-		return __CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
-	} \
+#define SAILOR_REFLECTION_AUTO_REGISTRATION(__CLASSNAME__) \
 	protected: \
 	class SAILOR_API RegistrationFactoryMethod \
 	{ \
@@ -65,10 +42,66 @@ namespace Sailor::RHI
 	protected: \
 		static inline bool s_bRegistered = false; \
 	}; \
-	static inline volatile RegistrationFactoryMethod s_registrationFactoryMethod{ GetStaticTypeInfo() }; \
+	static inline volatile RegistrationFactoryMethod s_registrationFactoryMethod{ GetStaticTypeInfo() };
+#define SAILOR_REFLECTABLE(__CLASSNAME__) \
+	public: \
+	static const ::Sailor::TypeInfo& GetStaticTypeInfo() \
+	{ \
+		return ::Sailor::TypeInfo::Get<__CLASSNAME__>(); \
+	} \
+	virtual const ::Sailor::TypeInfo& GetTypeInfo() const override \
+	{ \
+		return ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+	} \
+	virtual ::Sailor::ReflectedData GetReflectedData() const override \
+	{ \
+		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
+		return res; \
+	} \
+	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
+	{ \
+		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
+	} \
+	virtual bool ResolveRefs(const ::Sailor::ReflectedData& reflection, const ::Sailor::TMap<::Sailor::InstanceId, ::Sailor::ObjectPtr>& resolveContext, bool bImmediate = true) override \
+	{ \
+		return __CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
+	} \
+	SAILOR_REFLECTION_AUTO_REGISTRATION(__CLASSNAME__) \
 	private: \
 	template<typename T> \
 	friend struct ::refl_impl::metadata::type_info__; \
+
+#if defined(SAILOR_WORKSPACE_MODULE)
+#define SAILOR_WORKSPACE_REFLECTABLE(__CLASSNAME__) \
+	public: \
+	static const ::Sailor::TypeInfo& GetStaticTypeInfo() \
+	{ \
+		return ::Sailor::TypeInfo::Get<__CLASSNAME__>(); \
+	} \
+	virtual const ::Sailor::TypeInfo& GetTypeInfo() const override \
+	{ \
+		return ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+	} \
+	virtual ::Sailor::ReflectedData GetReflectedData() const override \
+	{ \
+		::Sailor::TypeInfo typeInfo = ::Sailor::TypeInfo::Get<::refl::trait::remove_qualifiers_t<decltype(*this)>>(); \
+		::Sailor::ReflectedData res = ::Sailor::Reflection::ReflectStatic<::refl::trait::remove_qualifiers_t<decltype(*this)>>(this); \
+		return res; \
+	} \
+	virtual void ApplyReflection(const ::Sailor::ReflectedData& reflection) override \
+	{ \
+		__CLASSNAME__::ApplyReflection_Impl<__CLASSNAME__>(this, reflection); \
+	} \
+	virtual bool ResolveRefs(const ::Sailor::ReflectedData& reflection, const ::Sailor::TMap<::Sailor::InstanceId, ::Sailor::ObjectPtr>& resolveContext, bool bImmediate = true) override \
+	{ \
+		return __CLASSNAME__::ResolveRefs_Impl<__CLASSNAME__>(this, reflection, resolveContext, bImmediate); \
+	} \
+	private: \
+	template<typename T> \
+	friend struct ::refl_impl::metadata::type_info__; \
+
+#endif
 
 namespace Sailor
 {

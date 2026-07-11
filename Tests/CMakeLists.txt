@@ -16,6 +16,14 @@ add_executable(EditorViewportSessionTests
     EditorViewportSessionTests.cpp
 )
 
+add_library(WorkspaceModuleFixture SHARED
+    WorkspaceModuleFixture.cpp
+)
+
+add_executable(WorkspaceModuleContractTests
+    WorkspaceModuleContractTests.cpp
+)
+
 if(WIN32)
     add_executable(RemoteViewportWindowsTransportTests
         RemoteViewportWindowsTransportTests.cpp
@@ -38,6 +46,17 @@ target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
+target_compile_definitions(WorkspaceModuleFixture PRIVATE
+    SAILOR_WORKSPACE_MODULE
+    SAILOR_WORKSPACE_MODULE_EXPORTS
+)
+target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
+target_link_libraries(WorkspaceModuleContractTests PRIVATE
+    Sailor::Runtime
+    WorkspaceModuleFixture
+)
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
 endif()
@@ -55,6 +74,12 @@ target_include_directories(RemoteViewportRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EditorViewportSessionTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleFixture PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 if(WIN32)
@@ -100,6 +125,11 @@ add_test(
 add_test(
     NAME EditorViewportSessionTests
     COMMAND EditorViewportSessionTests
+)
+
+add_test(
+    NAME WorkspaceModuleContractTests
+    COMMAND WorkspaceModuleContractTests
 )
 
 if(WIN32)

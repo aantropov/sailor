@@ -1,3 +1,5 @@
+#nullable enable annotations
+
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -105,7 +107,7 @@ public class WorkspaceTemplateService
         var manifestPlaceholderContents = File.Exists(manifestPath)
             ? await File.ReadAllBytesAsync(manifestPath, CancellationToken.None)
             : null;
-        WorkspaceProjectGenerationResult generatedProject = null;
+        WorkspaceProjectGenerationResult? generatedProject = null;
 
         try
         {
@@ -167,8 +169,8 @@ public class WorkspaceTemplateService
         string workspaceRoot,
         string manifestPath,
         bool manifestPlaceholderExisted,
-        byte[] manifestPlaceholderContents,
-        WorkspaceProjectGenerationResult generatedProject)
+        byte[]? manifestPlaceholderContents,
+        WorkspaceProjectGenerationResult? generatedProject)
     {
         if (!Directory.Exists(workspaceRoot))
             return;

@@ -20,7 +20,9 @@ public sealed class WorkspaceProjectGenerator
             [Path.Combine(session.WorkspaceRoot, ".gitignore")] = BuildGitIgnore(session.Manifest),
             [Path.Combine(session.GeneratedProjectDirectory, "CMakeLists.txt")] = BuildCMakeProject(session),
             [Path.Combine(componentsDirectory, "SampleComponent.h")] = BuildSampleComponentHeader(session.Manifest.LogicModuleName),
-            [Path.Combine(componentsDirectory, "SampleComponent.cpp")] = BuildSampleComponentSource(session.Manifest.LogicModuleName)
+            [Path.Combine(componentsDirectory, "SampleComponent.cpp")] = BuildSampleComponentSource(session.Manifest.LogicModuleName),
+            [Path.Combine(session.SourceDirectory, "WorkspaceTypes.h")] = BuildWorkspaceTypesHeader(session.Manifest.LogicModuleName),
+            [Path.Combine(session.SourceDirectory, "WorkspaceModule.cpp")] = BuildWorkspaceModuleSource(session.Manifest.LogicModuleName)
         };
 
         foreach (var path in generatedFiles.Keys)
@@ -136,10 +138,12 @@ public sealed class WorkspaceProjectGenerator
             $"target_include_directories({moduleName} PRIVATE \"${{SAILOR_GAME_SOURCE_DIR}}\")",
             $"target_link_libraries({moduleName} PRIVATE Sailor::Runtime)",
             $"target_compile_features({moduleName} PRIVATE cxx_std_20)",
+            $"target_compile_definitions({moduleName} PRIVATE",
+            "  SAILOR_WORKSPACE_MODULE",
+            "  SAILOR_WORKSPACE_MODULE_EXPORTS)",
             string.Empty,
             $"set_target_properties({moduleName} PROPERTIES",
             $"  OUTPUT_NAME \"{moduleName}\"",
-            "  WINDOWS_EXPORT_ALL_SYMBOLS ON",
             "  RUNTIME_OUTPUT_DIRECTORY \"${SAILOR_GAME_OUTPUT_DIR}/$<CONFIG>\"",
             "  LIBRARY_OUTPUT_DIRECTORY \"${SAILOR_GAME_OUTPUT_DIR}/$<CONFIG>\"",
             "  ARCHIVE_OUTPUT_DIRECTORY \"${SAILOR_GAME_OUTPUT_DIR}/$<CONFIG>\"",
@@ -192,16 +196,53 @@ public sealed class WorkspaceProjectGenerator
             string.Empty,
             "\tclass SampleComponent final : public Sailor::Component",
             "\t{",
-            "\t\tSAILOR_REFLECTABLE(SampleComponent)",
+            "\t\tSAILOR_WORKSPACE_REFLECTABLE(SampleComponent)",
             string.Empty,
             "\tpublic:",
             "\t\tvoid BeginPlay() override;",
+            "\t\tfloat GetMoveSpeed() const { return m_moveSpeed; }",
+            "\t\tvoid SetMoveSpeed(float moveSpeed) { m_moveSpeed = moveSpeed; }",
+            string.Empty,
+            "\tprivate:",
+            "\t\tfloat m_moveSpeed = 5.0f;",
             "\t};",
             "}",
             string.Empty,
             "REFL_AUTO(",
-            $"\ttype({moduleName}::SampleComponent, bases<Sailor::Component>)",
+            $"\ttype({moduleName}::SampleComponent, bases<Sailor::Component>),",
+            "\tfunc(GetMoveSpeed, property(\"moveSpeed\")),",
+            "\tfunc(SetMoveSpeed, property(\"moveSpeed\"))",
             ")",
+            string.Empty
+        ]);
+
+    static string BuildWorkspaceTypesHeader(string moduleName)
+        => string.Join("\n", [
+            "#pragma once",
+            string.Empty,
+            "#include \"Components/SampleComponent.h\"",
+            "#include \"Workspace/WorkspaceTypeMetadata.h\"",
+            string.Empty,
+            $"namespace {moduleName}",
+            "{",
+            "\tusing WorkspaceTypes = Sailor::Workspace::TWorkspaceTypeList<SampleComponent>;",
+            "}",
+            string.Empty
+        ]);
+
+    static string BuildWorkspaceModuleSource(string moduleName)
+        => string.Join("\n", [
+            "#include \"WorkspaceTypes.h\"",
+            "#include \"Workspace/WorkspaceModuleApi.h\"",
+            string.Empty,
+            "extern \"C\" SAILOR_WORKSPACE_MODULE_EXPORT uint32_t SAILOR_WORKSPACE_CALL SailorGetWorkspaceTypeMetadataV1(",
+            "\tchar* destination,",
+            "\tuint64_t destinationCapacity,",
+            "\tuint64_t* outPayloadSize) noexcept",
+            "{",
+            $"\treturn Sailor::Workspace::ExportWorkspaceTypeMetadataV1<{moduleName}::WorkspaceTypes>(",
+            $"\t\t\"{moduleName}\", destination, destinationCapacity, outPayloadSize);",
+            "}",
             string.Empty
         ]);
 
