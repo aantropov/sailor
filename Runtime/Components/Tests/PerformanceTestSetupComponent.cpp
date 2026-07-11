@@ -107,8 +107,6 @@ void PerformanceTestSetupComponent::Tick(float deltaTime)
 		m_bAppliedRuntimeColors = ApplyRuntimeMaterialColors();
 	}
 
-	const glm::quat deltaRotation = glm::angleAxis(glm::radians(deltaTime * m_rotationSpeedDeg), Math::vec3_Up);
-
 	for (size_t i = 0; i < m_spawnedObjects.Num(); i++)
 	{
 		auto& go = m_spawnedObjects[i];
