@@ -237,8 +237,8 @@ void VulkanApi::Initialize(Platform::Window* viewport, RHI::EMsaaSamples msaaSam
 		extensions.Add(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 	}
 
-	bool bEnablePortabilityEnumeration = false;
 #if defined(__APPLE__)
+	bool bEnablePortabilityEnumeration = false;
 	if (hasInstanceExtension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME))
 	{
 		extensions.Add(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
