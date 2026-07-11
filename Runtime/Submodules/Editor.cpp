@@ -58,6 +58,10 @@ void Editor::ShowMainWindow(bool bShow)
 bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYamlNode)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (!m_world)
+	{
+		return false;
+	}
 
 	auto objPtr = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
 
@@ -66,6 +70,10 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 		ReflectedData overrideData;
 		YAML::Node objectYaml = YAML::Load(strYamlNode);
 		overrideData.Deserialize(objectYaml);
+		if (!overrideData.IsValid())
+		{
+			return false;
+		}
 
 		auto go = objPtr.DynamicCast<GameObject>();
 		auto components = go->GetComponents();
@@ -74,6 +82,11 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 		{
 			if (el->GetInstanceId().ComponentId() == instanceId.ComponentId())
 			{
+				if (el->GetTypeInfo().Name() != overrideData.GetTypeInfo().Name())
+				{
+					return false;
+				}
+
 				el->ApplyReflection(overrideData);
 				el->ResolveRefs(overrideData, m_world->GetObjects(), true);
 
@@ -324,8 +337,13 @@ bool Editor::AddComponent(const InstanceId& instanceId, const std::string& compo
 		return false;
 	}
 
-	const TypeInfo& componentType = Reflection::GetTypeByName(componentTypeName);
-	auto component = Reflection::CreateObject<Component>(componentType, m_world->GetAllocator());
+	const TypeInfo* componentType = Reflection::TryGetTypeByName(componentTypeName);
+	if (componentType == nullptr)
+	{
+		return false;
+	}
+
+	auto component = Reflection::CreateObject<Component>(*componentType, m_world->GetAllocator());
 	if (!component)
 	{
 		return false;

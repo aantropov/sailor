@@ -12,6 +12,11 @@
 
 namespace Sailor
 {
+	namespace Workspace
+	{
+		class WorkspaceModuleManager;
+	}
+
 	struct AppArgs
 	{
 		bool m_bWaitForDebugger = false;
@@ -23,6 +28,7 @@ namespace Sailor
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
 		std::string m_workspace;
+		std::string m_workspaceManifest;
 
 		// TODO: Change the default scene to empty?
 		std::string m_world = "Editor.world";
@@ -141,6 +147,7 @@ namespace Sailor
 	protected:
 
 		TUniquePtr<Win32::Window> m_pMainWindow;
+		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
 		bool m_bSkipMainLoop = false;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};
@@ -155,6 +162,6 @@ namespace Sailor
 		App(App&&) = delete;
 
 		App() = default;
-		~App() = default;
+		~App();
 	};
 }

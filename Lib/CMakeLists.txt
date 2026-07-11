@@ -133,6 +133,7 @@ target_link_libraries(SailorLib PUBLIC
   TBB::tbb
   unofficial::spirv-reflect
 )
+target_link_libraries(SailorLib PRIVATE ${CMAKE_DL_LIBS})
 
 find_path(REFL_CPP_INCLUDE_DIRS "refl.hpp")
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")
@@ -171,6 +172,7 @@ target_compile_definitions(SailorLib PUBLIC GLM_FORCE_CXX11)
 target_compile_definitions(SailorLib PUBLIC NOMINMAX)
 
 target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Release>:_SHIPPING>)
+target_compile_definitions(SailorLib PRIVATE SAILOR_BUILD_CONFIG="$<CONFIG>")
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)
 

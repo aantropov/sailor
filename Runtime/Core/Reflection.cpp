@@ -14,6 +14,12 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "RHI/SceneView.h"
+#include <algorithm>
+#include <iterator>
+#include <mutex>
+#include <shared_mutex>
+#include <unordered_map>
+#include <unordered_set>
 
 using namespace Sailor;
 
@@ -93,10 +99,35 @@ namespace
 
 namespace Sailor::Internal
 {
+	thread_local bool g_bSuppressEngineAutoRegistration = false;
+
+	struct WorkspaceTypeEntry
+	{
+		std::string m_owner;
+		const TypeInfo* m_typeInfo{};
+		Reflection::TPlacementFactoryMethod m_placementFactory;
+		ReflectedData m_defaultObject;
+		size_t m_alignment = 8;
+	};
+
 	TUniquePtr<TConcurrentMap<std::string, ReflectedData, 32u, ERehashPolicy::Never>> g_pCdos;
 	TUniquePtr<TConcurrentMap<std::string, Reflection::TPlacementFactoryMethod>> g_pPlacementFactoryMethods;
 	TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>> g_pReflectionTypes;
 	Memory::ObjectAllocatorPtr g_cdoAllocator;
+
+	// Engine reflection registration can run during static initialization.
+	// Process-lifetime storage avoids cross-translation-unit initialization and teardown ordering.
+	std::unordered_map<std::string, WorkspaceTypeEntry>& GetWorkspaceTypes()
+	{
+		static auto* workspaceTypes = new std::unordered_map<std::string, WorkspaceTypeEntry>();
+		return *workspaceTypes;
+	}
+
+	std::shared_mutex& GetWorkspaceTypesMutex()
+	{
+		static auto* workspaceTypesMutex = new std::shared_mutex();
+		return *workspaceTypesMutex;
+	}
 }
 
 ComponentPtr Reflection::CreateCDO(const TypeInfo& pType)
@@ -128,6 +159,11 @@ void Reflection::StoreCDO(const std::string& typeName, ReflectedData&& reflected
 
 void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew)
 {
+	if (IsEngineAutoRegistrationSuppressed())
+	{
+		return;
+	}
+
 	static std::once_flag s_once{};
 
 	std::call_once(s_once, [&]() {
@@ -136,7 +172,7 @@ void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMe
 			Internal::g_pPlacementFactoryMethods = TUniquePtr<TConcurrentMap<std::string, Reflection::TPlacementFactoryMethod>>::Make();
 		}});
 
-		check(Internal::g_pPlacementFactoryMethods && !Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
+	check(Internal::g_pPlacementFactoryMethods && !Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
 
 		auto& method = Internal::g_pPlacementFactoryMethods->At_Lock(type.Name());
 		method = placementNew;
@@ -145,6 +181,11 @@ void Reflection::RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMe
 
 void Reflection::RegisterType(const std::string& typeName, const TypeInfo* pType)
 {
+	if (IsEngineAutoRegistrationSuppressed())
+	{
+		return;
+	}
+
 	static std::once_flag s_once{};
 
 	std::call_once(s_once, [&]() {
@@ -153,23 +194,242 @@ void Reflection::RegisterType(const std::string& typeName, const TypeInfo* pType
 			Internal::g_pReflectionTypes = TUniquePtr<TConcurrentMap<std::string, const TypeInfo*>>::Make();
 		}});
 
-		check(Internal::g_pReflectionTypes && !Internal::g_pReflectionTypes->ContainsKey(typeName));
+	check(Internal::g_pReflectionTypes && !Internal::g_pReflectionTypes->ContainsKey(typeName));
 
-		auto& type = Internal::g_pReflectionTypes->At_Lock(typeName);
-		type = pType;
-		Internal::g_pReflectionTypes->Unlock(typeName);
+	auto& type = Internal::g_pReflectionTypes->At_Lock(typeName);
+	type = pType;
+	Internal::g_pReflectionTypes->Unlock(typeName);
+}
+
+void Reflection::SetEngineAutoRegistrationSuppressed(bool suppressed)
+{
+	Internal::g_bSuppressEngineAutoRegistration = suppressed;
+}
+
+bool Reflection::IsEngineAutoRegistrationSuppressed()
+{
+	return Internal::g_bSuppressEngineAutoRegistration;
+}
+
+bool Reflection::RegisterWorkspaceTypes(
+	const std::string& owner,
+	std::vector<WorkspaceTypeRegistration>&& registrations,
+	std::string& outError)
+{
+	outError.clear();
+	if (owner.empty())
+	{
+		outError = "Workspace type owner must not be empty.";
+		return false;
+	}
+
+	std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
+	for (const auto& pair : Internal::GetWorkspaceTypes())
+	{
+		if (pair.second.m_owner == owner)
+		{
+			outError = "Workspace owner '" + owner + "' is already registered.";
+			return false;
+		}
+	}
+
+	std::unordered_set<std::string> incomingTypeNames;
+	for (const WorkspaceTypeRegistration& registration : registrations)
+	{
+		if (registration.m_typeInfo == nullptr || registration.m_typeInfo->Name().empty())
+		{
+			outError = "Workspace type descriptor is missing TypeInfo.";
+			return false;
+		}
+
+		const std::string& typeName = registration.m_typeInfo->Name();
+		if (!incomingTypeNames.emplace(typeName).second)
+		{
+			outError = "Workspace module contains duplicate type '" + typeName + "'.";
+			return false;
+		}
+
+		if ((Internal::g_pReflectionTypes && Internal::g_pReflectionTypes->ContainsKey(typeName)) ||
+			Internal::GetWorkspaceTypes().contains(typeName))
+		{
+			outError = "Workspace type '" + typeName + "' conflicts with an existing reflected type.";
+			return false;
+		}
+
+		if (!registration.m_placementFactory)
+		{
+			outError = "Workspace type '" + typeName + "' is missing a placement factory.";
+			return false;
+		}
+
+		if (registration.m_alignment == 0 ||
+			(registration.m_alignment & (registration.m_alignment - 1)) != 0)
+		{
+			outError = "Workspace type '" + typeName + "' has invalid alignment.";
+			return false;
+		}
+
+		if (!registration.m_defaultObject.IsValid() ||
+			&registration.m_defaultObject.GetTypeInfo() != registration.m_typeInfo)
+		{
+			outError = "Workspace type '" + typeName + "' has invalid default reflection data.";
+			return false;
+		}
+	}
+
+	try
+	{
+		Internal::GetWorkspaceTypes().reserve(Internal::GetWorkspaceTypes().size() + registrations.size());
+		for (WorkspaceTypeRegistration& registration : registrations)
+		{
+			const std::string typeName = registration.m_typeInfo->Name();
+			Internal::WorkspaceTypeEntry entry;
+			entry.m_owner = owner;
+			entry.m_typeInfo = registration.m_typeInfo;
+			entry.m_placementFactory = std::move(registration.m_placementFactory);
+			entry.m_defaultObject = std::move(registration.m_defaultObject);
+			entry.m_alignment = registration.m_alignment;
+			Internal::GetWorkspaceTypes().emplace(typeName, std::move(entry));
+		}
+	}
+	catch (const std::exception& e)
+	{
+		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
+		{
+			it = it->second.m_owner == owner ? Internal::GetWorkspaceTypes().erase(it) : std::next(it);
+		}
+
+		outError = "Failed to commit workspace reflection types: " + std::string(e.what());
+		return false;
+	}
+	catch (...)
+	{
+		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
+		{
+			it = it->second.m_owner == owner ? Internal::GetWorkspaceTypes().erase(it) : std::next(it);
+		}
+
+		outError = "Failed to commit workspace reflection types.";
+		return false;
+	}
+
+	return true;
+}
+
+size_t Reflection::UnregisterWorkspaceTypes(const std::string& owner)
+{
+	std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
+	size_t numRemoved = 0;
+	for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
+	{
+		if (it->second.m_owner == owner)
+		{
+			it = Internal::GetWorkspaceTypes().erase(it);
+			++numRemoved;
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	return numRemoved;
+}
+
+bool Reflection::IsWorkspaceTypeRegistered(const std::string& typeName)
+{
+	std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+	return Internal::GetWorkspaceTypes().contains(typeName);
+}
+
+size_t Reflection::GetNumWorkspaceTypes(const std::string& owner)
+{
+	std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+	return static_cast<size_t>(std::count_if(
+		Internal::GetWorkspaceTypes().begin(),
+		Internal::GetWorkspaceTypes().end(),
+		[&owner](const auto& pair) { return pair.second.m_owner == owner; }));
+}
+
+const TypeInfo* Reflection::TryGetTypeByName(const std::string& typeName)
+{
+	{
+		std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+		const auto workspaceType = Internal::GetWorkspaceTypes().find(typeName);
+		if (workspaceType != Internal::GetWorkspaceTypes().end())
+		{
+			return workspaceType->second.m_typeInfo;
+		}
+	}
+
+	if (Internal::g_pReflectionTypes && Internal::g_pReflectionTypes->ContainsKey(typeName))
+	{
+		return (*Internal::g_pReflectionTypes)[typeName];
+	}
+
+	return nullptr;
+}
+
+ReflectedData Reflection::CreateReflectedData(const TypeInfo& type, const YAML::Node& properties)
+{
+	ReflectedData result;
+	result.m_typeInfo = &type;
+	if (properties.IsMap())
+	{
+		for (const auto& property : properties)
+		{
+			result.m_properties[property.first.as<std::string>()] = property.second;
+		}
+	}
+
+	return result;
 }
 
 const TypeInfo& Reflection::GetTypeByName(const std::string& typeName)
 {
-	check(Internal::g_pReflectionTypes && Internal::g_pReflectionTypes->ContainsKey(typeName));
-
-	return *(*Internal::g_pReflectionTypes)[typeName];
+	const TypeInfo* type = TryGetTypeByName(typeName);
+	check(type != nullptr);
+	return *type;
 }
 
 const ReflectedData& Reflection::GetCDO(const std::string& typeName)
 {
+	{
+		std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+		const auto workspaceType = Internal::GetWorkspaceTypes().find(typeName);
+		if (workspaceType != Internal::GetWorkspaceTypes().end())
+		{
+			return workspaceType->second.m_defaultObject;
+		}
+	}
+
 	return (*Internal::g_pCdos)[typeName];
+}
+
+size_t Reflection::GetObjectAlignment(const std::string& typeName)
+{
+	std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+	const auto workspaceType = Internal::GetWorkspaceTypes().find(typeName);
+	return workspaceType != Internal::GetWorkspaceTypes().end() ? workspaceType->second.m_alignment : 8;
+}
+
+bool Reflection::ConstructObject(const std::string& typeName, void* destination)
+{
+	{
+		std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
+		const auto workspaceType = Internal::GetWorkspaceTypes().find(typeName);
+		if (workspaceType != Internal::GetWorkspaceTypes().end())
+		{
+			return workspaceType->second.m_placementFactory(destination) != nullptr;
+		}
+	}
+
+	if (Internal::g_pPlacementFactoryMethods && Internal::g_pPlacementFactoryMethods->ContainsKey(typeName))
+	{
+		return (*Internal::g_pPlacementFactoryMethods)[typeName](destination) != nullptr;
+	}
+
+	return false;
 }
 
 YAML::Node TypeInfo::Serialize() const
@@ -209,7 +469,7 @@ void ReflectedData::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "typename", typeName);
 	::Deserialize(inData, "overrideProperties", m_properties);
 
-	m_typeInfo = &(Reflection::GetTypeByName(typeName));
+	m_typeInfo = Reflection::TryGetTypeByName(typeName);
 }
 
 bool ReflectedData::operator==(const ReflectedData& rhs) const

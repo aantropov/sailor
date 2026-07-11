@@ -35,9 +35,21 @@ add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
 
+add_library(WorkspaceModuleIncompatibleFixture SHARED
+    WorkspaceModuleIncompatibleFixture.cpp
+)
+
+add_library(WorkspaceModuleMissingEntryFixture SHARED
+    WorkspaceModuleMissingEntryFixture.cpp
+)
+
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
     WorkspaceModuleFixture.cpp
+)
+
+add_executable(WorkspaceModuleRuntimeTests
+    WorkspaceModuleRuntimeTests.cpp
 )
 
 if(WIN32)
@@ -63,7 +75,10 @@ target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleRuntimeTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
     SAILOR_WORKSPACE_MODULE_EXPORTS
@@ -71,10 +86,28 @@ target_compile_definitions(WorkspaceModuleFixture PRIVATE
 target_compile_definitions(WorkspaceModuleContractTests PRIVATE
     SAILOR_WORKSPACE_MODULE
 )
+target_compile_definitions(WorkspaceModuleIncompatibleFixture PRIVATE
+    SAILOR_WORKSPACE_NO_ENTRY_POINT_DECLARATIONS
+    SAILOR_WORKSPACE_MODULE_EXPORTS
+)
+target_compile_definitions(WorkspaceModuleMissingEntryFixture PRIVATE
+    SAILOR_WORKSPACE_NO_ENTRY_POINT_DECLARATIONS
+    SAILOR_WORKSPACE_MODULE_EXPORTS
+)
 target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
+target_link_libraries(WorkspaceModuleIncompatibleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
 )
+target_link_libraries(WorkspaceModuleRuntimeTests PRIVATE Sailor::Runtime)
+add_dependencies(WorkspaceModuleRuntimeTests
+    WorkspaceModuleFixture
+    WorkspaceModuleIncompatibleFixture
+    WorkspaceModuleMissingEntryFixture
+)
+set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFixture)
+set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
+set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME MissingEntryFixture)
 if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
 endif()
@@ -100,7 +133,16 @@ target_include_directories(EditorViewportSessionTests PRIVATE
 target_include_directories(WorkspaceModuleFixture PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
+target_include_directories(WorkspaceModuleIncompatibleFixture PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleMissingEntryFixture PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 target_include_directories(WorkspaceModuleContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 if(WIN32)
@@ -159,6 +201,15 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
             "Path=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
     )
 endif()
+
+add_test(
+    NAME WorkspaceModuleRuntimeTests
+    COMMAND WorkspaceModuleRuntimeTests
+        $<TARGET_FILE:WorkspaceModuleFixture>
+        $<TARGET_FILE:WorkspaceModuleIncompatibleFixture>
+        $<TARGET_FILE:WorkspaceModuleMissingEntryFixture>
+        $<CONFIG>
+)
 
 if(WIN32)
     add_test(
