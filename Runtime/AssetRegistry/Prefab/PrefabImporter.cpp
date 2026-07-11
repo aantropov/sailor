@@ -147,12 +147,7 @@ PrefabPtr PrefabImporter::Create()
 	return PrefabPtr::Make(m_allocator, FileId());
 }
 
-void PrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
-{
-	if (PrefabAssetInfoPtr modelAssetInfo = dynamic_cast<PrefabAssetInfoPtr>(assetInfo))
-	{
-	}
-}
+void PrefabImporter::OnUpdateAssetInfo(AssetInfoPtr, bool) {}
 
 void PrefabImporter::OnImportAsset(AssetInfoPtr assetInfo) {}
 
