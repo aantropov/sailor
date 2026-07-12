@@ -30,7 +30,7 @@ public class ProjectContentFolderIdsTests
         var engineMaterials = ProjectContentFolderIds.FromRootedRelativePath(2, "Materials");
 
         Assert.NotEqual(workspaceMaterials, engineMaterials);
-        Assert.NotEqual(ProjectContentFolderIds.WorkspaceContentRootId, workspaceMaterials);
+        Assert.NotEqual(ProjectContentFolderIds.ContentRootId, workspaceMaterials);
         Assert.NotEqual(ProjectContentFolderIds.EngineContentRootId, engineMaterials);
     }
 
@@ -44,7 +44,7 @@ public class ProjectContentFolderIdsTests
         var allocated = allocator.Allocate(1, "Materials", useRootedFolderIds: true);
 
         Assert.NotEqual(original, allocated);
-        Assert.NotEqual(ProjectContentFolderIds.WorkspaceContentRootId, allocated);
+        Assert.NotEqual(ProjectContentFolderIds.ContentRootId, allocated);
         Assert.NotEqual(ProjectContentFolderIds.EngineContentRootId, allocated);
     }
 }

@@ -44,6 +44,8 @@ public class ProjectContentProjectionTests
             new ProjectContentState(CurrentFolderId: 99));
 
         Assert.Null(projection.State.CurrentFolderId);
+        Assert.True(projection.IsRootVisible);
+        Assert.Equal(1, projection.TopLevelDepth);
         Assert.Equal(["Textures"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.Single(projection.CurrentFolderAssets);
     }
@@ -86,8 +88,8 @@ public class ProjectContentProjectionTests
         var engineMaterialsId = ProjectContentFolderIds.FromRootedRelativePath(2, "Materials");
         var folders = new[]
         {
-            new ProjectContentFolderSnapshot(ProjectContentFolderIds.WorkspaceContentRootId, "Workspace Content", -1, workspaceRoot),
-            new ProjectContentFolderSnapshot(workspaceMaterialsId, "Materials", ProjectContentFolderIds.WorkspaceContentRootId, Path.Combine(workspaceRoot, "Materials")),
+            new ProjectContentFolderSnapshot(ProjectContentFolderIds.ContentRootId, "Content", -1, workspaceRoot),
+            new ProjectContentFolderSnapshot(workspaceMaterialsId, "Materials", ProjectContentFolderIds.ContentRootId, Path.Combine(workspaceRoot, "Materials")),
             new ProjectContentFolderSnapshot(ProjectContentFolderIds.EngineContentRootId, "Engine Content", -1, engineRoot, IsReadOnly: true),
             new ProjectContentFolderSnapshot(engineMaterialsId, "Materials", ProjectContentFolderIds.EngineContentRootId, Path.Combine(engineRoot, "Materials"), IsReadOnly: true),
         };
@@ -101,8 +103,31 @@ public class ProjectContentProjectionTests
         Assert.Equal(
             [Path.Combine(engineRoot, "Materials"), Path.Combine(workspaceRoot, "Materials")],
             projection.Folders.Where(x => x.Name == "Materials").Select(x => x.FullPath).Order(StringComparer.OrdinalIgnoreCase).ToArray());
+        Assert.False(projection.IsRootVisible);
+        Assert.Equal(0, projection.TopLevelDepth);
+        Assert.Equal(["Content", "Engine Content"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.True(projection.Folders.Single(x => x.FolderId == ProjectContentFolderIds.EngineContentRootId).IsReadOnly);
-        Assert.False(projection.Folders.Single(x => x.FolderId == ProjectContentFolderIds.WorkspaceContentRootId).IsReadOnly);
+        Assert.False(projection.Folders.Single(x => x.FolderId == ProjectContentFolderIds.ContentRootId).IsReadOnly);
+    }
+
+    [Fact]
+    public void Build_ShowsEngineMountAtTopLevelWithoutWorkspace()
+    {
+        var engineRoot = Path.Combine(Path.DirectorySeparatorChar.ToString(), "repo", "Content");
+        var engineMaterialsId = ProjectContentFolderIds.FromRootedRelativePath(2, "Materials");
+        var projection = ProjectContentProjectionBuilder.Build(
+            engineRoot,
+            [
+                new ProjectContentFolderSnapshot(ProjectContentFolderIds.EngineContentRootId, "Engine Content", -1, engineRoot),
+                new ProjectContentFolderSnapshot(engineMaterialsId, "Materials", ProjectContentFolderIds.EngineContentRootId, Path.Combine(engineRoot, "Materials"))
+            ],
+            [],
+            new ProjectContentState());
+
+        Assert.False(projection.IsRootVisible);
+        Assert.Equal(0, projection.TopLevelDepth);
+        Assert.Equal(["Engine Content"], projection.VisibleFolders.Select(x => x.Name).ToArray());
+        Assert.DoesNotContain(projection.Folders, x => x.Name == "Content");
     }
 
     [Fact]

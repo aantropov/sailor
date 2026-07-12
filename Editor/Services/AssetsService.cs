@@ -181,18 +181,21 @@ namespace SailorEditor.Services
             Root = new ProjectRoot { Name = CurrentProjectRootPath, Id = 1 };
             if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
             {
-                ReadDirectory(Root, CurrentProjectRootPath, CurrentProjectRootPath, -1, useRootedFolderIds: false, isReadOnly: false);
+                var engineRoot = new ProjectRoot { Name = "Engine Content", Id = EngineProjectRootId };
+
+                AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: false);
+                ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
             else
             {
-                var workspaceRoot = new ProjectRoot { Name = "Workspace Content", Id = ActiveProjectRootId };
+                var workspaceRoot = new ProjectRoot { Name = "Content", Id = ActiveProjectRootId };
                 var engineRoot = new ProjectRoot { Name = "Engine Content", Id = EngineProjectRootId };
 
-                AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.WorkspaceContentRootId, CurrentProjectRootPath, isReadOnly: false);
+                AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.ContentRootId, CurrentProjectRootPath, isReadOnly: false);
                 AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: true);
 
                 ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: true);
-                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.WorkspaceContentRootId, useRootedFolderIds: true, isReadOnly: false);
+                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.ContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
 
             if (_assetOverrideCount > 0)

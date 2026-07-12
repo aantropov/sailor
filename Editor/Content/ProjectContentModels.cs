@@ -43,8 +43,11 @@ public sealed record ProjectContentProjection(
     IReadOnlyList<ProjectContentFolderItem> Folders,
     IReadOnlyList<ProjectContentFolderItem> VisibleFolders,
     IReadOnlyList<ProjectContentAssetItem> VisibleAssets,
-    ProjectContentState State)
+    ProjectContentState State,
+    bool IsRootVisible)
 {
+    public int TopLevelDepth => IsRootVisible ? 1 : 0;
+
     public IReadOnlyList<ProjectContentFolderItem> CurrentFolderFolders => VisibleFolders;
 
     public IReadOnlyList<ProjectContentAssetItem> CurrentFolderAssets => VisibleAssets;
@@ -93,8 +96,14 @@ public static class ProjectContentProjectionBuilder
             folderItems,
             visibleFolders,
             assetItems,
-            normalizedState);
+            normalizedState,
+            IsRootVisible(folderItems));
     }
+
+    static bool IsRootVisible(IReadOnlyList<ProjectContentFolderItem> folders)
+        => !folders.Any(folder =>
+            (folder.FolderId is ProjectContentFolderIds.ContentRootId or ProjectContentFolderIds.EngineContentRootId) &&
+            folder.ParentFolderId == -1);
 
     static bool MatchesFolder(ProjectContentFolderItem folder, int? folderId) => (folderId ?? -1) == (folder.ParentFolderId ?? -1);
 

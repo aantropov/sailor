@@ -2,7 +2,7 @@ namespace SailorEditor.Content;
 
 public static class ProjectContentFolderIds
 {
-    public const int WorkspaceContentRootId = int.MaxValue - 1;
+    public const int ContentRootId = int.MaxValue - 1;
     public const int EngineContentRootId = int.MaxValue - 2;
 
     public static int FromRelativePath(string relativePath)
@@ -29,7 +29,7 @@ public static class ProjectContentFolderIds
         var id = (int)(hash & 0x7fffffff);
         if (id is 0 or -1)
             id = 1;
-        if (id is WorkspaceContentRootId or EngineContentRootId)
+        if (id is ContentRootId or EngineContentRootId)
             id -= 3;
 
         return id;
@@ -48,7 +48,7 @@ public sealed class ProjectContentFolderIdAllocator
     [
         0,
         -1,
-        ProjectContentFolderIds.WorkspaceContentRootId,
+        ProjectContentFolderIds.ContentRootId,
         ProjectContentFolderIds.EngineContentRootId
     ];
 
