@@ -8,6 +8,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "RHI/Types.h"
 #include "YamlSerializable.h"
+#include <vector>
 
 using refl::reflect;
 using refl::descriptor::type_descriptor;
@@ -105,6 +106,11 @@ namespace Sailor::RHI
 
 namespace Sailor
 {
+	namespace Workspace
+	{
+		class WorkspaceModuleManager;
+	}
+
 	namespace Attributes
 	{
 		struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
@@ -283,6 +289,7 @@ namespace Sailor
 		const TypeInfo& GetTypeInfo() const { return *m_typeInfo; }
 		const TMap<std::string, YAML::Node>& GetProperties() const { return m_properties; }
 		TMap<std::string, YAML::Node> GetOverrideProperties() const;
+		bool IsValid() const { return m_typeInfo != nullptr; }
 
 		bool operator==(const ReflectedData& rhs) const;
 
@@ -451,14 +458,36 @@ namespace Sailor
 
 		using TPlacementFactoryMethod = std::function<IReflectable* (void*)>;
 
+		struct WorkspaceTypeRegistration
+		{
+			const TypeInfo* m_typeInfo{};
+			TPlacementFactoryMethod m_placementFactory;
+			ReflectedData m_defaultObject;
+			size_t m_alignment = 8;
+		};
+
 		static YAML::Node ExportEngineTypes();
 
 		static void RegisterFactoryMethod(const TypeInfo& type, TPlacementFactoryMethod placementNew);
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
+		static bool RegisterWorkspaceTypes(
+			const std::string& owner,
+			std::vector<WorkspaceTypeRegistration>&& registrations,
+			std::string& outError);
+		static size_t UnregisterWorkspaceTypes(const std::string& owner);
+		static bool IsWorkspaceTypeRegistered(const std::string& typeName);
+		static size_t GetNumWorkspaceTypes(const std::string& owner);
+		static const TypeInfo* TryGetTypeByName(const std::string& typeName);
+		static ReflectedData CreateReflectedData(const TypeInfo& type, const YAML::Node& properties);
 
 		template<typename T>
 		static void RegisterCDO(const TypeInfo& pType)
 		{
+			if (IsEngineAutoRegistrationSuppressed())
+			{
+				return;
+			}
+
 			std::string typeName = pType.Name();
 
 			auto cdo = CreateCDO(pType);
@@ -479,10 +508,16 @@ namespace Sailor
 		template<typename T = Object>
 		static TObjectPtr<T> CreateObject(const TypeInfo& type, Memory::ObjectAllocatorPtr pAllocator) requires IsBaseOf<IReflectable, T>&& IsBaseOf<Object, T>
 		{
-			check(Internal::g_pPlacementFactoryMethods->ContainsKey(type.Name()));
+			auto ptr = pAllocator->Allocate(type.Size(), GetObjectAlignment(type.Name()));
+			if (ptr == nullptr || !ConstructObject(type.Name(), ptr))
+			{
+				if (ptr != nullptr)
+				{
+					pAllocator->Free(ptr);
+				}
+				return TObjectPtr<T>();
+			}
 
-			auto ptr = pAllocator->Allocate(type.Size());
-			(*Internal::g_pPlacementFactoryMethods)[type.Name()](ptr);
 			TObjectPtr<T> pRes(reinterpret_cast<T*>(ptr), pAllocator);
 			return pRes;
 		}
@@ -518,6 +553,13 @@ namespace Sailor
 		}
 
 	private:
+
+		static size_t GetObjectAlignment(const std::string& typeName);
+		static bool ConstructObject(const std::string& typeName, void* destination);
+		static void SetEngineAutoRegistrationSuppressed(bool suppressed);
+		static bool IsEngineAutoRegistrationSuppressed();
+
+		friend class Workspace::WorkspaceModuleManager;
 
 		template<typename TEnum>
 		static YAML::Node ReflectEnumValues()

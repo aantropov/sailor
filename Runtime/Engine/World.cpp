@@ -3,8 +3,10 @@
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Containers/Set.h"
+#include "Core/LogMacros.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
+#include <exception>
 
 using namespace Sailor;
 
@@ -140,99 +142,183 @@ void World::Tick(FrameState& frameState)
 
 GameObjectPtr World::Instantiate(PrefabPtr prefab)
 {
-	check(prefab->m_gameObjects.Num() > 0);
+	if (!prefab || prefab->m_gameObjects.IsEmpty())
+	{
+		SAILOR_LOG_ERROR("Cannot instantiate an invalid or empty prefab.");
+		return {};
+	}
+
+	for (uint32_t gameObjectIndex = 0; gameObjectIndex < prefab->m_gameObjects.Num(); ++gameObjectIndex)
+	{
+		const auto& prefabGameObject = prefab->m_gameObjects[gameObjectIndex];
+		if (prefabGameObject.m_parentIndex != static_cast<uint32_t>(-1) &&
+			prefabGameObject.m_parentIndex >= prefab->m_gameObjects.Num())
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate prefab '%s': game object %u has invalid parent index %u.",
+				prefab->GetFileId().ToString().c_str(),
+				gameObjectIndex,
+				prefabGameObject.m_parentIndex);
+			return {};
+		}
+
+		for (const uint32_t componentIndex : prefabGameObject.m_components)
+		{
+			if (componentIndex >= prefab->m_components.Num())
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate prefab '%s': game object %u references invalid component index %u.",
+					prefab->GetFileId().ToString().c_str(),
+					gameObjectIndex,
+					componentIndex);
+				return {};
+			}
+
+			const ReflectedData& reflection = prefab->m_components[componentIndex];
+			if (!reflection.IsValid())
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate prefab '%s': reflected component %u has an unknown type. "
+					"Load or rebuild the workspace logic module.",
+					prefab->GetFileId().ToString().c_str(),
+					componentIndex);
+				return {};
+			}
+		}
+	}
 
 	TVector<GameObjectPtr> gameObjects;
 	TMap<InstanceId, ObjectPtr> internalDependencies;
-
-	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
+	auto rollback = [&]()
 	{
-		// We generate new instance id for game objects if the same is already in use
-		const bool bShouldGenerateNewId = !prefab->m_gameObjects[j].m_instanceId || m_objectsMap.ContainsKey(prefab->m_gameObjects[j].m_instanceId);
-		const InstanceId gameObjectId = bShouldGenerateNewId ? InstanceId::GenerateNewInstanceId() : prefab->m_gameObjects[j].m_instanceId;
-
-		GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
-
-		auto& transform = gameObject->GetTransformComponent();
-		transform.SetPosition(prefab->m_gameObjects[j].m_position);
-		transform.SetRotation(prefab->m_gameObjects[j].m_rotation);
-		transform.SetScale(prefab->m_gameObjects[j].m_scale);
-
-		for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
+		for (auto& gameObject : gameObjects)
 		{
-			const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
-			const ReflectedData& reflection = prefab->m_components[componentIndex];
-			const InstanceId oldInstanceId = reflection.GetProperties()["instanceId"].as<InstanceId>();
+			DestroyImmediate(gameObject);
+		}
+	};
 
-			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
-			gameObject->AddComponentRaw(newComponent);
-			newComponent->ApplyReflection(reflection);
-			newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
+	try
+	{
+		for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
+		{
+			// We generate new instance id for game objects if the same is already in use
+			const bool bShouldGenerateNewId = !prefab->m_gameObjects[j].m_instanceId || m_objectsMap.ContainsKey(prefab->m_gameObjects[j].m_instanceId);
+			const InstanceId gameObjectId = bShouldGenerateNewId ? InstanceId::GenerateNewInstanceId() : prefab->m_gameObjects[j].m_instanceId;
+
+			GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
+			gameObjects.Add(gameObject);
+
+			auto& transform = gameObject->GetTransformComponent();
+			transform.SetPosition(prefab->m_gameObjects[j].m_position);
+			transform.SetRotation(prefab->m_gameObjects[j].m_rotation);
+			transform.SetScale(prefab->m_gameObjects[j].m_scale);
+
+			for (uint32_t i = 0; i < prefab->m_gameObjects[j].m_components.Num(); i++)
+			{
+				const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
+				const ReflectedData& reflection = prefab->m_components[componentIndex];
+				const InstanceId oldInstanceId = reflection.GetProperties()["instanceId"].as<InstanceId>();
+
+				ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
+				if (!newComponent)
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot instantiate reflected component type '%s' from prefab '%s'.",
+						reflection.GetTypeInfo().Name().c_str(),
+						prefab->GetFileId().ToString().c_str());
+					rollback();
+					return {};
+				}
+
+				gameObject->AddComponentRaw(newComponent);
+				newComponent->ApplyReflection(reflection);
+				newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
+
+				// We store the old ids for internal dependencies during resolve
+				internalDependencies[oldInstanceId] = newComponent;
+			}
 
 			// We store the old ids for internal dependencies during resolve
-			internalDependencies[oldInstanceId] = newComponent;
+			internalDependencies[prefab->m_gameObjects[j].m_instanceId] = gameObject;
 		}
 
-		// We store the old ids for internal dependencies during resolve
-		internalDependencies[prefab->m_gameObjects[j].m_instanceId] = gameObject;
-
-		gameObjects.Add(gameObject);
-	}
-
-	for (uint32_t goIndex = 0; goIndex < gameObjects.Num(); goIndex++)
-	{
-		auto& go = gameObjects[goIndex];
-		check(goIndex < prefab->m_gameObjects.Num());
-		const auto& prefabGo = prefab->m_gameObjects[goIndex];
-
-		for (uint32_t componentOrder = 0; componentOrder < go->m_components.Num(); componentOrder++)
+		for (uint32_t goIndex = 0; goIndex < gameObjects.Num(); goIndex++)
 		{
-			check(componentOrder < prefabGo.m_components.Num());
+			auto& go = gameObjects[goIndex];
+			check(goIndex < prefab->m_gameObjects.Num());
+			const auto& prefabGo = prefab->m_gameObjects[goIndex];
 
-			auto& newComp = go->m_components[componentOrder];
-			const uint32_t componentIndex = prefabGo.m_components[componentOrder];
-			check(componentIndex < prefab->m_components.Num());
-
-			const ReflectedData& reflection = prefab->m_components[componentIndex];
-
-			// Resolve internal dependencies first
-			bool bResolved = newComp->ResolveRefs(reflection, internalDependencies, false);
-
-			// Resolve external dependencies
-			if (!bResolved)
+			for (uint32_t componentOrder = 0; componentOrder < go->m_components.Num(); componentOrder++)
 			{
-				bResolved = newComp->ResolveRefs(reflection, m_objectsMap, false);
-			}
+				check(componentOrder < prefabGo.m_components.Num());
 
-			if (!bResolved)
-			{
-				ComponentsToResolveDependencies.Add(TPair(newComp, reflection));
+				auto& newComp = go->m_components[componentOrder];
+				const uint32_t componentIndex = prefabGo.m_components[componentOrder];
+				check(componentIndex < prefab->m_components.Num());
+
+				const ReflectedData& reflection = prefab->m_components[componentIndex];
+
+				// Resolve internal dependencies first
+				bool bResolved = newComp->ResolveRefs(reflection, internalDependencies, false);
+
+				// Resolve external dependencies
+				if (!bResolved)
+				{
+					bResolved = newComp->ResolveRefs(reflection, m_objectsMap, false);
+				}
+
+				if (!bResolved)
+				{
+					ComponentsToResolveDependencies.Add(TPair(newComp, reflection));
+				}
 			}
 		}
+
+		GameObjectPtr root;
+
+		for (uint32_t i = 0; i < gameObjects.Num(); i++)
+		{
+			auto& go = gameObjects[i];
+			uint32_t parentIndex = prefab->m_gameObjects[i].m_parentIndex;
+
+			if (parentIndex != -1)
+			{
+				go->SetParent(gameObjects[parentIndex]);
+			}
+			else
+			{
+				root = go;
+				root->m_fileId = prefab->GetFileId();
+			}
+		}
+
+		if (!root)
+		{
+			SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': no root game object was found.",
+				prefab->GetFileId().ToString().c_str());
+			rollback();
+			return {};
+		}
+
+		// Should we try to resolve the previous open dependencies?
+		// ResolveExternalDependencies();
+
+		return root;
 	}
-
-	GameObjectPtr root;
-
-	for (uint32_t i = 0; i < gameObjects.Num(); i++)
+	catch (const std::exception& e)
 	{
-		auto& go = gameObjects[i];
-		uint32_t parentIndex = prefab->m_gameObjects[i].m_parentIndex;
-
-		if (parentIndex != -1)
-		{
-			go->SetParent(gameObjects[parentIndex]);
-		}
-		else
-		{
-			root = go;
-			root->m_fileId = prefab->GetFileId();
-		}
+		SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': %s",
+			prefab->GetFileId().ToString().c_str(), e.what());
+		rollback();
+		return {};
 	}
-
-	// Should we try to resolve the previous open dependencies?
-	// ResolveExternalDependencies();
-
-	return root;
+	catch (...)
+	{
+		SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': unknown component error.",
+			prefab->GetFileId().ToString().c_str());
+		rollback();
+		return {};
+	}
 }
 
 void World::ResolveExternalDependencies()

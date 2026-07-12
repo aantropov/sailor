@@ -40,6 +40,7 @@
 #include "Raytracing/PathTracer.h"
 #include "Submodules/Editor.h"
 #include "Engine/InstanceId.h"
+#include "Workspace/WorkspaceModuleManager.h"
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -50,6 +51,8 @@ using namespace Sailor::RHI;
 
 App* App::s_pInstance = nullptr;
 std::string App::s_workspace = "../";
+
+App::~App() = default;
 
 App* App::GetInstance()
 {
@@ -89,6 +92,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		else if (arg == "--workspace")
 		{
 			params.m_workspace = Utils::GetArgValue(args, i, num);
+		}
+		else if (arg == "--workspace-manifest")
+		{
+			params.m_workspaceManifest = Utils::GetArgValue(args, i, num);
 		}
 		else if (arg == "--noconsole")
 		{
@@ -167,6 +174,29 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		else if (!hasContentInParent)
 		{
 			SAILOR_LOG_ERROR("Content folder was not found from current working directory. Use --workspace <path>.");
+		}
+	}
+
+	bool bWorkspaceModuleActivationFailed = false;
+	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
+	const auto& workspaceModuleResult = s_pInstance->m_pWorkspaceModuleManager->Load(
+		s_pInstance->s_workspace,
+		params.m_workspaceManifest,
+		GetBuildConfig());
+	if (workspaceModuleResult.IsSuccess())
+	{
+		SAILOR_LOG("%s", workspaceModuleResult.m_message.c_str());
+	}
+	else if (workspaceModuleResult.IsFailure())
+	{
+		SAILOR_LOG_ERROR("%s", workspaceModuleResult.m_message.c_str());
+		bWorkspaceModuleActivationFailed = true;
+		SetExitCode(1);
+
+		if (!params.m_bIsEditor)
+		{
+			s_pInstance->m_bSkipMainLoop = true;
+			return;
 		}
 	}
 
@@ -260,13 +290,27 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto worldParams = params.m_bIsEditor ? EngineLoop::EditorWorldMask : EngineLoop::DefaultWorldMask;
 	TWeakPtr<World> pWorld;
 
-	if (!params.m_world.empty())
+	if (!params.m_world.empty() && !bWorkspaceModuleActivationFailed)
 	{
 		auto worldFileId = assetRegistry->GetOrLoadFile(params.m_world);
 		auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(worldFileId);
 		pWorld = engineLoop->InstantiateWorld(worldPrefab, worldParams);
+		if (!pWorld)
+		{
+			SAILOR_LOG_ERROR(
+				"Failed to load world '%s'. Verify its prefab data and workspace component types.",
+				params.m_world.c_str());
+			SetExitCode(1);
+
+			if (!params.m_bIsEditor)
+			{
+				s_pInstance->m_bSkipMainLoop = true;
+				return;
+			}
+		}
 	}
-	else
+
+	if (!pWorld)
 	{
 		pWorld = engineLoop->CreateEmptyWorld("New World", worldParams);
 	}
@@ -502,6 +546,11 @@ void App::Start()
 
 void App::Stop()
 {
+	if (!s_pInstance || !s_pInstance->m_pMainWindow)
+	{
+		return;
+	}
+
 	s_pInstance->m_pMainWindow->SetActive(false);
 	s_pInstance->m_pMainWindow->SetRunning(false);
 }
@@ -636,10 +685,8 @@ int32_t App::GetExitCode()
 
 const char* App::GetBuildConfig()
 {
-#if defined(_DEBUG)
-	return "Debug";
-#elif defined(_SHIPPING)
-	return "Release";
+#if defined(SAILOR_BUILD_CONFIG)
+	return SAILOR_BUILD_CONFIG;
 #else
 	return "Unknown";
 #endif

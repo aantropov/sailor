@@ -24,7 +24,7 @@ Binaries/
 
 `Generated/CMakeLists.txt` is created with the workspace and is not overwritten when the workspace is opened or saved. It can be edited when the project needs custom CMake behavior, while game code remains under `Source/`. Build-system intermediates belong in `Cache/Build`; configuration-specific logic modules are written to `Binaries/<CONFIG>/`.
 
-`WorkspaceTypes.h` is the explicit list of reflected game types exported by the module. Add each new reflected component to its `TWorkspaceTypeList`. `WorkspaceModule.cpp` defines the versioned metadata entry point; both files are created once and remain user-editable.
+`WorkspaceTypes.h` is the explicit list of reflected game types exported by the module. Add each new reflected component to its `TWorkspaceTypeList`. `WorkspaceModule.cpp` defines the versioned module API and metadata entry points from that same list; both files are created once and remain user-editable.
 
 Generated logic projects target 64-bit Windows and accept MSVC or clang-cl. Configuration stops with a diagnostic when the platform, architecture, or compiler front end does not match that contract.
 
@@ -82,22 +82,41 @@ For a default Windows Release workspace, the resulting module and import library
 
 The engine reference, paths, and module name are creation-time inputs copied into `Generated/CMakeLists.txt`. Opening or saving a workspace does not regenerate that file. If those manifest values are edited later, update the corresponding CMake values before reconfiguring.
 
-## Reflection Metadata Contract
+## Workspace Module ABI
 
-Workspace modules export one C ABI function:
+Workspace modules export a V1 API-table entry point and retain the V1 metadata entry point:
 
 ```cpp
+const Sailor::Workspace::WorkspaceModuleApiV1*
+SailorGetWorkspaceModuleApiV1() noexcept;
+
 uint32_t SailorGetWorkspaceTypeMetadataV1(
     char* destination,
     uint64_t destinationCapacity,
     uint64_t* outPayloadSize) noexcept;
 ```
 
-The caller first passes a null destination and zero capacity to query the required UTF-8 YAML byte count. The function returns `BufferTooSmall`, writes the exact non-null-terminated size, and never transfers allocation ownership across the DLL boundary. A second call with an adequate caller-owned buffer returns `Success`. Invalid pointers/capacities and serialization failures use explicit result codes from `WorkspaceModuleApi.h`; exceptions never cross the ABI.
+`SailorGetWorkspaceModuleApiV1` returns a module-owned static POD table. It contains its structure size and API version, module name, exact build ABI tag, the metadata callback, and the explicit type-registration callback. The table and its strings remain valid until the module is unloaded. The ABI tag is independently compiled into the engine and game module and includes the ABI revision, architecture, compiler version, C runtime, iterator-debug mode, and build configuration; the host must require an exact match before using callbacks.
+
+Registration passes a POD host table with an opaque context and collection callback. Each collected POD descriptor supplies bounded type and base names, an opaque `TypeInfo` pointer, size, alignment, an immutable canonical YAML snapshot of its default values, reflection-integrity flags, and a `noexcept` placement factory. The generated callback only collects descriptors from `WorkspaceTypes`; it does not mutate engine registries. Workspace types must be default-constructible `Sailor::Component` subclasses, and `Component` must be their zero-offset object base; the generated factory rejects unsupported multiple-inheritance layouts before returning an object. All callbacks use the C calling convention, and no STL object, exception, allocation ownership, or caller-freed string crosses the module boundary.
+
+For metadata, the caller first passes a null destination and zero capacity to query the required UTF-8 YAML byte count. The function returns `BufferTooSmall`, writes the exact non-null-terminated size, and never transfers allocation ownership across the DLL boundary. A second call with an adequate caller-owned buffer returns `Success`. Invalid pointers/capacities and serialization failures use explicit result codes from `WorkspaceModuleApi.h`; exceptions never cross the ABI.
 
 The YAML document uses `metadataVersion: 1`, identifies `moduleName`, and preserves the existing consumer keys `timeStamp`, `engineTypes`, `cdos`, `enums`, and `assetTypes`. The generated sample exports `moveSpeed: float` with a default value of `5.0`.
 
-Game modules compile with `SAILOR_WORKSPACE_MODULE`, which enables `SAILOR_WORKSPACE_REFLECTABLE`; every reflected game type must use that macro so it does not install a static registration helper. Engine types continue using `SAILOR_REFLECTABLE` unchanged, and `Reflection::ExportEngineTypes()` remains engine-only. Loading the DLL, validating the ABI, and explicitly registering accepted game types belong to the runtime module lifecycle rather than this export contract.
+Game modules compile with `SAILOR_WORKSPACE_MODULE`, which enables `SAILOR_WORKSPACE_REFLECTABLE`; every reflected game type must use that macro so it does not install a static registration helper. Engine types continue using `SAILOR_REFLECTABLE` unchanged, and `Reflection::ExportEngineTypes()` remains engine-only. The runtime lifecycle loads the DLL, validates the API and ABI before calling registration, preflights the complete collected set, and commits only accepted workspace types. Preflight requires exact unique type and CDO sets, matches the writable property schema, rejects ambiguous or shadowed reflected names, and compares every CDO to the descriptor's independently transported canonical snapshot. The snapshot and metadata share one cached default-object value, so nondeterministic constructors cannot create two different preflight views. Comparison is structural: scalar values and tags are exact, sequences preserve length and order, and maps require an exact duplicate-free key set independent of entry order. No YAML decoder is invoked during this comparison, so null object references and custom structured values remain safe. Getter-only properties participate in CDO validation, while `Transient` and `SkipCDO` properties do not.
+
+Workspace placement factories run without the reflection registry mutex held, so constructors may perform reflection lookup. Each module owner has an invocation barrier: unregister first hides all of its types from new construction, waits for active factories to return, and only then permits the library to close. This barrier does not extend the lifetime of returned objects; worlds and every other workspace object must still be destroyed before module unload.
+
+## Runtime Discovery And Lifecycle
+
+At startup, the runtime resolves the active workspace before content scanning. `--workspace-manifest <path>` selects an explicit manifest inside that workspace. Without the option, discovery prefers `workspace.sailor`; if that file is absent, exactly one root-level `*.sailor` file is accepted. No manifest preserves legacy engine-only startup, while multiple candidates are rejected with an ambiguity diagnostic.
+
+For manifest version 1, the runtime resolves the module as `<workspace>/<logicOutputPath>/<CONFIG>/<platform-module-name>`. The default values are `Binaries` and `SailorGame`. The manifest output path, module name, build configuration, and canonical module path are validated so discovery cannot escape the workspace. The active CMake configuration is part of both the path and ABI check, so a stale Debug/Release binary fails with rebuild guidance instead of being loaded as a compatible module.
+
+The dynamic library is opened before asset importers scan `Content`. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
+
+Standalone startup treats a configured module or requested-world activation failure as fatal and returns a nonzero exit code. Editor startup reports the same error but remains available with an empty world so the project can be repaired. During shutdown, worlds, importers, the asset registry, scheduler, and remaining submodules are destroyed before workspace registrations are removed and the library is closed. Runtime hot reload and live workspace switching are not supported by this contract.
 
 ## SDK Limitations
 

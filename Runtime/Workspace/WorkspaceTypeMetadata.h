@@ -10,6 +10,8 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
+#include <utility>
 
 namespace Sailor::Workspace
 {
@@ -20,28 +22,133 @@ namespace Sailor::Workspace
 
 	namespace Internal
 	{
+		struct WorkspaceDefaultObjectSnapshot
+		{
+			YAML::Node m_metadata;
+			std::string m_serializedDefaultValues;
+		};
+
 		template<typename TType>
-		YAML::Node SerializeWorkspaceDefaultObject()
+		const WorkspaceDefaultObjectSnapshot& GetWorkspaceDefaultObjectSnapshot()
 		{
 			static_assert(IsBaseOf<IReflectable, TType>, "Workspace metadata types must implement IReflectable");
 			static_assert(std::is_default_constructible_v<TType>, "Workspace metadata types must be default constructible");
 
-			TType defaultObject{};
-			YAML::Node defaultValues;
-			for_each(refl::reflect(defaultObject).members, [&](auto member)
+			static const WorkspaceDefaultObjectSnapshot snapshot = []()
 				{
-					if constexpr (is_readable(member) &&
-						!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
-						!refl::descriptor::has_attribute<Attributes::SkipCDO>(member))
+					TType defaultObject{};
+					YAML::Node defaultValues;
+					for_each(refl::reflect(defaultObject).members, [&](auto member)
+						{
+							if constexpr (is_readable(member) &&
+								!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
+								!refl::descriptor::has_attribute<Attributes::SkipCDO>(member))
+							{
+								defaultValues[get_display_name(member)] = member(defaultObject);
+							}
+						});
+
+					YAML::Node metadata;
+					metadata["typename"] = TypeInfo::Get<TType>().Name();
+					metadata["defaultValues"] = defaultValues;
+
+					YAML::Emitter emitter;
+					emitter << defaultValues;
+					if (!emitter.good())
 					{
-						defaultValues[get_display_name(member)] = member(defaultObject);
+						throw std::runtime_error(emitter.GetLastError());
+					}
+
+					return WorkspaceDefaultObjectSnapshot
+					{
+						std::move(metadata),
+						std::string(emitter.c_str())
+					};
+				}();
+
+			return snapshot;
+		}
+
+		struct WorkspacePropertyDeclaration
+		{
+			std::string m_declarator;
+			std::string m_typeName;
+			bool m_bReadable = false;
+			bool m_bWritable = false;
+		};
+
+		template<typename TType>
+		uint32_t GetWorkspaceTypeDescriptorFlags()
+		{
+			std::unordered_map<std::string, WorkspacePropertyDeclaration> declarations;
+			uint32_t flags = 0;
+			TType* empty = nullptr;
+
+			for_each(refl::reflect<TType>().members, [&](auto member)
+				{
+					if constexpr (is_field(member) || refl::descriptor::is_function(member))
+					{
+						constexpr bool bWritable = is_writable(member);
+						constexpr bool bReadable = is_readable(member) &&
+							!refl::descriptor::has_attribute<Attributes::Transient>(member) &&
+							!refl::descriptor::has_attribute<Attributes::SkipCDO>(member);
+						if constexpr (bWritable || bReadable)
+						{
+							auto recordDeclaration = [&](auto propertyType)
+							{
+								using PropertyType = typename decltype(propertyType)::type;
+								const std::string displayName = get_display_name(member);
+								const std::string declarator =
+									refl::descriptor::get_declarator(member).name.c_str();
+								const std::string typeName =
+									TypeInfo::GetReflectedPropertyTypeName<PropertyType>();
+								WorkspacePropertyDeclaration declaration
+								{
+									declarator,
+									typeName,
+									bReadable,
+									bWritable
+								};
+
+								const auto [existing, bInserted] = declarations.try_emplace(
+									displayName,
+									std::move(declaration));
+								if (!bInserted)
+								{
+									if (existing->second.m_declarator != declarator ||
+										existing->second.m_typeName != typeName ||
+										(existing->second.m_bReadable && bReadable) ||
+										(existing->second.m_bWritable && bWritable))
+									{
+										flags |= WorkspaceTypeDescriptorFlagAmbiguousProperties;
+									}
+
+									existing->second.m_bReadable |= bReadable;
+									existing->second.m_bWritable |= bWritable;
+								}
+							};
+
+							if constexpr (bReadable)
+							{
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(member(*empty))>;
+								recordDeclaration(std::type_identity<PropertyType>{});
+							}
+							else
+							{
+								using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
+								recordDeclaration(std::type_identity<PropertyType>{});
+							}
+						}
 					}
 				});
 
-			YAML::Node node;
-			node["typename"] = TypeInfo::Get<TType>().Name();
-			node["defaultValues"] = defaultValues;
-			return node;
+			return flags;
+		}
+
+		template<typename TType>
+		YAML::Node SerializeWorkspaceDefaultObject()
+		{
+			return GetWorkspaceDefaultObjectSnapshot<TType>().m_metadata;
 		}
 
 		template<typename TWorkspaceTypes>

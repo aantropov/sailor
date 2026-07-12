@@ -1,5 +1,6 @@
 #include "EngineLoop.h"
 #include "Core/Defines.h"
+#include "Core/LogMacros.h"
 
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
@@ -33,13 +34,24 @@ TSharedPtr<World> EngineLoop::CreateEmptyWorld(std::string name, EWorldBehaviour
 
 TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorldBehaviourMask mask)
 {
-	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName(), mask);
+	if (!worldPrefab || !worldPrefab->IsReady())
+	{
+		SAILOR_LOG_ERROR("Cannot instantiate an unavailable world prefab.");
+		return {};
+	}
 
-	check(worldPrefab && worldPrefab->IsReady());
+	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName(), mask);
 
 	for (const auto& prefab : worldPrefab->GetGameObjects())
 	{
-		newWorld->Instantiate(prefab);
+		if (!newWorld->Instantiate(prefab))
+		{
+			SAILOR_LOG_ERROR(
+				"Failed to instantiate world '%s'; no partial world will be activated.",
+				worldPrefab->GetName().c_str());
+			newWorld->Clear();
+			return {};
+		}
 	}
 
 	m_worlds.Emplace(newWorld);
