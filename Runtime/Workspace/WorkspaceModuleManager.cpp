@@ -915,12 +915,13 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 			registrations.emplace_back(std::move(registration));
 		}
 
-		m_owner = moduleName + "@" + modulePath.generic_string();
+		std::string candidateOwner = moduleName + "@" + modulePath.generic_string();
 		std::string registrationError;
-		if (!Reflection::RegisterWorkspaceTypes(m_owner, std::move(registrations), registrationError))
+		if (!Reflection::RegisterWorkspaceTypes(candidateOwner, std::move(registrations), registrationError))
 		{
 			return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, std::move(registrationError));
 		}
+		m_owner.swap(candidateOwner);
 
 		m_state = EWorkspaceModuleState::Registered;
 		m_result.m_status = EWorkspaceModuleLoadStatus::Success;

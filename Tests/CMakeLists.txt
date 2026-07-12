@@ -128,6 +128,9 @@ target_compile_definitions(WorkspaceModuleFixture PRIVATE
 target_compile_definitions(WorkspaceModuleContractTests PRIVATE
     SAILOR_WORKSPACE_MODULE
 )
+target_compile_definitions(WorkspaceModuleRuntimeTests PRIVATE
+    SAILOR_WORKSPACE_MODULE
+)
 target_compile_definitions(WorkspaceModuleIncompatibleFixture PRIVATE
     SAILOR_WORKSPACE_NO_ENTRY_POINT_DECLARATIONS
     SAILOR_WORKSPACE_MODULE_EXPORTS

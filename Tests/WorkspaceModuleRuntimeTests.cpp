@@ -10,12 +10,30 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <new>
 #include <stdexcept>
 #include <string>
+#include <utility>
+#include <vector>
 #include <yaml-cpp/yaml.h>
 
 using namespace Sailor;
 using namespace Sailor::Workspace;
+
+namespace WorkspaceOwnerSentinel
+{
+	class OwnerSentinelComponent final : public Sailor::Component
+	{
+		SAILOR_WORKSPACE_REFLECTABLE(OwnerSentinelComponent)
+
+	public:
+		OwnerSentinelComponent() = default;
+	};
+}
+
+REFL_AUTO(
+	type(WorkspaceOwnerSentinel::OwnerSentinelComponent, bases<Sailor::Component>)
+)
 
 namespace
 {
@@ -124,6 +142,57 @@ namespace
 			"dynamic loader should report a missing symbol");
 		Require(!library.GetError().empty(), "missing-symbol diagnostic should not be empty");
 		Require(library.Close(), "dynamic loader should close the fixture after symbol validation");
+	}
+
+	void TestFailedOwnerClaimPreservesExistingRegistration(
+		const std::filesystem::path& tempRoot,
+		const std::filesystem::path& fixtureLibrary,
+		const std::string& config)
+	{
+		const std::filesystem::path root = tempRoot / "duplicate-owner";
+		WriteManifest(root, FixtureModuleName);
+		const std::filesystem::path installedFixture = InstallFixture(
+			root,
+			config,
+			FixtureModuleName,
+			fixtureLibrary);
+		std::error_code pathError;
+		const std::filesystem::path modulePath = std::filesystem::weakly_canonical(
+			installedFixture,
+			pathError);
+		Require(!pathError, "duplicate-owner fixture path should be canonicalizable");
+		const std::string owner = std::string(FixtureModuleName) + "@" + modulePath.generic_string();
+
+		const TypeInfo& sentinelType = WorkspaceOwnerSentinel::OwnerSentinelComponent::GetStaticTypeInfo();
+		Reflection::WorkspaceTypeRegistration sentinelRegistration;
+		sentinelRegistration.m_typeInfo = &sentinelType;
+		sentinelRegistration.m_alignment = alignof(WorkspaceOwnerSentinel::OwnerSentinelComponent);
+		sentinelRegistration.m_defaultObject = Reflection::CreateReflectedData(
+			sentinelType,
+			YAML::Node(YAML::NodeType::Map));
+		sentinelRegistration.m_placementFactory = [](void* destination) -> IReflectable*
+		{
+			return new (destination) WorkspaceOwnerSentinel::OwnerSentinelComponent();
+		};
+
+		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
+		registrations.emplace_back(std::move(sentinelRegistration));
+		std::string registrationError;
+		Require(
+			Reflection::RegisterWorkspaceTypes(owner, std::move(registrations), registrationError),
+			"sentinel owner registration should succeed: " + registrationError);
+
+		WorkspaceModuleManager manager;
+		const EWorkspaceModuleLoadStatus resultStatus = manager.Load(root, {}, config).m_status;
+		const bool bOwnerPreserved = Reflection::GetNumWorkspaceTypes(owner) == 1 &&
+			Reflection::IsWorkspaceTypeRegistered(sentinelType.Name());
+		Reflection::UnregisterWorkspaceTypes(owner);
+
+		Require(resultStatus == EWorkspaceModuleLoadStatus::RegistrationFailed,
+			"a module must not claim an owner that is already registered");
+		Require(!manager.IsRegistered(), "a rejected owner claim must leave the manager unregistered");
+		Require(bOwnerPreserved,
+			"a rejected manager must not unregister the active registration owned by another manager");
 	}
 
 	void TestIncompatibleModule(
@@ -437,6 +506,7 @@ int main(int argc, char** argv)
 	{
 		TestDynamicLibraryFailures(tempRoot, missingEntryLibrary);
 		TestDiscoveryFailures(tempRoot, config);
+		TestFailedOwnerClaimPreservesExistingRegistration(tempRoot, fixtureLibrary, config);
 		TestUnknownReflectedType();
 		TestWorldInstantiationGuards();
 		TestIncompatibleModule(tempRoot, incompatibleLibrary, config);
