@@ -6,6 +6,36 @@ import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VCPKG_ROOT = os.path.join(SCRIPT_DIR, 'External', 'vcpkg')
+VCPKG_TOOL_METADATA = os.path.join(VCPKG_ROOT, 'scripts', 'vcpkg-tool-metadata.txt')
+
+
+def required_vcpkg_tool_release() -> str:
+    with open(VCPKG_TOOL_METADATA, encoding='utf-8-sig') as metadata:
+        for line in metadata:
+            key, separator, value = line.strip().partition('=')
+            if separator and key == 'VCPKG_TOOL_RELEASE_TAG':
+                return value
+
+    raise RuntimeError(f'Unable to read VCPKG_TOOL_RELEASE_TAG from {VCPKG_TOOL_METADATA}')
+
+
+def has_current_vcpkg_tool(vcpkg_exe: str, required_release: str) -> bool:
+    if not os.path.exists(vcpkg_exe):
+        return False
+
+    try:
+        result = subprocess.run(
+            [vcpkg_exe, 'version'],
+            cwd=VCPKG_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+
+    first_line = result.stdout.partition('\n')[0]
+    return result.returncode == 0 and required_release in first_line
 
 
 def main() -> int:
@@ -17,8 +47,9 @@ def main() -> int:
         vcpkg_exe = os.path.join(VCPKG_ROOT, 'vcpkg')
         bootstrap_cmd = ['./bootstrap-vcpkg.sh']
 
-    if not os.path.exists(vcpkg_exe):
-        print('Bootstrap vcpkg...')
+    required_release = required_vcpkg_tool_release()
+    if not has_current_vcpkg_tool(vcpkg_exe, required_release):
+        print('Bootstrap vcpkg...', flush=True)
         subprocess.check_call(bootstrap_cmd, cwd=VCPKG_ROOT)
 
     def run_vcpkg(*args: str) -> None:

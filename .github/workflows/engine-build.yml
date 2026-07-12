@@ -31,16 +31,21 @@ jobs:
     - name: Update submodules
       run: git submodule update --init --recursive
 
+    - name: Resolve vcpkg revision
+      id: vcpkg
+      shell: pwsh
+      run: |
+        "revision=$(git -C $env:VCPKG_ROOT rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+
     - name: Cache vcpkg installed packages
       uses: actions/cache@v4
       with:
         path: |
           ${{ env.VCPKG_ROOT }}/installed
           ${{ env.VCPKG_ROOT }}/packages
-        key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-installed-${{ env.BUILD_TYPE }}
+        key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-installed-${{ env.BUILD_TYPE }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-${{ matrix.compiler }}-installed-
-          vcpkg-${{ runner.os }}-installed-
+          vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-installed-
 
     - name: Show CMake version
       run: cmake --version
