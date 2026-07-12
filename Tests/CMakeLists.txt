@@ -1,5 +1,20 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+if(WIN32)
+    find_package(VulkanLoader CONFIG REQUIRED)
+
+    function(sailor_stage_workspace_test_runtime target)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${target}>
+                $<TARGET_FILE:Vulkan::Loader>
+                $<TARGET_FILE_DIR:${target}>
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+    endfunction()
+endif()
+
 add_executable(RemoteViewportFoundationTests
     RemoteViewportFoundationTests.cpp
 )
@@ -61,13 +76,7 @@ target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
 )
 if(WIN32)
-    add_custom_command(TARGET WorkspaceModuleContractTests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:WorkspaceModuleContractTests>
-            $<TARGET_FILE_DIR:WorkspaceModuleContractTests>
-        COMMAND_EXPAND_LISTS
-        VERBATIM
-    )
+    sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
