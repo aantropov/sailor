@@ -21,4 +21,21 @@ public static class EditorComponentPropertyContract
 
         return EditorComponentPropertyAccess.Unknown;
     }
+
+    public static string ValidateEnumValue(
+        string componentTypeName,
+        string propertyName,
+        string enumTypeName,
+        string value,
+        IReadOnlyCollection<string> allowedValues)
+    {
+        if (!allowedValues.Contains(value, StringComparer.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Invalid value '{value}' for enum property '{componentTypeName}.{propertyName}' " +
+                $"of type '{enumTypeName}'.");
+        }
+
+        return value;
+    }
 }

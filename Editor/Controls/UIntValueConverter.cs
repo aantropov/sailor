@@ -16,5 +16,5 @@ public class UIntValueConverter : IValueConverter
             CultureInfo.InvariantCulture,
             out var result)
             ? result
-            : 0u;
+            : BindableProperty.UnsetValue;
 }

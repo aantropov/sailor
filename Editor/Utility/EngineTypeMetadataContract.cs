@@ -137,17 +137,30 @@ public sealed class EditorTypeCatalogSnapshot
             }
         }
 
-        var enumNames = new HashSet<string>(StringComparer.Ordinal);
+        var enumValuesByName = new Dictionary<string, IReadOnlyCollection<string>>(StringComparer.Ordinal);
         foreach (var enumGroup in document.Enums)
         {
-            if (enumGroup is null)
+            if (enumGroup is null || enumGroup.Count == 0)
                 throw new InvalidDataException("The editor type catalog contains an empty enum group.");
 
             foreach (var enumEntry in enumGroup)
             {
                 if (string.IsNullOrWhiteSpace(enumEntry.Key))
                     throw new InvalidDataException("The editor type catalog contains an enum with an empty name.");
-                if (!enumNames.Add(enumEntry.Key))
+                if (enumEntry.Value is null || enumEntry.Value.Count == 0)
+                    throw new InvalidDataException($"Enum '{enumEntry.Key}' has no values in the editor type catalog.");
+
+                var uniqueValues = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var enumValue in enumEntry.Value)
+                {
+                    if (string.IsNullOrWhiteSpace(enumValue) || !uniqueValues.Add(enumValue))
+                    {
+                        throw new InvalidDataException(
+                            $"Enum '{enumEntry.Key}' contains an empty or duplicate value '{enumValue}'.");
+                    }
+                }
+
+                if (!enumValuesByName.TryAdd(enumEntry.Key, uniqueValues))
                     throw new InvalidDataException($"Duplicate enum '{enumEntry.Key}' in the editor type catalog.");
             }
         }
@@ -157,10 +170,23 @@ public sealed class EditorTypeCatalogSnapshot
             foreach (var property in type.Properties)
             {
                 if (property.Value.StartsWith("enum ", StringComparison.Ordinal) &&
-                    !enumNames.Contains(property.Value))
+                    !enumValuesByName.ContainsKey(property.Value))
                 {
                     throw new InvalidDataException(
                         $"Reflected property '{type.Typename}.{property.Key}' references missing enum metadata '{property.Value}'.");
+                }
+
+                if (enumValuesByName.TryGetValue(property.Value, out var allowedValues) &&
+                    defaults.TryGetValue(type.Typename, out var defaultObject) &&
+                    defaultObject.DefaultValues.TryGetValue(property.Key, out var rawDefault))
+                {
+                    var value = Convert.ToString(rawDefault, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+                    EditorComponentPropertyContract.ValidateEnumValue(
+                        type.Typename,
+                        property.Key,
+                        property.Value,
+                        value,
+                        allowedValues);
                 }
             }
         }

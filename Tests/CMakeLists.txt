@@ -84,6 +84,10 @@ add_workspace_malformed_metadata_fixture(
     WorkspaceModuleMissingEmptyPropertySchemaFixture MissingEmptyPropertySchemaFixture 11)
 add_workspace_malformed_metadata_fixture(
     WorkspaceModuleAliasExpansionFixture AliasExpansionFixture 12)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleInvalidReadOnlyPropertiesFixture InvalidReadOnlyPropertiesFixture 13)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleMissingEnumDefinitionFixture MissingEnumDefinitionFixture 14)
 
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
@@ -161,6 +165,8 @@ add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleShadowedPropertyFixture
     WorkspaceModuleMissingEmptyPropertySchemaFixture
     WorkspaceModuleAliasExpansionFixture
+    WorkspaceModuleInvalidReadOnlyPropertiesFixture
+    WorkspaceModuleMissingEnumDefinitionFixture
 )
 set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFixture)
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
@@ -271,6 +277,8 @@ add_test(
         $<TARGET_FILE:WorkspaceModuleShadowedPropertyFixture>
         $<TARGET_FILE:WorkspaceModuleMissingEmptyPropertySchemaFixture>
         $<TARGET_FILE:WorkspaceModuleAliasExpansionFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidReadOnlyPropertiesFixture>
+        $<TARGET_FILE:WorkspaceModuleMissingEnumDefinitionFixture>
         $<CONFIG>
 )
 set_tests_properties(

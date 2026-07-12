@@ -194,6 +194,91 @@ namespace
 		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
 			"failed malformed merge must not partially mutate its output");
 
+		auto requireCrossSchemaRejection = [&](YAML::Node invalidMetadata,
+			const char* expectedDiagnostic,
+			const char* message)
+		{
+			error.clear();
+			Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+					engineMetadata,
+					invalidMetadata,
+					output,
+					error),
+				message);
+			Require(error.find(expectedDiagnostic) != std::string::npos,
+				std::string(message) + ": " + error);
+			Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+				"failed cross-schema merge must not partially mutate its output");
+		};
+
+		YAML::Node malformedReadOnlyProperties = YAML::Clone(workspaceMetadata);
+		malformedReadOnlyProperties["engineTypes"][0]["readOnlyProperties"] =
+			YAML::Node(YAML::NodeType::Map);
+		requireCrossSchemaRejection(
+			std::move(malformedReadOnlyProperties),
+			"readOnlyProperties",
+			"editor metadata merge should reject malformed read-only property schemas");
+
+		YAML::Node duplicateReadOnlyProperty = YAML::Clone(workspaceMetadata);
+		duplicateReadOnlyProperty["engineTypes"][0]["readOnlyProperties"].push_back(
+			duplicateReadOnlyProperty["engineTypes"][0]["readOnlyProperties"][0]);
+		requireCrossSchemaRejection(
+			std::move(duplicateReadOnlyProperty),
+			"read-only property",
+			"editor metadata merge should reject duplicate read-only properties");
+
+		YAML::Node overlappingReadOnlyProperty = YAML::Clone(workspaceMetadata);
+		overlappingReadOnlyProperty["engineTypes"][0]["readOnlyProperties"].push_back("moveSpeed");
+		requireCrossSchemaRejection(
+			std::move(overlappingReadOnlyProperty),
+			"moveSpeed",
+			"editor metadata merge should reject writable/read-only property overlap");
+
+		YAML::Node missingEnumDefinition = YAML::Clone(workspaceMetadata);
+		missingEnumDefinition["engineTypes"][0]["properties"]["mode"] =
+			"enum WorkspaceFixture::MissingMode";
+		requireCrossSchemaRejection(
+			std::move(missingEnumDefinition),
+			"references missing enum metadata",
+			"editor metadata merge should reject missing enum definitions");
+
+		const std::string fixtureEnumName =
+			workspaceMetadata["engineTypes"][0]["properties"]["mode"].as<std::string>();
+		YAML::Node emptyEnumDefinition = YAML::Clone(workspaceMetadata);
+		for (YAML::Node enumEntry : emptyEnumDefinition["enums"])
+		{
+			if (enumEntry[fixtureEnumName])
+			{
+				enumEntry[fixtureEnumName] = YAML::Node(YAML::NodeType::Sequence);
+				break;
+			}
+		}
+		requireCrossSchemaRejection(
+			std::move(emptyEnumDefinition),
+			"at least one value",
+			"editor metadata merge should reject empty enum definitions");
+
+		YAML::Node duplicateEnumValue = YAML::Clone(workspaceMetadata);
+		for (YAML::Node enumEntry : duplicateEnumValue["enums"])
+		{
+			if (enumEntry[fixtureEnumName])
+			{
+				enumEntry[fixtureEnumName].push_back(enumEntry[fixtureEnumName][0]);
+				break;
+			}
+		}
+		requireCrossSchemaRejection(
+			std::move(duplicateEnumValue),
+			"duplicate value",
+			"editor metadata merge should reject duplicate enum values");
+
+		YAML::Node invalidEnumDefault = YAML::Clone(workspaceMetadata);
+		invalidEnumDefault["cdos"][0]["defaultValues"]["mode"] = "NotARealMode";
+		requireCrossSchemaRejection(
+			std::move(invalidEnumDefault),
+			"not a declared member",
+			"editor metadata merge should reject enum defaults outside the declared membership");
+
 		std::string collisionExtension;
 		for (const YAML::Node& assetTypeNode : engineMetadata["assetTypes"])
 		{
@@ -412,6 +497,8 @@ namespace
 		const std::filesystem::path& shadowedPropertyLibrary,
 		const std::filesystem::path& missingEmptyPropertySchemaLibrary,
 		const std::filesystem::path& aliasExpansionLibrary,
+		const std::filesystem::path& invalidReadOnlyPropertiesLibrary,
+		const std::filesystem::path& missingEnumDefinitionLibrary,
 		const std::string& config)
 	{
 		auto requireRejected = [&](const char* directoryName,
@@ -475,7 +562,8 @@ namespace
 			"invalid-enum-default",
 			"InvalidEnumDefaultFixture",
 			"InvalidEnumDefaultWorkspaceFixture::FixtureComponent",
-			invalidEnumDefaultLibrary);
+			invalidEnumDefaultLibrary,
+			"not a declared member");
 		requireRejected(
 			"invalid-structured-default",
 			"InvalidStructuredDefaultFixture",
@@ -510,6 +598,18 @@ namespace
 			"AliasExpansionWorkspaceFixture::FixtureComponent",
 			aliasExpansionLibrary,
 			"canonical descriptor snapshot");
+		requireRejected(
+			"invalid-read-only-properties",
+			"InvalidReadOnlyPropertiesFixture",
+			"InvalidReadOnlyPropertiesWorkspaceFixture::FixtureComponent",
+			invalidReadOnlyPropertiesLibrary,
+			"readOnlyProperties");
+		requireRejected(
+			"missing-enum-definition",
+			"MissingEnumDefinitionFixture",
+			"MissingEnumDefinitionWorkspaceFixture::FixtureComponent",
+			missingEnumDefinitionLibrary,
+			"references missing enum metadata");
 	}
 
 	void TestRegistrationInstantiationAndCleanup(
@@ -658,7 +758,7 @@ namespace
 
 int main(int argc, char** argv)
 {
-	if (argc != 17)
+	if (argc != 19)
 	{
 		std::cerr << "Usage: WorkspaceModuleRuntimeTests <fixture> <incompatible-fixture> "
 			"<missing-entry-fixture> <property-mismatch-fixture> <duplicate-cdo-fixture> "
@@ -666,7 +766,8 @@ int main(int argc, char** argv)
 			"<invalid-enum-default-fixture> <invalid-structured-default-fixture> "
 			"<missing-cdo-fixture> <oversized-structured-default-fixture> "
 			"<shadowed-property-fixture> <missing-empty-property-schema-fixture> "
-			"<alias-expansion-fixture> <config>" << std::endl;
+			"<alias-expansion-fixture> <invalid-read-only-properties-fixture> "
+			"<missing-enum-definition-fixture> <config>" << std::endl;
 		return 1;
 	}
 
@@ -685,7 +786,9 @@ int main(int argc, char** argv)
 	const std::filesystem::path shadowedPropertyLibrary = std::filesystem::absolute(argv[13]);
 	const std::filesystem::path missingEmptyPropertySchemaLibrary = std::filesystem::absolute(argv[14]);
 	const std::filesystem::path aliasExpansionLibrary = std::filesystem::absolute(argv[15]);
-	const std::string config = argv[16];
+	const std::filesystem::path invalidReadOnlyPropertiesLibrary = std::filesystem::absolute(argv[16]);
+	const std::filesystem::path missingEnumDefinitionLibrary = std::filesystem::absolute(argv[17]);
+	const std::string config = argv[18];
 	const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
 	const std::filesystem::path tempRoot = std::filesystem::temp_directory_path() /
 		("sailor-workspace-module-runtime-" + std::to_string(uniqueSuffix));
@@ -714,6 +817,8 @@ int main(int argc, char** argv)
 			shadowedPropertyLibrary,
 			missingEmptyPropertySchemaLibrary,
 			aliasExpansionLibrary,
+			invalidReadOnlyPropertiesLibrary,
+			missingEnumDefinitionLibrary,
 			config);
 		TestRegistrationInstantiationAndCleanup(tempRoot, fixtureLibrary, config);
 		std::filesystem::remove_all(tempRoot);

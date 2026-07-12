@@ -33,6 +33,7 @@
     <Compile Include="WorkspaceProjectGeneratorTests.cs" />
     <Compile Include="EngineTypeMetadataContractTests.cs" />
     <Compile Include="EditorTypeCatalogContractTests.cs" />
+    <Compile Include="NumericValueConverterTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
@@ -67,6 +68,9 @@
     <Compile Include="..\Editor\Utility\EditorComponentScalarCodec.cs" Link="Utility\EditorComponentScalarCodec.cs" />
     <Compile Include="..\Editor\Utility\EditorComponentPropertyContract.cs" Link="Utility\EditorComponentPropertyContract.cs" />
     <Compile Include="..\Editor\Utility\EditorComponentYamlContract.cs" Link="Utility\EditorComponentYamlContract.cs" />
+    <Compile Include="..\Editor\Controls\FloatValueConverter.cs" Link="Controls\FloatValueConverter.cs" />
+    <Compile Include="..\Editor\Controls\IntValueConverter.cs" Link="Controls\IntValueConverter.cs" />
+    <Compile Include="..\Editor\Controls\UIntValueConverter.cs" Link="Controls\UIntValueConverter.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceUiContracts.cs" Link="Workspace\WorkspaceUiContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellContracts.cs" Link="Shell\EditorShellContracts.cs" />
     <Compile Include="..\Editor\Shell\EditorShellHost.cs" Link="Shell\EditorShellHost.cs" />

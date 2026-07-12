@@ -65,6 +65,32 @@ assetTypes: []
     }
 
     [Fact]
+    public void Parse_RejectsEnumDefaultOutsideDeclaredValues()
+    {
+        var yaml = CombinedCatalogYaml.Replace("mode: Default", "mode: NotARealMode", StringComparison.Ordinal);
+
+        var error = Assert.Throws<InvalidDataException>(() => EditorTypeCatalogSnapshot.Parse(yaml));
+
+        Assert.Contains("NotARealMode", error.Message);
+        Assert.Contains("SandboxLogic::SampleComponent.mode", error.Message);
+    }
+
+    [Fact]
+    public void ComponentPropertyContract_RejectsEnumOverrideOutsideDeclaredValues()
+    {
+        var error = Assert.Throws<InvalidDataException>(() =>
+            EditorComponentPropertyContract.ValidateEnumValue(
+                "SandboxLogic::SampleComponent",
+                "mode",
+                "enum SandboxLogic::ESampleMode",
+                "NotARealMode",
+                ["Default", "Alternate"]));
+
+        Assert.Contains("NotARealMode", error.Message);
+        Assert.Contains("SandboxLogic::SampleComponent.mode", error.Message);
+    }
+
+    [Fact]
     public void ComponentPropertyContract_DistinguishesWritableReadOnlyAndUnknownProperties()
     {
         var writable = new Dictionary<string, string>(StringComparer.Ordinal)

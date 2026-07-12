@@ -5,22 +5,17 @@ namespace SailorEditor.Controls;
 public class FloatValueConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (value is float floatValue)
-        {
-            return floatValue.ToString(CultureInfo.InvariantCulture);
-        }
-
-        return value.ToString();
-    }
+        => value is float floatValue
+            ? floatValue.ToString(CultureInfo.InvariantCulture)
+            : value?.ToString() ?? string.Empty;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (value is string stringValue && float.TryParse(stringValue, NumberStyles.Any, CultureInfo.InvariantCulture, out float result))
-        {
-            return result;
-        }
-
-        return 0;
-    }
+        => value is string stringValue && float.TryParse(
+            stringValue,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out var result) &&
+            float.IsFinite(result)
+            ? result
+            : BindableProperty.UnsetValue;
 }

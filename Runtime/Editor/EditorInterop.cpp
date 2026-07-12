@@ -12,10 +12,27 @@
 
 #include <algorithm>
 #include <cstring>
+#include <exception>
 #include <filesystem>
+#include <limits>
+#include <memory>
 #include <utility>
 
 using namespace Sailor;
+
+namespace
+{
+	void LogEditorTypeSerializationFailure(const char* message) noexcept
+	{
+		try
+		{
+			SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
+		}
+		catch (...)
+		{
+		}
+	}
+}
 
 uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 {
@@ -109,33 +126,59 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 	}
 
 	yamlNode[0] = nullptr;
-	YAML::Node editorTypes = Reflection::ExportEngineTypes();
-	if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
+	try
 	{
-		YAML::Node combinedTypes;
-		std::string mergeError;
-		if (app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(editorTypes, combinedTypes, mergeError))
+		YAML::Node editorTypes = Reflection::ExportEngineTypes();
+		if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
 		{
+			YAML::Node combinedTypes;
+			std::string mergeError;
+			if (!app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(
+					editorTypes,
+					combinedTypes,
+					mergeError))
+			{
+				LogEditorTypeSerializationFailure(mergeError.empty()
+					? "workspace editor metadata merge failed"
+					: mergeError.c_str());
+				return 0;
+			}
+
 			editorTypes = std::move(combinedTypes);
 		}
-		else
+
+		if (editorTypes.IsNull())
 		{
-			SAILOR_LOG_ERROR("Failed to merge workspace editor type metadata: %s", mergeError.c_str());
+			LogEditorTypeSerializationFailure("the editor type catalog is null");
+			return 0;
 		}
-	}
 
-	if (editorTypes.IsNull())
+		const std::string serializedNode = YAML::Dump(editorTypes);
+		const size_t length = serializedNode.length();
+		if (length > std::numeric_limits<uint32_t>::max())
+		{
+			LogEditorTypeSerializationFailure("the serialized catalog exceeds the interop size limit");
+			return 0;
+		}
+
+		auto serializedOutput = std::make_unique<char[]>(length + 1);
+		memcpy(serializedOutput.get(), serializedNode.c_str(), length);
+		serializedOutput[length] = '\0';
+		yamlNode[0] = serializedOutput.release();
+
+		return static_cast<uint32_t>(length);
+	}
+	catch (const std::exception& e)
 	{
-		return 0;
+		LogEditorTypeSerializationFailure(e.what());
+	}
+	catch (...)
+	{
+		LogEditorTypeSerializationFailure("an unknown native exception was raised");
 	}
 
-	const std::string serializedNode = YAML::Dump(editorTypes);
-	const size_t length = serializedNode.length();
-	yamlNode[0] = new char[length + 1];
-	memcpy(yamlNode[0], serializedNode.c_str(), length);
-	yamlNode[0][length] = '\0';
-
-	return static_cast<uint32_t>(length);
+	yamlNode[0] = nullptr;
+	return 0;
 }
 
 bool App::LoadEditorWorld(const char* strFileId)

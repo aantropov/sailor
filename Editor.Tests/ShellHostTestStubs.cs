@@ -1,5 +1,16 @@
 namespace Microsoft.Maui.Controls
 {
+    public interface IValueConverter
+    {
+        object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture);
+        object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture);
+    }
+
+    public class BindableProperty
+    {
+        public static readonly object UnsetValue = new();
+    }
+
     public class View;
 
     public class Label : View

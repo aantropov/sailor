@@ -160,8 +160,11 @@ public class ComponentYamlConverter : IYamlTypeConverter
                 ObjectPtrProperty => property.Value is null
                     ? new ObjectPtr()
                     : DeserializeBuffered<ObjectPtr>(property.Value, serializer, deserializer),
-                EnumProperty => new Observable<string>((string)EditorComponentScalarCodec.Parse(
-                    EditorComponentScalarKind.String,
+                EnumProperty enumProperty => new Observable<string>(ParseEnumOverride(
+                    catalog,
+                    componentType,
+                    property.Key,
+                    enumProperty,
                     scalar)),
                 Property<string> => new Observable<string>((string)EditorComponentScalarCodec.Parse(
                     EditorComponentScalarKind.String,
@@ -182,6 +185,38 @@ public class ComponentYamlConverter : IYamlTypeConverter
         }
 
         return component;
+    }
+
+    static string ParseEnumOverride(
+        EngineTypes catalog,
+        ComponentType componentType,
+        string propertyName,
+        EnumProperty enumProperty,
+        string scalar)
+    {
+        if (!catalog.Enums.TryGetValue(enumProperty.Typename, out var allowedValues))
+        {
+            throw new YamlException(
+                $"Missing enum metadata '{enumProperty.Typename}' for " +
+                $"'{componentType.Name}.{propertyName}'.");
+        }
+
+        var value = (string)EditorComponentScalarCodec.Parse(
+            EditorComponentScalarKind.String,
+            scalar);
+        try
+        {
+            return EditorComponentPropertyContract.ValidateEnumValue(
+                componentType.Name,
+                propertyName,
+                enumProperty.Typename,
+                value,
+                allowedValues);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new YamlException(ex.Message);
+        }
     }
 
     static T DeserializeBuffered<T>(object value, ISerializer serializer, IDeserializer deserializer)
