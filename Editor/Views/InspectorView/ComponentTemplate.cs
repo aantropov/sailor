@@ -146,8 +146,19 @@ public class ComponentTemplate : DataTemplate
                     if (component.Typename.Properties[property.Key] is EnumProperty enumProp)
                     {
                         var observableString = property.Value as Observable<string>;
-                        propertyEditor = Templates.EnumPicker(engineTypes.Enums[enumProp.Typename],
-                            (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                        if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
+                        {
+                            propertyEditor = Templates.EnumPicker(enumValues,
+                                (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                        }
+                        else
+                        {
+                            propertyEditor = new Label
+                            {
+                                Text = $"Missing enum metadata: {enumProp.Typename}",
+                                VerticalTextAlignment = TextAlignment.Center
+                            };
+                        }
                     }
                     else
                     {

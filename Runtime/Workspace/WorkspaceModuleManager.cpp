@@ -747,6 +747,54 @@ namespace
 		return false;
 	}
 
+	bool CollectSharedEnumIdentities(
+		const YAML::Node& engineMetadata,
+		const YAML::Node& workspaceMetadata,
+		const std::unordered_set<std::string>& engineEnums,
+		std::unordered_set<std::string>& outSharedEnums,
+		std::string& outError)
+	{
+		for (const YAML::Node& workspaceEnum : workspaceMetadata["enums"])
+		{
+			const std::string identity = workspaceEnum.begin()->first.as<std::string>();
+			if (!engineEnums.contains(identity))
+			{
+				continue;
+			}
+
+			YAML::Node engineEnum;
+			for (const YAML::Node& candidate : engineMetadata["enums"])
+			{
+				if (candidate[identity])
+				{
+					engineEnum = candidate;
+					break;
+				}
+			}
+
+			const YAML::Node engineValues = engineEnum[identity];
+			const YAML::Node workspaceValues = workspaceEnum[identity];
+			bool bDefinitionsMatch = engineValues.IsSequence() &&
+				workspaceValues.IsSequence() &&
+				engineValues.size() == workspaceValues.size();
+			for (size_t index = 0; bDefinitionsMatch && index < engineValues.size(); ++index)
+			{
+				bDefinitionsMatch = engineValues[index].IsScalar() &&
+					workspaceValues[index].IsScalar() &&
+					engineValues[index].as<std::string>() == workspaceValues[index].as<std::string>();
+			}
+			if (!bDefinitionsMatch)
+			{
+				outError = "Workspace editor enum metadata conflicts with engine identity '" + identity + "'.";
+				return false;
+			}
+
+			outSharedEnums.insert(identity);
+		}
+
+		return true;
+	}
+
 	void SetMetadataError(std::string& outError, const std::string& message) noexcept
 	{
 		try
@@ -1226,9 +1274,20 @@ bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
 	{
 		MetadataIdentities engineIdentities;
 		MetadataIdentities workspaceIdentities;
+		std::unordered_set<std::string> sharedEnums;
 		std::string validationError;
 		if (!ValidateMetadataDocument(engineMetadata, false, {}, engineIdentities, validationError) ||
 			!ValidateMetadataDocument(workspaceMetadata, true, {}, workspaceIdentities, validationError))
+		{
+			outError = std::move(validationError);
+			return false;
+		}
+		if (!CollectSharedEnumIdentities(
+				engineMetadata,
+				workspaceMetadata,
+				engineIdentities.m_enums,
+				sharedEnums,
+				validationError))
 		{
 			outError = std::move(validationError);
 			return false;
@@ -1243,11 +1302,6 @@ bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
 				engineIdentities.m_cdos,
 				workspaceIdentities.m_cdos,
 				MetadataSections[1],
-				validationError) ||
-			HasMetadataCollision(
-				engineIdentities.m_enums,
-				workspaceIdentities.m_enums,
-				MetadataSections[2],
 				validationError) ||
 			HasMetadataCollision(
 				engineIdentities.m_assetTypes,
@@ -1269,6 +1323,11 @@ bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
 		{
 			for (const YAML::Node& entry : workspaceMetadata[sectionName])
 			{
+				if (std::strcmp(sectionName, "enums") == 0 &&
+					sharedEnums.contains(entry.begin()->first.as<std::string>()))
+				{
+					continue;
+				}
 				mergedMetadata[sectionName].push_back(YAML::Clone(entry));
 			}
 		}

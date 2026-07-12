@@ -100,6 +100,27 @@ namespace
 		return YAML::Node(YAML::NodeType::Undefined);
 	}
 
+	const YAML::Node FindEnum(const YAML::Node& enums, const std::string& enumName)
+	{
+		for (const YAML::Node& reflectedEnum : enums)
+		{
+			if (reflectedEnum[enumName])
+			{
+				return reflectedEnum[enumName];
+			}
+		}
+
+		return YAML::Node(YAML::NodeType::Undefined);
+	}
+
+	bool ContainsScalar(const YAML::Node& values, const std::string& expected)
+	{
+		return std::any_of(values.begin(), values.end(), [&](const YAML::Node& value)
+			{
+				return value.IsScalar() && value.as<std::string>() == expected;
+			});
+	}
+
 	bool ContainsType(const YAML::Node& metadata, const std::string& typeName)
 	{
 		return FindType(metadata["engineTypes"], typeName).IsDefined();
@@ -160,10 +181,27 @@ namespace
 			"workspace component metadata should preserve reflected bool properties");
 		Require(!type["properties"]["readOnlyValue"].IsDefined(),
 			"getter-only properties should remain outside the writable property schema");
+		Require(type["readOnlyProperties"].IsSequence() &&
+			ContainsScalar(type["readOnlyProperties"], "readOnlyValue") &&
+			ContainsScalar(type["readOnlyProperties"], "skippedReadOnlyValue"),
+			"workspace metadata should explicitly identify serialized read-only properties");
 		Require(type["properties"]["skippedDefault"].as<std::string>() == "float",
 			"SkipCDO properties should remain available in the writable property schema");
 		Require(type["properties"]["mode"].as<std::string>().rfind("enum ", 0) == 0,
 			"workspace component metadata should preserve reflected enum properties");
+		const YAML::Node fixtureModeValues = FindEnum(
+			metadata["enums"],
+			type["properties"]["mode"].as<std::string>());
+		Require(fixtureModeValues.IsSequence() && fixtureModeValues.size() == 2,
+			"workspace metadata should export values for reflected enum properties");
+		Require(fixtureModeValues[0].as<std::string>() == "Default" &&
+			fixtureModeValues[1].as<std::string>() == "Alternate",
+			"workspace metadata should preserve reflected enum value names");
+		const YAML::Node mobilityValues = FindEnum(
+			metadata["enums"],
+			type["properties"]["mobility"].as<std::string>());
+		Require(mobilityValues.IsSequence() && mobilityValues.size() > 0,
+			"workspace metadata should describe referenced engine enum values");
 		Require(type["properties"]["offset"].IsScalar(),
 			"workspace component metadata should preserve custom structured property types");
 		Require(type["properties"]["nullableComponent"].IsScalar(),
@@ -183,6 +221,8 @@ namespace
 			"workspace defaults should include inherited Component instanceId metadata");
 		Require(defaultObject["defaultValues"]["readOnlyValue"].as<int32_t>() == 17,
 			"workspace defaults should include getter-only reflected properties");
+		Require(!defaultObject["defaultValues"]["skippedReadOnlyValue"].IsDefined(),
+			"workspace defaults should omit getter-only properties marked SkipCDO");
 		Require(!defaultObject["defaultValues"]["skippedDefault"].IsDefined(),
 			"workspace defaults should omit properties marked SkipCDO");
 		Require(defaultObject["defaultValues"]["mode"].as<std::string>() == "Default",

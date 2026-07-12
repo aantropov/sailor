@@ -15,6 +15,16 @@ public sealed class EditorTypeCatalogContractTests
         Assert.True(snapshot.TryGetType("SandboxLogic::SampleComponent", out var customType));
         Assert.Equal("Sailor::Component", customType.Base);
         Assert.Equal("float", customType.Properties["moveSpeed"]);
+        Assert.Equal("enum SandboxLogic::ESampleMode", customType.Properties["mode"]);
+        Assert.True(snapshot.IsKnownReadOnlyProperty(
+            "SandboxLogic::SampleComponent",
+            "readOnlyValue"));
+        Assert.True(snapshot.IsKnownReadOnlyProperty(
+            "SandboxLogic::SampleComponent",
+            "skippedReadOnlyValue"));
+        Assert.False(snapshot.IsKnownReadOnlyProperty(
+            "SandboxLogic::SampleComponent",
+            "moveSpeed"));
         Assert.True(snapshot.IsComponentType("SandboxLogic::SampleComponent"));
         Assert.Equal(
             ["SandboxLogic::SampleComponent"],
@@ -27,6 +37,58 @@ public sealed class EditorTypeCatalogContractTests
                 defaults.DefaultValues["orientation"],
                 4,
                 "SandboxLogic::SampleComponent.orientation"));
+        Assert.Equal(
+            ["Default", "Alternate"],
+            Assert.Single(snapshot.Document.Enums)["enum SandboxLogic::ESampleMode"]);
+    }
+
+    [Fact]
+    public void Parse_RejectsPropertyWhoseEnumMetadataIsMissing()
+    {
+        const string yaml = """
+engineTypes:
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+    properties: {}
+  - typename: SandboxLogic::SampleComponent
+    base: Sailor::Component
+    properties:
+      mode: enum SandboxLogic::ESampleMode
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var error = Assert.Throws<InvalidDataException>(() => EditorTypeCatalogSnapshot.Parse(yaml));
+
+        Assert.Contains("missing enum metadata 'enum SandboxLogic::ESampleMode'", error.Message);
+    }
+
+    [Fact]
+    public void ComponentPropertyContract_DistinguishesWritableReadOnlyAndUnknownProperties()
+    {
+        var writable = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["moveSpeed"] = "float"
+        };
+        var readOnly = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "readOnlyValue",
+            "skippedReadOnlyValue"
+        };
+
+        Assert.Equal(
+            EditorComponentPropertyAccess.Writable,
+            EditorComponentPropertyContract.Classify("moveSpeed", writable, readOnly));
+        Assert.Equal(
+            EditorComponentPropertyAccess.ReadOnly,
+            EditorComponentPropertyContract.Classify("readOnlyValue", writable, readOnly));
+        Assert.Equal(
+            EditorComponentPropertyAccess.ReadOnly,
+            EditorComponentPropertyContract.Classify("skippedReadOnlyValue", writable, readOnly));
+        Assert.Equal(
+            EditorComponentPropertyAccess.Unknown,
+            EditorComponentPropertyContract.Classify("typo", writable, readOnly));
     }
 
     [Fact]
@@ -131,6 +193,8 @@ overrideProperties:
   moveSpeed: 12.5
   enabled: true
   retries: 3
+  readOnlyValue: 17
+  skippedReadOnlyValue: 23
 typename: SandboxLogic::SampleComponent
 """;
         var serializer = new SerializerBuilder()
@@ -153,6 +217,12 @@ typename: SandboxLogic::SampleComponent
         Assert.Equal(3, (int)EditorComponentScalarCodec.Parse(
             EditorComponentScalarKind.Int32,
             Convert.ToString(roundTrip.OverrideProperties["retries"], CultureInfo.InvariantCulture)));
+        Assert.Equal(17, Convert.ToInt32(
+            roundTrip.OverrideProperties["readOnlyValue"],
+            CultureInfo.InvariantCulture));
+        Assert.Equal(23, Convert.ToInt32(
+            roundTrip.OverrideProperties["skippedReadOnlyValue"],
+            CultureInfo.InvariantCulture));
     }
 
     const string CombinedCatalogYaml = """
@@ -170,12 +240,17 @@ engineTypes:
     properties:
       moveSpeed: float
       orientation: struct glm::qua<float,0>
+      mode: enum SandboxLogic::ESampleMode
+    readOnlyProperties: [readOnlyValue, skippedReadOnlyValue]
 cdos:
   - typename: SandboxLogic::SampleComponent
     defaultValues:
       moveSpeed: 5
       orientation: [0, 0.25, 0.5, 1]
-enums: []
+      mode: Default
+      readOnlyValue: 17
+enums:
+  - enum SandboxLogic::ESampleMode: [Default, Alternate]
 assetTypes: []
 """;
 }

@@ -161,6 +161,7 @@ namespace SailorEngine
         public string Name { get; set; }
         public string Base { get; set; }
         public Dictionary<string, PropertyBase> Properties { get; set; } = [];
+        public HashSet<string> ReadOnlyProperties { get; set; } = [];
     };
 
     public class AssetType
@@ -234,7 +235,8 @@ namespace SailorEngine
 
         public static EngineTypes FromYaml(string yamlContent)
         {
-            var rootNode = EditorTypeCatalogSnapshot.Parse(yamlContent).Document;
+            var snapshot = EditorTypeCatalogSnapshot.Parse(yamlContent);
+            var rootNode = snapshot.Document;
             var res = new EngineTypes();
 
             var cdoByType = new Dictionary<string, EngineTypeMetadataDefaults>();
@@ -341,6 +343,24 @@ namespace SailorEngine
 
                 newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
                 newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+
+                foreach (var property in component.ReadOnlyProperties)
+                {
+                    if (!newComponent.Properties.ContainsKey(property))
+                        newComponent.ReadOnlyProperties.Add(property);
+                }
+
+                if (cdoNode is not null)
+                {
+                    foreach (var property in cdoNode.DefaultValues.Keys)
+                    {
+                        if (!newComponent.Properties.ContainsKey(property) &&
+                            snapshot.IsKnownReadOnlyProperty(component.Typename, property))
+                        {
+                            newComponent.ReadOnlyProperties.Add(property);
+                        }
+                    }
+                }
             }
 
             return res;

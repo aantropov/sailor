@@ -6,6 +6,7 @@
 #include "Workspace/WorkspaceModuleApi.h"
 #include "Workspace/WorkspaceModuleManager.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cctype>
 #include <filesystem>
@@ -113,6 +114,14 @@ namespace
 		return YAML::Node(YAML::NodeType::Undefined);
 	}
 
+	size_t CountEnumEntries(const YAML::Node& entries, const std::string& enumName)
+	{
+		return static_cast<size_t>(std::count_if(entries.begin(), entries.end(), [&](const YAML::Node& entry)
+			{
+				return entry[enumName].IsDefined();
+			}));
+	}
+
 	void TestEditorMetadataMergeRollback(
 		const YAML::Node& engineMetadata,
 		const YAML::Node& workspaceMetadata)
@@ -146,6 +155,31 @@ namespace
 			"editor metadata collision diagnostic should identify the conflicting type");
 		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
 			"failed duplicate merge must not partially mutate its output");
+
+		constexpr const char* EngineEnumName = "enum Sailor::EMobilityType";
+		YAML::Node enumCollision = YAML::Clone(workspaceMetadata);
+		bool bChangedEnum = false;
+		for (YAML::Node workspaceEnum : enumCollision["enums"])
+		{
+			if (workspaceEnum[EngineEnumName])
+			{
+				workspaceEnum[EngineEnumName] = YAML::Load("[Mismatched]");
+				bChangedEnum = true;
+				break;
+			}
+		}
+		Require(bChangedEnum, "workspace fixture should reference an engine enum for merge validation");
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				enumCollision,
+				output,
+				error),
+			"editor metadata merge should reject conflicting engine enum definitions");
+		Require(error.find(EngineEnumName) != std::string::npos,
+			"engine enum collision diagnostic should identify the conflicting enum");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed enum merge must not partially mutate its output");
 
 		YAML::Node malformedMetadata = YAML::Clone(workspaceMetadata);
 		malformedMetadata["assetTypes"] = YAML::Node(YAML::NodeType::Map);
@@ -526,6 +560,8 @@ namespace
 		Require(editorDefaults.IsDefined() &&
 			editorDefaults["defaultValues"]["moveSpeed"].as<float>() == 5.0f,
 			"combined editor metadata should expose workspace component defaults");
+		Require(CountEnumEntries(editorTypes["enums"], "enum Sailor::EMobilityType") == 1,
+			"combined editor metadata should deduplicate referenced engine enum definitions");
 		TestEditorMetadataMergeRollback(engineTypesBefore, YAML::Load(manager.GetMetadata()));
 
 		const TypeInfo* fixtureType = Reflection::TryGetTypeByName(FixtureTypeName);
@@ -541,8 +577,12 @@ namespace
 				"workspace component construction should re-enter reflection lookup without holding the registry lock");
 			Require(reflected.GetProperties()["readOnlyValue"].as<int32_t>() == 17,
 				"workspace component construction should preserve getter-only reflected defaults");
+			Require(reflected.GetProperties()["skippedReadOnlyValue"].as<int32_t>() == 23,
+				"workspace component serialization should retain getter-only SkipCDO properties");
 			Require(reflected.GetProperties()["mode"].as<std::string>() == "Default",
 				"workspace component construction should preserve validated enum defaults");
+			Require(reflected.GetProperties()["mobility"].as<std::string>() == "Stationary",
+				"workspace component construction should preserve referenced engine enum defaults");
 			Require(reflected.GetProperties()["offset"].IsSequence(),
 				"workspace component construction should preserve validated structured defaults");
 			Require(reflected.GetProperties()["nullableComponent"].IsNull(),

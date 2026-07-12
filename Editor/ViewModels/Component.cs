@@ -91,6 +91,9 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
     [YamlIgnore]
     string? _lastCommittedYaml;
 
+    [YamlIgnore]
+    public Dictionary<string, object?> PreservedReadOnlyProperties { get; } = new(StringComparer.Ordinal);
+
     [ObservableProperty]
     protected string displayName;
 
@@ -126,12 +129,22 @@ public class ComponentYamlConverter : IYamlTypeConverter
         var component = new Component { Typename = componentType };
         foreach (var property in document.OverrideProperties ?? [])
         {
-            if (!componentType.Properties.TryGetValue(property.Key, out var propType))
+            var propertyAccess = EditorComponentPropertyContract.Classify(
+                property.Key,
+                componentType.Properties,
+                componentType.ReadOnlyProperties);
+            if (propertyAccess == EditorComponentPropertyAccess.ReadOnly)
+            {
+                component.PreservedReadOnlyProperties[property.Key] = property.Value;
+                continue;
+            }
+            if (propertyAccess == EditorComponentPropertyAccess.Unknown)
             {
                 throw new YamlException(
                     $"Unknown property '{property.Key}' for component type '{componentType.Name}'.");
             }
 
+            var propType = componentType.Properties[property.Key];
             var scalar = Convert.ToString(property.Value, CultureInfo.InvariantCulture) ?? string.Empty;
             ObservableObject value = propType switch
             {
@@ -257,6 +270,12 @@ public class ComponentYamlConverter : IYamlTypeConverter
                 default:
                     throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
             }
+        }
+
+        foreach (var kvp in component.PreservedReadOnlyProperties)
+        {
+            emitter.Emit(new Scalar(null, kvp.Key));
+            serializer.Serialize(emitter, kvp.Value);
         }
 
         emitter.Emit(new MappingEnd());

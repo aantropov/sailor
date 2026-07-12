@@ -23,6 +23,7 @@ public sealed class EngineTypeMetadataType
     public string Typename { get; set; } = string.Empty;
     public string Base { get; set; } = string.Empty;
     public Dictionary<string, string> Properties { get; set; } = [];
+    public List<string> ReadOnlyProperties { get; set; } = [];
 }
 
 public sealed class EngineTypeMetadataDefaults
@@ -49,13 +50,16 @@ public sealed class EditorTypeCatalogSnapshot
     const string ComponentRootTypeName = "Sailor::Component";
 
     readonly Dictionary<string, EngineTypeMetadataType> types;
+    readonly Dictionary<string, EngineTypeMetadataDefaults> defaults;
 
     EditorTypeCatalogSnapshot(
         EngineTypeMetadataContract document,
-        Dictionary<string, EngineTypeMetadataType> types)
+        Dictionary<string, EngineTypeMetadataType> types,
+        Dictionary<string, EngineTypeMetadataDefaults> defaults)
     {
         Document = document;
         this.types = types;
+        this.defaults = defaults;
     }
 
     public EngineTypeMetadataContract Document { get; }
@@ -104,15 +108,31 @@ public sealed class EditorTypeCatalogSnapshot
                 throw new InvalidDataException($"Default object '{cdoName}' has no matching reflected type.");
         }
 
+        foreach (var defaultObject in defaults.Values)
+            defaultObject.DefaultValues ??= [];
+
         foreach (var type in types.Values)
         {
             type.Properties ??= [];
+            type.ReadOnlyProperties ??= [];
             foreach (var property in type.Properties)
             {
                 if (string.IsNullOrWhiteSpace(property.Key) || string.IsNullOrWhiteSpace(property.Value))
                 {
                     throw new InvalidDataException(
                         $"Reflected type '{type.Typename}' contains a property with an empty name or type.");
+                }
+            }
+
+            var readOnlyProperties = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var propertyName in type.ReadOnlyProperties)
+            {
+                if (string.IsNullOrWhiteSpace(propertyName) ||
+                    !readOnlyProperties.Add(propertyName) ||
+                    type.Properties.ContainsKey(propertyName))
+                {
+                    throw new InvalidDataException(
+                        $"Reflected type '{type.Typename}' contains an invalid read-only property '{propertyName}'.");
                 }
             }
         }
@@ -132,6 +152,19 @@ public sealed class EditorTypeCatalogSnapshot
             }
         }
 
+        foreach (var type in types.Values)
+        {
+            foreach (var property in type.Properties)
+            {
+                if (property.Value.StartsWith("enum ", StringComparison.Ordinal) &&
+                    !enumNames.Contains(property.Value))
+                {
+                    throw new InvalidDataException(
+                        $"Reflected property '{type.Typename}.{property.Key}' references missing enum metadata '{property.Value}'.");
+                }
+            }
+        }
+
         var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var assetType in assetTypes.Values)
         {
@@ -146,11 +179,20 @@ public sealed class EditorTypeCatalogSnapshot
             }
         }
 
-        return new EditorTypeCatalogSnapshot(document, types);
+        return new EditorTypeCatalogSnapshot(document, types, defaults);
     }
 
     public bool TryGetType(string typeName, out EngineTypeMetadataType type)
         => types.TryGetValue(typeName, out type!);
+
+    public bool IsKnownReadOnlyProperty(string typeName, string propertyName)
+    {
+        return types.TryGetValue(typeName, out var type) &&
+            !type.Properties.ContainsKey(propertyName) &&
+            (type.ReadOnlyProperties.Contains(propertyName, StringComparer.Ordinal) ||
+                (defaults.TryGetValue(typeName, out var defaultObject) &&
+                    defaultObject.DefaultValues.ContainsKey(propertyName)));
+    }
 
     public bool IsComponentType(string typeName)
     {
