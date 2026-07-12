@@ -78,6 +78,8 @@ def main() -> int:
         'tracy',
         'yaml-cpp',
     ]
+    if system == 'Windows':
+        packages.append('vulkan-loader')
 
     for pkg in packages:
         run_vcpkg('install', f'{pkg}:{triplet}')

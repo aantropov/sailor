@@ -66,28 +66,6 @@ jobs:
     - name: Build
       run: cmake --build build --config ${{ env.BUILD_TYPE }}
 
-    - name: Diagnose workspace test runtime
-      shell: pwsh
-      run: |
-        Write-Host "Runner Path: $env:Path"
-        ctest --test-dir build -C $env:BUILD_TYPE -N -V -R "^WorkspaceModule"
-
-        $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-        $vsInstall = & $vswhere -latest -products * -property installationPath
-        $toolsVersion = (Get-Content "$vsInstall\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt").Trim()
-        $dumpbin = "$vsInstall\VC\Tools\MSVC\$toolsVersion\bin\Hostx64\x64\dumpbin.exe"
-        $binaries = Join-Path $env:GITHUB_WORKSPACE "Binaries\$env:BUILD_TYPE"
-
-        & $dumpbin /DEPENDENTS (Join-Path $binaries "WorkspaceModuleContractTests.exe")
-        & $dumpbin /DEPENDENTS (Join-Path $binaries "Sailor-Release.dll")
-
-        Write-Host "Runtime DLLs beside tests:"
-        Get-ChildItem $binaries -Filter *.dll | Select-Object Name, Length
-        Write-Host "vcpkg runtime DLLs:"
-        Get-ChildItem "$env:VCPKG_ROOT\installed\x64-windows\bin" -Filter *.dll | Select-Object Name, Length
-        Write-Host "Vulkan runtime DLLs:"
-        Get-ChildItem "$env:VULKAN_SDK\Bin" -Filter *.dll | Select-Object Name, Length
-
     - name: Test
       working-directory: build
       run: ctest -C ${{ env.BUILD_TYPE }}
