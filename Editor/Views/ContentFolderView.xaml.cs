@@ -299,19 +299,26 @@ namespace SailorEditor.Views
                 .ToDictionary(x => x.Key, x => x.OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase).ToArray());
 
             var rows = new List<ContentListRow>();
-            rowModelsById[RootRowId] = projection.Root;
-            rows.Add(new ContentListRow(
-                RootRowId,
-                0,
-                projection.Root.Name,
-                "folder_open_24.png",
-                HasChildren(foldersByParent, assetsByFolder, -1),
-                isRootExpanded,
-                IsSelectedRoot(projection)));
-
-            if (isRootExpanded)
+            if (projection.IsRootVisible)
             {
-                AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, 1, projection);
+                rowModelsById[RootRowId] = projection.Root;
+                rows.Add(new ContentListRow(
+                    RootRowId,
+                    0,
+                    projection.Root.Name,
+                    "folder_open_24.png",
+                    HasChildren(foldersByParent, assetsByFolder, -1),
+                    isRootExpanded,
+                    IsSelectedRoot(projection)));
+
+                if (isRootExpanded)
+                {
+                    AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, projection.TopLevelDepth, projection);
+                }
+            }
+            else
+            {
+                AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, projection.TopLevelDepth, projection);
             }
 
             ReplaceRows(visibleRows, rows);
@@ -385,11 +392,10 @@ namespace SailorEditor.Views
                     TextColor = Color.FromArgb("#D7DCE2")
                 };
                 expandLabel.SetBinding(Label.TextProperty, nameof(ContentListRow.ExpandGlyph));
-                expandLabel.SetBinding(IsVisibleProperty, nameof(ContentListRow.HasChildren));
                 var expandTap = new TapGestureRecognizer();
                 expandTap.Tapped += (_, _) =>
                 {
-                    if (expandLabel.BindingContext is ContentListRow row)
+                    if (expandLabel.BindingContext is ContentListRow { HasChildren: true } row)
                     {
                         ToggleFolder(row);
                     }
@@ -616,6 +622,6 @@ namespace SailorEditor.Views
 
     public sealed record ContentListRow(string Id, int Depth, string Label, string Icon, bool HasChildren, bool IsExpanded, bool IsSelected)
     {
-        public string ExpandGlyph => IsExpanded ? "−" : "+";
+        public string ExpandGlyph => HasChildren ? (IsExpanded ? "−" : "+") : string.Empty;
     }
 }

@@ -43,13 +43,13 @@ namespace SailorEditor
             var history = MauiProgram.GetService<ICommandHistoryService>();
 
             var file = new MenuBarItem { Text = "File" };
+#if !MACCATALYST
             file.Add(CreateWorkspaceMenuItem("New Workspace...", () => _workspaceUi.NewWorkspaceAsync()));
             file.Add(CreateWorkspaceMenuItem("Open Workspace...", () => _workspaceUi.OpenWorkspaceAsync()));
             file.Add(CreateWorkspaceMenuItem("Save Workspace", () => _workspaceUi.SaveWorkspaceAsync()));
-#if !MACCATALYST
             file.Add(BuildRecentWorkspacesMenu());
-#endif
             file.Add(new MenuFlyoutSeparator());
+#endif
             file.Add(new MenuFlyoutItem { Text = "Undo", Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
             file.Add(new MenuFlyoutItem { Text = "Redo", Command = new Command(async () => await history.RedoAsync(new CommandOrigin(CommandOriginKind.Menu, "Redo"))) });
             file.Add(new MenuFlyoutSeparator());
