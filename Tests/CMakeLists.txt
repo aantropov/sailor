@@ -22,6 +22,7 @@ add_library(WorkspaceModuleFixture SHARED
 
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
+    WorkspaceModuleFixture.cpp
 )
 
 if(WIN32)
@@ -52,11 +53,22 @@ target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
     SAILOR_WORKSPACE_MODULE_EXPORTS
 )
+target_compile_definitions(WorkspaceModuleContractTests PRIVATE
+    SAILOR_WORKSPACE_MODULE
+)
 target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
-    WorkspaceModuleFixture
 )
+if(WIN32)
+    add_custom_command(TARGET WorkspaceModuleContractTests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:WorkspaceModuleContractTests>
+            $<TARGET_FILE_DIR:WorkspaceModuleContractTests>
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
 endif()
