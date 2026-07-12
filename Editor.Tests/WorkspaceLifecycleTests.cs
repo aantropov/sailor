@@ -26,6 +26,8 @@ public sealed class WorkspaceLifecycleTests
         Assert.True(File.Exists(workspace.File("Generated/CMakeLists.txt")));
         Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.h")));
         Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.cpp")));
+        Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
+        Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.Equal("workspace-id", result.Session.Manifest.WorkspaceId);
         Assert.Equal(workspace.Directory("Cache/Build"), result.Session.BuildDirectory);
         Assert.Equal(workspace.Directory("Binaries"), result.Session.LogicOutputDirectory);

@@ -1,5 +1,20 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
+if(WIN32)
+    find_package(VulkanLoader CONFIG REQUIRED)
+
+    function(sailor_stage_workspace_test_runtime target)
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${target}>
+                $<TARGET_FILE:Vulkan::Loader>
+                $<TARGET_FILE_DIR:${target}>
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+    endfunction()
+endif()
+
 add_executable(RemoteViewportFoundationTests
     RemoteViewportFoundationTests.cpp
 )
@@ -14,6 +29,15 @@ add_executable(RemoteViewportRuntimeTests
 
 add_executable(EditorViewportSessionTests
     EditorViewportSessionTests.cpp
+)
+
+add_library(WorkspaceModuleFixture SHARED
+    WorkspaceModuleFixture.cpp
+)
+
+add_executable(WorkspaceModuleContractTests
+    WorkspaceModuleContractTests.cpp
+    WorkspaceModuleFixture.cpp
 )
 
 if(WIN32)
@@ -38,6 +62,22 @@ target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
+target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
+target_compile_definitions(WorkspaceModuleFixture PRIVATE
+    SAILOR_WORKSPACE_MODULE
+    SAILOR_WORKSPACE_MODULE_EXPORTS
+)
+target_compile_definitions(WorkspaceModuleContractTests PRIVATE
+    SAILOR_WORKSPACE_MODULE
+)
+target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
+target_link_libraries(WorkspaceModuleContractTests PRIVATE
+    Sailor::Runtime
+)
+if(WIN32)
+    sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
+endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
 endif()
@@ -55,6 +95,12 @@ target_include_directories(RemoteViewportRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EditorViewportSessionTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleFixture PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceModuleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 if(WIN32)
@@ -101,6 +147,18 @@ add_test(
     NAME EditorViewportSessionTests
     COMMAND EditorViewportSessionTests
 )
+
+add_test(
+    NAME WorkspaceModuleContractTests
+    COMMAND WorkspaceModuleContractTests
+)
+
+if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    set_tests_properties(WorkspaceModuleContractTests PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "Path=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
+    )
+endif()
 
 if(WIN32)
     add_test(
