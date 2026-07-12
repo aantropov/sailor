@@ -139,6 +139,9 @@ namespace
 		const auto& result = manager.Load(root, {}, config);
 		Require(result.m_status == EWorkspaceModuleLoadStatus::AbiMismatch,
 			"incompatible module should fail before metadata or registration callbacks");
+		Require(result.m_message.find("sailor-workspace-abi-" +
+			std::to_string(WorkspaceModuleAbiRevision - 1)) != std::string::npos,
+			"ABI mismatch diagnostics should identify the stale module revision");
 		Require(!manager.IsRegistered(), "incompatible module must not leave registrations behind");
 	}
 
@@ -197,6 +200,120 @@ namespace
 		Require(!manager.IsRegistered(), "identity mismatch must not leave registrations behind");
 	}
 
+	void TestMalformedMetadata(
+		const std::filesystem::path& tempRoot,
+		const std::filesystem::path& propertyMismatchLibrary,
+		const std::filesystem::path& duplicateCdoLibrary,
+		const std::filesystem::path& unknownDefaultLibrary,
+		const std::filesystem::path& invalidDefaultTypeLibrary,
+		const std::filesystem::path& missingDefaultLibrary,
+		const std::filesystem::path& invalidEnumDefaultLibrary,
+		const std::filesystem::path& invalidStructuredDefaultLibrary,
+		const std::filesystem::path& missingCdoLibrary,
+		const std::filesystem::path& oversizedStructuredDefaultLibrary,
+		const std::filesystem::path& shadowedPropertyLibrary,
+		const std::filesystem::path& missingEmptyPropertySchemaLibrary,
+		const std::filesystem::path& aliasExpansionLibrary,
+		const std::string& config)
+	{
+		auto requireRejected = [&](const char* directoryName,
+			const char* moduleName,
+			const char* reflectedTypeName,
+			const std::filesystem::path& sourceLibrary,
+			const char* diagnosticSubstring = nullptr)
+		{
+			const std::filesystem::path root = tempRoot / directoryName;
+			WriteManifest(root, moduleName);
+			InstallFixture(root, config, moduleName, sourceLibrary);
+
+			WorkspaceModuleManager manager;
+			const auto& result = manager.Load(root, {}, config);
+			Require(result.m_status == EWorkspaceModuleLoadStatus::MetadataInvalid,
+				std::string("malformed metadata fixture '") + moduleName + "' should be rejected: " +
+				result.m_message);
+			Require(diagnosticSubstring == nullptr ||
+				result.m_message.find(diagnosticSubstring) != std::string::npos,
+				std::string("malformed metadata fixture '") + moduleName +
+					"' should report '" +
+					(diagnosticSubstring == nullptr ? "" : diagnosticSubstring) + "': " +
+					result.m_message);
+			Require(!manager.IsRegistered(),
+				std::string("malformed metadata fixture '") + moduleName +
+				"' must not leave registrations behind");
+			Require(Reflection::TryGetTypeByName(reflectedTypeName) == nullptr,
+				std::string("malformed metadata fixture '") + moduleName +
+					"' must not leak its reflected type into the registry");
+			Require(Reflection::ExportEngineTypes()["engineTypes"].IsSequence(),
+				std::string("malformed metadata fixture '") + moduleName +
+				"' must preserve the engine reflection registry");
+		};
+
+		requireRejected(
+			"property-mismatch",
+			"PropertyMismatchFixture",
+			"PropertyMismatchWorkspaceFixture::FixtureComponent",
+			propertyMismatchLibrary);
+		requireRejected(
+			"duplicate-cdo",
+			"DuplicateCdoFixture",
+			"DuplicateCdoWorkspaceFixture::FixtureComponent",
+			duplicateCdoLibrary);
+		requireRejected(
+			"unknown-default",
+			"UnknownDefaultFixture",
+			"UnknownDefaultWorkspaceFixture::FixtureComponent",
+			unknownDefaultLibrary);
+		requireRejected(
+			"invalid-default-type",
+			"InvalidDefaultTypeFixture",
+			"InvalidDefaultTypeWorkspaceFixture::FixtureComponent",
+			invalidDefaultTypeLibrary);
+		requireRejected(
+			"missing-default",
+			"MissingDefaultFixture",
+			"MissingDefaultWorkspaceFixture::FixtureComponent",
+			missingDefaultLibrary);
+		requireRejected(
+			"invalid-enum-default",
+			"InvalidEnumDefaultFixture",
+			"InvalidEnumDefaultWorkspaceFixture::FixtureComponent",
+			invalidEnumDefaultLibrary);
+		requireRejected(
+			"invalid-structured-default",
+			"InvalidStructuredDefaultFixture",
+			"InvalidStructuredDefaultWorkspaceFixture::FixtureComponent",
+			invalidStructuredDefaultLibrary);
+		requireRejected(
+			"missing-cdo",
+			"MissingCdoFixture",
+			"MissingCdoWorkspaceFixture::FixtureComponent",
+			missingCdoLibrary);
+		requireRejected(
+			"oversized-structured-default",
+			"OversizedStructuredDefaultFixture",
+			"OversizedStructuredDefaultWorkspaceFixture::FixtureComponent",
+			oversizedStructuredDefaultLibrary);
+		requireRejected(
+			"shadowed-property",
+			"ShadowedPropertyFixture",
+			"ShadowedPropertyWorkspaceFixture::FixtureComponent",
+			shadowedPropertyLibrary);
+		Require(Reflection::TryGetTypeByName(
+			"ShadowedPropertyWorkspaceFixture::BaseComponent") == nullptr,
+			"shadowed-property fixture must not leak its reflected base type into the registry");
+		requireRejected(
+			"missing-empty-property-schema",
+			"MissingEmptyPropertySchemaFixture",
+			"MissingEmptyPropertySchemaWorkspaceFixture::FixtureComponent",
+			missingEmptyPropertySchemaLibrary);
+		requireRejected(
+			"alias-expansion",
+			"AliasExpansionFixture",
+			"AliasExpansionWorkspaceFixture::FixtureComponent",
+			aliasExpansionLibrary,
+			"canonical descriptor snapshot");
+	}
+
 	void TestRegistrationInstantiationAndCleanup(
 		const std::filesystem::path& tempRoot,
 		const std::filesystem::path& fixtureLibrary,
@@ -230,9 +347,23 @@ namespace
 			const ReflectedData reflected = component->GetReflectedData();
 			Require(reflected.GetProperties()["moveSpeed"].as<float>() == 5.0f,
 				"instantiated workspace component should expose its reflected default value");
+			Require(reflected.GetProperties()["registryLookupSucceeded"].as<bool>(),
+				"workspace component construction should re-enter reflection lookup without holding the registry lock");
+			Require(reflected.GetProperties()["readOnlyValue"].as<int32_t>() == 17,
+				"workspace component construction should preserve getter-only reflected defaults");
+			Require(reflected.GetProperties()["mode"].as<std::string>() == "Default",
+				"workspace component construction should preserve validated enum defaults");
+			Require(reflected.GetProperties()["offset"].IsSequence(),
+				"workspace component construction should preserve validated structured defaults");
+			Require(reflected.GetProperties()["nullableComponent"].IsNull(),
+				"workspace component construction should preserve a null object reference");
 		}
 		Require(Reflection::GetCDO(FixtureTypeName).GetProperties()["moveSpeed"].as<float>() == 5.0f,
 			"workspace registry should preserve metadata defaults");
+		Require(!Reflection::GetCDO(FixtureTypeName).GetProperties().ContainsKey("skippedDefault"),
+			"workspace CDO should omit properties marked SkipCDO");
+		Require(Reflection::GetCDO(FixtureTypeName).GetProperties()["nullableComponent"].IsNull(),
+			"workspace CDO should preserve a null object reference without decoding it");
 
 		const YAML::Node engineTypesDuring = Reflection::ExportEngineTypes();
 		Require(engineTypesDuring["engineTypes"].size() == engineTypesBefore["engineTypes"].size(),
@@ -270,17 +401,34 @@ namespace
 
 int main(int argc, char** argv)
 {
-	if (argc != 5)
+	if (argc != 17)
 	{
 		std::cerr << "Usage: WorkspaceModuleRuntimeTests <fixture> <incompatible-fixture> "
-			"<missing-entry-fixture> <config>" << std::endl;
+			"<missing-entry-fixture> <property-mismatch-fixture> <duplicate-cdo-fixture> "
+			"<unknown-default-fixture> <invalid-default-type-fixture> <missing-default-fixture> "
+			"<invalid-enum-default-fixture> <invalid-structured-default-fixture> "
+			"<missing-cdo-fixture> <oversized-structured-default-fixture> "
+			"<shadowed-property-fixture> <missing-empty-property-schema-fixture> "
+			"<alias-expansion-fixture> <config>" << std::endl;
 		return 1;
 	}
 
 	const std::filesystem::path fixtureLibrary = std::filesystem::absolute(argv[1]);
 	const std::filesystem::path incompatibleLibrary = std::filesystem::absolute(argv[2]);
 	const std::filesystem::path missingEntryLibrary = std::filesystem::absolute(argv[3]);
-	const std::string config = argv[4];
+	const std::filesystem::path propertyMismatchLibrary = std::filesystem::absolute(argv[4]);
+	const std::filesystem::path duplicateCdoLibrary = std::filesystem::absolute(argv[5]);
+	const std::filesystem::path unknownDefaultLibrary = std::filesystem::absolute(argv[6]);
+	const std::filesystem::path invalidDefaultTypeLibrary = std::filesystem::absolute(argv[7]);
+	const std::filesystem::path missingDefaultLibrary = std::filesystem::absolute(argv[8]);
+	const std::filesystem::path invalidEnumDefaultLibrary = std::filesystem::absolute(argv[9]);
+	const std::filesystem::path invalidStructuredDefaultLibrary = std::filesystem::absolute(argv[10]);
+	const std::filesystem::path missingCdoLibrary = std::filesystem::absolute(argv[11]);
+	const std::filesystem::path oversizedStructuredDefaultLibrary = std::filesystem::absolute(argv[12]);
+	const std::filesystem::path shadowedPropertyLibrary = std::filesystem::absolute(argv[13]);
+	const std::filesystem::path missingEmptyPropertySchemaLibrary = std::filesystem::absolute(argv[14]);
+	const std::filesystem::path aliasExpansionLibrary = std::filesystem::absolute(argv[15]);
+	const std::string config = argv[16];
 	const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
 	const std::filesystem::path tempRoot = std::filesystem::temp_directory_path() /
 		("sailor-workspace-module-runtime-" + std::to_string(uniqueSuffix));
@@ -294,6 +442,21 @@ int main(int argc, char** argv)
 		TestIncompatibleModule(tempRoot, incompatibleLibrary, config);
 		TestMissingEntryPoint(tempRoot, missingEntryLibrary, config);
 		TestModuleIdentityMismatch(tempRoot, fixtureLibrary, config);
+		TestMalformedMetadata(
+			tempRoot,
+			propertyMismatchLibrary,
+			duplicateCdoLibrary,
+			unknownDefaultLibrary,
+			invalidDefaultTypeLibrary,
+			missingDefaultLibrary,
+			invalidEnumDefaultLibrary,
+			invalidStructuredDefaultLibrary,
+			missingCdoLibrary,
+			oversizedStructuredDefaultLibrary,
+			shadowedPropertyLibrary,
+			missingEmptyPropertySchemaLibrary,
+			aliasExpansionLibrary,
+			config);
 		TestRegistrationInstantiationAndCleanup(tempRoot, fixtureLibrary, config);
 		std::filesystem::remove_all(tempRoot);
 		std::cout << "[PASS] Workspace module runtime contract" << std::endl;

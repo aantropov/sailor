@@ -43,6 +43,8 @@ namespace Sailor::Workspace
 			const TypeInfo& typeInfo = TypeInfo::Get<TType>();
 			const std::string& typeName = typeInfo.Name();
 			const std::string& baseTypeName = typeInfo.Base();
+			const WorkspaceDefaultObjectSnapshot& defaultObject =
+				GetWorkspaceDefaultObjectSnapshot<TType>();
 			const WorkspaceTypeDescriptorV1 descriptor
 			{
 				static_cast<uint32_t>(sizeof(WorkspaceTypeDescriptorV1)),
@@ -53,6 +55,9 @@ namespace Sailor::Workspace
 				&typeInfo,
 				static_cast<uint64_t>(sizeof(TType)),
 				static_cast<uint64_t>(alignof(TType)),
+				defaultObject.m_serializedDefaultValues.data(),
+				static_cast<uint64_t>(defaultObject.m_serializedDefaultValues.size()),
+				GetWorkspaceTypeDescriptorFlags<TType>(),
 				&ConstructWorkspaceTypeV1<TType>
 			};
 

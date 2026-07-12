@@ -43,6 +43,48 @@ add_library(WorkspaceModuleMissingEntryFixture SHARED
     WorkspaceModuleMissingEntryFixture.cpp
 )
 
+function(add_workspace_malformed_metadata_fixture target output_name mode)
+    add_library(${target} SHARED
+        WorkspaceModuleMalformedMetadataFixture.cpp
+    )
+    target_compile_features(${target} PRIVATE cxx_std_20)
+    target_compile_definitions(${target} PRIVATE
+        SAILOR_WORKSPACE_MODULE
+        SAILOR_WORKSPACE_MODULE_EXPORTS
+        SAILOR_TEST_METADATA_MODE=${mode}
+    )
+    target_link_libraries(${target} PRIVATE Sailor::Runtime)
+    target_include_directories(${target} PRIVATE
+        ${SAILOR_RUNTIME_DIR}
+    )
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME ${output_name})
+endfunction()
+
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModulePropertyMismatchFixture PropertyMismatchFixture 1)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleDuplicateCdoFixture DuplicateCdoFixture 2)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleUnknownDefaultFixture UnknownDefaultFixture 3)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleInvalidDefaultTypeFixture InvalidDefaultTypeFixture 4)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleMissingDefaultFixture MissingDefaultFixture 5)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleInvalidEnumDefaultFixture InvalidEnumDefaultFixture 6)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleInvalidStructuredDefaultFixture InvalidStructuredDefaultFixture 7)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleMissingCdoFixture MissingCdoFixture 8)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleOversizedStructuredDefaultFixture OversizedStructuredDefaultFixture 9)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleShadowedPropertyFixture ShadowedPropertyFixture 10)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleMissingEmptyPropertySchemaFixture MissingEmptyPropertySchemaFixture 11)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleAliasExpansionFixture AliasExpansionFixture 12)
+
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
     WorkspaceModuleFixture.cpp
@@ -104,6 +146,18 @@ add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleFixture
     WorkspaceModuleIncompatibleFixture
     WorkspaceModuleMissingEntryFixture
+    WorkspaceModulePropertyMismatchFixture
+    WorkspaceModuleDuplicateCdoFixture
+    WorkspaceModuleUnknownDefaultFixture
+    WorkspaceModuleInvalidDefaultTypeFixture
+    WorkspaceModuleMissingDefaultFixture
+    WorkspaceModuleInvalidEnumDefaultFixture
+    WorkspaceModuleInvalidStructuredDefaultFixture
+    WorkspaceModuleMissingCdoFixture
+    WorkspaceModuleOversizedStructuredDefaultFixture
+    WorkspaceModuleShadowedPropertyFixture
+    WorkspaceModuleMissingEmptyPropertySchemaFixture
+    WorkspaceModuleAliasExpansionFixture
 )
 set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFixture)
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
@@ -208,7 +262,24 @@ add_test(
         $<TARGET_FILE:WorkspaceModuleFixture>
         $<TARGET_FILE:WorkspaceModuleIncompatibleFixture>
         $<TARGET_FILE:WorkspaceModuleMissingEntryFixture>
+        $<TARGET_FILE:WorkspaceModulePropertyMismatchFixture>
+        $<TARGET_FILE:WorkspaceModuleDuplicateCdoFixture>
+        $<TARGET_FILE:WorkspaceModuleUnknownDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidDefaultTypeFixture>
+        $<TARGET_FILE:WorkspaceModuleMissingDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidEnumDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleInvalidStructuredDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleMissingCdoFixture>
+        $<TARGET_FILE:WorkspaceModuleOversizedStructuredDefaultFixture>
+        $<TARGET_FILE:WorkspaceModuleShadowedPropertyFixture>
+        $<TARGET_FILE:WorkspaceModuleMissingEmptyPropertySchemaFixture>
+        $<TARGET_FILE:WorkspaceModuleAliasExpansionFixture>
         $<CONFIG>
+)
+set_tests_properties(
+    WorkspaceModuleContractTests
+    WorkspaceModuleRuntimeTests
+    PROPERTIES TIMEOUT 30
 )
 
 if(WIN32)

@@ -24,7 +24,7 @@
 
 #define SAILOR_WORKSPACE_ABI_STRINGIFY_IMPL(value) #value
 #define SAILOR_WORKSPACE_ABI_STRINGIFY(value) SAILOR_WORKSPACE_ABI_STRINGIFY_IMPL(value)
-#define SAILOR_WORKSPACE_ABI_REVISION 1
+#define SAILOR_WORKSPACE_ABI_REVISION 2
 
 #if defined(_M_X64) || defined(__x86_64__)
 #define SAILOR_WORKSPACE_ABI_ARCH "x64"
@@ -101,6 +101,9 @@ namespace Sailor::Workspace
 	inline constexpr uint32_t WorkspaceHostApiVersion = 1;
 	inline constexpr uint32_t WorkspaceModuleAbiRevision = SAILOR_WORKSPACE_ABI_REVISION;
 	inline constexpr uint32_t WorkspaceTypeMetadataVersion = 1;
+	inline constexpr uint32_t WorkspaceTypeDescriptorFlagAmbiguousProperties = 1u << 0;
+	inline constexpr uint32_t WorkspaceTypeDescriptorKnownFlags =
+		WorkspaceTypeDescriptorFlagAmbiguousProperties;
 	inline constexpr const char* WorkspaceModuleApiEntryPointV1 = "SailorGetWorkspaceModuleApiV1";
 	inline constexpr const char* WorkspaceTypeMetadataEntryPointV1 = "SailorGetWorkspaceTypeMetadataV1";
 	static constexpr char WorkspaceModuleAbiTagV1[] =
@@ -149,6 +152,9 @@ namespace Sailor::Workspace
 		const void* typeInfo;
 		uint64_t typeSize;
 		uint64_t typeAlignment;
+		const char* canonicalDefaultValues;
+		uint64_t canonicalDefaultValuesLength;
+		uint32_t flags;
 		TWorkspacePlacementFactoryV1 placementFactory;
 	};
 

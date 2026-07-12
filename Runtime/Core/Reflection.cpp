@@ -15,7 +15,9 @@
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "RHI/SceneView.h"
 #include <algorithm>
+#include <condition_variable>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
@@ -101,10 +103,69 @@ namespace Sailor::Internal
 {
 	thread_local bool g_bSuppressEngineAutoRegistration = false;
 
+	struct WorkspaceTypeInvocationState
+	{
+		std::mutex m_mutex;
+		std::condition_variable m_conditionVariable;
+		size_t m_numActiveCalls = 0;
+		bool m_bUnloading = false;
+	};
+
+	class WorkspaceTypeInvocationLease final
+	{
+	public:
+		WorkspaceTypeInvocationLease() = default;
+		WorkspaceTypeInvocationLease(const WorkspaceTypeInvocationLease&) = delete;
+		WorkspaceTypeInvocationLease& operator=(const WorkspaceTypeInvocationLease&) = delete;
+
+		~WorkspaceTypeInvocationLease()
+		{
+			if (!m_state)
+			{
+				return;
+			}
+
+			bool bNotify = false;
+			{
+				std::lock_guard lock(m_state->m_mutex);
+				check(m_state->m_numActiveCalls > 0);
+				--m_state->m_numActiveCalls;
+				bNotify = m_state->m_bUnloading && m_state->m_numActiveCalls == 0;
+			}
+
+			if (bNotify)
+			{
+				m_state->m_conditionVariable.notify_all();
+			}
+		}
+
+		bool Acquire(const std::shared_ptr<WorkspaceTypeInvocationState>& state)
+		{
+			if (!state)
+			{
+				return false;
+			}
+
+			std::lock_guard lock(state->m_mutex);
+			if (state->m_bUnloading)
+			{
+				return false;
+			}
+
+			++state->m_numActiveCalls;
+			m_state = state;
+			return true;
+		}
+
+	private:
+		std::shared_ptr<WorkspaceTypeInvocationState> m_state;
+	};
+
 	struct WorkspaceTypeEntry
 	{
 		std::string m_owner;
 		const TypeInfo* m_typeInfo{};
+		std::shared_ptr<WorkspaceTypeInvocationState> m_invocationState;
 		Reflection::TPlacementFactoryMethod m_placementFactory;
 		ReflectedData m_defaultObject;
 		size_t m_alignment = 8;
@@ -279,6 +340,7 @@ bool Reflection::RegisterWorkspaceTypes(
 
 	try
 	{
+		const auto invocationState = std::make_shared<Internal::WorkspaceTypeInvocationState>();
 		Internal::GetWorkspaceTypes().reserve(Internal::GetWorkspaceTypes().size() + registrations.size());
 		for (WorkspaceTypeRegistration& registration : registrations)
 		{
@@ -286,6 +348,7 @@ bool Reflection::RegisterWorkspaceTypes(
 			Internal::WorkspaceTypeEntry entry;
 			entry.m_owner = owner;
 			entry.m_typeInfo = registration.m_typeInfo;
+			entry.m_invocationState = invocationState;
 			entry.m_placementFactory = std::move(registration.m_placementFactory);
 			entry.m_defaultObject = std::move(registration.m_defaultObject);
 			entry.m_alignment = registration.m_alignment;
@@ -318,19 +381,42 @@ bool Reflection::RegisterWorkspaceTypes(
 
 size_t Reflection::UnregisterWorkspaceTypes(const std::string& owner)
 {
-	std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
+	std::shared_ptr<Internal::WorkspaceTypeInvocationState> invocationState;
 	size_t numRemoved = 0;
-	for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
 	{
-		if (it->second.m_owner == owner)
+		std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
+		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
 		{
-			it = Internal::GetWorkspaceTypes().erase(it);
-			++numRemoved;
+			if (it->second.m_owner == owner)
+			{
+				if (!invocationState)
+				{
+					invocationState = it->second.m_invocationState;
+					std::lock_guard invocationLock(invocationState->m_mutex);
+					invocationState->m_bUnloading = true;
+				}
+				else
+				{
+					check(invocationState == it->second.m_invocationState);
+				}
+
+				it = Internal::GetWorkspaceTypes().erase(it);
+				++numRemoved;
+			}
+			else
+			{
+				++it;
+			}
 		}
-		else
-		{
-			++it;
-		}
+	}
+
+	if (invocationState)
+	{
+		std::unique_lock invocationLock(invocationState->m_mutex);
+		invocationState->m_conditionVariable.wait(invocationLock, [&invocationState]()
+			{
+				return invocationState->m_numActiveCalls == 0;
+			});
 	}
 
 	return numRemoved;
@@ -415,13 +501,26 @@ size_t Reflection::GetObjectAlignment(const std::string& typeName)
 
 bool Reflection::ConstructObject(const std::string& typeName, void* destination)
 {
+	// Keep the lease alive until after the copied callable has been destroyed.
+	Internal::WorkspaceTypeInvocationLease workspaceInvocation;
+	TPlacementFactoryMethod workspacePlacementFactory;
 	{
 		std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
 		const auto workspaceType = Internal::GetWorkspaceTypes().find(typeName);
 		if (workspaceType != Internal::GetWorkspaceTypes().end())
 		{
-			return workspaceType->second.m_placementFactory(destination) != nullptr;
+			if (!workspaceInvocation.Acquire(workspaceType->second.m_invocationState))
+			{
+				return false;
+			}
+
+			workspacePlacementFactory = workspaceType->second.m_placementFactory;
 		}
+	}
+
+	if (workspacePlacementFactory)
+	{
+		return workspacePlacementFactory(destination) != nullptr;
 	}
 
 	if (Internal::g_pPlacementFactoryMethods && Internal::g_pPlacementFactoryMethods->ContainsKey(typeName))

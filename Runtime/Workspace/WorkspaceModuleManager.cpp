@@ -29,6 +29,8 @@ namespace
 		const TypeInfo* m_typeInfo{};
 		uint64_t m_typeSize = 0;
 		uint64_t m_typeAlignment = 0;
+		std::string m_canonicalDefaultValues;
+		uint32_t m_flags = 0;
 		TWorkspacePlacementFactoryV1 m_placementFactory{};
 	};
 
@@ -36,6 +38,7 @@ namespace
 	{
 		std::vector<CollectedWorkspaceType> m_types;
 		std::string m_error;
+		uint64_t m_totalCanonicalDefaultValuesLength = 0;
 	};
 
 	uint32_t SAILOR_WORKSPACE_CALL CollectWorkspaceType(
@@ -60,9 +63,19 @@ namespace
 				descriptor->typeSize == 0 ||
 				descriptor->typeAlignment == 0 ||
 				(descriptor->typeAlignment & (descriptor->typeAlignment - 1)) != 0 ||
+				descriptor->canonicalDefaultValues == nullptr ||
+				descriptor->canonicalDefaultValuesLength == 0 ||
+				descriptor->canonicalDefaultValuesLength > MaxMetadataPayloadSize ||
+				(descriptor->flags & ~WorkspaceTypeDescriptorKnownFlags) != 0 ||
 				descriptor->placementFactory == nullptr)
 			{
 				collector.m_error = "Workspace module returned an invalid type descriptor.";
+				return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
+			}
+			if (descriptor->canonicalDefaultValuesLength >
+				MaxMetadataPayloadSize - collector.m_totalCanonicalDefaultValuesLength)
+			{
+				collector.m_error = "Workspace module returned too much canonical default data.";
 				return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
 			}
 
@@ -74,8 +87,14 @@ namespace
 			type.m_typeInfo = static_cast<const TypeInfo*>(descriptor->typeInfo);
 			type.m_typeSize = descriptor->typeSize;
 			type.m_typeAlignment = descriptor->typeAlignment;
+			type.m_canonicalDefaultValues.assign(
+				descriptor->canonicalDefaultValues,
+				static_cast<size_t>(descriptor->canonicalDefaultValuesLength));
+			type.m_flags = descriptor->flags;
 			type.m_placementFactory = descriptor->placementFactory;
 			collector.m_types.emplace_back(std::move(type));
+			collector.m_totalCanonicalDefaultValuesLength +=
+				descriptor->canonicalDefaultValuesLength;
 			return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
 		}
 		catch (const std::exception& e)
@@ -173,20 +192,343 @@ namespace
 #endif
 	}
 
-	const YAML::Node FindMetadataEntry(
+	using MetadataEntries = std::unordered_map<std::string, YAML::Node>;
+	using CollectedTypeInfos = std::unordered_map<std::string, const TypeInfo*>;
+	constexpr size_t MaxCanonicalYamlDepth = 64;
+	constexpr size_t MaxCanonicalYamlNodes = 262144;
+	constexpr size_t MaxCanonicalYamlBytes = 64 * 1024 * 1024;
+
+	bool IndexMetadataEntries(
 		const YAML::Node& entries,
-		const char* typeNameKey,
-		const std::string& typeName)
+		const char* sectionName,
+		MetadataEntries& outEntries,
+		std::string& outError)
 	{
+		outEntries.clear();
 		for (const YAML::Node& entry : entries)
 		{
-			if (entry[typeNameKey] && entry[typeNameKey].as<std::string>() == typeName)
+			if (!entry.IsMap() || !entry["typename"] || !entry["typename"].IsScalar())
 			{
-				return entry;
+				outError = std::string("Workspace metadata section '") + sectionName +
+					"' contains an entry without a scalar typename.";
+				return false;
+			}
+
+			const std::string typeName = entry["typename"].as<std::string>();
+			if (typeName.empty() || !outEntries.emplace(typeName, entry).second)
+			{
+				outError = std::string("Workspace metadata section '") + sectionName +
+					"' contains duplicate or empty typename '" + typeName + "'.";
+				return false;
 			}
 		}
 
-		return YAML::Node(YAML::NodeType::Undefined);
+		return true;
+	}
+
+	bool ValidatePropertySchema(
+		const YAML::Node& metadataProperties,
+		const TypeInfo& typeInfo,
+		std::string& outError)
+	{
+		const auto& reflectedProperties = typeInfo.Properties();
+		if (!metadataProperties.IsDefined())
+		{
+			outError = "Workspace metadata property schema for '" + typeInfo.Name() +
+				"' is missing.";
+			return false;
+		}
+
+		if (reflectedProperties.Num() == 0)
+		{
+			if (metadataProperties.IsNull())
+			{
+				return true;
+			}
+		}
+
+		if (!metadataProperties.IsMap() || metadataProperties.size() != reflectedProperties.Num())
+		{
+			outError = "Workspace metadata property schema for '" + typeInfo.Name() +
+				"' does not match its reflected TypeInfo.";
+			return false;
+		}
+
+		std::unordered_set<std::string> propertyNames;
+		for (const auto& property : metadataProperties)
+		{
+			if (!property.first.IsScalar() || !property.second.IsScalar())
+			{
+				outError = "Workspace metadata property schema for '" + typeInfo.Name() +
+					"' must contain scalar names and type names.";
+				return false;
+			}
+
+			const std::string propertyName = property.first.as<std::string>();
+			const std::string propertyType = property.second.as<std::string>();
+			if (!propertyNames.emplace(propertyName).second ||
+				!reflectedProperties.ContainsKey(propertyName) ||
+				reflectedProperties[propertyName] != propertyType)
+			{
+				outError = "Workspace metadata property '" + typeInfo.Name() + "::" +
+					propertyName + "' does not match its reflected TypeInfo.";
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool ValidateComponentHierarchy(
+		const TypeInfo& typeInfo,
+		const CollectedTypeInfos& collectedTypes,
+		std::string& outError)
+	{
+		std::unordered_set<std::string> visitedTypes;
+		const TypeInfo* currentType = &typeInfo;
+		while (currentType != nullptr)
+		{
+			const std::string& currentTypeName = currentType->Name();
+			if (!visitedTypes.emplace(currentTypeName).second)
+			{
+				outError = "Workspace type '" + typeInfo.Name() +
+					"' contains a cycle in its reflected base hierarchy.";
+				return false;
+			}
+
+			if (currentTypeName == "Sailor::Component")
+			{
+				return true;
+			}
+
+			const std::string& baseTypeName = currentType->Base();
+			if (baseTypeName.empty())
+			{
+				break;
+			}
+
+			const auto collectedBase = collectedTypes.find(baseTypeName);
+			if (collectedBase != collectedTypes.end())
+			{
+				currentType = collectedBase->second;
+			}
+			else
+			{
+				currentType = Reflection::IsWorkspaceTypeRegistered(baseTypeName)
+					? nullptr
+					: Reflection::TryGetTypeByName(baseTypeName);
+			}
+			if (currentType != nullptr && currentType->Name() != baseTypeName)
+			{
+				currentType = nullptr;
+			}
+		}
+
+		outError = "Workspace type '" + typeInfo.Name() +
+			"' does not resolve to Sailor::Component through registered or collected bases.";
+		return false;
+	}
+
+	bool AppendCanonicalText(
+		std::string& destination,
+		const std::string& value,
+		size_t& remainingBytes)
+	{
+		if (value.size() > remainingBytes)
+		{
+			return false;
+		}
+
+		destination.append(value);
+		remainingBytes -= value.size();
+		return true;
+	}
+
+	bool AppendCanonicalCharacter(
+		std::string& destination,
+		char value,
+		size_t& remainingBytes)
+	{
+		if (remainingBytes == 0)
+		{
+			return false;
+		}
+
+		destination.push_back(value);
+		--remainingBytes;
+		return true;
+	}
+
+	bool AppendCanonicalField(
+		std::string& destination,
+		const std::string& value,
+		size_t& remainingBytes)
+	{
+		const std::string length = std::to_string(value.size());
+		return AppendCanonicalText(destination, length, remainingBytes) &&
+			AppendCanonicalCharacter(destination, ':', remainingBytes) &&
+			AppendCanonicalText(destination, value, remainingBytes);
+	}
+
+	bool AppendCanonicalYaml(
+		const YAML::Node& node,
+		std::string& destination,
+		size_t depth,
+		size_t& remainingNodes,
+		size_t& remainingBytes)
+	{
+		if (depth > MaxCanonicalYamlDepth || remainingNodes == 0)
+		{
+			return false;
+		}
+		--remainingNodes;
+
+		switch (node.Type())
+		{
+		case YAML::NodeType::Undefined:
+			return AppendCanonicalCharacter(destination, 'U', remainingBytes);
+		case YAML::NodeType::Null:
+			return AppendCanonicalCharacter(destination, 'N', remainingBytes) &&
+				AppendCanonicalField(destination, node.Tag(), remainingBytes);
+		case YAML::NodeType::Scalar:
+			return AppendCanonicalCharacter(destination, 'S', remainingBytes) &&
+				AppendCanonicalField(destination, node.Tag(), remainingBytes) &&
+				AppendCanonicalField(destination, node.Scalar(), remainingBytes);
+		case YAML::NodeType::Sequence:
+		{
+			const std::string numElements = std::to_string(node.size());
+			if (!AppendCanonicalCharacter(destination, 'Q', remainingBytes) ||
+				!AppendCanonicalField(destination, node.Tag(), remainingBytes) ||
+				!AppendCanonicalText(destination, numElements, remainingBytes) ||
+				!AppendCanonicalCharacter(destination, ':', remainingBytes))
+			{
+				return false;
+			}
+			for (const YAML::Node& element : node)
+			{
+				std::string canonicalElement;
+				if (!AppendCanonicalYaml(
+					element,
+					canonicalElement,
+					depth + 1,
+					remainingNodes,
+					remainingBytes) ||
+					!AppendCanonicalField(destination, canonicalElement, remainingBytes))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		case YAML::NodeType::Map:
+		{
+			std::vector<std::pair<std::string, std::string>> entries;
+			entries.reserve(node.size());
+			for (const auto& entry : node)
+			{
+				std::string canonicalKey;
+				std::string canonicalValue;
+				if (!AppendCanonicalYaml(
+					entry.first,
+					canonicalKey,
+					depth + 1,
+					remainingNodes,
+					remainingBytes) ||
+					!AppendCanonicalYaml(
+						entry.second,
+						canonicalValue,
+						depth + 1,
+						remainingNodes,
+						remainingBytes))
+				{
+					return false;
+				}
+				entries.emplace_back(std::move(canonicalKey), std::move(canonicalValue));
+			}
+
+			std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs)
+				{
+					return lhs.first < rhs.first;
+				});
+			for (size_t index = 1; index < entries.size(); ++index)
+			{
+				if (entries[index - 1].first == entries[index].first)
+				{
+					return false;
+				}
+			}
+
+			const std::string numEntries = std::to_string(entries.size());
+			if (!AppendCanonicalCharacter(destination, 'M', remainingBytes) ||
+				!AppendCanonicalField(destination, node.Tag(), remainingBytes) ||
+				!AppendCanonicalText(destination, numEntries, remainingBytes) ||
+				!AppendCanonicalCharacter(destination, ':', remainingBytes))
+			{
+				return false;
+			}
+			for (const auto& entry : entries)
+			{
+				if (!AppendCanonicalField(destination, entry.first, remainingBytes) ||
+					!AppendCanonicalField(destination, entry.second, remainingBytes))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		}
+
+		return false;
+	}
+
+	bool CanonicalizeYaml(const YAML::Node& node, std::string& destination)
+	{
+		destination.clear();
+		size_t remainingNodes = MaxCanonicalYamlNodes;
+		size_t remainingBytes = MaxCanonicalYamlBytes;
+		return AppendCanonicalYaml(node, destination, 0, remainingNodes, remainingBytes);
+	}
+
+	bool HasUniqueScalarStringKeys(const YAML::Node& node)
+	{
+		if (!node.IsMap() || node.size() > MaxCanonicalYamlNodes)
+		{
+			return false;
+		}
+
+		std::unordered_set<std::string> keys;
+		keys.reserve(node.size());
+		for (const auto& entry : node)
+		{
+			if (!entry.first.IsScalar() || !keys.emplace(entry.first.Scalar()).second)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool ValidateCanonicalDefaultValues(
+		const YAML::Node& defaultValues,
+		const CollectedWorkspaceType& collected,
+		std::string& outError)
+	{
+		const YAML::Node canonicalDefaultValues = YAML::Load(collected.m_canonicalDefaultValues);
+		std::string canonicalMetadata;
+		std::string canonicalDescriptor;
+		if (!HasUniqueScalarStringKeys(defaultValues) ||
+			!HasUniqueScalarStringKeys(canonicalDefaultValues) ||
+			!CanonicalizeYaml(defaultValues, canonicalMetadata) ||
+			!CanonicalizeYaml(canonicalDefaultValues, canonicalDescriptor) ||
+			canonicalMetadata != canonicalDescriptor)
+		{
+			outError = "Workspace metadata defaults for '" + collected.m_typeName +
+				"' do not match the canonical descriptor snapshot.";
+			return false;
+		}
+
+		return true;
 	}
 }
 
@@ -468,45 +810,90 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 					: collector.m_error);
 		}
 
-		if (collector.m_types.size() != metadata["engineTypes"].size())
+		if (!collector.m_error.empty())
+		{
+			return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, collector.m_error);
+		}
+
+		MetadataEntries metadataTypes;
+		MetadataEntries metadataDefaults;
+		std::string metadataError;
+		if (!IndexMetadataEntries(metadata["engineTypes"], "engineTypes", metadataTypes, metadataError) ||
+			!IndexMetadataEntries(metadata["cdos"], "cdos", metadataDefaults, metadataError))
+		{
+			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
+		}
+
+		if (metadataTypes.size() != collector.m_types.size() ||
+			metadataDefaults.size() != collector.m_types.size())
 		{
 			return Fail(
 				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace module registration descriptors do not match its metadata type list.");
+				"Workspace module metadata must contain exactly one type and one CDO entry per registration descriptor.");
 		}
 
-		std::unordered_set<std::string> collectedTypeNames;
-		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
-		registrations.reserve(collector.m_types.size());
+		CollectedTypeInfos collectedTypeInfos;
+		collectedTypeInfos.reserve(collector.m_types.size());
 		for (const CollectedWorkspaceType& collected : collector.m_types)
 		{
-			if (!collectedTypeNames.emplace(collected.m_typeName).second ||
-				collected.m_typeInfo == nullptr ||
+			if (collected.m_typeInfo == nullptr ||
 				collected.m_typeInfo->Name() != collected.m_typeName ||
 				collected.m_typeInfo->Base() != collected.m_baseTypeName ||
 				collected.m_typeInfo->Size() != collected.m_typeSize ||
 				collected.m_typeSize > std::numeric_limits<size_t>::max() ||
 				collected.m_typeAlignment > std::numeric_limits<size_t>::max() ||
-				Reflection::TryGetTypeByName(collected.m_typeName) != nullptr)
+				Reflection::TryGetTypeByName(collected.m_typeName) != nullptr ||
+				!collectedTypeInfos.emplace(collected.m_typeName, collected.m_typeInfo).second)
 			{
 				return Fail(
 					EWorkspaceModuleLoadStatus::RegistrationFailed,
 					"Workspace type descriptor for '" + collected.m_typeName +
 					"' is incompatible or conflicts with an existing type.");
 			}
+		}
 
-			const YAML::Node metadataType = FindMetadataEntry(
-				metadata["engineTypes"], "typename", collected.m_typeName);
-			const YAML::Node metadataDefaults = FindMetadataEntry(
-				metadata["cdos"], "typename", collected.m_typeName);
-			if (!metadataType.IsDefined() || !metadataDefaults.IsDefined() ||
-				!metadataType["base"] ||
-				metadataType["base"].as<std::string>() != collected.m_baseTypeName ||
-				!metadataDefaults["defaultValues"].IsMap())
+		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
+		registrations.reserve(collector.m_types.size());
+		for (const CollectedWorkspaceType& collected : collector.m_types)
+		{
+			if ((collected.m_flags & WorkspaceTypeDescriptorFlagAmbiguousProperties) != 0)
 			{
 				return Fail(
 					EWorkspaceModuleLoadStatus::MetadataInvalid,
-					"Workspace metadata is missing type/default data for '" + collected.m_typeName + "'.");
+					"Workspace type '" + collected.m_typeName +
+					"' contains ambiguous or shadowed reflected property names.");
+			}
+
+			const auto metadataTypeIt = metadataTypes.find(collected.m_typeName);
+			const auto metadataDefaultsIt = metadataDefaults.find(collected.m_typeName);
+			if (metadataTypeIt == metadataTypes.end() || metadataDefaultsIt == metadataDefaults.end())
+			{
+				return Fail(
+					EWorkspaceModuleLoadStatus::MetadataInvalid,
+					"Workspace metadata is missing type or CDO data for '" + collected.m_typeName + "'.");
+			}
+
+			const YAML::Node& metadataType = metadataTypeIt->second;
+			const YAML::Node& metadataDefaultObject = metadataDefaultsIt->second;
+			if (!metadataType["base"] || !metadataType["base"].IsScalar() ||
+				metadataType["base"].as<std::string>() != collected.m_baseTypeName)
+			{
+				return Fail(
+					EWorkspaceModuleLoadStatus::MetadataInvalid,
+					"Workspace metadata base type does not match the descriptor for '" +
+					collected.m_typeName + "'.");
+			}
+
+			if (!ValidateComponentHierarchy(
+				*collected.m_typeInfo,
+				collectedTypeInfos,
+				metadataError) ||
+				!ValidatePropertySchema(
+					metadataType["properties"], *collected.m_typeInfo, metadataError) ||
+				!ValidateCanonicalDefaultValues(
+					metadataDefaultObject["defaultValues"], collected, metadataError))
+			{
+				return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
 			}
 
 			Reflection::WorkspaceTypeRegistration registration;
@@ -514,7 +901,7 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 			registration.m_alignment = static_cast<size_t>(collected.m_typeAlignment);
 			registration.m_defaultObject = Reflection::CreateReflectedData(
 				*collected.m_typeInfo,
-				metadataDefaults["defaultValues"]);
+				metadataDefaultObject["defaultValues"]);
 			const TWorkspacePlacementFactoryV1 placementFactory = collected.m_placementFactory;
 			registration.m_placementFactory = [placementFactory](void* destination) -> IReflectable*
 			{
