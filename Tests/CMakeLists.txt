@@ -144,6 +144,13 @@ add_test(
     COMMAND WorkspaceModuleContractTests
 )
 
+if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    set_tests_properties(WorkspaceModuleContractTests PROPERTIES
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
+    )
+endif()
+
 if(WIN32)
     add_test(
         NAME RemoteViewportWindowsTransportTests
