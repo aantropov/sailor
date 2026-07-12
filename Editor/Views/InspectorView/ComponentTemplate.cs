@@ -146,8 +146,19 @@ public class ComponentTemplate : DataTemplate
                     if (component.Typename.Properties[property.Key] is EnumProperty enumProp)
                     {
                         var observableString = property.Value as Observable<string>;
-                        propertyEditor = Templates.EnumPicker(engineTypes.Enums[enumProp.Typename],
-                            (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                        if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
+                        {
+                            propertyEditor = Templates.EnumPicker(enumValues,
+                                (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                        }
+                        else
+                        {
+                            propertyEditor = new Label
+                            {
+                                Text = $"Missing enum metadata: {enumProp.Typename}",
+                                VerticalTextAlignment = TextAlignment.Center
+                            };
+                        }
                     }
                     else
                     {
@@ -176,6 +187,10 @@ public class ComponentTemplate : DataTemplate
                             propertyEditor = property.Value switch
                             {
                                 Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
+                                Observable<int> observableInt => Templates.IntEditor((Component vm) => observableInt.Value, (vm, value) => observableInt.Value = value),
+                                Observable<uint> observableUInt => Templates.UIntEditor((Component vm) => observableUInt.Value, (vm, value) => observableUInt.Value = value),
+                                Observable<bool> observableBool => Templates.BoolEditor((Component vm) => observableBool.Value, (vm, value) => observableBool.Value = value),
+                                Observable<string> observableString => Templates.StringEditor((Component vm) => observableString.Value, (vm, value) => observableString.Value = value),
                                 Rotation quat => Templates.RotationEditor((Component vm) => quat),
                                 Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
                                 Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),

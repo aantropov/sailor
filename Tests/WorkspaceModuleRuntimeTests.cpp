@@ -6,7 +6,9 @@
 #include "Workspace/WorkspaceModuleApi.h"
 #include "Workspace/WorkspaceModuleManager.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -95,6 +97,218 @@ namespace
 			}
 		}
 		return false;
+	}
+
+	YAML::Node FindMetadataEntry(
+		const YAML::Node& entries,
+		const std::string& typeName)
+	{
+		for (const YAML::Node& entry : entries)
+		{
+			if (entry["typename"] && entry["typename"].as<std::string>() == typeName)
+			{
+				return entry;
+			}
+		}
+
+		return YAML::Node(YAML::NodeType::Undefined);
+	}
+
+	size_t CountEnumEntries(const YAML::Node& entries, const std::string& enumName)
+	{
+		return static_cast<size_t>(std::count_if(entries.begin(), entries.end(), [&](const YAML::Node& entry)
+			{
+				return entry[enumName].IsDefined();
+			}));
+	}
+
+	void TestEditorMetadataMergeRollback(
+		const YAML::Node& engineMetadata,
+		const YAML::Node& workspaceMetadata)
+	{
+		std::string collisionTypeName;
+		for (const YAML::Node& type : engineMetadata["engineTypes"])
+		{
+			const std::string typeName = type["typename"].as<std::string>();
+			if (FindMetadataEntry(engineMetadata["cdos"], typeName).IsDefined())
+			{
+				collisionTypeName = typeName;
+				break;
+			}
+		}
+		Require(!collisionTypeName.empty(), "engine metadata should contain a type with a default object");
+
+		YAML::Node duplicateMetadata = YAML::Clone(workspaceMetadata);
+		duplicateMetadata["engineTypes"][0]["typename"] = collisionTypeName;
+		duplicateMetadata["cdos"][0]["typename"] = collisionTypeName;
+
+		YAML::Node output;
+		output["sentinel"] = "unchanged";
+		std::string error;
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				duplicateMetadata,
+				output,
+				error),
+			"editor metadata merge should reject engine/workspace type collisions");
+		Require(error.find(collisionTypeName) != std::string::npos,
+			"editor metadata collision diagnostic should identify the conflicting type");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed duplicate merge must not partially mutate its output");
+
+		constexpr const char* EngineEnumName = "enum Sailor::EMobilityType";
+		YAML::Node enumCollision = YAML::Clone(workspaceMetadata);
+		bool bChangedEnum = false;
+		for (YAML::Node workspaceEnum : enumCollision["enums"])
+		{
+			if (workspaceEnum[EngineEnumName])
+			{
+				workspaceEnum[EngineEnumName] = YAML::Load("[Mismatched]");
+				bChangedEnum = true;
+				break;
+			}
+		}
+		Require(bChangedEnum, "workspace fixture should reference an engine enum for merge validation");
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				enumCollision,
+				output,
+				error),
+			"editor metadata merge should reject conflicting engine enum definitions");
+		Require(error.find(EngineEnumName) != std::string::npos,
+			"engine enum collision diagnostic should identify the conflicting enum");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed enum merge must not partially mutate its output");
+
+		YAML::Node malformedMetadata = YAML::Clone(workspaceMetadata);
+		malformedMetadata["assetTypes"] = YAML::Node(YAML::NodeType::Map);
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				malformedMetadata,
+				output,
+				error),
+			"editor metadata merge should reject malformed workspace sections");
+		Require(!error.empty(), "malformed editor metadata should return a diagnostic");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed malformed merge must not partially mutate its output");
+
+		auto requireCrossSchemaRejection = [&](YAML::Node invalidMetadata,
+			const char* expectedDiagnostic,
+			const char* message)
+		{
+			error.clear();
+			Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+					engineMetadata,
+					invalidMetadata,
+					output,
+					error),
+				message);
+			Require(error.find(expectedDiagnostic) != std::string::npos,
+				std::string(message) + ": " + error);
+			Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+				"failed cross-schema merge must not partially mutate its output");
+		};
+
+		YAML::Node malformedReadOnlyProperties = YAML::Clone(workspaceMetadata);
+		malformedReadOnlyProperties["engineTypes"][0]["readOnlyProperties"] =
+			YAML::Node(YAML::NodeType::Map);
+		requireCrossSchemaRejection(
+			std::move(malformedReadOnlyProperties),
+			"readOnlyProperties",
+			"editor metadata merge should reject malformed read-only property schemas");
+
+		YAML::Node duplicateReadOnlyProperty = YAML::Clone(workspaceMetadata);
+		duplicateReadOnlyProperty["engineTypes"][0]["readOnlyProperties"].push_back(
+			duplicateReadOnlyProperty["engineTypes"][0]["readOnlyProperties"][0]);
+		requireCrossSchemaRejection(
+			std::move(duplicateReadOnlyProperty),
+			"read-only property",
+			"editor metadata merge should reject duplicate read-only properties");
+
+		YAML::Node overlappingReadOnlyProperty = YAML::Clone(workspaceMetadata);
+		overlappingReadOnlyProperty["engineTypes"][0]["readOnlyProperties"].push_back("moveSpeed");
+		requireCrossSchemaRejection(
+			std::move(overlappingReadOnlyProperty),
+			"moveSpeed",
+			"editor metadata merge should reject writable/read-only property overlap");
+
+		YAML::Node missingEnumDefinition = YAML::Clone(workspaceMetadata);
+		missingEnumDefinition["engineTypes"][0]["properties"]["mode"] =
+			"enum WorkspaceFixture::MissingMode";
+		requireCrossSchemaRejection(
+			std::move(missingEnumDefinition),
+			"references missing enum metadata",
+			"editor metadata merge should reject missing enum definitions");
+
+		const std::string fixtureEnumName =
+			workspaceMetadata["engineTypes"][0]["properties"]["mode"].as<std::string>();
+		YAML::Node emptyEnumDefinition = YAML::Clone(workspaceMetadata);
+		for (YAML::Node enumEntry : emptyEnumDefinition["enums"])
+		{
+			if (enumEntry[fixtureEnumName])
+			{
+				enumEntry[fixtureEnumName] = YAML::Node(YAML::NodeType::Sequence);
+				break;
+			}
+		}
+		requireCrossSchemaRejection(
+			std::move(emptyEnumDefinition),
+			"at least one value",
+			"editor metadata merge should reject empty enum definitions");
+
+		YAML::Node duplicateEnumValue = YAML::Clone(workspaceMetadata);
+		for (YAML::Node enumEntry : duplicateEnumValue["enums"])
+		{
+			if (enumEntry[fixtureEnumName])
+			{
+				enumEntry[fixtureEnumName].push_back(enumEntry[fixtureEnumName][0]);
+				break;
+			}
+		}
+		requireCrossSchemaRejection(
+			std::move(duplicateEnumValue),
+			"duplicate value",
+			"editor metadata merge should reject duplicate enum values");
+
+		YAML::Node invalidEnumDefault = YAML::Clone(workspaceMetadata);
+		invalidEnumDefault["cdos"][0]["defaultValues"]["mode"] = "NotARealMode";
+		requireCrossSchemaRejection(
+			std::move(invalidEnumDefault),
+			"not a declared member",
+			"editor metadata merge should reject enum defaults outside the declared membership");
+
+		std::string collisionExtension;
+		for (const YAML::Node& assetTypeNode : engineMetadata["assetTypes"])
+		{
+			if (assetTypeNode["extensions"].IsSequence() && assetTypeNode["extensions"].size() > 0)
+			{
+				collisionExtension = assetTypeNode["extensions"][0].as<std::string>();
+				break;
+			}
+		}
+		Require(!collisionExtension.empty(), "engine metadata should expose an asset extension for collision testing");
+		std::transform(collisionExtension.begin(), collisionExtension.end(), collisionExtension.begin(), [](unsigned char character)
+			{
+				return static_cast<char>(std::toupper(character));
+			});
+
+		YAML::Node extensionCollision = YAML::Clone(workspaceMetadata);
+		YAML::Node assetType;
+		assetType["typename"] = "WorkspaceFixture::CollidingAsset";
+		assetType["extensions"].push_back(" ." + collisionExtension + " ");
+		assetType["properties"] = YAML::Node(YAML::NodeType::Sequence);
+		extensionCollision["assetTypes"].push_back(assetType);
+		error.clear();
+		Require(!WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				extensionCollision,
+				output,
+				error),
+			"editor metadata merge should reject normalized asset extension collisions");
+		Require(output.size() == 1 && output["sentinel"].as<std::string>() == "unchanged",
+			"failed extension merge must not partially mutate its output");
 	}
 
 	void TestDiscoveryFailures(const std::filesystem::path& tempRoot, const std::string& config)
@@ -283,6 +497,8 @@ namespace
 		const std::filesystem::path& shadowedPropertyLibrary,
 		const std::filesystem::path& missingEmptyPropertySchemaLibrary,
 		const std::filesystem::path& aliasExpansionLibrary,
+		const std::filesystem::path& invalidReadOnlyPropertiesLibrary,
+		const std::filesystem::path& missingEnumDefinitionLibrary,
 		const std::string& config)
 	{
 		auto requireRejected = [&](const char* directoryName,
@@ -346,7 +562,8 @@ namespace
 			"invalid-enum-default",
 			"InvalidEnumDefaultFixture",
 			"InvalidEnumDefaultWorkspaceFixture::FixtureComponent",
-			invalidEnumDefaultLibrary);
+			invalidEnumDefaultLibrary,
+			"not a declared member");
 		requireRejected(
 			"invalid-structured-default",
 			"InvalidStructuredDefaultFixture",
@@ -381,6 +598,18 @@ namespace
 			"AliasExpansionWorkspaceFixture::FixtureComponent",
 			aliasExpansionLibrary,
 			"canonical descriptor snapshot");
+		requireRejected(
+			"invalid-read-only-properties",
+			"InvalidReadOnlyPropertiesFixture",
+			"InvalidReadOnlyPropertiesWorkspaceFixture::FixtureComponent",
+			invalidReadOnlyPropertiesLibrary,
+			"readOnlyProperties");
+		requireRejected(
+			"missing-enum-definition",
+			"MissingEnumDefinitionFixture",
+			"MissingEnumDefinitionWorkspaceFixture::FixtureComponent",
+			missingEnumDefinitionLibrary,
+			"references missing enum metadata");
 	}
 
 	void TestRegistrationInstantiationAndCleanup(
@@ -393,6 +622,17 @@ namespace
 		Require(engineComponentType != nullptr, "engine Component TypeInfo should be registered");
 		Require(!ContainsEngineType(engineTypesBefore, FixtureTypeName),
 			"workspace fixture must not be present before module registration");
+		WorkspaceModuleManager engineOnlyManager;
+		YAML::Node engineOnlyEditorTypes;
+		std::string metadataError;
+		Require(engineOnlyManager.BuildEditorTypeMetadata(
+				engineTypesBefore,
+				engineOnlyEditorTypes,
+				metadataError),
+			"unconfigured workspace should build engine-only editor metadata: " + metadataError);
+		Require(engineOnlyEditorTypes["engineTypes"].size() == engineTypesBefore["engineTypes"].size() &&
+			!ContainsEngineType(engineOnlyEditorTypes, FixtureTypeName),
+			"unconfigured editor metadata should remain engine-only");
 
 		const std::filesystem::path root = tempRoot / "registered";
 		WriteManifest(root, FixtureModuleName);
@@ -407,6 +647,23 @@ namespace
 		Require(Reflection::TryGetTypeByName("Sailor::Component") == engineComponentType,
 			"loading a workspace DLL must not replace host engine type registration");
 
+		YAML::Node editorTypes;
+		Require(manager.BuildEditorTypeMetadata(engineTypesBefore, editorTypes, metadataError),
+			"active workspace should build combined editor metadata: " + metadataError);
+		Require(editorTypes["engineTypes"].size() == engineTypesBefore["engineTypes"].size() + 1,
+			"combined editor metadata should append the workspace type exactly once");
+		Require(ContainsEngineType(editorTypes, FixtureTypeName),
+			"combined editor metadata should expose the workspace component FQN");
+		Require(editorTypes["moduleName"].as<std::string>() == FixtureModuleName,
+			"combined editor metadata should identify the active workspace module");
+		const YAML::Node editorDefaults = FindMetadataEntry(editorTypes["cdos"], FixtureTypeName);
+		Require(editorDefaults.IsDefined() &&
+			editorDefaults["defaultValues"]["moveSpeed"].as<float>() == 5.0f,
+			"combined editor metadata should expose workspace component defaults");
+		Require(CountEnumEntries(editorTypes["enums"], "enum Sailor::EMobilityType") == 1,
+			"combined editor metadata should deduplicate referenced engine enum definitions");
+		TestEditorMetadataMergeRollback(engineTypesBefore, YAML::Load(manager.GetMetadata()));
+
 		const TypeInfo* fixtureType = Reflection::TryGetTypeByName(FixtureTypeName);
 		Require(fixtureType != nullptr, "workspace fixture TypeInfo should be discoverable by name");
 		auto allocator = Memory::ObjectAllocatorPtr::Make(Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
@@ -420,12 +677,37 @@ namespace
 				"workspace component construction should re-enter reflection lookup without holding the registry lock");
 			Require(reflected.GetProperties()["readOnlyValue"].as<int32_t>() == 17,
 				"workspace component construction should preserve getter-only reflected defaults");
+			Require(reflected.GetProperties()["skippedReadOnlyValue"].as<int32_t>() == 23,
+				"workspace component serialization should retain getter-only SkipCDO properties");
 			Require(reflected.GetProperties()["mode"].as<std::string>() == "Default",
 				"workspace component construction should preserve validated enum defaults");
+			Require(reflected.GetProperties()["mobility"].as<std::string>() == "Stationary",
+				"workspace component construction should preserve referenced engine enum defaults");
 			Require(reflected.GetProperties()["offset"].IsSequence(),
 				"workspace component construction should preserve validated structured defaults");
 			Require(reflected.GetProperties()["nullableComponent"].IsNull(),
 				"workspace component construction should preserve a null object reference");
+		}
+		{
+			YAML::Node serializedComponent;
+			serializedComponent["typename"] = FixtureTypeName;
+			serializedComponent["overrideProperties"]["moveSpeed"] = 12.5f;
+
+			ReflectedData deserializedComponent;
+			deserializedComponent.Deserialize(serializedComponent);
+			Require(deserializedComponent.IsValid() &&
+				deserializedComponent.GetTypeInfo().Name() == FixtureTypeName,
+				"workspace component deserialization should preserve its exact FQN");
+
+			ComponentPtr roundTrippedComponent = Reflection::CreateObject<Component>(*fixtureType, allocator);
+			Require(static_cast<bool>(roundTrippedComponent) &&
+				Reflection::ApplyReflection(roundTrippedComponent.GetRawPtr(), deserializedComponent),
+				"workspace component should be recreated and populated from serialized reflection");
+			const YAML::Node roundTrippedYaml = roundTrippedComponent->GetReflectedData().Serialize();
+			Require(roundTrippedYaml["typename"].as<std::string>() == FixtureTypeName &&
+				roundTrippedYaml["overrideProperties"]["moveSpeed"].as<float>() == 12.5f,
+				"workspace component round trip should preserve type identity and scalar values");
+			roundTrippedComponent.ForcelyDestroyObject();
 		}
 		Require(Reflection::GetCDO(FixtureTypeName).GetProperties()["moveSpeed"].as<float>() == 5.0f,
 			"workspace registry should preserve metadata defaults");
@@ -456,6 +738,12 @@ namespace
 			"workspace type should be removed before its library closes");
 		Require(Reflection::TryGetTypeByName("Sailor::Component") == engineComponentType,
 			"workspace unload must preserve host engine type registration");
+		YAML::Node editorTypesAfterUnload;
+		Require(manager.BuildEditorTypeMetadata(engineTypesBefore, editorTypesAfterUnload, metadataError),
+			"unloaded workspace should rebuild a fresh engine-only editor catalog: " + metadataError);
+		Require(!ContainsEngineType(editorTypesAfterUnload, FixtureTypeName) &&
+			editorTypesAfterUnload["engineTypes"].size() == engineTypesBefore["engineTypes"].size(),
+			"workspace unload must remove custom entries from editor metadata");
 		const auto& reload = collisionManager.Load(collisionRoot, {}, config);
 		Require(reload.IsSuccess(), "workspace module should reload after owner cleanup: " + reload.m_message);
 		Require(collisionManager.Unload(), "reloaded workspace fixture should unload cleanly");
@@ -470,7 +758,7 @@ namespace
 
 int main(int argc, char** argv)
 {
-	if (argc != 17)
+	if (argc != 19)
 	{
 		std::cerr << "Usage: WorkspaceModuleRuntimeTests <fixture> <incompatible-fixture> "
 			"<missing-entry-fixture> <property-mismatch-fixture> <duplicate-cdo-fixture> "
@@ -478,7 +766,8 @@ int main(int argc, char** argv)
 			"<invalid-enum-default-fixture> <invalid-structured-default-fixture> "
 			"<missing-cdo-fixture> <oversized-structured-default-fixture> "
 			"<shadowed-property-fixture> <missing-empty-property-schema-fixture> "
-			"<alias-expansion-fixture> <config>" << std::endl;
+			"<alias-expansion-fixture> <invalid-read-only-properties-fixture> "
+			"<missing-enum-definition-fixture> <config>" << std::endl;
 		return 1;
 	}
 
@@ -497,7 +786,9 @@ int main(int argc, char** argv)
 	const std::filesystem::path shadowedPropertyLibrary = std::filesystem::absolute(argv[13]);
 	const std::filesystem::path missingEmptyPropertySchemaLibrary = std::filesystem::absolute(argv[14]);
 	const std::filesystem::path aliasExpansionLibrary = std::filesystem::absolute(argv[15]);
-	const std::string config = argv[16];
+	const std::filesystem::path invalidReadOnlyPropertiesLibrary = std::filesystem::absolute(argv[16]);
+	const std::filesystem::path missingEnumDefinitionLibrary = std::filesystem::absolute(argv[17]);
+	const std::string config = argv[18];
 	const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
 	const std::filesystem::path tempRoot = std::filesystem::temp_directory_path() /
 		("sailor-workspace-module-runtime-" + std::to_string(uniqueSuffix));
@@ -526,6 +817,8 @@ int main(int argc, char** argv)
 			shadowedPropertyLibrary,
 			missingEmptyPropertySchemaLibrary,
 			aliasExpansionLibrary,
+			invalidReadOnlyPropertiesLibrary,
+			missingEnumDefinitionLibrary,
 			config);
 		TestRegistrationInstantiationAndCleanup(tempRoot, fixtureLibrary, config);
 		std::filesystem::remove_all(tempRoot);

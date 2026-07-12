@@ -41,6 +41,23 @@ namespace
 		uint64_t m_totalCanonicalDefaultValuesLength = 0;
 	};
 
+	struct MetadataIdentities
+	{
+		std::unordered_set<std::string> m_engineTypes;
+		std::unordered_set<std::string> m_cdos;
+		std::unordered_set<std::string> m_enums;
+		std::unordered_set<std::string> m_assetTypes;
+		std::unordered_set<std::string> m_assetExtensions;
+	};
+
+	constexpr const char* MetadataSections[]
+	{
+		"engineTypes",
+		"cdos",
+		"enums",
+		"assetTypes"
+	};
+
 	uint32_t SAILOR_WORKSPACE_CALL CollectWorkspaceType(
 		void* context,
 		const WorkspaceTypeDescriptorV1* descriptor) noexcept
@@ -181,6 +198,14 @@ namespace
 		return extension == ".sailor";
 	}
 
+	bool IsBlank(const std::string& value)
+	{
+		return value.empty() || std::all_of(value.begin(), value.end(), [](unsigned char character)
+			{
+				return std::isspace(character) != 0;
+			});
+	}
+
 	std::filesystem::path GetModuleFilename(const std::string& moduleName)
 	{
 #if defined(_WIN32)
@@ -194,6 +219,15 @@ namespace
 
 	using MetadataEntries = std::unordered_map<std::string, YAML::Node>;
 	using CollectedTypeInfos = std::unordered_map<std::string, const TypeInfo*>;
+	using EditorEnumDefinitions = std::unordered_map<std::string, std::unordered_set<std::string>>;
+
+	struct EditorTypeSchema
+	{
+		std::string m_baseType;
+		std::unordered_map<std::string, std::string> m_properties;
+	};
+
+	using EditorTypeSchemas = std::unordered_map<std::string, EditorTypeSchema>;
 	constexpr size_t MaxCanonicalYamlDepth = 64;
 	constexpr size_t MaxCanonicalYamlNodes = 262144;
 	constexpr size_t MaxCanonicalYamlBytes = 64 * 1024 * 1024;
@@ -530,6 +564,529 @@ namespace
 
 		return true;
 	}
+
+	bool GetMetadataIdentity(
+		const YAML::Node& entry,
+		const char* sectionName,
+		std::string& outIdentity,
+		std::string& outError)
+	{
+		if (!entry.IsMap())
+		{
+			outError = "Editor metadata section '" + std::string(sectionName) + "' contains a non-map entry.";
+			return false;
+		}
+
+		if (std::strcmp(sectionName, "enums") == 0)
+		{
+			if (entry.size() != 1 || !entry.begin()->first.IsScalar() || !entry.begin()->second.IsSequence())
+			{
+				outError = "Editor metadata section 'enums' contains an invalid enum entry.";
+				return false;
+			}
+
+			outIdentity = entry.begin()->first.as<std::string>();
+		}
+		else
+		{
+			const YAML::Node typeName = entry["typename"];
+			if (!typeName.IsScalar())
+			{
+				outError = "Editor metadata section '" + std::string(sectionName) +
+					"' contains an entry without a scalar typename.";
+				return false;
+			}
+
+			outIdentity = typeName.as<std::string>();
+		}
+
+		if (IsBlank(outIdentity))
+		{
+			outError = "Editor metadata section '" + std::string(sectionName) + "' contains an empty identity.";
+			return false;
+		}
+
+		return true;
+	}
+
+	bool CollectMetadataIdentities(
+		const YAML::Node& metadata,
+		const char* sectionName,
+		std::unordered_set<std::string>& outIdentities,
+		std::string& outError)
+	{
+		const YAML::Node entries = metadata[sectionName];
+		if (!entries.IsSequence())
+		{
+			outError = "Editor metadata section '" + std::string(sectionName) + "' must be a sequence.";
+			return false;
+		}
+
+		for (const YAML::Node& entry : entries)
+		{
+			std::string identity;
+			if (!GetMetadataIdentity(entry, sectionName, identity, outError))
+			{
+				return false;
+			}
+
+			if (!outIdentities.emplace(identity).second)
+			{
+				outError = "Editor metadata section '" + std::string(sectionName) +
+					"' contains duplicate identity '" + identity + "'.";
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool ValidateEditorTypeSchemas(
+		const YAML::Node& metadata,
+		bool bWorkspaceMetadata,
+		std::string& outError)
+	{
+		for (const YAML::Node& type : metadata["engineTypes"])
+		{
+			const std::string typeName = type["typename"].as<std::string>();
+			if (bWorkspaceMetadata && !type["base"].IsScalar())
+			{
+				outError = "Workspace editor metadata type '" + typeName +
+					"' must provide a scalar base type.";
+				return false;
+			}
+
+			const YAML::Node properties = type["properties"];
+			if ((bWorkspaceMetadata && !properties.IsDefined()) ||
+				(properties.IsDefined() && !properties.IsNull() && !properties.IsMap()))
+			{
+				outError = "Editor metadata type '" + typeName + "' has an invalid property schema.";
+				return false;
+			}
+
+			std::unordered_set<std::string> propertyNames;
+			if (properties.IsMap())
+			{
+				propertyNames.reserve(properties.size());
+				for (const auto& property : properties)
+				{
+					if (!property.first.IsScalar() || !property.second.IsScalar())
+					{
+						outError = "Editor metadata type '" + typeName +
+							"' must contain scalar property names and type names.";
+						return false;
+					}
+
+					const std::string propertyName = property.first.as<std::string>();
+					const std::string propertyType = property.second.as<std::string>();
+					if (IsBlank(propertyName) || IsBlank(propertyType) ||
+						!propertyNames.emplace(propertyName).second)
+					{
+						outError = "Editor metadata type '" + typeName +
+							"' contains an empty or duplicate property '" + propertyName + "'.";
+						return false;
+					}
+				}
+			}
+
+			YAML::Node readOnlyProperties(YAML::NodeType::Undefined);
+			for (const auto& field : type)
+			{
+				if (field.first.IsScalar() && field.first.as<std::string>() == "readOnlyProperties")
+				{
+					readOnlyProperties = field.second;
+					break;
+				}
+			}
+			if (bWorkspaceMetadata && !readOnlyProperties.IsSequence())
+			{
+				outError = "Workspace editor metadata type '" + typeName +
+					"' must provide a readOnlyProperties sequence.";
+				return false;
+			}
+			if (readOnlyProperties.IsDefined() && !readOnlyProperties.IsNull() &&
+				!readOnlyProperties.IsSequence())
+			{
+				outError = "Editor metadata type '" + typeName +
+					"' has an invalid readOnlyProperties schema.";
+				return false;
+			}
+
+			std::unordered_set<std::string> readOnlyPropertyNames;
+			if (readOnlyProperties.IsSequence())
+			{
+				readOnlyPropertyNames.reserve(readOnlyProperties.size());
+				for (const YAML::Node& property : readOnlyProperties)
+				{
+					if (!property.IsScalar())
+					{
+						outError = "Editor metadata type '" + typeName +
+							"' contains a non-scalar read-only property.";
+						return false;
+					}
+
+					const std::string propertyName = property.as<std::string>();
+					if (IsBlank(propertyName) || propertyNames.contains(propertyName) ||
+						!readOnlyPropertyNames.emplace(propertyName).second)
+					{
+						outError = "Editor metadata type '" + typeName +
+							"' contains invalid read-only property '" + propertyName + "'.";
+						return false;
+					}
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool CollectEditorEnumDefinitions(
+		const YAML::Node& metadata,
+		EditorEnumDefinitions& outDefinitions,
+		std::string& outError)
+	{
+		outDefinitions.clear();
+		for (const YAML::Node& enumEntry : metadata["enums"])
+		{
+			const std::string enumName = enumEntry.begin()->first.as<std::string>();
+			const YAML::Node values = enumEntry.begin()->second;
+			if (values.size() == 0)
+			{
+				outError = "Editor enum metadata '" + enumName + "' must declare at least one value.";
+				return false;
+			}
+
+			std::unordered_set<std::string> enumValues;
+			enumValues.reserve(values.size());
+			for (const YAML::Node& value : values)
+			{
+				if (!value.IsScalar())
+				{
+					outError = "Editor enum metadata '" + enumName + "' contains a non-scalar value.";
+					return false;
+				}
+
+				const std::string enumValue = value.as<std::string>();
+				if (IsBlank(enumValue) || !enumValues.emplace(enumValue).second)
+				{
+					outError = "Editor enum metadata '" + enumName +
+						"' contains an empty or duplicate value '" + enumValue + "'.";
+					return false;
+				}
+			}
+
+			if (!outDefinitions.emplace(enumName, std::move(enumValues)).second)
+			{
+				outError = "Editor enum metadata contains duplicate identity '" + enumName + "'.";
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	const std::string* FindEditorPropertyType(
+		const EditorTypeSchemas& schemas,
+		const std::string& typeName,
+		const std::string& propertyName)
+	{
+		std::unordered_set<std::string> visitedTypes;
+		std::string currentType = typeName;
+		while (!currentType.empty() && visitedTypes.emplace(currentType).second)
+		{
+			const auto schema = schemas.find(currentType);
+			if (schema == schemas.end())
+			{
+				return nullptr;
+			}
+
+			const auto property = schema->second.m_properties.find(propertyName);
+			if (property != schema->second.m_properties.end())
+			{
+				return &property->second;
+			}
+
+			currentType = schema->second.m_baseType;
+		}
+
+		return nullptr;
+	}
+
+	bool ValidateEditorMetadataCrossSchema(const YAML::Node& metadata, std::string& outError)
+	{
+		EditorEnumDefinitions enumDefinitions;
+		if (!CollectEditorEnumDefinitions(metadata, enumDefinitions, outError))
+		{
+			return false;
+		}
+
+		EditorTypeSchemas typeSchemas;
+		typeSchemas.reserve(metadata["engineTypes"].size());
+		for (const YAML::Node& type : metadata["engineTypes"])
+		{
+			const std::string typeName = type["typename"].as<std::string>();
+			EditorTypeSchema schema;
+			if (type["base"].IsScalar())
+			{
+				schema.m_baseType = type["base"].as<std::string>();
+			}
+			if (type["properties"].IsMap())
+			{
+				for (const auto& property : type["properties"])
+				{
+					const std::string propertyName = property.first.as<std::string>();
+					const std::string propertyType = property.second.as<std::string>();
+					if (propertyType.rfind("enum ", 0) == 0 && !enumDefinitions.contains(propertyType))
+					{
+						outError = "Editor property '" + typeName + "::" + propertyName +
+							"' references missing enum metadata '" + propertyType + "'.";
+						return false;
+					}
+					schema.m_properties.emplace(propertyName, propertyType);
+				}
+			}
+			typeSchemas.emplace(typeName, std::move(schema));
+		}
+
+		for (const YAML::Node& defaultObject : metadata["cdos"])
+		{
+			const std::string typeName = defaultObject["typename"].as<std::string>();
+			if (!typeSchemas.contains(typeName))
+			{
+				outError = "Editor default object '" + typeName + "' has no matching reflected type.";
+				return false;
+			}
+
+			const YAML::Node defaultValues = defaultObject["defaultValues"];
+			if (!defaultValues.IsDefined() || (!defaultValues.IsNull() && !defaultValues.IsMap()))
+			{
+				outError = "Editor default object '" + typeName + "' has an invalid defaultValues schema.";
+				return false;
+			}
+			if (!defaultValues.IsMap())
+			{
+				continue;
+			}
+
+			for (const auto& defaultValue : defaultValues)
+			{
+				if (!defaultValue.first.IsScalar())
+				{
+					outError = "Editor default object '" + typeName + "' contains a non-scalar property name.";
+					return false;
+				}
+
+				const std::string propertyName = defaultValue.first.as<std::string>();
+				const std::string* propertyType = FindEditorPropertyType(typeSchemas, typeName, propertyName);
+				if (propertyType == nullptr || propertyType->rfind("enum ", 0) != 0)
+				{
+					continue;
+				}
+
+				const auto enumDefinition = enumDefinitions.find(*propertyType);
+				if (!defaultValue.second.IsScalar() ||
+					enumDefinition == enumDefinitions.end() ||
+					!enumDefinition->second.contains(defaultValue.second.as<std::string>()))
+				{
+					outError = "Editor enum default '" + typeName + "::" + propertyName +
+						"' is not a declared member of '" + *propertyType + "'.";
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool CollectAssetExtensions(
+		const YAML::Node& metadata,
+		std::unordered_set<std::string>& outExtensions,
+		std::string& outError)
+	{
+		for (const YAML::Node& assetType : metadata["assetTypes"])
+		{
+			const YAML::Node extensions = assetType["extensions"];
+			if (!extensions.IsDefined() || extensions.IsNull())
+			{
+				continue;
+			}
+			if (!extensions.IsSequence())
+			{
+				outError = "Editor asset metadata must provide an extension sequence.";
+				return false;
+			}
+
+			for (const YAML::Node& extensionNode : extensions)
+			{
+				if (!extensionNode.IsScalar())
+				{
+					outError = "Editor asset metadata contains a non-scalar extension.";
+					return false;
+				}
+
+				std::string extension = extensionNode.as<std::string>();
+				extension.erase(extension.begin(), std::find_if(extension.begin(), extension.end(), [](unsigned char character)
+					{
+						return !std::isspace(character);
+					}));
+				extension.erase(std::find_if(extension.rbegin(), extension.rend(), [](unsigned char character)
+					{
+						return !std::isspace(character);
+					}).base(), extension.end());
+				while (!extension.empty() && extension.front() == '.')
+				{
+					extension.erase(extension.begin());
+				}
+				std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
+					{
+						return static_cast<char>(std::tolower(character));
+					});
+
+				if (extension.empty() || !outExtensions.emplace(extension).second)
+				{
+					outError = "Editor asset metadata contains an empty or duplicate extension '" + extension + "'.";
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool ValidateMetadataDocument(
+		const YAML::Node& metadata,
+		bool bWorkspaceMetadata,
+		const std::string& expectedModuleName,
+		MetadataIdentities& outIdentities,
+		std::string& outError)
+	{
+		if (!metadata.IsMap() || !metadata["timeStamp"].IsScalar())
+		{
+			outError = "Editor metadata must be a map with a scalar timeStamp.";
+			return false;
+		}
+
+		if (bWorkspaceMetadata)
+		{
+			if (!metadata["metadataVersion"].IsScalar() ||
+				metadata["metadataVersion"].as<uint32_t>() != WorkspaceTypeMetadataVersion ||
+				!metadata["moduleName"].IsScalar())
+			{
+				outError = "Workspace editor metadata has an invalid version or module identity.";
+				return false;
+			}
+
+			const std::string moduleName = metadata["moduleName"].as<std::string>();
+			if (IsBlank(moduleName) || (!expectedModuleName.empty() && moduleName != expectedModuleName))
+			{
+				outError = "Workspace editor metadata module identity does not match the active module.";
+				return false;
+			}
+		}
+
+		if (!CollectMetadataIdentities(metadata, MetadataSections[0], outIdentities.m_engineTypes, outError) ||
+			!CollectMetadataIdentities(metadata, MetadataSections[1], outIdentities.m_cdos, outError) ||
+			!CollectMetadataIdentities(metadata, MetadataSections[2], outIdentities.m_enums, outError) ||
+			!CollectMetadataIdentities(metadata, MetadataSections[3], outIdentities.m_assetTypes, outError) ||
+			!CollectAssetExtensions(metadata, outIdentities.m_assetExtensions, outError) ||
+			!ValidateEditorTypeSchemas(metadata, bWorkspaceMetadata, outError))
+		{
+			return false;
+		}
+
+		EditorEnumDefinitions enumDefinitions;
+		if (!CollectEditorEnumDefinitions(metadata, enumDefinitions, outError))
+		{
+			return false;
+		}
+
+		if (bWorkspaceMetadata && outIdentities.m_engineTypes != outIdentities.m_cdos)
+		{
+			outError = "Workspace editor metadata must provide exactly one default object for every reflected type.";
+			return false;
+		}
+
+		return true;
+	}
+
+	bool HasMetadataCollision(
+		const std::unordered_set<std::string>& engineIdentities,
+		const std::unordered_set<std::string>& workspaceIdentities,
+		const char* sectionName,
+		std::string& outError)
+	{
+		for (const std::string& identity : workspaceIdentities)
+		{
+			if (engineIdentities.contains(identity))
+			{
+				outError = "Workspace editor metadata section '" + std::string(sectionName) +
+					"' conflicts with engine identity '" + identity + "'.";
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool CollectSharedEnumIdentities(
+		const YAML::Node& engineMetadata,
+		const YAML::Node& workspaceMetadata,
+		const std::unordered_set<std::string>& engineEnums,
+		std::unordered_set<std::string>& outSharedEnums,
+		std::string& outError)
+	{
+		for (const YAML::Node& workspaceEnum : workspaceMetadata["enums"])
+		{
+			const std::string identity = workspaceEnum.begin()->first.as<std::string>();
+			if (!engineEnums.contains(identity))
+			{
+				continue;
+			}
+
+			YAML::Node engineEnum;
+			for (const YAML::Node& candidate : engineMetadata["enums"])
+			{
+				if (candidate[identity])
+				{
+					engineEnum = candidate;
+					break;
+				}
+			}
+
+			const YAML::Node engineValues = engineEnum[identity];
+			const YAML::Node workspaceValues = workspaceEnum[identity];
+			bool bDefinitionsMatch = engineValues.IsSequence() &&
+				workspaceValues.IsSequence() &&
+				engineValues.size() == workspaceValues.size();
+			for (size_t index = 0; bDefinitionsMatch && index < engineValues.size(); ++index)
+			{
+				bDefinitionsMatch = engineValues[index].IsScalar() &&
+					workspaceValues[index].IsScalar() &&
+					engineValues[index].as<std::string>() == workspaceValues[index].as<std::string>();
+			}
+			if (!bDefinitionsMatch)
+			{
+				outError = "Workspace editor enum metadata conflicts with engine identity '" + identity + "'.";
+				return false;
+			}
+
+			outSharedEnums.insert(identity);
+		}
+
+		return true;
+	}
+
+	void SetMetadataError(std::string& outError, const std::string& message) noexcept
+	{
+		try
+		{
+			outError = message;
+		}
+		catch (...)
+		{
+			outError.clear();
+		}
+	}
 }
 
 Sailor::Workspace::WorkspaceModuleManager::~WorkspaceModuleManager() noexcept
@@ -780,17 +1337,25 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 
 		yamlFailureStatus = EWorkspaceModuleLoadStatus::MetadataInvalid;
 		const YAML::Node metadata = YAML::Load(m_metadata);
-		if (!metadata.IsMap() ||
-			!metadata["metadataVersion"] ||
-			metadata["metadataVersion"].as<uint32_t>() != WorkspaceTypeMetadataVersion ||
-			!metadata["moduleName"] ||
-			metadata["moduleName"].as<std::string>() != moduleName ||
-			!metadata["engineTypes"].IsSequence() ||
-			!metadata["cdos"].IsSequence())
+		MetadataIdentities metadataIdentities;
+		std::string metadataError;
+		if (!ValidateMetadataDocument(metadata, true, moduleName, metadataIdentities, metadataError))
 		{
 			return Fail(
 				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace module metadata schema or module identity is invalid.");
+				std::move(metadataError));
+		}
+
+		YAML::Node editorMetadataPreflight;
+		if (!MergeEditorTypeMetadata(
+				Reflection::ExportEngineTypes(),
+				metadata,
+				editorMetadataPreflight,
+				metadataError))
+		{
+			return Fail(
+				EWorkspaceModuleLoadStatus::MetadataInvalid,
+				std::move(metadataError));
 		}
 
 		WorkspaceTypeCollector collector;
@@ -817,7 +1382,6 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 
 		MetadataEntries metadataTypes;
 		MetadataEntries metadataDefaults;
-		std::string metadataError;
 		if (!IndexMetadataEntries(metadata["engineTypes"], "engineTypes", metadataTypes, metadataError) ||
 			!IndexMetadataEntries(metadata["cdos"], "cdos", metadataDefaults, metadataError))
 		{
@@ -949,6 +1513,127 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 			EWorkspaceModuleLoadStatus::RegistrationFailed,
 			"Workspace module activation failed with an unknown error.");
 	}
+}
+
+bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
+	const YAML::Node& engineMetadata,
+	YAML::Node& outMetadata,
+	std::string& outError) const noexcept
+{
+	try
+	{
+		if (!IsRegistered() || m_metadata.empty())
+		{
+			YAML::Node engineOnly = YAML::Clone(engineMetadata);
+			outMetadata = std::move(engineOnly);
+			outError.clear();
+			return true;
+		}
+
+		const YAML::Node workspaceMetadata = YAML::Load(m_metadata);
+		return MergeEditorTypeMetadata(engineMetadata, workspaceMetadata, outMetadata, outError);
+	}
+	catch (const std::exception& e)
+	{
+		SetMetadataError(outError, "Failed to build editor type metadata: " + std::string(e.what()));
+	}
+	catch (...)
+	{
+		SetMetadataError(outError, "Failed to build editor type metadata.");
+	}
+
+	return false;
+}
+
+bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
+	const YAML::Node& engineMetadata,
+	const YAML::Node& workspaceMetadata,
+	YAML::Node& outMetadata,
+	std::string& outError) noexcept
+{
+	try
+	{
+		MetadataIdentities engineIdentities;
+		MetadataIdentities workspaceIdentities;
+		std::unordered_set<std::string> sharedEnums;
+		std::string validationError;
+		if (!ValidateMetadataDocument(engineMetadata, false, {}, engineIdentities, validationError) ||
+			!ValidateMetadataDocument(workspaceMetadata, true, {}, workspaceIdentities, validationError))
+		{
+			outError = std::move(validationError);
+			return false;
+		}
+		if (!CollectSharedEnumIdentities(
+				engineMetadata,
+				workspaceMetadata,
+				engineIdentities.m_enums,
+				sharedEnums,
+				validationError))
+		{
+			outError = std::move(validationError);
+			return false;
+		}
+
+		if (HasMetadataCollision(
+				engineIdentities.m_engineTypes,
+				workspaceIdentities.m_engineTypes,
+				MetadataSections[0],
+				validationError) ||
+			HasMetadataCollision(
+				engineIdentities.m_cdos,
+				workspaceIdentities.m_cdos,
+				MetadataSections[1],
+				validationError) ||
+			HasMetadataCollision(
+				engineIdentities.m_assetTypes,
+				workspaceIdentities.m_assetTypes,
+				MetadataSections[3],
+				validationError) ||
+			HasMetadataCollision(
+				engineIdentities.m_assetExtensions,
+				workspaceIdentities.m_assetExtensions,
+				"asset extensions",
+				validationError))
+		{
+			outError = std::move(validationError);
+			return false;
+		}
+
+		YAML::Node mergedMetadata = YAML::Clone(engineMetadata);
+		for (const char* sectionName : MetadataSections)
+		{
+			for (const YAML::Node& entry : workspaceMetadata[sectionName])
+			{
+				if (std::strcmp(sectionName, "enums") == 0 &&
+					sharedEnums.contains(entry.begin()->first.as<std::string>()))
+				{
+					continue;
+				}
+				mergedMetadata[sectionName].push_back(YAML::Clone(entry));
+			}
+		}
+
+		mergedMetadata["metadataVersion"] = workspaceMetadata["metadataVersion"].as<uint32_t>();
+		mergedMetadata["moduleName"] = workspaceMetadata["moduleName"].as<std::string>();
+		if (!ValidateEditorMetadataCrossSchema(mergedMetadata, validationError))
+		{
+			outError = std::move(validationError);
+			return false;
+		}
+		outMetadata = std::move(mergedMetadata);
+		outError.clear();
+		return true;
+	}
+	catch (const std::exception& e)
+	{
+		SetMetadataError(outError, "Failed to merge editor type metadata: " + std::string(e.what()));
+	}
+	catch (...)
+	{
+		SetMetadataError(outError, "Failed to merge editor type metadata.");
+	}
+
+	return false;
 }
 
 bool Sailor::Workspace::WorkspaceModuleManager::Unload() noexcept

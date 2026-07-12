@@ -70,6 +70,14 @@ static class Templates
         return checkBox;
     }
 
+    public static View BoolEditor<TBindingContext>(Expression<Func<TBindingContext, bool>> getter, Action<TBindingContext, bool> setter)
+        where TBindingContext : class
+    {
+        var checkBox = CheckBox(getter, setter);
+        checkBox.CheckedChanged += (sender, args) => CommitInspectorBindingContext(((CheckBox)sender).BindingContext);
+        return checkBox;
+    }
+
     public static Picker EnumPicker<TBinding, TEnum>(Expression<Func<TBinding, TEnum>> getter, Action<TBinding, TEnum> setter)
         where TBinding : class
         where TEnum : struct
@@ -409,6 +417,69 @@ static class Templates
             converter: new FloatValueConverter());
 
         return value;
+    }
+
+    public static View IntEditor<TBindingContext>(Expression<Func<TBindingContext, int>> getter, Action<TBindingContext, int> setter)
+        where TBindingContext : class
+    {
+        var value = CreateInspectorEntry();
+        value.Keyboard = Keyboard.Numeric;
+        value.ReturnType = ReturnType.Done;
+        value.IsTextPredictionEnabled = false;
+        ConfigureCommittingEntry(value);
+
+        value.Bind<Entry, TBindingContext, int, string>(Entry.TextProperty,
+            getter: getter,
+            setter: setter,
+            mode: BindingMode.TwoWay,
+            converter: new IntValueConverter());
+
+        return value;
+    }
+
+    public static View UIntEditor<TBindingContext>(Expression<Func<TBindingContext, uint>> getter, Action<TBindingContext, uint> setter)
+        where TBindingContext : class
+    {
+        var value = CreateInspectorEntry();
+        value.Keyboard = Keyboard.Numeric;
+        value.ReturnType = ReturnType.Done;
+        value.IsTextPredictionEnabled = false;
+        ConfigureCommittingEntry(value);
+
+        value.Bind<Entry, TBindingContext, uint, string>(Entry.TextProperty,
+            getter: getter,
+            setter: setter,
+            mode: BindingMode.TwoWay,
+            converter: new UIntValueConverter());
+
+        return value;
+    }
+
+    public static View StringEditor<TBindingContext>(Expression<Func<TBindingContext, string>> getter, Action<TBindingContext, string> setter)
+        where TBindingContext : class
+    {
+        var value = CreateInspectorEntry();
+        value.ReturnType = ReturnType.Done;
+        ConfigureCommittingEntry(value);
+
+        value.Bind<Entry, TBindingContext, string, string>(Entry.TextProperty,
+            getter: getter,
+            setter: setter,
+            mode: BindingMode.TwoWay,
+            converter: (IValueConverter)null);
+
+        return value;
+    }
+
+    static void ConfigureCommittingEntry(Entry entry)
+    {
+        entry.Completed += (sender, args) =>
+        {
+            var current = (Entry)sender;
+            CommitInspectorBindingContext(current.BindingContext);
+            current.Unfocus();
+        };
+        entry.Unfocused += (sender, args) => CommitInspectorBindingContext(((Entry)sender).BindingContext);
     }
 
     public static View UniformEditor<TBindingContext, T>(

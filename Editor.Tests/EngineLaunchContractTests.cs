@@ -7,14 +7,16 @@ public class EngineLaunchContractTests
     {
         var fallbackRoot = Path.Combine(Path.GetTempPath(), "Sailor");
         var workspaceRoot = Path.Combine(Path.GetTempPath(), "Sailor Workspaces", "Sandbox");
+        var manifestPath = Path.Combine(workspaceRoot, "Sandbox Project.sailor");
 
-        var context = EngineLaunchContract.Resolve(workspaceRoot, fallbackRoot);
+        var context = EngineLaunchContract.Resolve(workspaceRoot, manifestPath, fallbackRoot);
 
         Assert.Equal(Path.GetFullPath(workspaceRoot), context.WorkspaceRoot);
+        Assert.Equal(Path.GetFullPath(manifestPath), context.WorkspaceManifestPath);
         Assert.Equal(Path.Combine(workspaceRoot, "Content"), context.ContentDirectory);
         Assert.Equal(Path.Combine(workspaceRoot, "Cache"), context.CacheDirectory);
         Assert.Equal(Path.Combine(workspaceRoot, "Cache", "Temp.world"), context.TempWorldFilePath);
-        Assert.Equal(Path.Combine(workspaceRoot, "Cache", "EngineTypes.yaml"), context.EngineTypesCacheFilePath);
+        Assert.Equal(Path.Combine(workspaceRoot, "Cache", "EditorTypes.yaml"), context.EditorTypesCacheFilePath);
     }
 
     [Theory]
@@ -34,12 +36,22 @@ public class EngineLaunchContractTests
     public void BuildArguments_PreservesPathsWithSpacesAsSingleTokens()
     {
         var workspaceRoot = Path.Combine(Path.GetTempPath(), "Sailor Workspaces", "Sandbox");
-        var context = EngineLaunchContract.Resolve(workspaceRoot, Path.GetTempPath());
+        var manifestPath = Path.Combine(workspaceRoot, "Sandbox Project.sailor");
+        var context = EngineLaunchContract.Resolve(workspaceRoot, manifestPath, Path.GetTempPath());
 
         var arguments = context.BuildArguments("../Cache/Temp world.world", ["--noconsole", "--editor"]);
 
         Assert.Equal(
-            ["--workspace", Path.GetFullPath(workspaceRoot), "--world", "../Cache/Temp world.world", "--noconsole", "--editor"],
+            [
+                "--workspace",
+                Path.GetFullPath(workspaceRoot),
+                "--workspace-manifest",
+                Path.GetFullPath(manifestPath),
+                "--world",
+                "../Cache/Temp world.world",
+                "--noconsole",
+                "--editor"
+            ],
             arguments);
     }
 
@@ -55,5 +67,17 @@ public class EngineLaunchContractTests
         Assert.Equal("--world", arguments[3]);
         Assert.Equal("Editor.world", arguments[4]);
         Assert.DoesNotContain("--world Editor.world", arguments);
+    }
+
+    [Fact]
+    public void Resolve_DoesNotAttachManifestWithoutActiveWorkspace()
+    {
+        var fallbackRoot = Path.Combine(Path.GetTempPath(), "Sailor");
+        var ignoredManifest = Path.Combine(Path.GetTempPath(), "Ignored.sailor");
+
+        var context = EngineLaunchContract.Resolve(null, ignoredManifest, fallbackRoot);
+
+        Assert.Null(context.WorkspaceManifestPath);
+        Assert.DoesNotContain("--workspace-manifest", context.BuildArguments("Editor.world"));
     }
 }

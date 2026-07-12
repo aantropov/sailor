@@ -161,6 +161,7 @@ namespace SailorEngine
         public string Name { get; set; }
         public string Base { get; set; }
         public Dictionary<string, PropertyBase> Properties { get; set; } = [];
+        public HashSet<string> ReadOnlyProperties { get; set; } = [];
     };
 
     public class AssetType
@@ -200,6 +201,10 @@ namespace SailorEngine
             return engineType switch
             {
                 "f" => "float",
+                "j" => "uint32",
+                "unsigned int" => "uint32",
+                "unsigned __int32" => "uint32",
+                "uint32_t" => "uint32",
                 "N3glm3quaIfLNS_9qualifierE0EEE" => "struct glm::qua<float,0>",
                 "N3glm3vecILi2EfLNS_9qualifierE0EEE" => "struct glm::vec<2,float,0>",
                 "N3glm3vecILi3EfLNS_9qualifierE0EEE" => "struct glm::vec<3,float,0>",
@@ -230,148 +235,208 @@ namespace SailorEngine
 
         public static EngineTypes FromYaml(string yamlContent)
         {
-            var deserializer = SerializationUtils.CreateDeserializerBuilder().Build();
-
+            var snapshot = EditorTypeCatalogSnapshot.Parse(yamlContent);
+            var rootNode = snapshot.Document;
             var res = new EngineTypes();
+
+            var cdoByType = new Dictionary<string, EngineTypeMetadataDefaults>();
+            foreach (var cdo in rootNode.Cdos)
+            {
+                cdoByType.Add(cdo.Typename, cdo);
+            }
+
+            foreach (var enumNode in rootNode.Enums)
+            {
+                foreach (var enumEntry in enumNode)
+                {
+                    res.Enums.Add(enumEntry.Key, enumEntry.Value);
+                }
+            }
+
+            foreach (var assetTypeNode in rootNode.AssetTypes)
+            {
+                var assetType = new AssetType
+                {
+                    Name = assetTypeNode.Typename,
+                    Extensions = assetTypeNode.Extensions
+                };
+
+                foreach (var property in EnumerateAssetTypeProperties(assetTypeNode.Properties))
+                {
+                    var propertyType = property.Type;
+                    assetType.Properties[property.Name] = CreateAssetProperty(propertyType);
+                }
+
+                res.AssetTypes.Add(assetType.Name, assetType);
+                foreach (var extension in assetType.Extensions)
+                {
+                    res.AssetTypesByExtension.Add(extension.Trim().TrimStart('.').ToLowerInvariant(), assetType);
+                }
+            }
+
+            // Pass 1: register all reflected types first.
+            foreach (var component in rootNode.EngineTypes)
+            {
+                res.Components.Add(component.Typename, new ComponentType
+                {
+                    Name = component.Typename,
+                    Base = component.Base
+                });
+            }
+
+            // Pass 2: resolve properties/defaults after all types are known.
+            foreach (var component in rootNode.EngineTypes)
+            {
+                var newComponent = res.Components[component.Typename];
+
+                cdoByType.TryGetValue(component.Typename, out var cdoNode);
+
+                foreach (var property in component.Properties)
+                {
+                    string propertyType = NormalizePropertyType(property.Value);
+                    string genericType = GetGenericTypeName(property.Value);
+
+                    Quat defaultQuat = default;
+                    object defaultValue = null;
+                    cdoNode?.DefaultValues?.TryGetValue(property.Key, out defaultValue);
+                    if (defaultValue is Quat q)
+                    {
+                        defaultQuat = q;
+                    }
+                    else if (defaultValue is Rotation r)
+                    {
+                        defaultQuat = r.Quat;
+                    }
+                    else if (defaultValue is not null &&
+                        propertyType == "struct glm::qua<float,0>")
+                    {
+                        var values = EditorTypeMetadataValueCodec.ParseFloatSequence(
+                            defaultValue,
+                            4,
+                            $"{component.Typename}.{property.Key}");
+                        defaultQuat = new Quat(values[0], values[1], values[2], values[3]);
+                    }
+
+                    PropertyBase newProperty = CreateCommonProperty(propertyType) ?? propertyType switch
+                    {
+                        "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
+                        "struct glm::vec<2,float,0>" => new Vec2Property(),
+                        "struct glm::vec<3,float,0>" => new Vec3Property(),
+                        "struct glm::vec<4,float,0>" => new Vec4Property(),
+                        var value when value.Contains("TObjectPtr") => new ObjectPtrProperty()
+                        {
+                            GenericTypename = genericType,
+                            GenericType = GetEditorType(genericType)
+                        },
+                        var value when value.Contains("InstanceId") => new InstanceIdProperty(),
+                        "FileId" => new FileIdProperty(),
+                        "List<FileId>" => new Property<List<FileId>>(),
+                        var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
+                        var value when res.Enums.ContainsKey(value) => new EnumProperty() { Typename = value },
+                        _ => throw new InvalidDataException(
+                            $"Unsupported reflected property type '{property.Value}' for '{component.Typename}.{property.Key}'.")
+                    };
+
+                    ApplyScalarDefault(newProperty, defaultValue, component.Typename, property.Key);
+                    newComponent.Properties.Add(property.Key, newProperty);
+                }
+
+                newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
+                newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+
+                foreach (var property in component.ReadOnlyProperties)
+                {
+                    if (!newComponent.Properties.ContainsKey(property))
+                        newComponent.ReadOnlyProperties.Add(property);
+                }
+
+                if (cdoNode is not null)
+                {
+                    foreach (var property in cdoNode.DefaultValues.Keys)
+                    {
+                        if (!newComponent.Properties.ContainsKey(property) &&
+                            snapshot.IsKnownReadOnlyProperty(component.Typename, property))
+                        {
+                            newComponent.ReadOnlyProperties.Add(property);
+                        }
+                    }
+                }
+            }
+
+            return res;
+        }
+
+        static void ApplyScalarDefault(
+            PropertyBase property,
+            object defaultValue,
+            string componentTypeName,
+            string propertyName)
+        {
+            if (defaultValue is null)
+                return;
 
             try
             {
-                var rootNode = deserializer.Deserialize<EngineTypeMetadataContract>(yamlContent);
-                if (rootNode?.EngineTypes == null)
-                    return res;
-
-                var cdoByType = new Dictionary<string, EngineTypeMetadataDefaults>();
-                foreach (var cdo in rootNode.Cdos ?? new List<EngineTypeMetadataDefaults>())
+                switch (property)
                 {
-                    if (string.IsNullOrEmpty(cdo?.Typename))
-                        continue;
-
-                    // Keep first occurrence; avoid hard failure on duplicates.
-                    if (!cdoByType.ContainsKey(cdo.Typename))
-                        cdoByType[cdo.Typename] = cdo;
-                }
-
-                foreach (var enumNode in rootNode.Enums ?? Enumerable.Empty<Dictionary<string, List<string>>>())
-                {
-                    foreach (var enumEntry in enumNode)
-                    {
-                        res.Enums[enumEntry.Key] = enumEntry.Value;
-                    }
-                }
-
-                foreach (var assetTypeNode in rootNode.AssetTypes ?? Enumerable.Empty<EngineTypeMetadataAssetType>())
-                {
-                    if (string.IsNullOrEmpty(assetTypeNode.Typename))
-                        continue;
-
-                    var assetType = new AssetType
-                    {
-                        Name = assetTypeNode.Typename,
-                        Extensions = assetTypeNode.Extensions ?? []
-                    };
-
-                    foreach (var property in EnumerateAssetTypeProperties(assetTypeNode.Properties))
-                    {
-                        var propertyType = property.Type;
-                        assetType.Properties[property.Name] = CreateAssetProperty(propertyType);
-                    }
-
-                    res.AssetTypes[assetType.Name] = assetType;
-                    foreach (var extension in assetType.Extensions)
-                    {
-                        res.AssetTypesByExtension[extension.TrimStart('.').ToLowerInvariant()] = assetType;
-                    }
-                }
-
-                // Pass 1: register all component types first.
-                foreach (var component in rootNode.EngineTypes)
-                {
-                    if (string.IsNullOrEmpty(component.Typename))
-                        continue;
-
-                    if (!res.Components.ContainsKey(component.Typename))
-                    {
-                        res.Components[component.Typename] = new ComponentType
-                        {
-                            Name = component.Typename,
-                            Base = component.Base
-                        };
-                    }
-                }
-
-                // Pass 2: resolve properties/defaults after all types are known.
-                foreach (var component in rootNode.EngineTypes)
-                {
-                    if (string.IsNullOrEmpty(component.Typename))
-                        continue;
-
-                    var newComponent = res.Components[component.Typename];
-
-                    if (component.Properties == null)
-                        component.Properties = new();
-
-                    cdoByType.TryGetValue(component.Typename, out var cdoNode);
-
-                    foreach (var property in component.Properties)
-                    {
-                        try
-                        {
-                            string propertyType = NormalizePropertyType(property.Value);
-                            string genericType = GetGenericTypeName(property.Value);
-
-                            Quat defaultQuat = default;
-                            if (cdoNode != null &&
-                                cdoNode.DefaultValues != null &&
-                                cdoNode.DefaultValues.TryGetValue(property.Key, out var defaultQuatObj))
-                            {
-                                if (defaultQuatObj is Quat q)
-                                {
-                                    defaultQuat = q;
-                                }
-                                else if (defaultQuatObj is Rotation r)
-                                {
-                                    defaultQuat = r.Quat;
-                                }
-                            }
-
-                            PropertyBase newProperty = CreateCommonProperty(propertyType) ?? propertyType switch
-                            {
-                                "struct glm::qua<float,0>" => new RotationProperty(defaultQuat),
-                                "struct glm::vec<2,float,0>" => new Vec2Property(),
-                                "struct glm::vec<3,float,0>" => new Vec3Property(),
-                                "struct glm::vec<4,float,0>" => new Vec4Property(),
-                                var value when value.Contains("TObjectPtr") => new ObjectPtrProperty()
-                                {
-                                    GenericTypename = genericType,
-                                    GenericType = GetEditorType(genericType)
-                                },
-                                var value when value.Contains("InstanceId") => new InstanceIdProperty(),
-                                var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
-                                var value when res.Enums.ContainsKey(value) => new EnumProperty() { Typename = value },
-                                _ => null
-                            };
-
-                            if (newProperty != null)
-                            {
-                                newComponent.Properties[property.Key] = newProperty;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"EngineTypes: failed to import property '{property.Key}' for '{component.Typename}': {ex.Message}");
-                        }
-                    }
-
-                    newComponent.Properties["fileId"] = new FileIdProperty() { DefaultValue = FileId.NullFileId };
-                    newComponent.Properties["instanceId"] = new InstanceIdProperty() { DefaultValue = InstanceId.NullInstanceId };
+                    case FloatProperty floatProperty:
+                        floatProperty.DefaultValue = Convert.ToSingle(defaultValue, CultureInfo.InvariantCulture);
+                        break;
+                    case Property<int> intProperty:
+                        intProperty.DefaultValue = Convert.ToInt32(defaultValue, CultureInfo.InvariantCulture);
+                        break;
+                    case Property<uint> uintProperty:
+                        uintProperty.DefaultValue = Convert.ToUInt32(defaultValue, CultureInfo.InvariantCulture);
+                        break;
+                    case Property<bool> boolProperty:
+                        boolProperty.DefaultValue = Convert.ToBoolean(defaultValue, CultureInfo.InvariantCulture);
+                        break;
+                    case EnumProperty enumProperty:
+                        enumProperty.DefaultValue = Convert.ToString(defaultValue, CultureInfo.InvariantCulture) ?? string.Empty;
+                        break;
+                    case Property<string> stringProperty:
+                        stringProperty.DefaultValue = Convert.ToString(defaultValue, CultureInfo.InvariantCulture) ?? string.Empty;
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine(ex.Message);
+                throw new InvalidDataException(
+                    $"Invalid default for reflected property '{componentTypeName}.{propertyName}': {ex.Message}",
+                    ex);
             }
-            return res;
         }
+
+        public bool TryGetComponent(string typeName, out ComponentType componentType)
+            => Components.TryGetValue(typeName, out componentType);
+
+        public bool IsComponentType(string typeName)
+        {
+            const string componentRootTypeName = "Sailor::Component";
+            if (string.IsNullOrWhiteSpace(typeName) ||
+                string.Equals(typeName, componentRootTypeName, StringComparison.Ordinal) ||
+                !Components.TryGetValue(typeName, out var current))
+            {
+                return false;
+            }
+
+            var visited = new HashSet<string>(StringComparer.Ordinal) { typeName };
+            while (!string.IsNullOrWhiteSpace(current.Base))
+            {
+                if (string.Equals(current.Base, componentRootTypeName, StringComparison.Ordinal))
+                    return true;
+                if (!visited.Add(current.Base) || !Components.TryGetValue(current.Base, out current))
+                    return false;
+            }
+
+            return false;
+        }
+
+        public IReadOnlyList<string> GetComponentTypeNames()
+            => Components.Keys
+                .Where(IsComponentType)
+                .OrderBy(typeName => typeName, StringComparer.Ordinal)
+                .ToArray();
 
         static PropertyBase CreateAssetProperty(string propertyType)
         {
@@ -391,6 +456,7 @@ namespace SailorEngine
                 "string" => new Property<string>(),
                 "bool" => new Property<bool>(),
                 "int32" => new Property<int>(),
+                "uint32" => new Property<uint>(),
                 "float" => new FloatProperty(),
                 _ => null
             };
@@ -816,16 +882,17 @@ namespace SailorEditor
 
         public object ReadYaml(IParser parser, Type type)
         {
-            string name = string.Empty;
+            if (parser.Current is not Scalar scalar || string.IsNullOrWhiteSpace(scalar.Value))
+                throw new YamlException("A component typename must be a non-empty scalar.");
 
-            if (parser.Current is Scalar scalar)
-            {
-                name = scalar.Value;
-            }
-
+            var name = scalar.Value;
             parser.MoveNext();
 
-            return MauiProgram.GetService<EngineService>().EngineTypes.Components[name];
+            var catalog = MauiProgram.GetService<EngineService>().EngineTypes;
+            if (!catalog.TryGetComponent(name, out var componentType))
+                throw new YamlException($"Unknown component type '{name}'.");
+
+            return componentType;
         }
 
         public void WriteYaml(IEmitter emitter, object value, Type type)

@@ -98,6 +98,13 @@ extern "C"
 		return Sailor::App::SerializeEngineTypes(yamlNode);
 	}
 
+	SAILOR_API uint32_t SerializeEditorTypes(char** yamlNode)
+	{
+		SAILOR_PROFILE_FUNCTION();
+
+		return Sailor::App::SerializeEditorTypes(yamlNode);
+	}
+
 	SAILOR_API bool LoadEditorWorld(char* strFileId)
 	{
 		SAILOR_PROFILE_FUNCTION();

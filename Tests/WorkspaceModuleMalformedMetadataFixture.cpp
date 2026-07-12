@@ -34,6 +34,10 @@
 #define SAILOR_TEST_FIXTURE_NAMESPACE MissingEmptyPropertySchemaWorkspaceFixture
 #elif SAILOR_TEST_METADATA_MODE == 12
 #define SAILOR_TEST_FIXTURE_NAMESPACE AliasExpansionWorkspaceFixture
+#elif SAILOR_TEST_METADATA_MODE == 13
+#define SAILOR_TEST_FIXTURE_NAMESPACE InvalidReadOnlyPropertiesWorkspaceFixture
+#elif SAILOR_TEST_METADATA_MODE == 14
+#define SAILOR_TEST_FIXTURE_NAMESPACE MissingEnumDefinitionWorkspaceFixture
 #else
 #error Unsupported SAILOR_TEST_METADATA_MODE
 #endif
@@ -163,6 +167,10 @@ namespace
 	constexpr char WorkspaceModuleName[] = "MissingEmptyPropertySchemaFixture";
 #elif SAILOR_TEST_METADATA_MODE == 12
 	constexpr char WorkspaceModuleName[] = "AliasExpansionFixture";
+#elif SAILOR_TEST_METADATA_MODE == 13
+	constexpr char WorkspaceModuleName[] = "InvalidReadOnlyPropertiesFixture";
+#elif SAILOR_TEST_METADATA_MODE == 14
+	constexpr char WorkspaceModuleName[] = "MissingEnumDefinitionFixture";
 #else
 #error Unsupported SAILOR_TEST_METADATA_MODE
 #endif
@@ -197,6 +205,11 @@ namespace
 		metadata["engineTypes"][0].remove("properties");
 #elif SAILOR_TEST_METADATA_MODE == 12
 		// The alias expansion is injected into the serialized payload below.
+#elif SAILOR_TEST_METADATA_MODE == 13
+		metadata["engineTypes"][0]["readOnlyProperties"] = YAML::Node(YAML::NodeType::Map);
+#elif SAILOR_TEST_METADATA_MODE == 14
+		metadata["engineTypes"][0]["properties"]["mode"] =
+			"enum MissingEnumDefinitionWorkspaceFixture::MissingMode";
 #endif
 
 		YAML::Emitter emitter;

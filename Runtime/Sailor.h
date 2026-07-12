@@ -63,6 +63,7 @@ namespace Sailor
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
+		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
 		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);

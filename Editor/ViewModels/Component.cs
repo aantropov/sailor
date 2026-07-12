@@ -91,6 +91,9 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
     [YamlIgnore]
     string? _lastCommittedYaml;
 
+    [YamlIgnore]
+    public Dictionary<string, object?> PreservedReadOnlyProperties { get; } = new(StringComparer.Ordinal);
+
     [ObservableProperty]
     protected string displayName;
 
@@ -113,70 +116,111 @@ public class ComponentYamlConverter : IYamlTypeConverter
             .WithTypeConverter(new ComponentYamlConverter())
             .Build();
 
-        var component = new Component();
+        var serializer = SerializationUtils.CreateSerializerBuilder().Build();
+        var document = deserializer.Deserialize<EditorComponentYamlContract>(parser) ??
+            throw new YamlException("A component YAML document is required.");
+        if (string.IsNullOrWhiteSpace(document.Typename))
+            throw new YamlException("A component typename must be a non-empty scalar.");
 
-        parser.Consume<MappingStart>();
+        var catalog = MauiProgram.GetService<EngineService>().EngineTypes;
+        if (!catalog.TryGetComponent(document.Typename, out var componentType))
+            throw new YamlException($"Unknown component type '{document.Typename}'.");
 
-        while (!parser.TryConsume<MappingEnd>(out var _))
+        var component = new Component { Typename = componentType };
+        foreach (var property in document.OverrideProperties ?? [])
         {
-            var propertyName = parser.Consume<Scalar>().Value;
-
-            switch (propertyName)
+            var propertyAccess = EditorComponentPropertyContract.Classify(
+                property.Key,
+                componentType.Properties,
+                componentType.ReadOnlyProperties);
+            if (propertyAccess == EditorComponentPropertyAccess.ReadOnly)
             {
-                case "typename":
-                    component.Typename = deserializer.Deserialize<ComponentType>(parser);
-                    break;
-                case "overrideProperties":
-                    {
-                        parser.Consume<MappingStart>();
-
-                        while (!parser.TryConsume<MappingEnd>(out var _))
-                        {
-                            if (parser.Current is Scalar scalar)
-                            {
-                                string key = scalar.Value;
-
-                                parser.MoveNext();
-                                if (component.Typename?.Properties == null ||
-                                    !component.Typename.Properties.TryGetValue(key, out var propType))
-                                {
-                                    deserializer.Deserialize<object>(parser);
-                                    continue;
-                                }
-
-                                ObservableObject value = propType switch
-                                {
-                                    RotationProperty => deserializer.Deserialize<Rotation>(parser),
-                                    Vec4Property => deserializer.Deserialize<Vec4>(parser),
-                                    Vec3Property => deserializer.Deserialize<Vec3>(parser),
-                                    Vec2Property => deserializer.Deserialize<Vec2>(parser),
-                                    FileIdProperty => new Observable<FileId>(deserializer.Deserialize<string>(parser)),
-                                    InstanceIdProperty => new Observable<InstanceId>(deserializer.Deserialize<string>(parser)),
-                                    FloatProperty => new Observable<float>(deserializer.Deserialize<float>(parser)),
-                                    ObjectPtrProperty => deserializer.Deserialize<ObjectPtr>(parser),
-                                    EnumProperty => new Observable<string>(deserializer.Deserialize<string>(parser)),
-                                    _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
-                                };
-
-                                if (propType is ObjectPtrProperty && value == null)
-                                {
-                                    value = new ObjectPtr();
-                                }
-
-                                component.OverrideProperties[key] = value;
-                            }
-                        }
-
-                    }
-                    break;
-                default:
-                    deserializer.Deserialize<object>(parser);
-                    break;
+                component.PreservedReadOnlyProperties[property.Key] = property.Value;
+                continue;
             }
+            if (propertyAccess == EditorComponentPropertyAccess.Unknown)
+            {
+                throw new YamlException(
+                    $"Unknown property '{property.Key}' for component type '{componentType.Name}'.");
+            }
+
+            var propType = componentType.Properties[property.Key];
+            var scalar = Convert.ToString(property.Value, CultureInfo.InvariantCulture) ?? string.Empty;
+            ObservableObject value = propType switch
+            {
+                RotationProperty => DeserializeBuffered<Rotation>(property.Value, serializer, deserializer),
+                Vec4Property => DeserializeBuffered<Vec4>(property.Value, serializer, deserializer),
+                Vec3Property => DeserializeBuffered<Vec3>(property.Value, serializer, deserializer),
+                Vec2Property => DeserializeBuffered<Vec2>(property.Value, serializer, deserializer),
+                FileIdProperty => new Observable<FileId>(scalar),
+                InstanceIdProperty => new Observable<InstanceId>(scalar),
+                FloatProperty => new Observable<float>((float)EditorComponentScalarCodec.Parse(
+                    EditorComponentScalarKind.Float,
+                    scalar)),
+                ObjectPtrProperty => property.Value is null
+                    ? new ObjectPtr()
+                    : DeserializeBuffered<ObjectPtr>(property.Value, serializer, deserializer),
+                EnumProperty enumProperty => new Observable<string>(ParseEnumOverride(
+                    catalog,
+                    componentType,
+                    property.Key,
+                    enumProperty,
+                    scalar)),
+                Property<string> => new Observable<string>((string)EditorComponentScalarCodec.Parse(
+                    EditorComponentScalarKind.String,
+                    scalar)),
+                Property<bool> => new Observable<bool>((bool)EditorComponentScalarCodec.Parse(
+                    EditorComponentScalarKind.Boolean,
+                    scalar)),
+                Property<int> => new Observable<int>((int)EditorComponentScalarCodec.Parse(
+                    EditorComponentScalarKind.Int32,
+                    scalar)),
+                Property<uint> => new Observable<uint>((uint)EditorComponentScalarCodec.Parse(
+                    EditorComponentScalarKind.UInt32,
+                    scalar)),
+                _ => throw new InvalidOperationException($"Unexpected property type: {propType.GetType().Name}")
+            };
+
+            component.OverrideProperties[property.Key] = value;
         }
 
         return component;
     }
+
+    static string ParseEnumOverride(
+        EngineTypes catalog,
+        ComponentType componentType,
+        string propertyName,
+        EnumProperty enumProperty,
+        string scalar)
+    {
+        if (!catalog.Enums.TryGetValue(enumProperty.Typename, out var allowedValues))
+        {
+            throw new YamlException(
+                $"Missing enum metadata '{enumProperty.Typename}' for " +
+                $"'{componentType.Name}.{propertyName}'.");
+        }
+
+        var value = (string)EditorComponentScalarCodec.Parse(
+            EditorComponentScalarKind.String,
+            scalar);
+        try
+        {
+            return EditorComponentPropertyContract.ValidateEnumValue(
+                componentType.Name,
+                propertyName,
+                enumProperty.Typename,
+                value,
+                allowedValues);
+        }
+        catch (InvalidDataException ex)
+        {
+            throw new YamlException(ex.Message);
+        }
+    }
+
+    static T DeserializeBuffered<T>(object value, ISerializer serializer, IDeserializer deserializer)
+        => deserializer.Deserialize<T>(serializer.Serialize(value));
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
@@ -188,7 +232,8 @@ public class ComponentYamlConverter : IYamlTypeConverter
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
 
         emitter.Emit(new Scalar(null, "typename"));
-        emitter.Emit(new Scalar(null, component.Typename.Name));
+        emitter.Emit(new Scalar(null, component.Typename?.Name ??
+            throw new InvalidOperationException("Cannot serialize a component without a reflected type.")));
 
         emitter.Emit(new Scalar(null, "overrideProperties"));
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
@@ -230,10 +275,29 @@ public class ComponentYamlConverter : IYamlTypeConverter
                     instanceIdConverter.WriteYaml(emitter, id.Value, typeof(InstanceId));
                     break;
                 case Observable<string> str:
-                    emitter.Emit(new Scalar(null, str.Value));
+                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                        EditorComponentScalarKind.String,
+                        str.Value)));
+                    break;
+                case Observable<bool> boolValue:
+                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                        EditorComponentScalarKind.Boolean,
+                        boolValue.Value)));
+                    break;
+                case Observable<int> intValue:
+                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                        EditorComponentScalarKind.Int32,
+                        intValue.Value)));
+                    break;
+                case Observable<uint> uintValue:
+                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                        EditorComponentScalarKind.UInt32,
+                        uintValue.Value)));
                     break;
                 case Observable<float> floatVal:
-                    emitter.Emit(new Scalar(null, floatVal.Value.ToString()));
+                    emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                        EditorComponentScalarKind.Float,
+                        floatVal.Value)));
                     break;
                 case ObjectPtr objPtr:
                     objPtrConverter.WriteYaml(emitter, objPtr, typeof(ObjectPtr));
@@ -241,6 +305,12 @@ public class ComponentYamlConverter : IYamlTypeConverter
                 default:
                     throw new InvalidOperationException($"Unexpected property type: {kvp.Value.GetType().Name}");
             }
+        }
+
+        foreach (var kvp in component.PreservedReadOnlyProperties)
+        {
+            emitter.Emit(new Scalar(null, kvp.Key));
+            serializer.Serialize(emitter, kvp.Value);
         }
 
         emitter.Emit(new MappingEnd());

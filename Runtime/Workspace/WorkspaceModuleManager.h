@@ -6,6 +6,11 @@
 #include <filesystem>
 #include <string>
 
+namespace YAML
+{
+	class Node;
+}
+
 namespace Sailor::Workspace
 {
 	enum class EWorkspaceModuleState : uint32_t
@@ -73,6 +78,16 @@ namespace Sailor::Workspace
 			const std::filesystem::path& manifestPath,
 			std::string buildConfig) noexcept;
 		bool Unload() noexcept;
+		bool BuildEditorTypeMetadata(
+			const YAML::Node& engineMetadata,
+			YAML::Node& outMetadata,
+			std::string& outError) const noexcept;
+
+		static bool MergeEditorTypeMetadata(
+			const YAML::Node& engineMetadata,
+			const YAML::Node& workspaceMetadata,
+			YAML::Node& outMetadata,
+			std::string& outError) noexcept;
 
 		EWorkspaceModuleState GetState() const noexcept { return m_state; }
 		const WorkspaceModuleLoadResult& GetResult() const noexcept { return m_result; }

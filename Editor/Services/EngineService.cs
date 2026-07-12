@@ -48,7 +48,7 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEngineTypes(nint[] yamlNode);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEditorTypes(nint[] yamlNode);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
@@ -137,6 +137,7 @@ namespace SailorEditor.Services
         readonly object interopLock = new();
         readonly object runLock = new();
         readonly RingBufferedBatcher<string> consoleMessages = new(MaxBufferedConsoleMessages);
+        EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
         bool isRunning = false;
         const int MaxBufferedConsoleMessages = 1000;
@@ -166,10 +167,16 @@ namespace SailorEditor.Services
 
         public string EngineWorkingDirectory => repoRoot + Path.DirectorySeparatorChar;
 
-        public string EngineTypesCacheFilePath => GetLaunchContext().EngineTypesCacheFilePath;
+        public string EditorTypesCacheFilePath => GetLaunchContext().EditorTypesCacheFilePath;
 
         public EngineLaunchContext GetLaunchContext()
-            => EngineLaunchContract.Resolve(workspaceLifecycle.Current?.WorkspaceRoot, EngineWorkingDirectory);
+        {
+            var workspace = workspaceLifecycle.Current;
+            return EngineLaunchContract.Resolve(
+                workspace?.WorkspaceRoot,
+                workspace?.ManifestPath,
+                EngineWorkingDirectory);
+        }
 
         public string PathToEngineExecDebug
         {
@@ -200,7 +207,7 @@ namespace SailorEditor.Services
         public event Action<string[]> OnPullMessagesAction = delegate { };
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };
 
-        public EngineTypes EngineTypes { get; private set; } = new();
+        public EngineTypes EngineTypes => Volatile.Read(ref editorTypes);
 
         public string[] GetRecentConsoleMessages() => consoleMessages.Snapshot();
 
@@ -486,7 +493,7 @@ namespace SailorEditor.Services
 
             try
             {
-                TryLoadEngineTypesFromFile("startup cache", launchContext.EngineTypesCacheFilePath);
+                TryLoadEditorTypesFromFile("startup cache", launchContext.EditorTypesCacheFilePath);
 
                 //ProcessStartInfo startInfo = new ProcessStartInfo
                 //{
@@ -520,16 +527,16 @@ namespace SailorEditor.Services
 #endif
 
                     // Required startup order:
-                    // 1) engine types, 2) world, 3) initial messages
-                    string serializedEngineTypes = SerializeEngineTypes();
-                    if (!string.IsNullOrEmpty(serializedEngineTypes))
+                    // 1) combined editor catalog, 2) world, 3) initial messages
+                    string serializedEditorTypes = SerializeEditorTypes();
+                    if (TryReplaceEditorTypes(serializedEditorTypes, out var catalogError))
                     {
-                        SaveEngineTypesToFile(serializedEngineTypes, launchContext.EngineTypesCacheFilePath);
-                        EngineTypes = EngineTypes.FromYaml(serializedEngineTypes);
+                        SaveEditorTypesToFile(serializedEditorTypes, launchContext.EditorTypesCacheFilePath);
                     }
                     else
                     {
-                        TryLoadEngineTypesFromFile("empty interop export", launchContext.EngineTypesCacheFilePath);
+                        Console.WriteLine($"Cannot replace editor type catalog from interop: {catalogError}");
+                        TryLoadEditorTypesFromFile("invalid interop export", launchContext.EditorTypesCacheFilePath);
                     }
 
                     string serializedWorld = SerializeWorld();
@@ -588,7 +595,7 @@ namespace SailorEditor.Services
                     catch (Exception ex)
                     {
                         Console.WriteLine($"SailorEngine task failed: {ex.Message}");
-                        TryLoadEngineTypesFromFile("engine startup failed", launchContext.EngineTypesCacheFilePath);
+                        TryLoadEditorTypesFromFile("engine startup failed", launchContext.EditorTypesCacheFilePath);
                     }
                     finally
                     {
@@ -690,13 +697,13 @@ namespace SailorEditor.Services
             }
         }
 
-        string SerializeEngineTypes()
+        string SerializeEditorTypes()
         {
             nint[] yamlNodeChar = new nint[1];
             uint numChars;
             lock (interopLock)
             {
-                numChars = EngineAppInterop.SerializeEngineTypes(yamlNodeChar);
+                numChars = EngineAppInterop.SerializeEditorTypes(yamlNodeChar);
             }
 
             if (numChars == 0)
@@ -712,7 +719,7 @@ namespace SailorEditor.Services
             }
         }
 
-        bool TryLoadEngineTypesFromFile(string reason, string cacheFilePath)
+        bool TryLoadEditorTypesFromFile(string reason, string cacheFilePath)
         {
             try
             {
@@ -727,24 +734,45 @@ namespace SailorEditor.Services
                     return false;
                 }
 
-                var engineTypes = EngineTypes.FromYaml(yaml);
-                if (engineTypes.Components.Count == 0 && engineTypes.Enums.Count == 0)
+                if (!TryReplaceEditorTypes(yaml, out var error))
                 {
+                    Console.WriteLine($"Cannot load editor type catalog cache ({reason}): {error}");
                     return false;
                 }
 
-                EngineTypes = engineTypes;
-                Console.WriteLine($"Loaded engine types from cache ({reason}): {cacheFilePath}");
+                Console.WriteLine($"Loaded editor type catalog from cache ({reason}): {cacheFilePath}");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Cannot load engine types cache ({reason}): {ex.Message}");
+                Console.WriteLine($"Cannot load editor type catalog cache ({reason}): {ex.Message}");
                 return false;
             }
         }
 
-        void SaveEngineTypesToFile(string yaml, string cacheFilePath)
+        bool TryReplaceEditorTypes(string yaml, out string error)
+        {
+            try
+            {
+                var catalog = EngineTypes.FromYaml(yaml);
+                if (catalog.Components.Count == 0 && catalog.Enums.Count == 0 && catalog.AssetTypes.Count == 0)
+                {
+                    error = "The catalog does not contain any reflected or asset types.";
+                    return false;
+                }
+
+                Volatile.Write(ref editorTypes, catalog);
+                error = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        void SaveEditorTypesToFile(string yaml, string cacheFilePath)
         {
             if (string.IsNullOrWhiteSpace(yaml))
             {
@@ -759,11 +787,21 @@ namespace SailorEditor.Services
                     Directory.CreateDirectory(directory);
                 }
 
-                File.WriteAllText(cacheFilePath, yaml);
+                var temporaryPath = $"{cacheFilePath}.{Guid.NewGuid():N}.tmp";
+                try
+                {
+                    File.WriteAllText(temporaryPath, yaml);
+                    File.Move(temporaryPath, cacheFilePath, true);
+                }
+                finally
+                {
+                    if (File.Exists(temporaryPath))
+                        File.Delete(temporaryPath);
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Cannot save engine types cache: {ex.Message}");
+                Console.WriteLine($"Cannot save editor type catalog cache: {ex.Message}");
             }
         }
 
