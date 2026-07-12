@@ -801,6 +801,7 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
 		{
 			SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+			(void)assetInfo;
 
 			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
 

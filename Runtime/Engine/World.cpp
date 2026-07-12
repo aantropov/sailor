@@ -240,7 +240,7 @@ void World::ResolveExternalDependencies()
 	for (uint32_t i = 0; i < ComponentsToResolveDependencies.Num(); i++)
 	{
 		auto& el = ComponentsToResolveDependencies[i];
-		if (const bool bResolved = el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		if (el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
 		{
 			ComponentsToResolveDependencies.RemoveAt(i);
 			i--;

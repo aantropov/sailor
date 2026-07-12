@@ -556,7 +556,7 @@ namespace Sailor
 		{
 			for (size_t i = 0; i < m_arrayNum; i++)
 			{
-				if (const bool bShouldDelete = m_pRawPtr[i] == item)
+				if (m_pRawPtr[i] == item)
 				{
 					DestructElements(i, 1);
 

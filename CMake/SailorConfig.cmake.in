@@ -1,0 +1,51 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(yaml-cpp CONFIG)
+find_dependency(nlohmann_json CONFIG)
+find_dependency(magic_enum CONFIG)
+find_dependency(imgui CONFIG)
+find_dependency(glm CONFIG)
+find_dependency(TBB CONFIG)
+find_dependency(unofficial-spirv-reflect CONFIG)
+find_dependency(Stb)
+
+if("@SAILOR_PACKAGE_NEEDS_TRACY@" STREQUAL "ON")
+	find_dependency(tracy CONFIG)
+endif()
+
+if("@SAILOR_PACKAGE_NEEDS_VULKAN_TARGETS@" STREQUAL "ON")
+	find_dependency(Vulkan 1.3)
+endif()
+
+find_path(Sailor_REFL_CPP_INCLUDE_DIR NAMES refl.hpp)
+if(NOT Sailor_REFL_CPP_INCLUDE_DIR)
+	set(Sailor_FOUND FALSE)
+	set(Sailor_NOT_FOUND_MESSAGE "Sailor requires the refl-cpp headers (refl.hpp).")
+	return()
+endif()
+
+set(Sailor_PUBLIC_DEPENDENCY_INCLUDE_DIRS
+	"${Sailor_REFL_CPP_INCLUDE_DIR}"
+	"${Stb_INCLUDE_DIR}")
+
+if("@SAILOR_PACKAGE_USES_VULKAN@" STREQUAL "ON")
+	set(Sailor_VULKAN_INCLUDE_DIRS "${Vulkan_INCLUDE_DIRS}")
+	if(NOT Sailor_VULKAN_INCLUDE_DIRS)
+		find_path(Sailor_VULKAN_INCLUDE_DIRS NAMES vulkan/vulkan.h)
+	endif()
+	if(NOT Sailor_VULKAN_INCLUDE_DIRS)
+		set(Sailor_FOUND FALSE)
+		set(Sailor_NOT_FOUND_MESSAGE "Sailor was built with Vulkan support, but Vulkan headers were not found.")
+		return()
+	endif()
+	list(APPEND Sailor_PUBLIC_DEPENDENCY_INCLUDE_DIRS "${Sailor_VULKAN_INCLUDE_DIRS}")
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/SailorTargets.cmake")
+
+set_property(TARGET Sailor::Runtime APPEND PROPERTY
+	INTERFACE_INCLUDE_DIRECTORIES "${Sailor_PUBLIC_DEPENDENCY_INCLUDE_DIRS}")
+
+check_required_components(Sailor)

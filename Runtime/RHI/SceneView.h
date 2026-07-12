@@ -145,7 +145,7 @@ namespace Sailor::RHI
 namespace std
 {
 	template<>
-	struct std::hash<Sailor::RHI::RHISceneViewProxy>
+	struct hash<Sailor::RHI::RHISceneViewProxy>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::RHI::RHISceneViewProxy& p) const
 		{
@@ -155,7 +155,7 @@ namespace std
 	};
 
 	template<>
-	struct std::hash<Sailor::RHI::RHIMeshProxy>
+	struct hash<Sailor::RHI::RHIMeshProxy>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::RHI::RHIMeshProxy& p) const
 		{

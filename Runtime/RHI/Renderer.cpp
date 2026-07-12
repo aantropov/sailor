@@ -116,7 +116,7 @@ Renderer::~Renderer()
 {
 	if (m_bIsInitialized && m_driverInstance)
 	{
-		if (auto scheduler = App::GetSubmodule<Tasks::Scheduler>())
+		if (App::GetSubmodule<Tasks::Scheduler>())
 		{
 			Renderer::GetDriver()->WaitIdle();
 		}

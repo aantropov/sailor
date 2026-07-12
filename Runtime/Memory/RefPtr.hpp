@@ -241,7 +241,7 @@ namespace Sailor
 namespace std
 {
 	template<>
-	struct std::hash<Sailor::TRefPtrBase>
+	struct hash<Sailor::TRefPtrBase>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TRefPtrBase& p) const
 		{
@@ -250,7 +250,7 @@ namespace std
 	};
 
 	template<typename T>
-	struct std::hash<Sailor::TRefPtr<T>>
+	struct hash<Sailor::TRefPtr<T>>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TRefPtr<T>& p) const
 		{

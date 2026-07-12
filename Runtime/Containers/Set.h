@@ -441,7 +441,7 @@ namespace Sailor
 namespace std
 {
 	template<typename TKeyType, typename TValueType>
-	struct std::hash<Sailor::TPair<TKeyType, TValueType>>
+	struct hash<Sailor::TPair<TKeyType, TValueType>>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TPair<TKeyType, TValueType>& p) const
 		{

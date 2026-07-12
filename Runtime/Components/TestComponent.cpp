@@ -516,7 +516,6 @@ void TestComponent::Tick(float deltaTime)
 		}
 
 		bool bRendered = false;
-		auto* pPathTracerEcs = GetWorld()->GetECS<PathTracerECS>();
 		Raytracing::PathTracer::Params params{};
 		params.m_output = m_pathTraceOutputPath;
 		params.m_height = m_pathTraceHeight;

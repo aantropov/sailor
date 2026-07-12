@@ -144,7 +144,7 @@ namespace Sailor::Memory
 
 				if (m_layout.Num() > 0)
 				{
-					if (const bool leftMerged = (((m_layout[m_layout.Num() - 1]).m_first + (m_layout[m_layout.Num() - 1]).m_second) == ptr.m_offset))
+					if (((m_layout[m_layout.Num() - 1]).m_first + (m_layout[m_layout.Num() - 1]).m_second) == ptr.m_offset)
 					{
 						(m_layout[m_layout.Num() - 1]).m_second += ptr.m_size + ptr.m_alignmentOffset;
 						ptr.Clear();

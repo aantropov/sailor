@@ -112,14 +112,10 @@ WorldPrefabPtr WorldPrefabImporter::Create()
 	return WorldPrefabPtr::Make(m_allocator, FileId());
 }
 
-void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool)
 {
 	SAILOR_PROFILE_FUNCTION();
 	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-
-	if (WorldPrefabAssetInfoPtr modelAssetInfo = dynamic_cast<WorldPrefabAssetInfoPtr>(assetInfo))
-	{
-	}
 }
 
 void WorldPrefabImporter::OnImportAsset(AssetInfoPtr assetInfo) {}

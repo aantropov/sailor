@@ -6,48 +6,57 @@
 
 namespace Sailor { class InstanceId; }
 
+#if defined(_MSC_VER)
+# pragma warning(push)
+# pragma warning(disable: 4251)
+#endif
+
 namespace Sailor
 {
-	class InstanceId final : public IYamlSerializable
+	class SAILOR_SHARED_API InstanceId final : public IYamlSerializable
 	{
 	public:
 
 		static const InstanceId Invalid;
 
-		SAILOR_API static InstanceId GenerateNewInstanceId();
-		SAILOR_API static InstanceId GenerateNewComponentId(const InstanceId& parentGameObjectId);
+		static InstanceId GenerateNewInstanceId();
+		static InstanceId GenerateNewComponentId(const InstanceId& parentGameObjectId);
 
-		SAILOR_API const std::string& ToString() const;
+		const std::string& ToString() const;
 
-		SAILOR_API InstanceId() = default;
-		SAILOR_API InstanceId(const InstanceId& inInstanceId) = default;
-		SAILOR_API InstanceId(InstanceId&& inInstanceId) = default;
-		SAILOR_API InstanceId(const InstanceId& inComponentId, const InstanceId& inGameObjectId);
+		InstanceId() = default;
+		InstanceId(const InstanceId& inInstanceId) = default;
+		InstanceId(InstanceId&& inInstanceId) = default;
+		InstanceId(const InstanceId& inComponentId, const InstanceId& inGameObjectId);
 
-		SAILOR_API InstanceId& operator=(const InstanceId& inInstanceId) = default;
-		SAILOR_API InstanceId& operator=(InstanceId&& inInstanceId) = default;
+		InstanceId& operator=(const InstanceId& inInstanceId) = default;
+		InstanceId& operator=(InstanceId&& inInstanceId) = default;
 
-		SAILOR_API __forceinline bool operator==(const InstanceId& rhs) const;
-		SAILOR_API __forceinline bool operator!=(const InstanceId& rhs) const { return !(rhs == *this); }
+		__forceinline bool operator==(const InstanceId& rhs) const;
+		__forceinline bool operator!=(const InstanceId& rhs) const { return !(rhs == *this); }
 
-		SAILOR_API explicit operator bool() const { return !m_instanceId.IsEmpty() && m_instanceId != InstanceId::Invalid.m_instanceId; }
+		explicit operator bool() const { return !m_instanceId.IsEmpty() && m_instanceId != InstanceId::Invalid.m_instanceId; }
 
-		SAILOR_API ~InstanceId() = default;
+		~InstanceId() = default;
 
-		SAILOR_API virtual YAML::Node Serialize() const override;
-		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+		virtual YAML::Node Serialize() const override;
+		virtual void Deserialize(const YAML::Node& inData) override;
 
-		SAILOR_API size_t GetHash() const { return m_instanceId.GetHash(); }
+		size_t GetHash() const { return m_instanceId.GetHash(); }
 
-		SAILOR_API bool IsGameObjectId() const;
-		SAILOR_API InstanceId GameObjectId() const;
-		SAILOR_API InstanceId ComponentId() const;
+		bool IsGameObjectId() const;
+		InstanceId GameObjectId() const;
+		InstanceId ComponentId() const;
 
 	protected:
 
 		StringHash m_instanceId = "NullInstanceId"_h;
 	};
 }
+
+#if defined(_MSC_VER)
+# pragma warning(pop)
+#endif
 
 namespace std
 {

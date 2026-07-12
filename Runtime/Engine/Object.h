@@ -9,9 +9,14 @@
 #include "Engine/Types.h"
 #include <typeindex>
 
+#if defined(_MSC_VER)
+# pragma warning(push)
+# pragma warning(disable: 4251)
+#endif
+
 namespace Sailor
 {
-	class Object
+	class SAILOR_SHARED_API Object
 	{
 	public:
 
@@ -19,20 +24,20 @@ namespace Sailor
 
 #ifdef SAILOR_EDITOR
 
-		SAILOR_API virtual Tasks::ITaskPtr OnHotReload();
+		virtual Tasks::ITaskPtr OnHotReload();
 
-		SAILOR_API void TraceHotReload(Tasks::ITaskPtr previousTask);
-		SAILOR_API void AddHotReloadDependentObject(ObjectPtr object);
-		SAILOR_API void RemoveHotReloadDependentObject(ObjectPtr object);
-		SAILOR_API void ClearHotReloadDependentObjects();
+		void TraceHotReload(Tasks::ITaskPtr previousTask);
+		void AddHotReloadDependentObject(ObjectPtr object);
+		void RemoveHotReloadDependentObject(ObjectPtr object);
+		void ClearHotReloadDependentObjects();
 #endif
 
-		SAILOR_API virtual bool IsReady() const { return true; }
+		virtual bool IsReady() const { return true; }
 
-		SAILOR_API Object() = default;
-		SAILOR_API virtual ~Object() = default;
+		Object() = default;
+		virtual ~Object() = default;
 
-		SAILOR_API virtual bool IsValid() const { return true; }
+		virtual bool IsValid() const { return true; }
 
 		Object(const Object&) = delete;
 		Object& operator=(const Object&) = delete;
@@ -41,10 +46,10 @@ namespace Sailor
 		Object& operator=(Object&&) = default;
 
 		// Object could be related to loaded asset, texture, material, etc..
-		SAILOR_API const FileId& GetFileId() const { return m_fileId; }
+		const FileId& GetFileId() const { return m_fileId; }
 
 		// Needs to resolve reflection
-		SAILOR_API const InstanceId& GetInstanceId() const { return m_instanceId; }
+		const InstanceId& GetInstanceId() const { return m_instanceId; }
 
 	protected:
 
@@ -56,3 +61,7 @@ namespace Sailor
 #endif
 	};
 }
+
+#if defined(_MSC_VER)
+# pragma warning(pop)
+#endif

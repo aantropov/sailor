@@ -843,7 +843,7 @@ SAILOR_API RHI::RHICubemapPtr VulkanGraphicsDriver::CreateCubemap(
 	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
 	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 
-	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
+	if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::General;
 		if (RHI::IsDepthFormat(format))
@@ -981,7 +981,7 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 	VkImageLayout layout = (VkImageLayout)RHI::EImageLayout::ShaderReadOnlyOptimal;
 	VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
 
-	if (const bool bIsUsedAsStorage = usage & VK_IMAGE_USAGE_STORAGE_BIT)
+	if (usage & VK_IMAGE_USAGE_STORAGE_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::General;
 
@@ -990,11 +990,11 @@ RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateRenderTarget(
 			tiling = VK_IMAGE_TILING_LINEAR;
 		}
 	}
-	else if (const bool bIsUsedAsColorAttachment = usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
+	else if (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::ColorAttachmentOptimal;
 	}
-	else if (const bool bIsUsedAsDepthAttachment = usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+	else if (usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
 	{
 		layout = (VkImageLayout)RHI::EImageLayout::DepthStencilAttachmentOptimal;
 	}
@@ -1650,7 +1650,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	const size_t p = 16 - size % 16;
 	const size_t paddedSize = size + p;
 
-	if (const bool bIsStorage = bufferType == RHI::EShaderBindingType::StorageBuffer)
+	if (bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
 		allocator = GetGeneralSsboAllocator();
 
@@ -1868,7 +1868,7 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 		// We blindly believe the passed arguments
 		check((sizePushConstantsData > 4) == (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0));
 
-		if (const bool bRequestPushConstants = (sizePushConstantsData > 4) || (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0))
+		if ((sizePushConstantsData > 4) || (computeShader->m_vulkan.m_shader->GetPushConstants().Num() > 0))
 		{
 			check(sizePushConstantsData > 4);
 

@@ -8,7 +8,8 @@ public sealed record WorkspaceCreateRequest(
     string WorkspaceDirectory,
     string EnginePath,
     string? WorkspaceId = null,
-    string? ManifestPath = null);
+    string? ManifestPath = null,
+    string EngineReferenceKind = WorkspaceEngineReferenceKinds.Source);
 
 public sealed record WorkspaceSession(
     string WorkspaceRoot,
@@ -17,7 +18,11 @@ public sealed record WorkspaceSession(
     string ContentDirectory,
     string SourceDirectory,
     string GeneratedProjectDirectory,
-    string CacheDirectory);
+    string CacheDirectory)
+{
+    public string BuildDirectory { get; init; } = string.Empty;
+    public string LogicOutputDirectory { get; init; } = string.Empty;
+}
 
 public sealed record WorkspaceLifecycleResult(
     WorkspaceSession? Session,
@@ -52,10 +57,19 @@ public class WorkspaceTemplateService
     public const string ManifestFileName = "workspace.sailor";
 
     readonly WorkspaceManifestSerializer _serializer;
+    readonly WorkspaceProjectGenerator _projectGenerator;
 
     public WorkspaceTemplateService(WorkspaceManifestSerializer serializer)
+        : this(serializer, new WorkspaceProjectGenerator())
+    {
+    }
+
+    public WorkspaceTemplateService(
+        WorkspaceManifestSerializer serializer,
+        WorkspaceProjectGenerator projectGenerator)
     {
         _serializer = serializer;
+        _projectGenerator = projectGenerator;
     }
 
     public virtual async Task<WorkspaceSession> CreateAsync(WorkspaceCreateRequest request, CancellationToken cancellationToken = default)
@@ -64,26 +78,59 @@ public class WorkspaceTemplateService
         var manifestPath = string.IsNullOrWhiteSpace(request.ManifestPath)
             ? Path.Combine(workspaceRoot, ManifestFileName)
             : Path.GetFullPath(request.ManifestPath);
+        var manifest = WorkspaceManifest.CreateDefault(
+            request.Name,
+            request.EnginePath,
+            request.WorkspaceId,
+            request.EngineReferenceKind);
+        var validation = _serializer.Validate(manifest);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"Workspace manifest is invalid: {string.Join("; ", validation.Issues.Select(x => x.Message))}");
+        }
 
         EnsureInsideWorkspace(workspaceRoot, manifestPath, nameof(WorkspaceCreateRequest.ManifestPath));
         ValidateCleanWorkspaceDirectory(workspaceRoot, manifestPath);
-        Directory.CreateDirectory(workspaceRoot);
-
-        var manifest = WorkspaceManifest.CreateDefault(request.Name, request.EnginePath, request.WorkspaceId);
         var session = CreateSession(workspaceRoot, manifest, manifestPath);
 
         EnsureInsideWorkspace(workspaceRoot, session.ContentDirectory, nameof(WorkspaceManifest.ContentPath));
         EnsureInsideWorkspace(workspaceRoot, session.SourceDirectory, nameof(WorkspaceManifest.SourcePath));
         EnsureInsideWorkspace(workspaceRoot, session.GeneratedProjectDirectory, nameof(WorkspaceManifest.GeneratedProjectPath));
         EnsureInsideWorkspace(workspaceRoot, session.CacheDirectory, nameof(WorkspaceManifest.CachePath));
+        EnsureInsideWorkspace(workspaceRoot, session.BuildDirectory, nameof(WorkspaceManifest.BuildPath));
+        EnsureInsideWorkspace(workspaceRoot, session.LogicOutputDirectory, nameof(WorkspaceManifest.LogicOutputPath));
 
-        Directory.CreateDirectory(session.ContentDirectory);
-        Directory.CreateDirectory(session.SourceDirectory);
-        Directory.CreateDirectory(session.GeneratedProjectDirectory);
-        Directory.CreateDirectory(session.CacheDirectory);
+        var manifestPlaceholderExisted = File.Exists(manifestPath) || Directory.Exists(manifestPath);
+        var manifestPlaceholderContents = File.Exists(manifestPath)
+            ? await File.ReadAllBytesAsync(manifestPath, CancellationToken.None)
+            : null;
+        WorkspaceProjectGenerationResult generatedProject = null;
 
-        await _serializer.SaveAsync(session.ManifestPath, manifest, cancellationToken);
-        return session;
+        try
+        {
+            generatedProject = await _projectGenerator.GenerateAsync(session, cancellationToken);
+            await _serializer.SaveAsync(session.ManifestPath, manifest, cancellationToken);
+            return session;
+        }
+        catch (Exception creationError)
+        {
+            try
+            {
+                RollbackWorkspaceCreation(
+                    workspaceRoot,
+                    manifestPath,
+                    manifestPlaceholderExisted,
+                    manifestPlaceholderContents,
+                    generatedProject);
+            }
+            catch (Exception rollbackError)
+            {
+                throw new AggregateException("Workspace creation failed and could not be rolled back.", creationError, rollbackError);
+            }
+
+            throw;
+        }
     }
 
     public WorkspaceSession CreateSession(string workspaceRoot, WorkspaceManifest manifest, string? manifestPath = null)
@@ -99,7 +146,11 @@ public class WorkspaceTemplateService
             ResolveWorkspacePath(root, manifest.ContentPath),
             ResolveWorkspacePath(root, manifest.SourcePath),
             ResolveWorkspacePath(root, manifest.GeneratedProjectPath),
-            ResolveWorkspacePath(root, manifest.CachePath));
+            ResolveWorkspacePath(root, manifest.CachePath))
+        {
+            BuildDirectory = ResolveWorkspacePath(root, manifest.BuildPath),
+            LogicOutputDirectory = ResolveWorkspacePath(root, manifest.LogicOutputPath)
+        };
     }
 
     static void ValidateCleanWorkspaceDirectory(string workspaceRoot, string allowedManifestPath)
@@ -110,6 +161,30 @@ public class WorkspaceTemplateService
         var allowed = NormalizePath(allowedManifestPath);
         if (Directory.EnumerateFileSystemEntries(workspaceRoot).Any(x => !string.Equals(NormalizePath(x), allowed, PathComparison)))
             throw new InvalidOperationException($"Workspace directory is not empty: {workspaceRoot}");
+    }
+
+    static void RollbackWorkspaceCreation(
+        string workspaceRoot,
+        string manifestPath,
+        bool manifestPlaceholderExisted,
+        byte[] manifestPlaceholderContents,
+        WorkspaceProjectGenerationResult generatedProject)
+    {
+        if (!Directory.Exists(workspaceRoot))
+            return;
+
+        if (!manifestPlaceholderExisted && File.Exists(manifestPath))
+        {
+            File.Delete(manifestPath);
+        }
+        else if (manifestPlaceholderContents is not null &&
+            (!File.Exists(manifestPath) || !File.ReadAllBytes(manifestPath).SequenceEqual(manifestPlaceholderContents)))
+        {
+            File.WriteAllBytes(manifestPath, manifestPlaceholderContents);
+        }
+
+        if (generatedProject is not null)
+            WorkspaceProjectGenerator.Rollback(generatedProject);
     }
 
     static string NormalizePath(string path)

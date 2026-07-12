@@ -208,7 +208,7 @@ namespace Sailor
 namespace std
 {
 	template<typename T>
-	struct std::hash<Sailor::TWeakPtr<T>>
+	struct hash<Sailor::TWeakPtr<T>>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TWeakPtr<T>& p) const
 		{

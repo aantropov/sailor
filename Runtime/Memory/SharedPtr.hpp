@@ -224,7 +224,7 @@ namespace Sailor
 namespace std
 {
 	template<typename T>
-	struct std::hash<Sailor::TSharedPtr<T>>
+	struct hash<Sailor::TSharedPtr<T>>
 	{
 		SAILOR_API std::size_t operator()(const Sailor::TSharedPtr<T>& p) const
 		{
