@@ -164,6 +164,7 @@ set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME 
 set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME MissingEntryFixture)
 if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
+    sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
@@ -249,13 +250,6 @@ add_test(
     COMMAND WorkspaceModuleContractTests
 )
 
-if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
-    set_tests_properties(WorkspaceModuleContractTests PROPERTIES
-        ENVIRONMENT_MODIFICATION
-            "Path=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
-    )
-endif()
-
 add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
@@ -281,6 +275,15 @@ set_tests_properties(
     WorkspaceModuleRuntimeTests
     PROPERTIES TIMEOUT 30
 )
+
+if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    set_tests_properties(
+        WorkspaceModuleContractTests
+        WorkspaceModuleRuntimeTests
+        PROPERTIES ENVIRONMENT_MODIFICATION
+            "Path=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/$<IF:$<CONFIG:Debug>,debug/bin,bin>"
+    )
+endif()
 
 if(WIN32)
     add_test(
