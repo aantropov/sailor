@@ -9,6 +9,7 @@
 #include "Platform/Win32/Window.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
+#include "Workspace/WorkspaceContext.h"
 
 namespace Sailor
 {
@@ -43,6 +44,7 @@ namespace Sailor
 
 		SAILOR_API static App* GetInstance();
 		SAILOR_API static const std::string& GetWorkspace();
+		SAILOR_API static const Workspace::WorkspaceContext& GetWorkspaceContext();
 
 		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
@@ -149,6 +151,7 @@ namespace Sailor
 
 		TUniquePtr<Win32::Window> m_pMainWindow;
 		TUniquePtr<Workspace::WorkspaceModuleManager> m_pWorkspaceModuleManager;
+		Workspace::WorkspaceContext m_workspaceContext;
 		bool m_bSkipMainLoop = false;
 		int32_t m_exitCode = 0;
 		AppArgs m_args{};

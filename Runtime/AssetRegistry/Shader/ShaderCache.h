@@ -16,10 +16,10 @@ namespace Sailor
 	{
 	public:
 
-		static std::string GetShaderCacheFilepath() { return App::GetWorkspace() + "Cache/ShaderCache.yaml"; }
-		static std::string GetPrecompiledShadersFolder() { return App::GetWorkspace() + "Cache/PrecompiledShaders/"; }
-		static std::string GetCompiledShadersFolder() { return App::GetWorkspace() + "Cache/CompiledShaders/"; }
-		static std::string GetCompiledShadersWithDebugFolder() { return App::GetWorkspace() + "Cache/CompiledShadersWithDebug/"; }
+		SAILOR_API static std::string GetShaderCacheFilepath();
+		SAILOR_API static std::string GetPrecompiledShadersFolder();
+		SAILOR_API static std::string GetCompiledShadersFolder();
+		SAILOR_API static std::string GetCompiledShadersWithDebugFolder();
 
 		static constexpr const char* FragmentShaderTag = "FRAGMENT";
 		static constexpr const char* VertexShaderTag = "VERTEX";

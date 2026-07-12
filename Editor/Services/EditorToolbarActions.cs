@@ -77,7 +77,7 @@ namespace SailorEditor.Services
 
                 File.WriteAllText(launchContext.TempWorldFilePath, world);
 
-                engineService.RunWorld("../Cache/Temp.world", debug, launchContext);
+                engineService.RunWorld(launchContext.TempWorldRuntimePath, debug, launchContext);
             });
         }
 

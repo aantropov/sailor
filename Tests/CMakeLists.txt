@@ -98,6 +98,10 @@ add_executable(WorkspaceModuleRuntimeTests
     WorkspaceModuleRuntimeTests.cpp
 )
 
+add_executable(WorkspaceContextTests
+    WorkspaceContextTests.cpp
+)
+
 if(WIN32)
     add_executable(RemoteViewportWindowsTransportTests
         RemoteViewportWindowsTransportTests.cpp
@@ -125,6 +129,7 @@ target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleRuntimeTests PRIVATE cxx_std_20)
+target_compile_features(WorkspaceContextTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
     SAILOR_WORKSPACE_MODULE_EXPORTS
@@ -149,6 +154,7 @@ target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
 )
 target_link_libraries(WorkspaceModuleRuntimeTests PRIVATE Sailor::Runtime)
+target_link_libraries(WorkspaceContextTests PRIVATE Sailor::Runtime)
 add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleFixture
     WorkspaceModuleIncompatibleFixture
@@ -174,6 +180,7 @@ set_target_properties(WorkspaceModuleMissingEntryFixture PROPERTIES OUTPUT_NAME 
 if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
+    sailor_stage_workspace_test_runtime(WorkspaceContextTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
@@ -207,6 +214,9 @@ target_include_directories(WorkspaceModuleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleRuntimeTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceContextTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 if(WIN32)
@@ -260,6 +270,11 @@ add_test(
 )
 
 add_test(
+    NAME WorkspaceContextTests
+    COMMAND WorkspaceContextTests
+)
+
+add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
         $<TARGET_FILE:WorkspaceModuleFixture>
@@ -282,6 +297,7 @@ add_test(
         $<CONFIG>
 )
 set_tests_properties(
+    WorkspaceContextTests
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
     PROPERTIES TIMEOUT 30
@@ -289,6 +305,7 @@ set_tests_properties(
 
 if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
     set_tests_properties(
+        WorkspaceContextTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION

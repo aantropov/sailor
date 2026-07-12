@@ -133,69 +133,36 @@ namespace
 		}
 	}
 
-	bool IsCIdentifier(const std::string& value)
+	bool IsInside(const std::filesystem::path& root, const std::filesystem::path& candidate)
 	{
-		if (value.empty())
+		auto rootPart = root.begin();
+		auto candidatePart = candidate.begin();
+		for (; rootPart != root.end(); ++rootPart, ++candidatePart)
 		{
-			return false;
-		}
-
-		auto isIdentifierStart = [](char character)
-		{
-			return character == '_' ||
-				(character >= 'A' && character <= 'Z') ||
-				(character >= 'a' && character <= 'z');
-		};
-
-		if (!isIdentifierStart(value.front()))
-		{
-			return false;
-		}
-
-		return std::all_of(value.begin() + 1, value.end(), [&](char character)
+			if (candidatePart == candidate.end())
 			{
-				return isIdentifierStart(character) || (character >= '0' && character <= '9');
-			});
-	}
+				return false;
+			}
 
-	bool IsSafeRelativePath(const std::filesystem::path& path)
-	{
-		if (path.empty() || path.is_absolute())
-		{
-			return false;
-		}
-
-		for (const std::filesystem::path& component : path)
-		{
-			if (component == "..")
+			std::string rootValue = rootPart->generic_string();
+			std::string candidateValue = candidatePart->generic_string();
+#if defined(_WIN32)
+			std::transform(rootValue.begin(), rootValue.end(), rootValue.begin(), [](unsigned char character)
+				{
+					return static_cast<char>(std::tolower(character));
+				});
+			std::transform(candidateValue.begin(), candidateValue.end(), candidateValue.begin(), [](unsigned char character)
+				{
+					return static_cast<char>(std::tolower(character));
+				});
+#endif
+			if (rootValue != candidateValue)
 			{
 				return false;
 			}
 		}
 
 		return true;
-	}
-
-	bool IsInside(const std::filesystem::path& root, const std::filesystem::path& candidate)
-	{
-		const std::filesystem::path relative = candidate.lexically_relative(root);
-		if (relative.empty() || relative.is_absolute())
-		{
-			return false;
-		}
-
-		const auto first = relative.begin();
-		return first != relative.end() && *first != "..";
-	}
-
-	bool HasSailorExtension(const std::filesystem::path& path)
-	{
-		std::string extension = path.extension().string();
-		std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
-			{
-				return static_cast<char>(std::tolower(character));
-			});
-		return extension == ".sailor";
 	}
 
 	bool IsBlank(const std::string& value)
@@ -1095,11 +1062,9 @@ Sailor::Workspace::WorkspaceModuleManager::~WorkspaceModuleManager() noexcept
 }
 
 const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::WorkspaceModuleManager::Load(
-	const std::filesystem::path& workspaceRoot,
-	const std::filesystem::path& requestedManifestPath,
+	const WorkspaceContext& context,
 	std::string buildConfig) noexcept
 {
-	EWorkspaceModuleLoadStatus yamlFailureStatus = EWorkspaceModuleLoadStatus::ManifestInvalid;
 	try
 	{
 		if (!Unload())
@@ -1110,120 +1075,25 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 		m_result = {};
 		m_state = EWorkspaceModuleState::NotConfigured;
 		m_result.m_buildConfig = std::move(buildConfig);
+		m_result.m_manifestPath = context.GetManifest();
+		m_result.m_moduleName = context.GetModuleName();
+
+		if (context.IsLegacy())
+		{
+			m_result.m_status = EWorkspaceModuleLoadStatus::NotConfigured;
+			m_result.m_message = "No workspace manifest is active; runtime will use engine-only types.";
+			return m_result;
+		}
 
 		std::error_code pathError;
-		const std::filesystem::path root = std::filesystem::weakly_canonical(
-			std::filesystem::absolute(workspaceRoot, pathError),
-			pathError);
-		if (pathError || root.empty() || !std::filesystem::is_directory(root))
+		const std::filesystem::path root = context.GetRoot();
+		if (root.empty() || !std::filesystem::is_directory(root, pathError) || pathError)
 		{
 			return Fail(
 				EWorkspaceModuleLoadStatus::WorkspaceInvalid,
-				"Workspace module discovery requires an existing workspace directory: '" +
-				workspaceRoot.generic_string() + "'.");
+				"Workspace module activation requires a valid resolved workspace context.");
 		}
-
-		std::filesystem::path manifestPath;
-		if (!requestedManifestPath.empty())
-		{
-			manifestPath = requestedManifestPath.is_absolute()
-				? requestedManifestPath
-				: root / requestedManifestPath;
-			manifestPath = std::filesystem::weakly_canonical(manifestPath, pathError);
-			if (pathError || !std::filesystem::is_regular_file(manifestPath) || !IsInside(root, manifestPath))
-			{
-				m_result.m_manifestPath = manifestPath;
-				return Fail(
-					EWorkspaceModuleLoadStatus::ManifestNotFound,
-					"Workspace manifest was not found inside the workspace: '" +
-					manifestPath.generic_string() + "'.");
-			}
-		}
-		else
-		{
-			const std::filesystem::path defaultManifest = root / "workspace.sailor";
-			if (std::filesystem::is_regular_file(defaultManifest))
-			{
-				manifestPath = defaultManifest;
-			}
-			else
-			{
-				std::vector<std::filesystem::path> manifests;
-				for (std::filesystem::directory_iterator it(root, pathError), end; !pathError && it != end; it.increment(pathError))
-				{
-					if (it->is_regular_file() && HasSailorExtension(it->path()))
-					{
-						manifests.emplace_back(it->path());
-					}
-				}
-
-				if (pathError)
-				{
-					return Fail(
-						EWorkspaceModuleLoadStatus::WorkspaceInvalid,
-						"Failed to enumerate workspace manifests in '" + root.generic_string() +
-						"': " + pathError.message() + ".");
-				}
-
-				std::sort(manifests.begin(), manifests.end());
-				if (manifests.empty())
-				{
-					m_result.m_status = EWorkspaceModuleLoadStatus::NotConfigured;
-					m_result.m_message = "No workspace manifest was found; runtime will use engine-only types.";
-					return m_result;
-				}
-
-				if (manifests.size() != 1)
-				{
-					return Fail(
-						EWorkspaceModuleLoadStatus::ManifestAmbiguous,
-						"Multiple .sailor manifests were found in '" + root.generic_string() +
-						"'. Pass --workspace-manifest with the exact manifest path.");
-				}
-
-				manifestPath = manifests.front();
-			}
-		}
-
-		pathError.clear();
-		manifestPath = std::filesystem::weakly_canonical(manifestPath, pathError);
-		if (pathError || !std::filesystem::is_regular_file(manifestPath) || !IsInside(root, manifestPath))
-		{
-			m_result.m_manifestPath = manifestPath;
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestNotFound,
-				"Workspace manifest was not found inside the workspace: '" +
-				manifestPath.generic_string() + "'.");
-		}
-
-		m_result.m_manifestPath = manifestPath;
-		const YAML::Node manifest = YAML::LoadFile(manifestPath.string());
-		const uint32_t manifestVersion = manifest["manifestVersion"]
-			? manifest["manifestVersion"].as<uint32_t>()
-			: 0;
-		if (manifestVersion != 1)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestInvalid,
-				"Workspace manifest '" + manifestPath.generic_string() +
-				"' has unsupported manifestVersion '" + std::to_string(manifestVersion) + "'.");
-		}
-
-		const std::string logicOutputPath = manifest["logicOutputPath"]
-			? manifest["logicOutputPath"].as<std::string>()
-			: "Binaries";
-		const std::string moduleName = manifest["logicModuleName"]
-			? manifest["logicModuleName"].as<std::string>()
-			: "SailorGame";
-		m_result.m_moduleName = moduleName;
-
-		if (!IsSafeRelativePath(logicOutputPath) || !IsCIdentifier(moduleName))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestInvalid,
-				"Workspace manifest '" + manifestPath.generic_string() +
-				"' contains an unsafe logicOutputPath or logicModuleName.");
-		}
+		const std::string& moduleName = context.GetModuleName();
 
 		if (m_result.m_buildConfig.empty() ||
 			m_result.m_buildConfig == "." ||
@@ -1237,7 +1107,7 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 
 		pathError.clear();
 		const std::filesystem::path modulePath = std::filesystem::weakly_canonical(
-			root / logicOutputPath / m_result.m_buildConfig / GetModuleFilename(moduleName),
+			context.GetLogicOutput() / m_result.m_buildConfig / GetModuleFilename(moduleName),
 			pathError);
 		m_result.m_modulePath = modulePath;
 		if (pathError || !IsInside(root, modulePath))
@@ -1255,8 +1125,20 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 				"' was not found at '" + modulePath.generic_string() + "'. Build the workspace logic project first.");
 		}
 
+		pathError.clear();
+		const std::filesystem::path loadPath = std::filesystem::canonical(modulePath, pathError);
+		if (pathError || !IsInside(root, loadPath) ||
+			!std::filesystem::is_regular_file(loadPath, pathError) || pathError)
+		{
+			return Fail(
+				EWorkspaceModuleLoadStatus::ManifestInvalid,
+				"Workspace module path changed or escaped the workspace before loading: '" +
+					modulePath.generic_string() + "'.");
+		}
+		m_result.m_modulePath = loadPath;
+
 		Reflection::SetEngineAutoRegistrationSuppressed(true);
-		const bool bLibraryOpened = m_library.Open(modulePath);
+		const bool bLibraryOpened = m_library.Open(loadPath);
 		Reflection::SetEngineAutoRegistrationSuppressed(false);
 		if (!bLibraryOpened)
 		{
@@ -1335,7 +1217,6 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 				"Workspace module failed to write its V1 metadata payload.");
 		}
 
-		yamlFailureStatus = EWorkspaceModuleLoadStatus::MetadataInvalid;
 		const YAML::Node metadata = YAML::Load(m_metadata);
 		MetadataIdentities metadataIdentities;
 		std::string metadataError;
@@ -1498,8 +1379,8 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 	catch (const YAML::Exception& e)
 	{
 		return Fail(
-			yamlFailureStatus,
-			"Failed to parse workspace manifest or module metadata: " + std::string(e.what()));
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			"Failed to parse workspace module metadata: " + std::string(e.what()));
 	}
 	catch (const std::exception& e)
 	{

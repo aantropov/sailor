@@ -160,6 +160,13 @@ public sealed class WorkspaceManifestSerializer
         AddRequiredStringIssue(issues, nameof(WorkspaceManifest.LogicOutputPath), manifest.LogicOutputPath);
         AddRequiredStringIssue(issues, nameof(WorkspaceManifest.LogicModuleName), manifest.LogicModuleName);
 
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.ContentPath), manifest.ContentPath);
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.SourcePath), manifest.SourcePath);
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.GeneratedProjectPath), manifest.GeneratedProjectPath);
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.CachePath), manifest.CachePath);
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.BuildPath), manifest.BuildPath);
+        AddWorkspaceOwnedPathIssue(issues, nameof(WorkspaceManifest.LogicOutputPath), manifest.LogicOutputPath);
+
         if (!string.IsNullOrWhiteSpace(manifest.EngineReferenceKind) &&
             !WorkspaceEngineReferenceKinds.IsSupported(manifest.EngineReferenceKind))
         {
@@ -201,6 +208,16 @@ public sealed class WorkspaceManifestSerializer
     {
         if (string.IsNullOrWhiteSpace(value))
             issues.Add(new WorkspaceManifestIssue(field, $"{field} is required."));
+    }
+
+    static void AddWorkspaceOwnedPathIssue(ICollection<WorkspaceManifestIssue> issues, string field, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || WorkspacePathPolicy.IsSafeRelativePath(value))
+            return;
+
+        issues.Add(new WorkspaceManifestIssue(
+            field,
+            $"{field} must be a safe relative path inside the workspace root; rooted, drive-relative, and traversal paths can resolve outside it and are not allowed."));
     }
 
     static bool IsCIdentifier(string value)

@@ -12,7 +12,7 @@ namespace Sailor
 	{
 	public:
 
-		static std::string GetAssetCacheFilepath() { return App::GetWorkspace() + "Cache/AssetCache.yaml"; }
+		SAILOR_API static std::string GetAssetCacheFilepath();
 
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();

@@ -21,8 +21,8 @@ namespace Sailor
 	{
 	public:
 
-		static std::string GetContentFolder() { return App::GetWorkspace() + "Content/"; }
-		static std::string GetCacheFolder() { return App::GetWorkspace() + "Cache/"; }
+		SAILOR_API static std::string GetContentFolder();
+		SAILOR_API static std::string GetCacheFolder();
 
 		static constexpr const char* MetaFileExtension = "asset";
 

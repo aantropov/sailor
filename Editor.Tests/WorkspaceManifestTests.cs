@@ -131,6 +131,62 @@ cachePath: Cache
         Assert.Equal(!expectedValid, validation.Issues.Any(x => x.Field == nameof(WorkspaceManifest.LogicModuleName)));
     }
 
+    public static IEnumerable<object[]> UnsafeWorkspaceOwnedPaths()
+    {
+        var fields = new[]
+        {
+            nameof(WorkspaceManifest.ContentPath),
+            nameof(WorkspaceManifest.SourcePath),
+            nameof(WorkspaceManifest.GeneratedProjectPath),
+            nameof(WorkspaceManifest.CachePath),
+            nameof(WorkspaceManifest.BuildPath),
+            nameof(WorkspaceManifest.LogicOutputPath)
+        };
+        var paths = new[]
+        {
+            "/absolute/path",
+            "C:/absolute/path",
+            "C:drive-relative",
+            "../outside",
+            "safe/../../outside",
+            @"safe\..\outside",
+            "Content\0Invalid"
+        };
+
+        return fields.SelectMany(field => paths.Select(path => new object[] { field, path }));
+    }
+
+    [Theory]
+    [MemberData(nameof(UnsafeWorkspaceOwnedPaths))]
+    public void Validate_RejectsUnsafeWorkspaceOwnedPaths(string field, string path)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+        var manifest = WithWorkspaceOwnedPath(
+            WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id"),
+            field,
+            path);
+
+        var validation = serializer.Validate(manifest);
+
+        Assert.False(validation.IsValid);
+        Assert.Contains(validation.Issues, x => x.Field == field && x.Message.Contains("safe relative path", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("/opt/sailor")]
+    [InlineData("C:/Sailor")]
+    [InlineData("C:Sailor")]
+    [InlineData("../Sailor")]
+    public void Validate_AllowsExternalEnginePath(string enginePath)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", enginePath, "workspace-id");
+
+        var validation = serializer.Validate(manifest);
+
+        Assert.True(validation.IsValid);
+    }
+
     [Fact]
     public async Task SaveAsync_RejectsInvalidManifest()
     {
@@ -235,4 +291,16 @@ cachePath:
     {
         Assert.Equal(expected, WorkspaceManifestPaths.Normalize(input));
     }
+
+    static WorkspaceManifest WithWorkspaceOwnedPath(WorkspaceManifest manifest, string field, string path)
+        => field switch
+        {
+            nameof(WorkspaceManifest.ContentPath) => manifest with { ContentPath = path },
+            nameof(WorkspaceManifest.SourcePath) => manifest with { SourcePath = path },
+            nameof(WorkspaceManifest.GeneratedProjectPath) => manifest with { GeneratedProjectPath = path },
+            nameof(WorkspaceManifest.CachePath) => manifest with { CachePath = path },
+            nameof(WorkspaceManifest.BuildPath) => manifest with { BuildPath = path },
+            nameof(WorkspaceManifest.LogicOutputPath) => manifest with { LogicOutputPath = path },
+            _ => throw new ArgumentOutOfRangeException(nameof(field), field, null)
+        };
 }

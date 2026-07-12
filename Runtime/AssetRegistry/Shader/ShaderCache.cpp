@@ -2,38 +2,80 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include "Containers/Set.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 
 using namespace Sailor;
 
+namespace
+{
+	std::string GetCacheChildPath(const char* child)
+	{
+		return (std::filesystem::path(AssetRegistry::GetCacheFolder()) / child).string();
+	}
+
+	std::filesystem::path GetShaderFilepath(
+		const std::string& folder,
+		const FileId& uid,
+		int32_t permutation,
+		const std::string& shaderKind,
+		const char* extension)
+	{
+		const std::string filename = uid.ToString() + shaderKind +
+			std::to_string(permutation) + "." + extension;
+		return std::filesystem::path(folder) / filename;
+	}
+}
+
+std::string ShaderCache::GetShaderCacheFilepath()
+{
+	return GetCacheChildPath("ShaderCache.yaml");
+}
+
+std::string ShaderCache::GetPrecompiledShadersFolder()
+{
+	return GetCacheChildPath("PrecompiledShaders");
+}
+
+std::string ShaderCache::GetCompiledShadersFolder()
+{
+	return GetCacheChildPath("CompiledShaders");
+}
+
+std::string ShaderCache::GetCompiledShadersWithDebugFolder()
+{
+	return GetCacheChildPath("CompiledShadersWithDebug");
+}
+
 std::filesystem::path ShaderCache::GetPrecompiledShaderFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind)
 {
-	std::string res;
-	std::stringstream stream;
-	stream << uid.ToString() << shaderKind << permutation << "." << PrecompiledShaderFileExtension;
-	stream >> res;
-	return res;
+	return GetShaderFilepath(
+		GetPrecompiledShadersFolder(),
+		uid,
+		permutation,
+		shaderKind,
+		PrecompiledShaderFileExtension);
 }
 
 std::filesystem::path ShaderCache::GetCachedShaderFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind)
 {
-	std::string res;
-	std::stringstream stream;
-	stream << GetCompiledShadersFolder() << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
-	stream >> res;
-	return res;
+	return GetShaderFilepath(
+		GetCompiledShadersFolder(),
+		uid,
+		permutation,
+		shaderKind,
+		CompiledShaderFileExtension);
 }
 
 std::filesystem::path ShaderCache::GetCachedShaderWithDebugFilepath(const FileId& uid, int32_t permutation, const std::string& shaderKind)
 {
-	std::string res;
-	std::stringstream stream;
-	stream << GetCompiledShadersWithDebugFolder() << uid.ToString() << shaderKind << permutation << "." << CompiledShaderFileExtension;
-	stream >> res;
-	return res;
+	return GetShaderFilepath(
+		GetCompiledShadersWithDebugFolder(),
+		uid,
+		permutation,
+		shaderKind,
+		CompiledShaderFileExtension);
 }
 
 YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
@@ -71,10 +113,10 @@ void ShaderCache::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::filesystem::create_directory(AssetRegistry::GetCacheFolder());
-	std::filesystem::create_directory(GetCompiledShadersFolder());
-	std::filesystem::create_directory(GetPrecompiledShadersFolder());
-	std::filesystem::create_directory(GetCompiledShadersWithDebugFolder());
+	std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
+	std::filesystem::create_directories(GetCompiledShadersFolder());
+	std::filesystem::create_directories(GetPrecompiledShadersFolder());
+	std::filesystem::create_directories(GetCompiledShadersWithDebugFolder());
 
 	auto shaderCacheFilePath = std::filesystem::path(GetShaderCacheFilepath());
 	if (!std::filesystem::exists(GetShaderCacheFilepath()))
@@ -130,7 +172,7 @@ void ShaderCache::ClearAll()
 	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
 
 	std::filesystem::remove_all(GetPrecompiledShadersFolder());
-	std::filesystem::remove_all(CompiledShaderFileExtension);
+	std::filesystem::remove_all(GetCompiledShadersFolder());
 	std::filesystem::remove_all(GetCompiledShadersWithDebugFolder());
 	std::filesystem::remove(GetShaderCacheFilepath());
 }

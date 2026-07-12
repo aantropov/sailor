@@ -2,11 +2,14 @@
 
 namespace SailorEditor.Services;
 
-public sealed record EngineLaunchContext(string WorkspaceRoot, string? WorkspaceManifestPath)
+public sealed record EngineLaunchContext(
+    string WorkspaceRoot,
+    string? WorkspaceManifestPath,
+    string ContentDirectory,
+    string CacheDirectory)
 {
-    public string ContentDirectory => Path.Combine(WorkspaceRoot, "Content");
-    public string CacheDirectory => Path.Combine(WorkspaceRoot, "Cache");
     public string TempWorldFilePath => Path.Combine(CacheDirectory, "Temp.world");
+    public string TempWorldRuntimePath => Path.GetRelativePath(ContentDirectory, TempWorldFilePath);
     public string EditorTypesCacheFilePath => Path.Combine(CacheDirectory, "EditorTypes.yaml");
 
     public IReadOnlyList<string> BuildArguments(string world, IEnumerable<string>? extraArguments = null)
@@ -43,24 +46,36 @@ public sealed record EngineLaunchContext(string WorkspaceRoot, string? Workspace
 
 public static class EngineLaunchContract
 {
-    public static EngineLaunchContext Resolve(string? activeWorkspaceRoot, string fallbackRoot)
-        => Resolve(activeWorkspaceRoot, null, fallbackRoot);
-
     public static EngineLaunchContext Resolve(
         string? activeWorkspaceRoot,
         string? activeWorkspaceManifestPath,
+        string? activeContentDirectory,
+        string? activeCacheDirectory,
         string fallbackRoot)
     {
-        var selectedRoot = string.IsNullOrWhiteSpace(activeWorkspaceRoot)
-            ? fallbackRoot
-            : activeWorkspaceRoot;
-        var manifestPath = string.IsNullOrWhiteSpace(activeWorkspaceRoot) ||
-            string.IsNullOrWhiteSpace(activeWorkspaceManifestPath)
-            ? null
-            : NormalizePath(activeWorkspaceManifestPath);
+        var hasActiveWorkspace = !string.IsNullOrWhiteSpace(activeWorkspaceRoot);
+        var selectedRoot = hasActiveWorkspace ? activeWorkspaceRoot : fallbackRoot;
+        var selectedContentDirectory = hasActiveWorkspace
+            ? RequireResolvedPath(activeContentDirectory, nameof(activeContentDirectory))
+            : Path.Combine(fallbackRoot, "Content");
+        var selectedCacheDirectory = hasActiveWorkspace
+            ? RequireResolvedPath(activeCacheDirectory, nameof(activeCacheDirectory))
+            : Path.Combine(fallbackRoot, "Cache");
+        var manifestPath = hasActiveWorkspace && !string.IsNullOrWhiteSpace(activeWorkspaceManifestPath)
+            ? NormalizePath(activeWorkspaceManifestPath)
+            : null;
 
-        return new EngineLaunchContext(NormalizeRoot(selectedRoot), manifestPath);
+        return new EngineLaunchContext(
+            NormalizeRoot(selectedRoot!),
+            manifestPath,
+            NormalizeRoot(selectedContentDirectory),
+            NormalizeRoot(selectedCacheDirectory));
     }
+
+    static string RequireResolvedPath(string? path, string parameterName)
+        => string.IsNullOrWhiteSpace(path)
+            ? throw new ArgumentException("An active workspace must provide its resolved content and cache paths.", parameterName)
+            : path;
 
     static string NormalizeRoot(string path)
     {

@@ -27,6 +27,7 @@
 #include "Containers/Octree.h"
 #include "Engine/EngineLoop.h"
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <cstring>
 #include "Memory/MemoryBlockAllocator.hpp"
@@ -62,6 +63,75 @@ App* App::GetInstance()
 const std::string& App::GetWorkspace()
 {
 	return s_workspace;
+}
+
+const Workspace::WorkspaceContext& App::GetWorkspaceContext()
+{
+	check(s_pInstance);
+	return s_pInstance->m_workspaceContext;
+}
+
+namespace
+{
+	bool ContainsWorkspaceManifest(const std::filesystem::path& root)
+	{
+		std::error_code error;
+		if (!std::filesystem::is_directory(root, error) || error)
+		{
+			return false;
+		}
+
+		if (std::filesystem::is_regular_file(root / "workspace.sailor", error) && !error)
+		{
+			return true;
+		}
+
+		error.clear();
+		for (std::filesystem::directory_iterator it(root, error), end;
+			!error && it != end;
+			it.increment(error))
+		{
+			std::string extension = it->path().extension().string();
+			std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
+				{
+					return static_cast<char>(std::tolower(character));
+				});
+			if (it->is_regular_file(error) && !error && extension == ".sailor")
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	std::filesystem::path SelectWorkspaceRoot(const AppArgs& params)
+	{
+		if (!params.m_workspace.empty())
+		{
+			return params.m_workspace;
+		}
+
+		const std::filesystem::path requestedManifest = params.m_workspaceManifest;
+		if (requestedManifest.is_absolute())
+		{
+			return requestedManifest.parent_path();
+		}
+
+		const std::filesystem::path current = std::filesystem::current_path();
+		const std::filesystem::path parent = current.parent_path();
+		std::error_code contentError;
+		const bool bHasLegacyContent = std::filesystem::is_directory(
+			current / "Content",
+			contentError) && !contentError;
+		if (ContainsWorkspaceManifest(current) ||
+			(!ContainsWorkspaceManifest(parent) && bHasLegacyContent))
+		{
+			return current;
+		}
+
+		return parent;
+	}
 }
 
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
@@ -153,35 +223,30 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 #endif
 
-	if (!params.m_workspace.empty())
+	const Workspace::WorkspaceContextResolveResult workspaceContextResult =
+		Workspace::ResolveWorkspaceContext(
+			SelectWorkspaceRoot(params),
+			params.m_workspaceManifest);
+	if (!workspaceContextResult.IsSuccess())
 	{
-		s_pInstance->s_workspace = Utils::SanitizeFilepath(params.m_workspace);
-		if (!s_pInstance->s_workspace.ends_with("/"))
-		{
-			s_pInstance->s_workspace += "/";
-		}
+		SAILOR_LOG_ERROR("%s", workspaceContextResult.m_message.c_str());
+		SetExitCode(1);
+		s_pInstance->m_bSkipMainLoop = true;
+		return;
 	}
-	else
-	{
-		const std::filesystem::path cwd = std::filesystem::current_path();
-		const bool hasContentInCwd = std::filesystem::exists(cwd / "Content");
-		const bool hasContentInParent = std::filesystem::exists(cwd / ".." / "Content");
 
-		if (hasContentInCwd)
-		{
-			s_pInstance->s_workspace = "./";
-		}
-		else if (!hasContentInParent)
-		{
-			SAILOR_LOG_ERROR("Content folder was not found from current working directory. Use --workspace <path>.");
-		}
+	s_pInstance->m_workspaceContext = workspaceContextResult.m_context;
+	s_pInstance->s_workspace = Utils::SanitizeFilepath(
+		s_pInstance->m_workspaceContext.GetRoot().generic_string());
+	if (!s_pInstance->s_workspace.ends_with("/"))
+	{
+		s_pInstance->s_workspace += "/";
 	}
 
 	bool bWorkspaceModuleActivationFailed = false;
 	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
 	const auto& workspaceModuleResult = s_pInstance->m_pWorkspaceModuleManager->Load(
-		s_pInstance->s_workspace,
-		params.m_workspaceManifest,
+		s_pInstance->m_workspaceContext,
 		GetBuildConfig());
 	if (workspaceModuleResult.IsSuccess())
 	{

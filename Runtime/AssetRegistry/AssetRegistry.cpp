@@ -16,6 +16,29 @@
 using namespace Sailor;
 using namespace nlohmann;
 
+namespace
+{
+	std::string AsFolderPath(const std::filesystem::path& path)
+	{
+		std::string result = path.generic_string();
+		if (!result.ends_with('/'))
+		{
+			result += '/';
+		}
+		return result;
+	}
+}
+
+std::string AssetRegistry::GetContentFolder()
+{
+	return AsFolderPath(App::GetWorkspaceContext().GetContent());
+}
+
+std::string AssetRegistry::GetCacheFolder()
+{
+	return AsFolderPath(App::GetWorkspaceContext().GetCache());
+}
+
 AssetRegistry::AssetRegistry()
 {
 	m_assetCache.Initialize();
