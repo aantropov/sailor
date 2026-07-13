@@ -175,6 +175,8 @@ namespace SailorEditor.Services
             return EngineLaunchContract.Resolve(
                 workspace?.WorkspaceRoot,
                 workspace?.ManifestPath,
+                workspace?.ContentDirectory,
+                workspace?.CacheDirectory,
                 EngineWorkingDirectory);
         }
 

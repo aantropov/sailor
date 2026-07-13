@@ -357,20 +357,11 @@ public sealed class WorkspaceProjectGenerator
 
     static void EnsureInsideWorkspace(string workspaceRoot, string path)
     {
-        var root = NormalizePath(workspaceRoot);
-        var fullPath = NormalizePath(path);
-
-        if (string.Equals(root, fullPath, PathComparison))
-            return;
-
-        if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, PathComparison))
+        if (!WorkspacePathPolicy.IsInsideRoot(workspaceRoot, path))
             throw new InvalidOperationException($"Generated path resolves outside the workspace root: {path}");
     }
 
-    static string NormalizePath(string path)
-        => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    static string NormalizePath(string path) => WorkspacePathPolicy.NormalizePhysicalPath(path);
 
-    static StringComparison PathComparison => OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase
-        : StringComparison.Ordinal;
+    static StringComparison PathComparison => WorkspacePathPolicy.PathComparison;
 }

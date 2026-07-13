@@ -171,7 +171,9 @@ std::string GenerateConstantsLibrary(uint32_t version)
 
 void ShaderCompiler::UpdateConstantsLibrary()
 {
-	auto constantsLibrary = std::filesystem::path(ConstantsLibrary);
+	const std::filesystem::path constantsLibrary =
+		std::filesystem::path(AssetRegistry::GetContentFolder()) / "Shaders" / "Constants.glsl";
+	std::filesystem::create_directories(constantsLibrary.parent_path());
 	if (!std::filesystem::exists(constantsLibrary))
 	{
 		std::ofstream assetFile(constantsLibrary);

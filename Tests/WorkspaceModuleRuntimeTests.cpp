@@ -4,6 +4,7 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "Platform/DynamicLibrary.h"
 #include "Workspace/WorkspaceModuleApi.h"
+#include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspaceModuleManager.h"
 
 #include <algorithm>
@@ -61,24 +62,56 @@ namespace
 #endif
 	}
 
-	void WriteManifest(const std::filesystem::path& root, const std::string& moduleName)
+	void WriteManifest(
+		const std::filesystem::path& root,
+		const std::string& moduleName,
+		const std::string& logicOutputPath = "Binaries")
 	{
 		std::filesystem::create_directories(root);
 		std::ofstream manifest(root / "workspace.sailor");
 		manifest
 			<< "manifestVersion: 1\n"
-			<< "logicOutputPath: Binaries\n"
+			<< "workspaceId: 00000000-0000-0000-0000-000000000001\n"
+			<< "name: Workspace Module Runtime Fixture\n"
+			<< "enginePath: ../Engine\n"
+			<< "engineReferenceKind: source\n"
+			<< "contentPath: Content\n"
+			<< "sourcePath: Source\n"
+			<< "generatedProjectPath: Generated\n"
+			<< "cachePath: Cache\n"
+			<< "buildPath: Cache/Build\n"
+			<< "logicOutputPath: " << logicOutputPath << "\n"
 			<< "logicModuleName: " << moduleName << "\n";
 		Require(manifest.good(), "workspace fixture manifest should be writable");
+	}
+
+	WorkspaceContext ResolveContext(
+		const std::filesystem::path& root,
+		const std::filesystem::path& manifest = {})
+	{
+		WorkspaceContextResolveResult result = ResolveWorkspaceContext(root, manifest);
+		Require(result.IsSuccess(), "workspace context should resolve: " + result.m_message);
+		return std::move(result.m_context);
+	}
+
+	const WorkspaceModuleLoadResult& LoadWorkspaceModule(
+		WorkspaceModuleManager& manager,
+		const std::filesystem::path& root,
+		const std::string& config)
+	{
+		const WorkspaceContext context = ResolveContext(root);
+		return manager.Load(context, config);
 	}
 
 	std::filesystem::path InstallFixture(
 		const std::filesystem::path& root,
 		const std::string& config,
 		const std::string& moduleName,
-		const std::filesystem::path& sourceLibrary)
+		const std::filesystem::path& sourceLibrary,
+		const std::string& logicOutputPath = "Binaries")
 	{
-		const std::filesystem::path destination = root / "Binaries" / config / ModuleFilename(moduleName);
+		const std::filesystem::path destination =
+			root / logicOutputPath / config / ModuleFilename(moduleName);
 		std::filesystem::create_directories(destination.parent_path());
 		std::filesystem::copy_file(
 			sourceLibrary,
@@ -316,14 +349,14 @@ namespace
 		const std::filesystem::path legacyRoot = tempRoot / "legacy";
 		std::filesystem::create_directories(legacyRoot);
 		WorkspaceModuleManager legacyManager;
-		const auto& legacy = legacyManager.Load(legacyRoot, {}, config);
+		const auto& legacy = legacyManager.Load(ResolveContext(legacyRoot), config);
 		Require(legacy.m_status == EWorkspaceModuleLoadStatus::NotConfigured,
 			"workspace without a manifest should preserve engine-only startup");
 
 		const std::filesystem::path missingRoot = tempRoot / "missing";
 		WriteManifest(missingRoot, FixtureModuleName);
 		WorkspaceModuleManager missingManager;
-		const auto& missing = missingManager.Load(missingRoot, {}, config);
+		const auto& missing = LoadWorkspaceModule(missingManager, missingRoot, config);
 		Require(missing.m_status == EWorkspaceModuleLoadStatus::ModuleNotFound,
 			"missing workspace binary should return ModuleNotFound");
 		Require(missing.m_message.find(config) != std::string::npos,
@@ -333,9 +366,8 @@ namespace
 		std::filesystem::create_directories(ambiguousRoot);
 		std::ofstream(ambiguousRoot / "one.sailor") << "manifestVersion: 1\n";
 		std::ofstream(ambiguousRoot / "two.sailor") << "manifestVersion: 1\n";
-		WorkspaceModuleManager ambiguousManager;
-		const auto& ambiguous = ambiguousManager.Load(ambiguousRoot, {}, config);
-		Require(ambiguous.m_status == EWorkspaceModuleLoadStatus::ManifestAmbiguous,
+		const WorkspaceContextResolveResult ambiguous = ResolveWorkspaceContext(ambiguousRoot);
+		Require(!ambiguous.IsSuccess(),
 			"multiple non-default manifests should require an explicit path");
 	}
 
@@ -397,7 +429,7 @@ namespace
 			"sentinel owner registration should succeed: " + registrationError);
 
 		WorkspaceModuleManager manager;
-		const EWorkspaceModuleLoadStatus resultStatus = manager.Load(root, {}, config).m_status;
+		const EWorkspaceModuleLoadStatus resultStatus = LoadWorkspaceModule(manager, root, config).m_status;
 		const bool bOwnerPreserved = Reflection::GetNumWorkspaceTypes(owner) == 1 &&
 			Reflection::IsWorkspaceTypeRegistered(sentinelType.Name());
 		Reflection::UnregisterWorkspaceTypes(owner);
@@ -419,7 +451,7 @@ namespace
 		InstallFixture(root, config, "IncompatibleFixture", incompatibleLibrary);
 
 		WorkspaceModuleManager manager;
-		const auto& result = manager.Load(root, {}, config);
+		const auto& result = LoadWorkspaceModule(manager, root, config);
 		Require(result.m_status == EWorkspaceModuleLoadStatus::AbiMismatch,
 			"incompatible module should fail before metadata or registration callbacks");
 		Require(result.m_message.find("sailor-workspace-abi-" +
@@ -438,7 +470,7 @@ namespace
 		InstallFixture(root, config, "MissingEntryFixture", missingEntryLibrary);
 
 		WorkspaceModuleManager manager;
-		const auto& result = manager.Load(root, {}, config);
+		const auto& result = LoadWorkspaceModule(manager, root, config);
 		Require(result.m_status == EWorkspaceModuleLoadStatus::EntryPointMissing,
 			"module without the V1 API symbol should return EntryPointMissing");
 		Require(result.m_message.find(WorkspaceModuleApiEntryPointV1) != std::string::npos,
@@ -477,7 +509,7 @@ namespace
 		InstallFixture(root, config, "RenamedFixture", fixtureLibrary);
 
 		WorkspaceModuleManager manager;
-		const auto& result = manager.Load(root, {}, config);
+		const auto& result = LoadWorkspaceModule(manager, root, config);
 		Require(result.m_status == EWorkspaceModuleLoadStatus::ApiInvalid,
 			"renaming a module must not bypass its declared module identity");
 		Require(!manager.IsRegistered(), "identity mismatch must not leave registrations behind");
@@ -512,7 +544,7 @@ namespace
 			InstallFixture(root, config, moduleName, sourceLibrary);
 
 			WorkspaceModuleManager manager;
-			const auto& result = manager.Load(root, {}, config);
+			const auto& result = LoadWorkspaceModule(manager, root, config);
 			Require(result.m_status == EWorkspaceModuleLoadStatus::MetadataInvalid,
 				std::string("malformed metadata fixture '") + moduleName + "' should be rejected: " +
 				result.m_message);
@@ -634,13 +666,19 @@ namespace
 			!ContainsEngineType(engineOnlyEditorTypes, FixtureTypeName),
 			"unconfigured editor metadata should remain engine-only");
 
-		const std::filesystem::path root = tempRoot / "registered";
-		WriteManifest(root, FixtureModuleName);
-		InstallFixture(root, config, FixtureModuleName, fixtureLibrary);
+		const std::filesystem::path root = tempRoot / "registered workspace with spaces";
+		const std::string logicOutputPath = "Logic Output With Spaces";
+		WriteManifest(root, FixtureModuleName, logicOutputPath);
+		InstallFixture(root, config, FixtureModuleName, fixtureLibrary, logicOutputPath);
+		const WorkspaceContext context = ResolveContext(root);
+		std::ofstream(root / "workspace.sailor", std::ios::trunc)
+			<< "manifestVersion: 999\n";
 
 		WorkspaceModuleManager manager;
-		const auto& result = manager.Load(root, {}, config);
+		const auto& result = manager.Load(context, config);
 		Require(result.IsSuccess(), "workspace fixture should load and register: " + result.m_message);
+		Require(result.m_manifestPath == context.GetManifest(),
+			"module manager should consume the captured context without reparsing a changed manifest");
 		Require(result.m_numRegisteredTypes == 1, "workspace fixture should register one type");
 		Require(Reflection::IsWorkspaceTypeRegistered(FixtureTypeName),
 			"workspace fixture type should be visible in unified reflection lookup");
@@ -726,7 +764,7 @@ namespace
 		WriteManifest(collisionRoot, FixtureModuleName);
 		InstallFixture(collisionRoot, config, FixtureModuleName, fixtureLibrary);
 		WorkspaceModuleManager collisionManager;
-		const auto& collision = collisionManager.Load(collisionRoot, {}, config);
+		const auto& collision = LoadWorkspaceModule(collisionManager, collisionRoot, config);
 		Require(collision.m_status == EWorkspaceModuleLoadStatus::RegistrationFailed,
 			"second module with the same type should fail transactional preflight");
 		Require(Reflection::GetNumWorkspaceTypes(result.m_moduleName + "@" + result.m_modulePath.generic_string()) == 1,
@@ -744,7 +782,7 @@ namespace
 		Require(!ContainsEngineType(editorTypesAfterUnload, FixtureTypeName) &&
 			editorTypesAfterUnload["engineTypes"].size() == engineTypesBefore["engineTypes"].size(),
 			"workspace unload must remove custom entries from editor metadata");
-		const auto& reload = collisionManager.Load(collisionRoot, {}, config);
+		const auto& reload = LoadWorkspaceModule(collisionManager, collisionRoot, config);
 		Require(reload.IsSuccess(), "workspace module should reload after owner cleanup: " + reload.m_message);
 		Require(collisionManager.Unload(), "reloaded workspace fixture should unload cleanly");
 		Require(!Reflection::IsWorkspaceTypeRegistered(FixtureTypeName),

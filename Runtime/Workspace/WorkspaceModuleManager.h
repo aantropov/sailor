@@ -2,6 +2,7 @@
 
 #include "Core/Defines.h"
 #include "Platform/DynamicLibrary.h"
+#include "Workspace/WorkspaceContext.h"
 
 #include <filesystem>
 #include <string>
@@ -74,8 +75,7 @@ namespace Sailor::Workspace
 		WorkspaceModuleManager& operator=(WorkspaceModuleManager&&) = delete;
 
 		const WorkspaceModuleLoadResult& Load(
-			const std::filesystem::path& workspaceRoot,
-			const std::filesystem::path& manifestPath,
+			const WorkspaceContext& context,
 			std::string buildConfig) noexcept;
 		bool Unload() noexcept;
 		bool BuildEditorTypeMetadata(

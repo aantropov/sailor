@@ -62,6 +62,7 @@
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
     <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspacePathPolicy.cs" Link="Workspace\WorkspacePathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceProjectGenerator.cs" Link="Workspace\WorkspaceProjectGenerator.cs" />
     <Compile Include="..\Editor\Utility\EngineTypeMetadataContract.cs" Link="Utility\EngineTypeMetadataContract.cs" />

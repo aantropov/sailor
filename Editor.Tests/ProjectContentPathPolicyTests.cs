@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using SailorEditor.Content;
+using SailorEditor.Workspace;
 
 public class ProjectContentPathPolicyTests
 {
@@ -23,9 +25,6 @@ public class ProjectContentPathPolicyTests
     [Fact]
     public void IsInsideRoot_RejectsDescendantSymlinkThatEscapesRoot()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         var testRoot = Path.Combine(Path.GetTempPath(), $"sailor-path-policy-{Guid.NewGuid():N}");
         var contentRoot = Path.Combine(testRoot, "Content");
         var externalRoot = Path.Combine(testRoot, "External");
@@ -35,9 +34,10 @@ public class ProjectContentPathPolicyTests
         {
             Directory.CreateDirectory(contentRoot);
             Directory.CreateDirectory(externalRoot);
-            Directory.CreateSymbolicLink(linkPath, externalRoot);
+            CreateDirectoryLink(linkPath, externalRoot);
 
             Assert.False(ProjectContentPathPolicy.IsInsideRoot(contentRoot, Path.Combine(linkPath, "asset.asset")));
+            Assert.False(WorkspacePathPolicy.IsInsideRoot(contentRoot, Path.Combine(linkPath, "asset.asset")));
         }
         finally
         {
@@ -51,9 +51,6 @@ public class ProjectContentPathPolicyTests
     [Fact]
     public void IsSamePath_ResolvesSymlinkTargetAliases()
     {
-        if (OperatingSystem.IsWindows())
-            return;
-
         var testRoot = Path.Combine(Path.GetTempPath(), $"sailor-path-alias-{Guid.NewGuid():N}");
         var contentRoot = Path.Combine(testRoot, "Content");
         var linkPath = Path.Combine(contentRoot, "Cycle");
@@ -61,8 +58,12 @@ public class ProjectContentPathPolicyTests
         try
         {
             Directory.CreateDirectory(contentRoot);
-            Directory.CreateSymbolicLink(linkPath, contentRoot);
+            CreateDirectoryLink(linkPath, contentRoot);
 
+            Assert.Equal(
+                WorkspacePathPolicy.NormalizePhysicalPath(contentRoot),
+                WorkspacePathPolicy.NormalizePhysicalPath(linkPath),
+                ignoreCase: OperatingSystem.IsWindows());
             Assert.True(ProjectContentPathPolicy.IsSamePath(contentRoot, linkPath));
         }
         finally
@@ -71,6 +72,37 @@ public class ProjectContentPathPolicyTests
                 Directory.Delete(linkPath);
             if (Directory.Exists(testRoot))
                 Directory.Delete(testRoot, recursive: true);
+        }
+    }
+
+    static void CreateDirectoryLink(string linkPath, string targetPath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return;
+        }
+
+        var startInfo = new ProcessStartInfo("cmd.exe")
+        {
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(linkPath);
+        startInfo.ArgumentList.Add(targetPath);
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start mklink.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not create test junction: {process.StandardError.ReadToEnd()}{process.StandardOutput.ReadToEnd()}");
         }
     }
 }

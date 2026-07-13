@@ -9,6 +9,11 @@
 
 using namespace Sailor;
 
+std::string AssetCache::GetAssetCacheFilepath()
+{
+	return (std::filesystem::path(AssetRegistry::GetCacheFolder()) / "AssetCache.yaml").string();
+}
+
 YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 {
 	YAML::Node res;
@@ -40,7 +45,7 @@ void AssetCache::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::filesystem::create_directory(AssetRegistry::GetCacheFolder());
+	std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
 
 	auto assetCacheFilePath = std::filesystem::path(GetAssetCacheFilepath());
 	if (!std::filesystem::exists(GetAssetCacheFilepath()))

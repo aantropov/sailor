@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Editor.Tests;
@@ -29,8 +30,8 @@ public sealed class WorkspaceLifecycleTests
         Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.Equal("workspace-id", result.Session.Manifest.WorkspaceId);
-        Assert.Equal(workspace.Directory("Cache/Build"), result.Session.BuildDirectory);
-        Assert.Equal(workspace.Directory("Binaries"), result.Session.LogicOutputDirectory);
+        Assert.Equal(Physical(workspace.Directory("Cache/Build")), result.Session.BuildDirectory);
+        Assert.Equal(Physical(workspace.Directory("Binaries")), result.Session.LogicOutputDirectory);
     }
 
     [Fact]
@@ -47,7 +48,7 @@ public sealed class WorkspaceLifecycleTests
         Assert.NotNull(reopened.Session);
         Assert.Equal(created.Session.ManifestPath, reopened.Session.ManifestPath);
         Assert.Equal("Sandbox", reopened.Session.Manifest.Name);
-        Assert.Equal(workspace.Directory("Content"), reopened.Session.ContentDirectory);
+        Assert.Equal(Physical(workspace.Directory("Content")), reopened.Session.ContentDirectory);
     }
 
     [Fact]
@@ -61,7 +62,7 @@ public sealed class WorkspaceLifecycleTests
         var result = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id", manifestPath));
 
         Assert.True(result.Succeeded, result.Error);
-        Assert.Equal(Path.GetFullPath(manifestPath), result.Session!.ManifestPath);
+        Assert.Equal(Physical(manifestPath), result.Session!.ManifestPath);
         Assert.True(File.Exists(manifestPath));
         Assert.False(File.Exists(workspace.File(WorkspaceTemplateService.ManifestFileName)));
     }
@@ -160,7 +161,7 @@ public sealed class WorkspaceLifecycleTests
         var result = await service.OpenAsync(manifestPath);
 
         Assert.True(result.Succeeded, result.Error);
-        Assert.Equal(Path.GetFullPath(manifestPath), result.Session!.ManifestPath);
+        Assert.Equal(Physical(manifestPath), result.Session!.ManifestPath);
     }
 
     [Fact]
@@ -175,12 +176,161 @@ public sealed class WorkspaceLifecycleTests
         {
             ContentPath = "ProjectContent"
         };
+        Directory.CreateDirectory(workspace.Directory("ProjectContent"));
         await serializer.SaveAsync(manifestPath, manifest);
 
         var result = await service.OpenAsync(manifestPath);
 
         Assert.True(result.Succeeded, result.Error);
-        Assert.Equal(Path.GetFullPath(workspace.Directory("ProjectContent")), result.Session!.ContentDirectory);
+        Assert.Equal(Physical(workspace.Directory("ProjectContent")), result.Session!.ContentDirectory);
+    }
+
+    [Fact]
+    public async Task OpenAsync_RecoversMissingDefaultContentAndCacheDirectories()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest("Sandbox", workspace.Root, "../Sailor", "workspace-id"));
+        Directory.Delete(workspace.Directory("Content"), recursive: true);
+        Directory.Delete(workspace.Directory("Cache"), recursive: true);
+
+        var reopened = await service.OpenAsync(created.Session!.ManifestPath);
+
+        Assert.True(reopened.Succeeded, reopened.Error);
+        Assert.True(Directory.Exists(workspace.Directory("Content")));
+        Assert.True(Directory.Exists(workspace.Directory("Cache")));
+    }
+
+    [Fact]
+    public async Task OpenAsync_RecoversMissingCustomCacheDirectory()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            CachePath = "Generated Cache"
+        };
+        await serializer.SaveAsync(manifestPath, manifest);
+
+        var reopened = await service.OpenAsync(manifestPath);
+
+        Assert.True(reopened.Succeeded, reopened.Error);
+        Assert.True(Directory.Exists(workspace.Directory("Content")));
+        Assert.True(Directory.Exists(workspace.Directory("Generated Cache")));
+    }
+
+    [Fact]
+    public async Task OpenAsync_RejectsMissingCustomContentWithoutCreatingDirectories()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            ContentPath = "ProjectContent"
+        };
+        await serializer.SaveAsync(manifestPath, manifest);
+
+        var result = await service.OpenAsync(manifestPath);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("custom ContentPath directory does not exist", result.Error, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(workspace.Directory("ProjectContent")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+        Assert.Null(service.Current);
+    }
+
+    [Fact]
+    public async Task OpenAsync_RollsBackRecoveredContentWhenNestedCacheCreationFails()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            CachePath = "Blocked/Cache"
+        };
+        await serializer.SaveAsync(manifestPath, manifest);
+        File.WriteAllText(workspace.File("Blocked"), "prevents cache directory creation");
+
+        var result = await service.OpenAsync(manifestPath);
+
+        Assert.False(result.Succeeded);
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.True(File.Exists(workspace.File("Blocked")));
+        Assert.Null(service.Current);
+    }
+
+    [Fact]
+    public async Task OpenAsync_RejectsContentLinkEscapeBeforeRecoveringDirectories()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var outside = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        var linkPath = workspace.Directory("Content");
+        await serializer.SaveAsync(
+            manifestPath,
+            WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id"));
+        CreateDirectoryLink(linkPath, outside.Root);
+
+        try
+        {
+            var result = await service.OpenAsync(manifestPath);
+
+            Assert.False(result.Succeeded);
+            Assert.Contains("symbolic link or junction", result.Error, StringComparison.OrdinalIgnoreCase);
+            Assert.False(Directory.Exists(workspace.Directory("Cache")));
+            Assert.Null(service.Current);
+        }
+        finally
+        {
+            if (Directory.Exists(linkPath))
+                Directory.Delete(linkPath);
+        }
+    }
+
+    [Fact]
+    public async Task OpenAsync_PublishesPhysicalPathsForContainedDirectoryLinks()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        var physicalContent = workspace.Directory("Data/Content");
+        var contentLink = workspace.Directory("Content");
+        Directory.CreateDirectory(physicalContent);
+        await serializer.SaveAsync(
+            manifestPath,
+            WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id"));
+        CreateDirectoryLink(contentLink, physicalContent);
+
+        try
+        {
+            var result = await service.OpenAsync(manifestPath);
+
+            Assert.True(result.Succeeded, result.Error);
+            Assert.Equal(
+                WorkspacePathPolicy.NormalizePhysicalPath(physicalContent),
+                result.Session!.ContentDirectory,
+                ignoreCase: OperatingSystem.IsWindows());
+        }
+        finally
+        {
+            if (Directory.Exists(contentLink))
+                Directory.Delete(contentLink);
+        }
     }
 
     [Fact]
@@ -324,6 +474,116 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task CreateAsync_DoesNotPublishSessionWhenRecentWorkspaceUpdateFails()
+    {
+        using var currentWorkspace = TempWorkspace.Create();
+        using var newWorkspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("store/recent.yaml");
+        var service = CreateService(recentPath);
+        var current = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            currentWorkspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(current.Session);
+        BlockRecentStore(recentPath);
+
+        var result = await service.CreateAsync(new WorkspaceCreateRequest(
+            "New",
+            newWorkspace.Root,
+            "../Sailor",
+            "new-id"));
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+    }
+
+    [Fact]
+    public async Task OpenAsync_DoesNotPublishSessionWhenRecentWorkspaceUpdateFails()
+    {
+        using var currentWorkspace = TempWorkspace.Create();
+        using var openedWorkspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("store/recent.yaml");
+        var service = CreateService(recentPath);
+        var serializer = new WorkspaceManifestSerializer();
+        var current = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            currentWorkspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(current.Session);
+        var openedManifestPath = openedWorkspace.File("workspace.sailor");
+        await serializer.SaveAsync(
+            openedManifestPath,
+            WorkspaceManifest.CreateDefault("Opened", "../Sailor", "opened-id"));
+        BlockRecentStore(recentPath);
+
+        var result = await service.OpenAsync(openedManifestPath);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+        Assert.False(Directory.Exists(openedWorkspace.Directory("Content")));
+        Assert.False(Directory.Exists(openedWorkspace.Directory("Cache")));
+    }
+
+    [Fact]
+    public async Task SaveAsync_DoesNotPublishSessionWhenRecentWorkspaceUpdateFails()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("store/recent.yaml");
+        var service = CreateService(recentPath);
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            workspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(created.Session);
+        Directory.Delete(workspace.Directory("Content"), recursive: true);
+        Directory.Delete(workspace.Directory("Cache"), recursive: true);
+        BlockRecentStore(recentPath);
+        var renamed = published with
+        {
+            Manifest = published.Manifest with { Name = "Renamed" }
+        };
+
+        var result = await service.SaveAsync(renamed);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+        Assert.Equal("Current", service.Current!.Manifest.Name);
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+    }
+
+    [Fact]
+    public async Task SaveAsync_RollsBackRecoveredDirectoriesWhenManifestWriteIsCancelled()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            workspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(created.Session);
+        Directory.Delete(workspace.Directory("Content"), recursive: true);
+        Directory.Delete(workspace.Directory("Cache"), recursive: true);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await service.SaveAsync(published, cancellation.Token);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+    }
+
+    [Fact]
     public async Task RecentWorkspaceStore_RoundTripsNewestFirstAndDeduplicates()
     {
         using var workspace = TempWorkspace.Create();
@@ -381,6 +641,52 @@ public sealed class WorkspaceLifecycleTests
         var template = new WorkspaceTemplateService(serializer);
         var recentStore = new RecentWorkspaceStore(recentPath);
         return new WorkspaceLifecycleService(serializer, template, recentStore);
+    }
+
+    static string Physical(string path) => WorkspacePathPolicy.NormalizePhysicalPath(path);
+
+    static void BlockRecentStore(string recentPath)
+    {
+        if (File.Exists(recentPath))
+            File.Delete(recentPath);
+
+        var directory = Path.GetDirectoryName(recentPath)
+            ?? throw new InvalidOperationException("Recent workspace path has no directory.");
+        if (Directory.Exists(directory))
+            Directory.Delete(directory, recursive: true);
+
+        File.WriteAllText(directory, "blocks recent-workspace directory creation");
+    }
+
+    static void CreateDirectoryLink(string linkPath, string targetPath)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Directory.CreateSymbolicLink(linkPath, targetPath);
+            return;
+        }
+
+        var startInfo = new ProcessStartInfo("cmd.exe")
+        {
+            CreateNoWindow = true,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add("/d");
+        startInfo.ArgumentList.Add("/c");
+        startInfo.ArgumentList.Add("mklink");
+        startInfo.ArgumentList.Add("/J");
+        startInfo.ArgumentList.Add(linkPath);
+        startInfo.ArgumentList.Add(targetPath);
+
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start mklink.");
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not create test junction: {process.StandardError.ReadToEnd()}{process.StandardOutput.ReadToEnd()}");
+        }
     }
 
     sealed class UnsafeWorkspaceTemplateService(WorkspaceManifestSerializer serializer) : WorkspaceTemplateService(serializer)

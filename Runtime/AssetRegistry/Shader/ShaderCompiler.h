@@ -113,7 +113,6 @@ namespace Sailor
 		
 		// Version is used to generate shader's code with all constants
 		const uint32_t Version = 4;
-		static constexpr const char* ConstantsLibrary = "../Content/Shaders/Constants.glsl";
 
 	public:
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);

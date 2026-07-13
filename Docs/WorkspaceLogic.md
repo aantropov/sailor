@@ -33,9 +33,15 @@ The default manifest values are:
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `engineReferenceKind` | `source` | Use an engine source tree; `installed` selects a CMake package prefix. |
+| `contentPath` | `Content` | User-authored assets owned by the workspace. |
+| `sourcePath` | `Source` | User-authored game logic sources. |
+| `generatedProjectPath` | `Generated` | Generated project files owned by the workspace. |
+| `cachePath` | `Cache` | Disposable workspace runtime and editor caches. |
 | `buildPath` | `Cache/Build` | CMake binary directory relative to the workspace. |
 | `logicOutputPath` | `Binaries` | Root for configuration-specific module outputs. |
 | `logicModuleName` | `SailorGame` | Generated shared-library target and module name. |
+
+All workspace-owned paths in the table are safe relative paths. Rooted, drive-relative, traversal, and physical symlink or junction escapes are rejected. `enginePath` is intentionally different: it is an external engine source or install reference and may resolve outside the workspace.
 
 ## Source Engine Reference
 
@@ -110,11 +116,15 @@ Workspace placement factories run without the reflection registry mutex held, so
 
 ## Runtime Discovery And Lifecycle
 
-At startup, the runtime resolves the active workspace before content scanning. `--workspace-manifest <path>` selects an explicit manifest inside that workspace. Without the option, discovery prefers `workspace.sailor`; if that file is absent, exactly one root-level `*.sailor` file is accepted. No manifest preserves legacy engine-only startup, while multiple candidates are rejected with an ambiguity diagnostic.
+At startup, the runtime resolves one immutable workspace context before module loading, content scanning, registry construction, or cache initialization. The context contains the canonical root and manifest plus the resolved Content, Cache, Source, Generated, Build, logic-output, workspace identity, version, and module name. The editor resolves the same manifest-owned paths in its workspace session and passes the exact root, manifest, Content, and Cache paths into its launch contract.
 
-For manifest version 1, the runtime resolves the module as `<workspace>/<logicOutputPath>/<CONFIG>/<platform-module-name>`. The default values are `Binaries` and `SailorGame`. The manifest output path, module name, build configuration, and canonical module path are validated so discovery cannot escape the workspace. The active CMake configuration is part of both the path and ABI check, so a stale Debug/Release binary fails with rebuild guidance instead of being loaded as a compatible module.
+`--workspace-manifest <path>` selects an explicit manifest inside the workspace. Without the option, discovery prefers `workspace.sailor`; if that file is absent, exactly one root-level `*.sailor` file is accepted. No manifest creates a legacy context using `<root>/Content` and `<root>/Cache`; multiple candidates are rejected with an ambiguity diagnostic.
 
-The dynamic library is opened before asset importers scan `Content`. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
+Every workspace-owned manifest path is normalized lexically and then checked for physical containment after existing symlinks or Windows junctions are resolved. Validation completes before the context or editor session is published. A missing default `Content` directory is recreated, while a missing custom content path is rejected without creating a replacement. Cache directories are disposable and are recreated at their configured path. If later validation or recovery fails, directories created by that resolution attempt are rolled back.
+
+For manifest version 1, the runtime resolves the module as `<resolved-logic-output>/<CONFIG>/<platform-module-name>`. `WorkspaceModuleManager` consumes the captured context and never reparses the manifest. It canonicalizes the final module path again immediately before loading and rejects any symlink or junction change observed by that check. Concurrent mutation of the workspace or build tree during the platform's pathname-only library-loader call is not supported. The active CMake configuration is part of both the path and ABI check, so a stale Debug/Release binary fails with rebuild guidance instead of being loaded as a compatible module.
+
+The dynamic library is opened before asset importers scan the resolved Content directory. Asset, shader, precompiled-shader, and editor-type caches use the resolved Cache directory, including custom paths with spaces. The generated shader constants library is written below resolved Content. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
 
 Standalone startup treats a configured module or requested-world activation failure as fatal and returns a nonzero exit code. Editor startup reports the same error but remains available with an empty world so the project can be repaired. During shutdown, worlds, importers, the asset registry, scheduler, and remaining submodules are destroyed before workspace registrations are removed and the library is closed. Runtime hot reload and live workspace switching are not supported by this contract.
 

@@ -166,6 +166,14 @@ namespace SailorEditor.Services
         {
             using var perfScope = EditorPerf.Scope("AssetsService.AddProjectRoot");
 
+            var requestedRoot = Path.GetFullPath(projectRoot);
+            if (!Directory.Exists(requestedRoot))
+            {
+                throw new DirectoryNotFoundException(
+                    $"The active content directory does not exist: {requestedRoot}");
+            }
+            var normalizedRoot = ProjectContentPathPolicy.NormalizeRoot(requestedRoot);
+
             Folders = [];
             Assets = [];
             Files = [];
@@ -174,9 +182,7 @@ namespace SailorEditor.Services
             _nextAssetId = 1;
             _assetOverrideCount = 0;
 
-            var requestedRoot = Path.GetFullPath(projectRoot);
-            Directory.CreateDirectory(requestedRoot);
-            CurrentProjectRootPath = ProjectContentPathPolicy.NormalizeRoot(requestedRoot);
+            CurrentProjectRootPath = normalizedRoot;
 
             Root = new ProjectRoot { Name = CurrentProjectRootPath, Id = 1 };
             if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))

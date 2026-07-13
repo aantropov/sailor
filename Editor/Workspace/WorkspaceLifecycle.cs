@@ -92,16 +92,9 @@ public class WorkspaceTemplateService
                 $"Workspace manifest is invalid: {string.Join("; ", validation.Issues.Select(x => x.Message))}");
         }
 
-        EnsureInsideWorkspace(workspaceRoot, manifestPath, nameof(WorkspaceCreateRequest.ManifestPath));
+        WorkspacePathPolicy.EnsureInsideRoot(workspaceRoot, manifestPath, nameof(WorkspaceCreateRequest.ManifestPath));
         ValidateCleanWorkspaceDirectory(workspaceRoot, manifestPath);
         var session = CreateSession(workspaceRoot, manifest, manifestPath);
-
-        EnsureInsideWorkspace(workspaceRoot, session.ContentDirectory, nameof(WorkspaceManifest.ContentPath));
-        EnsureInsideWorkspace(workspaceRoot, session.SourceDirectory, nameof(WorkspaceManifest.SourcePath));
-        EnsureInsideWorkspace(workspaceRoot, session.GeneratedProjectDirectory, nameof(WorkspaceManifest.GeneratedProjectPath));
-        EnsureInsideWorkspace(workspaceRoot, session.CacheDirectory, nameof(WorkspaceManifest.CachePath));
-        EnsureInsideWorkspace(workspaceRoot, session.BuildDirectory, nameof(WorkspaceManifest.BuildPath));
-        EnsureInsideWorkspace(workspaceRoot, session.LogicOutputDirectory, nameof(WorkspaceManifest.LogicOutputPath));
 
         var manifestPlaceholderExisted = File.Exists(manifestPath) || Directory.Exists(manifestPath);
         var manifestPlaceholderContents = File.Exists(manifestPath)
@@ -137,21 +130,29 @@ public class WorkspaceTemplateService
 
     public WorkspaceSession CreateSession(string workspaceRoot, WorkspaceManifest manifest, string? manifestPath = null)
     {
-        var root = Path.GetFullPath(workspaceRoot);
-        var resolvedManifestPath = Path.GetFullPath(manifestPath ?? Path.Combine(root, ManifestFileName));
-        EnsureInsideWorkspace(root, resolvedManifestPath, nameof(WorkspaceSession.ManifestPath));
+        var validation = _serializer.Validate(manifest);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(
+                $"Workspace manifest is invalid: {string.Join("; ", validation.Issues.Select(x => x.Message))}");
+        }
+
+        var root = WorkspacePathPolicy.NormalizePhysicalPath(workspaceRoot);
+        var resolvedManifestPath = WorkspacePathPolicy.NormalizePhysicalPath(
+            manifestPath ?? Path.Combine(root, ManifestFileName));
+        WorkspacePathPolicy.EnsureInsideRoot(root, resolvedManifestPath, nameof(WorkspaceSession.ManifestPath));
 
         return new WorkspaceSession(
             root,
             resolvedManifestPath,
             manifest,
-            ResolveWorkspacePath(root, manifest.ContentPath),
-            ResolveWorkspacePath(root, manifest.SourcePath),
-            ResolveWorkspacePath(root, manifest.GeneratedProjectPath),
-            ResolveWorkspacePath(root, manifest.CachePath))
+            WorkspacePathPolicy.ResolveOwnedPath(root, manifest.ContentPath, nameof(WorkspaceManifest.ContentPath)),
+            WorkspacePathPolicy.ResolveOwnedPath(root, manifest.SourcePath, nameof(WorkspaceManifest.SourcePath)),
+            WorkspacePathPolicy.ResolveOwnedPath(root, manifest.GeneratedProjectPath, nameof(WorkspaceManifest.GeneratedProjectPath)),
+            WorkspacePathPolicy.ResolveOwnedPath(root, manifest.CachePath, nameof(WorkspaceManifest.CachePath)))
         {
-            BuildDirectory = ResolveWorkspacePath(root, manifest.BuildPath),
-            LogicOutputDirectory = ResolveWorkspacePath(root, manifest.LogicOutputPath)
+            BuildDirectory = WorkspacePathPolicy.ResolveOwnedPath(root, manifest.BuildPath, nameof(WorkspaceManifest.BuildPath)),
+            LogicOutputDirectory = WorkspacePathPolicy.ResolveOwnedPath(root, manifest.LogicOutputPath, nameof(WorkspaceManifest.LogicOutputPath))
         };
     }
 
@@ -161,7 +162,8 @@ public class WorkspaceTemplateService
             return;
 
         var allowed = NormalizePath(allowedManifestPath);
-        if (Directory.EnumerateFileSystemEntries(workspaceRoot).Any(x => !string.Equals(NormalizePath(x), allowed, PathComparison)))
+        if (Directory.EnumerateFileSystemEntries(workspaceRoot).Any(x =>
+            !string.Equals(NormalizePath(x), allowed, WorkspacePathPolicy.PathComparison)))
             throw new InvalidOperationException($"Workspace directory is not empty: {workspaceRoot}");
     }
 
@@ -192,33 +194,6 @@ public class WorkspaceTemplateService
     static string NormalizePath(string path)
         => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-    static string ResolveWorkspacePath(string workspaceRoot, string relativePath)
-    {
-        var path = relativePath
-            .Replace('/', Path.DirectorySeparatorChar)
-            .Replace('\\', Path.DirectorySeparatorChar);
-
-        var fullPath = Path.GetFullPath(Path.Combine(workspaceRoot, path));
-        EnsureInsideWorkspace(workspaceRoot, fullPath, relativePath);
-        return fullPath;
-    }
-
-    static void EnsureInsideWorkspace(string workspaceRoot, string path, string field)
-    {
-        var root = Path.GetFullPath(workspaceRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var fullPath = Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-        if (string.Equals(root, fullPath, PathComparison))
-            return;
-
-        var prefix = root + Path.DirectorySeparatorChar;
-        if (!fullPath.StartsWith(prefix, PathComparison))
-            throw new InvalidOperationException($"{field} resolves outside the workspace root.");
-    }
-
-    static StringComparison PathComparison => OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase
-        : StringComparison.Ordinal;
 }
 
 public sealed class RecentWorkspaceStore
@@ -360,8 +335,8 @@ public sealed class WorkspaceLifecycleService
         try
         {
             var session = await _templateService.CreateAsync(request, cancellationToken);
-            Current = session;
             await _recentWorkspaceStore.RecordAsync(session, cancellationToken);
+            Current = session;
             return new WorkspaceLifecycleResult(session, WorkspaceManifestValidationResult.Success);
         }
         catch (Exception ex)
@@ -376,6 +351,7 @@ public sealed class WorkspaceLifecycleService
         if (!loadResult.Succeeded || loadResult.Manifest is null)
             return new WorkspaceLifecycleResult(null, loadResult.Validation, loadResult.Error);
 
+        WorkspaceDirectoryRecovery? recovery = null;
         try
         {
             var workspaceRoot = Path.GetDirectoryName(Path.GetFullPath(manifestPath));
@@ -383,29 +359,190 @@ public sealed class WorkspaceLifecycleService
                 return new WorkspaceLifecycleResult(null, WorkspaceManifestValidationResult.Success, $"Workspace manifest path is invalid: {manifestPath}");
 
             var session = _templateService.CreateSession(workspaceRoot, loadResult.Manifest, manifestPath);
-            Current = session;
+            recovery = RecoverDefaultDirectories(session);
+            session = recovery.Session;
             await _recentWorkspaceStore.RecordAsync(session, cancellationToken);
+            recovery.Commit();
+            Current = session;
             return new WorkspaceLifecycleResult(session, loadResult.Validation);
         }
         catch (Exception ex)
         {
-            return new WorkspaceLifecycleResult(null, loadResult.Validation, ex.Message);
+            return new WorkspaceLifecycleResult(
+                null,
+                loadResult.Validation,
+                RollbackRecovery(recovery, ex).Message);
         }
     }
 
     public async Task<WorkspaceLifecycleResult> SaveAsync(WorkspaceSession session, CancellationToken cancellationToken = default)
     {
+        WorkspaceDirectoryRecovery? recovery = null;
         try
         {
             var validated = _templateService.CreateSession(session.WorkspaceRoot, session.Manifest, session.ManifestPath);
+            recovery = RecoverDefaultDirectories(validated);
+            validated = recovery.Session;
             await _serializer.SaveAsync(validated.ManifestPath, validated.Manifest, cancellationToken);
-            Current = validated;
             await _recentWorkspaceStore.RecordAsync(validated, cancellationToken);
+            recovery.Commit();
+            Current = validated;
             return new WorkspaceLifecycleResult(validated, WorkspaceManifestValidationResult.Success);
         }
         catch (Exception ex)
         {
-            return new WorkspaceLifecycleResult(null, WorkspaceManifestValidationResult.Success, ex.Message);
+            return new WorkspaceLifecycleResult(
+                null,
+                WorkspaceManifestValidationResult.Success,
+                RollbackRecovery(recovery, ex).Message);
+        }
+    }
+
+    WorkspaceDirectoryRecovery RecoverDefaultDirectories(WorkspaceSession session)
+    {
+        var directoriesToCreate = new List<string>();
+        ValidateRecoverableDirectory(
+            session.Manifest.ContentPath,
+            "Content",
+            session.ContentDirectory,
+            nameof(WorkspaceManifest.ContentPath),
+            allowCustomCreation: false,
+            directoriesToCreate);
+        ValidateRecoverableDirectory(
+            session.Manifest.CachePath,
+            "Cache",
+            session.CacheDirectory,
+            nameof(WorkspaceManifest.CachePath),
+            allowCustomCreation: true,
+            directoriesToCreate);
+
+        var createdDirectories = new List<string>();
+        var recovery = new WorkspaceDirectoryRecovery(session, createdDirectories);
+        try
+        {
+            foreach (var directory in directoriesToCreate)
+            {
+                var missingDirectories = GetMissingDirectories(session.WorkspaceRoot, directory);
+                createdDirectories.AddRange(missingDirectories);
+                Directory.CreateDirectory(directory);
+            }
+
+            var resolved = _templateService.CreateSession(
+                session.WorkspaceRoot,
+                session.Manifest,
+                session.ManifestPath);
+            if (!Directory.Exists(resolved.ContentDirectory))
+                throw new DirectoryNotFoundException($"ContentPath was not recovered: {resolved.ContentDirectory}");
+            if (!Directory.Exists(resolved.CacheDirectory))
+                throw new DirectoryNotFoundException($"CachePath was not recovered: {resolved.CacheDirectory}");
+
+            recovery.SetSession(resolved);
+            return recovery;
+        }
+        catch (Exception ex)
+        {
+            throw RollbackRecovery(recovery, ex);
+        }
+    }
+
+    static Exception RollbackRecovery(WorkspaceDirectoryRecovery? recovery, Exception error)
+    {
+        if (recovery is null)
+            return error;
+
+        try
+        {
+            recovery.Rollback();
+            return error;
+        }
+        catch (Exception rollbackError)
+        {
+            return new AggregateException(
+                "Workspace operation failed and recovered directories could not be rolled back.",
+                error,
+                rollbackError);
+        }
+    }
+
+    static void ValidateRecoverableDirectory(
+        string configuredPath,
+        string defaultPath,
+        string resolvedPath,
+        string field,
+        bool allowCustomCreation,
+        ICollection<string> directoriesToCreate)
+    {
+        if (Directory.Exists(resolvedPath))
+            return;
+
+        if (File.Exists(resolvedPath))
+            throw new InvalidOperationException($"{field} resolves to a file instead of a directory: {resolvedPath}");
+
+        var normalizedConfiguredPath = WorkspaceManifestPaths.Normalize(configuredPath);
+        if (!allowCustomCreation &&
+            !string.Equals(normalizedConfiguredPath, defaultPath, WorkspacePathPolicy.PathComparison))
+        {
+            throw new InvalidOperationException(
+                $"The custom {field} directory does not exist and will not be created automatically: {resolvedPath}");
+        }
+
+        directoriesToCreate.Add(resolvedPath);
+    }
+
+    static IReadOnlyList<string> GetMissingDirectories(string workspaceRoot, string directory)
+    {
+        var missing = new List<string>();
+        var root = Path.GetFullPath(workspaceRoot)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        for (var current = Path.GetFullPath(directory)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            !string.Equals(current, root, WorkspacePathPolicy.PathComparison) &&
+            !Directory.Exists(current) &&
+            !File.Exists(current);
+            current = Path.GetDirectoryName(current) ?? root)
+        {
+            missing.Add(current);
+        }
+
+        missing.Reverse();
+        return missing;
+    }
+
+    sealed class WorkspaceDirectoryRecovery
+    {
+        readonly IReadOnlyList<string> _createdDirectories;
+        bool _completed;
+
+        public WorkspaceDirectoryRecovery(
+            WorkspaceSession session,
+            IReadOnlyList<string> createdDirectories)
+        {
+            Session = session;
+            _createdDirectories = createdDirectories;
+        }
+
+        public WorkspaceSession Session { get; private set; }
+
+        public void SetSession(WorkspaceSession session) => Session = session;
+
+        public void Commit() => _completed = true;
+
+        public void Rollback()
+        {
+            if (_completed)
+                return;
+
+            foreach (var directory in _createdDirectories
+                .Distinct(WorkspacePathPolicy.PathComparer)
+                .Reverse())
+            {
+                if (!WorkspacePathPolicy.IsInsideRoot(Session.WorkspaceRoot, directory))
+                    continue;
+                if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+                    Directory.Delete(directory);
+            }
+
+            _completed = true;
         }
     }
 }
