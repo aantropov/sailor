@@ -35,6 +35,8 @@
     <Compile Include="WorkspaceStateResetTests.cs" />
     <Compile Include="WorkspaceIsolationRegressionTests.cs" />
     <Compile Include="WorkspaceProjectGeneratorTests.cs" />
+    <Compile Include="WorkspaceCMakeIntegrationHarness.cs" />
+    <Compile Include="WorkspaceTwoWorkspaceCloseoutIntegrationTests.cs" />
     <Compile Include="EngineTypeMetadataContractTests.cs" />
     <Compile Include="EditorTypeCatalogContractTests.cs" />
     <Compile Include="NumericValueConverterTests.cs" />

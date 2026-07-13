@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Editor.Tests;
@@ -268,37 +267,17 @@ public sealed class WorkspaceProjectGeneratorIntegrationTests
     [Trait("Category", "CMakeIntegration")]
     public async Task SourceMode_ConfiguresBuildsAndEmitsReleaseDll()
     {
-        if (!ShouldRun)
+        if (!WorkspaceCMakeIntegrationHarness.ShouldRun)
             return;
 
-        EnsureWindows();
-        var engineRoot = GetRequiredEnvironmentVariable("SAILOR_ENGINE_SOURCE_DIR");
+        WorkspaceCMakeIntegrationHarness.EnsureWindows();
+        var engineRoot = WorkspaceCMakeIntegrationHarness.GetRequiredEnvironmentVariable(
+            "SAILOR_ENGINE_SOURCE_DIR");
         await GenerateBuildAndAssertAsync(
             engineRoot,
             WorkspaceEngineReferenceKinds.Source,
             "SailorSourceGame");
     }
-
-    [Fact]
-    [Trait("Category", "CMakeIntegration")]
-    public async Task InstalledMode_ConfiguresBuildsAndEmitsReleaseDll()
-    {
-        if (!ShouldRun)
-            return;
-
-        EnsureWindows();
-        var installPrefix = GetRequiredEnvironmentVariable("SAILOR_ENGINE_INSTALL_PREFIX");
-        await GenerateBuildAndAssertAsync(
-            installPrefix,
-            WorkspaceEngineReferenceKinds.Installed,
-            "SailorInstalledGame");
-    }
-
-    static bool ShouldRun
-        => string.Equals(
-            Environment.GetEnvironmentVariable("SAILOR_RUN_CMAKE_INTEGRATION"),
-            "1",
-            StringComparison.Ordinal);
 
     static async Task GenerateBuildAndAssertAsync(
         string enginePath,
@@ -317,87 +296,7 @@ public sealed class WorkspaceProjectGeneratorIntegrationTests
         var serializer = new WorkspaceManifestSerializer();
         var session = new WorkspaceTemplateService(serializer).CreateSession(workspace.Root, manifest);
         await new WorkspaceProjectGenerator().GenerateAsync(session);
-
-        var configureArguments = new List<string>
-        {
-            "-S", session.GeneratedProjectDirectory,
-            "-B", session.BuildDirectory
-        };
-        AddEnvironmentOption(configureArguments, "-G", "SAILOR_CMAKE_GENERATOR");
-        AddEnvironmentOption(configureArguments, "-A", "SAILOR_CMAKE_ARCHITECTURE");
-        AddEnvironmentOption(configureArguments, "-T", "SAILOR_CMAKE_TOOLSET");
-
-        var toolchainFile = Environment.GetEnvironmentVariable("SAILOR_CMAKE_TOOLCHAIN_FILE");
-        if (!string.IsNullOrWhiteSpace(toolchainFile))
-            configureArguments.Add($"-DCMAKE_TOOLCHAIN_FILE={Path.GetFullPath(toolchainFile)}");
-
-        await RunCMakeAsync(session.WorkspaceRoot, configureArguments);
-        await RunCMakeAsync(session.WorkspaceRoot, [
-            "--build", session.BuildDirectory,
-            "--config", "Release",
-            "--target", moduleName,
-            "--parallel"
-        ]);
-
-        var expectedDll = Path.Combine(session.LogicOutputDirectory, "Release", $"{moduleName}.dll");
-        var expectedImportLibrary = Path.Combine(session.LogicOutputDirectory, "Release", $"{moduleName}.lib");
-        Assert.True(File.Exists(expectedDll), $"Expected generated logic module was not found: {expectedDll}");
-        Assert.True(
-            File.Exists(expectedImportLibrary),
-            $"Expected generated logic import library was not found: {expectedImportLibrary}");
-    }
-
-    static void AddEnvironmentOption(ICollection<string> arguments, string option, string variableName)
-    {
-        var value = Environment.GetEnvironmentVariable(variableName);
-        if (string.IsNullOrWhiteSpace(value))
-            return;
-
-        arguments.Add(option);
-        arguments.Add(value);
-    }
-
-    static async Task RunCMakeAsync(string workingDirectory, IEnumerable<string> arguments)
-    {
-        var executable = Environment.GetEnvironmentVariable("SAILOR_CMAKE_EXE");
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = string.IsNullOrWhiteSpace(executable) ? "cmake" : executable,
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start CMake executable: {startInfo.FileName}");
-        var outputTask = process.StandardOutput.ReadToEndAsync();
-        var errorTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-        var output = await outputTask;
-        var error = await errorTask;
-
-        Assert.True(
-            process.ExitCode == 0,
-            $"CMake exited with code {process.ExitCode}.\nArguments: {string.Join(" ", startInfo.ArgumentList)}\n{output}\n{error}");
-    }
-
-    static string GetRequiredEnvironmentVariable(string name)
-    {
-        var value = Environment.GetEnvironmentVariable(name);
-        if (string.IsNullOrWhiteSpace(value))
-            throw new InvalidOperationException($"{name} is required when SAILOR_RUN_CMAKE_INTEGRATION=1.");
-
-        return value;
-    }
-
-    static void EnsureWindows()
-    {
-        if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Workspace CMake integration tests require Windows.");
+        await WorkspaceCMakeIntegrationHarness.ConfigureBuildAndAssertAsync(session);
     }
 
     sealed class IntegrationWorkspace : IDisposable

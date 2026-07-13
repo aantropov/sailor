@@ -15,7 +15,7 @@ public sealed class EditorTypeCacheStoreTests : IDisposable
         cdo: []
         enums: {}
         assetTypes: []
-        """;
+        """.ReplaceLineEndings("\n");
 
     readonly string _directory = Path.Combine(
         Path.GetTempPath(),

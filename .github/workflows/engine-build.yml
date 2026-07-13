@@ -78,11 +78,44 @@ jobs:
       with:
         dotnet-version: 9.0.x
 
-    - name: Validate generated workspace projects
-      run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj --configuration Release --filter "FullyQualifiedName~WorkspaceProjectGeneratorIntegrationTests"
+    - name: Test editor contracts
+      run: dotnet test Editor.Tests/Editor.Contracts.Tests.csproj --configuration Release
+
+    - name: Validate source workspace project
+      run: >-
+        dotnet test Editor.Tests/Editor.Contracts.Tests.csproj
+        --configuration Release
+        --filter "FullyQualifiedName=SailorEditor.Editor.Tests.WorkspaceProjectGeneratorIntegrationTests.SourceMode_ConfiguresBuildsAndEmitsReleaseDll"
       env:
         SAILOR_RUN_CMAKE_INTEGRATION: 1
         SAILOR_ENGINE_SOURCE_DIR: ${{ github.workspace }}
+        SAILOR_CMAKE_GENERATOR: Visual Studio 17 2022
+        SAILOR_CMAKE_ARCHITECTURE: x64
+        SAILOR_CMAKE_TOOLSET: ${{ matrix.sailor_toolset }}
+        SAILOR_CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+
+    - name: Validate two-workspace phase 1
+      run: >-
+        dotnet test Editor.Tests/Editor.Contracts.Tests.csproj
+        --configuration Release
+        --filter "FullyQualifiedName=SailorEditor.Editor.Tests.WorkspaceTwoWorkspaceCloseoutIntegrationTests.Phase1_CreatesBuildsActivatesSavesAndPersistsScenario"
+      env:
+        SAILOR_RUN_CMAKE_INTEGRATION: 1
+        SAILOR_WORKSPACE_E2E_ROOT: ${{ runner.temp }}\sailor-workspace-e2e-${{ matrix.compiler }}
+        SAILOR_ENGINE_INSTALL_PREFIX: ${{ github.workspace }}/build/install
+        SAILOR_CMAKE_GENERATOR: Visual Studio 17 2022
+        SAILOR_CMAKE_ARCHITECTURE: x64
+        SAILOR_CMAKE_TOOLSET: ${{ matrix.sailor_toolset }}
+        SAILOR_CMAKE_TOOLCHAIN_FILE: ${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake
+
+    - name: Validate two-workspace phase 2 in a fresh process
+      run: >-
+        dotnet test Editor.Tests/Editor.Contracts.Tests.csproj
+        --configuration Release
+        --filter "FullyQualifiedName=SailorEditor.Editor.Tests.WorkspaceTwoWorkspaceCloseoutIntegrationTests.Phase2_FreshProcessReopensValidatesAndCleansScenario"
+      env:
+        SAILOR_RUN_CMAKE_INTEGRATION: 1
+        SAILOR_WORKSPACE_E2E_ROOT: ${{ runner.temp }}\sailor-workspace-e2e-${{ matrix.compiler }}
         SAILOR_ENGINE_INSTALL_PREFIX: ${{ github.workspace }}/build/install
         SAILOR_CMAKE_GENERATOR: Visual Studio 17 2022
         SAILOR_CMAKE_ARCHITECTURE: x64
