@@ -102,6 +102,18 @@ add_executable(WorkspaceContextTests
     WorkspaceContextTests.cpp
 )
 
+add_executable(WorkspaceCacheContractTests
+    WorkspaceCacheContractTests.cpp
+)
+
+add_executable(AssetCacheContractTests
+    AssetCacheContractTests.cpp
+)
+
+add_executable(ShaderCacheArtifactTests
+    ShaderCacheArtifactTests.cpp
+)
+
 add_executable(AssetMountDiscoveryTests
     AssetMountDiscoveryTests.cpp
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/AssetMountDiscovery.cpp
@@ -135,6 +147,9 @@ target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceContextTests PRIVATE cxx_std_20)
+target_compile_features(WorkspaceCacheContractTests PRIVATE cxx_std_20)
+target_compile_features(AssetCacheContractTests PRIVATE cxx_std_20)
+target_compile_features(ShaderCacheArtifactTests PRIVATE cxx_std_20)
 target_compile_features(AssetMountDiscoveryTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
@@ -161,6 +176,9 @@ target_link_libraries(WorkspaceModuleContractTests PRIVATE
 )
 target_link_libraries(WorkspaceModuleRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceContextTests PRIVATE Sailor::Runtime)
+target_link_libraries(WorkspaceCacheContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(AssetCacheContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(ShaderCacheArtifactTests PRIVATE Sailor::Runtime)
 add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleFixture
     WorkspaceModuleIncompatibleFixture
@@ -187,6 +205,9 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceModuleContractTests)
     sailor_stage_workspace_test_runtime(WorkspaceModuleRuntimeTests)
     sailor_stage_workspace_test_runtime(WorkspaceContextTests)
+    sailor_stage_workspace_test_runtime(WorkspaceCacheContractTests)
+    sailor_stage_workspace_test_runtime(AssetCacheContractTests)
+    sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
@@ -223,6 +244,15 @@ target_include_directories(WorkspaceModuleRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceContextTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(WorkspaceCacheContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(AssetCacheContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(ShaderCacheArtifactTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(AssetMountDiscoveryTests PRIVATE
@@ -284,6 +314,21 @@ add_test(
 )
 
 add_test(
+    NAME WorkspaceCacheContractTests
+    COMMAND WorkspaceCacheContractTests
+)
+
+add_test(
+    NAME AssetCacheContractTests
+    COMMAND AssetCacheContractTests
+)
+
+add_test(
+    NAME ShaderCacheArtifactTests
+    COMMAND ShaderCacheArtifactTests
+)
+
+add_test(
     NAME AssetMountDiscoveryTests
     COMMAND AssetMountDiscoveryTests "${PROJECT_SOURCE_DIR}/Content"
 )
@@ -312,6 +357,9 @@ add_test(
 )
 set_tests_properties(
     WorkspaceContextTests
+    WorkspaceCacheContractTests
+    AssetCacheContractTests
+    ShaderCacheArtifactTests
     AssetMountDiscoveryTests
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
@@ -321,6 +369,9 @@ set_tests_properties(
 if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
     set_tests_properties(
         WorkspaceContextTests
+        WorkspaceCacheContractTests
+        AssetCacheContractTests
+        ShaderCacheArtifactTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION

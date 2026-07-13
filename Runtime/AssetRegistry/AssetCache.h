@@ -3,6 +3,7 @@
 #include <ctime>
 #include "Containers/ConcurrentMap.h"
 #include "AssetRegistry/FileId.h"
+#include "Workspace/WorkspaceCacheContract.h"
 #include <mutex>
 #include <filesystem>
 #include <string>
@@ -36,6 +37,9 @@ namespace Sailor
 		SAILOR_API void SaveCache(bool bForcely = false);
 
 		SAILOR_API void ClearAll();
+		SAILOR_API Workspace::WorkspaceCacheLoadResult GetLastLoadResult() const;
+		SAILOR_API std::string GetLastSaveDiagnostic() const;
+		SAILOR_API bool IsDirty() const;
 
 	protected:
 
@@ -61,13 +65,36 @@ namespace Sailor
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+
+			static bool TryDeserialize(
+				const YAML::Node& inData,
+				AssetCacheData& outData,
+				std::string& outDiagnostic) noexcept;
 		};
 
-		std::mutex m_saveToCacheMutex;
+		SAILOR_API static bool ShouldResetCacheFile(
+			Workspace::EWorkspaceCacheLoadStatus status) noexcept;
+		SAILOR_API static bool ShouldWriteCacheFile(
+			bool bForcely,
+			bool bIsDirty,
+			bool bPreserveStorageAfterLoadFailure) noexcept;
+
+		SAILOR_API static std::string SerializeAssetCachePayload(const AssetCacheData& cache);
+		SAILOR_API static bool TryDeserializeAssetCachePayload(
+			const std::string& payload,
+			AssetCacheData& outData,
+			std::string& outDiagnostic) noexcept;
+		bool WriteCacheLocked(std::string& outDiagnostic) noexcept;
+		void ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult);
+
+		mutable std::mutex m_cacheMutex;
 
 	private:
 
 		AssetCacheData m_cache;
 		bool m_bIsDirty = false;
+		bool m_bPreserveStorageAfterLoadFailure = false;
+		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
+		std::string m_lastSaveDiagnostic;
 	};
 }

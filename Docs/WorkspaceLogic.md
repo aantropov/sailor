@@ -153,6 +153,48 @@ Import callbacks may register newly generated, non-conflicting Workspace assets 
 
 Cache is not a third discoverable content root. The editor's generated `../Cache/Temp.world` is supported through the direct cache-load exception, while normal asset discovery remains limited to Workspace Content and Engine Content.
 
+### Workspace Cache Envelopes
+
+Workspace-generated caches use a strict version 1 YAML envelope. The native asset and shader caches and the managed editor-type cache use the same field contract:
+
+| Field | Compatibility rule |
+| --- | --- |
+| `cacheVersion` | Common envelope format. The current value is `1`; a missing, older, or future value is unsupported. |
+| `payloadVersion` | Producer-specific payload schema. It must exactly match the version expected by that consumer. |
+| `cacheKind` | Identifies the consumer, such as `asset-cache`, `shader-cache`, or `editor-types`; it must match exactly. |
+| `producerIdentity` | Identifies the payload producer and schema family, such as `asset-cache-v1` or `editor-types-v1`; it must match exactly. |
+| `workspaceId` | Uses the manifest workspace ID, or the deterministic legacy identity described below; it must match exactly. |
+| `engineVersion` | Uses the engine build's `SAILOR_ENGINE_VERSION`; it must match exactly. |
+| `buildIdentity` | Combines the active build configuration with the workspace-module ABI tag, including architecture, compiler, C runtime, iterator mode, and configuration; it must match exactly. |
+| `payload` | Contains the producer-owned serialized data and is published only after complete producer-specific validation. |
+
+The current envelope is closed to unknown or duplicate fields. Version mismatches are not migrated implicitly, and identity mismatches are not accepted as a best-effort hit. For a workspace without a manifest ID, the runtime canonicalizes the immutable workspace root as UTF-8, normalizes separators, folds ASCII `A`-`Z` to lowercase on Windows, and prefixes it with `legacy-root:`. The managed launch contract uses the same byte-preserving rule; non-ASCII characters are not locale-case-folded. The editor marshals workspace and manifest launch paths explicitly as UTF-8, and the runtime decodes those command-line path bytes as UTF-8 before canonicalization, so both sides derive the same identity for non-ASCII roots. Two legacy workspaces at different canonical roots therefore cannot share cache identity accidentally.
+
+Cache loads return one of these structured statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `Missing` | The owned cache file does not exist. |
+| `Loaded` | The complete envelope, exact identity, payload version, and producer payload passed validation. |
+| `StaleIdentity` | Cache kind, producer, workspace, engine, or build identity differs from the expected descriptor. |
+| `Corrupt` | YAML, field structure, payload data, or referenced artifact integrity is malformed or incomplete. |
+| `UnsupportedVersion` | The common envelope version or producer payload version is missing or not exactly supported. |
+| `IoFailure` | The cache path could not be inspected or read reliably. Write and invalidation failures use separate diagnostics. |
+
+No non-`Loaded` result publishes decoded state. Asset and shader payloads are decoded into temporary containers and swapped into their live caches only after complete validation. Shader payload version 2 assigns every entry a collision-resistant immutable generation and requires structurally complete regular and debug artifact sets with identical stage topology. Metadata records the byte length and checksum of every present artifact; truncated, misaligned, same-size checksum-mismatched, or missing required SPIR-V is corrupt rather than a partial cache hit. Editor type metadata is cleared before startup cache handling, the native runtime identity is compared with the exact editor launch identity after initialization, and only a fully validated combined type catalog may be published.
+
+Invalidation is scoped by cache ownership:
+
+- AssetCache owns only `Cache/AssetCache.yaml`. A missing, stale, corrupt, or unsupported load clears its in-memory map and atomically writes an empty current envelope without deleting neighboring files.
+- ShaderCache owns `Cache/ShaderCache.yaml` plus `Cache/PrecompiledShaders/`, `Cache/CompiledShaders/`, and `Cache/CompiledShadersWithDebug/`. It verifies that those paths remain contained by the resolved Cache root before deleting or recreating them. Artifact garbage collection uses only the last successfully committed metadata snapshot as its whitelist, so an envelope failure cannot delete the generation still referenced on disk; other cache files and user-authored Content are never part of shader invalidation.
+- EditorTypes owns `Cache/EditorTypes.yaml` and same-directory temporary files matching its own generated name pattern. Stale, corrupt, and unsupported caches are invalidated by removing only that target and its owned temporary files; it does not sweep the Cache directory.
+
+An `IoFailure` is not evidence that stored bytes are invalid. All three consumers clear or withhold in-memory state after an unreadable cache, but preserve the existing target and owned artifacts so a transient sharing, antivirus, permission, or device error cannot destroy a potentially valid cache. After an AssetCache `IoFailure`, ordinary updates and shutdown preserve existing storage; only an explicit forced rebuild or `ClearAll` authorizes replacement. ShaderCache additionally enters a read-only storage quarantine when either envelope loading or later runtime artifact validation encounters an I/O failure: compilation may publish complete regular/debug bytecode in memory for the current session, but save, invalidation, artifact cleanup, and precompiled writes do not touch disk. Missing, corrupt, stale, unsupported, and repeated I/O reload results keep that quarantine and its session state intact. Only a fully successful reload discards the session-only state and restores persistent access; `ClearAll` is the explicit destructive escape hatch.
+
+Cache YAML and shader artifacts are replaced through same-directory temporary files. The complete temporary file is written and flushed before an atomic replace exposes it; native POSIX writes also synchronize the containing directory, while Windows replacement requests write-through behavior. Shader compilation first writes all regular and required debug artifacts under a new immutable generation, then makes that complete generation eligible for the next metadata commit. Remove and expiry cleanup take the inverse order: they atomically commit candidate metadata before garbage-collecting artifacts no longer referenced by the committed snapshot. A successful shader save also sweeps the replaced immutable generation only after the new envelope commits. A failure before replacement leaves the previous target and generation intact and triggers best-effort temporary-file cleanup. If a durability synchronization reports failure after replacement, the target is still a complete old or new file, never a partially written one. Native cache callers retain dirty state after any reported save failure; shader compile-all performs a save-only retry when bytecode is current but its metadata is still dirty. Metadata is not committed as clean until replacement and post-commit cleanup succeed. An editor-type persistence failure likewise preserves the validated live catalog and reports the failed write instead of publishing unvalidated disk data.
+
+Workspace switching therefore preserves A → B → A isolation. A cache copied from workspace A is `StaleIdentity` in B and is never published, so B starts from empty producer-owned state and writes a B envelope. Returning to A can load only data whose complete identity still matches A. Transactional editor activation additionally clears in-memory asset, world, and editor-type projections before the candidate starts, preventing an asynchronous result from the prior workspace from bypassing the on-disk identity check.
+
 For manifest version 1, the runtime resolves the module as `<resolved-logic-output>/<CONFIG>/<platform-module-name>`. `WorkspaceModuleManager` consumes the captured context and never reparses the manifest. It canonicalizes the final module path again immediately before loading and rejects any symlink or junction change observed by that check. Concurrent mutation of the workspace or build tree during the platform's pathname-only library-loader call is not supported. The active CMake configuration is part of both the path and ABI check, so a stale Debug/Release binary fails with rebuild guidance instead of being loaded as a compatible module.
 
 The dynamic library is opened before asset importers scan the resolved Workspace Content and Engine Content mounts. Asset, shader, precompiled-shader, and editor-type caches use the resolved Cache directory, including custom paths with spaces. The generated shader constants library is written below Workspace Content. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.

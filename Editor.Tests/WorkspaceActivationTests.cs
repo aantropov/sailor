@@ -308,7 +308,8 @@ public sealed class WorkspaceActivationTests
             session.WorkspaceRoot,
             session.ManifestPath,
             session.ContentDirectory,
-            session.CacheDirectory);
+            session.CacheDirectory,
+            session.Manifest.WorkspaceId);
         return new WorkspaceActivationCandidate(new WorkspaceLifecyclePreparation(session), launchContext);
     }
 

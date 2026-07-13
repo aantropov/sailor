@@ -1,21 +1,32 @@
 #include "AssetCache.h"
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <sstream>
-#include "Core/YamlSerializable.h"
-#include "Containers/ConcurrentMap.h"
+
 #include "AssetRegistry/AssetRegistry.h"
+#include "Containers/ConcurrentMap.h"
+#include "Core/YamlSerializable.h"
+#include "Sailor.h"
+#include "Tasks/Tasks.h"
 
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
+#include <sstream>
+#include <unordered_set>
 
 using namespace Sailor;
 
 namespace
 {
+	constexpr const char* AssetCacheKind = "asset-cache";
+	constexpr const char* AssetCacheProducer = "asset-cache-v1";
+	constexpr uint32_t AssetCachePayloadVersion = 1;
+
 	std::string NormalizeSourcePath(const std::string& sourcePath)
 	{
+		if (sourcePath.empty())
+		{
+			return {};
+		}
+
 		std::error_code error;
 		std::string result = std::filesystem::weakly_canonical(sourcePath, error).generic_string();
 		if (error)
@@ -30,6 +41,120 @@ namespace
 #endif
 		return result;
 	}
+
+	Workspace::WorkspaceCacheIdentity MakeExpectedIdentity()
+	{
+		return Workspace::MakeWorkspaceCacheIdentity(
+			AssetCacheKind,
+			AssetCacheProducer,
+			AssetCachePayloadVersion,
+			App::GetWorkspaceContext());
+	}
+
+	bool ReadRequiredField(
+		const YAML::Node& map,
+		const char* fieldName,
+		YAML::Node& outField,
+		std::string& outDiagnostic)
+	{
+		if (!map.IsMap())
+		{
+			outDiagnostic = "Asset cache payload field container must be a YAML map.";
+			return false;
+		}
+
+		uint32_t matches = 0;
+		for (const auto& field : map)
+		{
+			if (field.first.IsScalar() && field.first.Scalar() == fieldName)
+			{
+				outField = field.second;
+				++matches;
+			}
+		}
+
+		if (matches != 1)
+		{
+			outDiagnostic = matches == 0
+				? "Asset cache payload is missing required field '" + std::string(fieldName) + "'."
+				: "Asset cache payload contains duplicate field '" + std::string(fieldName) + "'.";
+			return false;
+		}
+
+		return true;
+	}
+
+	void AppendDiagnostic(std::string& diagnostic, const std::string& suffix)
+	{
+		if (suffix.empty())
+		{
+			return;
+		}
+
+		if (!diagnostic.empty())
+		{
+			diagnostic += " ";
+		}
+		diagnostic += suffix;
+	}
+
+	const char* CacheLoadStatusName(Workspace::EWorkspaceCacheLoadStatus status) noexcept
+	{
+		switch (status)
+		{
+		case Workspace::EWorkspaceCacheLoadStatus::Missing: return "Missing";
+		case Workspace::EWorkspaceCacheLoadStatus::Loaded: return "Loaded";
+		case Workspace::EWorkspaceCacheLoadStatus::StaleIdentity: return "StaleIdentity";
+		case Workspace::EWorkspaceCacheLoadStatus::Corrupt: return "Corrupt";
+		case Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion: return "UnsupportedVersion";
+		case Workspace::EWorkspaceCacheLoadStatus::IoFailure: return "IoFailure";
+		default: return "Unknown";
+		}
+	}
+}
+
+std::string AssetCache::SerializeAssetCachePayload(const AssetCacheData& cache)
+{
+	YAML::Node payload(YAML::NodeType::Map);
+	payload["assetCache"] = cache.Serialize();
+
+	std::ostringstream stream;
+	stream << payload;
+	return stream.str();
+}
+
+bool AssetCache::TryDeserializeAssetCachePayload(
+	const std::string& payload,
+	AssetCacheData& outData,
+	std::string& outDiagnostic) noexcept
+{
+	try
+	{
+		const YAML::Node root = YAML::Load(payload);
+		if (!root.IsMap() || root.size() != 1)
+		{
+			outDiagnostic = "Asset cache payload root must contain exactly one 'assetCache' map.";
+			return false;
+		}
+
+		YAML::Node assetCache;
+		if (!ReadRequiredField(root, "assetCache", assetCache, outDiagnostic))
+		{
+			return false;
+		}
+
+		return AssetCacheData::TryDeserialize(assetCache, outData, outDiagnostic);
+	}
+	catch (const std::exception& exception)
+	{
+		outDiagnostic = "Asset cache payload is corrupt: " + std::string(exception.what());
+		return false;
+	}
+	catch (...)
+	{
+		outDiagnostic = "Asset cache payload is corrupt: unknown YAML decoding failure.";
+		return false;
+	}
 }
 
 std::string AssetCache::GetAssetCacheFilepath()
@@ -39,58 +164,177 @@ std::string AssetCache::GetAssetCacheFilepath()
 
 YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 {
-	YAML::Node res;
-	res["fileId"] = m_fileId;
-	res["assetImportTime"] = m_assetImportTime;
-	res["sourcePath"] = m_sourcePath;
-
-	return res;
+	YAML::Node result(YAML::NodeType::Map);
+	result["fileId"] = m_fileId;
+	result["assetImportTime"] = m_assetImportTime;
+	result["sourcePath"] = m_sourcePath;
+	return result;
 }
 
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
 	m_fileId = inData["fileId"].as<FileId>();
 	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
-	m_sourcePath.clear();
-	for (const auto& field : inData)
-	{
-		if (field.first.IsScalar() && field.first.Scalar() == "sourcePath" && field.second.IsScalar())
-		{
-			m_sourcePath = NormalizeSourcePath(field.second.as<std::string>());
-			break;
-		}
-	}
+	m_sourcePath = NormalizeSourcePath(inData["sourcePath"].as<std::string>());
 }
 
 YAML::Node AssetCache::AssetCacheData::Serialize() const
 {
-	YAML::Node res;
-	res["assets"] = m_data;
-	return res;
+	YAML::Node result(YAML::NodeType::Map);
+	YAML::Node assets(YAML::NodeType::Map);
+	for (const auto& entry : m_data)
+	{
+		assets[entry.m_first] = entry.m_second;
+	}
+	result["assets"] = assets;
+	return result;
 }
 
 void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
-	m_data = inData["assets"].as<TConcurrentMap<FileId, AssetCache::AssetCacheData::Entry>>();
+	AssetCacheData candidate;
+	std::string diagnostic;
+	if (!TryDeserialize(inData, candidate, diagnostic))
+	{
+		throw YAML::RepresentationException(YAML::Mark::null_mark(), diagnostic);
+	}
+	m_data = std::move(candidate.m_data);
+}
+
+bool AssetCache::AssetCacheData::TryDeserialize(
+	const YAML::Node& inData,
+	AssetCacheData& outData,
+	std::string& outDiagnostic) noexcept
+{
+	try
+	{
+		if (!inData.IsMap() || inData.size() != 1)
+		{
+			outDiagnostic = "Asset cache data must contain exactly one 'assets' map.";
+			return false;
+		}
+
+		YAML::Node assets;
+		if (!ReadRequiredField(inData, "assets", assets, outDiagnostic))
+		{
+			return false;
+		}
+		if (!assets.IsMap())
+		{
+			outDiagnostic = "Asset cache field 'assets' must be a YAML map, including when empty.";
+			return false;
+		}
+
+		AssetCacheData candidate;
+		std::unordered_set<std::string> fileIds;
+		fileIds.reserve(assets.size());
+		for (const auto& serializedEntry : assets)
+		{
+			if (!serializedEntry.first.IsScalar())
+			{
+				outDiagnostic = "Asset cache contains a non-scalar file id.";
+				return false;
+			}
+
+			const std::string serializedFileId = serializedEntry.first.Scalar();
+			if (!fileIds.emplace(serializedFileId).second)
+			{
+				outDiagnostic = "Asset cache contains duplicate file id '" + serializedFileId + "'.";
+				return false;
+			}
+
+			const FileId fileId = serializedEntry.first.as<FileId>();
+			if (!fileId)
+			{
+				outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
+				return false;
+			}
+
+			const YAML::Node entryNode = serializedEntry.second;
+			if (!entryNode.IsMap() || entryNode.size() != 3)
+			{
+				outDiagnostic = "Asset cache entry '" + serializedFileId +
+					"' must contain exactly fileId, assetImportTime, and sourcePath.";
+				return false;
+			}
+
+			YAML::Node entryFileId;
+			YAML::Node assetImportTime;
+			YAML::Node sourcePath;
+			if (!ReadRequiredField(entryNode, "fileId", entryFileId, outDiagnostic) ||
+				!ReadRequiredField(entryNode, "assetImportTime", assetImportTime, outDiagnostic) ||
+				!ReadRequiredField(entryNode, "sourcePath", sourcePath, outDiagnostic))
+			{
+				return false;
+			}
+			if (!entryFileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar())
+			{
+				outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains a non-scalar field.";
+				return false;
+			}
+
+			AssetCacheData::Entry entry;
+			entry.m_fileId = entryFileId.as<FileId>();
+			entry.m_assetImportTime = assetImportTime.as<std::time_t>();
+			const std::string serializedSourcePath = sourcePath.as<std::string>();
+			if (serializedSourcePath.empty())
+			{
+				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
+				return false;
+			}
+			entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
+			if (!entry.m_fileId || entry.m_fileId != fileId)
+			{
+				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has a mismatched fileId field.";
+				return false;
+			}
+			if (entry.m_sourcePath.empty())
+			{
+				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
+				return false;
+			}
+
+			candidate.m_data.Insert(fileId, std::move(entry));
+		}
+
+		outData.m_data = std::move(candidate.m_data);
+		outDiagnostic.clear();
+		return true;
+	}
+	catch (const std::exception& exception)
+	{
+		outDiagnostic = "Asset cache data is corrupt: " + std::string(exception.what());
+		return false;
+	}
+	catch (...)
+	{
+		outDiagnostic = "Asset cache data is corrupt: unknown payload decoding failure.";
+		return false;
+	}
+}
+
+bool AssetCache::ShouldResetCacheFile(Workspace::EWorkspaceCacheLoadStatus status) noexcept
+{
+	return status == Workspace::EWorkspaceCacheLoadStatus::Missing ||
+		status == Workspace::EWorkspaceCacheLoadStatus::StaleIdentity ||
+		status == Workspace::EWorkspaceCacheLoadStatus::Corrupt ||
+		status == Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion;
+}
+
+bool AssetCache::ShouldWriteCacheFile(
+	bool bForcely,
+	bool bIsDirty,
+	bool bPreserveStorageAfterLoadFailure) noexcept
+{
+	return bForcely || (!bPreserveStorageAfterLoadFailure && bIsDirty);
 }
 
 void AssetCache::Initialize()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::filesystem::create_directories(AssetRegistry::GetCacheFolder());
-
-	auto assetCacheFilePath = std::filesystem::path(GetAssetCacheFilepath());
-	if (!std::filesystem::exists(GetAssetCacheFilepath()))
-	{
-		YAML::Node outData;
-		outData["assetCache"] = m_cache.Serialize();
-
-		std::ofstream assetFile(assetCacheFilePath);
-		assetFile << outData;
-		assetFile.close();
-	}
-
+	std::error_code createError;
+	std::filesystem::create_directories(AssetRegistry::GetCacheFolder(), createError);
 	LoadCache();
 }
 
@@ -103,16 +347,27 @@ void AssetCache::SaveCache(bool bForcely)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (bForcely || m_bIsDirty)
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (!ShouldWriteCacheFile(bForcely, m_bIsDirty, m_bPreserveStorageAfterLoadFailure))
 	{
-		YAML::Node outData;
-		outData["assetCache"] = m_cache.Serialize();
+		return;
+	}
+	if (bForcely)
+	{
+		m_bPreserveStorageAfterLoadFailure = false;
+	}
 
-		std::ofstream assetFile(GetAssetCacheFilepath());
-		assetFile << outData;
-		assetFile.close();
-
+	std::string diagnostic;
+	if (WriteCacheLocked(diagnostic))
+	{
 		m_bIsDirty = false;
+		m_lastSaveDiagnostic.clear();
+	}
+	else
+	{
+		m_bIsDirty = true;
+		m_lastSaveDiagnostic = std::move(diagnostic);
+		SAILOR_LOG_ERROR("Asset cache save failed: %s", m_lastSaveDiagnostic.c_str());
 	}
 }
 
@@ -120,39 +375,186 @@ void AssetCache::LoadCache()
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	std::string yaml;
-	AssetRegistry::ReadAllTextFile(GetAssetCacheFilepath(), yaml);
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	Workspace::WorkspaceCacheLoadResult loadResult;
+	try
+	{
+		const auto identity = MakeExpectedIdentity();
+		loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetAssetCacheFilepath(), identity);
+	}
+	catch (const std::exception& exception)
+	{
+		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
+		loadResult.m_diagnostic = "Cannot construct the expected asset cache identity: " +
+			std::string(exception.what());
+	}
+	catch (...)
+	{
+		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
+		loadResult.m_diagnostic = "Cannot construct the expected asset cache identity: unknown failure.";
+	}
+	if (loadResult.IsLoaded())
+	{
+		AssetCacheData candidate;
+		std::string diagnostic;
+		if (TryDeserializeAssetCachePayload(loadResult.m_payload, candidate, diagnostic))
+		{
+			m_cache.m_data = std::move(candidate.m_data);
+			m_bIsDirty = false;
+			m_bPreserveStorageAfterLoadFailure = false;
+			m_lastSaveDiagnostic.clear();
+			m_lastLoadResult = std::move(loadResult);
+			return;
+		}
 
-	YAML::Node yamlNode = YAML::Load(yaml);
-	m_cache.Deserialize(yamlNode["assetCache"]);
+		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::Corrupt;
+		loadResult.m_diagnostic = std::move(diagnostic);
+		loadResult.m_payload.clear();
+	}
+	else if (!ShouldResetCacheFile(loadResult.m_status))
+	{
+		m_cache.m_data.Clear();
+		m_bIsDirty = false;
+		m_bPreserveStorageAfterLoadFailure = true;
+		m_lastSaveDiagnostic.clear();
+		m_lastLoadResult = std::move(loadResult);
+		SAILOR_LOG_ERROR(
+			"Asset cache load status=%s: %s The existing cache file was preserved.",
+			CacheLoadStatusName(m_lastLoadResult.m_status),
+			m_lastLoadResult.m_diagnostic.c_str());
+		return;
+	}
 
-	m_bIsDirty = false;
+	ResetInvalidCacheLocked(std::move(loadResult));
+}
+
+bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
+{
+	try
+	{
+		std::string envelope;
+		const auto identity = MakeExpectedIdentity();
+		if (!Workspace::SerializeWorkspaceCacheEnvelope(
+			identity,
+			SerializeAssetCachePayload(m_cache),
+			envelope,
+			outDiagnostic))
+		{
+			return false;
+		}
+
+		return Workspace::AtomicReplaceWorkspaceCacheText(
+			GetAssetCacheFilepath(),
+			envelope,
+			outDiagnostic);
+	}
+	catch (const std::exception& exception)
+	{
+		outDiagnostic = "Cannot serialize the asset cache envelope: " + std::string(exception.what());
+		return false;
+	}
+	catch (...)
+	{
+		outDiagnostic = "Cannot serialize the asset cache envelope: unknown failure.";
+		return false;
+	}
+}
+
+void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult)
+{
+	m_cache.m_data.Clear();
+	m_bIsDirty = true;
+	m_bPreserveStorageAfterLoadFailure = false;
+	m_lastLoadResult = std::move(loadResult);
+
+	std::string diagnostic;
+	if (WriteCacheLocked(diagnostic))
+	{
+		m_bIsDirty = false;
+		m_lastSaveDiagnostic.clear();
+		AppendDiagnostic(m_lastLoadResult.m_diagnostic, "The cache was reset to an empty current envelope.");
+		SAILOR_LOG(
+			"Asset cache load status=%s: %s",
+			CacheLoadStatusName(m_lastLoadResult.m_status),
+			m_lastLoadResult.m_diagnostic.c_str());
+	}
+	else
+	{
+		m_lastSaveDiagnostic = diagnostic;
+		AppendDiagnostic(
+			m_lastLoadResult.m_diagnostic,
+			"The cache could not be reset: " + diagnostic);
+		SAILOR_LOG_ERROR(
+			"Asset cache load status=%s: %s",
+			CacheLoadStatusName(m_lastLoadResult.m_status),
+			m_lastLoadResult.m_diagnostic.c_str());
+	}
 }
 
 void AssetCache::ClearAll()
 {
-	std::lock_guard<std::mutex> lk(m_saveToCacheMutex);
-	std::filesystem::remove_all(GetAssetCacheFilepath());
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	m_cache.m_data.Clear();
+	m_bIsDirty = false;
+	m_bPreserveStorageAfterLoadFailure = false;
+
+	std::error_code removeError;
+	std::filesystem::remove(GetAssetCacheFilepath(), removeError);
+	if (removeError)
+	{
+		m_bIsDirty = true;
+		m_lastSaveDiagnostic = "Cannot remove AssetCache.yaml: " + removeError.message();
+		SAILOR_LOG_ERROR("Asset cache clear failed: %s", m_lastSaveDiagnostic.c_str());
+	}
+	else
+	{
+		m_lastSaveDiagnostic.clear();
+	}
 }
 
-bool AssetCache::Contains(const FileId& uid) const { return m_cache.m_data.ContainsKey(uid); }
+Workspace::WorkspaceCacheLoadResult AssetCache::GetLastLoadResult() const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_lastLoadResult;
+}
+
+std::string AssetCache::GetLastSaveDiagnostic() const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_lastSaveDiagnostic;
+}
+
+bool AssetCache::IsDirty() const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_bIsDirty;
+}
+
+bool AssetCache::Contains(const FileId& uid) const
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	return m_cache.m_data.ContainsKey(uid);
+}
 
 bool AssetCache::GetTimeStamp(
 	const FileId& uid,
 	const std::string& sourcePath,
 	time_t& outAssetTimestamp) const
 {
-	if (Contains(uid))
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (!m_cache.m_data.ContainsKey(uid))
 	{
-		const AssetCacheData::Entry& entry = m_cache.m_data[uid];
-		if (entry.m_sourcePath.empty() || entry.m_sourcePath != NormalizeSourcePath(sourcePath))
-		{
-			return false;
-		}
-		outAssetTimestamp = entry.m_assetImportTime;
-		return true;
+		return false;
 	}
-	return false;
+
+	const AssetCacheData::Entry entry = m_cache.m_data[uid];
+	if (entry.m_sourcePath.empty() || entry.m_sourcePath != NormalizeSourcePath(sourcePath))
+	{
+		return false;
+	}
+
+	outAssetTimestamp = entry.m_assetImportTime;
+	return true;
 }
 
 void AssetCache::Update(
@@ -160,20 +562,32 @@ void AssetCache::Update(
 	const std::string& sourcePath,
 	const time_t& assetTimestamp)
 {
+	std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto& entry = m_cache.m_data.At_Lock(id);
-	const std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
+	struct EntryUnlockGuard final
+	{
+		TConcurrentMap<FileId, AssetCacheData::Entry>& m_data;
+		const FileId& m_id;
 
-	m_bIsDirty |= entry.m_assetImportTime != assetTimestamp ||
+		~EntryUnlockGuard() noexcept
+		{
+			m_data.Unlock(m_id);
+		}
+	} unlockGuard{ m_cache.m_data, id };
+
+	m_bIsDirty |= entry.m_fileId != id ||
+		entry.m_assetImportTime != assetTimestamp ||
 		entry.m_sourcePath != normalizedSourcePath;
 	entry.m_fileId = id;
 	entry.m_assetImportTime = assetTimestamp;
-	entry.m_sourcePath = normalizedSourcePath;
-
-	m_cache.m_data.Unlock(id);
+	entry.m_sourcePath = std::move(normalizedSourcePath);
 }
 
 void AssetCache::Remove(const FileId& uid)
 {
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	m_bIsDirty |= m_cache.m_data.Remove(uid);
 }
 
 bool AssetCache::IsExpired(const AssetInfo* info) const

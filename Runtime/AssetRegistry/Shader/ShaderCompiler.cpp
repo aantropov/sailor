@@ -8,10 +8,12 @@
 #include "ShaderCache.h"
 #include "RHI/Shader.h"
 #include "Core/Utils.h"
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
 #include <iostream>
+#include <memory>
 
 #include "Core/YamlSerializable.h"
 #include <shaderc/shaderc.hpp>
@@ -30,6 +32,32 @@
 #include "ECS/LightingECS.h"
 
 using namespace Sailor;
+
+namespace
+{
+	template<typename TMap, typename TKey>
+	class TConcurrentMapEntryUnlockGuard final
+	{
+	public:
+		TConcurrentMapEntryUnlockGuard(TMap& map, const TKey& key) noexcept :
+			m_map(map),
+			m_key(key)
+		{
+		}
+
+		~TConcurrentMapEntryUnlockGuard() noexcept
+		{
+			m_map.Unlock(m_key);
+		}
+
+		TConcurrentMapEntryUnlockGuard(const TConcurrentMapEntryUnlockGuard&) = delete;
+		TConcurrentMapEntryUnlockGuard& operator=(const TConcurrentMapEntryUnlockGuard&) = delete;
+
+	private:
+		TMap& m_map;
+		const TKey& m_key;
+	};
+}
 
 class ShaderIncluder : public shaderc::CompileOptions::IncluderInterface
 {
@@ -185,7 +213,7 @@ void ShaderCompiler::UpdateConstantsLibrary()
 	if (!std::filesystem::exists(constantsLibrary))
 	{
 		std::ofstream assetFile(constantsLibrary);
-		assetFile << GenerateConstantsLibrary(Version);
+		assetFile << GenerateConstantsLibrary(CacheProducerVersion);
 		assetFile.close();
 
 		return;
@@ -211,7 +239,7 @@ void ShaderCompiler::UpdateConstantsLibrary()
 
 		uint32_t versionValue = 0;
 
-		if (ss >> versionValue && (versionValue == Version))
+		if (ss >> versionValue && (versionValue == CacheProducerVersion))
 		{
 			return;
 		}
@@ -223,7 +251,7 @@ void ShaderCompiler::UpdateConstantsLibrary()
 
 		// Update library
 		std::ofstream assetFile(constantsLibrary);
-		assetFile << GenerateConstantsLibrary(Version);
+		assetFile << GenerateConstantsLibrary(CacheProducerVersion);
 		assetFile.close();
 	}
 }
@@ -299,7 +327,20 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 		GeneratePrecompiledGlsl(pShader.GetRawPtr(), computeGlsl, pShader->GetIncludes(), computeDefines);
 	}
 
-	m_shaderCache.CachePrecompiledGlsl(assetInfo->GetFileId(), permutation, vertexGlsl, fragmentGlsl, computeGlsl);
+	const bool bPrecompiledCached = m_shaderCache.CachePrecompiledGlsl(
+		assetInfo->GetFileId(),
+		permutation,
+		vertexGlsl,
+		fragmentGlsl,
+		computeGlsl);
+	if (!bPrecompiledCached)
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to cache precompiled GLSL for shader %s permutation %u: %s",
+			assetInfo->GetAssetFilepath().c_str(),
+			permutation,
+			m_shaderCache.GetLastSaveDiagnostic().c_str());
+	}
 
 	RHI::ShaderByteCode spirvVertexByteCode;
 	RHI::ShaderByteCode spirvFragmentByteCode;
@@ -311,10 +352,8 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	const bool bResultCompileFragmentShader = pShader->ContainsFragment() && CompileGlslToSpirv(filename, fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCode, false);
 	const bool bResultCompileComputeShader = pShader->ContainsCompute() && CompileGlslToSpirv(filename, computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCode, false);
 
-	if ((bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader)
-	{
-		m_shaderCache.CacheSpirv_ThreadSafe(assetInfo->GetFileId(), permutation, spirvVertexByteCode, spirvFragmentByteCode, spirvComputeByteCode);
-	}
+	const bool bCompiledRegular =
+		(bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader;
 
 	RHI::ShaderByteCode spirvVertexByteCodeDebug;
 	RHI::ShaderByteCode spirvFragmentByteCodeDebug;
@@ -324,12 +363,68 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	const bool bResultCompileFragmentShaderDebug = pShader->ContainsFragment() && CompileGlslToSpirv(filename, fragmentGlsl, RHI::EShaderStage::Fragment, spirvFragmentByteCodeDebug, true);
 	const bool bResultCompileComputeShaderDebug = pShader->ContainsCompute() && CompileGlslToSpirv(filename, computeGlsl, RHI::EShaderStage::Compute, spirvComputeByteCodeDebug, true);
 
-	if ((bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug) || bResultCompileComputeShaderDebug)
+	const bool bCompiledDebug =
+		(bResultCompileVertexShaderDebug && bResultCompileFragmentShaderDebug) || bResultCompileComputeShaderDebug;
+	if (bCompiledRegular && !bCompiledDebug)
 	{
-		m_shaderCache.CacheSpirvWithDebugInfo(assetInfo->GetFileId(), permutation, spirvVertexByteCodeDebug, spirvFragmentByteCodeDebug, spirvComputeByteCodeDebug);
+		SAILOR_LOG_ERROR(
+			"Required debug SPIR-V compilation failed for shader %s permutation %u",
+			assetInfo->GetAssetFilepath().c_str(),
+			permutation);
+	}
+	const bool bCachedComplete = bCompiledRegular && bCompiledDebug && m_shaderCache.CacheSpirv_ThreadSafe(
+		assetInfo->GetFileId(),
+		permutation,
+		spirvVertexByteCode,
+		spirvFragmentByteCode,
+		spirvComputeByteCode,
+		spirvVertexByteCodeDebug,
+		spirvFragmentByteCodeDebug,
+		spirvComputeByteCodeDebug);
+	if (bCompiledRegular && bCompiledDebug && !bCachedComplete)
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to publish complete SPIR-V generation for shader %s permutation %u: %s",
+			assetInfo->GetAssetFilepath().c_str(),
+			permutation,
+			m_shaderCache.GetLastSaveDiagnostic().c_str());
 	}
 
-	return (bResultCompileVertexShader && bResultCompileFragmentShader) || bResultCompileComputeShader;
+	return bCompiledRegular && bCompiledDebug && bCachedComplete;
+}
+
+void ShaderCompiler::RecordCompileResult(
+	std::atomic_bool& aggregate,
+	bool bSucceeded) noexcept
+{
+	if (!bSucceeded)
+	{
+		aggregate.store(false, std::memory_order_release);
+	}
+}
+
+bool ShaderCompiler::SaveShaderCacheAndCombineResult(
+	ShaderCache& cache,
+	bool bCompiledSuccessfully)
+{
+	cache.SaveCache();
+	return bCompiledSuccessfully && !cache.IsDirty();
+}
+
+bool ShaderCompiler::ShouldRetryDirtyShaderCache(
+	size_t numPermutationsToCompile,
+	bool bCacheDirty) noexcept
+{
+	return numPermutationsToCompile == 0 && bCacheDirty;
+}
+
+void ShaderCompiler::RemoveFinishedPromiseEntries(
+	TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>& entries)
+{
+	RemoveMatchingEntries(entries, [](const Tasks::TaskPtr<ShaderSetPtr>& promise)
+		{
+			return promise && promise->IsFinished();
+		});
 }
 
 Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(const FileId& uid)
@@ -370,32 +465,50 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 			}
 		}
 
+		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
 		if (permutationsToCompile.IsEmpty())
 		{
+			if (ShouldRetryDirtyShaderCache(permutationsToCompile.Num(), m_shaderCache.IsDirty()))
+			{
+				Tasks::TaskPtr<bool> retrySaveJob = Tasks::CreateTaskWithResult<bool>(
+					"Retry Save Shader Cache",
+					[this]()
+					{
+						return SaveShaderCacheAndCombineResult(m_shaderCache, true);
+					});
+				scheduler->Run(retrySaveJob);
+				return retrySaveJob;
+			}
 			return Tasks::TaskPtr<bool>::Make(false);
 		}
 
-		auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
+		auto compileSucceeded = std::make_shared<std::atomic_bool>(true);
 		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=, this]()
 			{
-				SAILOR_LOG("Shader compiled %s", assetInfo->GetAssetFilepath().c_str());
-				m_shaderCache.SaveCache();
+				const bool bCompiled = compileSucceeded->load(std::memory_order_acquire);
+				SAILOR_LOG(
+					bCompiled ? "Shader compiled %s" : "Shader compilation failed %s",
+					assetInfo->GetAssetFilepath().c_str());
+				const bool bResult = SaveShaderCacheAndCombineResult(m_shaderCache, bCompiled);
 
 				//Unload shader asset text
 				m_shaderAssetsCache.Remove(assetInfo->GetFileId());
 
-				return true;
+				return bResult;
 			});
 
 		for (uint32_t i = 0; i < permutationsToCompile.Num(); i++)
 		{
-			Tasks::ITaskPtr job = Tasks::CreateTask("Compile shader", [i, pShader, assetInfo, permutationsToCompile]()
+			Tasks::TaskPtr<bool> job = Tasks::CreateTaskWithResult<bool>("Compile shader", [i, assetInfo, permutationsToCompile, compileSucceeded]()
 				{
 					SAILOR_LOG("Start compiling shader %d", permutationsToCompile[i]);
-					App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(assetInfo, permutationsToCompile[i]);
+					const bool bSucceeded = App::GetSubmodule<ShaderCompiler>()->ForceCompilePermutation(
+						assetInfo,
+						permutationsToCompile[i]);
+					ShaderCompiler::RecordCompileResult(*compileSucceeded, bSucceeded);
+					return bSucceeded;
 				});
 
 			saveCacheJob->Join(job);
@@ -767,88 +880,69 @@ Tasks::TaskPtr<ShaderSetPtr> ShaderCompiler::LoadShader(FileId uid, ShaderSetPtr
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	Tasks::TaskPtr<ShaderSetPtr> newPromise;
 	outShader = nullptr;
-
-	if (auto pShader = LoadShaderAsset(uid).TryLock())
+	auto shaderAsset = LoadShaderAsset(uid).TryLock();
+	if (!shaderAsset)
 	{
-		const uint32_t permutation = GetPermutation(pShader->GetSupportedDefines(), defines);
-
-		// Check promises first
-		auto it = m_promises.Find(uid);
-		if (it != m_promises.end())
-		{
-			auto allLoadedPermutations = (*it).m_second;
-			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
-			if (shaderIt != allLoadedPermutations.end())
-			{
-				newPromise = (*shaderIt).m_second;
-			}
-		}
-
-		// Check loaded shaders then
-		auto loadedShadersIt = m_loadedShaders.Find(uid);
-		if (loadedShadersIt != m_loadedShaders.end())
-		{
-			auto allLoadedPermutations = (*loadedShadersIt).m_second;
-			auto shaderIt = std::find_if(allLoadedPermutations.begin(), allLoadedPermutations.end(), [=](const auto& p) { return p.m_first == permutation; });
-			if (shaderIt != allLoadedPermutations.end())
-			{
-				outShader = (*shaderIt).m_second;
-				return newPromise ? newPromise : Tasks::TaskPtr<ShaderSetPtr>::Make(outShader);
-			}
-		}
-
-		auto& entry = m_promises.At_Lock(uid);
-
-		// We have promise
-		if (entry.Num() > 0)
-		{
-			const size_t index = entry.FindIf([&](const auto& el) { return el.m_first == permutation; });
-			if (index != -1)
-			{
-				auto& shaders = m_loadedShaders.At_Lock(uid);
-				outShader = shaders[index].m_second;
-				m_loadedShaders.Unlock(uid);
-				m_promises.Unlock(uid);
-
-				return entry[index].m_second;
-			}
-		}
-
-		if (ShaderAssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
-		{
-			SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
-			(void)assetInfo;
-
-			auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
-
-			newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>("Load shader",
-				[pShader, this, permutation]()
-				{
-					UpdateRHIResource(pShader, permutation);
-					return pShader;
-				});
-
-			auto& shaders = m_loadedShaders.At_Lock(uid);
-
-			shaders.Add({ permutation, pShader });
-			entry.Add({ permutation, newPromise });
-			outShader = (*(shaders.end() - 1)).m_second;
-
-			m_loadedShaders.Unlock(uid);
-
-			App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
-			m_promises.Unlock(uid);
-
-			return newPromise;
-		}
+		SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
+		return Tasks::TaskPtr<ShaderSetPtr>();
 	}
 
-	m_promises.Unlock(uid);
+	const uint32_t permutation = GetPermutation(shaderAsset->GetSupportedDefines(), defines);
+	ShaderAssetInfoPtr assetInfo =
+		App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid);
+	if (!assetInfo)
+	{
+		SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
+		return Tasks::TaskPtr<ShaderSetPtr>();
+	}
+	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
 
-	SAILOR_LOG("Cannot find shader with uid: %s", uid.ToString().c_str());
-	return Tasks::TaskPtr<ShaderSetPtr>();
+	Tasks::TaskPtr<ShaderSetPtr> newPromise;
+	{
+		auto& promises = m_promises.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard promisesUnlockGuard(m_promises, uid);
+		auto& shaders = m_loadedShaders.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard shadersUnlockGuard(m_loadedShaders, uid);
+		const size_t promiseIndex = FindPermutationIndex(promises, permutation);
+		const size_t shaderIndex = FindPermutationIndex(shaders, permutation);
+		if (shaderIndex != static_cast<size_t>(-1))
+		{
+			outShader = shaders[shaderIndex].m_second;
+			return promiseIndex == static_cast<size_t>(-1)
+				? Tasks::TaskPtr<ShaderSetPtr>::Make(outShader)
+				: promises[promiseIndex].m_second;
+		}
+		if (promiseIndex != static_cast<size_t>(-1))
+		{
+			return promises[promiseIndex].m_second;
+		}
+
+		auto pShader = ShaderSetPtr::Make(m_allocator, uid, defines);
+		newPromise = Tasks::CreateTaskWithResult<ShaderSetPtr>(
+			"Load shader",
+			[pShader, this, uid, permutation]() mutable
+			{
+				if (!UpdateRHIResource(pShader, permutation))
+				{
+					{
+						auto& failedPromises = m_promises.At_Lock(uid);
+						TConcurrentMapEntryUnlockGuard promisesUnlockGuard(m_promises, uid);
+						auto& failedShaders = m_loadedShaders.At_Lock(uid);
+						TConcurrentMapEntryUnlockGuard shadersUnlockGuard(m_loadedShaders, uid);
+						EvictFailedShaderLoadEntries(failedPromises, failedShaders, permutation);
+					}
+					pShader.DestroyObject(m_allocator);
+					return ShaderSetPtr{};
+				}
+				return pShader;
+			});
+
+		AddShaderLoadEntries(promises, shaders, permutation, newPromise, pShader);
+		outShader = pShader;
+	}
+	App::GetSubmodule<Tasks::Scheduler>()->Run(newPromise);
+	return newPromise;
 }
 
 bool ShaderCompiler::LoadShader_Immediate(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines)
@@ -862,7 +956,12 @@ bool ShaderCompiler::LoadShader_Immediate(FileId uid, ShaderSetPtr& outShader, c
 	}
 
 	task->Wait();
-	return task->GetResult().IsValid();
+	outShader = task->GetResult();
+	if (!outShader.IsValid())
+	{
+		return false;
+	}
+	return true;
 }
 
 bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutation)
@@ -871,7 +970,16 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 
 	auto pRaw = pShader.GetRawPtr();
 	auto& pRhiDriver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	const std::string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(pShader->GetFileId())->GetAssetFilepath();
+	AssetInfoPtr assetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(pShader->GetFileId());
+	if (!assetInfo)
+	{
+		SAILOR_LOG_ERROR(
+			"UpdateRHIResource could not resolve asset metadata for shader %s permutation %u",
+			pShader->GetFileId().ToString().c_str(),
+			permutation);
+		return false;
+	}
+	const std::string assetFilename = assetInfo->GetAssetFilepath();
 
 	RHI::ShaderByteCode debugVertexSpirv;
 	RHI::ShaderByteCode debugFragmentSpirv;
@@ -891,43 +999,112 @@ bool ShaderCompiler::UpdateRHIResource(ShaderSetPtr pShader, uint32_t permutatio
 		return false;
 	}
 
-	if (debugVertexSpirv.Num() > 0)
+	auto createShader = [&](RHI::EShaderStage stage,
+		const RHI::ShaderByteCode& byteCode,
+		RHI::RHIShaderPtr& outShader,
+		const std::string& debugName) -> bool
 	{
-		pRaw->m_rhiVertexShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, debugVertexSpirv);
-		pRhiDriver->SetDebugName(pRaw->m_rhiVertexShaderDebug, "Debug Vertex " + assetFilename);
-	}
-	if (debugFragmentSpirv.Num() > 0)
+		if (byteCode.IsEmpty())
+		{
+			return true;
+		}
+		outShader = pRhiDriver->CreateShader(stage, byteCode);
+		if (!outShader)
+		{
+			SAILOR_LOG_ERROR(
+				"UpdateRHIResource failed to create %s for shader %s permutation %u",
+				debugName.c_str(),
+				pShader->GetFileId().ToString().c_str(),
+				permutation);
+			return false;
+		}
+		pRhiDriver->SetDebugName(outShader, debugName + " " + assetFilename);
+		return true;
+	};
+	RHI::RHIShaderPtr stagedVertexShader;
+	RHI::RHIShaderPtr stagedFragmentShader;
+	RHI::RHIShaderPtr stagedComputeShader;
+	RHI::RHIShaderPtr stagedDebugVertexShader;
+	RHI::RHIShaderPtr stagedDebugFragmentShader;
+	RHI::RHIShaderPtr stagedDebugComputeShader;
+
+	if (!createShader(
+		RHI::EShaderStage::Vertex,
+		debugVertexSpirv,
+		stagedDebugVertexShader,
+		"Debug Vertex") ||
+		!createShader(
+			RHI::EShaderStage::Fragment,
+			debugFragmentSpirv,
+			stagedDebugFragmentShader,
+			"Debug Fragment") ||
+		!createShader(
+			RHI::EShaderStage::Compute,
+			debugComputeFragmentSpirv,
+			stagedDebugComputeShader,
+			"Debug Compute") ||
+		!createShader(
+			RHI::EShaderStage::Vertex,
+			vertexByteCode,
+			stagedVertexShader,
+			"Vertex") ||
+		!createShader(
+			RHI::EShaderStage::Fragment,
+			fragmentByteCode,
+			stagedFragmentShader,
+			"Fragment") ||
+		!createShader(
+			RHI::EShaderStage::Compute,
+			computeByteCode,
+			stagedComputeShader,
+			"Compute"))
 	{
-		pRaw->m_rhiFragmentShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, debugFragmentSpirv);
-		pRhiDriver->SetDebugName(pRaw->m_rhiFragmentShaderDebug, "Debug Fragment " + assetFilename);
-	}
-	if (debugComputeFragmentSpirv.Num() > 0)
-	{
-		pRaw->m_rhiComputeShaderDebug = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, debugComputeFragmentSpirv);
-		pRhiDriver->SetDebugName(pRaw->m_rhiComputeShaderDebug, "Debug Compute " + assetFilename);
+		return false;
 	}
 
-	if (vertexByteCode.Num() > 0)
+	const bool bRegularReady =
+		(stagedVertexShader && stagedFragmentShader) || stagedComputeShader;
+	const bool bDebugReady =
+		(stagedDebugVertexShader && stagedDebugFragmentShader) || stagedDebugComputeShader;
+	if (!bRegularReady || !bDebugReady)
 	{
-		pRaw->m_rhiVertexShader = pRhiDriver->CreateShader(RHI::EShaderStage::Vertex, vertexByteCode);
-		pRhiDriver->SetDebugName(pRaw->m_rhiVertexShader, "Vertex " + assetFilename);
-	}
-	if (fragmentByteCode.Num() > 0)
-	{
-		pRaw->m_rhiFragmentShader = pRhiDriver->CreateShader(RHI::EShaderStage::Fragment, fragmentByteCode);
-		pRhiDriver->SetDebugName(pRaw->m_rhiFragmentShader, "Fragment " + assetFilename);
-	}
-	if (computeByteCode.Num() > 0)
-	{
-		pRaw->m_rhiComputeShader = pRhiDriver->CreateShader(RHI::EShaderStage::Compute, computeByteCode);
-		pRhiDriver->SetDebugName(pRaw->m_rhiComputeShader, "Compute " + assetFilename);
+		SAILOR_LOG_ERROR(
+			"UpdateRHIResource staged an incomplete regular/debug shader set for shader %s permutation %u",
+			pShader->GetFileId().ToString().c_str(),
+			permutation);
+		return false;
 	}
 
 	auto pShaderAsset = LoadShaderAsset(pShader->GetFileId()).Lock();
+	if (!pShaderAsset)
+	{
+		SAILOR_LOG_ERROR(
+			"UpdateRHIResource could not reload shader metadata for shader %s permutation %u",
+			pShader->GetFileId().ToString().c_str(),
+			permutation);
+		return false;
+	}
+	const TVector<RHI::EFormat> stagedColorAttachments = pShaderAsset->GetColorAttachments();
+	const RHI::EFormat stagedDepthStencilAttachment = pShaderAsset->GetDepthStencilAttachment();
 
-	pRaw->m_colorAttachments = pShaderAsset->GetColorAttachments();
-	pRaw->m_depthStencilAttachment = pShaderAsset->GetDepthStencilAttachment();
+	pRaw->m_rhiVertexShader = std::move(stagedVertexShader);
+	pRaw->m_rhiFragmentShader = std::move(stagedFragmentShader);
+	pRaw->m_rhiComputeShader = std::move(stagedComputeShader);
+	pRaw->m_rhiVertexShaderDebug = std::move(stagedDebugVertexShader);
+	pRaw->m_rhiFragmentShaderDebug = std::move(stagedDebugFragmentShader);
+	pRaw->m_rhiComputeShaderDebug = std::move(stagedDebugComputeShader);
 
+	pRaw->m_colorAttachments = stagedColorAttachments;
+	pRaw->m_depthStencilAttachment = stagedDepthStencilAttachment;
+
+	if (!pRaw->IsReady())
+	{
+		SAILOR_LOG_ERROR(
+			"UpdateRHIResource created an incomplete regular/debug shader set for shader %s permutation %u",
+			pShader->GetFileId().ToString().c_str(),
+			permutation);
+		return false;
+	}
 	return true;
 }
 
@@ -941,31 +1118,101 @@ bool ShaderCompiler::LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmedi
 
 void ShaderCompiler::CollectGarbage()
 {
-	TVector<FileId> uidsToRemove;
 	m_promises.LockAll();
-
 	for (auto& promiseSet : m_promises)
 	{
-		bool bFullyCompiled = true;
-		for (auto& promise : promiseSet.m_second)
-		{
-			if (!promise.m_second || !promise.m_second->IsFinished())
-			{
-				bFullyCompiled = false;
-				break;
-			}
-		}
-
-		if (bFullyCompiled)
-		{
-			uidsToRemove.Emplace(promiseSet.m_first);
-		}
+		RemoveFinishedPromiseEntries(promiseSet.m_second);
 	}
-
 	m_promises.UnlockAll();
-
-	for (auto& uid : uidsToRemove)
-	{
-		m_promises.Remove(uid);
-	}
 }
+
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+bool ShaderCompilerTestAccess::AggregateCompileResults(const bool* results, size_t count)
+{
+	std::atomic_bool aggregate = true;
+	for (size_t index = 0; index < count; ++index)
+	{
+		ShaderCompiler::RecordCompileResult(aggregate, results[index]);
+	}
+	return aggregate.load(std::memory_order_acquire);
+}
+
+bool ShaderCompilerTestAccess::SaveCacheAndCombineResult(
+	ShaderCache& cache,
+	bool bCompiledSuccessfully)
+{
+	return ShaderCompiler::SaveShaderCacheAndCombineResult(cache, bCompiledSuccessfully);
+}
+
+bool ShaderCompilerTestAccess::ShouldRetryCacheSave(
+	size_t numPermutationsToCompile,
+	bool bCacheDirty)
+{
+	return ShaderCompiler::ShouldRetryDirtyShaderCache(
+		numPermutationsToCompile,
+		bCacheDirty);
+}
+
+bool ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry()
+{
+	constexpr uint32_t permutation = 7;
+	FileId uid;
+	uid.Deserialize(YAML::Node("{SHADER-COMPILER-FAILURE-LIFECYCLE}"));
+	TConcurrentMap<FileId, TVector<TPair<uint32_t, uint32_t>>> promises;
+	TConcurrentMap<FileId, TVector<TPair<uint32_t, uint32_t>>> shaders;
+	{
+		auto& promiseEntries = promises.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard promisesUnlockGuard(promises, uid);
+		auto& shaderEntries = shaders.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard shadersUnlockGuard(shaders, uid);
+		ShaderCompiler::AddShaderLoadEntries(
+			promiseEntries,
+			shaderEntries,
+			permutation,
+			101u,
+			201u);
+	}
+	{
+		auto& promiseEntries = promises.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard promisesUnlockGuard(promises, uid);
+		auto& shaderEntries = shaders.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard shadersUnlockGuard(shaders, uid);
+		ShaderCompiler::EvictFailedShaderLoadEntries(
+			promiseEntries,
+			shaderEntries,
+			permutation);
+	}
+	{
+		auto& promiseEntries = promises.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard promisesUnlockGuard(promises, uid);
+		auto& shaderEntries = shaders.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard shadersUnlockGuard(shaders, uid);
+		if (!promiseEntries.IsEmpty() || !shaderEntries.IsEmpty())
+		{
+			return false;
+		}
+		ShaderCompiler::AddShaderLoadEntries(
+			promiseEntries,
+			shaderEntries,
+			permutation,
+			102u,
+			202u);
+		return ShaderCompiler::FindPermutationIndex(promiseEntries, permutation) != static_cast<size_t>(-1) &&
+			ShaderCompiler::FindPermutationIndex(shaderEntries, permutation) != static_cast<size_t>(-1);
+	}
+
+	return false;
+}
+
+bool ShaderCompilerTestAccess::ExercisePromiseGarbageCollection()
+{
+	TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>> promises;
+	auto completed = Tasks::TaskPtr<ShaderSetPtr>::Make(ShaderSetPtr{});
+	completed->Wait();
+	promises.Add({ 1, completed });
+	promises.Add({ 2, Tasks::TaskPtr<ShaderSetPtr>{} });
+	ShaderCompiler::RemoveFinishedPromiseEntries(promises);
+	return ShaderCompiler::FindPermutationIndex(promises, 1) == static_cast<size_t>(-1) &&
+		ShaderCompiler::FindPermutationIndex(promises, 2) != static_cast<size_t>(-1);
+}
+#endif

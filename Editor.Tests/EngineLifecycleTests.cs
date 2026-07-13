@@ -44,6 +44,97 @@ public sealed class EngineLifecycleTests
         Assert.Contains("return Sailor::App::GetExitCode();", unixSource, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void WorkspaceCacheIdentity_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    {
+        var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
+        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+
+        Assert.Contains("extern uint SerializeWorkspaceCacheIdentity", managedSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars)",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", windowsSource, StringComparison.Ordinal);
+        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", windowsSource, StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", unixSource, StringComparison.Ordinal);
+        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", unixSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManagedInitialization_MarshalsEveryCommandLineTokenAsUtf8AndAlwaysFreesIt()
+    {
+        var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+
+        Assert.Contains(
+            "EntryPoint = \"Initialize\", ExactSpelling = true",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "static extern void InitializeNative([In] nint[] commandLineArgs, int num)",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "extern void Initialize(string[] commandLineArgs",
+            managedSource,
+            StringComparison.Ordinal);
+
+        var allocation = managedSource.IndexOf(
+            "Utf8InteropArguments.Allocate(commandLineArgs, num)",
+            StringComparison.Ordinal);
+        var invocation = managedSource.IndexOf("InitializeNative(nativeArguments, num)", allocation, StringComparison.Ordinal);
+        var finallyBlock = managedSource.IndexOf("finally", invocation, StringComparison.Ordinal);
+        var cleanup = managedSource.IndexOf("Utf8InteropArguments.Free(nativeArguments)", finallyBlock, StringComparison.Ordinal);
+        Assert.True(allocation >= 0);
+        Assert.True(invocation > allocation);
+        Assert.True(finallyBlock > invocation);
+        Assert.True(cleanup > finallyBlock);
+
+        Assert.Contains(
+            "return Workspace::PathFromUtf8(params.m_workspace);",
+            nativeSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Workspace::PathFromUtf8(params.m_workspaceManifest)",
+            nativeSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EditorTypeCache_IsValidatedAfterNativeInitializationAndBeforeLivePublication()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length)", StringComparison.Ordinal);
+        var identity = source.IndexOf("ReadWorkspaceCacheIdentity(", initialize, StringComparison.Ordinal);
+        var cacheLoad = source.IndexOf("editorTypeCacheStore.Load(", identity, StringComparison.Ordinal);
+        var cachedValidation = source.IndexOf("TryParseEditorTypes(", cacheLoad, StringComparison.Ordinal);
+        var liveCatalog = source.IndexOf("SerializeEditorTypes(generation, allowStarting: true)", cacheLoad, StringComparison.Ordinal);
+        var liveValidation = source.IndexOf("TryParseEditorTypes(", liveCatalog, StringComparison.Ordinal);
+        var livePublication = source.IndexOf("Volatile.Write(ref editorTypes, liveEditorTypes)", liveValidation, StringComparison.Ordinal);
+        var cacheSave = source.IndexOf("editorTypeCacheStore.Save(", liveCatalog, StringComparison.Ordinal);
+
+        Assert.True(initialize >= 0);
+        Assert.True(identity > initialize);
+        Assert.True(cacheLoad > identity);
+        Assert.True(cachedValidation > cacheLoad);
+        Assert.True(liveCatalog > cachedValidation);
+        Assert.True(liveCatalog > cacheLoad);
+        Assert.True(liveValidation > liveCatalog);
+        Assert.True(livePublication > liveValidation);
+        Assert.True(cacheSave > liveCatalog);
+        Assert.Contains(
+            "cachedEditorTypes.Status != EditorTypeCacheStatus.IoFailure",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EditorTypeCacheStore.ShouldPersistLiveCatalog(cachedEditorTypes.Status)",
+            source,
+            StringComparison.Ordinal);
+    }
+
     static string ReadRepositoryFile(params string[] relativePath)
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

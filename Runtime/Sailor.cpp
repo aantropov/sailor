@@ -42,6 +42,7 @@
 #include "Submodules/Editor.h"
 #include "Engine/InstanceId.h"
 #include "Workspace/WorkspaceModuleManager.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -109,10 +110,11 @@ namespace
 	{
 		if (!params.m_workspace.empty())
 		{
-			return params.m_workspace;
+			return Workspace::PathFromUtf8(params.m_workspace);
 		}
 
-		const std::filesystem::path requestedManifest = params.m_workspaceManifest;
+		const std::filesystem::path requestedManifest =
+			Workspace::PathFromUtf8(params.m_workspaceManifest);
 		if (requestedManifest.is_absolute())
 		{
 			return requestedManifest.parent_path();
@@ -226,7 +228,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	const Workspace::WorkspaceContextResolveResult workspaceContextResult =
 		Workspace::ResolveWorkspaceContext(
 			SelectWorkspaceRoot(params),
-			params.m_workspaceManifest);
+			Workspace::PathFromUtf8(params.m_workspaceManifest));
 	if (!workspaceContextResult.IsSuccess())
 	{
 		SAILOR_LOG_ERROR("%s", workspaceContextResult.m_message.c_str());

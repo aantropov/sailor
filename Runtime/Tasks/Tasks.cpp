@@ -29,7 +29,16 @@ void ITask::Join(const TWeakPtr<ITask>& job)
 
 bool ITask::AddDependency(ITaskPtr dependentJob)
 {
-	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+	if (!m_bOwnsTaskSyncBlock || IsFinished())
+	{
+		return false;
+	}
+	auto* scheduler = App::GetSubmodule<Scheduler>();
+	if (!scheduler)
+	{
+		return false;
+	}
+	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 	if (IsFinished())
 	{
@@ -100,8 +109,17 @@ void ITask::Complete()
 void ITask::Wait()
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (IsFinished() || !m_bOwnsTaskSyncBlock)
+	{
+		return;
+	}
 
-	auto& syncBlock = App::GetSubmodule<Scheduler>()->GetTaskSyncBlock(*this);
+	auto* scheduler = App::GetSubmodule<Scheduler>();
+	if (!scheduler)
+	{
+		return;
+	}
+	auto& syncBlock = scheduler->GetTaskSyncBlock(*this);
 	std::unique_lock<std::mutex> lk(syncBlock.m_mutex);
 
 	if (!IsFinished())

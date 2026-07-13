@@ -99,6 +99,11 @@ extern "C"
 		return Sailor::App::SerializeEditorTypes(yamlNode);
 	}
 
+	SAILOR_API uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode)
+	{
+		return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);
+	}
+
 	SAILOR_API bool LoadEditorWorld(char* strFileId)
 	{
 		return Sailor::App::LoadEditorWorld(strFileId);

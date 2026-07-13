@@ -1,4 +1,5 @@
 using SailorEditor.Services;
+using SailorEditor.Workspace;
 
 public class EngineLaunchContractTests
 {
@@ -22,6 +23,7 @@ public class EngineLaunchContractTests
         Assert.Equal(Path.GetFullPath(manifestPath), context.WorkspaceManifestPath);
         Assert.Equal(Path.GetFullPath(contentDirectory), context.ContentDirectory);
         Assert.Equal(Path.GetFullPath(cacheDirectory), context.CacheDirectory);
+        Assert.Equal("workspace-sandbox", context.WorkspaceIdentity);
         Assert.Equal(Path.Combine(cacheDirectory, "Temp.world"), context.TempWorldFilePath);
         Assert.Equal(
             Path.GetRelativePath(contentDirectory, Path.Combine(cacheDirectory, "Temp.world")),
@@ -48,6 +50,7 @@ public class EngineLaunchContractTests
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Content"), context.ContentDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache"), context.CacheDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache", "EditorTypes.yaml"), context.EditorTypesCacheFilePath);
+        Assert.StartsWith("legacy-root:", context.WorkspaceIdentity, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -112,6 +115,75 @@ public class EngineLaunchContractTests
         Assert.DoesNotContain("--workspace-manifest", context.BuildArguments("Editor.world"));
     }
 
+    [Fact]
+    public void WorkspaceIdentity_ParticipatesInExactLaunchContextEquality()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), "Sandbox");
+        var first = EngineLaunchContract.Resolve(
+            workspaceRoot,
+            null,
+            Path.Combine(workspaceRoot, "Content"),
+            Path.Combine(workspaceRoot, "Cache"),
+            Path.GetTempPath(),
+            "workspace-a");
+        var second = first with { WorkspaceIdentity = "workspace-b" };
+
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void Resolve_PreservesUnicodeManifestWorkspaceIdentity()
+    {
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), "Sandbox");
+        var context = EngineLaunchContract.Resolve(
+            workspaceRoot,
+            null,
+            Path.Combine(workspaceRoot, "Content"),
+            Path.Combine(workspaceRoot, "Cache"),
+            Path.GetTempPath(),
+            "  рабочая-область-а  ");
+
+        Assert.Equal("рабочая-область-а", context.WorkspaceIdentity);
+    }
+
+    [Fact]
+    public void Resolve_LegacyIdentityUsesThePhysicalWorkspaceRoot()
+    {
+        var fixtureRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"SailorEngineLaunchIdentity-{Guid.NewGuid():N}");
+        var physicalRoot = Path.Combine(fixtureRoot, "Physical-РАБОЧАЯ-AZ");
+        var selectedRoot = physicalRoot;
+        Directory.CreateDirectory(physicalRoot);
+
+        try
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                selectedRoot = Path.Combine(fixtureRoot, "Alias");
+                Directory.CreateSymbolicLink(selectedRoot, physicalRoot);
+            }
+
+            var context = EngineLaunchContract.Resolve(
+                null,
+                null,
+                null,
+                null,
+                selectedRoot);
+            var expectedRoot = WorkspacePathPolicy.NormalizePhysicalPath(physicalRoot)
+                .Replace(Path.DirectorySeparatorChar, '/');
+            if (OperatingSystem.IsWindows())
+                expectedRoot = FoldAsciiCase(expectedRoot);
+
+            Assert.Equal($"legacy-root:{expectedRoot}", context.WorkspaceIdentity);
+            Assert.Contains("РАБОЧАЯ", context.WorkspaceIdentity, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(fixtureRoot, recursive: true);
+        }
+    }
+
     [Theory]
     [InlineData(null, "Cache")]
     [InlineData("Content", null)]
@@ -146,5 +218,18 @@ public class EngineLaunchContractTests
             manifestPath,
             contentDirectory,
             cacheDirectory,
-            fallbackRoot);
+            fallbackRoot,
+            workspaceRoot is null ? null : "workspace-sandbox");
+
+    static string FoldAsciiCase(string value)
+    {
+        var characters = value.ToCharArray();
+        for (var index = 0; index < characters.Length; ++index)
+        {
+            if (characters[index] is >= 'A' and <= 'Z')
+                characters[index] = (char)(characters[index] + ('a' - 'A'));
+        }
+
+        return new string(characters);
+    }
 }

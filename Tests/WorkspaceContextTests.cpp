@@ -1,4 +1,5 @@
 #include "Workspace/WorkspaceContext.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -74,7 +75,7 @@ namespace
 	{
 		std::error_code pathError;
 		const std::filesystem::path canonical = std::filesystem::canonical(path, pathError);
-		Require(!pathError, "test path should be canonicalizable: " + path.generic_string());
+		Require(!pathError, "test path should be canonicalizable: " + PathToUtf8(path));
 		return canonical;
 	}
 
@@ -91,7 +92,7 @@ namespace
 			std::error_code createError;
 			std::filesystem::create_directories(engineRoot / "Content", createError);
 			Require(!createError,
-				"test engine Content should be creatable: " + engineRoot.generic_string());
+				"test engine Content should be creatable: " + PathToUtf8(engineRoot));
 		}
 
 		YAML::Node manifest;
@@ -113,14 +114,14 @@ namespace
 
 		std::ofstream output(path);
 		output << manifest;
-		Require(output.good(), "test manifest should be writable: " + path.generic_string());
+		Require(output.good(), "test manifest should be writable: " + PathToUtf8(path));
 	}
 
 	void WriteText(const std::filesystem::path& path, const std::string& value)
 	{
 		std::ofstream output(path);
 		output << value;
-		Require(output.good(), "test file should be writable: " + path.generic_string());
+		Require(output.good(), "test file should be writable: " + PathToUtf8(path));
 	}
 
 	void TestLegacyFallbackAndRecovery()
@@ -148,6 +149,24 @@ namespace
 			"legacy resolution should recreate default Content");
 		Require(std::filesystem::is_directory(workspace.Path("Cache")),
 			"legacy resolution should recreate default Cache");
+	}
+
+	void TestUtf8CommandLinePathConversion()
+	{
+		const std::string utf8Component =
+			reinterpret_cast<const char*>(u8"Physical-РАБОЧАЯ-AZ");
+		const std::filesystem::path component = PathFromUtf8(utf8Component);
+		Require(PathToUtf8(component) == utf8Component,
+			"command-line workspace paths must round-trip through the native path type as UTF-8");
+
+		TempDirectory fixture("utf8-command-line");
+		const std::filesystem::path workspaceRoot = fixture.Path(component);
+		std::filesystem::create_directories(workspaceRoot);
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspaceRoot);
+		Require(result.IsSuccess(),
+			"a workspace root decoded from UTF-8 command-line bytes should resolve: " + result.m_message);
+		Require(result.m_context.GetRoot() == Canonical(workspaceRoot),
+			"UTF-8 command-line path conversion must preserve the physical workspace root");
 	}
 
 	void TestManifestPathsWithSpaces()
@@ -249,7 +268,7 @@ namespace
 		Require(!relativeError, "relative engine fixture should be computable");
 
 		ManifestSpec spec;
-		spec.m_enginePath = relativeEngine.generic_string();
+		spec.m_enginePath = PathToUtf8(relativeEngine);
 		spec.m_createEngineContent = false;
 		WriteManifest(workspace.Path("workspace.sailor"), spec);
 
@@ -269,7 +288,7 @@ namespace
 		std::filesystem::create_directories(engine.Path("Content"));
 
 		ManifestSpec spec;
-		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_enginePath = PathToUtf8(engine.Get());
 		spec.m_createEngineContent = false;
 		WriteManifest(workspace.Path("workspace.sailor"), spec);
 
@@ -287,7 +306,7 @@ namespace
 		TempDirectory workspace("missing-engine-content-workspace");
 		TempDirectory engine("missing-engine-content-root");
 		ManifestSpec spec;
-		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_enginePath = PathToUtf8(engine.Get());
 		spec.m_createEngineContent = false;
 		WriteManifest(workspace.Path("workspace.sailor"), spec);
 
@@ -310,7 +329,7 @@ namespace
 		TempDirectory workspace("missing-installed-engine-content-workspace");
 		TempDirectory engine("missing-installed-engine-content-root");
 		ManifestSpec spec;
-		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_enginePath = PathToUtf8(engine.Get());
 		spec.m_engineReferenceKind = "installed";
 		spec.m_createEngineContent = false;
 		WriteManifest(workspace.Path("workspace.sailor"), spec);
@@ -538,6 +557,7 @@ int main()
 	try
 	{
 		TestLegacyFallbackAndRecovery();
+		TestUtf8CommandLinePathConversion();
 		TestManifestPathsWithSpaces();
 		TestManifestDefaultRecovery();
 		TestManifestDefaultsMissingEngineReferenceKindToSource();

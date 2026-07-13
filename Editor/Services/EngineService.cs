@@ -42,7 +42,22 @@ namespace SailorEngine
         const string EngineLibrary = "../../../../../Sailor-Release.dll";
 #endif
 
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Initialize(string[] commandLineArgs, int num);
+        [DllImport(EngineLibrary, EntryPoint = "Initialize", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
+        static extern void InitializeNative([In] nint[] commandLineArgs, int num);
+
+        public static void Initialize(string[] commandLineArgs, int num)
+        {
+            var nativeArguments = Utf8InteropArguments.Allocate(commandLineArgs, num);
+            try
+            {
+                InitializeNative(nativeArguments, num);
+            }
+            finally
+            {
+                Utf8InteropArguments.Free(nativeArguments);
+            }
+        }
+
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Start();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Stop();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
@@ -50,6 +65,7 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEditorTypes(nint[] yamlNode);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeWorkspaceCacheIdentity(nint[] yamlNode);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
@@ -184,6 +200,7 @@ namespace SailorEditor.Services
 
         readonly string repoRoot = ResolveRepoRoot();
         readonly WorkspaceLifecycleService workspaceLifecycle;
+        readonly EditorTypeCacheStore editorTypeCacheStore = new();
 
         public EngineService(WorkspaceLifecycleService workspaceLifecycle)
         {
@@ -257,7 +274,8 @@ namespace SailorEditor.Services
                 workspace?.ManifestPath,
                 workspace?.ContentDirectory,
                 workspace?.CacheDirectory,
-                EngineWorkingDirectory);
+                EngineWorkingDirectory,
+                workspace?.Manifest.WorkspaceId);
         }
 
         public string PathToEngineExecDebug
@@ -683,7 +701,6 @@ namespace SailorEditor.Services
                 var args = await BuildInteropArgumentsAsync(launchContext, bDebug, commandLineArgs).ConfigureAwait(false);
                 Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
                 Volatile.Write(ref editorTypes, new EngineTypes());
-                TryLoadEditorTypesFromFile("startup cache", launchContext.EditorTypesCacheFilePath);
 
 #if MACCATALYST
                 await MainThread.InvokeOnMainThreadAsync(() =>
@@ -709,15 +726,71 @@ namespace SailorEditor.Services
                         initializationExitCode);
                 }
 
+                var editorTypeCacheIdentity = ReadWorkspaceCacheIdentity(
+                    generation,
+                    launchContext,
+                    allowStarting: true);
+                var cachedEditorTypes = editorTypeCacheStore.Load(
+                    launchContext.EditorTypesCacheFilePath,
+                    editorTypeCacheIdentity);
+                if (cachedEditorTypes.Succeeded)
+                {
+                    if (!TryParseEditorTypes(
+                            cachedEditorTypes.Payload!,
+                            out _,
+                            out var cachedCatalogError))
+                    {
+                        Console.WriteLine(
+                            $"Editor type cache payload is invalid: {cachedCatalogError}");
+                        LogEditorTypeCacheInvalidation(
+                            launchContext.EditorTypesCacheFilePath,
+                            "invalid cached catalog");
+                    }
+                }
+                else if (EditorTypeCacheStore.ShouldInvalidate(cachedEditorTypes.Status))
+                {
+                    Console.WriteLine(cachedEditorTypes.Diagnostic);
+                    LogEditorTypeCacheInvalidation(
+                        launchContext.EditorTypesCacheFilePath,
+                        cachedEditorTypes.Status.ToString());
+                }
+                else if (cachedEditorTypes.Status == EditorTypeCacheStatus.IoFailure)
+                {
+                    Console.WriteLine(cachedEditorTypes.Diagnostic);
+                }
+
                 // Required startup order: combined editor catalog, world, then initial messages.
                 string serializedEditorTypes = SerializeEditorTypes(generation, allowStarting: true);
-                if (TryReplaceEditorTypes(serializedEditorTypes, out var catalogError))
+                if (TryParseEditorTypes(
+                        serializedEditorTypes,
+                        out var liveEditorTypes,
+                        out var catalogError))
                 {
-                    SaveEditorTypesToFile(serializedEditorTypes, launchContext.EditorTypesCacheFilePath);
+                    Volatile.Write(ref editorTypes, liveEditorTypes);
+                    if (EditorTypeCacheStore.ShouldPersistLiveCatalog(cachedEditorTypes.Status))
+                    {
+                        var cacheWrite = editorTypeCacheStore.Save(
+                            launchContext.EditorTypesCacheFilePath,
+                            editorTypeCacheIdentity,
+                            serializedEditorTypes);
+                        if (!cacheWrite.Succeeded)
+                            Console.WriteLine(cacheWrite.Diagnostic);
+                    }
+                    else
+                    {
+                        Console.WriteLine(
+                            $"Preserving editor type cache after {cachedEditorTypes.Status}: '{launchContext.EditorTypesCacheFilePath}'.");
+                    }
                 }
                 else
                 {
                     Volatile.Write(ref editorTypes, new EngineTypes());
+                    if (cachedEditorTypes.Status != EditorTypeCacheStatus.IoFailure)
+                    {
+                        LogEditorTypeCacheInvalidation(
+                            launchContext.EditorTypesCacheFilePath,
+                            "invalid live catalog");
+                    }
                     throw new EngineLifecycleException(
                         $"SailorEngine returned an invalid editor type catalog: {catalogError}",
                         -1);
@@ -1264,6 +1337,74 @@ namespace SailorEditor.Services
             }
         }
 
+        EditorTypeCacheIdentity ReadWorkspaceCacheIdentity(
+            long generation,
+            EngineLaunchContext launchContext,
+            bool allowStarting = false)
+        {
+            if (!IsGenerationActive(generation, allowStarting))
+            {
+                throw new EngineLifecycleException(
+                    "The engine generation changed before workspace cache identity could be read.",
+                    -1);
+            }
+
+            nint[] yamlNodeChar = new nint[1];
+            uint numChars;
+            lock (interopLock)
+            {
+                if (!IsGenerationActive(generation, allowStarting))
+                {
+                    throw new EngineLifecycleException(
+                        "The engine generation changed before workspace cache identity could be read.",
+                        -1);
+                }
+                numChars = EngineAppInterop.SerializeWorkspaceCacheIdentity(yamlNodeChar);
+            }
+
+            if (numChars == 0 || yamlNodeChar[0] == nint.Zero)
+            {
+                throw new EngineLifecycleException(
+                    "SailorEngine did not provide a workspace cache identity.",
+                    -1);
+            }
+
+            string yaml;
+            try
+            {
+                yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars) ?? string.Empty;
+            }
+            finally
+            {
+                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
+            }
+
+            EditorTypeCacheIdentity identity;
+            try
+            {
+                identity = EditorTypeCacheStore.ParseNativeIdentity(yaml);
+            }
+            catch (Exception ex)
+            {
+                throw new EngineLifecycleException(
+                    $"SailorEngine returned an invalid workspace cache identity: {ex.Message}",
+                    -1,
+                    ex);
+            }
+
+            if (!string.Equals(
+                    identity.WorkspaceIdentity,
+                    launchContext.WorkspaceIdentity,
+                    StringComparison.Ordinal))
+            {
+                throw new EngineLifecycleException(
+                    $"SailorEngine workspace identity mismatch. Expected '{launchContext.WorkspaceIdentity}', received '{identity.WorkspaceIdentity}'.",
+                    -1);
+            }
+
+            return identity;
+        }
+
         void QueueWorldUpdate(string serializedWorld, long generation)
         {
             if (string.IsNullOrEmpty(serializedWorld) || !IsGenerationActive(generation, allowStarting: true))
@@ -1280,90 +1421,38 @@ namespace SailorEditor.Services
             });
         }
 
-        bool TryLoadEditorTypesFromFile(string reason, string cacheFilePath)
+        static bool TryParseEditorTypes(
+            string yaml,
+            out EngineTypes catalog,
+            out string error)
         {
             try
             {
-                if (!File.Exists(cacheFilePath))
-                {
-                    return false;
-                }
-
-                string yaml = File.ReadAllText(cacheFilePath);
-                if (string.IsNullOrWhiteSpace(yaml))
-                {
-                    return false;
-                }
-
-                if (!TryReplaceEditorTypes(yaml, out var error))
-                {
-                    Console.WriteLine($"Cannot load editor type catalog cache ({reason}): {error}");
-                    return false;
-                }
-
-                Console.WriteLine($"Loaded editor type catalog from cache ({reason}): {cacheFilePath}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Cannot load editor type catalog cache ({reason}): {ex.Message}");
-                return false;
-            }
-        }
-
-        bool TryReplaceEditorTypes(string yaml, out string error)
-        {
-            try
-            {
-                var catalog = EngineTypes.FromYaml(yaml);
+                catalog = EngineTypes.FromYaml(yaml);
                 if (catalog.Components.Count == 0 && catalog.Enums.Count == 0 && catalog.AssetTypes.Count == 0)
                 {
                     error = "The catalog does not contain any reflected or asset types.";
+                    catalog = new EngineTypes();
                     return false;
                 }
 
-                Volatile.Write(ref editorTypes, catalog);
                 error = string.Empty;
                 return true;
             }
             catch (Exception ex)
             {
+                catalog = new EngineTypes();
                 error = ex.Message;
                 return false;
             }
         }
 
-        void SaveEditorTypesToFile(string yaml, string cacheFilePath)
+        void LogEditorTypeCacheInvalidation(string cacheFilePath, string reason)
         {
-            if (string.IsNullOrWhiteSpace(yaml))
-            {
-                return;
-            }
-
-            try
-            {
-                string directory = Path.GetDirectoryName(cacheFilePath);
-                if (!string.IsNullOrEmpty(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                var temporaryPath = $"{cacheFilePath}.{Guid.NewGuid():N}.tmp";
-                try
-                {
-                    File.WriteAllText(temporaryPath, yaml);
-                    File.Move(temporaryPath, cacheFilePath, true);
-                }
-                finally
-                {
-                    if (File.Exists(temporaryPath))
-                        File.Delete(temporaryPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Cannot save editor type catalog cache: {ex.Message}");
-            }
+            var invalidation = editorTypeCacheStore.Invalidate(cacheFilePath);
+            Console.WriteLine(invalidation.Succeeded
+                ? $"Invalidated editor type cache ({reason}): {cacheFilePath}"
+                : invalidation.Diagnostic);
         }
 
         public bool CommitChanges(InstanceId id, string yamlChanges)

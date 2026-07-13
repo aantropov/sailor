@@ -1,4 +1,5 @@
 #include "Workspace/WorkspaceContext.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <algorithm>
 #include <cctype>
@@ -148,7 +149,7 @@ namespace
 
 	bool HasSailorExtension(const std::filesystem::path& path)
 	{
-		std::string extension = path.extension().string();
+		std::string extension = PathToUtf8(path.extension());
 		std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
 			{
 				return static_cast<char>(std::tolower(character));
@@ -182,16 +183,20 @@ namespace
 				return false;
 			}
 
-			std::string rootValue = rootPart->generic_string();
-			std::string candidateValue = candidatePart->generic_string();
+			std::string rootValue = PathToUtf8(*rootPart);
+			std::string candidateValue = PathToUtf8(*candidatePart);
 #if defined(_WIN32)
 			std::transform(rootValue.begin(), rootValue.end(), rootValue.begin(), [](unsigned char character)
 				{
-					return static_cast<char>(std::tolower(character));
+					return character >= 'A' && character <= 'Z'
+						? static_cast<char>(character + ('a' - 'A'))
+						: static_cast<char>(character);
 				});
 			std::transform(candidateValue.begin(), candidateValue.end(), candidateValue.begin(), [](unsigned char character)
 				{
-					return static_cast<char>(std::tolower(character));
+					return character >= 'A' && character <= 'Z'
+						? static_cast<char>(character + ('a' - 'A'))
+						: static_cast<char>(character);
 				});
 #endif
 			if (rootValue != candidateValue)
@@ -287,7 +292,7 @@ namespace
 		if (fileError || fileSize > MaxManifestSize ||
 			fileSize > static_cast<uintmax_t>((std::numeric_limits<std::streamsize>::max)()))
 		{
-			outError = "Workspace manifest '" + manifestPath.generic_string() +
+			outError = "Workspace manifest '" + PathToUtf8(manifestPath) +
 				"' is unreadable or exceeds the size limit.";
 			return false;
 		}
@@ -295,14 +300,14 @@ namespace
 		std::ifstream stream(manifestPath, std::ios::binary);
 		if (!stream.is_open())
 		{
-			outError = "Workspace manifest could not be opened: '" + manifestPath.generic_string() + "'.";
+			outError = "Workspace manifest could not be opened: '" + PathToUtf8(manifestPath) + "'.";
 			return false;
 		}
 
 		std::string payload(static_cast<size_t>(fileSize), '\0');
 		if (fileSize > 0 && !stream.read(payload.data(), static_cast<std::streamsize>(fileSize)))
 		{
-			outError = "Workspace manifest could not be read: '" + manifestPath.generic_string() + "'.";
+			outError = "Workspace manifest could not be read: '" + PathToUtf8(manifestPath) + "'.";
 			return false;
 		}
 
@@ -321,7 +326,7 @@ namespace
 		outFields.m_manifestVersion = version.as<uint32_t>();
 		if (outFields.m_manifestVersion != SupportedManifestVersion)
 		{
-			outError = "Workspace manifest '" + manifestPath.generic_string() +
+			outError = "Workspace manifest '" + PathToUtf8(manifestPath) +
 				"' has unsupported manifestVersion '" +
 				std::to_string(outFields.m_manifestVersion) + "'.";
 			return false;
@@ -400,7 +405,7 @@ namespace
 		const bool bWindowsDrivePath = normalized.size() >= 2 &&
 			std::isalpha(static_cast<unsigned char>(normalized[0])) != 0 &&
 			normalized[1] == ':';
-		const std::filesystem::path path(normalized);
+		const std::filesystem::path path = PathFromUtf8(normalized);
 		if (normalized.empty() || normalized.find('\0') != std::string::npos ||
 			normalized.front() == '/' || bWindowsDrivePath ||
 			path.is_absolute() || path.has_root_name() || path.has_root_directory())
@@ -421,7 +426,7 @@ namespace
 		}
 
 		outPath = path.lexically_normal();
-		outNormalized = outPath.generic_string();
+		outNormalized = PathToUtf8(outPath);
 		return true;
 	}
 
@@ -437,13 +442,13 @@ namespace
 		if (pathError || outPath.empty())
 		{
 			outError = "Workspace path '" + std::string(fieldName) +
-				"' could not be resolved: '" + (root / relativePath).generic_string() + "'.";
+				"' could not be resolved: '" + PathToUtf8(root / relativePath) + "'.";
 			return false;
 		}
 		if (!IsInside(root, outPath))
 		{
 			outError = "Workspace path '" + std::string(fieldName) +
-				"' escapes the workspace after physical resolution: '" + outPath.generic_string() + "'.";
+				"' escapes the workspace after physical resolution: '" + PathToUtf8(outPath) + "'.";
 			return false;
 		}
 		return true;
@@ -463,7 +468,7 @@ namespace
 			return false;
 		}
 
-		const std::filesystem::path engineReference(rawEnginePath);
+		const std::filesystem::path engineReference = PathFromUtf8(rawEnginePath);
 		const std::filesystem::path requestedEngineRoot = engineReference.is_absolute()
 			? engineReference
 			: workspaceRoot / engineReference;
@@ -472,7 +477,7 @@ namespace
 		if (pathError || !std::filesystem::is_directory(outEngineRoot, pathError) || pathError)
 		{
 			outError = "Workspace manifest field 'enginePath' must resolve to an existing directory: '" +
-				requestedEngineRoot.generic_string() + "'.";
+				PathToUtf8(requestedEngineRoot) + "'.";
 			return false;
 		}
 
@@ -484,13 +489,13 @@ namespace
 			if (engineReferenceKind == "installed")
 			{
 				outError = "Installed engine reference does not provide runtime Content at '" +
-					requestedEngineContent.generic_string() +
+					PathToUtf8(requestedEngineContent) +
 					"'. Packaging runtime Content for installed engines is not supported by this build.";
 			}
 			else
 			{
 				outError = "Engine Content must be an existing directory: '" +
-					requestedEngineContent.generic_string() + "'.";
+					PathToUtf8(requestedEngineContent) + "'.";
 			}
 			return false;
 		}
@@ -510,7 +515,7 @@ namespace
 		if (pathError)
 		{
 			outError = "Workspace directory '" + std::string(fieldName) +
-				"' could not be inspected: '" + directory.generic_string() + "'.";
+				"' could not be inspected: '" + PathToUtf8(directory) + "'.";
 			return false;
 		}
 		if (bExists)
@@ -518,7 +523,7 @@ namespace
 			if (!std::filesystem::is_directory(directory, pathError) || pathError)
 			{
 				outError = "Workspace path '" + std::string(fieldName) +
-					"' is not a directory: '" + directory.generic_string() + "'.";
+					"' is not a directory: '" + PathToUtf8(directory) + "'.";
 				return false;
 			}
 			return true;
@@ -537,7 +542,7 @@ namespace
 			if (pathError)
 			{
 				outError = "Workspace directory '" + std::string(fieldName) +
-					"' could not be inspected: '" + current.generic_string() + "'.";
+					"' could not be inspected: '" + PathToUtf8(current) + "'.";
 				return false;
 			}
 			missingDirectories.emplace_back(current);
@@ -554,7 +559,7 @@ namespace
 			{
 				outError = "Workspace directory '" + std::string(fieldName) +
 					"' parent escapes the workspace during recovery: '" +
-					missingDirectory.parent_path().generic_string() + "'.";
+					PathToUtf8(missingDirectory.parent_path()) + "'.";
 				return false;
 			}
 
@@ -564,7 +569,7 @@ namespace
 			if (pathError)
 			{
 				outError = "Workspace directory '" + std::string(fieldName) +
-					"' could not be created: '" + verifiedDirectory.generic_string() +
+					"' could not be created: '" + PathToUtf8(verifiedDirectory) +
 					"': " + pathError.message() + ".";
 				return false;
 			}
@@ -582,7 +587,7 @@ namespace
 			{
 				outError = "Workspace directory '" + std::string(fieldName) +
 					"' escaped the workspace during recovery: '" +
-					verifiedDirectory.generic_string() + "'.";
+					PathToUtf8(verifiedDirectory) + "'.";
 				return false;
 			}
 		}
@@ -601,7 +606,7 @@ namespace
 		if (pathError || !IsInside(root, directory))
 		{
 			outError = "Workspace directory '" + std::string(fieldName) +
-				"' escapes the workspace after recovery: '" + directory.generic_string() + "'.";
+				"' escapes the workspace after recovery: '" + PathToUtf8(directory) + "'.";
 			return false;
 		}
 		return true;
@@ -623,7 +628,7 @@ namespace
 			if (!std::filesystem::is_regular_file(candidate, pathError) || pathError)
 			{
 				outFailureStatus = EWorkspaceContextResolveStatus::ManifestNotFound;
-				outError = "Workspace manifest was not found: '" + candidate.generic_string() + "'.";
+				outError = "Workspace manifest was not found: '" + PathToUtf8(candidate) + "'.";
 				return false;
 			}
 
@@ -632,7 +637,7 @@ namespace
 			{
 				outFailureStatus = EWorkspaceContextResolveStatus::PathInvalid;
 				outError = "Workspace manifest resolves outside the workspace: '" +
-					outManifest.generic_string() + "'.";
+					PathToUtf8(outManifest) + "'.";
 				return false;
 			}
 			return true;
@@ -647,7 +652,7 @@ namespace
 			{
 				outFailureStatus = EWorkspaceContextResolveStatus::PathInvalid;
 				outError = "Workspace manifest resolves outside the workspace: '" +
-					outManifest.generic_string() + "'.";
+					PathToUtf8(outManifest) + "'.";
 				return false;
 			}
 			return true;
@@ -667,7 +672,7 @@ namespace
 		if (pathError)
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::WorkspaceInvalid;
-			outError = "Workspace manifests could not be enumerated in '" + root.generic_string() +
+			outError = "Workspace manifests could not be enumerated in '" + PathToUtf8(root) +
 				"': " + pathError.message() + ".";
 			return false;
 		}
@@ -681,7 +686,7 @@ namespace
 		if (manifests.size() > 1)
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::ManifestAmbiguous;
-			outError = "Multiple .sailor manifests were found in '" + root.generic_string() +
+			outError = "Multiple .sailor manifests were found in '" + PathToUtf8(root) +
 				"'. Select one explicitly.";
 			return false;
 		}
@@ -691,7 +696,7 @@ namespace
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::PathInvalid;
 			outError = "Workspace manifest resolves outside the workspace: '" +
-				outManifest.generic_string() + "'.";
+				PathToUtf8(outManifest) + "'.";
 			return false;
 		}
 		return true;
@@ -720,7 +725,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 		{
 			return Fail(
 				EWorkspaceContextResolveStatus::WorkspaceInvalid,
-				"Workspace root must be an existing directory: '" + requestedRoot.generic_string() + "'.");
+				"Workspace root must be an existing directory: '" + PathToUtf8(requestedRoot) + "'.");
 		}
 
 		WorkspaceContextCandidate candidate;
@@ -756,7 +761,7 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			{
 				return Fail(
 					EWorkspaceContextResolveStatus::ManifestInvalid,
-					"Workspace manifest '" + candidate.m_manifest.generic_string() +
+					"Workspace manifest '" + PathToUtf8(candidate.m_manifest) +
 						"' is invalid YAML: " + e.what());
 			}
 			candidate.m_manifestVersion = fields.m_manifestVersion;
@@ -810,21 +815,21 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			return Fail(
 				EWorkspaceContextResolveStatus::PathInvalid,
 				"Workspace content path could not be inspected: '" +
-					candidate.m_content.generic_string() + "'.");
+					PathToUtf8(candidate.m_content) + "'.");
 		}
 		if (bContentExists && !std::filesystem::is_directory(candidate.m_content))
 		{
 			return Fail(
 				EWorkspaceContextResolveStatus::PathInvalid,
 				"Workspace content path is not a directory: '" +
-					candidate.m_content.generic_string() + "'.");
+					PathToUtf8(candidate.m_content) + "'.");
 		}
 		if (!bContentExists && !IsDefaultContentPath(normalizedContent))
 		{
 			return Fail(
 				EWorkspaceContextResolveStatus::ContentMissing,
 				"Custom workspace content directory is missing and will not be created: '" +
-					candidate.m_content.generic_string() + "'.");
+					PathToUtf8(candidate.m_content) + "'.");
 		}
 
 		CreatedDirectoriesRollback rollback;
@@ -855,8 +860,8 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			: EWorkspaceContextResolveStatus::Success;
 		result.m_message = candidate.m_bLegacy
 			? "No workspace manifest was found; using legacy Content and Cache directories under '" +
-				root.generic_string() + "'."
-			: "Resolved workspace manifest '" + candidate.m_manifest.generic_string() + "'.";
+				PathToUtf8(root) + "'."
+			: "Resolved workspace manifest '" + PathToUtf8(candidate.m_manifest) + "'.";
 		result.m_context.m_root = std::move(candidate.m_root);
 		result.m_context.m_manifest = std::move(candidate.m_manifest);
 		result.m_context.m_engineRoot = std::move(candidate.m_engineRoot);

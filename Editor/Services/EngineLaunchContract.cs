@@ -1,12 +1,15 @@
 #nullable enable
 
+using SailorEditor.Workspace;
+
 namespace SailorEditor.Services;
 
 public sealed record EngineLaunchContext(
     string WorkspaceRoot,
     string? WorkspaceManifestPath,
     string ContentDirectory,
-    string CacheDirectory)
+    string CacheDirectory,
+    string WorkspaceIdentity)
 {
     public string TempWorldFilePath => Path.Combine(CacheDirectory, "Temp.world");
     public string TempWorldRuntimePath => Path.GetRelativePath(ContentDirectory, TempWorldFilePath);
@@ -51,7 +54,8 @@ public static class EngineLaunchContract
         string? activeWorkspaceManifestPath,
         string? activeContentDirectory,
         string? activeCacheDirectory,
-        string fallbackRoot)
+        string fallbackRoot,
+        string? activeWorkspaceIdentity = null)
     {
         var hasActiveWorkspace = !string.IsNullOrWhiteSpace(activeWorkspaceRoot);
         var selectedRoot = hasActiveWorkspace ? activeWorkspaceRoot : fallbackRoot;
@@ -69,7 +73,35 @@ public static class EngineLaunchContract
             NormalizeRoot(selectedRoot!),
             manifestPath,
             NormalizeRoot(selectedContentDirectory),
-            NormalizeRoot(selectedCacheDirectory));
+            NormalizeRoot(selectedCacheDirectory),
+            ResolveWorkspaceIdentity(hasActiveWorkspace ? activeWorkspaceIdentity : null, selectedRoot!));
+    }
+
+    static string ResolveWorkspaceIdentity(string? workspaceIdentity, string workspaceRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(workspaceIdentity))
+            return workspaceIdentity.Trim();
+
+        var normalizedRoot = WorkspacePathPolicy.NormalizePhysicalPath(workspaceRoot)
+            .Replace(Path.DirectorySeparatorChar, '/');
+        if (Path.AltDirectorySeparatorChar != Path.DirectorySeparatorChar)
+            normalizedRoot = normalizedRoot.Replace(Path.AltDirectorySeparatorChar, '/');
+        if (OperatingSystem.IsWindows())
+            normalizedRoot = FoldAsciiCase(normalizedRoot);
+
+        return $"legacy-root:{normalizedRoot}";
+    }
+
+    static string FoldAsciiCase(string value)
+    {
+        var characters = value.ToCharArray();
+        for (var index = 0; index < characters.Length; ++index)
+        {
+            if (characters[index] is >= 'A' and <= 'Z')
+                characters[index] = (char)(characters[index] + ('a' - 'A'));
+        }
+
+        return new string(characters);
     }
 
     static string RequireResolvedPath(string? path, string parameterName)
