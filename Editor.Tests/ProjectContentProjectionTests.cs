@@ -31,7 +31,9 @@ public class ProjectContentProjectionTests
         Assert.Equal(["Metal", "Wood"], projection.VisibleFolders.Select(x => x.Name).ToArray());
         Assert.Equal(["wood", "metal"], projection.VisibleAssets.Select(x => x.DisplayName).ToArray());
         Assert.Equal(1, projection.State.CurrentFolderId);
-        Assert.Equal("/Content/Materials", projection.Folders.Single(x => x.FolderId == 1).FullPath);
+        Assert.Equal(
+            Path.Combine("/Content", "Materials"),
+            projection.Folders.Single(x => x.FolderId == 1).FullPath);
     }
 
     [Fact]

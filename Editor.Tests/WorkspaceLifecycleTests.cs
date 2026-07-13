@@ -141,12 +141,20 @@ public sealed class WorkspaceLifecycleTests
         await File.WriteAllTextAsync(outsideState, invalidState);
         CreateDirectoryLink(stateDirectory, outside.Root);
 
-        var result = await service.OpenAsync(created.Session!.ManifestPath);
+        try
+        {
+            var result = await service.OpenAsync(created.Session!.ManifestPath);
 
-        Assert.True(result.Succeeded, result.Error);
-        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Invalid, result.Session!.GeneratedProjectState.Status);
-        Assert.True(result.Session.GeneratedProjectState.RequiresAttention);
-        Assert.Equal(invalidState, await File.ReadAllTextAsync(outsideState));
+            Assert.True(result.Succeeded, result.Error);
+            Assert.Equal(WorkspaceGeneratedProjectStateStatus.Invalid, result.Session!.GeneratedProjectState.Status);
+            Assert.True(result.Session.GeneratedProjectState.RequiresAttention);
+            Assert.Equal(invalidState, await File.ReadAllTextAsync(outsideState));
+        }
+        finally
+        {
+            if (Directory.Exists(stateDirectory))
+                Directory.Delete(stateDirectory);
+        }
     }
 
     [Fact]
@@ -435,7 +443,7 @@ public sealed class WorkspaceLifecycleTests
         var serializer = new WorkspaceManifestSerializer();
         var service = CreateService(recent.File("recent.yaml"));
         var manifestPath = workspace.File("workspace.sailor");
-        var physicalContent = workspace.Directory("Data/Content");
+        var physicalContent = workspace.Directory(Path.Combine("Data", "Content"));
         var contentLink = workspace.Directory("Content");
         Directory.CreateDirectory(physicalContent);
         await serializer.SaveAsync(
