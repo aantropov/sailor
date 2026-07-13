@@ -26,7 +26,8 @@ public sealed record ActionContext(
     string? CurrentAssetId = null,
     bool IsPlayMode = false,
     CommandOrigin? Origin = null,
-    IReadOnlyDictionary<string, string?>? Metadata = null);
+    IReadOnlyDictionary<string, string?>? Metadata = null,
+    long? WorkspaceEpoch = null);
 
 public interface IEditorCommand
 {

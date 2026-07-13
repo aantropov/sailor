@@ -11,7 +11,11 @@ namespace SailorEditor.Services
     public partial class SelectionService : ObservableObject
     {
         readonly SelectionStore _selectionStore = new();
-        int selectionRequestVersion = 0;
+        int selectionRequestVersion;
+        long workspaceEpoch;
+        CancellationTokenSource? pendingSelectionCancellation;
+        int suppressRuntimeSelectionSync;
+        int workspaceChangeInProgress;
 
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
         public event Action<ObservableObject> OnSelectAssetAction = delegate { };
@@ -31,15 +35,22 @@ namespace SailorEditor.Services
         }
 
         public SelectionSnapshot Snapshot => _selectionStore.Current;
+        public long WorkspaceEpoch => Interlocked.Read(ref workspaceEpoch);
+        public bool IsWorkspaceResetInProgress => Volatile.Read(ref suppressRuntimeSelectionSync) != 0;
+        public bool IsWorkspaceChangeInProgress => Volatile.Read(ref workspaceChangeInProgress) != 0;
 
         public void SelectInstance(InstanceId instanceId)
         {
+            if (IsWorkspaceChangeInProgress)
+                return;
+
             if (instanceId == null || instanceId.IsEmpty())
             {
                 ClearSelection();
                 return;
             }
 
+            CancelPendingSelection();
             var worldService = MauiProgram.GetService<WorldService>();
             ObservableObject? next = null;
             if (worldService.TryGetGameObject(instanceId, out var gameObject))
@@ -62,6 +73,9 @@ namespace SailorEditor.Services
 
         public async void SelectObject(ObservableObject obj, bool force = false)
         {
+            if (IsWorkspaceChangeInProgress)
+                return;
+
             if (obj == null)
             {
                 ClearSelection();
@@ -73,32 +87,81 @@ namespace SailorEditor.Services
                 return;
             }
 
-            var requestVersion = ++selectionRequestVersion;
+            var requestVersion = Interlocked.Increment(ref selectionRequestVersion);
+            var requestEpoch = WorkspaceEpoch;
+            var requestCancellation = new CancellationTokenSource();
+            var previousCancellation = Interlocked.Exchange(ref pendingSelectionCancellation, requestCancellation);
+            previousCancellation?.Cancel();
             _selectionStore.Select(TryGetSelectionId(obj), obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
 
-            if (obj is AssetFile selectedAssetFile)
+            try
             {
-                await selectedAssetFile.PrepareInspectorResources();
-                if (requestVersion != selectionRequestVersion)
+                if (obj is AssetFile selectedAssetFile)
                 {
-                    return;
+                    await selectedAssetFile.PrepareInspectorResources().WaitAsync(requestCancellation.Token);
+                    if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
+                    {
+                        return;
+                    }
+                }
+
+                UpdateSelection(obj, raiseInstanceAction: obj is GameObject or Component, raiseAssetAction: true);
+
+                if (obj is AssetFile assetFile)
+                {
+                    await assetFile.LoadDependentResources().WaitAsync(requestCancellation.Token);
+                    if (IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token) && ReferenceEquals(SelectedItem, obj))
+                    {
+                        UpdateSelection(obj, raiseInstanceAction: false, raiseAssetAction: true);
+                        OnPropertyChanged(nameof(SelectedItem));
+                    }
                 }
             }
-
-            UpdateSelection(obj, raiseInstanceAction: obj is GameObject or Component, raiseAssetAction: true);
-
-            if (obj is AssetFile assetFile)
+            catch (OperationCanceledException) when (requestCancellation.IsCancellationRequested)
             {
-                await assetFile.LoadDependentResources();
-                if (ReferenceEquals(SelectedItem, obj))
-                {
-                    UpdateSelection(obj, raiseInstanceAction: false, raiseAssetAction: true);
-                    OnPropertyChanged(nameof(SelectedItem));
-                }
+                // A newer selection or workspace activation owns the projection now.
+            }
+            finally
+            {
+                Interlocked.CompareExchange(ref pendingSelectionCancellation, null, requestCancellation);
+                requestCancellation.Dispose();
             }
         }
 
         public void ClearSelection()
+        {
+            CancelPendingSelection();
+            ClearSelectionCore();
+        }
+
+        public void BeginWorkspaceChange()
+        {
+            if (Interlocked.Exchange(ref workspaceChangeInProgress, 1) != 0)
+                return;
+
+            Interlocked.Increment(ref workspaceEpoch);
+            CancelPendingSelection();
+        }
+
+        public void ResetForWorkspaceChange()
+        {
+            BeginWorkspaceChange();
+            Interlocked.Increment(ref suppressRuntimeSelectionSync);
+            try
+            {
+                CancelPendingSelection();
+                ClearSelectionCore();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref suppressRuntimeSelectionSync);
+            }
+        }
+
+        public void CompleteWorkspaceChange()
+            => Interlocked.Exchange(ref workspaceChangeInProgress, 0);
+
+        void ClearSelectionCore()
         {
             _selectionStore.Clear();
             SelectedItems.Clear();
@@ -106,6 +169,17 @@ namespace SailorEditor.Services
             SelectedInstanceId = InstanceId.NullInstanceId;
             OnSelectAssetAction?.Invoke(null);
         }
+
+        void CancelPendingSelection()
+        {
+            Interlocked.Increment(ref selectionRequestVersion);
+            Interlocked.Exchange(ref pendingSelectionCancellation, null)?.Cancel();
+        }
+
+        bool IsCurrentRequest(int requestVersion, long requestEpoch, CancellationToken cancellationToken) =>
+            !cancellationToken.IsCancellationRequested
+            && requestVersion == Volatile.Read(ref selectionRequestVersion)
+            && requestEpoch == WorkspaceEpoch;
 
         void UpdateSelection(ObservableObject obj, bool raiseInstanceAction, bool raiseAssetAction)
         {
@@ -123,6 +197,9 @@ namespace SailorEditor.Services
 
         void SyncEditorSelectionToRuntime()
         {
+            if (Volatile.Read(ref suppressRuntimeSelectionSync) != 0)
+                return;
+
             MauiProgram.GetService<EngineService>().UpdateEditorSelection([SelectedInstanceId]);
         }
 

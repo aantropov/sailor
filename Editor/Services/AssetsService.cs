@@ -22,14 +22,16 @@ namespace SailorEditor.Services
         HashSet<string> _visitedDirectories = new(ProjectContentPathPolicy.PathComparer);
         int _nextAssetId = 1;
         int _assetOverrideCount;
+        long _workspaceEpoch;
 
         public event Action? Changed;
 
-        public ProjectRoot Root { get; private set; }
-        public List<AssetFolder> Folders { get; private set; }
-        public Dictionary<FileId, AssetFile> Assets { get; private set; }
+        public ProjectRoot Root { get; private set; } = new() { Name = string.Empty };
+        public List<AssetFolder> Folders { get; private set; } = [];
+        public Dictionary<FileId, AssetFile> Assets { get; private set; } = [];
         public List<AssetFile> Files { get; private set; } = new();
-        public string CurrentProjectRootPath { get; private set; }
+        public string CurrentProjectRootPath { get; private set; } = string.Empty;
+        public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
 
         public AssetsService()
         {
@@ -161,6 +163,21 @@ namespace SailorEditor.Services
         }
 
         public void Refresh() => AddProjectRoot(CurrentProjectRootPath);
+
+        public void ResetForWorkspaceChange()
+        {
+            Interlocked.Increment(ref _workspaceEpoch);
+            Root = new ProjectRoot { Name = string.Empty, Id = ActiveProjectRootId };
+            Folders = [];
+            Assets = [];
+            Files = [];
+            CurrentProjectRootPath = string.Empty;
+            _folderIdAllocator = new ProjectContentFolderIdAllocator();
+            _visitedDirectories = new HashSet<string>(ProjectContentPathPolicy.PathComparer);
+            _nextAssetId = 1;
+            _assetOverrideCount = 0;
+            Changed?.Invoke();
+        }
 
         public void AddProjectRoot(string projectRoot)
         {

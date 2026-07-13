@@ -29,6 +29,11 @@ extern "C"
 		Sailor::App::Shutdown();
 	}
 
+	SAILOR_API int32_t GetExitCode()
+	{
+		return Sailor::App::GetExitCode();
+	}
+
 	SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
 	{
 		Sailor::App::SetEditorViewport(windowPosX, windowPosY, width, height);

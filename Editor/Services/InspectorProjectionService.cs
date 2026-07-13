@@ -9,6 +9,10 @@ public sealed partial class InspectorProjectionService : ObservableObject
 {
     readonly SelectionService _selectionService;
     readonly WorldService _worldService;
+    long _workspaceEpoch;
+
+    public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
+    public bool IsWorkspaceResetInProgress { get; private set; }
 
     [ObservableProperty]
     InspectorProjection current = InspectorProjection.Empty;
@@ -34,27 +38,55 @@ public sealed partial class InspectorProjectionService : ObservableObject
     public void Refresh()
     {
         using var perfScope = EditorPerf.Scope("InspectorProjectionService.Refresh");
+        var suppressCommit = _selectionService.IsWorkspaceResetInProgress;
+        if (suppressCommit)
+            IsWorkspaceResetInProgress = true;
 
-        SelectedItem = ResolveSelectedItem();
-        Current = SelectedItem switch
+        try
         {
-            GameObject gameObject => InspectorProjectionBuilder.Build(
-                gameObject.InstanceId?.Value,
-                SelectionTargetKind.GameObject,
-                gameObject.Name,
-                gameObject.InstanceId?.Value,
-                _worldService.GetComponents(gameObject).Select(component => new InspectorComponentProjection(component.InstanceId?.Value ?? string.Empty, component.DisplayName ?? component.Typename?.Name ?? string.Empty, component.Typename?.Name ?? string.Empty))),
-            Component component => InspectorProjectionBuilder.Build(
-                component.InstanceId?.Value,
-                SelectionTargetKind.Component,
-                component.DisplayName ?? component.Typename?.Name,
-                ResolveOwner(component)?.InstanceId?.Value,
-                Array.Empty<InspectorComponentProjection>()),
-            _ => InspectorProjection.Empty
-        };
+            SelectedItem = ResolveSelectedItem();
+            Current = SelectedItem switch
+            {
+                GameObject gameObject => InspectorProjectionBuilder.Build(
+                    gameObject.InstanceId?.Value,
+                    SelectionTargetKind.GameObject,
+                    gameObject.Name,
+                    gameObject.InstanceId?.Value,
+                    _worldService.GetComponents(gameObject).Select(component => new InspectorComponentProjection(component.InstanceId?.Value ?? string.Empty, component.DisplayName ?? component.Typename?.Name ?? string.Empty, component.Typename?.Name ?? string.Empty))),
+                Component component => InspectorProjectionBuilder.Build(
+                    component.InstanceId?.Value,
+                    SelectionTargetKind.Component,
+                    component.DisplayName ?? component.Typename?.Name,
+                    ResolveOwner(component)?.InstanceId?.Value,
+                    Array.Empty<InspectorComponentProjection>()),
+                _ => InspectorProjection.Empty
+            };
 
-        OnPropertyChanged(nameof(SelectedItem));
-        OnPropertyChanged(nameof(Current));
+            OnPropertyChanged(nameof(SelectedItem));
+            OnPropertyChanged(nameof(Current));
+        }
+        finally
+        {
+            if (suppressCommit)
+                IsWorkspaceResetInProgress = false;
+        }
+    }
+
+    public void ResetForWorkspaceChange()
+    {
+        Interlocked.Increment(ref _workspaceEpoch);
+        IsWorkspaceResetInProgress = true;
+        try
+        {
+            SelectedItem = null;
+            Current = InspectorProjection.Empty;
+            OnPropertyChanged(nameof(SelectedItem));
+            OnPropertyChanged(nameof(Current));
+        }
+        finally
+        {
+            IsWorkspaceResetInProgress = false;
+        }
     }
 
     object? ResolveSelectedItem()

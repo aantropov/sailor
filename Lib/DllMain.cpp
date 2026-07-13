@@ -31,19 +31,24 @@ extern "C"
 		Sailor::App::Shutdown();
 	}
 
-		SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
-		{
-			SAILOR_PROFILE_FUNCTION();
-			Sailor::App::SetEditorViewport(windowPosX, windowPosY, width, height);
-		}
+	SAILOR_API int32_t GetExitCode()
+	{
+		return Sailor::App::GetExitCode();
+	}
 
-		SAILOR_API void SetEditorRenderTargetSize(uint32_t width, uint32_t height)
-		{
-			SAILOR_PROFILE_FUNCTION();
-			Sailor::App::SetEditorRenderTargetSize(width, height);
-		}
+	SAILOR_API void SetViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		Sailor::App::SetEditorViewport(windowPosX, windowPosY, width, height);
+	}
 
-		SAILOR_API bool UpsertRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
+	SAILOR_API void SetEditorRenderTargetSize(uint32_t width, uint32_t height)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		Sailor::App::SetEditorRenderTargetSize(width, height);
+	}
+
+	SAILOR_API bool UpsertRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		return Sailor::App::UpsertEditorRemoteViewport(viewportId, windowPosX, windowPosY, width, height, bVisible, bFocused);

@@ -6,6 +6,7 @@ namespace SailorEditor.Content;
 public sealed class ProjectContentStore
 {
     readonly AssetsService _assetsService;
+    long _workspaceEpoch;
 
     public ProjectContentStore(AssetsService assetsService)
     {
@@ -18,6 +19,7 @@ public sealed class ProjectContentStore
 
     public ProjectContentState State { get; private set; } = new();
     public ProjectContentProjection Projection { get; private set; }
+    public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
 
     public ProjectContentProjection Refresh() => Update(State, force: true);
 
@@ -50,6 +52,12 @@ public sealed class ProjectContentStore
     public ProjectContentProjection SetFilter(string? filter) => Update(State with { Filter = filter });
 
     public ProjectContentProjection SetSort(ProjectContentSortMode sortMode) => Update(State with { SortMode = sortMode });
+
+    public ProjectContentProjection ResetForWorkspaceChange()
+    {
+        Interlocked.Increment(ref _workspaceEpoch);
+        return Update(new ProjectContentState(), force: true);
+    }
 
     void OnAssetsChanged() => Update(State, force: true);
 
