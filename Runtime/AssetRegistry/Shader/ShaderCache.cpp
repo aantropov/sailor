@@ -485,7 +485,11 @@ bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const
 			outTimestamp = assetInfo->GetAssetLastModificationTime();
 			for (const auto& include : shaderAsset->GetIncludes())
 			{
-				outTimestamp = std::max(outTimestamp, Sailor::Utils::GetFileModificationTime(AssetRegistry::GetContentFolder() + include));
+				time_t includeTimestamp = 0;
+				if (App::GetSubmodule<AssetRegistry>()->GetContentFileModificationTime(include, includeTimestamp))
+				{
+					outTimestamp = std::max(outTimestamp, includeTimestamp);
+				}
 			}
 			return true;
 		}

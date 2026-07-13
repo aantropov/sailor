@@ -64,9 +64,11 @@ public:
 
 	static std::string ReadIncludeFile(const std::string& requestedSource)
 	{
-		const string filepath = AssetRegistry::GetContentFolder() + string(requestedSource);
 		string contents = "";
-		AssetRegistry::ReadAllTextFile(filepath, contents);
+		if (AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>())
+		{
+			assetRegistry->ReadContentText(requestedSource, contents);
+		}
 		return contents;
 	}
 };
@@ -171,8 +173,14 @@ std::string GenerateConstantsLibrary(uint32_t version)
 
 void ShaderCompiler::UpdateConstantsLibrary()
 {
-	const std::filesystem::path constantsLibrary =
-		std::filesystem::path(AssetRegistry::GetContentFolder()) / "Shaders" / "Constants.glsl";
+	std::filesystem::path constantsLibrary;
+	if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+			"Shaders/Constants.glsl",
+			constantsLibrary))
+	{
+		SAILOR_LOG_ERROR("Cannot resolve the writable shader constants library path.");
+		return;
+	}
 	std::filesystem::create_directories(constantsLibrary.parent_path());
 	if (!std::filesystem::exists(constantsLibrary))
 	{
@@ -523,12 +531,20 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			}
 		}
 
-		assetInfo->SaveMetaFile();
+		if (assetInfo->IsWritable())
+		{
+			assetInfo->SaveMetaFile();
+		}
 	}
 }
 
 void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
 {
+	if (!assetInfo->IsWritable())
+	{
+		return;
+	}
+
 	const std::string& filepath = assetInfo->GetAssetFilepath();
 
 	std::string shaderText;

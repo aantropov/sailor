@@ -79,6 +79,7 @@ namespace Sailor
 			SAILOR_API void Process();
 			SAILOR_API void Join();
 			SAILOR_API void WaitIdle();
+			SAILOR_API bool HasPendingTasks() const;
 
 		protected:
 
@@ -96,7 +97,7 @@ namespace Sailor
 			std::mutex m_execMutex;
 
 			// Specific tasks for this thread
-			std::mutex m_queueMutex;
+			mutable std::mutex m_queueMutex;
 			TVector<ITaskPtr> m_pTaskQueue;
 
 			// Assigned from scheduler
@@ -162,7 +163,7 @@ namespace Sailor
 				TVector<ITaskPtr>*& pOutQueue,
 				std::condition_variable*& pOutCondVar);
 
-			std::mutex m_queueMutex[MaxThreadTypes];
+			mutable std::mutex m_queueMutex[MaxThreadTypes];
 			std::condition_variable m_refreshCondVar[MaxThreadTypes];
 			TVector<ITaskPtr> m_pSharedTaskQueue[MaxThreadTypes];
 

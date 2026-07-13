@@ -33,8 +33,9 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 	auto task = Tasks::CreateTaskWithResult<TParseRes>("Parse Stars Mesh",
 		[=]() -> TParseRes
 		{
+			auto assetRegistry = App::GetSubmodule<AssetRegistry>();
 			std::string temperatures;
-			if (!AssetRegistry::ReadAllTextFile(AssetRegistry::GetContentFolder() + std::string("StarsColor.yaml"), temperatures))
+			if (!assetRegistry || !assetRegistry->ReadContentText("StarsColor.yaml", temperatures))
 			{
 				return TParseRes();
 			}
@@ -59,7 +60,10 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 			}
 
 			TVector<uint8_t> starCatalogueData;
-			AssetRegistry::ReadBinaryFile(std::filesystem::path(AssetRegistry::GetContentFolder() + std::string("BSC5")), starCatalogueData);
+			if (!assetRegistry->ReadContentBinary("BSC5", starCatalogueData))
+			{
+				return TParseRes();
+			}
 
 			BrighStarCatalogue_Header* header = (BrighStarCatalogue_Header*)starCatalogueData.GetData();
 
@@ -696,8 +700,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	// Longitude in radians (east positive)
 	// Latitude in radians (north positive)
 	//
-	// New York lat	40° 42' 51.6708" N	40.7143528	0.710599509
-	// New York lon    74° 0' 21.5022" W	-74.0059731	-1.291647896
+	// New York lat	40Â° 42' 51.6708" N	40.7143528	0.710599509
+	// New York lon    74Â° 0' 21.5022" W	-74.0059731	-1.291647896
 	// Rome lat 41.8919300 degrees
 	// Rome lon 12.5113300 degrees
 	SetLocation(41.8919300f, 12.5113300f);

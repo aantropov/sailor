@@ -5,6 +5,7 @@
 #include "AssetRegistry/FileId.h"
 #include <mutex>
 #include <filesystem>
+#include <string>
 
 namespace Sailor
 {
@@ -17,9 +18,15 @@ namespace Sailor
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API bool GetTimeStamp(const FileId& uid, time_t& outAssetTimestamp) const;
+		SAILOR_API bool GetTimeStamp(
+			const FileId& uid,
+			const std::string& sourcePath,
+			time_t& outAssetTimestamp) const;
 
-		SAILOR_API void Update(const FileId& id, const time_t& assetTimestamp);
+		SAILOR_API void Update(
+			const FileId& id,
+			const std::string& sourcePath,
+			const time_t& assetTimestamp);
 		SAILOR_API void Remove(const FileId& uid);
 
 		SAILOR_API bool Contains(const FileId& uid) const;
@@ -42,6 +49,7 @@ namespace Sailor
 
 				FileId m_fileId{};
 				std::time_t m_assetImportTime{};
+				std::string m_sourcePath;
 
 				SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId; }
 

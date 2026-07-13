@@ -102,6 +102,11 @@ add_executable(WorkspaceContextTests
     WorkspaceContextTests.cpp
 )
 
+add_executable(AssetMountDiscoveryTests
+    AssetMountDiscoveryTests.cpp
+    ${SAILOR_RUNTIME_DIR}/AssetRegistry/AssetMountDiscovery.cpp
+)
+
 if(WIN32)
     add_executable(RemoteViewportWindowsTransportTests
         RemoteViewportWindowsTransportTests.cpp
@@ -130,6 +135,7 @@ target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleContractTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceContextTests PRIVATE cxx_std_20)
+target_compile_features(AssetMountDiscoveryTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
     SAILOR_WORKSPACE_MODULE_EXPORTS
@@ -219,6 +225,9 @@ target_include_directories(WorkspaceModuleRuntimeTests PRIVATE
 target_include_directories(WorkspaceContextTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
+target_include_directories(AssetMountDiscoveryTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
 if(WIN32)
     target_include_directories(RemoteViewportWindowsTransportTests PRIVATE
         ${SAILOR_RUNTIME_DIR}
@@ -275,6 +284,11 @@ add_test(
 )
 
 add_test(
+    NAME AssetMountDiscoveryTests
+    COMMAND AssetMountDiscoveryTests "${PROJECT_SOURCE_DIR}/Content"
+)
+
+add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
         $<TARGET_FILE:WorkspaceModuleFixture>
@@ -298,6 +312,7 @@ add_test(
 )
 set_tests_properties(
     WorkspaceContextTests
+    AssetMountDiscoveryTests
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
     PROPERTIES TIMEOUT 30

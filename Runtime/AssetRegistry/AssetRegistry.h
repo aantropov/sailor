@@ -1,6 +1,9 @@
 #pragma once
 #include <string>
 #include <fstream>
+#include <filesystem>
+#include <map>
+#include <vector>
 #include "Sailor.h"
 #include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
@@ -20,8 +23,17 @@ namespace Sailor
 	class AssetRegistry final : public TSubmodule<AssetRegistry>
 	{
 	public:
+		struct AssetReadLocation final
+		{
+			std::filesystem::path m_physicalPath;
+			std::string m_virtualPath;
+			EAssetMountKind m_mountKind = EAssetMountKind::Engine;
+			bool m_bWritable = false;
+		};
 
 		SAILOR_API static std::string GetContentFolder();
+		SAILOR_API static std::string GetWorkspaceContentFolder();
+		SAILOR_API static std::string GetEngineContentFolder();
 		SAILOR_API static std::string GetCacheFolder();
 
 		static constexpr const char* MetaFileExtension = "asset";
@@ -93,9 +105,26 @@ namespace Sailor
 		}
 
 		SAILOR_API static bool ReadAllTextFile(const std::string& filename, std::string& text);
+		SAILOR_API bool ResolveContentFile(
+			const std::string& virtualPath,
+			AssetReadLocation& outLocation) const;
+		SAILOR_API bool ReadContentText(const std::string& virtualPath, std::string& outText) const;
+		SAILOR_API bool GetContentFileModificationTime(
+			const std::string& virtualPath,
+			std::time_t& outTimestamp) const;
+		SAILOR_API bool ResolveWorkspaceContentPathForWrite(
+			const std::string& virtualPath,
+			std::filesystem::path& outPath) const;
+
+		template<typename TBinaryType>
+		bool ReadContentBinary(const std::string& virtualPath, TVector<TBinaryType>& outBuffer) const
+		{
+			AssetReadLocation location;
+			return ResolveContentFile(virtualPath, location) &&
+				ReadBinaryFile(location.m_physicalPath, outBuffer);
+		}
 
 		SAILOR_API void ScanContentFolder();
-		SAILOR_API void ScanFolder(const std::string& folderPath);		
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
@@ -127,8 +156,14 @@ namespace Sailor
 		SAILOR_API static std::string GetMetaFilePath(const std::string& assetFilePath);
 
 		SAILOR_API bool IsAssetExpired(const AssetInfoPtr info) const;
-		SAILOR_API bool GetAssetCachedTime(const FileId& id, time_t& outAssetTimestamp) const;
-		SAILOR_API void CacheAssetTime(const FileId& id, const time_t& assetTimestamp);
+		SAILOR_API bool GetAssetCachedTime(
+			const FileId& id,
+			const std::string& sourcePath,
+			time_t& outAssetTimestamp) const;
+		SAILOR_API void CacheAssetTime(
+			const FileId& id,
+			const std::string& sourcePath,
+			const time_t& assetTimestamp);
 
 		template<typename T>
 		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
@@ -150,10 +185,21 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
+		bool ResolveDirectLoadPath(
+			const std::string& requestedPath,
+			AssetReadLocation& outLocation) const;
+		IAssetInfoHandler* GetAssetInfoHandler(const std::string& extension) const;
+		IAssetInfoHandler* GetAssetInfoHandler(
+			const std::string& extension,
+			const std::string& assetInfoType,
+			bool bPrimary) const;
 
 		TMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
 		TMap<std::string, FileId> m_fileIds;
+		TMap<std::string, FileId> m_physicalFileIds;
 		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
+		std::vector<AssetMountDescriptor> m_contentMounts;
+		std::map<std::string, AssetReadLocation> m_contentFileWinners;
 
 		AssetCache m_assetCache;
 	};
