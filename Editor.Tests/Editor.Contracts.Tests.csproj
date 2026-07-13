@@ -54,6 +54,7 @@
     <Compile Include="EditorDragDropRoutingTests.cs" />
     <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="EditorPerfTests.cs" />
+    <Compile Include="EditorScreenshotTestOptionsTests.cs" />
     <Compile Include="EngineLaunchContractTests.cs" />
     <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
@@ -99,6 +100,7 @@
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
+    <Compile Include="..\Editor\Testing\EditorScreenshotTestOptions.cs" Link="Testing\EditorScreenshotTestOptions.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
     <Compile Include="..\Editor\Services\Utf8InteropArguments.cs" Link="Services\Utf8InteropArguments.cs" />

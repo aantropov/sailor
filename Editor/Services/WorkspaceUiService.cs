@@ -1,6 +1,7 @@
 using CommunityToolkit.Maui.Storage;
 using SailorEditor.Commands;
 using SailorEditor.Shell;
+using SailorEditor.Testing;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
@@ -13,6 +14,7 @@ internal sealed class WorkspaceUiService
     readonly EditorShellHost _shellHost;
     readonly ICommandHistoryService _commandHistory;
     readonly SelectionService _selectionService;
+    readonly EditorScreenshotTestOptions _screenshotTestOptions;
     static readonly FilePickerFileType WorkspaceManifestFileType = new(new Dictionary<DevicePlatform, IEnumerable<string>>
     {
         { DevicePlatform.WinUI, [".sailor"] },
@@ -27,7 +29,8 @@ internal sealed class WorkspaceUiService
         WorkspaceActivationCoordinator activationCoordinator,
         EditorShellHost shellHost,
         ICommandHistoryService commandHistory,
-        SelectionService selectionService)
+        SelectionService selectionService,
+        EditorScreenshotTestOptions screenshotTestOptions)
     {
         _workspaceLifecycle = workspaceLifecycle;
         _engineService = engineService;
@@ -35,6 +38,7 @@ internal sealed class WorkspaceUiService
         _shellHost = shellHost;
         _commandHistory = commandHistory;
         _selectionService = selectionService;
+        _screenshotTestOptions = screenshotTestOptions;
         _activationCoordinator.StateChanged += OnActivationStateChanged;
         _engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
     }
@@ -46,6 +50,9 @@ internal sealed class WorkspaceUiService
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         await RefreshAsync(cancellationToken);
+        if (_screenshotTestOptions.IsEnabled)
+            return;
+
         if (_engineService.State is EngineLifecycleState.Stopped or EngineLifecycleState.Faulted)
         {
             try
