@@ -36,6 +36,8 @@ namespace Sailor::Workspace
 	public:
 		const std::filesystem::path& GetRoot() const noexcept { return m_root; }
 		const std::filesystem::path& GetManifest() const noexcept { return m_manifest; }
+		const std::filesystem::path& GetEngineRoot() const noexcept { return m_engineRoot; }
+		const std::filesystem::path& GetEngineContent() const noexcept { return m_engineContent; }
 		const std::filesystem::path& GetContent() const noexcept { return m_content; }
 		const std::filesystem::path& GetCache() const noexcept { return m_cache; }
 		const std::filesystem::path& GetSource() const noexcept { return m_source; }
@@ -51,6 +53,8 @@ namespace Sailor::Workspace
 	private:
 		std::filesystem::path m_root;
 		std::filesystem::path m_manifest;
+		std::filesystem::path m_engineRoot;
+		std::filesystem::path m_engineContent;
 		std::filesystem::path m_content;
 		std::filesystem::path m_cache;
 		std::filesystem::path m_source;

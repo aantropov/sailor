@@ -64,7 +64,7 @@ Install Sailor to a package prefix after configuring and building it with real d
 cmake --install <engine-build> --config Release --prefix <engine-prefix>
 ```
 
-An install configured with dependency stubs is rejected. The package contains the runtime library, public runtime headers, the public RenderDoc API header, `SailorConfig.cmake`, and the exported `Sailor::Runtime` target.
+An install configured with dependency stubs is rejected. The package contains the runtime library, public runtime headers, the public RenderDoc API header, `SailorConfig.cmake`, and the exported `Sailor::Runtime` target. It does not currently install the engine `Content/` tree. Runtime activation of an installed engine reference therefore remains unsupported until that prefix also provides `<engine-prefix>/Content`; workspace resolution reports the missing Engine Content directory instead of silently falling back to workspace assets.
 
 For `engineReferenceKind: installed`, set `enginePath` to `<engine-prefix>`. The generated project prepends that prefix to `CMAKE_PREFIX_PATH` and uses:
 
@@ -116,15 +116,32 @@ Workspace placement factories run without the reflection registry mutex held, so
 
 ## Runtime Discovery And Lifecycle
 
-At startup, the runtime resolves one immutable workspace context before module loading, content scanning, registry construction, or cache initialization. The context contains the canonical root and manifest plus the resolved Content, Cache, Source, Generated, Build, logic-output, workspace identity, version, and module name. The editor resolves the same manifest-owned paths in its workspace session and passes the exact root, manifest, Content, and Cache paths into its launch contract.
+At startup, the runtime resolves one immutable workspace context before module loading, content scanning, registry construction, or cache initialization. The context contains the canonical workspace and engine roots and manifest plus the resolved Workspace Content, Engine Content, Cache, Source, Generated, Build, logic-output, workspace identity, version, and module name. The editor resolves the same manifest-owned paths in its workspace session and passes the exact root, manifest, Content, and Cache paths into its launch contract.
 
 `--workspace-manifest <path>` selects an explicit manifest inside the workspace. Without the option, discovery prefers `workspace.sailor`; if that file is absent, exactly one root-level `*.sailor` file is accepted. No manifest creates a legacy context using `<root>/Content` and `<root>/Cache`; multiple candidates are rejected with an ambiguity diagnostic.
 
 Every workspace-owned manifest path is normalized lexically and then checked for physical containment after existing symlinks or Windows junctions are resolved. Validation completes before the context or editor session is published. A missing default `Content` directory is recreated, while a missing custom content path is rejected without creating a replacement. Cache directories are disposable and are recreated at their configured path. If later validation or recovery fails, directories created by that resolution attempt are rolled back.
 
+### Runtime Content Mounts
+
+The asset registry exposes exactly two discoverable content roots in one virtual namespace:
+
+- Workspace Content is writable and has higher priority.
+- Engine Content is read-only and has lower priority.
+
+Lookups use paths relative to either Content root. When both roots provide the same virtual path, Workspace Content wins. The same precedence applies when metadata in both roots declares the same `FileId`, so path-based and ID-based access select a consistent workspace override. Engine assets with unique paths and IDs remain available. Every virtual-path or `FileId` collision produces a deterministic diagnostic that identifies the selected and shadowed files.
+
+The roots are canonicalized before discovery. If Workspace Content and Engine Content resolve to the same physical directory, the registry keeps one writable Workspace mount and reports the deduplication; this preserves legacy workspaces whose engine and workspace roots are the same. Distinct roots may not contain one another. A nested-root configuration is rejected before a new registry generation is published, preventing one file from entering the namespace through two relative paths.
+
+Engine Content is never mutated by discovery. An Engine asset without metadata is diagnosed and skipped rather than imported or assigned newly generated metadata. Source rewrites and generated asset metadata are likewise restricted to Workspace Content; derived runtime data may still be written to the workspace Cache. Plain-text and binary content reads, including shader includes, particle data, and star-catalog data, use the same virtual-path resolver and workspace-over-engine precedence as registered assets.
+
+Import callbacks may register newly generated, non-conflicting Workspace assets into the active generation. A newly created Workspace file that collides with an active `FileId` is rejected until the next explicit Content rescan can apply the complete mount-precedence policy transactionally. Runtime hot replacement remains outside this contract.
+
+Cache is not a third discoverable content root. The editor's generated `../Cache/Temp.world` is supported through the direct cache-load exception, while normal asset discovery remains limited to Workspace Content and Engine Content.
+
 For manifest version 1, the runtime resolves the module as `<resolved-logic-output>/<CONFIG>/<platform-module-name>`. `WorkspaceModuleManager` consumes the captured context and never reparses the manifest. It canonicalizes the final module path again immediately before loading and rejects any symlink or junction change observed by that check. Concurrent mutation of the workspace or build tree during the platform's pathname-only library-loader call is not supported. The active CMake configuration is part of both the path and ABI check, so a stale Debug/Release binary fails with rebuild guidance instead of being loaded as a compatible module.
 
-The dynamic library is opened before asset importers scan the resolved Content directory. Asset, shader, precompiled-shader, and editor-type caches use the resolved Cache directory, including custom paths with spaces. The generated shader constants library is written below resolved Content. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
+The dynamic library is opened before asset importers scan the resolved Workspace Content and Engine Content mounts. Asset, shader, precompiled-shader, and editor-type caches use the resolved Cache directory, including custom paths with spaces. The generated shader constants library is written below Workspace Content. Static engine registration callbacks triggered by the platform loader are suppressed for that load operation; only the explicit V1 descriptor callback can add workspace types. The host validates the complete descriptor and metadata set before committing it under a module owner. Missing libraries, loader dependencies, entry points, incompatible API/ABI, metadata errors, and registration collisions return structured non-crashing diagnostics.
 
 Standalone startup treats a configured module or requested-world activation failure as fatal and returns a nonzero exit code. Editor startup reports the same error but remains available with an empty world so the project can be repaired. During shutdown, worlds, importers, the asset registry, scheduler, and remaining submodules are destroyed before workspace registrations are removed and the library is closed. Runtime hot reload and live workspace switching are not supported by this contract.
 

@@ -170,6 +170,11 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
+		if (!modelAssetInfo->IsWritable())
+		{
+			return;
+		}
+
 		if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
 		{
 			GenerateMaterialAssets(modelAssetInfo);
@@ -255,13 +260,21 @@ void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 		return;
 	}
 
-	const std::string animationsFolder = AssetRegistry::GetContentFolder() + Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
+	const std::string animationsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
 	for (size_t i = 0; i < gltfModel.animations.size(); ++i)
 	{
 		const auto& anim = gltfModel.animations[i];
 		std::string name = !anim.name.empty() ? anim.name : ("animation" + std::to_string(i));
-		FileId id = CreateAnimationAsset(animationsFolder + assetInfo->GetAssetFilename() + "_" + name + ".anim.asset",
+		std::filesystem::path outputPath;
+		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+				animationsFolder + assetInfo->GetAssetFilename() + "_" + name + ".anim.asset",
+				outputPath))
+		{
+			SAILOR_LOG_ERROR("Cannot resolve generated animation output for %s.", assetInfo->GetAssetFilepath().c_str());
+			continue;
+		}
+		FileId id = CreateAnimationAsset(outputPath.string(),
 			assetInfo->GetAssetFilename(), (uint32_t)i, 0);
 		assetInfo->GetAnimations().Add(id);
 	}
@@ -307,7 +320,15 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		MaterialAsset::Data& data = materials[i];
 		data.m_name = !material.name.empty() ? material.name : ("material" + std::to_string(i));
 
-		const std::string materialName = AssetRegistry::GetContentFolder() + texturesFolder + assetInfo->GetAssetFilename() + "_" + data.m_name;
+		std::filesystem::path materialNamePath;
+		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+				texturesFolder + assetInfo->GetAssetFilename() + "_" + data.m_name,
+				materialNamePath))
+		{
+			SAILOR_LOG_ERROR("Cannot resolve generated material output for %s.", assetInfo->GetAssetFilepath().c_str());
+			continue;
+		}
+		const std::string materialName = materialNamePath.string();
 
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
@@ -498,10 +519,19 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 	for (const auto& material : materials)
 	{
-		std::string materialsFolder = AssetRegistry::GetContentFolder() + texturesFolder + "materials/";
-		std::filesystem::create_directory(materialsFolder);
+		std::filesystem::path materialsFolder;
+		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
+				texturesFolder + "materials",
+				materialsFolder))
+		{
+			SAILOR_LOG_ERROR("Cannot resolve generated materials folder for %s.", assetInfo->GetAssetFilepath().c_str());
+			continue;
+		}
+		std::filesystem::create_directories(materialsFolder);
 
-		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(materialsFolder + material.m_name + ".mat", material);
+		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(
+			(materialsFolder / (material.m_name + ".mat")).string(),
+			material);
 		materialFiles.Add(materialFileId);
 	}
 
@@ -1191,5 +1221,3 @@ void ModelImporter::CollectGarbage()
 		m_promises.Remove(uid);
 	}
 }
-
-

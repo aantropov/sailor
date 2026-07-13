@@ -2,6 +2,7 @@
 #include <string>
 #include <ctime>
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/AssetMountDiscovery.h"
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
@@ -27,6 +28,10 @@ namespace Sailor
 
 		SAILOR_API std::string GetRelativeAssetFilepath() const;
 		SAILOR_API std::string GetRelativeMetaFilepath() const;
+		SAILOR_API bool IsWritable() const noexcept { return m_bWritable; }
+		SAILOR_API EAssetMountKind GetMountKind() const noexcept { return m_mountKind; }
+		SAILOR_API const std::string& GetVirtualAssetFilepath() const noexcept { return m_virtualAssetFilepath; }
+		SAILOR_API const std::string& GetVirtualMetaFilepath() const noexcept { return m_virtualMetaFilepath; }
 
 		// That includes "../Content/" in the beginning
 		SAILOR_API std::string GetAssetFilepath() const { return m_folder + m_assetFilename; }
@@ -55,9 +60,18 @@ namespace Sailor
 		std::time_t m_assetImportTime;
 		std::string m_folder;
 		std::string m_assetFilename;
+		std::string m_metaFilepath;
+		std::string m_virtualAssetFilepath;
+		std::string m_virtualMetaFilepath;
 		FileId m_fileId;
+		EAssetMountKind m_mountKind = EAssetMountKind::Workspace;
+		bool m_bWritable = true;
+		bool m_bPendingUpdateNotification = false;
+		bool m_bPendingWasExpired = false;
+		bool m_bPendingImportNotification = false;
 
 		friend class IAssetInfoHandler;
+		friend class AssetRegistry;
 	};
 
 	using AssetInfoPtr = AssetInfo*;
@@ -83,9 +97,24 @@ namespace Sailor
 
 		virtual void GetDefaultMeta(YAML::Node& outDefaultYaml) const = 0;
 
-		virtual AssetInfoPtr LoadAssetInfo(const std::string& metaFilepath) const;
-		virtual AssetInfoPtr ImportAsset(const std::string& assetFilepath) const;
-		virtual void ReloadAssetInfo(AssetInfoPtr assetInfo) const;
+		virtual AssetInfoPtr LoadAssetInfo(
+			const std::string& metaFilepath,
+			const std::string& virtualMetaFilepath = {},
+			EAssetMountKind mountKind = EAssetMountKind::Workspace,
+			bool bWritable = true,
+			bool bNotifyListeners = true,
+			bool bUpdateAssetCache = true) const;
+		virtual AssetInfoPtr ImportAsset(
+			const std::string& assetFilepath,
+			const std::string& virtualAssetFilepath = {},
+			bool bNotifyListeners = true,
+			bool bUpdateAssetCache = true) const;
+		virtual void ReloadAssetInfo(
+			AssetInfoPtr assetInfo,
+			bool bNotifyListeners = true,
+			bool bUpdateAssetCache = true) const;
+		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const;
+		void NotifyImportAsset(AssetInfoPtr assetInfo) const;
 
 		virtual ~IAssetInfoHandler() = default;
 

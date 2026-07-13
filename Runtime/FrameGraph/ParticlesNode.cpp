@@ -36,17 +36,14 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	if (!m_particlesHeader.m_bIsLoaded && TryGetString("particlesData", m_particlesPath))
 	{
 		std::string yamlParticlesData;
-		std::string dataPath = assetRegistry->GetContentFolder() + m_particlesPath;
-
-		if (assetRegistry->ReadAllTextFile(dataPath, yamlParticlesData))
+		if (assetRegistry->ReadContentText(m_particlesPath, yamlParticlesData))
 		{
 			YAML::Node yamlNode = YAML::Load(yamlParticlesData);
 			m_particlesHeader.Deserialize(yamlNode);
 		}
 
-		dataPath = Utils::RemoveFileExtension(dataPath) + ".dat";
-
-		if (assetRegistry->ReadBinaryFile(dataPath, m_particlesDataBinary))
+		const std::string dataPath = Utils::RemoveFileExtension(m_particlesPath) + ".dat";
+		if (assetRegistry->ReadContentBinary(dataPath, m_particlesDataBinary))
 		{
 			m_particlesHeader.m_bIsLoaded = true;
 		}

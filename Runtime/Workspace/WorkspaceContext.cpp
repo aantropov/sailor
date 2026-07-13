@@ -27,6 +27,8 @@ namespace
 	{
 		std::filesystem::path m_root;
 		std::filesystem::path m_manifest;
+		std::filesystem::path m_engineRoot;
+		std::filesystem::path m_engineContent;
 		std::filesystem::path m_content;
 		std::filesystem::path m_cache;
 		std::filesystem::path m_source;
@@ -447,6 +449,55 @@ namespace
 		return true;
 	}
 
+	bool ResolveEnginePaths(
+		const std::filesystem::path& workspaceRoot,
+		const std::string& rawEnginePath,
+		const std::string& engineReferenceKind,
+		std::filesystem::path& outEngineRoot,
+		std::filesystem::path& outEngineContent,
+		std::string& outError)
+	{
+		if (rawEnginePath.find('\0') != std::string::npos)
+		{
+			outError = "Workspace manifest field 'enginePath' contains an invalid null character.";
+			return false;
+		}
+
+		const std::filesystem::path engineReference(rawEnginePath);
+		const std::filesystem::path requestedEngineRoot = engineReference.is_absolute()
+			? engineReference
+			: workspaceRoot / engineReference;
+		std::error_code pathError;
+		outEngineRoot = std::filesystem::canonical(requestedEngineRoot, pathError);
+		if (pathError || !std::filesystem::is_directory(outEngineRoot, pathError) || pathError)
+		{
+			outError = "Workspace manifest field 'enginePath' must resolve to an existing directory: '" +
+				requestedEngineRoot.generic_string() + "'.";
+			return false;
+		}
+
+		const std::filesystem::path requestedEngineContent = outEngineRoot / DefaultContentPath;
+		pathError.clear();
+		outEngineContent = std::filesystem::canonical(requestedEngineContent, pathError);
+		if (pathError || !std::filesystem::is_directory(outEngineContent, pathError) || pathError)
+		{
+			if (engineReferenceKind == "installed")
+			{
+				outError = "Installed engine reference does not provide runtime Content at '" +
+					requestedEngineContent.generic_string() +
+					"'. Packaging runtime Content for installed engines is not supported by this build.";
+			}
+			else
+			{
+				outError = "Engine Content must be an existing directory: '" +
+					requestedEngineContent.generic_string() + "'.";
+			}
+			return false;
+		}
+
+		return true;
+	}
+
 	bool EnsureDirectory(
 		const std::filesystem::path& root,
 		const std::filesystem::path& directory,
@@ -712,6 +763,16 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			candidate.m_workspaceId = fields.m_workspaceId;
 			candidate.m_workspaceName = fields.m_workspaceName;
 			candidate.m_moduleName = fields.m_moduleName;
+			if (!ResolveEnginePaths(
+					root,
+					fields.m_enginePath,
+					fields.m_engineReferenceKind,
+					candidate.m_engineRoot,
+					candidate.m_engineContent,
+					error))
+			{
+				return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
+			}
 		}
 
 		std::filesystem::path contentRelative;
@@ -782,6 +843,11 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 		{
 			return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
 		}
+		if (candidate.m_bLegacy)
+		{
+			candidate.m_engineRoot = candidate.m_root;
+			candidate.m_engineContent = candidate.m_content;
+		}
 
 		WorkspaceContextResolveResult result;
 		result.m_status = candidate.m_bLegacy
@@ -793,6 +859,8 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 			: "Resolved workspace manifest '" + candidate.m_manifest.generic_string() + "'.";
 		result.m_context.m_root = std::move(candidate.m_root);
 		result.m_context.m_manifest = std::move(candidate.m_manifest);
+		result.m_context.m_engineRoot = std::move(candidate.m_engineRoot);
+		result.m_context.m_engineContent = std::move(candidate.m_engineContent);
 		result.m_context.m_content = std::move(candidate.m_content);
 		result.m_context.m_cache = std::move(candidate.m_cache);
 		result.m_context.m_source = std::move(candidate.m_source);

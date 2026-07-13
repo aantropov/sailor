@@ -20,9 +20,10 @@ namespace
 		uint32_t m_version = 1;
 		std::string m_workspaceId = "workspace-id";
 		std::string m_name = "Sandbox";
-		std::string m_enginePath = "../Sailor";
+		std::string m_enginePath = "Engine";
 		std::string m_engineReferenceKind = "source";
 		bool m_includeEngineReferenceKind = true;
+		bool m_createEngineContent = true;
 		std::string m_content = "Content";
 		std::string m_cache = "Cache";
 		std::string m_source = "Source";
@@ -81,6 +82,18 @@ namespace
 		const std::filesystem::path& path,
 		const ManifestSpec& spec = {})
 	{
+		if (spec.m_createEngineContent && !spec.m_enginePath.empty())
+		{
+			const std::filesystem::path engineReference(spec.m_enginePath);
+			const std::filesystem::path engineRoot = engineReference.is_absolute()
+				? engineReference
+				: path.parent_path() / engineReference;
+			std::error_code createError;
+			std::filesystem::create_directories(engineRoot / "Content", createError);
+			Require(!createError,
+				"test engine Content should be creatable: " + engineRoot.generic_string());
+		}
+
 		YAML::Node manifest;
 		manifest["manifestVersion"] = spec.m_version;
 		manifest["workspaceId"] = spec.m_workspaceId;
@@ -125,6 +138,10 @@ namespace
 		Require(result.m_context.GetManifest().empty(), "legacy context should not invent a manifest");
 		Require(result.m_context.GetContent() == Canonical(workspace.Path("Content")),
 			"legacy context should use the default Content directory");
+		Require(result.m_context.GetEngineRoot() == result.m_context.GetRoot(),
+			"legacy context should deduplicate the engine and workspace roots");
+		Require(result.m_context.GetEngineContent() == result.m_context.GetContent(),
+			"legacy context should deduplicate engine and workspace Content");
 		Require(result.m_context.GetCache() == Canonical(workspace.Path("Cache")),
 			"legacy context should use the default Cache directory");
 		Require(std::filesystem::is_directory(workspace.Path("Content")),
@@ -139,6 +156,7 @@ namespace
 		ManifestSpec spec;
 		spec.m_workspaceId = "workspace with spaces";
 		spec.m_name = "Sandbox With Spaces";
+		spec.m_enginePath = "Engine Install With Spaces";
 		spec.m_content = "Game Data/Content Files";
 		spec.m_cache = "State Data/Cache Files";
 		spec.m_source = "Game Code/Source Files";
@@ -166,6 +184,11 @@ namespace
 			"workspace id should be preserved");
 		Require(result.m_context.GetWorkspaceName() == spec.m_name,
 			"workspace name should be preserved");
+		Require(result.m_context.GetEngineRoot() == Canonical(workspace.Path(spec.m_enginePath)),
+			"engine root should preserve spaces");
+		Require(result.m_context.GetEngineContent() ==
+			Canonical(workspace.Path(spec.m_enginePath) / "Content"),
+			"engine Content should resolve below the engine root");
 		Require(result.m_context.GetContent() == Canonical(workspace.Path(spec.m_content)),
 			"custom content path should preserve spaces");
 		Require(result.m_context.GetCache() == Canonical(workspace.Path(spec.m_cache)),
@@ -211,6 +234,101 @@ namespace
 
 		Require(result.IsSuccess(),
 			"v1 manifest without engineReferenceKind should default to source: " + result.m_message);
+	}
+
+	void TestRelativeEnginePathOutsideWorkspace()
+	{
+		TempDirectory workspace("relative-engine-workspace");
+		TempDirectory engine("relative-engine-root");
+		std::filesystem::create_directories(engine.Path("Content"));
+		std::error_code relativeError;
+		const std::filesystem::path relativeEngine = std::filesystem::relative(
+			engine.Get(),
+			workspace.Get(),
+			relativeError);
+		Require(!relativeError, "relative engine fixture should be computable");
+
+		ManifestSpec spec;
+		spec.m_enginePath = relativeEngine.generic_string();
+		spec.m_createEngineContent = false;
+		WriteManifest(workspace.Path("workspace.sailor"), spec);
+
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+		Require(result.IsSuccess(), "relative engine path should resolve outside the workspace: " + result.m_message);
+		Require(result.m_context.GetEngineRoot() == Canonical(engine.Get()),
+			"relative engine path should be canonicalized from the workspace root");
+		Require(result.m_context.GetEngineContent() == Canonical(engine.Path("Content")),
+			"relative engine Content should be canonicalized");
+	}
+
+	void TestAbsoluteEnginePath()
+	{
+		TempDirectory workspace("absolute-engine-workspace");
+		TempDirectory engine("absolute-engine-root");
+		std::filesystem::create_directories(engine.Path("Content"));
+
+		ManifestSpec spec;
+		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_createEngineContent = false;
+		WriteManifest(workspace.Path("workspace.sailor"), spec);
+
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+		Require(result.IsSuccess(), "absolute engine path should resolve: " + result.m_message);
+		Require(result.m_context.GetEngineRoot() == Canonical(engine.Get()),
+			"absolute engine root should be canonicalized without workspace containment");
+		Require(result.m_context.GetEngineContent() == Canonical(engine.Path("Content")),
+			"absolute engine Content should be canonicalized");
+	}
+
+	void TestMissingEngineContentDoesNotMutateWorkspace()
+	{
+		TempDirectory workspace("missing-engine-content-workspace");
+		TempDirectory engine("missing-engine-content-root");
+		ManifestSpec spec;
+		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_createEngineContent = false;
+		WriteManifest(workspace.Path("workspace.sailor"), spec);
+
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+		Require(result.m_status == EWorkspaceContextResolveStatus::PathInvalid,
+			"missing engine Content should be rejected: " + result.m_message);
+		Require(result.m_message.find("Engine Content") != std::string::npos,
+			"missing engine Content diagnostic should identify the invalid directory");
+		Require(result.m_context.GetRoot().empty(),
+			"missing engine Content must not publish a partial context");
+		Require(!std::filesystem::exists(workspace.Path("Content")),
+			"engine validation must precede workspace Content recovery");
+		Require(!std::filesystem::exists(workspace.Path("Cache")),
+			"engine validation must precede workspace Cache recovery");
+	}
+
+	void TestMissingInstalledEngineContentHasTargetedDiagnostic()
+	{
+		TempDirectory workspace("missing-installed-engine-content-workspace");
+		TempDirectory engine("missing-installed-engine-content-root");
+		ManifestSpec spec;
+		spec.m_enginePath = engine.Get().generic_string();
+		spec.m_engineReferenceKind = "installed";
+		spec.m_createEngineContent = false;
+		WriteManifest(workspace.Path("workspace.sailor"), spec);
+
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+		Require(result.m_status == EWorkspaceContextResolveStatus::PathInvalid,
+			"installed engine without runtime Content should be rejected: " + result.m_message);
+		Require(result.m_message.find("Installed engine reference") != std::string::npos,
+			"installed engine diagnostic should identify the reference kind");
+		Require(result.m_message.find("Packaging runtime Content") != std::string::npos,
+			"installed engine diagnostic should identify the known packaging limitation");
+		Require(result.m_context.GetRoot().empty(),
+			"missing installed engine Content must not publish a partial context");
+		Require(!std::filesystem::exists(workspace.Path("Content")),
+			"installed engine validation must precede workspace Content recovery");
+		Require(!std::filesystem::exists(workspace.Path("Cache")),
+			"installed engine validation must precede workspace Cache recovery");
 	}
 
 	void TestMissingCustomContentDoesNotMutateWorkspace()
@@ -423,6 +541,10 @@ int main()
 		TestManifestPathsWithSpaces();
 		TestManifestDefaultRecovery();
 		TestManifestDefaultsMissingEngineReferenceKindToSource();
+		TestRelativeEnginePathOutsideWorkspace();
+		TestAbsoluteEnginePath();
+		TestMissingEngineContentDoesNotMutateWorkspace();
+		TestMissingInstalledEngineContentHasTargetedDiagnostic();
 		TestMissingCustomContentDoesNotMutateWorkspace();
 		TestRecoveryRollbackOnLaterFailure();
 		TestManifestDiscoveryFailures();

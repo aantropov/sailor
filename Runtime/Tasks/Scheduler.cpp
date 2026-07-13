@@ -51,7 +51,21 @@ void WorkerThread::Join()
 void WorkerThread::WaitIdle()
 {
 	SAILOR_PROFILE_FUNCTION();
-	while (m_bIsBusy);
+	while (HasPendingTasks())
+	{
+		std::this_thread::yield();
+	}
+}
+
+bool WorkerThread::HasPendingTasks() const
+{
+	if (m_bIsBusy.load())
+	{
+		return true;
+	}
+
+	const std::lock_guard<std::mutex> lock(m_queueMutex);
+	return m_bIsBusy.load() || !m_pTaskQueue.IsEmpty();
 }
 
 void WorkerThread::ForcelyPushTask(const ITaskPtr& pTask)
@@ -154,6 +168,10 @@ void WorkerThread::Process()
 					const bool res = hasTask || (bool)scheduler->m_bIsTerminating;
 					return res;
 				});
+			if (pCurrentTask)
+			{
+				m_bIsBusy = true;
+			}
 
 			if (m_bExecFlag > 0)
 			{
@@ -459,6 +477,7 @@ EThreadType Scheduler::GetCurrentThreadType() const
 
 uint32_t Scheduler::GetNumTasks(EThreadType thread) const
 {
+	const std::lock_guard<std::mutex> lock(m_queueMutex[(uint32_t)thread]);
 	return (uint32_t)m_pSharedTaskQueue[(uint32_t)thread].Num();
 }
 
@@ -466,9 +485,10 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	for (const auto& thread : threads)
+	bool bHasPendingTasks = false;
+	do
 	{
-		if (GetNumTasks(thread) > 0)
+		for (const EThreadType thread : threads)
 		{
 			if (thread == EThreadType::Main && IsMainThread())
 			{
@@ -479,7 +499,17 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 				WaitIdle(thread);
 			}
 		}
-	}
+
+		bHasPendingTasks = false;
+		for (const EThreadType thread : threads)
+		{
+			bHasPendingTasks |= GetNumTasks(thread) > 0;
+			for (const WorkerThread* worker : m_workerThreads)
+			{
+				bHasPendingTasks |= worker->GetThreadType() == thread && worker->HasPendingTasks();
+			}
+		}
+	} while (bHasPendingTasks);
 }
 
 void Scheduler::WaitIdle(EThreadType type)

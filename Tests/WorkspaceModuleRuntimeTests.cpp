@@ -68,6 +68,7 @@ namespace
 		const std::string& logicOutputPath = "Binaries")
 	{
 		std::filesystem::create_directories(root);
+		std::filesystem::create_directories(root.parent_path() / "Engine" / "Content");
 		std::ofstream manifest(root / "workspace.sailor");
 		manifest
 			<< "manifestVersion: 1\n"
