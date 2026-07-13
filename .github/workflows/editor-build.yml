@@ -46,6 +46,32 @@ jobs:
             -p:WindowsPackageType=None `
             -p:WindowsAppSDKSelfContained=true
 
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $evidenceDirectory = Join-Path $env:GITHUB_WORKSPACE 'Binaries\EditorScreenshot'
+          [System.IO.Directory]::CreateDirectory($evidenceDirectory) | Out-Null
+          Get-ChildItem -LiteralPath $publishDirectory -Recurse -File |
+            Sort-Object FullName |
+            ForEach-Object {
+              $relativePath = [System.IO.Path]::GetRelativePath($publishDirectory, $_.FullName)
+              "{0}`t{1}" -f $relativePath, $_.Length
+            } |
+            Set-Content `
+              -LiteralPath (Join-Path $evidenceDirectory 'editor-screenshot.publish-files.log') `
+              -Encoding utf8NoBOM
+
+          foreach ($requiredFile in @(
+            'Microsoft.UI.Xaml.Controls.pri',
+            'Microsoft.UI.Xaml.Controls.dll',
+            'Microsoft.ui.xaml.dll')) {
+            $requiredPath = Join-Path $publishDirectory $requiredFile
+            if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+              throw "Self-contained Windows App SDK publish is missing '$requiredFile'."
+            }
+          }
+
       - name: Run Editor screenshot smoke test
         shell: pwsh
         run: |
