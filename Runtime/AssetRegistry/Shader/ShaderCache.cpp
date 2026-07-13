@@ -925,7 +925,8 @@ bool ShaderCache::IsValidGeneration(const std::string& generation) noexcept
 	}
 	return std::all_of(generation.begin(), generation.end(), [](unsigned char character)
 		{
-			return character >= '0' && character <= '9' || character >= 'a' && character <= 'f';
+			return (character >= '0' && character <= '9') ||
+				(character >= 'a' && character <= 'f');
 		});
 }
 
