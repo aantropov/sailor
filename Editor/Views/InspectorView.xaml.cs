@@ -45,7 +45,8 @@ namespace SailorEditor.Views
 
             try
             {
-                if (!isCommittingInspectorChanges &&
+                if (!inspectorProjection.IsWorkspaceResetInProgress &&
+                    !isCommittingInspectorChanges &&
                     InspectedItemHost.Content?.BindingContext is IInspectorEditable editable &&
                     editable.HasPendingInspectorChanges)
                 {

@@ -30,6 +30,9 @@
     <Compile Include="ProjectContentPathPolicyTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
+    <Compile Include="WorkspaceActivationTests.cs" />
+    <Compile Include="WorkspaceStateResetTests.cs" />
+    <Compile Include="WorkspaceIsolationRegressionTests.cs" />
     <Compile Include="WorkspaceProjectGeneratorTests.cs" />
     <Compile Include="EngineTypeMetadataContractTests.cs" />
     <Compile Include="EditorTypeCatalogContractTests.cs" />
@@ -49,6 +52,7 @@
     <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="EditorPerfTests.cs" />
     <Compile Include="EngineLaunchContractTests.cs" />
+    <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
@@ -64,6 +68,8 @@
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
     <Compile Include="..\Editor\Workspace\WorkspacePathPolicy.cs" Link="Workspace\WorkspacePathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceActivationContracts.cs" Link="Workspace\WorkspaceActivationContracts.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceActivationCoordinator.cs" Link="Workspace\WorkspaceActivationCoordinator.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceProjectGenerator.cs" Link="Workspace\WorkspaceProjectGenerator.cs" />
     <Compile Include="..\Editor\Utility\EngineTypeMetadataContract.cs" Link="Utility\EngineTypeMetadataContract.cs" />
     <Compile Include="..\Editor\Utility\EditorComponentScalarCodec.cs" Link="Utility\EditorComponentScalarCodec.cs" />
@@ -87,5 +93,6 @@
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
+    <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
   </ItemGroup>
 </Project>

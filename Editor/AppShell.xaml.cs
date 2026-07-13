@@ -135,8 +135,11 @@ namespace SailorEditor
         }
 
         static string BuildWindowTitle(WorkspaceUiProjection projection)
-            => projection.HasActiveWorkspace
+        {
+            var title = projection.HasActiveWorkspace
                 ? projection.ActiveWorkspaceName
                 : "New Workspace";
+            return projection.RequiresRepair ? $"{title} - Repair required" : title;
+        }
     }
 }

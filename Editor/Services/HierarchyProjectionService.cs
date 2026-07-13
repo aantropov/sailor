@@ -11,6 +11,9 @@ public sealed partial class HierarchyProjectionService : ObservableObject
     readonly WorldService _worldService;
     readonly SelectionService _selectionService;
     readonly HashSet<string> _expandedIds = [];
+    long _workspaceEpoch;
+
+    public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
 
     [ObservableProperty]
     IReadOnlyList<HierarchyProjectionNode> roots = Array.Empty<HierarchyProjectionNode>();
@@ -42,6 +45,14 @@ public sealed partial class HierarchyProjectionService : ObservableObject
             _expandedIds.Remove(instanceId.Value);
 
         Refresh();
+    }
+
+    public void ResetForWorkspaceChange()
+    {
+        Interlocked.Increment(ref _workspaceEpoch);
+        _expandedIds.Clear();
+        Roots = Array.Empty<HierarchyProjectionNode>();
+        VisibleRows = Array.Empty<HierarchyListRow>();
     }
 
     public void EnsureVisible(InstanceId instanceId)

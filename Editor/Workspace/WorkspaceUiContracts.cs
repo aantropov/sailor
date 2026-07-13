@@ -10,16 +10,28 @@ public sealed record WorkspaceUiProjection(
     string ActiveWorkspaceName,
     string ActiveWorkspacePath,
     bool HasActiveWorkspace,
-    IReadOnlyList<WorkspaceRecentItem> RecentWorkspaces)
+    IReadOnlyList<WorkspaceRecentItem> RecentWorkspaces,
+    WorkspaceActivationPhase ActivationPhase = WorkspaceActivationPhase.Idle,
+    string? ActivationError = null)
 {
     public static WorkspaceUiProjection Empty { get; } = new("No workspace", "Repository fallback", false, []);
 
     public string ToolbarText => HasActiveWorkspace ? ActiveWorkspaceName : "No workspace";
+    public bool IsActivationInProgress => ActivationPhase is
+        WorkspaceActivationPhase.Preflighting or
+        WorkspaceActivationPhase.Stopping or
+        WorkspaceActivationPhase.Clearing or
+        WorkspaceActivationPhase.Committing or
+        WorkspaceActivationPhase.Starting;
+    public bool RequiresRepair => ActivationPhase == WorkspaceActivationPhase.Repair;
 }
 
 public static class WorkspaceUiProjectionBuilder
 {
-    public static WorkspaceUiProjection Build(WorkspaceSession? current, IReadOnlyList<RecentWorkspaceEntry> recentWorkspaces)
+    public static WorkspaceUiProjection Build(
+        WorkspaceSession? current,
+        IReadOnlyList<RecentWorkspaceEntry> recentWorkspaces,
+        WorkspaceActivationState? activation = null)
     {
         var recent = recentWorkspaces
             .Where(x => !string.IsNullOrWhiteSpace(x.ManifestPath))
@@ -30,14 +42,25 @@ public static class WorkspaceUiProjectionBuilder
                 x.LastOpenedAt))
             .ToArray();
 
+        var activationPhase = activation?.Phase ?? WorkspaceActivationPhase.Idle;
+        var activationError = activation?.Error;
         if (current is null)
-            return WorkspaceUiProjection.Empty with { RecentWorkspaces = recent };
+        {
+            return WorkspaceUiProjection.Empty with
+            {
+                RecentWorkspaces = recent,
+                ActivationPhase = activationPhase,
+                ActivationError = activationError
+            };
+        }
 
         return new WorkspaceUiProjection(
             string.IsNullOrWhiteSpace(current.Manifest.Name) ? Path.GetFileName(current.WorkspaceRoot) : current.Manifest.Name,
             current.WorkspaceRoot,
             true,
-            recent);
+            recent,
+            activationPhase,
+            activationError);
     }
 
     static string CompactPath(string path)

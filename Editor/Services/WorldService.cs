@@ -12,6 +12,10 @@ namespace SailorEditor.Services
 {
     public partial class WorldService : ObservableObject
     {
+        readonly EngineService engineService;
+        Action<string> worldUpdateHandler = delegate { };
+        long workspaceEpoch;
+
         class WorldCache
         {
             public Dictionary<InstanceId, Component> Components { get; } = new();
@@ -20,7 +24,8 @@ namespace SailorEditor.Services
         }
 
         public World Current { get; private set; } = new World();
-        public WorldFile CurrentWorldAsset { get; private set; }
+        public WorldFile? CurrentWorldAsset { get; private set; }
+        public long WorkspaceEpoch => Interlocked.Read(ref workspaceEpoch);
 
         [ObservableProperty]
         ObservableList<ObservableList<GameObject>> gameObjects = new();
@@ -29,7 +34,30 @@ namespace SailorEditor.Services
 
         public WorldService()
         {
-            MauiProgram.GetService<EngineService>().OnUpdateCurrentWorldAction += PopulateWorld;
+            engineService = MauiProgram.GetService<EngineService>();
+            SubscribeToWorldUpdates();
+        }
+
+        void SubscribeToWorldUpdates()
+        {
+            var subscribedEpoch = WorkspaceEpoch;
+            worldUpdateHandler = yaml => TryPopulateWorld(yaml, subscribedEpoch);
+            engineService.OnUpdateCurrentWorldAction += worldUpdateHandler;
+        }
+
+        public void ResetForWorkspaceChange()
+        {
+            Interlocked.Increment(ref workspaceEpoch);
+            engineService.OnUpdateCurrentWorldAction -= worldUpdateHandler;
+
+            worldCaches.Clear();
+            currentCache = new WorldCache();
+            Current = new World();
+            CurrentWorldAsset = null;
+            GameObjects.Clear();
+
+            SubscribeToWorldUpdates();
+            OnUpdateWorldAction?.Invoke(Current);
         }
 
         static string GetWorldKey(World world) => string.IsNullOrEmpty(world?.Name) ? "__default_world__" : world.Name;
@@ -448,8 +476,13 @@ namespace SailorEditor.Services
             return prefab;
         }
 
-        public void PopulateWorld(string yaml)
+        public void PopulateWorld(string yaml) => TryPopulateWorld(yaml, WorkspaceEpoch);
+
+        public bool TryPopulateWorld(string yaml, long expectedWorkspaceEpoch)
         {
+            if (expectedWorkspaceEpoch != WorkspaceEpoch)
+                return false;
+
             using var perfScope = EditorPerf.Scope("WorldService.PopulateWorld");
 
             var deserializer = SerializationUtils.CreateDeserializerBuilder()
@@ -458,7 +491,10 @@ namespace SailorEditor.Services
 
             var world = deserializer.Deserialize<World>(yaml);
             if (world == null)
-                return;
+                return false;
+
+            if (expectedWorkspaceEpoch != WorkspaceEpoch)
+                return false;
 
             GameObjects.Clear();
             Current.Prefabs.Clear();
@@ -514,6 +550,7 @@ namespace SailorEditor.Services
 
             OnUpdateWorldAction?.Invoke(Current);
             RefreshSelection();
+            return true;
         }
 
         void RefreshSelection()

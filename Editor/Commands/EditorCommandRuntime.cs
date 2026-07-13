@@ -1,51 +1,22 @@
 using SailorEditor.History;
-using SailorEditor.Services;
-using SailorEditor.State;
-using SailorEditor.ViewModels;
-using SailorEngine;
 
 namespace SailorEditor.Commands;
 
-public sealed class EditorActionContextProvider(WorldService worldService, SelectionService selectionService, ShellState shellState) : IActionContextProvider
-{
-    public ActionContext GetCurrentContext(CommandOrigin? origin = null, IReadOnlyDictionary<string, string?>? metadata = null)
-    {
-        var selectedIds = selectionService.SelectedItems
-            .Select(TryGetSelectionId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Cast<string>()
-            .ToArray();
-
-        return new ActionContext(
-            ActiveWorldId: worldService.Current?.Name,
-            ActiveSelectionIds: selectedIds,
-            ActivePanelId: shellState.Focus.FocusedPanelId?.Value,
-            ActiveDocumentId: shellState.Focus.ActiveDocumentPanelId?.Value,
-            FocusedViewportId: shellState.Focus.FocusedViewportId,
-            CurrentAssetId: TryGetSelectionId(selectionService.SelectedItem),
-            IsPlayMode: false,
-            Origin: origin,
-            Metadata: metadata);
-    }
-
-    static string? TryGetSelectionId(object? selected) => selected switch
-    {
-        GameObject go => go.InstanceId?.Value,
-        Component component => component.InstanceId?.Value,
-        _ => null,
-    };
-}
-
 public interface ICommandHistoryService
 {
+    long WorkspaceEpoch { get; }
     int UndoCount { get; }
     int RedoCount { get; }
     string? UndoLabel { get; }
     string? RedoLabel { get; }
     bool CanUndo { get; }
     bool CanRedo { get; }
+    bool IsWorkspaceChangeInProgress { get; }
     Task<bool> UndoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default);
     Task<bool> RedoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default);
+    void BeginWorkspaceChange();
+    void ResetForWorkspaceChange();
+    void CompleteWorkspaceChange();
 }
 
 public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistoryService, ITransactionScopeFactory
@@ -53,6 +24,10 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
     readonly IActionContextProvider _contextProvider;
     readonly IUndoRedoHistory _history;
     readonly Stack<TransactionScope> _transactions = new();
+    readonly object _workspaceStateLock = new();
+    CancellationTokenSource _workspaceCancellation = new();
+    long _workspaceEpoch;
+    bool _workspaceChangeInProgress;
     bool _isUndoRedo;
 
     public EditorCommandDispatcher(IActionContextProvider contextProvider, IUndoRedoHistory history)
@@ -61,30 +36,88 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         _history = history;
     }
 
-    public int UndoCount => _history.UndoCount;
-    public int RedoCount => _history.RedoCount;
-    public string? UndoLabel => _history.PeekUndo()?.Description;
-    public string? RedoLabel => _history.PeekRedo()?.Description;
+    public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
+    public int UndoCount
+    {
+        get
+        {
+            lock (_workspaceStateLock)
+                return _history.UndoCount;
+        }
+    }
+    public int RedoCount
+    {
+        get
+        {
+            lock (_workspaceStateLock)
+                return _history.RedoCount;
+        }
+    }
+    public string? UndoLabel
+    {
+        get
+        {
+            lock (_workspaceStateLock)
+                return _history.PeekUndo()?.Description;
+        }
+    }
+    public string? RedoLabel
+    {
+        get
+        {
+            lock (_workspaceStateLock)
+                return _history.PeekRedo()?.Description;
+        }
+    }
     public bool CanUndo => UndoCount > 0;
     public bool CanRedo => RedoCount > 0;
+    public bool IsWorkspaceChangeInProgress
+    {
+        get
+        {
+            lock (_workspaceStateLock)
+                return _workspaceChangeInProgress;
+        }
+    }
 
     public async Task<CommandResult> DispatchAsync(IEditorCommand command, ActionContext context, CancellationToken cancellationToken = default)
     {
+        (long Epoch, CancellationTokenSource Cancellation) execution;
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress)
+                return WorkspaceChangingFailure(command.Name);
+            execution = CaptureExecutionUnderLock(cancellationToken);
+        }
+        using var linkedCancellation = execution.Cancellation;
+        if (context.WorkspaceEpoch is { } contextEpoch && contextEpoch != execution.Epoch)
+            return WorkspaceChangedFailure(command.Name);
         if (!command.CanExecute(context))
             return CommandResult.Failure($"Command '{command.Name}' cannot execute.");
 
-        var result = await command.ExecuteAsync(context, cancellationToken);
-        if (!result.Succeeded || command is not IUndoableEditorCommand undoable || _isUndoRedo)
-            return result;
-
-        var entry = new HistoryEntry(undoable.Description, undoable, context.Origin, DateTimeOffset.UtcNow, context.Metadata);
-        if (_transactions.TryPeek(out var transaction))
+        CommandResult result;
+        try
         {
-            transaction.Add(entry);
+            result = await command.ExecuteAsync(context, linkedCancellation.Token);
         }
-        else
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !IsCurrentEpoch(execution.Epoch))
         {
-            PushWithMerge(entry);
+            return WorkspaceChangedFailure(command.Name);
+        }
+
+        lock (_workspaceStateLock)
+        {
+            if (!IsCurrentEpoch(execution.Epoch))
+                return WorkspaceChangedFailure(command.Name);
+
+            if (!result.Succeeded || command is not IUndoableEditorCommand undoable || _isUndoRedo)
+                return result;
+
+            var entry = new HistoryEntry(undoable.Description, undoable, context.Origin, DateTimeOffset.UtcNow, context.Metadata);
+            if (_transactions.TryPeek(out var transaction) && transaction.WorkspaceEpoch == execution.Epoch)
+                transaction.Add(entry);
+            else
+                PushWithMerge(entry);
         }
 
         return result;
@@ -92,55 +125,167 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
 
     public ValueTask<ITransactionScope> BeginAsync(string description, ActionContext context, CancellationToken cancellationToken = default)
     {
-        var scope = new TransactionScope(this, description, context);
-        _transactions.Push(scope);
-        return ValueTask.FromResult<ITransactionScope>(scope);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress)
+                throw new InvalidOperationException("A command transaction cannot begin while the active workspace is changing.");
+            if (context.WorkspaceEpoch is { } contextEpoch && contextEpoch != WorkspaceEpoch)
+                throw new InvalidOperationException("A command transaction cannot begin with context from a previous workspace.");
+
+            var scope = new TransactionScope(this, description, context, WorkspaceEpoch);
+            _transactions.Push(scope);
+            return ValueTask.FromResult<ITransactionScope>(scope);
+        }
     }
 
     public async Task<bool> UndoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default)
     {
-        if (!CanUndo)
-            return false;
+        HistoryEntry entry;
+        (long Epoch, CancellationTokenSource Cancellation) execution;
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress || _history.UndoCount == 0)
+                return false;
 
-        var entry = _history.PopUndo();
-        var context = _contextProvider.GetCurrentContext(origin ?? new CommandOrigin(CommandOriginKind.Menu, "Undo"), entry.Metadata);
+            execution = CaptureExecutionUnderLock(cancellationToken);
+            entry = _history.PopUndo();
+            _isUndoRedo = true;
+        }
+        using var linkedCancellation = execution.Cancellation;
 
-        _isUndoRedo = true;
         try
         {
-            await entry.Command.UndoAsync(context, cancellationToken);
-            _history.PushRedo(entry);
-            return true;
+            if (!IsCurrentEpoch(execution.Epoch))
+                return false;
+
+            var context = _contextProvider.GetCurrentContext(
+                origin ?? new CommandOrigin(CommandOriginKind.Menu, "Undo"),
+                entry.Metadata);
+            await entry.Command.UndoAsync(context, linkedCancellation.Token);
+            lock (_workspaceStateLock)
+            {
+                if (!IsCurrentEpoch(execution.Epoch))
+                    return false;
+
+                _history.PushRedo(entry);
+                return true;
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !IsCurrentEpoch(execution.Epoch))
+        {
+            return false;
         }
         finally
         {
-            _isUndoRedo = false;
+            lock (_workspaceStateLock)
+            {
+                if (IsCurrentEpoch(execution.Epoch))
+                    _isUndoRedo = false;
+            }
         }
     }
 
     public async Task<bool> RedoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default)
     {
-        if (!CanRedo)
-            return false;
-
-        var entry = _history.PopRedo();
-        var context = _contextProvider.GetCurrentContext(origin ?? new CommandOrigin(CommandOriginKind.Menu, "Redo"), entry.Metadata);
-
-        _isUndoRedo = true;
-        try
+        HistoryEntry entry;
+        (long Epoch, CancellationTokenSource Cancellation) execution;
+        lock (_workspaceStateLock)
         {
-            var result = await entry.Command.ExecuteAsync(context, cancellationToken);
-            if (!result.Succeeded)
+            if (_workspaceChangeInProgress || _history.RedoCount == 0)
                 return false;
 
-            _history.Push(entry);
-            return true;
+            execution = CaptureExecutionUnderLock(cancellationToken);
+            entry = _history.PopRedo();
+            _isUndoRedo = true;
+        }
+        using var linkedCancellation = execution.Cancellation;
+
+        try
+        {
+            if (!IsCurrentEpoch(execution.Epoch))
+                return false;
+
+            var context = _contextProvider.GetCurrentContext(
+                origin ?? new CommandOrigin(CommandOriginKind.Menu, "Redo"),
+                entry.Metadata);
+            var result = await entry.Command.ExecuteAsync(context, linkedCancellation.Token);
+            lock (_workspaceStateLock)
+            {
+                if (!IsCurrentEpoch(execution.Epoch) || !result.Succeeded)
+                    return false;
+
+                _history.Push(entry);
+                return true;
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && !IsCurrentEpoch(execution.Epoch))
+        {
+            return false;
         }
         finally
         {
-            _isUndoRedo = false;
+            lock (_workspaceStateLock)
+            {
+                if (IsCurrentEpoch(execution.Epoch))
+                    _isUndoRedo = false;
+            }
         }
     }
+
+    public void BeginWorkspaceChange()
+    {
+        CancellationTokenSource? previousCancellation = null;
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress)
+                return;
+
+            _workspaceChangeInProgress = true;
+            Interlocked.Increment(ref _workspaceEpoch);
+            previousCancellation = _workspaceCancellation;
+            _workspaceCancellation = new CancellationTokenSource();
+            _transactions.Clear();
+            _isUndoRedo = false;
+        }
+
+        previousCancellation.Cancel();
+        previousCancellation.Dispose();
+    }
+
+    public void ResetForWorkspaceChange()
+    {
+        BeginWorkspaceChange();
+        lock (_workspaceStateLock)
+        {
+            _transactions.Clear();
+            _isUndoRedo = false;
+            _history.Clear();
+        }
+    }
+
+    public void CompleteWorkspaceChange()
+    {
+        lock (_workspaceStateLock)
+            _workspaceChangeInProgress = false;
+    }
+
+    (long Epoch, CancellationTokenSource Cancellation) CaptureExecution(CancellationToken cancellationToken)
+    {
+        lock (_workspaceStateLock)
+            return CaptureExecutionUnderLock(cancellationToken);
+    }
+
+    (long Epoch, CancellationTokenSource Cancellation) CaptureExecutionUnderLock(CancellationToken cancellationToken)
+        => (WorkspaceEpoch, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _workspaceCancellation.Token));
+
+    bool IsCurrentEpoch(long epoch) => epoch == WorkspaceEpoch;
+
+    static CommandResult WorkspaceChangedFailure(string commandName) =>
+        CommandResult.Failure($"Command '{commandName}' was discarded because the active workspace changed.");
+
+    static CommandResult WorkspaceChangingFailure(string commandName) =>
+        CommandResult.Failure($"Command '{commandName}' was discarded because workspace activation is in progress.");
 
     void PushWithMerge(HistoryEntry entry)
     {
@@ -157,32 +302,42 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
 
     void Complete(TransactionScope scope)
     {
-        var popped = _transactions.Pop();
-        if (!ReferenceEquals(scope, popped) || scope.Entries.Count == 0)
-            return;
+        lock (_workspaceStateLock)
+        {
+            if (!IsCurrentEpoch(scope.WorkspaceEpoch) || _transactions.Count == 0 || !ReferenceEquals(scope, _transactions.Peek()))
+                return;
 
-        var command = scope.Entries.Count == 1
-            ? scope.Entries[0].Command
-            : new CompoundEditorCommand(scope.Description, scope.Entries.Select(x => x.Command).ToArray());
+            var popped = _transactions.Pop();
+            if (!ReferenceEquals(scope, popped) || scope.Entries.Count == 0)
+                return;
 
-        var entry = new HistoryEntry(scope.Description, command, scope.Context.Origin, DateTimeOffset.UtcNow, scope.Context.Metadata);
-        if (_transactions.TryPeek(out var parent))
-            parent.Add(entry);
-        else
-            PushWithMerge(entry);
+            var command = scope.Entries.Count == 1
+                ? scope.Entries[0].Command
+                : new CompoundEditorCommand(scope.Description, scope.Entries.Select(x => x.Command).ToArray());
+
+            var entry = new HistoryEntry(scope.Description, command, scope.Context.Origin, DateTimeOffset.UtcNow, scope.Context.Metadata);
+            if (_transactions.TryPeek(out var parent))
+                parent.Add(entry);
+            else
+                PushWithMerge(entry);
+        }
     }
 
     void Cancel(TransactionScope scope)
     {
-        if (_transactions.Count > 0 && ReferenceEquals(_transactions.Peek(), scope))
-            _transactions.Pop();
+        lock (_workspaceStateLock)
+        {
+            if (IsCurrentEpoch(scope.WorkspaceEpoch) && _transactions.Count > 0 && ReferenceEquals(_transactions.Peek(), scope))
+                _transactions.Pop();
+        }
     }
 
-    sealed class TransactionScope(EditorCommandDispatcher owner, string description, ActionContext context) : ITransactionScope
+    sealed class TransactionScope(EditorCommandDispatcher owner, string description, ActionContext context, long workspaceEpoch) : ITransactionScope
     {
         bool _completed;
         public string Description { get; } = description;
         public ActionContext Context { get; } = context;
+        public long WorkspaceEpoch { get; } = workspaceEpoch;
         public List<HistoryEntry> Entries { get; } = [];
         public void Add(HistoryEntry entry) => Entries.Add(entry);
         public ValueTask CompleteAsync(CancellationToken cancellationToken = default)

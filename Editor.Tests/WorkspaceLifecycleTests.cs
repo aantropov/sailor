@@ -584,6 +584,80 @@ public sealed class WorkspaceLifecycleTests
     }
 
     [Fact]
+    public async Task PrepareOpenAsync_DoesNotPublishOrRecordUntilCommitted()
+    {
+        using var currentWorkspace = TempWorkspace.Create();
+        using var candidateWorkspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("recent.yaml");
+        var service = CreateService(recentPath);
+        var serializer = new WorkspaceManifestSerializer();
+        var current = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            currentWorkspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(current.Session);
+        var candidateManifest = candidateWorkspace.File("workspace.sailor");
+        await serializer.SaveAsync(
+            candidateManifest,
+            WorkspaceManifest.CreateDefault("Candidate", "../Sailor", "candidate-id"));
+
+        using var prepared = (await service.PrepareOpenAsync(candidateManifest)).Preparation;
+
+        Assert.NotNull(prepared);
+        Assert.Same(published, service.Current);
+        Assert.Equal("Candidate", prepared.Session.Manifest.Name);
+        Assert.True(Directory.Exists(candidateWorkspace.Directory("Content")));
+        var entries = await service.LoadRecentAsync();
+        Assert.DoesNotContain(entries, entry => entry.WorkspaceId == "candidate-id");
+    }
+
+    [Fact]
+    public async Task PrepareOpenAsync_DiscardRollsBackRecoveredDirectories()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.File("workspace.sailor");
+        await serializer.SaveAsync(
+            manifestPath,
+            WorkspaceManifest.CreateDefault("Candidate", "../Sailor", "candidate-id"));
+        var result = await service.PrepareOpenAsync(manifestPath);
+        var prepared = Assert.IsType<WorkspaceLifecyclePreparation>(result.Preparation);
+
+        prepared.Discard();
+
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+        Assert.Null(service.Current);
+    }
+
+    [Fact]
+    public async Task CommitActivationAsync_PublishesCandidateBeforeRecentStoreFailure()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("store/recent.yaml");
+        var serializer = new WorkspaceManifestSerializer();
+        var service = CreateService(recentPath);
+        var manifestPath = workspace.File("workspace.sailor");
+        await serializer.SaveAsync(
+            manifestPath,
+            WorkspaceManifest.CreateDefault("Candidate", "../Sailor", "candidate-id"));
+        var result = await service.PrepareOpenAsync(manifestPath);
+        var prepared = Assert.IsType<WorkspaceLifecyclePreparation>(result.Preparation);
+        BlockRecentStore(recentPath);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => service.CommitActivationAsync(prepared));
+
+        Assert.Same(prepared.Session, service.Current);
+        Assert.True(Directory.Exists(workspace.Directory("Content")));
+        Assert.True(Directory.Exists(workspace.Directory("Cache")));
+    }
+
+    [Fact]
     public async Task RecentWorkspaceStore_RoundTripsNewestFirstAndDeduplicates()
     {
         using var workspace = TempWorkspace.Create();

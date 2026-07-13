@@ -60,4 +60,36 @@ public sealed class WorkspaceUiProjectionTests
         Assert.Equal(Path.Combine("Sandbox", "workspace.sailor"), recent.DisplayPath);
         Assert.Equal(openedAt, recent.LastOpenedAt);
     }
+
+    [Fact]
+    public void Build_ProjectsExplicitRepairState()
+    {
+        var state = new WorkspaceActivationState(
+            WorkspaceActivationPhase.Repair,
+            4,
+            Error: "Native startup failed.");
+
+        var projection = WorkspaceUiProjectionBuilder.Build(null, [], state);
+
+        Assert.True(projection.RequiresRepair);
+        Assert.False(projection.IsActivationInProgress);
+        Assert.Equal("Native startup failed.", projection.ActivationError);
+    }
+
+    [Theory]
+    [InlineData(WorkspaceActivationPhase.Preflighting)]
+    [InlineData(WorkspaceActivationPhase.Stopping)]
+    [InlineData(WorkspaceActivationPhase.Clearing)]
+    [InlineData(WorkspaceActivationPhase.Committing)]
+    [InlineData(WorkspaceActivationPhase.Starting)]
+    public void Build_ProjectsInProgressActivation(WorkspaceActivationPhase phase)
+    {
+        var projection = WorkspaceUiProjectionBuilder.Build(
+            null,
+            [],
+            new WorkspaceActivationState(phase, 1));
+
+        Assert.True(projection.IsActivationInProgress);
+        Assert.False(projection.RequiresRepair);
+    }
 }

@@ -34,6 +34,49 @@ public sealed record WorkspaceLifecycleResult(
     public bool Succeeded => Session is not null && Validation.IsValid && string.IsNullOrEmpty(Error);
 }
 
+public sealed record WorkspaceLifecyclePreparationResult(
+    WorkspaceLifecyclePreparation? Preparation,
+    WorkspaceManifestValidationResult Validation,
+    string? Error = null)
+{
+    public bool Succeeded => Preparation is not null && Validation.IsValid && string.IsNullOrEmpty(Error);
+}
+
+public sealed class WorkspaceLifecyclePreparation : IDisposable
+{
+    readonly Action _commitRecovery;
+    readonly Action _rollbackRecovery;
+    int _completed;
+
+    internal WorkspaceLifecyclePreparation(
+        WorkspaceSession session,
+        Action? commitRecovery = null,
+        Action? rollbackRecovery = null)
+    {
+        Session = session;
+        _commitRecovery = commitRecovery ?? (() => { });
+        _rollbackRecovery = rollbackRecovery ?? (() => { });
+    }
+
+    public WorkspaceSession Session { get; }
+
+    internal void CommitRecovery()
+    {
+        if (Interlocked.Exchange(ref _completed, 1) != 0)
+            throw new InvalidOperationException("Workspace preparation has already been completed.");
+
+        _commitRecovery();
+    }
+
+    public void Discard()
+    {
+        if (Interlocked.Exchange(ref _completed, 1) == 0)
+            _rollbackRecovery();
+    }
+
+    public void Dispose() => Discard();
+}
+
 public sealed record RecentWorkspaceEntry
 {
     public RecentWorkspaceEntry()
@@ -334,45 +377,147 @@ public sealed class WorkspaceLifecycleService
     {
         try
         {
-            var session = await _templateService.CreateAsync(request, cancellationToken);
-            await _recentWorkspaceStore.RecordAsync(session, cancellationToken);
-            Current = session;
-            return new WorkspaceLifecycleResult(session, WorkspaceManifestValidationResult.Success);
+            var prepared = await PrepareCreateAsync(request, cancellationToken);
+            return await CommitPreparedAsync(prepared, cancellationToken);
         }
         catch (Exception ex)
         {
-            return new WorkspaceLifecycleResult(null, WorkspaceManifestValidationResult.Success, ex.Message);
+            return new WorkspaceLifecycleResult(
+                null,
+                WorkspaceManifestValidationResult.Success,
+                ex.Message);
         }
     }
 
     public async Task<WorkspaceLifecycleResult> OpenAsync(string manifestPath, CancellationToken cancellationToken = default)
     {
-        var loadResult = await _serializer.LoadAsync(manifestPath, cancellationToken);
+        var prepared = await PrepareOpenAsync(manifestPath, cancellationToken);
+        return await CommitPreparedAsync(prepared, cancellationToken);
+    }
+
+    public async Task<WorkspaceLifecyclePreparationResult> PrepareCreateAsync(
+        WorkspaceCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var session = await _templateService.CreateAsync(request, cancellationToken);
+            return new WorkspaceLifecyclePreparationResult(
+                new WorkspaceLifecyclePreparation(session),
+                WorkspaceManifestValidationResult.Success);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new WorkspaceLifecyclePreparationResult(
+                null,
+                WorkspaceManifestValidationResult.Success,
+                ex.Message);
+        }
+    }
+
+    public async Task<WorkspaceLifecyclePreparationResult> PrepareOpenAsync(
+        string manifestPath,
+        CancellationToken cancellationToken = default)
+    {
+        WorkspaceManifestLoadResult loadResult;
+        try
+        {
+            loadResult = await _serializer.LoadAsync(manifestPath, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new WorkspaceLifecyclePreparationResult(
+                null,
+                WorkspaceManifestValidationResult.Success,
+                ex.Message);
+        }
+
         if (!loadResult.Succeeded || loadResult.Manifest is null)
-            return new WorkspaceLifecycleResult(null, loadResult.Validation, loadResult.Error);
+            return new WorkspaceLifecyclePreparationResult(null, loadResult.Validation, loadResult.Error);
 
         WorkspaceDirectoryRecovery? recovery = null;
         try
         {
             var workspaceRoot = Path.GetDirectoryName(Path.GetFullPath(manifestPath));
             if (string.IsNullOrWhiteSpace(workspaceRoot))
-                return new WorkspaceLifecycleResult(null, WorkspaceManifestValidationResult.Success, $"Workspace manifest path is invalid: {manifestPath}");
+            {
+                return new WorkspaceLifecyclePreparationResult(
+                    null,
+                    WorkspaceManifestValidationResult.Success,
+                    $"Workspace manifest path is invalid: {manifestPath}");
+            }
 
             var session = _templateService.CreateSession(workspaceRoot, loadResult.Manifest, manifestPath);
             recovery = RecoverDefaultDirectories(session);
             session = recovery.Session;
-            await _recentWorkspaceStore.RecordAsync(session, cancellationToken);
-            recovery.Commit();
-            Current = session;
-            return new WorkspaceLifecycleResult(session, loadResult.Validation);
+            return new WorkspaceLifecyclePreparationResult(
+                new WorkspaceLifecyclePreparation(session, recovery.Commit, recovery.Rollback),
+                loadResult.Validation);
         }
         catch (Exception ex)
         {
-            return new WorkspaceLifecycleResult(
+            return new WorkspaceLifecyclePreparationResult(
                 null,
                 loadResult.Validation,
                 RollbackRecovery(recovery, ex).Message);
         }
+    }
+
+    public async Task<WorkspaceLifecycleResult> CommitPreparedAsync(
+        WorkspaceLifecyclePreparationResult prepared,
+        CancellationToken cancellationToken = default)
+    {
+        if (!prepared.Succeeded || prepared.Preparation is null)
+            return new WorkspaceLifecycleResult(null, prepared.Validation, prepared.Error);
+
+        var preparation = prepared.Preparation;
+        try
+        {
+            await _recentWorkspaceStore.RecordAsync(preparation.Session, cancellationToken);
+            preparation.CommitRecovery();
+            Current = preparation.Session;
+            return new WorkspaceLifecycleResult(preparation.Session, prepared.Validation);
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                preparation.Discard();
+                return new WorkspaceLifecycleResult(null, prepared.Validation, ex.Message);
+            }
+            catch (Exception rollbackError)
+            {
+                return new WorkspaceLifecycleResult(
+                    null,
+                    prepared.Validation,
+                    new AggregateException(
+                        "Workspace commit failed and preparation could not be rolled back.",
+                        ex,
+                        rollbackError).Message);
+            }
+        }
+    }
+
+    public async Task CommitActivationAsync(
+        WorkspaceLifecyclePreparation preparation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+
+        // Activation has already crossed the native shutdown boundary. Publish the
+        // candidate before updating secondary recents state so a storage failure
+        // cannot make the stopped previous workspace look active again.
+        preparation.CommitRecovery();
+        Current = preparation.Session;
+        await _recentWorkspaceStore.RecordAsync(preparation.Session, cancellationToken);
     }
 
     public async Task<WorkspaceLifecycleResult> SaveAsync(WorkspaceSession session, CancellationToken cancellationToken = default)
