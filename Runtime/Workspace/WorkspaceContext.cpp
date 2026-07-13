@@ -250,6 +250,66 @@ namespace
 		return true;
 	}
 
+	bool ReadManifestVersion(
+		const YAML::Node& document,
+		const std::filesystem::path& manifestPath,
+		uint32_t& outVersion,
+		std::string& outError)
+	{
+		if (!document.IsMap())
+		{
+			outError = "Workspace manifest must contain a YAML map.";
+			return false;
+		}
+
+		YAML::Node version;
+		size_t versionCount = 0;
+		for (const auto& field : document)
+		{
+			if (field.first.IsScalar() && field.first.Scalar() == "manifestVersion")
+			{
+				version = field.second;
+				++versionCount;
+			}
+		}
+
+		if (versionCount == 0)
+		{
+			outError = "Workspace manifest field 'manifestVersion' is required.";
+			return false;
+		}
+		if (versionCount > 1)
+		{
+			outError = "Workspace manifest contains duplicate field 'manifestVersion'.";
+			return false;
+		}
+		if (version.IsNull() || !version.IsScalar())
+		{
+			outError = "Workspace manifest field 'manifestVersion' must be an unsigned integer scalar.";
+			return false;
+		}
+
+		try
+		{
+			outVersion = version.as<uint32_t>();
+		}
+		catch (const YAML::Exception&)
+		{
+			outError = "Workspace manifest field 'manifestVersion' must be an unsigned integer scalar.";
+			return false;
+		}
+
+		if (outVersion != SupportedManifestVersion)
+		{
+			outError = "Workspace manifest '" + PathToUtf8(manifestPath) +
+				"' has unsupported manifestVersion '" +
+				std::to_string(outVersion) + "'.";
+			return false;
+		}
+
+		return true;
+	}
+
 	bool ReadScalarField(
 		const YAML::Node& document,
 		const char* fieldName,
@@ -258,7 +318,7 @@ namespace
 		std::string& outError)
 	{
 		const YAML::Node field = FindField(document, fieldName);
-		if (!field.IsDefined() || field.IsNull())
+		if (!field.IsDefined())
 		{
 			if (bRequired)
 			{
@@ -267,16 +327,18 @@ namespace
 			}
 			return true;
 		}
-		if (!field.IsScalar())
+		if (field.IsNull() || !field.IsScalar())
 		{
 			outError = "Workspace manifest field '" + std::string(fieldName) + "' must be scalar.";
 			return false;
 		}
 
 		outValue = Trim(field.Scalar());
-		if (bRequired && outValue.empty())
+		if (outValue.empty())
 		{
-			outError = "Workspace manifest field '" + std::string(fieldName) + "' is required.";
+			outError = bRequired
+				? "Workspace manifest field '" + std::string(fieldName) + "' is required."
+				: "Workspace manifest field '" + std::string(fieldName) + "' must not be empty.";
 			return false;
 		}
 		return true;
@@ -312,23 +374,16 @@ namespace
 		}
 
 		const YAML::Node document = YAML::Load(payload);
+		if (!ReadManifestVersion(
+				document,
+				manifestPath,
+				outFields.m_manifestVersion,
+				outError))
+		{
+			return false;
+		}
 		if (!ValidateManifestMap(document, outError))
 		{
-			return false;
-		}
-
-		const YAML::Node version = FindField(document, "manifestVersion");
-		if (!version.IsDefined() || !version.IsScalar())
-		{
-			outError = "Workspace manifest field 'manifestVersion' must be scalar.";
-			return false;
-		}
-		outFields.m_manifestVersion = version.as<uint32_t>();
-		if (outFields.m_manifestVersion != SupportedManifestVersion)
-		{
-			outError = "Workspace manifest '" + PathToUtf8(manifestPath) +
-				"' has unsupported manifestVersion '" +
-				std::to_string(outFields.m_manifestVersion) + "'.";
 			return false;
 		}
 
@@ -347,18 +402,6 @@ namespace
 			return false;
 		}
 
-		if (outFields.m_build.empty())
-		{
-			outFields.m_build = DefaultBuildPath;
-		}
-		if (outFields.m_logicOutput.empty())
-		{
-			outFields.m_logicOutput = DefaultLogicOutputPath;
-		}
-		if (outFields.m_moduleName.empty())
-		{
-			outFields.m_moduleName = DefaultModuleName;
-		}
 		if (!IsCIdentifier(outFields.m_moduleName))
 		{
 			outError = "Workspace manifest logicModuleName '" + outFields.m_moduleName +

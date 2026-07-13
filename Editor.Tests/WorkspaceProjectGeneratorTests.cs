@@ -14,7 +14,7 @@ public sealed class WorkspaceProjectGeneratorTests
         var session = CreateSession(workspace.Root, manifest);
         var generator = new WorkspaceProjectGenerator();
 
-        await generator.GenerateAsync(session);
+        var generated = await generator.GenerateAsync(session);
 
         var cmake = await File.ReadAllTextAsync(workspace.File("Generated/CMakeLists.txt"));
         Assert.Contains($"add_subdirectory(\"{ToCMakePath(engine.Root)}\" \"${{CMAKE_BINARY_DIR}}/SailorEngine\" EXCLUDE_FROM_ALL)", cmake);
@@ -36,6 +36,12 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.True(File.Exists(workspace.File(".gitignore")));
+        var generatedState = new WorkspaceGeneratedProjectStateService().GetStatePath(workspace.Root);
+        Assert.True(File.Exists(generatedState));
+        Assert.Equal(generatedState, generated.CreatedFiles.Last());
+        Assert.Equal(
+            WorkspaceGeneratedProjectStateStatus.Current,
+            (await new WorkspaceGeneratedProjectStateService().AssessAsync(workspace.Root, manifest)).Status);
         Assert.True(Directory.Exists(workspace.Directory("Cache/Build")));
         Assert.True(Directory.Exists(workspace.Directory("Binaries")));
     }
@@ -94,6 +100,67 @@ public sealed class WorkspaceProjectGeneratorTests
     }
 
     [Fact]
+    public async Task GenerateAsync_DoesNotOverwriteExistingGeneratedState()
+    {
+        using var workspace = TempWorkspace.Create();
+        var stateDirectory = workspace.Directory(WorkspaceGeneratedProjectStateService.StateDirectoryName);
+        Directory.CreateDirectory(stateDirectory);
+        var statePath = workspace.File(WorkspaceGeneratedProjectStateService.RelativePath);
+        await File.WriteAllTextAsync(statePath, "source-controlled user state");
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id");
+        var session = CreateSession(workspace.Root, manifest);
+        var generator = new WorkspaceProjectGenerator();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => generator.GenerateAsync(session));
+
+        Assert.Contains("will not be overwritten", error.Message, StringComparison.Ordinal);
+        Assert.Equal("source-controlled user state", await File.ReadAllTextAsync(statePath));
+        Assert.False(File.Exists(workspace.File(".gitignore")));
+        Assert.False(File.Exists(workspace.File("Generated/CMakeLists.txt")));
+        Assert.False(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_PreflightsDirectoryCollisionWithGeneratedStateWithoutMutation()
+    {
+        using var workspace = TempWorkspace.Create();
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            CachePath = WorkspaceGeneratedProjectStateService.RelativePath
+        };
+        var session = CreateSession(workspace.Root, manifest);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new WorkspaceProjectGenerator().GenerateAsync(session));
+
+        Assert.Contains("conflicts with generated file", error.Message, StringComparison.Ordinal);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(workspace.Root));
+    }
+
+    [Fact]
+    public async Task GenerateAsync_DoesNotIgnoreStateDirectoryWhenCacheUsesSamePath()
+    {
+        using var workspace = TempWorkspace.Create();
+        var manifest = WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id") with
+        {
+            CachePath = WorkspaceGeneratedProjectStateService.StateDirectoryName,
+            BuildPath = WorkspaceGeneratedProjectStateService.StateDirectoryName + "/Build"
+        };
+        var session = CreateSession(workspace.Root, manifest);
+
+        await new WorkspaceProjectGenerator().GenerateAsync(session);
+
+        var ignoredLines = (await File.ReadAllLinesAsync(workspace.File(".gitignore")))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray();
+        Assert.Contains("/.sailor/*", ignoredLines);
+        Assert.Contains("!/.sailor/GeneratedProjectState.yaml", ignoredLines);
+        Assert.DoesNotContain("/.sailor/", ignoredLines);
+        Assert.Contains("/.sailor/Build/", ignoredLines);
+        Assert.True(File.Exists(workspace.File(WorkspaceGeneratedProjectStateService.RelativePath)));
+    }
+
+    [Fact]
     public async Task GenerateAsync_EmitsEditableSampleComponent()
     {
         using var workspace = TempWorkspace.Create();
@@ -135,21 +202,27 @@ public sealed class WorkspaceProjectGeneratorTests
         var sourceDirectory = workspace.Directory("Source");
         var componentsDirectory = workspace.Directory("Source/Components");
         var generatedDirectory = workspace.Directory("Generated");
+        var stateDirectory = workspace.Directory(WorkspaceGeneratedProjectStateService.StateDirectoryName);
         Directory.CreateDirectory(componentsDirectory);
         Directory.CreateDirectory(generatedDirectory);
+        Directory.CreateDirectory(stateDirectory);
         var trackedFile = workspace.File("Source/Components/SampleComponent.h");
+        var trackedState = workspace.File(WorkspaceGeneratedProjectStateService.RelativePath);
         var untrackedFile = workspace.File("Source/UserComponent.cpp");
         await File.WriteAllTextAsync(trackedFile, "generated");
+        await File.WriteAllTextAsync(trackedState, "generated state");
         await File.WriteAllTextAsync(untrackedFile, "user-owned");
 
         WorkspaceProjectGenerator.Rollback(new WorkspaceProjectGenerationResult(
-            [trackedFile],
-            [sourceDirectory, componentsDirectory, generatedDirectory]));
+            [trackedFile, trackedState],
+            [sourceDirectory, componentsDirectory, generatedDirectory, stateDirectory]));
 
         Assert.False(File.Exists(trackedFile));
+        Assert.False(File.Exists(trackedState));
         Assert.True(File.Exists(untrackedFile));
         Assert.True(Directory.Exists(sourceDirectory));
         Assert.False(Directory.Exists(generatedDirectory));
+        Assert.False(Directory.Exists(stateDirectory));
     }
 
     static WorkspaceSession CreateSession(string workspaceRoot, WorkspaceManifest manifest)

@@ -69,7 +69,7 @@ public sealed class WorkspaceManifestTests
     }
 
     [Fact]
-    public void Deserialize_OldVersionOneManifestUsesLogicProjectDefaults()
+    public void Deserialize_OldVersionOneManifestUsesMissingOnlyDefaults()
     {
         var serializer = new WorkspaceManifestSerializer();
 
@@ -90,6 +90,45 @@ cachePath: Cache
         Assert.Equal("Cache/Build", result.Manifest.BuildPath);
         Assert.Equal("Binaries", result.Manifest.LogicOutputPath);
         Assert.Equal("SailorGame", result.Manifest.LogicModuleName);
+    }
+
+    [Theory]
+    [InlineData("engineReferenceKind", nameof(WorkspaceManifest.EngineReferenceKind), "")]
+    [InlineData("engineReferenceKind", nameof(WorkspaceManifest.EngineReferenceKind), "\"\"")]
+    [InlineData("buildPath", nameof(WorkspaceManifest.BuildPath), "")]
+    [InlineData("buildPath", nameof(WorkspaceManifest.BuildPath), "\"\"")]
+    [InlineData("logicOutputPath", nameof(WorkspaceManifest.LogicOutputPath), "")]
+    [InlineData("logicOutputPath", nameof(WorkspaceManifest.LogicOutputPath), "\"\"")]
+    [InlineData("logicModuleName", nameof(WorkspaceManifest.LogicModuleName), "")]
+    [InlineData("logicModuleName", nameof(WorkspaceManifest.LogicModuleName), "\"\"")]
+    public void Deserialize_VersionOneRejectsExplicitNullOrEmptyDefaultedFields(
+        string yamlField,
+        string manifestField,
+        string yamlValue)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+
+        var result = serializer.Deserialize(ValidManifest($"{yamlField}: {yamlValue}"));
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Manifest);
+        Assert.Contains(result.Validation.Issues, issue => issue.Field == manifestField);
+    }
+
+    [Fact]
+    public void Deserialize_ToleratesUnknownAdditiveVersionOneFields()
+    {
+        var serializer = new WorkspaceManifestSerializer();
+
+        var result = serializer.Deserialize(ValidManifest("""
+futureFeature:
+  enabled: true
+  options: [one, two]
+"""));
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.NotNull(result.Manifest);
+        Assert.Equal("workspace-id", result.Manifest.WorkspaceId);
     }
 
     [Theory]
@@ -260,6 +299,69 @@ cachePath: Cache
         Assert.Contains(result.Validation.Issues, x => x.Field == nameof(WorkspaceManifest.ManifestVersion));
     }
 
+    [Theory]
+    [MemberData(nameof(InvalidManifestVersionDocuments))]
+    public void Deserialize_RawVersionProbeRejectsInvalidVersionContracts(
+        string yaml,
+        WorkspaceYamlVersionProbeFailure expectedFailure,
+        string expectedDiagnostic)
+    {
+        var serializer = new WorkspaceManifestSerializer();
+
+        var probe = WorkspaceYamlVersionProbe.Probe(
+            yaml,
+            "manifestVersion",
+            WorkspaceManifest.CurrentVersion,
+            "Workspace manifest");
+        var result = serializer.Deserialize(yaml);
+
+        Assert.False(probe.Succeeded);
+        Assert.Equal(expectedFailure, probe.Failure);
+        Assert.Contains(expectedDiagnostic, probe.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Manifest);
+        var issue = Assert.Single(result.Validation.Issues);
+        Assert.Equal(nameof(WorkspaceManifest.ManifestVersion), issue.Field);
+        Assert.Equal(probe.Error, issue.Message);
+    }
+
+    [Fact]
+    public void Deserialize_FutureVersionPrecedesMalformedLaterTypedFields()
+    {
+        var serializer = new WorkspaceManifestSerializer();
+
+        var result = serializer.Deserialize("""
+workspaceId: [not, a, string]
+manifestVersion: 999
+name:
+  invalid: for-a-string
+enginePath: ../Sailor
+contentPath: [not, a, path]
+""");
+
+        Assert.False(result.Succeeded);
+        Assert.Null(result.Manifest);
+        Assert.Null(result.Error);
+        var issue = Assert.Single(result.Validation.Issues);
+        Assert.Equal(nameof(WorkspaceManifest.ManifestVersion), issue.Field);
+        Assert.Contains("Unsupported workspace manifest version '999'", issue.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("parse", issue.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void VersionProbe_UsesCallerProvidedVersionContract()
+    {
+        var result = WorkspaceYamlVersionProbe.Probe(
+            "generatorSchemaVersion: 3",
+            "generatorSchemaVersion",
+            3,
+            "Generated project state");
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(3, result.Version);
+        Assert.Equal(WorkspaceYamlVersionProbeFailure.None, result.Failure);
+    }
+
     [Fact]
     public void Deserialize_NormalizesNullStringFieldsBeforeValidation()
     {
@@ -303,4 +405,62 @@ cachePath:
             nameof(WorkspaceManifest.LogicOutputPath) => manifest with { LogicOutputPath = path },
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, null)
         };
+
+    public static IEnumerable<object[]> InvalidManifestVersionDocuments()
+    {
+        yield return [
+            """
+workspaceId: workspace-id
+name: Sandbox
+""",
+            WorkspaceYamlVersionProbeFailure.MissingVersion,
+            "required"
+        ];
+        yield return [
+            """
+manifestVersion: 0
+workspaceId: workspace-id
+""",
+            WorkspaceYamlVersionProbeFailure.InvalidVersion,
+            "greater than zero"
+        ];
+        yield return [
+            """
+manifestVersion: 999
+workspaceId: workspace-id
+""",
+            WorkspaceYamlVersionProbeFailure.UnsupportedVersion,
+            "unsupported workspace manifest version"
+        ];
+        yield return [
+            """
+manifestVersion: 1
+manifestVersion: 1
+workspaceId: workspace-id
+""",
+            WorkspaceYamlVersionProbeFailure.DuplicateVersion,
+            "duplicate field"
+        ];
+        yield return [
+            """
+manifestVersion: [1]
+workspaceId: workspace-id
+""",
+            WorkspaceYamlVersionProbeFailure.NonScalarVersion,
+            "scalar integer"
+        ];
+    }
+
+    static string ValidManifest(string optionalYaml = "")
+        => $$"""
+manifestVersion: 1
+workspaceId: workspace-id
+name: Sandbox
+enginePath: ../Sailor
+contentPath: Content
+sourcePath: Source
+generatedProjectPath: Generated
+cachePath: Cache
+{{optionalYaml}}
+""";
 }

@@ -29,6 +29,7 @@
     <Compile Include="ProjectContentFolderIdsTests.cs" />
     <Compile Include="ProjectContentPathPolicyTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
+    <Compile Include="WorkspaceGeneratedProjectStateTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
     <Compile Include="WorkspaceActivationTests.cs" />
     <Compile Include="WorkspaceStateResetTests.cs" />
@@ -68,6 +69,8 @@
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
     <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceYamlVersionProbe.cs" Link="Workspace\WorkspaceYamlVersionProbe.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceGeneratedProjectState.cs" Link="Workspace\WorkspaceGeneratedProjectState.cs" />
     <Compile Include="..\Editor\Workspace\WorkspacePathPolicy.cs" Link="Workspace\WorkspacePathPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceLifecycle.cs" Link="Workspace\WorkspaceLifecycle.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceActivationContracts.cs" Link="Workspace\WorkspaceActivationContracts.cs" />

@@ -8,6 +8,18 @@ public sealed record WorkspaceProjectGenerationResult(
 
 public sealed class WorkspaceProjectGenerator
 {
+    readonly WorkspaceGeneratedProjectStateService _generatedProjectState;
+
+    public WorkspaceProjectGenerator()
+        : this(new WorkspaceGeneratedProjectStateService())
+    {
+    }
+
+    public WorkspaceProjectGenerator(WorkspaceGeneratedProjectStateService generatedProjectState)
+    {
+        _generatedProjectState = generatedProjectState ?? throw new ArgumentNullException(nameof(generatedProjectState));
+    }
+
     public async Task<WorkspaceProjectGenerationResult> GenerateAsync(
         WorkspaceSession session,
         CancellationToken cancellationToken = default)
@@ -15,6 +27,10 @@ public sealed class WorkspaceProjectGenerator
         ArgumentNullException.ThrowIfNull(session);
 
         var componentsDirectory = Path.Combine(session.SourceDirectory, "Components");
+        var generatedStatePath = _generatedProjectState.GetStatePath(session.WorkspaceRoot);
+        var generatedStateDirectory = Path.GetDirectoryName(generatedStatePath)
+            ?? throw new InvalidOperationException($"Generated project state path has no directory: {generatedStatePath}");
+        var generatedState = _generatedProjectState.Serialize(session.Manifest);
         var generatedFiles = new Dictionary<string, string>
         {
             [Path.Combine(session.WorkspaceRoot, ".gitignore")] = BuildGitIgnore(session.Manifest),
@@ -24,12 +40,26 @@ public sealed class WorkspaceProjectGenerator
             [Path.Combine(session.SourceDirectory, "WorkspaceTypes.h")] = BuildWorkspaceTypesHeader(session.Manifest.LogicModuleName),
             [Path.Combine(session.SourceDirectory, "WorkspaceModule.cpp")] = BuildWorkspaceModuleSource(session.Manifest.LogicModuleName)
         };
+        var projectDirectories = GetProjectDirectories(session, componentsDirectory, generatedStateDirectory).ToArray();
 
-        foreach (var path in generatedFiles.Keys)
+        var generatedFilePaths = generatedFiles.Keys.Append(generatedStatePath).ToArray();
+        foreach (var path in generatedFilePaths)
         {
             EnsureInsideWorkspace(session.WorkspaceRoot, path);
             if (File.Exists(path) || Directory.Exists(path))
                 throw new InvalidOperationException($"Workspace project file already exists and will not be overwritten: {path}");
+        }
+
+        foreach (var directory in projectDirectories)
+        {
+            EnsureInsideWorkspace(session.WorkspaceRoot, directory);
+            var blockingFile = generatedFilePaths.FirstOrDefault(file =>
+                WorkspacePathPolicy.IsInsideRoot(file, directory));
+            if (blockingFile is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Workspace project directory conflicts with generated file '{blockingFile}': {directory}");
+            }
         }
 
         var createdFiles = new List<string>();
@@ -37,14 +67,15 @@ public sealed class WorkspaceProjectGenerator
 
         try
         {
-            foreach (var directory in GetProjectDirectories(session, componentsDirectory))
+            foreach (var directory in projectDirectories)
             {
-                EnsureInsideWorkspace(session.WorkspaceRoot, directory);
                 CreateDirectoryTracked(session.WorkspaceRoot, directory, createdDirectories);
             }
 
             foreach (var (path, content) in generatedFiles)
                 await WriteNewFileAsync(path, content, createdFiles, cancellationToken);
+
+            await WriteNewFileAsync(generatedStatePath, generatedState, createdFiles, cancellationToken);
 
             return new WorkspaceProjectGenerationResult(createdFiles.ToArray(), createdDirectories.ToArray());
         }
@@ -63,7 +94,10 @@ public sealed class WorkspaceProjectGenerator
         }
     }
 
-    static IEnumerable<string> GetProjectDirectories(WorkspaceSession session, string componentsDirectory)
+    static IEnumerable<string> GetProjectDirectories(
+        WorkspaceSession session,
+        string componentsDirectory,
+        string generatedStateDirectory)
     {
         yield return session.ContentDirectory;
         yield return session.SourceDirectory;
@@ -72,6 +106,7 @@ public sealed class WorkspaceProjectGenerator
         yield return session.CacheDirectory;
         yield return session.BuildDirectory;
         yield return session.LogicOutputDirectory;
+        yield return generatedStateDirectory;
     }
 
     static string BuildCMakeProject(WorkspaceSession session)
@@ -290,12 +325,22 @@ public sealed class WorkspaceProjectGenerator
         var ignoredPaths = new[] { manifest.CachePath, manifest.BuildPath, manifest.LogicOutputPath }
             .Select(WorkspaceManifestPaths.Normalize)
             .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Where(x => !string.Equals(
+                x,
+                WorkspaceGeneratedProjectStateService.StateDirectoryName,
+                WorkspacePathPolicy.PathComparison))
             .Select(x => $"/{x}/")
             .Distinct(StringComparer.Ordinal);
 
         return string.Join("\n", new[] { "# Sailor workspace build outputs" }
             .Concat(ignoredPaths)
-            .Concat(["/.vs/", "/.idea/", string.Empty]));
+            .Concat([
+                $"/{WorkspaceGeneratedProjectStateService.StateDirectoryName}/*",
+                $"!/{WorkspaceGeneratedProjectStateService.RelativePath}",
+                "/.vs/",
+                "/.idea/",
+                string.Empty
+            ]));
     }
 
     static async Task WriteNewFileAsync(

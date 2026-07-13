@@ -67,11 +67,14 @@ public partial class MainPage : ContentPage
         var workspaceStatus = projection.HasActiveWorkspace
             ? $"{_shellHost.StatusText} • Workspace: {projection.ActiveWorkspaceName} - {projection.ActiveWorkspacePath}"
             : _shellHost.StatusText;
-        StatusTextLabel.Text = projection.RequiresRepair
+        var statusText = projection.RequiresRepair
             ? $"{workspaceStatus} • Repair required: {projection.ActivationError}"
             : projection.IsActivationInProgress
                 ? $"{workspaceStatus} • Workspace activation: {projection.ActivationPhase}"
                 : workspaceStatus;
+        if (projection.HasGeneratedProjectAttention)
+            statusText = $"{statusText} • Generated project: {projection.GeneratedProjectAttention}";
+        StatusTextLabel.Text = statusText;
     }
 
     void UpdateWindowTitle()

@@ -24,6 +24,9 @@ namespace
 		std::string m_enginePath = "Engine";
 		std::string m_engineReferenceKind = "source";
 		bool m_includeEngineReferenceKind = true;
+		bool m_includeBuildPath = true;
+		bool m_includeLogicOutputPath = true;
+		bool m_includeLogicModuleName = true;
 		bool m_createEngineContent = true;
 		std::string m_content = "Content";
 		std::string m_cache = "Cache";
@@ -108,9 +111,18 @@ namespace
 		manifest["cachePath"] = spec.m_cache;
 		manifest["sourcePath"] = spec.m_source;
 		manifest["generatedProjectPath"] = spec.m_generated;
-		manifest["buildPath"] = spec.m_build;
-		manifest["logicOutputPath"] = spec.m_logicOutput;
-		manifest["logicModuleName"] = spec.m_moduleName;
+		if (spec.m_includeBuildPath)
+		{
+			manifest["buildPath"] = spec.m_build;
+		}
+		if (spec.m_includeLogicOutputPath)
+		{
+			manifest["logicOutputPath"] = spec.m_logicOutput;
+		}
+		if (spec.m_includeLogicModuleName)
+		{
+			manifest["logicModuleName"] = spec.m_moduleName;
+		}
 
 		std::ofstream output(path);
 		output << manifest;
@@ -122,6 +134,52 @@ namespace
 		std::ofstream output(path);
 		output << value;
 		Require(output.good(), "test file should be writable: " + PathToUtf8(path));
+	}
+
+	std::string BuildManifestPayload(
+		const std::string& versionDeclaration,
+		const std::string& overriddenField = {},
+		const std::string& overriddenValue = {})
+	{
+		std::string payload = versionDeclaration;
+		auto appendField = [&](const char* fieldName, const char* defaultValue)
+		{
+			payload += fieldName;
+			payload += ": ";
+			payload += overriddenField == fieldName ? overriddenValue : defaultValue;
+			payload += '\n';
+		};
+
+		appendField("workspaceId", "workspace-id");
+		appendField("name", "Sandbox");
+		appendField("enginePath", "Engine");
+		appendField("engineReferenceKind", "source");
+		appendField("contentPath", "Content");
+		appendField("cachePath", "Cache");
+		appendField("sourcePath", "Source");
+		appendField("generatedProjectPath", "Generated");
+		appendField("buildPath", "Cache/Build");
+		appendField("logicOutputPath", "Binaries");
+		appendField("logicModuleName", "SailorGame");
+		return payload;
+	}
+
+	void RequireManifestRejectedWithoutMutation(
+		const WorkspaceContextResolveResult& result,
+		const TempDirectory& workspace,
+		const std::string& scenario)
+	{
+		Require(result.m_status == EWorkspaceContextResolveStatus::ManifestInvalid,
+			scenario + " should be rejected as an invalid manifest: " + result.m_message);
+		Require(!result.IsSuccess(), scenario + " must not publish a successful context");
+		Require(result.m_context.GetRoot().empty(),
+			scenario + " must not publish a partial context");
+		Require(result.m_context.GetManifest().empty(),
+			scenario + " must not publish a manifest path");
+		Require(!std::filesystem::exists(workspace.Path("Content")),
+			scenario + " must be rejected before Content recovery");
+		Require(!std::filesystem::exists(workspace.Path("Cache")),
+			scenario + " must be rejected before Cache recovery");
 	}
 
 	void TestLegacyFallbackAndRecovery()
@@ -242,17 +300,70 @@ namespace
 			"missing default manifest Cache should be created");
 	}
 
-	void TestManifestDefaultsMissingEngineReferenceKindToSource()
+	void TestManifestDefaultsMissingOptionalV1Fields()
 	{
-		TempDirectory workspace("default-engine-reference");
+		TempDirectory workspace("default-optional-fields");
 		ManifestSpec spec;
 		spec.m_includeEngineReferenceKind = false;
+		spec.m_includeBuildPath = false;
+		spec.m_includeLogicOutputPath = false;
+		spec.m_includeLogicModuleName = false;
 		WriteManifest(workspace.Path("workspace.sailor"), spec);
 
 		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
 
 		Require(result.IsSuccess(),
-			"v1 manifest without engineReferenceKind should default to source: " + result.m_message);
+			"v1 manifest without optional fields should use v1 defaults: " + result.m_message);
+		Require(result.m_context.GetBuild() ==
+			std::filesystem::weakly_canonical(workspace.Path("Cache/Build")),
+			"missing buildPath should default to Cache/Build");
+		Require(result.m_context.GetLogicOutput() ==
+			std::filesystem::weakly_canonical(workspace.Path("Binaries")),
+			"missing logicOutputPath should default to Binaries");
+		Require(result.m_context.GetModuleName() == "SailorGame",
+			"missing logicModuleName should default to SailorGame");
+	}
+
+	void TestExplicitOptionalFieldsAreInvalid()
+	{
+		const std::vector<std::string> fields
+		{
+			"engineReferenceKind",
+			"buildPath",
+			"logicOutputPath",
+			"logicModuleName"
+		};
+		struct InvalidValue
+		{
+			const char* m_label;
+			const char* m_yaml;
+		};
+		const std::vector<InvalidValue> invalidValues
+		{
+			{ "null", "null" },
+			{ "empty", "''" }
+		};
+
+		for (const std::string& field : fields)
+		{
+			for (const InvalidValue& invalidValue : invalidValues)
+			{
+				const std::string scenario = "explicit-" + std::string(invalidValue.m_label) + "-" + field;
+				TempDirectory workspace(scenario.c_str());
+				WriteText(
+					workspace.Path("workspace.sailor"),
+					BuildManifestPayload(
+						"manifestVersion: 1\n",
+						field,
+						invalidValue.m_yaml));
+
+				const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+				RequireManifestRejectedWithoutMutation(result, workspace, scenario);
+				Require(result.m_message.find(field) != std::string::npos,
+					scenario + " diagnostic should identify its field: " + result.m_message);
+			}
+		}
 	}
 
 	void TestRelativeEnginePathOutsideWorkspace()
@@ -387,6 +498,58 @@ namespace
 		Require(result.m_context.GetRoot().empty(), "failed recovery should not publish a partial context");
 	}
 
+	void TestManifestVersionPreflightDoesNotMutateWorkspace()
+	{
+		struct InvalidVersion
+		{
+			const char* m_label;
+			const char* m_declaration;
+			const char* m_expectedDiagnostic;
+		};
+		const std::vector<InvalidVersion> invalidVersions
+		{
+			{ "missing-version", "", "required" },
+			{ "zero-version", "manifestVersion: 0\n", "unsupported manifestVersion" },
+			{ "future-version", "manifestVersion: 999\n", "unsupported manifestVersion" },
+			{ "duplicate-version", "manifestVersion: 1\nmanifestVersion: 1\n", "duplicate" },
+			{ "non-scalar-version", "manifestVersion: [1]\n", "unsigned integer scalar" }
+		};
+
+		for (const InvalidVersion& invalidVersion : invalidVersions)
+		{
+			TempDirectory workspace(invalidVersion.m_label);
+			WriteText(
+				workspace.Path("workspace.sailor"),
+				BuildManifestPayload(invalidVersion.m_declaration));
+
+			const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+			RequireManifestRejectedWithoutMutation(result, workspace, invalidVersion.m_label);
+			Require(result.m_message.find("manifestVersion") != std::string::npos,
+				std::string(invalidVersion.m_label) +
+					" diagnostic should identify manifestVersion: " + result.m_message);
+			Require(result.m_message.find(invalidVersion.m_expectedDiagnostic) != std::string::npos,
+				std::string(invalidVersion.m_label) +
+					" diagnostic should explain the version failure: " + result.m_message);
+		}
+
+		TempDirectory workspace("future-version-precedence");
+		WriteText(
+			workspace.Path("workspace.sailor"),
+			BuildManifestPayload(
+				"manifestVersion: 999\n",
+				"workspaceId",
+				"[malformed, later, field]"));
+
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
+
+		RequireManifestRejectedWithoutMutation(result, workspace, "future-version-precedence");
+		Require(result.m_message.find("unsupported manifestVersion '999'") != std::string::npos,
+			"future manifest diagnostic should precede malformed later fields: " + result.m_message);
+		Require(result.m_message.find("workspaceId") == std::string::npos,
+			"future manifest diagnostic must not be replaced by later field validation");
+	}
+
 	void TestManifestDiscoveryFailures()
 	{
 		{
@@ -409,18 +572,6 @@ namespace
 				"corrupt manifest should be rejected: " + result.m_message);
 			Require(result.m_message.find("invalid YAML") != std::string::npos,
 				"corrupt manifest should produce an actionable YAML diagnostic");
-		}
-		{
-			TempDirectory workspace("future-version");
-			ManifestSpec spec;
-			spec.m_version = 999;
-			WriteManifest(workspace.Path("workspace.sailor"), spec);
-
-			const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspace.Get());
-			Require(result.m_status == EWorkspaceContextResolveStatus::ManifestInvalid,
-				"future manifest version should be rejected: " + result.m_message);
-			Require(result.m_message.find("unsupported manifestVersion") != std::string::npos,
-				"future version diagnostic should identify the version contract");
 		}
 		{
 			TempDirectory workspace("missing-id");
@@ -560,13 +711,15 @@ int main()
 		TestUtf8CommandLinePathConversion();
 		TestManifestPathsWithSpaces();
 		TestManifestDefaultRecovery();
-		TestManifestDefaultsMissingEngineReferenceKindToSource();
+		TestManifestDefaultsMissingOptionalV1Fields();
+		TestExplicitOptionalFieldsAreInvalid();
 		TestRelativeEnginePathOutsideWorkspace();
 		TestAbsoluteEnginePath();
 		TestMissingEngineContentDoesNotMutateWorkspace();
 		TestMissingInstalledEngineContentHasTargetedDiagnostic();
 		TestMissingCustomContentDoesNotMutateWorkspace();
 		TestRecoveryRollbackOnLaterFailure();
+		TestManifestVersionPreflightDoesNotMutateWorkspace();
 		TestManifestDiscoveryFailures();
 		TestUnsafeOwnedPaths();
 		TestPhysicalEscape();

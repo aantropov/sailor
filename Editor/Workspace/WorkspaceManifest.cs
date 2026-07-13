@@ -106,6 +106,30 @@ public sealed class WorkspaceManifestSerializer
 
     public WorkspaceManifestLoadResult Deserialize(string yaml)
     {
+        var versionProbe = WorkspaceYamlVersionProbe.Probe(
+            yaml,
+            "manifestVersion",
+            WorkspaceManifest.CurrentVersion,
+            "Workspace manifest");
+        if (!versionProbe.Succeeded)
+        {
+            if (versionProbe.IsVersionContractFailure)
+            {
+                return new WorkspaceManifestLoadResult(
+                    null,
+                    new WorkspaceManifestValidationResult([
+                        new WorkspaceManifestIssue(
+                            nameof(WorkspaceManifest.ManifestVersion),
+                            versionProbe.Error ?? "Workspace manifest version is invalid.")
+                    ]));
+            }
+
+            return new WorkspaceManifestLoadResult(
+                null,
+                WorkspaceManifestValidationResult.Success,
+                versionProbe.Error ?? "Failed to inspect workspace manifest version.");
+        }
+
         try
         {
             var manifest = _deserializer.Deserialize<WorkspaceManifest>(yaml) ?? new WorkspaceManifest();

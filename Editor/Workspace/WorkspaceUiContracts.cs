@@ -12,7 +12,8 @@ public sealed record WorkspaceUiProjection(
     bool HasActiveWorkspace,
     IReadOnlyList<WorkspaceRecentItem> RecentWorkspaces,
     WorkspaceActivationPhase ActivationPhase = WorkspaceActivationPhase.Idle,
-    string? ActivationError = null)
+    string? ActivationError = null,
+    string? GeneratedProjectAttention = null)
 {
     public static WorkspaceUiProjection Empty { get; } = new("No workspace", "Repository fallback", false, []);
 
@@ -24,6 +25,7 @@ public sealed record WorkspaceUiProjection(
         WorkspaceActivationPhase.Committing or
         WorkspaceActivationPhase.Starting;
     public bool RequiresRepair => ActivationPhase == WorkspaceActivationPhase.Repair;
+    public bool HasGeneratedProjectAttention => !string.IsNullOrWhiteSpace(GeneratedProjectAttention);
 }
 
 public static class WorkspaceUiProjectionBuilder
@@ -60,7 +62,10 @@ public static class WorkspaceUiProjectionBuilder
             true,
             recent,
             activationPhase,
-            activationError);
+            activationError,
+            current.GeneratedProjectState.RequiresAttention
+                ? current.GeneratedProjectState.Guidance
+                : null);
     }
 
     static string CompactPath(string path)

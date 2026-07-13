@@ -211,6 +211,7 @@ internal sealed class WorkspaceUiService
                 var message = string.IsNullOrWhiteSpace(result.Error)
                     ? "Workspace activation failed after the previous runtime stopped. Open a valid workspace or retry activation to repair the editor session."
                     : $"{result.Error}{Environment.NewLine}{Environment.NewLine}Open a valid workspace or retry activation to repair the editor session.";
+                message = AppendGeneratedProjectGuidance(message, result.Candidate?.Session);
                 _shellHost.SetStatus("Workspace activation requires repair.");
                 if (GetPage() is { } repairPage)
                     await repairPage.DisplayAlert(title, message, "OK");
@@ -223,11 +224,12 @@ internal sealed class WorkspaceUiService
         }
 
         var activatedName = result.Candidate?.Session.Manifest.Name;
-        _shellHost.SetStatus(string.IsNullOrWhiteSpace(activatedName)
+        var status = string.IsNullOrWhiteSpace(activatedName)
             ? successMessage
             : title == "New Workspace"
                 ? $"Created workspace '{activatedName}'."
-                : $"Loaded workspace '{activatedName}'.");
+                : $"Loaded workspace '{activatedName}'.";
+        _shellHost.SetStatus(status);
 #if MACCATALYST
         SailorEditor.AppDelegate.RequestMenuRebuild();
 #endif
@@ -300,7 +302,10 @@ internal sealed class WorkspaceUiService
                         ? Path.GetFileName(candidate.Session.WorkspaceRoot)
                         : candidate.Session.Manifest.Name,
                     ActiveWorkspacePath = candidate.Session.WorkspaceRoot,
-                    HasActiveWorkspace = true
+                    HasActiveWorkspace = true,
+                    GeneratedProjectAttention = candidate.Session.GeneratedProjectState.RequiresAttention
+                        ? candidate.Session.GeneratedProjectState.Guidance
+                        : null
                 };
             }
 
@@ -431,6 +436,14 @@ internal sealed class WorkspaceUiService
             return string.Join(Environment.NewLine, result.Validation.Issues.Select(x => $"{x.Field}: {x.Message}"));
 
         return "Workspace preflight failed.";
+    }
+
+    static string AppendGeneratedProjectGuidance(string message, WorkspaceSession? session)
+    {
+        if (session?.GeneratedProjectState.RequiresAttention != true)
+            return message;
+
+        return $"{message}{Environment.NewLine}{Environment.NewLine}{session.GeneratedProjectState.Guidance}";
     }
 
 }

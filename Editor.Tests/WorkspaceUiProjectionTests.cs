@@ -76,6 +76,44 @@ public sealed class WorkspaceUiProjectionTests
         Assert.Equal("Native startup failed.", projection.ActivationError);
     }
 
+    [Fact]
+    public void Build_ProjectsGeneratedStateAttentionWithoutRepair()
+    {
+        const string guidance = "Generated project inputs are stale; user-owned files were not changed.";
+        var session = CreateSession(new WorkspaceGeneratedProjectStateAssessment(
+            WorkspaceGeneratedProjectStateStatus.Stale,
+            guidance,
+            [new WorkspaceGeneratedProjectStateMismatch("logicModuleName", "OldGame", "SailorGame")]));
+
+        var projection = WorkspaceUiProjectionBuilder.Build(session, []);
+
+        Assert.True(projection.HasActiveWorkspace);
+        Assert.True(projection.HasGeneratedProjectAttention);
+        Assert.Equal(guidance, projection.GeneratedProjectAttention);
+        Assert.False(projection.RequiresRepair);
+    }
+
+    [Fact]
+    public void Build_PreservesGeneratedStateAttentionAlongsideRepair()
+    {
+        const string guidance = "Generated project state is untracked; no files were changed.";
+        var session = CreateSession(new WorkspaceGeneratedProjectStateAssessment(
+            WorkspaceGeneratedProjectStateStatus.Untracked,
+            guidance,
+            []));
+        var activation = new WorkspaceActivationState(
+            WorkspaceActivationPhase.Repair,
+            5,
+            Error: "Native startup failed.");
+
+        var projection = WorkspaceUiProjectionBuilder.Build(session, [], activation);
+
+        Assert.True(projection.RequiresRepair);
+        Assert.True(projection.HasGeneratedProjectAttention);
+        Assert.Equal(guidance, projection.GeneratedProjectAttention);
+        Assert.Equal("Native startup failed.", projection.ActivationError);
+    }
+
     [Theory]
     [InlineData(WorkspaceActivationPhase.Preflighting)]
     [InlineData(WorkspaceActivationPhase.Stopping)]
@@ -91,5 +129,21 @@ public sealed class WorkspaceUiProjectionTests
 
         Assert.True(projection.IsActivationInProgress);
         Assert.False(projection.RequiresRepair);
+    }
+
+    static WorkspaceSession CreateSession(WorkspaceGeneratedProjectStateAssessment assessment)
+    {
+        var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "sailor-ui-projection-state"));
+        return new WorkspaceSession(
+            root,
+            Path.Combine(root, WorkspaceTemplateService.ManifestFileName),
+            WorkspaceManifest.CreateDefault("Sandbox", "../Sailor", "workspace-id"),
+            Path.Combine(root, "Content"),
+            Path.Combine(root, "Source"),
+            Path.Combine(root, "Generated"),
+            Path.Combine(root, "Cache"))
+        {
+            GeneratedProjectState = assessment
+        };
     }
 }
