@@ -306,12 +306,12 @@ namespace Sailor
 		const bool m_bSavePrecompiledGlsl = false;
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
-		std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
-		std::optional<std::time_t> m_timestampOverrideForTests;
-		Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
+		[[maybe_unused]] std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
+		[[maybe_unused]] std::optional<std::time_t> m_timestampOverrideForTests;
+		[[maybe_unused]] Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
-		bool m_bArtifactReadIoFailureForTests = false;
-		bool m_bArtifactSweepFailureForTests = false;
+		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
+		[[maybe_unused]] bool m_bArtifactSweepFailureForTests = false;
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
 		friend class ShaderCacheTestAccess;
