@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include <atomic>
 #include <string>
 #include "Containers/Pair.h"
 #include "Containers/Vector.h"
@@ -110,11 +111,11 @@ namespace Sailor
 	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 		const bool bShouldAutoCompileAllPermutations = false;
-		
-		// Version is used to generate shader's code with all constants
-		const uint32_t Version = 4;
 
 	public:
+		// Bump whenever generated shader source or compiled artifact semantics change.
+		static constexpr uint32_t CacheProducerVersion = 4;
+
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(const FileId& uid);
@@ -156,9 +157,109 @@ namespace Sailor
 
 		SAILOR_API bool UpdateRHIResource(ShaderSetPtr shader, uint32_t permutation);
 
+		static void RecordCompileResult(std::atomic_bool& aggregate, bool bSucceeded) noexcept;
+		static bool SaveShaderCacheAndCombineResult(
+			ShaderCache& cache,
+			bool bCompiledSuccessfully);
+		static bool ShouldRetryDirtyShaderCache(
+			size_t numPermutationsToCompile,
+			bool bCacheDirty) noexcept;
+
+		template<typename TValue>
+		static size_t FindPermutationIndex(
+			const TVector<TPair<uint32_t, TValue>>& entries,
+			uint32_t permutation)
+		{
+			return entries.FindIf([permutation](const auto& entry)
+				{
+					return entry.m_first == permutation;
+				});
+		}
+
+		template<typename TValue>
+		static bool RemovePermutationEntry(
+			TVector<TPair<uint32_t, TValue>>& entries,
+			uint32_t permutation)
+		{
+			const size_t index = FindPermutationIndex(entries, permutation);
+			if (index == static_cast<size_t>(-1))
+			{
+				return false;
+			}
+			entries.RemoveAt(index);
+			return true;
+		}
+
+		static void RemoveFinishedPromiseEntries(
+			TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>& entries);
+
+		template<typename TValue, typename TPredicate>
+		static void RemoveMatchingEntries(
+			TVector<TPair<uint32_t, TValue>>& entries,
+			TPredicate&& predicate)
+		{
+			for (size_t index = entries.Num(); index > 0; --index)
+			{
+				if (predicate(entries[index - 1].m_second))
+				{
+					entries.RemoveAt(index - 1);
+				}
+			}
+		}
+
+		template<typename TPromise, typename TShader>
+		static void AddShaderLoadEntries(
+			TVector<TPair<uint32_t, TPromise>>& promises,
+			TVector<TPair<uint32_t, TShader>>& shaders,
+			uint32_t permutation,
+			const TPromise& promise,
+			const TShader& shader)
+		{
+			promises.Add({ permutation, promise });
+			try
+			{
+				shaders.Add({ permutation, shader });
+			}
+			catch (...)
+			{
+				RemovePermutationEntry(promises, permutation);
+				throw;
+			}
+		}
+
+		template<typename TPromise, typename TShader>
+		static void EvictFailedShaderLoadEntries(
+			TVector<TPair<uint32_t, TPromise>>& promises,
+			TVector<TPair<uint32_t, TShader>>& shaders,
+			uint32_t permutation)
+		{
+			RemovePermutationEntry(promises, permutation);
+			RemovePermutationEntry(shaders, permutation);
+		}
+
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(ShaderAssetInfoPtr shaderAssetInfo);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
+
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+		friend class ShaderCompilerTestAccess;
+#endif
 	};
+
+#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
+	class ShaderCompilerTestAccess final
+	{
+	public:
+		SAILOR_API static bool AggregateCompileResults(const bool* results, size_t count);
+		SAILOR_API static bool SaveCacheAndCombineResult(
+			ShaderCache& cache,
+			bool bCompiledSuccessfully);
+		SAILOR_API static bool ShouldRetryCacheSave(
+			size_t numPermutationsToCompile,
+			bool bCacheDirty);
+		SAILOR_API static bool ExerciseFailedLoadEvictionAndRetry();
+		SAILOR_API static bool ExercisePromiseGarbageCollection();
+	};
+#endif
 }

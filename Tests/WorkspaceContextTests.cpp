@@ -1,4 +1,5 @@
 #include "Workspace/WorkspaceContext.h"
+#include "Workspace/WorkspacePathEncoding.h"
 
 #include <chrono>
 #include <cstdlib>
@@ -148,6 +149,29 @@ namespace
 			"legacy resolution should recreate default Content");
 		Require(std::filesystem::is_directory(workspace.Path("Cache")),
 			"legacy resolution should recreate default Cache");
+	}
+
+	void TestUtf8CommandLinePathConversion()
+	{
+		const std::string utf8Component =
+			reinterpret_cast<const char*>(u8"Physical-РАБОЧАЯ-AZ");
+		const std::filesystem::path component = PathFromUtf8(utf8Component);
+		const std::u8string roundTrip = component.generic_u8string();
+		const std::string roundTripUtf8(
+			reinterpret_cast<const char*>(roundTrip.data()),
+			roundTrip.size());
+
+		Require(roundTripUtf8 == utf8Component,
+			"command-line workspace paths must round-trip through the native path type as UTF-8");
+
+		TempDirectory fixture("utf8-command-line");
+		const std::filesystem::path workspaceRoot = fixture.Path(component);
+		std::filesystem::create_directories(workspaceRoot);
+		const WorkspaceContextResolveResult result = ResolveWorkspaceContext(workspaceRoot);
+		Require(result.IsSuccess(),
+			"a workspace root decoded from UTF-8 command-line bytes should resolve: " + result.m_message);
+		Require(result.m_context.GetRoot() == Canonical(workspaceRoot),
+			"UTF-8 command-line path conversion must preserve the physical workspace root");
 	}
 
 	void TestManifestPathsWithSpaces()
@@ -538,6 +562,7 @@ int main()
 	try
 	{
 		TestLegacyFallbackAndRecovery();
+		TestUtf8CommandLinePathConversion();
 		TestManifestPathsWithSpaces();
 		TestManifestDefaultRecovery();
 		TestManifestDefaultsMissingEngineReferenceKindToSource();

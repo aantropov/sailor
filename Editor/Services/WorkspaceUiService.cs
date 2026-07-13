@@ -247,7 +247,8 @@ internal sealed class WorkspaceUiService
                 session.ManifestPath,
                 session.ContentDirectory,
                 session.CacheDirectory,
-                _engineService.EngineWorkingDirectory);
+                _engineService.EngineWorkingDirectory,
+                session.Manifest.WorkspaceId);
             return new WorkspaceActivationCandidate(preparation, launchContext);
         }
         catch

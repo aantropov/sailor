@@ -9,6 +9,7 @@
 #include "Engine/InstanceId.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
+#include "Workspace/WorkspaceCacheContract.h"
 
 #include <algorithm>
 #include <cstring>
@@ -175,6 +176,56 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 	catch (...)
 	{
 		LogEditorTypeSerializationFailure("an unknown native exception was raised");
+	}
+
+	yamlNode[0] = nullptr;
+	return 0;
+}
+
+uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
+{
+	if (!yamlNode || !GetInstance())
+	{
+		return 0;
+	}
+
+	yamlNode[0] = nullptr;
+	try
+	{
+		const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+			"editor-types",
+			"editor-types-v1",
+			1,
+			GetWorkspaceContext());
+
+		YAML::Node identityNode;
+		identityNode["workspaceIdentity"] = identity.m_workspaceId;
+		identityNode["engineVersion"] = identity.m_engineVersion;
+		identityNode["buildIdentity"] = identity.m_buildIdentity;
+		identityNode["producerIdentity"] = identity.m_producerIdentity;
+
+		const std::string serializedNode = YAML::Dump(identityNode);
+		const size_t length = serializedNode.length();
+		if (length > std::numeric_limits<uint32_t>::max())
+		{
+			LogEditorTypeSerializationFailure("the serialized workspace cache identity exceeds the interop size limit");
+			return 0;
+		}
+
+		auto serializedOutput = std::make_unique<char[]>(length + 1);
+		memcpy(serializedOutput.get(), serializedNode.c_str(), length);
+		serializedOutput[length] = '\0';
+		yamlNode[0] = serializedOutput.release();
+
+		return static_cast<uint32_t>(length);
+	}
+	catch (const std::exception& e)
+	{
+		LogEditorTypeSerializationFailure(e.what());
+	}
+	catch (...)
+	{
+		LogEditorTypeSerializationFailure("an unknown native exception was raised while serializing workspace cache identity");
 	}
 
 	yamlNode[0] = nullptr;

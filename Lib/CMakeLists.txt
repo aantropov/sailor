@@ -173,6 +173,11 @@ target_compile_definitions(SailorLib PUBLIC NOMINMAX)
 
 target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Release>:_SHIPPING>)
 target_compile_definitions(SailorLib PRIVATE SAILOR_BUILD_CONFIG="$<CONFIG>")
+target_compile_definitions(SailorLib PRIVATE SAILOR_ENGINE_VERSION="${PROJECT_VERSION}")
+
+if(SAILOR_BUILD_TESTS)
+  target_compile_definitions(SailorLib PUBLIC $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>)
+endif()
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)
 

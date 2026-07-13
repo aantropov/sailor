@@ -33,7 +33,11 @@ namespace Sailor
 		{
 			auto task = TaskPtr<TResult, TArgs>::Make(name, std::move(lambda), thread);
 			task->m_self = task;
-			task->m_taskSyncBlockHandle = App::GetSubmodule<Tasks::Scheduler>()->AcquireTaskSyncBlock();
+			if (auto* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+			{
+				task->m_taskSyncBlockHandle = scheduler->AcquireTaskSyncBlock();
+				task->m_bOwnsTaskSyncBlock = true;
+			}
 			return task;
 		}
 
@@ -111,6 +115,7 @@ namespace Sailor
 			std::atomic<uint8_t> m_state = 0;
 			std::atomic<uint16_t> m_numBlockers = 0;
 			uint16_t m_taskSyncBlockHandle = 0;
+			bool m_bOwnsTaskSyncBlock = false;
 
 			TWeakPtr<ITask> m_self;
 
@@ -173,7 +178,14 @@ namespace Sailor
 
 			SAILOR_API virtual ~Task()
 			{
-				App::GetSubmodule<Scheduler>()->ReleaseTaskSyncBlock(*this);
+				if (ITask::m_bOwnsTaskSyncBlock)
+				{
+					if (auto* scheduler = App::GetSubmodule<Scheduler>())
+					{
+						scheduler->ReleaseTaskSyncBlock(*this);
+					}
+					ITask::m_bOwnsTaskSyncBlock = false;
+				}
 			}
 
 			SAILOR_API void Execute() override
