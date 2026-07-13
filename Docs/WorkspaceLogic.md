@@ -28,7 +28,7 @@ Binaries/
 
 `WorkspaceTypes.h` is the explicit list of reflected game types exported by the module. Add each new reflected component to its `TWorkspaceTypeList`. `WorkspaceModule.cpp` defines the versioned module API and metadata entry points from that same list; both files are created once and remain user-editable.
 
-Generated logic projects target 64-bit Windows and accept MSVC or clang-cl. Configuration stops with a diagnostic when the platform, architecture, or compiler front end does not match that contract.
+Generated logic projects target 64-bit platforms and accept MSVC, Clang/AppleClang, clang-cl, or GCC. Configuration stops with a diagnostic when the platform, architecture, or compiler front end does not match that contract.
 
 The default manifest values are:
 
@@ -115,7 +115,13 @@ cmake -S Generated -B Cache/Build -DCMAKE_BUILD_TYPE=Release
 cmake --build Cache/Build --config Release --target SailorGame
 ```
 
-For a default Windows Release workspace, the resulting module and import library are `Binaries/Release/SailorGame.dll` and `Binaries/Release/SailorGame.lib`. Link and compile PDB outputs use the same configuration directory. Debug and other configurations use their matching subdirectory.
+For a default Release workspace, the resulting module is:
+
+- Windows: `Binaries/Release/SailorGame.dll`
+- macOS: `Binaries/Release/libSailorGame.dylib`
+- Linux: `Binaries/Release/libSailorGame.so`
+
+On Windows, the import library and PDB outputs follow the same configuration directory. Debug and other configurations use their matching subdirectory.
 
 The engine reference, paths, and module name are creation-time inputs copied into `Generated/CMakeLists.txt`. Opening or saving a workspace does not regenerate that file. If those manifest values are edited later, update the corresponding CMake values before reconfiguring.
 

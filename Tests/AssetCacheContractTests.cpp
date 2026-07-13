@@ -121,6 +121,61 @@ namespace
 			"identity mismatch diagnostic should explain the corruption");
 	}
 
+	void TestDirectDeserializeDoesNotThrowOnCorruptData()
+	{
+		TestAssetCache::CacheData destination = MakeCache(
+			"{ASSET-CACHE-PRESERVE-ON-THROW}",
+			"/workspace/Content/Preserved.mat",
+			99);
+
+		const std::string corruptPayload =
+			"assetCache:\n"
+			"  assets:\n"
+			"    '{ASSET-CACHE-THROW}':\n"
+			"      fileId: '{ASSET-CACHE-THROW}'\n"
+			"      assetImportTime: abc\n"
+			"      sourcePath: '/workspace/Content/Test.mat'\n";
+		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
+
+		try
+		{
+			destination.Deserialize(node);
+		}
+		catch (const std::exception& exception)
+		{
+			throw std::runtime_error("Asset cache direct Deserialize should never throw: " + std::string(exception.what()));
+		}
+		catch (...)
+		{
+			throw std::runtime_error("Asset cache direct Deserialize should never throw.");
+		}
+
+		Require(destination.m_data.Num() == 0, "corrupt direct deserialize payload should not leave stale data");
+	}
+
+	void TestEntryDeserializeDoesNotThrow()
+	{
+		TestAssetCache::CacheEntry entry{};
+		const YAML::Node invalidEntry = YAML::Load(
+			"fileId:\n"
+			"  list: value\n"
+			"assetImportTime: invalid\n"
+			"sourcePath: ''");
+
+		try
+		{
+			entry.Deserialize(invalidEntry);
+		}
+		catch (const std::exception& exception)
+		{
+			throw std::runtime_error("Asset cache entry Deserialize should never throw: " + std::string(exception.what()));
+		}
+		catch (...)
+		{
+			throw std::runtime_error("Asset cache entry Deserialize should never throw.");
+		}
+	}
+
 	void TestIoFailurePreservesTheExistingCacheFile()
 	{
 		using Status = Workspace::EWorkspaceCacheLoadStatus;
@@ -155,6 +210,8 @@ int main()
 		TestEmptyPayloadRoundTrip();
 		TestCorruptPayloadDoesNotPartiallyPublish();
 		TestMismatchedEntryIdentityIsCorrupt();
+		TestDirectDeserializeDoesNotThrowOnCorruptData();
+		TestEntryDeserializeDoesNotThrow();
 		TestIoFailurePreservesTheExistingCacheFile();
 		std::cout << "Asset cache contract tests passed.\n";
 		return 0;

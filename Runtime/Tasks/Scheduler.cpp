@@ -490,6 +490,11 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 	{
 		for (const EThreadType thread : threads)
 		{
+			if (thread == EThreadType::Main && !IsMainThread())
+			{
+				continue;
+			}
+
 			if (thread == EThreadType::Main && IsMainThread())
 			{
 				ProcessTasksOnMainThread();
@@ -503,6 +508,11 @@ void Scheduler::WaitIdle(const TSet<EThreadType>& threads)
 		bHasPendingTasks = false;
 		for (const EThreadType thread : threads)
 		{
+			if (thread == EThreadType::Main && !IsMainThread())
+			{
+				continue;
+			}
+
 			bHasPendingTasks |= GetNumTasks(thread) > 0;
 			for (const WorkerThread* worker : m_workerThreads)
 			{

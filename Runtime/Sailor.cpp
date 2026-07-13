@@ -258,10 +258,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		SAILOR_LOG_ERROR("%s", workspaceModuleResult.m_message.c_str());
 		bWorkspaceModuleActivationFailed = true;
-		SetExitCode(1);
 
 		if (!params.m_bIsEditor)
 		{
+			SetExitCode(1);
 			s_pInstance->m_bSkipMainLoop = true;
 			return;
 		}

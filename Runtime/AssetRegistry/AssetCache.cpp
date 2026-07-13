@@ -173,9 +173,41 @@ YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = inData["fileId"].as<FileId>();
-	m_assetImportTime = inData["assetImportTime"].as<std::time_t>();
-	m_sourcePath = NormalizeSourcePath(inData["sourcePath"].as<std::string>());
+	m_fileId = FileId();
+	m_assetImportTime = 0;
+	m_sourcePath.clear();
+	try
+	{
+		if (!inData.IsMap() || inData.size() != 3)
+		{
+			return;
+		}
+
+		const YAML::Node fileId = inData["fileId"];
+		const YAML::Node assetImportTime = inData["assetImportTime"];
+		const YAML::Node sourcePath = inData["sourcePath"];
+		if (!fileId || !assetImportTime || !sourcePath || !fileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar())
+		{
+			return;
+		}
+
+		m_fileId.Deserialize(fileId);
+		m_assetImportTime = assetImportTime.as<std::time_t>();
+		m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
+		if (m_sourcePath.empty() || !m_fileId)
+		{
+			m_fileId = FileId();
+			m_assetImportTime = 0;
+			m_sourcePath.clear();
+			return;
+		}
+	}
+	catch (...)
+	{
+		m_fileId = FileId();
+		m_assetImportTime = 0;
+		m_sourcePath.clear();
+	}
 }
 
 YAML::Node AssetCache::AssetCacheData::Serialize() const
@@ -194,10 +226,20 @@ void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
 	AssetCacheData candidate;
 	std::string diagnostic;
-	if (!TryDeserialize(inData, candidate, diagnostic))
+	try
 	{
-		throw YAML::RepresentationException(YAML::Mark::null_mark(), diagnostic);
+		if (!TryDeserialize(inData, candidate, diagnostic))
+		{
+			m_data.Clear();
+			return;
+		}
 	}
+	catch (...)
+	{
+		m_data.Clear();
+		return;
+	}
+
 	m_data = std::move(candidate.m_data);
 }
 

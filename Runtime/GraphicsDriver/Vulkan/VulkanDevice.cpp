@@ -209,8 +209,16 @@ void VulkanDevice::BeginConditionalDestroy()
 	m_swapchain.Clear();
 	m_commandPool.Clear();
 
-	// 1 Main, 1 Render, 2 RHI
-	check(m_threadContext.Num() <= 4);
+	size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2;
+#if defined(__APPLE__)
+	if (App::HasEditor())
+	{
+		// Same-process editor interop may allocate additional managed/render probe threads
+		// on top of main/graphics/RHI scheduling threads.
+		maxThreadContexts += 4;
+	}
+#endif
+	check(m_threadContext.Num() <= maxThreadContexts);
 
 	for (auto& pair : m_threadContext)
 	{

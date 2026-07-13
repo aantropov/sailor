@@ -145,6 +145,7 @@ namespace Sailor::Win32
 		SAILOR_API void ProcessSystemMessages() override;
 
 		SAILOR_API static void ProcessWin32Msgs();
+		SAILOR_API static bool IsWindowAlive(const Window* pWindow);
 #if defined(__APPLE__)
 		SAILOR_API static void ProcessMacMsgs();
 #endif

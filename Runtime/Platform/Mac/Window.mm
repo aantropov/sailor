@@ -15,6 +15,11 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
+namespace
+{
+	constexpr char sSailorWindowDelegateKey[] = "sailor_delegate";
+}
+
 static void SailorDispatchImGuiMacEvent(const ImGuiApi::MacEvent& event)
 {
 	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
@@ -68,10 +73,13 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 - (void)windowWillClose:(NSNotification*)notification
 {
 	(void)notification;
-	if (self.sailorWindow)
+	Sailor::Win32::Window* sailorWindow = self.sailorWindow;
+	self.sailorWindow = nullptr;
+
+	if (sailorWindow && Sailor::Win32::Window::IsWindowAlive(sailorWindow))
 	{
-		self.sailorWindow->SetActive(false);
-		self.sailorWindow->SetRunning(false);
+		sailorWindow->SetActive(false);
+		sailorWindow->SetRunning(false);
 	}
 
 	// On macOS we want app process to exit when the main window is closed.
@@ -332,7 +340,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		SailorWindowDelegate* delegate = [[SailorWindowDelegate alloc] init];
 		delegate.sailorWindow = this;
 		window.delegate = delegate;
-		objc_setAssociatedObject(window, "sailor_delegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		objc_setAssociatedObject(window, sSailorWindowDelegateKey, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
 		if (!bRunsInsideEditor)
 		{
@@ -505,11 +513,30 @@ void Window::Destroy()
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	if (window)
 	{
+		SailorWindowDelegate* delegate = (SailorWindowDelegate*)objc_getAssociatedObject(window, sSailorWindowDelegateKey);
+		if (delegate)
+		{
+			delegate.sailorWindow = nullptr;
+		}
+		objc_setAssociatedObject(window, sSailorWindowDelegateKey, nil, OBJC_ASSOCIATION_ASSIGN);
 		[window close];
 	}
 
 	m_hWnd = nullptr;
 	g_windows.Remove(this);
+}
+
+bool Window::IsWindowAlive(const Window* pWindow)
+{
+	for (auto* pWindowInList : g_windows)
+	{
+		if (pWindowInList == pWindow)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool Window::IsIconic() const
