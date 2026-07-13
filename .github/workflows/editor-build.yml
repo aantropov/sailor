@@ -6,7 +6,7 @@ on:
 
 jobs:
   build-editor:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -33,7 +33,7 @@ jobs:
       - name: Publish unpackaged Editor (Windows)
         shell: pwsh
         run: |
-          $publishDirectory = Join-Path $env:RUNNER_TEMP 'SailorEditorPublish'
+          $publishDirectory = Join-Path $env:GITHUB_WORKSPACE 'Binaries\EditorScreenshotPublish'
           if (Test-Path $publishDirectory) {
             Remove-Item $publishDirectory -Recurse -Force
           }
@@ -50,7 +50,7 @@ jobs:
         shell: pwsh
         run: |
           ./Editor.Tests/Visual/RunEditorScreenshotTest.ps1 `
-            -EditorExecutable (Join-Path $env:RUNNER_TEMP 'SailorEditorPublish\SailorEditor.exe') `
+            -EditorExecutable (Join-Path $env:GITHUB_WORKSPACE 'Binaries\EditorScreenshotPublish\SailorEditor.exe') `
             -OutputDirectory (Join-Path $env:GITHUB_WORKSPACE 'Binaries\EditorScreenshot') `
             -TimeoutSeconds 120
 

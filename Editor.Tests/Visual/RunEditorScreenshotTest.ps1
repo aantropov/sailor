@@ -24,11 +24,20 @@ $resultPath = [System.IO.Path]::ChangeExtension($screenshotPath, '.result.json')
 $stdoutPath = Join-Path $outputPath 'editor-screenshot.stdout.log'
 $stderrPath = Join-Path $outputPath 'editor-screenshot.stderr.log'
 $runnerLogPath = Join-Path $outputPath 'editor-screenshot.runner.log'
+$startupLogPath = Join-Path $outputPath 'editor-screenshot.startup.log'
+$windowsEventsPath = Join-Path $outputPath 'editor-screenshot.windows-events.log'
 $stateDirectory = Join-Path $outputPath '.screenshot-state'
 
 [System.IO.Directory]::CreateDirectory($outputPath) | Out-Null
 
-foreach ($path in @($screenshotPath, $resultPath, $stdoutPath, $stderrPath, $runnerLogPath)) {
+foreach ($path in @(
+    $screenshotPath,
+    $resultPath,
+    $stdoutPath,
+    $stderrPath,
+    $runnerLogPath,
+    $startupLogPath,
+    $windowsEventsPath)) {
     if ([System.IO.File]::Exists($path)) {
         [System.IO.File]::Delete($path)
     }
@@ -163,8 +172,78 @@ function Read-PngEvidence {
     }
 }
 
+function Write-WindowsEventDiagnostics {
+    param(
+        [Parameter(Mandatory)]
+        [System.DateTimeOffset] $StartedAt,
+
+        [Parameter(Mandatory)]
+        [string] $ProcessName
+    )
+
+    Start-Sleep -Seconds 2
+    $knownProviders = @(
+        'Application Error',
+        '.NET Runtime',
+        'Windows Error Reporting',
+        'Microsoft-Windows-AppModel-Runtime'
+    )
+    $processPattern = [System.Text.RegularExpressions.Regex]::Escape($ProcessName)
+    $sections = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($logName in @('Application', 'Microsoft-Windows-AppModel-Runtime/Admin')) {
+        try {
+            $events = @(
+                Get-WinEvent `
+                    -FilterHashtable @{
+                        LogName = $logName
+                        StartTime = $StartedAt.UtcDateTime
+                    } `
+                    -ErrorAction Stop |
+                    Where-Object {
+                        $knownProviders -contains $_.ProviderName -or
+                        $_.Message -match $processPattern
+                    } |
+                    Sort-Object TimeCreated |
+                    Select-Object -Last 50
+            )
+
+            if ($events.Count -eq 0) {
+                $sections.Add("=== $logName ===$([Environment]::NewLine)No matching events.")
+                continue
+            }
+
+            $eventEntries = foreach ($event in $events) {
+                @(
+                    "TimeCreated: $($event.TimeCreated.ToUniversalTime().ToString('O'))"
+                    "ProviderName: $($event.ProviderName)"
+                    "Id: $($event.Id)"
+                    "Level: $($event.LevelDisplayName)"
+                    'Message:'
+                    $event.Message
+                    'Raw XML:'
+                    $event.ToXml()
+                ) -join [Environment]::NewLine
+            }
+            $eventText = $eventEntries -join (
+                "$([Environment]::NewLine)$([Environment]::NewLine)---$([Environment]::NewLine)")
+            $sections.Add("=== $logName ===$([Environment]::NewLine)$eventText")
+        }
+        catch {
+            $sections.Add(
+                "=== $logName ===$([Environment]::NewLine)Could not query log: $($_.Exception.Message)")
+        }
+    }
+
+    [System.IO.File]::WriteAllText(
+        $windowsEventsPath,
+        [string]::Join("$([Environment]::NewLine)$([Environment]::NewLine)", $sections),
+        $utf8WithoutBom)
+}
+
 $process = $null
 $processStarted = $false
+$processStartedAt = $null
 $stdoutTask = $null
 $stderrTask = $null
 $failure = $null
@@ -194,9 +273,11 @@ try {
     $startInfo.RedirectStandardError = $true
     $startInfo.CreateNoWindow = $false
     $startInfo.ArgumentList.Add("--editor-screenshot=$screenshotPath")
+    $startInfo.Environment['SAILOR_EDITOR_STARTUP_LOG'] = $startupLogPath
 
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
+    $processStartedAt = [System.DateTimeOffset]::UtcNow
     if (-not $process.Start()) {
         throw "Failed to start Editor executable: $editorPath"
     }
@@ -329,6 +410,29 @@ try {
 catch {
     $failure = $_
     Write-RunnerLog "FAILED: $($_.Exception.Message)"
+
+    if ($null -ne $processStartedAt) {
+        try {
+            Write-WindowsEventDiagnostics `
+                -StartedAt $processStartedAt `
+                -ProcessName ([System.IO.Path]::GetFileName($editorPath))
+            Write-RunnerLog "Windows event diagnostics: $windowsEventsPath"
+            Write-Host ([System.IO.File]::ReadAllText($windowsEventsPath, $utf8WithoutBom))
+        }
+        catch {
+            Write-RunnerLog "Could not collect Windows event diagnostics: $($_.Exception.Message)"
+        }
+    }
+
+    if ([System.IO.File]::Exists($startupLogPath)) {
+        try {
+            Write-RunnerLog "Editor startup diagnostics: $startupLogPath"
+            Write-Host ([System.IO.File]::ReadAllText($startupLogPath, $utf8WithoutBom))
+        }
+        catch {
+            Write-RunnerLog "Could not read Editor startup diagnostics: $($_.Exception.Message)"
+        }
+    }
 }
 finally {
     if ($processStarted -and $null -ne $process) {
