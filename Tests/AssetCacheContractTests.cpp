@@ -12,7 +12,8 @@ namespace
 	class TestAssetCache final : public AssetCache
 	{
 	public:
-		using AssetCache::AssetCacheData;
+		using CacheData = AssetCacheData;
+		using CacheEntry = AssetCacheData::Entry;
 		using AssetCache::SerializeAssetCachePayload;
 		using AssetCache::ShouldResetCacheFile;
 		using AssetCache::ShouldWriteCacheFile;
@@ -34,14 +35,14 @@ namespace
 		return result;
 	}
 
-	TestAssetCache::AssetCacheData MakeCache(
+	TestAssetCache::CacheData MakeCache(
 		const std::string& fileIdValue,
 		const std::string& sourcePath,
 		std::time_t timestamp)
 	{
-		TestAssetCache::AssetCacheData result;
+		TestAssetCache::CacheData result;
 		const FileId fileId = MakeFileId(fileIdValue);
-		TestAssetCache::AssetCacheData::Entry entry;
+		TestAssetCache::CacheEntry entry;
 		entry.m_fileId = fileId;
 		entry.m_sourcePath = sourcePath;
 		entry.m_assetImportTime = timestamp;
@@ -55,7 +56,7 @@ namespace
 		const auto source = MakeCache(fileId.ToString(), "/workspace/Content/Test.mat", 42);
 		const std::string payload = TestAssetCache::SerializeAssetCachePayload(source);
 
-		TestAssetCache::AssetCacheData loaded;
+		TestAssetCache::CacheData loaded;
 		std::string diagnostic;
 		Require(
 			TestAssetCache::TryDeserializeAssetCachePayload(payload, loaded, diagnostic),
@@ -69,10 +70,10 @@ namespace
 
 	void TestEmptyPayloadRoundTrip()
 	{
-		const TestAssetCache::AssetCacheData source;
+		const TestAssetCache::CacheData source;
 		const std::string payload = TestAssetCache::SerializeAssetCachePayload(source);
 
-		TestAssetCache::AssetCacheData loaded;
+		TestAssetCache::CacheData loaded;
 		std::string diagnostic;
 		Require(
 			TestAssetCache::TryDeserializeAssetCachePayload(payload, loaded, diagnostic),
@@ -111,7 +112,7 @@ namespace
 			"      assetImportTime: 9\n"
 			"      sourcePath: '/workspace/Content/Test.mat'\n";
 
-		TestAssetCache::AssetCacheData destination;
+		TestAssetCache::CacheData destination;
 		std::string diagnostic;
 		Require(
 			!TestAssetCache::TryDeserializeAssetCachePayload(payload, destination, diagnostic),

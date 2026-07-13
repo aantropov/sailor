@@ -20,4 +20,12 @@ namespace Sailor::Workspace
 		return std::filesystem::u8path(utf8Path.begin(), utf8Path.end());
 #endif
 	}
+
+	inline std::string PathToUtf8(const std::filesystem::path& path)
+	{
+		const auto utf8Path = path.generic_u8string();
+		return std::string(
+			reinterpret_cast<const char*>(utf8Path.data()),
+			utf8Path.size());
+	}
 }
