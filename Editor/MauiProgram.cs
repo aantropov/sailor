@@ -51,6 +51,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<EditorToolbarActions>();
             builder.Services.AddSingleton<EditorContextMenuService>();
             builder.Services.AddSingleton<WorkspaceManifestSerializer>();
+            builder.Services.AddSingleton<WorkspaceGeneratedProjectStateService>();
             builder.Services.AddSingleton<WorkspaceProjectGenerator>();
             builder.Services.AddSingleton<WorkspaceTemplateService>();
             builder.Services.AddSingleton(_ => new RecentWorkspaceStore());

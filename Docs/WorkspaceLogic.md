@@ -19,10 +19,12 @@ Generated/
 Cache/
   Build/
 Binaries/
+.sailor/
+  GeneratedProjectState.yaml
 .gitignore
 ```
 
-`Generated/CMakeLists.txt` is created with the workspace and is not overwritten when the workspace is opened or saved. It can be edited when the project needs custom CMake behavior, while game code remains under `Source/`. Build-system intermediates belong in `Cache/Build`; configuration-specific logic modules are written to `Binaries/<CONFIG>/`.
+`Generated/CMakeLists.txt` and the sample files under `Source/` are created with the workspace and are not overwritten when the workspace is opened or saved. They become user-owned immediately after creation and can be edited when the project needs custom build or game behavior. Build-system intermediates belong in `Cache/Build`; configuration-specific logic modules are written to `Binaries/<CONFIG>/`.
 
 `WorkspaceTypes.h` is the explicit list of reflected game types exported by the module. Add each new reflected component to its `TWorkspaceTypeList`. `WorkspaceModule.cpp` defines the versioned module API and metadata entry points from that same list; both files are created once and remain user-editable.
 
@@ -42,6 +44,35 @@ The default manifest values are:
 | `logicModuleName` | `SailorGame` | Generated shared-library target and module name. |
 
 All workspace-owned paths in the table are safe relative paths. Rooted, drive-relative, traversal, and physical symlink or junction escapes are rejected. `enginePath` is intentionally different: it is an external engine source or install reference and may resolve outside the workspace.
+
+## Generated State And Manifest Compatibility
+
+`.sailor/GeneratedProjectState.yaml` is source-controlled generator metadata, not a cache and not an ownership claim over generated CMake or source files. New Workspace writes it last, after every user-owned project artifact has been created successfully. Open and Save only assess it: they never create, backfill, regenerate, or replace the sidecar, `Generated/CMakeLists.txt`, or any file under `Source/`.
+
+The current generated-state contract is:
+
+```yaml
+generatorSchemaVersion: 1
+creationInputs:
+  manifestVersion: 1
+  enginePath: ../Sailor
+  engineReferenceKind: source
+  contentPath: Content
+  sourcePath: Source
+  generatedProjectPath: Generated
+  cachePath: Cache
+  buildPath: Cache/Build
+  logicOutputPath: Binaries
+  logicModuleName: SailorGame
+```
+
+Only manifest values that affect the originally generated project are recorded. `name`, `workspaceId`, absolute workspace roots, timestamps, hashes, file content, and mtimes are deliberately excluded. Values are normalized with the manifest rules and compared in the fixed order shown above. A matching sidecar is `Current`; a missing sidecar is `Untracked`; an input mismatch is `Stale`; and an unreadable, unsafe, malformed, or unsupported sidecar is `Invalid`. All four outcomes are advisory for an otherwise valid workspace. Non-current outcomes remain visible in editor status with deterministic guidance, but do not enter activation `Repair` and do not authorize an implicit write. Reconciliation is manual: restore the recorded manifest inputs, or update the user-owned project and sidecar deliberately after verifying them; creating a clean workspace with the current editor is the safe fallback when no regeneration command exists.
+
+The only supported workspace manifest format is currently `manifestVersion: 1`. A present manifest must contain exactly one positive scalar version field. Missing, zero, future, duplicate, and non-scalar versions are rejected before typed fields are deserialized, directories are recovered, recents or the active session are changed, or the manifest is written. The runtime's legacy mode applies only when no manifest file exists; a present versionless manifest is not legacy input.
+
+Version 1 retains additive compatibility: unknown fields are ignored, and `engineReferenceKind`, `buildPath`, `logicOutputPath`, and `logicModuleName` receive their documented defaults only when their fields are absent. An explicitly null or empty value is invalid in both the editor and runtime. Opening a valid older v1 document may therefore normalize the in-memory model, but it does not rewrite the file.
+
+A future migration must be editor-only and sequential (`vN -> vN+1` for every intermediate version). Each step must validate its source, create a unique backup without overwriting an earlier backup, transform entirely in memory, validate the target, write and durably flush a same-directory temporary file, and atomically replace the manifest. Any failure leaves the source manifest and generated project files intact. The runtime never migrates. Manifest migration never regenerates CMake/source files or updates generated state implicitly; changed creation inputs intentionally leave the sidecar stale until the user reconciles them.
 
 ## Source Engine Reference
 

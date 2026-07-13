@@ -29,9 +29,11 @@ public sealed class WorkspaceLifecycleTests
         Assert.True(File.Exists(workspace.File("Source/Components/SampleComponent.cpp")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
+        Assert.True(File.Exists(workspace.File(WorkspaceGeneratedProjectStateService.RelativePath)));
         Assert.Equal("workspace-id", result.Session.Manifest.WorkspaceId);
         Assert.Equal(Physical(workspace.Directory("Cache/Build")), result.Session.BuildDirectory);
         Assert.Equal(Physical(workspace.Directory("Binaries")), result.Session.LogicOutputDirectory);
+        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Current, result.Session.GeneratedProjectState.Status);
     }
 
     [Fact]
@@ -49,6 +51,102 @@ public sealed class WorkspaceLifecycleTests
         Assert.Equal(created.Session.ManifestPath, reopened.Session.ManifestPath);
         Assert.Equal("Sandbox", reopened.Session.Manifest.Name);
         Assert.Equal(Physical(workspace.Directory("Content")), reopened.Session.ContentDirectory);
+    }
+
+    [Fact]
+    public async Task OpenAndSave_UntrackedGeneratedStateRemainNonBlockingWithoutBackfillOrProjectWrites()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id"));
+        var generatedStatePath = workspace.File(WorkspaceGeneratedProjectStateService.RelativePath);
+        File.Delete(generatedStatePath);
+        var ownedProjectFiles = new[]
+        {
+            workspace.File("Generated/CMakeLists.txt"),
+            workspace.File("Source/Components/SampleComponent.h"),
+            workspace.File("Source/Components/SampleComponent.cpp"),
+            workspace.File("Source/WorkspaceTypes.h"),
+            workspace.File("Source/WorkspaceModule.cpp")
+        };
+        var bytesBefore = ownedProjectFiles.ToDictionary(path => path, File.ReadAllBytes);
+
+        var opened = await service.OpenAsync(created.Session!.ManifestPath);
+        var saved = await service.SaveAsync(Assert.IsType<WorkspaceSession>(opened.Session));
+
+        Assert.True(opened.Succeeded, opened.Error);
+        Assert.True(saved.Succeeded, saved.Error);
+        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Untracked, opened.Session!.GeneratedProjectState.Status);
+        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Untracked, saved.Session!.GeneratedProjectState.Status);
+        Assert.True(opened.Session.GeneratedProjectState.RequiresAttention);
+        Assert.False(File.Exists(generatedStatePath));
+        foreach (var path in ownedProjectFiles)
+            Assert.Equal(bytesBefore[path], await File.ReadAllBytesAsync(path));
+    }
+
+    [Fact]
+    public async Task SaveAsync_ChangedCreationInputLeavesGeneratedStateStaleAndUserProjectUntouched()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id"));
+        var session = Assert.IsType<WorkspaceSession>(created.Session);
+        var generatedStatePath = workspace.File(WorkspaceGeneratedProjectStateService.RelativePath);
+        var stateBefore = await File.ReadAllBytesAsync(generatedStatePath);
+        var cmakePath = workspace.File("Generated/CMakeLists.txt");
+        var cmakeBefore = await File.ReadAllBytesAsync(cmakePath);
+        var changed = session with
+        {
+            Manifest = session.Manifest with { LogicModuleName = "RenamedGame" }
+        };
+
+        var result = await service.SaveAsync(changed);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Stale, result.Session!.GeneratedProjectState.Status);
+        var mismatch = Assert.Single(result.Session.GeneratedProjectState.Mismatches);
+        Assert.Equal("logicModuleName", mismatch.Field);
+        Assert.Equal("SailorGame", mismatch.RecordedValue);
+        Assert.Equal("RenamedGame", mismatch.CurrentValue);
+        Assert.Equal(stateBefore, await File.ReadAllBytesAsync(generatedStatePath));
+        Assert.Equal(cmakeBefore, await File.ReadAllBytesAsync(cmakePath));
+    }
+
+    [Fact]
+    public async Task OpenAsync_InvalidOrEscapedGeneratedStateIsAdvisoryAndReadOnly()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var outside = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id"));
+        var stateDirectory = workspace.Directory(".sailor");
+        Directory.Delete(stateDirectory, recursive: true);
+        var outsideState = outside.File("GeneratedProjectState.yaml");
+        const string invalidState = "generatorSchemaVersion: 999\ncreationInputs: {}\n";
+        await File.WriteAllTextAsync(outsideState, invalidState);
+        CreateDirectoryLink(stateDirectory, outside.Root);
+
+        var result = await service.OpenAsync(created.Session!.ManifestPath);
+
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(WorkspaceGeneratedProjectStateStatus.Invalid, result.Session!.GeneratedProjectState.Status);
+        Assert.True(result.Session.GeneratedProjectState.RequiresAttention);
+        Assert.Equal(invalidState, await File.ReadAllTextAsync(outsideState));
     }
 
     [Fact]
@@ -146,6 +244,35 @@ public sealed class WorkspaceLifecycleTests
 
         Assert.Equal("selected manifest placeholder", await File.ReadAllTextAsync(manifestPath));
         Assert.Equal(manifestPath, Assert.Single(Directory.EnumerateFileSystemEntries(workspace.Root)));
+    }
+
+    [Fact]
+    public async Task CreateAsync_ManifestWriteFailureRollsBackGeneratedStateAndProjectFiles()
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var manifestPath = workspace.Directory("Blocked.sailor");
+        Directory.CreateDirectory(manifestPath);
+
+        var result = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Sandbox",
+            workspace.Root,
+            "../Sailor",
+            "workspace-id",
+            manifestPath));
+
+        Assert.False(result.Succeeded);
+        Assert.True(Directory.Exists(manifestPath));
+        Assert.Equal(manifestPath, Assert.Single(Directory.EnumerateFileSystemEntries(workspace.Root)));
+        Assert.False(File.Exists(workspace.File(".gitignore")));
+        Assert.False(File.Exists(workspace.File(WorkspaceGeneratedProjectStateService.RelativePath)));
+        Assert.False(Directory.Exists(workspace.Directory(WorkspaceGeneratedProjectStateService.StateDirectoryName)));
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.False(Directory.Exists(workspace.Directory("Source")));
+        Assert.False(Directory.Exists(workspace.Directory("Generated")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+        Assert.False(Directory.Exists(workspace.Directory("Binaries")));
     }
 
     [Fact]
@@ -458,6 +585,35 @@ public sealed class WorkspaceLifecycleTests
         Assert.Contains("not found", result.Error, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [MemberData(nameof(InvalidManifestVersionPayloads))]
+    public async Task OpenAsync_InvalidManifestVersionDoesNotMutatePublishedOrCandidateState(string payload)
+    {
+        using var currentWorkspace = TempWorkspace.Create();
+        using var candidateWorkspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var recentPath = recent.File("recent.yaml");
+        var service = CreateService(recentPath);
+        var current = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            currentWorkspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(current.Session);
+        var recentBefore = await File.ReadAllBytesAsync(recentPath);
+        var manifestPath = candidateWorkspace.File("candidate.sailor");
+        await File.WriteAllTextAsync(manifestPath, payload);
+
+        var result = await service.OpenAsync(manifestPath);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+        Assert.Equal(payload, await File.ReadAllTextAsync(manifestPath));
+        Assert.Equal(recentBefore, await File.ReadAllBytesAsync(recentPath));
+        Assert.False(Directory.Exists(candidateWorkspace.Directory("Content")));
+        Assert.False(Directory.Exists(candidateWorkspace.Directory("Cache")));
+    }
+
     [Fact]
     public async Task CreateAsync_RejectsPathsOutsideWorkspace()
     {
@@ -581,6 +737,41 @@ public sealed class WorkspaceLifecycleTests
         Assert.Same(published, service.Current);
         Assert.False(Directory.Exists(workspace.Directory("Content")));
         Assert.False(Directory.Exists(workspace.Directory("Cache")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SaveAsync_RejectsMissingOrUnsupportedOnDiskManifestBeforeRecovery(bool writeFutureManifest)
+    {
+        using var workspace = TempWorkspace.Create();
+        using var recent = TempWorkspace.Create();
+        var service = CreateService(recent.File("recent.yaml"));
+        var created = await service.CreateAsync(new WorkspaceCreateRequest(
+            "Current",
+            workspace.Root,
+            "../Sailor",
+            "current-id"));
+        var published = Assert.IsType<WorkspaceSession>(created.Session);
+        Directory.Delete(workspace.Directory("Content"), recursive: true);
+        Directory.Delete(workspace.Directory("Cache"), recursive: true);
+
+        const string futureManifest = "manifestVersion: 2\nworkspaceId: [not, a, scalar]\n";
+        if (writeFutureManifest)
+            await File.WriteAllTextAsync(published.ManifestPath, futureManifest);
+        else
+            File.Delete(published.ManifestPath);
+
+        var result = await service.SaveAsync(published);
+
+        Assert.False(result.Succeeded);
+        Assert.Same(published, service.Current);
+        Assert.False(Directory.Exists(workspace.Directory("Content")));
+        Assert.False(Directory.Exists(workspace.Directory("Cache")));
+        if (writeFutureManifest)
+            Assert.Equal(futureManifest, await File.ReadAllTextAsync(published.ManifestPath));
+        else
+            Assert.False(File.Exists(published.ManifestPath));
     }
 
     [Fact]
@@ -716,6 +907,15 @@ public sealed class WorkspaceLifecycleTests
         var recentStore = new RecentWorkspaceStore(recentPath);
         return new WorkspaceLifecycleService(serializer, template, recentStore);
     }
+
+    public static TheoryData<string> InvalidManifestVersionPayloads => new()
+    {
+        "workspaceId: candidate-id\n",
+        "manifestVersion: 0\n",
+        "manifestVersion: 2\nworkspaceId: [not, a, scalar]\n",
+        "manifestVersion: 1\nmanifestVersion: 1\n",
+        "manifestVersion: [1]\n"
+    };
 
     static string Physical(string path) => WorkspacePathPolicy.NormalizePhysicalPath(path);
 

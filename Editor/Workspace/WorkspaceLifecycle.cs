@@ -24,6 +24,10 @@ public sealed record WorkspaceSession(
 {
     public string BuildDirectory { get; init; } = string.Empty;
     public string LogicOutputDirectory { get; init; } = string.Empty;
+    public WorkspaceGeneratedProjectStateAssessment GeneratedProjectState { get; init; } = new(
+        WorkspaceGeneratedProjectStateStatus.Current,
+        string.Empty,
+        []);
 }
 
 public sealed record WorkspaceLifecycleResult(
@@ -357,15 +361,30 @@ public sealed class WorkspaceLifecycleService
     readonly WorkspaceManifestSerializer _serializer;
     readonly WorkspaceTemplateService _templateService;
     readonly RecentWorkspaceStore _recentWorkspaceStore;
+    readonly WorkspaceGeneratedProjectStateService _generatedProjectState;
 
     public WorkspaceLifecycleService(
         WorkspaceManifestSerializer serializer,
         WorkspaceTemplateService templateService,
         RecentWorkspaceStore recentWorkspaceStore)
+        : this(
+            serializer,
+            templateService,
+            recentWorkspaceStore,
+            new WorkspaceGeneratedProjectStateService())
+    {
+    }
+
+    public WorkspaceLifecycleService(
+        WorkspaceManifestSerializer serializer,
+        WorkspaceTemplateService templateService,
+        RecentWorkspaceStore recentWorkspaceStore,
+        WorkspaceGeneratedProjectStateService generatedProjectState)
     {
         _serializer = serializer;
         _templateService = templateService;
         _recentWorkspaceStore = recentWorkspaceStore;
+        _generatedProjectState = generatedProjectState;
     }
 
     public WorkspaceSession? Current { get; private set; }
@@ -456,11 +475,22 @@ public sealed class WorkspaceLifecycleService
             }
 
             var session = _templateService.CreateSession(workspaceRoot, loadResult.Manifest, manifestPath);
+            session = session with
+            {
+                GeneratedProjectState = await _generatedProjectState.AssessAsync(
+                    workspaceRoot,
+                    loadResult.Manifest,
+                    cancellationToken)
+            };
             recovery = RecoverDefaultDirectories(session);
             session = recovery.Session;
             return new WorkspaceLifecyclePreparationResult(
                 new WorkspaceLifecyclePreparation(session, recovery.Commit, recovery.Rollback),
                 loadResult.Validation);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -523,22 +553,44 @@ public sealed class WorkspaceLifecycleService
     public async Task<WorkspaceLifecycleResult> SaveAsync(WorkspaceSession session, CancellationToken cancellationToken = default)
     {
         WorkspaceDirectoryRecovery? recovery = null;
+        var validation = WorkspaceManifestValidationResult.Success;
         try
         {
+            WorkspacePathPolicy.EnsureInsideRoot(
+                session.WorkspaceRoot,
+                session.ManifestPath,
+                nameof(WorkspaceSession.ManifestPath));
+            var onDisk = await _serializer.LoadAsync(session.ManifestPath, cancellationToken);
+            validation = onDisk.Validation;
+            if (!onDisk.Succeeded)
+            {
+                return new WorkspaceLifecycleResult(
+                    null,
+                    onDisk.Validation,
+                    onDisk.Error);
+            }
+
             var validated = _templateService.CreateSession(session.WorkspaceRoot, session.Manifest, session.ManifestPath);
+            validated = validated with
+            {
+                GeneratedProjectState = await _generatedProjectState.AssessAsync(
+                    validated.WorkspaceRoot,
+                    validated.Manifest,
+                    cancellationToken)
+            };
             recovery = RecoverDefaultDirectories(validated);
             validated = recovery.Session;
             await _serializer.SaveAsync(validated.ManifestPath, validated.Manifest, cancellationToken);
             await _recentWorkspaceStore.RecordAsync(validated, cancellationToken);
             recovery.Commit();
             Current = validated;
-            return new WorkspaceLifecycleResult(validated, WorkspaceManifestValidationResult.Success);
+            return new WorkspaceLifecycleResult(validated, validation);
         }
         catch (Exception ex)
         {
             return new WorkspaceLifecycleResult(
                 null,
-                WorkspaceManifestValidationResult.Success,
+                validation,
                 RollbackRecovery(recovery, ex).Message);
         }
     }
@@ -575,7 +627,10 @@ public sealed class WorkspaceLifecycleService
             var resolved = _templateService.CreateSession(
                 session.WorkspaceRoot,
                 session.Manifest,
-                session.ManifestPath);
+                session.ManifestPath) with
+            {
+                GeneratedProjectState = session.GeneratedProjectState
+            };
             if (!Directory.Exists(resolved.ContentDirectory))
                 throw new DirectoryNotFoundException($"ContentPath was not recovered: {resolved.ContentDirectory}");
             if (!Directory.Exists(resolved.CacheDirectory))
