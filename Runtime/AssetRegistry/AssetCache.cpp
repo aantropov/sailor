@@ -1,4 +1,5 @@
 #include "AssetCache.h"
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/ConcurrentMap.h"
@@ -262,8 +263,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 	}
 
 	AssetCacheData candidate;
-	std::unordered_set<std::string> fileIds;
-	fileIds.reserve(assets.size());
+	TSet<std::string> fileIds;
 	for (const auto& serializedEntry : assets)
 	{
 		if (!serializedEntry.first.IsScalar())
@@ -273,7 +273,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		}
 
 		const std::string serializedFileId = serializedEntry.first.Scalar();
-		if (!fileIds.emplace(serializedFileId).second)
+		if (!fileIds.Insert(serializedFileId))
 		{
 			outDiagnostic = "Asset cache contains duplicate file id '" + serializedFileId + "'.";
 			return false;

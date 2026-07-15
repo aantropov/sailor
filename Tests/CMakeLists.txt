@@ -171,6 +171,9 @@ target_compile_definitions(WorkspaceModuleMissingEntryFixture PRIVATE
 )
 target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleIncompatibleFixture PRIVATE Sailor::Runtime)
+target_link_libraries(RemoteViewportRuntimeTests PRIVATE Sailor::Runtime)
+target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
+target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
 )
@@ -211,10 +214,12 @@ if(WIN32)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
+    target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
 endif()
 if(APPLE)
     target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacNativeBridgeTests PRIVATE cxx_std_20)
+    target_link_libraries(RemoteViewportMacTransportTests PRIVATE Sailor::Runtime)
 endif()
 target_include_directories(RemoteViewportFoundationTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
@@ -401,6 +406,11 @@ endif()
 add_test(
     NAME RuntimeNoExceptions
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_exceptions_test.py ${SAILOR_RUNTIME_DIR}
+)
+
+add_test(
+    NAME RuntimeNoStdContainers
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_std_containers_test.py ${SAILOR_RUNTIME_DIR}
 )
 
 add_test(

@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 #include "Containers/Concepts.h"
 #include "Core/Defines.h"
 #include "Core/IReflectable.h"
@@ -476,7 +477,7 @@ namespace Sailor
 		static void RegisterType(const std::string& typeName, const TypeInfo* pType);
 		static bool RegisterWorkspaceTypes(
 			const std::string& owner,
-			std::vector<WorkspaceTypeRegistration>&& registrations,
+			TVector<WorkspaceTypeRegistration>&& registrations,
 			std::string& outError);
 		static size_t UnregisterWorkspaceTypes(const std::string& owner);
 		static bool IsWorkspaceTypeRegistered(const std::string& typeName);

@@ -1,4 +1,5 @@
 #include "Workspace/WorkspaceCacheContract.h"
+#include "Containers/Containers.h"
 
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspaceModuleApi.h"
@@ -36,6 +37,7 @@
 
 namespace
 {
+	using Sailor::TSet;
 	using namespace Sailor::Workspace;
 
 	constexpr const char* CacheVersionField = "cacheVersion";
@@ -47,7 +49,7 @@ namespace
 	constexpr const char* BuildIdentityField = "buildIdentity";
 	constexpr const char* PayloadField = "payload";
 
-	const std::unordered_set<std::string> EnvelopeFields =
+	const TSet<std::string> EnvelopeFields =
 	{
 		CacheVersionField,
 		PayloadVersionField,
@@ -99,8 +101,7 @@ namespace
 		const std::string& sourceName,
 		std::string& outDiagnostic)
 	{
-		std::unordered_set<std::string> keys;
-		keys.reserve(document.size());
+		TSet<std::string> keys;
 		for (const auto& field : document)
 		{
 			if (!field.first.IsScalar())
@@ -110,7 +111,7 @@ namespace
 			}
 
 			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.emplace(key).second)
+			if (key.empty() || !keys.Insert(key))
 			{
 				outDiagnostic = sourceName + " is corrupt: its envelope contains duplicate or empty field " +
 					Quote(key) + ".";
@@ -129,7 +130,7 @@ namespace
 		for (const auto& field : document)
 		{
 			const std::string key = field.first.Scalar();
-			if (!EnvelopeFields.contains(key))
+			if (!EnvelopeFields.Contains(key))
 			{
 				outDiagnostic = sourceName + " is corrupt: its current envelope contains unknown field " +
 					Quote(key) + ".";

@@ -1,4 +1,5 @@
 #include "Workspace/WorkspaceContext.h"
+#include "Containers/Containers.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "YamlExceptionBoundary.h"
 
@@ -13,6 +14,8 @@
 
 namespace
 {
+	using Sailor::TSet;
+	using Sailor::TVector;
 	using namespace Sailor::Workspace;
 
 	constexpr uint32_t SupportedManifestVersion = 1;
@@ -70,25 +73,22 @@ namespace
 				return;
 			}
 
-			for (auto it = m_directories.rbegin(); it != m_directories.rend(); ++it)
+			for (size_t index = m_directories.Num(); index > 0; --index)
 			{
 				std::error_code removeError;
-				std::filesystem::remove(*it, removeError);
+				std::filesystem::remove(m_directories[index - 1], removeError);
 			}
 		}
 
-		void Track(std::vector<std::filesystem::path> directories)
+		void Track(TVector<std::filesystem::path>&& directories)
 		{
-			m_directories.insert(
-				m_directories.end(),
-				std::make_move_iterator(directories.begin()),
-				std::make_move_iterator(directories.end()));
+			m_directories.AddRange(std::move(directories));
 		}
 
 		void Commit() noexcept { m_bCommitted = true; }
 
 	private:
-		std::vector<std::filesystem::path> m_directories;
+		TVector<std::filesystem::path> m_directories;
 		bool m_bCommitted = false;
 	};
 
@@ -223,8 +223,7 @@ namespace
 			return false;
 		}
 
-		std::unordered_set<std::string> keys;
-		keys.reserve(document.size());
+		TSet<std::string> keys;
 		for (const auto& field : document)
 		{
 			if (!field.first.IsScalar())
@@ -234,7 +233,7 @@ namespace
 			}
 
 			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.emplace(key).second)
+			if (key.empty() || !keys.Insert(key))
 			{
 				outError = "Workspace manifest contains duplicate or empty field '" + key + "'.";
 				return false;
@@ -571,7 +570,7 @@ namespace
 			return true;
 		}
 
-		std::vector<std::filesystem::path> missingDirectories;
+		TVector<std::filesystem::path> missingDirectories;
 		for (std::filesystem::path current = directory;
 			current != root && !current.empty();
 			current = current.parent_path())
@@ -587,7 +586,7 @@ namespace
 					"' could not be inspected: '" + PathToUtf8(current) + "'.";
 				return false;
 			}
-			missingDirectories.emplace_back(current);
+			missingDirectories.Add(current);
 		}
 
 		std::reverse(missingDirectories.begin(), missingDirectories.end());
@@ -700,7 +699,7 @@ namespace
 			return true;
 		}
 
-		std::vector<std::filesystem::path> manifests;
+		TVector<std::filesystem::path> manifests;
 		for (std::filesystem::directory_iterator it(root, pathError), end;
 			!pathError && it != end;
 			it.increment(pathError))
@@ -708,7 +707,7 @@ namespace
 			std::error_code entryError;
 			if (it->is_regular_file(entryError) && !entryError && HasSailorExtension(it->path()))
 			{
-				manifests.emplace_back(it->path());
+				manifests.Add(it->path());
 			}
 		}
 		if (pathError)
@@ -720,12 +719,12 @@ namespace
 		}
 
 		std::sort(manifests.begin(), manifests.end());
-		if (manifests.empty())
+		if (manifests.Num() == 0)
 		{
 			outManifest.clear();
 			return true;
 		}
-		if (manifests.size() > 1)
+		if (manifests.Num() > 1)
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::ManifestAmbiguous;
 			outError = "Multiple .sailor manifests were found in '" + PathToUtf8(root) +
@@ -733,7 +732,7 @@ namespace
 			return false;
 		}
 
-		outManifest = std::filesystem::canonical(manifests.front(), pathError);
+		outManifest = std::filesystem::canonical(manifests[0], pathError);
 		if (pathError || !IsInside(root, outManifest))
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::PathInvalid;

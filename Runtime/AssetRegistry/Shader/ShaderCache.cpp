@@ -1,4 +1,5 @@
 #include "ShaderCache.h"
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
@@ -84,13 +85,13 @@ namespace
 			return false;
 		}
 
-		std::unordered_set<std::string> expected;
+		TSet<std::string> expected;
 		for (const char* field : expectedFields)
 		{
-			expected.emplace(field);
+			expected.Insert(field);
 		}
 
-		std::unordered_set<std::string> actual;
+		TSet<std::string> actual;
 		for (const auto& field : node)
 		{
 			if (!field.first.IsScalar())
@@ -100,12 +101,12 @@ namespace
 			}
 
 			const std::string name = field.first.Scalar();
-			if (!actual.emplace(name).second)
+			if (!actual.Insert(name))
 			{
 				outDiagnostic = context + " contains duplicate field '" + name + "'.";
 				return false;
 			}
-			if (!expected.contains(name))
+			if (!expected.Contains(name))
 			{
 				outDiagnostic = context + " contains unknown field '" + name + "'.";
 				return false;
@@ -114,7 +115,7 @@ namespace
 
 		for (const std::string& field : expected)
 		{
-			if (!actual.contains(field))
+			if (!actual.Contains(field))
 			{
 				outDiagnostic = context + " is missing required field '" + field + "'.";
 				return false;
@@ -546,7 +547,7 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 	};
 
 	ShaderCacheData candidate;
-	std::unordered_set<std::string> fileIds;
+	TSet<std::string> fileIds;
 	for (const auto& serializedFileEntries : entriesNode)
 	{
 		if (!serializedFileEntries.first.IsScalar())
@@ -556,7 +557,7 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 		}
 
 		const std::string serializedFileId = serializedFileEntries.first.Scalar();
-		if (!fileIds.emplace(serializedFileId).second)
+		if (!fileIds.Insert(serializedFileId))
 		{
 			outDiagnostic = "Shader cache contains duplicate file id '" + serializedFileId + "'.";
 			return false;
@@ -579,7 +580,7 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 
 		TVector<ShaderCacheData::Entry> entries;
 		entries.Reserve(entrySequence.size());
-		std::unordered_set<uint32_t> permutations;
+		TSet<uint32_t> permutations;
 		for (size_t index = 0; index < entrySequence.size(); ++index)
 		{
 			const std::string context = "Shader cache entry '" + serializedFileId +
@@ -615,7 +616,7 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 				outDiagnostic = context + " has a mismatched fileId field.";
 				return false;
 			}
-			if (!permutations.emplace(entry.m_permutation).second)
+			if (!permutations.Insert(entry.m_permutation))
 			{
 				outDiagnostic = context + " duplicates permutation " +
 					std::to_string(entry.m_permutation) + ".";
@@ -761,7 +762,7 @@ ShaderCache::ArtifactMetadata ShaderCache::DescribeArtifact(const void* data, ui
 bool ShaderCache::ReadArtifactBytes(
 	const std::filesystem::path& path,
 	const ArtifactMetadata& metadata,
-	std::vector<uint8_t>& outBytes,
+	TVector<uint8_t>& outBytes,
 	std::string& outDiagnostic,
 	bool& outIoFailure) noexcept
 {
@@ -773,7 +774,7 @@ bool ShaderCache::ReadArtifactBytes(
 	}
 	if (!metadata.IsPresent())
 	{
-		outBytes.clear();
+		outBytes.Clear();
 		outDiagnostic.clear();
 		return true;
 	}
@@ -810,17 +811,17 @@ bool ShaderCache::ReadArtifactBytes(
 		return false;
 	}
 
-	std::vector<uint8_t> candidate(static_cast<size_t>(metadata.m_byteLength));
+	TVector<uint8_t> candidate(static_cast<size_t>(metadata.m_byteLength));
 	stream.read(
-		reinterpret_cast<char*>(candidate.data()),
-		static_cast<std::streamsize>(candidate.size()));
-	if (stream.gcount() != static_cast<std::streamsize>(candidate.size()) || stream.bad())
+		reinterpret_cast<char*>(candidate.GetData()),
+		static_cast<std::streamsize>(candidate.Num()));
+	if (stream.gcount() != static_cast<std::streamsize>(candidate.Num()) || stream.bad())
 	{
 		outIoFailure = stream.bad();
 		outDiagnostic = "Shader artifact read was incomplete for '" + path.generic_string() + "'.";
 		return false;
 	}
-	if (CalculateArtifactChecksum(candidate.data(), candidate.size()) != metadata.m_checksum)
+	if (CalculateArtifactChecksum(candidate.GetData(), candidate.Num()) != metadata.m_checksum)
 	{
 		outDiagnostic = "Shader artifact checksum mismatch for '" + path.generic_string() + "'.";
 		return false;
@@ -873,17 +874,17 @@ bool ShaderCache::ReadSpirvArtifactInternal(
 		return false;
 	}
 
-	std::vector<uint8_t> bytes;
+	TVector<uint8_t> bytes;
 	if (!ReadArtifactBytes(path, metadata, bytes, outDiagnostic, outIoFailure))
 	{
 		return false;
 	}
 
 	TVector<uint32_t> candidate;
-	candidate.Resize(bytes.size() / sizeof(uint32_t));
-	if (!bytes.empty())
+	candidate.Resize(bytes.Num() / sizeof(uint32_t));
+	if (!bytes.IsEmpty())
 	{
-		std::memcpy(candidate.GetData(), bytes.data(), bytes.size());
+		std::memcpy(candidate.GetData(), bytes.GetData(), bytes.Num());
 	}
 	outSpirv = std::move(candidate);
 	return true;
@@ -2065,7 +2066,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 		return false;
 	}
 
-	std::unordered_set<std::string> whitelist;
+	TSet<std::string> whitelist;
 	for (const auto& fileEntries : committedSnapshot.m_data)
 	{
 		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
@@ -2086,10 +2087,10 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.emplace(GetArtifactPathLocked(entry, kind, false).lexically_normal().generic_string());
+					whitelist.Insert(GetArtifactPathLocked(entry, kind, false).lexically_normal().generic_string());
 					if (m_bSavePrecompiledGlsl)
 					{
-						whitelist.emplace(GetShaderFilepath(
+						whitelist.Insert(GetShaderFilepath(
 							GetPrecompiledFolderLocked(),
 							entry.m_fileId,
 							entry.m_permutation,
@@ -2102,7 +2103,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.emplace(GetArtifactPathLocked(entry, kind, true).lexically_normal().generic_string());
+					whitelist.Insert(GetArtifactPathLocked(entry, kind, true).lexically_normal().generic_string());
 				}
 			}
 		}
@@ -2124,7 +2125,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 		{
 			const auto& path = iterator->path();
 			if (iterator->is_regular_file(error) &&
-				!whitelist.contains(path.lexically_normal().generic_string()))
+				!whitelist.Contains(path.lexically_normal().generic_string()))
 			{
 				std::string diagnostic;
 				if (!RemoveOwnedArtifact(m_cacheRoot, folder, path, diagnostic))

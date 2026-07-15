@@ -49,10 +49,10 @@ namespace Sailor
 			bool operator!=(const TBaseIterator& rhs) const { return m_it != rhs.m_it; }
 
 			TPair<TKeyType, TValueType*> operator*() { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
-			TPair<TKeyType, const TValueType*> operator*() const { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
+			TPair<TKeyType, const TValueType*> operator*() const { return TPair<TKeyType, const TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
 
 			TPair<TKeyType, TValueType*> operator->() { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
-			TPair<TKeyType, const TValueType*> operator->() const { return TPair<TKeyType, TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
+			TPair<TKeyType, const TValueType*> operator->() const { return TPair<TKeyType, const TValueType*>(m_it->m_first, &(*m_map->m_values[m_it->m_second])); }
 
 			const TKeyType& Key() const { return m_it->m_first; }
 
@@ -162,8 +162,13 @@ namespace Sailor
 			Insert(key, value);
 		}
 
-		void Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
+		bool Insert(const TKeyType& key, const TValueType& value) requires IsCopyConstructible<TValueType>
 		{
+			if (ContainsKey(key))
+			{
+				return false;
+			}
+
 			size_t index = 0;
 			if (m_freeList.Num() > 0)
 			{
@@ -178,10 +183,16 @@ namespace Sailor
 			}
 
 			Super::Insert(TElementType(key, index));
+			return true;
 		}
 
-		void Insert(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
+		bool Insert(const TKeyType& key, TValueType&& value) requires IsMoveConstructible<TValueType>
 		{
+			if (ContainsKey(key))
+			{
+				return false;
+			}
+
 			size_t index = 0;
 			if (m_freeList.Num() > 0)
 			{
@@ -196,6 +207,7 @@ namespace Sailor
 			}
 
 			Super::Insert(TElementType(key, index));
+			return true;
 		}
 
 		bool Remove(const TKeyType& key)

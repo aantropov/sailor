@@ -1,6 +1,7 @@
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
 #include <chrono>
+#include "Containers/Containers.h"
 #include <cstdlib>
 #include <set>
 #include <map>
@@ -593,7 +594,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	m_queueFamilies = VulkanApi::FindQueueFamilies(physicalDevice, m_surface);
 
 	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
+	TSet<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
 		m_queueFamilies.m_transferFamily.value() };
 

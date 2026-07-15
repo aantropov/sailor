@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetRegistry.h"
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
@@ -301,12 +302,12 @@ bool AssetRegistry::ResolveContentFile(
 		return false;
 	}
 
-	const auto winner = m_contentFileWinners.find(VirtualPathKey(virtualPath));
+	const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
 	if (winner == m_contentFileWinners.end())
 	{
 		return false;
 	}
-	outLocation = winner->second;
+	outLocation = winner.Value();
 	return true;
 }
 
@@ -423,21 +424,21 @@ void AssetRegistry::ScanContentFolder()
 		return;
 	}
 
-	std::map<std::string, const AssetMountDiscoveredFile*> filesByMountAndVirtualPath;
-	std::set<std::string> metadataFileKeys;
+	TMap<std::string, const AssetMountDiscoveredFile*> filesByMountAndVirtualPath;
+	TSet<std::string> metadataFileKeys;
 	for (const AssetMountDiscoveredFile& file : discovery.m_files)
 	{
 		const std::string key = MountFileKey(file.m_mount, file.m_virtualPath);
-		filesByMountAndVirtualPath.emplace(key, &file);
+		filesByMountAndVirtualPath.Insert(key, &file);
 		if (Extension(file.m_virtualPath) == MetaFileExtension)
 		{
-			metadataFileKeys.emplace(key);
+			metadataFileKeys.Insert(key);
 		}
 	}
 
-	std::vector<StagedAssetRecord> records;
-	std::set<std::string> consumedPrimaryMetadata;
-	std::set<std::string> invalidMetadata;
+	TVector<StagedAssetRecord> records;
+	TSet<std::string> consumedPrimaryMetadata;
+	TSet<std::string> invalidMetadata;
 	for (const AssetMountDiscoveredFile& metaFile : discovery.m_files)
 	{
 		if (Extension(metaFile.m_virtualPath) != MetaFileExtension)
@@ -457,7 +458,7 @@ void AssetRegistry::ScanContentFolder()
 				assetInfoType,
 				metadataError))
 		{
-			invalidMetadata.emplace(metaKey);
+			invalidMetadata.Insert(metaKey);
 			SAILOR_LOG_ERROR(
 				"Invalid asset metadata '%s': %s.",
 				metaFile.m_physicalPath.generic_string().c_str(),
@@ -467,7 +468,7 @@ void AssetRegistry::ScanContentFolder()
 
 		const std::string basenameVirtualPath = std::filesystem::path(
 			metaFile.m_virtualPath).replace_extension().generic_string();
-		const auto basenameAsset = filesByMountAndVirtualPath.find(
+		const auto basenameAsset = filesByMountAndVirtualPath.Find(
 			MountFileKey(metaFile.m_mount, basenameVirtualPath));
 		const bool bFilenameMatchesBasename =
 			std::filesystem::path(filename).generic_string() ==
@@ -482,18 +483,18 @@ void AssetRegistry::ScanContentFolder()
 		if (basenameAsset != filesByMountAndVirtualPath.end() && bFilenameMatchesBasename)
 		{
 			record.m_bPrimary = true;
-			record.m_assetPath = basenameAsset->second->m_physicalPath;
-			record.m_assetVirtualPath = basenameAsset->second->m_virtualPath;
+			record.m_assetPath = basenameAsset.Value()->m_physicalPath;
+			record.m_assetVirtualPath = basenameAsset.Value()->m_virtualPath;
 			record.m_candidate.m_physicalPath = record.m_assetPath;
 			record.m_candidate.m_virtualPath = record.m_assetVirtualPath;
-			consumedPrimaryMetadata.emplace(metaKey);
+			consumedPrimaryMetadata.Insert(metaKey);
 		}
 		else
 		{
 			const std::string declaredVirtualPath = (
 				std::filesystem::path(metaFile.m_virtualPath).parent_path() /
 				filename).generic_string();
-			const auto declaredAsset = filesByMountAndVirtualPath.find(
+			const auto declaredAsset = filesByMountAndVirtualPath.Find(
 				MountFileKey(metaFile.m_mount, declaredVirtualPath));
 			if (declaredAsset == filesByMountAndVirtualPath.end())
 			{
@@ -504,13 +505,13 @@ void AssetRegistry::ScanContentFolder()
 				continue;
 			}
 
-			record.m_assetPath = declaredAsset->second->m_physicalPath;
-			record.m_assetVirtualPath = declaredAsset->second->m_virtualPath;
+			record.m_assetPath = declaredAsset.Value()->m_physicalPath;
+			record.m_assetVirtualPath = declaredAsset.Value()->m_virtualPath;
 			record.m_candidate.m_physicalPath = record.m_metaPath;
 			record.m_candidate.m_virtualPath = record.m_metaVirtualPath;
 		}
 		record.m_candidate.m_fileId = fileId;
-		records.emplace_back(std::move(record));
+		records.Add(std::move(record));
 	}
 
 	for (const AssetMountDiscoveredFile& assetFile : discovery.m_files)
@@ -522,7 +523,7 @@ void AssetRegistry::ScanContentFolder()
 
 		const std::string metaVirtualPath = assetFile.m_virtualPath + "." + MetaFileExtension;
 		const std::string metaKey = MountFileKey(assetFile.m_mount, metaVirtualPath);
-		if (consumedPrimaryMetadata.contains(metaKey))
+		if (consumedPrimaryMetadata.Contains(metaKey))
 		{
 			continue;
 		}
@@ -536,16 +537,16 @@ void AssetRegistry::ScanContentFolder()
 		record.m_metaPath = assetFile.m_physicalPath.string() + "." + MetaFileExtension;
 		record.m_metaVirtualPath = metaVirtualPath;
 		record.m_bPrimary = true;
-		record.m_bMetadataInvalid = invalidMetadata.contains(metaKey) ||
-			(metadataFileKeys.contains(metaKey) && !consumedPrimaryMetadata.contains(metaKey));
-		records.emplace_back(std::move(record));
+		record.m_bMetadataInvalid = invalidMetadata.Contains(metaKey) ||
+			(metadataFileKeys.Contains(metaKey) && !consumedPrimaryMetadata.Contains(metaKey));
+		records.Add(std::move(record));
 	}
 
-	std::vector<AssetMountCandidate> candidates;
-	candidates.reserve(records.size());
+	TVector<AssetMountCandidate> candidates;
+	candidates.Reserve(records.Num());
 	for (const StagedAssetRecord& record : records)
 	{
-		candidates.emplace_back(record.m_candidate);
+		candidates.Add(record.m_candidate);
 	}
 	const AssetMountResolutionResult resolution = ResolveAssetMountCandidates(std::move(candidates));
 	for (const AssetMountDiagnostic& diagnostic : resolution.GetDiagnostics())
@@ -553,7 +554,7 @@ void AssetRegistry::ScanContentFolder()
 		SAILOR_LOG("%s", diagnostic.m_message.c_str());
 	}
 
-	std::map<std::string, AssetReadLocation> stagedContentWinners;
+	TMap<std::string, AssetReadLocation> stagedContentWinners;
 	for (const StagedAssetRecord& record : records)
 	{
 		if (!record.m_bPrimary ||
@@ -576,15 +577,15 @@ void AssetRegistry::ScanContentFolder()
 	TMap<FileId, AssetInfoPtr> stagedAssetInfos;
 	TMap<std::string, FileId> stagedFileIds;
 	TMap<std::string, FileId> stagedPhysicalFileIds;
-	std::vector<PendingAssetNotification> pendingNotifications;
-	std::vector<std::filesystem::path> importedMetadata;
+	TVector<PendingAssetNotification> pendingNotifications;
+	TVector<std::filesystem::path> importedMetadata;
 	auto rollbackStaging = [&]()
 	{
 		DeleteAssetInfos(stagedAssetInfos);
-		for (auto it = importedMetadata.rbegin(); it != importedMetadata.rend(); ++it)
+		for (size_t index = importedMetadata.Num(); index > 0; --index)
 		{
 			std::error_code removeError;
-			std::filesystem::remove(*it, removeError);
+			std::filesystem::remove(importedMetadata[index - 1], removeError);
 		}
 	};
 	for (const StagedAssetRecord& record : records)
@@ -611,7 +612,7 @@ void AssetRegistry::ScanContentFolder()
 			const bool bMetaExisted = std::filesystem::exists(record.m_metaPath);
 			if (!bMetaExisted)
 			{
-				importedMetadata.emplace_back(record.m_metaPath);
+				importedMetadata.Add(record.m_metaPath);
 			}
 			AssetInfoPtr assetInfo = handler->ImportAsset(
 				record.m_assetPath.string(),
@@ -621,7 +622,7 @@ void AssetRegistry::ScanContentFolder()
 			stagedAssetInfos[assetInfo->GetFileId()] = assetInfo;
 			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = assetInfo->GetFileId();
 			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = assetInfo->GetFileId();
-			pendingNotifications.push_back({ handler, assetInfo, true });
+			pendingNotifications.Add({ handler, assetInfo, true });
 			continue;
 		}
 
@@ -672,7 +673,7 @@ void AssetRegistry::ScanContentFolder()
 		{
 			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
 		}
-		pendingNotifications.push_back({ handler, assetInfo, false });
+		pendingNotifications.Add({ handler, assetInfo, false });
 	}
 
 	for (const StagedAssetRecord& record : records)
@@ -698,10 +699,10 @@ void AssetRegistry::ScanContentFolder()
 		if (!scheduler->IsMainThread())
 		{
 			DeleteAssetInfos(stagedAssetInfos);
-			for (auto it = importedMetadata.rbegin(); it != importedMetadata.rend(); ++it)
+			for (size_t i = importedMetadata.Num(); i > 0; --i)
 			{
 				std::error_code removeError;
-				std::filesystem::remove(*it, removeError);
+				std::filesystem::remove(importedMetadata[i - 1], removeError);
 			}
 			SAILOR_LOG_ERROR(
 				"Asset registry generations may only be committed from the main thread; preserving the previous generation.");
@@ -778,10 +779,10 @@ bool AssetRegistry::ResolveDirectLoadPath(
 			IsInside(App::GetWorkspaceContext().GetContent(), workspaceCandidate))
 		{
 			const std::string virtualPath = std::filesystem::path(requestedPath).generic_string();
-			const auto winner = m_contentFileWinners.find(VirtualPathKey(virtualPath));
+			const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
 			if (winner == m_contentFileWinners.end() ||
-				winner->second.m_mountKind == EAssetMountKind::Engine ||
-				PathKey(winner->second.m_physicalPath) == PathKey(workspaceCandidate))
+				winner.Value().m_mountKind == EAssetMountKind::Engine ||
+				PathKey(winner.Value().m_physicalPath) == PathKey(workspaceCandidate))
 			{
 				outLocation = AssetReadLocation{
 					workspaceCandidate,
@@ -815,16 +816,16 @@ bool AssetRegistry::ResolveDirectLoadPath(
 		if (IsInside(mount.m_root, candidate))
 		{
 			const std::string virtualPath = candidate.lexically_relative(mount.m_root).generic_string();
-			const auto winner = m_contentFileWinners.find(VirtualPathKey(virtualPath));
+			const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
 			if (winner != m_contentFileWinners.end() &&
-				PathKey(winner->second.m_physicalPath) == PathKey(candidate))
+				PathKey(winner.Value().m_physicalPath) == PathKey(candidate))
 			{
-				outLocation = winner->second;
+				outLocation = winner.Value();
 				return true;
 			}
 			if (mount.m_kind != EAssetMountKind::Workspace || !mount.m_bWritable ||
 				(winner != m_contentFileWinners.end() &&
-					winner->second.m_mountKind == EAssetMountKind::Workspace))
+					winner.Value().m_mountKind == EAssetMountKind::Workspace))
 			{
 				return false;
 			}

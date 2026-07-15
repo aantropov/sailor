@@ -422,8 +422,8 @@ namespace
 			return new (destination) WorkspaceOwnerSentinel::OwnerSentinelComponent();
 		};
 
-		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
-		registrations.emplace_back(std::move(sentinelRegistration));
+		Sailor::TVector<Reflection::WorkspaceTypeRegistration> registrations;
+		registrations.Add(std::move(sentinelRegistration));
 		std::string registrationError;
 		Require(
 			Reflection::RegisterWorkspaceTypes(owner, std::move(registrations), registrationError),

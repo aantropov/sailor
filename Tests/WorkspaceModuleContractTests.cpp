@@ -336,8 +336,8 @@ namespace
 		};
 
 		constexpr const char* owner = "WorkspaceModuleContractTests.FactoryInvocationLease";
-		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
-		registrations.emplace_back(std::move(registration));
+		Sailor::TVector<Reflection::WorkspaceTypeRegistration> registrations;
+		registrations.Add(std::move(registration));
 		std::string registrationError;
 		Require(Reflection::RegisterWorkspaceTypes(owner, std::move(registrations), registrationError),
 			"workspace fixture should register for lease validation: " + registrationError);
