@@ -148,7 +148,7 @@ namespace Sailor
 	};
 
 	template<typename T>
-	class SAILOR_API TUniquePtr<T[]> final
+	class TUniquePtr<T[]> final
 	{
 	public:
 
