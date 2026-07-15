@@ -1,7 +1,6 @@
 #include "Platform/DynamicLibrary.h"
 
 #include <cstring>
-#include <exception>
 #include <iterator>
 #include <system_error>
 #include <utility>
@@ -159,125 +158,99 @@ Sailor::Platform::DynamicLibrary& Sailor::Platform::DynamicLibrary::operator=(Dy
 
 bool Sailor::Platform::DynamicLibrary::Open(const std::filesystem::path& path) noexcept
 {
-	try
+	if (!Close())
 	{
-		if (!Close())
-		{
-			return false;
-		}
+		return false;
+	}
 
-		if (path.empty())
-		{
-			SetError("Cannot open dynamic library: path is empty.");
-			return false;
-		}
+	if (path.empty())
+	{
+		SetError("Cannot open dynamic library: path is empty.");
+		return false;
+	}
 
-		std::error_code pathError;
-		m_path = std::filesystem::absolute(path, pathError).lexically_normal();
-		if (pathError)
-		{
-			m_path = path;
-			SetError(
-				"Cannot resolve dynamic library path '" + DescribePath(path) + "': " +
-				pathError.message() + ".");
-			return false;
-		}
+	std::error_code pathError;
+	m_path = std::filesystem::absolute(path, pathError).lexically_normal();
+	if (pathError)
+	{
+		m_path = path;
+		SetError(
+			"Cannot resolve dynamic library path '" + DescribePath(path) + "': " +
+			pathError.message() + ".");
+		return false;
+	}
 
 #if defined(_WIN32)
-		constexpr DWORD safeSearchFlags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
-		HMODULE handle = LoadLibraryExW(m_path.c_str(), nullptr, safeSearchFlags);
-		if (handle == nullptr)
-		{
-			const DWORD errorCode = GetLastError();
-			SetError(
-				"Failed to load dynamic library '" + DescribePath(m_path) + "': " +
-				DescribeWindowsError(errorCode) + ". Rebuild the module and verify its dependent DLLs are available.");
-			return false;
-		}
-		m_handle = static_cast<void*>(handle);
+	constexpr DWORD safeSearchFlags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+	HMODULE handle = LoadLibraryExW(m_path.c_str(), nullptr, safeSearchFlags);
+	if (handle == nullptr)
+	{
+		const DWORD errorCode = GetLastError();
+		SetError(
+			"Failed to load dynamic library '" + DescribePath(m_path) + "': " +
+			DescribeWindowsError(errorCode) + ". Rebuild the module and verify its dependent DLLs are available.");
+		return false;
+	}
+	m_handle = static_cast<void*>(handle);
 #else
-		dlerror();
-		m_handle = dlopen(m_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-		if (m_handle == nullptr)
-		{
-			const char* loaderError = dlerror();
-			SetError(
-				"Failed to load dynamic library '" + DescribePath(m_path) + "': " +
-				(loaderError != nullptr ? loaderError : "unknown loader error") + ".");
-			return false;
-		}
+	dlerror();
+	m_handle = dlopen(m_path.c_str(), RTLD_NOW | RTLD_LOCAL);
+	if (m_handle == nullptr)
+	{
+		const char* loaderError = dlerror();
+		SetError(
+			"Failed to load dynamic library '" + DescribePath(m_path) + "': " +
+			(loaderError != nullptr ? loaderError : "unknown loader error") + ".");
+		return false;
+	}
 #endif
 
-		m_error.clear();
-		return true;
-	}
-	catch (const std::exception&)
-	{
-		SetError("Failed to open dynamic library: unexpected standard-library error.");
-		return false;
-	}
-	catch (...)
-	{
-		SetError("Failed to open dynamic library: unexpected error.");
-		return false;
-	}
+	m_error.clear();
+	return true;
 }
 
 void* Sailor::Platform::DynamicLibrary::GetSymbol(const char* symbolName) noexcept
 {
-	try
+	if (symbolName == nullptr || symbolName[0] == '\0')
 	{
-		if (symbolName == nullptr || symbolName[0] == '\0')
-		{
-			SetError("Cannot resolve dynamic-library symbol: name is empty.");
-			return nullptr;
-		}
+		SetError("Cannot resolve dynamic-library symbol: name is empty.");
+		return nullptr;
+	}
 
-		if (!IsOpen())
-		{
-			SetError("Cannot resolve symbol '" + std::string(symbolName) + "': no dynamic library is open.");
-			return nullptr;
-		}
+	if (!IsOpen())
+	{
+		SetError("Cannot resolve symbol '" + std::string(symbolName) + "': no dynamic library is open.");
+		return nullptr;
+	}
 
 #if defined(_WIN32)
-		FARPROC symbol = GetProcAddress(static_cast<HMODULE>(m_handle), symbolName);
-		if (symbol == nullptr)
-		{
-			const DWORD errorCode = GetLastError();
-			SetError(
-				"Failed to resolve symbol '" + std::string(symbolName) + "' from dynamic library '" +
-				DescribePath(m_path) + "': " + DescribeWindowsError(errorCode) + ".");
-			return nullptr;
-		}
-		static_assert(sizeof(void*) == sizeof(FARPROC));
-		void* result = nullptr;
-		std::memcpy(&result, &symbol, sizeof(result));
+	FARPROC symbol = GetProcAddress(static_cast<HMODULE>(m_handle), symbolName);
+	if (symbol == nullptr)
+	{
+		const DWORD errorCode = GetLastError();
+		SetError(
+			"Failed to resolve symbol '" + std::string(symbolName) + "' from dynamic library '" +
+			DescribePath(m_path) + "': " + DescribeWindowsError(errorCode) + ".");
+		return nullptr;
+	}
+	static_assert(sizeof(void*) == sizeof(FARPROC));
+	void* result = nullptr;
+	std::memcpy(&result, &symbol, sizeof(result));
 #else
-		dlerror();
-		void* result = dlsym(m_handle, symbolName);
-		const char* loaderError = dlerror();
-		if (loaderError != nullptr)
-		{
-			SetError(
-				"Failed to resolve symbol '" + std::string(symbolName) + "' from dynamic library '" +
-				DescribePath(m_path) + "': " + loaderError + ".");
-			return nullptr;
-		}
+	dlerror();
+	void* result = dlsym(m_handle, symbolName);
+	const char* loaderError = dlerror();
+	if (loaderError != nullptr)
+	{
+		SetError(
+			"Failed to resolve symbol '" + std::string(symbolName) + "' from dynamic library '" +
+			DescribePath(m_path) + "': " + loaderError + ".");
+		return nullptr;
+	}
 #endif
 
-		m_error.clear();
-		return result;
-	}
-	catch (const std::exception&)
-	{
-		SetError("Failed to resolve dynamic-library symbol: unexpected standard-library error.");
-		return nullptr;
-	}
-	catch (...)
-	{
-		SetError("Failed to resolve dynamic-library symbol: unexpected error.");
-		return nullptr;
-	}
+	m_error.clear();
+	return result;
 }
 
 bool Sailor::Platform::DynamicLibrary::Close() noexcept
@@ -289,66 +262,39 @@ bool Sailor::Platform::DynamicLibrary::Close() noexcept
 		return true;
 	}
 
-	try
-	{
 #if defined(_WIN32)
-		if (FreeLibrary(static_cast<HMODULE>(m_handle)) == 0)
-		{
-			const DWORD errorCode = GetLastError();
-			SetError(
-				"Failed to close dynamic library '" + DescribePath(m_path) + "': " +
-				DescribeWindowsError(errorCode) + ".");
-			return false;
-		}
+	if (FreeLibrary(static_cast<HMODULE>(m_handle)) == 0)
+	{
+		const DWORD errorCode = GetLastError();
+		SetError(
+			"Failed to close dynamic library '" + DescribePath(m_path) + "': " +
+			DescribeWindowsError(errorCode) + ".");
+		return false;
+	}
 #else
-		dlerror();
-		if (dlclose(m_handle) != 0)
-		{
-			const char* loaderError = dlerror();
-			SetError(
-				"Failed to close dynamic library '" + DescribePath(m_path) + "': " +
-				(loaderError != nullptr ? loaderError : "unknown loader error") + ".");
-			return false;
-		}
+	dlerror();
+	if (dlclose(m_handle) != 0)
+	{
+		const char* loaderError = dlerror();
+		SetError(
+			"Failed to close dynamic library '" + DescribePath(m_path) + "': " +
+			(loaderError != nullptr ? loaderError : "unknown loader error") + ".");
+		return false;
+	}
 #endif
 
-		m_handle = nullptr;
-		m_path.clear();
-		m_error.clear();
-		return true;
-	}
-	catch (const std::exception&)
-	{
-		SetError("Failed to close dynamic library: unexpected standard-library error.");
-		return false;
-	}
-	catch (...)
-	{
-		SetError("Failed to close dynamic library: unexpected error.");
-		return false;
-	}
+	m_handle = nullptr;
+	m_path.clear();
+	m_error.clear();
+	return true;
 }
 
 void Sailor::Platform::DynamicLibrary::SetError(std::string error) noexcept
 {
-	try
-	{
-		m_error = std::move(error);
-	}
-	catch (...)
-	{
-		m_error.clear();
-	}
+	m_error = std::move(error);
 }
 
 void Sailor::Platform::DynamicLibrary::SetError(const char* error) noexcept
 {
-	try
-	{
-		m_error = error;
-	}
-	catch (...)
-	{
-		m_error.clear();
-	}
+	m_error = error;
 }

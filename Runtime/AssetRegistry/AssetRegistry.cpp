@@ -20,7 +20,6 @@
 #include <fstream>
 #include <map>
 #include <set>
-#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -164,49 +163,41 @@ namespace
 		std::string& outAssetInfoType,
 		std::string& outError)
 	{
-		try
+		const YAML::Node metadata = YAML::LoadFile(metaPath.string());
+		const YAML::Node fileId = metadata["fileId"];
+		const YAML::Node filename = metadata["filename"];
+		if (!fileId.IsScalar() || !filename.IsScalar())
 		{
-			const YAML::Node metadata = YAML::LoadFile(metaPath.string());
-			const YAML::Node fileId = metadata["fileId"];
-			const YAML::Node filename = metadata["filename"];
-			if (!fileId.IsScalar() || !filename.IsScalar())
-			{
-				outError = "metadata requires scalar fileId and filename";
-				return false;
-			}
-
-			outFileId = fileId.as<std::string>();
-			outFilename = filename.as<std::string>();
-			YAML::Node assetInfoType(YAML::NodeType::Undefined);
-			for (const auto& field : metadata)
-			{
-				if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
-				{
-					assetInfoType = field.second;
-					break;
-				}
-			}
-			if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
-			{
-				outError = "metadata assetInfoType must be scalar when present";
-				return false;
-			}
-			outAssetInfoType = assetInfoType.IsScalar()
-				? assetInfoType.as<std::string>()
-				: std::string{};
-			if (outFileId.empty() || outFilename.empty() ||
-				!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
-			{
-				outError = "metadata contains an empty FileId or unsafe filename";
-				return false;
-			}
-			return true;
-		}
-		catch (const std::exception& e)
-		{
-			outError = e.what();
+			outError = "metadata requires scalar fileId and filename";
 			return false;
 		}
+
+		outFileId = fileId.as<std::string>();
+		outFilename = filename.as<std::string>();
+		YAML::Node assetInfoType(YAML::NodeType::Undefined);
+		for (const auto& field : metadata)
+		{
+			if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
+			{
+				assetInfoType = field.second;
+				break;
+			}
+		}
+		if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
+		{
+			outError = "metadata assetInfoType must be scalar when present";
+			return false;
+		}
+		outAssetInfoType = assetInfoType.IsScalar()
+			? assetInfoType.as<std::string>()
+			: std::string{};
+		if (outFileId.empty() || outFilename.empty() ||
+			!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
+		{
+			outError = "metadata contains an empty FileId or unsafe filename";
+			return false;
+		}
+		return true;
 	}
 
 	FileId ParseFileId(const std::string& value)
@@ -587,113 +578,7 @@ void AssetRegistry::ScanContentFolder()
 	TMap<std::string, FileId> stagedPhysicalFileIds;
 	std::vector<PendingAssetNotification> pendingNotifications;
 	std::vector<std::filesystem::path> importedMetadata;
-	try
-	{
-		for (const StagedAssetRecord& record : records)
-		{
-			const bool bVirtualWinner = CandidateMatches(
-				resolution.FindByVirtualPath(record.m_candidate.m_virtualPath),
-				record.m_candidate);
-			if (record.m_candidate.m_fileId.empty())
-			{
-				if (!record.m_bPrimary || !bVirtualWinner || record.m_bMetadataInvalid)
-				{
-					continue;
-				}
-				if (!record.m_candidate.m_mount.m_bWritable)
-				{
-					SAILOR_LOG_ERROR(
-						"Read-only Engine asset '%s' has no metadata and was not imported.",
-						record.m_assetVirtualPath.c_str());
-					continue;
-				}
-
-				IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(record.m_assetVirtualPath));
-				check(handler);
-				const bool bMetaExisted = std::filesystem::exists(record.m_metaPath);
-				if (!bMetaExisted)
-				{
-					importedMetadata.emplace_back(record.m_metaPath);
-				}
-				AssetInfoPtr assetInfo = handler->ImportAsset(
-					record.m_assetPath.string(),
-					record.m_assetVirtualPath,
-					false,
-					false);
-				stagedAssetInfos[assetInfo->GetFileId()] = assetInfo;
-				stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = assetInfo->GetFileId();
-				stagedPhysicalFileIds[PathKey(record.m_assetPath)] = assetInfo->GetFileId();
-				pendingNotifications.push_back({ handler, assetInfo, true });
-				continue;
-			}
-
-			if (!CandidateMatches(
-					resolution.FindByFileId(record.m_candidate.m_fileId),
-					record.m_candidate))
-			{
-				continue;
-			}
-
-			const FileId expectedFileId = ParseFileId(record.m_candidate.m_fileId);
-			auto previousAssetInfo = m_loadedAssetInfo.Find(expectedFileId);
-			const bool bWasPreviouslyExpired = previousAssetInfo != m_loadedAssetInfo.end() &&
-				(previousAssetInfo.Value()->IsMetaExpired() ||
-					previousAssetInfo.Value()->IsAssetExpired() ||
-					PathKey(previousAssetInfo.Value()->GetAssetFilepath()) != PathKey(record.m_assetPath));
-
-			IAssetInfoHandler* handler = GetAssetInfoHandler(
-				HandlerExtension(record),
-				record.m_assetInfoType,
-				record.m_bPrimary);
-			check(handler);
-			AssetInfoPtr assetInfo = handler->LoadAssetInfo(
-				record.m_metaPath.string(),
-				record.m_metaVirtualPath,
-				record.m_candidate.m_mount.m_kind,
-				record.m_candidate.m_mount.m_bWritable,
-				false,
-				false);
-			if (assetInfo->GetFileId().ToString() != record.m_candidate.m_fileId)
-			{
-				delete assetInfo;
-				throw std::runtime_error(
-					"Asset metadata FileId changed during staged load: " +
-					record.m_metaPath.generic_string());
-			}
-
-			const FileId fileId = assetInfo->GetFileId();
-			assetInfo->m_bPendingWasExpired |= bWasPreviouslyExpired;
-			stagedAssetInfos[fileId] = assetInfo;
-			if (record.m_bPrimary)
-			{
-				stagedPhysicalFileIds[PathKey(record.m_assetPath)] = fileId;
-			}
-			if (record.m_bPrimary && bVirtualWinner)
-			{
-				stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
-			}
-			pendingNotifications.push_back({ handler, assetInfo, false });
-		}
-
-		for (const StagedAssetRecord& record : records)
-		{
-			if (!record.m_bPrimary || record.m_candidate.m_fileId.empty() ||
-				!CandidateMatches(
-					resolution.FindByVirtualPath(record.m_candidate.m_virtualPath),
-					record.m_candidate))
-			{
-				continue;
-			}
-
-			const FileId fileId = ParseFileId(record.m_candidate.m_fileId);
-			if (stagedAssetInfos.ContainsKey(fileId))
-			{
-				stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
-				stagedPhysicalFileIds[PathKey(record.m_assetPath)] = fileId;
-			}
-		}
-	}
-	catch (const std::exception& e)
+	auto rollbackStaging = [&]()
 	{
 		DeleteAssetInfos(stagedAssetInfos);
 		for (auto it = importedMetadata.rbegin(); it != importedMetadata.rend(); ++it)
@@ -701,8 +586,111 @@ void AssetRegistry::ScanContentFolder()
 			std::error_code removeError;
 			std::filesystem::remove(*it, removeError);
 		}
-		SAILOR_LOG_ERROR("Asset registry staging failed: %s", e.what());
-		return;
+	};
+	for (const StagedAssetRecord& record : records)
+	{
+		const bool bVirtualWinner = CandidateMatches(
+			resolution.FindByVirtualPath(record.m_candidate.m_virtualPath),
+			record.m_candidate);
+		if (record.m_candidate.m_fileId.empty())
+		{
+			if (!record.m_bPrimary || !bVirtualWinner || record.m_bMetadataInvalid)
+			{
+				continue;
+			}
+			if (!record.m_candidate.m_mount.m_bWritable)
+			{
+				SAILOR_LOG_ERROR(
+					"Read-only Engine asset '%s' has no metadata and was not imported.",
+					record.m_assetVirtualPath.c_str());
+				continue;
+			}
+
+			IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(record.m_assetVirtualPath));
+			check(handler);
+			const bool bMetaExisted = std::filesystem::exists(record.m_metaPath);
+			if (!bMetaExisted)
+			{
+				importedMetadata.emplace_back(record.m_metaPath);
+			}
+			AssetInfoPtr assetInfo = handler->ImportAsset(
+				record.m_assetPath.string(),
+				record.m_assetVirtualPath,
+				false,
+				false);
+			stagedAssetInfos[assetInfo->GetFileId()] = assetInfo;
+			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = assetInfo->GetFileId();
+			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = assetInfo->GetFileId();
+			pendingNotifications.push_back({ handler, assetInfo, true });
+			continue;
+		}
+
+		if (!CandidateMatches(
+				resolution.FindByFileId(record.m_candidate.m_fileId),
+				record.m_candidate))
+		{
+			continue;
+		}
+
+		const FileId expectedFileId = ParseFileId(record.m_candidate.m_fileId);
+		auto previousAssetInfo = m_loadedAssetInfo.Find(expectedFileId);
+		const bool bWasPreviouslyExpired = previousAssetInfo != m_loadedAssetInfo.end() &&
+			(previousAssetInfo.Value()->IsMetaExpired() ||
+				previousAssetInfo.Value()->IsAssetExpired() ||
+				PathKey(previousAssetInfo.Value()->GetAssetFilepath()) != PathKey(record.m_assetPath));
+
+		IAssetInfoHandler* handler = GetAssetInfoHandler(
+			HandlerExtension(record),
+			record.m_assetInfoType,
+			record.m_bPrimary);
+		check(handler);
+		AssetInfoPtr assetInfo = handler->LoadAssetInfo(
+			record.m_metaPath.string(),
+			record.m_metaVirtualPath,
+			record.m_candidate.m_mount.m_kind,
+			record.m_candidate.m_mount.m_bWritable,
+			false,
+			false);
+		if (assetInfo->GetFileId().ToString() != record.m_candidate.m_fileId)
+		{
+			delete assetInfo;
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Asset metadata FileId changed during staged load: %s",
+				record.m_metaPath.generic_string().c_str());
+			return;
+		}
+
+		const FileId fileId = assetInfo->GetFileId();
+		assetInfo->m_bPendingWasExpired |= bWasPreviouslyExpired;
+		stagedAssetInfos[fileId] = assetInfo;
+		if (record.m_bPrimary)
+		{
+			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = fileId;
+		}
+		if (record.m_bPrimary && bVirtualWinner)
+		{
+			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
+		}
+		pendingNotifications.push_back({ handler, assetInfo, false });
+	}
+
+	for (const StagedAssetRecord& record : records)
+	{
+		if (!record.m_bPrimary || record.m_candidate.m_fileId.empty() ||
+			!CandidateMatches(
+				resolution.FindByVirtualPath(record.m_candidate.m_virtualPath),
+				record.m_candidate))
+		{
+			continue;
+		}
+
+		const FileId fileId = ParseFileId(record.m_candidate.m_fileId);
+		if (stagedAssetInfos.ContainsKey(fileId))
+		{
+			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
+			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = fileId;
+		}
 	}
 
 	if (Tasks::Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>())

@@ -68,69 +68,49 @@ namespace
 		}
 
 		auto& collector = *static_cast<WorkspaceTypeCollector*>(context);
-		try
+		if (descriptor->structSize < sizeof(WorkspaceTypeDescriptorV1) ||
+			descriptor->typeName == nullptr ||
+			descriptor->typeNameLength == 0 ||
+			descriptor->typeNameLength > MaxApiStringLength ||
+			descriptor->baseTypeName == nullptr ||
+			descriptor->baseTypeNameLength > MaxApiStringLength ||
+			descriptor->typeInfo == nullptr ||
+			descriptor->typeSize == 0 ||
+			descriptor->typeAlignment == 0 ||
+			(descriptor->typeAlignment & (descriptor->typeAlignment - 1)) != 0 ||
+			descriptor->canonicalDefaultValues == nullptr ||
+			descriptor->canonicalDefaultValuesLength == 0 ||
+			descriptor->canonicalDefaultValuesLength > MaxMetadataPayloadSize ||
+			(descriptor->flags & ~WorkspaceTypeDescriptorKnownFlags) != 0 ||
+			descriptor->placementFactory == nullptr)
 		{
-			if (descriptor->structSize < sizeof(WorkspaceTypeDescriptorV1) ||
-				descriptor->typeName == nullptr ||
-				descriptor->typeNameLength == 0 ||
-				descriptor->typeNameLength > MaxApiStringLength ||
-				descriptor->baseTypeName == nullptr ||
-				descriptor->baseTypeNameLength > MaxApiStringLength ||
-				descriptor->typeInfo == nullptr ||
-				descriptor->typeSize == 0 ||
-				descriptor->typeAlignment == 0 ||
-				(descriptor->typeAlignment & (descriptor->typeAlignment - 1)) != 0 ||
-				descriptor->canonicalDefaultValues == nullptr ||
-				descriptor->canonicalDefaultValuesLength == 0 ||
-				descriptor->canonicalDefaultValuesLength > MaxMetadataPayloadSize ||
-				(descriptor->flags & ~WorkspaceTypeDescriptorKnownFlags) != 0 ||
-				descriptor->placementFactory == nullptr)
-			{
-				collector.m_error = "Workspace module returned an invalid type descriptor.";
-				return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
-			}
-			if (descriptor->canonicalDefaultValuesLength >
-				MaxMetadataPayloadSize - collector.m_totalCanonicalDefaultValuesLength)
-			{
-				collector.m_error = "Workspace module returned too much canonical default data.";
-				return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
-			}
+			collector.m_error = "Workspace module returned an invalid type descriptor.";
+			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
+		}
+		if (descriptor->canonicalDefaultValuesLength >
+			MaxMetadataPayloadSize - collector.m_totalCanonicalDefaultValuesLength)
+		{
+			collector.m_error = "Workspace module returned too much canonical default data.";
+			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
+		}
 
-			CollectedWorkspaceType type;
-			type.m_typeName.assign(descriptor->typeName, static_cast<size_t>(descriptor->typeNameLength));
-			type.m_baseTypeName.assign(
-				descriptor->baseTypeName,
-				static_cast<size_t>(descriptor->baseTypeNameLength));
-			type.m_typeInfo = static_cast<const TypeInfo*>(descriptor->typeInfo);
-			type.m_typeSize = descriptor->typeSize;
-			type.m_typeAlignment = descriptor->typeAlignment;
-			type.m_canonicalDefaultValues.assign(
-				descriptor->canonicalDefaultValues,
-				static_cast<size_t>(descriptor->canonicalDefaultValuesLength));
-			type.m_flags = descriptor->flags;
-			type.m_placementFactory = descriptor->placementFactory;
-			collector.m_types.emplace_back(std::move(type));
-			collector.m_totalCanonicalDefaultValuesLength +=
-				descriptor->canonicalDefaultValuesLength;
-			return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
-		}
-		catch (const std::exception& e)
-		{
-			try
-			{
-				collector.m_error = "Failed to collect workspace type descriptor: " + std::string(e.what());
-			}
-			catch (...)
-			{
-				collector.m_error.clear();
-			}
-			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
-		}
-		catch (...)
-		{
-			collector.m_error = "Failed to collect workspace type descriptor.";
-			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
-		}
+		CollectedWorkspaceType type;
+		type.m_typeName.assign(descriptor->typeName, static_cast<size_t>(descriptor->typeNameLength));
+		type.m_baseTypeName.assign(
+			descriptor->baseTypeName,
+			static_cast<size_t>(descriptor->baseTypeNameLength));
+		type.m_typeInfo = static_cast<const TypeInfo*>(descriptor->typeInfo);
+		type.m_typeSize = descriptor->typeSize;
+		type.m_typeAlignment = descriptor->typeAlignment;
+		type.m_canonicalDefaultValues.assign(
+			descriptor->canonicalDefaultValues,
+			static_cast<size_t>(descriptor->canonicalDefaultValuesLength));
+		type.m_flags = descriptor->flags;
+		type.m_placementFactory = descriptor->placementFactory;
+		collector.m_types.emplace_back(std::move(type));
+		collector.m_totalCanonicalDefaultValuesLength +=
+			descriptor->canonicalDefaultValuesLength;
+		return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
 	}
 
 	bool IsInside(const std::filesystem::path& root, const std::filesystem::path& candidate)
@@ -1045,14 +1025,7 @@ namespace
 
 	void SetMetadataError(std::string& outError, const std::string& message) noexcept
 	{
-		try
-		{
-			outError = message;
-		}
-		catch (...)
-		{
-			outError.clear();
-		}
+		outError = message;
 	}
 }
 
@@ -1065,335 +1038,314 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 	const WorkspaceContext& context,
 	std::string buildConfig) noexcept
 {
-	try
+	if (!Unload())
 	{
-		if (!Unload())
-		{
-			return m_result;
-		}
+		return m_result;
+	}
 
-		m_result = {};
-		m_state = EWorkspaceModuleState::NotConfigured;
-		m_result.m_buildConfig = std::move(buildConfig);
-		m_result.m_manifestPath = context.GetManifest();
-		m_result.m_moduleName = context.GetModuleName();
+	m_result = {};
+	m_state = EWorkspaceModuleState::NotConfigured;
+	m_result.m_buildConfig = std::move(buildConfig);
+	m_result.m_manifestPath = context.GetManifest();
+	m_result.m_moduleName = context.GetModuleName();
 
-		if (context.IsLegacy())
-		{
-			m_result.m_status = EWorkspaceModuleLoadStatus::NotConfigured;
-			m_result.m_message = "No workspace manifest is active; runtime will use engine-only types.";
-			return m_result;
-		}
+	if (context.IsLegacy())
+	{
+		m_result.m_status = EWorkspaceModuleLoadStatus::NotConfigured;
+		m_result.m_message = "No workspace manifest is active; runtime will use engine-only types.";
+		return m_result;
+	}
 
-		std::error_code pathError;
-		const std::filesystem::path root = context.GetRoot();
-		if (root.empty() || !std::filesystem::is_directory(root, pathError) || pathError)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::WorkspaceInvalid,
-				"Workspace module activation requires a valid resolved workspace context.");
-		}
-		const std::string& moduleName = context.GetModuleName();
+	std::error_code pathError;
+	const std::filesystem::path root = context.GetRoot();
+	if (root.empty() || !std::filesystem::is_directory(root, pathError) || pathError)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::WorkspaceInvalid,
+			"Workspace module activation requires a valid resolved workspace context.");
+	}
+	const std::string& moduleName = context.GetModuleName();
 
-		if (m_result.m_buildConfig.empty() ||
-			m_result.m_buildConfig == "." ||
-			m_result.m_buildConfig == ".." ||
-			m_result.m_buildConfig.find_first_of("/\\") != std::string::npos)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestInvalid,
-				"Workspace module build configuration is invalid: '" + m_result.m_buildConfig + "'.");
-		}
+	if (m_result.m_buildConfig.empty() ||
+		m_result.m_buildConfig == "." ||
+		m_result.m_buildConfig == ".." ||
+		m_result.m_buildConfig.find_first_of("/\\") != std::string::npos)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ManifestInvalid,
+			"Workspace module build configuration is invalid: '" + m_result.m_buildConfig + "'.");
+	}
 
-		pathError.clear();
-		const std::filesystem::path modulePath = std::filesystem::weakly_canonical(
-			context.GetLogicOutput() / m_result.m_buildConfig / GetModuleFilename(moduleName),
-			pathError);
-		m_result.m_modulePath = modulePath;
-		if (pathError || !IsInside(root, modulePath))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestInvalid,
-				"Workspace module path escapes the workspace: '" + modulePath.generic_string() + "'.");
-		}
+	pathError.clear();
+	const std::filesystem::path modulePath = std::filesystem::weakly_canonical(
+		context.GetLogicOutput() / m_result.m_buildConfig / GetModuleFilename(moduleName),
+		pathError);
+	m_result.m_modulePath = modulePath;
+	if (pathError || !IsInside(root, modulePath))
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ManifestInvalid,
+			"Workspace module path escapes the workspace: '" + modulePath.generic_string() + "'.");
+	}
 
-		if (!std::filesystem::is_regular_file(modulePath))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ModuleNotFound,
-				"Workspace module for configuration '" + m_result.m_buildConfig +
-				"' was not found at '" + modulePath.generic_string() + "'. Build the workspace logic project first.");
-		}
+	if (!std::filesystem::is_regular_file(modulePath))
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ModuleNotFound,
+			"Workspace module for configuration '" + m_result.m_buildConfig +
+			"' was not found at '" + modulePath.generic_string() + "'. Build the workspace logic project first.");
+	}
 
-		pathError.clear();
-		const std::filesystem::path loadPath = std::filesystem::canonical(modulePath, pathError);
-		if (pathError || !IsInside(root, loadPath) ||
-			!std::filesystem::is_regular_file(loadPath, pathError) || pathError)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ManifestInvalid,
-				"Workspace module path changed or escaped the workspace before loading: '" +
-					modulePath.generic_string() + "'.");
-		}
-		m_result.m_modulePath = loadPath;
+	pathError.clear();
+	const std::filesystem::path loadPath = std::filesystem::canonical(modulePath, pathError);
+	if (pathError || !IsInside(root, loadPath) ||
+		!std::filesystem::is_regular_file(loadPath, pathError) || pathError)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ManifestInvalid,
+			"Workspace module path changed or escaped the workspace before loading: '" +
+				modulePath.generic_string() + "'.");
+	}
+	m_result.m_modulePath = loadPath;
 
-		Reflection::SetEngineAutoRegistrationSuppressed(true);
-		const bool bLibraryOpened = m_library.Open(loadPath);
-		Reflection::SetEngineAutoRegistrationSuppressed(false);
-		if (!bLibraryOpened)
-		{
-			return Fail(EWorkspaceModuleLoadStatus::NativeLoadFailed, m_library.GetError());
-		}
-		m_state = EWorkspaceModuleState::Loaded;
+	Reflection::SetEngineAutoRegistrationSuppressed(true);
+	const bool bLibraryOpened = m_library.Open(loadPath);
+	Reflection::SetEngineAutoRegistrationSuppressed(false);
+	if (!bLibraryOpened)
+	{
+		return Fail(EWorkspaceModuleLoadStatus::NativeLoadFailed, m_library.GetError());
+	}
+	m_state = EWorkspaceModuleState::Loaded;
 
-		void* getModuleApiSymbol = m_library.GetSymbol(WorkspaceModuleApiEntryPointV1);
-		if (getModuleApiSymbol == nullptr)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::EntryPointMissing,
-				m_library.GetError() + " Expected entry point '" + WorkspaceModuleApiEntryPointV1 + "'.");
-		}
-		static_assert(sizeof(TGetWorkspaceModuleApiV1) == sizeof(getModuleApiSymbol));
-		TGetWorkspaceModuleApiV1 getModuleApi = nullptr;
-		std::memcpy(&getModuleApi, &getModuleApiSymbol, sizeof(getModuleApi));
+	void* getModuleApiSymbol = m_library.GetSymbol(WorkspaceModuleApiEntryPointV1);
+	if (getModuleApiSymbol == nullptr)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::EntryPointMissing,
+			m_library.GetError() + " Expected entry point '" + WorkspaceModuleApiEntryPointV1 + "'.");
+	}
+	static_assert(sizeof(TGetWorkspaceModuleApiV1) == sizeof(getModuleApiSymbol));
+	TGetWorkspaceModuleApiV1 getModuleApi = nullptr;
+	std::memcpy(&getModuleApi, &getModuleApiSymbol, sizeof(getModuleApi));
 
-		const WorkspaceModuleApiV1* moduleApi = getModuleApi();
-		if (moduleApi == nullptr ||
-			moduleApi->structSize < sizeof(WorkspaceModuleApiV1) ||
-			moduleApi->apiVersion != WorkspaceModuleApiVersion ||
-			moduleApi->moduleName == nullptr ||
-			moduleApi->moduleNameLength == 0 ||
-			moduleApi->moduleNameLength > MaxApiStringLength ||
-			moduleApi->abiTag == nullptr ||
-			moduleApi->abiTagLength == 0 ||
-			moduleApi->abiTagLength > MaxApiStringLength ||
-			moduleApi->getMetadata == nullptr ||
-			moduleApi->registerTypes == nullptr)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ApiInvalid,
-				"Workspace module '" + modulePath.generic_string() + "' returned an invalid V1 API table.");
-		}
+	const WorkspaceModuleApiV1* moduleApi = getModuleApi();
+	if (moduleApi == nullptr ||
+		moduleApi->structSize < sizeof(WorkspaceModuleApiV1) ||
+		moduleApi->apiVersion != WorkspaceModuleApiVersion ||
+		moduleApi->moduleName == nullptr ||
+		moduleApi->moduleNameLength == 0 ||
+		moduleApi->moduleNameLength > MaxApiStringLength ||
+		moduleApi->abiTag == nullptr ||
+		moduleApi->abiTagLength == 0 ||
+		moduleApi->abiTagLength > MaxApiStringLength ||
+		moduleApi->getMetadata == nullptr ||
+		moduleApi->registerTypes == nullptr)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ApiInvalid,
+			"Workspace module '" + modulePath.generic_string() + "' returned an invalid V1 API table.");
+	}
 
-		const std::string apiModuleName(moduleApi->moduleName, static_cast<size_t>(moduleApi->moduleNameLength));
-		if (apiModuleName != moduleName)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::ApiInvalid,
-				"Workspace module identity mismatch: manifest expects '" + moduleName +
-				"', but the loaded module reports '" + apiModuleName + "'.");
-		}
+	const std::string apiModuleName(moduleApi->moduleName, static_cast<size_t>(moduleApi->moduleNameLength));
+	if (apiModuleName != moduleName)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::ApiInvalid,
+			"Workspace module identity mismatch: manifest expects '" + moduleName +
+			"', but the loaded module reports '" + apiModuleName + "'.");
+	}
 
-		if (moduleApi->abiTagLength != GetWorkspaceModuleAbiTagV1Length() ||
-			std::memcmp(moduleApi->abiTag, GetWorkspaceModuleAbiTagV1(),
-				static_cast<size_t>(moduleApi->abiTagLength)) != 0)
-		{
-			const std::string actualAbi(moduleApi->abiTag, static_cast<size_t>(moduleApi->abiTagLength));
-			return Fail(
-				EWorkspaceModuleLoadStatus::AbiMismatch,
-				"Workspace module ABI mismatch for '" + modulePath.generic_string() + "'. Expected '" +
-				GetWorkspaceModuleAbiTagV1() + "', received '" + actualAbi + "'. Rebuild the module with this engine configuration.");
-		}
+	if (moduleApi->abiTagLength != GetWorkspaceModuleAbiTagV1Length() ||
+		std::memcmp(moduleApi->abiTag, GetWorkspaceModuleAbiTagV1(),
+			static_cast<size_t>(moduleApi->abiTagLength)) != 0)
+	{
+		const std::string actualAbi(moduleApi->abiTag, static_cast<size_t>(moduleApi->abiTagLength));
+		return Fail(
+			EWorkspaceModuleLoadStatus::AbiMismatch,
+			"Workspace module ABI mismatch for '" + modulePath.generic_string() + "'. Expected '" +
+			GetWorkspaceModuleAbiTagV1() + "', received '" + actualAbi + "'. Rebuild the module with this engine configuration.");
+	}
 
-		uint64_t metadataSize = 0;
-		const auto queryResult = static_cast<EWorkspaceModuleResult>(
-			moduleApi->getMetadata(nullptr, 0, &metadataSize));
-		if (queryResult != EWorkspaceModuleResult::BufferTooSmall ||
-			metadataSize == 0 || metadataSize > MaxMetadataPayloadSize)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace module returned an invalid metadata size.");
-		}
+	uint64_t metadataSize = 0;
+	const auto queryResult = static_cast<EWorkspaceModuleResult>(
+		moduleApi->getMetadata(nullptr, 0, &metadataSize));
+	if (queryResult != EWorkspaceModuleResult::BufferTooSmall ||
+		metadataSize == 0 || metadataSize > MaxMetadataPayloadSize)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			"Workspace module returned an invalid metadata size.");
+	}
 
-		m_metadata.assign(static_cast<size_t>(metadataSize), '\0');
-		uint64_t writtenSize = 0;
-		const auto metadataResult = static_cast<EWorkspaceModuleResult>(
-			moduleApi->getMetadata(m_metadata.data(), metadataSize, &writtenSize));
-		if (metadataResult != EWorkspaceModuleResult::Success || writtenSize != metadataSize)
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace module failed to write its V1 metadata payload.");
-		}
+	m_metadata.assign(static_cast<size_t>(metadataSize), '\0');
+	uint64_t writtenSize = 0;
+	const auto metadataResult = static_cast<EWorkspaceModuleResult>(
+		moduleApi->getMetadata(m_metadata.data(), metadataSize, &writtenSize));
+	if (metadataResult != EWorkspaceModuleResult::Success || writtenSize != metadataSize)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			"Workspace module failed to write its V1 metadata payload.");
+	}
 
-		const YAML::Node metadata = YAML::Load(m_metadata);
-		MetadataIdentities metadataIdentities;
-		std::string metadataError;
-		if (!ValidateMetadataDocument(metadata, true, moduleName, metadataIdentities, metadataError))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				std::move(metadataError));
-		}
+	const YAML::Node metadata = YAML::Load(m_metadata);
+	MetadataIdentities metadataIdentities;
+	std::string metadataError;
+	if (!ValidateMetadataDocument(metadata, true, moduleName, metadataIdentities, metadataError))
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			std::move(metadataError));
+	}
 
-		YAML::Node editorMetadataPreflight;
-		if (!MergeEditorTypeMetadata(
-				Reflection::ExportEngineTypes(),
-				metadata,
-				editorMetadataPreflight,
-				metadataError))
-		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				std::move(metadataError));
-		}
+	YAML::Node editorMetadataPreflight;
+	if (!MergeEditorTypeMetadata(
+			Reflection::ExportEngineTypes(),
+			metadata,
+			editorMetadataPreflight,
+			metadataError))
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			std::move(metadataError));
+	}
 
-		WorkspaceTypeCollector collector;
-		WorkspaceHostApiV1 hostApi{};
-		hostApi.structSize = static_cast<uint32_t>(sizeof(WorkspaceHostApiV1));
-		hostApi.apiVersion = WorkspaceHostApiVersion;
-		hostApi.context = &collector;
-		hostApi.collectType = &CollectWorkspaceType;
+	WorkspaceTypeCollector collector;
+	WorkspaceHostApiV1 hostApi{};
+	hostApi.structSize = static_cast<uint32_t>(sizeof(WorkspaceHostApiV1));
+	hostApi.apiVersion = WorkspaceHostApiVersion;
+	hostApi.context = &collector;
+	hostApi.collectType = &CollectWorkspaceType;
 
-		const auto registrationResult = static_cast<EWorkspaceModuleResult>(moduleApi->registerTypes(&hostApi));
-		if (registrationResult != EWorkspaceModuleResult::Success)
+	const auto registrationResult = static_cast<EWorkspaceModuleResult>(moduleApi->registerTypes(&hostApi));
+	if (registrationResult != EWorkspaceModuleResult::Success)
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::RegistrationFailed,
+			collector.m_error.empty()
+				? "Workspace module failed to enumerate its reflected types."
+				: collector.m_error);
+	}
+
+	if (!collector.m_error.empty())
+	{
+		return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, collector.m_error);
+	}
+
+	MetadataEntries metadataTypes;
+	MetadataEntries metadataDefaults;
+	if (!IndexMetadataEntries(metadata["engineTypes"], "engineTypes", metadataTypes, metadataError) ||
+		!IndexMetadataEntries(metadata["cdos"], "cdos", metadataDefaults, metadataError))
+	{
+		return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
+	}
+
+	if (metadataTypes.size() != collector.m_types.size() ||
+		metadataDefaults.size() != collector.m_types.size())
+	{
+		return Fail(
+			EWorkspaceModuleLoadStatus::MetadataInvalid,
+			"Workspace module metadata must contain exactly one type and one CDO entry per registration descriptor.");
+	}
+
+	CollectedTypeInfos collectedTypeInfos;
+	collectedTypeInfos.reserve(collector.m_types.size());
+	for (const CollectedWorkspaceType& collected : collector.m_types)
+	{
+		if (collected.m_typeInfo == nullptr ||
+			collected.m_typeInfo->Name() != collected.m_typeName ||
+			collected.m_typeInfo->Base() != collected.m_baseTypeName ||
+			collected.m_typeInfo->Size() != collected.m_typeSize ||
+			collected.m_typeSize > std::numeric_limits<size_t>::max() ||
+			collected.m_typeAlignment > std::numeric_limits<size_t>::max() ||
+			Reflection::TryGetTypeByName(collected.m_typeName) != nullptr ||
+			!collectedTypeInfos.emplace(collected.m_typeName, collected.m_typeInfo).second)
 		{
 			return Fail(
 				EWorkspaceModuleLoadStatus::RegistrationFailed,
-				collector.m_error.empty()
-					? "Workspace module failed to enumerate its reflected types."
-					: collector.m_error);
+				"Workspace type descriptor for '" + collected.m_typeName +
+				"' is incompatible or conflicts with an existing type.");
 		}
+	}
 
-		if (!collector.m_error.empty())
+	std::vector<Reflection::WorkspaceTypeRegistration> registrations;
+	registrations.reserve(collector.m_types.size());
+	for (const CollectedWorkspaceType& collected : collector.m_types)
+	{
+		if ((collected.m_flags & WorkspaceTypeDescriptorFlagAmbiguousProperties) != 0)
 		{
-			return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, collector.m_error);
+			return Fail(
+				EWorkspaceModuleLoadStatus::MetadataInvalid,
+				"Workspace type '" + collected.m_typeName +
+				"' contains ambiguous or shadowed reflected property names.");
 		}
 
-		MetadataEntries metadataTypes;
-		MetadataEntries metadataDefaults;
-		if (!IndexMetadataEntries(metadata["engineTypes"], "engineTypes", metadataTypes, metadataError) ||
-			!IndexMetadataEntries(metadata["cdos"], "cdos", metadataDefaults, metadataError))
+		const auto metadataTypeIt = metadataTypes.find(collected.m_typeName);
+		const auto metadataDefaultsIt = metadataDefaults.find(collected.m_typeName);
+		if (metadataTypeIt == metadataTypes.end() || metadataDefaultsIt == metadataDefaults.end())
+		{
+			return Fail(
+				EWorkspaceModuleLoadStatus::MetadataInvalid,
+				"Workspace metadata is missing type or CDO data for '" + collected.m_typeName + "'.");
+		}
+
+		const YAML::Node& metadataType = metadataTypeIt->second;
+		const YAML::Node& metadataDefaultObject = metadataDefaultsIt->second;
+		if (!metadataType["base"] || !metadataType["base"].IsScalar() ||
+			metadataType["base"].as<std::string>() != collected.m_baseTypeName)
+		{
+			return Fail(
+				EWorkspaceModuleLoadStatus::MetadataInvalid,
+				"Workspace metadata base type does not match the descriptor for '" +
+				collected.m_typeName + "'.");
+		}
+
+		if (!ValidateComponentHierarchy(
+			*collected.m_typeInfo,
+			collectedTypeInfos,
+			metadataError) ||
+			!ValidatePropertySchema(
+				metadataType["properties"], *collected.m_typeInfo, metadataError) ||
+			!ValidateCanonicalDefaultValues(
+				metadataDefaultObject["defaultValues"], collected, metadataError))
 		{
 			return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
 		}
 
-		if (metadataTypes.size() != collector.m_types.size() ||
-			metadataDefaults.size() != collector.m_types.size())
+		Reflection::WorkspaceTypeRegistration registration;
+		registration.m_typeInfo = collected.m_typeInfo;
+		registration.m_alignment = static_cast<size_t>(collected.m_typeAlignment);
+		registration.m_defaultObject = Reflection::CreateReflectedData(
+			*collected.m_typeInfo,
+			metadataDefaultObject["defaultValues"]);
+		const TWorkspacePlacementFactoryV1 placementFactory = collected.m_placementFactory;
+		registration.m_placementFactory = [placementFactory](void* destination) -> IReflectable*
 		{
-			return Fail(
-				EWorkspaceModuleLoadStatus::MetadataInvalid,
-				"Workspace module metadata must contain exactly one type and one CDO entry per registration descriptor.");
-		}
-
-		CollectedTypeInfos collectedTypeInfos;
-		collectedTypeInfos.reserve(collector.m_types.size());
-		for (const CollectedWorkspaceType& collected : collector.m_types)
-		{
-			if (collected.m_typeInfo == nullptr ||
-				collected.m_typeInfo->Name() != collected.m_typeName ||
-				collected.m_typeInfo->Base() != collected.m_baseTypeName ||
-				collected.m_typeInfo->Size() != collected.m_typeSize ||
-				collected.m_typeSize > std::numeric_limits<size_t>::max() ||
-				collected.m_typeAlignment > std::numeric_limits<size_t>::max() ||
-				Reflection::TryGetTypeByName(collected.m_typeName) != nullptr ||
-				!collectedTypeInfos.emplace(collected.m_typeName, collected.m_typeInfo).second)
+			if (placementFactory(destination) == nullptr)
 			{
-				return Fail(
-					EWorkspaceModuleLoadStatus::RegistrationFailed,
-					"Workspace type descriptor for '" + collected.m_typeName +
-					"' is incompatible or conflicts with an existing type.");
-			}
-		}
-
-		std::vector<Reflection::WorkspaceTypeRegistration> registrations;
-		registrations.reserve(collector.m_types.size());
-		for (const CollectedWorkspaceType& collected : collector.m_types)
-		{
-			if ((collected.m_flags & WorkspaceTypeDescriptorFlagAmbiguousProperties) != 0)
-			{
-				return Fail(
-					EWorkspaceModuleLoadStatus::MetadataInvalid,
-					"Workspace type '" + collected.m_typeName +
-					"' contains ambiguous or shadowed reflected property names.");
+				return nullptr;
 			}
 
-			const auto metadataTypeIt = metadataTypes.find(collected.m_typeName);
-			const auto metadataDefaultsIt = metadataDefaults.find(collected.m_typeName);
-			if (metadataTypeIt == metadataTypes.end() || metadataDefaultsIt == metadataDefaults.end())
-			{
-				return Fail(
-					EWorkspaceModuleLoadStatus::MetadataInvalid,
-					"Workspace metadata is missing type or CDO data for '" + collected.m_typeName + "'.");
-			}
-
-			const YAML::Node& metadataType = metadataTypeIt->second;
-			const YAML::Node& metadataDefaultObject = metadataDefaultsIt->second;
-			if (!metadataType["base"] || !metadataType["base"].IsScalar() ||
-				metadataType["base"].as<std::string>() != collected.m_baseTypeName)
-			{
-				return Fail(
-					EWorkspaceModuleLoadStatus::MetadataInvalid,
-					"Workspace metadata base type does not match the descriptor for '" +
-					collected.m_typeName + "'.");
-			}
-
-			if (!ValidateComponentHierarchy(
-				*collected.m_typeInfo,
-				collectedTypeInfos,
-				metadataError) ||
-				!ValidatePropertySchema(
-					metadataType["properties"], *collected.m_typeInfo, metadataError) ||
-				!ValidateCanonicalDefaultValues(
-					metadataDefaultObject["defaultValues"], collected, metadataError))
-			{
-				return Fail(EWorkspaceModuleLoadStatus::MetadataInvalid, std::move(metadataError));
-			}
-
-			Reflection::WorkspaceTypeRegistration registration;
-			registration.m_typeInfo = collected.m_typeInfo;
-			registration.m_alignment = static_cast<size_t>(collected.m_typeAlignment);
-			registration.m_defaultObject = Reflection::CreateReflectedData(
-				*collected.m_typeInfo,
-				metadataDefaultObject["defaultValues"]);
-			const TWorkspacePlacementFactoryV1 placementFactory = collected.m_placementFactory;
-			registration.m_placementFactory = [placementFactory](void* destination) -> IReflectable*
-			{
-				if (placementFactory(destination) == nullptr)
-				{
-					return nullptr;
-				}
-
-				return static_cast<Component*>(destination);
-			};
-			registrations.emplace_back(std::move(registration));
-		}
-
-		std::string candidateOwner = moduleName + "@" + modulePath.generic_string();
-		std::string registrationError;
-		if (!Reflection::RegisterWorkspaceTypes(candidateOwner, std::move(registrations), registrationError))
-		{
-			return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, std::move(registrationError));
-		}
-		m_owner.swap(candidateOwner);
-
-		m_state = EWorkspaceModuleState::Registered;
-		m_result.m_status = EWorkspaceModuleLoadStatus::Success;
-		m_result.m_numRegisteredTypes = collector.m_types.size();
-		m_result.m_message = "Loaded workspace module '" + moduleName + "' from '" +
-			modulePath.generic_string() + "' with " + std::to_string(collector.m_types.size()) +
-			" reflected type(s).";
-		return m_result;
+			return static_cast<Component*>(destination);
+		};
+		registrations.emplace_back(std::move(registration));
 	}
-	catch (const YAML::Exception& e)
+
+	std::string candidateOwner = moduleName + "@" + modulePath.generic_string();
+	std::string registrationError;
+	if (!Reflection::RegisterWorkspaceTypes(candidateOwner, std::move(registrations), registrationError))
 	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::MetadataInvalid,
-			"Failed to parse workspace module metadata: " + std::string(e.what()));
+		return Fail(EWorkspaceModuleLoadStatus::RegistrationFailed, std::move(registrationError));
 	}
-	catch (const std::exception& e)
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::RegistrationFailed,
-			"Workspace module activation failed: " + std::string(e.what()));
-	}
-	catch (...)
-	{
-		return Fail(
-			EWorkspaceModuleLoadStatus::RegistrationFailed,
-			"Workspace module activation failed with an unknown error.");
-	}
+	m_owner.swap(candidateOwner);
+
+	m_state = EWorkspaceModuleState::Registered;
+	m_result.m_status = EWorkspaceModuleLoadStatus::Success;
+	m_result.m_numRegisteredTypes = collector.m_types.size();
+	m_result.m_message = "Loaded workspace module '" + moduleName + "' from '" +
+		modulePath.generic_string() + "' with " + std::to_string(collector.m_types.size()) +
+		" reflected type(s).";
+	return m_result;
 }
 
 bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
@@ -1401,27 +1353,16 @@ bool Sailor::Workspace::WorkspaceModuleManager::BuildEditorTypeMetadata(
 	YAML::Node& outMetadata,
 	std::string& outError) const noexcept
 {
-	try
+	if (!IsRegistered() || m_metadata.empty())
 	{
-		if (!IsRegistered() || m_metadata.empty())
-		{
-			YAML::Node engineOnly = YAML::Clone(engineMetadata);
-			outMetadata = std::move(engineOnly);
-			outError.clear();
-			return true;
-		}
+		YAML::Node engineOnly = YAML::Clone(engineMetadata);
+		outMetadata = std::move(engineOnly);
+		outError.clear();
+		return true;
+	}
 
-		const YAML::Node workspaceMetadata = YAML::Load(m_metadata);
-		return MergeEditorTypeMetadata(engineMetadata, workspaceMetadata, outMetadata, outError);
-	}
-	catch (const std::exception& e)
-	{
-		SetMetadataError(outError, "Failed to build editor type metadata: " + std::string(e.what()));
-	}
-	catch (...)
-	{
-		SetMetadataError(outError, "Failed to build editor type metadata.");
-	}
+	const YAML::Node workspaceMetadata = YAML::Load(m_metadata);
+	return MergeEditorTypeMetadata(engineMetadata, workspaceMetadata, outMetadata, outError);
 
 	return false;
 }
@@ -1432,87 +1373,76 @@ bool Sailor::Workspace::WorkspaceModuleManager::MergeEditorTypeMetadata(
 	YAML::Node& outMetadata,
 	std::string& outError) noexcept
 {
-	try
+	MetadataIdentities engineIdentities;
+	MetadataIdentities workspaceIdentities;
+	std::unordered_set<std::string> sharedEnums;
+	std::string validationError;
+	if (!ValidateMetadataDocument(engineMetadata, false, {}, engineIdentities, validationError) ||
+		!ValidateMetadataDocument(workspaceMetadata, true, {}, workspaceIdentities, validationError))
 	{
-		MetadataIdentities engineIdentities;
-		MetadataIdentities workspaceIdentities;
-		std::unordered_set<std::string> sharedEnums;
-		std::string validationError;
-		if (!ValidateMetadataDocument(engineMetadata, false, {}, engineIdentities, validationError) ||
-			!ValidateMetadataDocument(workspaceMetadata, true, {}, workspaceIdentities, validationError))
-		{
-			outError = std::move(validationError);
-			return false;
-		}
-		if (!CollectSharedEnumIdentities(
-				engineMetadata,
-				workspaceMetadata,
-				engineIdentities.m_enums,
-				sharedEnums,
-				validationError))
-		{
-			outError = std::move(validationError);
-			return false;
-		}
+		outError = std::move(validationError);
+		return false;
+	}
+	if (!CollectSharedEnumIdentities(
+			engineMetadata,
+			workspaceMetadata,
+			engineIdentities.m_enums,
+			sharedEnums,
+			validationError))
+	{
+		outError = std::move(validationError);
+		return false;
+	}
 
-		if (HasMetadataCollision(
-				engineIdentities.m_engineTypes,
-				workspaceIdentities.m_engineTypes,
-				MetadataSections[0],
-				validationError) ||
-			HasMetadataCollision(
-				engineIdentities.m_cdos,
-				workspaceIdentities.m_cdos,
-				MetadataSections[1],
-				validationError) ||
-			HasMetadataCollision(
-				engineIdentities.m_assetTypes,
-				workspaceIdentities.m_assetTypes,
-				MetadataSections[3],
-				validationError) ||
-			HasMetadataCollision(
-				engineIdentities.m_assetExtensions,
-				workspaceIdentities.m_assetExtensions,
-				"asset extensions",
-				validationError))
-		{
-			outError = std::move(validationError);
-			return false;
-		}
+	if (HasMetadataCollision(
+			engineIdentities.m_engineTypes,
+			workspaceIdentities.m_engineTypes,
+			MetadataSections[0],
+			validationError) ||
+		HasMetadataCollision(
+			engineIdentities.m_cdos,
+			workspaceIdentities.m_cdos,
+			MetadataSections[1],
+			validationError) ||
+		HasMetadataCollision(
+			engineIdentities.m_assetTypes,
+			workspaceIdentities.m_assetTypes,
+			MetadataSections[3],
+			validationError) ||
+		HasMetadataCollision(
+			engineIdentities.m_assetExtensions,
+			workspaceIdentities.m_assetExtensions,
+			"asset extensions",
+			validationError))
+	{
+		outError = std::move(validationError);
+		return false;
+	}
 
-		YAML::Node mergedMetadata = YAML::Clone(engineMetadata);
-		for (const char* sectionName : MetadataSections)
+	YAML::Node mergedMetadata = YAML::Clone(engineMetadata);
+	for (const char* sectionName : MetadataSections)
+	{
+		for (const YAML::Node& entry : workspaceMetadata[sectionName])
 		{
-			for (const YAML::Node& entry : workspaceMetadata[sectionName])
+			if (std::strcmp(sectionName, "enums") == 0 &&
+				sharedEnums.contains(entry.begin()->first.as<std::string>()))
 			{
-				if (std::strcmp(sectionName, "enums") == 0 &&
-					sharedEnums.contains(entry.begin()->first.as<std::string>()))
-				{
-					continue;
-				}
-				mergedMetadata[sectionName].push_back(YAML::Clone(entry));
+				continue;
 			}
+			mergedMetadata[sectionName].push_back(YAML::Clone(entry));
 		}
+	}
 
-		mergedMetadata["metadataVersion"] = workspaceMetadata["metadataVersion"].as<uint32_t>();
-		mergedMetadata["moduleName"] = workspaceMetadata["moduleName"].as<std::string>();
-		if (!ValidateEditorMetadataCrossSchema(mergedMetadata, validationError))
-		{
-			outError = std::move(validationError);
-			return false;
-		}
-		outMetadata = std::move(mergedMetadata);
-		outError.clear();
-		return true;
-	}
-	catch (const std::exception& e)
+	mergedMetadata["metadataVersion"] = workspaceMetadata["metadataVersion"].as<uint32_t>();
+	mergedMetadata["moduleName"] = workspaceMetadata["moduleName"].as<std::string>();
+	if (!ValidateEditorMetadataCrossSchema(mergedMetadata, validationError))
 	{
-		SetMetadataError(outError, "Failed to merge editor type metadata: " + std::string(e.what()));
+		outError = std::move(validationError);
+		return false;
 	}
-	catch (...)
-	{
-		SetMetadataError(outError, "Failed to merge editor type metadata.");
-	}
+	outMetadata = std::move(mergedMetadata);
+	outError.clear();
+	return true;
 
 	return false;
 }

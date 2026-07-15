@@ -322,7 +322,7 @@ namespace Sailor
 	class ShaderCacheTestAccess final
 	{
 	public:
-		SAILOR_API static void Configure(
+		SAILOR_API static bool Configure(
 			ShaderCache& cache,
 			const std::filesystem::path& cacheRoot,
 			std::time_t timestamp = 100);

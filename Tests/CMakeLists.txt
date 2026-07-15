@@ -399,6 +399,11 @@ if(APPLE)
 endif()
 
 add_test(
+    NAME RuntimeNoExceptions
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_exceptions_test.py ${SAILOR_RUNTIME_DIR}
+)
+
+add_test(
     NAME ProcessNoCrash
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/process_no_crash_test.py
 )

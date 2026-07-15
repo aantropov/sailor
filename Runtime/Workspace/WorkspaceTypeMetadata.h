@@ -6,7 +6,6 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -57,7 +56,11 @@ namespace Sailor::Workspace
 					emitter << defaultValues;
 					if (!emitter.good())
 					{
-						throw std::runtime_error(emitter.GetLastError());
+						return WorkspaceDefaultObjectSnapshot
+						{
+							std::move(metadata),
+							{}
+						};
 					}
 
 					return WorkspaceDefaultObjectSnapshot
@@ -241,7 +244,7 @@ namespace Sailor::Workspace
 			{
 				if (moduleName.empty())
 				{
-					throw std::invalid_argument("Workspace module name must not be empty");
+					return {};
 				}
 
 				YAML::Node types(YAML::NodeType::Sequence);
@@ -267,7 +270,7 @@ namespace Sailor::Workspace
 				emitter << metadata;
 				if (!emitter.good())
 				{
-					throw std::runtime_error(emitter.GetLastError());
+					return {};
 				}
 
 				return emitter.c_str();
@@ -288,37 +291,33 @@ namespace Sailor::Workspace
 		}
 
 		*outPayloadSize = 0;
-
-		try
+		if (moduleName.empty())
 		{
-			static const std::string payload = Internal::TWorkspaceTypeMetadataSerializer<TWorkspaceTypes>::Serialize(moduleName);
-			if (payload.size() > std::numeric_limits<uint64_t>::max())
-			{
-				return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
-			}
-
-			const uint64_t payloadSize = static_cast<uint64_t>(payload.size());
-			*outPayloadSize = payloadSize;
-
-			if (destination == nullptr)
-			{
-				return static_cast<uint32_t>(destinationCapacity == 0
-					? EWorkspaceModuleResult::BufferTooSmall
-					: EWorkspaceModuleResult::InvalidArgument);
-			}
-
-			if (destinationCapacity < payloadSize)
-			{
-				return static_cast<uint32_t>(EWorkspaceModuleResult::BufferTooSmall);
-			}
-
-			std::memcpy(destination, payload.data(), payload.size());
-			return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
+			return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
 		}
-		catch (...)
+
+		static const std::string payload = Internal::TWorkspaceTypeMetadataSerializer<TWorkspaceTypes>::Serialize(moduleName);
+		if (payload.empty() || payload.size() > std::numeric_limits<uint64_t>::max())
 		{
-			*outPayloadSize = 0;
 			return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
 		}
+
+		const uint64_t payloadSize = static_cast<uint64_t>(payload.size());
+		*outPayloadSize = payloadSize;
+
+		if (destination == nullptr)
+		{
+			return static_cast<uint32_t>(destinationCapacity == 0
+				? EWorkspaceModuleResult::BufferTooSmall
+				: EWorkspaceModuleResult::InvalidArgument);
+		}
+
+		if (destinationCapacity < payloadSize)
+		{
+			return static_cast<uint32_t>(EWorkspaceModuleResult::BufferTooSmall);
+		}
+
+		std::memcpy(destination, payload.data(), payload.size());
+		return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
 	}
 }

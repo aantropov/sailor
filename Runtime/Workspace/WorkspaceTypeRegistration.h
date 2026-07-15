@@ -19,22 +19,15 @@ namespace Sailor::Workspace
 				return nullptr;
 			}
 
-			try
+			TType* object = new (destination) TType();
+			Component* component = static_cast<Component*>(object);
+			if (static_cast<void*>(component) != destination)
 			{
-				TType* object = new (destination) TType();
-				Component* component = static_cast<Component*>(object);
-				if (static_cast<void*>(component) != destination)
-				{
-					object->~TType();
-					return nullptr;
-				}
-
-				return component;
-			}
-			catch (...)
-			{
+				object->~TType();
 				return nullptr;
 			}
+
+			return component;
 		}
 
 		template<typename TType>
@@ -45,6 +38,10 @@ namespace Sailor::Workspace
 			const std::string& baseTypeName = typeInfo.Base();
 			const WorkspaceDefaultObjectSnapshot& defaultObject =
 				GetWorkspaceDefaultObjectSnapshot<TType>();
+			if (defaultObject.m_serializedDefaultValues.empty())
+			{
+				return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
+			}
 			const WorkspaceTypeDescriptorV1 descriptor
 			{
 				static_cast<uint32_t>(sizeof(WorkspaceTypeDescriptorV1)),
@@ -102,13 +99,6 @@ namespace Sailor::Workspace
 			return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
 		}
 
-		try
-		{
-			return Internal::TWorkspaceTypeRegistration<TWorkspaceTypes>::Register(*hostApi);
-		}
-		catch (...)
-		{
-			return static_cast<uint32_t>(EWorkspaceModuleResult::RegistrationFailed);
-		}
+		return Internal::TWorkspaceTypeRegistration<TWorkspaceTypes>::Register(*hostApi);
 	}
 }

@@ -338,42 +338,19 @@ bool Reflection::RegisterWorkspaceTypes(
 		}
 	}
 
-	try
+	const auto invocationState = std::make_shared<Internal::WorkspaceTypeInvocationState>();
+	Internal::GetWorkspaceTypes().reserve(Internal::GetWorkspaceTypes().size() + registrations.size());
+	for (WorkspaceTypeRegistration& registration : registrations)
 	{
-		const auto invocationState = std::make_shared<Internal::WorkspaceTypeInvocationState>();
-		Internal::GetWorkspaceTypes().reserve(Internal::GetWorkspaceTypes().size() + registrations.size());
-		for (WorkspaceTypeRegistration& registration : registrations)
-		{
-			const std::string typeName = registration.m_typeInfo->Name();
-			Internal::WorkspaceTypeEntry entry;
-			entry.m_owner = owner;
-			entry.m_typeInfo = registration.m_typeInfo;
-			entry.m_invocationState = invocationState;
-			entry.m_placementFactory = std::move(registration.m_placementFactory);
-			entry.m_defaultObject = std::move(registration.m_defaultObject);
-			entry.m_alignment = registration.m_alignment;
-			Internal::GetWorkspaceTypes().emplace(typeName, std::move(entry));
-		}
-	}
-	catch (const std::exception& e)
-	{
-		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
-		{
-			it = it->second.m_owner == owner ? Internal::GetWorkspaceTypes().erase(it) : std::next(it);
-		}
-
-		outError = "Failed to commit workspace reflection types: " + std::string(e.what());
-		return false;
-	}
-	catch (...)
-	{
-		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
-		{
-			it = it->second.m_owner == owner ? Internal::GetWorkspaceTypes().erase(it) : std::next(it);
-		}
-
-		outError = "Failed to commit workspace reflection types.";
-		return false;
+		const std::string typeName = registration.m_typeInfo->Name();
+		Internal::WorkspaceTypeEntry entry;
+		entry.m_owner = owner;
+		entry.m_typeInfo = registration.m_typeInfo;
+		entry.m_invocationState = invocationState;
+		entry.m_placementFactory = std::move(registration.m_placementFactory);
+		entry.m_defaultObject = std::move(registration.m_defaultObject);
+		entry.m_alignment = registration.m_alignment;
+		Internal::GetWorkspaceTypes().emplace(typeName, std::move(entry));
 	}
 
 	return true;

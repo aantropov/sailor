@@ -1,9 +1,9 @@
 struct IUnknown; // Workaround for "combaseapi.h(229): error C2187: syntax error: 'identifier' was unexpected here" when using /permissive-
 
 #include <chrono>
+#include <cstdlib>
 #include <set>
 #include <map>
-#include <stdexcept>
 #include "Containers/Vector.h"
 #include <optional>
 #include <vulkan/vulkan.h>
@@ -89,7 +89,8 @@ VulkanDevice::VulkanDevice(Platform::Window* pViewport, RHI::EMsaaSamples reques
 	m_physicalDevice = VulkanApi::PickPhysicalDevice(m_surface);
 	if (m_physicalDevice == VK_NULL_HANDLE)
 	{
-		throw std::runtime_error("Failed to pick a Vulkan physical device.");
+		SAILOR_LOG_ERROR("Failed to pick a Vulkan physical device.");
+		std::abort();
 	}
 
 	vkGetPhysicalDeviceProperties(m_physicalDevice, &m_physicalDeviceProperties);

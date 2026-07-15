@@ -216,15 +216,7 @@ namespace Sailor
 			const TShader& shader)
 		{
 			promises.Add({ permutation, promise });
-			try
-			{
-				shaders.Add({ permutation, shader });
-			}
-			catch (...)
-			{
-				RemovePermutationEntry(promises, permutation);
-				throw;
-			}
+			shaders.Add({ permutation, shader });
 		}
 
 		template<typename TPromise, typename TShader>
