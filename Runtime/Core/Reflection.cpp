@@ -18,7 +18,6 @@
 #include <algorithm>
 #include <condition_variable>
 #include <iterator>
-#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
@@ -140,7 +139,7 @@ namespace Sailor::Internal
 			}
 		}
 
-		bool Acquire(const std::shared_ptr<WorkspaceTypeInvocationState>& state)
+		bool Acquire(const TSharedPtr<WorkspaceTypeInvocationState>& state)
 		{
 			if (!state)
 			{
@@ -159,14 +158,14 @@ namespace Sailor::Internal
 		}
 
 	private:
-		std::shared_ptr<WorkspaceTypeInvocationState> m_state;
+		TSharedPtr<WorkspaceTypeInvocationState> m_state;
 	};
 
 	struct WorkspaceTypeEntry
 	{
 		std::string m_owner;
 		const TypeInfo* m_typeInfo{};
-		std::shared_ptr<WorkspaceTypeInvocationState> m_invocationState;
+		TSharedPtr<WorkspaceTypeInvocationState> m_invocationState;
 		Reflection::TPlacementFactoryMethod m_placementFactory;
 		ReflectedData m_defaultObject;
 		size_t m_alignment = 8;
@@ -339,7 +338,7 @@ bool Reflection::RegisterWorkspaceTypes(
 		}
 	}
 
-	const auto invocationState = std::make_shared<Internal::WorkspaceTypeInvocationState>();
+	const auto invocationState = TSharedPtr<Internal::WorkspaceTypeInvocationState>::Make();
 	for (WorkspaceTypeRegistration& registration : registrations)
 	{
 		const std::string typeName = registration.m_typeInfo->Name();
@@ -358,7 +357,7 @@ bool Reflection::RegisterWorkspaceTypes(
 
 size_t Reflection::UnregisterWorkspaceTypes(const std::string& owner)
 {
-	std::shared_ptr<Internal::WorkspaceTypeInvocationState> invocationState;
+	TSharedPtr<Internal::WorkspaceTypeInvocationState> invocationState;
 	size_t numRemoved = 0;
 	{
 		std::unique_lock lock(Internal::GetWorkspaceTypesMutex());

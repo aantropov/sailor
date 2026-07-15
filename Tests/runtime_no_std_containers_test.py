@@ -6,7 +6,10 @@ from pathlib import Path
 
 
 CONTAINER_PATTERN = re.compile(
-    r"\bstd::(vector|deque|list|forward_list|map|multimap|unordered_map|set|multiset|unordered_set)\s*<"
+    r"\bstd\s*::\s*(vector|deque|list|forward_list|map|multimap|unordered_map|set|multiset|unordered_set)\s*<"
+)
+SMART_POINTER_PATTERN = re.compile(
+    r"\bstd\s*::\s*(shared_ptr|weak_ptr|unique_ptr|make_shared|make_unique|enable_shared_from_this)\b"
 )
 SOURCE_SUFFIXES = {".h", ".hpp", ".inl", ".cpp", ".cc", ".cxx", ".mm"}
 ALLOWED_CONTAINERS = {
@@ -100,13 +103,18 @@ def main() -> int:
                 line = source.count("\n", 0, match.start()) + 1
                 violations.append(f"{relative_path}:{line}: std::{container} is not allowed in Runtime")
 
+        for match in SMART_POINTER_PATTERN.finditer(masked):
+            smart_pointer = match.group(1)
+            line = source.count("\n", 0, match.start()) + 1
+            violations.append(f"{relative_path}:{line}: std::{smart_pointer} is not allowed in Runtime")
+
     if violations:
-        print("Runtime allocator-backed code must use Sailor containers:", file=sys.stderr)
+        print("Runtime ownership must use Sailor containers and smart pointers:", file=sys.stderr)
         for violation in violations:
             print(f"  {violation}", file=sys.stderr)
         return 1
 
-    print("Runtime std container policy passed.")
+    print("Runtime std container and smart pointer policy passed.")
     return 0
 
 

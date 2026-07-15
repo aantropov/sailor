@@ -1,11 +1,11 @@
 #pragma once
 #include "Containers/Containers.h"
+#include "Memory/UniquePtr.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -363,13 +363,13 @@ namespace Sailor::EditorRemote
 		RemoteViewportSession* FindSession(ViewportId viewportId)
 		{
 			auto it = m_sessions.Find(viewportId);
-			return it != m_sessions.end() ? it.Value().get() : nullptr;
+			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 		const RemoteViewportSession* FindSession(ViewportId viewportId) const
 		{
 			auto it = m_sessions.Find(viewportId);
-			return it != m_sessions.end() ? it.Value().get() : nullptr;
+			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 		RemoteViewportSession& CreateOrReplaceSession(const ViewportDescriptor& descriptor, ConnectionEpoch epoch)
@@ -379,8 +379,8 @@ namespace Sailor::EditorRemote
 				PruneEpochViewport(descriptor.m_viewportId, it.Value()->GetConnectionEpoch());
 			}
 
-			auto session = std::make_unique<RemoteViewportSession>(descriptor, epoch);
-			auto* result = session.get();
+			auto session = TUniquePtr<RemoteViewportSession>::Make(descriptor, epoch);
+			auto* result = session.GetRawPtr();
 			m_sessions[descriptor.m_viewportId] = std::move(session);
 			auto& epochViewports = m_viewportsByEpoch[epoch];
 			if (std::find(epochViewports.begin(), epochViewports.end(), descriptor.m_viewportId) == epochViewports.end())
@@ -457,7 +457,7 @@ namespace Sailor::EditorRemote
 			}
 		}
 
-		TMap<ViewportId, std::unique_ptr<RemoteViewportSession>> m_sessions{};
+		TMap<ViewportId, TUniquePtr<RemoteViewportSession>> m_sessions{};
 		TMap<ConnectionEpoch, TVector<ViewportId>> m_viewportsByEpoch{};
 		SessionCleanupHook m_cleanupHook{};
 	};

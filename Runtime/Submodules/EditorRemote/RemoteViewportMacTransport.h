@@ -1,5 +1,6 @@
 #pragma once
 #include "Containers/Containers.h"
+#include "Memory/SharedPtr.hpp"
 
 #include <algorithm>
 #include <optional>
@@ -8,7 +9,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <memory>
 
 #if defined(__APPLE__)
 #include <CoreFoundation/CoreFoundation.h>
@@ -86,7 +86,7 @@ namespace Sailor::EditorRemote
 		uint32_t m_bytesPerRow = 0;
 		PixelFormat m_pixelFormat = PixelFormat::Unknown;
 		CrossApiSyncKind m_crossApiSyncKind = CrossApiSyncKind::None;
-		std::shared_ptr<std::vector<uint8_t>> m_cpuBytes{};
+		TSharedPtr<std::vector<uint8_t>> m_cpuBytes{};
 		std::string m_debugName{};
 		bool m_releaseTextureObjectAfterUse = false;
 		bool m_crossApiCpuWaited = false;

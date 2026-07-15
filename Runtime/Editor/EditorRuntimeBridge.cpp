@@ -104,7 +104,7 @@ namespace
 		return static_cast<uint8_t>(value * 255.0f + 0.5f);
 	}
 
-	std::shared_ptr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
+	TSharedPtr<std::vector<uint8_t>> TryReadbackRendererTargetToBGRA8Bytes(const RHI::RHIRenderTargetPtr& renderTarget, PixelFormat pixelFormat, uint32_t& outBytesPerRow)
 	{
 		auto& driver = RHI::Renderer::GetDriver();
 		auto* commands = RHI::Renderer::GetDriverCommands();
@@ -142,7 +142,7 @@ namespace
 		}
 
 		outBytesPerRow = static_cast<uint32_t>(extent.x) * 4u;
-		auto outBytes = std::make_shared<std::vector<uint8_t>>(static_cast<size_t>(outBytesPerRow) * static_cast<size_t>(extent.y));
+		auto outBytes = TSharedPtr<std::vector<uint8_t>>::Make(static_cast<size_t>(outBytesPerRow) * static_cast<size_t>(extent.y));
 		for (int y = 0; y < extent.y; ++y)
 		{
 			uint8_t* dstRow = outBytes->data() + static_cast<size_t>(y) * outBytesPerRow;
@@ -219,7 +219,7 @@ namespace
 			outSource.m_bytesPerRow = readbackNode->GetBytesPerRow();
 			outSource.m_debugName = "EditorReadback";
 			const size_t totalBytes = static_cast<size_t>(outSource.m_bytesPerRow) * static_cast<size_t>(outSource.m_height);
-			outSource.m_cpuBytes = std::make_shared<std::vector<uint8_t>>(src, src + totalBytes);
+			outSource.m_cpuBytes = TSharedPtr<std::vector<uint8_t>>::Make(src, src + totalBytes);
 		}
 
 		if (outSummary)
@@ -465,7 +465,7 @@ namespace
 		}
 	};
 
-	TMap<ViewportId, std::shared_ptr<RemoteViewportBinding>> g_remoteViewportBindings;
+	TMap<ViewportId, TSharedPtr<RemoteViewportBinding>> g_remoteViewportBindings;
 	TMap<ViewportId, Sailor::EditorRemote::MacNativeHostHandle> g_pendingRemoteViewportHostHandles;
 	TMap<ViewportId, std::array<bool, 3>> g_remoteViewportMouseButtons;
 	std::mutex g_remoteViewportBindingsMutex;
@@ -716,7 +716,7 @@ bool Sailor::EditorRuntime::HasAppliedEditorRenderArea()
 
 void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 {
-	TVector<std::shared_ptr<RemoteViewportBinding>> bindings{};
+	TVector<TSharedPtr<RemoteViewportBinding>> bindings{};
 	{
 		std::lock_guard lock(g_remoteViewportBindingsMutex);
 		bindings.Reserve(g_remoteViewportBindings.Num());
@@ -810,7 +810,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	auto& binding = g_remoteViewportBindings[viewportId];
 	if (!binding)
 	{
-		binding = std::make_shared<RemoteViewportBinding>(MakeRemoteViewportDescriptor(viewportId, remoteWidth, remoteHeight));
+		binding = TSharedPtr<RemoteViewportBinding>::Make(MakeRemoteViewportDescriptor(viewportId, remoteWidth, remoteHeight));
 	}
 
 	RECT rect{};
