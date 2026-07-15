@@ -23,9 +23,9 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("SAILOR_WORKSPACE_MODULE", cmake);
         Assert.Contains("SAILOR_WORKSPACE_MODULE_EXPORTS", cmake);
         Assert.DoesNotContain("WINDOWS_EXPORT_ALL_SYMBOLS", cmake);
-        Assert.Contains("if(NOT WIN32)", cmake);
+        Assert.DoesNotContain("if(NOT WIN32)", cmake);
         Assert.Contains("if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)", cmake);
-        Assert.Contains("CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL \"MSVC\"", cmake);
+        Assert.Contains("CMAKE_CXX_COMPILER_ID MATCHES \"AppleClang|Clang|GNU\"", cmake);
         Assert.Contains("PDB_OUTPUT_DIRECTORY \"${SAILOR_GAME_OUTPUT_DIR}/$<CONFIG>\"", cmake);
         Assert.Contains("COMPILE_PDB_OUTPUT_DIRECTORY \"${SAILOR_GAME_OUTPUT_DIR}/$<CONFIG>\"", cmake);
         Assert.Contains("${CMAKE_CURRENT_LIST_DIR}/../Source", cmake);
