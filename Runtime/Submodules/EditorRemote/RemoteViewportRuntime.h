@@ -8,7 +8,6 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -491,7 +490,15 @@ namespace Sailor::EditorRemote
 				}
 			}
 
-			m_connections[request.m_connectionId] = negotiated;
+			auto& storedConnection = m_connections[request.m_connectionId];
+			if (storedConnection)
+			{
+				*storedConnection = negotiated;
+			}
+			else
+			{
+				storedConnection = TUniquePtr<BridgeConnectionInfo>::Make(negotiated);
+			}
 			return Failure::Ok();
 		}
 
@@ -510,7 +517,7 @@ namespace Sailor::EditorRemote
 			{
 				return Failure::Ok();
 			}
-			return m_commandHandler(it.Value(), command);
+			return m_commandHandler(*it.Value(), command);
 		}
 
 		bool Disconnect(uint64_t connectionId, const Failure& reason = Failure::FromDomain(ErrorDomain::Connection, 1, "Disconnected"))
@@ -522,7 +529,7 @@ namespace Sailor::EditorRemote
 			}
 			if (m_disconnectHandler)
 			{
-				m_disconnectHandler(it.Value(), reason);
+				m_disconnectHandler(*it.Value(), reason);
 			}
 			m_connections.Remove(connectionId);
 			return true;
@@ -537,11 +544,11 @@ namespace Sailor::EditorRemote
 		const BridgeConnectionInfo* FindConnection(uint64_t connectionId) const
 		{
 			auto it = m_connections.Find(connectionId);
-			return it != m_connections.end() ? &it.Value() : nullptr;
+			return it != m_connections.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 	private:
-		TMap<uint64_t, BridgeConnectionInfo> m_connections{};
+		TMap<uint64_t, TUniquePtr<BridgeConnectionInfo>> m_connections{};
 		NegotiationHandler m_negotiationHandler{};
 		CommandHandler m_commandHandler{};
 		DisconnectHandler m_disconnectHandler{};

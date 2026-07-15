@@ -352,6 +352,61 @@ namespace
 		Require(server.GetConnectionCount() == 0, "disconnect should remove connection from server");
 	}
 
+	void TestEditorBridgeServerConnectionAddressStability()
+	{
+		EditorBridgeServer server{};
+		auto makeRequest = [](uint64_t connectionId, ConnectionEpoch epoch)
+		{
+			BridgeConnectionRequest request{};
+			request.m_connectionId = connectionId;
+			request.m_epoch = epoch;
+			request.m_protocolVersion = 1;
+			return request;
+		};
+
+		Require(server.AcceptConnection(makeRequest(1, 10)).IsOk(),
+			"address-stability server should accept its first connection");
+		const BridgeConnectionInfo* firstAddress = server.FindConnection(1);
+		for (uint64_t connectionId = 2; connectionId <= 64; ++connectionId)
+		{
+			Require(server.AcceptConnection(makeRequest(connectionId, connectionId + 10)).IsOk(),
+				"address-stability server should accept growth connections");
+		}
+
+		const BridgeConnectionInfo* addressAfterGrowth = server.FindConnection(1);
+		Require(firstAddress != nullptr && addressAfterGrowth == firstAddress && addressAfterGrowth->m_epoch == 10,
+			"connection address and contents should survive unrelated map growth");
+		Require(server.AcceptConnection(makeRequest(1, 99)).IsOk(),
+			"address-stability server should update an existing connection");
+		Require(server.FindConnection(1) == firstAddress && firstAddress->m_epoch == 99,
+			"same-key connection updates should preserve the published address");
+
+		EditorBridgeServer reentrantServer{};
+		for (uint64_t connectionId = 1; connectionId <= 16; ++connectionId)
+		{
+			Require(reentrantServer.AcceptConnection(makeRequest(connectionId, connectionId)).IsOk(),
+				"reentrant server should fill its initial connection capacity");
+		}
+
+		bool bHandlerReferenceStable = false;
+		reentrantServer.SetCommandHandler([&](const BridgeConnectionInfo& connection, const ProtocolMessage&)
+		{
+			const BridgeConnectionInfo* addressBeforeInsert = &connection;
+			const auto insertion = reentrantServer.AcceptConnection(makeRequest(17, 17));
+			bHandlerReferenceStable = insertion.IsOk() &&
+				addressBeforeInsert == reentrantServer.FindConnection(connection.m_connectionId) &&
+				connection.m_connectionId == 1 && connection.m_epoch == 1;
+			return Failure::Ok();
+		});
+
+		ProtocolMessage command{};
+		command.m_envelope.m_category = MessageCategory::Command;
+		Require(reentrantServer.RouteCommand(1, command).IsOk(),
+			"reentrant connection handler should accept an unrelated insertion");
+		Require(bHandlerReferenceStable,
+			"connection handler reference should survive reentrant map growth");
+	}
+
 	class FakeRenderBridge : public IEditorRenderBridge
 	{
 	public:
@@ -466,6 +521,7 @@ int main()
 		{ "ViewportSessionManagerLifecycleAndEpochCleanup", TestViewportSessionManagerLifecycleAndEpochCleanup },
 		{ "ViewportSessionManagerReplacementStormPrunesEpochBookkeeping", TestViewportSessionManagerReplacementStormPrunesEpochBookkeeping },
 		{ "EditorBridgeServerNegotiationRoutingAndDisconnect", TestEditorBridgeServerNegotiationRoutingAndDisconnect },
+		{ "EditorBridgeServerConnectionAddressStability", TestEditorBridgeServerConnectionAddressStability },
 		{ "EditorRenderFacadeBoundary", TestEditorRenderFacadeBoundary },
 		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
 		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },

@@ -442,6 +442,72 @@ namespace
 			"a rejected manager must not unregister the active registration owned by another manager");
 	}
 
+	void TestWorkspaceCdoAddressStability()
+	{
+		constexpr const char* primaryOwner = "WorkspaceModuleRuntimeTests.CdoAddressPrimary";
+		constexpr const char* growthOwner = "WorkspaceModuleRuntimeTests.CdoAddressGrowth";
+		const TypeInfo& sentinelType = WorkspaceOwnerSentinel::OwnerSentinelComponent::GetStaticTypeInfo();
+
+		auto makeRegistration = [](const TypeInfo& type, const YAML::Node& properties)
+		{
+			Reflection::WorkspaceTypeRegistration registration;
+			registration.m_typeInfo = &type;
+			registration.m_alignment = alignof(WorkspaceOwnerSentinel::OwnerSentinelComponent);
+			registration.m_defaultObject = Reflection::CreateReflectedData(type, properties);
+			registration.m_placementFactory = [](void*) -> IReflectable* { return nullptr; };
+			return registration;
+		};
+
+		YAML::Node sentinelProperties(YAML::NodeType::Map);
+		sentinelProperties["addressStabilitySentinel"] = 73;
+		TVector<Reflection::WorkspaceTypeRegistration> primaryRegistrations;
+		primaryRegistrations.Add(makeRegistration(sentinelType, sentinelProperties));
+		std::string registrationError;
+		Require(
+			Reflection::RegisterWorkspaceTypes(primaryOwner, std::move(primaryRegistrations), registrationError),
+			"primary CDO address-stability registration should succeed: " + registrationError);
+
+		const ReflectedData* addressBeforeGrowth = &Reflection::GetCDO(sentinelType.Name());
+		const ReflectedData snapshot = *addressBeforeGrowth;
+
+		std::vector<TypeInfo> fillerTypes;
+		fillerTypes.reserve(64);
+		TVector<Reflection::WorkspaceTypeRegistration> growthRegistrations;
+		growthRegistrations.Reserve(64);
+		for (size_t i = 0; i < 64; ++i)
+		{
+			fillerTypes.emplace_back(sentinelType);
+			YAML::Node fillerType = fillerTypes.back().Serialize();
+			fillerType["typename"] = "WorkspaceCdoAddressFiller::Type" + std::to_string(i);
+			fillerTypes.back().Deserialize(fillerType);
+			growthRegistrations.Add(makeRegistration(fillerTypes.back(), YAML::Node(YAML::NodeType::Map)));
+		}
+
+		const bool bGrowthRegistered = Reflection::RegisterWorkspaceTypes(
+			growthOwner,
+			std::move(growthRegistrations),
+			registrationError);
+		if (!bGrowthRegistered)
+		{
+			Reflection::UnregisterWorkspaceTypes(primaryOwner);
+			Require(false, "growth CDO registrations should succeed: " + registrationError);
+		}
+
+		const ReflectedData* addressAfterGrowth = &Reflection::GetCDO(sentinelType.Name());
+		const bool bAddressStable = addressBeforeGrowth == addressAfterGrowth;
+		const bool bContentsStable = *addressAfterGrowth == snapshot &&
+			addressAfterGrowth->GetProperties()["addressStabilitySentinel"].as<int>() == 73;
+		const size_t numGrowthRemoved = Reflection::UnregisterWorkspaceTypes(growthOwner);
+		const size_t numPrimaryRemoved = Reflection::UnregisterWorkspaceTypes(primaryOwner);
+
+		Require(bAddressStable,
+			"workspace CDO address should remain stable when later registrations grow the registry map");
+		Require(bContentsStable,
+			"workspace CDO contents should remain intact when later registrations grow the registry map");
+		Require(numGrowthRemoved == 64 && numPrimaryRemoved == 1,
+			"address-stability registrations should be removed exactly once");
+	}
+
 	void TestIncompatibleModule(
 		const std::filesystem::path& tempRoot,
 		const std::filesystem::path& incompatibleLibrary,
@@ -837,6 +903,7 @@ int main(int argc, char** argv)
 		TestDynamicLibraryFailures(tempRoot, missingEntryLibrary);
 		TestDiscoveryFailures(tempRoot, config);
 		TestFailedOwnerClaimPreservesExistingRegistration(tempRoot, fixtureLibrary, config);
+		TestWorkspaceCdoAddressStability();
 		TestUnknownReflectedType();
 		TestWorldInstantiationGuards();
 		TestIncompatibleModule(tempRoot, incompatibleLibrary, config);

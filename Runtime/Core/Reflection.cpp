@@ -170,6 +170,7 @@ namespace Sailor::Internal
 		ReflectedData m_defaultObject;
 		size_t m_alignment = 8;
 	};
+	using WorkspaceTypeEntryPtr = TUniquePtr<WorkspaceTypeEntry>;
 
 	TUniquePtr<TConcurrentMap<std::string, ReflectedData, 32u, ERehashPolicy::Never>> g_pCdos;
 	TUniquePtr<TConcurrentMap<std::string, Reflection::TPlacementFactoryMethod>> g_pPlacementFactoryMethods;
@@ -178,9 +179,9 @@ namespace Sailor::Internal
 
 	// Engine reflection registration can run during static initialization.
 	// Process-lifetime storage avoids cross-translation-unit initialization and teardown ordering.
-	TMap<std::string, WorkspaceTypeEntry>& GetWorkspaceTypes()
+	TMap<std::string, WorkspaceTypeEntryPtr>& GetWorkspaceTypes()
 	{
-		static auto* workspaceTypes = new TMap<std::string, WorkspaceTypeEntry>();
+		static auto* workspaceTypes = new TMap<std::string, WorkspaceTypeEntryPtr>();
 		return *workspaceTypes;
 	}
 
@@ -287,7 +288,7 @@ bool Reflection::RegisterWorkspaceTypes(
 	std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
 	for (const auto& pair : Internal::GetWorkspaceTypes())
 	{
-		if (pair.m_second->m_owner == owner)
+		if ((*pair.m_second)->m_owner == owner)
 		{
 			outError = "Workspace owner '" + owner + "' is already registered.";
 			return false;
@@ -342,13 +343,13 @@ bool Reflection::RegisterWorkspaceTypes(
 	for (WorkspaceTypeRegistration& registration : registrations)
 	{
 		const std::string typeName = registration.m_typeInfo->Name();
-		Internal::WorkspaceTypeEntry entry;
-		entry.m_owner = owner;
-		entry.m_typeInfo = registration.m_typeInfo;
-		entry.m_invocationState = invocationState;
-		entry.m_placementFactory = std::move(registration.m_placementFactory);
-		entry.m_defaultObject = std::move(registration.m_defaultObject);
-		entry.m_alignment = registration.m_alignment;
+		auto entry = Internal::WorkspaceTypeEntryPtr::Make();
+		entry->m_owner = owner;
+		entry->m_typeInfo = registration.m_typeInfo;
+		entry->m_invocationState = invocationState;
+		entry->m_placementFactory = std::move(registration.m_placementFactory);
+		entry->m_defaultObject = std::move(registration.m_defaultObject);
+		entry->m_alignment = registration.m_alignment;
 		Internal::GetWorkspaceTypes().Insert(typeName, std::move(entry));
 	}
 
@@ -363,17 +364,17 @@ size_t Reflection::UnregisterWorkspaceTypes(const std::string& owner)
 		std::unique_lock lock(Internal::GetWorkspaceTypesMutex());
 		for (auto it = Internal::GetWorkspaceTypes().begin(); it != Internal::GetWorkspaceTypes().end();)
 		{
-			if (it.Value().m_owner == owner)
+			if (it.Value()->m_owner == owner)
 			{
 				if (!invocationState)
 				{
-					invocationState = it.Value().m_invocationState;
+					invocationState = it.Value()->m_invocationState;
 					std::lock_guard invocationLock(invocationState->m_mutex);
 					invocationState->m_bUnloading = true;
 				}
 				else
 				{
-					check(invocationState == it.Value().m_invocationState);
+					check(invocationState == it.Value()->m_invocationState);
 				}
 
 				const std::string typeName = it.Key();
@@ -412,7 +413,7 @@ size_t Reflection::GetNumWorkspaceTypes(const std::string& owner)
 	return static_cast<size_t>(std::count_if(
 		Internal::GetWorkspaceTypes().begin(),
 		Internal::GetWorkspaceTypes().end(),
-		[&owner](const auto& pair) { return pair.m_second->m_owner == owner; }));
+		[&owner](const auto& pair) { return (*pair.m_second)->m_owner == owner; }));
 }
 
 const TypeInfo* Reflection::TryGetTypeByName(const std::string& typeName)
@@ -422,7 +423,7 @@ const TypeInfo* Reflection::TryGetTypeByName(const std::string& typeName)
 		const auto workspaceType = Internal::GetWorkspaceTypes().Find(typeName);
 		if (workspaceType != Internal::GetWorkspaceTypes().end())
 		{
-			return workspaceType.Value().m_typeInfo;
+			return workspaceType.Value()->m_typeInfo;
 		}
 	}
 
@@ -463,7 +464,7 @@ const ReflectedData& Reflection::GetCDO(const std::string& typeName)
 		const auto workspaceType = Internal::GetWorkspaceTypes().Find(typeName);
 		if (workspaceType != Internal::GetWorkspaceTypes().end())
 		{
-			return workspaceType.Value().m_defaultObject;
+			return workspaceType.Value()->m_defaultObject;
 		}
 	}
 
@@ -474,7 +475,7 @@ size_t Reflection::GetObjectAlignment(const std::string& typeName)
 {
 	std::shared_lock lock(Internal::GetWorkspaceTypesMutex());
 	const auto workspaceType = Internal::GetWorkspaceTypes().Find(typeName);
-	return workspaceType != Internal::GetWorkspaceTypes().end() ? workspaceType.Value().m_alignment : 8;
+	return workspaceType != Internal::GetWorkspaceTypes().end() ? workspaceType.Value()->m_alignment : 8;
 }
 
 bool Reflection::ConstructObject(const std::string& typeName, void* destination)
@@ -487,12 +488,12 @@ bool Reflection::ConstructObject(const std::string& typeName, void* destination)
 		const auto workspaceType = Internal::GetWorkspaceTypes().Find(typeName);
 		if (workspaceType != Internal::GetWorkspaceTypes().end())
 		{
-			if (!workspaceInvocation.Acquire(workspaceType.Value().m_invocationState))
+			if (!workspaceInvocation.Acquire(workspaceType.Value()->m_invocationState))
 			{
 				return false;
 			}
 
-			workspacePlacementFactory = workspaceType.Value().m_placementFactory;
+			workspacePlacementFactory = workspaceType.Value()->m_placementFactory;
 		}
 	}
 
