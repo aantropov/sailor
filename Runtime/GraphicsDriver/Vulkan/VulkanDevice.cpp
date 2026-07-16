@@ -219,6 +219,7 @@ void VulkanDevice::BeginConditionalDestroy()
 		maxThreadContexts += 4;
 	}
 #endif
+	(void)maxThreadContexts;
 	check(m_threadContext.Num() <= maxThreadContexts);
 
 	for (auto& pair : m_threadContext)
