@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetMountDiscovery.h"
+#include "Containers/Containers.h"
 
 #include <algorithm>
 #include <cctype>
@@ -141,7 +142,7 @@ namespace
 		return IsPreferred(leftCandidate, rightCandidate);
 	}
 
-	void SortDiagnostics(std::vector<AssetMountDiagnostic>& diagnostics)
+	void SortDiagnostics(TVector<AssetMountDiagnostic>& diagnostics)
 	{
 		std::sort(diagnostics.begin(), diagnostics.end(), [](const AssetMountDiagnostic& left, const AssetMountDiagnostic& right)
 			{
@@ -178,11 +179,11 @@ namespace
 		return diagnostic;
 	}
 
-	std::vector<AssetMountDescriptor> NormalizeMounts(
-		const std::vector<AssetMountDescriptor>& mounts,
-		std::vector<AssetMountDiagnostic>& diagnostics)
+	TVector<AssetMountDescriptor> NormalizeMounts(
+		const TVector<AssetMountDescriptor>& mounts,
+		TVector<AssetMountDiagnostic>& diagnostics)
 	{
-		std::vector<AssetMountDescriptor> normalized;
+		TVector<AssetMountDescriptor> normalized;
 		for (const AssetMountDescriptor& input : mounts)
 		{
 			std::error_code error;
@@ -196,13 +197,13 @@ namespace
 				diagnostic.m_conflictingKind = input.m_kind;
 				diagnostic.m_message = "Asset mount root is not a readable directory: '" +
 					PathDisplay(input.m_root) + "'.";
-				diagnostics.emplace_back(std::move(diagnostic));
+				diagnostics.Add(std::move(diagnostic));
 				continue;
 			}
 
 			AssetMountDescriptor descriptor = input;
 			descriptor.m_root = root;
-			normalized.emplace_back(std::move(descriptor));
+			normalized.Add(std::move(descriptor));
 		}
 
 		std::sort(normalized.begin(), normalized.end(), [](const AssetMountDescriptor& left, const AssetMountDescriptor& right)
@@ -216,17 +217,17 @@ namespace
 				return IsPreferredMount(left, right);
 			});
 
-		std::vector<AssetMountDescriptor> deduplicated;
-		for (size_t begin = 0; begin < normalized.size();)
+		TVector<AssetMountDescriptor> deduplicated;
+		for (size_t begin = 0; begin < normalized.Num();)
 		{
 			size_t end = begin + 1;
-			while (end < normalized.size() && PathKey(normalized[end].m_root) == PathKey(normalized[begin].m_root))
+			while (end < normalized.Num() && PathKey(normalized[end].m_root) == PathKey(normalized[begin].m_root))
 			{
 				++end;
 			}
 
 			const AssetMountDescriptor& winner = normalized[begin];
-			deduplicated.emplace_back(winner);
+			deduplicated.Add(winner);
 			for (size_t duplicate = begin + 1; duplicate < end; ++duplicate)
 			{
 				const AssetMountDescriptor& conflicting = normalized[duplicate];
@@ -240,14 +241,14 @@ namespace
 				diagnostic.m_message = "Duplicate asset mount root '" + PathDisplay(winner.m_root) +
 					"' keeps " + KindName(winner.m_kind) + " and discards " +
 					KindName(conflicting.m_kind) + ".";
-				diagnostics.emplace_back(std::move(diagnostic));
+				diagnostics.Add(std::move(diagnostic));
 			}
 			begin = end;
 		}
 
-		for (size_t leftIndex = 0; leftIndex < deduplicated.size(); ++leftIndex)
+		for (size_t leftIndex = 0; leftIndex < deduplicated.Num(); ++leftIndex)
 		{
-			for (size_t rightIndex = leftIndex + 1; rightIndex < deduplicated.size(); ++rightIndex)
+			for (size_t rightIndex = leftIndex + 1; rightIndex < deduplicated.Num(); ++rightIndex)
 			{
 				const AssetMountDescriptor& left = deduplicated[leftIndex];
 				const AssetMountDescriptor& right = deduplicated[rightIndex];
@@ -266,7 +267,7 @@ namespace
 				diagnostic.m_message = "Asset mount roots overlap and cannot be activated: " +
 					std::string(KindName(left.m_kind)) + " '" + PathDisplay(left.m_root) +
 					"' and " + KindName(right.m_kind) + " '" + PathDisplay(right.m_root) + "'.";
-				diagnostics.emplace_back(std::move(diagnostic));
+				diagnostics.Add(std::move(diagnostic));
 			}
 		}
 
@@ -276,15 +277,15 @@ namespace
 	void DiscoverDirectory(
 		const AssetMountDescriptor& mount,
 		const std::filesystem::path& logicalDirectory,
-		std::set<std::string>& visitedDirectories,
-		std::vector<AssetMountDiscoveredFile>& files,
-		std::vector<AssetMountDiagnostic>& diagnostics)
+		TSet<std::string>& visitedDirectories,
+		TVector<AssetMountDiscoveredFile>& files,
+		TVector<AssetMountDiagnostic>& diagnostics)
 	{
 		std::error_code error;
 		const std::filesystem::path physicalDirectory = std::filesystem::canonical(logicalDirectory, error);
 		if (error)
 		{
-			diagnostics.emplace_back(MakeInspectionDiagnostic(
+			diagnostics.Add(MakeInspectionDiagnostic(
 				EAssetMountDiagnosticCode::PathInspectionFailed,
 				mount,
 				logicalDirectory,
@@ -293,7 +294,7 @@ namespace
 		}
 		if (!IsInside(mount.m_root, physicalDirectory))
 		{
-			diagnostics.emplace_back(MakeInspectionDiagnostic(
+			diagnostics.Add(MakeInspectionDiagnostic(
 				EAssetMountDiagnosticCode::PhysicalEscapeSkipped,
 				mount,
 				logicalDirectory,
@@ -302,9 +303,9 @@ namespace
 		}
 
 		const std::string directoryKey = PathKey(physicalDirectory);
-		if (!visitedDirectories.emplace(directoryKey).second)
+		if (!visitedDirectories.Insert(directoryKey))
 		{
-			diagnostics.emplace_back(MakeInspectionDiagnostic(
+			diagnostics.Add(MakeInspectionDiagnostic(
 				EAssetMountDiagnosticCode::DirectoryCycleSkipped,
 				mount,
 				logicalDirectory,
@@ -313,7 +314,7 @@ namespace
 			return;
 		}
 
-		std::vector<std::filesystem::directory_entry> entries;
+		TVector<std::filesystem::directory_entry> entries;
 		for (std::filesystem::directory_iterator it(
 				logicalDirectory,
 				std::filesystem::directory_options::skip_permission_denied,
@@ -321,11 +322,11 @@ namespace
 			!error && it != end;
 			it.increment(error))
 		{
-			entries.emplace_back(*it);
+			entries.Add(*it);
 		}
 		if (error)
 		{
-			diagnostics.emplace_back(MakeInspectionDiagnostic(
+			diagnostics.Add(MakeInspectionDiagnostic(
 				EAssetMountDiagnosticCode::PathInspectionFailed,
 				mount,
 				logicalDirectory,
@@ -348,7 +349,7 @@ namespace
 			const bool bIsDirectory = entry.is_directory(error);
 			if (error)
 			{
-				diagnostics.emplace_back(MakeInspectionDiagnostic(
+				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
 					entry.path(),
@@ -370,7 +371,7 @@ namespace
 			const std::filesystem::path physicalPath = std::filesystem::canonical(entry.path(), error);
 			if (error)
 			{
-				diagnostics.emplace_back(MakeInspectionDiagnostic(
+				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
 					entry.path(),
@@ -379,7 +380,7 @@ namespace
 			}
 			if (!IsInside(mount.m_root, physicalPath))
 			{
-				diagnostics.emplace_back(MakeInspectionDiagnostic(
+				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PhysicalEscapeSkipped,
 					mount,
 					entry.path(),
@@ -391,7 +392,7 @@ namespace
 			const std::string virtualPath = relativePath.generic_string();
 			if (!IsSafeVirtualPath(virtualPath))
 			{
-				diagnostics.emplace_back(MakeInspectionDiagnostic(
+				diagnostics.Add(MakeInspectionDiagnostic(
 					EAssetMountDiagnosticCode::PathInspectionFailed,
 					mount,
 					entry.path(),
@@ -400,7 +401,7 @@ namespace
 				continue;
 			}
 
-			files.emplace_back(AssetMountDiscoveredFile{ mount, physicalPath, virtualPath });
+			files.Add(AssetMountDiscoveredFile{ mount, physicalPath, virtualPath });
 		}
 	}
 
@@ -433,25 +434,27 @@ namespace
 
 	template<typename TKeySelector>
 	void BuildWinnerIndex(
-		const std::vector<AssetMountCandidate>& candidates,
-		std::map<std::string, size_t>& winners,
-		std::vector<AssetMountDiagnostic>& diagnostics,
+		const TVector<AssetMountCandidate>& candidates,
+		TMap<std::string, size_t>& winners,
+		TVector<AssetMountDiagnostic>& diagnostics,
 		EAssetMountDiagnosticCode collisionCode,
 		TKeySelector selectKey)
 	{
-		std::map<std::string, std::vector<size_t>> groups;
-		for (size_t index = 0; index < candidates.size(); ++index)
+		TMap<std::string, TVector<size_t>> groups;
+		for (size_t index = 0; index < candidates.Num(); ++index)
 		{
 			const std::string key = selectKey(candidates[index]);
 			if (!key.empty())
 			{
-				groups[key].emplace_back(index);
+				groups[key].Add(index);
 			}
 		}
 
-		for (const auto& [key, indexes] : groups)
+		for (const auto& group : groups)
 		{
-			size_t winnerIndex = indexes.front();
+			const std::string& key = group.m_first;
+			const TVector<size_t>& indexes = *group.m_second;
+			size_t winnerIndex = indexes[0];
 			for (size_t index : indexes)
 			{
 				if (IsPreferred(candidates[index], candidates[winnerIndex]))
@@ -459,7 +462,7 @@ namespace
 					winnerIndex = index;
 				}
 			}
-			winners.emplace(key, winnerIndex);
+			winners.Insert(key, winnerIndex);
 
 			for (size_t index : indexes)
 			{
@@ -468,7 +471,7 @@ namespace
 				{
 					continue;
 				}
-				diagnostics.emplace_back(MakeCollisionDiagnostic(
+				diagnostics.Add(MakeCollisionDiagnostic(
 					collisionCode,
 					key,
 					candidates[winnerIndex],
@@ -479,7 +482,7 @@ namespace
 }
 
 AssetMountDiscoveryResult Sailor::DiscoverAssetMountFiles(
-	const std::vector<AssetMountDescriptor>& mounts)
+	const TVector<AssetMountDescriptor>& mounts)
 {
 	AssetMountDiscoveryResult result;
 	result.m_mounts = NormalizeMounts(mounts, result.m_diagnostics);
@@ -490,7 +493,7 @@ AssetMountDiscoveryResult Sailor::DiscoverAssetMountFiles(
 	}
 	for (const AssetMountDescriptor& mount : result.m_mounts)
 	{
-		std::set<std::string> visitedDirectories;
+		TSet<std::string> visitedDirectories;
 		DiscoverDirectory(
 			mount,
 			mount.m_root,
@@ -517,7 +520,7 @@ bool AssetMountDiscoveryResult::HasFatalErrors() const noexcept
 }
 
 AssetMountResolutionResult Sailor::ResolveAssetMountCandidates(
-	std::vector<AssetMountCandidate> candidates)
+	TVector<AssetMountCandidate> candidates)
 {
 	AssetMountResolutionResult result;
 	for (AssetMountCandidate& candidate : candidates)
@@ -537,10 +540,10 @@ AssetMountResolutionResult Sailor::ResolveAssetMountCandidates(
 			diagnostic.m_conflictingFileId = candidate.m_fileId;
 			diagnostic.m_message = "Asset candidate has an invalid virtual path and was skipped: '" +
 				candidate.m_virtualPath + "'.";
-			result.m_diagnostics.emplace_back(std::move(diagnostic));
+			result.m_diagnostics.Add(std::move(diagnostic));
 			continue;
 		}
-		result.m_candidates.emplace_back(std::move(candidate));
+		result.m_candidates.Add(std::move(candidate));
 	}
 
 	std::sort(result.m_candidates.begin(), result.m_candidates.end(), [](const AssetMountCandidate& left, const AssetMountCandidate& right)
@@ -574,13 +577,13 @@ AssetMountResolutionResult Sailor::ResolveAssetMountCandidates(
 const AssetMountCandidate* AssetMountResolutionResult::FindByVirtualPath(
 	const std::string& virtualPath) const noexcept
 {
-	const auto it = m_virtualPathWinners.find(VirtualPathKey(virtualPath));
-	return it == m_virtualPathWinners.end() ? nullptr : &m_candidates[it->second];
+	const auto it = m_virtualPathWinners.Find(VirtualPathKey(virtualPath));
+	return it == m_virtualPathWinners.end() ? nullptr : &m_candidates[it.Value()];
 }
 
 const AssetMountCandidate* AssetMountResolutionResult::FindByFileId(
 	const std::string& fileId) const noexcept
 {
-	const auto it = m_fileIdWinners.find(fileId);
-	return it == m_fileIdWinners.end() ? nullptr : &m_candidates[it->second];
+	const auto it = m_fileIdWinners.Find(fileId);
+	return it == m_fileIdWinners.end() ? nullptr : &m_candidates[it.Value()];
 }

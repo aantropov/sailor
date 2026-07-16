@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 
 #include "Core/Reflection.h"
 #include "Workspace/WorkspaceModuleApi.h"
@@ -84,7 +85,7 @@ namespace Sailor::Workspace
 		template<typename TType>
 		uint32_t GetWorkspaceTypeDescriptorFlags()
 		{
-			std::unordered_map<std::string, WorkspacePropertyDeclaration> declarations;
+			TMap<std::string, WorkspacePropertyDeclaration> declarations;
 			uint32_t flags = 0;
 			TType* empty = nullptr;
 
@@ -114,22 +115,25 @@ namespace Sailor::Workspace
 									bWritable
 								};
 
-								const auto [existing, bInserted] = declarations.try_emplace(
-									displayName,
-									std::move(declaration));
-								if (!bInserted)
-								{
-									if (existing->second.m_declarator != declarator ||
-										existing->second.m_typeName != typeName ||
-										(existing->second.m_bReadable && bReadable) ||
-										(existing->second.m_bWritable && bWritable))
+									auto existing = declarations.Find(displayName);
+									if (existing == declarations.end())
 									{
-										flags |= WorkspaceTypeDescriptorFlagAmbiguousProperties;
+										declarations.Insert(displayName, declaration);
 									}
+									else
+									{
+										auto& existingDeclaration = existing.Value();
+										if (existingDeclaration.m_declarator != declarator ||
+											existingDeclaration.m_typeName != typeName ||
+											(existingDeclaration.m_bReadable && bReadable) ||
+											(existingDeclaration.m_bWritable && bWritable))
+										{
+											flags |= WorkspaceTypeDescriptorFlagAmbiguousProperties;
+										}
 
-									existing->second.m_bReadable |= bReadable;
-									existing->second.m_bWritable |= bWritable;
-								}
+										existingDeclaration.m_bReadable |= bReadable;
+										existingDeclaration.m_bWritable |= bWritable;
+									}
 							};
 
 							if constexpr (bReadable)
@@ -159,25 +163,25 @@ namespace Sailor::Workspace
 		YAML::Node SerializeWorkspaceType()
 		{
 			YAML::Node metadata = TypeInfo::Get<TType>().Serialize();
-			std::unordered_set<std::string> writableProperties;
+			TSet<std::string> writableProperties;
 			for_each(refl::reflect<TType>().members, [&](auto member)
 				{
 					if constexpr (is_writable(member))
 					{
-						writableProperties.insert(get_display_name(member));
+						writableProperties.Insert(get_display_name(member));
 					}
 				});
 
 			YAML::Node readOnlyProperties(YAML::NodeType::Sequence);
-			std::unordered_set<std::string> emittedReadOnlyProperties;
+			TSet<std::string> emittedReadOnlyProperties;
 			for_each(refl::reflect<TType>().members, [&](auto member)
 				{
 					if constexpr (is_readable(member) &&
 						!refl::descriptor::has_attribute<Attributes::Transient>(member))
 					{
 						const std::string displayName = get_display_name(member);
-						if (!writableProperties.contains(displayName) &&
-							emittedReadOnlyProperties.insert(displayName).second)
+						if (!writableProperties.Contains(displayName) &&
+							emittedReadOnlyProperties.Insert(displayName))
 						{
 							readOnlyProperties.push_back(displayName);
 						}
@@ -189,13 +193,13 @@ namespace Sailor::Workspace
 		}
 
 		template<typename TProperty>
-		void AppendWorkspaceEnum(YAML::Node& enums, std::unordered_set<std::string>& enumNames)
+		void AppendWorkspaceEnum(YAML::Node& enums, TSet<std::string>& enumNames)
 		{
 			using EnumType = ::refl::trait::remove_qualifiers_t<TProperty>;
 			if constexpr (std::is_enum_v<EnumType>)
 			{
 				const std::string enumName = TypeInfo::GetReflectedEnumTypeName<EnumType>();
-				if (!enumNames.insert(enumName).second)
+				if (!enumNames.Insert(enumName))
 				{
 					return;
 				}
@@ -213,7 +217,7 @@ namespace Sailor::Workspace
 		}
 
 		template<typename TType>
-		void AppendWorkspaceEnums(YAML::Node& enums, std::unordered_set<std::string>& enumNames)
+		void AppendWorkspaceEnums(YAML::Node& enums, TSet<std::string>& enumNames)
 		{
 			TType* empty = nullptr;
 			for_each(refl::reflect<TType>().members, [&](auto member)
@@ -254,7 +258,7 @@ namespace Sailor::Workspace
 				(defaultObjects.push_back(SerializeWorkspaceDefaultObject<TTypes>()), ...);
 
 				YAML::Node enums(YAML::NodeType::Sequence);
-				std::unordered_set<std::string> enumNames;
+				TSet<std::string> enumNames;
 				(AppendWorkspaceEnums<TTypes>(enums, enumNames), ...);
 
 				YAML::Node metadata;

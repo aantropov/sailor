@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -65,36 +66,36 @@ namespace Sailor
 
 	struct AssetMountDiscoveryResult final
 	{
-		std::vector<AssetMountDescriptor> m_mounts;
-		std::vector<AssetMountDiscoveredFile> m_files;
-		std::vector<AssetMountDiagnostic> m_diagnostics;
+		TVector<AssetMountDescriptor> m_mounts;
+		TVector<AssetMountDiscoveredFile> m_files;
+		TVector<AssetMountDiagnostic> m_diagnostics;
 
 		bool HasFatalErrors() const noexcept;
 	};
 
 	class AssetMountResolutionResult;
 	AssetMountResolutionResult ResolveAssetMountCandidates(
-		std::vector<AssetMountCandidate> candidates);
+		TVector<AssetMountCandidate> candidates);
 
 	class AssetMountResolutionResult final
 	{
 	public:
-		const std::vector<AssetMountCandidate>& GetCandidates() const noexcept { return m_candidates; }
-		const std::vector<AssetMountDiagnostic>& GetDiagnostics() const noexcept { return m_diagnostics; }
+		const TVector<AssetMountCandidate>& GetCandidates() const noexcept { return m_candidates; }
+		const TVector<AssetMountDiagnostic>& GetDiagnostics() const noexcept { return m_diagnostics; }
 
 		const AssetMountCandidate* FindByVirtualPath(const std::string& virtualPath) const noexcept;
 		const AssetMountCandidate* FindByFileId(const std::string& fileId) const noexcept;
 
 	private:
-		std::vector<AssetMountCandidate> m_candidates;
-		std::map<std::string, size_t> m_virtualPathWinners;
-		std::map<std::string, size_t> m_fileIdWinners;
-		std::vector<AssetMountDiagnostic> m_diagnostics;
+		TVector<AssetMountCandidate> m_candidates;
+		TMap<std::string, size_t> m_virtualPathWinners;
+		TMap<std::string, size_t> m_fileIdWinners;
+		TVector<AssetMountDiagnostic> m_diagnostics;
 
 		friend AssetMountResolutionResult ResolveAssetMountCandidates(
-			std::vector<AssetMountCandidate> candidates);
+			TVector<AssetMountCandidate> candidates);
 	};
 
 	AssetMountDiscoveryResult DiscoverAssetMountFiles(
-		const std::vector<AssetMountDescriptor>& mounts);
+		const TVector<AssetMountDescriptor>& mounts);
 }

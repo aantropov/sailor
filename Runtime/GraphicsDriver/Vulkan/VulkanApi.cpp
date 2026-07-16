@@ -1,4 +1,5 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
+#include "Containers/Containers.h"
 #include <algorithm>
 #include <cstring>
 #include <vulkan/vulkan.h>
@@ -471,7 +472,7 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 	}
 
 	TVector<VkPhysicalDevice> devices(deviceCount);
-	std::multimap<int, VkPhysicalDevice> candidates;
+	int bestScore = 0;
 
 	if (vkEnumeratePhysicalDevices(GetVkInstance(), &deviceCount, devices.GetData()) != VK_SUCCESS)
 	{
@@ -483,17 +484,18 @@ VkPhysicalDevice VulkanApi::PickPhysicalDevice(VulkanSurfacePtr surface)
 	{
 		if (IsDeviceSuitable(device, surface))
 		{
-			int score = GetDeviceScore(device);
-			candidates.insert(std::make_pair(score, device));
+			const int score = GetDeviceScore(device);
+			if (score >= bestScore)
+			{
+				bestScore = score;
+				physicalDevice = device;
+			}
 		}
 	}
 
-	if (!candidates.empty() && candidates.rbegin()->first > 0)
+	if (bestScore <= 0)
 	{
-		physicalDevice = candidates.rbegin()->second;
-	}
-	else
-	{
+		physicalDevice = VK_NULL_HANDLE;
 		SAILOR_LOG("Failed to find a suitable GPU!");
 	}
 

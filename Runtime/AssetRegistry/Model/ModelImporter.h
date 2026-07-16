@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 #include "Core/Defines.h"
 #include <string>
 #include "Containers/Vector.h"
@@ -93,7 +94,7 @@ namespace Sailor
 
 		struct MeshContext
 		{
-			std::unordered_map<RHI::VertexP3N3T3B3UV2C4I4W4, uint32_t> uniqueVertices;
+			TMap<RHI::VertexP3N3T3B3UV2C4I4W4, uint32_t> uniqueVertices;
 			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> outVertices;
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};

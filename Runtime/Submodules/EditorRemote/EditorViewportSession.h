@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 
 #include <functional>
 #include <optional>
@@ -430,7 +431,7 @@ namespace Sailor::EditorRemote
 		std::optional<FramePacket> m_lastFrame{};
 		std::optional<InputPacket> m_lastForwardedInput{};
 		FrameIndex m_lastPresentedFrameIndex = 0;
-		std::vector<size_t> m_rejectedFrameCounts = std::vector<size_t>(5, 0);
+		TVector<size_t> m_rejectedFrameCounts = { 0, 0, 0, 0, 0 };
 		size_t m_acceptedFrameCount = 0;
 		bool m_visible = true;
 		bool m_focused = false;

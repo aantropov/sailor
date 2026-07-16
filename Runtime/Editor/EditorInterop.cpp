@@ -15,7 +15,6 @@
 #include <cstring>
 #include <filesystem>
 #include <limits>
-#include <memory>
 #include <utility>
 
 using namespace Sailor;
@@ -153,10 +152,10 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 		return 0;
 	}
 
-	auto serializedOutput = std::make_unique<char[]>(length + 1);
-	memcpy(serializedOutput.get(), serializedNode.c_str(), length);
+	auto serializedOutput = TUniquePtr<char[]>::Make(length + 1);
+	memcpy(serializedOutput.GetRawPtr(), serializedNode.c_str(), length);
 	serializedOutput[length] = '\0';
-	yamlNode[0] = serializedOutput.release();
+	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
 
@@ -192,10 +191,10 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 		return 0;
 	}
 
-	auto serializedOutput = std::make_unique<char[]>(length + 1);
-	memcpy(serializedOutput.get(), serializedNode.c_str(), length);
+	auto serializedOutput = TUniquePtr<char[]>::Make(length + 1);
+	memcpy(serializedOutput.GetRawPtr(), serializedNode.c_str(), length);
 	serializedOutput[length] = '\0';
-	yamlNode[0] = serializedOutput.release();
+	yamlNode[0] = serializedOutput.Release();
 
 	return static_cast<uint32_t>(length);
 

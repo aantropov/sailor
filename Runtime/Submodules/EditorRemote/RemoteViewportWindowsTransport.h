@@ -1,7 +1,8 @@
 #pragma once
+#include "Containers/Containers.h"
+#include "Memory/UniquePtr.hpp"
 
 #include <optional>
-#include <unordered_map>
 #include <utility>
 
 #include "EditorViewportSession.h"
@@ -16,15 +17,11 @@ namespace Sailor::EditorRemote
 		SurfaceGeneration m_generation = 0;
 
 		auto operator<=>(const WindowsViewportSurfaceKey&) const = default;
-	};
 
-	struct WindowsViewportSurfaceKeyHasher
-	{
-		size_t operator()(const WindowsViewportSurfaceKey& key) const noexcept
+		size_t GetHash() const noexcept
 		{
-			size_t seed = std::hash<uint64_t>{}(key.m_viewportId);
-			seed ^= std::hash<uint64_t>{}(key.m_epoch) + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
-			seed ^= std::hash<uint64_t>{}(key.m_generation) + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+			size_t seed = 0;
+			HashCombine(seed, m_viewportId, m_epoch, m_generation);
 			return seed;
 		}
 	};
@@ -88,7 +85,15 @@ namespace Sailor::EditorRemote
 			}
 
 			outTransport = state.m_transport;
-			m_surfaces[state.m_key] = state;
+			auto& storedState = m_surfaces[state.m_key];
+			if (storedState)
+			{
+				*storedState = state;
+			}
+			else
+			{
+				storedState = TUniquePtr<WindowsViewportSurfaceState>::Make(state);
+			}
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -144,21 +149,21 @@ namespace Sailor::EditorRemote
 		Failure ReleaseSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation) override
 		{
 			WindowsViewportSurfaceKey key{ viewportId, epoch, generation };
-			auto it = m_surfaces.find(key);
+			auto it = m_surfaces.Find(key);
 			if (it == m_surfaces.end())
 			{
 				m_lastFailure = Failure::Ok();
 				return Failure::Ok();
 			}
 
-			auto result = m_provider.ReleaseSurface(it->second);
+			auto result = m_provider.ReleaseSurface(*it.Value());
 			if (!result.IsOk())
 			{
 				m_lastFailure = m_provider.GetLastFailure();
 				return result;
 			}
 
-			m_surfaces.erase(it);
+			m_surfaces.Remove(key);
 			m_lastFailure = Failure::Ok();
 			return Failure::Ok();
 		}
@@ -171,22 +176,22 @@ namespace Sailor::EditorRemote
 		const WindowsViewportSurfaceState* FindSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation) const
 		{
 			WindowsViewportSurfaceKey key{ viewportId, epoch, generation };
-			auto it = m_surfaces.find(key);
-			return it != m_surfaces.end() ? &it->second : nullptr;
+			auto it = m_surfaces.Find(key);
+			return it != m_surfaces.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
-		size_t GetSurfaceCount() const { return m_surfaces.size(); }
+		size_t GetSurfaceCount() const { return m_surfaces.Num(); }
 
 	private:
 		WindowsViewportSurfaceState* FindSurface(ViewportId viewportId, ConnectionEpoch epoch, SurfaceGeneration generation)
 		{
 			WindowsViewportSurfaceKey key{ viewportId, epoch, generation };
-			auto it = m_surfaces.find(key);
-			return it != m_surfaces.end() ? &it->second : nullptr;
+			auto it = m_surfaces.Find(key);
+			return it != m_surfaces.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 		IWindowsSharedSurfaceProvider& m_provider;
-		std::unordered_map<WindowsViewportSurfaceKey, WindowsViewportSurfaceState, WindowsViewportSurfaceKeyHasher> m_surfaces{};
+		TMap<WindowsViewportSurfaceKey, TUniquePtr<WindowsViewportSurfaceState>> m_surfaces{};
 		Failure m_lastFailure = Failure::Ok();
 	};
 

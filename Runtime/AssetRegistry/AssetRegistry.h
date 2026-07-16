@@ -198,8 +198,8 @@ namespace Sailor
 		TMap<std::string, FileId> m_fileIds;
 		TMap<std::string, FileId> m_physicalFileIds;
 		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
-		std::vector<AssetMountDescriptor> m_contentMounts;
-		std::map<std::string, AssetReadLocation> m_contentFileWinners;
+		TVector<AssetMountDescriptor> m_contentMounts;
+		TMap<std::string, AssetReadLocation> m_contentFileWinners;
 
 		AssetCache m_assetCache;
 	};

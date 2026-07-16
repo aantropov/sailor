@@ -484,7 +484,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		auto compileSucceeded = std::make_shared<std::atomic_bool>(true);
+		auto compileSucceeded = TSharedPtr<std::atomic_bool>::Make(true);
 		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=, this]()
 			{
 				const bool bCompiled = compileSucceeded->load(std::memory_order_acquire);

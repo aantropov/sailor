@@ -221,7 +221,7 @@ namespace Sailor
 			}
 		}
 
-		void Insert(TElementType inElement)
+		bool Insert(TElementType inElement)
 		{
 			if (ShouldRehash())
 			{
@@ -250,13 +250,14 @@ namespace Sailor
 
 			if (element->GetContainer().Contains(inElement))
 			{
-				return;
+				return false;
 			}
 
 			element->GetContainer().EmplaceBack(std::move(inElement));
 			element->m_bloom |= hash;
 
 			m_num++;
+			return true;
 		}
 
 		bool RemoveFirst(const TPredicate<TElementType>& predicate)
