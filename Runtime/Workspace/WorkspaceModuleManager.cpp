@@ -1019,10 +1019,6 @@ namespace
 		return true;
 	}
 
-	void SetMetadataError(std::string& outError, const std::string& message) noexcept
-	{
-		outError = message;
-	}
 }
 
 Sailor::Workspace::WorkspaceModuleManager::~WorkspaceModuleManager() noexcept
