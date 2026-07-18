@@ -10,10 +10,10 @@ using namespace Sailor::Memory;
 
 // For now TConcurrentMap doesn't have dll interface, so cannot 
 // handle that in class
-std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>>& GetAllocator()
+TUniquePtr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>>& GetAllocator()
 {
-	static std::unique_ptr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>> g_lockFreeAllocators =
-		std::make_unique<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>>();
+	static TUniquePtr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>> g_lockFreeAllocators =
+		TUniquePtr<TConcurrentMap<DWORD, TUniquePtr<HeapAllocator>, 8, ERehashPolicy::Never, Memory::MallocAllocator>>::Make();
 
 	return g_lockFreeAllocators;
 }

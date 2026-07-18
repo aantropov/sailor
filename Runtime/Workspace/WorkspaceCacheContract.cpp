@@ -1,7 +1,9 @@
 #include "Workspace/WorkspaceCacheContract.h"
+#include "Containers/Containers.h"
 
 #include "Workspace/WorkspaceContext.h"
 #include "Workspace/WorkspaceModuleApi.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <atomic>
@@ -35,6 +37,7 @@
 
 namespace
 {
+	using Sailor::TSet;
 	using namespace Sailor::Workspace;
 
 	constexpr const char* CacheVersionField = "cacheVersion";
@@ -46,7 +49,7 @@ namespace
 	constexpr const char* BuildIdentityField = "buildIdentity";
 	constexpr const char* PayloadField = "payload";
 
-	const std::unordered_set<std::string> EnvelopeFields =
+	const TSet<std::string> EnvelopeFields =
 	{
 		CacheVersionField,
 		PayloadVersionField,
@@ -66,14 +69,7 @@ namespace
 	{
 		WorkspaceCacheLoadResult result;
 		result.m_status = status;
-		try
-		{
-			result.m_diagnostic = std::move(diagnostic);
-		}
-		catch (...)
-		{
-			result.m_diagnostic.clear();
-		}
+		result.m_diagnostic = std::move(diagnostic);
 		return result;
 	}
 
@@ -105,8 +101,7 @@ namespace
 		const std::string& sourceName,
 		std::string& outDiagnostic)
 	{
-		std::unordered_set<std::string> keys;
-		keys.reserve(document.size());
+		TSet<std::string> keys;
 		for (const auto& field : document)
 		{
 			if (!field.first.IsScalar())
@@ -116,7 +111,7 @@ namespace
 			}
 
 			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.emplace(key).second)
+			if (key.empty() || !keys.Insert(key))
 			{
 				outDiagnostic = sourceName + " is corrupt: its envelope contains duplicate or empty field " +
 					Quote(key) + ".";
@@ -135,7 +130,7 @@ namespace
 		for (const auto& field : document)
 		{
 			const std::string key = field.first.Scalar();
-			if (!EnvelopeFields.contains(key))
+			if (!EnvelopeFields.Contains(key))
 			{
 				outDiagnostic = sourceName + " is corrupt: its current envelope contains unknown field " +
 					Quote(key) + ".";
@@ -635,36 +630,28 @@ bool Sailor::Workspace::SerializeWorkspaceCacheEnvelope(
 {
 	outEnvelope.clear();
 	outDiagnostic.clear();
-	try
+	if (!ValidateIdentityForSerialization(identity, outDiagnostic))
 	{
-		if (!ValidateIdentityForSerialization(identity, outDiagnostic))
-		{
-			return false;
-		}
+		return false;
+	}
 
-		YAML::Node document;
-		document[CacheVersionField] = identity.m_cacheVersion;
-		document[PayloadVersionField] = identity.m_payloadVersion;
-		document[CacheKindField] = identity.m_cacheKind;
-		document[ProducerIdentityField] = identity.m_producerIdentity;
-		document[WorkspaceIdField] = identity.m_workspaceId;
-		document[EngineVersionField] = identity.m_engineVersion;
-		document[BuildIdentityField] = identity.m_buildIdentity;
-		document[PayloadField] = payload;
-		outEnvelope = YAML::Dump(document);
-		return true;
-	}
-	catch (const std::exception& e)
+	YAML::Node document;
+	document[CacheVersionField] = identity.m_cacheVersion;
+	document[PayloadVersionField] = identity.m_payloadVersion;
+	document[CacheKindField] = identity.m_cacheKind;
+	document[ProducerIdentityField] = identity.m_producerIdentity;
+	document[WorkspaceIdField] = identity.m_workspaceId;
+	document[EngineVersionField] = identity.m_engineVersion;
+	document[BuildIdentityField] = identity.m_buildIdentity;
+	document[PayloadField] = payload;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryDumpYaml(document, outEnvelope, yamlDiagnostic))
 	{
 		outEnvelope.clear();
-		outDiagnostic = std::string("Cannot serialize workspace cache envelope: ") + e.what() + ".";
+		outDiagnostic = "Cannot serialize workspace cache envelope: " + yamlDiagnostic;
+		return false;
 	}
-	catch (...)
-	{
-		outEnvelope.clear();
-		outDiagnostic = "Cannot serialize workspace cache envelope: an unknown error occurred.";
-	}
-	return false;
+	return true;
 }
 
 WorkspaceCacheLoadResult Sailor::Workspace::ParseWorkspaceCacheEnvelope(
@@ -673,226 +660,196 @@ WorkspaceCacheLoadResult Sailor::Workspace::ParseWorkspaceCacheEnvelope(
 	const std::string& sourceName) noexcept
 {
 	const std::string source = SourceLabel(sourceName);
-	try
-	{
-		const YAML::Node document = YAML::Load(envelope);
-		if (!document.IsMap())
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::Corrupt,
-				source + " is corrupt: its envelope must be a YAML map.");
-		}
-
-		std::string diagnostic;
-		if (!ValidateMapKeys(document, source, diagnostic))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-
-		const YAML::Node cacheVersionField = FindField(document, CacheVersionField);
-		if (!cacheVersionField.IsDefined())
-		{
-			return VersionMismatch(
-				source,
-				CacheVersionField,
-				WorkspaceCacheFormatVersion,
-				"missing");
-		}
-
-		uint32_t cacheVersion = 0;
-		if (!ReadUint32(
-				cacheVersionField,
-				CacheVersionField,
-				source,
-				cacheVersion,
-				diagnostic))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-		if (cacheVersion != WorkspaceCacheFormatVersion)
-		{
-			return VersionMismatch(
-				source,
-				CacheVersionField,
-				WorkspaceCacheFormatVersion,
-				std::to_string(cacheVersion));
-		}
-
-		const YAML::Node payloadVersionField = FindField(document, PayloadVersionField);
-		if (!payloadVersionField.IsDefined())
-		{
-			return VersionMismatch(
-				source,
-				PayloadVersionField,
-				expectedIdentity.m_payloadVersion,
-				"missing");
-		}
-
-		uint32_t payloadVersion = 0;
-		if (!ReadUint32(
-				payloadVersionField,
-				PayloadVersionField,
-				source,
-				payloadVersion,
-				diagnostic))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-		if (payloadVersion == 0 || payloadVersion != expectedIdentity.m_payloadVersion)
-		{
-			return VersionMismatch(
-				source,
-				PayloadVersionField,
-				expectedIdentity.m_payloadVersion,
-				std::to_string(payloadVersion));
-		}
-
-		if (!ValidateCurrentEnvelopeFields(document, source, diagnostic))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-
-		std::string cacheKind;
-		std::string producerIdentity;
-		std::string workspaceId;
-		std::string engineVersion;
-		std::string buildIdentity;
-		if (!ReadRequiredString(document, CacheKindField, source, cacheKind, diagnostic) ||
-			!ReadRequiredString(document, ProducerIdentityField, source, producerIdentity, diagnostic) ||
-			!ReadRequiredString(document, WorkspaceIdField, source, workspaceId, diagnostic) ||
-			!ReadRequiredString(document, EngineVersionField, source, engineVersion, diagnostic) ||
-			!ReadRequiredString(document, BuildIdentityField, source, buildIdentity, diagnostic))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-
-		if (cacheKind != expectedIdentity.m_cacheKind)
-		{
-			return IdentityMismatch(source, CacheKindField, expectedIdentity.m_cacheKind, cacheKind);
-		}
-		if (producerIdentity != expectedIdentity.m_producerIdentity)
-		{
-			return IdentityMismatch(
-				source,
-				ProducerIdentityField,
-				expectedIdentity.m_producerIdentity,
-				producerIdentity);
-		}
-		if (workspaceId != expectedIdentity.m_workspaceId)
-		{
-			return IdentityMismatch(source, WorkspaceIdField, expectedIdentity.m_workspaceId, workspaceId);
-		}
-		if (engineVersion != expectedIdentity.m_engineVersion)
-		{
-			return IdentityMismatch(
-				source,
-				EngineVersionField,
-				expectedIdentity.m_engineVersion,
-				engineVersion);
-		}
-		if (buildIdentity != expectedIdentity.m_buildIdentity)
-		{
-			return IdentityMismatch(
-				source,
-				BuildIdentityField,
-				expectedIdentity.m_buildIdentity,
-				buildIdentity);
-		}
-
-		std::string payload;
-		if (!ReadRequiredString(document, PayloadField, source, payload, diagnostic, true))
-		{
-			return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
-		}
-
-		WorkspaceCacheLoadResult result;
-		result.m_status = EWorkspaceCacheLoadStatus::Loaded;
-		result.m_diagnostic = source + " loaded with matching workspace and producer identity.";
-		result.m_payload = std::move(payload);
-		return result;
-	}
-	catch (const YAML::Exception& e)
+	YAML::Node document;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryLoadYaml(envelope, document, yamlDiagnostic))
 	{
 		return Fail(
 			EWorkspaceCacheLoadStatus::Corrupt,
-			source + " is corrupt: " + e.what() + ".");
+			source + " is corrupt: invalid YAML: " + yamlDiagnostic);
 	}
-	catch (const std::exception& e)
+	if (!document.IsMap())
 	{
 		return Fail(
 			EWorkspaceCacheLoadStatus::Corrupt,
-			source + " is corrupt: " + e.what() + ".");
+			source + " is corrupt: its envelope must be a YAML map.");
 	}
-	catch (...)
+
+	std::string diagnostic;
+	if (!ValidateMapKeys(document, source, diagnostic))
 	{
-		return Fail(
-			EWorkspaceCacheLoadStatus::Corrupt,
-			source + " is corrupt: an unknown parsing error occurred.");
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
 	}
+
+	const YAML::Node cacheVersionField = FindField(document, CacheVersionField);
+	if (!cacheVersionField.IsDefined())
+	{
+		return VersionMismatch(
+			source,
+			CacheVersionField,
+			WorkspaceCacheFormatVersion,
+			"missing");
+	}
+
+	uint32_t cacheVersion = 0;
+	if (!ReadUint32(
+			cacheVersionField,
+			CacheVersionField,
+			source,
+			cacheVersion,
+			diagnostic))
+	{
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
+	}
+	if (cacheVersion != WorkspaceCacheFormatVersion)
+	{
+		return VersionMismatch(
+			source,
+			CacheVersionField,
+			WorkspaceCacheFormatVersion,
+			std::to_string(cacheVersion));
+	}
+
+	const YAML::Node payloadVersionField = FindField(document, PayloadVersionField);
+	if (!payloadVersionField.IsDefined())
+	{
+		return VersionMismatch(
+			source,
+			PayloadVersionField,
+			expectedIdentity.m_payloadVersion,
+			"missing");
+	}
+
+	uint32_t payloadVersion = 0;
+	if (!ReadUint32(
+			payloadVersionField,
+			PayloadVersionField,
+			source,
+			payloadVersion,
+			diagnostic))
+	{
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
+	}
+	if (payloadVersion == 0 || payloadVersion != expectedIdentity.m_payloadVersion)
+	{
+		return VersionMismatch(
+			source,
+			PayloadVersionField,
+			expectedIdentity.m_payloadVersion,
+			std::to_string(payloadVersion));
+	}
+
+	if (!ValidateCurrentEnvelopeFields(document, source, diagnostic))
+	{
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
+	}
+
+	std::string cacheKind;
+	std::string producerIdentity;
+	std::string workspaceId;
+	std::string engineVersion;
+	std::string buildIdentity;
+	if (!ReadRequiredString(document, CacheKindField, source, cacheKind, diagnostic) ||
+		!ReadRequiredString(document, ProducerIdentityField, source, producerIdentity, diagnostic) ||
+		!ReadRequiredString(document, WorkspaceIdField, source, workspaceId, diagnostic) ||
+		!ReadRequiredString(document, EngineVersionField, source, engineVersion, diagnostic) ||
+		!ReadRequiredString(document, BuildIdentityField, source, buildIdentity, diagnostic))
+	{
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
+	}
+
+	if (cacheKind != expectedIdentity.m_cacheKind)
+	{
+		return IdentityMismatch(source, CacheKindField, expectedIdentity.m_cacheKind, cacheKind);
+	}
+	if (producerIdentity != expectedIdentity.m_producerIdentity)
+	{
+		return IdentityMismatch(
+			source,
+			ProducerIdentityField,
+			expectedIdentity.m_producerIdentity,
+			producerIdentity);
+	}
+	if (workspaceId != expectedIdentity.m_workspaceId)
+	{
+		return IdentityMismatch(source, WorkspaceIdField, expectedIdentity.m_workspaceId, workspaceId);
+	}
+	if (engineVersion != expectedIdentity.m_engineVersion)
+	{
+		return IdentityMismatch(
+			source,
+			EngineVersionField,
+			expectedIdentity.m_engineVersion,
+			engineVersion);
+	}
+	if (buildIdentity != expectedIdentity.m_buildIdentity)
+	{
+		return IdentityMismatch(
+			source,
+			BuildIdentityField,
+			expectedIdentity.m_buildIdentity,
+			buildIdentity);
+	}
+
+	std::string payload;
+	if (!ReadRequiredString(document, PayloadField, source, payload, diagnostic, true))
+	{
+		return Fail(EWorkspaceCacheLoadStatus::Corrupt, std::move(diagnostic));
+	}
+
+	WorkspaceCacheLoadResult result;
+	result.m_status = EWorkspaceCacheLoadStatus::Loaded;
+	result.m_diagnostic = source + " loaded with matching workspace and producer identity.";
+	result.m_payload = std::move(payload);
+	return result;
 }
 
 WorkspaceCacheLoadResult Sailor::Workspace::LoadWorkspaceCacheEnvelope(
 	const std::filesystem::path& path,
 	const WorkspaceCacheIdentity& expectedIdentity) noexcept
 {
-	try
-	{
-		std::error_code error;
-		const bool exists = std::filesystem::exists(path, error);
-		if (error)
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::IoFailure,
-				"Cannot inspect workspace cache " + Quote(path.generic_string()) + ": " +
-					error.message() + ".");
-		}
-		if (!exists)
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::Missing,
-				"Workspace cache " + Quote(path.generic_string()) + " is missing.");
-		}
-
-		if (!std::filesystem::is_regular_file(path, error) || error)
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::IoFailure,
-				"Workspace cache " + Quote(path.generic_string()) + " is not a readable regular file" +
-					(error ? ": " + error.message() : std::string()) + ".");
-		}
-
-		std::ifstream stream(path, std::ios::binary);
-		if (!stream.is_open())
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::IoFailure,
-				"Cannot open workspace cache " + Quote(path.generic_string()) + ".");
-		}
-
-		std::ostringstream payload;
-		payload << stream.rdbuf();
-		if (stream.bad())
-		{
-			return Fail(
-				EWorkspaceCacheLoadStatus::IoFailure,
-				"Cannot read workspace cache " + Quote(path.generic_string()) + ".");
-		}
-
-		return ParseWorkspaceCacheEnvelope(payload.str(), expectedIdentity, path.generic_string());
-	}
-	catch (const std::exception& e)
+	std::error_code error;
+	const bool exists = std::filesystem::exists(path, error);
+	if (error)
 	{
 		return Fail(
 			EWorkspaceCacheLoadStatus::IoFailure,
-			"Cannot read workspace cache " + Quote(path.generic_string()) + ": " + e.what() + ".");
+			"Cannot inspect workspace cache " + Quote(path.generic_string()) + ": " +
+				error.message() + ".");
 	}
-	catch (...)
+	if (!exists)
+	{
+		return Fail(
+			EWorkspaceCacheLoadStatus::Missing,
+			"Workspace cache " + Quote(path.generic_string()) + " is missing.");
+	}
+
+	if (!std::filesystem::is_regular_file(path, error) || error)
 	{
 		return Fail(
 			EWorkspaceCacheLoadStatus::IoFailure,
-			"Cannot read workspace cache " + Quote(path.generic_string()) +
-				": an unknown I/O error occurred.");
+			"Workspace cache " + Quote(path.generic_string()) + " is not a readable regular file" +
+				(error ? ": " + error.message() : std::string()) + ".");
 	}
+
+	std::ifstream stream(path, std::ios::binary);
+	if (!stream.is_open())
+	{
+		return Fail(
+			EWorkspaceCacheLoadStatus::IoFailure,
+			"Cannot open workspace cache " + Quote(path.generic_string()) + ".");
+	}
+
+	std::ostringstream payload;
+	payload << stream.rdbuf();
+	if (stream.bad())
+	{
+		return Fail(
+			EWorkspaceCacheLoadStatus::IoFailure,
+			"Cannot read workspace cache " + Quote(path.generic_string()) + ".");
+	}
+
+	return ParseWorkspaceCacheEnvelope(payload.str(), expectedIdentity, path.generic_string());
 }
 
 bool Sailor::Workspace::AtomicReplaceWorkspaceCacheBinary(
@@ -903,86 +860,73 @@ bool Sailor::Workspace::AtomicReplaceWorkspaceCacheBinary(
 	EWorkspaceCacheAtomicWriteFailurePoint failurePoint) noexcept
 {
 	outDiagnostic.clear();
-	try
+	if (target.empty() || target.filename().empty())
 	{
-		if (target.empty() || target.filename().empty())
-		{
-			outDiagnostic = "Cannot atomically replace workspace cache: the target path is empty or has no filename.";
-			return false;
-		}
-		if (size > 0 && data == nullptr)
-		{
-			outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
-				": non-empty data has a null address.";
-			return false;
-		}
+		outDiagnostic = "Cannot atomically replace workspace cache: the target path is empty or has no filename.";
+		return false;
+	}
+	if (size > 0 && data == nullptr)
+	{
+		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
+			": non-empty data has a null address.";
+		return false;
+	}
 
-		const std::filesystem::path parent = target.parent_path().empty()
-			? std::filesystem::path(".")
-			: target.parent_path();
-		std::error_code directoryError;
-		std::filesystem::create_directories(parent, directoryError);
-		if (directoryError)
-		{
-			outDiagnostic = "Cannot create workspace cache directory " + Quote(parent.generic_string()) +
-				": " + directoryError.message() + ".";
-			return false;
-		}
+	const std::filesystem::path parent = target.parent_path().empty()
+		? std::filesystem::path(".")
+		: target.parent_path();
+	std::error_code directoryError;
+	std::filesystem::create_directories(parent, directoryError);
+	if (directoryError)
+	{
+		outDiagnostic = "Cannot create workspace cache directory " + Quote(parent.generic_string()) +
+			": " + directoryError.message() + ".";
+		return false;
+	}
 
-		const std::filesystem::path temporaryPath = MakeTemporaryPath(target);
-		TemporaryFileCleanup cleanup(temporaryPath);
-		if (!WriteTemporaryFile(temporaryPath, data, size, outDiagnostic))
-		{
-			return false;
-		}
+	const std::filesystem::path temporaryPath = MakeTemporaryPath(target);
+	TemporaryFileCleanup cleanup(temporaryPath);
+	if (!WriteTemporaryFile(temporaryPath, data, size, outDiagnostic))
+	{
+		return false;
+	}
 
-		if (failurePoint == EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace)
-		{
-			outDiagnostic = "Injected workspace cache replacement failure before replacing " +
-				Quote(target.generic_string()) + ".";
-			return false;
-		}
+	if (failurePoint == EWorkspaceCacheAtomicWriteFailurePoint::BeforeReplace)
+	{
+		outDiagnostic = "Injected workspace cache replacement failure before replacing " +
+			Quote(target.generic_string()) + ".";
+		return false;
+	}
 
 #if defined(_WIN32)
-		if (!MoveFileExW(
-				temporaryPath.c_str(),
-				target.c_str(),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-		{
-			const DWORD error = GetLastError();
-			outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
-				": " + WindowsErrorMessage(error) + ".";
-			return false;
-		}
-		cleanup.Release();
+	if (!MoveFileExW(
+			temporaryPath.c_str(),
+			target.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		const DWORD error = GetLastError();
+		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
+			": " + WindowsErrorMessage(error) + ".";
+		return false;
+	}
+	cleanup.Release();
 #else
-		if (rename(temporaryPath.c_str(), target.c_str()) != 0)
-		{
-			const int error = errno;
-			outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
-				": " + PosixErrorMessage(error) + ".";
-			return false;
-		}
-		cleanup.Release();
-		if (!FlushDirectory(parent, outDiagnostic))
-		{
-			return false;
-		}
+	if (rename(temporaryPath.c_str(), target.c_str()) != 0)
+	{
+		const int error = errno;
+		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
+			": " + PosixErrorMessage(error) + ".";
+		return false;
+	}
+	cleanup.Release();
+	if (!FlushDirectory(parent, outDiagnostic))
+	{
+		return false;
+	}
 #endif
 
-		outDiagnostic = "Atomically replaced workspace cache " + Quote(target.generic_string()) + ".";
-		return true;
-	}
-	catch (const std::exception& e)
-	{
-		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
-			": " + e.what() + ".";
-	}
-	catch (...)
-	{
-		outDiagnostic = "Cannot atomically replace workspace cache " + Quote(target.generic_string()) +
-			": an unknown I/O error occurred.";
-	}
+	outDiagnostic = "Atomically replaced workspace cache " + Quote(target.generic_string()) + ".";
+	return true;
 	return false;
 }
 

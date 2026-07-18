@@ -2,6 +2,7 @@
 #include "Core/Defines.h"
 #include <atomic>
 #include <cassert>
+#include <compare>
 #include <type_traits>
 #include "Containers/Concepts.h"
 #include "Memory/MallocAllocator.hpp"
@@ -87,10 +88,10 @@ namespace Sailor
 		T* GetRawPtr() const noexcept { return m_pRawPtr; }
 
 		T* operator->()  noexcept { return m_pRawPtr; }
-		const T* operator->() const { return m_pRawPtr; }
+		T* operator->() const noexcept { return m_pRawPtr; }
 
 		T& operator*() noexcept { return *m_pRawPtr; }
-		const T& operator*() const { return *m_pRawPtr; }
+		T& operator*() const noexcept { return *m_pRawPtr; }
 
 		bool IsShared() const  noexcept { return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 1; }
 		bool IsValid() const noexcept { return m_pRawPtr != nullptr; }
@@ -105,6 +106,11 @@ namespace Sailor
 		bool operator!=(const TSharedPtr& pRhs) const
 		{
 			return m_pRawPtr != pRhs.m_pRawPtr;
+		}
+
+		std::strong_ordering operator<=>(const TSharedPtr& pRhs) const noexcept
+		{
+			return std::compare_three_way{}(m_pRawPtr, pRhs.m_pRawPtr);
 		}
 
 		void Clear() noexcept

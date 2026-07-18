@@ -484,7 +484,7 @@ Tasks::TaskPtr<bool> ShaderCompiler::CompileAllPermutations(ShaderAssetInfoPtr a
 
 		SAILOR_LOG("Compiling shader: %s Num permutations: %zd", assetInfo->GetAssetFilepath().c_str(), permutationsToCompile.Num());
 
-		auto compileSucceeded = std::make_shared<std::atomic_bool>(true);
+		auto compileSucceeded = TSharedPtr<std::atomic_bool>::Make(true);
 		Tasks::TaskPtr<bool> saveCacheJob = Tasks::CreateTaskWithResult<bool>("Save Shader Cache", [=, this]()
 			{
 				const bool bCompiled = compileSucceeded->load(std::memory_order_acquire);
@@ -548,14 +548,7 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 
 		YAML::Node yamlNode;
 
-		try
-		{
-			yamlNode = YAML::Load(shaderText);
-		}
-		catch (const std::exception& e)
-		{
-			SAILOR_LOG_ERROR("Cannot parse YAML: %s, %s", filepath.c_str(), e.what());
-		}
+		yamlNode = YAML::Load(shaderText);
 
 		ShaderAsset* shader = new ShaderAsset();
 		shader->Deserialize(yamlNode);
@@ -665,26 +658,7 @@ void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
 
 	YAML::Node yamlNode;
 
-	try
-	{
-		yamlNode = YAML::Load(shaderText);
-	}
-	catch (const std::exception& e)
-	{
-		std::string error = e.what();
-
-		if (error.find("illegal tab") < error.length())
-		{
-			static const std::string tab = "\t";
-			static const std::string space = "    ";
-
-			Utils::ReplaceAll(shaderText, tab, space);
-
-			std::ofstream assetFile(filepath);
-			assetFile << shaderText;
-			assetFile.close();
-		}
-	}
+	yamlNode = YAML::Load(shaderText);
 }
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)

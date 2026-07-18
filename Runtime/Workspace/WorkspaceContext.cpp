@@ -1,5 +1,7 @@
 #include "Workspace/WorkspaceContext.h"
+#include "Containers/Containers.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +14,8 @@
 
 namespace
 {
+	using Sailor::TSet;
+	using Sailor::TVector;
 	using namespace Sailor::Workspace;
 
 	constexpr uint32_t SupportedManifestVersion = 1;
@@ -69,25 +73,22 @@ namespace
 				return;
 			}
 
-			for (auto it = m_directories.rbegin(); it != m_directories.rend(); ++it)
+			for (size_t index = m_directories.Num(); index > 0; --index)
 			{
 				std::error_code removeError;
-				std::filesystem::remove(*it, removeError);
+				std::filesystem::remove(m_directories[index - 1], removeError);
 			}
 		}
 
-		void Track(std::vector<std::filesystem::path> directories)
+		void Track(TVector<std::filesystem::path>&& directories)
 		{
-			m_directories.insert(
-				m_directories.end(),
-				std::make_move_iterator(directories.begin()),
-				std::make_move_iterator(directories.end()));
+			m_directories.AddRange(std::move(directories));
 		}
 
 		void Commit() noexcept { m_bCommitted = true; }
 
 	private:
-		std::vector<std::filesystem::path> m_directories;
+		TVector<std::filesystem::path> m_directories;
 		bool m_bCommitted = false;
 	};
 
@@ -97,14 +98,7 @@ namespace
 	{
 		WorkspaceContextResolveResult result;
 		result.m_status = status;
-		try
-		{
-			result.m_message = std::move(message);
-		}
-		catch (...)
-		{
-			result.m_message.clear();
-		}
+		result.m_message = std::move(message);
 		return result;
 	}
 
@@ -229,8 +223,7 @@ namespace
 			return false;
 		}
 
-		std::unordered_set<std::string> keys;
-		keys.reserve(document.size());
+		TSet<std::string> keys;
 		for (const auto& field : document)
 		{
 			if (!field.first.IsScalar())
@@ -240,7 +233,7 @@ namespace
 			}
 
 			const std::string key = field.first.Scalar();
-			if (key.empty() || !keys.emplace(key).second)
+			if (key.empty() || !keys.Insert(key))
 			{
 				outError = "Workspace manifest contains duplicate or empty field '" + key + "'.";
 				return false;
@@ -289,13 +282,11 @@ namespace
 			return false;
 		}
 
-		try
+		std::string yamlDiagnostic;
+		if (!Sailor::External::TryConvertYaml(version, outVersion, yamlDiagnostic))
 		{
-			outVersion = version.as<uint32_t>();
-		}
-		catch (const YAML::Exception&)
-		{
-			outError = "Workspace manifest field 'manifestVersion' must be an unsigned integer scalar.";
+			outError = "Workspace manifest field 'manifestVersion' must be an unsigned integer scalar: " +
+				yamlDiagnostic;
 			return false;
 		}
 
@@ -373,7 +364,14 @@ namespace
 			return false;
 		}
 
-		const YAML::Node document = YAML::Load(payload);
+		YAML::Node document;
+		std::string yamlDiagnostic;
+		if (!Sailor::External::TryLoadYaml(payload, document, yamlDiagnostic))
+		{
+			outError = "Workspace manifest '" + PathToUtf8(manifestPath) +
+				"' contains invalid YAML: " + yamlDiagnostic;
+			return false;
+		}
 		if (!ReadManifestVersion(
 				document,
 				manifestPath,
@@ -572,7 +570,7 @@ namespace
 			return true;
 		}
 
-		std::vector<std::filesystem::path> missingDirectories;
+		TVector<std::filesystem::path> missingDirectories;
 		for (std::filesystem::path current = directory;
 			current != root && !current.empty();
 			current = current.parent_path())
@@ -588,7 +586,7 @@ namespace
 					"' could not be inspected: '" + PathToUtf8(current) + "'.";
 				return false;
 			}
-			missingDirectories.emplace_back(current);
+			missingDirectories.Add(current);
 		}
 
 		std::reverse(missingDirectories.begin(), missingDirectories.end());
@@ -701,7 +699,7 @@ namespace
 			return true;
 		}
 
-		std::vector<std::filesystem::path> manifests;
+		TVector<std::filesystem::path> manifests;
 		for (std::filesystem::directory_iterator it(root, pathError), end;
 			!pathError && it != end;
 			it.increment(pathError))
@@ -709,7 +707,7 @@ namespace
 			std::error_code entryError;
 			if (it->is_regular_file(entryError) && !entryError && HasSailorExtension(it->path()))
 			{
-				manifests.emplace_back(it->path());
+				manifests.Add(it->path());
 			}
 		}
 		if (pathError)
@@ -721,12 +719,12 @@ namespace
 		}
 
 		std::sort(manifests.begin(), manifests.end());
-		if (manifests.empty())
+		if (manifests.Num() == 0)
 		{
 			outManifest.clear();
 			return true;
 		}
-		if (manifests.size() > 1)
+		if (manifests.Num() > 1)
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::ManifestAmbiguous;
 			outError = "Multiple .sailor manifests were found in '" + PathToUtf8(root) +
@@ -734,7 +732,7 @@ namespace
 			return false;
 		}
 
-		outManifest = std::filesystem::canonical(manifests.front(), pathError);
+		outManifest = std::filesystem::canonical(manifests[0], pathError);
 		if (pathError || !IsInside(root, outManifest))
 		{
 			outFailureStatus = EWorkspaceContextResolveStatus::PathInvalid;
@@ -750,189 +748,164 @@ Sailor::Workspace::WorkspaceContextResolveResult Sailor::Workspace::ResolveWorks
 	const std::filesystem::path& requestedRoot,
 	const std::filesystem::path& requestedManifest) noexcept
 {
-	try
+	if (requestedRoot.empty())
 	{
-		if (requestedRoot.empty())
-		{
-			return Fail(
-				EWorkspaceContextResolveStatus::WorkspaceInvalid,
-				"Workspace root must not be empty.");
-		}
+		return Fail(
+			EWorkspaceContextResolveStatus::WorkspaceInvalid,
+			"Workspace root must not be empty.");
+	}
 
-		std::error_code pathError;
-		const std::filesystem::path absoluteRoot = std::filesystem::absolute(requestedRoot, pathError);
-		const std::filesystem::path root = pathError
-			? std::filesystem::path{}
-			: std::filesystem::canonical(absoluteRoot, pathError);
-		if (pathError || root.empty() || !std::filesystem::is_directory(root))
-		{
-			return Fail(
-				EWorkspaceContextResolveStatus::WorkspaceInvalid,
-				"Workspace root must be an existing directory: '" + PathToUtf8(requestedRoot) + "'.");
-		}
+	std::error_code pathError;
+	const std::filesystem::path absoluteRoot = std::filesystem::absolute(requestedRoot, pathError);
+	const std::filesystem::path root = pathError
+		? std::filesystem::path{}
+		: std::filesystem::canonical(absoluteRoot, pathError);
+	if (pathError || root.empty() || !std::filesystem::is_directory(root))
+	{
+		return Fail(
+			EWorkspaceContextResolveStatus::WorkspaceInvalid,
+			"Workspace root must be an existing directory: '" + PathToUtf8(requestedRoot) + "'.");
+	}
 
-		WorkspaceContextCandidate candidate;
-		candidate.m_root = root;
-		EWorkspaceContextResolveStatus discoveryFailure = EWorkspaceContextResolveStatus::ManifestNotFound;
-		std::string error;
-		if (!DiscoverManifest(
+	WorkspaceContextCandidate candidate;
+	candidate.m_root = root;
+	EWorkspaceContextResolveStatus discoveryFailure = EWorkspaceContextResolveStatus::ManifestNotFound;
+	std::string error;
+	if (!DiscoverManifest(
+			root,
+			requestedManifest,
+			candidate.m_manifest,
+			discoveryFailure,
+			error))
+	{
+		return Fail(discoveryFailure, std::move(error));
+	}
+
+	ManifestFields fields;
+	if (candidate.m_manifest.empty())
+	{
+		candidate.m_bLegacy = true;
+		candidate.m_moduleName = DefaultModuleName;
+	}
+	else
+	{
+		if (!ParseManifest(candidate.m_manifest, fields, error))
+		{
+			return Fail(EWorkspaceContextResolveStatus::ManifestInvalid, std::move(error));
+		}
+		candidate.m_manifestVersion = fields.m_manifestVersion;
+		candidate.m_workspaceId = fields.m_workspaceId;
+		candidate.m_workspaceName = fields.m_workspaceName;
+		candidate.m_moduleName = fields.m_moduleName;
+		if (!ResolveEnginePaths(
 				root,
-				requestedManifest,
-				candidate.m_manifest,
-				discoveryFailure,
+				fields.m_enginePath,
+				fields.m_engineReferenceKind,
+				candidate.m_engineRoot,
+				candidate.m_engineContent,
 				error))
 		{
-			return Fail(discoveryFailure, std::move(error));
-		}
-
-		ManifestFields fields;
-		if (candidate.m_manifest.empty())
-		{
-			candidate.m_bLegacy = true;
-			candidate.m_moduleName = DefaultModuleName;
-		}
-		else
-		{
-			try
-			{
-				if (!ParseManifest(candidate.m_manifest, fields, error))
-				{
-					return Fail(EWorkspaceContextResolveStatus::ManifestInvalid, std::move(error));
-				}
-			}
-			catch (const YAML::Exception& e)
-			{
-				return Fail(
-					EWorkspaceContextResolveStatus::ManifestInvalid,
-					"Workspace manifest '" + PathToUtf8(candidate.m_manifest) +
-						"' is invalid YAML: " + e.what());
-			}
-			candidate.m_manifestVersion = fields.m_manifestVersion;
-			candidate.m_workspaceId = fields.m_workspaceId;
-			candidate.m_workspaceName = fields.m_workspaceName;
-			candidate.m_moduleName = fields.m_moduleName;
-			if (!ResolveEnginePaths(
-					root,
-					fields.m_enginePath,
-					fields.m_engineReferenceKind,
-					candidate.m_engineRoot,
-					candidate.m_engineContent,
-					error))
-			{
-				return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
-			}
-		}
-
-		std::filesystem::path contentRelative;
-		std::filesystem::path cacheRelative;
-		std::filesystem::path sourceRelative;
-		std::filesystem::path generatedRelative;
-		std::filesystem::path buildRelative;
-		std::filesystem::path logicOutputRelative;
-		std::string normalizedContent;
-		std::string unusedNormalized;
-		if (!NormalizeOwnedRelativePath(fields.m_content, "contentPath", contentRelative, normalizedContent, error) ||
-			!NormalizeOwnedRelativePath(fields.m_cache, "cachePath", cacheRelative, unusedNormalized, error) ||
-			!NormalizeOwnedRelativePath(fields.m_source, "sourcePath", sourceRelative, unusedNormalized, error) ||
-			!NormalizeOwnedRelativePath(fields.m_generated, "generatedProjectPath", generatedRelative, unusedNormalized, error) ||
-			!NormalizeOwnedRelativePath(fields.m_build, "buildPath", buildRelative, unusedNormalized, error) ||
-			!NormalizeOwnedRelativePath(fields.m_logicOutput, "logicOutputPath", logicOutputRelative, unusedNormalized, error))
-		{
 			return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
 		}
-
-		if (!ResolveOwnedPath(root, contentRelative, "contentPath", candidate.m_content, error) ||
-			!ResolveOwnedPath(root, cacheRelative, "cachePath", candidate.m_cache, error) ||
-			!ResolveOwnedPath(root, sourceRelative, "sourcePath", candidate.m_source, error) ||
-			!ResolveOwnedPath(root, generatedRelative, "generatedProjectPath", candidate.m_generated, error) ||
-			!ResolveOwnedPath(root, buildRelative, "buildPath", candidate.m_build, error) ||
-			!ResolveOwnedPath(root, logicOutputRelative, "logicOutputPath", candidate.m_logicOutput, error))
-		{
-			return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
-		}
-
-		pathError.clear();
-		const bool bContentExists = std::filesystem::exists(candidate.m_content, pathError);
-		if (pathError)
-		{
-			return Fail(
-				EWorkspaceContextResolveStatus::PathInvalid,
-				"Workspace content path could not be inspected: '" +
-					PathToUtf8(candidate.m_content) + "'.");
-		}
-		if (bContentExists && !std::filesystem::is_directory(candidate.m_content))
-		{
-			return Fail(
-				EWorkspaceContextResolveStatus::PathInvalid,
-				"Workspace content path is not a directory: '" +
-					PathToUtf8(candidate.m_content) + "'.");
-		}
-		if (!bContentExists && !IsDefaultContentPath(normalizedContent))
-		{
-			return Fail(
-				EWorkspaceContextResolveStatus::ContentMissing,
-				"Custom workspace content directory is missing and will not be created: '" +
-					PathToUtf8(candidate.m_content) + "'.");
-		}
-
-		CreatedDirectoriesRollback rollback;
-		if (!bContentExists &&
-			!EnsureDirectory(root, candidate.m_content, "contentPath", rollback, error))
-		{
-			return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
-		}
-		if (!EnsureDirectory(root, candidate.m_cache, "cachePath", rollback, error))
-		{
-			return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
-		}
-
-		if (!RecanonicalizeDirectory(root, candidate.m_content, "contentPath", error) ||
-			!RecanonicalizeDirectory(root, candidate.m_cache, "cachePath", error))
-		{
-			return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
-		}
-		if (candidate.m_bLegacy)
-		{
-			candidate.m_engineRoot = candidate.m_root;
-			candidate.m_engineContent = candidate.m_content;
-		}
-
-		WorkspaceContextResolveResult result;
-		result.m_status = candidate.m_bLegacy
-			? EWorkspaceContextResolveStatus::Legacy
-			: EWorkspaceContextResolveStatus::Success;
-		result.m_message = candidate.m_bLegacy
-			? "No workspace manifest was found; using legacy Content and Cache directories under '" +
-				PathToUtf8(root) + "'."
-			: "Resolved workspace manifest '" + PathToUtf8(candidate.m_manifest) + "'.";
-		result.m_context.m_root = std::move(candidate.m_root);
-		result.m_context.m_manifest = std::move(candidate.m_manifest);
-		result.m_context.m_engineRoot = std::move(candidate.m_engineRoot);
-		result.m_context.m_engineContent = std::move(candidate.m_engineContent);
-		result.m_context.m_content = std::move(candidate.m_content);
-		result.m_context.m_cache = std::move(candidate.m_cache);
-		result.m_context.m_source = std::move(candidate.m_source);
-		result.m_context.m_generated = std::move(candidate.m_generated);
-		result.m_context.m_build = std::move(candidate.m_build);
-		result.m_context.m_logicOutput = std::move(candidate.m_logicOutput);
-		result.m_context.m_moduleName = std::move(candidate.m_moduleName);
-		result.m_context.m_workspaceId = std::move(candidate.m_workspaceId);
-		result.m_context.m_workspaceName = std::move(candidate.m_workspaceName);
-		result.m_context.m_manifestVersion = candidate.m_manifestVersion;
-		result.m_context.m_bLegacy = candidate.m_bLegacy;
-		rollback.Commit();
-		return result;
 	}
-	catch (const std::exception& e)
+
+	std::filesystem::path contentRelative;
+	std::filesystem::path cacheRelative;
+	std::filesystem::path sourceRelative;
+	std::filesystem::path generatedRelative;
+	std::filesystem::path buildRelative;
+	std::filesystem::path logicOutputRelative;
+	std::string normalizedContent;
+	std::string unusedNormalized;
+	if (!NormalizeOwnedRelativePath(fields.m_content, "contentPath", contentRelative, normalizedContent, error) ||
+		!NormalizeOwnedRelativePath(fields.m_cache, "cachePath", cacheRelative, unusedNormalized, error) ||
+		!NormalizeOwnedRelativePath(fields.m_source, "sourcePath", sourceRelative, unusedNormalized, error) ||
+		!NormalizeOwnedRelativePath(fields.m_generated, "generatedProjectPath", generatedRelative, unusedNormalized, error) ||
+		!NormalizeOwnedRelativePath(fields.m_build, "buildPath", buildRelative, unusedNormalized, error) ||
+		!NormalizeOwnedRelativePath(fields.m_logicOutput, "logicOutputPath", logicOutputRelative, unusedNormalized, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
+	}
+
+	if (!ResolveOwnedPath(root, contentRelative, "contentPath", candidate.m_content, error) ||
+		!ResolveOwnedPath(root, cacheRelative, "cachePath", candidate.m_cache, error) ||
+		!ResolveOwnedPath(root, sourceRelative, "sourcePath", candidate.m_source, error) ||
+		!ResolveOwnedPath(root, generatedRelative, "generatedProjectPath", candidate.m_generated, error) ||
+		!ResolveOwnedPath(root, buildRelative, "buildPath", candidate.m_build, error) ||
+		!ResolveOwnedPath(root, logicOutputRelative, "logicOutputPath", candidate.m_logicOutput, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
+	}
+
+	pathError.clear();
+	const bool bContentExists = std::filesystem::exists(candidate.m_content, pathError);
+	if (pathError)
 	{
 		return Fail(
-			EWorkspaceContextResolveStatus::ManifestInvalid,
-			"Workspace context resolution failed: " + std::string(e.what()));
+			EWorkspaceContextResolveStatus::PathInvalid,
+			"Workspace content path could not be inspected: '" +
+				PathToUtf8(candidate.m_content) + "'.");
 	}
-	catch (...)
+	if (bContentExists && !std::filesystem::is_directory(candidate.m_content))
 	{
 		return Fail(
-			EWorkspaceContextResolveStatus::ManifestInvalid,
-			"Workspace context resolution failed with an unknown error.");
+			EWorkspaceContextResolveStatus::PathInvalid,
+			"Workspace content path is not a directory: '" +
+				PathToUtf8(candidate.m_content) + "'.");
 	}
+	if (!bContentExists && !IsDefaultContentPath(normalizedContent))
+	{
+		return Fail(
+			EWorkspaceContextResolveStatus::ContentMissing,
+			"Custom workspace content directory is missing and will not be created: '" +
+				PathToUtf8(candidate.m_content) + "'.");
+	}
+
+	CreatedDirectoriesRollback rollback;
+	if (!bContentExists &&
+		!EnsureDirectory(root, candidate.m_content, "contentPath", rollback, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
+	}
+	if (!EnsureDirectory(root, candidate.m_cache, "cachePath", rollback, error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::DirectoryCreationFailed, std::move(error));
+	}
+
+	if (!RecanonicalizeDirectory(root, candidate.m_content, "contentPath", error) ||
+		!RecanonicalizeDirectory(root, candidate.m_cache, "cachePath", error))
+	{
+		return Fail(EWorkspaceContextResolveStatus::PathInvalid, std::move(error));
+	}
+	if (candidate.m_bLegacy)
+	{
+		candidate.m_engineRoot = candidate.m_root;
+		candidate.m_engineContent = candidate.m_content;
+	}
+
+	WorkspaceContextResolveResult result;
+	result.m_status = candidate.m_bLegacy
+		? EWorkspaceContextResolveStatus::Legacy
+		: EWorkspaceContextResolveStatus::Success;
+	result.m_message = candidate.m_bLegacy
+		? "No workspace manifest was found; using legacy Content and Cache directories under '" +
+			PathToUtf8(root) + "'."
+		: "Resolved workspace manifest '" + PathToUtf8(candidate.m_manifest) + "'.";
+	result.m_context.m_root = std::move(candidate.m_root);
+	result.m_context.m_manifest = std::move(candidate.m_manifest);
+	result.m_context.m_engineRoot = std::move(candidate.m_engineRoot);
+	result.m_context.m_engineContent = std::move(candidate.m_engineContent);
+	result.m_context.m_content = std::move(candidate.m_content);
+	result.m_context.m_cache = std::move(candidate.m_cache);
+	result.m_context.m_source = std::move(candidate.m_source);
+	result.m_context.m_generated = std::move(candidate.m_generated);
+	result.m_context.m_build = std::move(candidate.m_build);
+	result.m_context.m_logicOutput = std::move(candidate.m_logicOutput);
+	result.m_context.m_moduleName = std::move(candidate.m_moduleName);
+	result.m_context.m_workspaceId = std::move(candidate.m_workspaceId);
+	result.m_context.m_workspaceName = std::move(candidate.m_workspaceName);
+	result.m_context.m_manifestVersion = candidate.m_manifestVersion;
+	result.m_context.m_bLegacy = candidate.m_bLegacy;
+	rollback.Commit();
+	return result;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/FileId.h"
 #include "Containers/Map.h"
@@ -185,7 +186,7 @@ namespace Sailor
 		static bool ReadArtifactBytes(
 			const std::filesystem::path& path,
 			const ArtifactMetadata& metadata,
-			std::vector<uint8_t>& outBytes,
+			TVector<uint8_t>& outBytes,
 			std::string& outDiagnostic,
 			bool& outIoFailure) noexcept;
 		static bool ReadSpirvArtifactInternal(
@@ -322,7 +323,7 @@ namespace Sailor
 	class ShaderCacheTestAccess final
 	{
 	public:
-		SAILOR_API static void Configure(
+		SAILOR_API static bool Configure(
 			ShaderCache& cache,
 			const std::filesystem::path& cacheRoot,
 			std::time_t timestamp = 100);

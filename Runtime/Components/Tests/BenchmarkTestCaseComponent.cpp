@@ -44,32 +44,19 @@ void BenchmarkTestCaseComponent::Tick(float)
 		results.Emplace(name, end - start);
 	};
 
-	try
-	{
-		if (m_bRunVector) { runBenchmark(RunVectorBenchmark, "Vector"); }
-		if (m_bRunSet) { runBenchmark(RunSetBenchmark, "Set"); }
-		if (m_bRunMap) { runBenchmark(RunMapBenchmark, "Map"); }
-		if (m_bRunList) { runBenchmark(RunListBenchmark, "List"); }
-		if (m_bRunOctree) { runBenchmark(RunOctreeBenchmark, "Octree"); }
-		if (m_bRunMemory) { runBenchmark(Sailor::Memory::RunMemoryBenchmark, "Memory"); }
+	if (m_bRunVector) { runBenchmark(RunVectorBenchmark, "Vector"); }
+	if (m_bRunSet) { runBenchmark(RunSetBenchmark, "Set"); }
+	if (m_bRunMap) { runBenchmark(RunMapBenchmark, "Map"); }
+	if (m_bRunList) { runBenchmark(RunListBenchmark, "List"); }
+	if (m_bRunOctree) { runBenchmark(RunOctreeBenchmark, "Octree"); }
+	if (m_bRunMemory) { runBenchmark(Sailor::Memory::RunMemoryBenchmark, "Memory"); }
 
-		std::stringstream ss;
-		for (const auto& entry : results)
-		{
-			ss << entry.m_first << ":" << entry.m_second << "ms" << ";";
-		}
-		AddJournalEvent("BenchmarkResults", ss.str(), Utils::GetCurrentTimeMs() - GetStartTimeMs());
-		MarkPassed();
-		App::Stop();
-	}
-	catch (const std::exception& ex)
+	std::stringstream ss;
+	for (const auto& entry : results)
 	{
-		MarkFailed(ex.what());
-		App::Stop();
+		ss << entry.m_first << ":" << entry.m_second << "ms" << ";";
 	}
-	catch (...)
-	{
-		MarkFailed("Unknown exception during benchmarks");
-		App::Stop();
-	}
+	AddJournalEvent("BenchmarkResults", ss.str(), Utils::GetCurrentTimeMs() - GetStartTimeMs());
+	MarkPassed();
+	App::Stop();
 }

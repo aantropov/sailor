@@ -31,6 +31,10 @@ add_executable(EditorViewportSessionTests
     EditorViewportSessionTests.cpp
 )
 
+add_executable(SmartPointerTests
+    SmartPointerTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -141,6 +145,7 @@ target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
+target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
@@ -171,6 +176,10 @@ target_compile_definitions(WorkspaceModuleMissingEntryFixture PRIVATE
 )
 target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleIncompatibleFixture PRIVATE Sailor::Runtime)
+target_link_libraries(RemoteViewportRuntimeTests PRIVATE Sailor::Runtime)
+target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
+target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
+target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
 )
@@ -211,10 +220,12 @@ if(WIN32)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
+    target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
 endif()
 if(APPLE)
     target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacNativeBridgeTests PRIVATE cxx_std_20)
+    target_link_libraries(RemoteViewportMacTransportTests PRIVATE Sailor::Runtime)
 endif()
 target_include_directories(RemoteViewportFoundationTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
@@ -226,6 +237,9 @@ target_include_directories(RemoteViewportRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EditorViewportSessionTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(SmartPointerTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -304,6 +318,11 @@ add_test(
 )
 
 add_test(
+    NAME SmartPointerTests
+    COMMAND SmartPointerTests
+)
+
+add_test(
     NAME WorkspaceModuleContractTests
     COMMAND WorkspaceModuleContractTests
 )
@@ -363,6 +382,7 @@ set_tests_properties(
     AssetMountDiscoveryTests
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
+    SmartPointerTests
     PROPERTIES TIMEOUT 30
 )
 
@@ -397,6 +417,16 @@ if(APPLE)
         COMMAND RemoteViewportMacNativeBridgeTests
     )
 endif()
+
+add_test(
+    NAME RuntimeNoExceptions
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_exceptions_test.py ${SAILOR_RUNTIME_DIR}
+)
+
+add_test(
+    NAME RuntimeNoStdContainersOrSmartPointers
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_std_containers_test.py ${SAILOR_RUNTIME_DIR}
+)
 
 add_test(
     NAME ProcessNoCrash

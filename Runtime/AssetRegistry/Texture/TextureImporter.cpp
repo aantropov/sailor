@@ -1,4 +1,5 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Containers/Containers.h"
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "TextureAssetInfo.h"
@@ -61,9 +62,11 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		return false;
 	}
 
-	std::vector<char> jsonChunk(jsonChunkHeader.chunkLength);
-	file.read(jsonChunk.data(), jsonChunkHeader.chunkLength);
-	nlohmann::json gltfJson = nlohmann::json::parse(jsonChunk);
+	TVector<char> jsonChunk(jsonChunkHeader.chunkLength);
+	file.read(jsonChunk.GetData(), jsonChunkHeader.chunkLength);
+	nlohmann::json gltfJson = nlohmann::json::parse(
+		jsonChunk.GetData(),
+		jsonChunk.GetData() + jsonChunk.Num());
 
 	if (textureIndex < 0 || textureIndex >= gltfJson["textures"].size())
 	{
@@ -474,5 +477,4 @@ void TextureImporter::CollectGarbage()
 		m_promises.Remove(uid);
 	}
 }
-
 

@@ -13,10 +13,8 @@
 
 #include <algorithm>
 #include <cstring>
-#include <exception>
 #include <filesystem>
 #include <limits>
-#include <memory>
 #include <utility>
 
 using namespace Sailor;
@@ -25,13 +23,7 @@ namespace
 {
 	void LogEditorTypeSerializationFailure(const char* message) noexcept
 	{
-		try
-		{
-			SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
-		}
-		catch (...)
-		{
-		}
+		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
 	}
 }
 
@@ -127,56 +119,45 @@ uint32_t App::SerializeEditorTypes(char** yamlNode)
 	}
 
 	yamlNode[0] = nullptr;
-	try
+	YAML::Node editorTypes = Reflection::ExportEngineTypes();
+	if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
 	{
-		YAML::Node editorTypes = Reflection::ExportEngineTypes();
-		if (App* app = GetInstance(); app && app->m_pWorkspaceModuleManager)
+		YAML::Node combinedTypes;
+		std::string mergeError;
+		if (!app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(
+				editorTypes,
+				combinedTypes,
+				mergeError))
 		{
-			YAML::Node combinedTypes;
-			std::string mergeError;
-			if (!app->m_pWorkspaceModuleManager->BuildEditorTypeMetadata(
-					editorTypes,
-					combinedTypes,
-					mergeError))
-			{
-				LogEditorTypeSerializationFailure(mergeError.empty()
-					? "workspace editor metadata merge failed"
-					: mergeError.c_str());
-				return 0;
-			}
-
-			editorTypes = std::move(combinedTypes);
-		}
-
-		if (editorTypes.IsNull())
-		{
-			LogEditorTypeSerializationFailure("the editor type catalog is null");
+			LogEditorTypeSerializationFailure(mergeError.empty()
+				? "workspace editor metadata merge failed"
+				: mergeError.c_str());
 			return 0;
 		}
 
-		const std::string serializedNode = YAML::Dump(editorTypes);
-		const size_t length = serializedNode.length();
-		if (length > std::numeric_limits<uint32_t>::max())
-		{
-			LogEditorTypeSerializationFailure("the serialized catalog exceeds the interop size limit");
-			return 0;
-		}
+		editorTypes = std::move(combinedTypes);
+	}
 
-		auto serializedOutput = std::make_unique<char[]>(length + 1);
-		memcpy(serializedOutput.get(), serializedNode.c_str(), length);
-		serializedOutput[length] = '\0';
-		yamlNode[0] = serializedOutput.release();
+	if (editorTypes.IsNull())
+	{
+		LogEditorTypeSerializationFailure("the editor type catalog is null");
+		return 0;
+	}
 
-		return static_cast<uint32_t>(length);
-	}
-	catch (const std::exception& e)
+	const std::string serializedNode = YAML::Dump(editorTypes);
+	const size_t length = serializedNode.length();
+	if (length > std::numeric_limits<uint32_t>::max())
 	{
-		LogEditorTypeSerializationFailure(e.what());
+		LogEditorTypeSerializationFailure("the serialized catalog exceeds the interop size limit");
+		return 0;
 	}
-	catch (...)
-	{
-		LogEditorTypeSerializationFailure("an unknown native exception was raised");
-	}
+
+	auto serializedOutput = TUniquePtr<char[]>::Make(length + 1);
+	memcpy(serializedOutput.GetRawPtr(), serializedNode.c_str(), length);
+	serializedOutput[length] = '\0';
+	yamlNode[0] = serializedOutput.Release();
+
+	return static_cast<uint32_t>(length);
 
 	yamlNode[0] = nullptr;
 	return 0;
@@ -190,43 +171,32 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 	}
 
 	yamlNode[0] = nullptr;
-	try
+	const auto identity = Workspace::MakeWorkspaceCacheIdentity(
+		"editor-types",
+		"editor-types-v1",
+		1,
+		GetWorkspaceContext());
+
+	YAML::Node identityNode;
+	identityNode["workspaceIdentity"] = identity.m_workspaceId;
+	identityNode["engineVersion"] = identity.m_engineVersion;
+	identityNode["buildIdentity"] = identity.m_buildIdentity;
+	identityNode["producerIdentity"] = identity.m_producerIdentity;
+
+	const std::string serializedNode = YAML::Dump(identityNode);
+	const size_t length = serializedNode.length();
+	if (length > std::numeric_limits<uint32_t>::max())
 	{
-		const auto identity = Workspace::MakeWorkspaceCacheIdentity(
-			"editor-types",
-			"editor-types-v1",
-			1,
-			GetWorkspaceContext());
-
-		YAML::Node identityNode;
-		identityNode["workspaceIdentity"] = identity.m_workspaceId;
-		identityNode["engineVersion"] = identity.m_engineVersion;
-		identityNode["buildIdentity"] = identity.m_buildIdentity;
-		identityNode["producerIdentity"] = identity.m_producerIdentity;
-
-		const std::string serializedNode = YAML::Dump(identityNode);
-		const size_t length = serializedNode.length();
-		if (length > std::numeric_limits<uint32_t>::max())
-		{
-			LogEditorTypeSerializationFailure("the serialized workspace cache identity exceeds the interop size limit");
-			return 0;
-		}
-
-		auto serializedOutput = std::make_unique<char[]>(length + 1);
-		memcpy(serializedOutput.get(), serializedNode.c_str(), length);
-		serializedOutput[length] = '\0';
-		yamlNode[0] = serializedOutput.release();
-
-		return static_cast<uint32_t>(length);
+		LogEditorTypeSerializationFailure("the serialized workspace cache identity exceeds the interop size limit");
+		return 0;
 	}
-	catch (const std::exception& e)
-	{
-		LogEditorTypeSerializationFailure(e.what());
-	}
-	catch (...)
-	{
-		LogEditorTypeSerializationFailure("an unknown native exception was raised while serializing workspace cache identity");
-	}
+
+	auto serializedOutput = TUniquePtr<char[]>::Make(length + 1);
+	memcpy(serializedOutput.GetRawPtr(), serializedNode.c_str(), length);
+	serializedOutput[length] = '\0';
+	yamlNode[0] = serializedOutput.Release();
+
+	return static_cast<uint32_t>(length);
 
 	yamlNode[0] = nullptr;
 	return 0;

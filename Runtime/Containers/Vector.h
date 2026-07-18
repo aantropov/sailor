@@ -56,6 +56,9 @@ namespace Sailor
 		bool operator!=(const TVectorIterator& rhs) const { return m_element != rhs.m_element; }
 
 		bool operator<(const TVectorIterator& rhs) const { return m_element < rhs.m_element; }
+		bool operator>(const TVectorIterator& rhs) const { return m_element > rhs.m_element; }
+		bool operator<=(const TVectorIterator& rhs) const { return m_element <= rhs.m_element; }
+		bool operator>=(const TVectorIterator& rhs) const { return m_element >= rhs.m_element; }
 
 		reference operator*() { return *m_element; }
 		reference operator*() const { return *m_element; }
@@ -69,10 +72,24 @@ namespace Sailor
 			return *this;
 		}
 
+		TVectorIterator operator++(int)
+		{
+			TVectorIterator previous(*this);
+			++(*this);
+			return previous;
+		}
+
 		TVectorIterator& operator--()
 		{
 			--m_element;
 			return *this;
+		}
+
+		TVectorIterator operator--(int)
+		{
+			TVectorIterator previous(*this);
+			--(*this);
+			return previous;
 		}
 
 		TVectorIterator operator-(difference_type rhs) const { return m_element - rhs; }

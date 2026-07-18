@@ -1,8 +1,10 @@
 #include "ShaderCache.h"
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Sailor.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,7 +14,6 @@
 #include <limits>
 #include <random>
 #include <sstream>
-#include <stdexcept>
 #include <unordered_set>
 
 using namespace Sailor;
@@ -84,13 +85,13 @@ namespace
 			return false;
 		}
 
-		std::unordered_set<std::string> expected;
+		TSet<std::string> expected;
 		for (const char* field : expectedFields)
 		{
-			expected.emplace(field);
+			expected.Insert(field);
 		}
 
-		std::unordered_set<std::string> actual;
+		TSet<std::string> actual;
 		for (const auto& field : node)
 		{
 			if (!field.first.IsScalar())
@@ -100,12 +101,12 @@ namespace
 			}
 
 			const std::string name = field.first.Scalar();
-			if (!actual.emplace(name).second)
+			if (!actual.Insert(name))
 			{
 				outDiagnostic = context + " contains duplicate field '" + name + "'.";
 				return false;
 			}
-			if (!expected.contains(name))
+			if (!expected.Contains(name))
 			{
 				outDiagnostic = context + " contains unknown field '" + name + "'.";
 				return false;
@@ -114,7 +115,7 @@ namespace
 
 		for (const std::string& field : expected)
 		{
-			if (!actual.contains(field))
+			if (!actual.Contains(field))
 			{
 				outDiagnostic = context + " is missing required field '" + field + "'.";
 				return false;
@@ -366,8 +367,18 @@ YAML::Node ShaderCache::ArtifactMetadata::Serialize() const
 
 void ShaderCache::ArtifactMetadata::Deserialize(const YAML::Node& inData)
 {
-	m_byteLength = inData["byteLength"].as<uint64_t>();
-	m_checksum = inData["checksum"].as<uint64_t>();
+	std::string yamlDiagnostic;
+	if (!Sailor::External::GuardYamlExceptions(
+		[&]()
+		{
+			m_byteLength = inData["byteLength"].as<uint64_t>();
+			m_checksum = inData["checksum"].as<uint64_t>();
+		},
+		yamlDiagnostic))
+	{
+		m_byteLength = 0;
+		m_checksum = 0;
+	}
 }
 
 YAML::Node ShaderCache::ArtifactSet::Serialize() const
@@ -381,9 +392,20 @@ YAML::Node ShaderCache::ArtifactSet::Serialize() const
 
 void ShaderCache::ArtifactSet::Deserialize(const YAML::Node& inData)
 {
-	m_vertex.Deserialize(inData["vertex"]);
-	m_fragment.Deserialize(inData["fragment"]);
-	m_compute.Deserialize(inData["compute"]);
+	std::string yamlDiagnostic;
+	if (!Sailor::External::GuardYamlExceptions(
+		[&]()
+		{
+			m_vertex.Deserialize(inData["vertex"]);
+			m_fragment.Deserialize(inData["fragment"]);
+			m_compute.Deserialize(inData["compute"]);
+		},
+		yamlDiagnostic))
+	{
+		m_vertex = {};
+		m_fragment = {};
+		m_compute = {};
+	}
 }
 
 YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
@@ -400,12 +422,21 @@ YAML::Node ShaderCache::ShaderCacheData::Entry::Serialize() const
 
 void ShaderCache::ShaderCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = inData["fileId"].as<FileId>();
-	m_timestamp = inData["timestamp"].as<std::time_t>();
-	m_permutation = inData["permutation"].as<uint32_t>();
-	m_generation = inData["generation"].as<std::string>();
-	m_regular.Deserialize(inData["regular"]);
-	m_debug.Deserialize(inData["debug"]);
+	std::string yamlDiagnostic;
+	if (!Sailor::External::GuardYamlExceptions(
+		[&]()
+		{
+			m_fileId = inData["fileId"].as<FileId>();
+			m_timestamp = inData["timestamp"].as<std::time_t>();
+			m_permutation = inData["permutation"].as<uint32_t>();
+			m_generation = inData["generation"].as<std::string>();
+			m_regular.Deserialize(inData["regular"]);
+			m_debug.Deserialize(inData["debug"]);
+		},
+		yamlDiagnostic))
+	{
+		*this = Entry();
+	}
 }
 
 YAML::Node ShaderCache::ShaderCacheData::Serialize() const
@@ -427,7 +458,16 @@ YAML::Node ShaderCache::ShaderCacheData::Serialize() const
 
 void ShaderCache::ShaderCacheData::Deserialize(const YAML::Node& inData)
 {
-	m_data = inData["entries"].as<TMap<FileId, TVector<Entry>>>();
+	std::string yamlDiagnostic;
+	if (!Sailor::External::GuardYamlExceptions(
+		[&]()
+		{
+			m_data = inData["entries"].as<TMap<FileId, TVector<Entry>>>();
+		},
+		yamlDiagnostic))
+	{
+		m_data.Clear();
+	}
 }
 
 std::string ShaderCache::SerializeShaderCachePayload(const ShaderCacheData& cache)
@@ -442,193 +482,192 @@ bool ShaderCache::TryDeserializeShaderCachePayload(
 	ShaderCacheData& outData,
 	std::string& outDiagnostic) noexcept
 {
-	try
+	auto deserialize = [&]() -> bool
 	{
-		const YAML::Node root = YAML::Load(payload);
-		if (!ValidateExactFields(root, { "shaderCache" }, "Shader cache payload root", outDiagnostic))
+	const YAML::Node root = YAML::Load(payload);
+	if (!ValidateExactFields(root, { "shaderCache" }, "Shader cache payload root", outDiagnostic))
+	{
+		return false;
+	}
+
+	const YAML::Node shaderCache = FindField(root, "shaderCache");
+	if (!ValidateExactFields(shaderCache, { "entries" }, "Shader cache payload", outDiagnostic))
+	{
+		return false;
+	}
+
+	const YAML::Node entriesNode = FindField(shaderCache, "entries");
+	if (!entriesNode.IsMap())
+	{
+		outDiagnostic = "Shader cache field 'entries' must be a YAML map, including when empty.";
+		return false;
+	}
+
+	auto parseMetadata = [&](const YAML::Node& node,
+		ArtifactMetadata& outMetadata,
+		const std::string& context) -> bool
+	{
+		if (!ValidateExactFields(node, { "byteLength", "checksum" }, context, outDiagnostic))
 		{
 			return false;
 		}
-
-		const YAML::Node shaderCache = FindField(root, "shaderCache");
-		if (!ValidateExactFields(shaderCache, { "entries" }, "Shader cache payload", outDiagnostic))
+		const YAML::Node byteLength = FindField(node, "byteLength");
+		const YAML::Node checksum = FindField(node, "checksum");
+		if (!byteLength.IsScalar() || !checksum.IsScalar())
 		{
+			outDiagnostic = context + " fields must be unsigned integer scalars.";
 			return false;
 		}
-
-		const YAML::Node entriesNode = FindField(shaderCache, "entries");
-		if (!entriesNode.IsMap())
+		outMetadata.m_byteLength = byteLength.as<uint64_t>();
+		outMetadata.m_checksum = checksum.as<uint64_t>();
+		if (!IsMetadataStructurallyValid(outMetadata))
 		{
-			outDiagnostic = "Shader cache field 'entries' must be a YAML map, including when empty.";
+			outDiagnostic = context + " has a checksum for an absent artifact.";
 			return false;
 		}
-
-		auto parseMetadata = [&](const YAML::Node& node,
-			ArtifactMetadata& outMetadata,
-			const std::string& context) -> bool
+		if (outMetadata.IsPresent() && outMetadata.m_byteLength % sizeof(uint32_t) != 0)
 		{
-			if (!ValidateExactFields(node, { "byteLength", "checksum" }, context, outDiagnostic))
-			{
-				return false;
-			}
-			const YAML::Node byteLength = FindField(node, "byteLength");
-			const YAML::Node checksum = FindField(node, "checksum");
-			if (!byteLength.IsScalar() || !checksum.IsScalar())
-			{
-				outDiagnostic = context + " fields must be unsigned integer scalars.";
-				return false;
-			}
-			outMetadata.m_byteLength = byteLength.as<uint64_t>();
-			outMetadata.m_checksum = checksum.as<uint64_t>();
-			if (!IsMetadataStructurallyValid(outMetadata))
-			{
-				outDiagnostic = context + " has a checksum for an absent artifact.";
-				return false;
-			}
-			if (outMetadata.IsPresent() && outMetadata.m_byteLength % sizeof(uint32_t) != 0)
-			{
-				outDiagnostic = context + " byteLength is not aligned to uint32 SPIR-V words.";
-				return false;
-			}
-			return true;
-		};
-
-		auto parseSet = [&](const YAML::Node& node,
-			ArtifactSet& outSet,
-			const std::string& context) -> bool
-		{
-			if (!ValidateExactFields(node, { "vertex", "fragment", "compute" }, context, outDiagnostic))
-			{
-				return false;
-			}
-			return parseMetadata(FindField(node, "vertex"), outSet.m_vertex, context + " vertex artifact") &&
-				parseMetadata(FindField(node, "fragment"), outSet.m_fragment, context + " fragment artifact") &&
-				parseMetadata(FindField(node, "compute"), outSet.m_compute, context + " compute artifact");
-		};
-
-		ShaderCacheData candidate;
-		std::unordered_set<std::string> fileIds;
-		for (const auto& serializedFileEntries : entriesNode)
-		{
-			if (!serializedFileEntries.first.IsScalar())
-			{
-				outDiagnostic = "Shader cache contains a non-scalar file id.";
-				return false;
-			}
-
-			const std::string serializedFileId = serializedFileEntries.first.Scalar();
-			if (!fileIds.emplace(serializedFileId).second)
-			{
-				outDiagnostic = "Shader cache contains duplicate file id '" + serializedFileId + "'.";
-				return false;
-			}
-
-			const FileId fileId = serializedFileEntries.first.as<FileId>();
-			if (!fileId)
-			{
-				outDiagnostic = "Shader cache contains invalid file id '" + serializedFileId + "'.";
-				return false;
-			}
-
-			const YAML::Node entrySequence = serializedFileEntries.second;
-			if (!entrySequence.IsSequence() || entrySequence.size() == 0)
-			{
-				outDiagnostic = "Shader cache file id '" + serializedFileId +
-					"' must contain a non-empty entry sequence.";
-				return false;
-			}
-
-			TVector<ShaderCacheData::Entry> entries;
-			entries.Reserve(entrySequence.size());
-			std::unordered_set<uint32_t> permutations;
-			for (size_t index = 0; index < entrySequence.size(); ++index)
-			{
-				const std::string context = "Shader cache entry '" + serializedFileId +
-					"' at index " + std::to_string(index);
-				const YAML::Node entryNode = entrySequence[index];
-				if (!ValidateExactFields(
-					entryNode,
-					{ "fileId", "timestamp", "permutation", "generation", "regular", "debug" },
-					context,
-					outDiagnostic))
-				{
-					return false;
-				}
-
-				const YAML::Node entryFileId = FindField(entryNode, "fileId");
-				const YAML::Node timestamp = FindField(entryNode, "timestamp");
-				const YAML::Node permutation = FindField(entryNode, "permutation");
-				const YAML::Node generation = FindField(entryNode, "generation");
-				if (!entryFileId.IsScalar() || !timestamp.IsScalar() ||
-					!permutation.IsScalar() || !generation.IsScalar())
-				{
-					outDiagnostic = context + " contains a non-scalar identity or timestamp field.";
-					return false;
-				}
-
-				ShaderCacheData::Entry entry;
-				entry.m_fileId = entryFileId.as<FileId>();
-				entry.m_timestamp = timestamp.as<std::time_t>();
-				entry.m_permutation = permutation.as<uint32_t>();
-				entry.m_generation = generation.as<std::string>();
-				if (!entry.m_fileId || entry.m_fileId != fileId)
-				{
-					outDiagnostic = context + " has a mismatched fileId field.";
-					return false;
-				}
-				if (!permutations.emplace(entry.m_permutation).second)
-				{
-					outDiagnostic = context + " duplicates permutation " +
-						std::to_string(entry.m_permutation) + ".";
-					return false;
-				}
-				if (!IsValidGeneration(entry.m_generation))
-				{
-					outDiagnostic = context + " has an invalid immutable artifact generation.";
-					return false;
-				}
-
-				if (!parseSet(FindField(entryNode, "regular"), entry.m_regular, context + " regular artifacts") ||
-					!parseSet(FindField(entryNode, "debug"), entry.m_debug, context + " debug artifacts"))
-				{
-					return false;
-				}
-				if (!IsValidArtifactSet(entry.m_regular, false))
-				{
-					outDiagnostic = context + " regular artifacts must contain a vertex/fragment pair or compute artifact.";
-					return false;
-				}
-				if (!IsValidArtifactSet(entry.m_debug, false))
-				{
-					outDiagnostic = context + " debug artifacts must contain a vertex/fragment pair or compute artifact.";
-					return false;
-				}
-				if (!HasMatchingArtifactTopology(entry.m_regular, entry.m_debug))
-				{
-					outDiagnostic = context + " regular and debug artifacts must contain identical shader stages.";
-					return false;
-				}
-
-				entries.Add(std::move(entry));
-			}
-
-			candidate.m_data.Insert(fileId, std::move(entries));
+			outDiagnostic = context + " byteLength is not aligned to uint32 SPIR-V words.";
+			return false;
 		}
-
-		outData.m_data = std::move(candidate.m_data);
-		outDiagnostic.clear();
 		return true;
-	}
-	catch (const std::exception& exception)
+	};
+
+	auto parseSet = [&](const YAML::Node& node,
+		ArtifactSet& outSet,
+		const std::string& context) -> bool
 	{
-		outDiagnostic = "Shader cache payload is corrupt: " + std::string(exception.what());
+		if (!ValidateExactFields(node, { "vertex", "fragment", "compute" }, context, outDiagnostic))
+		{
+			return false;
+		}
+		return parseMetadata(FindField(node, "vertex"), outSet.m_vertex, context + " vertex artifact") &&
+			parseMetadata(FindField(node, "fragment"), outSet.m_fragment, context + " fragment artifact") &&
+			parseMetadata(FindField(node, "compute"), outSet.m_compute, context + " compute artifact");
+	};
+
+	ShaderCacheData candidate;
+	TSet<std::string> fileIds;
+	for (const auto& serializedFileEntries : entriesNode)
+	{
+		if (!serializedFileEntries.first.IsScalar())
+		{
+			outDiagnostic = "Shader cache contains a non-scalar file id.";
+			return false;
+		}
+
+		const std::string serializedFileId = serializedFileEntries.first.Scalar();
+		if (!fileIds.Insert(serializedFileId))
+		{
+			outDiagnostic = "Shader cache contains duplicate file id '" + serializedFileId + "'.";
+			return false;
+		}
+
+		const FileId fileId = serializedFileEntries.first.as<FileId>();
+		if (!fileId)
+		{
+			outDiagnostic = "Shader cache contains invalid file id '" + serializedFileId + "'.";
+			return false;
+		}
+
+		const YAML::Node entrySequence = serializedFileEntries.second;
+		if (!entrySequence.IsSequence() || entrySequence.size() == 0)
+		{
+			outDiagnostic = "Shader cache file id '" + serializedFileId +
+				"' must contain a non-empty entry sequence.";
+			return false;
+		}
+
+		TVector<ShaderCacheData::Entry> entries;
+		entries.Reserve(entrySequence.size());
+		TSet<uint32_t> permutations;
+		for (size_t index = 0; index < entrySequence.size(); ++index)
+		{
+			const std::string context = "Shader cache entry '" + serializedFileId +
+				"' at index " + std::to_string(index);
+			const YAML::Node entryNode = entrySequence[index];
+			if (!ValidateExactFields(
+				entryNode,
+				{ "fileId", "timestamp", "permutation", "generation", "regular", "debug" },
+				context,
+				outDiagnostic))
+			{
+				return false;
+			}
+
+			const YAML::Node entryFileId = FindField(entryNode, "fileId");
+			const YAML::Node timestamp = FindField(entryNode, "timestamp");
+			const YAML::Node permutation = FindField(entryNode, "permutation");
+			const YAML::Node generation = FindField(entryNode, "generation");
+			if (!entryFileId.IsScalar() || !timestamp.IsScalar() ||
+				!permutation.IsScalar() || !generation.IsScalar())
+			{
+				outDiagnostic = context + " contains a non-scalar identity or timestamp field.";
+				return false;
+			}
+
+			ShaderCacheData::Entry entry;
+			entry.m_fileId = entryFileId.as<FileId>();
+			entry.m_timestamp = timestamp.as<std::time_t>();
+			entry.m_permutation = permutation.as<uint32_t>();
+			entry.m_generation = generation.as<std::string>();
+			if (!entry.m_fileId || entry.m_fileId != fileId)
+			{
+				outDiagnostic = context + " has a mismatched fileId field.";
+				return false;
+			}
+			if (!permutations.Insert(entry.m_permutation))
+			{
+				outDiagnostic = context + " duplicates permutation " +
+					std::to_string(entry.m_permutation) + ".";
+				return false;
+			}
+			if (!IsValidGeneration(entry.m_generation))
+			{
+				outDiagnostic = context + " has an invalid immutable artifact generation.";
+				return false;
+			}
+
+			if (!parseSet(FindField(entryNode, "regular"), entry.m_regular, context + " regular artifacts") ||
+				!parseSet(FindField(entryNode, "debug"), entry.m_debug, context + " debug artifacts"))
+			{
+				return false;
+			}
+			if (!IsValidArtifactSet(entry.m_regular, false))
+			{
+				outDiagnostic = context + " regular artifacts must contain a vertex/fragment pair or compute artifact.";
+				return false;
+			}
+			if (!IsValidArtifactSet(entry.m_debug, false))
+			{
+				outDiagnostic = context + " debug artifacts must contain a vertex/fragment pair or compute artifact.";
+				return false;
+			}
+			if (!HasMatchingArtifactTopology(entry.m_regular, entry.m_debug))
+			{
+				outDiagnostic = context + " regular and debug artifacts must contain identical shader stages.";
+				return false;
+			}
+
+			entries.Add(std::move(entry));
+		}
+
+		candidate.m_data.Insert(fileId, std::move(entries));
+	}
+
+	outData.m_data = std::move(candidate.m_data);
+	outDiagnostic.clear();
+	return true;
+	};
+
+	bool bResult = false;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
+	{
+		outDiagnostic = "Shader cache payload contains invalid YAML: " + yamlDiagnostic;
 		return false;
 	}
-	catch (...)
-	{
-		outDiagnostic = "Shader cache payload is corrupt: unknown YAML decoding failure.";
-		return false;
-	}
+	return bResult;
 }
 
 std::string ShaderCache::GetShaderCacheFilepath()
@@ -723,89 +762,74 @@ ShaderCache::ArtifactMetadata ShaderCache::DescribeArtifact(const void* data, ui
 bool ShaderCache::ReadArtifactBytes(
 	const std::filesystem::path& path,
 	const ArtifactMetadata& metadata,
-	std::vector<uint8_t>& outBytes,
+	TVector<uint8_t>& outBytes,
 	std::string& outDiagnostic,
 	bool& outIoFailure) noexcept
 {
 	outIoFailure = false;
-	try
+	if (!IsMetadataStructurallyValid(metadata))
 	{
-		if (!IsMetadataStructurallyValid(metadata))
-		{
-			outDiagnostic = "Artifact metadata is internally inconsistent for '" + path.generic_string() + "'.";
-			return false;
-		}
-		if (!metadata.IsPresent())
-		{
-			outBytes.clear();
-			outDiagnostic.clear();
-			return true;
-		}
-		if (metadata.m_byteLength > std::numeric_limits<size_t>::max() ||
-			metadata.m_byteLength > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max()))
-		{
-			outDiagnostic = "Artifact is too large to read safely: '" + path.generic_string() + "'.";
-			return false;
-		}
-
-		std::error_code sizeError;
-		const uint64_t actualSize = std::filesystem::file_size(path, sizeError);
-		if (sizeError)
-		{
-			outIoFailure = sizeError != std::errc::no_such_file_or_directory &&
-				sizeError != std::errc::not_a_directory;
-			outDiagnostic = "Cannot inspect shader artifact '" + path.generic_string() + "': " + sizeError.message();
-			return false;
-		}
-		if (actualSize != metadata.m_byteLength)
-		{
-			outDiagnostic = "Shader artifact '" + path.generic_string() + "' has byte length " +
-				std::to_string(actualSize) + ", expected " + std::to_string(metadata.m_byteLength) + ".";
-			return false;
-		}
-
-		std::ifstream stream(path, std::ios::binary);
-		if (!stream.is_open())
-		{
-			std::error_code existsError;
-			const bool bExists = std::filesystem::exists(path, existsError);
-			outIoFailure = bExists || static_cast<bool>(existsError);
-			outDiagnostic = "Cannot open shader artifact '" + path.generic_string() + "'.";
-			return false;
-		}
-
-		std::vector<uint8_t> candidate(static_cast<size_t>(metadata.m_byteLength));
-		stream.read(
-			reinterpret_cast<char*>(candidate.data()),
-			static_cast<std::streamsize>(candidate.size()));
-		if (stream.gcount() != static_cast<std::streamsize>(candidate.size()) || stream.bad())
-		{
-			outIoFailure = stream.bad();
-			outDiagnostic = "Shader artifact read was incomplete for '" + path.generic_string() + "'.";
-			return false;
-		}
-		if (CalculateArtifactChecksum(candidate.data(), candidate.size()) != metadata.m_checksum)
-		{
-			outDiagnostic = "Shader artifact checksum mismatch for '" + path.generic_string() + "'.";
-			return false;
-		}
-
-		outBytes = std::move(candidate);
+		outDiagnostic = "Artifact metadata is internally inconsistent for '" + path.generic_string() + "'.";
+		return false;
+	}
+	if (!metadata.IsPresent())
+	{
+		outBytes.Clear();
 		outDiagnostic.clear();
 		return true;
 	}
-	catch (const std::exception& exception)
+	if (metadata.m_byteLength > std::numeric_limits<size_t>::max() ||
+		metadata.m_byteLength > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max()))
 	{
-		outIoFailure = true;
-		outDiagnostic = "Cannot read shader artifact '" + path.generic_string() + "': " + exception.what();
+		outDiagnostic = "Artifact is too large to read safely: '" + path.generic_string() + "'.";
 		return false;
 	}
-	catch (...)
+
+	std::error_code sizeError;
+	const uint64_t actualSize = std::filesystem::file_size(path, sizeError);
+	if (sizeError)
 	{
-		outIoFailure = true;
-		outDiagnostic = "Cannot read shader artifact '" + path.generic_string() + "': unknown failure.";
+		outIoFailure = sizeError != std::errc::no_such_file_or_directory &&
+			sizeError != std::errc::not_a_directory;
+		outDiagnostic = "Cannot inspect shader artifact '" + path.generic_string() + "': " + sizeError.message();
 		return false;
 	}
+	if (actualSize != metadata.m_byteLength)
+	{
+		outDiagnostic = "Shader artifact '" + path.generic_string() + "' has byte length " +
+			std::to_string(actualSize) + ", expected " + std::to_string(metadata.m_byteLength) + ".";
+		return false;
+	}
+
+	std::ifstream stream(path, std::ios::binary);
+	if (!stream.is_open())
+	{
+		std::error_code existsError;
+		const bool bExists = std::filesystem::exists(path, existsError);
+		outIoFailure = bExists || static_cast<bool>(existsError);
+		outDiagnostic = "Cannot open shader artifact '" + path.generic_string() + "'.";
+		return false;
+	}
+
+	TVector<uint8_t> candidate(static_cast<size_t>(metadata.m_byteLength));
+	stream.read(
+		reinterpret_cast<char*>(candidate.GetData()),
+		static_cast<std::streamsize>(candidate.Num()));
+	if (stream.gcount() != static_cast<std::streamsize>(candidate.Num()) || stream.bad())
+	{
+		outIoFailure = stream.bad();
+		outDiagnostic = "Shader artifact read was incomplete for '" + path.generic_string() + "'.";
+		return false;
+	}
+	if (CalculateArtifactChecksum(candidate.GetData(), candidate.Num()) != metadata.m_checksum)
+	{
+		outDiagnostic = "Shader artifact checksum mismatch for '" + path.generic_string() + "'.";
+		return false;
+	}
+
+	outBytes = std::move(candidate);
+	outDiagnostic.clear();
+	return true;
 }
 
 bool ShaderCache::ReadSpirvArtifact(
@@ -824,29 +848,15 @@ bool ShaderCache::ValidateOwnedArtifactPath(
 	const std::filesystem::path& artifact,
 	std::string& outDiagnostic) noexcept
 {
-	try
-	{
-		std::filesystem::path canonicalArtifact;
-		bool ignoredIoFailure = false;
-		return ResolveOwnedArtifactPath(
-			cacheRoot,
-			ownedDirectory,
-			artifact,
-			canonicalArtifact,
-			outDiagnostic,
-			ignoredIoFailure);
-	}
-	catch (const std::exception& exception)
-	{
-		outDiagnostic = "Cannot validate owned shader artifact path: " +
-			std::string(exception.what());
-		return false;
-	}
-	catch (...)
-	{
-		outDiagnostic = "Cannot validate owned shader artifact path: unknown failure.";
-		return false;
-	}
+	std::filesystem::path canonicalArtifact;
+	bool ignoredIoFailure = false;
+	return ResolveOwnedArtifactPath(
+		cacheRoot,
+		ownedDirectory,
+		artifact,
+		canonicalArtifact,
+		outDiagnostic,
+		ignoredIoFailure);
 }
 
 bool ShaderCache::ReadSpirvArtifactInternal(
@@ -857,43 +867,27 @@ bool ShaderCache::ReadSpirvArtifactInternal(
 	bool& outIoFailure) noexcept
 {
 	outIoFailure = false;
-	try
+	if (metadata.IsPresent() && metadata.m_byteLength % sizeof(uint32_t) != 0)
 	{
-		if (metadata.IsPresent() && metadata.m_byteLength % sizeof(uint32_t) != 0)
-		{
-			outDiagnostic = "SPIR-V artifact byte length is not aligned to uint32 words for '" +
-				path.generic_string() + "'.";
-			return false;
-		}
-
-		std::vector<uint8_t> bytes;
-		if (!ReadArtifactBytes(path, metadata, bytes, outDiagnostic, outIoFailure))
-		{
-			return false;
-		}
-
-		TVector<uint32_t> candidate;
-		candidate.Resize(bytes.size() / sizeof(uint32_t));
-		if (!bytes.empty())
-		{
-			std::memcpy(candidate.GetData(), bytes.data(), bytes.size());
-		}
-		outSpirv = std::move(candidate);
-		return true;
-	}
-	catch (const std::exception& exception)
-	{
-		outIoFailure = true;
-		outDiagnostic = "Cannot materialize shader artifact '" + path.generic_string() +
-			"': " + exception.what();
+		outDiagnostic = "SPIR-V artifact byte length is not aligned to uint32 words for '" +
+			path.generic_string() + "'.";
 		return false;
 	}
-	catch (...)
+
+	TVector<uint8_t> bytes;
+	if (!ReadArtifactBytes(path, metadata, bytes, outDiagnostic, outIoFailure))
 	{
-		outIoFailure = true;
-		outDiagnostic = "Cannot materialize shader artifact: unknown failure.";
 		return false;
 	}
+
+	TVector<uint32_t> candidate;
+	candidate.Resize(bytes.Num() / sizeof(uint32_t));
+	if (!bytes.IsEmpty())
+	{
+		std::memcpy(candidate.GetData(), bytes.GetData(), bytes.Num());
+	}
+	outSpirv = std::move(candidate);
+	return true;
 }
 
 bool ShaderCache::IsValidArtifactSet(const ArtifactSet& artifacts, bool bAllowEmpty) noexcept
@@ -1097,22 +1091,8 @@ void ShaderCache::LoadCache()
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	Workspace::WorkspaceCacheLoadResult loadResult;
-	try
-	{
-		const auto identity = GetExpectedIdentityLocked();
-		loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetCacheFilepathLocked(), identity);
-	}
-	catch (const std::exception& exception)
-	{
-		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
-		loadResult.m_diagnostic = "Cannot resolve or load the shader cache: " +
-			std::string(exception.what());
-	}
-	catch (...)
-	{
-		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
-		loadResult.m_diagnostic = "Cannot resolve or load the shader cache: unknown failure.";
-	}
+	const auto identity = GetExpectedIdentityLocked();
+	loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetCacheFilepathLocked(), identity);
 
 	if (loadResult.IsLoaded())
 	{
@@ -1122,24 +1102,10 @@ void ShaderCache::LoadCache()
 		bool bArtifactIoFailure = false;
 		if (TryDeserializeShaderCachePayload(loadResult.m_payload, candidate, diagnostic))
 		{
-			try
-			{
-				bValidArtifacts = ValidateAllArtifactsLocked(
-					candidate,
-					diagnostic,
-					bArtifactIoFailure);
-			}
-			catch (const std::exception& exception)
-			{
-				bArtifactIoFailure = true;
-				diagnostic = "Cannot resolve shader cache artifact paths: " +
-					std::string(exception.what());
-			}
-			catch (...)
-			{
-				bArtifactIoFailure = true;
-				diagnostic = "Cannot resolve shader cache artifact paths: unknown failure.";
-			}
+			bValidArtifacts = ValidateAllArtifactsLocked(
+				candidate,
+				diagnostic,
+				bArtifactIoFailure);
 		}
 		if (bValidArtifacts)
 		{
@@ -1198,35 +1164,22 @@ bool ShaderCache::WriteCacheDataLocked(
 	std::string& outDiagnostic,
 	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
 {
-	try
+	std::string envelope;
+	const auto identity = GetExpectedIdentityLocked();
+	if (!Workspace::SerializeWorkspaceCacheEnvelope(
+		identity,
+		SerializeShaderCachePayload(cache),
+		envelope,
+		outDiagnostic))
 	{
-		std::string envelope;
-		const auto identity = GetExpectedIdentityLocked();
-		if (!Workspace::SerializeWorkspaceCacheEnvelope(
-			identity,
-			SerializeShaderCachePayload(cache),
-			envelope,
-			outDiagnostic))
-		{
-			return false;
-		}
+		return false;
+	}
 
-		return Workspace::AtomicReplaceWorkspaceCacheText(
-			GetCacheFilepathLocked(),
-			envelope,
-			outDiagnostic,
-			failurePoint);
-	}
-	catch (const std::exception& exception)
-	{
-		outDiagnostic = "Cannot serialize shader cache payload: " + std::string(exception.what());
-		return false;
-	}
-	catch (...)
-	{
-		outDiagnostic = "Cannot serialize shader cache payload: unknown failure.";
-		return false;
-	}
+	return Workspace::AtomicReplaceWorkspaceCacheText(
+		GetCacheFilepathLocked(),
+		envelope,
+		outDiagnostic,
+		failurePoint);
 }
 
 bool ShaderCache::WriteCacheLocked(std::string& outDiagnostic)
@@ -1591,88 +1544,74 @@ bool ShaderCache::GenerateUniqueGenerationLocked(
 	std::string& outGeneration,
 	std::string& outDiagnostic) const
 {
-	try
+	std::random_device random;
+	for (uint32_t attempt = 0; attempt < 64; ++attempt)
 	{
-		std::random_device random;
-		for (uint32_t attempt = 0; attempt < 64; ++attempt)
+		std::ostringstream stream;
+		stream << std::hex << std::nouppercase << std::setfill('0');
+		for (uint32_t word = 0; word < 4; ++word)
 		{
-			std::ostringstream stream;
-			stream << std::hex << std::nouppercase << std::setfill('0');
-			for (uint32_t word = 0; word < 4; ++word)
-			{
-				stream << std::setw(8) << static_cast<uint32_t>(random());
-			}
-			const std::string generation = stream.str();
-			if (!IsValidGeneration(generation))
-			{
-				continue;
-			}
+			stream << std::setw(8) << static_cast<uint32_t>(random());
+		}
+		const std::string generation = stream.str();
+		if (!IsValidGeneration(generation))
+		{
+			continue;
+		}
 
-			ShaderCacheData::Entry entry;
-			entry.m_fileId = uid;
-			entry.m_permutation = permutation;
-			entry.m_generation = generation;
-			const std::pair<std::filesystem::path, bool> candidates[] =
+		ShaderCacheData::Entry entry;
+		entry.m_fileId = uid;
+		entry.m_permutation = permutation;
+		entry.m_generation = generation;
+		const std::pair<std::filesystem::path, bool> candidates[] =
+		{
+			{ GetArtifactPathLocked(entry, VertexShaderTag, false), false },
+			{ GetArtifactPathLocked(entry, FragmentShaderTag, false), false },
+			{ GetArtifactPathLocked(entry, ComputeShaderTag, false), false },
+			{ GetArtifactPathLocked(entry, VertexShaderTag, true), true },
+			{ GetArtifactPathLocked(entry, FragmentShaderTag, true), true },
+			{ GetArtifactPathLocked(entry, ComputeShaderTag, true), true }
+		};
+		bool bCollision = false;
+		for (const auto& [candidate, bIsDebug] : candidates)
+		{
+			std::filesystem::path canonicalArtifact;
+			bool ignoredIoFailure = false;
+			const std::filesystem::path ownedDirectory = bIsDebug
+				? GetCompiledDebugFolderLocked()
+				: GetCompiledFolderLocked();
+			if (!ResolveOwnedArtifactPath(
+				m_cacheRoot,
+				ownedDirectory,
+				candidate,
+				canonicalArtifact,
+				outDiagnostic,
+				ignoredIoFailure))
 			{
-				{ GetArtifactPathLocked(entry, VertexShaderTag, false), false },
-				{ GetArtifactPathLocked(entry, FragmentShaderTag, false), false },
-				{ GetArtifactPathLocked(entry, ComputeShaderTag, false), false },
-				{ GetArtifactPathLocked(entry, VertexShaderTag, true), true },
-				{ GetArtifactPathLocked(entry, FragmentShaderTag, true), true },
-				{ GetArtifactPathLocked(entry, ComputeShaderTag, true), true }
-			};
-			bool bCollision = false;
-			for (const auto& [candidate, bIsDebug] : candidates)
-			{
-				std::filesystem::path canonicalArtifact;
-				bool ignoredIoFailure = false;
-				const std::filesystem::path ownedDirectory = bIsDebug
-					? GetCompiledDebugFolderLocked()
-					: GetCompiledFolderLocked();
-				if (!ResolveOwnedArtifactPath(
-					m_cacheRoot,
-					ownedDirectory,
-					candidate,
-					canonicalArtifact,
-					outDiagnostic,
-					ignoredIoFailure))
-				{
-					return false;
-				}
-				std::error_code error;
-				if (std::filesystem::exists(candidate, error))
-				{
-					bCollision = true;
-					break;
-				}
-				if (error)
-				{
-					outDiagnostic = "Cannot check immutable shader generation collision for '" +
-						candidate.generic_string() + "': " + error.message();
-					return false;
-				}
+				return false;
 			}
-			if (!bCollision)
+			std::error_code error;
+			if (std::filesystem::exists(candidate, error))
 			{
-				outGeneration = generation;
-				outDiagnostic.clear();
-				return true;
+				bCollision = true;
+				break;
+			}
+			if (error)
+			{
+				outDiagnostic = "Cannot check immutable shader generation collision for '" +
+					candidate.generic_string() + "': " + error.message();
+				return false;
 			}
 		}
-		outDiagnostic = "Cannot allocate a collision-free immutable shader artifact generation.";
-		return false;
+		if (!bCollision)
+		{
+			outGeneration = generation;
+			outDiagnostic.clear();
+			return true;
+		}
 	}
-	catch (const std::exception& exception)
-	{
-		outDiagnostic = "Cannot generate immutable shader artifact identity: " +
-			std::string(exception.what());
-		return false;
-	}
-	catch (...)
-	{
-		outDiagnostic = "Cannot generate immutable shader artifact identity: unknown failure.";
-		return false;
-	}
+	outDiagnostic = "Cannot allocate a collision-free immutable shader artifact generation.";
+	return false;
 }
 
 bool ShaderCache::CachePrecompiledGlsl(
@@ -2127,7 +2066,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 		return false;
 	}
 
-	std::unordered_set<std::string> whitelist;
+	TSet<std::string> whitelist;
 	for (const auto& fileEntries : committedSnapshot.m_data)
 	{
 		for (const ShaderCacheData::Entry& entry : *fileEntries.m_second)
@@ -2148,10 +2087,10 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.emplace(GetArtifactPathLocked(entry, kind, false).lexically_normal().generic_string());
+					whitelist.Insert(GetArtifactPathLocked(entry, kind, false).lexically_normal().generic_string());
 					if (m_bSavePrecompiledGlsl)
 					{
-						whitelist.emplace(GetShaderFilepath(
+						whitelist.Insert(GetShaderFilepath(
 							GetPrecompiledFolderLocked(),
 							entry.m_fileId,
 							entry.m_permutation,
@@ -2164,7 +2103,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 			{
 				if (metadata->IsPresent())
 				{
-					whitelist.emplace(GetArtifactPathLocked(entry, kind, true).lexically_normal().generic_string());
+					whitelist.Insert(GetArtifactPathLocked(entry, kind, true).lexically_normal().generic_string());
 				}
 			}
 		}
@@ -2186,7 +2125,7 @@ bool ShaderCache::SweepUnreferencedArtifactsLocked(
 		{
 			const auto& path = iterator->path();
 			if (iterator->is_regular_file(error) &&
-				!whitelist.contains(path.lexically_normal().generic_string()))
+				!whitelist.Contains(path.lexically_normal().generic_string()))
 			{
 				std::string diagnostic;
 				if (!RemoveOwnedArtifact(m_cacheRoot, folder, path, diagnostic))
@@ -2424,18 +2363,22 @@ bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const
 }
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-void ShaderCacheTestAccess::Configure(
+bool ShaderCacheTestAccess::Configure(
 	ShaderCache& cache,
 	const std::filesystem::path& cacheRoot,
 	std::time_t timestamp)
 {
-	std::filesystem::create_directories(cacheRoot);
 	std::error_code error;
+	std::filesystem::create_directories(cacheRoot, error);
+	if (error)
+	{
+		return false;
+	}
+
 	const std::filesystem::path canonicalRoot = std::filesystem::weakly_canonical(cacheRoot, error);
 	if (error)
 	{
-		throw std::runtime_error(
-			"cannot canonicalize shader cache test root: " + error.message());
+		return false;
 	}
 
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
@@ -2450,9 +2393,10 @@ void ShaderCacheTestAccess::Configure(
 	std::string diagnostic;
 	if (!cache.EnsureOwnedDirectoriesLocked(diagnostic))
 	{
-		throw std::runtime_error(
-			"cannot initialize shader cache test storage: " + diagnostic);
+		return false;
 	}
+
+	return true;
 }
 
 std::string ShaderCacheTestAccess::GetGeneration(

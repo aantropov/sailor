@@ -8,6 +8,9 @@
 
 using namespace Sailor::EditorRemote;
 
+static_assert(std::three_way_comparable<MacRendererFrameSource>);
+static_assert(std::three_way_comparable<MacIOSurfaceAllocation>);
+
 namespace
 {
 

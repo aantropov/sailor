@@ -1,10 +1,12 @@
 #include "AssetCache.h"
+#include "Containers/Containers.h"
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/YamlSerializable.h"
 #include "Sailor.h"
 #include "Tasks/Tasks.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -128,7 +130,7 @@ bool AssetCache::TryDeserializeAssetCachePayload(
 	AssetCacheData& outData,
 	std::string& outDiagnostic) noexcept
 {
-	try
+	auto deserialize = [&]() -> bool
 	{
 		const YAML::Node root = YAML::Load(payload);
 		if (!root.IsMap() || root.size() != 1)
@@ -144,17 +146,16 @@ bool AssetCache::TryDeserializeAssetCachePayload(
 		}
 
 		return AssetCacheData::TryDeserialize(assetCache, outData, outDiagnostic);
-	}
-	catch (const std::exception& exception)
+	};
+
+	bool bResult = false;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
 	{
-		outDiagnostic = "Asset cache payload is corrupt: " + std::string(exception.what());
+		outDiagnostic = "Asset cache payload contains invalid YAML: " + yamlDiagnostic;
 		return false;
 	}
-	catch (...)
-	{
-		outDiagnostic = "Asset cache payload is corrupt: unknown YAML decoding failure.";
-		return false;
-	}
+	return bResult;
 }
 
 std::string AssetCache::GetAssetCacheFilepath()
@@ -176,33 +177,35 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 	m_fileId = FileId();
 	m_assetImportTime = 0;
 	m_sourcePath.clear();
-	try
-	{
-		if (!inData.IsMap() || inData.size() != 3)
+	std::string yamlDiagnostic;
+	if (!Sailor::External::GuardYamlExceptions(
+		[&]()
 		{
-			return;
-		}
+			if (!inData.IsMap() || inData.size() != 3)
+			{
+				return;
+			}
 
-		const YAML::Node fileId = inData["fileId"];
-		const YAML::Node assetImportTime = inData["assetImportTime"];
-		const YAML::Node sourcePath = inData["sourcePath"];
-		if (!fileId || !assetImportTime || !sourcePath || !fileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar())
-		{
-			return;
-		}
+			const YAML::Node fileId = inData["fileId"];
+			const YAML::Node assetImportTime = inData["assetImportTime"];
+			const YAML::Node sourcePath = inData["sourcePath"];
+			if (!fileId || !assetImportTime || !sourcePath || !fileId.IsScalar() ||
+				!assetImportTime.IsScalar() || !sourcePath.IsScalar())
+			{
+				return;
+			}
 
-		m_fileId.Deserialize(fileId);
-		m_assetImportTime = assetImportTime.as<std::time_t>();
-		m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
-		if (m_sourcePath.empty() || !m_fileId)
-		{
-			m_fileId = FileId();
-			m_assetImportTime = 0;
-			m_sourcePath.clear();
-			return;
-		}
-	}
-	catch (...)
+			m_fileId.Deserialize(fileId);
+			m_assetImportTime = assetImportTime.as<std::time_t>();
+			m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
+			if (m_sourcePath.empty() || !m_fileId)
+			{
+				m_fileId = FileId();
+				m_assetImportTime = 0;
+				m_sourcePath.clear();
+			}
+		},
+		yamlDiagnostic))
 	{
 		m_fileId = FileId();
 		m_assetImportTime = 0;
@@ -226,15 +229,7 @@ void AssetCache::AssetCacheData::Deserialize(const YAML::Node& inData)
 {
 	AssetCacheData candidate;
 	std::string diagnostic;
-	try
-	{
-		if (!TryDeserialize(inData, candidate, diagnostic))
-		{
-			m_data.Clear();
-			return;
-		}
-	}
-	catch (...)
+	if (!TryDeserialize(inData, candidate, diagnostic))
 	{
 		m_data.Clear();
 		return;
@@ -248,111 +243,109 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 	AssetCacheData& outData,
 	std::string& outDiagnostic) noexcept
 {
-	try
+	auto deserialize = [&]() -> bool
 	{
-		if (!inData.IsMap() || inData.size() != 1)
-		{
-			outDiagnostic = "Asset cache data must contain exactly one 'assets' map.";
-			return false;
-		}
-
-		YAML::Node assets;
-		if (!ReadRequiredField(inData, "assets", assets, outDiagnostic))
-		{
-			return false;
-		}
-		if (!assets.IsMap())
-		{
-			outDiagnostic = "Asset cache field 'assets' must be a YAML map, including when empty.";
-			return false;
-		}
-
-		AssetCacheData candidate;
-		std::unordered_set<std::string> fileIds;
-		fileIds.reserve(assets.size());
-		for (const auto& serializedEntry : assets)
-		{
-			if (!serializedEntry.first.IsScalar())
-			{
-				outDiagnostic = "Asset cache contains a non-scalar file id.";
-				return false;
-			}
-
-			const std::string serializedFileId = serializedEntry.first.Scalar();
-			if (!fileIds.emplace(serializedFileId).second)
-			{
-				outDiagnostic = "Asset cache contains duplicate file id '" + serializedFileId + "'.";
-				return false;
-			}
-
-			const FileId fileId = serializedEntry.first.as<FileId>();
-			if (!fileId)
-			{
-				outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
-				return false;
-			}
-
-			const YAML::Node entryNode = serializedEntry.second;
-			if (!entryNode.IsMap() || entryNode.size() != 3)
-			{
-				outDiagnostic = "Asset cache entry '" + serializedFileId +
-					"' must contain exactly fileId, assetImportTime, and sourcePath.";
-				return false;
-			}
-
-			YAML::Node entryFileId;
-			YAML::Node assetImportTime;
-			YAML::Node sourcePath;
-			if (!ReadRequiredField(entryNode, "fileId", entryFileId, outDiagnostic) ||
-				!ReadRequiredField(entryNode, "assetImportTime", assetImportTime, outDiagnostic) ||
-				!ReadRequiredField(entryNode, "sourcePath", sourcePath, outDiagnostic))
-			{
-				return false;
-			}
-			if (!entryFileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar())
-			{
-				outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains a non-scalar field.";
-				return false;
-			}
-
-			AssetCacheData::Entry entry;
-			entry.m_fileId = entryFileId.as<FileId>();
-			entry.m_assetImportTime = assetImportTime.as<std::time_t>();
-			const std::string serializedSourcePath = sourcePath.as<std::string>();
-			if (serializedSourcePath.empty())
-			{
-				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
-				return false;
-			}
-			entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
-			if (!entry.m_fileId || entry.m_fileId != fileId)
-			{
-				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has a mismatched fileId field.";
-				return false;
-			}
-			if (entry.m_sourcePath.empty())
-			{
-				outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
-				return false;
-			}
-
-			candidate.m_data.Insert(fileId, std::move(entry));
-		}
-
-		outData.m_data = std::move(candidate.m_data);
-		outDiagnostic.clear();
-		return true;
-	}
-	catch (const std::exception& exception)
+	if (!inData.IsMap() || inData.size() != 1)
 	{
-		outDiagnostic = "Asset cache data is corrupt: " + std::string(exception.what());
+		outDiagnostic = "Asset cache data must contain exactly one 'assets' map.";
 		return false;
 	}
-	catch (...)
+
+	YAML::Node assets;
+	if (!ReadRequiredField(inData, "assets", assets, outDiagnostic))
 	{
-		outDiagnostic = "Asset cache data is corrupt: unknown payload decoding failure.";
 		return false;
 	}
+	if (!assets.IsMap())
+	{
+		outDiagnostic = "Asset cache field 'assets' must be a YAML map, including when empty.";
+		return false;
+	}
+
+	AssetCacheData candidate;
+	TSet<std::string> fileIds;
+	for (const auto& serializedEntry : assets)
+	{
+		if (!serializedEntry.first.IsScalar())
+		{
+			outDiagnostic = "Asset cache contains a non-scalar file id.";
+			return false;
+		}
+
+		const std::string serializedFileId = serializedEntry.first.Scalar();
+		if (!fileIds.Insert(serializedFileId))
+		{
+			outDiagnostic = "Asset cache contains duplicate file id '" + serializedFileId + "'.";
+			return false;
+		}
+
+		const FileId fileId = serializedEntry.first.as<FileId>();
+		if (!fileId)
+		{
+			outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
+			return false;
+		}
+
+		const YAML::Node entryNode = serializedEntry.second;
+		if (!entryNode.IsMap() || entryNode.size() != 3)
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId +
+				"' must contain exactly fileId, assetImportTime, and sourcePath.";
+			return false;
+		}
+
+		YAML::Node entryFileId;
+		YAML::Node assetImportTime;
+		YAML::Node sourcePath;
+		if (!ReadRequiredField(entryNode, "fileId", entryFileId, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "assetImportTime", assetImportTime, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "sourcePath", sourcePath, outDiagnostic))
+		{
+			return false;
+		}
+		if (!entryFileId.IsScalar() || !assetImportTime.IsScalar() || !sourcePath.IsScalar())
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains a non-scalar field.";
+			return false;
+		}
+
+		AssetCacheData::Entry entry;
+		entry.m_fileId = entryFileId.as<FileId>();
+		entry.m_assetImportTime = assetImportTime.as<std::time_t>();
+		const std::string serializedSourcePath = sourcePath.as<std::string>();
+		if (serializedSourcePath.empty())
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
+			return false;
+		}
+		entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
+		if (!entry.m_fileId || entry.m_fileId != fileId)
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has a mismatched fileId field.";
+			return false;
+		}
+		if (entry.m_sourcePath.empty())
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
+			return false;
+		}
+
+		candidate.m_data.Insert(fileId, std::move(entry));
+	}
+
+	outData.m_data = std::move(candidate.m_data);
+	outDiagnostic.clear();
+	return true;
+	};
+
+	bool bResult = false;
+	std::string yamlDiagnostic;
+	if (!Sailor::External::TryInvokeYaml(deserialize, bResult, yamlDiagnostic))
+	{
+		outDiagnostic = "Asset cache data contains invalid YAML values: " + yamlDiagnostic;
+		return false;
+	}
+	return bResult;
 }
 
 bool AssetCache::ShouldResetCacheFile(Workspace::EWorkspaceCacheLoadStatus status) noexcept
@@ -419,22 +412,8 @@ void AssetCache::LoadCache()
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	Workspace::WorkspaceCacheLoadResult loadResult;
-	try
-	{
-		const auto identity = MakeExpectedIdentity();
-		loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetAssetCacheFilepath(), identity);
-	}
-	catch (const std::exception& exception)
-	{
-		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
-		loadResult.m_diagnostic = "Cannot construct the expected asset cache identity: " +
-			std::string(exception.what());
-	}
-	catch (...)
-	{
-		loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::IoFailure;
-		loadResult.m_diagnostic = "Cannot construct the expected asset cache identity: unknown failure.";
-	}
+	const auto identity = MakeExpectedIdentity();
+	loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetAssetCacheFilepath(), identity);
 	if (loadResult.IsLoaded())
 	{
 		AssetCacheData candidate;
@@ -472,34 +451,21 @@ void AssetCache::LoadCache()
 
 bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 {
-	try
+	std::string envelope;
+	const auto identity = MakeExpectedIdentity();
+	if (!Workspace::SerializeWorkspaceCacheEnvelope(
+		identity,
+		SerializeAssetCachePayload(m_cache),
+		envelope,
+		outDiagnostic))
 	{
-		std::string envelope;
-		const auto identity = MakeExpectedIdentity();
-		if (!Workspace::SerializeWorkspaceCacheEnvelope(
-			identity,
-			SerializeAssetCachePayload(m_cache),
-			envelope,
-			outDiagnostic))
-		{
-			return false;
-		}
+		return false;
+	}
 
-		return Workspace::AtomicReplaceWorkspaceCacheText(
-			GetAssetCacheFilepath(),
-			envelope,
-			outDiagnostic);
-	}
-	catch (const std::exception& exception)
-	{
-		outDiagnostic = "Cannot serialize the asset cache envelope: " + std::string(exception.what());
-		return false;
-	}
-	catch (...)
-	{
-		outDiagnostic = "Cannot serialize the asset cache envelope: unknown failure.";
-		return false;
-	}
+	return Workspace::AtomicReplaceWorkspaceCacheText(
+		GetAssetCacheFilepath(),
+		envelope,
+		outDiagnostic);
 }
 
 void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult)

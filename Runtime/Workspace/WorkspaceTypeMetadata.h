@@ -1,4 +1,5 @@
 #pragma once
+#include "Containers/Containers.h"
 
 #include "Core/Reflection.h"
 #include "Workspace/WorkspaceModuleApi.h"
@@ -6,7 +7,6 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -57,7 +57,11 @@ namespace Sailor::Workspace
 					emitter << defaultValues;
 					if (!emitter.good())
 					{
-						throw std::runtime_error(emitter.GetLastError());
+						return WorkspaceDefaultObjectSnapshot
+						{
+							std::move(metadata),
+							{}
+						};
 					}
 
 					return WorkspaceDefaultObjectSnapshot
@@ -81,7 +85,7 @@ namespace Sailor::Workspace
 		template<typename TType>
 		uint32_t GetWorkspaceTypeDescriptorFlags()
 		{
-			std::unordered_map<std::string, WorkspacePropertyDeclaration> declarations;
+			TMap<std::string, WorkspacePropertyDeclaration> declarations;
 			uint32_t flags = 0;
 			TType* empty = nullptr;
 
@@ -111,22 +115,25 @@ namespace Sailor::Workspace
 									bWritable
 								};
 
-								const auto [existing, bInserted] = declarations.try_emplace(
-									displayName,
-									std::move(declaration));
-								if (!bInserted)
-								{
-									if (existing->second.m_declarator != declarator ||
-										existing->second.m_typeName != typeName ||
-										(existing->second.m_bReadable && bReadable) ||
-										(existing->second.m_bWritable && bWritable))
+									auto existing = declarations.Find(displayName);
+									if (existing == declarations.end())
 									{
-										flags |= WorkspaceTypeDescriptorFlagAmbiguousProperties;
+										declarations.Insert(displayName, declaration);
 									}
+									else
+									{
+										auto& existingDeclaration = existing.Value();
+										if (existingDeclaration.m_declarator != declarator ||
+											existingDeclaration.m_typeName != typeName ||
+											(existingDeclaration.m_bReadable && bReadable) ||
+											(existingDeclaration.m_bWritable && bWritable))
+										{
+											flags |= WorkspaceTypeDescriptorFlagAmbiguousProperties;
+										}
 
-									existing->second.m_bReadable |= bReadable;
-									existing->second.m_bWritable |= bWritable;
-								}
+										existingDeclaration.m_bReadable |= bReadable;
+										existingDeclaration.m_bWritable |= bWritable;
+									}
 							};
 
 							if constexpr (bReadable)
@@ -156,25 +163,25 @@ namespace Sailor::Workspace
 		YAML::Node SerializeWorkspaceType()
 		{
 			YAML::Node metadata = TypeInfo::Get<TType>().Serialize();
-			std::unordered_set<std::string> writableProperties;
+			TSet<std::string> writableProperties;
 			for_each(refl::reflect<TType>().members, [&](auto member)
 				{
 					if constexpr (is_writable(member))
 					{
-						writableProperties.insert(get_display_name(member));
+						writableProperties.Insert(get_display_name(member));
 					}
 				});
 
 			YAML::Node readOnlyProperties(YAML::NodeType::Sequence);
-			std::unordered_set<std::string> emittedReadOnlyProperties;
+			TSet<std::string> emittedReadOnlyProperties;
 			for_each(refl::reflect<TType>().members, [&](auto member)
 				{
 					if constexpr (is_readable(member) &&
 						!refl::descriptor::has_attribute<Attributes::Transient>(member))
 					{
 						const std::string displayName = get_display_name(member);
-						if (!writableProperties.contains(displayName) &&
-							emittedReadOnlyProperties.insert(displayName).second)
+						if (!writableProperties.Contains(displayName) &&
+							emittedReadOnlyProperties.Insert(displayName))
 						{
 							readOnlyProperties.push_back(displayName);
 						}
@@ -186,13 +193,13 @@ namespace Sailor::Workspace
 		}
 
 		template<typename TProperty>
-		void AppendWorkspaceEnum(YAML::Node& enums, std::unordered_set<std::string>& enumNames)
+		void AppendWorkspaceEnum(YAML::Node& enums, TSet<std::string>& enumNames)
 		{
 			using EnumType = ::refl::trait::remove_qualifiers_t<TProperty>;
 			if constexpr (std::is_enum_v<EnumType>)
 			{
 				const std::string enumName = TypeInfo::GetReflectedEnumTypeName<EnumType>();
-				if (!enumNames.insert(enumName).second)
+				if (!enumNames.Insert(enumName))
 				{
 					return;
 				}
@@ -210,7 +217,7 @@ namespace Sailor::Workspace
 		}
 
 		template<typename TType>
-		void AppendWorkspaceEnums(YAML::Node& enums, std::unordered_set<std::string>& enumNames)
+		void AppendWorkspaceEnums(YAML::Node& enums, TSet<std::string>& enumNames)
 		{
 			TType* empty = nullptr;
 			for_each(refl::reflect<TType>().members, [&](auto member)
@@ -241,7 +248,7 @@ namespace Sailor::Workspace
 			{
 				if (moduleName.empty())
 				{
-					throw std::invalid_argument("Workspace module name must not be empty");
+					return {};
 				}
 
 				YAML::Node types(YAML::NodeType::Sequence);
@@ -251,7 +258,7 @@ namespace Sailor::Workspace
 				(defaultObjects.push_back(SerializeWorkspaceDefaultObject<TTypes>()), ...);
 
 				YAML::Node enums(YAML::NodeType::Sequence);
-				std::unordered_set<std::string> enumNames;
+				TSet<std::string> enumNames;
 				(AppendWorkspaceEnums<TTypes>(enums, enumNames), ...);
 
 				YAML::Node metadata;
@@ -267,7 +274,7 @@ namespace Sailor::Workspace
 				emitter << metadata;
 				if (!emitter.good())
 				{
-					throw std::runtime_error(emitter.GetLastError());
+					return {};
 				}
 
 				return emitter.c_str();
@@ -288,37 +295,33 @@ namespace Sailor::Workspace
 		}
 
 		*outPayloadSize = 0;
-
-		try
+		if (moduleName.empty())
 		{
-			static const std::string payload = Internal::TWorkspaceTypeMetadataSerializer<TWorkspaceTypes>::Serialize(moduleName);
-			if (payload.size() > std::numeric_limits<uint64_t>::max())
-			{
-				return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
-			}
-
-			const uint64_t payloadSize = static_cast<uint64_t>(payload.size());
-			*outPayloadSize = payloadSize;
-
-			if (destination == nullptr)
-			{
-				return static_cast<uint32_t>(destinationCapacity == 0
-					? EWorkspaceModuleResult::BufferTooSmall
-					: EWorkspaceModuleResult::InvalidArgument);
-			}
-
-			if (destinationCapacity < payloadSize)
-			{
-				return static_cast<uint32_t>(EWorkspaceModuleResult::BufferTooSmall);
-			}
-
-			std::memcpy(destination, payload.data(), payload.size());
-			return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
+			return static_cast<uint32_t>(EWorkspaceModuleResult::InvalidArgument);
 		}
-		catch (...)
+
+		static const std::string payload = Internal::TWorkspaceTypeMetadataSerializer<TWorkspaceTypes>::Serialize(moduleName);
+		if (payload.empty() || payload.size() > std::numeric_limits<uint64_t>::max())
 		{
-			*outPayloadSize = 0;
 			return static_cast<uint32_t>(EWorkspaceModuleResult::SerializationFailed);
 		}
+
+		const uint64_t payloadSize = static_cast<uint64_t>(payload.size());
+		*outPayloadSize = payloadSize;
+
+		if (destination == nullptr)
+		{
+			return static_cast<uint32_t>(destinationCapacity == 0
+				? EWorkspaceModuleResult::BufferTooSmall
+				: EWorkspaceModuleResult::InvalidArgument);
+		}
+
+		if (destinationCapacity < payloadSize)
+		{
+			return static_cast<uint32_t>(EWorkspaceModuleResult::BufferTooSmall);
+		}
+
+		std::memcpy(destination, payload.data(), payload.size());
+		return static_cast<uint32_t>(EWorkspaceModuleResult::Success);
 	}
 }

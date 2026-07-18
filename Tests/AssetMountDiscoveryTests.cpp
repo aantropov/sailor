@@ -106,7 +106,7 @@ namespace
 	}
 
 	bool HasDiagnostic(
-		const std::vector<AssetMountDiagnostic>& diagnostics,
+		const TVector<AssetMountDiagnostic>& diagnostics,
 		EAssetMountDiagnosticCode code)
 	{
 		return std::any_of(diagnostics.begin(), diagnostics.end(), [&](const AssetMountDiagnostic& diagnostic)
@@ -116,7 +116,7 @@ namespace
 	}
 
 	const AssetMountDiagnostic& FindDiagnostic(
-		const std::vector<AssetMountDiagnostic>& diagnostics,
+		const TVector<AssetMountDiagnostic>& diagnostics,
 		EAssetMountDiagnosticCode code)
 	{
 		const auto it = std::find_if(diagnostics.begin(), diagnostics.end(), [&](const AssetMountDiagnostic& diagnostic)
@@ -150,12 +150,12 @@ namespace
 			Mount(workspaceAlias, EAssetMountKind::Workspace, 0, true)
 		});
 
-		Require(result.m_mounts.size() == 1, "Identical physical roots should be scanned once");
-		Require(result.m_mounts.front().m_kind == EAssetMountKind::Workspace,
+		Require(result.m_mounts.Num() == 1, "Identical physical roots should be scanned once");
+		Require(result.m_mounts[0].m_kind == EAssetMountKind::Workspace,
 			"Workspace should win an identical-root mount collision");
-		Require(result.m_mounts.front().m_bWritable,
+		Require(result.m_mounts[0].m_bWritable,
 			"The retained workspace mount should preserve its writable property");
-		Require(result.m_files.size() == 1, "Deduplicated roots should not duplicate files");
+		Require(result.m_files.Num() == 1, "Deduplicated roots should not duplicate files");
 		Require(HasDiagnostic(result.m_diagnostics, EAssetMountDiagnosticCode::DuplicateMountRoot),
 			"Identical roots should emit a deterministic dedupe diagnostic");
 	}
@@ -172,7 +172,7 @@ namespace
 		});
 
 		Require(result.HasFatalErrors(), "An invalid mount root should be reported as fatal");
-		Require(result.m_files.empty(), "A fatal mount set must not publish partial discovery files");
+		Require(result.m_files.IsEmpty(), "A fatal mount set must not publish partial discovery files");
 		Require(HasDiagnostic(result.m_diagnostics, EAssetMountDiagnosticCode::InvalidMountRoot),
 			"Invalid roots should remain distinguishable from overlap failures");
 	}
@@ -215,7 +215,7 @@ namespace
 
 			Require(result.HasFatalErrors(),
 				"Workspace roots containing Engine roots must be rejected as fatal");
-			Require(result.m_files.empty(),
+			Require(result.m_files.IsEmpty(),
 				"Fatal root overlap must stop discovery before either root is scanned");
 			Require(HasDiagnostic(result.m_diagnostics, EAssetMountDiagnosticCode::OverlappingMountRoot),
 				"Workspace-parent overlap should identify the root conflict");
@@ -234,7 +234,7 @@ namespace
 
 			Require(result.HasFatalErrors(),
 				"Engine roots containing Workspace roots must be rejected as fatal");
-			Require(result.m_files.empty(),
+			Require(result.m_files.IsEmpty(),
 				"Reverse root overlap must stop discovery before either root is scanned");
 			Require(HasDiagnostic(result.m_diagnostics, EAssetMountDiagnosticCode::OverlappingMountRoot),
 				"Engine-parent overlap should identify the root conflict");
@@ -254,7 +254,7 @@ namespace
 			Mount(content.Get(), EAssetMountKind::Workspace, 10, true)
 		});
 
-		Require(result.m_files.size() == 1 && result.m_files.front().m_virtualPath == "safe.txt",
+		Require(result.m_files.Num() == 1 && result.m_files[0].m_virtualPath == "safe.txt",
 			"Escaping and cyclic directory links must not contribute files");
 		Require(HasDiagnostic(result.m_diagnostics, EAssetMountDiagnosticCode::PhysicalEscapeSkipped),
 			"Physical escapes should produce a diagnostic");
@@ -391,7 +391,7 @@ namespace
 		};
 
 		const AssetMountResolutionResult result = ResolveAssetMountCandidates({ invalid });
-		Require(result.GetCandidates().empty(), "Traversal candidates should not enter winner indexes");
+		Require(result.GetCandidates().IsEmpty(), "Traversal candidates should not enter winner indexes");
 		Require(HasDiagnostic(result.GetDiagnostics(), EAssetMountDiagnosticCode::InvalidCandidate),
 			"Rejected candidates should produce an actionable diagnostic");
 	}

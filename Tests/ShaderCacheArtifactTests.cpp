@@ -306,7 +306,8 @@ namespace
 	{
 		TempDirectory directory;
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, directory.Path("Cache"));
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-DEBUG-REQUIRED}");
 
 		Require(PublishComplete(cache, uid, 0, 10),
@@ -349,7 +350,8 @@ namespace
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, cacheRoot);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-GENERATION-TRANSACTION}");
 
 		Require(PublishComplete(cache, uid, 3, 20), "the initial generation should publish");
@@ -415,7 +417,8 @@ namespace
 	{
 		TempDirectory directory;
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, directory.Path("Cache"));
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-REMOVE-TRANSACTION}");
 
 		Require(PublishComplete(cache, uid, 0, 40), "the removable generation should publish");
@@ -453,7 +456,8 @@ namespace
 	{
 		TempDirectory directory;
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, directory.Path("Cache"));
+		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-CHECKSUM-EXPIRY}");
 
 		Require(PublishComplete(cache, uid, 1, 50), "the corruption fixture should publish");
@@ -531,7 +535,8 @@ namespace
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, cacheRoot);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
+			"shader cache test storage should initialize");
 		const FileId durableUid = MakeFileId("{SHADER-CACHE-QUARANTINE-DURABLE}");
 		const FileId sessionUid = MakeFileId("{SHADER-CACHE-QUARANTINE-SESSION}");
 
@@ -626,7 +631,8 @@ namespace
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, cacheRoot);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-RUNTIME-IO-QUARANTINE}");
 
 		Require(PublishComplete(cache, uid, 0, 80), "the runtime I/O fixture should publish");
@@ -709,7 +715,8 @@ namespace
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
 		ShaderCache cache;
-		ShaderCacheTestAccess::Configure(cache, cacheRoot);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
+			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-SAVE-RETRY}");
 
 		Require(PublishComplete(cache, uid, 0, 100), "the first save generation should publish");

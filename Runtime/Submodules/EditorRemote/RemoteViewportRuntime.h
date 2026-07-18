@@ -1,13 +1,13 @@
 #pragma once
+#include "Containers/Containers.h"
+#include "Memory/UniquePtr.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -361,68 +361,68 @@ namespace Sailor::EditorRemote
 
 		RemoteViewportSession* FindSession(ViewportId viewportId)
 		{
-			auto it = m_sessions.find(viewportId);
-			return it != m_sessions.end() ? it->second.get() : nullptr;
+			auto it = m_sessions.Find(viewportId);
+			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 		const RemoteViewportSession* FindSession(ViewportId viewportId) const
 		{
-			auto it = m_sessions.find(viewportId);
-			return it != m_sessions.end() ? it->second.get() : nullptr;
+			auto it = m_sessions.Find(viewportId);
+			return it != m_sessions.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 		RemoteViewportSession& CreateOrReplaceSession(const ViewportDescriptor& descriptor, ConnectionEpoch epoch)
 		{
-			if (auto it = m_sessions.find(descriptor.m_viewportId); it != m_sessions.end())
+			if (auto it = m_sessions.Find(descriptor.m_viewportId); it != m_sessions.end())
 			{
-				PruneEpochViewport(descriptor.m_viewportId, it->second->GetConnectionEpoch());
+				PruneEpochViewport(descriptor.m_viewportId, it.Value()->GetConnectionEpoch());
 			}
 
-			auto session = std::make_unique<RemoteViewportSession>(descriptor, epoch);
-			auto* result = session.get();
+			auto session = TUniquePtr<RemoteViewportSession>::Make(descriptor, epoch);
+			auto* result = session.GetRawPtr();
 			m_sessions[descriptor.m_viewportId] = std::move(session);
 			auto& epochViewports = m_viewportsByEpoch[epoch];
 			if (std::find(epochViewports.begin(), epochViewports.end(), descriptor.m_viewportId) == epochViewports.end())
 			{
-				epochViewports.push_back(descriptor.m_viewportId);
+				epochViewports.Add(descriptor.m_viewportId);
 			}
 			return *result;
 		}
 
 		bool DestroySession(ViewportId viewportId)
 		{
-			auto it = m_sessions.find(viewportId);
+			auto it = m_sessions.Find(viewportId);
 			if (it == m_sessions.end())
 			{
 				return false;
 			}
 
-			const auto epoch = it->second->GetConnectionEpoch();
-			(void)it->second->Destroy();
+			const auto epoch = it.Value()->GetConnectionEpoch();
+			(void)it.Value()->Destroy();
 			if (m_cleanupHook)
 			{
 				m_cleanupHook(viewportId, epoch);
 			}
-			m_sessions.erase(it);
+			m_sessions.Remove(viewportId);
 			PruneEpochViewport(viewportId, epoch);
 			return true;
 		}
 
 		size_t DestroySessionsForEpoch(ConnectionEpoch epoch)
 		{
-			auto epochIt = m_viewportsByEpoch.find(epoch);
+			auto epochIt = m_viewportsByEpoch.Find(epoch);
 			if (epochIt == m_viewportsByEpoch.end())
 			{
 				return 0;
 			}
 
-			auto viewportIds = epochIt->second;
+			auto viewportIds = epochIt.Value();
 			size_t destroyedCount = 0;
 			for (auto viewportId : viewportIds)
 			{
 				destroyedCount += DestroySession(viewportId) ? 1u : 0u;
 			}
-			m_viewportsByEpoch.erase(epoch);
+			m_viewportsByEpoch.Remove(epoch);
 			return destroyedCount;
 		}
 
@@ -431,33 +431,33 @@ namespace Sailor::EditorRemote
 			m_cleanupHook = std::move(hook);
 		}
 
-		size_t GetSessionCount() const { return m_sessions.size(); }
-		bool HasViewport(ViewportId viewportId) const { return m_sessions.contains(viewportId); }
+		size_t GetSessionCount() const { return m_sessions.Num(); }
+		bool HasViewport(ViewportId viewportId) const { return m_sessions.ContainsKey(viewportId); }
 		size_t GetViewportCountForEpoch(ConnectionEpoch epoch) const
 		{
-			auto it = m_viewportsByEpoch.find(epoch);
-			return it != m_viewportsByEpoch.end() ? it->second.size() : 0;
+			auto it = m_viewportsByEpoch.Find(epoch);
+			return it != m_viewportsByEpoch.end() ? it.Value().Num() : 0;
 		}
 
 	private:
 		void PruneEpochViewport(ViewportId viewportId, ConnectionEpoch epoch)
 		{
-			auto epochIt = m_viewportsByEpoch.find(epoch);
+			auto epochIt = m_viewportsByEpoch.Find(epoch);
 			if (epochIt == m_viewportsByEpoch.end())
 			{
 				return;
 			}
 
-			auto& viewports = epochIt->second;
-			viewports.erase(std::remove(viewports.begin(), viewports.end(), viewportId), viewports.end());
-			if (viewports.empty())
+			auto& viewports = epochIt.Value();
+			viewports.RemoveAll([viewportId](ViewportId candidate) { return candidate == viewportId; });
+			if (viewports.Num() == 0)
 			{
-				m_viewportsByEpoch.erase(epochIt);
+				m_viewportsByEpoch.Remove(epoch);
 			}
 		}
 
-		std::unordered_map<ViewportId, std::unique_ptr<RemoteViewportSession>> m_sessions{};
-		std::unordered_map<ConnectionEpoch, std::vector<ViewportId>> m_viewportsByEpoch{};
+		TMap<ViewportId, TUniquePtr<RemoteViewportSession>> m_sessions{};
+		TMap<ConnectionEpoch, TVector<ViewportId>> m_viewportsByEpoch{};
 		SessionCleanupHook m_cleanupHook{};
 	};
 
@@ -490,13 +490,21 @@ namespace Sailor::EditorRemote
 				}
 			}
 
-			m_connections[request.m_connectionId] = negotiated;
+			auto& storedConnection = m_connections[request.m_connectionId];
+			if (storedConnection)
+			{
+				*storedConnection = negotiated;
+			}
+			else
+			{
+				storedConnection = TUniquePtr<BridgeConnectionInfo>::Make(negotiated);
+			}
 			return Failure::Ok();
 		}
 
 		Failure RouteCommand(uint64_t connectionId, const ProtocolMessage& command) const
 		{
-			auto it = m_connections.find(connectionId);
+			auto it = m_connections.Find(connectionId);
 			if (it == m_connections.end())
 			{
 				return Failure::FromDomain(ErrorDomain::Connection, 1, "Unknown bridge connection");
@@ -509,21 +517,21 @@ namespace Sailor::EditorRemote
 			{
 				return Failure::Ok();
 			}
-			return m_commandHandler(it->second, command);
+			return m_commandHandler(*it.Value(), command);
 		}
 
 		bool Disconnect(uint64_t connectionId, const Failure& reason = Failure::FromDomain(ErrorDomain::Connection, 1, "Disconnected"))
 		{
-			auto it = m_connections.find(connectionId);
+			auto it = m_connections.Find(connectionId);
 			if (it == m_connections.end())
 			{
 				return false;
 			}
 			if (m_disconnectHandler)
 			{
-				m_disconnectHandler(it->second, reason);
+				m_disconnectHandler(*it.Value(), reason);
 			}
-			m_connections.erase(it);
+			m_connections.Remove(connectionId);
 			return true;
 		}
 
@@ -531,16 +539,16 @@ namespace Sailor::EditorRemote
 		void SetCommandHandler(CommandHandler handler) { m_commandHandler = std::move(handler); }
 		void SetDisconnectHandler(DisconnectHandler handler) { m_disconnectHandler = std::move(handler); }
 
-		bool HasConnection(uint64_t connectionId) const { return m_connections.contains(connectionId); }
-		size_t GetConnectionCount() const { return m_connections.size(); }
+		bool HasConnection(uint64_t connectionId) const { return m_connections.ContainsKey(connectionId); }
+		size_t GetConnectionCount() const { return m_connections.Num(); }
 		const BridgeConnectionInfo* FindConnection(uint64_t connectionId) const
 		{
-			auto it = m_connections.find(connectionId);
-			return it != m_connections.end() ? &it->second : nullptr;
+			auto it = m_connections.Find(connectionId);
+			return it != m_connections.end() ? it.Value().GetRawPtr() : nullptr;
 		}
 
 	private:
-		std::unordered_map<uint64_t, BridgeConnectionInfo> m_connections{};
+		TMap<uint64_t, TUniquePtr<BridgeConnectionInfo>> m_connections{};
 		NegotiationHandler m_negotiationHandler{};
 		CommandHandler m_commandHandler{};
 		DisconnectHandler m_disconnectHandler{};
