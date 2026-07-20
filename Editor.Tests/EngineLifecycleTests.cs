@@ -45,6 +45,32 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void NativeViewportState_IsResetBeforeRendererShutdown()
+    {
+        var appSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+        var bridgeSource = ReadRepositoryFile("Runtime", "Editor", "EditorRuntimeBridge.cpp");
+
+        var initialize = appSource.IndexOf("void App::Initialize(", StringComparison.Ordinal);
+        var initializeReset = appSource.IndexOf("EditorRuntime::ResetForAppLifecycle();", initialize, StringComparison.Ordinal);
+        var instanceCreation = appSource.IndexOf("s_pInstance = new App();", initialize, StringComparison.Ordinal);
+        var shutdown = appSource.IndexOf("void App::Shutdown()", StringComparison.Ordinal);
+        var reset = appSource.IndexOf("EditorRuntime::ResetForAppLifecycle();", shutdown, StringComparison.Ordinal);
+        var rendererShutdown = appSource.IndexOf("renderer->BeginConditionalDestroy();", shutdown, StringComparison.Ordinal);
+        Assert.True(initialize >= 0);
+        Assert.True(initializeReset > initialize);
+        Assert.True(instanceCreation > initializeReset);
+        Assert.True(shutdown >= 0);
+        Assert.True(reset > shutdown);
+        Assert.True(rendererShutdown > reset);
+
+        Assert.Contains("g_remoteViewportBindings.Clear();", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("g_pendingEditorViewport = {};", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("g_appliedEditorRenderArea = { 0, 0 };", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("g_editorRemoteViewportRenderArea = { 0, 0 };", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("g_hasPendingEditorViewport = false;", bridgeSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WorkspaceCacheIdentity_IsAvailableOnBothExportSurfacesAndManagedInterop()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

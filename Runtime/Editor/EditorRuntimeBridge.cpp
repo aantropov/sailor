@@ -708,6 +708,39 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 	return true;
 }
 
+void Sailor::EditorRuntime::ResetForAppLifecycle()
+{
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		for (const auto& bindingEntry : g_remoteViewportBindings)
+		{
+			const auto& binding = *bindingEntry.m_second;
+			if (!binding)
+			{
+				continue;
+			}
+
+			std::lock_guard bindingLock(binding->m_mutex);
+			if (binding->m_created)
+			{
+				binding->m_binding.Destroy();
+				binding->m_created = false;
+			}
+		}
+
+		g_remoteViewportBindings.Clear();
+		g_remoteViewportMouseButtons.Clear();
+	}
+
+	{
+		std::lock_guard viewportLock(g_editorViewportMutex);
+		g_pendingEditorViewport = {};
+		g_appliedEditorRenderArea = { 0, 0 };
+		g_editorRemoteViewportRenderArea = { 0, 0 };
+		g_hasPendingEditorViewport = false;
+	}
+}
+
 bool Sailor::EditorRuntime::HasAppliedEditorRenderArea()
 {
 	std::lock_guard lock(g_editorViewportMutex);
@@ -735,6 +768,15 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 		std::lock_guard bindingLock(binding->m_mutex);
 		if (binding && binding->m_created && binding->m_visible)
 		{
+#if defined(__APPLE__)
+			const glm::ivec2 appliedRenderArea = GetAppliedEditorRenderArea();
+			const auto& descriptor = binding->m_binding.GetRuntimeSession().GetDescriptor();
+			if (descriptor.m_width != static_cast<uint32_t>(appliedRenderArea.x) ||
+				descriptor.m_height != static_cast<uint32_t>(appliedRenderArea.y))
+			{
+				continue;
+			}
+#endif
 			binding->Pump();
 		}
 	}

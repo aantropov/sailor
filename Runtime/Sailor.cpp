@@ -195,6 +195,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		return;
 	}
 
+	EditorRuntime::ResetForAppLifecycle();
+
 #if defined(_WIN32)
 	timeBeginPeriod(1);
 #endif
@@ -628,6 +630,8 @@ void App::Shutdown()
 	{
 		return;
 	}
+
+	EditorRuntime::ResetForAppLifecycle();
 
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
