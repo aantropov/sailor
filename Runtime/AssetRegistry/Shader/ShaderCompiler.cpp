@@ -3,6 +3,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "YamlExceptionBoundary.h"
 
 #include "ShaderAssetInfo.h"
 #include "ShaderCache.h"
@@ -13,6 +14,8 @@
 #include <fstream>
 #include <algorithm>
 #include <iostream>
+#include <iterator>
+#include <limits>
 #include <memory>
 
 #include "Core/YamlSerializable.h"
@@ -535,26 +538,49 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 		FileId uid = shaderAssetInfo->GetFileId();
 
 		auto& shaderAsset = m_shaderAssetsCache.At_Lock(uid);
+		TConcurrentMapEntryUnlockGuard shaderAssetUnlockGuard(m_shaderAssetsCache, uid);
 		if (shaderAsset)
 		{
-			m_shaderAssetsCache.Unlock(uid);
 			return shaderAsset;
 		}
 
 		const std::string& filepath = shaderAssetInfo->GetAssetFilepath();
 
 		std::string shaderText;
-		AssetRegistry::ReadAllTextFile(filepath, shaderText);
+		if (!AssetRegistry::ReadAllTextFile(filepath, shaderText))
+		{
+			SAILOR_LOG_ERROR("Cannot read shader YAML '%s'.", filepath.c_str());
+			return TWeakPtr<ShaderAsset>();
+		}
+
+		std::string yamlDiagnostic;
+		NormalizeShaderTabs("shader", shaderText, yamlDiagnostic);
+		if (!yamlDiagnostic.empty())
+		{
+			SAILOR_LOG_ERROR("Cannot parse shader YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+			return TWeakPtr<ShaderAsset>();
+		}
 
 		YAML::Node yamlNode;
-
-		yamlNode = YAML::Load(shaderText);
+		if (!External::TryLoadYaml(shaderText, yamlNode, yamlDiagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot parse shader YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+			return TWeakPtr<ShaderAsset>();
+		}
 
 		ShaderAsset* shader = new ShaderAsset();
-		shader->Deserialize(yamlNode);
+		if (!External::GuardYamlExceptions(
+				[shader, &yamlNode]()
+				{
+					shader->Deserialize(yamlNode);
+				},
+				yamlDiagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot deserialize shader YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+			delete shader;
+			return TWeakPtr<ShaderAsset>();
+		}
 		shaderAsset = TSharedPtr<ShaderAsset>(shader);
-
-		m_shaderAssetsCache.Unlock(uid);
 
 		return shaderAsset;
 	}
@@ -652,13 +678,180 @@ void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
 	}
 
 	const std::string& filepath = assetInfo->GetAssetFilepath();
+	const std::string extension = Utils::GetFileExtension(filepath);
+	if (extension != "shader")
+	{
+		return;
+	}
 
 	std::string shaderText;
-	AssetRegistry::ReadAllTextFile(filepath, shaderText);
+	std::string readDiagnostic;
+	if (!ReadShaderSourceBinary(filepath, shaderText, readDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot read shader YAML '%s': %s",
+			filepath.c_str(),
+			readDiagnostic.c_str());
+		return;
+	}
+	const std::string originalShaderText = shaderText;
+
+	std::string yamlDiagnostic;
+	if (!NormalizeShaderTabs(extension, shaderText, yamlDiagnostic))
+	{
+		if (!yamlDiagnostic.empty())
+		{
+			SAILOR_LOG_ERROR("Cannot parse shader YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+		}
+		return;
+	}
+
+	std::string writeDiagnostic;
+	if (!RewriteShaderSourceInPlace(
+			filepath,
+			originalShaderText,
+			shaderText,
+			writeDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot safely rewrite shader YAML '%s': %s",
+			filepath.c_str(),
+			writeDiagnostic.c_str());
+	}
+}
+
+bool ShaderCompiler::ReadShaderSourceBinary(
+	const std::string& filepath,
+	std::string& outSource,
+	std::string& outDiagnostic)
+{
+	outSource.clear();
+	outDiagnostic.clear();
+	std::ifstream shaderFile(filepath, std::ios::in | std::ios::binary);
+	if (!shaderFile.is_open())
+	{
+		outDiagnostic = "Cannot open the shader source for reading.";
+		return false;
+	}
+
+	outSource.assign(
+		std::istreambuf_iterator<char>{ shaderFile },
+		std::istreambuf_iterator<char>{});
+	if (shaderFile.bad())
+	{
+		outSource.clear();
+		outDiagnostic = "Cannot read the complete shader source.";
+		return false;
+	}
+
+	return true;
+}
+
+bool ShaderCompiler::RewriteShaderSourceInPlace(
+	const std::string& filepath,
+	const std::string& expectedSource,
+	const std::string& replacement,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	if (replacement.size() < expectedSource.size())
+	{
+		outDiagnostic = "The normalized shader source must not be smaller than the original source.";
+		return false;
+	}
+
+	if (replacement.size() > static_cast<size_t>((std::numeric_limits<std::streamsize>::max)()))
+	{
+		outDiagnostic = "The normalized shader source is too large to write.";
+		return false;
+	}
+
+	std::fstream shaderFile(filepath, std::ios::in | std::ios::out | std::ios::binary);
+	if (!shaderFile.is_open())
+	{
+		outDiagnostic = "Cannot open the shader source for an in-place update.";
+		return false;
+	}
+
+	const std::string currentSource{
+		std::istreambuf_iterator<char>{ shaderFile },
+		std::istreambuf_iterator<char>{} };
+	if (shaderFile.bad())
+	{
+		outDiagnostic = "Cannot verify the shader source before updating it.";
+		return false;
+	}
+
+	if (currentSource != expectedSource)
+	{
+		outDiagnostic = "The shader source changed while it was being normalized.";
+		return false;
+	}
+
+	shaderFile.clear();
+	shaderFile.seekp(0, std::ios::beg);
+	if (!shaderFile.good())
+	{
+		outDiagnostic = "Cannot seek to the beginning of the shader source.";
+		return false;
+	}
+
+	shaderFile.write(
+		replacement.data(),
+		static_cast<std::streamsize>(replacement.size()));
+	shaderFile.flush();
+	if (!shaderFile.good())
+	{
+		outDiagnostic = "Cannot write the normalized shader source.";
+		return false;
+	}
+	shaderFile.close();
+	if (shaderFile.fail())
+	{
+		outDiagnostic = "Cannot close the normalized shader source.";
+		return false;
+	}
+
+	return true;
+}
+
+bool ShaderCompiler::NormalizeShaderTabs(
+	const std::string& extension,
+	std::string& shaderText,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	if (extension != "shader")
+	{
+		return false;
+	}
 
 	YAML::Node yamlNode;
+	if (External::TryLoadYaml(shaderText, yamlNode, outDiagnostic))
+	{
+		return false;
+	}
 
-	yamlNode = YAML::Load(shaderText);
+	if (shaderText.find('\t') == std::string::npos)
+	{
+		return false;
+	}
+
+	std::string normalizedShaderText = shaderText;
+	static const std::string tab = "\t";
+	static const std::string space = "    ";
+	Utils::ReplaceAll(normalizedShaderText, tab, space);
+
+	std::string normalizedDiagnostic;
+	if (!External::TryLoadYaml(normalizedShaderText, yamlNode, normalizedDiagnostic))
+	{
+		outDiagnostic = std::move(normalizedDiagnostic);
+		return false;
+	}
+
+	shaderText = std::move(normalizedShaderText);
+	outDiagnostic.clear();
+	return true;
 }
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
@@ -1125,6 +1318,35 @@ bool ShaderCompilerTestAccess::ShouldRetryCacheSave(
 	return ShaderCompiler::ShouldRetryDirtyShaderCache(
 		numPermutationsToCompile,
 		bCacheDirty);
+}
+
+bool ShaderCompilerTestAccess::NormalizeShaderTabs(
+	const std::string& extension,
+	std::string& shaderText,
+	std::string& outDiagnostic)
+{
+	return ShaderCompiler::NormalizeShaderTabs(extension, shaderText, outDiagnostic);
+}
+
+bool ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
+	const std::string& filepath,
+	const std::string& expectedSource,
+	const std::string& replacement,
+	std::string& outDiagnostic)
+{
+	return ShaderCompiler::RewriteShaderSourceInPlace(
+		filepath,
+		expectedSource,
+		replacement,
+		outDiagnostic);
+}
+
+bool ShaderCompilerTestAccess::ReadShaderSourceBinary(
+	const std::string& filepath,
+	std::string& outSource,
+	std::string& outDiagnostic)
+{
+	return ShaderCompiler::ReadShaderSourceBinary(filepath, outSource, outDiagnostic);
 }
 
 bool ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry()

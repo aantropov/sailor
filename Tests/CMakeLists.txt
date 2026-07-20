@@ -156,6 +156,9 @@ target_compile_features(WorkspaceCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(AssetCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(ShaderCacheArtifactTests PRIVATE cxx_std_20)
 target_compile_features(AssetMountDiscoveryTests PRIVATE cxx_std_20)
+target_compile_definitions(AssetMountDiscoveryTests PRIVATE
+    SAILOR_ASSET_REGISTRY_TEST_HOOKS
+)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
     SAILOR_WORKSPACE_MODULE_EXPORTS

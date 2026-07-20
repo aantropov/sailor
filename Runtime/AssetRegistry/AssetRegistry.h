@@ -203,4 +203,17 @@ namespace Sailor
 
 		AssetCache m_assetCache;
 	};
+
+#if defined(SAILOR_ASSET_REGISTRY_TEST_HOOKS)
+	class AssetRegistryTestAccess final
+	{
+	public:
+		SAILOR_API static bool TryReadMetadataIdentity(
+			const std::filesystem::path& metaPath,
+			std::string& outFileId,
+			std::string& outFilename,
+			std::string& outAssetInfoType,
+			std::string& outError);
+	};
+#endif
 }

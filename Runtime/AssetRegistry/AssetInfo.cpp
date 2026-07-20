@@ -6,6 +6,7 @@
 #include "Core/Reflection.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "YamlExceptionBoundary.h"
 #include <iostream>
 
 using namespace Sailor;
@@ -143,14 +144,6 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 	newMeta["fileId"] = fileId.Serialize();
 	newMeta["filename"] = std::filesystem::path(assetFilepath).filename().string();
 
-	if (bUpdateAssetCache)
-	{
-		App::GetSubmodule<AssetRegistry>()->CacheAssetTime(
-			fileId,
-			assetFilepath,
-			std::time(nullptr));
-	}
-
 	assetFile << newMeta;
 	assetFile.close();
 
@@ -164,6 +157,13 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 		true,
 		bNotifyListeners,
 		bUpdateAssetCache);
+	if (assetInfoPtr == nullptr)
+	{
+		std::error_code removeError;
+		std::filesystem::remove(assetInfoFilename, removeError);
+		return nullptr;
+	}
+
 	assetInfoPtr->m_bPendingImportNotification = !bNotifyListeners;
 	if (bNotifyListeners)
 	{
@@ -198,24 +198,53 @@ AssetInfoPtr IAssetInfoHandler::LoadAssetInfo(
 			res->m_assetFilename).generic_string();
 	}
 
-	ReloadAssetInfo(res, bNotifyListeners, bUpdateAssetCache);
+	if (!ReloadAssetInfo(res, bNotifyListeners, bUpdateAssetCache))
+	{
+		delete res;
+		return nullptr;
+	}
 
 	return res;
 }
 
-void IAssetInfoHandler::ReloadAssetInfo(
+bool IAssetInfoHandler::ReloadAssetInfo(
 	AssetInfoPtr assetInfo,
 	bool bNotifyListeners,
 	bool bUpdateAssetCache) const
 {
+	if (assetInfo == nullptr)
+	{
+		SAILOR_LOG_ERROR("Cannot reload null asset metadata.");
+		return false;
+	}
+
 	const bool bWasMetaExpired = assetInfo->IsMetaExpired();
 
 	std::string content;
-	AssetRegistry::ReadAllTextFile(assetInfo->GetMetaFilepath(), content);
+	if (!AssetRegistry::ReadAllTextFile(assetInfo->GetMetaFilepath(), content))
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to read asset metadata: %s",
+			assetInfo->GetMetaFilepath().c_str());
+		return false;
+	}
 
-	YAML::Node meta = YAML::Load(content);
+	std::string yamlDiagnostic;
+	if (!External::GuardYamlExceptions(
+			[assetInfo, &content]()
+			{
+				const YAML::Node meta = YAML::Load(content);
+				assetInfo->Deserialize(meta);
+			},
+			yamlDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Invalid asset metadata '%s': %s",
+			assetInfo->GetMetaFilepath().c_str(),
+			yamlDiagnostic.c_str());
+		return false;
+	}
 
-	assetInfo->Deserialize(meta);
 	if (!assetInfo->m_virtualMetaFilepath.empty())
 	{
 		assetInfo->m_virtualAssetFilepath = (
@@ -246,6 +275,8 @@ void IAssetInfoHandler::ReloadAssetInfo(
 	{
 		NotifyUpdateAssetInfo(assetInfo);
 	}
+
+	return true;
 
 	/*	if (bWasAssetExpired)
 		{

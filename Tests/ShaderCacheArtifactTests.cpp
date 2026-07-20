@@ -762,6 +762,129 @@ namespace
 		Require(!ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, false),
 			"a compile failure should remain failed even when cache persistence succeeds");
 	}
+
+	void TestShaderSourceNormalization()
+	{
+		std::string diagnostic;
+		std::string rawGlsl =
+			"vec3 convertRGB2XYZ(vec3 value)\n"
+			"{\n"
+			"    // Reference(s):\n"
+			"\treturn value;\n"
+			"}\n";
+		const std::string originalRawGlsl = rawGlsl;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("glsl", rawGlsl, diagnostic),
+			"raw GLSL should not be normalized as shader YAML");
+		Require(rawGlsl == originalRawGlsl && diagnostic.empty(),
+			"raw GLSL should remain byte-for-byte unchanged without a YAML diagnostic");
+
+		std::string validShader =
+			"glslVertex: |\n"
+			"  void main() {}\n";
+		const std::string originalValidShader = validShader;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("shader", validShader, diagnostic),
+			"valid shader YAML should not need normalization");
+		Require(validShader == originalValidShader && diagnostic.empty(),
+			"valid shader YAML should remain byte-for-byte unchanged");
+
+		std::string shaderWithTab =
+			"glslVertex: |\n"
+			"  void main()\n"
+			"  {\n"
+			"\tgl_Position = vec4(0.0);\n"
+			"  }\n";
+		Require(
+			ShaderCompilerTestAccess::NormalizeShaderTabs("shader", shaderWithTab, diagnostic),
+			"invalid YAML indentation tabs should be normalized");
+		Require(shaderWithTab.find('\t') == std::string::npos && diagnostic.empty(),
+			"normalized shader YAML should contain no tabs or diagnostic");
+		Require(shaderWithTab.find("\n    gl_Position") != std::string::npos,
+			"shader YAML tabs should expand to exactly four spaces");
+		Require(YAML::Load(shaderWithTab)["glslVertex"].IsScalar(),
+			"normalized shader YAML should be parseable");
+
+		std::string malformedShader = "glslVertex: [\n";
+		const std::string originalMalformedShader = malformedShader;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("shader", malformedShader, diagnostic),
+			"non-tab YAML errors should not trigger a rewrite");
+		Require(malformedShader == originalMalformedShader && !diagnostic.empty(),
+			"non-tab YAML errors should preserve the source and publish a diagnostic");
+	}
+
+	void TestShaderSourceRewritePreservesFileIdentity()
+	{
+		TempDirectory directory;
+		const std::filesystem::path shaderPath = directory.Path("User.shader");
+		const std::filesystem::path hardLinkPath = directory.Path("User.shader.link");
+		const std::string onDiskSource =
+			"glslVertex: |\r\n"
+			"  void main()\n"
+			"  {\r\n"
+			"\tgl_Position = vec4(0.0);\n"
+			"  }\r\n";
+		{
+			std::ofstream output(shaderPath, std::ios::binary);
+			Require(output.is_open(), "the shader rewrite fixture should be writable");
+			output << onDiskSource;
+		}
+
+		std::string originalSource;
+		std::string diagnostic;
+		Require(
+			ShaderCompilerTestAccess::ReadShaderSourceBinary(
+				shaderPath.generic_string(),
+				originalSource,
+				diagnostic),
+			"the shader rewrite fixture should use production binary reading: " + diagnostic);
+		Require(originalSource == onDiskSource,
+			"production shader reading should preserve mixed line endings byte-for-byte");
+		std::string normalizedSource = originalSource;
+		Require(
+			ShaderCompilerTestAccess::NormalizeShaderTabs(
+				"shader",
+				normalizedSource,
+				diagnostic),
+			"the rewrite fixture should require normalization");
+		std::error_code filesystemError;
+		std::filesystem::create_hard_link(shaderPath, hardLinkPath, filesystemError);
+		Require(!filesystemError,
+			"the shader rewrite fixture should support hard links: " + filesystemError.message());
+		const auto permissionsBefore = std::filesystem::status(shaderPath).permissions();
+
+		Require(
+			ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
+				shaderPath.generic_string(),
+				originalSource,
+				normalizedSource,
+				diagnostic),
+			"normalized shader source should be written in place: " + diagnostic);
+		Require(ReadText(shaderPath) == normalizedSource && ReadText(hardLinkPath) == normalizedSource,
+			"in-place normalization should preserve the source inode");
+		Require(std::filesystem::status(shaderPath).permissions() == permissionsBefore,
+			"in-place normalization should preserve source permissions");
+		Require(CountRegularFiles(shaderPath.parent_path()) == 2,
+			"in-place normalization should not create discoverable temporary assets");
+
+		const std::string onDiskConcurrentSource = "glslVertex: concurrent-edit\r\n";
+		{
+			std::ofstream output(shaderPath, std::ios::binary | std::ios::trunc);
+			Require(output.is_open(), "the concurrent shader edit should be writable");
+			output << onDiskConcurrentSource;
+		}
+		const std::string concurrentSource = onDiskConcurrentSource;
+		Require(
+			!ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
+				shaderPath.generic_string(),
+				originalSource,
+				normalizedSource,
+				diagnostic),
+			"a concurrent user edit should cancel shader normalization");
+		Require(ReadText(shaderPath) == concurrentSource && !diagnostic.empty(),
+			"a concurrent user edit should remain intact and produce a diagnostic");
+	}
 }
 
 int main()
@@ -780,6 +903,8 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestShaderSourceNormalization();
+		TestShaderSourceRewritePreservesFileIdentity();
 		std::cout << "Shader cache artifact tests passed.\n";
 		return 0;
 	}

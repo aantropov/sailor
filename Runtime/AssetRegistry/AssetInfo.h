@@ -109,7 +109,7 @@ namespace Sailor
 			const std::string& virtualAssetFilepath = {},
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
-		virtual void ReloadAssetInfo(
+		virtual bool ReloadAssetInfo(
 			AssetInfoPtr assetInfo,
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;

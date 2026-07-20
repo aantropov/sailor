@@ -14,6 +14,7 @@
 #include "Core/Utils.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -164,41 +165,69 @@ namespace
 		std::string& outAssetInfoType,
 		std::string& outError)
 	{
-		const YAML::Node metadata = YAML::LoadFile(metaPath.string());
-		const YAML::Node fileId = metadata["fileId"];
-		const YAML::Node filename = metadata["filename"];
-		if (!fileId.IsScalar() || !filename.IsScalar())
-		{
-			outError = "metadata requires scalar fileId and filename";
-			return false;
-		}
+		outFileId.clear();
+		outFilename.clear();
+		outAssetInfoType.clear();
+		outError.clear();
 
-		outFileId = fileId.as<std::string>();
-		outFilename = filename.as<std::string>();
-		YAML::Node assetInfoType(YAML::NodeType::Undefined);
-		for (const auto& field : metadata)
+		bool bSuccess = false;
+		std::string yamlDiagnostic;
+		if (!External::GuardYamlExceptions(
+				[&]()
+				{
+					const YAML::Node metadata = YAML::LoadFile(metaPath.string());
+					if (!metadata.IsMap())
+					{
+						outError = "metadata root must be a map";
+						return;
+					}
+
+					const YAML::Node fileId = metadata["fileId"];
+					const YAML::Node filename = metadata["filename"];
+					if (!fileId.IsScalar() || !filename.IsScalar())
+					{
+						outError = "metadata requires scalar fileId and filename";
+						return;
+					}
+
+					outFileId = fileId.as<std::string>();
+					outFilename = filename.as<std::string>();
+					YAML::Node assetInfoType(YAML::NodeType::Undefined);
+					for (const auto& field : metadata)
+					{
+						if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
+						{
+							assetInfoType = field.second;
+							break;
+						}
+					}
+					if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
+					{
+						outError = "metadata assetInfoType must be scalar when present";
+						return;
+					}
+					if (assetInfoType.IsScalar())
+					{
+						outAssetInfoType = assetInfoType.as<std::string>();
+					}
+					if (outFileId.empty() || outFilename.empty() ||
+						!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
+					{
+						outError = "metadata contains an empty FileId or unsafe filename";
+						return;
+					}
+
+					bSuccess = true;
+				},
+				yamlDiagnostic))
 		{
-			if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
-			{
-				assetInfoType = field.second;
-				break;
-			}
-		}
-		if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
-		{
-			outError = "metadata assetInfoType must be scalar when present";
+			outFileId.clear();
+			outFilename.clear();
+			outAssetInfoType.clear();
+			outError = std::move(yamlDiagnostic);
 			return false;
 		}
-		outAssetInfoType = assetInfoType.IsScalar()
-			? assetInfoType.as<std::string>()
-			: std::string{};
-		if (outFileId.empty() || outFilename.empty() ||
-			!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
-		{
-			outError = "metadata contains an empty FileId or unsafe filename";
-			return false;
-		}
-		return true;
+		return bSuccess;
 	}
 
 	FileId ParseFileId(const std::string& value)
@@ -218,6 +247,23 @@ namespace
 	}
 
 }
+
+#if defined(SAILOR_ASSET_REGISTRY_TEST_HOOKS)
+bool AssetRegistryTestAccess::TryReadMetadataIdentity(
+	const std::filesystem::path& metaPath,
+	std::string& outFileId,
+	std::string& outFilename,
+	std::string& outAssetInfoType,
+	std::string& outError)
+{
+	return ReadMetadataIdentity(
+		metaPath,
+		outFileId,
+		outFilename,
+		outAssetInfoType,
+		outError);
+}
+#endif
 
 std::string AssetRegistry::GetContentFolder()
 {
@@ -277,7 +323,6 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 
 	constexpr auto readSize = std::size_t{ 4096 };
 	auto stream = std::ifstream{ filename.data() };
-	stream.exceptions(std::ios_base::badbit);
 	if (!stream.is_open())
 	{
 		return false;
@@ -290,6 +335,11 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 		text.append(buffer, 0, stream.gcount());
 	}
 	text.append(buffer, 0, stream.gcount());
+	if (stream.bad())
+	{
+		text.clear();
+		return false;
+	}
 	return true;
 }
 
@@ -619,6 +669,14 @@ void AssetRegistry::ScanContentFolder()
 				record.m_assetVirtualPath,
 				false,
 				false);
+			if (assetInfo == nullptr)
+			{
+				rollbackStaging();
+				SAILOR_LOG_ERROR(
+					"Failed to import asset metadata during staged load: %s",
+					record.m_metaPath.generic_string().c_str());
+				return;
+			}
 			stagedAssetInfos[assetInfo->GetFileId()] = assetInfo;
 			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = assetInfo->GetFileId();
 			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = assetInfo->GetFileId();
@@ -652,6 +710,14 @@ void AssetRegistry::ScanContentFolder()
 			record.m_candidate.m_mount.m_bWritable,
 			false,
 			false);
+		if (assetInfo == nullptr)
+		{
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Failed to load asset metadata during staged load: %s",
+				record.m_metaPath.generic_string().c_str());
+			return;
+		}
 		if (assetInfo->GetFileId().ToString() != record.m_candidate.m_fileId)
 		{
 			delete assetInfo;
@@ -909,6 +975,18 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		SAILOR_LOG_ERROR(
 			"Read-only Engine asset '%s' has no metadata and was not imported.",
 			location.m_virtualPath.c_str());
+		return FileId::Invalid;
+	}
+	if (assetInfo == nullptr)
+	{
+		if (bImported)
+		{
+			std::error_code removeError;
+			std::filesystem::remove(metaPath, removeError);
+		}
+		SAILOR_LOG_ERROR(
+			"Failed to load asset metadata: %s",
+			metaPath.generic_string().c_str());
 		return FileId::Invalid;
 	}
 

@@ -230,6 +230,19 @@ namespace Sailor
 		}
 
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
+		static bool ReadShaderSourceBinary(
+			const std::string& filepath,
+			std::string& outSource,
+			std::string& outDiagnostic);
+		static bool RewriteShaderSourceInPlace(
+			const std::string& filepath,
+			const std::string& expectedSource,
+			const std::string& replacement,
+			std::string& outDiagnostic);
+		static bool NormalizeShaderTabs(
+			const std::string& extension,
+			std::string& shaderText,
+			std::string& outDiagnostic);
 
 		SAILOR_API Tasks::TaskPtr<bool> CompileAllPermutations(ShaderAssetInfoPtr shaderAssetInfo);
 		SAILOR_API TWeakPtr<ShaderAsset> LoadShaderAsset(ShaderAssetInfoPtr shaderAssetInfo);
@@ -250,6 +263,19 @@ namespace Sailor
 		SAILOR_API static bool ShouldRetryCacheSave(
 			size_t numPermutationsToCompile,
 			bool bCacheDirty);
+		SAILOR_API static bool NormalizeShaderTabs(
+			const std::string& extension,
+			std::string& shaderText,
+			std::string& outDiagnostic);
+		SAILOR_API static bool RewriteShaderSourceInPlace(
+			const std::string& filepath,
+			const std::string& expectedSource,
+			const std::string& replacement,
+			std::string& outDiagnostic);
+		SAILOR_API static bool ReadShaderSourceBinary(
+			const std::string& filepath,
+			std::string& outSource,
+			std::string& outDiagnostic);
 		SAILOR_API static bool ExerciseFailedLoadEvictionAndRetry();
 		SAILOR_API static bool ExercisePromiseGarbageCollection();
 	};
