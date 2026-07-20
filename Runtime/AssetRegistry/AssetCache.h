@@ -1,6 +1,5 @@
 #pragma once
-#include <chrono>
-#include <ctime>
+#include <cstdint>
 #include "Containers/ConcurrentMap.h"
 #include "AssetRegistry/FileId.h"
 #include "Workspace/WorkspaceCacheContract.h"
@@ -13,21 +12,15 @@ namespace Sailor
 	class AssetCache
 	{
 	public:
+		using FileTimestamp = int64_t;
 
 		SAILOR_API static std::string GetAssetCacheFilepath();
 
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API bool GetTimeStamp(
-			const FileId& uid,
-			const std::string& sourcePath,
-			time_t& outAssetTimestamp) const;
-
-		SAILOR_API void Update(
-			const FileId& id,
-			const std::string& sourcePath,
-			const time_t& assetTimestamp);
+		SAILOR_API bool Update(
+			const class AssetInfo* info);
 		SAILOR_API void Remove(const FileId& uid);
 
 		SAILOR_API bool Contains(const FileId& uid) const;
@@ -52,10 +45,19 @@ namespace Sailor
 			public:
 
 				FileId m_fileId{};
-				std::time_t m_assetImportTime{};
+				FileTimestamp m_sourceTimestamp{};
 				std::string m_sourcePath;
+				FileTimestamp m_metadataTimestamp{};
+				std::string m_metadataPath;
 
-				SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId; }
+				SAILOR_API bool operator==(const Entry& rhs) const
+				{
+					return m_fileId == rhs.m_fileId &&
+						m_sourceTimestamp == rhs.m_sourceTimestamp &&
+						m_sourcePath == rhs.m_sourcePath &&
+						m_metadataTimestamp == rhs.m_metadataTimestamp &&
+						m_metadataPath == rhs.m_metadataPath;
+				}
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
 				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -78,6 +80,12 @@ namespace Sailor
 			bool bForcely,
 			bool bIsDirty,
 			bool bPreserveStorageAfterLoadFailure) noexcept;
+		SAILOR_API bool Update(
+			const FileId& id,
+			const std::string& sourcePath,
+			FileTimestamp sourceTimestamp,
+			const std::string& metadataPath,
+			FileTimestamp metadataTimestamp);
 
 		SAILOR_API static std::string SerializeAssetCachePayload(const AssetCacheData& cache);
 		SAILOR_API static bool TryDeserializeAssetCachePayload(
@@ -90,6 +98,7 @@ namespace Sailor
 		mutable std::mutex m_cacheMutex;
 
 	private:
+		static FileTimestamp GetFileTimestamp(const std::string& path) noexcept;
 
 		AssetCacheData m_cache;
 		bool m_bIsDirty = false;

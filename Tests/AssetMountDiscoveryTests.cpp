@@ -165,25 +165,19 @@ namespace
 	void TestScalarMetadataRootIsRejected()
 	{
 		TempDirectory directory("scalar-metadata");
-		const std::filesystem::path metaPath = directory.Path("scalar.asset");
+		const std::filesystem::path metaPath = directory.Path("Content/scalar.asset");
 		WriteFile(metaPath, "not-a-map\n");
 
-		std::string fileId = "stale-file-id";
-		std::string filename = "stale-filename";
-		std::string assetInfoType = "stale-type";
-		std::string diagnostic;
-		Require(
-			!AssetRegistryTestAccess::TryReadMetadataIdentity(
-				metaPath,
-				fileId,
-				filename,
-				assetInfoType,
-				diagnostic),
+		TypedFailureAssetInfoHandler handler;
+		AssetInfoPtr assetInfo = handler.LoadAssetInfo(
+			metaPath.string(),
+			{},
+			EAssetMountKind::Workspace,
+			true,
+			false,
+			false);
+		Require(assetInfo == nullptr,
 			"scalar metadata root should be rejected without throwing");
-		Require(fileId.empty() && filename.empty() && assetInfoType.empty(),
-			"rejected scalar metadata should clear all identity outputs");
-		Require(diagnostic == "metadata root must be a map",
-			"scalar metadata should return the root-shape diagnostic");
 	}
 
 	void TestTypedMetadataDeserializeFailureIsRejected()

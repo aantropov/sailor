@@ -177,7 +177,6 @@ target_compile_definitions(SailorLib PRIVATE SAILOR_ENGINE_VERSION="${PROJECT_VE
 
 if(SAILOR_BUILD_TESTS)
   target_compile_definitions(SailorLib PUBLIC $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>)
-  target_compile_definitions(SailorLib PRIVATE SAILOR_ASSET_REGISTRY_TEST_HOOKS)
 endif()
 
 target_compile_definitions(SailorLib INTERFACE _SAILOR_IMPORT_)

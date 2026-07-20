@@ -45,7 +45,7 @@ void AssetInfo::SaveMetaFile()
 
 AssetInfo::AssetInfo()
 {
-	m_metaLoadTime = std::time(nullptr);
+	m_metaLoadTime = 0;
 	m_assetImportTime = 0;
 }
 
@@ -56,7 +56,7 @@ bool AssetInfo::IsAssetExpired() const
 		return true;
 	}
 
-	return m_assetImportTime < GetAssetLastModificationTime();
+	return m_assetImportTime != GetAssetLastModificationTime();
 }
 
 bool AssetInfo::IsMetaExpired() const
@@ -66,7 +66,7 @@ bool AssetInfo::IsMetaExpired() const
 		return true;
 	}
 
-	return m_metaLoadTime < GetMetaLastModificationTime();
+	return m_metaLoadTime != GetMetaLastModificationTime();
 }
 
 DefaultAssetInfoHandler::DefaultAssetInfoHandler(AssetRegistry* assetRegistry)
@@ -156,7 +156,7 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 		EAssetMountKind::Workspace,
 		true,
 		bNotifyListeners,
-		bUpdateAssetCache);
+		false);
 	if (assetInfoPtr == nullptr)
 	{
 		std::error_code removeError;
@@ -168,6 +168,10 @@ AssetInfoPtr IAssetInfoHandler::ImportAsset(
 	if (bNotifyListeners)
 	{
 		NotifyImportAsset(assetInfoPtr);
+	}
+	if (bUpdateAssetCache)
+	{
+		App::GetSubmodule<AssetRegistry>()->CacheAsset(assetInfoPtr);
 	}
 
 	return assetInfoPtr;
@@ -218,7 +222,9 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 		return false;
 	}
 
-	const bool bWasMetaExpired = assetInfo->IsMetaExpired();
+	const bool bHadLoadedIdentity = static_cast<bool>(assetInfo->GetFileId());
+	const bool bWasMetaExpired = bHadLoadedIdentity && assetInfo->IsMetaExpired();
+	const bool bWasAssetExpired = bHadLoadedIdentity && assetInfo->IsAssetExpired();
 
 	std::string content;
 	if (!AssetRegistry::ReadAllTextFile(assetInfo->GetMetaFilepath(), content))
@@ -251,29 +257,21 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 			std::filesystem::path(assetInfo->m_virtualMetaFilepath).parent_path() /
 			assetInfo->m_assetFilename).generic_string();
 	}
-	assetInfo->m_metaLoadTime = std::time(nullptr);
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	const bool bWasCacheExpired = assetRegistry != nullptr && assetRegistry->IsAssetExpired(assetInfo);
 
-	App::GetSubmodule<AssetRegistry>()->GetAssetCachedTime(
-		assetInfo->GetFileId(),
-		assetInfo->GetAssetFilepath(),
-		assetInfo->m_assetImportTime);
-
-	const bool bWasAssetExpired = assetInfo->IsAssetExpired();
-
+	assetInfo->m_metaLoadTime = assetInfo->GetMetaLastModificationTime();
 	assetInfo->m_assetImportTime = assetInfo->GetAssetLastModificationTime();
-	if (bUpdateAssetCache)
-	{
-		App::GetSubmodule<AssetRegistry>()->CacheAssetTime(
-			assetInfo->GetFileId(),
-			assetInfo->GetAssetFilepath(),
-			assetInfo->m_assetImportTime);
-	}
 
 	assetInfo->m_bPendingUpdateNotification = !bNotifyListeners;
-	assetInfo->m_bPendingWasExpired = bWasMetaExpired || bWasAssetExpired;
+	assetInfo->m_bPendingWasExpired = bWasMetaExpired || bWasAssetExpired || bWasCacheExpired;
 	if (bNotifyListeners)
 	{
 		NotifyUpdateAssetInfo(assetInfo);
+	}
+	if (bUpdateAssetCache && assetRegistry != nullptr)
+	{
+		assetRegistry->CacheAsset(assetInfo);
 	}
 
 	return true;

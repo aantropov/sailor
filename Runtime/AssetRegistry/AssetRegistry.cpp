@@ -248,23 +248,6 @@ namespace
 
 }
 
-#if defined(SAILOR_ASSET_REGISTRY_TEST_HOOKS)
-bool AssetRegistryTestAccess::TryReadMetadataIdentity(
-	const std::filesystem::path& metaPath,
-	std::string& outFileId,
-	std::string& outFilename,
-	std::string& outAssetInfoType,
-	std::string& outError)
-{
-	return ReadMetadataIdentity(
-		metaPath,
-		outFileId,
-		outFilename,
-		outAssetInfoType,
-		outError);
-}
-#endif
-
 std::string AssetRegistry::GetContentFolder()
 {
 	return GetWorkspaceContentFolder();
@@ -296,20 +279,14 @@ AssetRegistry::AssetRegistry()
 	m_assetCache.Initialize();
 }
 
-void AssetRegistry::CacheAssetTime(
-	const FileId& id,
-	const std::string& sourcePath,
-	const time_t& assetTimestamp)
+void AssetRegistry::CacheAsset(const AssetInfoPtr info)
 {
-	m_assetCache.Update(id, sourcePath, assetTimestamp);
-}
-
-bool AssetRegistry::GetAssetCachedTime(
-	const FileId& id,
-	const std::string& sourcePath,
-	time_t& outAssetTimestamp) const
-{
-	return m_assetCache.GetTimeStamp(id, sourcePath, outAssetTimestamp);
+	if (info != nullptr)
+	{
+		info->m_assetImportTime = info->GetAssetLastModificationTime();
+		info->m_metaLoadTime = info->GetMetaLastModificationTime();
+		m_assetCache.Update(info);
+	}
 }
 
 bool AssetRegistry::IsAssetExpired(const AssetInfoPtr info) const
@@ -792,15 +769,12 @@ void AssetRegistry::ScanContentFolder()
 
 	for (const PendingAssetNotification& pending : pendingNotifications)
 	{
-		CacheAssetTime(
-			pending.m_assetInfo->GetFileId(),
-			pending.m_assetInfo->GetAssetFilepath(),
-			pending.m_assetInfo->GetAssetImportTime());
 		pending.m_handler->NotifyUpdateAssetInfo(pending.m_assetInfo);
 		if (pending.m_bImported)
 		{
 			pending.m_handler->NotifyImportAsset(pending.m_assetInfo);
 		}
+		CacheAsset(pending.m_assetInfo);
 	}
 	m_assetCache.SaveCache();
 }
@@ -1023,12 +997,12 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		m_fileIds[virtualPathKey] = fileId;
 		m_contentFileWinners[virtualPathKey] = location;
 	}
-	CacheAssetTime(fileId, location.m_physicalPath.string(), assetInfo->GetAssetImportTime());
 	handler->NotifyUpdateAssetInfo(assetInfo);
 	if (bImported)
 	{
 		handler->NotifyImportAsset(assetInfo);
 	}
+	CacheAsset(assetInfo);
 	return m_loadedAssetInfo.Find(fileId).Value()->GetFileId();
 }
 
