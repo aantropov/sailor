@@ -408,6 +408,7 @@ namespace
 		const std::string preserved(
 			(std::istreambuf_iterator<char>(metadataFile)),
 			std::istreambuf_iterator<char>());
+		metadataFile.close();
 		Require(preserved == userMetadata,
 			"import must never truncate or replace a user-created metadata sidecar");
 		Require(listener.m_events.empty(),
