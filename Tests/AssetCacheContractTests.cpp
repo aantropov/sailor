@@ -26,7 +26,6 @@ namespace
 		using AssetCache::ShouldWriteCacheFile;
 		using AssetCache::TryDeserializeAssetCachePayload;
 		using AssetCache::Update;
-		using AssetCache::Prune;
 	};
 
 	class TempDirectory final
@@ -116,9 +115,13 @@ namespace
 	class RecordingAssetListener final : public IAssetInfoHandlerListener
 	{
 	public:
-		void OnUpdateAssetInfo(AssetInfoPtr, bool bWasExpired) override
+		void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override
 		{
 			m_events.emplace_back(bWasExpired ? "update:true" : "update:false");
+			if (bWasExpired && m_onExpiredUpdate)
+			{
+				m_onExpiredUpdate(assetInfo);
+			}
 		}
 
 		void OnImportAsset(AssetInfoPtr) override
@@ -127,6 +130,7 @@ namespace
 		}
 
 		std::vector<std::string> m_events;
+		std::function<void(AssetInfoPtr)> m_onExpiredUpdate;
 	};
 
 	class TestAssetInfoHandler final : public IAssetInfoHandler
@@ -480,6 +484,7 @@ namespace
 		info.SetProcessingTimes(
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
+		WriteFile(sourcePath, "source-v2");
 		std::filesystem::last_write_time(
 			sourcePath,
 			initialSourceTime + std::chrono::seconds(2));
@@ -488,13 +493,68 @@ namespace
 
 		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
+		std::string reprocessedSource;
+		listener.m_onExpiredUpdate = [&reprocessedSource](AssetInfoPtr updatedInfo)
+		{
+			std::ifstream source(updatedInfo->GetAssetFilepath(), std::ios::binary);
+			reprocessedSource.assign(
+				std::istreambuf_iterator<char>(source),
+				std::istreambuf_iterator<char>());
+		};
 		handler.Subscribe(&listener);
 		Require(handler.ReloadAssetInfo(&info, true, false),
 			"an existing asset with a changed raw file should reload its metadata");
 		Require(listener.m_events == std::vector<std::string>({ "update:true" }),
 			"a raw edit must dispatch exactly Update(true) and never Import");
+		Require(reprocessedSource == "source-v2",
+			"Update(true) must let an importer reprocess the changed raw source");
 		Require(!info.IsAssetExpired(),
 			"a successfully dispatched raw edit should advance the in-memory processing watermark");
+	}
+
+	void TestMetadataEditDispatchesExpiredUpdateWithoutImport()
+	{
+		TempDirectory directory("meta-expired-callback");
+		const std::filesystem::path sourcePath = directory.Path("Content/Existing.raw");
+		const std::filesystem::path metadataPath = directory.Path("Content/Existing.raw.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(
+			metadataPath,
+			"fileId: '{ASSET-CACHE-META-EXPIRED}'\n"
+			"testValue: 7\n"
+			"lateValue: 1\n");
+
+		const std::filesystem::file_time_type initialMetadataTime =
+			std::filesystem::file_time_type::clock::now() - std::chrono::seconds(20);
+		std::filesystem::last_write_time(metadataPath, initialMetadataTime);
+		TestAssetInfo info;
+		info.Configure(MakeFileId("{ASSET-CACHE-META-EXPIRED}"), sourcePath, metadataPath);
+		info.SetProcessingTimes(
+			info.GetAssetLastModificationTime(),
+			info.GetMetaLastModificationTime());
+
+		WriteFile(
+			metadataPath,
+			"fileId: '{ASSET-CACHE-META-EXPIRED}'\n"
+			"testValue: 9\n"
+			"lateValue: 1\n");
+		std::filesystem::last_write_time(
+			metadataPath,
+			initialMetadataTime + std::chrono::seconds(2));
+		Require(info.IsMetaExpired(),
+			"newer metadata should be expired before reload");
+
+		TestAssetInfoHandler handler;
+		RecordingAssetListener listener;
+		handler.Subscribe(&listener);
+		Require(handler.ReloadAssetInfo(&info, true, false),
+			"an existing asset with changed metadata should reload");
+		Require(listener.m_events == std::vector<std::string>({ "update:true" }),
+			"a metadata edit must dispatch exactly Update(true) and never Import");
+		Require(info.m_testValue == 9,
+			"Update(true) should observe the newly loaded metadata values");
+		Require(!info.IsMetaExpired(),
+			"a successfully dispatched metadata edit should advance its processing watermark");
 	}
 
 	void TestConcurrentMetadataEditDoesNotAdvanceTheWatermark()
@@ -561,28 +621,6 @@ namespace
 			"a metadata path change should change the cache");
 	}
 
-	void TestPruneRemovesOnlyStaleEntries()
-	{
-		TestAssetCache cache;
-		const FileId liveId = MakeFileId("{ASSET-CACHE-PRUNE-LIVE}");
-		const FileId staleId = MakeFileId("{ASSET-CACHE-PRUNE-STALE}");
-		Require(cache.Update(liveId, 10, "/workspace/Content/Live.raw", 11,
-			"/workspace/Content/Live.raw.asset"),
-			"the live cache entry should be inserted");
-		Require(cache.Update(staleId, 20, "/workspace/Content/Stale.raw", 21,
-			"/workspace/Content/Stale.raw.asset"),
-			"the stale cache entry should be inserted");
-
-		TSet<FileId> liveAssetIds;
-		liveAssetIds.Insert(liveId);
-		Require(cache.Prune(liveAssetIds),
-			"pruning should report removal of a stale cache entry");
-		Require(cache.Contains(liveId) && !cache.Contains(staleId),
-			"pruning should retain only ids in the committed registry generation");
-		Require(!cache.Prune(liveAssetIds),
-			"pruning an already current cache should be a no-op");
-	}
-
 	void TestProcessingWatermarksExpireOnNewerFiles()
 	{
 		TempDirectory directory("watermarks");
@@ -604,6 +642,7 @@ namespace
 		Require(cache.Update(&info), "the initial processing watermarks should populate the cache");
 		Require(!cache.IsExpired(&info), "processed source and metadata files should remain current");
 
+		WriteFile(sourcePath, "source-v2");
 		std::filesystem::last_write_time(sourcePath, initialTime + std::chrono::seconds(2));
 		Require(cache.IsExpired(&info), "a newer source file should expire the cache");
 		info.SetProcessingTimes(
@@ -712,9 +751,9 @@ int main()
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
 		TestRawEditDispatchesExpiredUpdateWithoutImport();
+		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
 		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();
 		TestUpdateTracksProcessingWatermarksAndPreservesDirtyState();
-		TestPruneRemovesOnlyStaleEntries();
 		TestProcessingWatermarksExpireOnNewerFiles();
 		TestMetadataFieldsAreStrictAndTransactional();
 		TestIoFailurePreservesTheExistingCacheFile();
