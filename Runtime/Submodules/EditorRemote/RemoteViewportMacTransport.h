@@ -378,7 +378,15 @@ namespace Sailor::EditorRemote
 					(rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
 					rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height))
 				{
-					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1005, "macOS renderer source extents do not match the current IOSurface");
+					std::ostringstream message;
+					message << "macOS renderer source extents do not match the current IOSurface"
+						<< ": source=" << rendererSource.m_width << "x" << rendererSource.m_height
+						<< " surface=" << state.m_nativeAllocation->m_plane.m_width << "x" << state.m_nativeAllocation->m_plane.m_height
+						<< " viewport=" << state.m_key.m_viewportId
+						<< " epoch=" << state.m_key.m_epoch
+						<< " generation=" << state.m_key.m_generation
+						<< " sourceName='" << rendererSource.m_debugName << "'";
+					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1005, message.str());
 					return m_lastFailure;
 				}
 

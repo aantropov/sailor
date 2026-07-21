@@ -432,6 +432,48 @@ namespace
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 32, 1).IsOk(), "provider should still release surfaces after metadata-backed begin frame");
 	}
 
+	void TestRendererExtentMismatchRemainsADiagnosticInvariant()
+	{
+		FakeMacRendererFrameSourceProvider sourceProvider{};
+		sourceProvider.m_nextSource.m_kind = MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata;
+		sourceProvider.m_nextSource.m_sourceToken = 0x1010ull;
+		sourceProvider.m_nextSource.m_width = 2;
+		sourceProvider.m_nextSource.m_height = 2;
+		sourceProvider.m_nextSource.m_bytesPerRow = 2 * 4;
+		sourceProvider.m_nextSource.m_pixelFormat = PixelFormat::B8G8R8A8_UNorm;
+		sourceProvider.m_nextSource.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(2 * 2 * 4, 0x7f);
+		sourceProvider.m_nextSource.m_debugName = "Renderer.SceneView.EditorReadback";
+
+		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
+		MacViewportTransportBackend backend{ provider };
+		auto viewport = MakeViewport(84, 4, 2);
+		TransportDescriptor transport{};
+		Require(backend.EnsureSurface(viewport, 35, 1, transport).IsOk(), "extent invariant test should create the current IOSurface");
+		const Failure mismatch = backend.BeginFrame(viewport, 35, 1);
+		Require(!mismatch.IsOk() && mismatch.m_code == ResultCode::Retryable && mismatch.m_scope == FailureScope::Session,
+			"a renderer extent mismatch should remain a retryable session diagnostic");
+		Require(mismatch.m_nativeCode == 1005,
+			"a renderer extent mismatch should retain its stable native diagnostic code");
+		Require(mismatch.m_message.find("source=2x2") != std::string::npos && mismatch.m_message.find("surface=4x2") != std::string::npos,
+			"the extent diagnostic should include both renderer and IOSurface sizes");
+
+		sourceProvider.m_nextSource.m_sourceToken = 0x2020ull;
+		sourceProvider.m_nextSource.m_width = viewport.m_width;
+		sourceProvider.m_nextSource.m_height = viewport.m_height;
+		sourceProvider.m_nextSource.m_bytesPerRow = viewport.m_width * 4;
+		sourceProvider.m_nextSource.m_cpuBytes = Sailor::TSharedPtr<std::vector<uint8_t>>::Make(viewport.m_width * viewport.m_height * 4, 0x3f);
+		Require(backend.BeginFrame(viewport, 35, 1).IsOk(), "the renderer source should resume once its extents match the IOSurface");
+
+		const MacViewportSurfaceKey key{ viewport.m_viewportId, 35, 1 };
+		const auto* allocation = provider.FindAllocation(key);
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata,
+			"the provider should record the real renderer source after resize synchronization");
+		Require(allocation != nullptr && allocation->m_lastRendererTextureToken == 0x2020ull,
+			"the synchronized renderer frame should restore real-source provenance");
+
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 35, 1).IsOk(), "extent invariant test should release its IOSurface");
+	}
+
 #if defined(__APPLE__)
 	void TestMacProducerCpuUploadWritesIOSurface()
 	{
@@ -627,6 +669,7 @@ int main()
 		{ "MacExportCarriesCrossApiSyncMetadataFromRendererSource", TestMacExportCarriesCrossApiSyncMetadataFromRendererSource },
 #endif
 		{ "ConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata", TestConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata },
+		{ "RendererExtentMismatchRemainsADiagnosticInvariant", TestRendererExtentMismatchRemainsADiagnosticInvariant },
 		{ "ConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata", TestConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata },
 	};
 

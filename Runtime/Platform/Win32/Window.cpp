@@ -15,6 +15,11 @@ using namespace Sailor::Win32;
 
 TVector<Window*> Window::g_windows;
 
+Window::~Window()
+{
+	Destroy();
+}
+
 bool Window::IsParentWindowValid() const
 {
 	if (m_parentHwnd == 0)
@@ -103,7 +108,8 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	wcx.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 	wcx.hCursor = LoadCursor(NULL, IDC_ARROW);
 
-	if (!RegisterClassEx(&wcx))
+	m_windowClassAtom = RegisterClassEx(&wcx);
+	if (m_windowClassAtom == 0)
 	{
 		char message[MAXCHAR];
 		sprintf_s(message, "RegisterClassEx fail (%d)", GetLastError());
@@ -141,6 +147,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	{
 		char message[MAXCHAR];
 		sprintf_s(message, "CreateWindowEx fail (%d)", GetLastError());
+		Destroy();
 		return false;
 	}
 
@@ -150,6 +157,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	{
 		char message[MAXCHAR];
 		sprintf_s(message, "GetDC fail (%d)", GetLastError());
+		Destroy();
 		return false;
 	}
 
@@ -171,6 +179,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	{
 		char message[MAXCHAR];
 		sprintf_s(message, "Setting pixel format fail (%d)", GetLastError());
+		Destroy();
 		return false;
 	}
 
@@ -329,28 +338,55 @@ void Window::RecalculateWindowSize()
 
 void Window::Destroy()
 {
-	if (m_bIsFullscreen)
+	check(!m_hWnd || ::GetWindowThreadProcessId(m_hWnd, nullptr) == ::GetCurrentThreadId());
+
+	HWND hWnd = m_hWnd;
+	HDC hDC = m_hDC;
+	HINSTANCE hInstance = m_hInstance;
+	const ATOM windowClassAtom = m_windowClassAtom;
+	const bool bWasFullscreen = m_bIsFullscreen;
+
+	m_hWnd = nullptr;
+	m_hDC = nullptr;
+	m_hInstance = nullptr;
+	m_parentHwnd = nullptr;
+	m_windowClassAtom = 0;
+	m_bIsShown = false;
+	m_bIsFullscreen = false;
+	m_bIsActive = false;
+	m_bIsRunning = false;
+	m_bIsIconic = false;
+	m_bIsResizing = false;
+	m_bIsVsyncRequested = false;
+	m_width = 0;
+	m_height = 0;
+	m_renderArea = {};
+	m_viewport = {};
+	m_windowClassName.clear();
+	g_windows.Remove(this);
+
+	if (bWasFullscreen)
 	{
 		ChangeDisplaySettings(NULL, CDS_RESET);
 		ShowCursor(TRUE);
 	}
 
-	if (m_hDC)
+	if (hWnd && hDC && ReleaseDC(hWnd, hDC) == 0)
 	{
-		ReleaseDC(m_hWnd, m_hDC);
+		SAILOR_LOG_ERROR("Failed to release window device context. error=%lu", static_cast<unsigned long>(GetLastError()));
 	}
 
-	if (m_hWnd)
+	bool bWindowDestroyed = true;
+	if (hWnd && !DestroyWindow(hWnd))
 	{
-		DestroyWindow(m_hWnd);
+		bWindowDestroyed = false;
+		SAILOR_LOG_ERROR("Failed to destroy Win32 window. error=%lu", static_cast<unsigned long>(GetLastError()));
 	}
 
-	if (m_hInstance)
+	if (windowClassAtom != 0 && hInstance && bWindowDestroyed && !UnregisterClass(MAKEINTATOM(windowClassAtom), hInstance))
 	{
-		UnregisterClass(m_windowClassName.c_str(), m_hInstance);
+		SAILOR_LOG_ERROR("Failed to unregister Win32 window class. error=%lu", static_cast<unsigned long>(GetLastError()));
 	}
-
-	g_windows.Remove(this);
 }
 
 bool Window::IsIconic() const
@@ -367,6 +403,10 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		pWindow = Window::g_windows[windowIndex];
 	}
+	if (!pWindow)
+	{
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
 
 	if (auto* imGui = App::GetSubmodule<ImGuiApi>())
 	{
@@ -377,13 +417,10 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 	case WM_SIZE:
 	{
-		if (pWindow)
-		{
-			pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
-			//pWindow->RecalculateWindowSize();
-			pWindow->m_width = LOWORD(lParam);
-			pWindow->m_height = HIWORD(lParam);
-		}
+		pWindow->SetIsIconic(wParam == SIZE_MINIMIZED);
+		//pWindow->RecalculateWindowSize();
+		pWindow->m_width = LOWORD(lParam);
+		pWindow->m_height = HIWORD(lParam);
 
 		return FALSE;
 	}
