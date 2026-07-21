@@ -125,6 +125,7 @@ namespace Sailor
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API bool RecoverMissingShaderCacheStorage();
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadShader_Immediate(FileId uid, ShaderSetPtr& outShader, const TVector<string>& defines = {});
@@ -164,6 +165,13 @@ namespace Sailor
 		static bool ShouldRetryDirtyShaderCache(
 			size_t numPermutationsToCompile,
 			bool bCacheDirty) noexcept;
+		static TVector<FileId> MergeShaderDependencyCandidates(
+			const TVector<FileId>& parsedShaderIds,
+			const TVector<FileId>& loadedShaderIds);
+		static std::string NormalizeShaderExtension(const std::string& filepath);
+		static bool DoesShaderIncludePath(
+			const TVector<std::string>& includes,
+			const std::string& relativePath);
 
 		template<typename TValue>
 		static size_t FindPermutationIndex(
@@ -263,6 +271,13 @@ namespace Sailor
 		SAILOR_API static bool ShouldRetryCacheSave(
 			size_t numPermutationsToCompile,
 			bool bCacheDirty);
+		SAILOR_API static TVector<FileId> MergeShaderDependencyCandidates(
+			const TVector<FileId>& parsedShaderIds,
+			const TVector<FileId>& loadedShaderIds);
+		SAILOR_API static std::string NormalizeShaderExtension(const std::string& filepath);
+		SAILOR_API static bool DoesShaderIncludePath(
+			const TVector<std::string>& includes,
+			const std::string& relativePath);
 		SAILOR_API static bool NormalizeShaderTabs(
 			const std::string& extension,
 			std::string& shaderText,

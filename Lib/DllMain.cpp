@@ -31,6 +31,11 @@ extern "C"
 		Sailor::App::Shutdown();
 	}
 
+	SAILOR_API bool RequestAssetReload()
+	{
+		return Sailor::App::RequestAssetReload();
+	}
+
 	SAILOR_API int32_t GetExitCode()
 	{
 		return Sailor::App::GetExitCode();

@@ -50,6 +50,8 @@ namespace Sailor
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
+		SAILOR_API static bool RequestAssetReload();
+		static bool ApplyPendingAssetReloadOnEngineThread();
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();

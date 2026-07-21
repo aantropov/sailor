@@ -11,7 +11,6 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
-#include <limits>
 #include <sstream>
 #include <unordered_set>
 
@@ -20,10 +19,8 @@ using namespace Sailor;
 namespace
 {
 	constexpr const char* AssetCacheKind = "asset-cache";
-	constexpr const char* AssetCacheProducer = "asset-cache-v2";
-	constexpr uint32_t AssetCachePayloadVersion = 2;
-	constexpr AssetCache::FileTimestamp MissingFileTimestamp =
-		std::numeric_limits<AssetCache::FileTimestamp>::min();
+	constexpr const char* AssetCacheProducer = "asset-cache-v1";
+	constexpr uint32_t AssetCachePayloadVersion = 1;
 
 	std::string NormalizeSourcePath(const std::string& sourcePath)
 	{
@@ -166,25 +163,13 @@ std::string AssetCache::GetAssetCacheFilepath()
 	return (std::filesystem::path(AssetRegistry::GetCacheFolder()) / "AssetCache.yaml").string();
 }
 
-AssetCache::FileTimestamp AssetCache::GetFileTimestamp(const std::string& path) noexcept
-{
-	std::error_code error;
-	const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(path, error);
-	if (error)
-	{
-		return MissingFileTimestamp;
-	}
-
-	return static_cast<FileTimestamp>(writeTime.time_since_epoch().count());
-}
-
 YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 {
 	YAML::Node result(YAML::NodeType::Map);
 	result["fileId"] = m_fileId;
-	result["sourceTimestamp"] = m_sourceTimestamp;
+	result["assetImportTime"] = m_assetImportTime;
 	result["sourcePath"] = m_sourcePath;
-	result["metadataTimestamp"] = m_metadataTimestamp;
+	result["metadataLoadTime"] = m_metadataLoadTime;
 	result["metadataPath"] = m_metadataPath;
 	return result;
 }
@@ -192,9 +177,9 @@ YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
 	m_fileId = FileId();
-	m_sourceTimestamp = 0;
+	m_assetImportTime = 0;
 	m_sourcePath.clear();
-	m_metadataTimestamp = 0;
+	m_metadataLoadTime = 0;
 	m_metadataPath.clear();
 	std::string yamlDiagnostic;
 	if (!Sailor::External::GuardYamlExceptions(
@@ -206,39 +191,40 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			}
 
 			const YAML::Node fileId = inData["fileId"];
-			const YAML::Node sourceTimestamp = inData["sourceTimestamp"];
+			const YAML::Node assetImportTime = inData["assetImportTime"];
 			const YAML::Node sourcePath = inData["sourcePath"];
-			const YAML::Node metadataTimestamp = inData["metadataTimestamp"];
+			const YAML::Node metadataLoadTime = inData["metadataLoadTime"];
 			const YAML::Node metadataPath = inData["metadataPath"];
-			if (!fileId || !sourceTimestamp || !sourcePath || !metadataTimestamp || !metadataPath ||
-				!fileId.IsScalar() || !sourceTimestamp.IsScalar() || !sourcePath.IsScalar() ||
-				!metadataTimestamp.IsScalar() || !metadataPath.IsScalar())
+			if (!fileId || !assetImportTime || !sourcePath ||
+				!metadataLoadTime || !metadataPath ||
+				!fileId.IsScalar() || !assetImportTime.IsScalar() ||
+				!sourcePath.IsScalar() || !metadataLoadTime.IsScalar() ||
+				!metadataPath.IsScalar())
 			{
 				return;
 			}
 
 			m_fileId.Deserialize(fileId);
-			m_sourceTimestamp = sourceTimestamp.as<FileTimestamp>();
+			m_assetImportTime = assetImportTime.as<std::time_t>();
 			m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
-			m_metadataTimestamp = metadataTimestamp.as<FileTimestamp>();
+			m_metadataLoadTime = metadataLoadTime.as<std::time_t>();
 			m_metadataPath = NormalizeSourcePath(metadataPath.as<std::string>());
 			if (m_sourcePath.empty() || m_metadataPath.empty() || !m_fileId ||
-				m_sourceTimestamp == MissingFileTimestamp ||
-				m_metadataTimestamp == MissingFileTimestamp)
+				m_assetImportTime <= 0 || m_metadataLoadTime <= 0)
 			{
 				m_fileId = FileId();
-				m_sourceTimestamp = 0;
+				m_assetImportTime = 0;
 				m_sourcePath.clear();
-				m_metadataTimestamp = 0;
+				m_metadataLoadTime = 0;
 				m_metadataPath.clear();
 			}
 		},
 		yamlDiagnostic))
 	{
 		m_fileId = FileId();
-		m_sourceTimestamp = 0;
+		m_assetImportTime = 0;
 		m_sourcePath.clear();
-		m_metadataTimestamp = 0;
+		m_metadataLoadTime = 0;
 		m_metadataPath.clear();
 	}
 }
@@ -320,26 +306,27 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		if (!entryNode.IsMap() || entryNode.size() != 5)
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' must contain exactly fileId, sourceTimestamp, sourcePath, "
-				"metadataTimestamp, and metadataPath.";
+				"' must contain exactly fileId, assetImportTime, sourcePath, "
+				"metadataLoadTime, and metadataPath.";
 			return false;
 		}
 
 		YAML::Node entryFileId;
-		YAML::Node sourceTimestamp;
+		YAML::Node assetImportTime;
 		YAML::Node sourcePath;
-		YAML::Node metadataTimestamp;
+		YAML::Node metadataLoadTime;
 		YAML::Node metadataPath;
 		if (!ReadRequiredField(entryNode, "fileId", entryFileId, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "sourceTimestamp", sourceTimestamp, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "assetImportTime", assetImportTime, outDiagnostic) ||
 			!ReadRequiredField(entryNode, "sourcePath", sourcePath, outDiagnostic) ||
-			!ReadRequiredField(entryNode, "metadataTimestamp", metadataTimestamp, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "metadataLoadTime", metadataLoadTime, outDiagnostic) ||
 			!ReadRequiredField(entryNode, "metadataPath", metadataPath, outDiagnostic))
 		{
 			return false;
 		}
-		if (!entryFileId.IsScalar() || !sourceTimestamp.IsScalar() || !sourcePath.IsScalar() ||
-			!metadataTimestamp.IsScalar() || !metadataPath.IsScalar())
+		if (!entryFileId.IsScalar() || !assetImportTime.IsScalar() ||
+			!sourcePath.IsScalar() || !metadataLoadTime.IsScalar() ||
+			!metadataPath.IsScalar())
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains a non-scalar field.";
 			return false;
@@ -347,7 +334,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 
 		AssetCacheData::Entry entry;
 		entry.m_fileId = entryFileId.as<FileId>();
-		entry.m_sourceTimestamp = sourceTimestamp.as<FileTimestamp>();
+		entry.m_assetImportTime = assetImportTime.as<std::time_t>();
 		const std::string serializedSourcePath = sourcePath.as<std::string>();
 		if (serializedSourcePath.empty())
 		{
@@ -355,7 +342,7 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 			return false;
 		}
 		entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
-		entry.m_metadataTimestamp = metadataTimestamp.as<FileTimestamp>();
+		entry.m_metadataLoadTime = metadataLoadTime.as<std::time_t>();
 		const std::string serializedMetadataPath = metadataPath.as<std::string>();
 		if (serializedMetadataPath.empty())
 		{
@@ -378,13 +365,11 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty metadataPath.";
 			return false;
 		}
-		if (entry.m_sourceTimestamp == MissingFileTimestamp ||
-			entry.m_metadataTimestamp == MissingFileTimestamp)
+		if (entry.m_assetImportTime <= 0 || entry.m_metadataLoadTime <= 0)
 		{
-			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains a missing-file timestamp.";
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains an invalid processing time.";
 			return false;
 		}
-
 		candidate.m_data.Insert(fileId, std::move(entry));
 	}
 
@@ -438,6 +423,18 @@ void AssetCache::SaveCache(bool bForcely)
 	SAILOR_PROFILE_FUNCTION();
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	std::error_code createCacheFolderError;
+	std::filesystem::create_directories(
+		AssetRegistry::GetCacheFolder(),
+		createCacheFolderError);
+	std::error_code cacheFileError;
+	const bool bCacheFileExists = std::filesystem::is_regular_file(
+		GetAssetCacheFilepath(),
+		cacheFileError);
+	if (!bCacheFileExists)
+	{
+		m_bIsDirty = true;
+	}
 	if (!ShouldWriteCacheFile(bForcely, m_bIsDirty, m_bPreserveStorageAfterLoadFailure))
 	{
 		return;
@@ -608,9 +605,10 @@ bool AssetCache::Update(const AssetInfo* info)
 
 	const std::string sourcePath = info->GetAssetFilepath();
 	const std::string metadataPath = info->GetMetaFilepath();
-	const FileTimestamp sourceTimestamp = GetFileTimestamp(sourcePath);
-	const FileTimestamp metadataTimestamp = GetFileTimestamp(metadataPath);
-	if (sourceTimestamp == MissingFileTimestamp || metadataTimestamp == MissingFileTimestamp)
+	std::error_code sourceError;
+	std::error_code metadataError;
+	if (!std::filesystem::is_regular_file(sourcePath, sourceError) || sourceError ||
+		!std::filesystem::is_regular_file(metadataPath, metadataError) || metadataError)
 	{
 		Remove(info->GetFileId());
 		return false;
@@ -618,23 +616,23 @@ bool AssetCache::Update(const AssetInfo* info)
 
 	return Update(
 		info->GetFileId(),
+		info->GetAssetImportTime(),
 		sourcePath,
-		sourceTimestamp,
-		metadataPath,
-		metadataTimestamp);
+		info->m_metaLoadTime,
+		metadataPath);
 }
 
 bool AssetCache::Update(
 	const FileId& id,
+	std::time_t assetImportTime,
 	const std::string& sourcePath,
-	FileTimestamp sourceTimestamp,
-	const std::string& metadataPath,
-	FileTimestamp metadataTimestamp)
+	std::time_t metadataLoadTime,
+	const std::string& metadataPath)
 {
 	std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
 	std::string normalizedMetadataPath = NormalizeSourcePath(metadataPath);
-	if (!id || normalizedSourcePath.empty() || normalizedMetadataPath.empty() ||
-		sourceTimestamp == MissingFileTimestamp || metadataTimestamp == MissingFileTimestamp)
+	if (!id || assetImportTime <= 0 || metadataLoadTime <= 0 ||
+		normalizedSourcePath.empty() || normalizedMetadataPath.empty())
 	{
 		return false;
 	}
@@ -653,16 +651,63 @@ bool AssetCache::Update(
 	} unlockGuard{ m_cache.m_data, id };
 
 	const bool bChanged = entry.m_fileId != id ||
-		entry.m_sourceTimestamp != sourceTimestamp ||
+		entry.m_assetImportTime != assetImportTime ||
 		entry.m_sourcePath != normalizedSourcePath ||
-		entry.m_metadataTimestamp != metadataTimestamp ||
+		entry.m_metadataLoadTime != metadataLoadTime ||
 		entry.m_metadataPath != normalizedMetadataPath;
 	m_bIsDirty |= bChanged;
 	entry.m_fileId = id;
-	entry.m_sourceTimestamp = sourceTimestamp;
+	entry.m_assetImportTime = assetImportTime;
 	entry.m_sourcePath = std::move(normalizedSourcePath);
-	entry.m_metadataTimestamp = metadataTimestamp;
+	entry.m_metadataLoadTime = metadataLoadTime;
 	entry.m_metadataPath = std::move(normalizedMetadataPath);
+	return bChanged;
+}
+
+bool AssetCache::RestoreProcessingTimes(AssetInfo* info) const
+{
+	if (info == nullptr || !info->GetFileId())
+	{
+		return false;
+	}
+
+	const std::string sourcePath = NormalizeSourcePath(info->GetAssetFilepath());
+	const std::string metadataPath = NormalizeSourcePath(info->GetMetaFilepath());
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (!m_cache.m_data.ContainsKey(info->GetFileId()))
+	{
+		return false;
+	}
+
+	const AssetCacheData::Entry entry = m_cache.m_data[info->GetFileId()];
+	if (entry.m_sourcePath != sourcePath || entry.m_metadataPath != metadataPath)
+	{
+		return false;
+	}
+
+	info->m_assetImportTime = entry.m_assetImportTime;
+	info->m_metaLoadTime = entry.m_metadataLoadTime;
+	return true;
+}
+
+bool AssetCache::Prune(const TSet<FileId>& liveAssetIds)
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	TVector<FileId> staleAssetIds;
+	for (const auto& cachedAsset : m_cache.m_data)
+	{
+		if (!liveAssetIds.Contains(cachedAsset.m_first))
+		{
+			staleAssetIds.Add(cachedAsset.m_first);
+		}
+	}
+
+	bool bChanged = false;
+	for (const FileId& staleAssetId : staleAssetIds)
+	{
+		bChanged |= m_cache.m_data.Remove(staleAssetId);
+	}
+	m_bIsDirty |= bChanged;
 	return bChanged;
 }
 
@@ -682,9 +727,10 @@ bool AssetCache::IsExpired(const AssetInfo* info) const
 	const FileId& fileId = info->GetFileId();
 	const std::string sourcePath = NormalizeSourcePath(info->GetAssetFilepath());
 	const std::string metadataPath = NormalizeSourcePath(info->GetMetaFilepath());
-	const FileTimestamp sourceTimestamp = GetFileTimestamp(sourcePath);
-	const FileTimestamp metadataTimestamp = GetFileTimestamp(metadataPath);
-	if (sourceTimestamp == MissingFileTimestamp || metadataTimestamp == MissingFileTimestamp)
+	std::error_code sourceError;
+	std::error_code metadataError;
+	if (!std::filesystem::is_regular_file(sourcePath, sourceError) || sourceError ||
+		!std::filesystem::is_regular_file(metadataPath, metadataError) || metadataError)
 	{
 		return true;
 	}
@@ -697,7 +743,7 @@ bool AssetCache::IsExpired(const AssetInfo* info) const
 
 	const AssetCacheData::Entry entry = m_cache.m_data[fileId];
 	return entry.m_sourcePath != sourcePath ||
-		entry.m_sourceTimestamp != sourceTimestamp ||
+		entry.m_assetImportTime < info->GetAssetLastModificationTime() ||
 		entry.m_metadataPath != metadataPath ||
-		entry.m_metadataTimestamp != metadataTimestamp;
+		entry.m_metadataLoadTime < info->GetMetaLastModificationTime();
 }

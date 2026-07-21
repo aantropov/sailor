@@ -27,6 +27,7 @@
 #include "Containers/Octree.h"
 #include "Engine/EngineLoop.h"
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <filesystem>
 #include <cstring>
@@ -74,6 +75,8 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 
 namespace
 {
+	std::atomic_bool g_assetReloadRequested = false;
+
 	bool ContainsWorkspaceManifest(const std::filesystem::path& root)
 	{
 		std::error_code error;
@@ -194,6 +197,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		return;
 	}
+
+	g_assetReloadRequested.store(false, std::memory_order_release);
 
 #if defined(_WIN32)
 	timeBeginPeriod(1);
@@ -420,6 +425,7 @@ void App::Start()
 		SAILOR_LOG_ERROR("App::Start skipped: engine subsystems are not fully initialized.");
 		return;
 	}
+	scheduler->AttachCurrentThreadAsMainThread();
 
 	auto& pMainWindow = s_pInstance->m_pMainWindow;
 
@@ -435,7 +441,7 @@ void App::Start()
 	bool bFirstFrame = true;
 
 	TMap<std::string, std::function<void()>> consoleVars;
-	consoleVars["scan"] = std::bind(&AssetRegistry::ScanContentFolder, GetSubmodule<AssetRegistry>());
+	consoleVars["scan"] = []() { App::RequestAssetReload(); };
 	consoleVars["memory.benchmark"] = &Memory::RunMemoryBenchmark;
 	consoleVars["vector.benchmark"] = &Sailor::RunVectorBenchmark;
 	consoleVars["set.benchmark"] = &Sailor::RunSetBenchmark;
@@ -495,10 +501,10 @@ void App::Start()
 
 		if (systemInputState.IsKeyPressed(VK_F5))
 		{
-			GetSubmodule<AssetRegistry>()->ScanContentFolder();
-			scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
-			renderer->RefreshFrameGraph();
+			RequestAssetReload();
 		}
+
+		ApplyPendingAssetReloadOnEngineThread();
 
 #ifdef SAILOR_BUILD_WITH_RENDER_DOC
 		if (auto renderDoc = App::GetSubmodule<RenderDocApi>())
@@ -622,6 +628,57 @@ void App::Stop()
 	s_pInstance->m_pMainWindow->SetRunning(false);
 }
 
+bool App::RequestAssetReload()
+{
+	if (!s_pInstance)
+	{
+		return false;
+	}
+
+	g_assetReloadRequested.store(true, std::memory_order_release);
+	return true;
+}
+
+bool App::ApplyPendingAssetReloadOnEngineThread()
+{
+	if (!g_assetReloadRequested.exchange(false, std::memory_order_acq_rel))
+	{
+		return false;
+	}
+
+	auto* assetRegistry = GetSubmodule<AssetRegistry>();
+	if (!assetRegistry)
+	{
+		return false;
+	}
+
+	auto* scheduler = GetSubmodule<Tasks::Scheduler>();
+	if (scheduler)
+	{
+		scheduler->WaitIdle({
+			EThreadType::Main,
+			EThreadType::Worker,
+			EThreadType::RHI,
+			EThreadType::Render
+		});
+	}
+	if (auto* shaderCompiler = GetSubmodule<ShaderCompiler>())
+	{
+		shaderCompiler->RecoverMissingShaderCacheStorage();
+	}
+	assetRegistry->ScanContentFolder();
+	if (scheduler)
+	{
+		scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
+	}
+	if (auto* renderer = GetSubmodule<Renderer>())
+	{
+		renderer->RefreshFrameGraph();
+	}
+
+	return true;
+}
+
 void App::Shutdown()
 {
 	if (!s_pInstance)
@@ -634,6 +691,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
+		scheduler->AttachCurrentThreadAsMainThread();
 		scheduler->ProcessTasksOnMainThread();
 	}
 

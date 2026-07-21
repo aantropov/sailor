@@ -192,8 +192,7 @@ void Scheduler::Initialize()
 		m_freeList.push((uint16_t)(MaxTasksInPool - i - 1));
 	}
 
-	m_mainThreadId = GetCurrentThreadId();
-	m_threadTypes[m_mainThreadId] = EThreadType::Main;
+	AttachCurrentThreadAsMainThread();
 
 #if defined(_WIN32)
 	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
@@ -240,6 +239,11 @@ void Scheduler::Initialize()
 	}
 
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
+}
+
+void Scheduler::AttachCurrentThreadAsMainThread()
+{
+	m_mainThreadId.store(GetCurrentThreadId(), std::memory_order_release);
 }
 
 Scheduler::Scheduler()
@@ -384,7 +388,7 @@ void Scheduler::Run(const ITaskPtr& pTask, DWORD threadId, bool bAutoRunChainedT
 		m_workerThreads[result]->ForcelyPushTask(pTask);
 		return;
 	}
-	check(m_mainThreadId == threadId);
+	check(GetMainThreadId() == threadId);
 	// Add to Main thread if cannot find the thread in workers
 	{
 		std::mutex* pOutQueueMutex;
@@ -472,6 +476,11 @@ void Scheduler::NotifyWorkerThread(EThreadType threadType, bool bNotifyAllThread
 
 EThreadType Scheduler::GetCurrentThreadType() const
 {
+	if (IsMainThread())
+	{
+		return EThreadType::Main;
+	}
+
 	return m_threadTypes[GetCurrentThreadId()];
 }
 
@@ -563,7 +572,7 @@ void Scheduler::WaitIdle(EThreadType type)
 
 bool Scheduler::IsMainThread() const
 {
-	return m_mainThreadId == GetCurrentThreadId();
+	return GetMainThreadId() == GetCurrentThreadId();
 }
 
 bool Scheduler::IsRendererThread() const
@@ -573,7 +582,7 @@ bool Scheduler::IsRendererThread() const
 
 bool Scheduler::HasThread(DWORD threadId) const
 {
-	if (m_mainThreadId == threadId)
+	if (GetMainThreadId() == threadId)
 	{
 		return true;
 	}

@@ -10,6 +10,7 @@
 #include "RHI/Shader.h"
 #include "Core/Utils.h"
 #include <atomic>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
@@ -421,6 +422,55 @@ bool ShaderCompiler::ShouldRetryDirtyShaderCache(
 	return numPermutationsToCompile == 0 && bCacheDirty;
 }
 
+TVector<FileId> ShaderCompiler::MergeShaderDependencyCandidates(
+	const TVector<FileId>& parsedShaderIds,
+	const TVector<FileId>& loadedShaderIds)
+{
+	TVector<FileId> result = parsedShaderIds;
+	result.Reserve(parsedShaderIds.Num() + loadedShaderIds.Num());
+	for (const FileId& loadedShaderId : loadedShaderIds)
+	{
+		if (!result.Contains(loadedShaderId))
+		{
+			result.Add(loadedShaderId);
+		}
+	}
+	return result;
+}
+
+std::string ShaderCompiler::NormalizeShaderExtension(const std::string& filepath)
+{
+	std::string extension = Utils::GetFileExtension(filepath);
+	std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char character)
+		{
+			return static_cast<char>(std::tolower(character));
+		});
+	return extension;
+}
+
+bool ShaderCompiler::DoesShaderIncludePath(
+	const TVector<std::string>& includes,
+	const std::string& relativePath)
+{
+	auto normalize = [](const std::string& path)
+	{
+		std::string result = std::filesystem::path(path).lexically_normal().generic_string();
+#if defined(_WIN32)
+		std::transform(result.begin(), result.end(), result.begin(), [](unsigned char character)
+			{
+				return static_cast<char>(std::tolower(character));
+			});
+#endif
+		return result;
+	};
+
+	const std::string normalizedRelativePath = normalize(relativePath);
+	return includes.ContainsIf([&](const std::string& include)
+		{
+			return normalize(include) == normalizedRelativePath;
+		});
+}
+
 void ShaderCompiler::RemoveFinishedPromiseEntries(
 	TVector<TPair<uint32_t, Tasks::TaskPtr<ShaderSetPtr>>>& entries)
 {
@@ -589,6 +639,48 @@ TWeakPtr<ShaderAsset> ShaderCompiler::LoadShaderAsset(ShaderAssetInfoPtr shaderA
 	return TWeakPtr<ShaderAsset>();
 }
 
+bool ShaderCompiler::RecoverMissingShaderCacheStorage()
+{
+	if (!m_shaderCache.RecoverMissingStorage())
+	{
+		return false;
+	}
+
+	m_loadedShaders.LockAll();
+	const TVector<FileId> loadedShaderIds = m_loadedShaders.GetKeys();
+	m_loadedShaders.UnlockAll();
+
+	bool bReloadedAny = false;
+	bool bAllReloaded = true;
+	for (const FileId& shaderId : loadedShaderIds)
+	{
+		auto& loadedShaders = m_loadedShaders.At_Lock(shaderId);
+		for (auto& loadedShader : loadedShaders)
+		{
+			if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+			{
+				loadedShader.m_second->TraceHotReload(nullptr);
+				bReloadedAny = true;
+			}
+			else
+			{
+				bAllReloaded = false;
+			}
+		}
+		m_loadedShaders.Unlock(shaderId);
+	}
+
+	if (bReloadedAny || !bAllReloaded)
+	{
+		SaveShaderCacheAndCombineResult(m_shaderCache, bAllReloaded);
+	}
+	SAILOR_LOG(
+		"Recovered missing shader cache storage; reloaded=%s loadedShaderAssets=%zd.",
+		bAllReloaded ? "true" : "false",
+		loadedShaderIds.Num());
+	return true;
+}
+
 void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -596,7 +688,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (bWasExpired)
 	{
-		const std::string extension = Utils::GetFileExtension(assetInfo->GetAssetFilepath());
+		const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
 
 		ReplaceTabsWithSpaces(assetInfo);
 
@@ -606,6 +698,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
 
 			m_shaderAssetsCache.Remove(assetInfo->GetFileId());
+			m_shaderCache.Invalidate(assetInfo->GetFileId());
 
 			if (bShouldAutoCompileAllPermutations)
 			{
@@ -633,6 +726,7 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			}
 			else
 			{
+				bool bReloadedAny = false;
 				auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
 				for (auto& loadedShader : loadedShaders)
 				{
@@ -641,19 +735,40 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 					if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
 					{
 						loadedShader.m_second->TraceHotReload(nullptr);
+						bReloadedAny = true;
 					}
 				}
 				m_loadedShaders.Unlock(assetInfo->GetFileId());
+				if (bReloadedAny)
+				{
+					SaveShaderCacheAndCombineResult(m_shaderCache, true);
+				}
 			}
 		}
 		else if (extension == "glsl")
 		{
+			m_shaderAssetsCache.LockAll();
+			const TVector<FileId> parsedShaderIds = m_shaderAssetsCache.GetKeys();
+			m_shaderAssetsCache.UnlockAll();
+			m_loadedShaders.LockAll();
+			const TVector<FileId> loadedShaderIds = m_loadedShaders.GetKeys();
+			m_loadedShaders.UnlockAll();
+
+			const TVector<FileId> dependencyCandidates = MergeShaderDependencyCandidates(
+				parsedShaderIds,
+				loadedShaderIds);
 			TVector<AssetInfoPtr> shaderDeps;
-			for (auto& shader : m_shaderAssetsCache)
+			for (const FileId& shaderId : dependencyCandidates)
 			{
-				if (shader.m_second->GetIncludes().Contains(assetInfo->GetRelativeAssetFilepath()))
+				TSharedPtr<ShaderAsset> shader = LoadShaderAsset(shaderId).Lock();
+				if (shader && DoesShaderIncludePath(
+						shader->GetIncludes(),
+						assetInfo->GetRelativeAssetFilepath()))
 				{
-					shaderDeps.Add(App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shader.m_first));
+					if (AssetInfoPtr shaderAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderId))
+					{
+						shaderDeps.Add(shaderAssetInfo);
+					}
 				}
 			}
 
@@ -678,7 +793,7 @@ void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
 	}
 
 	const std::string& filepath = assetInfo->GetAssetFilepath();
-	const std::string extension = Utils::GetFileExtension(filepath);
+	const std::string extension = NormalizeShaderExtension(filepath);
 	if (extension != "shader")
 	{
 		return;
@@ -1318,6 +1433,25 @@ bool ShaderCompilerTestAccess::ShouldRetryCacheSave(
 	return ShaderCompiler::ShouldRetryDirtyShaderCache(
 		numPermutationsToCompile,
 		bCacheDirty);
+}
+
+TVector<FileId> ShaderCompilerTestAccess::MergeShaderDependencyCandidates(
+	const TVector<FileId>& parsedShaderIds,
+	const TVector<FileId>& loadedShaderIds)
+{
+	return ShaderCompiler::MergeShaderDependencyCandidates(parsedShaderIds, loadedShaderIds);
+}
+
+std::string ShaderCompilerTestAccess::NormalizeShaderExtension(const std::string& filepath)
+{
+	return ShaderCompiler::NormalizeShaderExtension(filepath);
+}
+
+bool ShaderCompilerTestAccess::DoesShaderIncludePath(
+	const TVector<std::string>& includes,
+	const std::string& relativePath)
+{
+	return ShaderCompiler::DoesShaderIncludePath(includes, relativePath);
 }
 
 bool ShaderCompilerTestAccess::NormalizeShaderTabs(

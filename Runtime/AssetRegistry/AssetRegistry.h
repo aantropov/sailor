@@ -178,6 +178,7 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
+		bool RestoreAssetProcessingTimes(AssetInfoPtr info) const;
 		bool ResolveDirectLoadPath(
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;
@@ -195,5 +196,7 @@ namespace Sailor
 		TMap<std::string, AssetReadLocation> m_contentFileWinners;
 
 		AssetCache m_assetCache;
+
+		friend class IAssetInfoHandler;
 	};
 }

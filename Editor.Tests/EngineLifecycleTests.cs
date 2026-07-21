@@ -45,6 +45,57 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AssetReload_IsQueuedToTheEngineThreadAndBoundToMacCommandR()
+    {
+        var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var macMenuSource = ReadRepositoryFile("Editor", "Platforms", "MacCatalyst", "AppDelegate.cs");
+        var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+        var schedulerHeader = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.h");
+        var schedulerSource = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.cpp");
+        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
+        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+
+        Assert.Contains("extern bool RequestAssetReload()", managedSource, StringComparison.Ordinal);
+        Assert.Contains("InvokeRunningInterop(EngineAppInterop.RequestAssetReload)", managedSource, StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API bool RequestAssetReload()", windowsSource, StringComparison.Ordinal);
+        Assert.Contains("return Sailor::App::RequestAssetReload();", windowsSource, StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API bool RequestAssetReload()", unixSource, StringComparison.Ordinal);
+        Assert.Contains("return Sailor::App::RequestAssetReload();", unixSource, StringComparison.Ordinal);
+
+        var f5Request = nativeSource.IndexOf("if (systemInputState.IsKeyPressed(VK_F5))", StringComparison.Ordinal);
+        var queueRequest = nativeSource.IndexOf("RequestAssetReload();", f5Request, StringComparison.Ordinal);
+        var engineThreadApply = nativeSource.IndexOf("ApplyPendingAssetReloadOnEngineThread();", queueRequest, StringComparison.Ordinal);
+        var shaderCacheRecovery = nativeSource.IndexOf("shaderCompiler->RecoverMissingShaderCacheStorage();", engineThreadApply, StringComparison.Ordinal);
+        var queuedScan = nativeSource.IndexOf("assetRegistry->ScanContentFolder();", engineThreadApply, StringComparison.Ordinal);
+        Assert.True(f5Request >= 0);
+        Assert.True(queueRequest > f5Request);
+        Assert.True(engineThreadApply > queueRequest);
+        Assert.True(shaderCacheRecovery > engineThreadApply);
+        Assert.True(queuedScan > shaderCacheRecovery);
+        Assert.Contains("g_assetReloadRequested.store(true", nativeSource, StringComparison.Ordinal);
+        Assert.Contains("g_assetReloadRequested.exchange(false", nativeSource, StringComparison.Ordinal);
+
+        var appStart = nativeSource.IndexOf("void App::Start()", StringComparison.Ordinal);
+        var attachEngineThread = nativeSource.IndexOf("scheduler->AttachCurrentThreadAsMainThread();", appStart, StringComparison.Ordinal);
+        var frameLoop = nativeSource.IndexOf("while (pMainWindow->IsRunning())", attachEngineThread, StringComparison.Ordinal);
+        var appShutdown = nativeSource.IndexOf("void App::Shutdown()", StringComparison.Ordinal);
+        var attachShutdownThread = nativeSource.IndexOf("scheduler->AttachCurrentThreadAsMainThread();", appShutdown, StringComparison.Ordinal);
+        Assert.True(attachEngineThread > appStart);
+        Assert.True(frameLoop > attachEngineThread);
+        Assert.True(attachShutdownThread > appShutdown);
+        Assert.Contains("std::atomic<DWORD> m_mainThreadId", schedulerHeader, StringComparison.Ordinal);
+        Assert.Contains("void Scheduler::AttachCurrentThreadAsMainThread()", schedulerSource, StringComparison.Ordinal);
+        Assert.Contains("m_mainThreadId.store(GetCurrentThreadId()", schedulerSource, StringComparison.Ordinal);
+        Assert.Contains("return GetMainThreadId() == GetCurrentThreadId();", schedulerSource, StringComparison.Ordinal);
+
+        Assert.Contains("ReloadAssetsSelector", macMenuSource, StringComparison.Ordinal);
+        Assert.Contains("UIKeyModifierFlags.Command", macMenuSource, StringComparison.Ordinal);
+        Assert.Contains("\"r\"", macMenuSource, StringComparison.Ordinal);
+        Assert.Contains("MauiProgram.GetService<EngineService>().RequestAssetReload()", macMenuSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ScanContentFolder", macMenuSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void WorkspaceCacheIdentity_IsAvailableOnBothExportSurfacesAndManagedInterop()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

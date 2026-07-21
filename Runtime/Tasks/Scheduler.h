@@ -115,6 +115,7 @@ namespace Sailor
 		public:
 
 			SAILOR_API void Initialize();
+			SAILOR_API void AttachCurrentThreadAsMainThread();
 
 			SAILOR_API virtual ~Scheduler() override;
 
@@ -141,7 +142,7 @@ namespace Sailor
 			SAILOR_API bool IsRendererThread() const;
 			SAILOR_API bool HasThread(DWORD threadId) const;
 
-			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId; }
+			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId.load(std::memory_order_acquire); }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
@@ -171,7 +172,7 @@ namespace Sailor
 			TVector<WorkerThread*> m_workerThreads;
 			std::atomic_bool m_bIsTerminating;
 
-			DWORD m_mainThreadId = -1;
+			std::atomic<DWORD> m_mainThreadId{ static_cast<DWORD>(-1) };
 			DWORD m_renderingThreadId = -1;
 
 			// Task Synchronization primitives pool

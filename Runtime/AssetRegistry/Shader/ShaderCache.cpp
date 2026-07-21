@@ -1038,6 +1038,60 @@ void ShaderCache::SaveCache(bool bForcely)
 	SaveCacheLocked(bForcely);
 }
 
+bool ShaderCache::RecoverMissingStorage()
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (m_bPreserveStorageAfterLoadFailure)
+	{
+		return false;
+	}
+
+	bool bStorageMissing = false;
+	auto inspect = [&](const std::filesystem::path& path, bool bExpectDirectory) -> bool
+	{
+		std::error_code error;
+		const std::filesystem::file_status status = std::filesystem::symlink_status(path, error);
+		if (error == std::errc::no_such_file_or_directory ||
+			error == std::errc::not_a_directory)
+		{
+			bStorageMissing = true;
+			return true;
+		}
+		if (error)
+		{
+			m_lastSaveDiagnostic = "Cannot inspect shader cache storage '" +
+				path.generic_string() + "': " + error.message();
+			SAILOR_LOG_ERROR("Shader cache recovery failed: %s", m_lastSaveDiagnostic.c_str());
+			return false;
+		}
+
+		const bool bExpectedType = bExpectDirectory
+			? std::filesystem::is_directory(status)
+			: std::filesystem::is_regular_file(status);
+		bStorageMissing |= !bExpectedType;
+		return true;
+	};
+
+	if (!inspect(GetCacheFilepathLocked(), false) ||
+		!inspect(GetPrecompiledFolderLocked(), true) ||
+		!inspect(GetCompiledFolderLocked(), true) ||
+		!inspect(GetCompiledDebugFolderLocked(), true) ||
+		!bStorageMissing)
+	{
+		return false;
+	}
+
+	Workspace::WorkspaceCacheLoadResult loadResult;
+	loadResult.m_status = Workspace::EWorkspaceCacheLoadStatus::Missing;
+	loadResult.m_diagnostic =
+		"Shader cache storage disappeared during the running session.";
+	ResetInvalidCacheLocked(std::move(loadResult));
+	return m_bHasCommittedSnapshot && !m_bIsDirty &&
+		!m_bPreserveStorageAfterLoadFailure;
+}
+
 bool ShaderCache::SaveCacheLocked(
 	bool bForcely,
 	Workspace::EWorkspaceCacheAtomicWriteFailurePoint failurePoint)
@@ -2197,6 +2251,45 @@ void ShaderCache::Remove(const FileId& uid)
 	{
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Shader cache remove failed: %s", m_lastSaveDiagnostic.c_str());
+	}
+}
+
+void ShaderCache::Invalidate(const FileId& uid)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	bool bInvalidated = false;
+	if (m_cache.m_data.ContainsKey(uid))
+	{
+		for (ShaderCacheData::Entry& entry : m_cache.m_data[uid])
+		{
+			// Keep the last durable generation as a fallback, but make expiry independent
+			// of the source filesystem's timestamp resolution.
+			entry.m_timestamp = 0;
+			bInvalidated = true;
+		}
+	}
+	for (QuarantinedEntry& entry : m_quarantinedEntries)
+	{
+		if (entry.m_fileId == uid)
+		{
+			entry.m_timestamp = 0;
+			bInvalidated = true;
+		}
+	}
+	if (!bInvalidated)
+	{
+		return;
+	}
+
+	m_bIsDirty = true;
+	if (!SaveCacheLocked(false))
+	{
+		SAILOR_LOG_ERROR(
+			"Shader cache invalidation could not be persisted for %s: %s",
+			uid.ToString().c_str(),
+			m_lastSaveDiagnostic.c_str());
 	}
 }
 
