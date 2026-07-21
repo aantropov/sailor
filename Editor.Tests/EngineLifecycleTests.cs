@@ -19,6 +19,73 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void NativeLifecycle_CreatesAndDestroysPlatformWindowsInsideMainThreadInteropLock()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var start = source.IndexOf("public async Task StartAsync(", StringComparison.Ordinal);
+        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length);", start, StringComparison.Ordinal);
+        var initializeDispatch = source.LastIndexOf("await MainThread.InvokeOnMainThreadAsync", initialize, StringComparison.Ordinal);
+        var initializeLock = source.LastIndexOf("lock (interopLock)", initialize, StringComparison.Ordinal);
+        Assert.True(start >= 0);
+        Assert.True(initializeDispatch > start);
+        Assert.True(initializeLock > initializeDispatch);
+        Assert.True(initialize > initializeLock);
+
+        var complete = source.IndexOf("async Task CompleteSessionAsync", StringComparison.Ordinal);
+        var completeShutdown = source.IndexOf("await ShutdownNativeSessionAsync(", complete, StringComparison.Ordinal);
+        Assert.True(complete >= 0);
+        Assert.True(completeShutdown > complete);
+
+        var failedStart = source.IndexOf("async Task ShutdownNativeAfterFailedStartAsync", StringComparison.Ordinal);
+        var failedStartShutdown = source.IndexOf("await ShutdownNativeSessionAsync(", failedStart, StringComparison.Ordinal);
+        Assert.True(failedStart >= 0);
+        Assert.True(failedStartShutdown > failedStart);
+
+        var dispatchHelper = source.IndexOf("Task<Exception?> ShutdownNativeSessionAsync", StringComparison.Ordinal);
+        var shutdownDispatch = source.IndexOf("return MainThread.InvokeOnMainThreadAsync", dispatchHelper, StringComparison.Ordinal);
+        var shutdownDispatchCall = source.IndexOf("ShutdownNativeSessionUnderLock", shutdownDispatch, StringComparison.Ordinal);
+        var lockedHelper = source.IndexOf("Exception? ShutdownNativeSessionUnderLock", shutdownDispatchCall, StringComparison.Ordinal);
+        var shutdownLock = source.IndexOf("lock (interopLock)", lockedHelper, StringComparison.Ordinal);
+        var nativeShutdown = source.IndexOf("EngineAppInterop.Shutdown();", shutdownLock, StringComparison.Ordinal);
+        Assert.True(dispatchHelper >= 0);
+        Assert.True(shutdownDispatch > dispatchHelper);
+        Assert.True(shutdownDispatchCall > shutdownDispatch);
+        Assert.True(lockedHelper > shutdownDispatchCall);
+        Assert.True(shutdownLock > lockedHelper);
+        Assert.True(nativeShutdown > shutdownLock);
+    }
+
+    [Fact]
+    public void MacHostBinding_IsAcknowledgedPerGenerationAndRetriedUntilApplied()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var lifecycleSource = ReadRepositoryFile("Editor", "Scene", "SceneViewportLifecycle.cs");
+
+        Assert.Contains("Dictionary<ulong, (long Generation, nint Handle)> appliedMacRemoteViewportHosts", source, StringComparison.Ordinal);
+
+        var bind = source.IndexOf("public void BindMacRemoteViewportHost", StringComparison.Ordinal);
+        var generation = source.IndexOf("Volatile.Read(ref engineGeneration)", bind, StringComparison.Ordinal);
+        var runningGuard = source.IndexOf("if (!IsInteropRunningUnderLock())", generation, StringComparison.Ordinal);
+        var removeWhileStopped = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", runningGuard, StringComparison.Ordinal);
+        var nativeBind = source.IndexOf("EngineAppInterop.SetRemoteViewportMacHostHandle", removeWhileStopped, StringComparison.Ordinal);
+        var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);", nativeBind, StringComparison.Ordinal);
+        Assert.True(bind >= 0);
+        Assert.True(generation > bind);
+        Assert.True(runningGuard > generation);
+        Assert.True(removeWhileStopped > runningGuard);
+        Assert.True(nativeBind > removeWhileStopped);
+        Assert.True(acknowledge > nativeBind);
+
+        var sync = lifecycleSource.IndexOf("public bool Sync", StringComparison.Ordinal);
+        var announceHost = lifecycleSource.IndexOf("backend.BindMacHost(viewportId, frame.NativeHostHandle);", sync, StringComparison.Ordinal);
+        var updateViewport = lifecycleSource.IndexOf("backend.TryUpdateViewport", announceHost, StringComparison.Ordinal);
+        Assert.True(sync >= 0);
+        Assert.True(announceHost > sync);
+        Assert.True(updateViewport > announceHost);
+    }
+
+    [Fact]
     public void DeferredPublications_AreRejectedAfterGenerationChanges()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
@@ -64,10 +131,112 @@ public sealed class EngineLifecycleTests
         Assert.True(rendererShutdown > reset);
 
         Assert.Contains("g_remoteViewportBindings.Clear();", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("Win32::GlobalInput::Reset();", bridgeSource, StringComparison.Ordinal);
+        Assert.Contains("g_pendingRemoteViewportHostHandles.Clear();", bridgeSource, StringComparison.Ordinal);
         Assert.Contains("g_pendingEditorViewport = {};", bridgeSource, StringComparison.Ordinal);
         Assert.Contains("g_appliedEditorRenderArea = { 0, 0 };", bridgeSource, StringComparison.Ordinal);
         Assert.Contains("g_editorRemoteViewportRenderArea = { 0, 0 };", bridgeSource, StringComparison.Ordinal);
         Assert.Contains("g_hasPendingEditorViewport = false;", bridgeSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MacNativeWindow_TeardownReusesEditorSurfaceAndClosesStandalone()
+    {
+        var header = ReadRepositoryFile("Runtime", "Platform", "Win32", "Window.h");
+        var source = ReadRepositoryFile("Runtime", "Platform", "Mac", "Window.mm");
+
+        Assert.Contains("SAILOR_API ~Window() override;", header, StringComparison.Ordinal);
+
+        var destructor = source.IndexOf("Window::~Window()", StringComparison.Ordinal);
+        var destructorCleanup = source.IndexOf("Destroy();", destructor, StringComparison.Ordinal);
+        Assert.True(destructor >= 0);
+        Assert.True(destructorCleanup > destructor);
+
+        var create = source.IndexOf("bool Window::Create(", StringComparison.Ordinal);
+        var acquireReusable = source.IndexOf(
+            "NSWindow* window = bRunsInsideEditor ? sReusableEditorRenderingWindow : nil;",
+            create,
+            StringComparison.Ordinal);
+        var clearReusable = source.IndexOf(
+            "sReusableEditorRenderingWindow = nil;",
+            acquireReusable,
+            StringComparison.Ordinal);
+        Assert.True(create >= 0);
+        Assert.True(acquireReusable > create);
+        Assert.True(clearReusable > acquireReusable);
+
+        var destroy = source.IndexOf("void Window::Destroy()", StringComparison.Ordinal);
+        var mainThreadCheck = source.IndexOf("if (![NSThread isMainThread])", destroy, StringComparison.Ordinal);
+        var mainThreadDispatch = source.IndexOf("dispatch_sync(dispatch_get_main_queue()", mainThreadCheck, StringComparison.Ordinal);
+        var clearHandle = source.IndexOf("m_hWnd = nullptr;", destroy, StringComparison.Ordinal);
+        var unregister = source.IndexOf("g_windows.Remove(this);", destroy, StringComparison.Ordinal);
+        var clearDelegateTarget = source.IndexOf("delegate.sailorWindow = nullptr;", destroy, StringComparison.Ordinal);
+        var detachDelegate = source.IndexOf("window.delegate = nil;", destroy, StringComparison.Ordinal);
+        var clearAssociation = source.IndexOf("objc_setAssociatedObject(window, sSailorWindowDelegateKey, nil", destroy, StringComparison.Ordinal);
+        var close = source.IndexOf("[window close];", destroy, StringComparison.Ordinal);
+        var standaloneRelease = source.IndexOf("[window release];", close, StringComparison.Ordinal);
+        var orderOut = source.IndexOf("[window orderOut:nil];", standaloneRelease, StringComparison.Ordinal);
+        var preserveReusable = source.IndexOf(
+            "sReusableEditorRenderingWindow = window;",
+            orderOut,
+            StringComparison.Ordinal);
+        var nativeCloseHandler = source.IndexOf("void Window::HandleNativeWindowWillClose", destroy, StringComparison.Ordinal);
+
+        Assert.True(destroy >= 0);
+        Assert.True(mainThreadCheck > destroy);
+        Assert.True(mainThreadDispatch > mainThreadCheck);
+        Assert.True(clearHandle > mainThreadDispatch);
+        Assert.True(unregister > mainThreadDispatch);
+        Assert.True(clearDelegateTarget > destroy);
+        Assert.True(detachDelegate > clearDelegateTarget);
+        Assert.True(clearAssociation > detachDelegate);
+        Assert.True(close > clearHandle);
+        Assert.True(close > unregister);
+        Assert.True(close > clearAssociation);
+        Assert.True(standaloneRelease > close);
+        Assert.True(orderOut > standaloneRelease);
+        Assert.True(preserveReusable > orderOut);
+        Assert.True(nativeCloseHandler > preserveReusable);
+        Assert.DoesNotContain(
+            "[window release];",
+            source[orderOut..nativeCloseHandler],
+            StringComparison.Ordinal);
+        Assert.Contains("delegate.terminateApplicationOnClose = !bRunsInsideEditor;", source, StringComparison.Ordinal);
+        Assert.Contains("if (bTerminateApplicationOnClose)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Win32NativeWindow_TeardownOwnsClassAndDetachesBeforeDestroyCallbacks()
+    {
+        var header = ReadRepositoryFile("Runtime", "Platform", "Win32", "Window.h");
+        var source = ReadRepositoryFile("Runtime", "Platform", "Win32", "Window.cpp");
+
+        Assert.Contains("ATOM m_windowClassAtom = 0;", header, StringComparison.Ordinal);
+        Assert.Contains("m_windowClassAtom = RegisterClassEx(&wcx);", source, StringComparison.Ordinal);
+
+        var destructor = source.IndexOf("Window::~Window()", StringComparison.Ordinal);
+        var destructorCleanup = source.IndexOf("Destroy();", destructor, StringComparison.Ordinal);
+        var destroy = source.IndexOf("void Window::Destroy()", StringComparison.Ordinal);
+        var ownerThreadCheck = source.IndexOf("GetWindowThreadProcessId", destroy, StringComparison.Ordinal);
+        var clearHandle = source.IndexOf("m_hWnd = nullptr;", destroy, StringComparison.Ordinal);
+        var unregisterWindow = source.IndexOf("g_windows.Remove(this);", destroy, StringComparison.Ordinal);
+        var nativeDestroy = source.IndexOf("DestroyWindow(hWnd)", destroy, StringComparison.Ordinal);
+        var unregisterClass = source.IndexOf("UnregisterClass(MAKEINTATOM(windowClassAtom)", nativeDestroy, StringComparison.Ordinal);
+        Assert.True(destructor >= 0);
+        Assert.True(destructorCleanup > destructor);
+        Assert.True(destroy >= 0);
+        Assert.True(ownerThreadCheck > destroy);
+        Assert.True(clearHandle > ownerThreadCheck);
+        Assert.True(unregisterWindow > clearHandle);
+        Assert.True(nativeDestroy > unregisterWindow);
+        Assert.True(unregisterClass > nativeDestroy);
+
+        var windowProc = source.IndexOf("LRESULT CALLBACK Sailor::Win32::WindowProc", StringComparison.Ordinal);
+        var nullGuard = source.IndexOf("if (!pWindow)", windowProc, StringComparison.Ordinal);
+        var defaultDispatch = source.IndexOf("return DefWindowProc(hWnd, msg, wParam, lParam);", nullGuard, StringComparison.Ordinal);
+        Assert.True(windowProc >= 0);
+        Assert.True(nullGuard > windowProc);
+        Assert.True(defaultDispatch > nullGuard);
     }
 
     [Fact]

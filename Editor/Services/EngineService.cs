@@ -191,6 +191,9 @@ namespace SailorEditor.Services
         int consoleDispatchScheduled = 0;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
+#if MACCATALYST
+        readonly Dictionary<ulong, (long Generation, nint Handle)> appliedMacRemoteViewportHosts = [];
+#endif
         EngineSession? activeSession;
         EngineLaunchContext? activeLaunchContext;
         int lastExitCode;
@@ -463,16 +466,29 @@ namespace SailorEditor.Services
         public void BindMacRemoteViewportHost(ulong viewportId, nint hostHandle)
         {
 #if MACCATALYST
-            if (hostHandle == nint.Zero || !IsRunning)
-            {
-                return;
-            }
-
             lock (interopLock)
             {
-                if (IsInteropRunningUnderLock())
+                var generation = Volatile.Read(ref engineGeneration);
+                if (!IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle);
+                    appliedMacRemoteViewportHosts.Remove(viewportId);
+                    return;
+                }
+
+                if (appliedMacRemoteViewportHosts.TryGetValue(viewportId, out var applied) &&
+                    applied.Generation == generation &&
+                    applied.Handle == hostHandle)
+                {
+                    return;
+                }
+
+                if (EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle))
+                {
+                    appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
+                }
+                else
+                {
+                    appliedMacRemoteViewportHosts.Remove(viewportId);
                 }
             }
 #endif
@@ -702,7 +718,7 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     lock (interopLock)
@@ -882,7 +898,7 @@ namespace SailorEditor.Services
 
                     try
                     {
-                        ShutdownNativeAfterFailedStart();
+                        await ShutdownNativeAfterFailedStartAsync().ConfigureAwait(false);
                     }
                     catch (Exception teardownException)
                     {
@@ -1080,25 +1096,12 @@ namespace SailorEditor.Services
                     failure = CombineFailures(failure, ex);
                 }
 
-                lock (interopLock)
+                var shutdownFailure = await ShutdownNativeSessionAsync(
+                    stopNative: false,
+                    destroyRemoteViewport: true).ConfigureAwait(false);
+                if (shutdownFailure is not null)
                 {
-                    try
-                    {
-                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = CombineFailures(failure, ex);
-                    }
-
-                    try
-                    {
-                        EngineAppInterop.Shutdown();
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = CombineFailures(failure, ex);
-                    }
+                    failure = CombineFailures(failure, shutdownFailure);
                 }
 
                 if (exitCode == 0 && failure is not null)
@@ -1212,18 +1215,54 @@ namespace SailorEditor.Services
         static Exception CombineFailures(Exception? current, Exception next)
             => current is null ? next : new AggregateException(current, next);
 
-        void ShutdownNativeAfterFailedStart()
+        async Task ShutdownNativeAfterFailedStartAsync()
+        {
+            var failure = await ShutdownNativeSessionAsync(
+                stopNative: true,
+                destroyRemoteViewport: false).ConfigureAwait(false);
+            if (failure is not null)
+            {
+                throw failure;
+            }
+        }
+
+        Task<Exception?> ShutdownNativeSessionAsync(bool stopNative, bool destroyRemoteViewport)
+        {
+#if WINDOWS || MACCATALYST
+            return MainThread.InvokeOnMainThreadAsync(() =>
+                ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
+#else
+            return Task.FromResult(ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
+#endif
+        }
+
+        Exception? ShutdownNativeSessionUnderLock(bool stopNative, bool destroyRemoteViewport)
         {
             lock (interopLock)
             {
                 Exception? failure = null;
-                try
+                if (stopNative)
                 {
-                    EngineAppInterop.Stop();
+                    try
+                    {
+                        EngineAppInterop.Stop();
+                    }
+                    catch (Exception ex)
+                    {
+                        failure = ex;
+                    }
                 }
-                catch (Exception ex)
+
+                if (destroyRemoteViewport)
                 {
-                    failure = ex;
+                    try
+                    {
+                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
+                    }
+                    catch (Exception ex)
+                    {
+                        failure = failure is null ? ex : new AggregateException(failure, ex);
+                    }
                 }
 
                 try
@@ -1237,8 +1276,10 @@ namespace SailorEditor.Services
                         : new AggregateException(failure, ex);
                 }
 
-                if (failure is not null)
-                    throw failure;
+#if MACCATALYST
+                appliedMacRemoteViewportHosts.Clear();
+#endif
+                return failure;
             }
         }
 

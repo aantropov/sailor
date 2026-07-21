@@ -30,7 +30,7 @@ public sealed class SceneViewportLifecycleTests
     }
 
     [Fact]
-    public void Sync_DoesNotReapplyStableRenderTargetOrHostBinding()
+    public void Sync_ReannouncesStableHostBeforeUpdate_ButDoesNotReapplyStableRenderTarget()
     {
         var backend = new FakeSceneViewportBackend();
         var sut = new SceneViewportLifecycleAdapter(backend, 7);
@@ -39,9 +39,55 @@ public sealed class SceneViewportLifecycleTests
         sut.Sync(frame);
         sut.Sync(frame);
 
-        Assert.Equal(1, backend.BindCount);
+        Assert.Equal(2, backend.BindCount);
         Assert.Equal(1, backend.RenderTargetSetCount);
         Assert.Equal(2, backend.UpdatedViewportIds.Count);
+        Assert.Equal(["bind:42", "update", "bind:42", "update"], backend.Operations);
+    }
+
+    [Fact]
+    public void Sync_ClearsObservedHost_WhenFrameNoLongerProvidesOne()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.Sync(new SceneViewportFrame(
+            new SceneViewportRect(0, 0, 640, 480),
+            new SceneViewportRect(0, 0, 640, 480),
+            default,
+            true,
+            false,
+            (nint)42));
+        sut.Sync(new SceneViewportFrame(
+            new SceneViewportRect(0, 0, 640, 480),
+            new SceneViewportRect(0, 0, 640, 480),
+            default,
+            true,
+            false));
+
+        Assert.Equal([(nint)42, nint.Zero], backend.BoundHostHandles);
+    }
+
+    [Fact]
+    public void Destroy_UnbindsObservedHostBeforeDestroyingViewport_AndRemainsIdempotent()
+    {
+        var backend = new FakeSceneViewportBackend();
+        var sut = new SceneViewportLifecycleAdapter(backend, 7);
+
+        sut.Sync(new SceneViewportFrame(
+            new SceneViewportRect(0, 0, 640, 480),
+            new SceneViewportRect(0, 0, 640, 480),
+            default,
+            true,
+            false,
+            (nint)42));
+
+        sut.Destroy();
+        sut.Destroy();
+
+        Assert.Equal([(nint)42, nint.Zero], backend.BoundHostHandles);
+        Assert.Equal(1, backend.DestroyCount);
+        Assert.Equal(["bind:42", "update", "bind:0", "destroy"], backend.Operations);
     }
 
     [Fact]
@@ -98,21 +144,27 @@ public sealed class SceneViewportLifecycleTests
         public ulong BoundViewportId { get; private set; }
         public nint BoundHostHandle { get; private set; }
         public int BindCount { get; private set; }
+        public List<nint> BoundHostHandles { get; } = [];
         public SceneViewportRect LastEditorViewport { get; private set; }
         public SceneViewportRenderTarget LastRenderTarget { get; private set; }
         public int RenderTargetSetCount { get; private set; }
+        public int DestroyCount { get; private set; }
         public List<ulong> UpdatedViewportIds { get; } = [];
+        public List<string> Operations { get; } = [];
 
         public void BindMacHost(ulong viewportId, nint hostHandle)
         {
             BoundViewportId = viewportId;
             BoundHostHandle = hostHandle;
             BindCount++;
+            BoundHostHandles.Add(hostHandle);
+            Operations.Add($"bind:{hostHandle}");
         }
 
         public bool TryUpdateViewport(ulong viewportId, SceneViewportRect rect, bool visible, bool focused)
         {
             UpdatedViewportIds.Add(viewportId);
+            Operations.Add("update");
             return true;
         }
 
@@ -124,7 +176,11 @@ public sealed class SceneViewportLifecycleTests
             RenderTargetSetCount++;
         }
 
-        public void DestroyViewport(ulong viewportId) { }
+        public void DestroyViewport(ulong viewportId)
+        {
+            DestroyCount++;
+            Operations.Add("destroy");
+        }
         public void RetryViewport(ulong viewportId) { }
         public RemoteViewportSessionState GetViewportState(ulong viewportId) => RemoteViewportSessionState.Active;
         public string GetViewportDiagnostics(ulong viewportId) => string.Empty;

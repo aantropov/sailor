@@ -729,8 +729,10 @@ void Sailor::EditorRuntime::ResetForAppLifecycle()
 		}
 
 		g_remoteViewportBindings.Clear();
+		g_pendingRemoteViewportHostHandles.Clear();
 		g_remoteViewportMouseButtons.Clear();
 	}
+	Win32::GlobalInput::Reset();
 
 	{
 		std::lock_guard viewportLock(g_editorViewportMutex);

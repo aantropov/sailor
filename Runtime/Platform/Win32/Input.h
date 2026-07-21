@@ -48,6 +48,7 @@ namespace Sailor::Win32
 		SAILOR_API static void SetKeyState(uint32_t key, KeyState state);
 		SAILOR_API static void SetMouseButtonState(uint32_t button, KeyState state);
 		SAILOR_API static void SetCursorPosition(int32_t x, int32_t y);
+		SAILOR_API static void Reset();
 
 	protected:
 
