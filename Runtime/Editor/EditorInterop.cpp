@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
 #include "Engine/EngineLoop.h"
@@ -24,6 +25,51 @@ namespace
 	void LogEditorTypeSerializationFailure(const char* message) noexcept
 	{
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
+	}
+
+	bool TryParseOptionalParent(const std::string& value, InstanceId& outParent)
+	{
+		outParent = InstanceId::Invalid;
+		if (value.empty())
+		{
+			return true;
+		}
+
+		outParent.Deserialize(YAML::Node(value));
+		return outParent.IsGameObjectId();
+	}
+
+	bool TryParseOptionalGameObjectId(const std::string& value, InstanceId& outInstanceId)
+	{
+		outInstanceId = InstanceId::Invalid;
+		if (value.empty())
+		{
+			return true;
+		}
+
+		outInstanceId.Deserialize(YAML::Node(value));
+		return outInstanceId.IsGameObjectId();
+	}
+
+	bool TryParseOptionalComponentId(const std::string& value, InstanceId& outInstanceId)
+	{
+		outInstanceId = InstanceId::Invalid;
+		if (value.empty())
+		{
+			return true;
+		}
+
+		outInstanceId.Deserialize(YAML::Node(value));
+		return outInstanceId.ComponentId() != InstanceId::Invalid &&
+			outInstanceId.GameObjectId() != InstanceId::Invalid;
+	}
+
+	void SetInteropString(const std::string& value, char** outValue)
+	{
+		auto result = TUniquePtr<char[]>::Make(value.size() + 1);
+		memcpy(result.GetRawPtr(), value.c_str(), value.size());
+		result[value.size()] = '\0';
+		outValue[0] = result.Release();
 	}
 }
 
@@ -61,27 +107,33 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 
 uint32_t App::SerializeCurrentWorld(char** yamlNode)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !yamlNode)
+	if (!yamlNode)
 	{
 		return 0;
 	}
 
-	auto node = editor->SerializeWorld();
-	if (!node.IsNull())
-	{
-		std::string serializedNode = YAML::Dump(node);
-		size_t length = serializedNode.length();
-
-		yamlNode[0] = new char[length + 1];
-		memcpy(yamlNode[0], serializedNode.c_str(), length);
-		yamlNode[0][length] = '\0';
-
-		return static_cast<uint32_t>(length);
-	}
-
 	yamlNode[0] = nullptr;
-	return 0;
+	return ExecuteOnEngineMainThread<uint32_t>(0, [yamlNode]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return 0u;
+			}
+
+			auto node = editor->SerializeWorld();
+			if (node.IsNull())
+			{
+				return 0u;
+			}
+
+			const std::string serializedNode = YAML::Dump(node);
+			const size_t length = serializedNode.length();
+			yamlNode[0] = new char[length + 1];
+			memcpy(yamlNode[0], serializedNode.c_str(), length);
+			yamlNode[0][length] = '\0';
+			return static_cast<uint32_t>(length);
+		});
 }
 
 uint32_t App::SerializeEngineTypes(char** yamlNode)
@@ -204,195 +256,361 @@ uint32_t App::SerializeWorkspaceCacheIdentity(char** yamlNode)
 
 bool App::LoadEditorWorld(const char* strFileId)
 {
-	auto editor = GetSubmodule<Editor>();
-	auto engineLoop = GetSubmodule<EngineLoop>();
-	auto assetRegistry = GetSubmodule<AssetRegistry>();
-	if (!editor || !engineLoop || !assetRegistry || !strFileId || strFileId[0] == '\0')
+	if (!strFileId || strFileId[0] == '\0')
 	{
 		return false;
 	}
 
-	FileId fileId;
-	fileId.Deserialize(YAML::Node(std::string(strFileId)));
+	const std::string fileIdValue = strFileId;
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			auto engineLoop = GetSubmodule<EngineLoop>();
+			auto assetRegistry = GetSubmodule<AssetRegistry>();
+			if (!editor || !engineLoop || !assetRegistry)
+			{
+				return false;
+			}
 
-	auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
-	if (!worldPrefab || !worldPrefab->IsReady())
-	{
-		return false;
-	}
+			FileId fileId;
+			fileId.Deserialize(YAML::Node(fileIdValue));
+			auto worldPrefab = assetRegistry->LoadAssetFromFile<WorldPrefab>(fileId);
+			if (!worldPrefab || !worldPrefab->IsReady())
+			{
+				return false;
+			}
 
-	auto oldWorld = editor->GetWorld();
-	auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
-	if (!newWorld)
-	{
-		return false;
-	}
+			auto oldWorld = editor->GetWorld();
+			auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
+			if (!newWorld)
+			{
+				return false;
+			}
 
-	editor->SetWorld(newWorld.GetRawPtr());
-	if (oldWorld)
-	{
-		engineLoop->ExitWorld(oldWorld);
-		engineLoop->ProcessPendingWorldExits();
-	}
+			editor->SetWorld(newWorld.GetRawPtr());
+			if (oldWorld)
+			{
+				engineLoop->ExitWorld(oldWorld);
+				engineLoop->ProcessPendingWorldExits();
+			}
 
-	return true;
+			return true;
+		});
 }
 
 bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId || !strYamlNode)
+	if (!strInstanceId || !strYamlNode)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
-	instanceId.Deserialize(instanceIdYaml);
+	const std::string instanceIdValue = strInstanceId;
+	const std::string yamlValue = strYamlNode;
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, yamlValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->UpdateObject(instanceId, strYamlNode);
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			return editor->UpdateObject(instanceId, yamlValue);
+		});
 }
 
 bool App::ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId)
+	if (!strInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+	const std::string instanceIdValue = strInstanceId;
+	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, parentInstanceIdValue, bKeepWorldTransform]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	InstanceId parentInstanceId;
-	if (strParentInstanceId && strParentInstanceId[0] != '\0')
-	{
-		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
-	}
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			InstanceId parentInstanceId;
+			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
+			{
+				return false;
+			}
 
-	return editor->ReparentObject(instanceId, parentInstanceId, bKeepWorldTransform);
+			return editor->ReparentObject(instanceId, parentInstanceId, bKeepWorldTransform);
+		});
 }
 
-bool App::CreateEditorGameObject(const char* strParentInstanceId)
+bool App::CreateEditorGameObject(
+	const char* strParentInstanceId,
+	const char* strPreferredInstanceId,
+	char** outInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor)
+	if (!outInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId parentInstanceId;
-	if (strParentInstanceId && strParentInstanceId[0] != '\0')
-	{
-		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
-	}
+	outInstanceId[0] = nullptr;
+	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
+	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [parentInstanceIdValue, preferredInstanceIdValue, outInstanceId]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->CreateGameObject(parentInstanceId);
+			InstanceId parentInstanceId;
+			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
+			{
+				return false;
+			}
+
+			InstanceId preferredInstanceId;
+			if (!TryParseOptionalGameObjectId(preferredInstanceIdValue, preferredInstanceId))
+			{
+				return false;
+			}
+
+			InstanceId createdInstanceId;
+			if (!editor->CreateGameObject(parentInstanceId, preferredInstanceId, createdInstanceId))
+			{
+				return false;
+			}
+
+			SetInteropString(createdInstanceId.ToString(), outInstanceId);
+			return true;
+		});
 }
 
 bool App::DestroyEditorObject(const char* strInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId)
+	if (!strInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+	const std::string instanceIdValue = strInstanceId;
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->DestroyObject(instanceId);
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			return editor->DestroyObject(instanceId);
+		});
 }
 
 bool App::ResetEditorComponentToDefaults(const char* strInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId)
+	if (!strInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+	const std::string instanceIdValue = strInstanceId;
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->ResetComponentToDefaults(instanceId);
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			return editor->ResetComponentToDefaults(instanceId);
+		});
 }
 
-bool App::AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName)
+bool App::AddEditorComponent(
+	const char* strInstanceId,
+	const char* strComponentTypeName,
+	const char* strPreferredInstanceId,
+	char** outInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId || !strComponentTypeName)
+	if (!strInstanceId || !strComponentTypeName || !outInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+	outInstanceId[0] = nullptr;
+	const std::string instanceIdValue = strInstanceId;
+	const std::string componentTypeName = strComponentTypeName;
+	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue, componentTypeName, preferredInstanceIdValue, outInstanceId]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->AddComponent(instanceId, strComponentTypeName);
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+
+			InstanceId preferredInstanceId;
+			if (!TryParseOptionalComponentId(preferredInstanceIdValue, preferredInstanceId))
+			{
+				return false;
+			}
+
+			InstanceId createdInstanceId;
+			if (!editor->AddComponent(instanceId, componentTypeName, preferredInstanceId, createdInstanceId))
+			{
+				return false;
+			}
+
+			SetInteropString(createdInstanceId.ToString(), outInstanceId);
+			return true;
+		});
 }
 
 bool App::RemoveEditorComponent(const char* strInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strInstanceId)
+	if (!strInstanceId)
 	{
 		return false;
 	}
 
-	InstanceId instanceId;
-	instanceId.Deserialize(YAML::Node(std::string(strInstanceId)));
+	const std::string instanceIdValue = strInstanceId;
+	return ExecuteOnEngineMainThread<bool>(false, [instanceIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return editor->RemoveComponent(instanceId);
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			return editor->RemoveComponent(instanceId);
+		});
 }
 
 bool App::InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId)
 {
-	auto editor = GetSubmodule<Editor>();
-	if (!editor || !strFileId)
+	if (!strFileId)
 	{
 		return false;
 	}
 
-	FileId fileId;
-	fileId.Deserialize(YAML::Node(std::string(strFileId)));
+	const std::string fileIdValue = strFileId;
+	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue, parentInstanceIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	InstanceId parentInstanceId;
-	if (strParentInstanceId && strParentInstanceId[0] != '\0')
+			FileId fileId;
+			fileId.Deserialize(YAML::Node(fileIdValue));
+			InstanceId parentInstanceId;
+			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
+			{
+				return false;
+			}
+
+			return editor->InstantiatePrefab(fileId, parentInstanceId);
+		});
+}
+
+bool App::InstantiateEditorPrefabFromYaml(const char* strPrefabYaml, const char* strParentInstanceId)
+{
+	if (!strPrefabYaml || strPrefabYaml[0] == '\0')
 	{
-		parentInstanceId.Deserialize(YAML::Node(std::string(strParentInstanceId)));
+		return false;
 	}
 
-	return editor->InstantiatePrefab(fileId, parentInstanceId);
+	const std::string prefabYaml = strPrefabYaml;
+	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [prefabYaml, parentInstanceIdValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			auto prefabImporter = GetSubmodule<PrefabImporter>();
+			if (!editor || !prefabImporter)
+			{
+				return false;
+			}
+
+			InstanceId parentInstanceId;
+			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
+			{
+				return false;
+			}
+
+			const YAML::Node prefabNode = YAML::Load(prefabYaml);
+			if (!prefabNode.IsMap() ||
+				!prefabNode["gameObjects"].IsSequence() ||
+				!prefabNode["components"].IsSequence())
+			{
+				return false;
+			}
+
+			PrefabPtr prefab = prefabImporter->Create();
+			if (!prefab)
+			{
+				return false;
+			}
+
+			prefab->Deserialize(prefabNode);
+			return editor->InstantiatePrefab(prefab, parentInstanceId);
+		});
 }
 
 bool App::SetEditorSelection(const char* strSelectionYaml)
 {
-	auto editor = GetSubmodule<Editor>();
-	auto* world = editor ? editor->GetWorld() : nullptr;
-	if (!world || !strSelectionYaml)
+	if (!strSelectionYaml)
 	{
 		return false;
 	}
 
-	TVector<InstanceId> selection;
-	const YAML::Node yaml = YAML::Load(strSelectionYaml);
-	if (yaml && yaml.IsSequence())
-	{
-		selection.Reserve(yaml.size());
-		for (const auto& entry : yaml)
+	const std::string selectionYaml = strSelectionYaml;
+	return ExecuteOnEngineMainThread<bool>(false, [selectionYaml]()
 		{
-			InstanceId instanceId{};
-			instanceId.Deserialize(entry);
-			if (instanceId)
+			auto editor = GetSubmodule<Editor>();
+			auto* world = editor ? editor->GetWorld() : nullptr;
+			if (!world)
 			{
-				selection.Add(instanceId);
+				return false;
 			}
-		}
-	}
 
-	world->SetEditorSelection(selection);
-	return true;
+			TVector<InstanceId> selection;
+			const YAML::Node yaml = YAML::Load(selectionYaml);
+			if (yaml && yaml.IsSequence())
+			{
+				selection.Reserve(yaml.size());
+				for (const auto& entry : yaml)
+				{
+					InstanceId instanceId{};
+					instanceId.Deserialize(entry);
+					if (instanceId)
+					{
+						selection.Add(instanceId);
+					}
+				}
+			}
+
+			world->SetEditorSelection(selection);
+			return true;
+		});
 }
 
 bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
@@ -402,26 +620,28 @@ bool App::RenderPathTracedImage(const char* strOutputPath, const char* strInstan
 		return false;
 	}
 
-	auto editor = GetSubmodule<Editor>();
-	if (!editor)
-	{
-		return false;
-	}
-
-	InstanceId instanceId{};
-	if (strInstanceId && strInstanceId[0] != '\0')
-	{
-		YAML::Node instanceIdYaml = YAML::Load(strInstanceId);
-		instanceId.Deserialize(instanceIdYaml);
-	}
-
 	const std::string outputPath = strOutputPath;
-	const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
-	editor->PushMessage(bSuccess ?
-		("Path tracer export succeeded: " + outputPath) :
-		("Path tracer export failed: " + outputPath));
+	const std::string instanceIdValue = strInstanceId ? strInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [outputPath, instanceIdValue, height, samplesPerPixel, maxBounces]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
 
-	return bSuccess;
+			InstanceId instanceId{};
+			if (!instanceIdValue.empty())
+			{
+				instanceId.Deserialize(YAML::Node(instanceIdValue));
+			}
+
+			const bool bSuccess = editor->RenderPathTracedImage(instanceId, outputPath, height, samplesPerPixel, maxBounces);
+			editor->PushMessage(bSuccess ?
+				("Path tracer export succeeded: " + outputPath) :
+				("Path tracer export failed: " + outputPath));
+			return bSuccess;
+		});
 }
 
 void App::ShowMainWindow(bool bShow)

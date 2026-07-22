@@ -442,8 +442,7 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	}
 	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
 	const bool bWasCacheExpired = assetRegistry == nullptr ||
-		!assetRegistry->RestoreAssetProcessingTimes(assetInfo) ||
-		assetInfo->IsMetaExpired() || assetInfo->IsAssetExpired();
+		!assetRegistry->RestoreAssetImportTime(assetInfo) || assetInfo->IsAssetExpired();
 
 	assetInfo->m_assetImportTime = assetInfo->GetAssetLastModificationTime();
 	assetInfo->m_metaLoadTime = metadataLoadTime;

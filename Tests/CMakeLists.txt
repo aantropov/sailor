@@ -35,6 +35,14 @@ add_executable(SmartPointerTests
     SmartPointerTests.cpp
 )
 
+add_executable(InstanceIdContractTests
+    InstanceIdContractTests.cpp
+)
+
+add_executable(EcsLifecycleContractTests
+    EcsLifecycleContractTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -130,6 +138,10 @@ if(WIN32)
 endif()
 
 if(APPLE)
+    add_executable(MacWindowThreadingTests
+        MacWindowThreadingTests.mm
+    )
+
     add_executable(RemoteViewportMacTransportTests
         RemoteViewportMacTransportTests.cpp
         ${SAILOR_RUNTIME_DIR}/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm
@@ -146,6 +158,11 @@ target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
+target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
+target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
+target_compile_definitions(EcsLifecycleContractTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
@@ -179,6 +196,8 @@ target_link_libraries(WorkspaceModuleIncompatibleFixture PRIVATE Sailor::Runtime
 target_link_libraries(RemoteViewportRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
+target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -217,14 +236,17 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceCacheContractTests)
     sailor_stage_workspace_test_runtime(AssetCacheContractTests)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
+    sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
     target_link_libraries(RemoteViewportWindowsTransportTests PRIVATE Sailor::Runtime)
 endif()
 if(APPLE)
+    target_compile_features(MacWindowThreadingTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacTransportTests PRIVATE cxx_std_20)
     target_compile_features(RemoteViewportMacNativeBridgeTests PRIVATE cxx_std_20)
+    target_link_libraries(MacWindowThreadingTests PRIVATE Sailor::Runtime)
     target_link_libraries(RemoteViewportMacTransportTests PRIVATE Sailor::Runtime)
 endif()
 target_include_directories(RemoteViewportFoundationTests PRIVATE
@@ -240,6 +262,12 @@ target_include_directories(EditorViewportSessionTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(SmartPointerTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(InstanceIdContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(EcsLifecycleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -279,12 +307,18 @@ if(WIN32)
 endif()
 
 if(APPLE)
+    target_include_directories(MacWindowThreadingTests PRIVATE
+        ${SAILOR_RUNTIME_DIR}
+    )
     target_include_directories(RemoteViewportMacTransportTests PRIVATE
         ${SAILOR_RUNTIME_DIR}
     )
     target_include_directories(RemoteViewportMacNativeBridgeTests PRIVATE
         ${SAILOR_RUNTIME_DIR}
     )
+    target_link_libraries(MacWindowThreadingTests PRIVATE
+        "-framework Cocoa"
+        "-framework QuartzCore")
     target_link_libraries(RemoteViewportMacTransportTests PRIVATE
         "-framework Cocoa"
         "-framework QuartzCore"
@@ -320,6 +354,16 @@ add_test(
 add_test(
     NAME SmartPointerTests
     COMMAND SmartPointerTests
+)
+
+add_test(
+    NAME InstanceIdContractTests
+    COMMAND InstanceIdContractTests
+)
+
+add_test(
+    NAME EcsLifecycleContractTests
+    COMMAND EcsLifecycleContractTests
 )
 
 add_test(
@@ -383,6 +427,8 @@ set_tests_properties(
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
     SmartPointerTests
+    InstanceIdContractTests
+    EcsLifecycleContractTests
     PROPERTIES TIMEOUT 30
 )
 
@@ -407,6 +453,12 @@ if(WIN32)
 endif()
 
 if(APPLE)
+    add_test(
+        NAME MacWindowThreadingTests
+        COMMAND MacWindowThreadingTests
+    )
+    set_tests_properties(MacWindowThreadingTests PROPERTIES TIMEOUT 15)
+
     add_test(
         NAME RemoteViewportMacTransportTests
         COMMAND RemoteViewportMacTransportTests

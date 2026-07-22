@@ -17,11 +17,19 @@ namespace Sailor
 	class StaticMeshRendererData final : public ECS::TComponent
 	{
 	public:
+		static constexpr uint32_t InvalidSkeletonOffset = (std::numeric_limits<uint32_t>::max)();
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return m_materials; }
 
 		SAILOR_API __forceinline const ModelPtr& GetModel() const { return m_model; }
-		SAILOR_API __forceinline void SetModel(const ModelPtr& model) { m_model = model; }
+		SAILOR_API __forceinline void SetModel(const ModelPtr& model)
+		{
+			m_model = model;
+			if (!m_model)
+			{
+				m_materials.Clear();
+			}
+		}
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 		SAILOR_API __forceinline uint32_t GetSkeletonOffset() const { return m_skeletonOffset; }
@@ -30,7 +38,7 @@ namespace Sailor
 
 		ModelPtr m_model;
 		TVector<MaterialPtr> m_materials;
-		uint32_t m_skeletonOffset = 0;
+		uint32_t m_skeletonOffset = InvalidSkeletonOffset;
 
 		friend class StaticMeshRendererECS;
 	};
@@ -39,15 +47,17 @@ namespace Sailor
 	{
 	public:
 
-		virtual void BeginPlay() override;
-		virtual void EndPlay() override;
+		SAILOR_API virtual void BeginPlay() override;
+		SAILOR_API virtual void EndPlay() override;
 
-		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
+		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 
 		virtual uint32_t GetOrder() const override { return 1000; }
 
 	protected:
+
+		SAILOR_API virtual void OnComponentUnregistered(size_t index, StaticMeshRendererData& component) override;
 
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
 	};

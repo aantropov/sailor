@@ -22,10 +22,12 @@ namespace
 		using CacheData = AssetCacheData;
 		using CacheEntry = AssetCacheData::Entry;
 		using AssetCache::SerializeAssetCachePayload;
+		using AssetCache::Prune;
 		using AssetCache::ShouldResetCacheFile;
 		using AssetCache::ShouldWriteCacheFile;
 		using AssetCache::TryDeserializeAssetCachePayload;
 		using AssetCache::Update;
+		using AssetCache::RestoreAssetImportTime;
 	};
 
 	class TempDirectory final
@@ -73,6 +75,11 @@ namespace
 		{
 			m_assetImportTime = assetImportTime;
 			m_metaLoadTime = metadataLoadTime;
+		}
+
+		std::time_t GetRuntimeMetadataLoadTime() const
+		{
+			return m_metaLoadTime;
 		}
 
 		void SetPendingUpdate(bool bWasExpired)
@@ -191,9 +198,7 @@ namespace
 	TestAssetCache::CacheData MakeCache(
 		const std::string& fileIdValue,
 		const std::string& sourcePath,
-		std::time_t assetImportTime,
-		const std::string& metadataPath,
-		std::time_t metadataLoadTime)
+		std::time_t assetImportTime)
 	{
 		TestAssetCache::CacheData result;
 		const FileId fileId = MakeFileId(fileIdValue);
@@ -201,8 +206,6 @@ namespace
 		entry.m_fileId = fileId;
 		entry.m_assetImportTime = assetImportTime;
 		entry.m_sourcePath = sourcePath;
-		entry.m_metadataPath = metadataPath;
-		entry.m_metadataLoadTime = metadataLoadTime;
 		result.m_data.Insert(fileId, std::move(entry));
 		return result;
 	}
@@ -220,10 +223,14 @@ namespace
 		const auto source = MakeCache(
 			fileId.ToString(),
 			"/workspace/Content/Test.mat",
-			40,
-			"/workspace/Content/Test.mat.asset",
-			80);
+			40);
 		const std::string payload = TestAssetCache::SerializeAssetCachePayload(source);
+		const YAML::Node serializedEntry = YAML::Load(payload)["assetCache"]["assets"][fileId.ToString()];
+		Require(serializedEntry.IsMap() && serializedEntry.size() == 3,
+			"persisted asset cache entries must contain exactly three fields");
+		Require(payload.find("metadataLoadTime") == std::string::npos &&
+			payload.find("metadataPath") == std::string::npos,
+			"runtime metadata state must never be serialized into the asset cache");
 
 		TestAssetCache::CacheData loaded;
 		std::string diagnostic;
@@ -235,8 +242,6 @@ namespace
 		Require(entry.m_fileId == fileId, "round-tripped entry identity should match its map key");
 		Require(entry.m_assetImportTime == 40, "round-tripped asset import time should be preserved");
 		Require(!entry.m_sourcePath.empty(), "round-tripped source path should be normalized");
-		Require(entry.m_metadataLoadTime == 80, "round-tripped metadata load time should be preserved");
-		Require(!entry.m_metadataPath.empty(), "round-tripped metadata path should be normalized");
 	}
 
 	void TestEmptyPayloadRoundTrip()
@@ -258,9 +263,7 @@ namespace
 		auto destination = MakeCache(
 			retainedId.ToString(),
 			"/workspace/Content/Retained.mat",
-			6,
-			"/workspace/Content/Retained.mat.asset",
-			7);
+			6);
 
 		const std::string corruptPayload =
 			"assetCache:\n"
@@ -268,13 +271,11 @@ namespace
 			"    '{ASSET-CACHE-CORRUPT}':\n"
 			"      fileId: '{ASSET-CACHE-CORRUPT}'\n"
 			"      assetImportTime: 7\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n"
-			"      metadataLoadTime: 8\n"
-			"      metadataPath: ''\n";
+			"      sourcePath: ''\n";
 		std::string diagnostic;
 		Require(
 			!TestAssetCache::TryDeserializeAssetCachePayload(corruptPayload, destination, diagnostic),
-			"empty metadataPath should reject the complete payload");
+			"empty sourcePath should reject the complete payload");
 		Require(!diagnostic.empty(), "corrupt asset payload should return an actionable diagnostic");
 		Require(destination.m_data.Num() == 1 && destination.m_data.ContainsKey(retainedId),
 			"failed payload validation must not partially replace existing state");
@@ -288,9 +289,7 @@ namespace
 			"    '{ASSET-CACHE-KEY}':\n"
 			"      fileId: '{ASSET-CACHE-OTHER}'\n"
 			"      assetImportTime: 8\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n"
-			"      metadataLoadTime: 9\n"
-			"      metadataPath: '/workspace/Content/Test.mat.asset'\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n";
 
 		TestAssetCache::CacheData destination;
 		std::string diagnostic;
@@ -306,9 +305,7 @@ namespace
 		TestAssetCache::CacheData destination = MakeCache(
 			"{ASSET-CACHE-PRESERVE-ON-THROW}",
 			"/workspace/Content/Preserved.mat",
-			98,
-			"/workspace/Content/Preserved.mat.asset",
-			99);
+			98);
 
 		const std::string corruptPayload =
 			"assetCache:\n"
@@ -316,9 +313,7 @@ namespace
 			"    '{ASSET-CACHE-THROW}':\n"
 			"      fileId: '{ASSET-CACHE-THROW}'\n"
 			"      assetImportTime: abc\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n"
-			"      metadataLoadTime: 9\n"
-			"      metadataPath: '/workspace/Content/Test.mat.asset'\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n";
 		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
 
 		try
@@ -344,9 +339,7 @@ namespace
 			"fileId:\n"
 			"  list: value\n"
 			"assetImportTime: invalid\n"
-			"sourcePath: ''\n"
-			"metadataLoadTime: invalid\n"
-			"metadataPath: ''");
+			"sourcePath: ''");
 
 		try
 		{
@@ -599,32 +592,69 @@ namespace
 			"a concurrent metadata edit must not notify importers or advance processing watermarks");
 	}
 
-	void TestUpdateTracksProcessingWatermarksAndPreservesDirtyState()
+	void TestUpdateTracksAssetImportStateAndPreservesDirtyState()
 	{
 		TestAssetCache cache;
 		const FileId fileId = MakeFileId("{ASSET-CACHE-UPDATE}");
 		const std::string sourcePath = "/workspace/Content/Test.mat";
-		const std::string metadataPath = sourcePath + ".asset";
 
-		Require(cache.Update(fileId, 90, sourcePath, 190, metadataPath),
-			"new processing watermarks should change the cache");
-		Require(cache.IsDirty(), "new processing watermarks should mark the cache dirty");
-		Require(!cache.Update(fileId, 90, sourcePath, 190, metadataPath),
-			"unchanged processing watermarks should be a no-op");
+		Require(cache.Update(fileId, 90, sourcePath),
+			"new asset import state should change the cache");
+		Require(cache.IsDirty(), "new asset import state should mark the cache dirty");
+		Require(!cache.Update(fileId, 90, sourcePath),
+			"unchanged asset import state should be a no-op");
 		Require(cache.IsDirty(), "a no-op update must not clear an already dirty cache");
-		Require(cache.Update(fileId, 91, sourcePath, 190, metadataPath),
+		Require(cache.Update(fileId, 91, sourcePath),
 			"a later successful asset import should change the source watermark");
-		Require(cache.Update(fileId, 91, sourcePath, 191, metadataPath),
-			"a later metadata load should change the metadata watermark");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved", 191, metadataPath),
+		Require(cache.Update(fileId, 91, sourcePath + ".moved"),
 			"a source path change should change the cache");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved", 191, metadataPath + ".moved"),
-			"a metadata path change should change the cache");
 	}
 
-	void TestProcessingWatermarksExpireOnNewerFiles()
+	void TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration()
 	{
-		TempDirectory directory("watermarks");
+		TestAssetCache cache;
+		const FileId liveFileId = MakeFileId("{ASSET-CACHE-PRUNE-LIVE}");
+		const FileId staleFileId = MakeFileId("{ASSET-CACHE-PRUNE-STALE}");
+		Require(cache.Update(liveFileId, 10, "/workspace/Content/Live.mat"),
+			"the live entry should populate the cache");
+		Require(cache.Update(staleFileId, 20, "/workspace/Content/Stale.mat"),
+			"the stale entry should populate the cache");
+
+		TSet<FileId> liveAssetIds;
+		liveAssetIds.Insert(liveFileId);
+		Require(cache.Prune(liveAssetIds),
+			"pruning a committed generation should report removed stale entries");
+		Require(cache.Contains(liveFileId),
+			"pruning must preserve entries from the committed registry generation");
+		Require(!cache.Contains(staleFileId),
+			"pruning must remove entries absent from the committed registry generation");
+		Require(!cache.Prune(liveAssetIds),
+			"pruning an already synchronized cache should be a no-op");
+	}
+
+	void TestRestoreChangesOnlyAssetImportTime()
+	{
+		TestAssetCache cache;
+		const FileId fileId = MakeFileId("{ASSET-CACHE-RUNTIME-METADATA}");
+		const std::filesystem::path sourcePath = "/workspace/Content/Test.mat";
+		const std::filesystem::path metadataPath = "/workspace/Content/Test.mat.asset";
+		Require(cache.Update(fileId, 123, sourcePath.string()),
+			"asset import state should populate the cache");
+
+		TestAssetInfo info;
+		info.Configure(fileId, sourcePath, metadataPath);
+		info.SetProcessingTimes(0, 456);
+		Require(cache.RestoreAssetImportTime(&info),
+			"matching file id and source path should restore the asset import time");
+		Require(info.GetAssetImportTime() == 123,
+			"the persisted asset import time should be restored");
+		Require(info.GetRuntimeMetadataLoadTime() == 456,
+			"restoring the asset cache must not change runtime metadata load time");
+	}
+
+	void TestAssetImportCacheAndRuntimeMetadataExpiration()
+	{
+		TempDirectory directory("import-and-runtime-metadata");
 		const std::filesystem::path sourcePath = directory.Path("Content/Test.mat");
 		const std::filesystem::path metadataPath = directory.Path("Content/Test.mat.asset");
 		WriteFile(sourcePath, "source");
@@ -640,8 +670,8 @@ namespace
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
 		TestAssetCache cache;
-		Require(cache.Update(&info), "the initial processing watermarks should populate the cache");
-		Require(!cache.IsExpired(&info), "processed source and metadata files should remain current");
+		Require(cache.Update(&info), "the initial asset import state should populate the cache");
+		Require(!cache.IsExpired(&info), "an unchanged source file should remain current in the cache");
 
 		WriteFile(sourcePath, "source-v2");
 		std::filesystem::last_write_time(sourcePath, initialTime + std::chrono::seconds(2));
@@ -649,28 +679,38 @@ namespace
 		info.SetProcessingTimes(
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
-		Require(cache.Update(&info), "the imported source watermark should advance");
+		Require(cache.Update(&info), "the asset import watermark should advance");
 		Require(!cache.IsExpired(&info), "the processed source version should become current");
+		const std::time_t importedSourceTime = info.GetAssetImportTime();
 
 		std::filesystem::last_write_time(sourcePath, initialTime - std::chrono::seconds(2));
 		Require(!cache.IsExpired(&info),
 			"a backdated source should not invalidate an already newer processing watermark");
 
 		std::filesystem::last_write_time(metadataPath, initialTime + std::chrono::seconds(4));
-		Require(cache.IsExpired(&info), "a newer metadata file should expire the cache");
+		Require(!cache.IsExpired(&info),
+			"metadata changes must not participate in persisted asset cache expiration");
+		Require(info.IsMetaExpired(),
+			"a newer metadata file must remain detectable through runtime AssetInfo state");
+		Require(!cache.Update(&info),
+			"metadata load time changes must not dirty the persisted asset cache");
 		info.SetProcessingTimes(
-			info.GetAssetLastModificationTime(),
+			importedSourceTime,
 			info.GetMetaLastModificationTime());
-		Require(cache.Update(&info), "the metadata load watermark should advance");
-		Require(!cache.IsExpired(&info), "the processed metadata version should become current");
+		Require(!info.IsMetaExpired(),
+			"advancing runtime metadata load time should acknowledge the loaded metadata");
 
 		std::filesystem::remove(metadataPath);
-		Require(cache.IsExpired(&info), "a missing metadata file should always expire the cache");
-		Require(!cache.Update(&info), "a missing file must not establish clean processing watermarks");
-		Require(cache.IsExpired(&info), "the cache must remain expired while metadata is missing");
+		Require(info.IsMetaExpired(), "a missing metadata file should expire runtime AssetInfo state");
+		Require(!cache.IsExpired(&info),
+			"missing metadata must not be represented as a persisted cache timestamp or path");
+		Require(!cache.Update(&info),
+			"missing metadata must not dirty or remove persisted source import state");
+		Require(!cache.IsExpired(&info),
+			"runtime metadata validity must remain independent from persisted source import state");
 	}
 
-	void TestMetadataFieldsAreStrictAndTransactional()
+	void TestRuntimeMetadataFieldsAreRejectedTransactionally()
 	{
 		const FileId retainedId = MakeFileId("{ASSET-CACHE-STRICT-RETAINED}");
 		const std::string prefix =
@@ -679,19 +719,15 @@ namespace
 			"    '{ASSET-CACHE-STRICT}':\n"
 			"      fileId: '{ASSET-CACHE-STRICT}'\n"
 			"      assetImportTime: 1\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n"
-			"      metadataLoadTime: 2\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n";
 		const std::string invalidPayloads[] =
 		{
-			prefix,
+			prefix + "      metadataLoadTime: 2\n",
+			prefix + "      metadataPath: '/workspace/Content/Test.mat.asset'\n",
 			prefix +
-				"      metadataPath: '/workspace/Content/Test.mat.asset'\n"
-				"      metadataPath: '/workspace/Content/Duplicate.asset'\n",
+				"      metadataLoadTime: 2\n"
+				"      metadataPath: '/workspace/Content/Test.mat.asset'\n",
 			prefix +
-				"      metadataPath:\n"
-				"        nested: value\n",
-			prefix +
-				"      metadataPath: '/workspace/Content/Test.mat.asset'\n"
 				"      unexpectedField: 3\n"
 		};
 
@@ -700,15 +736,13 @@ namespace
 			auto destination = MakeCache(
 				retainedId.ToString(),
 				"/workspace/Content/Retained.mat",
-				6,
-				"/workspace/Content/Retained.mat.asset",
-				7);
+				6);
 			std::string diagnostic;
 			Require(!TestAssetCache::TryDeserializeAssetCachePayload(payload, destination, diagnostic),
-				"missing, duplicate, or non-scalar metadata fields should reject the payload");
-			Require(!diagnostic.empty(), "strict metadata validation should return a diagnostic");
+				"runtime metadata fields and other unknown fields must be rejected");
+			Require(!diagnostic.empty(), "strict persisted schema validation should return a diagnostic");
 			Require(destination.m_data.Num() == 1 && destination.m_data.ContainsKey(retainedId),
-				"strict metadata validation failures must not partially publish state");
+				"strict schema validation failures must not partially publish state");
 		}
 	}
 
@@ -754,9 +788,11 @@ int main()
 		TestRawEditDispatchesExpiredUpdateWithoutImport();
 		TestMetadataEditDispatchesExpiredUpdateWithoutImport();
 		TestConcurrentMetadataEditDoesNotAdvanceTheWatermark();
-		TestUpdateTracksProcessingWatermarksAndPreservesDirtyState();
-		TestProcessingWatermarksExpireOnNewerFiles();
-		TestMetadataFieldsAreStrictAndTransactional();
+		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
+		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
+		TestRestoreChangesOnlyAssetImportTime();
+		TestAssetImportCacheAndRuntimeMetadataExpiration();
+		TestRuntimeMetadataFieldsAreRejectedTransactionally();
 		TestIoFailurePreservesTheExistingCacheFile();
 		std::cout << "Asset cache contract tests passed.\n";
 		return 0;

@@ -96,4 +96,5 @@ void CameraComponent::UpdateProjectionMatrix()
 void CameraComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<CameraECS>()->UnregisterComponent(m_handle);
+	m_handle = ECS::InvalidIndex;
 }

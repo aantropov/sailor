@@ -432,7 +432,85 @@ namespace
 		Require(backend.ReleaseSurface(viewport.m_viewportId, 32, 1).IsOk(), "provider should still release surfaces after metadata-backed begin frame");
 	}
 
+	void TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable()
+	{
+		FakeMacRendererFrameSourceProvider sourceProvider{};
+		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
+		MacViewportTransportBackend backend{ provider };
+		auto viewport = MakeViewport(84, 64, 32);
+		TransportDescriptor transport{};
+		Require(backend.EnsureSurface(viewport, 35, 1, transport).IsOk(), "unavailable-source fallback should create the requested IOSurface transport");
+		Require(backend.BeginFrame(viewport, 35, 1).IsOk(), "a temporarily unavailable renderer source should fall back to the synthetic intermediate");
+
+		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 35, 1 };
+		auto* allocation = provider.FindAllocation(key);
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate, "unavailable renderer source should record the synthetic intermediate used for the transition frame");
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "synthetic fallback should match the current IOSurface extents");
+		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "synthetic fallback should not rewrite the host viewport transport descriptor");
+
+		FramePacket frame{};
+		Require(backend.ExportFrame(viewport, 35, 1, frame).IsOk(), "unavailable-source fallback should still export the transition frame");
+		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "exported fallback frame should retain the requested viewport extents");
+		Require(sourceProvider.m_calls.size() == 1 && sourceProvider.m_calls.front().second == 1, "unavailable-source fallback should still probe the renderer once for the frame");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 35, 1).IsOk(), "unavailable-source fallback should release its IOSurface cleanly");
+	}
+
 #if defined(__APPLE__)
+	void TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale()
+	{
+		FakeMacRendererFrameSourceProvider sourceProvider{};
+		MacLoopbackIOSurfaceProvider provider{ &sourceProvider };
+		MacViewportTransportBackend backend{ provider };
+		auto viewport = MakeViewport(85, 8, 4);
+		TransportDescriptor transport{};
+		Require(backend.EnsureSurface(viewport, 36, 1, transport).IsOk(), "stale-source fallback should create the requested IOSurface transport");
+
+		auto key = MacViewportSurfaceKey{ viewport.m_viewportId, 36, 1 };
+		auto* allocation = provider.FindAllocation(key);
+		Require(allocation != nullptr, "stale-source fallback needs a live IOSurface allocation");
+		uintptr_t rendererTextureObject = 0;
+		Require(CreateMacRendererIntermediateTexture(allocation->m_producerDeviceObject, viewport.m_width * 2u, viewport.m_height * 2u, viewport.m_pixelFormat, rendererTextureObject).IsOk(), "stale-source fallback should create an old-sized renderer texture");
+
+		const uint8_t sharedEventSentinelByte = 1;
+		CFDataRef sharedEventSentinel = CFDataCreate(kCFAllocatorDefault, &sharedEventSentinelByte, 1);
+		Require(sharedEventSentinel != nullptr, "stale-source fallback should create a shared-event ownership sentinel");
+		CFRetain(reinterpret_cast<CFTypeRef>(rendererTextureObject));
+		CFRetain(sharedEventSentinel);
+		const CFIndex textureRetainCountBefore = CFGetRetainCount(reinterpret_cast<CFTypeRef>(rendererTextureObject));
+		const CFIndex sharedEventRetainCountBefore = CFGetRetainCount(sharedEventSentinel);
+
+		sourceProvider.m_nextSource.m_kind = MacRendererFrameSourceKind::RendererOwnedMetalTexture;
+		sourceProvider.m_nextSource.m_textureObject = rendererTextureObject;
+		sourceProvider.m_nextSource.m_sourceToken = 0xcafef00dull;
+		sourceProvider.m_nextSource.m_crossApiAcquireValue = 44;
+		sourceProvider.m_nextSource.m_crossApiSharedEventObject = reinterpret_cast<uintptr_t>(sharedEventSentinel);
+		sourceProvider.m_nextSource.m_crossApiSyncKind = CrossApiSyncKind::MetalSharedEvent;
+		sourceProvider.m_nextSource.m_width = viewport.m_width * 2u;
+		sourceProvider.m_nextSource.m_height = viewport.m_height * 2u;
+		sourceProvider.m_nextSource.m_pixelFormat = viewport.m_pixelFormat;
+		sourceProvider.m_nextSource.m_debugName = "Renderer.SceneView.PreResize";
+		sourceProvider.m_nextSource.m_releaseTextureObjectAfterUse = true;
+
+		Require(backend.BeginFrame(viewport, 36, 1).IsOk(), "a copyable renderer source with stale extents should fall back to the synthetic intermediate");
+		allocation = provider.FindAllocation(key);
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_kind == MacRendererFrameSourceKind::SyntheticIntermediate, "stale renderer extents should record the synthetic intermediate used for the transition frame");
+		Require(allocation != nullptr && allocation->m_lastRendererSource.m_width == viewport.m_width && allocation->m_lastRendererSource.m_height == viewport.m_height, "stale-source fallback should match the current IOSurface instead of resizing it back");
+		Require(allocation != nullptr && allocation->m_lastCrossApiAcquireValue == 0, "stale-source fallback should not retain rejected source synchronization metadata");
+		Require(CFGetRetainCount(reinterpret_cast<CFTypeRef>(rendererTextureObject)) == textureRetainCountBefore - 1, "stale-source fallback should release the rejected owned Metal texture");
+		Require(CFGetRetainCount(sharedEventSentinel) == sharedEventRetainCountBefore - 1, "stale-source fallback should release the rejected shared event");
+		Require(transport.m_width == viewport.m_width && transport.m_height == viewport.m_height, "stale-source fallback should preserve the host viewport transport descriptor");
+
+		FramePacket frame{};
+		Require(backend.ExportFrame(viewport, 36, 1, frame).IsOk(), "stale-source fallback should still export the transition frame");
+		Require(frame.m_width == viewport.m_width && frame.m_height == viewport.m_height, "stale-source fallback frame should retain the requested viewport extents");
+		Require(backend.ReleaseSurface(viewport.m_viewportId, 36, 1).IsOk(), "stale-source fallback should release its IOSurface cleanly");
+
+		sourceProvider.m_nextSource.m_textureObject = 0;
+		sourceProvider.m_nextSource.m_crossApiSharedEventObject = 0;
+		ReleaseMacRendererIntermediateTexture(rendererTextureObject);
+		CFRelease(sharedEventSentinel);
+	}
+
 	void TestMacProducerCpuUploadWritesIOSurface()
 	{
 		MacLoopbackIOSurfaceProvider provider{};
@@ -625,8 +703,10 @@ int main()
 		{ "MacProducerCpuUploadWritesIOSurface", TestMacProducerCpuUploadWritesIOSurface },
 		{ "ConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface", TestConcreteMacLoopbackProviderCopiesRendererOwnedMetalTextureIntoIOSurface },
 		{ "MacExportCarriesCrossApiSyncMetadataFromRendererSource", TestMacExportCarriesCrossApiSyncMetadataFromRendererSource },
+		{ "ConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale", TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceExtentsAreStale },
 #endif
 		{ "ConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata", TestConcreteMacLoopbackProviderRecordsRendererOwnedSourceMetadata },
+		{ "ConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable", TestConcreteMacLoopbackProviderFallsBackWhenRendererSourceIsUnavailable },
 		{ "ConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata", TestConcreteMacLoopbackProviderAndPresenterCarryNativeMetadata },
 	};
 

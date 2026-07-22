@@ -15,6 +15,10 @@ namespace concurrency = tbb;
 
 namespace Sailor
 {
+	template<typename T>
+	class TObjectPtr;
+	class Prefab;
+
 	namespace Win32 
 	{
 		class Window;
@@ -24,7 +28,7 @@ namespace Sailor
 	{
 	public:
 
-		Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
+		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
 
 		void SetWorld(class World* world) { m_world = world; }
 		class World* GetWorld() const { return m_world; }
@@ -43,13 +47,14 @@ namespace Sailor
 		RECT GetViewport() const { return m_windowRect; }
 
 		bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
-		bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
-		bool CreateGameObject(const class InstanceId& parentInstanceId);
+		SAILOR_API bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
+		bool CreateGameObject(const class InstanceId& parentInstanceId, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
 		bool DestroyObject(const class InstanceId& instanceId);
 		bool ResetComponentToDefaults(const class InstanceId& instanceId);
-		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName);
+		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
 		bool RemoveComponent(const class InstanceId& instanceId);
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
+		bool InstantiatePrefab(const TObjectPtr<Prefab>& prefab, const class InstanceId& parentInstanceId);
 		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 
 	protected:

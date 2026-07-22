@@ -360,33 +360,37 @@ namespace Sailor::EditorRemote
 				auto sourceResult = m_rendererFrameSourceProvider->AcquireFrameSource(state, nextFrameIndex, rendererSource);
 				if (!sourceResult.IsOk())
 				{
+					ReleaseRendererFrameSourceResources(rendererSource);
 					m_lastFailure = sourceResult;
 					return sourceResult;
 				}
 
-				if (!rendererSource.IsValid())
+				if (rendererSource.IsValid())
 				{
-					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1004, "macOS renderer source is temporarily unavailable");
-					return m_lastFailure;
+					bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
+						rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
+					const bool bHasCopyableSource =
+						rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture || bHasCpuPayload;
+					if (bHasCopyableSource &&
+						(rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
+						rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height))
+					{
+						ReleaseRendererFrameSourceResources(rendererSource);
+						rendererSource = {};
+						bHasCpuPayload = false;
+					}
+					else if (bHasCpuPayload &&
+						rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
+					{
+						ReleaseRendererFrameSourceResources(rendererSource);
+						m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
+						return m_lastFailure;
+					}
 				}
-
-				bHasCpuPayload = rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedRenderTargetMetadata &&
-					rendererSource.m_cpuBytes && !rendererSource.m_cpuBytes->empty();
-				const bool bHasCopyableSource =
-					rendererSource.m_kind == MacRendererFrameSourceKind::RendererOwnedMetalTexture || bHasCpuPayload;
-				if (bHasCopyableSource &&
-					(rendererSource.m_width != state.m_nativeAllocation->m_plane.m_width ||
-					rendererSource.m_height != state.m_nativeAllocation->m_plane.m_height))
+				else
 				{
-					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1005, "macOS renderer source extents do not match the current IOSurface");
-					return m_lastFailure;
-				}
-
-				if (bHasCpuPayload &&
-					rendererSource.m_bytesPerRow < state.m_nativeAllocation->m_plane.m_width * state.m_nativeAllocation->m_plane.m_bytesPerElement)
-				{
-					m_lastFailure = Failure::FromDomain(ErrorDomain::Session, 1006, "macOS renderer source row stride is smaller than the current IOSurface row");
-					return m_lastFailure;
+					ReleaseRendererFrameSourceResources(rendererSource);
+					rendererSource = {};
 				}
 			}
 
@@ -397,11 +401,6 @@ namespace Sailor::EditorRemote
 			{
 				sourceTextureObject = rendererSource.m_textureObject;
 				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, sourceTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo, rendererSource.m_crossApiSharedEventObject, rendererSource.m_crossApiAcquireValue);
-				if (rendererSource.m_releaseTextureObjectAfterUse)
-				{
-					ReleaseMacExportedTexture(sourceTextureObject);
-					rendererSource.m_textureObject = 0;
-				}
 			}
 			else if (bHasCpuPayload)
 			{
@@ -419,6 +418,7 @@ namespace Sailor::EditorRemote
 				auto uploadResult = UploadMacRendererPatternToIntermediateTexture(state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, pattern);
 				if (!uploadResult.IsOk())
 				{
+					ReleaseRendererFrameSourceResources(rendererSource);
 					m_lastFailure = uploadResult;
 					return uploadResult;
 				}
@@ -434,13 +434,7 @@ namespace Sailor::EditorRemote
 				}
 				copyResult = CopyMacRendererIntermediateToProducerTexture(state.m_nativeAllocation->m_producerDeviceObject, state.m_nativeAllocation->m_rendererIntermediateTextureObject, state.m_nativeAllocation->m_producerTextureObject, state.m_nativeAllocation->m_plane.m_width, state.m_nativeAllocation->m_plane.m_height, rendererFrameInfo);
 			}
-			if (rendererSource.m_crossApiSharedEventObject != 0)
-			{
-#if defined(__APPLE__)
-				CFRelease(reinterpret_cast<CFTypeRef>(rendererSource.m_crossApiSharedEventObject));
-#endif
-				rendererSource.m_crossApiSharedEventObject = 0;
-			}
+			ReleaseRendererFrameSourceResources(rendererSource);
 			if (!copyResult.IsOk())
 			{
 				m_lastFailure = copyResult;
@@ -534,6 +528,22 @@ namespace Sailor::EditorRemote
 		size_t GetLiveAllocationCount() const { return m_liveAllocations.Num(); }
 
 	private:
+		static void ReleaseRendererFrameSourceResources(MacRendererFrameSource& rendererSource)
+		{
+			if (rendererSource.m_releaseTextureObjectAfterUse && rendererSource.m_textureObject != 0)
+			{
+				ReleaseMacExportedTexture(rendererSource.m_textureObject);
+				rendererSource.m_textureObject = 0;
+			}
+			if (rendererSource.m_crossApiSharedEventObject != 0)
+			{
+#if defined(__APPLE__)
+				CFRelease(reinterpret_cast<CFTypeRef>(rendererSource.m_crossApiSharedEventObject));
+#endif
+				rendererSource.m_crossApiSharedEventObject = 0;
+			}
+		}
+
 		void StoreAllocation(const MacViewportSurfaceKey& key, const MacIOSurfaceAllocation& allocation)
 		{
 			auto& storedAllocation = m_liveAllocations[key];

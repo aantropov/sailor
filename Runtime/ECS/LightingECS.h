@@ -52,7 +52,11 @@ namespace Sailor
 
 		// Global constants
 		static constexpr uint32_t MaxShadowsInView = 128;
-		const uint32_t LightsMaxNum = 65535;
+		static constexpr uint32_t LightsMaxNum = 65535;
+		static constexpr size_t GetGpuLightSlotsCount(size_t numComponentSlots)
+		{
+			return numComponentSlots < LightsMaxNum ? numComponentSlots : LightsMaxNum;
+		}
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
 
 		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_SFLOAT;
@@ -71,7 +75,9 @@ namespace Sailor
 		// TODO: Tightly pack
 		struct LightShaderData
 		{
-			uint32_t m_type;
+			static constexpr uint32_t InvalidType = static_cast<uint32_t>(-1);
+
+			uint32_t m_type = InvalidType;
 			uint32_t m_shadowType;
 			alignas(16) glm::vec3 m_worldPosition;
 			alignas(16) glm::vec3 m_direction;
@@ -106,7 +112,7 @@ namespace Sailor
 			TVector<RHI::RHILightProxy>& outSortedSpotLights);
 
 		// Lights
-		TVector<TPair<uint32_t, uint32_t>> m_skipList;
+		uint32_t m_numLights = 0;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
 
 		// Shadows

@@ -17,6 +17,7 @@
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
@@ -27,10 +28,10 @@
 #include "Containers/Octree.h"
 #include "Engine/EngineLoop.h"
 #include <algorithm>
-#include <atomic>
 #include <cctype>
 #include <filesystem>
 #include <cstring>
+#include <mutex>
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -44,6 +45,7 @@
 #include "Engine/InstanceId.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "YamlExceptionBoundary.h"
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -75,7 +77,30 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 
 namespace
 {
-	std::atomic_bool g_assetReloadRequested = false;
+	enum class EEngineMainLoopState : uint8_t
+	{
+		Pending,
+		Running,
+		Exited
+	};
+
+	std::mutex g_engineMainThreadDispatchMutex;
+	EEngineMainLoopState g_engineMainLoopState = EEngineMainLoopState::Pending;
+	bool g_engineShuttingDown = false;
+	thread_local bool g_bExecutingEngineMainThreadDispatch = false;
+
+	void ProcessPendingEngineMainThreadTasks(Tasks::Scheduler* scheduler)
+	{
+		if (!scheduler)
+		{
+			return;
+		}
+
+		const bool bWasExecutingDispatch = g_bExecutingEngineMainThreadDispatch;
+		g_bExecutingEngineMainThreadDispatch = true;
+		scheduler->ProcessTasksOnMainThread();
+		g_bExecutingEngineMainThreadDispatch = bWasExecutingDispatch;
+	}
 
 	bool ContainsWorkspaceManifest(const std::filesystem::path& root)
 	{
@@ -137,6 +162,100 @@ namespace
 
 		return parent;
 	}
+
+	bool ReloadAssetsOnEngineMainThread()
+	{
+		auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
+		if (!assetRegistry)
+		{
+			return false;
+		}
+
+		auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		if (scheduler)
+		{
+			scheduler->WaitIdle({
+				EThreadType::Worker,
+				EThreadType::RHI,
+				EThreadType::Render
+			});
+		}
+		if (auto* shaderCompiler = App::GetSubmodule<ShaderCompiler>())
+		{
+			shaderCompiler->RecoverMissingShaderCacheStorage();
+		}
+		assetRegistry->ScanContentFolder();
+		if (scheduler)
+		{
+			scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
+		}
+		if (auto* renderer = App::GetSubmodule<Renderer>())
+		{
+			renderer->RefreshFrameGraph();
+		}
+
+		return true;
+	}
+}
+
+bool App::DispatchOnEngineMainThread(std::function<void()> command)
+{
+	if (!command)
+	{
+		return false;
+	}
+
+	std::function<void()> guardedCommand = [command = std::move(command)]() mutable
+	{
+		const bool bWasExecutingDispatch = g_bExecutingEngineMainThreadDispatch;
+		g_bExecutingEngineMainThreadDispatch = true;
+		std::string diagnostic;
+		const bool bSucceeded = External::GuardYamlExceptions(command, diagnostic);
+		g_bExecutingEngineMainThreadDispatch = bWasExecutingDispatch;
+		if (!bSucceeded)
+		{
+			SAILOR_LOG_ERROR("Editor interop command failed: %s", diagnostic.c_str());
+		}
+	};
+
+	if (g_bExecutingEngineMainThreadDispatch)
+	{
+		guardedCommand();
+		return true;
+	}
+
+	std::unique_lock<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+	if (g_engineShuttingDown)
+	{
+		return false;
+	}
+
+	auto* scheduler = GetSubmodule<Tasks::Scheduler>();
+	if (!scheduler)
+	{
+		return false;
+	}
+
+	if (scheduler->IsMainThread())
+	{
+		guardedCommand();
+		return true;
+	}
+
+	if (g_engineMainLoopState != EEngineMainLoopState::Running)
+	{
+		return false;
+	}
+
+	auto task = Tasks::CreateTask(
+		"Editor interop on engine main thread",
+		std::move(guardedCommand),
+		EThreadType::Main);
+	scheduler->Run(task);
+	dispatchLock.unlock();
+
+	task->Wait();
+	return task->IsFinished();
 }
 
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
@@ -198,7 +317,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		return;
 	}
 
-	g_assetReloadRequested.store(false, std::memory_order_release);
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineMainLoopState = EEngineMainLoopState::Pending;
+		g_engineShuttingDown = false;
+	}
 
 #if defined(_WIN32)
 	timeBeginPeriod(1);
@@ -413,6 +536,8 @@ void App::Start()
 
 	if (s_pInstance->m_bSkipMainLoop)
 	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineMainLoopState = EEngineMainLoopState::Exited;
 		return;
 	}
 
@@ -423,9 +548,21 @@ void App::Start()
 	if (!scheduler || !renderer || !renderer->IsInitialized() || !pEngineLoop)
 	{
 		SAILOR_LOG_ERROR("App::Start skipped: engine subsystems are not fully initialized.");
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineMainLoopState = EEngineMainLoopState::Exited;
 		return;
 	}
-	scheduler->AttachCurrentThreadAsMainThread();
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		scheduler->AttachCurrentThreadAsMainThread();
+		g_engineMainLoopState = EEngineMainLoopState::Running;
+		if (s_pInstance->m_assetReloadRequestGeneration > 0 &&
+			(!s_pInstance->m_pendingAssetReloadTask ||
+				s_pInstance->m_pendingAssetReloadTask->IsFinished()))
+		{
+			QueueAssetReloadTaskLocked(scheduler);
+		}
+	}
 
 	auto& pMainWindow = s_pInstance->m_pMainWindow;
 
@@ -503,8 +640,6 @@ void App::Start()
 		{
 			RequestAssetReload();
 		}
-
-		ApplyPendingAssetReloadOnEngineThread();
 
 #ifdef SAILOR_BUILD_WITH_RENDER_DOC
 		if (auto renderDoc = App::GetSubmodule<RenderDocApi>())
@@ -615,6 +750,11 @@ void App::Start()
 
 	pMainWindow->SetActive(false);
 	pMainWindow->SetRunning(false);
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineMainLoopState = EEngineMainLoopState::Exited;
+	}
+	ProcessPendingEngineMainThreadTasks(scheduler);
 }
 
 void App::Stop()
@@ -630,53 +770,85 @@ void App::Stop()
 
 bool App::RequestAssetReload()
 {
-	if (!s_pInstance)
-	{
-		return false;
-	}
-
-	g_assetReloadRequested.store(true, std::memory_order_release);
-	return true;
-}
-
-bool App::ApplyPendingAssetReloadOnEngineThread()
-{
-	if (!g_assetReloadRequested.exchange(false, std::memory_order_acq_rel))
-	{
-		return false;
-	}
-
-	auto* assetRegistry = GetSubmodule<AssetRegistry>();
-	if (!assetRegistry)
+	const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+	if (!s_pInstance || g_engineShuttingDown ||
+		g_engineMainLoopState == EEngineMainLoopState::Exited)
 	{
 		return false;
 	}
 
 	auto* scheduler = GetSubmodule<Tasks::Scheduler>();
-	if (scheduler)
+	if (!scheduler)
 	{
-		scheduler->WaitIdle({
-			EThreadType::Main,
-			EThreadType::Worker,
-			EThreadType::RHI,
-			EThreadType::Render
-		});
-	}
-	if (auto* shaderCompiler = GetSubmodule<ShaderCompiler>())
-	{
-		shaderCompiler->RecoverMissingShaderCacheStorage();
-	}
-	assetRegistry->ScanContentFolder();
-	if (scheduler)
-	{
-		scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
-	}
-	if (auto* renderer = GetSubmodule<Renderer>())
-	{
-		renderer->RefreshFrameGraph();
+		return false;
 	}
 
+	++s_pInstance->m_assetReloadRequestGeneration;
+	if (s_pInstance->m_pendingAssetReloadTask &&
+		!s_pInstance->m_pendingAssetReloadTask->IsFinished())
+	{
+		return true;
+	}
+
+	QueueAssetReloadTaskLocked(scheduler);
 	return true;
+}
+
+void App::QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler)
+{
+	check(s_pInstance && scheduler);
+	auto task = Tasks::CreateTask(
+		"Reload assets on engine main thread",
+		[]() { ProcessAssetReloadRequestOnEngineMainThread(); },
+		EThreadType::Main);
+	s_pInstance->m_pendingAssetReloadTask = task;
+	scheduler->Run(task);
+}
+
+void App::ProcessAssetReloadRequestOnEngineMainThread()
+{
+	uint64_t requestGeneration = 0;
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		if (!s_pInstance || g_engineShuttingDown ||
+			g_engineMainLoopState != EEngineMainLoopState::Running)
+		{
+			if (s_pInstance)
+			{
+				s_pInstance->m_pendingAssetReloadTask.Clear();
+			}
+			return;
+		}
+		requestGeneration = s_pInstance->m_assetReloadRequestGeneration;
+	}
+
+	ReloadAssetsOnEngineMainThread();
+
+	const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+	if (!s_pInstance || g_engineShuttingDown ||
+		g_engineMainLoopState != EEngineMainLoopState::Running)
+	{
+		if (s_pInstance)
+		{
+			s_pInstance->m_pendingAssetReloadTask.Clear();
+		}
+		return;
+	}
+
+	if (s_pInstance->m_assetReloadRequestGeneration == requestGeneration)
+	{
+		s_pInstance->m_pendingAssetReloadTask.Clear();
+		return;
+	}
+
+	auto* scheduler = GetSubmodule<Tasks::Scheduler>();
+	if (!scheduler)
+	{
+		s_pInstance->m_pendingAssetReloadTask.Clear();
+		return;
+	}
+
+	QueueAssetReloadTaskLocked(scheduler);
 }
 
 void App::Shutdown()
@@ -689,10 +861,15 @@ void App::Shutdown()
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();
 
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineShuttingDown = true;
+		g_engineMainLoopState = EEngineMainLoopState::Exited;
+	}
 	if (scheduler)
 	{
 		scheduler->AttachCurrentThreadAsMainThread();
-		scheduler->ProcessTasksOnMainThread();
+		ProcessPendingEngineMainThreadTasks(scheduler);
 	}
 
 	if (renderer)
@@ -703,6 +880,7 @@ void App::Shutdown()
 	if (scheduler)
 	{
 		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
 	SAILOR_LOG("Sailor Engine Releasing");

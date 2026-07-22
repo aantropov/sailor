@@ -12,6 +12,7 @@
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Reflection.h"
+#include "Math/Math.h"
 #include "Math/Transform.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
@@ -21,6 +22,7 @@
 #include <ctime>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
 #include <cmath>
 #include "Platform/Win32/Window.h"
 
@@ -39,6 +41,119 @@ namespace
 		}
 
 		return false;
+	}
+
+	glm::mat4 CalculateCurrentWorldMatrix(GameObjectPtr gameObject)
+	{
+		glm::mat4 worldMatrix = glm::identity<glm::mat4>();
+		for (auto current = gameObject; current.IsValid(); current = current->GetParent())
+		{
+			worldMatrix = current->GetTransformComponent().GetTransform().Matrix() * worldMatrix;
+		}
+
+		return worldMatrix;
+	}
+
+	bool IsFiniteMatrix(const glm::mat4& matrix)
+	{
+		for (glm::length_t column = 0; column < matrix.length(); ++column)
+		{
+			for (glm::length_t row = 0; row < matrix[column].length(); ++row)
+			{
+				if (!std::isfinite(matrix[column][row]))
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool AreMatricesNear(const glm::mat4& lhs, const glm::mat4& rhs, float tolerance = 0.0001f)
+	{
+		for (glm::length_t column = 0; column < lhs.length(); ++column)
+		{
+			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
+			{
+				const float scale = std::max({ 1.0f, std::abs(lhs[column][row]), std::abs(rhs[column][row]) });
+				if (std::abs(lhs[column][row] - rhs[column][row]) > tolerance * scale)
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool TryInvertTransformMatrix(const glm::mat4& matrix, glm::mat4& outInverse)
+	{
+		if (!IsFiniteMatrix(matrix))
+		{
+			return false;
+		}
+
+		const glm::vec3 axisX(matrix[0]);
+		const glm::vec3 axisY(matrix[1]);
+		const glm::vec3 axisZ(matrix[2]);
+		const float axisLengthProduct = glm::length(axisX) * glm::length(axisY) * glm::length(axisZ);
+		const float normalizedVolume = axisLengthProduct > 0.0f
+			? std::abs(glm::dot(glm::cross(axisX, axisY), axisZ)) / axisLengthProduct
+			: 0.0f;
+		if (!std::isfinite(normalizedVolume) || normalizedVolume <= 0.000001f)
+		{
+			return false;
+		}
+
+		outInverse = glm::inverse(matrix);
+		return IsFiniteMatrix(outInverse) &&
+			AreMatricesNear(matrix * outInverse, glm::identity<glm::mat4>(), 0.001f);
+	}
+
+	bool TryMakeExactTransform(const glm::mat4& matrix, Math::Transform& outTransform)
+	{
+		if (!IsFiniteMatrix(matrix))
+		{
+			return false;
+		}
+
+		outTransform = Math::Transform::FromMatrix(matrix);
+		const glm::vec4 rotation(
+			outTransform.m_rotation.x,
+			outTransform.m_rotation.y,
+			outTransform.m_rotation.z,
+			outTransform.m_rotation.w);
+		if (!Math::AllFinite(outTransform.m_position) ||
+			!Math::AllFinite(rotation) ||
+			!Math::AllFinite(outTransform.m_scale))
+		{
+			return false;
+		}
+
+		return AreMatricesNear(outTransform.Matrix(), matrix);
+	}
+
+	bool ResolveParent(World* world, const InstanceId& parentInstanceId, GameObjectPtr& outParent)
+	{
+		outParent = {};
+		if (!parentInstanceId)
+		{
+			return true;
+		}
+
+		if (!world)
+		{
+			return false;
+		}
+		if (!parentInstanceId.IsGameObjectId())
+		{
+			return false;
+		}
+
+		auto parentObject = world->GetObjectByInstanceId(parentInstanceId);
+		outParent = parentObject.DynamicCast<GameObject>();
+		return outParent.IsValid();
 	}
 }
 
@@ -186,7 +301,7 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (!m_world)
+	if (!m_world || !instanceId.IsGameObjectId())
 	{
 		return false;
 	}
@@ -204,11 +319,14 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 	}
 
 	GameObjectPtr parentGameObject;
-	if (parentInstanceId)
+	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
 	{
-		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
-		parentGameObject = parentObject.DynamicCast<GameObject>();
-		if (!parentGameObject || parentGameObject == gameObject)
+		return false;
+	}
+
+	if (parentGameObject)
+	{
+		if (parentGameObject == gameObject)
 		{
 			return false;
 		}
@@ -219,19 +337,37 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 		}
 	}
 
-	const glm::mat4 oldWorldMatrix = gameObject->GetTransformComponent().GetCachedWorldMatrix();
-	glm::mat4 parentWorldMatrix = glm::identity<glm::mat4>();
-	if (parentGameObject)
+	if (gameObject->GetParent() == parentGameObject)
 	{
-		parentWorldMatrix = parentGameObject->GetTransformComponent().GetCachedWorldMatrix();
+		return true;
+	}
+
+	Math::Transform localTransform;
+	if (bKeepWorldTransform)
+	{
+		const glm::mat4 oldWorldMatrix = CalculateCurrentWorldMatrix(gameObject);
+		glm::mat4 localMatrix = oldWorldMatrix;
+		if (parentGameObject)
+		{
+			glm::mat4 inverseParentMatrix;
+			if (!TryInvertTransformMatrix(CalculateCurrentWorldMatrix(parentGameObject), inverseParentMatrix))
+			{
+				return false;
+			}
+
+			localMatrix = inverseParentMatrix * oldWorldMatrix;
+		}
+
+		if (!TryMakeExactTransform(localMatrix, localTransform))
+		{
+			return false;
+		}
 	}
 
 	gameObject->SetParent(parentGameObject);
 
 	if (bKeepWorldTransform)
 	{
-		const glm::mat4 localMatrix = parentGameObject ? glm::inverse(parentWorldMatrix) * oldWorldMatrix : oldWorldMatrix;
-		const auto localTransform = Math::Transform::FromMatrix(localMatrix);
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(localTransform.m_position);
 		transform.SetRotation(localTransform.m_rotation);
@@ -241,30 +377,36 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 	return true;
 }
 
-bool Editor::CreateGameObject(const InstanceId& parentInstanceId)
+bool Editor::CreateGameObject(const InstanceId& parentInstanceId, const InstanceId& preferredInstanceId, InstanceId& outInstanceId)
 {
 	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
 
 	if (!m_world)
 	{
 		return false;
 	}
 
-	auto gameObject = m_world->Instantiate("GameObject");
+	GameObjectPtr parentGameObject;
+	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
+	{
+		return false;
+	}
+
+	auto gameObject = preferredInstanceId
+		? m_world->Instantiate("GameObject", preferredInstanceId)
+		: m_world->Instantiate("GameObject");
 	if (!gameObject)
 	{
 		return false;
 	}
 
-	if (parentInstanceId)
+	if (parentGameObject)
 	{
-		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
-		if (auto parentGameObject = parentObject.DynamicCast<GameObject>())
-		{
-			gameObject->SetParent(parentGameObject);
-		}
+		gameObject->SetParent(parentGameObject);
 	}
 
+	outInstanceId = gameObject->GetInstanceId();
 	return true;
 }
 
@@ -272,7 +414,7 @@ bool Editor::DestroyObject(const InstanceId& instanceId)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	if (!m_world || !instanceId)
+	if (!m_world || !instanceId.IsGameObjectId())
 	{
 		return false;
 	}
@@ -321,11 +463,16 @@ bool Editor::ResetComponentToDefaults(const InstanceId& instanceId)
 	return false;
 }
 
-bool Editor::AddComponent(const InstanceId& instanceId, const std::string& componentTypeName)
+bool Editor::AddComponent(
+	const InstanceId& instanceId,
+	const std::string& componentTypeName,
+	const InstanceId& preferredInstanceId,
+	InstanceId& outInstanceId)
 {
 	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
 
-	if (!m_world || !instanceId || componentTypeName.empty())
+	if (!m_world || !instanceId.IsGameObjectId() || componentTypeName.empty())
 	{
 		return false;
 	}
@@ -349,10 +496,16 @@ bool Editor::AddComponent(const InstanceId& instanceId, const std::string& compo
 		return false;
 	}
 
-	gameObject->AddComponentRaw(component);
+	component = gameObject->AddComponentRaw(component, preferredInstanceId);
+	if (!component)
+	{
+		return false;
+	}
+
 	const ReflectedData& defaults = Reflection::GetCDO(componentTypeName);
 	component->ApplyReflection(defaults);
 	component->ResolveRefs(defaults, m_world->GetObjects(), true);
+	outInstanceId = component->GetInstanceId();
 	return true;
 }
 
@@ -405,19 +558,33 @@ bool Editor::InstantiatePrefab(const FileId& prefabId, const InstanceId& parentI
 		return false;
 	}
 
+	return InstantiatePrefab(prefab, parentInstanceId);
+}
+
+bool Editor::InstantiatePrefab(const PrefabPtr& prefab, const InstanceId& parentInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_world || !prefab)
+	{
+		return false;
+	}
+
+	GameObjectPtr parentGameObject;
+	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
+	{
+		return false;
+	}
+
 	auto root = m_world->Instantiate(prefab);
 	if (!root)
 	{
 		return false;
 	}
 
-	if (parentInstanceId)
+	if (parentGameObject)
 	{
-		auto parentObject = m_world->GetObjectByInstanceId(parentInstanceId.GameObjectId());
-		if (auto parentGameObject = parentObject.DynamicCast<GameObject>())
-		{
-			root->SetParent(parentGameObject);
-		}
+		root->SetParent(parentGameObject);
 	}
 
 	return true;

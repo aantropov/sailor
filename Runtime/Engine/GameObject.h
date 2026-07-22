@@ -51,13 +51,32 @@ namespace Sailor
 			return newObject;
 		}
 
-		SAILOR_API ComponentPtr AddComponentRaw(ComponentPtr component)
+		SAILOR_API ComponentPtr AddComponentRaw(ComponentPtr component, const InstanceId& preferredInstanceId = InstanceId::Invalid)
 		{
 			check(m_pWorld);
 			check(!component->m_bBeginPlayCalled);
 			check(!component->GetOwner().IsValid());
 
-			component->m_instanceId = InstanceId::GenerateNewComponentId(m_instanceId);
+			if (preferredInstanceId)
+			{
+				if (preferredInstanceId.ComponentId() == InstanceId::Invalid ||
+					preferredInstanceId.GameObjectId() != m_instanceId)
+				{
+					return {};
+				}
+
+				for (const auto& existingComponent : m_components)
+				{
+					if (existingComponent->GetInstanceId() == preferredInstanceId)
+					{
+						return {};
+					}
+				}
+			}
+
+			component->m_instanceId = preferredInstanceId
+				? preferredInstanceId
+				: InstanceId::GenerateNewComponentId(m_instanceId);
 			component->m_owner = m_self;
 			component->Initialize();
 

@@ -21,6 +21,22 @@ internal sealed class WorkspaceActivationOperations(
         Reset(commandHistory.BeginWorkspaceChange, failures);
         Reset(selectionService.BeginWorkspaceChange, failures);
 
+        var commandExecutionsDrained = false;
+        try
+        {
+            // Teardown is irreversible. Once new commands are gated, old workspace
+            // executions must finish even when the activation request was cancelled.
+            await commandHistory.BeginWorkspaceChangeAsync(CancellationToken.None).ConfigureAwait(false);
+            commandExecutionsDrained = true;
+        }
+        catch (Exception ex)
+        {
+            failures.Add(ex);
+        }
+
+        if (!commandExecutionsDrained)
+            throw new AggregateException("Workspace command execution drain failed.", failures);
+
         var hadActiveRuntime = engineService.State is
             EngineLifecycleState.Starting or
             EngineLifecycleState.Running or
@@ -51,7 +67,9 @@ internal sealed class WorkspaceActivationOperations(
         return MainThread.InvokeOnMainThreadAsync(() =>
         {
             var failures = new List<Exception>();
-            Reset(commandHistory.ResetForWorkspaceChange, failures);
+            // This guard must succeed before any workspace-owned runtime or
+            // projection state is cleared.
+            commandHistory.ResetForWorkspaceChange();
             Reset(selectionService.ResetForWorkspaceChange, failures);
             Reset(worldService.ResetForWorkspaceChange, failures);
             Reset(engineService.ResetForWorkspaceChange, failures);

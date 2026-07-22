@@ -31,6 +31,8 @@ public interface IUndoRedoHistory
 
     void Push(HistoryEntry entry);
 
+    void PushUndoPreservingRedo(HistoryEntry entry);
+
     HistoryEntry PopUndo();
 
     HistoryEntry PopRedo();
@@ -58,6 +60,8 @@ public sealed class InMemoryUndoRedoHistory : IUndoRedoHistory
         _undo.Push(entry);
         _redo.Clear();
     }
+
+    public void PushUndoPreservingRedo(HistoryEntry entry) => _undo.Push(entry);
 
     public HistoryEntry PopUndo() => _undo.Pop();
 
