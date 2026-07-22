@@ -224,6 +224,41 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void WindowsViewportBootstrap_PreservesTheLatestSceneGeometryVisibilityAndFocus()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var update = source.IndexOf("public bool TryUpdateRemoteViewport", StringComparison.Ordinal);
+        var interopLock = source.IndexOf("lock (interopLock)", update, StringComparison.Ordinal);
+        var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", interopLock, StringComparison.Ordinal);
+        var refresh = source.IndexOf("bool TryRefreshSceneRemoteViewport", rememberState, StringComparison.Ordinal);
+        var refreshLock = source.IndexOf("lock (interopLock)", refresh, StringComparison.Ordinal);
+        var captureState = source.IndexOf("var viewportState = sceneViewportState.Capture();", refreshLock, StringComparison.Ordinal);
+        var preservedRect = source.IndexOf("viewportState.Rect,", captureState, StringComparison.Ordinal);
+        var preservedVisibility = source.IndexOf("viewportState.Visible,", preservedRect, StringComparison.Ordinal);
+        var preservedFocus = source.IndexOf("viewportState.Focused", preservedVisibility, StringComparison.Ordinal);
+        var bootstrap = source.IndexOf("pollTasks.Add(RunPeriodicTaskAsync(() =>", rememberState, StringComparison.Ordinal);
+        var remoteUpdate = source.IndexOf("TryRefreshSceneRemoteViewport(generation)", bootstrap, StringComparison.Ordinal);
+
+        Assert.True(update >= 0);
+        Assert.True(interopLock > update);
+        Assert.True(rememberState > interopLock);
+        Assert.True(refresh > rememberState);
+        Assert.True(refreshLock > refresh);
+        Assert.True(captureState > refreshLock);
+        Assert.True(preservedRect > captureState);
+        Assert.True(preservedVisibility > preservedRect);
+        Assert.True(preservedFocus > preservedVisibility);
+        Assert.True(bootstrap > refresh);
+        Assert.True(remoteUpdate > bootstrap);
+        Assert.DoesNotContain(
+            "TryUpdateRemoteViewport(SceneViewportId, Viewport, visible: true, focused: false)",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("TryRefreshSceneRemoteViewport(Viewport)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NativeExitCode_IsAvailableOnBothExportSurfacesAndManagedInterop()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

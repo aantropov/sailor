@@ -46,10 +46,12 @@ public sealed class WorkspaceIsolationRegressionTests
         var resetSelection = Slice(selectionSource, "public void ResetForDocumentChange", "public void BeginWorkspaceChange");
         AssertInOrder(
             resetSelection,
+            "Interlocked.Increment(ref workspaceResetInProgress)",
             "Interlocked.Increment(ref suppressRuntimeSelectionSync)",
             "CancelPendingSelection()",
             "ClearSelectionCore()",
-            "Interlocked.Decrement(ref suppressRuntimeSelectionSync)");
+            "Interlocked.Decrement(ref suppressRuntimeSelectionSync)",
+            "Interlocked.Decrement(ref workspaceResetInProgress)");
 
         var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
         var create = Slice(worldSource, "public async Task<bool> CreateNewWorldAsync", "public async Task<bool> LoadWorldAsync");
@@ -105,11 +107,31 @@ public sealed class WorkspaceIsolationRegressionTests
         var source = ReadRepositoryFile("Editor", "Views", "InspectorView.xaml.cs");
         var refresh = Slice(source, "void RefreshInspector", "static bool AreEquivalentSelection");
 
+        Assert.Contains("CommitPendingInspectorChanges()", refresh, StringComparison.Ordinal);
         AssertInOrder(
             refresh,
-            "if (!inspectorProjection.IsWorkspaceResetInProgress &&",
-            "editable.HasPendingInspectorChanges",
+            "if (inspectorProjection.IsWorkspaceResetInProgress)",
+            "return false",
+            "!editable.HasPendingInspectorChanges",
             "editable.CommitInspectorChanges()");
+    }
+
+    [Fact]
+    public void InspectorLifecycle_CommitsBeforeUnsubscribingAndDoesNotRetainClosedViews()
+    {
+        var source = ReadRepositoryFile("Editor", "Views", "InspectorView.xaml.cs");
+        var subscribe = Slice(source, "void SubscribeToLifecycle", "void UnsubscribeFromLifecycle");
+        var unsubscribe = Slice(source, "void UnsubscribeFromLifecycle", "void OnProjectionChanged");
+
+        Assert.Contains("if (lifecycleSubscribed)", subscribe, StringComparison.Ordinal);
+        Assert.Contains("CommitPendingChangesRequested += CommitPendingInspectorChanges", subscribe, StringComparison.Ordinal);
+        Assert.Contains("inspectorProjection.PropertyChanged += OnProjectionChanged", subscribe, StringComparison.Ordinal);
+        AssertInOrder(
+            unsubscribe,
+            "CommitPendingInspectorChanges()",
+            "CommitPendingChangesRequested -= CommitPendingInspectorChanges",
+            "inspectorProjection.PropertyChanged -= OnProjectionChanged",
+            "lifecycleSubscribed = false");
     }
 
     [Fact]

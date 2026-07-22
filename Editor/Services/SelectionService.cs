@@ -15,6 +15,7 @@ namespace SailorEditor.Services
         long workspaceEpoch;
         CancellationTokenSource? pendingSelectionCancellation;
         int suppressRuntimeSelectionSync;
+        int workspaceResetInProgress;
         int workspaceChangeInProgress;
 
         public event Action<InstanceId> OnSelectInstanceAction = delegate { };
@@ -36,7 +37,7 @@ namespace SailorEditor.Services
 
         public SelectionSnapshot Snapshot => _selectionStore.Current;
         public long WorkspaceEpoch => Interlocked.Read(ref workspaceEpoch);
-        public bool IsWorkspaceResetInProgress => Volatile.Read(ref suppressRuntimeSelectionSync) != 0;
+        public bool IsWorkspaceResetInProgress => Volatile.Read(ref workspaceResetInProgress) != 0;
         public bool IsWorkspaceChangeInProgress => Volatile.Read(ref workspaceChangeInProgress) != 0;
 
         public void SelectInstance(InstanceId instanceId)
@@ -139,8 +140,29 @@ namespace SailorEditor.Services
             ClearSelectionCore();
         }
 
+        public void ApplyRuntimeSelection(InstanceId? instanceId)
+        {
+            Interlocked.Increment(ref suppressRuntimeSelectionSync);
+            try
+            {
+                if (instanceId is null || instanceId.IsEmpty())
+                {
+                    ClearSelection();
+                }
+                else
+                {
+                    SelectInstance(instanceId);
+                }
+            }
+            finally
+            {
+                Interlocked.Decrement(ref suppressRuntimeSelectionSync);
+            }
+        }
+
         public void ResetForDocumentChange()
         {
+            Interlocked.Increment(ref workspaceResetInProgress);
             Interlocked.Increment(ref suppressRuntimeSelectionSync);
             try
             {
@@ -150,6 +172,7 @@ namespace SailorEditor.Services
             finally
             {
                 Interlocked.Decrement(ref suppressRuntimeSelectionSync);
+                Interlocked.Decrement(ref workspaceResetInProgress);
             }
         }
 
@@ -165,6 +188,7 @@ namespace SailorEditor.Services
         public void ResetForWorkspaceChange()
         {
             BeginWorkspaceChange();
+            Interlocked.Increment(ref workspaceResetInProgress);
             Interlocked.Increment(ref suppressRuntimeSelectionSync);
             try
             {
@@ -174,6 +198,7 @@ namespace SailorEditor.Services
             finally
             {
                 Interlocked.Decrement(ref suppressRuntimeSelectionSync);
+                Interlocked.Decrement(ref workspaceResetInProgress);
             }
         }
 

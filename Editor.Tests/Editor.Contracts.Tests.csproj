@@ -53,6 +53,9 @@
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneSelectionRoutingTests.cs" />
+    <Compile Include="EditorViewportEventContractTests.cs" />
+    <Compile Include="AlreadyAppliedTransformCommandTests.cs" />
+    <Compile Include="InspectorPendingEditCoordinatorTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
@@ -65,6 +68,7 @@
     <Compile Include="WorldAssetRebindPolicyTests.cs" />
     <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
+    <Compile Include="LatestSceneViewportStateTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
     <Compile Include="Utf8InteropArgumentsTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
@@ -105,17 +109,21 @@
     <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
     <Compile Include="..\Editor\Scene\SceneViewportLifecycle.cs" Link="Scene\SceneViewportLifecycle.cs" />
     <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
+    <Compile Include="..\Editor\Scene\EditorViewportEventContract.cs" Link="Scene\EditorViewportEventContract.cs" />
+    <Compile Include="..\Editor\Commands\AlreadyAppliedTransformCommand.cs" Link="Commands\AlreadyAppliedTransformCommand.cs" />
     <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />
     <Compile Include="..\Editor\AI\AIOperatorService.cs" Link="AI\AIOperatorService.cs" />
     <Compile Include="..\Editor\AI\EditorAIContextProvider.cs" Link="AI\EditorAIContextProvider.cs" />
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
+    <Compile Include="..\Editor\Workflow\InspectorPendingEditCoordinator.cs" Link="Workflow\InspectorPendingEditCoordinator.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
     <Compile Include="..\Editor\Services\SceneDocumentContract.cs" Link="Services\SceneDocumentContract.cs" />
     <Compile Include="..\Editor\Services\WorldAssetRebindPolicy.cs" Link="Services\WorldAssetRebindPolicy.cs" />
     <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
+    <Compile Include="..\Editor\Services\LatestSceneViewportState.cs" Link="Services\LatestSceneViewportState.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
     <Compile Include="..\Editor\Services\Utf8InteropArguments.cs" Link="Services\Utf8InteropArguments.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />

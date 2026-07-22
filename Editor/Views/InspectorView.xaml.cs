@@ -12,17 +12,56 @@ namespace SailorEditor.Views
     public partial class InspectorView : ContentView
     {
         readonly InspectorProjectionService inspectorProjection;
+        readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
         bool isRefreshingInspector;
         bool isCommittingInspectorChanges;
+        bool lifecycleSubscribed;
 
         public InspectorView()
         {
             InitializeComponent();
 
             inspectorProjection = MauiProgram.GetService<InspectorProjectionService>();
-            inspectorProjection.PropertyChanged += OnProjectionChanged;
+            inspectorPendingEditCoordinator = MauiProgram.GetService<InspectorPendingEditCoordinator>();
             this.BindingContext = inspectorProjection;
             RefreshInspector();
+
+            Loaded += (_, _) => SubscribeToLifecycle();
+            Unloaded += (_, _) => UnsubscribeFromLifecycle();
+        }
+
+        void SubscribeToLifecycle()
+        {
+            if (lifecycleSubscribed)
+            {
+                return;
+            }
+
+            inspectorPendingEditCoordinator.CommitPendingChangesRequested += CommitPendingInspectorChanges;
+            inspectorProjection.PropertyChanged += OnProjectionChanged;
+            lifecycleSubscribed = true;
+            RefreshInspector();
+        }
+
+        void UnsubscribeFromLifecycle()
+        {
+            if (!lifecycleSubscribed)
+            {
+                return;
+            }
+
+            try
+            {
+                CommitPendingInspectorChanges();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Inspector pending edit commit failed while unloading: {ex}");
+            }
+
+            inspectorPendingEditCoordinator.CommitPendingChangesRequested -= CommitPendingInspectorChanges;
+            inspectorProjection.PropertyChanged -= OnProjectionChanged;
+            lifecycleSubscribed = false;
         }
 
         void OnProjectionChanged(object sender, PropertyChangedEventArgs args)
@@ -46,22 +85,7 @@ namespace SailorEditor.Views
 
             try
             {
-                if (!inspectorProjection.IsWorkspaceResetInProgress &&
-                    !isCommittingInspectorChanges &&
-                    InspectedItemHost.Content?.BindingContext is IInspectorEditable editable &&
-                    editable.HasPendingInspectorChanges)
-                {
-                    isCommittingInspectorChanges = true;
-
-                    try
-                    {
-                        editable.CommitInspectorChanges();
-                    }
-                    finally
-                    {
-                        isCommittingInspectorChanges = false;
-                    }
-                }
+                CommitPendingInspectorChanges();
 
                 if (inspectorProjection.SelectedItem == null)
                 {
@@ -89,6 +113,33 @@ namespace SailorEditor.Views
             {
                 isRefreshingInspector = false;
             }
+        }
+
+        bool CommitPendingInspectorChanges()
+        {
+            if (inspectorProjection.IsWorkspaceResetInProgress)
+            {
+                return false;
+            }
+
+            if (isCommittingInspectorChanges ||
+                InspectedItemHost.Content?.BindingContext is not IInspectorEditable editable ||
+                !editable.HasPendingInspectorChanges)
+            {
+                return true;
+            }
+
+            isCommittingInspectorChanges = true;
+            try
+            {
+                editable.CommitInspectorChanges();
+            }
+            finally
+            {
+                isCommittingInspectorChanges = false;
+            }
+
+            return !editable.HasPendingInspectorChanges;
         }
 
         static bool AreEquivalentSelection(object? current, object? next)

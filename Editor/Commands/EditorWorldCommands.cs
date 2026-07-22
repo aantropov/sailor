@@ -61,6 +61,20 @@ public sealed class SelectObjectCommand(InstanceId? instanceId = null, Observabl
     }
 }
 
+public sealed class ApplyRuntimeSelectionCommand(InstanceId? instanceId) : IEditorCommand
+{
+    readonly InstanceId? _instanceId = instanceId;
+
+    public string Name => nameof(ApplyRuntimeSelectionCommand);
+    public bool CanExecute(ActionContext context) => true;
+
+    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    {
+        MauiProgram.GetService<SelectionService>().ApplyRuntimeSelection(_instanceId);
+        return Task.FromResult(CommandResult.Success());
+    }
+}
+
 public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
 {
     readonly InstanceId _instanceId;
