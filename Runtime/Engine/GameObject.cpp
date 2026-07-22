@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
+#include "Editor/EditorViewportController.h"
 #include <algorithm>
 
 using namespace Sailor;
@@ -110,6 +111,15 @@ void GameObject::DrawEditorSelectedGizmo()
 	const glm::vec4 localScale = transform.GetScale();
 	const float axisSize = std::max(25.0f,
 		std::max(std::abs(localScale.x), std::max(std::abs(localScale.y), std::abs(localScale.z))) * 100.0f);
+
+	Math::AABB selectionBounds{};
+	bool bUsesMeshBounds = false;
+	if (EditorViewport::ResolveGameObjectBounds(m_self, selectionBounds, bUsesMeshBounds))
+	{
+		GetWorld()->GetDebugContext()->DrawAABB(
+			selectionBounds,
+			glm::vec4(1.0f, 0.62f, 0.05f, 1.0f));
+	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, transform.GetCachedWorldMatrix(), axisSize);
 

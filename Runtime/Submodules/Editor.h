@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Submodule.h"
+#include "Memory/UniquePtr.hpp"
 #include <yaml-cpp/yaml.h>
 #if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
@@ -17,7 +18,10 @@ namespace Sailor
 {
 	template<typename T>
 	class TObjectPtr;
+	class InstanceId;
 	class Prefab;
+	struct EditorManagedMutationState;
+	namespace EditorViewport { class EditorViewportController; }
 
 	namespace Win32 
 	{
@@ -29,9 +33,17 @@ namespace Sailor
 	public:
 
 		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
+		SAILOR_API ~Editor();
 
-		void SetWorld(class World* world) { m_world = world; }
+		void SetWorld(class World* world);
 		class World* GetWorld() const { return m_world; }
+		void TickViewportTools();
+		void CancelViewportInteraction();
+		bool PullViewportEvent(std::string& outEvent);
+		void NotifyManagedSelectionMutation() { ++m_managedSelectionMutationRevision; }
+		uint64_t GetManagedSelectionMutationRevision() const { return m_managedSelectionMutationRevision; }
+		void NotifyManagedObjectMutation(const InstanceId& instanceId);
+		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;
 
 		void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
@@ -67,6 +79,9 @@ namespace Sailor
 
 		class Win32::Window* m_pMainWindow = nullptr;
 
-		class World* m_world;
+		class World* m_world = nullptr;
+		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
+		uint64_t m_managedSelectionMutationRevision = 0;
+		TUniquePtr<EditorManagedMutationState> m_managedMutationState{};
 	};
 }

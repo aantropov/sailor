@@ -62,41 +62,39 @@ void EditorComponent::EditorTick(float deltaTime)
 
 	const float sensitivity = 1500;
 
-	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (GetWorld()->GetInput().IsKeyDown('A'))
-		delta += -cross(cameraViewDirection, Math::vec3_Up);
-
-	if (GetWorld()->GetInput().IsKeyDown('D'))
-		delta += cross(cameraViewDirection, Math::vec3_Up);
-
-	if (GetWorld()->GetInput().IsKeyDown('W'))
-		delta += cameraViewDirection;
-
-	if (GetWorld()->GetInput().IsKeyDown('S'))
-		delta += -cameraViewDirection;
-
-	if (GetWorld()->GetInput().IsKeyDown('X'))
-		delta += vec3(1, 0, 0);
-
-	if (GetWorld()->GetInput().IsKeyDown('Y'))
-		delta += vec3(0, 1, 0);
-
-	if (GetWorld()->GetInput().IsKeyDown('Z'))
-		delta += vec3(0, 0, 1);
-
-	const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) * (GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
-
-	if (glm::length(delta) > 0)
+	const bool bNavigatingViewport = GetWorld()->GetInput().IsKeyDown(VK_RBUTTON);
+	if (bNavigatingViewport)
 	{
-		vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+		glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
+		if (GetWorld()->GetInput().IsKeyDown('A'))
+			delta += -cross(cameraViewDirection, Math::vec3_Up);
 
-		const vec4 newPosition = transform.GetPosition() + shift;
+		if (GetWorld()->GetInput().IsKeyDown('D'))
+			delta += cross(cameraViewDirection, Math::vec3_Up);
 
-		transform.SetPosition(newPosition);
-	}
+		if (GetWorld()->GetInput().IsKeyDown('W'))
+			delta += cameraViewDirection;
 
-	if (GetWorld()->GetInput().IsKeyDown(VK_RBUTTON))
-	{
+		if (GetWorld()->GetInput().IsKeyDown('S'))
+			delta += -cameraViewDirection;
+
+		if (GetWorld()->GetInput().IsKeyDown('X'))
+			delta += vec3(1, 0, 0);
+
+		if (GetWorld()->GetInput().IsKeyDown('Y'))
+			delta += vec3(0, 1, 0);
+
+		if (GetWorld()->GetInput().IsKeyDown('Z'))
+			delta += vec3(0, 0, 1);
+
+		const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) *
+			(GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
+		if (glm::length(delta) > 0)
+		{
+			const vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+			transform.SetPosition(transform.GetPosition() + shift);
+		}
+
 		if (GetWorld()->GetInput().IsKeyPressed(VK_RBUTTON))
 		{
 			m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();

@@ -1,5 +1,6 @@
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -69,6 +70,28 @@ namespace
 
 		Require(input.Validate().IsOk(), "input packet should validate");
 		Require((input.m_modifiers & InputModifier::Shift) == InputModifier::Shift, "modifier bitmask should work");
+
+		InputPacket invalidInput = input;
+		invalidInput.m_kind = static_cast<InputKind>(255);
+		Require(!invalidInput.Validate().IsOk(), "out-of-range input kind should be rejected");
+
+		invalidInput = input;
+		invalidInput.m_modifiers = static_cast<InputModifier>(1u << 15u);
+		Require(!invalidInput.Validate().IsOk(), "unknown input modifier bits should be rejected");
+
+		invalidInput = input;
+		invalidInput.m_pointerX = std::numeric_limits<float>::quiet_NaN();
+		Require(!invalidInput.Validate().IsOk(), "non-finite input coordinates should be rejected");
+
+		invalidInput = input;
+		invalidInput.m_kind = InputKind::PointerButton;
+		invalidInput.m_keyCode = 3;
+		Require(!invalidInput.Validate().IsOk(), "out-of-range mouse button should be rejected");
+
+		invalidInput = input;
+		invalidInput.m_kind = InputKind::Key;
+		invalidInput.m_keyCode = 256;
+		Require(!invalidInput.Validate().IsOk(), "out-of-range keyboard key should be rejected");
 
 		ViewportDescriptor invalidViewport = viewport;
 		invalidViewport.m_width = 0;
@@ -148,6 +171,40 @@ namespace
 		Require(guards.AcknowledgeTransportReady(4, 3) == GuardDecision::RejectStaleEpoch, "old epoch ready ack must be rejected");
 	}
 
+	void TestMouseButtonStateRequiresExplicitPressAfterReset()
+	{
+		std::array<bool, 3> state{};
+		InputPacket input{};
+		input.m_kind = InputKind::PointerButton;
+		input.m_keyCode = 0;
+		input.m_pressed = true;
+		input.m_modifiers = InputModifier::MouseLeft;
+		state = ResolveRemoteMouseButtonState(state, input);
+		Require(state[0], "an explicit primary-button press must set the remote button state");
+
+		state = {};
+		input.m_kind = InputKind::PointerMove;
+		input.m_modifiers = InputModifier::MouseLeft;
+		state = ResolveRemoteMouseButtonState(state, input);
+		Require(!state[0],
+			"a held-button modifier after resize or lifecycle reset must not synthesize a second press");
+
+		input.m_kind = InputKind::PointerButton;
+		input.m_pressed = false;
+		state = ResolveRemoteMouseButtonState(state, input);
+		Require(!state[0], "the matching release after reset must leave the button up");
+
+		input.m_pressed = true;
+		state = ResolveRemoteMouseButtonState(state, input);
+		Require(state[0], "a fresh explicit press after release must begin the next gesture");
+
+		input.m_kind = InputKind::Capture;
+		input.m_captured = false;
+		state = ResolveRemoteMouseButtonState(state, input);
+		Require(!state[0] && !state[1] && !state[2],
+			"capture loss must release every remote mouse button");
+	}
+
 	void TestFailureClassification()
 	{
 		Require(ClassifyResult(ErrorDomain::None, 0) == ResultCode::Ok, "no error should map to Ok");
@@ -207,6 +264,7 @@ int main()
 		{ "ProtocolValidationAndRoundtrip", TestProtocolValidationAndRoundtrip },
 		{ "SessionStateTransitions", TestSessionStateTransitions },
 		{ "GenerationAndEpochGuards", TestGenerationAndEpochGuards },
+		{ "MouseButtonStateRequiresExplicitPressAfterReset", TestMouseButtonStateRequiresExplicitPressAfterReset },
 		{ "FailureClassification", TestFailureClassification },
 		{ "TimeoutBackoffAndDiagnosticsHelpers", TestTimeoutBackoffAndDiagnosticsHelpers },
 	};

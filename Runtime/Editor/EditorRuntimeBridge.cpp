@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <mutex>
@@ -468,7 +469,10 @@ namespace
 	TMap<ViewportId, TSharedPtr<RemoteViewportBinding>> g_remoteViewportBindings;
 	TMap<ViewportId, Sailor::EditorRemote::MacNativeHostHandle> g_pendingRemoteViewportHostHandles;
 	TMap<ViewportId, std::array<bool, 3>> g_remoteViewportMouseButtons;
+	TVector<InputPacket> g_pendingEditorInput;
+	TSet<ViewportId> g_pendingEditorInputResets;
 	std::mutex g_remoteViewportBindingsMutex;
+	std::mutex g_pendingEditorInputMutex;
 	std::mutex g_editorViewportMutex;
 	RECT g_pendingEditorViewport{};
 	glm::ivec2 g_appliedEditorRenderArea{ 0, 0 };
@@ -491,9 +495,50 @@ namespace
 		return descriptor;
 	}
 
-	bool HasInputModifier(InputModifier modifiers, InputModifier modifier)
+	void RequestEditorInputReset(ViewportId viewportId)
 	{
-		return (static_cast<uint16_t>(modifiers & modifier) != 0);
+		std::lock_guard inputLock(g_pendingEditorInputMutex);
+		g_pendingEditorInputResets.Insert(viewportId);
+	}
+
+	void ResetEditorInputStateOnEngineThread()
+	{
+		Win32::GlobalInput::Reset();
+		if (auto editor = App::GetSubmodule<Editor>())
+		{
+			editor->CancelViewportInteraction();
+		}
+
+		if (ImGui::GetCurrentContext())
+		{
+			ImGuiIO& io = ImGui::GetIO();
+			io.ClearInputKeys();
+			io.ClearInputMouse();
+		}
+
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		g_remoteViewportMouseButtons.Clear();
+	}
+
+	bool IsEditorInputCurrent(const InputPacket& input)
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		auto it = g_remoteViewportBindings.Find(input.m_viewportId);
+		if (it == g_remoteViewportBindings.end())
+		{
+			return false;
+		}
+
+		const auto& binding = it.Value();
+		std::lock_guard bindingLock(binding->m_mutex);
+		const auto& runtimeSession = binding->m_binding.GetRuntimeSession();
+		const auto state = runtimeSession.GetState();
+		return binding->m_created &&
+			state != SessionState::Terminating &&
+			state != SessionState::Disposed &&
+			runtimeSession.GetViewportId() == input.m_viewportId &&
+			runtimeSession.GetConnectionEpoch() == input.m_connectionEpoch &&
+			runtimeSession.GetGeneration() == input.m_generation;
 	}
 
 	void SyncEditorMouseButtons(const InputPacket& input, ImGuiApi* imGui)
@@ -503,21 +548,7 @@ namespace
 
 		auto& state = g_remoteViewportMouseButtons[input.m_viewportId];
 
-		std::array<bool, 3> desired =
-		{
-			HasInputModifier(input.m_modifiers, InputModifier::MouseLeft),
-			HasInputModifier(input.m_modifiers, InputModifier::MouseRight),
-			HasInputModifier(input.m_modifiers, InputModifier::MouseMiddle)
-		};
-
-		if (input.m_kind == InputKind::PointerButton && input.m_keyCode < desired.size())
-		{
-			desired[input.m_keyCode] = input.m_pressed;
-		}
-		else if (input.m_kind == InputKind::Focus && !input.m_focused)
-		{
-			desired = { false, false, false };
-		}
+		const std::array<bool, 3> desired = ResolveRemoteMouseButtonState(state, input);
 
 		for (uint32_t i = 0; i < desired.size(); i++)
 		{
@@ -563,10 +594,17 @@ namespace
 		case InputKind::PointerButton:
 		case InputKind::PointerWheel:
 		case InputKind::Focus:
+		case InputKind::Capture:
 			SyncEditorMouseButtons(input, imGui);
 			break;
 		default:
 			break;
+		}
+
+		if ((input.m_kind == InputKind::Focus && !input.m_focused) ||
+			(input.m_kind == InputKind::Capture && !input.m_captured))
+		{
+			ResetEditorInputStateOnEngineThread();
 		}
 
 		switch (input.m_kind)
@@ -708,6 +746,35 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 	return true;
 }
 
+void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()
+{
+	TVector<InputPacket> pendingInput{};
+	TSet<ViewportId> pendingResets{};
+	{
+		std::lock_guard lock(g_pendingEditorInputMutex);
+		pendingInput = std::move(g_pendingEditorInput);
+		g_pendingEditorInput = {};
+		pendingResets = std::move(g_pendingEditorInputResets);
+		g_pendingEditorInputResets = {};
+	}
+
+	if (!pendingResets.IsEmpty())
+	{
+		ResetEditorInputStateOnEngineThread();
+	}
+
+	for (const auto& input : pendingInput)
+	{
+		if (!IsEditorInputCurrent(input))
+		{
+			ResetEditorInputStateOnEngineThread();
+			continue;
+		}
+
+		DispatchEditorInputToRuntime(input);
+	}
+}
+
 void Sailor::EditorRuntime::ResetForAppLifecycle()
 {
 	{
@@ -733,6 +800,11 @@ void Sailor::EditorRuntime::ResetForAppLifecycle()
 		g_remoteViewportMouseButtons.Clear();
 	}
 	Win32::GlobalInput::Reset();
+	{
+		std::lock_guard inputLock(g_pendingEditorInputMutex);
+		g_pendingEditorInput.Clear();
+		g_pendingEditorInputResets.Clear();
+	}
 
 	{
 		std::lock_guard viewportLock(g_editorViewportMutex);
@@ -881,6 +953,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 		if (createdDescriptor.m_width != remoteWidth || createdDescriptor.m_height != remoteHeight)
 		{
 			binding->m_binding.Resize(remoteWidth, remoteHeight);
+			RequestEditorInputReset(viewportId);
 		}
 	}
 	else
@@ -889,11 +962,16 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 		if (descriptor.m_width != remoteWidth || descriptor.m_height != remoteHeight)
 		{
 			binding->m_binding.Resize(remoteWidth, remoteHeight);
+			RequestEditorInputReset(viewportId);
 		}
 	}
 
 	binding->m_lastRect = rect;
 	binding->SetVisible(bVisible);
+	if (binding->m_focused && !bFocused)
+	{
+		RequestEditorInputReset(viewportId);
+	}
 	binding->SetFocused(bFocused);
 	binding->Pump();
 	return true;
@@ -916,6 +994,7 @@ bool App::DestroyEditorRemoteViewport(uint64_t viewportId)
 		return false;
 	}
 	binding->m_binding.Destroy();
+	RequestEditorInputReset(viewportId);
 	g_remoteViewportBindings.Remove(viewportId);
 	return true;
 }
@@ -1088,6 +1167,24 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+	constexpr uint32_t validModifiers =
+		static_cast<uint32_t>(InputModifier::Shift) |
+		static_cast<uint32_t>(InputModifier::Control) |
+		static_cast<uint32_t>(InputModifier::Alt) |
+		static_cast<uint32_t>(InputModifier::Meta) |
+		static_cast<uint32_t>(InputModifier::MouseLeft) |
+		static_cast<uint32_t>(InputModifier::MouseRight) |
+		static_cast<uint32_t>(InputModifier::MouseMiddle);
+	if (kind < static_cast<uint32_t>(InputKind::PointerMove) ||
+		kind > static_cast<uint32_t>(InputKind::Capture) ||
+		(modifiers & ~validModifiers) != 0 ||
+		!std::isfinite(pointerX) || !std::isfinite(pointerY) ||
+		!std::isfinite(wheelDeltaX) || !std::isfinite(wheelDeltaY) ||
+		(kind == static_cast<uint32_t>(InputKind::PointerButton) && button >= 3) ||
+		(kind == static_cast<uint32_t>(InputKind::Key) && keyCode >= 256))
+	{
+		return false;
+	}
 
 	InputPacket input{};
 	input.m_kind = static_cast<InputKind>(kind);
@@ -1101,8 +1198,6 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 	input.m_focused = bFocused;
 	input.m_captured = bCaptured;
 
-	DispatchEditorInputToRuntime(input);
-
 	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
 	auto it = g_remoteViewportBindings.Find(viewportId);
 	if (it == g_remoteViewportBindings.end())
@@ -1110,16 +1205,21 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 		return false;
 	}
 
-	std::unique_lock bindingLock(it.Value()->m_mutex, std::try_to_lock);
-	if (!bindingLock.owns_lock())
-	{
-		return true;
-	}
+	std::lock_guard bindingLock(it.Value()->m_mutex);
 
 	auto& runtimeSession = it.Value()->m_binding.GetRuntimeSession();
 	input.m_viewportId = runtimeSession.GetViewportId();
 	input.m_connectionEpoch = runtimeSession.GetConnectionEpoch();
 	input.m_generation = runtimeSession.GetGeneration();
 	input.m_timestampNs = ++it.Value()->m_nowMs;
-	return runtimeSession.HandleInput(input).IsOk();
+	if (!runtimeSession.HandleInput(input).IsOk())
+	{
+		return false;
+	}
+
+	{
+		std::lock_guard inputLock(g_pendingEditorInputMutex);
+		g_pendingEditorInput.Add(input);
+	}
+	return true;
 }

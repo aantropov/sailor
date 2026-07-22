@@ -644,6 +644,7 @@ void App::Start()
 		if (bRunsInsideEditor)
 		{
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		}
 
 		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !pMainWindow->IsParentWindowValid())

@@ -74,6 +74,8 @@ namespace Sailor
 		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
 		SAILOR_API static bool SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
+		SAILOR_API static uint32_t PullEditorViewportEvents(char** events, uint32_t num);
+		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);

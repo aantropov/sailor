@@ -107,6 +107,16 @@ extern "C"
 		return Sailor::App::PullEditorMessages(messages, num);
 	}
 
+	SAILOR_API uint32_t PullEditorViewportEvents(char** events, uint32_t num)
+	{
+		return Sailor::App::PullEditorViewportEvents(events, num);
+	}
+
+	SAILOR_API uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
+	{
+		return Sailor::App::GetEditorManagedMutationRevision(kind, strInstanceId);
+	}
+
 	SAILOR_API uint32_t SerializeCurrentWorld(char** yamlNode)
 	{
 		return Sailor::App::SerializeCurrentWorld(yamlNode);

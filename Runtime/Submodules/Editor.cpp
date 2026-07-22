@@ -6,14 +6,17 @@
 #include "ECS/TransformECS.h"
 #include "ECS/PathTracerECS.h"
 #include "Components/PathTracerProxyComponent.h"
+#include "Components/EditorComponent.h"
 #include "Raytracing/PathTracer.h"
 #include "Editor.h"
+#include "Containers/Map.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Reflection.h"
 #include "Math/Math.h"
 #include "Math/Transform.h"
+#include "Editor/EditorViewportController.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
 #endif
@@ -27,6 +30,14 @@
 #include "Platform/Win32/Window.h"
 
 using namespace Sailor;
+
+namespace Sailor
+{
+	struct EditorManagedMutationState
+	{
+		TMap<InstanceId, uint64_t> m_objectRevisions{};
+	};
+}
 
 namespace
 {
@@ -160,9 +171,80 @@ namespace
 Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
 	m_editorPort(editorPort),
 	m_editorHwnd(editorHwnd),
-	m_pMainWindow(pMainWindow)
+	m_pMainWindow(pMainWindow),
+	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
+	m_managedMutationState(TUniquePtr<EditorManagedMutationState>::Make())
 {
 
+}
+
+Editor::~Editor() = default;
+
+void Editor::SetWorld(World* world)
+{
+	m_world = world;
+	m_managedSelectionMutationRevision = 0;
+	m_managedMutationState->m_objectRevisions.Clear();
+	m_viewportController->Reset();
+	m_viewportController->SetManagedMutationRevisions(0, 0);
+}
+
+void Editor::TickViewportTools()
+{
+	if (m_world)
+	{
+		uint64_t selectedObjectRevision = 0;
+		for (const auto& gameObject : m_world->GetGameObjects())
+		{
+			if (gameObject &&
+				m_world->IsEditorSelected(gameObject->GetInstanceId()) &&
+				!gameObject->GetComponent<EditorComponent>())
+			{
+				selectedObjectRevision = GetManagedObjectMutationRevision(gameObject->GetInstanceId());
+				break;
+			}
+		}
+
+		m_viewportController->SetManagedMutationRevisions(
+			m_managedSelectionMutationRevision,
+			selectedObjectRevision);
+		m_viewportController->Tick(*m_world);
+	}
+}
+
+void Editor::NotifyManagedObjectMutation(const InstanceId& instanceId)
+{
+	const InstanceId gameObjectId = instanceId.GameObjectId();
+	if (gameObjectId)
+	{
+		++m_managedMutationState->m_objectRevisions[gameObjectId];
+	}
+}
+
+uint64_t Editor::GetManagedObjectMutationRevision(const InstanceId& instanceId) const
+{
+	const InstanceId gameObjectId = instanceId.GameObjectId();
+	const uint64_t* revision = nullptr;
+	return gameObjectId && m_managedMutationState->m_objectRevisions.Find(gameObjectId, revision)
+		? *revision
+		: 0;
+}
+
+void Editor::CancelViewportInteraction()
+{
+	if (m_world)
+	{
+		m_viewportController->CancelInteraction(*m_world);
+	}
+	else
+	{
+		m_viewportController->CancelPointerInteraction();
+	}
+}
+
+bool Editor::PullViewportEvent(std::string& outEvent)
+{
+	return m_viewportController->PullEvent(outEvent);
 }
 
 void Editor::ShowMainWindow(bool bShow)
@@ -203,7 +285,6 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 				}
 
 				m_world->ApplyComponentReflection(el, overrideData, true);
-
 				return true;
 			}
 		}
@@ -227,7 +308,7 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			transform.SetPosition(reflected.m_position);
 			transform.SetRotation(reflected.m_rotation);
 			transform.SetScale(reflected.m_scale);
-
+			NotifyManagedObjectMutation(instanceId);
 			return true;
 
 			//TVector<ReflectedData> components{};
@@ -373,6 +454,7 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 		transform.SetScale(localTransform.m_scale);
 	}
 
+	NotifyManagedObjectMutation(instanceId);
 	return true;
 }
 
@@ -406,6 +488,7 @@ bool Editor::CreateGameObject(const InstanceId& parentInstanceId, const Instance
 	}
 
 	outInstanceId = gameObject->GetInstanceId();
+	NotifyManagedObjectMutation(outInstanceId);
 	return true;
 }
 
@@ -425,6 +508,7 @@ bool Editor::DestroyObject(const InstanceId& instanceId)
 		return false;
 	}
 
+	NotifyManagedObjectMutation(instanceId);
 	m_world->DestroyImmediate(gameObject);
 	return true;
 }
@@ -584,6 +668,7 @@ bool Editor::InstantiatePrefab(const PrefabPtr& prefab, const InstanceId& parent
 		root->SetParent(parentGameObject);
 	}
 
+	NotifyManagedObjectMutation(root->GetInstanceId());
 	return true;
 }
 

@@ -43,6 +43,14 @@ add_executable(EcsLifecycleContractTests
     EcsLifecycleContractTests.cpp
 )
 
+add_executable(BoundsContractTests
+    BoundsContractTests.cpp
+)
+
+add_executable(EditorViewportControllerContractTests
+    EditorViewportControllerContractTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -156,10 +164,15 @@ endif()
 target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
+target_compile_definitions(RemoteViewportRuntimeTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
+target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
+target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_definitions(EcsLifecycleContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
@@ -198,6 +211,8 @@ target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -237,6 +252,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(AssetCacheContractTests)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
     sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
+    sailor_stage_workspace_test_runtime(BoundsContractTests)
+    sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
@@ -268,6 +285,12 @@ target_include_directories(InstanceIdContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EcsLifecycleContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(BoundsContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(EditorViewportControllerContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -367,6 +390,16 @@ add_test(
 )
 
 add_test(
+    NAME BoundsContractTests
+    COMMAND BoundsContractTests
+)
+
+add_test(
+    NAME EditorViewportControllerContractTests
+    COMMAND EditorViewportControllerContractTests
+)
+
+add_test(
     NAME WorkspaceModuleContractTests
     COMMAND WorkspaceModuleContractTests
 )
@@ -451,6 +484,8 @@ set_tests_properties(
     SmartPointerTests
     InstanceIdContractTests
     EcsLifecycleContractTests
+    BoundsContractTests
+    EditorViewportControllerContractTests
     VulkanMemoryCounterContract
     SkyTemperatureTableContract
     ShaderConstantsModeContract

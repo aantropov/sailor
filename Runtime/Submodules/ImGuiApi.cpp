@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <imgui.h>
+#include <ImGuizmo.h>
 #if defined(_WIN32)
 #include <imgui_impl_win32.h>
 #endif
@@ -55,6 +56,8 @@ static ImGuiKey SailorMapMacVirtualKey(uint32_t key)
 	case 'Z': return ImGuiKey_Z;
 	case VK_SHIFT: return ImGuiKey_ModShift;
 	case VK_CONTROL: return ImGuiKey_ModCtrl;
+	case VK_MENU: return ImGuiKey_ModAlt;
+	case VK_LWIN: return ImGuiKey_ModSuper;
 	case VK_ESCAPE: return ImGuiKey_Escape;
 	case VK_F5: return ImGuiKey_F5;
 	case VK_F6: return ImGuiKey_F6;
@@ -108,6 +111,7 @@ ImGuiApi::ImGuiApi(void* hWnd)
 	SAILOR_PROFILE_FUNCTION();
 
 	ImGui::CreateContext();
+	ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
 #if defined(_WIN32)
 	ImGui_ImplWin32_Init(hWnd);
 #else
@@ -172,6 +176,7 @@ void ImGuiApi::NewFrame()
 	}
 #endif
 	ImGui::NewFrame();
+	ImGuizmo::BeginFrame();
 }
 
 void ImGuiApi::PrepareFrame(RHI::RHICommandListPtr transferCmdList)
