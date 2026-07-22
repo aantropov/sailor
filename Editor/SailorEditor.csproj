@@ -42,6 +42,10 @@
 	    <ValidateXcodeVersion>false</ValidateXcodeVersion>
   </PropertyGroup>
 
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows' and '$(RuntimeIdentifierOverride)' != ''">
+		<RuntimeIdentifier>$(RuntimeIdentifierOverride)</RuntimeIdentifier>
+	</PropertyGroup>
+
 	<PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-maccatalyst|AnyCPU'">
 	  <TreatWarningsAsErrors>False</TreatWarningsAsErrors>
 	  <ApplicationTitle>SailorEditor</ApplicationTitle>

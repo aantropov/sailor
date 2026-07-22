@@ -13,6 +13,7 @@ using SailorEditor.Content;
 using SailorEditor.Settings;
 using SailorEditor.AI;
 using SailorEditor.Workspace;
+using SailorEditor.Testing;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -25,6 +26,7 @@ namespace SailorEditor
         public static TService GetService<TService>() => serviceProvider.GetService<TService>();
         public static MauiApp CreateMauiApp()
         {
+            var screenshotTestOptions = EditorScreenshotTestOptions.Parse(Environment.GetCommandLineArgs());
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
@@ -54,7 +56,11 @@ namespace SailorEditor
             builder.Services.AddSingleton<WorkspaceGeneratedProjectStateService>();
             builder.Services.AddSingleton<WorkspaceProjectGenerator>();
             builder.Services.AddSingleton<WorkspaceTemplateService>();
-            builder.Services.AddSingleton(_ => new RecentWorkspaceStore());
+            builder.Services.AddSingleton(screenshotTestOptions);
+            builder.Services.AddSingleton(_ => new RecentWorkspaceStore(
+                screenshotTestOptions.IsEnabled
+                    ? Path.Combine(screenshotTestOptions.StateDirectory!, "Workspaces", "recent-workspaces.yaml")
+                    : null));
             builder.Services.AddSingleton<WorkspaceLifecycleService>();
             builder.Services.AddSingleton<WorkspaceActivationOperations>();
             builder.Services.AddSingleton<IWorkspaceActivationOperations>(sp => sp.GetRequiredService<WorkspaceActivationOperations>());
@@ -68,14 +74,21 @@ namespace SailorEditor
             builder.Services.AddSingleton<ICommandDispatcher>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
             builder.Services.AddSingleton<ICommandHistoryService>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
             builder.Services.AddSingleton<ITransactionScopeFactory>(sp => sp.GetRequiredService<EditorCommandDispatcher>());
-            builder.Services.AddSingleton<IEditorShellLayoutStore, YamlEditorShellLayoutStore>();
+            builder.Services.AddSingleton<IEditorShellLayoutStore>(_ => new YamlEditorShellLayoutStore(
+                screenshotTestOptions.IsEnabled
+                    ? Path.Combine(screenshotTestOptions.StateDirectory!, "Layouts", "editor-shell-layout.yaml")
+                    : null));
             builder.Services.AddSingleton(sp => new UnifiedSettingsStore(EditorSettingsCatalog.Definitions));
-            builder.Services.AddSingleton<EditorSettingsPersistenceStore>();
+            builder.Services.AddSingleton(_ => new EditorSettingsPersistenceStore(
+                screenshotTestOptions.IsEnabled
+                    ? Path.Combine(screenshotTestOptions.StateDirectory!, "Settings", "editor-settings.yaml")
+                    : null));
             builder.Services.AddSingleton<EditorShellHost>();
             builder.Services.AddSingleton<IAIAgentInstructionsProvider, MarkdownAIAgentInstructionsProvider>();
             builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();
             builder.Services.AddSingleton<IAIActionPlanner, HeuristicAIActionPlanner>();
             builder.Services.AddSingleton<AIOperatorService>();
+            builder.Services.AddSingleton<EditorScreenshotTestRunner>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

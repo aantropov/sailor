@@ -3,6 +3,7 @@ using SailorEditor.Platforms.MacCatalyst;
 #endif
 using SailorEditor.Services;
 using SailorEditor.Shell;
+using SailorEditor.Testing;
 using SailorEditor.Workspace;
 using System.ComponentModel;
 
@@ -12,11 +13,13 @@ public partial class MainPage : ContentPage
 {
     readonly EditorShellHost _shellHost;
     readonly WorkspaceUiService _workspaceUi;
+    readonly EditorScreenshotTestRunner _screenshotTestRunner;
     bool _workspaceUiInitialized;
 
     public MainPage(EditorShellHost shellHost)
     {
         _shellHost = shellHost;
+        _screenshotTestRunner = MauiProgram.GetService<EditorScreenshotTestRunner>();
         _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
         InitializeComponent();
 #if MACCATALYST
@@ -42,6 +45,7 @@ public partial class MainPage : ContentPage
             await _shellHost.InitializeAsync();
         ShellLayoutHost.Rebuild();
         UpdateStatusText();
+        await _screenshotTestRunner.CaptureAndExitAsync();
     }
 
     void OnShellHostPropertyChanged(object? sender, PropertyChangedEventArgs e)

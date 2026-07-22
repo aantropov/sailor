@@ -3,6 +3,7 @@ using SailorEditor.Helpers;
 using SailorEditor.Commands;
 using SailorEditor.Services;
 using SailorEditor.Settings;
+using SailorEditor.Testing;
 using SailorEditor.Controls;
 using SailorEditor.Scene;
 using SailorEditor.Utility;
@@ -205,6 +206,9 @@ namespace SailorEditor.Views
 
             Loaded += (sender, args) =>
             {
+                if (MauiProgram.GetService<EditorScreenshotTestOptions>().IsEnabled)
+                    return;
+
                 isRunning = true;
 #if MACCATALYST
                 if (!UseNativeViewportHost)
