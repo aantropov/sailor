@@ -16,11 +16,85 @@ void StaticMeshRendererECS::BeginPlay()
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
 }
 
+void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRendererData& component)
+{
+	if (!m_sceneViewProxiesCache)
+	{
+		return;
+	}
+
+	RHI::RHIMeshProxy stationaryProxy{};
+	stationaryProxy.m_staticMeshEcs = index;
+	m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryProxy);
+
+	RHI::RHISceneViewProxy staticProxy{};
+	staticProxy.m_staticMeshEcs = index;
+	m_sceneViewProxiesCache->m_staticOctree.Remove(staticProxy);
+}
+
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
 	const uint32_t NumComponentsPerTask = 1024;
 
 	SAILOR_PROFILE_FUNCTION();
+
+	if (!m_sceneViewProxiesCache)
+	{
+		return nullptr;
+	}
+
+	// Remove proxies which no longer belong in their previous mobility tree before
+	// producing updates. Marking moved entries dirty lets the opposite tree receive
+	// the proxy during this same tick.
+	for (size_t index = 0; index < m_components.Num(); index++)
+	{
+		auto& data = m_components[index];
+		GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
+		const bool bHasRenderableModel = data.GetModel() && data.GetModel()->IsReady() && data.GetModel()->GetBoundsAABB().IsValid();
+		const bool bShouldBeStationary = data.m_bIsActive && ownerGameObject && bHasRenderableModel &&
+			ownerGameObject->GetMobilityType() == EMobilityType::Stationary;
+
+		if (!bShouldBeStationary)
+		{
+			RHI::RHIMeshProxy proxy{};
+			proxy.m_staticMeshEcs = index;
+			if (m_sceneViewProxiesCache->m_stationaryOctree.Remove(proxy))
+			{
+				data.m_bIsDirty = true;
+			}
+		}
+	}
+
+	auto cleanupStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Remove Stale Static Objects",
+		[this]()
+		{
+			for (size_t index = 0; index < m_components.Num(); index++)
+			{
+				auto& data = m_components[index];
+				GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
+				const bool bHasRenderableModel = data.GetModel() && data.GetModel()->IsReady() && data.GetModel()->GetBoundsAABB().IsValid();
+				bool bHasRenderableMaterials = !data.GetMaterials().IsEmpty();
+				for (const auto& material : data.GetMaterials())
+				{
+					bHasRenderableMaterials &= material && material->IsReady();
+				}
+
+				const bool bShouldBeStatic = data.m_bIsActive && ownerGameObject && bHasRenderableModel && bHasRenderableMaterials &&
+					ownerGameObject->GetMobilityType() == EMobilityType::Static;
+
+				if (!bShouldBeStatic)
+				{
+					RHI::RHISceneViewProxy proxy{};
+					proxy.m_staticMeshEcs = index;
+					if (m_sceneViewProxiesCache->m_staticOctree.Remove(proxy))
+					{
+						data.m_bIsDirty = true;
+					}
+				}
+			}
+		}, EThreadType::RHI)->Run();
+
+	cleanupStaticTask->Wait();
 
 	//TODO: Resolve New/Delete components
 	TVector<Tasks::TaskPtr<TVector<TPair<RHI::RHIMeshProxy, Math::AABB>>>> tasks;
@@ -40,7 +114,17 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					}
 
 					auto& data = m_components[index];
-					auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
+					if (!data.m_bIsActive)
+					{
+						continue;
+					}
+
+					GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
+					if (!ownerGameObject)
+					{
+						continue;
+					}
+
 					EMobilityType mobilityType = ownerGameObject->GetMobilityType();
 
 					if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
@@ -54,6 +138,14 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 							RHI::RHIMeshProxy proxy;
 							proxy.m_staticMeshEcs = GetComponentIndex(&data);
 							proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+							if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
+							{
+								data.m_skeletonOffset = animator->GetSkeletonOffset();
+							}
+							else
+							{
+								data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
+							}
 
 							adjustedBounds.Apply(proxy.m_worldMatrix);
 
@@ -102,25 +194,45 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	auto updateStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Update Static Objects",
 		[this]()
 		{
-			for (auto& data : m_components)
+			for (size_t index = 0; index < m_components.Num(); index++)
 			{
-				auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
+				auto& data = m_components[index];
+				if (!data.m_bIsActive)
+				{
+					continue;
+				}
+
+				GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
+				if (!ownerGameObject)
+				{
+					continue;
+				}
+
 				EMobilityType mobilityType = ownerGameObject->GetMobilityType();
 
 				if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
 				{
-					auto ownerGameObject = data.m_owner.StaticCast<GameObject>();
 					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
 					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+					bool bMaterialsReady = !data.GetMaterials().IsEmpty();
+					for (const auto& material : data.GetMaterials())
+					{
+						bMaterialsReady &= material && material->IsReady();
+					}
 
-					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
+					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
+						adjustedBounds.IsValid() && bMaterialsReady)
 					{
 						RHI::RHISceneViewProxy proxy;
-						proxy.m_staticMeshEcs = GetComponentIndex(&data);
+						proxy.m_staticMeshEcs = index;
 						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
 						if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
 						{
 							data.m_skeletonOffset = animator->GetSkeletonOffset();
+						}
+						else
+						{
+							data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
 						}
 						proxy.m_skeletonOffset = data.m_skeletonOffset;
 						proxy.m_meshes = data.GetModel()->GetMeshes();

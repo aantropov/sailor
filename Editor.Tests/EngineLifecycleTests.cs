@@ -3,6 +3,16 @@ namespace Editor.Tests;
 public sealed class EngineLifecycleTests
 {
     [Fact]
+    public void EditorBundle_CompilesCriticalXamlEntryPoints()
+    {
+        var project = ReadRepositoryFile("Editor", "SailorEditor.csproj");
+
+        AssertMauiXamlGenerator(project, "App.xaml");
+        AssertMauiXamlGenerator(project, "AppShell.xaml");
+        AssertMauiXamlGenerator(project, "Views\\InspectorView\\FrameGraphFileTemplate.xaml");
+    }
+
+    [Fact]
     public void ManagedLifecycle_ExposesExplicitAwaitableOwnershipContract()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
@@ -24,10 +34,44 @@ public sealed class EngineLifecycleTests
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         Assert.Contains("Interlocked.Increment(ref engineGeneration)", source, StringComparison.Ordinal);
-        Assert.Contains("if (IsGenerationActive(generation, allowStarting: true))", source, StringComparison.Ordinal);
+        Assert.Contains("!IsGenerationActive(generation, allowStarting)", source, StringComparison.Ordinal);
+        Assert.Contains("!worldSnapshotPublication.TryAdvance(snapshotSequence)", source, StringComparison.Ordinal);
         Assert.Contains("message.Generation == generation", source, StringComparison.Ordinal);
         Assert.Contains(".Where(message => message.Generation == generation)", source, StringComparison.Ordinal);
         Assert.Contains("QueueWorldUpdate", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SuccessfulLocalWorldMutation_AdvancesSnapshotGateUnderTheInteropLock()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var helper = source.IndexOf("bool InvokeRunningInterop", StringComparison.Ordinal);
+        var interopLock = source.IndexOf("lock (interopLock)", helper, StringComparison.Ordinal);
+        var nativeAction = source.IndexOf("!action()", interopLock, StringComparison.Ordinal);
+        var reserveSequence = source.IndexOf(
+            "worldSnapshotPublication.ReserveSequence()",
+            nativeAction,
+            StringComparison.Ordinal);
+        var advanceGate = source.IndexOf(
+            "worldSnapshotPublication.TryAdvance(mutationSequence)",
+            reserveSequence,
+            StringComparison.Ordinal);
+        var helperEnd = source.IndexOf("public static void ShowMainWindow", advanceGate, StringComparison.Ordinal);
+        var commitChanges = source.IndexOf("public bool CommitChanges", helperEnd, StringComparison.Ordinal);
+        var invalidateQueuedSnapshots = source.IndexOf(
+            "invalidateQueuedWorldSnapshots: true",
+            commitChanges,
+            StringComparison.Ordinal);
+
+        Assert.True(helper >= 0);
+        Assert.True(interopLock > helper);
+        Assert.True(nativeAction > interopLock);
+        Assert.True(reserveSequence > nativeAction);
+        Assert.True(advanceGate > reserveSequence);
+        Assert.True(helperEnd > advanceGate);
+        Assert.True(commitChanges > helperEnd);
+        Assert.True(invalidateQueuedSnapshots > commitChanges);
     }
 
     [Fact]
@@ -42,6 +86,19 @@ public sealed class EngineLifecycleTests
         Assert.Contains("return Sailor::App::GetExitCode();", windowsSource, StringComparison.Ordinal);
         Assert.Contains("SAILOR_API int32_t GetExitCode()", unixSource, StringComparison.Ordinal);
         Assert.Contains("return Sailor::App::GetExitCode();", unixSource, StringComparison.Ordinal);
+    }
+
+    static void AssertMauiXamlGenerator(string project, string xamlPath)
+    {
+        var itemStart = project.IndexOf($"<MauiXaml Update=\"{xamlPath}\">", StringComparison.Ordinal);
+        var itemEnd = project.IndexOf("</MauiXaml>", itemStart, StringComparison.Ordinal);
+
+        Assert.True(itemStart >= 0, $"Missing MauiXaml item for {xamlPath}.");
+        Assert.True(itemEnd > itemStart, $"Malformed MauiXaml item for {xamlPath}.");
+        Assert.Contains(
+            "<Generator>MSBuild:Compile</Generator>",
+            project[itemStart..itemEnd],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -184,6 +241,62 @@ public sealed class EngineLifecycleTests
             "EditorTypeCacheStore.ShouldPersistLiveCatalog(cachedEditorTypes.Status)",
             source,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MacStartupWorldSerialization_RunsOnTheAttachedNativeSchedulerThreadBeforeStart()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var startupOrder = source.IndexOf(
+            "// Required startup order: combined editor catalog, world, then initial messages.",
+            StringComparison.Ordinal);
+        var liveCatalog = source.IndexOf(
+            "SerializeEditorTypes(generation, allowStarting: true)",
+            startupOrder,
+            StringComparison.Ordinal);
+        var macBranch = source.IndexOf("#if MACCATALYST", liveCatalog, StringComparison.Ordinal);
+        var mainThreadDispatch = source.IndexOf(
+            "await MainThread.InvokeOnMainThreadAsync(",
+            macBranch,
+            StringComparison.Ordinal);
+        var worldSerialization = source.IndexOf(
+            "() => SerializeWorld(generation, out serializedWorldSequence, allowStarting: true)",
+            mainThreadDispatch,
+            StringComparison.Ordinal);
+        var nativeStart = source.IndexOf(
+            "Task.Run(EngineAppInterop.Start, CancellationToken.None)",
+            worldSerialization,
+            StringComparison.Ordinal);
+
+        Assert.True(startupOrder >= 0);
+        Assert.True(liveCatalog > startupOrder);
+        Assert.True(macBranch > liveCatalog);
+        Assert.True(mainThreadDispatch > macBranch);
+        Assert.True(worldSerialization > mainThreadDispatch);
+        Assert.True(nativeStart > worldSerialization);
+    }
+
+    [Fact]
+    public void MacEditorRenderSurface_DoesNotOwnTheMauiApplicationLifetime()
+    {
+        var source = ReadRepositoryFile("Runtime", "Platform", "Mac", "Window.mm");
+
+        var closeCallback = source.IndexOf("- (void)windowWillClose:", StringComparison.Ordinal);
+        var lifetimeGuard = source.IndexOf(
+            "if (self.terminatesApplicationOnClose)",
+            closeCallback,
+            StringComparison.Ordinal);
+        var terminateCall = source.IndexOf("[NSApp terminate:nil]", lifetimeGuard, StringComparison.Ordinal);
+        var editorOwnership = source.IndexOf(
+            "delegate.terminatesApplicationOnClose = !bRunsInsideEditor;",
+            terminateCall,
+            StringComparison.Ordinal);
+
+        Assert.True(closeCallback >= 0);
+        Assert.True(lifetimeGuard > closeCallback);
+        Assert.True(terminateCall > lifetimeGuard);
+        Assert.True(editorOwnership > terminateCall);
     }
 
     static string ReadRepositoryFile(params string[] relativePath)

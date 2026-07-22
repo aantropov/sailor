@@ -63,6 +63,46 @@ void TransformECS::MarkDirty(TransformComponent* ptr)
 	m_dirtyComponents.Add(TransformECS::GetComponentIndex(ptr));
 }
 
+void TransformECS::OnComponentUnregistered(size_t index, TransformComponent&)
+{
+	m_dirtyComponents.Remove(index);
+
+	// A transform can be queued for reparenting while its previous parent is removed.
+	// Clear only relationships that still target the released slot so a pending move
+	// to another live parent survives cleanup and slot reuse cannot inherit hierarchy.
+	const size_t currentFrame = GetWorld() ? GetWorld()->GetCurrentFrame() : 0;
+	for (size_t otherIndex = 0; otherIndex < m_components.Num(); ++otherIndex)
+	{
+		if (otherIndex == index)
+		{
+			continue;
+		}
+
+		auto& other = m_components[otherIndex];
+		other.m_children.Remove(index);
+
+		bool bRelationshipChanged = false;
+		if (other.m_parent == index)
+		{
+			other.m_parent = ECS::InvalidIndex;
+			bRelationshipChanged = true;
+		}
+
+		if (other.m_newParent == index)
+		{
+			other.m_newParent = ECS::InvalidIndex;
+			bRelationshipChanged = true;
+		}
+
+		if (bRelationshipChanged && other.m_bIsActive)
+		{
+			other.m_bIsDirty = true;
+			other.m_frameLastChange = currentFrame;
+			m_dirtyComponents.AddUnique(otherIndex);
+		}
+	}
+}
+
 Tasks::ITaskPtr TransformECS::PostTick()
 {
 	m_dirtyComponents.Clear(false);
@@ -199,9 +239,15 @@ void TransformECS::CalculateMatrices(TransformComponent& parent)
 	}
 
 	const glm::mat4x4& parentMatrix = parent.GetCachedWorldMatrix();
+	parent.m_frameLastChange = GetWorld()->GetCurrentFrame();
 
 	for (auto& child : parent.GetChildren())
 	{
+		if (child >= m_components.Num() || !m_components[child].m_bIsActive)
+		{
+			continue;
+		}
+
 		m_components[child].m_cachedWorldMatrix = parentMatrix * m_components[child].m_cachedRelativeMatrix;
 
 		CalculateMatrices(m_components[child]);

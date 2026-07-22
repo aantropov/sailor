@@ -42,9 +42,16 @@ public interface IUndoableEditorCommand : IEditorCommand
 {
     string Description { get; }
 
-    ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default);
+    ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default);
 
     IHistoryMergePolicy? MergePolicy => null;
+}
+
+public interface IHistoryCoalescibleCommand : IUndoableEditorCommand
+{
+    bool CanCoalesceWith(IUndoableEditorCommand next);
+
+    IUndoableEditorCommand CoalesceWith(IUndoableEditorCommand next);
 }
 
 public sealed record CommandResult(bool Succeeded, string? Message = null, object? Value = null)

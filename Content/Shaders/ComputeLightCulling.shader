@@ -149,6 +149,11 @@ glslCompute: |
   			break;
   		}
   
+          if(light.instance[lightIndex].type == INVALID_LIGHT_TYPE)
+          {
+              continue;
+          }
+
   		// Directional light
   		if(light.instance[lightIndex].type == 0)
   		{

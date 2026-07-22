@@ -17,6 +17,7 @@
 #include "Platform/Win32/Input.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
@@ -31,6 +32,7 @@
 #include <cctype>
 #include <filesystem>
 #include <cstring>
+#include <mutex>
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -44,6 +46,7 @@
 #include "Engine/InstanceId.h"
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspacePathEncoding.h"
+#include "YamlExceptionBoundary.h"
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -76,6 +79,23 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 namespace
 {
 	std::atomic_bool g_assetReloadRequested = false;
+	std::mutex g_engineMainThreadDispatchMutex;
+	bool g_engineMainLoopRunning = false;
+	bool g_engineShuttingDown = false;
+	thread_local bool g_bExecutingEngineMainThreadDispatch = false;
+
+	void ProcessPendingEngineMainThreadTasks(Tasks::Scheduler* scheduler)
+	{
+		if (!scheduler)
+		{
+			return;
+		}
+
+		const bool bWasExecutingDispatch = g_bExecutingEngineMainThreadDispatch;
+		g_bExecutingEngineMainThreadDispatch = true;
+		scheduler->ProcessTasksOnMainThread();
+		g_bExecutingEngineMainThreadDispatch = bWasExecutingDispatch;
+	}
 
 	bool ContainsWorkspaceManifest(const std::filesystem::path& root)
 	{
@@ -139,6 +159,66 @@ namespace
 	}
 }
 
+bool App::DispatchOnEngineMainThread(std::function<void()> command)
+{
+	if (!command)
+	{
+		return false;
+	}
+
+	std::function<void()> guardedCommand = [command = std::move(command)]() mutable
+	{
+		const bool bWasExecutingDispatch = g_bExecutingEngineMainThreadDispatch;
+		g_bExecutingEngineMainThreadDispatch = true;
+		std::string diagnostic;
+		const bool bSucceeded = External::GuardYamlExceptions(command, diagnostic);
+		g_bExecutingEngineMainThreadDispatch = bWasExecutingDispatch;
+		if (!bSucceeded)
+		{
+			SAILOR_LOG_ERROR("Editor interop command failed: %s", diagnostic.c_str());
+		}
+	};
+
+	if (g_bExecutingEngineMainThreadDispatch)
+	{
+		guardedCommand();
+		return true;
+	}
+
+	std::unique_lock<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+	if (g_engineShuttingDown)
+	{
+		return false;
+	}
+
+	auto* scheduler = GetSubmodule<Tasks::Scheduler>();
+	if (!scheduler)
+	{
+		return false;
+	}
+
+	if (scheduler->IsMainThread())
+	{
+		guardedCommand();
+		return true;
+	}
+
+	if (!g_engineMainLoopRunning)
+	{
+		return false;
+	}
+
+	auto task = Tasks::CreateTask(
+		"Editor interop on engine main thread",
+		std::move(guardedCommand),
+		EThreadType::Main);
+	scheduler->Run(task);
+	dispatchLock.unlock();
+
+	task->Wait();
+	return task->IsFinished();
+}
+
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
 	AppArgs params{};
@@ -199,6 +279,11 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	g_assetReloadRequested.store(false, std::memory_order_release);
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineMainLoopRunning = false;
+		g_engineShuttingDown = false;
+	}
 
 #if defined(_WIN32)
 	timeBeginPeriod(1);
@@ -425,7 +510,11 @@ void App::Start()
 		SAILOR_LOG_ERROR("App::Start skipped: engine subsystems are not fully initialized.");
 		return;
 	}
-	scheduler->AttachCurrentThreadAsMainThread();
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		scheduler->AttachCurrentThreadAsMainThread();
+		g_engineMainLoopRunning = true;
+	}
 
 	auto& pMainWindow = s_pInstance->m_pMainWindow;
 
@@ -615,6 +704,11 @@ void App::Start()
 
 	pMainWindow->SetActive(false);
 	pMainWindow->SetRunning(false);
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		ProcessPendingEngineMainThreadTasks(scheduler);
+		g_engineMainLoopRunning = false;
+	}
 }
 
 void App::Stop()
@@ -691,8 +785,17 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineShuttingDown = true;
 		scheduler->AttachCurrentThreadAsMainThread();
-		scheduler->ProcessTasksOnMainThread();
+		ProcessPendingEngineMainThreadTasks(scheduler);
+		g_engineMainLoopRunning = false;
+	}
+	else
+	{
+		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+		g_engineShuttingDown = true;
+		g_engineMainLoopRunning = false;
 	}
 
 	if (renderer)

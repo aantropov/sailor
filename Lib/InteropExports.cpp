@@ -129,9 +129,9 @@ extern "C"
 		return Sailor::App::ReparentEditorObject(strInstanceId, strParentInstanceId, bKeepWorldTransform);
 	}
 
-	SAILOR_API bool CreateGameObject(char* strParentInstanceId)
+	SAILOR_API bool CreateGameObject(char* strParentInstanceId, char* strPreferredInstanceId, char** outInstanceId)
 	{
-		return Sailor::App::CreateEditorGameObject(strParentInstanceId);
+		return Sailor::App::CreateEditorGameObject(strParentInstanceId, strPreferredInstanceId, outInstanceId);
 	}
 
 	SAILOR_API bool DestroyObject(char* strInstanceId)
@@ -144,9 +144,9 @@ extern "C"
 		return Sailor::App::ResetEditorComponentToDefaults(strInstanceId);
 	}
 
-	SAILOR_API bool AddComponent(char* strInstanceId, char* strComponentTypeName)
+	SAILOR_API bool AddComponent(char* strInstanceId, char* strComponentTypeName, char* strPreferredInstanceId, char** outInstanceId)
 	{
-		return Sailor::App::AddEditorComponent(strInstanceId, strComponentTypeName);
+		return Sailor::App::AddEditorComponent(strInstanceId, strComponentTypeName, strPreferredInstanceId, outInstanceId);
 	}
 
 	SAILOR_API bool RemoveComponent(char* strInstanceId)
@@ -157,6 +157,11 @@ extern "C"
 	SAILOR_API bool InstantiatePrefab(char* strFileId, char* strParentInstanceId)
 	{
 		return Sailor::App::InstantiateEditorPrefab(strFileId, strParentInstanceId);
+	}
+
+	SAILOR_API bool InstantiatePrefabFromYaml(char* strPrefabYaml, char* strParentInstanceId)
+	{
+		return Sailor::App::InstantiateEditorPrefabFromYaml(strPrefabYaml, strParentInstanceId);
 	}
 
 	SAILOR_API bool SetEditorSelection(char* strSelectionYaml)

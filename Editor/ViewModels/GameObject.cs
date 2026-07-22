@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using SailorEditor.Commands;
 using SailorEditor.Utility;
 using System.Xml.Linq;
@@ -28,14 +29,18 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     public GameObject()
     {
-        AddNewComponent = new Command(async () => await AddComponentFromInspectorAsync());
+        AddNewComponent = new AsyncRelayCommand(AddComponentFromInspectorAsync);
         ClearComponentsCommand = new Command(ClearComponentsFromInspector);
 
         PropertyChanged += (s, args) =>
         {
             var decision = _autoCommit.OnPropertyChanged(args.PropertyName);
-            if (decision.MarkDirty)
-                IsDirty = true;
+            if (!decision.MarkDirty)
+                return;
+
+            IsDirty = true;
+            if (decision.CommitNow)
+                CommitInspectorChanges();
         };
     }
 
@@ -45,21 +50,39 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
             return false;
 
         var yamlGameObject = EditorYaml.SerializeGameObject(this);
+        var previousYaml = _lastCommittedYaml ?? yamlGameObject;
+        if (string.Equals(previousYaml, yamlGameObject, StringComparison.Ordinal))
+        {
+            IsDirty = false;
+            return false;
+        }
+
         var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
         var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-        var result = dispatcher.DispatchAsync(
-            new UpdateGameObjectCommand(this, _lastCommittedYaml ?? yamlGameObject, yamlGameObject, $"Edit {Name}"),
-            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
-            .GetAwaiter()
-            .GetResult();
+        IsDirty = false;
+
+        CommandResult result;
+        try
+        {
+            result = dispatcher.DispatchAsync(
+                new UpdateGameObjectCommand(this, previousYaml, yamlGameObject, $"Edit {Name}"),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch
+        {
+            IsDirty = true;
+            throw;
+        }
 
         if (result.Succeeded)
         {
             _lastCommittedYaml = yamlGameObject;
-            IsDirty = false;
             return true;
         }
 
+        IsDirty = true;
         return false;
     }
 
@@ -124,20 +147,17 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
         if (!string.IsNullOrWhiteSpace(componentTypeName))
         {
-            await Task.Run(() => MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName));
+            MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName);
         }
     }
 
-    public async void ClearComponentsFromInspector()
+    public void ClearComponentsFromInspector()
     {
         var components = Components.ToList();
-        await Task.Run(() =>
+        foreach (var component in components)
         {
-            foreach (var component in components)
-            {
-                MauiProgram.GetService<WorldService>().RemoveComponent(component);
-            }
-        });
+            MauiProgram.GetService<WorldService>().RemoveComponent(component);
+        }
     }
 
     [ObservableProperty]

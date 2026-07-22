@@ -36,6 +36,7 @@ namespace Sailor
 
 		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab);
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
+		SAILOR_API GameObjectPtr Instantiate(const std::string& name, const InstanceId& preferredInstanceId);
 		SAILOR_API void Destroy(GameObjectPtr object);
 		SAILOR_API void DestroyImmediate(GameObjectPtr object);
 
@@ -75,6 +76,13 @@ namespace Sailor
 		SAILOR_API const TMap<InstanceId, ObjectPtr>& GetObjects() const { return m_objectsMap; }
 
 	protected:
+
+		SAILOR_API World(
+			std::string name,
+			EWorldBehaviourMask mask,
+			TVector<ECS::TBaseSystemPtr>&& ecsArray);
+
+		size_t GetNumPendingDependencyResolutions() const { return ComponentsToResolveDependencies.Num(); }
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
 		void DestroyGameObjectHierarchy(GameObjectPtr root);

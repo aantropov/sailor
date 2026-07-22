@@ -724,102 +724,101 @@ namespace Sailor::EditorRemote
 
 	Failure PresentMacNativeLayerFrame(MacNativeLayerBinding& inOutBinding, const MacIOSurfaceHandle& surfaceHandle, const FramePacket& frame, MacNativeBridgePresentResult& outResult)
 	{
-		if (![NSThread isMainThread])
+		@autoreleasepool
 		{
-			return RunOnMainThreadSync([&]() -> Failure
+			if (!inOutBinding.IsValid())
 			{
-				return PresentMacNativeLayerFrame(inOutBinding, surfaceHandle, frame, outResult);
-			});
-		}
+				return MakeFailure(2111, "macOS native layer present requires a valid CAMetalLayer binding");
+			}
 
-		if (!inOutBinding.IsValid())
-		{
-			return MakeFailure(2111, "macOS native layer present requires a valid CAMetalLayer binding");
-		}
+			CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(inOutBinding.m_layerObject);
+			if (metalLayer == nil)
+			{
+				return MakeFailure(2112, "macOS native layer present resolved the CAMetalLayer to nil");
+			}
 
-		CAMetalLayer* metalLayer = (__bridge CAMetalLayer*)reinterpret_cast<void*>(inOutBinding.m_layerObject);
-		if (metalLayer == nil)
-		{
-			return MakeFailure(2112, "macOS native layer present resolved the CAMetalLayer to nil");
-		}
+			id<MTLDevice> device = (__bridge id<MTLDevice>)reinterpret_cast<void*>(inOutBinding.m_deviceObject);
+			if (device == nil)
+			{
+				return MakeFailure(2114, "macOS native layer present resolved the Metal device to nil");
+			}
 
-		id<MTLDevice> device = (__bridge id<MTLDevice>)reinterpret_cast<void*>(inOutBinding.m_deviceObject);
-		if (device == nil)
-		{
-			return MakeFailure(2114, "macOS native layer present resolved the Metal device to nil");
-		}
+			id<MTLCommandQueue> commandQueue = (__bridge id<MTLCommandQueue>)reinterpret_cast<void*>(inOutBinding.m_commandQueueObject);
+			if (commandQueue == nil)
+			{
+				return MakeFailure(2115, "macOS native layer present resolved the Metal command queue to nil");
+			}
 
-		id<MTLCommandQueue> commandQueue = (__bridge id<MTLCommandQueue>)reinterpret_cast<void*>(inOutBinding.m_commandQueueObject);
-		if (commandQueue == nil)
-		{
-			return MakeFailure(2115, "macOS native layer present resolved the Metal command queue to nil");
-		}
+			id<CAMetalDrawable> drawable = [metalLayer nextDrawable];
+			if (drawable == nil)
+			{
+				return MakeFailure(2113, "macOS native layer present could not acquire a drawable");
+			}
 
-		id<CAMetalDrawable> drawable = RunOnMainThreadSync([&]() -> id<CAMetalDrawable>
-		{
-			return [metalLayer nextDrawable];
-		});
-		if (drawable == nil)
-		{
-			return MakeFailure(2113, "macOS native layer present could not acquire a drawable");
-		}
+			id<MTLTexture> sourceTexture = CreateIOSurfaceBackedSourceTexture(device, surfaceHandle, inOutBinding);
+			const bool usedSyntheticSourceTexture = sourceTexture == nil;
+			if (sourceTexture == nil)
+			{
+				sourceTexture = CreateSyntheticSourceTexture(device, frame, inOutBinding);
+			}
+			if (sourceTexture == nil)
+			{
+				return MakeFailure(2116, "macOS native layer present could not create a source Metal texture");
+			}
 
-		id<MTLTexture> sourceTexture = CreateIOSurfaceBackedSourceTexture(device, surfaceHandle, inOutBinding);
-		const bool usedSyntheticSourceTexture = sourceTexture == nil;
-		if (sourceTexture == nil)
-		{
-			sourceTexture = CreateSyntheticSourceTexture(device, frame, inOutBinding);
-		}
-		if (sourceTexture == nil)
-		{
-			return MakeFailure(2116, "macOS native layer present could not create a source Metal texture");
-		}
+			// Both source helpers use Metal's `new` ownership convention. Move that
+			// ownership into the local pool so early returns cannot leak a texture;
+			// the binding retains the successful frame's texture below.
+			[sourceTexture autorelease];
 
-		id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
-		if (commandBuffer == nil)
-		{
-			return MakeFailure(2117, "macOS native layer present could not create a Metal command buffer");
+			id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+			if (commandBuffer == nil)
+			{
+				return MakeFailure(2117, "macOS native layer present could not create a Metal command buffer");
+			}
+
+			id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+			if (blitEncoder == nil)
+			{
+				return MakeFailure(2118, "macOS native layer present could not create a Metal blit encoder");
+			}
+
+			const MTLSize copySize = MTLSizeMake((NSUInteger)inOutBinding.m_width, (NSUInteger)inOutBinding.m_height, 1);
+			[blitEncoder copyFromTexture:sourceTexture
+						sourceSlice:0
+						sourceLevel:0
+					   sourceOrigin:MTLOriginMake(0, 0, 0)
+					     sourceSize:copySize
+					      toTexture:drawable.texture
+			 destinationSlice:0
+			 destinationLevel:0
+			destinationOrigin:MTLOriginMake(0, 0, 0)];
+			[blitEncoder endEncoding];
+			[commandBuffer presentDrawable:drawable];
+			[commandBuffer commit];
+			[commandBuffer waitUntilScheduled];
+
+			inOutBinding.m_drawableObject = reinterpret_cast<uintptr_t>((__bridge void*)drawable);
+			inOutBinding.m_importedIOSurfaceObject = surfaceHandle.m_surfaceObject;
+			ReleaseObjectiveCObject(inOutBinding.m_lastSourceTextureObject);
+			inOutBinding.m_lastSourceTextureObject = RetainObjectiveCObject(sourceTexture);
+			inOutBinding.m_presentToken++;
+			inOutBinding.m_sourceTextureToken++;
+			inOutBinding.m_usesSyntheticSourceTexture = usedSyntheticSourceTexture;
+			outResult.m_drawableObject = inOutBinding.m_drawableObject;
+			outResult.m_sourceTextureObject = inOutBinding.m_lastSourceTextureObject;
+			outResult.m_presentToken = inOutBinding.m_presentToken;
+			outResult.m_sourceTextureToken = inOutBinding.m_sourceTextureToken;
+			outResult.m_usedRealCAMetalLayer = true;
+			outResult.m_usedMetalCommandQueue = true;
+			outResult.m_usedSyntheticSourceTexture = usedSyntheticSourceTexture;
+			return Failure::Ok();
 		}
-
-		id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
-		if (blitEncoder == nil)
-		{
-			return MakeFailure(2118, "macOS native layer present could not create a Metal blit encoder");
-		}
-
-		const MTLSize copySize = MTLSizeMake((NSUInteger)inOutBinding.m_width, (NSUInteger)inOutBinding.m_height, 1);
-		[blitEncoder copyFromTexture:sourceTexture
-					sourceSlice:0
-					sourceLevel:0
-				   sourceOrigin:MTLOriginMake(0, 0, 0)
-				     sourceSize:copySize
-				      toTexture:drawable.texture
-		 destinationSlice:0
-		 destinationLevel:0
-		destinationOrigin:MTLOriginMake(0, 0, 0)];
-		[blitEncoder endEncoding];
-		[commandBuffer presentDrawable:drawable];
-		[commandBuffer commit];
-		[commandBuffer waitUntilScheduled];
-
-		inOutBinding.m_drawableObject = reinterpret_cast<uintptr_t>((__bridge void*)drawable);
-		inOutBinding.m_importedIOSurfaceObject = surfaceHandle.m_surfaceObject;
-		inOutBinding.m_lastSourceTextureObject = reinterpret_cast<uintptr_t>((__bridge void*)sourceTexture);
-		inOutBinding.m_presentToken++;
-		inOutBinding.m_sourceTextureToken++;
-		inOutBinding.m_usesSyntheticSourceTexture = usedSyntheticSourceTexture;
-		outResult.m_drawableObject = inOutBinding.m_drawableObject;
-		outResult.m_sourceTextureObject = inOutBinding.m_lastSourceTextureObject;
-		outResult.m_presentToken = inOutBinding.m_presentToken;
-		outResult.m_sourceTextureToken = inOutBinding.m_sourceTextureToken;
-		outResult.m_usedRealCAMetalLayer = true;
-		outResult.m_usedMetalCommandQueue = true;
-		outResult.m_usedSyntheticSourceTexture = usedSyntheticSourceTexture;
-		return Failure::Ok();
 	}
 
 	void ResetMacNativeLayerBinding(MacNativeLayerBinding& inOutBinding)
 	{
+		ReleaseObjectiveCObject(inOutBinding.m_lastSourceTextureObject);
 		ReleaseObjectiveCObject(inOutBinding.m_commandQueueObject);
 		ReleaseObjectiveCObject(inOutBinding.m_deviceObject);
 		ReleaseObjectiveCObject(inOutBinding.m_layerObject);

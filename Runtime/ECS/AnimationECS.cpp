@@ -11,6 +11,34 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+namespace
+{
+	void MarkMeshSkeletonDirty(GameObjectPtr owner)
+	{
+		if (!owner)
+		{
+			return;
+		}
+
+		auto* meshEcs = owner->GetWorld()->GetECS<StaticMeshRendererECS>();
+		if (!meshEcs)
+		{
+			return;
+		}
+
+		for (auto component : owner->GetComponents())
+		{
+			if (auto mesh = component.DynamicCast<MeshRendererComponent>())
+			{
+				if (meshEcs->IsComponentRegistered(mesh->GetComponentIndex()))
+				{
+					mesh->GetData().MarkDirty();
+				}
+			}
+		}
+	}
+}
+
 void AnimationECS::BeginPlay()
 {
 	auto& driver = RHI::Renderer::GetDriver();
@@ -25,6 +53,53 @@ void AnimationECS::EndPlay()
 	m_nextBoneOffset = 0;
 }
 
+bool AnimationECS::TryAllocateBoneRange(uint32_t numBones, uint32_t& nextBoneOffset, uint32_t& outGpuOffset)
+{
+	outGpuOffset = AnimatorComponentData::InvalidGpuOffset;
+	if (numBones == 0 || nextBoneOffset > BonesMaxNum || numBones > BonesMaxNum - nextBoneOffset)
+	{
+		return false;
+	}
+
+	outGpuOffset = nextBoneOffset;
+	nextBoneOffset += numBones;
+	return true;
+}
+
+void AnimationECS::InvalidateGpuLayout()
+{
+	m_nextBoneOffset = 0;
+
+	for (auto& data : m_components)
+	{
+		data.m_gpuOffset = AnimatorComponentData::InvalidGpuOffset;
+		MarkMeshSkeletonDirty(data.m_owner.StaticCast<GameObject>());
+	}
+}
+
+void AnimationECS::SetAnimation(size_t componentIndex, const TObjectPtr<Animation>& animation)
+{
+	if (!IsComponentRegistered(componentIndex))
+	{
+		return;
+	}
+
+	auto& data = GetComponentData(componentIndex);
+	data.GetAnimation() = animation;
+	data.SetBonesCount(animation ? animation->m_numBones : 0);
+	data.m_currentFrame = 0.0f;
+	data.m_frameIndex = 0;
+	data.m_lerp = 0.0f;
+	data.MarkDirty();
+
+	InvalidateGpuLayout();
+}
+
+void AnimationECS::OnComponentUnregistered(size_t, AnimatorComponentData&)
+{
+	InvalidateGpuLayout();
+}
+
 Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 {
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
@@ -32,9 +107,33 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 	auto cmdList = GetWorld()->GetCommandList();
 	commands->BeginDebugRegion(cmdList, "AnimationECS:Update", RHI::DebugContext::Color_CmdTransfer);
 
+	for (const auto& data : m_components)
+	{
+		if (!data.m_bIsActive || data.m_gpuOffset == AnimatorComponentData::InvalidGpuOffset)
+		{
+			continue;
+		}
+
+		const auto& animation = data.GetAnimation();
+		const bool bHasValidBoneRange = animation && animation->m_numFrames > 0 && animation->m_numBones > 0 &&
+			data.GetBonesCount() == animation->m_numBones &&
+			data.m_gpuOffset <= BonesMaxNum && animation->m_numBones <= BonesMaxNum - data.m_gpuOffset;
+		if (!bHasValidBoneRange)
+		{
+			InvalidateGpuLayout();
+			break;
+		}
+	}
+
 	for (auto& data : m_components)
 	{
-		if (!data.GetAnimation() || data.GetAnimation()->m_numFrames ==0)
+		if (!data.m_bIsActive)
+		{
+			continue;
+		}
+
+		GameObjectPtr owner = data.m_owner.StaticCast<GameObject>();
+		if (!owner || !data.GetAnimation() || data.GetAnimation()->m_numFrames == 0 || data.GetAnimation()->m_numBones == 0)
 		{
 			continue;
 		}
@@ -77,16 +176,19 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 		data.m_frameIndex = (uint32_t)floor(data.m_currentFrame) % anim.m_numFrames;
 		data.m_lerp = data.m_currentFrame - floor(data.m_currentFrame);
 
+		if (data.m_gpuOffset == AnimatorComponentData::InvalidGpuOffset)
+		{
+			if (!TryAllocateBoneRange(anim.m_numBones, m_nextBoneOffset, data.m_gpuOffset))
+			{
+				continue;
+			}
+
+			MarkMeshSkeletonDirty(data.m_owner.StaticCast<GameObject>());
+		}
+
 		if (data.m_currentSkeleton.Num() != anim.m_numBones)
 		{
 			data.m_currentSkeleton.Resize(anim.m_numBones);
-		}
-
-		if (data.m_gpuOffset == std::numeric_limits<uint32_t>::max())
-		{
-			data.m_gpuOffset = m_nextBoneOffset;
-			m_nextBoneOffset += anim.m_numBones;
-			m_nextBoneOffset = (std::min)(m_nextBoneOffset, BonesMaxNum);
 		}
 
 		uint32_t nextFrame = (data.m_frameIndex + 1) % anim.m_numFrames;
@@ -98,12 +200,9 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 		}
 
 		ModelPtr model;
-		if (auto owner = data.m_owner.StaticCast<GameObject>())
+		if (auto mesh = owner->GetComponent<MeshRendererComponent>())
 		{
-			if (auto mesh = owner->GetComponent<MeshRendererComponent>())
-			{
-				model = mesh->GetModel();
-			}
+			model = mesh->GetModel();
 		}
 
 		TVector<glm::mat4> matrices(data.m_currentSkeleton.Num());

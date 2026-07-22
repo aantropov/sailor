@@ -13,6 +13,7 @@ void AnimatorComponent::Initialize()
 void AnimatorComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<AnimationECS>()->UnregisterComponent(m_handle);
+	m_handle = ECS::InvalidIndex;
 }
 
 uint32_t AnimatorComponent::GetSkeletonOffset() const
@@ -34,11 +35,7 @@ SAILOR_API const AnimatorComponentData& Sailor::AnimatorComponent::GetData() con
 
 void AnimatorComponent::SetAnimation(const AnimationPtr& animation)
 {
-	GetData().GetAnimation() = animation;
-	GetData().m_currentFrame = 0.0f;
-	GetData().m_frameIndex = 0;
-	GetData().m_lerp = 0.0f;
-	GetData().MarkDirty();
+	GetOwner()->GetWorld()->GetECS<AnimationECS>()->SetAnimation(m_handle, animation);
 }
 
 void AnimatorComponent::Play()

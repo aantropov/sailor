@@ -80,6 +80,8 @@ public sealed class WorkspaceIsolationRegressionTests
         var clear = Slice(source, "public Task ClearAsync", "public async Task CommitAsync");
 
         Assert.Contains("return MainThread.InvokeOnMainThreadAsync(() =>", clear, StringComparison.Ordinal);
+        Assert.Contains("commandHistory.ResetForWorkspaceChange();", clear, StringComparison.Ordinal);
+        Assert.DoesNotContain("Reset(commandHistory.ResetForWorkspaceChange", clear, StringComparison.Ordinal);
         AssertInOrder(
             clear,
             "MainThread.InvokeOnMainThreadAsync",
@@ -91,6 +93,20 @@ public sealed class WorkspaceIsolationRegressionTests
             "projectContentStore.ResetForWorkspaceChange",
             "hierarchyProjection.ResetForWorkspaceChange",
             "inspectorProjection.ResetForWorkspaceChange");
+    }
+
+    [Fact]
+    public void ActivationStop_AwaitsCommandDrainBeforeEngineTeardown()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "WorkspaceActivationOperations.cs");
+        var stop = Slice(source, "public async Task StopAsync", "public Task ClearAsync");
+
+        AssertInOrder(
+            stop,
+            "commandHistory.BeginWorkspaceChange",
+            "selectionService.BeginWorkspaceChange",
+            "await commandHistory.BeginWorkspaceChangeAsync(CancellationToken.None)",
+            "engineService.StopAsync(cancellationToken)");
     }
 
     static string Slice(string source, string startMarker, string endMarker)

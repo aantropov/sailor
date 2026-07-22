@@ -33,6 +33,7 @@ const StaticMeshRendererData& MeshRendererComponent::GetData() const
 void MeshRendererComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<StaticMeshRendererECS>()->UnregisterComponent(m_handle);
+	m_handle = ECS::InvalidIndex;
 }
 
 void MeshRendererComponent::SetModel(const ModelPtr& model)

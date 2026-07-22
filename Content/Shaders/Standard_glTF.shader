@@ -84,6 +84,8 @@ glslVertex: |
   {
     mat4 matrix;
   };
+
+  const uint INVALID_SKELETON_OFFSET = 0xFFFFFFFFu;
   
   layout(set = 0, binding = 0) uniform FrameData
   {
@@ -162,16 +164,19 @@ glslVertex: |
   
   void main()
   {
+    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
   #ifdef SKINNING
     uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
-    mat4 skinMatrix = bones.instance[offset + inBoneIds.x].matrix * inBoneWeights.x +
-                      bones.instance[offset + inBoneIds.y].matrix * inBoneWeights.y +
-                      bones.instance[offset + inBoneIds.z].matrix * inBoneWeights.z +
-                      bones.instance[offset + inBoneIds.w].matrix * inBoneWeights.w;
 
-    mat4 modelMatrix = data.instance[gl_InstanceIndex].model * skinMatrix;
-  #else
-    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+    if (offset != INVALID_SKELETON_OFFSET)
+    {
+      mat4 skinMatrix = bones.instance[offset + inBoneIds.x].matrix * inBoneWeights.x +
+                        bones.instance[offset + inBoneIds.y].matrix * inBoneWeights.y +
+                        bones.instance[offset + inBoneIds.z].matrix * inBoneWeights.z +
+                        bones.instance[offset + inBoneIds.w].matrix * inBoneWeights.w;
+
+      modelMatrix *= skinMatrix;
+    }
   #endif
 
     vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);

@@ -67,6 +67,8 @@ namespace Sailor
 
 	protected:
 
+		virtual void OnComponentUnregistered(size_t index, TransformComponent& component) override;
+
 		TVector<size_t> m_dirtyComponents;
 	};
 

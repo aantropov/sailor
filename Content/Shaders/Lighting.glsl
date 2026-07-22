@@ -14,6 +14,8 @@ struct LightData
   vec3 bounds;
 };
 
+const uint INVALID_LIGHT_TYPE = 0xFFFFFFFFu;
+
 layout(std430)
 struct LightsGrid
 {
