@@ -2,6 +2,7 @@
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEditor.Utility;
+using SailorEditor.Workflow;
 using SailorEngine;
 using Component = SailorEditor.ViewModels.Component;
 using PropertyChangedEventArgs = System.ComponentModel.PropertyChangedEventArgs;
@@ -102,15 +103,11 @@ namespace SailorEditor.Views
                 return true;
             }
 
-            if (current is GameObject or Component || next is GameObject or Component)
-            {
-                return false;
-            }
-
-            return TryGetInstanceId(current) is { } currentId &&
-                   TryGetInstanceId(next) is { } nextId &&
-                   current.GetType() == next.GetType() &&
-                   currentId == nextId;
+            return InspectorSelectionIdentity.AreEquivalent(
+                current?.GetType(),
+                TryGetInstanceId(current)?.Value,
+                next?.GetType(),
+                TryGetInstanceId(next)?.Value);
         }
 
         static InstanceId? TryGetInstanceId(object? item) => item switch

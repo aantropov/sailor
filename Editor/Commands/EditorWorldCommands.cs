@@ -170,6 +170,8 @@ public sealed class CreateGameObjectCommand(InstanceId? parentId = null) : IUndo
             return Task.FromResult(CommandResult.Failure("Created object was not projected"));
         }
 
+        MauiProgram.GetService<SelectionService>().SelectInstance(createdId);
+
         return Task.FromResult(CommandResult.Success(value: _createdId));
     }
     public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)

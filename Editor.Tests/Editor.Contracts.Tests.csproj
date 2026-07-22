@@ -28,6 +28,12 @@
     <Compile Include="ProjectContentProjectionTests.cs" />
     <Compile Include="ProjectContentFolderIdsTests.cs" />
     <Compile Include="ProjectContentPathPolicyTests.cs" />
+    <Compile Include="AssetSourcePathContractTests.cs" />
+    <Compile Include="ProjectContentFileOperationsTests.cs" />
+    <Compile Include="ProjectContentFolderRebindPolicyTests.cs" />
+    <Compile Include="ProjectContentMutationReloadPolicyTests.cs" />
+    <Compile Include="RepositoryAssetSidecarContractTests.cs" />
+    <Compile Include="AssetInfoSerializationSourceContractTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceGeneratedProjectStateTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
@@ -55,6 +61,8 @@
     <Compile Include="EditorDragDropTestStubs.cs" />
     <Compile Include="EditorPerfTests.cs" />
     <Compile Include="EngineLaunchContractTests.cs" />
+    <Compile Include="SceneDocumentContractTests.cs" />
+    <Compile Include="WorldAssetRebindPolicyTests.cs" />
     <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
@@ -71,6 +79,10 @@
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />
     <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
+    <Compile Include="..\Editor\Content\AssetSourcePathContract.cs" Link="Content\AssetSourcePathContract.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentFileOperations.cs" Link="Content\ProjectContentFileOperations.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentFolderRebindPolicy.cs" Link="Content\ProjectContentFolderRebindPolicy.cs" />
+    <Compile Include="..\Editor\Content\ProjectContentMutationReloadPolicy.cs" Link="Content\ProjectContentMutationReloadPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceYamlVersionProbe.cs" Link="Workspace\WorkspaceYamlVersionProbe.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceGeneratedProjectState.cs" Link="Workspace\WorkspaceGeneratedProjectState.cs" />
@@ -101,6 +113,8 @@
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
+    <Compile Include="..\Editor\Services\SceneDocumentContract.cs" Link="Services\SceneDocumentContract.cs" />
+    <Compile Include="..\Editor\Services\WorldAssetRebindPolicy.cs" Link="Services\WorldAssetRebindPolicy.cs" />
     <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
     <Compile Include="..\Editor\Services\Utf8InteropArguments.cs" Link="Services\Utf8InteropArguments.cs" />

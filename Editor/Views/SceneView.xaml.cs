@@ -38,12 +38,14 @@ namespace SailorEditor.Views
         uint lastAppliedRenderTargetHeight = 0;
         string lastViewportStatusText = string.Empty;
         readonly Stopwatch uiUpdateStopwatch = Stopwatch.StartNew();
+        readonly EngineService engineService;
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
         readonly UnifiedSettingsStore settingsStore;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
+        bool lifecycleSubscribed;
 #if MACCATALYST
         static readonly bool UseNativeViewportHost = true;
 #else
@@ -54,7 +56,8 @@ namespace SailorEditor.Views
         {
             InitializeComponent();
             settingsStore = MauiProgram.GetService<UnifiedSettingsStore>();
-            viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(MauiProgram.GetService<EngineService>()), EngineService.SceneViewportId);
+            engineService = MauiProgram.GetService<EngineService>();
+            viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(engineService), EngineService.SceneViewportId);
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
@@ -206,6 +209,7 @@ namespace SailorEditor.Views
             Loaded += (sender, args) =>
             {
                 isRunning = true;
+                SubscribeToEngineLifecycle();
 #if MACCATALYST
                 if (!UseNativeViewportHost)
                 {
@@ -249,9 +253,38 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isRunning = false;
+                UnsubscribeFromEngineLifecycle();
                 focusCoordinator.ReleaseIfOwned();
                 viewportAdapter.Destroy();
             };
+        }
+
+        void SubscribeToEngineLifecycle()
+        {
+            if (lifecycleSubscribed)
+                return;
+
+            engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
+            lifecycleSubscribed = true;
+        }
+
+        void UnsubscribeFromEngineLifecycle()
+        {
+            if (!lifecycleSubscribed)
+                return;
+
+            engineService.OnLifecycleStateChanged -= OnEngineLifecycleStateChanged;
+            lifecycleSubscribed = false;
+        }
+
+        void OnEngineLifecycleStateChanged(EngineLifecycleState state)
+        {
+            if (state != EngineLifecycleState.Running || !isRunning)
+                return;
+
+            viewportAdapter.ResetForBackendRestart();
+            QueueViewportRetry(TimeSpan.FromSeconds(1));
+            UpdateViewportIntegration();
         }
 
         SceneShellFocusTarget ResolveFocusTarget(State.ShellState shellState)

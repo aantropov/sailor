@@ -32,6 +32,45 @@ public sealed class WorkspaceIsolationRegressionTests
     }
 
     [Fact]
+    public void DocumentSwitch_DrainsHistoryAndSuppressesInspectorCommitAfterNativeSuccess()
+    {
+        var historySource = ReadRepositoryFile("Editor", "Commands", "EditorCommandRuntime.cs");
+        var beginDocument = Slice(historySource, "public async Task BeginDocumentChangeAsync", "public void ResetForDocumentChange");
+        Assert.DoesNotContain("_workspaceEpoch", beginDocument, StringComparison.Ordinal);
+        AssertInOrder(
+            beginDocument,
+            "_documentChangeInProgress = true",
+            "await executionDrain.WaitAsync");
+
+        var selectionSource = ReadRepositoryFile("Editor", "Services", "SelectionService.cs");
+        var resetSelection = Slice(selectionSource, "public void ResetForDocumentChange", "public void BeginWorkspaceChange");
+        AssertInOrder(
+            resetSelection,
+            "Interlocked.Increment(ref suppressRuntimeSelectionSync)",
+            "CancelPendingSelection()",
+            "ClearSelectionCore()",
+            "Interlocked.Decrement(ref suppressRuntimeSelectionSync)");
+
+        var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
+        var create = Slice(worldSource, "public async Task<bool> CreateNewWorldAsync", "public async Task<bool> LoadWorldAsync");
+        var load = Slice(worldSource, "public async Task<bool> LoadWorldAsync", "SceneSaveResult SaveExistingWorld");
+        AssertInOrder(
+            create,
+            "await commandHistory.BeginDocumentChangeAsync",
+            "engineService.CreateWorld()",
+            "commandHistory.ResetForDocumentChange()",
+            "MauiProgram.GetService<SelectionService>().ResetForDocumentChange()",
+            "commandHistory.CompleteDocumentChange()");
+        AssertInOrder(
+            load,
+            "await commandHistory.BeginDocumentChangeAsync",
+            "engineService.LoadWorld(worldFile.FileId)",
+            "commandHistory.ResetForDocumentChange()",
+            "MauiProgram.GetService<SelectionService>().ResetForDocumentChange()",
+            "commandHistory.CompleteDocumentChange()");
+    }
+
+    [Fact]
     public void WorldReset_DropsSameNameCachesAndEpochTagsDeferredUpdates()
     {
         var source = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
@@ -107,6 +146,37 @@ public sealed class WorkspaceIsolationRegressionTests
             "selectionService.BeginWorkspaceChange",
             "await commandHistory.BeginWorkspaceChangeAsync(CancellationToken.None)",
             "engineService.StopAsync(cancellationToken)");
+    }
+
+    [Fact]
+    public void WorkspaceStartup_MarksNativeEmptyWorldUntitledWithoutNestedDocumentChange()
+    {
+        var engineSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var buildArguments = Slice(
+            engineSource,
+            "async Task<string[]> BuildInteropArgumentsAsync",
+            "int ReadNativeExitCode");
+        Assert.Equal(2, CountOccurrences(buildArguments, "launchContext.StartupWorld"));
+        Assert.DoesNotContain("\"Editor.world\"", buildArguments, StringComparison.Ordinal);
+
+        var operationsSource = ReadRepositoryFile("Editor", "Services", "WorkspaceActivationOperations.cs");
+        var start = Slice(operationsSource, "public async Task StartAsync", "static void Reset");
+        AssertInOrder(
+            start,
+            "await engineService.StartAsync(launchContext",
+            "engineService.State != EngineLifecycleState.Running",
+            "launchContext.Mode == EditorProjectMode.Workspace",
+            "worldService.MarkCurrentWorldUntitledForWorkspaceStartup");
+        Assert.DoesNotContain("BeginDocumentChange", start, StringComparison.Ordinal);
+        Assert.DoesNotContain("CreateNewWorldAsync", start, StringComparison.Ordinal);
+
+        var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
+        var markUntitled = Slice(
+            worldSource,
+            "public void MarkCurrentWorldUntitledForWorkspaceStartup",
+            "static string GetWorldKey");
+        AssertInOrder(markUntitled, "CurrentWorldAsset = null", "IsCurrentWorldUntitled = true");
+        Assert.DoesNotContain("BeginDocumentChange", markUntitled, StringComparison.Ordinal);
     }
 
     static string Slice(string source, string startMarker, string endMarker)

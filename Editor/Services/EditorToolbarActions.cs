@@ -15,43 +15,50 @@ namespace SailorEditor.Services
             var selectionService = MauiProgram.GetService<SelectionService>();
             var selected = selectionService.SelectedItem;
 
-            switch (selected)
+            if (selected is IInspectorEditable editable && editable.HasPendingInspectorChanges)
             {
-                case AssetFile { IsReadOnly: true } readOnlyAsset:
-                    await DisplayStatus("Save", $"{readOnlyAsset.DisplayName} belongs to read-only engine content.");
+                if (!editable.CommitInspectorChanges())
+                {
+                    await DisplayStatus("Save Scene", "Inspector changes could not be committed.");
                     return;
-
-                case AssetFile assetFile when assetFile.IsDirty:
-                    await Task.Yield();
-                    await assetFile.Save();
-                    await DisplayStatus("Save", $"Saved {assetFile.DisplayName}");
-                    return;
-
-                case IInspectorEditable editable when editable.HasPendingInspectorChanges:
-                    if (editable.CommitInspectorChanges())
-                    {
-                        await DisplayStatus("Save", "Committed inspector changes.");
-                    }
-                    else
-                    {
-                        await DisplayStatus("Save", "Nothing was committed.");
-                    }
-                    return;
-
-                case AssetFile assetFile:
-                    await DisplayStatus("Save", $"{assetFile.DisplayName} has no pending changes.");
-                    return;
+                }
             }
 
-            var dirtyAsset = MauiProgram.GetService<AssetsService>().Files.FirstOrDefault(x => x.IsDirty && !x.IsReadOnly);
-            if (dirtyAsset != null)
+            var result = await MauiProgram.GetService<WorldService>().SaveCurrentWorldAsync();
+            switch (result.Outcome)
             {
-                await dirtyAsset.Save();
-                await DisplayStatus("Save", $"Saved {dirtyAsset.DisplayName}");
+                case SceneSaveOutcome.Saved:
+                    await DisplayStatus("Save Scene", $"Saved scene: {result.Path}");
+                    break;
+                case SceneSaveOutcome.Cancelled:
+                    await DisplayStatus("Save Scene", "Scene save cancelled.");
+                    break;
+                default:
+                    await DisplayStatus("Save Scene", result.Error ?? "Scene save failed.");
+                    break;
+            }
+        }
+
+        public async Task NewSceneAsync()
+        {
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+            if (page is null)
                 return;
+
+            var history = MauiProgram.GetService<ICommandHistoryService>();
+            if (history.CanUndo)
+            {
+                var discard = await page.DisplayAlert(
+                    "New Scene",
+                    "Create a new scene and discard unsaved editor changes in the current scene?",
+                    "Create",
+                    "Cancel");
+                if (!discard)
+                    return;
             }
 
-            await DisplayStatus("Save", "Nothing to save.");
+            var created = await MauiProgram.GetService<WorldService>().CreateNewWorldAsync();
+            await DisplayStatus("New Scene", created ? "Created a new untitled scene." : "Unable to create a new scene.");
         }
 
         public Task UndoAsync()

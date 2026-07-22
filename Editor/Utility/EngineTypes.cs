@@ -438,6 +438,19 @@ namespace SailorEngine
                 .OrderBy(typeName => typeName, StringComparer.Ordinal)
                 .ToArray();
 
+        public bool IsAddableComponentType(string typeName)
+            => EditorAddComponentTypeContract.IsAddable(
+                typeName,
+                currentTypeName => Components.TryGetValue(currentTypeName, out var current)
+                    ? current.Base
+                    : null);
+
+        public IReadOnlyList<string> GetAddableComponentTypeNames()
+            => Components.Keys
+                .Where(IsAddableComponentType)
+                .OrderBy(typeName => typeName, StringComparer.Ordinal)
+                .ToArray();
+
         static PropertyBase CreateAssetProperty(string propertyType)
         {
             return CreateCommonProperty(propertyType) ?? propertyType switch

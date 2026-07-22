@@ -157,6 +157,9 @@ public class ModelFileYamlConverter : IYamlTypeConverter
 
                 switch (propertyName)
                 {
+                    case "assetInfoType":
+                        assetFile.AssetInfoTypeName = deserializer.Deserialize<string>(parser);
+                        break;
                     case "fileId":
                         assetFile.FileId = deserializer.Deserialize<FileId>(parser);
                         break;
@@ -205,6 +208,9 @@ public class ModelFileYamlConverter : IYamlTypeConverter
         var assetFile = (ModelFile)value;
 
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+        emitter.Emit(new Scalar(null, "assetInfoType"));
+        emitter.Emit(new Scalar(null, assetFile.ResolveAssetInfoTypeNameForSave()));
 
         // Serialize inherited fields
         emitter.Emit(new Scalar(null, "fileId"));

@@ -161,6 +161,62 @@ assetTypes: []
         Assert.Empty(snapshot.GetComponentTypeNames());
     }
 
+    [Fact]
+    public void AddComponentQuery_HidesEditorAndTestHarnessTypesWithoutRemovingThemFromCatalog()
+    {
+        const string yaml = """
+engineTypes:
+  - typename: Sailor::IReflectable
+    base: ''
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+  - typename: Sailor::MeshRendererComponent
+    base: Sailor::Component
+  - typename: Sailor::EditorComponent
+    base: Sailor::Component
+  - typename: Sailor::TestComponent
+    base: Sailor::Component
+  - typename: Sailor::TestCaseComponent
+    base: Sailor::Component
+  - typename: Sailor::VisualTestCaseComponent
+    base: Sailor::TestCaseComponent
+  - typename: SandboxLogic::DerivedVisualTestComponent
+    base: Sailor::VisualTestCaseComponent
+  - typename: Sailor::PerformanceTestSetupComponent
+    base: Sailor::Component
+  - typename: SandboxLogic::ContestComponent
+    base: Sailor::Component
+  - typename: SandboxLogic::EditorComponent
+    base: Sailor::Component
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var snapshot = EditorTypeCatalogSnapshot.Parse(yaml);
+
+        Assert.True(snapshot.TryGetType("Sailor::EditorComponent", out _));
+        Assert.True(snapshot.TryGetType("Sailor::VisualTestCaseComponent", out _));
+        Assert.True(snapshot.IsComponentType("Sailor::EditorComponent"));
+        Assert.True(snapshot.IsComponentType("Sailor::VisualTestCaseComponent"));
+        Assert.Contains("Sailor::EditorComponent", snapshot.GetComponentTypeNames());
+        Assert.Contains("Sailor::VisualTestCaseComponent", snapshot.GetComponentTypeNames());
+
+        Assert.Equal(
+            [
+                "Sailor::MeshRendererComponent",
+                "SandboxLogic::ContestComponent",
+                "SandboxLogic::EditorComponent"
+            ],
+            snapshot.GetAddableComponentTypeNames());
+        Assert.False(snapshot.IsAddableComponentType("Sailor::EditorComponent"));
+        Assert.False(snapshot.IsAddableComponentType("Sailor::TestComponent"));
+        Assert.False(snapshot.IsAddableComponentType("Sailor::TestCaseComponent"));
+        Assert.False(snapshot.IsAddableComponentType("Sailor::VisualTestCaseComponent"));
+        Assert.False(snapshot.IsAddableComponentType("SandboxLogic::DerivedVisualTestComponent"));
+        Assert.False(snapshot.IsAddableComponentType("Sailor::PerformanceTestSetupComponent"));
+    }
+
     [Theory]
     [InlineData(EditorComponentScalarKind.String, "true: still text")]
     [InlineData(EditorComponentScalarKind.Boolean, "true")]

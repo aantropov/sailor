@@ -1,4 +1,5 @@
 using SailorEditor.Commands;
+using SailorEditor.Content;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
@@ -51,6 +52,95 @@ public sealed class EditorDragDropRoutingTests
         Assert.True(requiresConfirmation);
         Assert.NotNull(command);
         Assert.IsType<CreatePrefabAssetCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateContentDropCommand_RoutesWritableAssetMoveToFolder()
+    {
+        var source = new MaterialFile { FileId = new FileId("{MAT}") };
+        var target = new AssetFolder { Id = 42 };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out var requiresConfirmation);
+
+        Assert.True(resolved);
+        Assert.False(requiresConfirmation);
+        Assert.IsType<MoveAssetCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateContentDropCommand_RoutesWritableAssetMoveToActiveRoot()
+    {
+        var source = new MaterialFile { FileId = new FileId("{MAT}") };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, null, out var command, out var requiresConfirmation);
+
+        Assert.True(resolved);
+        Assert.False(requiresConfirmation);
+        Assert.IsType<MoveAssetCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateContentDropCommand_RoutesWritableFolderMove()
+    {
+        var source = new AssetFolder { Id = 41 };
+        var target = new AssetFolder { Id = 42 };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out var requiresConfirmation);
+
+        Assert.True(resolved);
+        Assert.False(requiresConfirmation);
+        Assert.IsType<MoveFolderCommand>(command);
+    }
+
+    [Theory]
+    [InlineData(ProjectContentFolderIds.ContentRootId)]
+    [InlineData(ProjectContentFolderIds.EngineContentRootId)]
+    public void TryCreateContentDropCommand_AllowsWritableContentRootsAsMoveTargets(int rootId)
+    {
+        var source = new MaterialFile { FileId = new FileId("{MAT}") };
+        var target = new AssetFolder { Id = rootId };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out _);
+
+        Assert.True(resolved);
+        Assert.IsType<MoveAssetCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateContentDropCommand_RejectsAssetRowsAsMoveTargets()
+    {
+        var source = new MaterialFile { FileId = new FileId("{SOURCE}") };
+        var target = new MaterialFile { FileId = new FileId("{TARGET}") };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out _);
+
+        Assert.False(resolved);
+        Assert.Null(command);
+    }
+
+    [Fact]
+    public void TryCreateContentDropCommand_RejectsReadOnlyContent()
+    {
+        var readOnlyAsset = new MaterialFile { FileId = new FileId("{MAT}"), IsReadOnly = true };
+        var readOnlyFolder = new AssetFolder { Id = 42, IsReadOnly = true };
+
+        Assert.False(EditorDragDrop.TryCreateContentDropCommand(readOnlyAsset, null, out var assetCommand, out _));
+        Assert.Null(assetCommand);
+        Assert.False(EditorDragDrop.TryCreateContentDropCommand(new MaterialFile(), readOnlyFolder, out var targetCommand, out _));
+        Assert.Null(targetCommand);
+    }
+
+    [Theory]
+    [InlineData(ProjectContentFolderIds.ContentRootId)]
+    [InlineData(ProjectContentFolderIds.EngineContentRootId)]
+    public void TryCreateContentDropCommand_RejectsContentRootsAsMoveSources(int rootId)
+    {
+        var source = new AssetFolder { Id = rootId };
+
+        var resolved = EditorDragDrop.TryCreateContentDropCommand(source, null, out var command, out _);
+
+        Assert.False(resolved);
+        Assert.Null(command);
     }
 
     [Fact]

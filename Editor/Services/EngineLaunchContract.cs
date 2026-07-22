@@ -4,18 +4,30 @@ using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
 
+public enum EditorProjectMode
+{
+    Engine,
+    Workspace
+}
+
 public sealed record EngineLaunchContext(
     string WorkspaceRoot,
     string? WorkspaceManifestPath,
     string ContentDirectory,
     string CacheDirectory,
-    string WorkspaceIdentity)
+    string WorkspaceIdentity,
+    EditorProjectMode Mode)
 {
+    public const string EngineEditorWorld = "Editor.world";
+
+    public string ActiveRootPath => WorkspaceRoot;
+    public string ModeLabel => Mode == EditorProjectMode.Engine ? "Engine Mode" : "Workspace";
+    public string? StartupWorld => Mode == EditorProjectMode.Engine ? EngineEditorWorld : null;
     public string TempWorldFilePath => Path.Combine(CacheDirectory, "Temp.world");
     public string TempWorldRuntimePath => Path.GetRelativePath(ContentDirectory, TempWorldFilePath);
     public string EditorTypesCacheFilePath => Path.Combine(CacheDirectory, "EditorTypes.yaml");
 
-    public IReadOnlyList<string> BuildArguments(string world, IEnumerable<string>? extraArguments = null)
+    public IReadOnlyList<string> BuildArguments(string? world, IEnumerable<string>? extraArguments = null)
     {
         var arguments = new List<string>
         {
@@ -29,8 +41,15 @@ public sealed record EngineLaunchContext(
             arguments.Add(WorkspaceManifestPath);
         }
 
-        arguments.Add("--world");
-        arguments.Add(world);
+        if (string.IsNullOrWhiteSpace(world))
+        {
+            arguments.Add("--new-world");
+        }
+        else
+        {
+            arguments.Add("--world");
+            arguments.Add(world);
+        }
 
         if (extraArguments is not null)
             arguments.AddRange(extraArguments.Where(x => !string.IsNullOrWhiteSpace(x)));
@@ -40,7 +59,7 @@ public sealed record EngineLaunchContext(
 
     public IReadOnlyList<string> BuildInteropArguments(
         string executableToken,
-        string world,
+        string? world,
         IEnumerable<string>? extraArguments = null)
         => new[] { executableToken }
             .Concat(BuildArguments(world, extraArguments))
@@ -74,7 +93,8 @@ public static class EngineLaunchContract
             manifestPath,
             NormalizeRoot(selectedContentDirectory),
             NormalizeRoot(selectedCacheDirectory),
-            ResolveWorkspaceIdentity(hasActiveWorkspace ? activeWorkspaceIdentity : null, selectedRoot!));
+            ResolveWorkspaceIdentity(hasActiveWorkspace ? activeWorkspaceIdentity : null, selectedRoot!),
+            hasActiveWorkspace ? EditorProjectMode.Workspace : EditorProjectMode.Engine);
     }
 
     static string ResolveWorkspaceIdentity(string? workspaceIdentity, string workspaceRoot)

@@ -260,7 +260,11 @@ public sealed class RecentWorkspaceStore
 
     public RecentWorkspaceStore(string? path = null, Func<DateTimeOffset>? clock = null, int maxEntries = DefaultMaxEntries)
     {
+#if MACCATALYST
+        var appDataDirectory = Microsoft.Maui.Storage.FileSystem.Current.AppDataDirectory;
+#else
         var appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+#endif
         _path = path ?? Path.Combine(appDataDirectory, "SailorEditor", "Workspaces", "recent-workspaces.yaml");
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _maxEntries = maxEntries;

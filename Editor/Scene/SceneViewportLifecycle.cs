@@ -52,7 +52,7 @@ public interface ISceneViewportBackend
 
 public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend, ulong viewportId)
 {
-    nint _boundHostHandle;
+    nint _observedHostHandle;
     SceneViewportRenderTarget _renderTarget;
     bool _destroyed;
 
@@ -60,10 +60,15 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
     {
         _destroyed = false;
 
-        if (frame.HasNativeHost && frame.NativeHostHandle != _boundHostHandle)
+        if (frame.HasNativeHost)
         {
             backend.BindMacHost(viewportId, frame.NativeHostHandle);
-            _boundHostHandle = frame.NativeHostHandle;
+            _observedHostHandle = frame.NativeHostHandle;
+        }
+        else if (_observedHostHandle != 0)
+        {
+            backend.BindMacHost(viewportId, 0);
+            _observedHostHandle = 0;
         }
 
         if (!frame.EditorViewport.IsEmpty)
@@ -83,14 +88,26 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
 
     public void Retry() => backend.RetryViewport(viewportId);
 
+    public void ResetForBackendRestart()
+    {
+        _observedHostHandle = 0;
+        _renderTarget = default;
+        _destroyed = false;
+    }
+
     public void Destroy()
     {
         if (_destroyed)
             return;
 
+        if (_observedHostHandle != 0)
+        {
+            backend.BindMacHost(viewportId, 0);
+            _observedHostHandle = 0;
+        }
+
         backend.DestroyViewport(viewportId);
         _destroyed = true;
-        _boundHostHandle = 0;
         _renderTarget = default;
     }
 

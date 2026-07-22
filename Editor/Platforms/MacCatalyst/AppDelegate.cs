@@ -13,7 +13,9 @@ public class AppDelegate : MauiUIApplicationDelegate
     static readonly Selector OpenWorkspaceSelector = new("openWorkspace:");
     static readonly Selector SaveWorkspaceSelector = new("saveWorkspace:");
     static readonly Selector OpenRecentWorkspaceSelector = new("openRecentWorkspace:");
+    static readonly Selector NewSceneSelector = new("newScene:");
     static readonly Selector ReloadAssetsSelector = new("reloadAssets:");
+    static IReadOnlyList<WorkspaceRecentItem> recentWorkspaces = [];
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
 
@@ -32,6 +34,7 @@ public class AppDelegate : MauiUIApplicationDelegate
                 UICommand.Create("Open Workspace...", null, OpenWorkspaceSelector, null),
                 UICommand.Create("Save Workspace", null, SaveWorkspaceSelector, null),
                 BuildRecentWorkspacesMenu(),
+                UICommand.Create("New Scene", null, NewSceneSelector, null),
                 UIKeyCommand.Create(
                     "Reload Assets",
                     null,
@@ -55,6 +58,19 @@ public class AppDelegate : MauiUIApplicationDelegate
         UIMenuSystem.MainSystem.SetNeedsRebuild();
     }
 
+    public static void UpdateRecentWorkspaces(IReadOnlyList<WorkspaceRecentItem> recent)
+    {
+        var snapshot = recent?.ToArray() ?? [];
+        if (!MainThread.IsMainThread)
+        {
+            MainThread.BeginInvokeOnMainThread(() => UpdateRecentWorkspaces(snapshot));
+            return;
+        }
+
+        recentWorkspaces = snapshot;
+        RequestMenuRebuild();
+    }
+
     [Export("newWorkspace:")]
     public void NewWorkspace(NSObject sender)
         => RunWorkspaceAction(workspace => workspace.NewWorkspaceAsync());
@@ -76,13 +92,18 @@ public class AppDelegate : MauiUIApplicationDelegate
         RunWorkspaceAction(workspace => workspace.OpenWorkspaceAsync(manifestPath.ToString()));
     }
 
+    [Export("newScene:")]
+    public void NewScene(NSObject sender)
+        => _ = MainThread.InvokeOnMainThreadAsync(
+            () => MauiProgram.GetService<EditorToolbarActions>().NewSceneAsync());
+
     [Export("reloadAssets:")]
     public void ReloadAssets(NSObject sender)
-        => MauiProgram.GetService<EngineService>().RequestAssetReload();
+        => _ = MauiProgram.GetService<EngineService>().RequestAssetReloadAsync();
 
     static UIMenu BuildRecentWorkspacesMenu()
     {
-        var recent = LoadRecentWorkspaces();
+        var recent = recentWorkspaces;
         if (recent.Count == 0)
         {
             return UIMenu.Create(
@@ -111,20 +132,6 @@ public class AppDelegate : MauiUIApplicationDelegate
             new NSString("com.sailor.workspace.recent"),
             0,
             commands);
-    }
-
-    static IReadOnlyList<WorkspaceRecentItem> LoadRecentWorkspaces()
-    {
-        try
-        {
-            var workspaceLifecycle = MauiProgram.GetService<WorkspaceLifecycleService>();
-            var recent = MauiProgram.GetService<RecentWorkspaceStore>().Load();
-            return WorkspaceUiProjectionBuilder.Build(workspaceLifecycle.Current, recent).RecentWorkspaces;
-        }
-        catch
-        {
-            return [];
-        }
     }
 
     static void RunWorkspaceAction(Func<WorkspaceUiService, Task> action)

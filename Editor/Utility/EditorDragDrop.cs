@@ -1,4 +1,5 @@
 using SailorEditor.Commands;
+using SailorEditor.Content;
 using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using SailorEngine;
@@ -55,7 +56,7 @@ public static class EditorDragDrop
         return false;
     }
 
-    public static bool TryCreateContentDropCommand(object? source, object? target, out CreatePrefabAssetCommand? command, out bool requiresConfirmation)
+    public static bool TryCreateContentDropCommand(object? source, object? target, out IEditorCommand? command, out bool requiresConfirmation)
     {
         requiresConfirmation = false;
         var currentSource = source is GameObject gameObject ? ResolveCurrentGameObject(gameObject) : null;
@@ -63,8 +64,12 @@ public static class EditorDragDrop
         command = source switch
         {
             GameObject when currentSource is not null && target is null => new CreatePrefabAssetCommand(currentSource),
-            GameObject when currentSource is not null && target is AssetFolder folder => new CreatePrefabAssetCommand(currentSource, folder),
-            GameObject when currentSource is not null && target is PrefabFile prefab => new CreatePrefabAssetCommand(currentSource, existingPrefab: prefab),
+            GameObject when currentSource is not null && target is AssetFolder { IsReadOnly: false } folder => new CreatePrefabAssetCommand(currentSource, folder),
+            GameObject when currentSource is not null && target is PrefabFile { IsReadOnly: false } prefab => new CreatePrefabAssetCommand(currentSource, existingPrefab: prefab),
+            AssetFile asset when !asset.IsReadOnly && target is null => new MoveAssetCommand(asset),
+            AssetFile asset when !asset.IsReadOnly && target is AssetFolder { IsReadOnly: false } targetFolder => new MoveAssetCommand(asset, targetFolder),
+            AssetFolder sourceFolder when IsMovableFolder(sourceFolder) && target is null => new MoveFolderCommand(sourceFolder),
+            AssetFolder sourceFolder when IsMovableFolder(sourceFolder) && target is AssetFolder { IsReadOnly: false } targetFolder => new MoveFolderCommand(sourceFolder, targetFolder),
             _ => null
         };
 
@@ -74,6 +79,11 @@ public static class EditorDragDrop
         requiresConfirmation = target is PrefabFile;
         return true;
     }
+
+    static bool IsMovableFolder(AssetFolder folder)
+        => !folder.IsReadOnly
+            && folder.Id is not ProjectContentFolderIds.ContentRootId
+            && folder.Id is not ProjectContentFolderIds.EngineContentRootId;
 
     static GameObject? ResolveCurrentGameObject(GameObject gameObject)
     {

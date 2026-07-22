@@ -7,12 +7,14 @@ using SailorEditor.Utility;
 using SailorEngine;
 using YamlDotNet.Core.Tokens;
 using System.Numerics;
+using SailorEditor.Content;
 
 namespace SailorEditor.Services
 {
     public partial class WorldService : ObservableObject
     {
         readonly EngineService engineService;
+        readonly AssetsService assetsService;
         Action<string> worldUpdateHandler = delegate { };
         long workspaceEpoch;
 
@@ -25,6 +27,7 @@ namespace SailorEditor.Services
 
         public World Current { get; private set; } = new World();
         public WorldFile? CurrentWorldAsset { get; private set; }
+        public bool IsCurrentWorldUntitled { get; private set; }
         public long WorkspaceEpoch => Interlocked.Read(ref workspaceEpoch);
 
         [ObservableProperty]
@@ -35,7 +38,37 @@ namespace SailorEditor.Services
         public WorldService()
         {
             engineService = MauiProgram.GetService<EngineService>();
+            assetsService = MauiProgram.GetService<AssetsService>();
+            assetsService.Changed += RebindCurrentWorldAsset;
             SubscribeToWorldUpdates();
+        }
+
+        void RebindCurrentWorldAsset()
+        {
+            var currentWorldAsset = CurrentWorldAsset;
+            var hasStableFileId = currentWorldAsset?.FileId is not null && !currentWorldAsset.FileId.IsEmpty();
+            WorldFile? refreshedWorld = null;
+
+            if (hasStableFileId &&
+                assetsService.Assets.TryGetValue(currentWorldAsset!.FileId, out var refreshedAsset) &&
+                refreshedAsset is WorldFile candidate)
+            {
+                refreshedWorld = candidate;
+            }
+
+            var result = WorldAssetRebindPolicy.Resolve(
+                currentWorldAsset,
+                hasStableFileId,
+                refreshedWorld,
+                IsCurrentWorldUntitled,
+                currentWorldAsset?.IsDirty ?? false);
+            if (result.Asset is not null && result.DirtyState is bool dirtyState)
+            {
+                result.Asset.IsDirty = dirtyState;
+            }
+
+            CurrentWorldAsset = result.Asset;
+            IsCurrentWorldUntitled = result.IsUntitled;
         }
 
         void SubscribeToWorldUpdates()
@@ -54,10 +87,17 @@ namespace SailorEditor.Services
             currentCache = new WorldCache();
             Current = new World();
             CurrentWorldAsset = null;
+            IsCurrentWorldUntitled = false;
             GameObjects.Clear();
 
             SubscribeToWorldUpdates();
             OnUpdateWorldAction?.Invoke(Current);
+        }
+
+        public void MarkCurrentWorldUntitledForWorkspaceStartup()
+        {
+            CurrentWorldAsset = null;
+            IsCurrentWorldUntitled = true;
         }
 
         static string GetWorldKey(World world) => string.IsNullOrEmpty(world?.Name) ? "__default_world__" : world.Name;
@@ -69,10 +109,28 @@ namespace SailorEditor.Services
 
         public List<Component> GetComponents(GameObject gameObject)
         {
-            List<Component> res = new();
-            foreach (var componentIndex in gameObject.ComponentIndices)
+            List<Component> res = [];
+            if (gameObject?.InstanceId is not null &&
+                !gameObject.InstanceId.IsEmpty() &&
+                gameObjectsDict.TryGetValue(gameObject.InstanceId, out var projectedGameObject))
             {
-                res.Add(Current.Prefabs[gameObject.PrefabIndex].Components[componentIndex]);
+                gameObject = projectedGameObject;
+            }
+
+            if (gameObject is null ||
+                gameObject.PrefabIndex < 0 ||
+                gameObject.PrefabIndex >= Current.Prefabs.Count)
+            {
+                return res;
+            }
+
+            var prefab = Current.Prefabs[gameObject.PrefabIndex];
+            foreach (var componentIndex in gameObject.ComponentIndices ?? [])
+            {
+                if (componentIndex < 0 || componentIndex >= prefab.Components.Count)
+                    continue;
+
+                res.Add(prefab.Components[componentIndex]);
             }
 
             return res;
@@ -207,33 +265,204 @@ namespace SailorEditor.Services
 
         public bool SaveCurrentWorld()
         {
-            var worldAsset = CurrentWorldAsset ?? ResolveCurrentWorldAsset();
+            var worldAsset = CurrentWorldAsset ?? (IsCurrentWorldUntitled ? null : ResolveCurrentWorldAsset());
             var assetsService = MauiProgram.GetService<AssetsService>();
             if (worldAsset?.Asset?.FullName == null || !assetsService.CanModifyAsset(worldAsset))
             {
                 return false;
             }
 
-            File.WriteAllText(worldAsset.Asset.FullName, SerializeCurrentWorld());
-            worldAsset.IsDirty = false;
-            return true;
+            return SaveExistingWorld(worldAsset, assetsService).Succeeded;
         }
 
-        public bool LoadWorld(WorldFile worldFile)
+        public async Task<SceneSaveResult> SaveCurrentWorldAsync(
+            bool confirmExisting = true,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+            if (page is null)
+                return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The editor window is unavailable.");
+
+            var assetsService = MauiProgram.GetService<AssetsService>();
+            var worldAsset = CurrentWorldAsset ?? (IsCurrentWorldUntitled ? null : ResolveCurrentWorldAsset());
+            if (worldAsset is not null && assetsService.CanModifyAsset(worldAsset))
+            {
+                if (confirmExisting)
+                {
+                    var confirmed = await page.DisplayAlert(
+                        "Save scene",
+                        $"Save the current scene to {worldAsset.Asset.FullName}?",
+                        "Save",
+                        "Cancel");
+                    if (!confirmed)
+                        return new SceneSaveResult(SceneSaveOutcome.Cancelled);
+                }
+
+                return SaveExistingWorld(worldAsset, assetsService);
+            }
+
+            return await SaveCurrentWorldAsAsync(page, assetsService, cancellationToken);
+        }
+
+        public async Task<bool> CreateNewWorldAsync(CancellationToken cancellationToken = default)
+        {
+            var commandHistory = MauiProgram.GetService<ICommandHistoryService>();
+            await commandHistory.BeginDocumentChangeAsync(cancellationToken);
+            try
+            {
+                if (!engineService.CreateWorld())
+                    return false;
+
+                commandHistory.ResetForDocumentChange();
+                CurrentWorldAsset = null;
+                IsCurrentWorldUntitled = true;
+                MauiProgram.GetService<SelectionService>().ResetForDocumentChange();
+                return true;
+            }
+            finally
+            {
+                commandHistory.CompleteDocumentChange();
+            }
+        }
+
+        public async Task<bool> LoadWorldAsync(WorldFile worldFile, CancellationToken cancellationToken = default)
         {
             if (worldFile?.FileId is null || worldFile.FileId.IsEmpty())
             {
                 return false;
             }
 
-            if (!MauiProgram.GetService<EngineService>().LoadWorld(worldFile.FileId))
+            var commandHistory = MauiProgram.GetService<ICommandHistoryService>();
+            await commandHistory.BeginDocumentChangeAsync(cancellationToken);
+            try
             {
-                return false;
+                if (!engineService.LoadWorld(worldFile.FileId))
+                    return false;
+
+                commandHistory.ResetForDocumentChange();
+                CurrentWorldAsset = worldFile;
+                IsCurrentWorldUntitled = false;
+                MauiProgram.GetService<SelectionService>().ResetForDocumentChange();
+                return true;
+            }
+            finally
+            {
+                commandHistory.CompleteDocumentChange();
+            }
+        }
+
+        SceneSaveResult SaveExistingWorld(WorldFile worldAsset, AssetsService assetsService)
+        {
+            try
+            {
+                var serializedWorld = engineService.SerializeCurrentWorld();
+                if (string.IsNullOrWhiteSpace(serializedWorld))
+                    return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The native world could not be serialized.");
+
+                File.WriteAllText(worldAsset.Asset.FullName, serializedWorld);
+                worldAsset.IsDirty = false;
+                engineService.RequestAssetReload();
+                assetsService.Refresh();
+                CurrentWorldAsset = assetsService.Assets.TryGetValue(worldAsset.FileId, out var refreshed)
+                    ? refreshed as WorldFile ?? worldAsset
+                    : worldAsset;
+                IsCurrentWorldUntitled = false;
+                return new SceneSaveResult(SceneSaveOutcome.Saved, worldAsset.Asset.FullName);
+            }
+            catch (Exception exception)
+            {
+                return new SceneSaveResult(SceneSaveOutcome.Failed, worldAsset.Asset?.FullName, exception.Message);
+            }
+        }
+
+        async Task<SceneSaveResult> SaveCurrentWorldAsAsync(
+            Page page,
+            AssetsService assetsService,
+            CancellationToken cancellationToken)
+        {
+            var activeRoot = assetsService.CurrentProjectRootPath;
+            var suggestedName = string.Equals(Current?.Name, "New Scene", StringComparison.OrdinalIgnoreCase)
+                ? "NewScene.world"
+                : $"{Current?.Name ?? "NewScene"}.world";
+            var requestedPath = await page.DisplayPromptAsync(
+                "Save new scene",
+                $"Create the scene inside the active Content root:{Environment.NewLine}{activeRoot}",
+                "Save",
+                "Cancel",
+                initialValue: suggestedName);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(requestedPath))
+                return new SceneSaveResult(SceneSaveOutcome.Cancelled);
+
+            if (!SceneDocumentContract.TryResolveSaveTarget(activeRoot, requestedPath, out var target, out var error) || target is null)
+            {
+                await page.DisplayAlert("Save scene", error, "OK");
+                return new SceneSaveResult(SceneSaveOutcome.Failed, Error: error);
             }
 
-            CurrentWorldAsset = worldFile;
-            MauiProgram.GetService<SelectionService>().ClearSelection();
-            return true;
+            var existingWorld = assetsService.Files
+                .OfType<WorldFile>()
+                .FirstOrDefault(x => x.Asset is not null &&
+                    ProjectContentPathPolicy.IsSamePath(x.Asset.FullName, target.ScenePath));
+            var sourceExists = File.Exists(target.ScenePath);
+            var metadataExists = File.Exists(target.AssetInfoPath);
+            if (sourceExists || metadataExists)
+            {
+                if (existingWorld is null && metadataExists)
+                {
+                    const string conflictError = "The target metadata already exists but is not a registered world asset.";
+                    await page.DisplayAlert("Save scene", conflictError, "OK");
+                    return new SceneSaveResult(SceneSaveOutcome.Failed, target.ScenePath, conflictError);
+                }
+
+                var overwrite = await page.DisplayAlert(
+                    "Overwrite scene",
+                    $"{target.Filename} already exists. Overwrite it?",
+                    "Overwrite",
+                    "Cancel");
+                if (!overwrite)
+                    return new SceneSaveResult(SceneSaveOutcome.Cancelled);
+            }
+
+            try
+            {
+                var serializedWorld = engineService.SerializeCurrentWorld();
+                if (string.IsNullOrWhiteSpace(serializedWorld))
+                    return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The native world could not be serialized.");
+
+                var directory = Path.GetDirectoryName(target.ScenePath)
+                    ?? throw new InvalidOperationException("The scene directory is invalid.");
+                Directory.CreateDirectory(directory);
+                File.WriteAllText(target.ScenePath, serializedWorld);
+
+                var fileId = existingWorld?.FileId ?? new FileId($"{{{Guid.NewGuid().ToString().ToUpperInvariant()}}}");
+                if (!metadataExists)
+                {
+                    File.WriteAllText(
+                        target.AssetInfoPath,
+                        SceneDocumentContract.BuildAssetInfo(fileId.Value, target.Filename));
+                }
+
+                engineService.RequestAssetReload();
+                assetsService.Refresh();
+                if (!assetsService.Assets.TryGetValue(fileId, out var asset) || asset is not WorldFile savedWorld)
+                {
+                    return new SceneSaveResult(
+                        SceneSaveOutcome.Failed,
+                        target.ScenePath,
+                        "The saved scene was not discovered in the active Content root.");
+                }
+
+                CurrentWorldAsset = savedWorld;
+                CurrentWorldAsset.IsDirty = false;
+                IsCurrentWorldUntitled = false;
+                return new SceneSaveResult(SceneSaveOutcome.Saved, target.ScenePath);
+            }
+            catch (Exception exception)
+            {
+                return new SceneSaveResult(SceneSaveOutcome.Failed, target.ScenePath, exception.Message);
+            }
         }
 
         WorldFile ResolveCurrentWorldAsset()
@@ -317,8 +546,7 @@ namespace SailorEditor.Services
                 ApplyLocalTransformFromWorld(child, newParent, worldPosition, worldRotation);
             }
 
-            OnUpdateWorldAction?.Invoke(Current);
-            RefreshSelection();
+            PublishCurrentWorld();
             return true;
         }
 
@@ -372,8 +600,7 @@ namespace SailorEditor.Services
                 }
             }
 
-            OnUpdateWorldAction?.Invoke(Current);
-            RefreshSelection();
+            PublishCurrentWorld();
             return true;
         }
 
@@ -416,8 +643,7 @@ namespace SailorEditor.Services
             componentOwnersDict.Remove(current.InstanceId);
             componentOwnersDict[updated.InstanceId] = owner;
 
-            OnUpdateWorldAction?.Invoke(Current);
-            RefreshSelection();
+            PublishCurrentWorld();
             return true;
         }
 
@@ -548,9 +774,14 @@ namespace SailorEditor.Services
                 prefabIndex++;
             }
 
-            OnUpdateWorldAction?.Invoke(Current);
-            RefreshSelection();
+            PublishCurrentWorld();
             return true;
+        }
+
+        void PublishCurrentWorld()
+        {
+            RefreshSelection();
+            OnUpdateWorldAction?.Invoke(Current);
         }
 
         void RefreshSelection()

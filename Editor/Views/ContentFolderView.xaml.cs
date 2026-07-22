@@ -17,6 +17,13 @@ namespace SailorEditor.Views
         const double IndentWidth = 14.0;
         const string RootRowId = "folder:root";
 
+        enum ContentDropOperation
+        {
+            None,
+            Copy,
+            Move
+        }
+
         readonly AssetsService service;
         readonly ProjectContentStore contentStore;
         readonly ICommandDispatcher dispatcher;
@@ -46,7 +53,7 @@ namespace SailorEditor.Views
             ContentList.ItemTemplate = CreateItemTemplate();
 
             var rootDropGesture = new DropGestureRecognizer();
-            rootDropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            rootDropGesture.DragOver += (_, e) => ApplyContentDropOperation(e, null);
             rootDropGesture.Drop += async (_, e) => await HandleContentDrop(e, null);
             ContentDropSurface.GestureRecognizers.Add(rootDropGesture);
 
@@ -140,22 +147,30 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (target is AssetFolder { IsReadOnly: true } or AssetFile { IsReadOnly: true })
-                return;
-
             if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
             {
                 return;
             }
 
-            if (!EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out var requiresConfirmation) || command is null)
+            if (target is AssetFolder { IsReadOnly: true } or AssetFile { IsReadOnly: true })
             {
+                e.Handled = true;
                 return;
             }
 
+            if (!EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out var requiresConfirmation) || command is null)
+            {
+                if (target is not null)
+                {
+                    e.Handled = true;
+                }
+                return;
+            }
+
+            e.Handled = true;
+
             if (requiresConfirmation && target is PrefabFile prefab && source is GameObject gameObject)
             {
-                e.Handled = true;
                 var overwrite = await Application.Current.MainPage.DisplayAlert(
                     "Overwrite prefab",
                     $"Overwrite {prefab.DisplayName} with {gameObject.DisplayName}?",
@@ -169,7 +184,57 @@ namespace SailorEditor.Views
             }
 
             var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ContentFolderView)));
-            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
+            var result = await dispatcher.DispatchAsync(command, context);
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Drop failed",
+                    result.Message ?? "Unable to complete the Content operation.",
+                    "OK");
+            }
+        }
+
+        ContentDropOperation GetContentDropOperation(DragEventArgs e, object target)
+        {
+            if (!e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source) ||
+                !EditorDragDrop.TryCreateContentDropCommand(source, target, out var command, out _))
+            {
+                return ContentDropOperation.None;
+            }
+
+            return command switch
+            {
+                MoveAssetCommand when source is AssetFile assetFile && service.CanMoveAsset(assetFile, target as AssetFolder) => ContentDropOperation.Move,
+                MoveFolderCommand when source is AssetFolder assetFolder && service.CanMoveFolder(assetFolder, target as AssetFolder) => ContentDropOperation.Move,
+                CreatePrefabAssetCommand => ContentDropOperation.Copy,
+                _ => ContentDropOperation.None
+            };
+        }
+
+        void ApplyContentDropOperation(DragEventArgs e, object target)
+        {
+            var operation = GetContentDropOperation(e, target);
+            e.AcceptedOperation = operation == ContentDropOperation.None
+                ? DataPackageOperation.None
+                : DataPackageOperation.Copy;
+
+#if MACCATALYST || IOS
+            if (operation == ContentDropOperation.Move && e.PlatformArgs is not null)
+            {
+                e.PlatformArgs.SetDropProposal(new UIKit.UIDropProposal(UIKit.UIDropOperation.Move));
+            }
+#elif WINDOWS
+            if (e.PlatformArgs is not null)
+            {
+                e.PlatformArgs.DragEventArgs.AcceptedOperation = operation switch
+                {
+                    ContentDropOperation.Move => Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move,
+                    ContentDropOperation.Copy => Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy,
+                    _ => Windows.ApplicationModel.DataTransfer.DataPackageOperation.None
+                };
+                e.PlatformArgs.Handled = true;
+            }
+#endif
         }
 
         async Task OpenWorldWithConfirmation(WorldFile worldFile)
@@ -201,14 +266,20 @@ namespace SailorEditor.Views
                     "Save",
                     "Discard");
 
-                if (save && !worldService.SaveCurrentWorld())
+                if (save)
                 {
-                    await page.DisplayAlert("Save failed", "Unable to save the current world asset.", "OK");
-                    return;
+                    var saveResult = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
+                    if (saveResult.Outcome == SceneSaveOutcome.Cancelled)
+                        return;
+                    if (!saveResult.Succeeded)
+                    {
+                        await page.DisplayAlert("Save failed", saveResult.Error ?? "Unable to save the current world asset.", "OK");
+                        return;
+                    }
                 }
             }
 
-            if (!worldService.LoadWorld(worldFile))
+            if (!await worldService.LoadWorldAsync(worldFile))
             {
                 await page.DisplayAlert("Open world failed", $"Unable to open {worldFile.DisplayName}.", "OK");
             }
@@ -234,15 +305,18 @@ namespace SailorEditor.Views
 
             if (!result.Succeeded)
             {
-                await Application.Current.MainPage.DisplayAlert("Rename failed", "Asset with this name already exists or the name is invalid.", "OK");
+                await Application.Current.MainPage.DisplayAlert(
+                    "Rename failed",
+                    result.Message ?? "Asset with this name already exists or the name is invalid.",
+                    "OK");
             }
         }
 
         async Task DeleteAsset(AssetFile assetFile)
         {
             var confirmed = await Application.Current.MainPage.DisplayAlert(
-                "Delete asset",
-                $"Delete {assetFile.DisplayName}?",
+                "Delete asset group",
+                $"Delete {assetFile.DisplayName}, its source file, and all related .asset metadata?",
                 "Delete",
                 "Cancel");
 
@@ -256,6 +330,106 @@ namespace SailorEditor.Views
             if (!result.Succeeded)
             {
                 await Application.Current.MainPage.DisplayAlert("Delete failed", result.Message ?? "Unable to delete asset.", "OK");
+            }
+        }
+
+        async Task DuplicateAsset(AssetFile assetFile)
+        {
+            var result = await dispatcher.DispatchAsync(
+                new DuplicateAssetCommand(assetFile),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DuplicateAsset))));
+
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Duplicate failed",
+                    result.Message ?? "Unable to duplicate the asset group.",
+                    "OK");
+            }
+        }
+
+        async Task RenameFolder(AssetFolder folder)
+        {
+            var newName = await Application.Current.MainPage.DisplayPromptAsync(
+                "Rename folder",
+                "New folder name",
+                "OK",
+                "Cancel",
+                initialValue: folder.Name);
+
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                return;
+            }
+
+            var result = await dispatcher.DispatchAsync(
+                new RenameFolderCommand(folder, newName),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(RenameFolder))));
+
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Rename folder failed",
+                    result.Message ?? "Unable to rename the folder.",
+                    "OK");
+            }
+        }
+
+        async Task CreateFolder(AssetFolder? parentFolder)
+        {
+            var folderName = await Application.Current.MainPage.DisplayPromptAsync(
+                "Create folder",
+                "Folder name",
+                "Create",
+                "Cancel",
+                initialValue: "New Folder");
+
+            if (string.IsNullOrWhiteSpace(folderName))
+            {
+                return;
+            }
+
+            var result = await dispatcher.DispatchAsync(
+                new CreateFolderCommand(parentFolder, folderName),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(CreateFolder))));
+
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Create folder failed",
+                    result.Message ?? "Unable to create the folder.",
+                    "OK");
+                return;
+            }
+
+            if (result.Value is int createdFolderId)
+            {
+                EnsureFolderVisible(createdFolderId);
+                PopulateRows(contentStore.Projection);
+            }
+        }
+
+        async Task DeleteFolder(AssetFolder folder)
+        {
+            var confirmed = await Application.Current.MainPage.DisplayAlert(
+                "Delete folder",
+                $"Delete {folder.Name} and all of its contents?",
+                "Delete",
+                "Cancel");
+
+            if (!confirmed)
+                return;
+
+            var result = await dispatcher.DispatchAsync(
+                new DeleteFolderCommand(folder),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.Panel, nameof(DeleteFolder))));
+
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Delete folder failed",
+                    result.Message ?? "Unable to delete the folder.",
+                    "OK");
             }
         }
 
@@ -443,21 +617,33 @@ namespace SailorEditor.Views
                 dragGesture.DragStarting += (_, e) =>
                 {
                     if (border.BindingContext is ContentListRow row &&
-                        rowModelsById.TryGetValue(row.Id, out var model) &&
-                        model is AssetFile assetFile)
+                        rowModelsById.TryGetValue(row.Id, out var model))
                     {
-                        e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
+                        switch (model)
+                        {
+                            case AssetFile assetFile when service.CanModifyAsset(assetFile):
+                                e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
+                                return;
+                            case AssetFolder folder when service.CanModifyFolder(folder):
+                                e.Data.Properties[EditorDragDrop.DragItemKey] = folder;
+                                return;
+                        }
                     }
+
+                    e.Cancel = true;
                 };
                 border.GestureRecognizers.Add(dragGesture);
 
                 var dropGesture = new DropGestureRecognizer();
                 dropGesture.DragOver += (_, e) =>
                 {
-                    var isReadOnly = border.BindingContext is ContentListRow row
-                        && rowModelsById.TryGetValue(row.Id, out var model)
-                        && model is AssetFolder { IsReadOnly: true } or AssetFile { IsReadOnly: true };
-                    e.AcceptedOperation = isReadOnly ? DataPackageOperation.None : DataPackageOperation.Copy;
+                    object target = null;
+                    if (border.BindingContext is ContentListRow row && rowModelsById.TryGetValue(row.Id, out var model))
+                    {
+                        target = model is ProjectContentFolderItem ? null : model;
+                    }
+
+                    ApplyContentDropOperation(e, target);
                 };
                 dropGesture.Drop += async (_, e) =>
                 {
@@ -527,20 +713,70 @@ namespace SailorEditor.Views
         void ShowContextMenu(object model)
         {
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
-            if (model is AssetFile { IsReadOnly: false } assetFile)
+            if (model is AssetFile assetFile && service.CanModifyAsset(assetFile))
             {
-                contextMenu.Show(
-                    new EditorContextMenuItem
+                var items = new List<EditorContextMenuItem>();
+                if (service.CanDuplicateAsset(assetFile))
+                {
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Duplicate",
+                        Command = new Command(async () => await DuplicateAsset(assetFile))
+                    });
+                }
+
+                if (service.CanRenameAsset(assetFile))
+                {
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Rename",
                         Command = new Command(async () => await RenameAsset(assetFile))
-                    },
+                    });
+                }
+
+                var deleteItem = new EditorContextMenuItem
+                {
+                    Text = "Delete",
+                    IsDestructive = true,
+                    Command = new Command(async () => await DeleteAsset(assetFile))
+                };
+                items.Add(deleteItem);
+                contextMenu.Show(items.ToArray());
+            }
+            else if (model is AssetFolder folder && service.CanCreateFolder(folder))
+            {
+                var items = new List<EditorContextMenuItem>
+                {
                     new EditorContextMenuItem
+                    {
+                        Text = "Create Folder",
+                        Command = new Command(async () => await CreateFolder(folder))
+                    }
+                };
+                if (service.CanModifyFolder(folder))
+                {
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Rename",
+                        Command = new Command(async () => await RenameFolder(folder))
+                    });
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Delete",
                         IsDestructive = true,
-                        Command = new Command(async () => await DeleteAsset(assetFile))
+                        Command = new Command(async () => await DeleteFolder(folder))
                     });
+                }
+                contextMenu.Show(items.ToArray());
+            }
+            else if (model is ProjectContentFolderItem { IsRoot: true, IsReadOnly: false } &&
+                service.CanCreateFolder(null))
+            {
+                contextMenu.Show(new EditorContextMenuItem
+                {
+                    Text = "Create Folder",
+                    Command = new Command(async () => await CreateFolder(null))
+                });
             }
         }
 

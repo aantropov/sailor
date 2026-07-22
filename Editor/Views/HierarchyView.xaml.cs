@@ -18,6 +18,7 @@ namespace SailorEditor.Views
         readonly ObservableCollection<HierarchyListRow> visibleRows = [];
         readonly Dictionary<string, GameObject> gameObjectsById = new(StringComparer.Ordinal);
         bool suppressSelectionChanged;
+        int projectionRevision;
 
         public HierarchyView()
         {
@@ -152,6 +153,18 @@ namespace SailorEditor.Views
         {
             using var perfScope = EditorPerf.Scope("HierarchyView.ApplyProjection");
 
+            var revision = unchecked(++projectionRevision);
+            var desiredRows = projectionService.VisibleRows;
+            var desiredSelectedRow = desiredRows.FirstOrDefault(row => row.IsSelected);
+            var currentSelectedRow = HierarchyList.SelectedItem as HierarchyListRow;
+            var preservesCurrentSelection = currentSelectedRow is not null &&
+                desiredSelectedRow is not null &&
+                currentSelectedRow == desiredSelectedRow &&
+                visibleRows.Any(row => ReferenceEquals(row, currentSelectedRow));
+
+            if (!preservesCurrentSelection && currentSelectedRow is not null)
+                SetHierarchySelection(null);
+
             gameObjectsById.Clear();
             foreach (var gameObject in world.Prefabs
                 .SelectMany(prefab => prefab.GameObjects)
@@ -160,13 +173,40 @@ namespace SailorEditor.Views
                 gameObjectsById[gameObject.InstanceId!.Value] = gameObject;
             }
 
-            ReplaceRows(visibleRows, projectionService.VisibleRows);
+            HierarchyRowReconciler.Reconcile(visibleRows, desiredRows);
             UpdateRootDropOverlay();
 
+            var selectedRow = desiredSelectedRow is null
+                ? null
+                : visibleRows.FirstOrDefault(row => string.Equals(
+                    row.InstanceId,
+                    desiredSelectedRow.InstanceId,
+                    StringComparison.Ordinal));
+            if (ReferenceEquals(HierarchyList.SelectedItem, selectedRow))
+                return;
+
+            var selectedId = selectedRow?.InstanceId;
+            HierarchyList.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), () =>
+            {
+                if (revision != projectionRevision)
+                    return;
+
+                var currentProjectionSelection = string.IsNullOrWhiteSpace(selectedId)
+                    ? null
+                    : visibleRows.FirstOrDefault(row => string.Equals(
+                        row.InstanceId,
+                        selectedId,
+                        StringComparison.Ordinal));
+                SetHierarchySelection(currentProjectionSelection);
+            });
+        }
+
+        void SetHierarchySelection(HierarchyListRow? row)
+        {
             suppressSelectionChanged = true;
             try
             {
-                HierarchyList.SelectedItem = visibleRows.FirstOrDefault(row => row.IsSelected);
+                HierarchyList.SelectedItem = row;
             }
             finally
             {
@@ -191,15 +231,6 @@ namespace SailorEditor.Views
             HierarchyRootDropOverlay.TranslationY = overlayTop;
             HierarchyRootDropOverlay.HeightRequest = overlayHeight;
             HierarchyRootDropOverlay.IsVisible = overlayHeight > 1.0;
-        }
-
-        static void ReplaceRows(ObservableCollection<HierarchyListRow> target, IReadOnlyList<HierarchyListRow> desired)
-        {
-            target.Clear();
-            foreach (var row in desired)
-            {
-                target.Add(row);
-            }
         }
 
         DataTemplate CreateItemTemplate()

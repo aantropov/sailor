@@ -45,6 +45,50 @@ public sealed class EngineTypeMetadataAssetProperty
     public string Type { get; set; } = string.Empty;
 }
 
+public static class EditorAddComponentTypeContract
+{
+    const string ComponentRootTypeName = "Sailor::Component";
+
+    static readonly HashSet<string> HiddenTypeRoots = new(StringComparer.Ordinal)
+    {
+        "Sailor::EditorComponent",
+        "Sailor::TestComponent",
+        "Sailor::TestCaseComponent",
+        "Sailor::PerformanceTestSetupComponent"
+    };
+
+    public static bool IsAddable(
+        string? typeName,
+        Func<string, string?> resolveBaseType)
+    {
+        ArgumentNullException.ThrowIfNull(resolveBaseType);
+
+        if (string.IsNullOrWhiteSpace(typeName) ||
+            string.Equals(typeName, ComponentRootTypeName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var currentTypeName = typeName;
+        var visited = new HashSet<string>(StringComparer.Ordinal) { currentTypeName };
+        while (true)
+        {
+            if (HiddenTypeRoots.Contains(currentTypeName))
+                return false;
+
+            var baseTypeName = resolveBaseType(currentTypeName);
+            if (string.IsNullOrWhiteSpace(baseTypeName))
+                return false;
+            if (string.Equals(baseTypeName, ComponentRootTypeName, StringComparison.Ordinal))
+                return true;
+            if (!visited.Add(baseTypeName))
+                return false;
+
+            currentTypeName = baseTypeName;
+        }
+    }
+}
+
 public sealed class EditorTypeCatalogSnapshot
 {
     const string ComponentRootTypeName = "Sailor::Component";
@@ -244,6 +288,19 @@ public sealed class EditorTypeCatalogSnapshot
     public IReadOnlyList<string> GetComponentTypeNames()
         => types.Keys
             .Where(IsComponentType)
+            .OrderBy(typeName => typeName, StringComparer.Ordinal)
+            .ToArray();
+
+    public bool IsAddableComponentType(string typeName)
+        => EditorAddComponentTypeContract.IsAddable(
+            typeName,
+            currentTypeName => types.TryGetValue(currentTypeName, out var current)
+                ? current.Base
+                : null);
+
+    public IReadOnlyList<string> GetAddableComponentTypeNames()
+        => types.Keys
+            .Where(IsAddableComponentType)
             .OrderBy(typeName => typeName, StringComparer.Ordinal)
             .ToArray();
 

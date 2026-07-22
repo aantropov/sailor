@@ -49,6 +49,28 @@ public sealed class ProjectContentStore
         });
     }
 
+    public string? GetSelectedFolderPath()
+    {
+        if (!string.IsNullOrWhiteSpace(State.SelectedAssetFileId) ||
+            !string.IsNullOrWhiteSpace(State.SelectedAssetPath) ||
+            State.CurrentFolderId is null)
+        {
+            return null;
+        }
+
+        return _assetsService.Folders
+            .FirstOrDefault(folder => folder.Id == State.CurrentFolderId)
+            ?.FullPath;
+    }
+
+    public ProjectContentProjection RestoreFolderSelectionByPath(string? preferredPath)
+    {
+        var folderId = ProjectContentFolderRebindPolicy.ResolveLiveFolderId(
+            preferredPath,
+            CreateFolderSnapshots());
+        return SelectFolder(folderId);
+    }
+
     public ProjectContentProjection SetFilter(string? filter) => Update(State with { Filter = filter });
 
     public ProjectContentProjection SetSort(ProjectContentSortMode sortMode) => Update(State with { SortMode = sortMode });

@@ -27,6 +27,27 @@ static class Templates
             editable.CommitInspectorChanges();
     }
 
+    static void ScheduleInspectorCommit(Entry entry)
+    {
+        if (entry.BindingContext is not IInspectorEditable editable)
+            return;
+
+        entry.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), () =>
+        {
+            if (!editable.HasPendingInspectorChanges)
+                return;
+
+            try
+            {
+                editable.CommitInspectorChanges();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Inspector commit failed: {ex}");
+            }
+        });
+    }
+
     public const int ThumbnailSize = 128;
     public const double InspectorLabelColumnWidth = 140;
     public const double InspectorFieldSpacing = 6;
@@ -401,14 +422,7 @@ static class Templates
         value.Keyboard = Keyboard.Numeric;
         value.ReturnType = ReturnType.Done;
         value.IsTextPredictionEnabled = false;
-
-        value.Completed += (sender, args) =>
-        {
-            var entry = (Entry)sender;
-            CommitInspectorBindingContext(entry.BindingContext);
-            entry.Unfocus();
-        };
-        value.Unfocused += (sender, args) => CommitInspectorBindingContext(((Entry)sender).BindingContext);
+        ConfigureCommittingEntry(value);
 
         value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
             getter: getter,
@@ -476,10 +490,9 @@ static class Templates
         entry.Completed += (sender, args) =>
         {
             var current = (Entry)sender;
-            CommitInspectorBindingContext(current.BindingContext);
             current.Unfocus();
         };
-        entry.Unfocused += (sender, args) => CommitInspectorBindingContext(((Entry)sender).BindingContext);
+        entry.Unfocused += (sender, args) => ScheduleInspectorCommit((Entry)sender);
     }
 
     public static View UniformEditor<TBindingContext, T>(

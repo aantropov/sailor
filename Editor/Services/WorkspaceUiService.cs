@@ -65,7 +65,8 @@ internal sealed class WorkspaceUiService
         SetProjection(WorkspaceUiProjectionBuilder.Build(
             _workspaceLifecycle.Current,
             recent,
-            GetProjectedActivationState()));
+            GetProjectedActivationState(),
+            _engineService.GetLaunchContext()));
     }
 
     public async Task NewWorkspaceAsync(CancellationToken cancellationToken = default)
@@ -303,6 +304,9 @@ internal sealed class WorkspaceUiService
                         : candidate.Session.Manifest.Name,
                     ActiveWorkspacePath = candidate.Session.WorkspaceRoot,
                     HasActiveWorkspace = true,
+                    Mode = candidate.LaunchContext.Mode,
+                    ActiveRootPath = candidate.LaunchContext.ActiveRootPath,
+                    ActiveContentPath = candidate.LaunchContext.ContentDirectory,
                     GeneratedProjectAttention = candidate.Session.GeneratedProjectState.RequiresAttention
                         ? candidate.Session.GeneratedProjectState.Guidance
                         : null
@@ -369,6 +373,9 @@ internal sealed class WorkspaceUiService
     void SetProjection(WorkspaceUiProjection projection)
     {
         Projection = projection;
+#if MACCATALYST
+        SailorEditor.AppDelegate.UpdateRecentWorkspaces(projection.RecentWorkspaces);
+#endif
         ProjectionChanged?.Invoke(this, EventArgs.Empty);
     }
 

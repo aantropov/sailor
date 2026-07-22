@@ -92,7 +92,9 @@ namespace SailorEditor.Services
             var requestCancellation = new CancellationTokenSource();
             var previousCancellation = Interlocked.Exchange(ref pendingSelectionCancellation, requestCancellation);
             previousCancellation?.Cancel();
-            _selectionStore.Select(TryGetSelectionId(obj), obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
+            var selectionChanged = _selectionStore.Select(
+                TryGetSelectionId(obj),
+                obj is Component ? SelectionTargetKind.Component : obj is GameObject ? SelectionTargetKind.GameObject : SelectionTargetKind.Asset);
 
             try
             {
@@ -105,7 +107,10 @@ namespace SailorEditor.Services
                     }
                 }
 
-                UpdateSelection(obj, raiseInstanceAction: obj is GameObject or Component, raiseAssetAction: true);
+                UpdateSelection(
+                    obj,
+                    raiseInstanceAction: selectionChanged && obj is GameObject or Component,
+                    raiseAssetAction: true);
 
                 if (obj is AssetFile assetFile)
                 {
@@ -132,6 +137,20 @@ namespace SailorEditor.Services
         {
             CancelPendingSelection();
             ClearSelectionCore();
+        }
+
+        public void ResetForDocumentChange()
+        {
+            Interlocked.Increment(ref suppressRuntimeSelectionSync);
+            try
+            {
+                CancelPendingSelection();
+                ClearSelectionCore();
+            }
+            finally
+            {
+                Interlocked.Decrement(ref suppressRuntimeSelectionSync);
+            }
         }
 
         public void BeginWorkspaceChange()
