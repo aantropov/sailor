@@ -18,6 +18,7 @@ using namespace Sailor::Win32;
 namespace
 {
 	constexpr char sSailorWindowDelegateKey[] = "sailor_delegate";
+	NSWindow* sReusableEditorRenderingWindow = nil;
 }
 
 static void SailorDispatchImGuiMacEvent(const ImGuiApi::MacEvent& event)
@@ -111,17 +112,19 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 
 - (void)windowWillClose:(NSNotification*)notification
 {
-	(void)notification;
+	SailorWindowDelegate* retainedSelf = [self retain];
 	Sailor::Win32::Window* sailorWindow = self.sailorWindow;
+	const BOOL bTerminatesApplicationOnClose = self.terminatesApplicationOnClose;
 	self.sailorWindow = nullptr;
 
 	if (sailorWindow && Sailor::Win32::Window::IsWindowAlive(sailorWindow))
 	{
-		sailorWindow->SetActive(false);
-		sailorWindow->SetRunning(false);
+		NSWindow* window = (NSWindow*)notification.object;
+		sailorWindow->HandleNativeWindowWillClose((HWND)(__bridge void*)window);
 	}
+	[retainedSelf release];
 
-	if (self.terminatesApplicationOnClose)
+	if (bTerminatesApplicationOnClose)
 	{
 		// Standalone engine windows own the application lifetime. The hidden
 		// editor rendering surface does not; closing it must leave MAUI alive.
@@ -293,6 +296,11 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 
 TVector<Window*> Window::g_windows;
 
+Window::~Window()
+{
+	Destroy();
+}
+
 bool Window::IsParentWindowValid() const
 {
 	if (m_parentHwnd == nullptr)
@@ -361,11 +369,21 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 			NSWindowStyleMaskBorderless;
 
 		NSRect frame = NSMakeRect(0, 0, inWidth, inHeight);
-		NSWindow* window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+		NSWindow* window = bRunsInsideEditor ? sReusableEditorRenderingWindow : nil;
+		if (window)
+		{
+			sReusableEditorRenderingWindow = nil;
+			[window setContentSize:frame.size];
+		}
+		else
+		{
+			window = [[NSWindow alloc] initWithContentRect:frame styleMask:style backing:NSBackingStoreBuffered defer:NO];
+		}
 		if (!window)
 		{
 			return false;
 		}
+		window.releasedWhenClosed = NO;
 
 		SailorContentView* contentView = [[SailorContentView alloc] initWithFrame:frame];
 		contentView.sailorWindow = this;
@@ -378,12 +396,14 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		window.title = [NSString stringWithUTF8String:title ? title : "Sailor"];
 		[window makeFirstResponder:contentView];
 		[window center];
+		[contentView release];
 
 		SailorWindowDelegate* delegate = [[SailorWindowDelegate alloc] init];
 		delegate.sailorWindow = this;
 		delegate.terminatesApplicationOnClose = !bRunsInsideEditor;
 		window.delegate = delegate;
 		objc_setAssociatedObject(window, sSailorWindowDelegateKey, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		[delegate release];
 
 		if (!bRunsInsideEditor)
 		{
@@ -517,20 +537,81 @@ void Window::RecalculateWindowSize()
 
 void Window::Destroy()
 {
+	if (![NSThread isMainThread])
+	{
+		dispatch_sync(dispatch_get_main_queue(), ^
+		{
+			Destroy();
+		});
+		return;
+	}
+
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
+	m_hWnd = nullptr;
+	g_windows.Remove(this);
+	m_bIsShown = false;
+	m_bIsActive = false;
+	m_bIsRunning = false;
+
 	if (window)
 	{
 		SailorWindowDelegate* delegate = (SailorWindowDelegate*)objc_getAssociatedObject(window, sSailorWindowDelegateKey);
+		const BOOL bTerminatesApplicationOnClose = delegate ? delegate.terminatesApplicationOnClose : NO;
 		if (delegate)
 		{
 			delegate.sailorWindow = nullptr;
 		}
-		objc_setAssociatedObject(window, sSailorWindowDelegateKey, nil, OBJC_ASSOCIATION_ASSIGN);
-		[window close];
+
+		SailorContentView* contentView = [window.contentView isKindOfClass:[SailorContentView class]] ? (SailorContentView*)window.contentView : nil;
+		if (contentView)
+		{
+			contentView.sailorWindow = nullptr;
+		}
+
+		window.delegate = nil;
+		objc_setAssociatedObject(window, sSailorWindowDelegateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+		if (bTerminatesApplicationOnClose)
+		{
+			[window close];
+			[window release];
+		}
+		else
+		{
+			// Closing or deallocating the last AppKit NSWindow terminates a Catalyst
+			// host. Keep one process-owned hidden surface and reuse it when the
+			// engine is initialized for the next workspace.
+			[window orderOut:nil];
+			sReusableEditorRenderingWindow = window;
+		}
+	}
+}
+
+void Window::HandleNativeWindowWillClose(HWND nativeWindow)
+{
+	NSWindow* window = (__bridge NSWindow*)nativeWindow;
+	if (!window || (__bridge NSWindow*)m_hWnd != window)
+	{
+		return;
 	}
 
 	m_hWnd = nullptr;
 	g_windows.Remove(this);
+	m_bIsShown = false;
+	m_bIsActive = false;
+	m_bIsRunning = false;
+
+	SailorContentView* contentView = [window.contentView isKindOfClass:[SailorContentView class]] ? (SailorContentView*)window.contentView : nil;
+	if (contentView)
+	{
+		contentView.sailorWindow = nullptr;
+	}
+
+	window.delegate = nil;
+	objc_setAssociatedObject(window, sSailorWindowDelegateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+	dispatch_async(dispatch_get_main_queue(), ^
+	{
+		[window release];
+	});
 }
 
 bool Window::IsWindowAlive(const Window* pWindow)

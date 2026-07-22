@@ -112,10 +112,23 @@ WorldPrefabPtr WorldPrefabImporter::Create()
 	return WorldPrefabPtr::Make(m_allocator, FileId());
 }
 
-void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool)
+void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (!assetInfo)
+	{
+		return;
+	}
+
 	SAILOR_PROFILE_TEXT(assetInfo->GetAssetFilepath().c_str());
+	if (!bWasExpired)
+	{
+		return;
+	}
+
+	const FileId uid = assetInfo->GetFileId();
+	m_loadedWorldPrefabs.Remove(uid);
+	m_promises.Remove(uid);
 }
 
 void WorldPrefabImporter::OnImportAsset(AssetInfoPtr assetInfo) {}

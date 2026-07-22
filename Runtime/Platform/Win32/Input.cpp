@@ -130,3 +130,8 @@ void GlobalInput::SetCursorPosition(int32_t x, int32_t y)
 	m_rawState.m_cursorPosition[0] = x;
 	m_rawState.m_cursorPosition[1] = y;
 }
+
+void GlobalInput::Reset()
+{
+	m_rawState = {};
+}

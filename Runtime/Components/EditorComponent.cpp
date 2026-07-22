@@ -164,14 +164,18 @@ void EditorComponent::EditorTick(float deltaTime)
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 
-		if (m_mainLight)
+		auto mainLightComponent = m_mainLight
+			? m_mainLight->GetComponent<LightComponent>()
+			: TObjectPtr<LightComponent>{};
+		if (mainLightComponent)
 		{
 			m_mainLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
 			m_mainLight->GetTransformComponent().SetPosition(lightPosition);
-			m_mainLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
+			mainLightComponent->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
 		}
 		else
 		{
+			m_mainLight = {};
 			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsInited(); });
 
 			if (index != -1)

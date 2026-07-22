@@ -298,6 +298,35 @@ bool App::LoadEditorWorld(const char* strFileId)
 		});
 }
 
+bool App::CreateEditorWorld()
+{
+	return ExecuteOnEngineMainThread<bool>(false, []()
+		{
+			auto editor = GetSubmodule<Editor>();
+			auto engineLoop = GetSubmodule<EngineLoop>();
+			if (!editor || !engineLoop)
+			{
+				return false;
+			}
+
+			auto oldWorld = editor->GetWorld();
+			auto newWorld = engineLoop->CreateEmptyWorld("New Scene", EngineLoop::EditorWorldMask);
+			if (!newWorld)
+			{
+				return false;
+			}
+
+			editor->SetWorld(newWorld.GetRawPtr());
+			if (oldWorld)
+			{
+				engineLoop->ExitWorld(oldWorld);
+				engineLoop->ProcessPendingWorldExits();
+			}
+
+			return true;
+		});
+}
+
 bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 {
 	if (!strInstanceId || !strYamlNode)

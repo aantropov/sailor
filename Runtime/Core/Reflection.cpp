@@ -90,7 +90,7 @@ namespace
 		nodes.Add(ExportAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo", { "glb", "gltf" }));
 		nodes.Add(ExportAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo", { "anim" }));
 		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
-		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader" }));
+		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader", "glsl" }));
 		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
 		nodes.Add(ExportAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo", { "prefab" }));
 		nodes.Add(ExportAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo", { "world" }));

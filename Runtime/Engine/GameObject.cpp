@@ -66,6 +66,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 
 	if (m_components.RemoveFirst(component))
 	{
+		m_pWorld->RemovePendingDependencyResolutions(component);
 		component->EndPlay();
 		component.DestroyObject(m_pWorld->GetAllocator());
 		return true;
@@ -78,6 +79,7 @@ void GameObject::RemoveAllComponents()
 {
 	for (auto& el : m_components)
 	{
+		m_pWorld->RemovePendingDependencyResolutions(el);
 		el->EndPlay();
 		el.DestroyObject(m_pWorld->GetAllocator());
 	}

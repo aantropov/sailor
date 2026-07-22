@@ -57,6 +57,10 @@ namespace Sailor
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
 		SAILOR_API static bool RequestAssetReload();
+		SAILOR_API static bool GetAssetReloadState(
+			uint64_t& outRequestGeneration,
+			uint64_t& outCompletedGeneration,
+			uint64_t& outSuccessfulGeneration);
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
@@ -75,6 +79,7 @@ namespace Sailor
 		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
 		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
+		SAILOR_API static bool CreateEditorWorld();
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
 		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
@@ -187,6 +192,8 @@ namespace Sailor
 
 		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
 		uint64_t m_assetReloadRequestGeneration = 0;
+		uint64_t m_assetReloadCompletedGeneration = 0;
+		uint64_t m_assetReloadSuccessfulGeneration = 0;
 		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
 
 		static App* s_pInstance;

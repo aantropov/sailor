@@ -1,8 +1,10 @@
 #pragma once
 #include <string>
 #include <ctime>
+#include <type_traits>
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetMountDiscovery.h"
+#include "Core/FileRevision.h"
 #include "Core/Singleton.hpp"
 #include "Containers/Vector.h"
 #include "Core/YamlSerializable.h"
@@ -58,6 +60,8 @@ namespace Sailor
 
 		std::time_t m_metaLoadTime;
 		std::time_t m_assetImportTime;
+		FileRevision m_importedSourceRevision;
+		FileRevision m_metadataRevision;
 		std::string m_folder;
 		std::string m_assetFilename;
 		std::string m_metaFilepath;
@@ -182,6 +186,19 @@ namespace Sailor
 				}
 			});
 
+		return outData;
+	}
+
+	template<typename TAssetInfo>
+	YAML::Node CreateAssetInfoMetadata(const FileId& fileId, const std::string& filename)
+	{
+		static_assert(std::is_base_of_v<AssetInfo, TAssetInfo>);
+
+		TAssetInfo defaultObject;
+		YAML::Node outData = defaultObject.Serialize();
+		outData["assetInfoType"] = defaultObject.GetAssetInfoType();
+		outData["fileId"] = fileId.Serialize();
+		outData["filename"] = filename;
 		return outData;
 	}
 

@@ -397,6 +397,28 @@ add_test(
 )
 
 add_test(
+    NAME VulkanMemoryCounterContract
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_memory_counter_contract_test.py
+        ${SAILOR_RUNTIME_DIR}
+)
+
+add_test(
+    NAME SkyTemperatureTableContract
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/sky_temperature_table_contract_test.py
+        ${SAILOR_RUNTIME_DIR}
+        ${PROJECT_SOURCE_DIR}/Content
+)
+
+add_test(
+    NAME ShaderConstantsModeContract
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/shader_constants_mode_contract_test.py
+        ${SAILOR_RUNTIME_DIR}
+)
+
+add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
         $<TARGET_FILE:WorkspaceModuleFixture>
@@ -429,6 +451,9 @@ set_tests_properties(
     SmartPointerTests
     InstanceIdContractTests
     EcsLifecycleContractTests
+    VulkanMemoryCounterContract
+    SkyTemperatureTableContract
+    ShaderConstantsModeContract
     PROPERTIES TIMEOUT 30
 )
 

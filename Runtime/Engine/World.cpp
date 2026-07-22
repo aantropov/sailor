@@ -390,14 +390,46 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 
 void World::ResolveExternalDependencies()
 {
-	for (uint32_t i = 0; i < ComponentsToResolveDependencies.Num(); i++)
+	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
 	{
 		auto& el = ComponentsToResolveDependencies[i];
-		if (el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		if (!el.m_first || el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
 		{
 			ComponentsToResolveDependencies.RemoveAt(i);
-			i--;
+			continue;
 		}
+
+		i++;
+	}
+}
+
+void World::RemovePendingDependencyResolutions(const ComponentPtr& component)
+{
+	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
+	{
+		const auto& pendingComponent = ComponentsToResolveDependencies[i].m_first;
+		if (!pendingComponent || pendingComponent == component)
+		{
+			ComponentsToResolveDependencies.RemoveAt(i);
+			continue;
+		}
+
+		i++;
+	}
+}
+
+void World::ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate)
+{
+	if (!component)
+	{
+		return;
+	}
+
+	component->ApplyReflection(reflection);
+	RemovePendingDependencyResolutions(component);
+	if (!component->ResolveRefs(reflection, m_objectsMap, bImmediate))
+	{
+		ComponentsToResolveDependencies.Add(TPair(component, reflection));
 	}
 }
 
@@ -449,7 +481,7 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		for (size_t idx = 0; idx < ComponentsToResolveDependencies.Num();)
 		{
 			const auto& el = ComponentsToResolveDependencies[idx];
-			if (el.m_first->m_instanceId.GameObjectId() == go->m_instanceId)
+			if (!el.m_first || el.m_first->m_instanceId.GameObjectId() == go->m_instanceId)
 			{
 				ComponentsToResolveDependencies.RemoveAt(idx);
 				continue;

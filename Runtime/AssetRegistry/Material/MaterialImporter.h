@@ -43,7 +43,7 @@ namespace Sailor
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }
 		SAILOR_API const TConcurrentMap<std::string, float>& GetUniformsFloat() const { return m_uniformsFloat; }
 
-		SAILOR_API void ClearSamplers();
+		SAILOR_API void ClearSamplers(const MaterialPtr& material);
 		SAILOR_API void ClearUniforms();
 
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }

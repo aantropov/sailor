@@ -437,14 +437,18 @@ void TestComponent::Tick(float deltaTime)
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 
-		if (m_dirLight)
+		auto directionalLightComponent = m_dirLight
+			? m_dirLight->GetComponent<LightComponent>()
+			: TObjectPtr<LightComponent>{};
+		if (directionalLightComponent)
 		{
 			m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
 			m_dirLight->GetTransformComponent().SetPosition(lightPosition);
-			m_dirLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
+			directionalLightComponent->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
 		}
 		else
 		{
+			m_dirLight = {};
 			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsValid(); });
 
 			if (index != -1)

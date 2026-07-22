@@ -202,8 +202,7 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 					return false;
 				}
 
-				el->ApplyReflection(overrideData);
-				el->ResolveRefs(overrideData, m_world->GetObjects(), true);
+				m_world->ApplyComponentReflection(el, overrideData, true);
 
 				return true;
 			}
@@ -455,8 +454,7 @@ bool Editor::ResetComponentToDefaults(const InstanceId& instanceId)
 		}
 
 		const ReflectedData& defaults = Reflection::GetCDO(component->GetTypeInfo().Name());
-		component->ApplyReflection(defaults);
-		component->ResolveRefs(defaults, m_world->GetObjects(), true);
+		m_world->ApplyComponentReflection(component, defaults, true);
 		return true;
 	}
 
@@ -503,8 +501,7 @@ bool Editor::AddComponent(
 	}
 
 	const ReflectedData& defaults = Reflection::GetCDO(componentTypeName);
-	component->ApplyReflection(defaults);
-	component->ResolveRefs(defaults, m_world->GetObjects(), true);
+	m_world->ApplyComponentReflection(component, defaults, true);
 	outInstanceId = component->GetInstanceId();
 	return true;
 }

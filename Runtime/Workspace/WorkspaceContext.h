@@ -49,6 +49,7 @@ namespace Sailor::Workspace
 		const std::string& GetWorkspaceName() const noexcept { return m_workspaceName; }
 		uint32_t GetManifestVersion() const noexcept { return m_manifestVersion; }
 		bool IsLegacy() const noexcept { return m_bLegacy; }
+		bool IsEngineMode() const noexcept { return m_content == m_engineContent; }
 
 	private:
 		std::filesystem::path m_root;

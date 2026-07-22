@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 
+#include "Platform/Win32/Input.h"
 #include "Submodules/EditorRemote/RemoteViewportRuntime.h"
 
 using namespace Sailor::EditorRemote;
@@ -509,6 +510,23 @@ namespace
 		Require(session.GetLastPublishedFrameIndex() == 1, "each recreate loop should reset frame indexing for the new epoch");
 	}
 
+	void TestGlobalInputResetClearsLifecycleState()
+	{
+		using Sailor::Win32::GlobalInput;
+		using Sailor::Win32::KeyState;
+
+		GlobalInput::SetKeyState('W', KeyState::Pressed);
+		GlobalInput::SetMouseButtonState(0, KeyState::Pressed);
+		GlobalInput::SetCursorPosition(320, 240);
+
+		GlobalInput::Reset();
+		const auto& state = GlobalInput::GetInputState();
+		Require(!state.IsKeyDown('W'), "lifecycle reset should release keyboard input");
+		Require(!state.IsButtonDown(0), "lifecycle reset should release mouse input");
+		const glm::ivec2 cursor = state.GetCursorPos();
+		Require(cursor.x == 0 && cursor.y == 0, "lifecycle reset should clear the stale cursor position");
+	}
+
 }
 
 int main()
@@ -526,6 +544,7 @@ int main()
 		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
 		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },
 		{ "RemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState", TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState },
+		{ "GlobalInputResetClearsLifecycleState", TestGlobalInputResetClearsLifecycleState },
 	};
 
 	for (const auto& test : tests)

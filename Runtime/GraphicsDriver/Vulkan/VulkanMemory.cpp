@@ -9,6 +9,23 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 std::atomic<size_t> GlobalVulkanMemoryAllocator::m_totalDeviceMemoryAllocated = 0u;
 std::atomic<size_t> GlobalVulkanMemoryAllocator::m_totalHostMemoryAllocated = 0u;
 
+namespace
+{
+	size_t SaturatingSubtract(std::atomic<size_t>& counter, size_t amount)
+	{
+		size_t current = counter.load(std::memory_order_relaxed);
+
+		while (true)
+		{
+			const size_t next = amount >= current ? 0u : current - amount;
+			if (counter.compare_exchange_weak(current, next, std::memory_order_relaxed, std::memory_order_relaxed))
+			{
+				return next;
+			}
+		}
+	}
+}
+
 VulkanMemoryPtr::VulkanMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory) : m_deviceMemory(deviceMemory) {}
 VulkanMemoryPtr::VulkanMemoryPtr(TRefPtr<Sailor::GraphicsDriver::Vulkan::VulkanDeviceMemory> deviceMemory, size_t offset, size_t size) :
 	m_deviceMemory(deviceMemory), m_offset(offset), m_size(size) {}
@@ -54,14 +71,12 @@ void GlobalVulkanMemoryAllocator::Free(VulkanMemoryPtr pData, size_t size)
 	if (m_memoryProperties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
 	{
 		const size_t allocationSize = pData.m_size;
-		const size_t prevTotal = m_totalDeviceMemoryAllocated.load(std::memory_order_relaxed);
-		const size_t clampedSize = allocationSize > prevTotal ? prevTotal : allocationSize;
-		const size_t totalUsed = m_totalDeviceMemoryAllocated.fetch_sub(clampedSize, std::memory_order_relaxed) - clampedSize;
+		const size_t totalUsed = SaturatingSubtract(m_totalDeviceMemoryAllocated, allocationSize);
 		SAILOR_LOG("Free GPU device memory: %.2fmb, total used: %.2fmb", (double)allocationSize / (1024.0 * 1024.0), (double)totalUsed / (1024.0 * 1024.0));
 	}
 	else
 	{
-		m_totalHostMemoryAllocated -= size;
+		SaturatingSubtract(m_totalHostMemoryAllocated, size);
 	}
 
 	pData.m_deviceMemory.Clear();

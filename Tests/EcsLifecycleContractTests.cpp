@@ -160,6 +160,7 @@ namespace
 		{
 			TVector<ECS::TBaseSystemPtr> systems;
 			systems.Add(TUniquePtr<TransformECS>::Make());
+			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
 			return systems;
 		}
 	};
@@ -495,6 +496,164 @@ namespace
 			"the skinned shader should avoid bone-buffer reads for an invalid skeleton offset");
 	}
 
+	void TestExpiredWorldPrefabInvalidatesLoadedCacheContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string importerSource = ReadText(
+			sourceRoot / "Runtime/AssetRegistry/World/WorldPrefabImporter.cpp");
+		const size_t updateBegin = importerSource.find(
+			"void WorldPrefabImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)");
+		const size_t updateEnd = importerSource.find(
+			"void WorldPrefabImporter::OnImportAsset", updateBegin);
+
+		Require(updateBegin != std::string::npos && updateEnd != std::string::npos,
+			"world prefab importer must expose its asset-update handler");
+		const std::string updateBody = importerSource.substr(updateBegin, updateEnd - updateBegin);
+		Require(updateBody.find("if (!bWasExpired)") != std::string::npos,
+			"unchanged world metadata must preserve the loaded world prefab cache");
+		Require(updateBody.find("m_loadedWorldPrefabs.Remove(uid)") != std::string::npos,
+			"an expired world source must invalidate its loaded world prefab");
+		Require(updateBody.find("m_promises.Remove(uid)") != std::string::npos,
+			"an expired world source must invalidate its completed load promise");
+	}
+
+	void TestEmptyEditorWorldBootstrapContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string engineLoopSource = ReadText(
+			sourceRoot / "Runtime/Engine/EngineLoop.cpp");
+		const size_t createEmptyWorldBegin = engineLoopSource.find(
+			"TSharedPtr<World> EngineLoop::CreateEmptyWorld");
+		const size_t createEmptyWorldEnd = engineLoopSource.find(
+			"TSharedPtr<World> EngineLoop::InstantiateWorld", createEmptyWorldBegin);
+
+		Require(createEmptyWorldBegin != std::string::npos && createEmptyWorldEnd != std::string::npos,
+			"engine loop must expose the empty-world bootstrap");
+		const std::string createEmptyWorldBody = engineLoopSource.substr(
+			createEmptyWorldBegin,
+			createEmptyWorldEnd - createEmptyWorldBegin);
+		Require(createEmptyWorldBody.find("AddComponent<CameraComponent>()") != std::string::npos,
+			"an empty editor world must create its camera component");
+		Require(createEmptyWorldBody.find("AddComponent<EditorComponent>()") != std::string::npos,
+			"an empty editor world must create its editor controller component");
+		Require(createEmptyWorldBody.find("AddComponent<TestComponent>()") == std::string::npos,
+			"an empty editor world must not create the legacy test component");
+
+		const size_t ensureInfrastructureBegin = engineLoopSource.find(
+			"void EnsureEditorWorldInfrastructure");
+		Require(ensureInfrastructureBegin != std::string::npos &&
+			ensureInfrastructureBegin < createEmptyWorldBegin,
+			"engine loop must define its editor-world infrastructure bootstrap");
+		const std::string ensureInfrastructureBody = engineLoopSource.substr(
+			ensureInfrastructureBegin,
+			createEmptyWorldBegin - ensureInfrastructureBegin);
+		Require(ensureInfrastructureBody.find("GetComponent<CameraComponent>().IsInited()") != std::string::npos,
+			"editor-world bootstrap must reuse the first initialized scene camera before BeginPlay");
+		Require(ensureInfrastructureBody.find("GetComponent<EditorComponent>().IsInited()") != std::string::npos,
+			"editor-world bootstrap must detect an initialized editor controller before BeginPlay");
+		Require(ensureInfrastructureBody.find("GameObjectPtr editorOwner") != std::string::npos &&
+			ensureInfrastructureBody.find("editorOwner->GetComponent<CameraComponent>().IsInited()") != std::string::npos,
+			"an existing editor controller must own a camera instead of creating a duplicate controller");
+		Require(ensureInfrastructureBody.find("Instantiate(\"Editor Camera\")") != std::string::npos,
+			"a scene without a camera must receive a named editor camera");
+		Require(ensureInfrastructureBody.find("AddComponent<CameraComponent>()") != std::string::npos &&
+			ensureInfrastructureBody.find("AddComponent<EditorComponent>()") != std::string::npos,
+			"the fallback editor camera must contain camera and editor controller components");
+		Require(ensureInfrastructureBody.find("AddComponent<TestComponent>()") == std::string::npos,
+			"editor-world infrastructure must never add the legacy test component");
+
+		const size_t instantiateWorldEnd = engineLoopSource.find(
+			"bool EngineLoop::ExitWorld", createEmptyWorldEnd);
+		Require(instantiateWorldEnd != std::string::npos,
+			"engine loop must expose the end of its world-loading bootstrap");
+		const std::string instantiateWorldBody = engineLoopSource.substr(
+			createEmptyWorldEnd,
+			instantiateWorldEnd - createEmptyWorldEnd);
+		Require(instantiateWorldBody.find("EditorWorldMask") != std::string::npos &&
+			instantiateWorldBody.find("EnsureEditorWorldInfrastructure(newWorld)") != std::string::npos,
+			"world loading must ensure editor infrastructure only for editor worlds");
+
+		const YAML::Node editorWorld = YAML::Load(ReadText(sourceRoot / "Content/Editor.world"));
+		const YAML::Node prefabs = editorWorld["prefabs"];
+		Require(prefabs && prefabs.IsSequence() && prefabs.size() > 0,
+			"the engine editor scene must contain its camera prefab");
+
+		bool bHasCameraComponent = false;
+		bool bHasEditorComponent = false;
+		bool bHasTestComponent = false;
+		for (const auto& prefab : prefabs)
+		{
+			const YAML::Node components = prefab["components"];
+			if (!components || !components.IsSequence())
+			{
+				continue;
+			}
+
+			for (const auto& component : components)
+			{
+				const std::string typeName = component["typename"].as<std::string>("");
+				bHasCameraComponent |= typeName == "Sailor::CameraComponent";
+				bHasEditorComponent |= typeName == "Sailor::EditorComponent";
+				bHasTestComponent |= typeName == "Sailor::TestComponent";
+			}
+		}
+
+		Require(bHasCameraComponent,
+			"the engine editor scene must retain its camera component");
+		Require(bHasEditorComponent,
+			"the engine editor scene must retain its editor controller component");
+		Require(!bHasTestComponent,
+			"the engine editor scene must not contain the legacy test component");
+
+		const YAML::Node cameraPrefab = prefabs[0];
+		const YAML::Node cameraObjects = cameraPrefab["gameObjects"];
+		const YAML::Node cameraComponents = cameraPrefab["components"];
+		Require(cameraObjects && cameraObjects.IsSequence() && cameraObjects.size() == 1,
+			"the editor camera prefab must contain exactly one game object");
+		const YAML::Node componentIndices = cameraObjects[0]["components"];
+		Require(componentIndices && componentIndices.IsSequence() && componentIndices.size() == 2,
+			"the editor camera must reference only its camera and editor controller components");
+		Require(componentIndices[0].as<uint32_t>() == 0 && componentIndices[1].as<uint32_t>() == 1,
+			"the editor camera component indices must stay contiguous after test-component removal");
+		Require(cameraComponents && cameraComponents.IsSequence() && cameraComponents.size() == 2,
+			"the editor camera prefab must store exactly two components");
+		Require(cameraComponents[0]["typename"].as<std::string>() == "Sailor::CameraComponent" &&
+			cameraComponents[1]["typename"].as<std::string>() == "Sailor::EditorComponent",
+			"the editor camera prefab must store CameraComponent followed by EditorComponent");
+	}
+
+	void TestWorkspaceEditorStartupWorldContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string appHeader = ReadText(sourceRoot / "Runtime/Sailor.h");
+		const std::string appSource = ReadText(sourceRoot / "Runtime/Sailor.cpp");
+
+		Require(appHeader.find("std::string m_world = \"Editor.world\"") != std::string::npos,
+			"standalone engine startup must retain its existing Editor.world default");
+
+		const size_t parseBegin = appSource.find("AppArgs ParseCommandLineArgs");
+		const size_t parseEnd = appSource.find("void App::Initialize", parseBegin);
+		Require(parseBegin != std::string::npos && parseEnd != std::string::npos,
+			"application startup must expose its command-line parser");
+		const std::string parseBody = appSource.substr(parseBegin, parseEnd - parseBegin);
+		const size_t newWorldFlag = parseBody.find("else if (arg == \"--new-world\")");
+		const size_t clearWorld = parseBody.find("params.m_world.clear()", newWorldFlag);
+		Require(newWorldFlag != std::string::npos && clearWorld != std::string::npos,
+			"the explicit workspace new-world flag must clear the standalone default scene");
+
+		const size_t worldBootstrapBegin = appSource.find("auto worldParams =");
+		const size_t worldBootstrapEnd = appSource.find("if (auto editor =", worldBootstrapBegin);
+		Require(worldBootstrapBegin != std::string::npos && worldBootstrapEnd != std::string::npos,
+			"application startup must expose its initial world bootstrap");
+		const std::string worldBootstrap = appSource.substr(
+			worldBootstrapBegin,
+			worldBootstrapEnd - worldBootstrapBegin);
+		Require(worldBootstrap.find("if (!params.m_world.empty()") != std::string::npos,
+			"an explicit new world must skip startup asset loading");
+		Require(worldBootstrap.find("params.m_bIsEditor ? \"New Scene\" : \"New World\"") != std::string::npos,
+			"an editor empty-world bootstrap must use the untitled scene name");
+	}
+
 	void TestAnimationRelayoutMarksEveryOwnedMeshDirty()
 	{
 		AnimationMeshTestWorld world;
@@ -621,6 +780,254 @@ namespace
 		PrefabPtr prefab = PrefabPtr::Make(world.GetAllocator(), FileId());
 		prefab->Deserialize(node);
 		return prefab;
+	}
+
+	void TestRemovingComponentCancelsPendingDependencyResolution()
+	{
+		YAML::Node meshRendererNode;
+		meshRendererNode["typename"] = MeshRendererComponent::GetStaticTypeInfo().Name();
+		meshRendererNode["overrideProperties"]["instanceId"] =
+			"1111111111111111_10010010010010010000";
+		meshRendererNode["overrideProperties"]["model"]["fileId"] = "NullFileId";
+		meshRendererNode["overrideProperties"]["model"]["instanceId"] =
+			"AAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBB";
+
+		YAML::Node survivingProperties;
+		survivingProperties["m_dependency"]["fileId"] = "NullFileId";
+		survivingProperties["m_dependency"]["instanceId"] =
+			"CCCCCCCCCCCCCCCC_DDDDDDDDDDDDDDDD";
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(meshRendererNode);
+		components.push_back(MakeReflectedComponent(
+			"2222222222222222_10010010010010010000",
+			survivingProperties));
+
+		PrefabTestWorld world;
+		auto root = world.Instantiate(DeserializePrefab(world, MakeComponentPrefabNode(components)));
+		Require(static_cast<bool>(root),
+			"the unresolved component fixture should instantiate successfully");
+		Require(world.GetPendingDependencyCount() == 2,
+			"both unresolved components should enter the pending dependency queue");
+
+		auto meshComponent = root->GetComponent(0);
+		auto meshRenderer = meshComponent.DynamicCast<MeshRendererComponent>();
+		Require(static_cast<bool>(meshRenderer),
+			"the first fixture component should be a mesh renderer");
+
+		auto* meshEcs = world.GetECS<StaticMeshRendererECS>();
+		const size_t releasedSlot = meshRenderer->GetComponentIndex();
+		Require(meshEcs->IsComponentRegistered(releasedSlot),
+			"the unresolved mesh renderer should own a live ECS slot before removal");
+
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+		Require(editor.RemoveComponent(meshComponent->GetInstanceId()),
+			"removing the unresolved mesh renderer should succeed");
+		Require(!meshEcs->IsComponentRegistered(releasedSlot),
+			"removing the mesh renderer should release its ECS slot");
+		Require(world.GetPendingDependencyCount() == 1,
+			"removing one component should cancel only its pending dependency work");
+
+		auto replacement = root->AddComponent<MeshRendererComponent>();
+		Require(replacement->GetComponentIndex() == releasedSlot,
+			"the replacement mesh renderer should reuse the released ECS slot");
+		world.ResolveExternalDependencies();
+		Require(world.GetPendingDependencyCount() == 1,
+			"retrying dependencies should preserve the surviving unresolved component");
+		Require(meshEcs->IsComponentRegistered(releasedSlot) &&
+			replacement->GetComponentIndex() == releasedSlot,
+			"stale dependency work must not mutate the replacement mesh renderer slot");
+		world.Clear();
+	}
+
+	void TestExplicitNullMeshReferenceDoesNotRemainPending()
+	{
+		YAML::Node meshRendererNode;
+		meshRendererNode["typename"] = MeshRendererComponent::GetStaticTypeInfo().Name();
+		meshRendererNode["overrideProperties"]["instanceId"] =
+			"1111111111111111_10010010010010010000";
+		meshRendererNode["overrideProperties"]["model"]["fileId"] = "NullFileId";
+		meshRendererNode["overrideProperties"]["model"]["instanceId"] = "NullInstanceId";
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(meshRendererNode);
+
+		PrefabTestWorld world;
+		auto root = world.Instantiate(DeserializePrefab(world, MakeComponentPrefabNode(components)));
+		Require(static_cast<bool>(root),
+			"the explicit-null mesh renderer fixture should instantiate successfully");
+		Require(world.GetPendingDependencyCount() == 0,
+			"an explicit null object reference should be resolved instead of retried every frame");
+		world.Clear();
+	}
+
+	void TestEditorUpdateReplacesStaleMeshDependencyResolution()
+	{
+		YAML::Node meshRendererNode;
+		meshRendererNode["typename"] = MeshRendererComponent::GetStaticTypeInfo().Name();
+		meshRendererNode["overrideProperties"]["instanceId"] =
+			"1111111111111111_10010010010010010000";
+		meshRendererNode["overrideProperties"]["model"]["fileId"] = "NullFileId";
+		meshRendererNode["overrideProperties"]["model"]["instanceId"] =
+			"AAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBB";
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(meshRendererNode);
+
+		PrefabTestWorld world;
+		auto survivor = world.Instantiate(DeserializePrefab(world, MakeComponentPrefabNode(components)));
+		Require(static_cast<bool>(survivor),
+			"the survivor mesh renderer fixture should instantiate successfully");
+		Require(world.GetPendingDependencyCount() == 1,
+			"the unresolved original model should enter the pending dependency queue");
+
+		auto meshRenderer = survivor->GetComponent<MeshRendererComponent>();
+		Require(static_cast<bool>(meshRenderer),
+			"the survivor should expose its mesh renderer");
+
+		auto duckOwner = world.Instantiate("DuckOwner");
+		auto duckRenderer = duckOwner->AddComponent<MeshRendererComponent>();
+		ModelPtr duckModel = ModelPtr::Make(world.GetAllocator(), FileId());
+		duckRenderer->SetModel(duckModel);
+
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+		Require(editor.DestroyObject(duckOwner->GetInstanceId()),
+			"deleting the original duck owner should succeed");
+
+		YAML::Node updateNode;
+		updateNode["typename"] = MeshRendererComponent::GetStaticTypeInfo().Name();
+		updateNode["overrideProperties"]["instanceId"] = meshRenderer->GetInstanceId();
+		updateNode["overrideProperties"]["model"]["fileId"] = "NullFileId";
+		updateNode["overrideProperties"]["model"]["instanceId"] = "NullInstanceId";
+		Require(editor.UpdateObject(meshRenderer->GetInstanceId(), YAML::Dump(updateNode)),
+			"updating the surviving mesh renderer should succeed");
+
+		meshRenderer->SetModel(duckModel);
+		world.ResolveExternalDependencies();
+		Require(meshRenderer->GetModel() == duckModel,
+			"stale dependency work must not clear a model assigned after deleting another owner");
+		Require(world.GetPendingDependencyCount() == 0,
+			"the editor update should replace the survivor's stale pending reflection");
+		world.Clear();
+	}
+
+	void TestEditorUpdatePreservesNewUnresolvedDependency()
+	{
+		YAML::Node originalProperties;
+		originalProperties["m_dependency"]["fileId"] = "NullFileId";
+		originalProperties["m_dependency"]["instanceId"] =
+			"AAAAAAAAAAAAAAAA_BBBBBBBBBBBBBBBB";
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(MakeReflectedComponent(
+			"1111111111111111_10010010010010010000",
+			originalProperties));
+
+		PrefabTestWorld world;
+		auto root = world.Instantiate(DeserializePrefab(world, MakeComponentPrefabNode(components)));
+		Require(static_cast<bool>(root),
+			"the unresolved editor-update fixture should instantiate successfully");
+		auto source = root->GetComponent<PrefabRollbackTestComponent>();
+		Require(static_cast<bool>(source),
+			"the editor-update fixture should expose its reflected component");
+		Require(world.GetPendingDependencyCount() == 1,
+			"the original unresolved dependency should enter the pending queue");
+
+		InstanceId targetGameObjectId;
+		targetGameObjectId.Deserialize(YAML::Node("20020020020020020000"));
+		InstanceId targetComponentId;
+		targetComponentId.Deserialize(YAML::Node(
+			"3333333333333333_20020020020020020000"));
+
+		YAML::Node updatedProperties;
+		updatedProperties["m_dependency"]["fileId"] = "NullFileId";
+		updatedProperties["m_dependency"]["instanceId"] = targetComponentId.ToString();
+		YAML::Node updateNode = MakeReflectedComponent(
+			source->GetInstanceId().ToString(),
+			updatedProperties);
+
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+		Require(editor.UpdateObject(source->GetInstanceId(), YAML::Dump(updateNode)),
+			"updating to a new unresolved dependency should succeed");
+		Require(world.GetPendingDependencyCount() == 1,
+			"the new unresolved dependency should replace the old pending snapshot");
+
+		auto targetOwner = world.Instantiate("LateTarget", targetGameObjectId);
+		Require(static_cast<bool>(targetOwner),
+			"the late dependency owner should accept its preferred identity");
+		ComponentPtr target = TObjectPtr<PrefabRollbackTestComponent>::Make(world.GetAllocator());
+		target = targetOwner->AddComponentRaw(target, targetComponentId);
+		Require(static_cast<bool>(target),
+			"the late dependency component should accept its preferred identity");
+
+		world.ResolveExternalDependencies();
+		Require(source->m_dependency == target,
+			"the replacement pending snapshot should resolve the newly selected component");
+		Require(world.GetPendingDependencyCount() == 0,
+			"the replacement pending snapshot should leave the queue after resolution");
+		world.Clear();
+	}
+
+	void TestPrefabComponentReferencesFollowRemappedOwners()
+	{
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		constexpr const char* rootId = "10010010010010010000";
+		constexpr const char* childId = "20020020020020020000";
+		constexpr const char* sourceComponentId = "1111111111111111_10010010010010010000";
+		constexpr const char* targetComponentId = "2222222222222222_20020020020020020000";
+
+		YAML::Node sourceProperties;
+		sourceProperties["m_dependency"]["fileId"] = "NullFileId";
+		sourceProperties["m_dependency"]["instanceId"] = targetComponentId;
+
+		YAML::Node targetProperties;
+		targetProperties["m_value"] = 42.0f;
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(MakeReflectedComponent(sourceComponentId, sourceProperties));
+		components.push_back(MakeReflectedComponent(targetComponentId, targetProperties));
+
+		YAML::Node prefabNode = MakePrefabNode({ noParent, 0 });
+		prefabNode["gameObjects"][0]["instanceId"] = rootId;
+		prefabNode["gameObjects"][0]["components"] = YAML::Node(YAML::NodeType::Sequence);
+		prefabNode["gameObjects"][0]["components"].push_back(0);
+		prefabNode["gameObjects"][1]["instanceId"] = childId;
+		prefabNode["gameObjects"][1]["components"] = YAML::Node(YAML::NodeType::Sequence);
+		prefabNode["gameObjects"][1]["components"].push_back(1);
+		prefabNode["components"] = components;
+
+		PrefabTestWorld world;
+		auto prefab = DeserializePrefab(world, prefabNode);
+		auto firstRoot = world.Instantiate(prefab);
+		Require(static_cast<bool>(firstRoot) && firstRoot->GetChildren().Num() == 1,
+			"the first saved prefab instance should preserve its hierarchy");
+
+		auto firstSource = firstRoot->GetComponent<PrefabRollbackTestComponent>();
+		auto firstTarget = firstRoot->GetChildren()[0]->GetComponent<PrefabRollbackTestComponent>();
+		Require(firstSource && firstTarget && firstSource->m_dependency == firstTarget,
+			"the first saved prefab instance should resolve its component reference internally");
+
+		auto secondRoot = world.Instantiate(prefab);
+		Require(static_cast<bool>(secondRoot) && secondRoot->GetChildren().Num() == 1,
+			"a repeated prefab instance should remap colliding game-object identities");
+
+		auto secondSource = secondRoot->GetComponent<PrefabRollbackTestComponent>();
+		auto secondTarget = secondRoot->GetChildren()[0]->GetComponent<PrefabRollbackTestComponent>();
+		Require(secondSource && secondTarget,
+			"the repeated prefab instance should recreate both reflected components");
+		Require(secondSource->m_dependency == secondTarget && secondSource->m_dependency != firstTarget,
+			"a saved component reference must follow the remapped owner within its prefab instance");
+		Require(secondTarget->GetInstanceId().ComponentId().ToString() == "2222222222222222",
+			"component remapping must preserve the saved component-local identity");
+		Require(secondTarget->GetInstanceId().GameObjectId() == secondRoot->GetChildren()[0]->GetInstanceId(),
+			"the remapped component identity must embed its actual game-object owner");
+		Require(world.GetPendingDependencyCount() == 0,
+			"internally remapped component references must not leak into the pending queue");
+
+		world.Clear();
 	}
 
 	void RequireRejectedWithoutWorldMutation(
@@ -864,8 +1271,16 @@ int main()
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
+		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },
+		{ "EmptyEditorWorldBootstrapContract", TestEmptyEditorWorldBootstrapContract },
+		{ "WorkspaceEditorStartupWorldContract", TestWorkspaceEditorStartupWorldContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },
 		{ "SparseLightSlotInvalidationAndReuse", TestSparseLightSlotInvalidationAndReuse },
+		{ "RemovingComponentCancelsPendingDependencyResolution", TestRemovingComponentCancelsPendingDependencyResolution },
+		{ "ExplicitNullMeshReferenceDoesNotRemainPending", TestExplicitNullMeshReferenceDoesNotRemainPending },
+		{ "EditorUpdateReplacesStaleMeshDependencyResolution", TestEditorUpdateReplacesStaleMeshDependencyResolution },
+		{ "EditorUpdatePreservesNewUnresolvedDependency", TestEditorUpdatePreservesNewUnresolvedDependency },
+		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },
 		{ "PrefabTopologyValidationRejectsPartialWorldMutations", TestPrefabTopologyValidationRejectsPartialWorldMutations },
 		{ "PrefabInstantiationRollbackPreservesWorldState", TestPrefabInstantiationRollbackPreservesWorldState },
 	};

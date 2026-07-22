@@ -3,6 +3,7 @@
 #include <fstream>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <vector>
 #include "Sailor.h"
 #include "Containers/Containers.h"
@@ -12,6 +13,7 @@
 #include "Core/Singleton.hpp"
 #include "Engine/Object.h"
 #include "AssetRegistry/AssetCache.h"
+#include "Tasks/Tasks.h"
 
 namespace Sailor
 {
@@ -19,6 +21,14 @@ namespace Sailor
 	using AssetInfoPtr = AssetInfo*;
 
 	enum class EAssetType;
+
+	class IAssetRegistryContentListener
+	{
+	public:
+		virtual ~IAssetRegistryContentListener() = default;
+		virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
+			const std::string& virtualPath) = 0;
+	};
 
 	class AssetRegistry final : public TSubmodule<AssetRegistry>
 	{
@@ -29,6 +39,34 @@ namespace Sailor
 			std::string m_virtualPath;
 			EAssetMountKind m_mountKind = EAssetMountKind::Engine;
 			bool m_bWritable = false;
+			FileRevision m_revision{};
+		};
+
+		struct AssetProcessingToken final
+		{
+			FileId m_fileId{};
+			FileRevision m_sourceRevision{};
+			std::string m_sourcePath;
+			std::time_t m_assetImportTime{};
+			uint64_t m_generation{};
+
+			explicit operator bool() const noexcept
+			{
+				return static_cast<bool>(m_fileId) &&
+					m_sourceRevision.m_bIsValid &&
+					!m_sourcePath.empty() &&
+					m_assetImportTime > 0 &&
+					m_generation != 0;
+			}
+
+			bool Matches(const AssetProcessingToken& rhs) const noexcept
+			{
+				return m_fileId == rhs.m_fileId &&
+					m_sourceRevision == rhs.m_sourceRevision &&
+					m_sourcePath == rhs.m_sourcePath &&
+					m_assetImportTime == rhs.m_assetImportTime &&
+					m_generation == rhs.m_generation;
+			}
 		};
 
 		SAILOR_API static std::string GetContentFolder();
@@ -124,7 +162,7 @@ namespace Sailor
 				ReadBinaryFile(location.m_physicalPath, outBuffer);
 		}
 
-		SAILOR_API void ScanContentFolder();
+		SAILOR_API bool ScanContentFolder();
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
@@ -153,10 +191,19 @@ namespace Sailor
 		}
 
 		SAILOR_API bool RegisterAssetInfoHandler(const TVector<std::string>& supportedExtensions, class IAssetInfoHandler* pAssetInfoHandler);
+		SAILOR_API void SubscribeContentChanges(IAssetRegistryContentListener* listener);
+		SAILOR_API void UnsubscribeContentChanges(IAssetRegistryContentListener* listener);
 		SAILOR_API static std::string GetMetaFilePath(const std::string& assetFilePath);
 
 		SAILOR_API bool IsAssetExpired(const AssetInfoPtr info) const;
 		SAILOR_API void CacheAsset(const AssetInfoPtr info);
+		SAILOR_API AssetProcessingToken BeginAssetProcessing(AssetInfoPtr info);
+		SAILOR_API void CompleteAssetProcessing(
+			const AssetProcessingToken& token,
+			bool bSucceeded);
+		SAILOR_API void TrackScanProcessingTask(
+			const Tasks::TaskPtr<bool>& processingTask);
+		SAILOR_API bool CompleteScanProcessing();
 
 		template<typename T>
 		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
@@ -178,7 +225,9 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
-		bool RestoreAssetImportTime(AssetInfoPtr info) const;
+		bool RestoreAssetImportTime(
+			AssetInfoPtr info,
+			const FileRevision& sourceRevision) const;
 		bool ResolveDirectLoadPath(
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;
@@ -194,6 +243,16 @@ namespace Sailor
 		TMap<std::string, class IAssetInfoHandler*> m_assetInfoHandlers;
 		TVector<AssetMountDescriptor> m_contentMounts;
 		TMap<std::string, AssetReadLocation> m_contentFileWinners;
+		TVector<IAssetRegistryContentListener*> m_contentListeners;
+		struct AssetProcessingState final
+		{
+			AssetProcessingToken m_token;
+			bool m_bRejected = false;
+		};
+		std::mutex m_assetProcessingMutex;
+		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
+		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
+		bool m_bCollectScanProcessingTasks = false;
 
 		AssetCache m_assetCache;
 

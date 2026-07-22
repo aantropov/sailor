@@ -1,5 +1,7 @@
 #include "AssetRegistry/Shader/ShaderCache.h"
 #include "AssetRegistry/Shader/ShaderCompiler.h"
+#include "AssetRegistry/Shader/ShaderDependencyFingerprint.h"
+#include "AssetRegistry/Shader/ShaderYamlIncludeResolver.h"
 #include "Workspace/WorkspaceCacheContract.h"
 
 #include <array>
@@ -858,6 +860,103 @@ namespace
 			"a compile failure should remain failed even when cache persistence succeeds");
 	}
 
+	ShaderDependencyFile Dependency(
+		const std::string& virtualPath,
+		const std::string& winnerIdentity,
+		int64_t modificationTimeNanoseconds,
+		uint64_t fileSize,
+		uint64_t contentHash,
+		uint32_t mountKind)
+	{
+		ShaderDependencyFile dependency;
+		dependency.m_virtualPath = virtualPath;
+		dependency.m_winnerIdentity = winnerIdentity;
+		dependency.m_revision.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
+		dependency.m_revision.m_fileSize = fileSize;
+		dependency.m_revision.m_contentHash = contentHash;
+		dependency.m_revision.m_bIsValid = true;
+		dependency.m_mountKind = mountKind;
+		return dependency;
+	}
+
+	void TestShaderDependencyFingerprintTracksExactRevisionAndWinner()
+	{
+		TVector<ShaderDependencyFile> baselineDependencies;
+		baselineDependencies.Add(Dependency(
+			"Shaders/User.shader",
+			"/Engine/Content/Shaders/User.shader",
+			5000000000ll,
+			128,
+			0x1111111111111111ull,
+			0));
+		baselineDependencies.Add(Dependency(
+			"Shaders/Library/Math.glsl",
+			"/Workspace/Content/Shaders/Library/Math.glsl",
+			6000000000ll,
+			64,
+			0x2222222222222222ull,
+			1));
+
+		const uint64_t baseline = CalculateShaderDependencyFingerprint(baselineDependencies);
+		Require(baseline != 0 &&
+			CalculateShaderDependencyFingerprint(baselineDependencies) == baseline,
+			"identical shader dependency snapshots should have a stable non-zero fingerprint");
+
+		TVector<ShaderDependencyFile> sameTimestampEdit = baselineDependencies;
+		sameTimestampEdit[1].m_revision.m_contentHash = 0x3333333333333333ull;
+		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) != baseline,
+			"same-timestamp, same-size GLSL edits should invalidate the shader fingerprint");
+
+		TVector<ShaderDependencyFile> backdatedEdit = baselineDependencies;
+		backdatedEdit[1].m_revision.m_modificationTimeNanoseconds = 1000000000ll;
+		backdatedEdit[1].m_revision.m_contentHash = 0x4444444444444444ull;
+		Require(CalculateShaderDependencyFingerprint(backdatedEdit) != baseline,
+			"backdated GLSL edits should invalidate the shader fingerprint");
+
+		TVector<ShaderDependencyFile> engineFallback = baselineDependencies;
+		engineFallback[1].m_winnerIdentity = "/Engine/Content/Shaders/Library/Math.glsl";
+		engineFallback[1].m_mountKind = 0;
+		Require(CalculateShaderDependencyFingerprint(engineFallback) != baseline,
+			"workspace-winner to Engine-fallback transitions should invalidate the shader fingerprint");
+	}
+
+	void TestMissingYamlIncludeFailsWithoutPartialSource()
+	{
+		TVector<std::string> includes;
+		includes.Add("Shaders/Library/Math.glsl");
+		std::string source = "#define VERTEX\n";
+		std::string diagnostic;
+		Require(!ShaderYamlIncludeResolver::Append(
+				includes,
+				[](const std::string&, std::string&) { return false; },
+				source,
+				diagnostic),
+			"an unresolved YAML shader include should fail source generation");
+		Require(source == "#define VERTEX\n",
+			"a missing YAML include should not publish partially generated shader source");
+		Require(diagnostic.find("Shaders/Library/Math.glsl") != std::string::npos &&
+			diagnostic.find("Content-root virtual paths") != std::string::npos,
+			"a missing YAML include should report its Content-root virtual path contract");
+
+		std::string resolvedSource;
+		Require(ShaderYamlIncludeResolver::Append(
+				includes,
+				[](const std::string& include, std::string& contents)
+				{
+					if (include != "Shaders/Library/Math.glsl")
+					{
+						return false;
+					}
+					contents = "#include \"Nested.glsl\"\nvec3 mathLibrary;";
+					return true;
+				},
+				resolvedSource,
+				diagnostic),
+			"a resolved YAML include should append its library source");
+		Require(resolvedSource == "#include \"Nested.glsl\"\nvec3 mathLibrary;\n",
+			"native nested GLSL include text should remain opaque to the YAML include resolver");
+	}
+
 	void TestShaderSourceNormalization()
 	{
 		std::string diagnostic;
@@ -1000,6 +1099,8 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestShaderDependencyFingerprintTracksExactRevisionAndWinner();
+		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestShaderSourceNormalization();
 		TestShaderSourceRewritePreservesFileIdentity();
 		std::cout << "Shader cache artifact tests passed.\n";

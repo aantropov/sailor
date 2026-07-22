@@ -21,15 +21,60 @@
 
 using namespace Sailor;
 
+namespace
+{
+	void EnsureEditorWorldInfrastructure(const TSharedPtr<World>& world)
+	{
+		GameObjectPtr firstCamera;
+		GameObjectPtr editorOwner;
+
+		for (const auto& gameObject : world->GetGameObjects())
+		{
+			if (!gameObject.IsValid())
+			{
+				continue;
+			}
+
+			if (!firstCamera.IsValid() && gameObject->GetComponent<CameraComponent>().IsInited())
+			{
+				firstCamera = gameObject;
+			}
+
+			if (!editorOwner.IsValid() && gameObject->GetComponent<EditorComponent>().IsInited())
+			{
+				editorOwner = gameObject;
+			}
+		}
+
+		if (editorOwner.IsValid())
+		{
+			if (!editorOwner->GetComponent<CameraComponent>().IsInited())
+			{
+				editorOwner->AddComponent<CameraComponent>();
+			}
+			return;
+		}
+
+		if (!firstCamera.IsValid())
+		{
+			firstCamera = world->Instantiate("Editor Camera");
+			firstCamera->AddComponent<CameraComponent>();
+		}
+
+		firstCamera->AddComponent<EditorComponent>();
+	}
+}
+
 TSharedPtr<World> EngineLoop::CreateEmptyWorld(std::string name, EWorldBehaviourMask mask)
 {
 	m_worlds.Emplace(TSharedPtr<World>::Make(std::move(name), mask));
+	auto world = m_worlds[m_worlds.Num() - 1];
 
-	auto gameObject = m_worlds[0]->Instantiate();
+	auto gameObject = world->Instantiate();
 	auto cameraComponent = gameObject->AddComponent<CameraComponent>();
-	auto testComponent = gameObject->AddComponent<EditorComponent>();
+	auto editorComponent = gameObject->AddComponent<EditorComponent>();
 
-	return m_worlds[m_worlds.Num() - 1];
+	return world;
 }
 
 TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorldBehaviourMask mask)
@@ -52,6 +97,11 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 			newWorld->Clear();
 			return {};
 		}
+	}
+
+	if ((mask & EditorWorldMask) == EditorWorldMask)
+	{
+		EnsureEditorWorldInfrastructure(newWorld);
 	}
 
 	m_worlds.Emplace(newWorld);

@@ -4,6 +4,7 @@
 #include "Containers/ConcurrentMap.h"
 #include "Containers/Set.h"
 #include "AssetRegistry/FileId.h"
+#include "Core/FileRevision.h"
 #include "Workspace/WorkspaceCacheContract.h"
 #include <mutex>
 #include <filesystem>
@@ -46,12 +47,14 @@ namespace Sailor
 				FileId m_fileId{};
 				std::time_t m_assetImportTime{};
 				std::string m_sourcePath;
+				FileRevision m_sourceRevision{};
 
 				SAILOR_API bool operator==(const Entry& rhs) const
 				{
 					return m_fileId == rhs.m_fileId &&
 						m_assetImportTime == rhs.m_assetImportTime &&
-						m_sourcePath == rhs.m_sourcePath;
+						m_sourcePath == rhs.m_sourcePath &&
+						m_sourceRevision == rhs.m_sourceRevision;
 				}
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
@@ -78,8 +81,11 @@ namespace Sailor
 		SAILOR_API bool Update(
 			const FileId& id,
 			std::time_t assetImportTime,
-			const std::string& sourcePath);
-		SAILOR_API bool RestoreAssetImportTime(class AssetInfo* info) const;
+			const std::string& sourcePath,
+			const FileRevision& sourceRevision);
+		SAILOR_API bool RestoreAssetImportTime(
+			class AssetInfo* info,
+			const FileRevision& sourceRevision) const;
 		SAILOR_API bool Prune(const TSet<FileId>& liveAssetIds);
 
 		SAILOR_API static std::string SerializeAssetCachePayload(const AssetCacheData& cache);

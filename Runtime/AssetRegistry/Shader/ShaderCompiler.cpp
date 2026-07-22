@@ -7,6 +7,7 @@
 
 #include "ShaderAssetInfo.h"
 #include "ShaderCache.h"
+#include "ShaderYamlIncludeResolver.h"
 #include "RHI/Shader.h"
 #include "Core/Utils.h"
 #include <atomic>
@@ -61,49 +62,44 @@ namespace
 		TMap& m_map;
 		const TKey& m_key;
 	};
-}
 
-class ShaderIncluder : public shaderc::CompileOptions::IncluderInterface
-{
-	shaderc_include_result* GetInclude(const char* requestedSource, shaderc_include_type type, const char* requestingSource, size_t includeDepth) override
+	void TrackAssetProcessing(
+		const AssetRegistry::AssetProcessingToken& token,
+		const Tasks::TaskPtr<bool>& processingTask)
 	{
-		string contents = ReadIncludeFile(requestedSource);
-
-		auto container = new std::array<std::string, 2>;
-		(*container)[0] = requestedSource;
-		(*container)[1] = std::move(contents);
-
-		shaderc_include_result* data = new shaderc_include_result();
-
-		data->user_data = container;
-
-		data->source_name = (*container)[0].data();
-		data->source_name_length = (*container)[0].size() + 1;
-
-		data->content = (*container)[1].data();
-		data->content_length = (*container)[1].size() + 1;
-
-		return data;
-	};
-
-	void ReleaseInclude(shaderc_include_result* data) override
-	{
-		delete static_cast<std::array<std::string, 2>*>(data->user_data);
-		delete data;
-	};
-
-public:
-
-	static std::string ReadIncludeFile(const std::string& requestedSource)
-	{
-		string contents = "";
-		if (AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>())
+		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+		if (assetRegistry == nullptr)
 		{
-			assetRegistry->ReadContentText(requestedSource, contents);
+			return;
 		}
-		return contents;
+		assetRegistry->TrackScanProcessingTask(processingTask);
+		if (!token)
+		{
+			return;
+		}
+		if (!processingTask)
+		{
+			assetRegistry->CompleteAssetProcessing(token, false);
+			return;
+		}
+
+		Tasks::TaskPtr<bool> acknowledgementTask = Tasks::CreateTaskWithResult<bool>(
+			"Acknowledge Asset Processing",
+			[token, processingTask]()
+			{
+				const bool bSucceeded = processingTask->GetResult();
+				if (AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>())
+				{
+					currentRegistry->CompleteAssetProcessing(token, bSucceeded);
+				}
+				return bSucceeded;
+			});
+		// Join provides the synchronization boundary before GetResult(). Using a
+		// continuation here can race Task::Then's eager result handoff.
+		acknowledgementTask->Join(processingTask);
+		acknowledgementTask->Run();
 	}
-};
+}
 
 bool ShaderSet::IsReady() const
 {
@@ -129,6 +125,7 @@ ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 	m_allocator = ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
 	m_shaderCache.Initialize();
 	infoHandler->Subscribe(this);
+	App::GetSubmodule<AssetRegistry>()->SubscribeContentChanges(this);
 
 	UpdateConstantsLibrary();
 
@@ -146,6 +143,11 @@ ShaderCompiler::ShaderCompiler(ShaderAssetInfoHandler* infoHandler)
 
 ShaderCompiler::~ShaderCompiler()
 {
+	if (AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>())
+	{
+		assetRegistry->UnsubscribeContentChanges(this);
+	}
+
 	for (auto& shaders : m_loadedShaders)
 	{
 		for (auto& shader : shaders.m_second)
@@ -205,12 +207,20 @@ std::string GenerateConstantsLibrary(uint32_t version)
 
 void ShaderCompiler::UpdateConstantsLibrary()
 {
+	// Generated engine shader ABI belongs to Engine Content. A distinct workspace
+	// consumes that read-only library through the shared virtual content mount and
+	// must never create a higher-priority local override.
+	if (!App::GetWorkspaceContext().IsEngineMode())
+	{
+		return;
+	}
+
 	std::filesystem::path constantsLibrary;
 	if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
 			"Shaders/Constants.glsl",
 			constantsLibrary))
 	{
-		SAILOR_LOG_ERROR("Cannot resolve the writable shader constants library path.");
+		SAILOR_LOG_ERROR("Cannot resolve the writable Engine shader constants library path.");
 		return;
 	}
 	std::filesystem::create_directories(constantsLibrary.parent_path());
@@ -260,41 +270,62 @@ void ShaderCompiler::UpdateConstantsLibrary()
 	}
 }
 
-void ShaderCompiler::GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& includes, const TVector<std::string>& defines)
+bool ShaderCompiler::GeneratePrecompiledGlsl(
+	ShaderAsset* shader,
+	std::string& outGLSLCode,
+	const TVector<std::string>& includes,
+	const TVector<std::string>& defines,
+	std::string& outDiagnostic)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	outGLSLCode.clear();
+	std::string generatedSource;
 
 	if (shader->ContainsCommon())
 	{
-		outGLSLCode += shader->GetGlslCommonCode() + "\n";
+		generatedSource += shader->GetGlslCommonCode() + "\n";
 	}
 
 	for (const auto& define : defines)
 	{
-		outGLSLCode += "#define " + define + "\n";
+		generatedSource += "#define " + define + "\n";
 	}
 
-	for (const auto& include : includes)
+	if (!ShaderYamlIncludeResolver::Append(
+			includes,
+			[](const std::string& include, std::string& outContents)
+			{
+				if (AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>())
+				{
+					return assetRegistry->ReadContentText(include, outContents);
+				}
+				return false;
+			},
+			generatedSource,
+			outDiagnostic))
 	{
-		outGLSLCode += ShaderIncluder::ReadIncludeFile(include) + "\n";
+		outGLSLCode.clear();
+		return false;
 	}
 
 	if (shader->ContainsVertex() && defines.Contains("VERTEX"))
 	{
-		outGLSLCode += "\n#ifdef VERTEX\n" + shader->GetGlslVertexCode() + "\n#endif\n";
+		generatedSource += "\n#ifdef VERTEX\n" + shader->GetGlslVertexCode() + "\n#endif\n";
 	}
 
 	if (shader->ContainsFragment() && defines.Contains("FRAGMENT"))
 	{
-		outGLSLCode += "\n#ifdef FRAGMENT\n" + shader->GetGlslFragmentCode() + "\n#endif\n";
+		generatedSource += "\n#ifdef FRAGMENT\n" + shader->GetGlslFragmentCode() + "\n#endif\n";
 	}
 
 	if (shader->ContainsCompute())
 	{
-		outGLSLCode += "\n#ifdef COMPUTE\n" + shader->GetGlslComputeCode() + "\n#endif\n";
+		generatedSource += "\n#ifdef COMPUTE\n" + shader->GetGlslComputeCode() + "\n#endif\n";
 	}
+
+	outGLSLCode = std::move(generatedSource);
+	outDiagnostic.clear();
+	return true;
 }
 
 bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation)
@@ -302,6 +333,28 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	SAILOR_PROFILE_FUNCTION();
 
 	auto pShader = LoadShaderAsset(assetInfo).Lock();
+	if (!pShader)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot compile shader because its YAML source could not be loaded: %s",
+			assetInfo != nullptr ? assetInfo->GetAssetFilepath().c_str() : "<null asset info>");
+		return false;
+	}
+
+	uint64_t expectedSourceFingerprint = 0;
+	std::string sourceDiagnostic;
+	if (!m_shaderCache.CaptureSourceFingerprint(
+			assetInfo->GetFileId(),
+			expectedSourceFingerprint,
+			sourceDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot capture shader dependencies for %s: %s",
+			assetInfo->GetAssetFilepath().c_str(),
+			sourceDiagnostic.c_str());
+		return false;
+	}
+
 	const auto defines = GetDefines(pShader->GetSupportedDefines(), permutation);
 
 	std::string vertexGlsl;
@@ -311,24 +364,59 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	TVector<std::string> vertexDefines = defines;
 	TVector<std::string> fragmentDefines = defines;
 	TVector<std::string> computeDefines = defines;
-
 	vertexDefines.Add("VERTEX");
 	fragmentDefines.Add("FRAGMENT");
 	computeDefines.Add("COMPUTE");
 
 	if (pShader->ContainsVertex())
 	{
-		GeneratePrecompiledGlsl(pShader.GetRawPtr(), vertexGlsl, pShader->GetIncludes(), vertexDefines);
+		if (!GeneratePrecompiledGlsl(
+				pShader.GetRawPtr(),
+				vertexGlsl,
+				pShader->GetIncludes(),
+				vertexDefines,
+				sourceDiagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot generate vertex GLSL for %s: %s",
+				assetInfo->GetAssetFilepath().c_str(),
+				sourceDiagnostic.c_str());
+			return false;
+		}
 	}
 
 	if (pShader->ContainsFragment())
 	{
-		GeneratePrecompiledGlsl(pShader.GetRawPtr(), fragmentGlsl, pShader->GetIncludes(), fragmentDefines);
+		if (!GeneratePrecompiledGlsl(
+				pShader.GetRawPtr(),
+				fragmentGlsl,
+				pShader->GetIncludes(),
+				fragmentDefines,
+				sourceDiagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot generate fragment GLSL for %s: %s",
+				assetInfo->GetAssetFilepath().c_str(),
+				sourceDiagnostic.c_str());
+			return false;
+		}
 	}
 
 	if (pShader->ContainsCompute())
 	{
-		GeneratePrecompiledGlsl(pShader.GetRawPtr(), computeGlsl, pShader->GetIncludes(), computeDefines);
+		if (!GeneratePrecompiledGlsl(
+				pShader.GetRawPtr(),
+				computeGlsl,
+				pShader->GetIncludes(),
+				computeDefines,
+				sourceDiagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot generate compute GLSL for %s: %s",
+				assetInfo->GetAssetFilepath().c_str(),
+				sourceDiagnostic.c_str());
+			return false;
+		}
 	}
 
 	const bool bPrecompiledCached = m_shaderCache.CachePrecompiledGlsl(
@@ -376,7 +464,7 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 			assetInfo->GetAssetFilepath().c_str(),
 			permutation);
 	}
-	const bool bCachedComplete = bCompiledRegular && bCompiledDebug && m_shaderCache.CacheSpirv_ThreadSafe(
+	const bool bCachedComplete = bCompiledRegular && bCompiledDebug && m_shaderCache.CacheSpirvForSourceFingerprint_ThreadSafe(
 		assetInfo->GetFileId(),
 		permutation,
 		spirvVertexByteCode,
@@ -384,7 +472,8 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 		spirvComputeByteCode,
 		spirvVertexByteCodeDebug,
 		spirvFragmentByteCodeDebug,
-		spirvComputeByteCodeDebug);
+		spirvComputeByteCodeDebug,
+		expectedSourceFingerprint);
 	if (bCompiledRegular && bCompiledDebug && !bCachedComplete)
 	{
 		SAILOR_LOG_ERROR(
@@ -693,89 +782,26 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 		ReplaceTabsWithSpaces(assetInfo);
 
 		if (extension == "shader")
-		{			
-
-			SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
-
-			m_shaderAssetsCache.Remove(assetInfo->GetFileId());
-			m_shaderCache.Invalidate(assetInfo->GetFileId());
-
-			if (bShouldAutoCompileAllPermutations)
-			{
-				auto compileTask = CompileAllPermutations(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
-				if (compileTask)
-				{
-					compileTask->Then([=, this](bool bRes)
-						{
-							if (bRes)
-							{
-								auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
-								for (auto& loadedShader : loadedShaders)
-								{
-									SAILOR_LOG("Update shader RHI resource: %s permutation: %u", assetInfo->GetAssetFilepath().c_str(), static_cast<uint32_t>(loadedShader.m_first));
-
-									if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
-									{
-										loadedShader.m_second->TraceHotReload(nullptr);
-									}
-								}
-								m_loadedShaders.Unlock(assetInfo->GetFileId());
-							}
-						}, "Update Shader RHI");
-				}
-			}
-			else
-			{
-				bool bReloadedAny = false;
-				auto& loadedShaders = m_loadedShaders.At_Lock(assetInfo->GetFileId());
-				for (auto& loadedShader : loadedShaders)
-				{
-					SAILOR_LOG("Update shader RHI resource: %s permutation: %u", assetInfo->GetAssetFilepath().c_str(), static_cast<uint32_t>(loadedShader.m_first));
-
-					if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
-					{
-						loadedShader.m_second->TraceHotReload(nullptr);
-						bReloadedAny = true;
-					}
-				}
-				m_loadedShaders.Unlock(assetInfo->GetFileId());
-				if (bReloadedAny)
-				{
-					SaveShaderCacheAndCombineResult(m_shaderCache, true);
-				}
-			}
+		{
+			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+			const AssetRegistry::AssetProcessingToken processingToken =
+				assetRegistry != nullptr
+				? assetRegistry->BeginAssetProcessing(assetInfo)
+				: AssetRegistry::AssetProcessingToken{};
+			TrackAssetProcessing(
+				processingToken,
+				ReloadShader(dynamic_cast<ShaderAssetInfoPtr>(assetInfo)));
 		}
 		else if (extension == "glsl")
 		{
-			m_shaderAssetsCache.LockAll();
-			const TVector<FileId> parsedShaderIds = m_shaderAssetsCache.GetKeys();
-			m_shaderAssetsCache.UnlockAll();
-			m_loadedShaders.LockAll();
-			const TVector<FileId> loadedShaderIds = m_loadedShaders.GetKeys();
-			m_loadedShaders.UnlockAll();
-
-			const TVector<FileId> dependencyCandidates = MergeShaderDependencyCandidates(
-				parsedShaderIds,
-				loadedShaderIds);
-			TVector<AssetInfoPtr> shaderDeps;
-			for (const FileId& shaderId : dependencyCandidates)
-			{
-				TSharedPtr<ShaderAsset> shader = LoadShaderAsset(shaderId).Lock();
-				if (shader && DoesShaderIncludePath(
-						shader->GetIncludes(),
-						assetInfo->GetRelativeAssetFilepath()))
-				{
-					if (AssetInfoPtr shaderAssetInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderId))
-					{
-						shaderDeps.Add(shaderAssetInfo);
-					}
-				}
-			}
-
-			for (auto& shader : shaderDeps)
-			{
-				OnUpdateAssetInfo(shader, true);
-			}
+			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+			const AssetRegistry::AssetProcessingToken processingToken =
+				assetRegistry != nullptr
+				? assetRegistry->BeginAssetProcessing(assetInfo)
+				: AssetRegistry::AssetProcessingToken{};
+			TrackAssetProcessing(
+				processingToken,
+				ReloadShadersDependingOn(assetInfo));
 		}
 
 		if (assetInfo->IsWritable())
@@ -783,6 +809,220 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			assetInfo->SaveMetaFile();
 		}
 	}
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::ReloadShader(ShaderAssetInfoPtr assetInfo)
+{
+	if (assetInfo == nullptr)
+	{
+		return Tasks::TaskPtr<bool>::Make(false);
+	}
+
+	const FileId fileId = assetInfo->GetFileId();
+	SAILOR_LOG("Updated shader info: %s", assetInfo->GetAssetFilepath().c_str());
+
+	m_shaderAssetsCache.Remove(fileId);
+	m_shaderCache.Invalidate(fileId);
+
+	if (!bShouldAutoCompileAllPermutations)
+	{
+		return Tasks::TaskPtr<bool>::Make(
+			ReloadLoadedShaderResources(assetInfo, true));
+	}
+
+	Tasks::TaskPtr<bool> compileTask = CompileAllPermutations(assetInfo);
+	if (!compileTask)
+	{
+		return Tasks::TaskPtr<bool>::Make(false);
+	}
+	if (compileTask->IsFinished())
+	{
+		return Tasks::TaskPtr<bool>::Make(
+			compileTask->GetResult() && ReloadLoadedShaderResources(assetInfo, false));
+	}
+
+	Tasks::TaskPtr<bool> updateRhiTask = Tasks::CreateTaskWithResult<bool>(
+		"Update Shader RHI",
+		[this, fileId, compileTask]()
+		{
+			const bool bCompiled = compileTask->GetResult();
+			if (!bCompiled)
+			{
+				return false;
+			}
+
+			AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>();
+			if (currentRegistry == nullptr)
+			{
+				return false;
+			}
+
+			ShaderAssetInfoPtr currentAssetInfo =
+				currentRegistry->GetAssetInfoPtr<ShaderAssetInfoPtr>(fileId);
+			return ReloadLoadedShaderResources(currentAssetInfo, false);
+		});
+	updateRhiTask->Join(compileTask);
+	updateRhiTask->Run();
+	return updateRhiTask;
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo)
+{
+	if (includeAssetInfo == nullptr)
+	{
+		return Tasks::TaskPtr<bool>::Make(false);
+	}
+	return ReloadShadersDependingOn(includeAssetInfo->GetRelativeAssetFilepath());
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::ReloadShadersDependingOn(
+	const std::string& includeVirtualPath)
+{
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return Tasks::TaskPtr<bool>::Make(false);
+	}
+
+	TVector<FileId> dependencyCandidates;
+	assetRegistry->GetAllAssetInfos<ShaderAssetInfo>(dependencyCandidates);
+	TVector<Tasks::TaskPtr<bool>> reloadTasks;
+	for (const FileId& shaderId : dependencyCandidates)
+	{
+		ShaderAssetInfoPtr shaderAssetInfo =
+			assetRegistry->GetAssetInfoPtr<ShaderAssetInfoPtr>(shaderId);
+		if (shaderAssetInfo == nullptr ||
+			NormalizeShaderExtension(shaderAssetInfo->GetAssetFilepath()) != "shader")
+		{
+			continue;
+		}
+
+		TSharedPtr<ShaderAsset> shader = LoadShaderAsset(shaderAssetInfo).Lock();
+		if (!shader || !DoesShaderIncludePath(
+				shader->GetIncludes(),
+				includeVirtualPath))
+		{
+			continue;
+		}
+
+		reloadTasks.Add(ReloadShader(shaderAssetInfo));
+	}
+	return AggregateShaderReloadTasks(reloadTasks);
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::OnEffectiveContentChanged(
+	const std::string& virtualPath)
+{
+	if (NormalizeShaderExtension(virtualPath) == "glsl")
+	{
+		return ReloadShadersDependingOn(virtualPath);
+	}
+	return Tasks::TaskPtr<bool>::Make(true);
+}
+
+bool ShaderCompiler::ReloadLoadedShaderResources(
+	ShaderAssetInfoPtr assetInfo,
+	bool bCompileBeforeRhiUpdate)
+{
+	if (assetInfo == nullptr)
+	{
+		return false;
+	}
+
+	const FileId fileId = assetInfo->GetFileId();
+	auto& loadedShaders = m_loadedShaders.At_Lock(fileId);
+	if (loadedShaders.IsEmpty())
+	{
+		m_loadedShaders.Unlock(fileId);
+		return true;
+	}
+
+	if (bCompileBeforeRhiUpdate && !LoadShaderAsset(assetInfo).Lock())
+	{
+		m_loadedShaders.Unlock(fileId);
+		return false;
+	}
+
+	if (bCompileBeforeRhiUpdate)
+	{
+		bool bAllCompiled = true;
+		for (const auto& loadedShader : loadedShaders)
+		{
+			if (m_shaderCache.IsExpired(fileId, loadedShader.m_first) &&
+				!ForceCompilePermutation(assetInfo, loadedShader.m_first))
+			{
+				bAllCompiled = false;
+			}
+		}
+		if (!bAllCompiled || !SaveShaderCacheAndCombineResult(m_shaderCache, true))
+		{
+			m_loadedShaders.Unlock(fileId);
+			return false;
+		}
+	}
+
+	bool bAllReloaded = true;
+	for (auto& loadedShader : loadedShaders)
+	{
+		SAILOR_LOG(
+			"Update shader RHI resource: %s permutation: %u",
+			assetInfo->GetAssetFilepath().c_str(),
+			static_cast<uint32_t>(loadedShader.m_first));
+
+		if (UpdateRHIResource(loadedShader.m_second, loadedShader.m_first))
+		{
+			loadedShader.m_second->TraceHotReload(nullptr);
+		}
+		else
+		{
+			bAllReloaded = false;
+		}
+	}
+	m_loadedShaders.Unlock(fileId);
+	return bAllReloaded;
+}
+
+Tasks::TaskPtr<bool> ShaderCompiler::AggregateShaderReloadTasks(
+	const TVector<Tasks::TaskPtr<bool>>& reloadTasks)
+{
+	bool bAllFinished = true;
+	bool bImmediateResult = true;
+	for (const Tasks::TaskPtr<bool>& reloadTask : reloadTasks)
+	{
+		if (!reloadTask)
+		{
+			bImmediateResult = false;
+			continue;
+		}
+		if (!reloadTask->IsFinished())
+		{
+			bAllFinished = false;
+			continue;
+		}
+		bImmediateResult &= reloadTask->GetResult();
+	}
+	if (bAllFinished)
+	{
+		return Tasks::TaskPtr<bool>::Make(bImmediateResult);
+	}
+
+	Tasks::TaskPtr<bool> aggregateTask = Tasks::CreateTaskWithResult<bool>(
+		"Aggregate Shader Reload",
+		[reloadTasks]()
+		{
+			bool bResult = true;
+			for (const Tasks::TaskPtr<bool>& reloadTask : reloadTasks)
+			{
+				bResult &= reloadTask && reloadTask->GetResult();
+			}
+			return bResult;
+		});
+	for (const Tasks::TaskPtr<bool>& reloadTask : reloadTasks)
+	{
+		aggregateTask->Join(reloadTask);
+	}
+	aggregateTask->Run();
+	return aggregateTask;
 }
 
 void ShaderCompiler::ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const
@@ -971,12 +1211,23 @@ bool ShaderCompiler::NormalizeShaderTabs(
 
 void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	if (bShouldAutoCompileAllPermutations)
-	{
-		CompileAllPermutations(assetInfo->GetFileId());
-	}
-
 	ReplaceTabsWithSpaces(assetInfo);
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	const AssetRegistry::AssetProcessingToken processingToken =
+		assetRegistry != nullptr
+		? assetRegistry->BeginAssetProcessing(assetInfo)
+		: AssetRegistry::AssetProcessingToken{};
+	const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
+	Tasks::TaskPtr<bool> processingTask;
+	if (extension == "shader")
+	{
+		processingTask = ReloadShader(dynamic_cast<ShaderAssetInfoPtr>(assetInfo));
+	}
+	else if (extension == "glsl")
+	{
+		processingTask = ReloadShadersDependingOn(assetInfo);
+	}
+	TrackAssetProcessing(processingToken, processingTask);
 }
 
 bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::string& source, RHI::EShaderStage shaderStage, RHI::ShaderByteCode& outByteCode, bool bIsDebug)
@@ -1015,21 +1266,9 @@ bool ShaderCompiler::CompileGlslToSpirv(const std::string& filename, const std::
 		break;
 	}
 
-	/*
-	for (const auto& define : defines)
-	{
-		options.AddMacroDefinition(define);
-	}
-
-	options.SetIncluder(std::make_unique<ShaderIncluder>());
-
-	shaderc::PreprocessedSourceCompilationResult preCompilation = compiler.PreprocessGlsl(source, kind, source.c_str(), options);
-	if (preCompilation.GetCompilationStatus() != shaderc_compilation_status_success)
-	{
-		const std::string& error = preCompilation.GetErrorMessage();
-		std::cout << "Failed to precompile shader: " << error << std::endl;
-		return false;
-	}*/
+	// Includes are an explicit YAML dependency list expanded by
+	// GeneratePrecompiledGlsl. Native/nested GLSL #include directives are not
+	// enabled until they have a separate path and dependency contract.
 
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, filename.c_str(), "main", options);
 

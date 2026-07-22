@@ -53,7 +53,8 @@ namespace Sailor
 		static ObjectPtr ResolveExternalDependency(const InstanceId& componentInstanceId, const TMap<InstanceId, ObjectPtr>& resolveContext);
 
 		template<typename TPropertyType>
-		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate);
+		__forceinline static TPropertyType ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext,
+			bool bImmediate, bool& outHasReference);
 
 		template<typename T>
 		static bool ResolveRefs_Impl(T* ptr, const ReflectedData& reflection, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate = true);

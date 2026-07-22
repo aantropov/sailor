@@ -8,6 +8,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
 #include "RHI/VertexDescription.h"
@@ -205,15 +206,15 @@ FileId CreateTextureAsset(const std::string& filepath,
 {
 	FileId newFileId = FileId::CreateNewFileId();
 
-	YAML::Node newTexture;
-	newTexture["fileId"] = newFileId;
-	newTexture["filename"] = glbFilename;
-	newTexture["glbTextureIndex"] = glbTextureIndex;
-	newTexture["bShouldGenerateMips"] = bShouldGenerateMips;
-	newTexture["clamping"] = clamping;
-	newTexture["filtration"] = filtration;
-	newTexture["format"] = format;
-	newTexture["bShouldKeepCpuBuffers"] = bShouldKeepCpuBuffers;
+	YAML::Node newTexture = GeneratedModelAssetMetadata::CreateTexture(
+		newFileId,
+		glbFilename,
+		glbTextureIndex,
+		bShouldGenerateMips,
+		format,
+		clamping,
+		filtration,
+		bShouldKeepCpuBuffers);
 
 	std::ofstream assetFile(filepath);
 	assetFile << newTexture;
@@ -229,11 +230,11 @@ FileId CreateAnimationAsset(const std::string& filepath,
 {
 	FileId newFileId = FileId::CreateNewFileId();
 
-	YAML::Node newAnimation;
-	newAnimation["fileId"] = newFileId;
-	newAnimation["filename"] = glbFilename;
-	newAnimation["animationIndex"] = animationIndex;
-	newAnimation["skinIndex"] = skinIndex;
+	YAML::Node newAnimation = GeneratedModelAssetMetadata::CreateAnimation(
+		newFileId,
+		glbFilename,
+		animationIndex,
+		skinIndex);
 
 	std::ofstream assetFile(filepath);
 	assetFile << newAnimation;

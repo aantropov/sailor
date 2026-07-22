@@ -34,6 +34,24 @@ extern "C"
 		return Sailor::App::RequestAssetReload();
 	}
 
+	SAILOR_API bool GetAssetReloadState(
+		uint64_t* outRequestGeneration,
+		uint64_t* outCompletedGeneration,
+		uint64_t* outSuccessfulGeneration)
+	{
+		if (outRequestGeneration == nullptr ||
+			outCompletedGeneration == nullptr ||
+			outSuccessfulGeneration == nullptr)
+		{
+			return false;
+		}
+
+		return Sailor::App::GetAssetReloadState(
+			*outRequestGeneration,
+			*outCompletedGeneration,
+			*outSuccessfulGeneration);
+	}
+
 	SAILOR_API int32_t GetExitCode()
 	{
 		return Sailor::App::GetExitCode();
@@ -112,6 +130,11 @@ extern "C"
 	SAILOR_API bool LoadEditorWorld(char* strFileId)
 	{
 		return Sailor::App::LoadEditorWorld(strFileId);
+	}
+
+	SAILOR_API bool CreateEditorWorld()
+	{
+		return Sailor::App::CreateEditorWorld();
 	}
 
 	SAILOR_API void FreeInteropString(char* text)

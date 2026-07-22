@@ -159,9 +159,13 @@ namespace Sailor::Framegraph
 
 		static uint32_t MorganKeenanToTemperature(char spectral_type, char sub_type);
 
-		// Goes from 1000 to 40000 in increases of 100 Kelvin.
-		static constexpr uint32_t s_maxRgbTemperatures = (40000 / 100) - (1000 / 100);
-		static glm::vec3 s_rgbTemperatures[s_maxRgbTemperatures];
+		// Goes from 1000 to 40000 Kelvin, inclusive, in increments of 100 Kelvin.
+		static constexpr uint32_t s_minRgbTemperature = 1000;
+		static constexpr uint32_t s_maxRgbTemperature = 40000;
+		static constexpr uint32_t s_rgbTemperatureStep = 100;
+		static constexpr uint32_t s_numRgbTemperatures =
+			((s_maxRgbTemperature - s_minRgbTemperature) / s_rgbTemperatureStep) + 1u;
+		static glm::vec3 s_rgbTemperatures[s_numRgbTemperatures];
 
 		static const glm::vec3& TemperatureToColor(uint32_t temperature);
 		static const glm::vec3& MorganKeenanToColor(char spectralType, char subType);
