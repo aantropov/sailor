@@ -286,9 +286,9 @@ AssetRegistry::AssetRegistry()
 	m_assetCache.Initialize();
 }
 
-bool AssetRegistry::RestoreAssetProcessingTimes(AssetInfoPtr info) const
+bool AssetRegistry::RestoreAssetImportTime(AssetInfoPtr info) const
 {
-	return m_assetCache.RestoreProcessingTimes(info);
+	return m_assetCache.RestoreAssetImportTime(info);
 }
 
 void AssetRegistry::CacheAsset(const AssetInfoPtr info)

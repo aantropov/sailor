@@ -18,6 +18,11 @@ namespace Sailor
 	{
 		class WorkspaceModuleManager;
 	}
+	namespace Tasks
+	{
+		class ITask;
+		class Scheduler;
+	}
 
 	struct AppArgs
 	{
@@ -52,7 +57,6 @@ namespace Sailor
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
 		SAILOR_API static bool RequestAssetReload();
-		static bool ApplyPendingAssetReloadOnEngineThread();
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
@@ -163,6 +167,8 @@ namespace Sailor
 
 	private:
 		static bool DispatchOnEngineMainThread(std::function<void()> command);
+		static void QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler);
+		static void ProcessAssetReloadRequestOnEngineMainThread();
 
 		template<typename TResult>
 		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
@@ -179,6 +185,8 @@ namespace Sailor
 			return result;
 		}
 
+		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
+		uint64_t m_assetReloadRequestGeneration = 0;
 		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
 
 		static App* s_pInstance;

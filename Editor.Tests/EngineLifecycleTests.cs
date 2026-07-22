@@ -119,18 +119,48 @@ public sealed class EngineLifecycleTests
         Assert.Contains("SAILOR_API bool RequestAssetReload()", unixSource, StringComparison.Ordinal);
         Assert.Contains("return Sailor::App::RequestAssetReload();", unixSource, StringComparison.Ordinal);
 
-        var f5Request = nativeSource.IndexOf("if (systemInputState.IsKeyPressed(VK_F5))", StringComparison.Ordinal);
-        var queueRequest = nativeSource.IndexOf("RequestAssetReload();", f5Request, StringComparison.Ordinal);
-        var engineThreadApply = nativeSource.IndexOf("ApplyPendingAssetReloadOnEngineThread();", queueRequest, StringComparison.Ordinal);
-        var shaderCacheRecovery = nativeSource.IndexOf("shaderCompiler->RecoverMissingShaderCacheStorage();", engineThreadApply, StringComparison.Ordinal);
-        var queuedScan = nativeSource.IndexOf("assetRegistry->ScanContentFolder();", engineThreadApply, StringComparison.Ordinal);
-        Assert.True(f5Request >= 0);
-        Assert.True(queueRequest > f5Request);
-        Assert.True(engineThreadApply > queueRequest);
-        Assert.True(shaderCacheRecovery > engineThreadApply);
+        var reloadBody = nativeSource.IndexOf("bool ReloadAssetsOnEngineMainThread()", StringComparison.Ordinal);
+        var reloadBodyEnd = nativeSource.IndexOf("bool App::DispatchOnEngineMainThread", reloadBody, StringComparison.Ordinal);
+        var initialWait = nativeSource.IndexOf("scheduler->WaitIdle({", reloadBody, StringComparison.Ordinal);
+        var shaderCacheRecovery = nativeSource.IndexOf("shaderCompiler->RecoverMissingShaderCacheStorage();", initialWait, StringComparison.Ordinal);
+        var queuedScan = nativeSource.IndexOf("assetRegistry->ScanContentFolder();", shaderCacheRecovery, StringComparison.Ordinal);
+        var renderWait = nativeSource.IndexOf("scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });", queuedScan, StringComparison.Ordinal);
+        var frameGraphRefresh = nativeSource.IndexOf("renderer->RefreshFrameGraph();", renderWait, StringComparison.Ordinal);
+        Assert.True(reloadBody >= 0);
+        Assert.True(reloadBodyEnd > reloadBody);
+        Assert.True(initialWait > reloadBody);
+        Assert.True(shaderCacheRecovery > initialWait);
         Assert.True(queuedScan > shaderCacheRecovery);
-        Assert.Contains("g_assetReloadRequested.store(true", nativeSource, StringComparison.Ordinal);
-        Assert.Contains("g_assetReloadRequested.exchange(false", nativeSource, StringComparison.Ordinal);
+        Assert.True(renderWait > queuedScan);
+        Assert.True(frameGraphRefresh > renderWait);
+        Assert.DoesNotContain("EThreadType::Main", nativeSource[reloadBody..reloadBodyEnd], StringComparison.Ordinal);
+
+        var f5Request = nativeSource.IndexOf("if (systemInputState.IsKeyPressed(VK_F5))", StringComparison.Ordinal);
+        var queuedReload = nativeSource.IndexOf("RequestAssetReload();", f5Request, StringComparison.Ordinal);
+        Assert.True(f5Request >= 0);
+        Assert.True(queuedReload > f5Request);
+        Assert.Contains("consoleVars[\"scan\"] = []() { App::RequestAssetReload(); };", nativeSource, StringComparison.Ordinal);
+
+        var requestStart = nativeSource.IndexOf("bool App::RequestAssetReload()", StringComparison.Ordinal);
+        var requestProcessor = nativeSource.IndexOf("void App::ProcessAssetReloadRequestOnEngineMainThread()", requestStart, StringComparison.Ordinal);
+        var requestEnd = nativeSource.IndexOf("void App::Shutdown()", requestProcessor, StringComparison.Ordinal);
+        var requestBody = nativeSource[requestStart..requestProcessor];
+        var requestProcessorBody = nativeSource[requestProcessor..requestEnd];
+        Assert.DoesNotContain("std::try_to_lock", requestBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("g_engineMainLoopRunning", requestBody, StringComparison.Ordinal);
+        Assert.Contains("g_engineMainLoopState == EEngineMainLoopState::Exited", requestBody, StringComparison.Ordinal);
+        Assert.Contains("++s_pInstance->m_assetReloadRequestGeneration", requestBody, StringComparison.Ordinal);
+        Assert.Contains("!s_pInstance->m_pendingAssetReloadTask->IsFinished()", requestBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("m_pendingAssetReloadTask->IsStarted()", requestBody, StringComparison.Ordinal);
+        Assert.Contains("requestGeneration = s_pInstance->m_assetReloadRequestGeneration", requestProcessorBody, StringComparison.Ordinal);
+        Assert.Contains("m_assetReloadRequestGeneration == requestGeneration", requestProcessorBody, StringComparison.Ordinal);
+        Assert.Contains("\"Reload assets on engine main thread\"", requestBody, StringComparison.Ordinal);
+        Assert.Contains("EThreadType::Main", requestBody, StringComparison.Ordinal);
+        Assert.Contains("scheduler->Run(task);", requestBody, StringComparison.Ordinal);
+        Assert.Contains("QueueAssetReloadTaskLocked(scheduler);", requestProcessorBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("task->Wait()", nativeSource[requestStart..requestEnd], StringComparison.Ordinal);
+        Assert.DoesNotContain("g_assetReloadRequested", nativeSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyPendingAssetReloadOnEngineThread", nativeSource, StringComparison.Ordinal);
 
         var appStart = nativeSource.IndexOf("void App::Start()", StringComparison.Ordinal);
         var attachEngineThread = nativeSource.IndexOf("scheduler->AttachCurrentThreadAsMainThread();", appStart, StringComparison.Ordinal);
@@ -139,6 +169,8 @@ public sealed class EngineLifecycleTests
         var attachShutdownThread = nativeSource.IndexOf("scheduler->AttachCurrentThreadAsMainThread();", appShutdown, StringComparison.Ordinal);
         Assert.True(attachEngineThread > appStart);
         Assert.True(frameLoop > attachEngineThread);
+        Assert.Contains("m_assetReloadRequestGeneration > 0", nativeSource[appStart..frameLoop], StringComparison.Ordinal);
+        Assert.Contains("QueueAssetReloadTaskLocked(scheduler);", nativeSource[appStart..frameLoop], StringComparison.Ordinal);
         Assert.True(attachShutdownThread > appShutdown);
         Assert.Contains("std::atomic<DWORD> m_mainThreadId", schedulerHeader, StringComparison.Ordinal);
         Assert.Contains("void Scheduler::AttachCurrentThreadAsMainThread()", schedulerSource, StringComparison.Ordinal);
