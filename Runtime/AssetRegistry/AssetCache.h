@@ -79,8 +79,8 @@ namespace Sailor
 			const FileId& id,
 			std::time_t assetImportTime,
 			const std::string& sourcePath);
-		bool RestoreAssetImportTime(class AssetInfo* info) const;
-		bool Prune(const TSet<FileId>& liveAssetIds);
+		SAILOR_API bool RestoreAssetImportTime(class AssetInfo* info) const;
+		SAILOR_API bool Prune(const TSet<FileId>& liveAssetIds);
 
 		SAILOR_API static std::string SerializeAssetCachePayload(const AssetCacheData& cache);
 		SAILOR_API static bool TryDeserializeAssetCachePayload(
