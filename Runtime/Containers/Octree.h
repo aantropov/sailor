@@ -194,19 +194,30 @@ namespace Sailor
 				}
 
 				// If not then remove & reinsert
-				if ((*node)->Remove(element))
+				if (!(*node)->Remove(element))
 				{
-					Resolve_Internal(**node);
+					m_map.Remove(element);
+					if (m_num > 0)
+					{
+						m_num--;
+					}
+					return false;
 				}
+
+				Resolve_Internal(**node);
 
 				if (Insert_Internal(*m_root, pos, extents, element))
 				{
-					m_num++;
 					return true;
 				}
 
 				// Cannot insert the element into octree
 				m_map.Remove(element);
+				if (m_num > 0)
+				{
+					m_num--;
+				}
+				return false;
 			}
 
 			if (Insert_Internal(*m_root, pos, extents, element))

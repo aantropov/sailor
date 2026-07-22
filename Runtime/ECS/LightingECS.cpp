@@ -88,109 +88,82 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 
 	TVector<LightShaderData> shaderDataBatch;
 	shaderDataBatch.Reserve(64);
-	bool bShouldWrite = true;
 	size_t startIndex = 0;
+	uint32_t numLights = 0;
 
-	uint32_t skipIndex = 0;
-	for (size_t index = 0; index < m_components.Num(); index++)
+	auto flushBatch = [&]()
 	{
-		if (m_skipList.Num() > 0 && skipIndex < m_skipList.Num() && index == m_skipList[skipIndex].m_first)
+		if (shaderDataBatch.IsEmpty())
 		{
-			index += m_skipList[skipIndex].m_second;
-			if (index >= m_components.Num())
-			{
-				break;
-			}
-			skipIndex++;
+			return;
 		}
 
+		driverCommands->UpdateShaderBinding(cmdList, binding,
+			shaderDataBatch.GetData(),
+			sizeof(LightingECS::LightShaderData) * shaderDataBatch.Num(),
+			binding->GetBufferOffset() + sizeof(LightingECS::LightShaderData) * startIndex);
+		shaderDataBatch.Clear(false);
+	};
+
+	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
+	for (size_t index = 0; index < numGpuLightSlots; index++)
+	{
 		auto& data = m_components[index];
-		auto owner = data.m_owner.StaticCast<GameObject>();
+		GameObjectPtr owner = data.m_owner.StaticCast<GameObject>();
+		const bool bIsUsable = data.m_bIsActive && owner;
+		bool bShouldWrite = false;
+		LightShaderData shaderData{};
 
-		if (owner->GetMobilityType() == EMobilityType::Static)
+		if (bIsUsable)
 		{
-			bool bPlaced = false;
+			numLights = (uint32_t)index + 1;
+			const auto& ownerTransform = owner->GetTransformComponent();
 
-			// Place in the end of the current batch
-			if (skipIndex > 0 && m_skipList.Num() > 0 && index == m_skipList[skipIndex - 1].m_first + m_skipList[skipIndex - 1].m_second)
+			if (data.m_bIsDirty || data.m_frameLastChange < ownerTransform.GetFrameLastChange())
 			{
-				m_skipList[skipIndex - 1].m_second++;
-				bPlaced = true;
-			}
+				shaderData.m_type = (uint32_t)data.m_type;
+				shaderData.m_shadowType = (uint32_t)data.m_shadowType;
+				shaderData.m_attenuation = data.m_attenuation;
+				shaderData.m_bounds = data.m_bounds;
+				shaderData.m_intensity = data.m_intensity;
+				shaderData.m_direction = glm::normalize(ownerTransform.GetForwardVector());
+				shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
+				shaderData.m_cutOff = vec2(glm::cos(glm::radians(data.m_cutOff.x)), glm::cos(glm::radians(data.m_cutOff.y)));
 
-			if (!bPlaced && skipIndex > 0 && m_skipList.Num() > 0)
-			{
-				// Place in between batches
-				for (int32_t i = skipIndex - 1; i < (int32_t)m_skipList.Num() - 1; i++)
-				{
-					const uint32_t start = m_skipList[i].m_first + m_skipList[skipIndex - 1].m_second;
-					const uint32_t end = m_skipList[i + 1].m_first;
-
-					if (index > start && index < end)
-					{
-						m_skipList.Insert(TPair((uint32_t)index, 1u), i + 1);
-						bPlaced = true;
-						skipIndex++;
-						break;
-					}
-				}
-			}
-
-			// Place in the end
-			if (!bPlaced)
-			{
-				m_skipList.Add(TPair((uint32_t)index, 1u));
-				skipIndex++;
-				bPlaced = true;
+				data.m_frameLastChange = ownerTransform.GetFrameLastChange();
+				data.m_bIsDirty = false;
+				bShouldWrite = true;
 			}
 		}
-
-		if (!data.m_bIsActive)
-			continue;
-
-		const auto& ownerTransform = owner->GetTransformComponent();
-
-		if (data.m_bIsDirty || data.m_frameLastChange < owner->GetFrameLastChange())
+		else if (data.m_bIsDirty)
 		{
-			if (bShouldWrite)
-			{
-				bShouldWrite = false;
-				startIndex = index;
-			}
-
-			const auto& lightData = m_components[index];
-
-			LightShaderData shaderData;
-			shaderData.m_type = (uint32_t)lightData.m_type;
-			shaderData.m_shadowType = (uint32_t)lightData.m_shadowType;
-			shaderData.m_attenuation = lightData.m_attenuation;
-			shaderData.m_bounds = lightData.m_bounds;
-			shaderData.m_intensity = lightData.m_intensity;
-
-			shaderData.m_direction = glm::normalize(ownerTransform.GetForwardVector());
-			shaderData.m_worldPosition = ownerTransform.GetWorldPosition();
-			shaderData.m_cutOff = vec2(glm::cos(glm::radians(lightData.m_cutOff.x)), glm::cos(glm::radians(lightData.m_cutOff.y)));
-			shaderDataBatch.Emplace(std::move(shaderData));
-
-			data.m_frameLastChange = owner->GetFrameLastChange();
+			// A released slot can remain below the highest active index. Clear its
+			// previous GPU data once so the light cannot survive component removal.
 			data.m_bIsDirty = false;
-		}
-		else
-		{
 			bShouldWrite = true;
 		}
 
-		if ((bShouldWrite || index == m_components.Num() - 1) && shaderDataBatch.Num() > 0)
+		if (!bShouldWrite)
 		{
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(cmdList, binding,
-				shaderDataBatch.GetData(),
-				sizeof(LightingECS::LightShaderData) * shaderDataBatch.Num(),
-				binding->GetBufferOffset() +
-				sizeof(LightingECS::LightShaderData) * startIndex);
-
-			shaderDataBatch.Clear();
+			flushBatch();
+			continue;
 		}
+
+		if (!shaderDataBatch.IsEmpty() && startIndex + shaderDataBatch.Num() != index)
+		{
+			flushBatch();
+		}
+
+		if (shaderDataBatch.IsEmpty())
+		{
+			startIndex = index;
+		}
+
+		shaderDataBatch.Emplace(std::move(shaderData));
 	}
+
+	flushBatch();
+	m_numLights = numLights;
 
 	driverCommands->EndDebugRegion(cmdList);
 
@@ -205,6 +178,7 @@ void LightingECS::EndPlay()
 	m_shadowMaps.Clear();
 	m_lightMatrices.Clear();
 	m_shadowIndices.Clear();
+	m_numLights = 0;
 }
 
 void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
@@ -216,12 +190,19 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 	SAILOR_PROFILE_FUNCTION();
 
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
-	for (size_t index = 0; index < m_components.Num(); index++)
+	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
+	for (size_t index = 0; index < numGpuLightSlots; index++)
 	{
 		auto& light = m_components[index];
 		if (light.m_shadowType != RHI::EShadowType::None && light.m_bIsActive)
 		{
-			const auto& ownerTransform = light.m_owner.StaticCast<GameObject>()->GetTransformComponent();
+			GameObjectPtr owner = light.m_owner.StaticCast<GameObject>();
+			if (!owner)
+			{
+				continue;
+			}
+
+			const auto& ownerTransform = owner->GetTransformComponent();
 
 			RHI::RHILightProxy lightProxy{};
 
@@ -401,18 +382,19 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 		sceneView->m_shadowMapsToUpdate.Add(std::move(updateShadowMaps));
 	}
 
-	// TODO: Pass only active lights
-	sceneView->m_totalNumLights = (uint32_t)m_components.Num();
+	sceneView->m_totalNumLights = m_numLights;
 	sceneView->m_rhiLightsData = m_lightsData;
 }
 
 void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const
 {
 	outLights.Clear();
-	outLights.Reserve(m_components.Num());
+	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
+	outLights.Reserve(numGpuLightSlots);
 
-	for (const auto& light : m_components)
+	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
+		const auto& light = m_components[index];
 		if (!light.m_bIsActive)
 		{
 			continue;
@@ -439,4 +421,3 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 		outLights.Add(lightProxy);
 	}
 }
-

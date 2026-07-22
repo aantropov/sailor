@@ -18,6 +18,7 @@ void PathTracerProxyComponent::Initialize()
 void PathTracerProxyComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<PathTracerECS>()->UnregisterComponent(m_handle);
+	m_handle = ECS::InvalidIndex;
 }
 
 PathTracerProxyData& PathTracerProxyComponent::GetData()
@@ -52,4 +53,3 @@ void PathTracerProxyComponent::SetRebuildEveryFrame(bool bValue)
 		data.MarkDirty();
 	}
 }
-

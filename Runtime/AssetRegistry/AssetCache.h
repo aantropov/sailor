@@ -1,7 +1,8 @@
 #pragma once
-#include <chrono>
+#include <cstdint>
 #include <ctime>
 #include "Containers/ConcurrentMap.h"
+#include "Containers/Set.h"
 #include "AssetRegistry/FileId.h"
 #include "Workspace/WorkspaceCacheContract.h"
 #include <mutex>
@@ -13,21 +14,12 @@ namespace Sailor
 	class AssetCache
 	{
 	public:
-
 		SAILOR_API static std::string GetAssetCacheFilepath();
 
 		SAILOR_API void Initialize();
 		SAILOR_API void Shutdown();
 
-		SAILOR_API bool GetTimeStamp(
-			const FileId& uid,
-			const std::string& sourcePath,
-			time_t& outAssetTimestamp) const;
-
-		SAILOR_API void Update(
-			const FileId& id,
-			const std::string& sourcePath,
-			const time_t& assetTimestamp);
+		SAILOR_API bool Update(const class AssetInfo* info);
 		SAILOR_API void Remove(const FileId& uid);
 
 		SAILOR_API bool Contains(const FileId& uid) const;
@@ -55,7 +47,12 @@ namespace Sailor
 				std::time_t m_assetImportTime{};
 				std::string m_sourcePath;
 
-				SAILOR_API bool operator==(const Entry& rhs) const { return m_fileId == rhs.m_fileId; }
+				SAILOR_API bool operator==(const Entry& rhs) const
+				{
+					return m_fileId == rhs.m_fileId &&
+						m_assetImportTime == rhs.m_assetImportTime &&
+						m_sourcePath == rhs.m_sourcePath;
+				}
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
 				SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -78,6 +75,12 @@ namespace Sailor
 			bool bForcely,
 			bool bIsDirty,
 			bool bPreserveStorageAfterLoadFailure) noexcept;
+		SAILOR_API bool Update(
+			const FileId& id,
+			std::time_t assetImportTime,
+			const std::string& sourcePath);
+		SAILOR_API bool RestoreAssetImportTime(class AssetInfo* info) const;
+		SAILOR_API bool Prune(const TSet<FileId>& liveAssetIds);
 
 		SAILOR_API static std::string SerializeAssetCachePayload(const AssetCacheData& cache);
 		SAILOR_API static bool TryDeserializeAssetCachePayload(
@@ -90,11 +93,12 @@ namespace Sailor
 		mutable std::mutex m_cacheMutex;
 
 	private:
-
 		AssetCacheData m_cache;
 		bool m_bIsDirty = false;
 		bool m_bPreserveStorageAfterLoadFailure = false;
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
+
+		friend class AssetRegistry;
 	};
 }

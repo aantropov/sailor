@@ -3,11 +3,17 @@
 #import <QuartzCore/CAMetalLayer.h>
 #import <Metal/Metal.h>
 #import <IOSurface/IOSurface.h>
+#import <Foundation/Foundation.h>
 
+#include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 #include "Submodules/EditorRemote/RemoteViewportMacNativeBridge.h"
@@ -220,6 +226,101 @@ namespace
 		Require(!presentResult.m_usedSyntheticSourceTexture, "bridge should import the real IOSurface into a Metal texture when a live IOSurface handle is supplied");
 		Require(binding.m_importedIOSurfaceObject == surfaceHandle.m_surfaceObject, "binding should retain the imported IOSurface object used for the Metal texture import");
 		Require(binding.m_lastSourceTextureObject == presentResult.m_sourceTextureObject, "binding should retain the last source Metal texture");
+		ResetMacNativeLayerBinding(binding);
+	}
+
+	void TestBridgePresentsOffMainThreadWithoutWaitingForMainQueue()
+	{
+		CAMetalLayer* layer = [CAMetalLayer layer];
+		MacNativeHostHandle hostHandle{ MacNativeHostHandleKind::CAMetalLayer, reinterpret_cast<uintptr_t>((__bridge void*)layer) };
+
+		struct BackgroundPresentState
+		{
+			MacNativeLayerBinding m_binding{};
+			MacIOSurfaceHandle m_surface{};
+			FramePacket m_frame{};
+			MacNativeBridgePresentResult m_presentResult{};
+			Failure m_failure{};
+			std::mutex m_mutex;
+			std::condition_variable m_completedCondition;
+			bool m_completed = false;
+		};
+
+		auto state = std::make_shared<BackgroundPresentState>();
+		Require(BindMacNativeLayer(hostHandle, 64, 64, PixelFormat::B8G8R8A8_UNorm, state->m_binding).IsOk(),
+			"background-present test should bind a real CAMetalLayer on the main thread");
+		state->m_frame.m_viewportId = 1;
+		state->m_frame.m_connectionEpoch = 1;
+		state->m_frame.m_generation = 1;
+		state->m_frame.m_frameIndex = 1;
+		state->m_frame.m_width = 64;
+		state->m_frame.m_height = 64;
+
+		std::thread presenter([state]()
+			{
+				state->m_failure = PresentMacNativeLayerFrame(
+					state->m_binding,
+					state->m_surface,
+					state->m_frame,
+					state->m_presentResult);
+				{
+					std::lock_guard lock(state->m_mutex);
+					state->m_completed = true;
+				}
+				state->m_completedCondition.notify_one();
+			});
+
+		bool completedWithoutMainQueuePump = false;
+		{
+			std::unique_lock lock(state->m_mutex);
+			completedWithoutMainQueuePump = state->m_completedCondition.wait_for(
+				lock,
+				std::chrono::seconds(2),
+				[state]() { return state->m_completed; });
+		}
+
+		// If this regresses to dispatch_sync(main), drain the queued block before
+		// failing so the test does not leave a permanently blocked worker behind.
+		if (!completedWithoutMainQueuePump)
+		{
+			const auto cleanupDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+			while (std::chrono::steady_clock::now() < cleanupDeadline)
+			{
+				{
+					std::lock_guard lock(state->m_mutex);
+					if (state->m_completed)
+					{
+						break;
+					}
+				}
+
+				@autoreleasepool
+				{
+					[[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+				}
+			}
+		}
+
+		bool completedEventually = false;
+		{
+			std::lock_guard lock(state->m_mutex);
+			completedEventually = state->m_completed;
+		}
+		if (completedEventually)
+		{
+			presenter.join();
+			ResetMacNativeLayerBinding(state->m_binding);
+		}
+		else
+		{
+			presenter.detach();
+		}
+
+		Require(completedEventually, "background present should eventually complete while unwinding the regression test");
+		Require(completedWithoutMainQueuePump,
+			"per-frame CAMetalLayer present must not synchronously dispatch to the main queue");
+		Require(state->m_failure.IsOk(), "background CAMetalLayer present should succeed");
+		Require(state->m_presentResult.IsValid(), "background CAMetalLayer present should produce a real present token");
 	}
 }
 
@@ -231,6 +332,7 @@ int main()
 		{ "SynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists", TestSynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists },
 		{ "BridgeWaitsOnMetalSharedEventBeforeProducerCopy", TestBridgeWaitsOnMetalSharedEventBeforeProducerCopy },
 		{ "BridgeBindsExistingCAMetalLayerAndPresentsDrawable", TestBridgeBindsExistingCAMetalLayerAndPresentsDrawable },
+		{ "BridgePresentsOffMainThreadWithoutWaitingForMainQueue", TestBridgePresentsOffMainThreadWithoutWaitingForMainQueue },
 	};
 
 	for (const auto& test : tests)

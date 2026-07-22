@@ -15,6 +15,8 @@ namespace Sailor
 	class AnimatorComponentData final : public ECS::TComponent
 	{
 	public:
+		static constexpr uint32_t InvalidGpuOffset = (std::numeric_limits<uint32_t>::max)();
+
 		SAILOR_API __forceinline TObjectPtr<Animation>& GetAnimation() { return m_animation; }
 		SAILOR_API __forceinline const TObjectPtr<Animation>& GetAnimation() const { return m_animation; }
 
@@ -23,7 +25,7 @@ namespace Sailor
 
 		uint32_t m_frameIndex = 0;
 		float m_lerp = 0.0f;
-		uint32_t m_gpuOffset = std::numeric_limits<uint32_t>::max();
+		uint32_t m_gpuOffset = InvalidGpuOffset;
 		TVector<Math::Transform> m_currentSkeleton;
 
 		bool m_bIsPlaying = true;
@@ -51,6 +53,11 @@ namespace Sailor
 		virtual void EndPlay() override;
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 
+		void SetAnimation(size_t componentIndex, const TObjectPtr<Animation>& animation);
+		void InvalidateGpuLayout();
+
+		static bool TryAllocateBoneRange(uint32_t numBones, uint32_t& nextBoneOffset, uint32_t& outGpuOffset);
+
 		void FillAnimationData(RHI::RHISceneViewPtr& sceneView);
 
 		virtual uint32_t GetOrder() const override { return 200; }
@@ -58,6 +65,8 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr GetBonesBinding() const { return m_bonesBinding; }
 
 	protected:
+
+		virtual void OnComponentUnregistered(size_t index, AnimatorComponentData& component) override;
 
 		RHI::RHIShaderBindingSetPtr m_bonesBinding{};
 		RHI::RHIShaderBindingPtr m_bonesBuffer{};

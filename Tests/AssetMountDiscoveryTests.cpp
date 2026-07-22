@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetMountDiscovery.h"
+#include "AssetRegistry/AssetRegistry.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -46,6 +47,30 @@ namespace
 
 	private:
 		std::filesystem::path m_path;
+	};
+
+	class TypedFailureAssetInfo final : public AssetInfo
+	{
+	public:
+		void Deserialize(const YAML::Node& inData) override
+		{
+			(void)inData["typedValue"].as<uint32_t>();
+		}
+	};
+
+	class TypedFailureAssetInfoHandler final : public IAssetInfoHandler
+	{
+	public:
+		void GetDefaultMeta(YAML::Node& outDefaultYaml) const override
+		{
+			outDefaultYaml = YAML::Node(YAML::NodeType::Map);
+		}
+
+	protected:
+		AssetInfoPtr CreateAssetInfo() const override
+		{
+			return new TypedFailureAssetInfo();
+		}
 	};
 
 	void WriteFile(const std::filesystem::path& path, const std::string& content = "fixture")
@@ -135,6 +160,42 @@ namespace
 			messages.emplace_back(diagnostic.m_message);
 		}
 		return messages;
+	}
+
+	void TestScalarMetadataRootIsRejected()
+	{
+		TempDirectory directory("scalar-metadata");
+		const std::filesystem::path metaPath = directory.Path("Content/scalar.asset");
+		WriteFile(metaPath, "not-a-map\n");
+
+		TypedFailureAssetInfoHandler handler;
+		AssetInfoPtr assetInfo = handler.LoadAssetInfo(
+			metaPath.string(),
+			{},
+			EAssetMountKind::Workspace,
+			true,
+			false,
+			false);
+		Require(assetInfo == nullptr,
+			"scalar metadata root should be rejected without throwing");
+	}
+
+	void TestTypedMetadataDeserializeFailureIsRejected()
+	{
+		TempDirectory directory("typed-metadata");
+		const std::filesystem::path metaPath = directory.Path("Content/typed.asset");
+		WriteFile(metaPath, "typedValue: not-an-integer\n");
+
+		TypedFailureAssetInfoHandler handler;
+		AssetInfoPtr assetInfo = handler.LoadAssetInfo(
+			metaPath.string(),
+			{},
+			EAssetMountKind::Workspace,
+			true,
+			false,
+			false);
+		Require(assetInfo == nullptr,
+			"typed metadata conversion failure should return null without throwing");
 	}
 
 	void TestIdenticalRootsAreDeduplicatedToWorkspace()
@@ -429,6 +490,8 @@ int main(int argc, char** argv)
 	try
 	{
 		Require(argc == 2, "Expected the repository Engine Content path as the only argument");
+		TestScalarMetadataRootIsRejected();
+		TestTypedMetadataDeserializeFailureIsRejected();
 		TestIdenticalRootsAreDeduplicatedToWorkspace();
 		TestInvalidMountRootIsFatal();
 		TestDiscoveryIsSortedByVirtualPath();

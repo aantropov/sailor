@@ -120,6 +120,23 @@ Transform Transform::FromMatrix(const glm::mat4& m)
 	rotMat[0] = scale.x != 0.0f ? glm::vec3(m[0]) / scale.x : glm::vec3(m[0]);
 	rotMat[1] = scale.y != 0.0f ? glm::vec3(m[1]) / scale.y : glm::vec3(m[1]);
 	rotMat[2] = scale.z != 0.0f ? glm::vec3(m[2]) / scale.z : glm::vec3(m[2]);
+
+	if (glm::determinant(rotMat) < 0.0f)
+	{
+		glm::length_t reflectionAxis = 0;
+		if (scale.y > scale.x)
+		{
+			reflectionAxis = 1;
+		}
+		if (scale.z > scale[reflectionAxis])
+		{
+			reflectionAxis = 2;
+		}
+
+		scale[reflectionAxis] = -scale[reflectionAxis];
+		rotMat[reflectionAxis] = -rotMat[reflectionAxis];
+	}
+
 	glm::quat rotation = glm::quat_cast(rotMat);
 
 	return Transform(glm::vec4(translation, 1.0f), rotation, glm::vec4(scale, 1.0f));

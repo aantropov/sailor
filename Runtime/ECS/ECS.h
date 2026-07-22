@@ -1,6 +1,7 @@
 #pragma once
 #include <typeindex>
 #include <iostream>
+#include <new>
 #include "Sailor.h"
 #include "Core/Defines.h"
 #include "Engine/Types.h"
@@ -14,6 +15,9 @@ namespace Sailor::ECS
 {
 	constexpr size_t InvalidIndex = ((size_t)-1);
 
+	template<typename TECS, typename TData>
+	class TSystem;
+
 	class TComponent
 	{
 	public:
@@ -22,6 +26,7 @@ namespace Sailor::ECS
 		SAILOR_API virtual ~TComponent() = default;
 
 		SAILOR_API virtual void MarkDirty() { m_bIsDirty = true; }
+		SAILOR_API __forceinline bool IsDirty() const { return m_bIsDirty; }
 
 		SAILOR_API void SetLastChange(size_t currentFrame) { m_frameLastChange = currentFrame; }
 
@@ -36,6 +41,9 @@ namespace Sailor::ECS
 		size_t m_frameLastChange = 0;
 		bool m_bIsActive : 1 = true;
 		bool m_bIsDirty : 1 = false;
+
+		template<typename TECS, typename TData>
+		friend class TSystem;
 	};
 
 	using TBaseSystemPtr = TUniquePtr<class TBaseSystem>;
@@ -94,28 +102,51 @@ namespace Sailor::ECS
 
 		virtual size_t RegisterComponent() override
 		{
+			size_t index = InvalidIndex;
+
 			if (m_freeList.Num() == 0)
 			{
 				m_components.AddDefault(1);
-				return m_components.Num() - 1;
+				index = m_components.Num() - 1;
+			}
+			else
+			{
+				index = *(m_freeList.Last());
+				m_freeList.PopBack();
 			}
 
-			size_t res = *(m_freeList.Last());
-			m_freeList.PopBack();
-			return res;
+			auto& component = m_components[index];
+			component.m_bIsActive = true;
+			component.m_bIsDirty = false;
+			return index;
 		}
 
 		virtual void UnregisterComponent(size_t index) override
 		{
-			if (index != InvalidIndex)
+			if (index == InvalidIndex || index >= m_components.Num() || !m_components[index].m_bIsActive)
 			{
-				m_components[index].Clear();
+				return;
 			}
 
+			auto& component = m_components[index];
+			// Reserve the slot before invoking system-specific cleanup. A cleanup hook
+			// may indirectly attempt to unregister the same component again.
+			component.m_bIsActive = false;
+			OnComponentUnregistered(index, component);
+
+			component.~TData();
+			new (&component) TData();
+			component.m_bIsActive = false;
+			component.m_bIsDirty = true;
 			m_freeList.PushBack(index);
 		}
 
 		__forceinline TData& GetComponentData(size_t index) { return m_components[index]; }
+		__forceinline const TData& GetComponentData(size_t index) const { return m_components[index]; }
+		__forceinline bool IsComponentRegistered(size_t index) const
+		{
+			return index < m_components.Num() && m_components[index].m_bIsActive;
+		}
 
 		static size_t GetStaticType() { return std::type_index(typeid(TSystem)).hash_code(); }
 		virtual size_t GetComponentType() const override { return TSystem::GetComponentStaticType(); }
@@ -144,6 +175,8 @@ namespace Sailor::ECS
 		}
 
 	protected:
+
+		virtual void OnComponentUnregistered(size_t index, TData& component) {}
 
 		TVector<TData> m_components;
 		TList<size_t> m_freeList;

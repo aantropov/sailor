@@ -56,6 +56,7 @@
     <Compile Include="EditorPerfTests.cs" />
     <Compile Include="EngineLaunchContractTests.cs" />
     <Compile Include="EngineLifecycleTests.cs" />
+    <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
     <Compile Include="Utf8InteropArgumentsTests.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
@@ -100,6 +101,7 @@
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
+    <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
     <Compile Include="..\Editor\Services\Utf8InteropArguments.cs" Link="Services\Utf8InteropArguments.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />

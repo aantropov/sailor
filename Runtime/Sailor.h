@@ -10,12 +10,18 @@
 #include "Containers/Containers.h"
 #include "Math/Math.h"
 #include "Workspace/WorkspaceContext.h"
+#include <functional>
 
 namespace Sailor
 {
 	namespace Workspace
 	{
 		class WorkspaceModuleManager;
+	}
+	namespace Tasks
+	{
+		class ITask;
+		class Scheduler;
 	}
 
 	struct AppArgs
@@ -50,6 +56,7 @@ namespace Sailor
 		SAILOR_API static void Start();
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
+		SAILOR_API static bool RequestAssetReload();
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
@@ -70,12 +77,13 @@ namespace Sailor
 		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
-		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId);
+		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
 		SAILOR_API static bool DestroyEditorObject(const char* strInstanceId);
 		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
-		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName);
+		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
 		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
+		SAILOR_API static bool InstantiateEditorPrefabFromYaml(const char* strPrefabYaml, const char* strParentInstanceId);
 		SAILOR_API static bool SetEditorSelection(const char* strSelectionYaml);
 		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 		SAILOR_API static void ShowMainWindow(bool bShow);
@@ -158,7 +166,27 @@ namespace Sailor
 		AppArgs m_args{};
 
 	private:
+		static bool DispatchOnEngineMainThread(std::function<void()> command);
+		static void QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler);
+		static void ProcessAssetReloadRequestOnEngineMainThread();
 
+		template<typename TResult>
+		static TResult ExecuteOnEngineMainThread(TResult fallback, std::function<TResult()> command)
+		{
+			TResult result = fallback;
+			if (!command || !DispatchOnEngineMainThread([&result, &command]()
+				{
+					result = command();
+				}))
+			{
+				return fallback;
+			}
+
+			return result;
+		}
+
+		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
+		uint64_t m_assetReloadRequestGeneration = 0;
 		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
 
 		static App* s_pInstance;

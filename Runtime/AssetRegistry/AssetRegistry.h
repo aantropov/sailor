@@ -156,14 +156,7 @@ namespace Sailor
 		SAILOR_API static std::string GetMetaFilePath(const std::string& assetFilePath);
 
 		SAILOR_API bool IsAssetExpired(const AssetInfoPtr info) const;
-		SAILOR_API bool GetAssetCachedTime(
-			const FileId& id,
-			const std::string& sourcePath,
-			time_t& outAssetTimestamp) const;
-		SAILOR_API void CacheAssetTime(
-			const FileId& id,
-			const std::string& sourcePath,
-			const time_t& assetTimestamp);
+		SAILOR_API void CacheAsset(const AssetInfoPtr info);
 
 		template<typename T>
 		TObjectPtr<T> LoadAssetFromFile(const FileId& id, bool bImmediate = true)
@@ -185,6 +178,7 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
+		bool RestoreAssetImportTime(AssetInfoPtr info) const;
 		bool ResolveDirectLoadPath(
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;
@@ -202,5 +196,7 @@ namespace Sailor
 		TMap<std::string, AssetReadLocation> m_contentFileWinners;
 
 		AssetCache m_assetCache;
+
+		friend class IAssetInfoHandler;
 	};
 }

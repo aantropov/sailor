@@ -20,15 +20,19 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
 {
     readonly InspectorAutoCommitController _autoCommit = new(
         propertyName => propertyName == nameof(IsDirty),
-        propertyName => false);
+        propertyName => propertyName == nameof(OverrideProperties));
 
     public Component()
     {
         PropertyChanged += (s, args) =>
         {
             var decision = _autoCommit.OnPropertyChanged(args.PropertyName);
-            if (decision.MarkDirty)
-                IsDirty = true;
+            if (!decision.MarkDirty)
+                return;
+
+            IsDirty = true;
+            if (decision.CommitNow)
+                CommitInspectorChanges();
         };
     }
 
@@ -38,21 +42,39 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
             return false;
 
         var yamlComponent = EditorYaml.SerializeComponent(this);
+        var previousYaml = _lastCommittedYaml ?? yamlComponent;
+        if (string.Equals(previousYaml, yamlComponent, StringComparison.Ordinal))
+        {
+            IsDirty = false;
+            return false;
+        }
+
         var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
         var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-        var result = dispatcher.DispatchAsync(
-            new UpdateComponentCommand(this, _lastCommittedYaml ?? yamlComponent, yamlComponent, $"Edit {Typename?.Name}"),
-            contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
-            .GetAwaiter()
-            .GetResult();
+        IsDirty = false;
+
+        CommandResult result;
+        try
+        {
+            result = dispatcher.DispatchAsync(
+                new UpdateComponentCommand(this, previousYaml, yamlComponent, $"Edit {Typename?.Name}"),
+                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch
+        {
+            IsDirty = true;
+            throw;
+        }
 
         if (result.Succeeded)
         {
             _lastCommittedYaml = yamlComponent;
-            IsDirty = false;
             return true;
         }
 
+        IsDirty = true;
         return false;
     }
 

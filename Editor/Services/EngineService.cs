@@ -61,6 +61,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Start();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Stop();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RequestAssetReload();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern int GetExitCode();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
@@ -88,17 +90,20 @@ namespace SailorEngine
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ReparentObject(string strInstanceId, string strParentInstanceId, [MarshalAs(UnmanagedType.I1)] bool bKeepWorldTransform);
         [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateGameObject(string strParentInstanceId);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateGameObject(string strParentInstanceId, string strPreferredInstanceId, nint[] outInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyObject(string strInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ResetComponentToDefaults(string strInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool AddComponent(string strInstanceId, string strComponentTypeName);
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool AddComponent(string strInstanceId, string strComponentTypeName, string strPreferredInstanceId, nint[] outInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RemoveComponent(string strInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
+
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefabFromYaml([MarshalAs(UnmanagedType.LPUTF8Str)] string strPrefabYaml, [MarshalAs(UnmanagedType.LPUTF8Str)] string strParentInstanceId);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetEditorSelection(string strSelectionYaml);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
@@ -187,6 +192,7 @@ namespace SailorEditor.Services
         readonly object runLock = new();
         readonly SemaphoreSlim lifecycleGate = new(1, 1);
         readonly RingBufferedBatcher<ConsoleMessage> consoleMessages = new(MaxBufferedConsoleMessages);
+        readonly WorldSnapshotPublicationGate worldSnapshotPublication = new();
         EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
@@ -417,11 +423,20 @@ namespace SailorEditor.Services
 
         bool IsInteropRunningUnderLock() => State == EngineLifecycleState.Running;
 
-        bool InvokeRunningInterop(Func<bool> action)
+        bool InvokeRunningInterop(Func<bool> action, bool invalidateQueuedWorldSnapshots = false)
         {
             lock (interopLock)
             {
-                return IsInteropRunningUnderLock() && action();
+                if (!IsInteropRunningUnderLock() || !action())
+                    return false;
+
+                if (invalidateQueuedWorldSnapshots)
+                {
+                    var mutationSequence = worldSnapshotPublication.ReserveSequence();
+                    worldSnapshotPublication.TryAdvance(mutationSequence);
+                }
+
+                return true;
             }
         }
 
@@ -796,8 +811,15 @@ namespace SailorEditor.Services
                         -1);
                 }
 
-                string serializedWorld = SerializeWorld(generation, allowStarting: true);
-                QueueWorldUpdate(serializedWorld, generation);
+                string serializedWorld;
+                long serializedWorldSequence = 0;
+#if MACCATALYST
+                serializedWorld = await MainThread.InvokeOnMainThreadAsync(
+                    () => SerializeWorld(generation, out serializedWorldSequence, allowStarting: true));
+#else
+                serializedWorld = SerializeWorld(generation, out serializedWorldSequence, allowStarting: true);
+#endif
+                QueueWorldUpdate(serializedWorld, generation, serializedWorldSequence);
 
                 var bootstrapMessages = PullMessages(generation, allowStarting: true);
                 if (bootstrapMessages is not null)
@@ -841,7 +863,8 @@ namespace SailorEditor.Services
 
                 pollTasks.Add(RunPeriodicTaskAsync(() =>
                 {
-                    QueueWorldUpdate(SerializeWorld(generation), generation);
+                    var serializedWorld = SerializeWorld(generation, out var serializedWorldSequence);
+                    QueueWorldUpdate(serializedWorld, generation, serializedWorldSequence);
                     return Task.CompletedTask;
                 }, 1500, 0, pollCancellation.Token, generation));
 
@@ -1275,8 +1298,9 @@ namespace SailorEditor.Services
             return messages;
         }
 
-        string SerializeWorld(long generation, bool allowStarting = false)
+        string SerializeWorld(long generation, out long snapshotSequence, bool allowStarting = false)
         {
+            snapshotSequence = 0;
             if (!IsGenerationActive(generation, allowStarting))
             {
                 return string.Empty;
@@ -1290,6 +1314,7 @@ namespace SailorEditor.Services
                 {
                     return string.Empty;
                 }
+                snapshotSequence = worldSnapshotPublication.ReserveSequence();
                 numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
             }
 
@@ -1405,7 +1430,7 @@ namespace SailorEditor.Services
             return identity;
         }
 
-        void QueueWorldUpdate(string serializedWorld, long generation)
+        void QueueWorldUpdate(string serializedWorld, long generation, long snapshotSequence)
         {
             if (string.IsNullOrEmpty(serializedWorld) || !IsGenerationActive(generation, allowStarting: true))
             {
@@ -1414,11 +1439,25 @@ namespace SailorEditor.Services
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                if (IsGenerationActive(generation, allowStarting: true))
-                {
-                    OnUpdateCurrentWorldAction?.Invoke(serializedWorld);
-                }
+                PublishWorldUpdate(serializedWorld, generation, snapshotSequence, allowStarting: true);
             });
+        }
+
+        void PublishWorldUpdate(
+            string serializedWorld,
+            long generation,
+            long snapshotSequence,
+            bool allowStarting = false)
+        {
+            if (string.IsNullOrEmpty(serializedWorld) ||
+                !IsGenerationActive(generation, allowStarting) ||
+                !worldSnapshotPublication.TryAdvance(snapshotSequence))
+            {
+                return;
+            }
+
+            if (IsGenerationActive(generation, allowStarting))
+                OnUpdateCurrentWorldAction?.Invoke(serializedWorld);
         }
 
         static bool TryParseEditorTypes(
@@ -1458,26 +1497,63 @@ namespace SailorEditor.Services
         public bool CommitChanges(InstanceId id, string yamlChanges)
         {
             var stringId = id.Value.ToString();
-            return InvokeRunningInterop(() => EngineAppInterop.UpdateObject(stringId, yamlChanges));
+            return InvokeRunningInterop(
+                () => EngineAppInterop.UpdateObject(stringId, yamlChanges),
+                invalidateQueuedWorldSnapshots: true);
+        }
+
+        public bool RequestAssetReload()
+        {
+            return InvokeRunningInterop(EngineAppInterop.RequestAssetReload);
         }
 
         public void RefreshCurrentWorld()
         {
             using var perfScope = EditorPerf.Scope("EngineService.RefreshCurrentWorld");
             var generation = Volatile.Read(ref engineGeneration);
-            string serializedWorld = SerializeWorld(generation);
+            string serializedWorld = SerializeWorld(generation, out var serializedWorldSequence);
             if (!string.IsNullOrEmpty(serializedWorld))
             {
                 if (MainThread.IsMainThread)
                 {
-                    if (IsGenerationActive(generation))
-                    {
-                        OnUpdateCurrentWorldAction?.Invoke(serializedWorld);
-                    }
+                    PublishWorldUpdate(serializedWorld, generation, serializedWorldSequence);
                 }
                 else
                 {
-                    QueueWorldUpdate(serializedWorld, generation);
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        PublishWorldUpdate(serializedWorld, generation, serializedWorldSequence);
+                    }).GetAwaiter().GetResult();
+                }
+            }
+        }
+
+        bool InvokeCreationInterop(Func<nint[], bool> interop, out InstanceId createdInstanceId)
+        {
+            createdInstanceId = null;
+            nint[] instanceIdPtr = new nint[1];
+            try
+            {
+                if (!InvokeRunningInterop(() => interop(instanceIdPtr)) || instanceIdPtr[0] == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                var value = Marshal.PtrToStringAnsi(instanceIdPtr[0]);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return false;
+                }
+
+                createdInstanceId = new InstanceId(value);
+                RefreshCurrentWorld();
+                return true;
+            }
+            finally
+            {
+                if (instanceIdPtr[0] != IntPtr.Zero)
+                {
+                    EngineAppInterop.FreeInteropString(instanceIdPtr[0]);
                 }
             }
         }
@@ -1497,16 +1573,15 @@ namespace SailorEditor.Services
         }
 
         public bool CreateGameObject(InstanceId parentId = null)
+            => CreateGameObject(parentId, null, out _);
+
+        public bool CreateGameObject(InstanceId parentId, InstanceId preferredInstanceId, out InstanceId createdInstanceId)
         {
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.CreateGameObject(stringParentId));
-
-            if (result)
-            {
-                RefreshCurrentWorld();
-            }
-
-            return result;
+            var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
+            return InvokeCreationInterop(
+                output => EngineAppInterop.CreateGameObject(stringParentId, stringPreferredInstanceId, output),
+                out createdInstanceId);
         }
 
         public bool DestroyObject(InstanceId instanceId)
@@ -1536,16 +1611,23 @@ namespace SailorEditor.Services
         }
 
         public bool AddComponent(InstanceId instanceId, string componentTypeName)
+            => AddComponent(instanceId, componentTypeName, null, out _);
+
+        public bool AddComponent(
+            InstanceId instanceId,
+            string componentTypeName,
+            InstanceId preferredInstanceId,
+            out InstanceId createdInstanceId)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.AddComponent(stringId, componentTypeName ?? string.Empty));
-
-            if (result)
-            {
-                RefreshCurrentWorld();
-            }
-
-            return result;
+            var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
+            return InvokeCreationInterop(
+                output => EngineAppInterop.AddComponent(
+                    stringId,
+                    componentTypeName ?? string.Empty,
+                    stringPreferredInstanceId,
+                    output),
+                out createdInstanceId);
         }
 
         public bool RemoveComponent(InstanceId instanceId)
@@ -1566,6 +1648,24 @@ namespace SailorEditor.Services
             var stringFileId = prefabId?.Value ?? string.Empty;
             var stringParentId = parentId?.Value ?? string.Empty;
             bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefab(stringFileId, stringParentId));
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public bool InstantiatePrefabFromYaml(string prefabYaml, InstanceId parentId = null)
+        {
+            if (string.IsNullOrWhiteSpace(prefabYaml))
+            {
+                return false;
+            }
+
+            var stringParentId = parentId?.Value ?? string.Empty;
+            bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefabFromYaml(prefabYaml, stringParentId));
 
             if (result)
             {

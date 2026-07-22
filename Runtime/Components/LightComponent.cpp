@@ -15,6 +15,7 @@ void LightComponent::Initialize()
 	auto& ecsData = GetData();
 
 	ecsData.SetOwner(GetOwner());
+	ecsData.MarkDirty();
 }
 
 void LightComponent::BeginPlay()
@@ -36,6 +37,7 @@ const LightData& LightComponent::GetData() const
 void LightComponent::EndPlay()
 {
 	GetOwner()->GetWorld()->GetECS<LightingECS>()->UnregisterComponent(m_handle);
+	m_handle = ECS::InvalidIndex;
 }
 
 void LightComponent::OnGizmo()

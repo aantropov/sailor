@@ -69,8 +69,10 @@ namespace Sailor
 		bool m_bPendingUpdateNotification = false;
 		bool m_bPendingWasExpired = false;
 		bool m_bPendingImportNotification = false;
+		std::string m_importedMetadataContents;
 
 		friend class IAssetInfoHandler;
+		friend class AssetCache;
 		friend class AssetRegistry;
 	};
 
@@ -79,7 +81,12 @@ namespace Sailor
 	class SAILOR_API IAssetInfoHandlerListener
 	{
 	public:
+		// bWasExpired means that the source or metadata changed since the last
+		// acknowledged processing watermark, or that no watermark exists yet.
+		// Importers refresh loaded resources here.
 		virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) = 0;
+		// Called only after creating metadata for a previously untracked source.
+		// A new source receives OnUpdateAssetInfo(..., false) before this callback.
 		virtual void OnImportAsset(AssetInfoPtr assetInfo) = 0;
 
 	};
@@ -109,10 +116,11 @@ namespace Sailor
 			const std::string& virtualAssetFilepath = {},
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
-		virtual void ReloadAssetInfo(
+		virtual bool ReloadAssetInfo(
 			AssetInfoPtr assetInfo,
 			bool bNotifyListeners = true,
 			bool bUpdateAssetCache = true) const;
+		bool DiscardImportedMetadataIfUnchanged(AssetInfoPtr assetInfo) const;
 		void NotifyUpdateAssetInfo(AssetInfoPtr assetInfo) const;
 		void NotifyImportAsset(AssetInfoPtr assetInfo) const;
 

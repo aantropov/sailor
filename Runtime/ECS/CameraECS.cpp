@@ -13,18 +13,26 @@ Tasks::ITaskPtr CameraECS::Tick(float deltaTime)
 
 	for (auto& data : m_components)
 	{
-		if (data.m_bIsActive)
+		if (!data.m_bIsActive)
 		{
-			const auto& transformComponent = data.m_owner.StaticCast<GameObject>()->GetTransformComponent();
-			const auto& worldMatrix = transformComponent.GetCachedWorldMatrix();
-
-			// The origin
-			const mat4 origin = glm::mat4(1);// glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
-			data.m_viewMatrix = origin * glm::inverse(worldMatrix);
-
-			m_rhiCameras.Add(data);
-			m_rhiCameraTransforms.Add(Math::Transform::FromMatrix(worldMatrix));
+			continue;
 		}
+
+		GameObjectPtr owner = data.m_owner.StaticCast<GameObject>();
+		if (!owner)
+		{
+			continue;
+		}
+
+		const auto& transformComponent = owner->GetTransformComponent();
+		const auto& worldMatrix = transformComponent.GetCachedWorldMatrix();
+
+		// The origin
+		const mat4 origin = glm::mat4(1);// glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up);
+		data.m_viewMatrix = origin * glm::inverse(worldMatrix);
+
+		m_rhiCameras.Add(data);
+		m_rhiCameraTransforms.Add(Math::Transform::FromMatrix(worldMatrix));
 	}
 
 	return nullptr;

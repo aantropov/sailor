@@ -272,19 +272,7 @@ namespace SailorEditor.Services
 
         static void WritePrefab(string path, Prefab prefab)
         {
-            var commonConverters = new List<IYamlTypeConverter> {
-                new ComponentTypeYamlConverter(),
-                new ViewModels.ComponentYamlConverter()
-            };
-
-            var serializerBuilder = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(new ObservableListConverter<GameObject>(commonConverters.ToArray()))
-                .WithTypeConverter(new ObservableListConverter<Component>(commonConverters.ToArray()));
-
-            commonConverters.ForEach(converter => serializerBuilder.WithTypeConverter(converter));
-
-            var serializer = serializerBuilder.Build();
-            File.WriteAllText(path, serializer.Serialize(prefab));
+            File.WriteAllText(path, SailorEditor.Commands.EditorYaml.SerializePrefab(prefab));
         }
 
         static void WritePrefabAssetInfo(string path, FileId fileId, string filename, List<InstanceId> externalRefs)

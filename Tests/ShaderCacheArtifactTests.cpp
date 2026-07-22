@@ -452,6 +452,71 @@ namespace
 			"save retry should garbage-collect removed artifacts after the committed metadata");
 	}
 
+	void TestExplicitInvalidationSurvivesSameTimestampReload()
+	{
+		TempDirectory directory;
+		const std::filesystem::path cacheRoot = directory.Path("Cache");
+		const FileId uid = MakeFileId("{SHADER-CACHE-EXPLICIT-INVALIDATION}");
+		std::filesystem::path durableArtifact;
+		{
+			ShaderCache cache;
+			Require(ShaderCacheTestAccess::Configure(cache, cacheRoot, 100),
+				"shader cache invalidation storage should initialize");
+			Require(PublishComplete(cache, uid, 0, 45),
+				"the shader generation to invalidate should publish");
+			cache.SaveCache(true);
+			durableArtifact = ShaderCacheTestAccess::GetArtifactPath(
+				cache,
+				uid,
+				0,
+				ShaderCache::VertexShaderTag,
+				false);
+
+			cache.Invalidate(uid);
+			Require(cache.Contains(uid) && cache.IsExpired(uid, 0) && !cache.IsDirty(),
+				"explicit invalidation should persist an expired entry without removing it");
+			Require(std::filesystem::exists(durableArtifact),
+				"explicit invalidation should preserve the last durable SPIR-V generation");
+		}
+
+		ShaderCache reloaded;
+		Require(ShaderCacheTestAccess::Configure(reloaded, cacheRoot, 100),
+			"reloaded shader cache invalidation storage should initialize");
+		reloaded.LoadCache();
+		Require(reloaded.GetLastLoadResult().IsLoaded() && reloaded.IsExpired(uid, 0),
+			"explicit invalidation should remain expired after reload at the same source timestamp");
+		Require(std::filesystem::exists(durableArtifact),
+			"reloading an invalidated entry should retain its last durable artifacts");
+	}
+
+	void TestMissingStorageRecoveryDropsStaleArtifactReferences()
+	{
+		TempDirectory directory;
+		const std::filesystem::path cacheRoot = directory.Path("Cache");
+		const FileId uid = MakeFileId("{SHADER-CACHE-MISSING-STORAGE}");
+		ShaderCache cache;
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot, 100),
+			"shader cache recovery storage should initialize");
+		Require(PublishComplete(cache, uid, 0, 46),
+			"the shader generation to recover should publish");
+		cache.SaveCache(true);
+		Require(cache.Contains(uid),
+			"the live cache should contain the published generation before deletion");
+
+		std::error_code removeError;
+		std::filesystem::remove_all(cacheRoot, removeError);
+		Require(!removeError, "the complete shader cache directory should be removable");
+		Require(cache.RecoverMissingStorage(),
+			"runtime recovery should recreate deleted shader cache storage");
+		Require(!cache.Contains(uid) && !cache.IsDirty(),
+			"runtime recovery must drop metadata that points to deleted immutable artifacts");
+		Require(std::filesystem::is_regular_file(ShaderCacheTestAccess::GetCachePath(cache)) &&
+			std::filesystem::is_directory(cacheRoot / "PrecompiledShaders") &&
+			std::filesystem::is_directory(cacheRoot / "CompiledShaders") &&
+			std::filesystem::is_directory(cacheRoot / "CompiledShadersWithDebug"),
+			"runtime recovery should recreate the cache envelope and all owned directories");
+	}
+
 	void TestSameSizeChecksumCorruptionAndClearExpiredTransaction()
 	{
 		TempDirectory directory;
@@ -694,6 +759,36 @@ namespace
 
 	void TestShaderCompilerFailureLifecycle()
 	{
+		const FileId parsedOnly = MakeFileId("{SHADER-DEPENDENCY-PARSED}");
+		const FileId shared = MakeFileId("{SHADER-DEPENDENCY-SHARED}");
+		const FileId loadedOnly = MakeFileId("{SHADER-DEPENDENCY-LOADED}");
+		const TVector<FileId> dependencyCandidates =
+			ShaderCompilerTestAccess::MergeShaderDependencyCandidates(
+				{ parsedOnly, shared },
+				{ shared, loadedOnly });
+		Require(
+			dependencyCandidates.Num() == 3 &&
+			dependencyCandidates.Contains(parsedOnly) &&
+			dependencyCandidates.Contains(shared) &&
+			dependencyCandidates.Contains(loadedOnly),
+			"GLSL dependency propagation should merge parsed and loaded shader ids without duplicates");
+		Require(
+			ShaderCompilerTestAccess::NormalizeShaderExtension("Shaders/Upper.SHADER") == "shader" &&
+			ShaderCompilerTestAccess::NormalizeShaderExtension("Shaders/Upper.GLSL") == "glsl",
+			"shader hot reload should match registered extensions case-insensitively");
+		Require(
+			ShaderCompilerTestAccess::DoesShaderIncludePath(
+				{ "Shaders/Shared/Common.glsl" },
+				"Shaders/Shared/./Common.glsl"),
+			"shader dependency matching should normalize virtual paths");
+#if defined(_WIN32)
+		Require(
+			ShaderCompilerTestAccess::DoesShaderIncludePath(
+				{ "Shaders\\Shared\\Common.GLSL" },
+				"shaders/SHARED/common.glsl"),
+			"Windows shader dependency matching should normalize separators and path case");
+#endif
+
 		const bool allSucceeded[] = { true, true, true };
 		const bool oneFailed[] = { true, false, true };
 		Require(
@@ -762,6 +857,129 @@ namespace
 		Require(!ShaderCompilerTestAccess::SaveCacheAndCombineResult(cache, false),
 			"a compile failure should remain failed even when cache persistence succeeds");
 	}
+
+	void TestShaderSourceNormalization()
+	{
+		std::string diagnostic;
+		std::string rawGlsl =
+			"vec3 convertRGB2XYZ(vec3 value)\n"
+			"{\n"
+			"    // Reference(s):\n"
+			"\treturn value;\n"
+			"}\n";
+		const std::string originalRawGlsl = rawGlsl;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("glsl", rawGlsl, diagnostic),
+			"raw GLSL should not be normalized as shader YAML");
+		Require(rawGlsl == originalRawGlsl && diagnostic.empty(),
+			"raw GLSL should remain byte-for-byte unchanged without a YAML diagnostic");
+
+		std::string validShader =
+			"glslVertex: |\n"
+			"  void main() {}\n";
+		const std::string originalValidShader = validShader;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("shader", validShader, diagnostic),
+			"valid shader YAML should not need normalization");
+		Require(validShader == originalValidShader && diagnostic.empty(),
+			"valid shader YAML should remain byte-for-byte unchanged");
+
+		std::string shaderWithTab =
+			"glslVertex: |\n"
+			"  void main()\n"
+			"  {\n"
+			"\tgl_Position = vec4(0.0);\n"
+			"  }\n";
+		Require(
+			ShaderCompilerTestAccess::NormalizeShaderTabs("shader", shaderWithTab, diagnostic),
+			"invalid YAML indentation tabs should be normalized");
+		Require(shaderWithTab.find('\t') == std::string::npos && diagnostic.empty(),
+			"normalized shader YAML should contain no tabs or diagnostic");
+		Require(shaderWithTab.find("\n    gl_Position") != std::string::npos,
+			"shader YAML tabs should expand to exactly four spaces");
+		Require(YAML::Load(shaderWithTab)["glslVertex"].IsScalar(),
+			"normalized shader YAML should be parseable");
+
+		std::string malformedShader = "glslVertex: [\n";
+		const std::string originalMalformedShader = malformedShader;
+		Require(
+			!ShaderCompilerTestAccess::NormalizeShaderTabs("shader", malformedShader, diagnostic),
+			"non-tab YAML errors should not trigger a rewrite");
+		Require(malformedShader == originalMalformedShader && !diagnostic.empty(),
+			"non-tab YAML errors should preserve the source and publish a diagnostic");
+	}
+
+	void TestShaderSourceRewritePreservesFileIdentity()
+	{
+		TempDirectory directory;
+		const std::filesystem::path shaderPath = directory.Path("User.shader");
+		const std::filesystem::path hardLinkPath = directory.Path("User.shader.link");
+		const std::string onDiskSource =
+			"glslVertex: |\r\n"
+			"  void main()\n"
+			"  {\r\n"
+			"\tgl_Position = vec4(0.0);\n"
+			"  }\r\n";
+		{
+			std::ofstream output(shaderPath, std::ios::binary);
+			Require(output.is_open(), "the shader rewrite fixture should be writable");
+			output << onDiskSource;
+		}
+
+		std::string originalSource;
+		std::string diagnostic;
+		Require(
+			ShaderCompilerTestAccess::ReadShaderSourceBinary(
+				shaderPath.generic_string(),
+				originalSource,
+				diagnostic),
+			"the shader rewrite fixture should use production binary reading: " + diagnostic);
+		Require(originalSource == onDiskSource,
+			"production shader reading should preserve mixed line endings byte-for-byte");
+		std::string normalizedSource = originalSource;
+		Require(
+			ShaderCompilerTestAccess::NormalizeShaderTabs(
+				"shader",
+				normalizedSource,
+				diagnostic),
+			"the rewrite fixture should require normalization");
+		std::error_code filesystemError;
+		std::filesystem::create_hard_link(shaderPath, hardLinkPath, filesystemError);
+		Require(!filesystemError,
+			"the shader rewrite fixture should support hard links: " + filesystemError.message());
+		const auto permissionsBefore = std::filesystem::status(shaderPath).permissions();
+
+		Require(
+			ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
+				shaderPath.generic_string(),
+				originalSource,
+				normalizedSource,
+				diagnostic),
+			"normalized shader source should be written in place: " + diagnostic);
+		Require(ReadText(shaderPath) == normalizedSource && ReadText(hardLinkPath) == normalizedSource,
+			"in-place normalization should preserve the source inode");
+		Require(std::filesystem::status(shaderPath).permissions() == permissionsBefore,
+			"in-place normalization should preserve source permissions");
+		Require(CountRegularFiles(shaderPath.parent_path()) == 2,
+			"in-place normalization should not create discoverable temporary assets");
+
+		const std::string onDiskConcurrentSource = "glslVertex: concurrent-edit\r\n";
+		{
+			std::ofstream output(shaderPath, std::ios::binary | std::ios::trunc);
+			Require(output.is_open(), "the concurrent shader edit should be writable");
+			output << onDiskConcurrentSource;
+		}
+		const std::string concurrentSource = onDiskConcurrentSource;
+		Require(
+			!ShaderCompilerTestAccess::RewriteShaderSourceInPlace(
+				shaderPath.generic_string(),
+				originalSource,
+				normalizedSource,
+				diagnostic),
+			"a concurrent user edit should cancel shader normalization");
+		Require(ReadText(shaderPath) == concurrentSource && !diagnostic.empty(),
+			"a concurrent user edit should remain intact and produce a diagnostic");
+	}
 }
 
 int main()
@@ -776,10 +994,14 @@ int main()
 		TestDebugArtifactsAreRequired();
 		TestFailedGenerationPreservesDurableGeneration();
 		TestRemoveCommitsBeforeGarbageCollection();
+		TestExplicitInvalidationSurvivesSameTimestampReload();
+		TestMissingStorageRecoveryDropsStaleArtifactReferences();
 		TestSameSizeChecksumCorruptionAndClearExpiredTransaction();
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
+		TestShaderSourceNormalization();
+		TestShaderSourceRewritePreservesFileIdentity();
 		std::cout << "Shader cache artifact tests passed.\n";
 		return 0;
 	}

@@ -4,16 +4,80 @@
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
+#include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
 
 using namespace Sailor;
 
-World::World(std::string name, EWorldBehaviourMask mask) : m_mask(mask), m_currentFrame(1), m_name(std::move(name)), m_frameInput(), m_bIsBeginPlayCalled(false)
+namespace
+{
+	TVector<ECS::TBaseSystemPtr> CreateRegisteredEcs()
+	{
+		auto* ecsFactory = App::GetSubmodule<ECS::ECSFactory>();
+		check(ecsFactory);
+		return ecsFactory->CreateECS();
+	}
+
+	class PrefabInstantiationTransaction final
+	{
+	public:
+
+		PrefabInstantiationTransaction(
+			World& world,
+			TVector<GameObjectPtr>& gameObjects,
+			TVector<TPair<ComponentPtr, ReflectedData>>& pendingDependencies) :
+			m_world(world),
+			m_gameObjects(gameObjects),
+			m_pendingDependencies(pendingDependencies),
+			m_initialPendingDependencies(pendingDependencies.Num())
+		{}
+
+		~PrefabInstantiationTransaction() noexcept
+		{
+			if (m_bCommitted)
+			{
+				return;
+			}
+
+			while (m_pendingDependencies.Num() > m_initialPendingDependencies)
+			{
+				m_pendingDependencies.RemoveAt(m_pendingDependencies.Num() - 1);
+			}
+
+			for (size_t index = m_gameObjects.Num(); index > 0; --index)
+			{
+				m_world.DestroyImmediate(m_gameObjects[index - 1]);
+			}
+		}
+
+		void Commit() { m_bCommitted = true; }
+
+	private:
+
+		World& m_world;
+		TVector<GameObjectPtr>& m_gameObjects;
+		TVector<TPair<ComponentPtr, ReflectedData>>& m_pendingDependencies;
+		size_t m_initialPendingDependencies;
+		bool m_bCommitted = false;
+	};
+}
+
+World::World(std::string name, EWorldBehaviourMask mask) :
+	World(std::move(name), mask, CreateRegisteredEcs())
+{}
+
+World::World(
+	std::string name,
+	EWorldBehaviourMask mask,
+	TVector<ECS::TBaseSystemPtr>&& ecsArray) :
+	m_mask(mask),
+	m_currentFrame(1),
+	m_name(std::move(name)),
+	m_frameInput(),
+	m_bIsBeginPlayCalled(false)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
-
-	auto ecsArray = App::GetSubmodule<ECS::ECSFactory>()->CreateECS();
 
 	for (auto& ecs : ecsArray)
 	{
@@ -147,54 +211,19 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 		return {};
 	}
 
-	for (uint32_t gameObjectIndex = 0; gameObjectIndex < prefab->m_gameObjects.Num(); ++gameObjectIndex)
+	std::string validationDiagnostic;
+	if (!prefab->ValidateForInstantiation(validationDiagnostic))
 	{
-		const auto& prefabGameObject = prefab->m_gameObjects[gameObjectIndex];
-		if (prefabGameObject.m_parentIndex != static_cast<uint32_t>(-1) &&
-			prefabGameObject.m_parentIndex >= prefab->m_gameObjects.Num())
-		{
-			SAILOR_LOG_ERROR(
-				"Cannot instantiate prefab '%s': game object %u has invalid parent index %u.",
-				prefab->GetFileId().ToString().c_str(),
-				gameObjectIndex,
-				prefabGameObject.m_parentIndex);
-			return {};
-		}
-
-		for (const uint32_t componentIndex : prefabGameObject.m_components)
-		{
-			if (componentIndex >= prefab->m_components.Num())
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot instantiate prefab '%s': game object %u references invalid component index %u.",
-					prefab->GetFileId().ToString().c_str(),
-					gameObjectIndex,
-					componentIndex);
-				return {};
-			}
-
-			const ReflectedData& reflection = prefab->m_components[componentIndex];
-			if (!reflection.IsValid())
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot instantiate prefab '%s': reflected component %u has an unknown type. "
-					"Load or rebuild the workspace logic module.",
-					prefab->GetFileId().ToString().c_str(),
-					componentIndex);
-				return {};
-			}
-		}
+		SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': %s.",
+			prefab->GetFileId().ToString().c_str(),
+			validationDiagnostic.c_str());
+		return {};
 	}
 
 	TVector<GameObjectPtr> gameObjects;
+	gameObjects.Reserve(prefab->m_gameObjects.Num());
 	TMap<InstanceId, ObjectPtr> internalDependencies;
-	auto rollback = [&]()
-	{
-		for (auto& gameObject : gameObjects)
-		{
-			DestroyImmediate(gameObject);
-		}
-	};
+	PrefabInstantiationTransaction transaction(*this, gameObjects, ComponentsToResolveDependencies);
 
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
 	{
@@ -214,7 +243,20 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 		{
 			const uint32_t componentIndex = prefab->m_gameObjects[j].m_components[i];
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
-			const InstanceId oldInstanceId = reflection.GetProperties()["instanceId"].as<InstanceId>();
+			InstanceId oldInstanceId;
+			std::string conversionDiagnostic;
+			if (!External::TryConvertYaml(
+					reflection.GetProperties()["instanceId"],
+					oldInstanceId,
+					conversionDiagnostic))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate reflected component %u from prefab '%s': %s.",
+					componentIndex,
+					prefab->GetFileId().ToString().c_str(),
+					conversionDiagnostic.c_str());
+				return {};
+			}
 
 			ComponentPtr newComponent = Reflection::CreateObject<Component>(reflection.GetTypeInfo(), GetAllocator());
 			if (!newComponent)
@@ -223,12 +265,25 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 					"Cannot instantiate reflected component type '%s' from prefab '%s'.",
 					reflection.GetTypeInfo().Name().c_str(),
 					prefab->GetFileId().ToString().c_str());
-				rollback();
 				return {};
 			}
 
 			gameObject->AddComponentRaw(newComponent);
-			newComponent->ApplyReflection(reflection);
+			std::string applyDiagnostic;
+			if (!External::GuardYamlExceptions(
+					[newComponent, &reflection]() mutable
+					{
+						newComponent->ApplyReflection(reflection);
+					},
+					applyDiagnostic))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot apply reflected component %u from prefab '%s': %s.",
+					componentIndex,
+					prefab->GetFileId().ToString().c_str(),
+					applyDiagnostic.c_str());
+				return {};
+			}
 			newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
 
 			// We store the old ids for internal dependencies during resolve
@@ -256,12 +311,42 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
 
 			// Resolve internal dependencies first
-			bool bResolved = newComp->ResolveRefs(reflection, internalDependencies, false);
+			bool bResolved = false;
+			std::string resolveDiagnostic;
+			if (!External::TryInvokeYaml(
+					[newComp, &reflection, &internalDependencies]() mutable
+					{
+						return newComp->ResolveRefs(reflection, internalDependencies, false);
+					},
+					bResolved,
+					resolveDiagnostic))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot resolve reflected component %u from prefab '%s': %s.",
+					componentIndex,
+					prefab->GetFileId().ToString().c_str(),
+					resolveDiagnostic.c_str());
+				return {};
+			}
 
 			// Resolve external dependencies
 			if (!bResolved)
 			{
-				bResolved = newComp->ResolveRefs(reflection, m_objectsMap, false);
+				if (!External::TryInvokeYaml(
+						[newComp, &reflection, this]() mutable
+						{
+							return newComp->ResolveRefs(reflection, m_objectsMap, false);
+						},
+						bResolved,
+						resolveDiagnostic))
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot resolve external references for component %u from prefab '%s': %s.",
+						componentIndex,
+						prefab->GetFileId().ToString().c_str(),
+						resolveDiagnostic.c_str());
+					return {};
+				}
 			}
 
 			if (!bResolved)
@@ -293,13 +378,13 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 	{
 		SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': no root game object was found.",
 			prefab->GetFileId().ToString().c_str());
-		rollback();
 		return {};
 	}
 
 	// Should we try to resolve the previous open dependencies?
 	// ResolveExternalDependencies();
 
+	transaction.Commit();
 	return root;
 }
 
@@ -415,6 +500,16 @@ GameObjectPtr World::Instantiate(const std::string& name)
 	auto newObject = NewGameObject(name, InstanceId::GenerateNewInstanceId());
 
 	return newObject;
+}
+
+GameObjectPtr World::Instantiate(const std::string& name, const InstanceId& preferredInstanceId)
+{
+	if (!preferredInstanceId.IsGameObjectId() || m_objectsMap.ContainsKey(preferredInstanceId))
+	{
+		return {};
+	}
+
+	return NewGameObject(name, preferredInstanceId);
 }
 
 void World::Destroy(GameObjectPtr object)

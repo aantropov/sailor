@@ -7,8 +7,56 @@
 #endif
 #include <random>
 #include <iomanip>
+#include <sstream>
+#include <string_view>
 
 using namespace Sailor;
+
+namespace
+{
+	constexpr size_t LegacyGameObjectIdLength = 16;
+	constexpr size_t CanonicalGameObjectIdLength = 20;
+	constexpr size_t LegacyComponentIdLength = 16;
+	constexpr size_t CanonicalComponentIdLength = 32;
+
+	bool IsHexString(std::string_view id)
+	{
+		return std::all_of(id.begin(), id.end(), [](unsigned char character)
+			{
+				return std::isxdigit(character) != 0;
+			});
+	}
+
+	bool IsHexGameObjectId(std::string_view id)
+	{
+		return id.length() >= LegacyGameObjectIdLength &&
+			id.length() <= CanonicalGameObjectIdLength &&
+			IsHexString(id);
+	}
+
+	bool IsHexComponentId(std::string_view id)
+	{
+		return (id.length() == LegacyComponentIdLength || id.length() == CanonicalComponentIdLength) &&
+			IsHexString(id);
+	}
+
+	bool SplitComponentInstanceId(
+		std::string_view instanceId,
+		std::string_view& outComponentId,
+		std::string_view& outGameObjectId)
+	{
+		const size_t separator = instanceId.find('_');
+		if (separator == std::string_view::npos ||
+			instanceId.find('_', separator + 1) != std::string_view::npos)
+		{
+			return false;
+		}
+
+		outComponentId = instanceId.substr(0, separator);
+		outGameObjectId = instanceId.substr(separator + 1);
+		return IsHexComponentId(outComponentId) && IsHexGameObjectId(outGameObjectId);
+	}
+}
 
 const InstanceId InstanceId::Invalid = InstanceId();
 
@@ -56,9 +104,12 @@ InstanceId InstanceId::GenerateNewInstanceId()
 	std::uniform_int_distribution<uint64_t> dis;
 
 	uint64_t randomNumber = dis(gen);
+	const uint16_t randomSuffix = static_cast<uint16_t>(dis(gen));
 
 	std::stringstream ss;
-	ss << std::setw(16) << std::setfill('0') << randomNumber;
+	ss << std::uppercase << std::hex << std::setfill('0')
+		<< std::setw(16) << randomNumber
+		<< std::setw(4) << randomSuffix;
 
 	newInstanceId.m_instanceId = StringHash::Runtime(ss.str());
 
@@ -96,23 +147,21 @@ InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)
 
 bool InstanceId::IsGameObjectId() const
 {
-	std::string idString = m_instanceId.ToString();
-	return idString.length() == 20 && std::all_of(idString.begin(), idString.end(), ::isxdigit);
+	return IsHexGameObjectId(m_instanceId.ToString());
 }
 
 InstanceId InstanceId::GameObjectId() const
 {
-	std::string idString = m_instanceId.ToString();
-	size_t pos = idString.find('_');
-	if (pos != std::string::npos)
+	const std::string& idString = m_instanceId.ToString();
+	std::string_view componentIdString;
+	std::string_view gameObjectIdString;
+	if (SplitComponentInstanceId(idString, componentIdString, gameObjectIdString))
 	{
-		std::string gameObjectIdString = idString.substr(pos + 1);
-
 		InstanceId id{};
-		id.m_instanceId = StringHash::Runtime(gameObjectIdString);
+		id.m_instanceId = StringHash::Runtime(std::string(gameObjectIdString));
 		return id;
 	}
-	else if (IsGameObjectId())
+	else if (idString.find('_') == std::string::npos && IsGameObjectId())
 	{
 		return *this;
 	}
@@ -122,14 +171,13 @@ InstanceId InstanceId::GameObjectId() const
 
 InstanceId InstanceId::ComponentId() const
 {
-	std::string idString = m_instanceId.ToString();
-	size_t pos = idString.find('_');
-	if (pos != std::string::npos)
+	const std::string& idString = m_instanceId.ToString();
+	std::string_view componentIdString;
+	std::string_view gameObjectIdString;
+	if (SplitComponentInstanceId(idString, componentIdString, gameObjectIdString))
 	{
-		std::string componentIdString = idString.substr(0, pos);
-
 		InstanceId id{};
-		id.m_instanceId = StringHash::Runtime(componentIdString);
+		id.m_instanceId = StringHash::Runtime(std::string(componentIdString));
 		return id;
 	}
 

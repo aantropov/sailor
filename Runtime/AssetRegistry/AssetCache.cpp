@@ -198,7 +198,7 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			m_fileId.Deserialize(fileId);
 			m_assetImportTime = assetImportTime.as<std::time_t>();
 			m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
-			if (m_sourcePath.empty() || !m_fileId)
+			if (m_sourcePath.empty() || !m_fileId || m_assetImportTime <= 0)
 			{
 				m_fileId = FileId();
 				m_assetImportTime = 0;
@@ -329,7 +329,11 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
 			return false;
 		}
-
+		if (entry.m_assetImportTime <= 0)
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId + "' contains an invalid assetImportTime.";
+			return false;
+		}
 		candidate.m_data.Insert(fileId, std::move(entry));
 	}
 
@@ -383,6 +387,18 @@ void AssetCache::SaveCache(bool bForcely)
 	SAILOR_PROFILE_FUNCTION();
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	std::error_code createCacheFolderError;
+	std::filesystem::create_directories(
+		AssetRegistry::GetCacheFolder(),
+		createCacheFolderError);
+	std::error_code cacheFileError;
+	const bool bCacheFileExists = std::filesystem::is_regular_file(
+		GetAssetCacheFilepath(),
+		cacheFileError);
+	if (!bCacheFileExists)
+	{
+		m_bIsDirty = true;
+	}
 	if (!ShouldWriteCacheFile(bForcely, m_bIsDirty, m_bPreserveStorageAfterLoadFailure))
 	{
 		return;
@@ -544,33 +560,38 @@ bool AssetCache::Contains(const FileId& uid) const
 	return m_cache.m_data.ContainsKey(uid);
 }
 
-bool AssetCache::GetTimeStamp(
-	const FileId& uid,
-	const std::string& sourcePath,
-	time_t& outAssetTimestamp) const
+bool AssetCache::Update(const AssetInfo* info)
 {
-	std::lock_guard<std::mutex> lock(m_cacheMutex);
-	if (!m_cache.m_data.ContainsKey(uid))
+	if (info == nullptr)
 	{
 		return false;
 	}
 
-	const AssetCacheData::Entry entry = m_cache.m_data[uid];
-	if (entry.m_sourcePath.empty() || entry.m_sourcePath != NormalizeSourcePath(sourcePath))
+	const std::string sourcePath = info->GetAssetFilepath();
+	std::error_code sourceError;
+	if (!std::filesystem::is_regular_file(sourcePath, sourceError) || sourceError)
 	{
+		Remove(info->GetFileId());
 		return false;
 	}
 
-	outAssetTimestamp = entry.m_assetImportTime;
-	return true;
+	return Update(
+		info->GetFileId(),
+		info->GetAssetImportTime(),
+		sourcePath);
 }
 
-void AssetCache::Update(
+bool AssetCache::Update(
 	const FileId& id,
-	const std::string& sourcePath,
-	const time_t& assetTimestamp)
+	std::time_t assetImportTime,
+	const std::string& sourcePath)
 {
 	std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
+	if (!id || assetImportTime <= 0 || normalizedSourcePath.empty())
+	{
+		return false;
+	}
+
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	auto& entry = m_cache.m_data.At_Lock(id);
 	struct EntryUnlockGuard final
@@ -584,12 +605,59 @@ void AssetCache::Update(
 		}
 	} unlockGuard{ m_cache.m_data, id };
 
-	m_bIsDirty |= entry.m_fileId != id ||
-		entry.m_assetImportTime != assetTimestamp ||
+	const bool bChanged = entry.m_fileId != id ||
+		entry.m_assetImportTime != assetImportTime ||
 		entry.m_sourcePath != normalizedSourcePath;
+	m_bIsDirty |= bChanged;
 	entry.m_fileId = id;
-	entry.m_assetImportTime = assetTimestamp;
+	entry.m_assetImportTime = assetImportTime;
 	entry.m_sourcePath = std::move(normalizedSourcePath);
+	return bChanged;
+}
+
+bool AssetCache::RestoreAssetImportTime(AssetInfo* info) const
+{
+	if (info == nullptr || !info->GetFileId())
+	{
+		return false;
+	}
+
+	const std::string sourcePath = NormalizeSourcePath(info->GetAssetFilepath());
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (!m_cache.m_data.ContainsKey(info->GetFileId()))
+	{
+		return false;
+	}
+
+	const AssetCacheData::Entry entry = m_cache.m_data[info->GetFileId()];
+	if (entry.m_sourcePath != sourcePath)
+	{
+		return false;
+	}
+
+	info->m_assetImportTime = entry.m_assetImportTime;
+	return true;
+}
+
+bool AssetCache::Prune(const TSet<FileId>& liveAssetIds)
+{
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	TVector<FileId> staleAssetIds;
+	for (const auto& cachedAsset : m_cache.m_data)
+	{
+		if (!liveAssetIds.Contains(cachedAsset.m_first))
+		{
+			staleAssetIds.Add(cachedAsset.m_first);
+		}
+	}
+
+	bool bChanged = false;
+	for (const FileId& staleAssetId : staleAssetIds)
+	{
+		bChanged |= m_cache.m_data.Remove(staleAssetId);
+	}
+	m_bIsDirty |= bChanged;
+	return bChanged;
 }
 
 void AssetCache::Remove(const FileId& uid)
@@ -600,7 +668,26 @@ void AssetCache::Remove(const FileId& uid)
 
 bool AssetCache::IsExpired(const AssetInfo* info) const
 {
-	time_t cachedTimestamp = 0;
-	return !GetTimeStamp(info->GetFileId(), info->GetAssetFilepath(), cachedTimestamp) ||
-		cachedTimestamp < info->GetAssetLastModificationTime();
+	if (info == nullptr)
+	{
+		return true;
+	}
+
+	const FileId& fileId = info->GetFileId();
+	const std::string sourcePath = NormalizeSourcePath(info->GetAssetFilepath());
+	std::error_code sourceError;
+	if (!std::filesystem::is_regular_file(sourcePath, sourceError) || sourceError)
+	{
+		return true;
+	}
+
+	std::lock_guard<std::mutex> lock(m_cacheMutex);
+	if (!m_cache.m_data.ContainsKey(fileId))
+	{
+		return true;
+	}
+
+	const AssetCacheData::Entry entry = m_cache.m_data[fileId];
+	return entry.m_sourcePath != sourcePath ||
+		entry.m_assetImportTime < info->GetAssetLastModificationTime();
 }

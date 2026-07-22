@@ -13,6 +13,24 @@ public static class EditorYaml
     public static string SerializeGameObject(GameObject gameObject) => SerializationUtils.CreateSerializerBuilder().Build().Serialize(gameObject);
 
     public static string SerializeComponent(Component component) => SerializationUtils.CreateSerializerBuilder().WithTypeConverter(new ComponentYamlConverter()).Build().Serialize(component);
+
+    public static string SerializePrefab(Prefab prefab)
+    {
+        IYamlTypeConverter[] commonConverters =
+        [
+            new ComponentTypeYamlConverter(),
+            new ComponentYamlConverter()
+        ];
+
+        var serializerBuilder = SerializationUtils.CreateSerializerBuilder()
+            .WithTypeConverter(new ObservableListConverter<GameObject>(commonConverters))
+            .WithTypeConverter(new ObservableListConverter<Component>(commonConverters));
+
+        foreach (var converter in commonConverters)
+            serializerBuilder.WithTypeConverter(converter);
+
+        return serializerBuilder.Build().Serialize(prefab);
+    }
 }
 
 public sealed class SelectObjectCommand(InstanceId? instanceId = null, ObservableObject? selectedObject = null) : IEditorCommand
@@ -43,15 +61,39 @@ public sealed class SelectObjectCommand(InstanceId? instanceId = null, Observabl
     }
 }
 
-public sealed class UpdateGameObjectCommand(GameObject gameObject, string beforeYaml, string afterYaml, string description = "Edit object") : IUndoableEditorCommand
+public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
 {
-    readonly InstanceId _instanceId = gameObject.InstanceId;
+    readonly InstanceId _instanceId;
+    readonly string _beforeYaml;
+    readonly string _afterYaml;
+
+    public UpdateGameObjectCommand(GameObject gameObject, string beforeYaml, string afterYaml, string description = "Edit object")
+        : this(new InstanceId(gameObject.InstanceId?.Value ?? InstanceId.NullInstanceId), beforeYaml, afterYaml, description)
+    {
+    }
+
+    UpdateGameObjectCommand(InstanceId instanceId, string beforeYaml, string afterYaml, string description)
+    {
+        _instanceId = instanceId;
+        _beforeYaml = beforeYaml;
+        _afterYaml = afterYaml;
+        Description = description;
+    }
+
     public string Name => nameof(UpdateGameObjectCommand);
-    public string Description => description;
+    public string Description { get; }
     public IHistoryMergePolicy? MergePolicy => new TimeWindowHistoryMergePolicy(TimeSpan.FromMilliseconds(750));
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(afterYaml));
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default) { Apply(beforeYaml); return ValueTask.CompletedTask; }
+    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(_afterYaml));
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(Apply(_beforeYaml));
+    public bool CanCoalesceWith(IUndoableEditorCommand next) =>
+        next is UpdateGameObjectCommand command && _instanceId.Equals(command._instanceId);
+    public IUndoableEditorCommand CoalesceWith(IUndoableEditorCommand next)
+    {
+        var command = (UpdateGameObjectCommand)next;
+        return new UpdateGameObjectCommand(_instanceId, _beforeYaml, command._afterYaml, command.Description);
+    }
     CommandResult Apply(string yaml)
     {
         if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
@@ -63,15 +105,39 @@ public sealed class UpdateGameObjectCommand(GameObject gameObject, string before
     }
 }
 
-public sealed class UpdateComponentCommand(Component component, string beforeYaml, string afterYaml, string description = "Edit component") : IUndoableEditorCommand
+public sealed class UpdateComponentCommand : IHistoryCoalescibleCommand
 {
-    readonly InstanceId _instanceId = component.InstanceId;
+    readonly InstanceId _instanceId;
+    readonly string _beforeYaml;
+    readonly string _afterYaml;
+
+    public UpdateComponentCommand(Component component, string beforeYaml, string afterYaml, string description = "Edit component")
+        : this(new InstanceId(component.InstanceId?.Value ?? InstanceId.NullInstanceId), beforeYaml, afterYaml, description)
+    {
+    }
+
+    UpdateComponentCommand(InstanceId instanceId, string beforeYaml, string afterYaml, string description)
+    {
+        _instanceId = instanceId;
+        _beforeYaml = beforeYaml;
+        _afterYaml = afterYaml;
+        Description = description;
+    }
+
     public string Name => nameof(UpdateComponentCommand);
-    public string Description => description;
+    public string Description { get; }
     public IHistoryMergePolicy? MergePolicy => new TimeWindowHistoryMergePolicy(TimeSpan.FromMilliseconds(750));
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(afterYaml));
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default) { Apply(beforeYaml); return ValueTask.CompletedTask; }
+    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(_afterYaml));
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+        => ValueTask.FromResult(Apply(_beforeYaml));
+    public bool CanCoalesceWith(IUndoableEditorCommand next) =>
+        next is UpdateComponentCommand command && _instanceId.Equals(command._instanceId);
+    public IUndoableEditorCommand CoalesceWith(IUndoableEditorCommand next)
+    {
+        var command = (UpdateComponentCommand)next;
+        return new UpdateComponentCommand(_instanceId, _beforeYaml, command._afterYaml, command.Description);
+    }
     CommandResult Apply(string yaml)
     {
         if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
@@ -93,59 +159,76 @@ public sealed class CreateGameObjectCommand(InstanceId? parentId = null) : IUndo
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var world = MauiProgram.GetService<WorldService>();
-        var before = world.Current.Prefabs.SelectMany(x => x.GameObjects).Select(x => x.InstanceId?.Value).ToHashSet();
-        var ok = MauiProgram.GetService<EngineService>().CreateGameObject(parentId);
-        if (!ok)
+        var engine = MauiProgram.GetService<EngineService>();
+        if (!engine.CreateGameObject(parentId, _createdId, out var createdId))
             return Task.FromResult(CommandResult.Failure());
-        var created = world.Current.Prefabs.SelectMany(x => x.GameObjects).FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
-        _createdId = created?.InstanceId;
+
+        _createdId = createdId;
+        if (!world.TryGetGameObject(createdId, out _))
+        {
+            engine.DestroyObject(createdId);
+            return Task.FromResult(CommandResult.Failure("Created object was not projected"));
+        }
+
         return Task.FromResult(CommandResult.Success(value: _createdId));
     }
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        if (_createdId is not null && !_createdId.IsEmpty())
-            MauiProgram.GetService<EngineService>().DestroyObject(_createdId);
-        return ValueTask.CompletedTask;
+        if (_createdId is null || _createdId.IsEmpty())
+            return ValueTask.FromResult(CommandResult.Failure("Created object was not found"));
+
+        return ValueTask.FromResult(MauiProgram.GetService<EngineService>().DestroyObject(_createdId)
+            ? CommandResult.Success()
+            : CommandResult.Failure("Destroy created object failed"));
     }
 }
 
 public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableEditorCommand
 {
-    readonly InstanceId _originalInstanceId = gameObject.InstanceId;
     readonly string _name = gameObject.Name;
     readonly InstanceId? _parentId = gameObject.ParentIndex == uint.MaxValue
         ? null
         : MauiProgram.GetService<WorldService>().Current.Prefabs[gameObject.PrefabIndex].GameObjects[(int)gameObject.ParentIndex].InstanceId;
-    readonly SailorEditor.ViewModels.PrefabFile? _prefabSnapshot = MauiProgram.GetService<AssetsService>().CreatePrefabAsset(null, gameObject);
+    readonly string _prefabSnapshotYaml = CreateSnapshotYaml(gameObject);
     InstanceId _activeInstanceId = gameObject.InstanceId;
 
     public string Name => nameof(DestroyGameObjectCommand);
     public string Description => $"Delete {gameObject.Name}";
     public IHistoryMergePolicy? MergePolicy => null;
-    public bool CanExecute(ActionContext context) => _activeInstanceId is not null && !_activeInstanceId.IsEmpty() && _prefabSnapshot is not null;
+    public bool CanExecute(ActionContext context) => _activeInstanceId is not null && !_activeInstanceId.IsEmpty() && !string.IsNullOrWhiteSpace(_prefabSnapshotYaml);
 
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
         => Task.FromResult(MauiProgram.GetService<EngineService>().DestroyObject(_activeInstanceId) ? CommandResult.Success() : CommandResult.Failure("Destroy failed"));
 
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
         var beforeIds = world.Current.Prefabs.SelectMany(x => x.GameObjects).Select(x => x.InstanceId?.Value).ToHashSet();
 
-        if (_prefabSnapshot is null || !engine.InstantiatePrefab(_prefabSnapshot.FileId, _parentId))
-            return ValueTask.CompletedTask;
+        if (!engine.InstantiatePrefabFromYaml(_prefabSnapshotYaml, _parentId))
+            return ValueTask.FromResult(CommandResult.Failure("Restore deleted hierarchy failed"));
+
+        if (world.TryGetGameObject(_activeInstanceId, out _))
+            return ValueTask.FromResult(CommandResult.Success());
 
         var restored = world.Current.Prefabs
             .SelectMany(x => x.GameObjects)
             .Where(x => x.InstanceId is not null && !beforeIds.Contains(x.InstanceId.Value))
-            .FirstOrDefault(x => x.Name == _name && ((_parentId is null && x.ParentIndex == uint.MaxValue) || (_parentId is not null && x.ParentIndex != uint.MaxValue && world.Current.Prefabs[x.PrefabIndex].GameObjects[(int)x.ParentIndex].InstanceId == _parentId)))
+            .FirstOrDefault(x => x.Name == _name && ((_parentId is null && x.ParentIndex == uint.MaxValue) || (_parentId is not null && x.ParentIndex != uint.MaxValue && world.Current.Prefabs[x.PrefabIndex].GameObjects[(int)x.ParentIndex].InstanceId.Equals(_parentId))))
             ?? world.Current.Prefabs.SelectMany(x => x.GameObjects).FirstOrDefault(x => x.InstanceId is not null && !beforeIds.Contains(x.InstanceId.Value));
 
-        if (restored is not null)
-            _activeInstanceId = restored.InstanceId;
+        if (restored is null)
+            return ValueTask.FromResult(CommandResult.Failure("Restored hierarchy root was not found"));
 
-        return ValueTask.CompletedTask;
+        engine.DestroyObject(restored.InstanceId);
+        return ValueTask.FromResult(CommandResult.Failure("Restored hierarchy did not preserve its instance identity"));
+    }
+
+    static string CreateSnapshotYaml(GameObject root)
+    {
+        var prefab = MauiProgram.GetService<WorldService>().CreatePrefabFromSubHierarchy(root, out _);
+        return EditorYaml.SerializePrefab(prefab);
     }
 }
 
@@ -167,12 +250,12 @@ public sealed class ReparentGameObjectCommand(GameObject child, GameObject? newP
         return Task.FromResult(CommandResult.Success());
     }
 
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
-        engine.ReparentObject(_childId, _oldParentId, keepWorldTransform);
-
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(engine.ReparentObject(_childId, _oldParentId, keepWorldTransform)
+            ? CommandResult.Success()
+            : CommandResult.Failure("Restore parent failed"));
     }
 }
 
@@ -190,23 +273,27 @@ public sealed class AddComponentCommand(GameObject gameObject, string componentT
         if (!world.TryGetGameObject(_ownerId, out var owner))
             return Task.FromResult(CommandResult.Failure("Owner not found"));
 
-        var before = world.GetComponents(owner).Select(x => x.InstanceId?.Value).ToHashSet();
-        var ok = MauiProgram.GetService<EngineService>().AddComponent(_ownerId, componentTypeName);
-        if (!ok)
+        var engine = MauiProgram.GetService<EngineService>();
+        if (!engine.AddComponent(_ownerId, componentTypeName, _componentId, out var createdId))
             return Task.FromResult(CommandResult.Failure());
 
-        if (!world.TryGetGameObject(_ownerId, out var refreshedOwner))
-            return Task.FromResult(CommandResult.Success());
+        _componentId = createdId;
+        if (!world.TryGetComponent(createdId, out _))
+        {
+            engine.RemoveComponent(createdId);
+            return Task.FromResult(CommandResult.Failure("Created component was not projected"));
+        }
 
-        var created = world.GetComponents(refreshedOwner).FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
-        _componentId = created?.InstanceId;
         return Task.FromResult(CommandResult.Success(value: _componentId));
     }
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        if (_componentId is not null && !_componentId.IsEmpty())
-            MauiProgram.GetService<EngineService>().RemoveComponent(_componentId);
-        return ValueTask.CompletedTask;
+        if (_componentId is null || _componentId.IsEmpty())
+            return ValueTask.FromResult(CommandResult.Failure("Created component was not found"));
+
+        return ValueTask.FromResult(MauiProgram.GetService<EngineService>().RemoveComponent(_componentId)
+            ? CommandResult.Success()
+            : CommandResult.Failure("Remove created component failed"));
     }
 }
 
@@ -226,40 +313,37 @@ public sealed class RemoveComponentCommand(Component component) : IUndoableEdito
     public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
         => Task.FromResult(MauiProgram.GetService<EngineService>().RemoveComponent(_activeInstanceId) ? CommandResult.Success() : CommandResult.Failure());
 
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
 
         if (!world.TryGetGameObject(_ownerId, out var owner))
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(CommandResult.Failure("Component owner was not found"));
 
-        var before = world.GetComponents(owner).Select(x => x.InstanceId?.Value).ToHashSet();
-        if (!engine.AddComponent(_ownerId, _componentTypeName))
-            return ValueTask.CompletedTask;
+        if (!engine.AddComponent(_ownerId, _componentTypeName, _originalInstanceId, out var restoredInstanceId))
+            return ValueTask.FromResult(CommandResult.Failure("Restore component failed"));
 
-        if (!world.TryGetGameObject(_ownerId, out var refreshedOwner))
-            return ValueTask.CompletedTask;
-
-        var restored = world.GetComponents(refreshedOwner)
-            .FirstOrDefault(x => x.InstanceId is not null && !before.Contains(x.InstanceId.Value));
-
-        if (restored is null)
-            return ValueTask.CompletedTask;
-
-        if (!engine.CommitChanges(restored.InstanceId, _beforeYaml))
-            return ValueTask.CompletedTask;
-
-        if (world.TryGetComponent(_originalInstanceId, out var original))
+        if (!restoredInstanceId.Equals(_originalInstanceId) || !world.TryGetComponent(restoredInstanceId, out var restored))
         {
-            _activeInstanceId = original.InstanceId;
-            return ValueTask.CompletedTask;
+            engine.RemoveComponent(restoredInstanceId);
+            return ValueTask.FromResult(CommandResult.Failure("Restored component was not found"));
         }
 
-        if (world.TryGetComponent(restored.InstanceId, out var refreshed))
-            _activeInstanceId = refreshed.InstanceId;
+        if (!engine.CommitChanges(restored.InstanceId, _beforeYaml))
+        {
+            engine.RemoveComponent(restored.InstanceId);
+            return ValueTask.FromResult(CommandResult.Failure("Restore component state failed"));
+        }
 
-        return ValueTask.CompletedTask;
+        if (!world.ApplyComponentYamlLocal(restored.InstanceId, _beforeYaml))
+        {
+            engine.RemoveComponent(restored.InstanceId);
+            return ValueTask.FromResult(CommandResult.Failure("Refresh restored component state failed"));
+        }
+
+        _activeInstanceId = restoredInstanceId;
+        return ValueTask.FromResult(CommandResult.Success());
     }
 }
 
@@ -279,13 +363,13 @@ public sealed class ResetComponentToDefaultsCommand(Component component) : IUndo
             _afterYaml = EditorYaml.SerializeComponent(refreshed);
         return Task.FromResult(ok ? CommandResult.Success() : CommandResult.Failure());
     }
-    public ValueTask UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        if (MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, _beforeYaml))
-        {
-            MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, _beforeYaml);
-        }
+        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, _beforeYaml))
+            return ValueTask.FromResult(CommandResult.Failure("Restore component state failed"));
 
-        return ValueTask.CompletedTask;
+        return ValueTask.FromResult(MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, _beforeYaml)
+            ? CommandResult.Success()
+            : CommandResult.Failure("Refresh restored component state failed"));
     }
 }

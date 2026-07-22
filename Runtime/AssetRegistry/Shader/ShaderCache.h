@@ -78,12 +78,14 @@ namespace Sailor
 			bool bIsDebug = false);
 
 		SAILOR_API void Remove(const FileId& uid);
+		SAILOR_API void Invalidate(const FileId& uid);
 
 		SAILOR_API bool Contains(const FileId& uid) const;
 		SAILOR_API bool IsExpired(const FileId& uid, uint32_t permutation);
 
 		SAILOR_API void LoadCache();
 		SAILOR_API void SaveCache(bool bForcely = false);
+		SAILOR_API bool RecoverMissingStorage();
 
 		SAILOR_API void ClearAll();
 		SAILOR_API void ClearExpired();

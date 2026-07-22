@@ -13,6 +13,7 @@ public class AppDelegate : MauiUIApplicationDelegate
     static readonly Selector OpenWorkspaceSelector = new("openWorkspace:");
     static readonly Selector SaveWorkspaceSelector = new("saveWorkspace:");
     static readonly Selector OpenRecentWorkspaceSelector = new("openRecentWorkspace:");
+    static readonly Selector ReloadAssetsSelector = new("reloadAssets:");
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
 
@@ -30,7 +31,14 @@ public class AppDelegate : MauiUIApplicationDelegate
                 UICommand.Create("New Workspace...", null, NewWorkspaceSelector, null),
                 UICommand.Create("Open Workspace...", null, OpenWorkspaceSelector, null),
                 UICommand.Create("Save Workspace", null, SaveWorkspaceSelector, null),
-                BuildRecentWorkspacesMenu()
+                BuildRecentWorkspacesMenu(),
+                UIKeyCommand.Create(
+                    "Reload Assets",
+                    null,
+                    ReloadAssetsSelector,
+                    "r",
+                    UIKeyModifierFlags.Command,
+                    null)
             });
 
         builder.InsertChildMenuAtStart(workspaceMenu, UIMenuIdentifier.File.GetConstant().ToString());
@@ -67,6 +75,10 @@ public class AppDelegate : MauiUIApplicationDelegate
 
         RunWorkspaceAction(workspace => workspace.OpenWorkspaceAsync(manifestPath.ToString()));
     }
+
+    [Export("reloadAssets:")]
+    public void ReloadAssets(NSObject sender)
+        => MauiProgram.GetService<EngineService>().RequestAssetReload();
 
     static UIMenu BuildRecentWorkspacesMenu()
     {

@@ -14,6 +14,7 @@
 #include "Core/Utils.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "YamlExceptionBoundary.h"
 
 #include <algorithm>
 #include <cctype>
@@ -48,6 +49,13 @@ namespace
 		IAssetInfoHandler* m_handler = nullptr;
 		AssetInfoPtr m_assetInfo = nullptr;
 		bool m_bImported = false;
+		bool m_bNotifyUpdate = true;
+	};
+
+	struct ImportedMetadata final
+	{
+		IAssetInfoHandler* m_handler = nullptr;
+		AssetInfoPtr m_assetInfo = nullptr;
 	};
 
 	std::string AsFolderPath(const std::filesystem::path& path)
@@ -164,41 +172,69 @@ namespace
 		std::string& outAssetInfoType,
 		std::string& outError)
 	{
-		const YAML::Node metadata = YAML::LoadFile(metaPath.string());
-		const YAML::Node fileId = metadata["fileId"];
-		const YAML::Node filename = metadata["filename"];
-		if (!fileId.IsScalar() || !filename.IsScalar())
-		{
-			outError = "metadata requires scalar fileId and filename";
-			return false;
-		}
+		outFileId.clear();
+		outFilename.clear();
+		outAssetInfoType.clear();
+		outError.clear();
 
-		outFileId = fileId.as<std::string>();
-		outFilename = filename.as<std::string>();
-		YAML::Node assetInfoType(YAML::NodeType::Undefined);
-		for (const auto& field : metadata)
+		bool bSuccess = false;
+		std::string yamlDiagnostic;
+		if (!External::GuardYamlExceptions(
+				[&]()
+				{
+					const YAML::Node metadata = YAML::LoadFile(metaPath.string());
+					if (!metadata.IsMap())
+					{
+						outError = "metadata root must be a map";
+						return;
+					}
+
+					const YAML::Node fileId = metadata["fileId"];
+					const YAML::Node filename = metadata["filename"];
+					if (!fileId.IsScalar() || !filename.IsScalar())
+					{
+						outError = "metadata requires scalar fileId and filename";
+						return;
+					}
+
+					outFileId = fileId.as<std::string>();
+					outFilename = filename.as<std::string>();
+					YAML::Node assetInfoType(YAML::NodeType::Undefined);
+					for (const auto& field : metadata)
+					{
+						if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
+						{
+							assetInfoType = field.second;
+							break;
+						}
+					}
+					if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
+					{
+						outError = "metadata assetInfoType must be scalar when present";
+						return;
+					}
+					if (assetInfoType.IsScalar())
+					{
+						outAssetInfoType = assetInfoType.as<std::string>();
+					}
+					if (outFileId.empty() || outFilename.empty() ||
+						!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
+					{
+						outError = "metadata contains an empty FileId or unsafe filename";
+						return;
+					}
+
+					bSuccess = true;
+				},
+				yamlDiagnostic))
 		{
-			if (field.first.IsScalar() && field.first.Scalar() == "assetInfoType")
-			{
-				assetInfoType = field.second;
-				break;
-			}
-		}
-		if (assetInfoType.IsDefined() && !assetInfoType.IsNull() && !assetInfoType.IsScalar())
-		{
-			outError = "metadata assetInfoType must be scalar when present";
+			outFileId.clear();
+			outFilename.clear();
+			outAssetInfoType.clear();
+			outError = std::move(yamlDiagnostic);
 			return false;
 		}
-		outAssetInfoType = assetInfoType.IsScalar()
-			? assetInfoType.as<std::string>()
-			: std::string{};
-		if (outFileId.empty() || outFilename.empty() ||
-			!IsSafeVirtualPath(std::filesystem::path(outFilename).generic_string()))
-		{
-			outError = "metadata contains an empty FileId or unsafe filename";
-			return false;
-		}
-		return true;
+		return bSuccess;
 	}
 
 	FileId ParseFileId(const std::string& value)
@@ -250,20 +286,17 @@ AssetRegistry::AssetRegistry()
 	m_assetCache.Initialize();
 }
 
-void AssetRegistry::CacheAssetTime(
-	const FileId& id,
-	const std::string& sourcePath,
-	const time_t& assetTimestamp)
+bool AssetRegistry::RestoreAssetImportTime(AssetInfoPtr info) const
 {
-	m_assetCache.Update(id, sourcePath, assetTimestamp);
+	return m_assetCache.RestoreAssetImportTime(info);
 }
 
-bool AssetRegistry::GetAssetCachedTime(
-	const FileId& id,
-	const std::string& sourcePath,
-	time_t& outAssetTimestamp) const
+void AssetRegistry::CacheAsset(const AssetInfoPtr info)
 {
-	return m_assetCache.GetTimeStamp(id, sourcePath, outAssetTimestamp);
+	if (info != nullptr)
+	{
+		m_assetCache.Update(info);
+	}
 }
 
 bool AssetRegistry::IsAssetExpired(const AssetInfoPtr info) const
@@ -277,7 +310,6 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 
 	constexpr auto readSize = std::size_t{ 4096 };
 	auto stream = std::ifstream{ filename.data() };
-	stream.exceptions(std::ios_base::badbit);
 	if (!stream.is_open())
 	{
 		return false;
@@ -290,6 +322,11 @@ bool AssetRegistry::ReadAllTextFile(const std::string& filename, std::string& te
 		text.append(buffer, 0, stream.gcount());
 	}
 	text.append(buffer, 0, stream.gcount());
+	if (stream.bad())
+	{
+		text.clear();
+		return false;
+	}
 	return true;
 }
 
@@ -463,7 +500,37 @@ void AssetRegistry::ScanContentFolder()
 				"Invalid asset metadata '%s': %s.",
 				metaFile.m_physicalPath.generic_string().c_str(),
 				metadataError.c_str());
+			const std::string invalidMetaPath = PathKey(metaFile.m_physicalPath);
+			bool bInvalidatesLiveAsset = false;
+			for (const auto& loadedAsset : m_loadedAssetInfo)
+			{
+				if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
+					PathKey((*loadedAsset.m_second)->GetMetaFilepath()) == invalidMetaPath)
+				{
+					bInvalidatesLiveAsset = true;
+					break;
+				}
+			}
+			if (bInvalidatesLiveAsset)
+			{
+				SAILOR_LOG_ERROR(
+					"Asset metadata reload was rejected; preserving the previous registry generation.");
+				return;
+			}
 			continue;
+		}
+		const std::string metadataPhysicalPath = PathKey(metaFile.m_physicalPath);
+		for (const auto& loadedAsset : m_loadedAssetInfo)
+		{
+			if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
+				PathKey((*loadedAsset.m_second)->GetMetaFilepath()) == metadataPhysicalPath &&
+				(*loadedAsset.m_second)->GetFileId() != ParseFileId(fileId))
+			{
+				SAILOR_LOG_ERROR(
+					"Asset metadata FileId changed during reload; preserving the previous registry generation: %s",
+					metaFile.m_physicalPath.generic_string().c_str());
+				return;
+			}
 		}
 
 		const std::string basenameVirtualPath = std::filesystem::path(
@@ -578,15 +645,15 @@ void AssetRegistry::ScanContentFolder()
 	TMap<std::string, FileId> stagedFileIds;
 	TMap<std::string, FileId> stagedPhysicalFileIds;
 	TVector<PendingAssetNotification> pendingNotifications;
-	TVector<std::filesystem::path> importedMetadata;
+	TVector<ImportedMetadata> importedMetadata;
 	auto rollbackStaging = [&]()
 	{
-		DeleteAssetInfos(stagedAssetInfos);
 		for (size_t index = importedMetadata.Num(); index > 0; --index)
 		{
-			std::error_code removeError;
-			std::filesystem::remove(importedMetadata[index - 1], removeError);
+			importedMetadata[index - 1].m_handler->DiscardImportedMetadataIfUnchanged(
+				importedMetadata[index - 1].m_assetInfo);
 		}
+		DeleteAssetInfos(stagedAssetInfos);
 	};
 	for (const StagedAssetRecord& record : records)
 	{
@@ -604,25 +671,55 @@ void AssetRegistry::ScanContentFolder()
 				SAILOR_LOG_ERROR(
 					"Read-only Engine asset '%s' has no metadata and was not imported.",
 					record.m_assetVirtualPath.c_str());
+				const std::string missingMetaAssetPath = PathKey(record.m_assetPath);
+				for (const auto& loadedAsset : m_loadedAssetInfo)
+				{
+					if (loadedAsset.m_second != nullptr && *loadedAsset.m_second != nullptr &&
+						PathKey((*loadedAsset.m_second)->GetAssetFilepath()) == missingMetaAssetPath)
+					{
+						rollbackStaging();
+						SAILOR_LOG_ERROR(
+							"Read-only asset metadata disappeared; preserving the previous registry generation.");
+						return;
+					}
+				}
 				continue;
 			}
 
 			IAssetInfoHandler* handler = GetAssetInfoHandler(Extension(record.m_assetVirtualPath));
 			check(handler);
-			const bool bMetaExisted = std::filesystem::exists(record.m_metaPath);
-			if (!bMetaExisted)
+			std::error_code metadataStatusError;
+			const std::filesystem::file_status metadataStatus =
+				std::filesystem::symlink_status(record.m_metaPath, metadataStatusError);
+			if ((metadataStatusError &&
+				metadataStatusError != std::errc::no_such_file_or_directory &&
+				metadataStatusError != std::errc::not_a_directory) ||
+				std::filesystem::exists(metadataStatus))
 			{
-				importedMetadata.Add(record.m_metaPath);
+				rollbackStaging();
+				SAILOR_LOG_ERROR(
+					"Asset metadata appeared during staged import; preserving it and the previous registry generation: %s",
+					record.m_metaPath.generic_string().c_str());
+				return;
 			}
 			AssetInfoPtr assetInfo = handler->ImportAsset(
 				record.m_assetPath.string(),
 				record.m_assetVirtualPath,
 				false,
 				false);
+			if (assetInfo == nullptr)
+			{
+				rollbackStaging();
+				SAILOR_LOG_ERROR(
+					"Failed to import asset metadata during staged load: %s",
+					record.m_metaPath.generic_string().c_str());
+				return;
+			}
+			importedMetadata.Add({ handler, assetInfo });
 			stagedAssetInfos[assetInfo->GetFileId()] = assetInfo;
 			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = assetInfo->GetFileId();
 			stagedPhysicalFileIds[PathKey(record.m_assetPath)] = assetInfo->GetFileId();
-			pendingNotifications.Add({ handler, assetInfo, true });
+			pendingNotifications.Add({ handler, assetInfo, true, true });
 			continue;
 		}
 
@@ -652,6 +749,14 @@ void AssetRegistry::ScanContentFolder()
 			record.m_candidate.m_mount.m_bWritable,
 			false,
 			false);
+		if (assetInfo == nullptr)
+		{
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Failed to load asset metadata during staged load: %s",
+				record.m_metaPath.generic_string().c_str());
+			return;
+		}
 		if (assetInfo->GetFileId().ToString() != record.m_candidate.m_fileId)
 		{
 			delete assetInfo;
@@ -659,11 +764,24 @@ void AssetRegistry::ScanContentFolder()
 			SAILOR_LOG_ERROR(
 				"Asset metadata FileId changed during staged load: %s",
 				record.m_metaPath.generic_string().c_str());
+				return;
+		}
+		if (PathKey(assetInfo->GetMetaFilepath()) != PathKey(record.m_metaPath) ||
+			PathKey(assetInfo->GetAssetFilepath()) != PathKey(record.m_assetPath))
+		{
+			delete assetInfo;
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Asset metadata paths changed during staged load; preserving the previous registry generation: %s",
+				record.m_metaPath.generic_string().c_str());
 			return;
 		}
 
 		const FileId fileId = assetInfo->GetFileId();
 		assetInfo->m_bPendingWasExpired |= bWasPreviouslyExpired;
+		const bool bNotifyUpdate = previousAssetInfo == m_loadedAssetInfo.end() ||
+			assetInfo->m_bPendingWasExpired;
+		assetInfo->m_bPendingUpdateNotification = bNotifyUpdate;
 		stagedAssetInfos[fileId] = assetInfo;
 		if (record.m_bPrimary)
 		{
@@ -673,7 +791,7 @@ void AssetRegistry::ScanContentFolder()
 		{
 			stagedFileIds[VirtualPathKey(record.m_assetVirtualPath)] = fileId;
 		}
-		pendingNotifications.Add({ handler, assetInfo, false });
+		pendingNotifications.Add({ handler, assetInfo, false, bNotifyUpdate });
 	}
 
 	for (const StagedAssetRecord& record : records)
@@ -694,16 +812,27 @@ void AssetRegistry::ScanContentFolder()
 		}
 	}
 
+	for (const auto& stagedAsset : stagedAssetInfos)
+	{
+		AssetInfoPtr assetInfo = *stagedAsset.m_second;
+		if (assetInfo == nullptr || assetInfo->IsAssetExpired() || assetInfo->IsMetaExpired())
+		{
+			const std::string changedPath = assetInfo == nullptr
+				? std::string("<null asset info>")
+				: assetInfo->GetAssetFilepath();
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Asset source or metadata changed during staged load; preserving the previous registry generation: %s",
+				changedPath.c_str());
+			return;
+		}
+	}
+
 	if (Tasks::Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>())
 	{
 		if (!scheduler->IsMainThread())
 		{
-			DeleteAssetInfos(stagedAssetInfos);
-			for (size_t i = importedMetadata.Num(); i > 0; --i)
-			{
-				std::error_code removeError;
-				std::filesystem::remove(importedMetadata[i - 1], removeError);
-			}
+			rollbackStaging();
 			SAILOR_LOG_ERROR(
 				"Asset registry generations may only be committed from the main thread; preserving the previous generation.");
 			return;
@@ -726,16 +855,22 @@ void AssetRegistry::ScanContentFolder()
 
 	for (const PendingAssetNotification& pending : pendingNotifications)
 	{
-		CacheAssetTime(
-			pending.m_assetInfo->GetFileId(),
-			pending.m_assetInfo->GetAssetFilepath(),
-			pending.m_assetInfo->GetAssetImportTime());
-		pending.m_handler->NotifyUpdateAssetInfo(pending.m_assetInfo);
+		if (pending.m_bNotifyUpdate)
+		{
+			pending.m_handler->NotifyUpdateAssetInfo(pending.m_assetInfo);
+		}
 		if (pending.m_bImported)
 		{
 			pending.m_handler->NotifyImportAsset(pending.m_assetInfo);
 		}
+		CacheAsset(pending.m_assetInfo);
 	}
+	TSet<FileId> liveAssetIds;
+	for (const auto& loadedAsset : m_loadedAssetInfo)
+	{
+		liveAssetIds.Insert(loadedAsset.m_first);
+	}
+	m_assetCache.Prune(liveAssetIds);
 	m_assetCache.SaveCache();
 }
 
@@ -871,6 +1006,20 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 	auto physicalId = m_physicalFileIds.Find(PathKey(location.m_physicalPath));
 	if (physicalId != m_physicalFileIds.end())
 	{
+		AssetInfoPtr loadedInfo = GetAssetInfoPtr_Internal(physicalId.Value());
+		if (loadedInfo != nullptr &&
+			!loadedInfo->m_bPendingUpdateNotification &&
+			!loadedInfo->m_bPendingImportNotification &&
+			(loadedInfo->IsMetaExpired() || loadedInfo->IsAssetExpired() || IsAssetExpired(loadedInfo)))
+		{
+			SAILOR_LOG("Reload asset info: %s", loadedInfo->GetMetaFilepath().c_str());
+			if (!loadedInfo->GetHandler()->ReloadAssetInfo(loadedInfo))
+			{
+				SAILOR_LOG_ERROR(
+					"Asset reload failed; preserving the previous live asset: %s",
+					loadedInfo->GetMetaFilepath().c_str());
+			}
+		}
 		return physicalId.Value();
 	}
 
@@ -902,13 +1051,20 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 			location.m_virtualPath,
 			false,
 			false);
-		bImported = true;
+		bImported = assetInfo != nullptr;
 	}
 	else
 	{
 		SAILOR_LOG_ERROR(
 			"Read-only Engine asset '%s' has no metadata and was not imported.",
 			location.m_virtualPath.c_str());
+		return FileId::Invalid;
+	}
+	if (assetInfo == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to load asset metadata: %s",
+			metaPath.generic_string().c_str());
 		return FileId::Invalid;
 	}
 
@@ -919,12 +1075,11 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		const bool bSamePhysicalAsset =
 			PathKey(existingAssetInfo.Value()->GetAssetFilepath()) ==
 			PathKey(location.m_physicalPath);
-		delete assetInfo;
 		if (bImported)
 		{
-			std::error_code removeError;
-			std::filesystem::remove(metaPath, removeError);
+			handler->DiscardImportedMetadataIfUnchanged(assetInfo);
 		}
+		delete assetInfo;
 		if (bSamePhysicalAsset)
 		{
 			m_physicalFileIds[PathKey(location.m_physicalPath)] = fileId;
@@ -945,12 +1100,12 @@ const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 		m_fileIds[virtualPathKey] = fileId;
 		m_contentFileWinners[virtualPathKey] = location;
 	}
-	CacheAssetTime(fileId, location.m_physicalPath.string(), assetInfo->GetAssetImportTime());
 	handler->NotifyUpdateAssetInfo(assetInfo);
 	if (bImported)
 	{
 		handler->NotifyImportAsset(assetInfo);
 	}
+	CacheAsset(assetInfo);
 	return m_loadedAssetInfo.Find(fileId).Value()->GetFileId();
 }
 

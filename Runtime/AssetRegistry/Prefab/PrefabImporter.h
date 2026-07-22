@@ -36,16 +36,22 @@ namespace Sailor
 			EMobilityType m_mobilityType{};
 
 			glm::vec4 m_position{};
-			glm::quat m_rotation{};
-			glm::vec4 m_scale{};
+			glm::quat m_rotation = glm::identity<glm::quat>();
+			glm::vec4 m_scale{ 1.0f };
 
 			// We store indices
-			uint32_t m_parentIndex;
+			uint32_t m_parentIndex = static_cast<uint32_t>(-1);
 			TVector<uint32_t> m_components;
 			InstanceId m_instanceId;
 
 			SAILOR_API virtual YAML::Node Serialize() const override;
 			SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+
+		private:
+
+			bool m_bHasParentIndex = true;
+
+			friend class Prefab;
 		};
 
 		SAILOR_API Prefab(FileId uid) :
@@ -56,6 +62,7 @@ namespace Sailor
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
+		SAILOR_API bool ValidateForInstantiation(std::string& outDiagnostic) const;
 
 		SAILOR_API bool SaveToFile(const std::string& path) const;
 

@@ -11,6 +11,8 @@
 #include "Tasks/Scheduler.h"
 #include "Engine/GameObject.h"
 #include "ECS/TransformECS.h"
+#include "Containers/Set.h"
+#include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
 
@@ -35,7 +37,7 @@ void Prefab::ReflectedGameObject::Deserialize(const YAML::Node& inData)
 	DESERIALIZE_PROPERTY(inData, m_position);
 	DESERIALIZE_PROPERTY(inData, m_rotation);
 	DESERIALIZE_PROPERTY(inData, m_scale);
-	DESERIALIZE_PROPERTY(inData, m_parentIndex);
+	m_bHasParentIndex = Sailor::Deserialize(inData, "parentIndex", m_parentIndex);
 	DESERIALIZE_PROPERTY(inData, m_instanceId);
 	DESERIALIZE_PROPERTY(inData, m_components);
 }
@@ -54,6 +56,164 @@ void Prefab::Deserialize(const YAML::Node& inData)
 {
 	DESERIALIZE_PROPERTY(inData, m_gameObjects);
 	DESERIALIZE_PROPERTY(inData, m_components);
+}
+
+bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
+{
+	outDiagnostic.clear();
+	if (m_gameObjects.IsEmpty())
+	{
+		outDiagnostic = "the prefab has no game objects";
+		return false;
+	}
+
+	TSet<InstanceId> componentInstanceIds;
+	TVector<InstanceId> componentInstanceIdsByIndex;
+	componentInstanceIdsByIndex.Reserve(m_components.Num());
+	for (uint32_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
+	{
+		const ReflectedData& reflection = m_components[componentIndex];
+		if (!reflection.IsValid())
+		{
+			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
+				" has an unknown type; load or rebuild the workspace logic module";
+			return false;
+		}
+
+		const auto& properties = reflection.GetProperties();
+		if (!properties.ContainsKey("instanceId"))
+		{
+			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
+				" has no instanceId";
+			return false;
+		}
+
+		InstanceId componentInstanceId;
+		std::string conversionDiagnostic;
+		if (!External::TryConvertYaml(properties["instanceId"], componentInstanceId, conversionDiagnostic) ||
+			componentInstanceId.ComponentId() == InstanceId::Invalid ||
+			componentInstanceId.GameObjectId() == InstanceId::Invalid)
+		{
+			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
+				" has an invalid instanceId";
+			if (!conversionDiagnostic.empty())
+			{
+				outDiagnostic += ": " + conversionDiagnostic;
+			}
+			return false;
+		}
+
+		if (!componentInstanceIds.Insert(componentInstanceId))
+		{
+			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
+				" has a duplicate instanceId";
+			return false;
+		}
+
+		componentInstanceIdsByIndex.Add(componentInstanceId);
+	}
+
+	const uint32_t invalidParentIndex = static_cast<uint32_t>(-1);
+	uint32_t numRoots = 0;
+	TSet<InstanceId> gameObjectInstanceIds;
+	TSet<uint32_t> referencedComponentIndices;
+	for (uint32_t gameObjectIndex = 0; gameObjectIndex < m_gameObjects.Num(); ++gameObjectIndex)
+	{
+		const auto& gameObject = m_gameObjects[gameObjectIndex];
+		if (!gameObject.m_bHasParentIndex)
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has no parentIndex";
+			return false;
+		}
+
+		if (!gameObject.m_instanceId.IsGameObjectId())
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has an invalid instanceId";
+			return false;
+		}
+
+		if (!gameObjectInstanceIds.Insert(gameObject.m_instanceId))
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has a duplicate instanceId";
+			return false;
+		}
+
+		if (gameObject.m_parentIndex == invalidParentIndex)
+		{
+			++numRoots;
+		}
+		else if (gameObject.m_parentIndex >= m_gameObjects.Num())
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has invalid parent index " + std::to_string(gameObject.m_parentIndex);
+			return false;
+		}
+
+		for (const uint32_t componentIndex : gameObject.m_components)
+		{
+			if (componentIndex >= m_components.Num())
+			{
+				outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+					" references invalid component index " + std::to_string(componentIndex);
+				return false;
+			}
+
+			if (!referencedComponentIndices.Insert(componentIndex))
+			{
+				outDiagnostic = "component index " + std::to_string(componentIndex) +
+					" is referenced more than once";
+				return false;
+			}
+
+			if (componentInstanceIdsByIndex[componentIndex].GameObjectId() != gameObject.m_instanceId)
+			{
+				outDiagnostic = "reflected component " + std::to_string(componentIndex) +
+					" belongs to a different game object";
+				return false;
+			}
+		}
+	}
+
+	if (referencedComponentIndices.Num() != m_components.Num())
+	{
+		outDiagnostic = "the prefab contains an unreferenced reflected component";
+		return false;
+	}
+
+	if (numRoots != 1)
+	{
+		outDiagnostic = "the prefab must contain exactly one root game object";
+		return false;
+	}
+
+	for (uint32_t gameObjectIndex = 0; gameObjectIndex < m_gameObjects.Num(); ++gameObjectIndex)
+	{
+		uint32_t ancestorIndex = gameObjectIndex;
+		bool bReachedRoot = false;
+		for (uint32_t depth = 0; depth < m_gameObjects.Num(); ++depth)
+		{
+			const uint32_t parentIndex = m_gameObjects[ancestorIndex].m_parentIndex;
+			if (parentIndex == invalidParentIndex)
+			{
+				bReachedRoot = true;
+				break;
+			}
+
+			ancestorIndex = parentIndex;
+		}
+
+		if (!bReachedRoot)
+		{
+			outDiagnostic = "the prefab hierarchy contains a parent cycle at game object " +
+				std::to_string(gameObjectIndex);
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool Prefab::SaveToFile(const std::string& path) const

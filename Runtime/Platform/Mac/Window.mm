@@ -64,8 +64,47 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	}
 }
 
+static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width, int32_t height, bool bIsFullScreen, bool bRunsInsideEditor)
+{
+	if (bRunsInsideEditor)
+	{
+		NSView* contentView = window.contentView;
+		if (contentView)
+		{
+			const CGFloat backingScale = std::max<CGFloat>(window.backingScaleFactor, 1.0);
+			const CGFloat logicalWidth = std::max<CGFloat>(1.0, (CGFloat)width / backingScale);
+			const CGFloat logicalHeight = std::max<CGFloat>(1.0, (CGFloat)height / backingScale);
+			contentView.wantsLayer = YES;
+			contentView.frame = NSMakeRect(0.0, 0.0, logicalWidth, logicalHeight);
+			[window setContentSize:NSMakeSize(logicalWidth, logicalHeight)];
+
+			CAMetalLayer* metalLayer = [contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)contentView.layer : nil;
+			if (!metalLayer)
+			{
+				metalLayer = [CAMetalLayer layer];
+				contentView.layer = metalLayer;
+			}
+
+			metalLayer.contentsScale = backingScale;
+			metalLayer.frame = contentView.bounds;
+			metalLayer.drawableSize = CGSizeMake((CGFloat)width, (CGFloat)height);
+		}
+
+		return;
+	}
+
+	[window setContentSize:NSMakeSize(width, height)];
+
+	const bool bIsCurrentlyFullScreen = (([window styleMask] & NSWindowStyleMaskFullScreen) != 0);
+	if (bIsFullScreen != bIsCurrentlyFullScreen)
+	{
+		[window toggleFullScreen:nil];
+	}
+}
+
 @interface SailorWindowDelegate : NSObject<NSWindowDelegate>
 @property(nonatomic, assign) Sailor::Win32::Window* sailorWindow;
+@property(nonatomic, assign) BOOL terminatesApplicationOnClose;
 @end
 
 @implementation SailorWindowDelegate
@@ -82,11 +121,14 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 		sailorWindow->SetRunning(false);
 	}
 
-	// On macOS we want app process to exit when the main window is closed.
-	// This avoids a background engine process that requires Force Quit.
-	dispatch_async(dispatch_get_main_queue(), ^{
-		[NSApp terminate:nil];
-	});
+	if (self.terminatesApplicationOnClose)
+	{
+		// Standalone engine windows own the application lifetime. The hidden
+		// editor rendering surface does not; closing it must leave MAUI alive.
+		dispatch_async(dispatch_get_main_queue(), ^{
+			[NSApp terminate:nil];
+		});
+	}
 }
 
 - (void)windowDidBecomeKey:(NSNotification*)notification
@@ -339,6 +381,7 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 		SailorWindowDelegate* delegate = [[SailorWindowDelegate alloc] init];
 		delegate.sailorWindow = this;
+		delegate.terminatesApplicationOnClose = !bRunsInsideEditor;
 		window.delegate = delegate;
 		objc_setAssociatedObject(window, sSailorWindowDelegateKey, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
@@ -364,15 +407,6 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 
 void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScreen)
 {
-	if (![NSThread isMainThread])
-	{
-		dispatch_sync(dispatch_get_main_queue(), ^
-		{
-			ChangeWindowSize(width, height, bInIsFullScreen);
-		});
-		return;
-	}
-
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	if (!window)
 	{
@@ -382,50 +416,23 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 		return;
 	}
 
-	if (App::IsEditorMode())
-	{
-		m_width = std::max<int32_t>(1, width);
-		m_height = std::max<int32_t>(1, height);
-		m_bIsFullscreen = bInIsFullScreen;
-
-		NSView* contentView = window.contentView;
-		if (contentView)
-		{
-			const CGFloat backingScale = std::max<CGFloat>(window.backingScaleFactor, 1.0);
-			const CGFloat logicalWidth = std::max<CGFloat>(1.0, (CGFloat)m_width / backingScale);
-			const CGFloat logicalHeight = std::max<CGFloat>(1.0, (CGFloat)m_height / backingScale);
-			contentView.wantsLayer = YES;
-			contentView.frame = NSMakeRect(0.0, 0.0, logicalWidth, logicalHeight);
-			[window setContentSize:NSMakeSize(logicalWidth, logicalHeight)];
-
-			CAMetalLayer* metalLayer = [contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)contentView.layer : nil;
-			if (!metalLayer)
-			{
-				metalLayer = [CAMetalLayer layer];
-				contentView.layer = metalLayer;
-			}
-
-			metalLayer.contentsScale = backingScale;
-			metalLayer.frame = contentView.bounds;
-			metalLayer.drawableSize = CGSizeMake((CGFloat)m_width, (CGFloat)m_height);
-		}
-
-		return;
-	}
-
 	const int32_t contentWidth = std::max<int32_t>(1, width);
 	const int32_t contentHeight = std::max<int32_t>(1, height);
 	m_width = contentWidth;
 	m_height = contentHeight;
 	m_bIsFullscreen = bInIsFullScreen;
 
-	[window setContentSize:NSMakeSize(contentWidth, contentHeight)];
-
-	const bool bIsCurrentlyFullScreen = (([window styleMask] & NSWindowStyleMaskFullScreen) != 0);
-	if (bInIsFullScreen != bIsCurrentlyFullScreen)
+	const bool bRunsInsideEditor = App::IsEditorMode();
+	if (![NSThread isMainThread])
 	{
-		[window toggleFullScreen:nil];
+		dispatch_async(dispatch_get_main_queue(), ^
+		{
+			SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor);
+		});
+		return;
 	}
+
+	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor);
 }
 
 void Sailor::Win32::Window::ProcessMacMsgs()
