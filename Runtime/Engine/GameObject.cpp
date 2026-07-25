@@ -116,9 +116,15 @@ void GameObject::DrawEditorSelectedGizmo()
 	bool bUsesMeshBounds = false;
 	if (EditorViewport::ResolveGameObjectBounds(m_self, selectionBounds, bUsesMeshBounds))
 	{
-		GetWorld()->GetDebugContext()->DrawAABB(
-			selectionBounds,
-			glm::vec4(1.0f, 0.62f, 0.05f, 1.0f));
+		const glm::vec4 selectionColor(1.0f, 0.62f, 0.05f, 1.0f);
+		if (bUsesMeshBounds)
+		{
+			GetWorld()->GetDebugContext()->DrawAABB(selectionBounds, selectionColor);
+		}
+		else
+		{
+			GetWorld()->GetDebugContext()->DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor);
+		}
 	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, transform.GetCachedWorldMatrix(), axisSize);

@@ -18,10 +18,27 @@
 
 namespace Sailor
 {
+	struct ShaderSourceState final
+	{
+		std::time_t m_timestamp{};
+		uint64_t m_fingerprint = 0;
+	};
+
+	class IShaderSourceStateProvider
+	{
+	public:
+		virtual ~IShaderSourceStateProvider() = default;
+		virtual bool Capture(
+			const FileId& uid,
+			ShaderSourceState& outState,
+			std::string& outDiagnostic) const = 0;
+	};
+
 	class ShaderCache
 	{
 	public:
 		SAILOR_API ShaderCache();
+		SAILOR_API explicit ShaderCache(const IShaderSourceStateProvider* sourceStateProvider);
 		SAILOR_API ~ShaderCache();
 
 		struct ArtifactMetadata final : IYamlSerializable
@@ -292,9 +309,9 @@ namespace Sailor
 			const TVector<uint32_t>& debugFragmentSpirv,
 			const TVector<uint32_t>& debugComputeSpirv,
 			uint64_t expectedSourceFingerprint);
-		bool CaptureSourceFingerprint(
+		bool CaptureSourceState(
 			const FileId& uid,
-			uint64_t& outFingerprint,
+			ShaderSourceState& outState,
 			std::string& outDiagnostic) const;
 		bool GenerateUniqueGenerationLocked(
 			const FileId& uid,
@@ -319,6 +336,7 @@ namespace Sailor
 		ShaderCacheData m_cache;
 		ShaderCacheData m_committedCache;
 		TVector<QuarantinedEntry> m_quarantinedEntries;
+		const IShaderSourceStateProvider* m_sourceStateProvider = nullptr;
 		std::filesystem::path m_cacheRoot;
 		bool m_bIsDirty = false;
 		bool m_bStorageReady = false;
@@ -328,7 +346,6 @@ namespace Sailor
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
 		[[maybe_unused]] std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
-		[[maybe_unused]] std::optional<std::time_t> m_timestampOverrideForTests;
 		[[maybe_unused]] Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
@@ -347,8 +364,7 @@ namespace Sailor
 	public:
 		SAILOR_API static bool Configure(
 			ShaderCache& cache,
-			const std::filesystem::path& cacheRoot,
-			std::time_t timestamp = 100);
+			const std::filesystem::path& cacheRoot);
 		SAILOR_API static std::string GetGeneration(
 			const ShaderCache& cache,
 			const FileId& uid,

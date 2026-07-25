@@ -728,7 +728,8 @@ void EditorViewportController::TickSelection(World& world)
 	{
 		Math::AABB bounds{};
 		bool bUsesMeshBounds = false;
-		if (ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds))
+		if (ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&
+			bUsesMeshBounds)
 		{
 			candidates.Add(PickCandidate{ gameObject->GetInstanceId(), bounds });
 		}

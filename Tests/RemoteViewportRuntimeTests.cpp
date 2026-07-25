@@ -557,6 +557,7 @@ namespace
 		const std::string editorInteropSource = ReadText(sourceRoot / "Runtime/Editor/EditorInterop.cpp");
 		const std::string editorSource = ReadText(sourceRoot / "Runtime/Submodules/Editor.cpp");
 		const std::string viewportControllerSource = ReadText(sourceRoot / "Runtime/Editor/EditorViewportController.cpp");
+		const std::string gameObjectSource = ReadText(sourceRoot / "Runtime/Engine/GameObject.cpp");
 		const std::string imGuiSource = ReadText(sourceRoot / "Runtime/Submodules/ImGuiApi.cpp");
 		const std::string macInputSource = ReadText(sourceRoot / "Editor/Platforms/MacCatalyst/NativeSceneViewportHandler.MacCatalyst.cs");
 		const std::string windowsExports = ReadText(sourceRoot / "Lib/DllMain.cpp");
@@ -683,9 +684,23 @@ namespace
 		Require(transformTickBody.find("m_gizmoSubmittedThisFrame = true;") != std::string::npos,
 			"pointer ownership must record that ImGuizmo was submitted in the current frame");
 		const size_t queueSelectionBegin = viewportControllerSource.find("void EditorViewportController::QueueSelectionEvent", selectionTickBegin);
-		Require(queueSelectionBegin > selectionTickBegin &&
-			viewportControllerSource.substr(selectionTickBegin, queueSelectionBegin - selectionTickBegin).find("DoesSubmittedGizmoOwnPointer(") != std::string::npos,
+		Require(selectionTickBegin != std::string::npos && queueSelectionBegin > selectionTickBegin,
+			"scene selection tick must be bounded");
+		const std::string selectionTickBody = viewportControllerSource.substr(selectionTickBegin, queueSelectionBegin - selectionTickBegin);
+		Require(selectionTickBody.find("DoesSubmittedGizmoOwnPointer(") != std::string::npos,
 			"scene selection must ignore stale ImGuizmo hover or drag state from a frame without a submitted gizmo");
+		Require(selectionTickBody.find("ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&") != std::string::npos &&
+			selectionTickBody.find("bUsesMeshBounds)") != std::string::npos,
+			"viewport picking must exclude empty-object selection fallback bounds");
+		const size_t selectedGizmoBegin = gameObjectSource.find("void GameObject::DrawEditorSelectedGizmo()");
+		const size_t selectedGizmoEnd = gameObjectSource.find("void GameObject::Tick(", selectedGizmoBegin);
+		Require(selectedGizmoBegin != std::string::npos && selectedGizmoEnd > selectedGizmoBegin,
+			"selected GameObject gizmo drawing must be bounded");
+		const std::string selectedGizmoBody = gameObjectSource.substr(selectedGizmoBegin, selectedGizmoEnd - selectedGizmoBegin);
+		Require(selectedGizmoBody.find("if (bUsesMeshBounds)") != std::string::npos &&
+			selectedGizmoBody.find("DrawAABB(selectionBounds, selectionColor)") != std::string::npos &&
+			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor)") != std::string::npos,
+			"selected empty GameObjects must draw a unit center sphere without changing mesh selection bounds");
 		const size_t viewportTickBegin = viewportControllerSource.find("void EditorViewportController::Tick(World& world)");
 		const size_t viewportResetBegin = viewportControllerSource.find("void EditorViewportController::Reset()", viewportTickBegin);
 		Require(viewportTickBegin != std::string::npos && viewportResetBegin > viewportTickBegin &&

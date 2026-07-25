@@ -19,6 +19,24 @@ namespace
 {
 	using namespace Sailor;
 
+	class FixedShaderSourceStateProvider final : public IShaderSourceStateProvider
+	{
+	public:
+		bool Capture(
+			const FileId& uid,
+			ShaderSourceState& outState,
+			std::string& outDiagnostic) const override
+		{
+			(void)uid;
+			outState.m_timestamp = 100;
+			outState.m_fingerprint = 0x5341494c4f525445ull;
+			outDiagnostic.clear();
+			return true;
+		}
+	};
+
+	const FixedShaderSourceStateProvider c_shaderSourceStateProvider;
+
 	class TempDirectory final
 	{
 	public:
@@ -307,7 +325,7 @@ namespace
 	void TestDebugArtifactsAreRequired()
 	{
 		TempDirectory directory;
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-DEBUG-REQUIRED}");
@@ -351,7 +369,7 @@ namespace
 	{
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-GENERATION-TRANSACTION}");
@@ -418,7 +436,7 @@ namespace
 	void TestRemoveCommitsBeforeGarbageCollection()
 	{
 		TempDirectory directory;
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-REMOVE-TRANSACTION}");
@@ -461,8 +479,8 @@ namespace
 		const FileId uid = MakeFileId("{SHADER-CACHE-EXPLICIT-INVALIDATION}");
 		std::filesystem::path durableArtifact;
 		{
-			ShaderCache cache;
-			Require(ShaderCacheTestAccess::Configure(cache, cacheRoot, 100),
+			ShaderCache cache(&c_shaderSourceStateProvider);
+			Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 				"shader cache invalidation storage should initialize");
 			Require(PublishComplete(cache, uid, 0, 45),
 				"the shader generation to invalidate should publish");
@@ -481,8 +499,8 @@ namespace
 				"explicit invalidation should preserve the last durable SPIR-V generation");
 		}
 
-		ShaderCache reloaded;
-		Require(ShaderCacheTestAccess::Configure(reloaded, cacheRoot, 100),
+		ShaderCache reloaded(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(reloaded, cacheRoot),
 			"reloaded shader cache invalidation storage should initialize");
 		reloaded.LoadCache();
 		Require(reloaded.GetLastLoadResult().IsLoaded() && reloaded.IsExpired(uid, 0),
@@ -496,8 +514,8 @@ namespace
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
 		const FileId uid = MakeFileId("{SHADER-CACHE-MISSING-STORAGE}");
-		ShaderCache cache;
-		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot, 100),
+		ShaderCache cache(&c_shaderSourceStateProvider);
+		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 			"shader cache recovery storage should initialize");
 		Require(PublishComplete(cache, uid, 0, 46),
 			"the shader generation to recover should publish");
@@ -522,7 +540,7 @@ namespace
 	void TestSameSizeChecksumCorruptionAndClearExpiredTransaction()
 	{
 		TempDirectory directory;
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, directory.Path("Cache")),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-CHECKSUM-EXPIRY}");
@@ -601,7 +619,7 @@ namespace
 	{
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 			"shader cache test storage should initialize");
 		const FileId durableUid = MakeFileId("{SHADER-CACHE-QUARANTINE-DURABLE}");
@@ -697,7 +715,7 @@ namespace
 	{
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-RUNTIME-IO-QUARANTINE}");
@@ -811,7 +829,7 @@ namespace
 
 		TempDirectory directory;
 		const std::filesystem::path cacheRoot = directory.Path("Cache");
-		ShaderCache cache;
+		ShaderCache cache(&c_shaderSourceStateProvider);
 		Require(ShaderCacheTestAccess::Configure(cache, cacheRoot),
 			"shader cache test storage should initialize");
 		const FileId uid = MakeFileId("{SHADER-CACHE-SAVE-RETRY}");

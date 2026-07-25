@@ -291,7 +291,7 @@ namespace
 			"a gizmo submitted and dragged this frame must own the pointer");
 	}
 
-	void TestResolveGameObjectBoundsUsesHierarchyMeshAggregationAndFallback()
+	void TestResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback()
 	{
 		BoundsTestWorld world;
 		auto parent = world.Instantiate("Parent");
@@ -346,12 +346,11 @@ namespace
 		const glm::vec3 fallbackPosition(fallbackWorldMatrix[3]);
 		bUsesMeshBounds = true;
 		Require(EditorViewport::ResolveGameObjectBounds(fallbackObject, actualBounds, bUsesMeshBounds),
-			"an object without a ready mesh must remain selectable through an origin fallback");
+			"an object without a ready mesh must expose its center for the selected-object marker");
 		Require(!bUsesMeshBounds,
-			"origin fallback bounds must not be reported as mesh-derived");
-		Require(AreVectorsNear(actualBounds.m_min, fallbackPosition - glm::vec3(25.0f)) &&
-			AreVectorsNear(actualBounds.m_max, fallbackPosition + glm::vec3(25.0f)),
-			"origin fallback must be centered on the fully composed world position");
+			"selection fallback bounds must be excluded from viewport mesh picking");
+		Require(AreVectorsNear(actualBounds.GetCenter(), fallbackPosition),
+			"selection fallback must use the fully composed world position");
 
 		auto editorOnlyObject = world.Instantiate("EditorOnlyObject");
 		editorOnlyObject->AddComponent<EditorComponent>();
@@ -378,7 +377,7 @@ int main()
 		{ "PickNearestBreaksTiesDeterministically", TestPickNearestBreaksTiesDeterministically },
 		{ "SelectionGesturePolicyRejectsNavigationModifiersAndUiOwnership", TestSelectionGesturePolicyRejectsNavigationModifiersAndUiOwnership },
 		{ "OnlySubmittedGizmoOwnsPointerForCurrentFrame", TestOnlySubmittedGizmoOwnsPointerForCurrentFrame },
-		{ "ResolveGameObjectBoundsUsesHierarchyMeshAggregationAndFallback", TestResolveGameObjectBoundsUsesHierarchyMeshAggregationAndFallback },
+		{ "ResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback", TestResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback },
 	};
 
 	for (const auto& test : tests)

@@ -382,6 +382,11 @@ namespace
 
 ShaderCache::ShaderCache() = default;
 
+ShaderCache::ShaderCache(const IShaderSourceStateProvider* sourceStateProvider) :
+	m_sourceStateProvider(sourceStateProvider)
+{
+}
+
 ShaderCache::~ShaderCache() = default;
 
 ShaderCache::ArtifactMetadata::ArtifactMetadata() = default;
@@ -1794,29 +1799,26 @@ const ShaderCache::QuarantinedEntry* ShaderCache::FindQuarantinedEntryLocked(
 	return index == static_cast<size_t>(-1) ? nullptr : &m_quarantinedEntries[index];
 }
 
-bool ShaderCache::CaptureSourceFingerprint(
+bool ShaderCache::CaptureSourceState(
 	const FileId& uid,
-	uint64_t& outFingerprint,
+	ShaderSourceState& outState,
 	std::string& outDiagnostic) const
 {
-	outFingerprint = 0;
+	outState = {};
 	outDiagnostic.clear();
-
-#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (m_timestampOverrideForTests.has_value())
+	if (m_sourceStateProvider != nullptr)
 	{
-		ShaderDependencyFile dependency;
-		dependency.m_virtualPath = "shader-cache-test-source";
-		dependency.m_winnerIdentity = "shader-cache-test-winner";
-		dependency.m_revision.m_modificationTimeNanoseconds =
-			static_cast<int64_t>(*m_timestampOverrideForTests) * 1000000000ll;
-		dependency.m_revision.m_fileSize = sizeof(std::time_t);
-		dependency.m_revision.m_contentHash = static_cast<uint64_t>(*m_timestampOverrideForTests);
-		dependency.m_revision.m_bIsValid = true;
-		outFingerprint = CalculateShaderDependencyFingerprint({ dependency });
-		return outFingerprint != 0;
+		if (!m_sourceStateProvider->Capture(uid, outState, outDiagnostic))
+		{
+			return false;
+		}
+		if (outState.m_fingerprint == 0)
+		{
+			outDiagnostic = "Shader source state provider returned an invalid fingerprint.";
+			return false;
+		}
+		return true;
 	}
-#endif
 
 	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
 	ShaderCompiler* shaderCompiler = App::GetSubmodule<ShaderCompiler>();
@@ -1840,6 +1842,7 @@ bool ShaderCache::CaptureSourceFingerprint(
 		return false;
 	}
 
+	outState.m_timestamp = assetInfo->GetAssetLastModificationTime();
 	TVector<ShaderDependencyFile> dependencies;
 	dependencies.Reserve(shader->GetIncludes().Num() + 1);
 	ShaderDependencyFile shaderSource;
@@ -1881,10 +1884,16 @@ bool ShaderCache::CaptureSourceFingerprint(
 			return false;
 		}
 		dependencies.Add(std::move(dependency));
+
+		std::time_t includeTimestamp = 0;
+		if (assetRegistry->GetContentFileModificationTime(include, includeTimestamp))
+		{
+			outState.m_timestamp = std::max(outState.m_timestamp, includeTimestamp);
+		}
 	}
 
-	outFingerprint = CalculateShaderDependencyFingerprint(dependencies);
-	if (outFingerprint == 0)
+	outState.m_fingerprint = CalculateShaderDependencyFingerprint(dependencies);
+	if (outState.m_fingerprint == 0)
 	{
 		outDiagnostic = "Shader dependency fingerprint contains an invalid source revision.";
 		return false;
@@ -2041,9 +2050,9 @@ bool ShaderCache::CacheSpirv_ThreadSafe(
 	const TVector<uint32_t>& debugComputeSpirv)
 {
 	SAILOR_PROFILE_FUNCTION();
-	uint64_t sourceFingerprint = 0;
+	ShaderSourceState sourceState;
 	std::string diagnostic;
-	if (!CaptureSourceFingerprint(uid, sourceFingerprint, diagnostic))
+	if (!CaptureSourceState(uid, sourceState, diagnostic))
 	{
 		std::lock_guard<std::mutex> lock(m_cacheMutex);
 		m_lastSaveDiagnostic = std::move(diagnostic);
@@ -2060,7 +2069,7 @@ bool ShaderCache::CacheSpirv_ThreadSafe(
 		debugVertexSpirv,
 		debugFragmentSpirv,
 		debugComputeSpirv,
-		sourceFingerprint);
+		sourceState.m_fingerprint);
 }
 
 bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(
@@ -2074,16 +2083,17 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(
 	const TVector<uint32_t>& debugComputeSpirv,
 	uint64_t expectedSourceFingerprint)
 {
-	uint64_t currentSourceFingerprint = 0;
+	ShaderSourceState currentSourceState;
 	std::string diagnostic;
-	if (!CaptureSourceFingerprint(uid, currentSourceFingerprint, diagnostic))
+	if (!CaptureSourceState(uid, currentSourceState, diagnostic))
 	{
 		std::lock_guard<std::mutex> lock(m_cacheMutex);
 		m_lastSaveDiagnostic = std::move(diagnostic);
 		SAILOR_LOG_ERROR("Complete SPIR-V cache publication failed: %s", m_lastSaveDiagnostic.c_str());
 		return false;
 	}
-	if (expectedSourceFingerprint == 0 || currentSourceFingerprint != expectedSourceFingerprint)
+	if (expectedSourceFingerprint == 0 ||
+		currentSourceState.m_fingerprint != expectedSourceFingerprint)
 	{
 		std::lock_guard<std::mutex> lock(m_cacheMutex);
 		m_lastSaveDiagnostic =
@@ -2091,9 +2101,6 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(
 		SAILOR_LOG_ERROR("Complete SPIR-V cache publication failed: %s", m_lastSaveDiagnostic.c_str());
 		return false;
 	}
-
-	std::time_t sourceTimestamp = 0;
-	GetTimeStamp(uid, sourceTimestamp);
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	if (!CacheCompleteSpirvLocked(
@@ -2105,8 +2112,8 @@ bool ShaderCache::CacheSpirvForSourceFingerprint_ThreadSafe(
 		debugVertexSpirv,
 		debugFragmentSpirv,
 		debugComputeSpirv,
-		sourceTimestamp,
-		currentSourceFingerprint,
+		currentSourceState.m_timestamp,
+		currentSourceState.m_fingerprint,
 		-1,
 		diagnostic))
 	{
@@ -2234,11 +2241,11 @@ bool ShaderCache::IsExpiredLocked(const FileId& uid, uint32_t permutation)
 {
 	if (const QuarantinedEntry* quarantined = FindQuarantinedEntryLocked(uid, permutation))
 	{
-		uint64_t sourceFingerprint = 0;
+		ShaderSourceState sourceState;
 		std::string diagnostic;
-		return !CaptureSourceFingerprint(uid, sourceFingerprint, diagnostic) ||
+		return !CaptureSourceState(uid, sourceState, diagnostic) ||
 			quarantined->m_sourceFingerprint == 0 ||
-			quarantined->m_sourceFingerprint != sourceFingerprint;
+			quarantined->m_sourceFingerprint != sourceState.m_fingerprint;
 	}
 	if (!m_cache.m_data.ContainsKey(uid))
 	{
@@ -2288,10 +2295,10 @@ bool ShaderCache::IsExpiredLocked(const FileId& uid, uint32_t permutation)
 		return true;
 	}
 
-	uint64_t sourceFingerprint = 0;
-	return !CaptureSourceFingerprint(uid, sourceFingerprint, diagnostic) ||
+	ShaderSourceState sourceState;
+	return !CaptureSourceState(uid, sourceState, diagnostic) ||
 		entry.m_sourceFingerprint == 0 ||
-		entry.m_sourceFingerprint != sourceFingerprint;
+		entry.m_sourceFingerprint != sourceState.m_fingerprint;
 }
 
 bool ShaderCache::SweepUnreferencedArtifactsLocked(
@@ -2620,45 +2627,20 @@ bool ShaderCache::IsDirty() const
 
 bool ShaderCache::GetTimeStamp(const FileId& uid, time_t& outTimestamp) const
 {
-#if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
-	if (m_timestampOverrideForTests.has_value())
-	{
-		outTimestamp = *m_timestampOverrideForTests;
-		return true;
-	}
-#endif
-
-	auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	auto* shaderCompiler = App::GetSubmodule<ShaderCompiler>();
-	if (!assetRegistry || !shaderCompiler)
+	ShaderSourceState sourceState;
+	std::string diagnostic;
+	if (!CaptureSourceState(uid, sourceState, diagnostic))
 	{
 		return false;
 	}
-
-	if (ShaderAssetInfoPtr assetInfo = assetRegistry->GetAssetInfoPtr<ShaderAssetInfoPtr>(uid))
-	{
-		if (TSharedPtr<ShaderAsset> shaderAsset = shaderCompiler->LoadShaderAsset(assetInfo->GetFileId()).Lock())
-		{
-			outTimestamp = assetInfo->GetAssetLastModificationTime();
-			for (const auto& include : shaderAsset->GetIncludes())
-			{
-				time_t includeTimestamp = 0;
-				if (assetRegistry->GetContentFileModificationTime(include, includeTimestamp))
-				{
-					outTimestamp = std::max(outTimestamp, includeTimestamp);
-				}
-			}
-			return true;
-		}
-	}
-	return false;
+	outTimestamp = sourceState.m_timestamp;
+	return true;
 }
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
 bool ShaderCacheTestAccess::Configure(
 	ShaderCache& cache,
-	const std::filesystem::path& cacheRoot,
-	std::time_t timestamp)
+	const std::filesystem::path& cacheRoot)
 {
 	std::error_code error;
 	std::filesystem::create_directories(cacheRoot, error);
@@ -2681,7 +2663,6 @@ bool ShaderCacheTestAccess::Configure(
 		ShaderCachePayloadVersion,
 		"shader-cache-tests",
 		canonicalRoot.parent_path());
-	cache.m_timestampOverrideForTests = timestamp;
 	std::string diagnostic;
 	if (!cache.EnsureOwnedDirectoriesLocked(diagnostic))
 	{
@@ -2750,13 +2731,11 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(
 	int32_t failArtifactIndex,
 	std::string& outDiagnostic)
 {
-	uint64_t sourceFingerprint = 0;
-	if (!cache.CaptureSourceFingerprint(uid, sourceFingerprint, outDiagnostic))
+	ShaderSourceState sourceState;
+	if (!cache.CaptureSourceState(uid, sourceState, outDiagnostic))
 	{
 		return false;
 	}
-	std::time_t sourceTimestamp = 0;
-	cache.GetTimeStamp(uid, sourceTimestamp);
 
 	std::lock_guard<std::mutex> lock(cache.m_cacheMutex);
 	return cache.CacheCompleteSpirvLocked(
@@ -2768,8 +2747,8 @@ bool ShaderCacheTestAccess::PublishWithArtifactFailure(
 		debugVertex,
 		debugFragment,
 		debugCompute,
-		sourceTimestamp,
-		sourceFingerprint,
+		sourceState.m_timestamp,
+		sourceState.m_fingerprint,
 		failArtifactIndex,
 		outDiagnostic);
 }

@@ -341,11 +341,11 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 		return false;
 	}
 
-	uint64_t expectedSourceFingerprint = 0;
+	ShaderSourceState expectedSourceState;
 	std::string sourceDiagnostic;
-	if (!m_shaderCache.CaptureSourceFingerprint(
+	if (!m_shaderCache.CaptureSourceState(
 			assetInfo->GetFileId(),
-			expectedSourceFingerprint,
+			expectedSourceState,
 			sourceDiagnostic))
 	{
 		SAILOR_LOG_ERROR(
@@ -473,7 +473,7 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 		spirvVertexByteCodeDebug,
 		spirvFragmentByteCodeDebug,
 		spirvComputeByteCodeDebug,
-		expectedSourceFingerprint);
+		expectedSourceState.m_fingerprint);
 	if (bCompiledRegular && bCompiledDebug && !bCachedComplete)
 	{
 		SAILOR_LOG_ERROR(

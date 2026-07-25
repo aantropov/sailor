@@ -63,18 +63,9 @@ Tasks::ITaskPtr Material::OnHotReload()
 	return updateRHI;
 }
 
-void Material::ClearSamplers(const MaterialPtr& material)
+void Material::ClearSamplers()
 {
 	SAILOR_PROFILE_FUNCTION();
-	check(material && material.GetRawPtr() == this);
-
-	for (auto& sampler : m_samplers)
-	{
-		if (sampler.m_second)
-		{
-			sampler.m_second->RemoveHotReloadDependentObject(material);
-		}
-	}
 	m_samplers.Clear();
 }
 
@@ -396,7 +387,14 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					auto pMaterial = material;
 
 					pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
-					pMaterial->ClearSamplers(material);
+					for (auto& sampler : pMaterial->m_samplers)
+					{
+						if (sampler.m_second)
+						{
+							sampler.m_second->RemoveHotReloadDependentObject(material);
+						}
+					}
+					pMaterial->ClearSamplers();
 					pMaterial->ClearUniforms();
 
 					ShaderSetPtr pShader;
