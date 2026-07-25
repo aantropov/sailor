@@ -1,6 +1,7 @@
 #if MACCATALYST
 #nullable enable
 using System;
+using System.Threading;
 using CoreAnimation;
 using CoreGraphics;
 using CoreFoundation;
@@ -9,6 +10,7 @@ using GameController;
 using Microsoft.Maui.Handlers;
 using ObjCRuntime;
 using SailorEditor.Controls;
+using SailorEditor.Scene;
 using UIKit;
 
 namespace SailorEditor.Platforms.MacCatalyst;
@@ -143,6 +145,11 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
     protected override void DisconnectHandler(UIView platformView)
     {
+        if (platformView is NativeSceneViewportPlatformView nativePlatformView)
+        {
+            nativePlatformView.DisconnectInput();
+        }
+
         isConnected = false;
         hasPendingLayout = false;
         layoutFlushQueued = false;
@@ -162,6 +169,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
     sealed class NativeSceneViewportPlatformView : UIView
     {
+        static readonly object inputOwnershipGate = new();
+        static NativeSceneViewportPlatformView? mouseInputOwner;
+        static NativeSceneViewportPlatformView? keyboardInputOwner;
+
         readonly WeakReference<NativeSceneViewportHandler> owner;
         GCKeyboardInput? keyboardInput;
         GCMouseInput? mouseInput;
@@ -172,9 +183,13 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         readonly UIHoverGestureRecognizer hoverGesture;
         NativeSceneViewportInputModifier activeMouseModifiers = NativeSceneViewportInputModifier.None;
         NativeSceneViewportInputModifier activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+        NativeSceneViewportInputModifier activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
         bool hasPointerSample;
         bool hasActiveHover;
+        bool isAttachedToWindow;
+        bool isDisposed;
         bool isInputFocused;
+        long pointerActivityRevision;
         CGPoint lastPointerSample;
 
         public NativeSceneViewportPlatformView(NativeSceneViewportHandler handler)
@@ -183,20 +198,19 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             UserInteractionEnabled = true;
             MultipleTouchEnabled = true;
 
-            keyboardDidConnectToken = GCKeyboard.Notifications.ObserveDidConnect((_, _) => AttachKeyboardInput());
-            keyboardDidDisconnectToken = GCKeyboard.Notifications.ObserveDidDisconnect((_, _) => AttachKeyboardInput());
-            mouseDidConnectToken = GCMouse.Notifications.ObserveDidConnect((_, _) => AttachMouseInput());
-            mouseDidDisconnectToken = GCMouse.Notifications.ObserveDidDisconnect((_, _) => AttachMouseInput());
             hoverGesture = new UIHoverGestureRecognizer(this, new Selector("handleViewportHover:"));
             AddGestureRecognizer(hoverGesture);
-            AttachKeyboardInput();
-            AttachMouseInput();
         }
 
         public override bool CanBecomeFirstResponder => true;
 
         public void FocusInput()
         {
+            if (!isAttachedToWindow || isDisposed)
+            {
+                return;
+            }
+
             if (!IsFirstResponder && !BecomeFirstResponder())
             {
                 return;
@@ -220,16 +234,15 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         public override void TouchesBegan(NSSet touches, UIEvent? evt)
         {
-            if (mouseInput != null)
+            if (mouseInput != null &&
+                activeMouseModifiers != NativeSceneViewportInputModifier.None)
             {
                 base.TouchesBegan(touches, evt);
                 return;
             }
 
-            BecomeFirstResponder();
-            PublishFocus(true);
-            activeMouseModifiers |= NativeSceneViewportInputModifier.MouseLeft;
-            PublishTouchButton(touches, 0, true);
+            activeLocalPointerModifier = ResolvePointerModifier(evt);
+            PublishTouchButton(touches, activeLocalPointerModifier, true);
             base.TouchesBegan(touches, evt);
         }
 
@@ -249,12 +262,17 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         {
             if (mouseInput != null)
             {
+                // The same UIKit sequence that recovered a press must also
+                // release it. Trackpads can provide GCMouse motion without
+                // sending the corresponding GCMouse button edge.
+                PublishTouchButton(touches, activeLocalPointerModifier, false);
+                activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
                 base.TouchesEnded(touches, evt);
                 return;
             }
 
-            PublishTouchButton(touches, 0, false);
-            activeMouseModifiers &= ~NativeSceneViewportInputModifier.MouseLeft;
+            PublishTouchButton(touches, activeLocalPointerModifier, false);
+            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
             base.TouchesEnded(touches, evt);
         }
 
@@ -262,12 +280,14 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         {
             if (mouseInput != null)
             {
+                activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+                ReleaseActivePointerState();
                 base.TouchesCancelled(touches, evt);
                 return;
             }
 
-            PublishTouchButton(touches, 0, false);
-            activeMouseModifiers = NativeSceneViewportInputModifier.None;
+            PublishTouchButton(touches, activeLocalPointerModifier, false);
+            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
             base.TouchesCancelled(touches, evt);
         }
 
@@ -294,12 +314,58 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             base.WillMoveToWindow(window);
             if (window == null)
             {
-                hasActiveHover = false;
-                ReleaseActivePointerState();
-                ReleaseMouseInput();
-                ReleaseKeyboardInput();
-                PublishFocus(false);
+                DisconnectInput();
+                return;
             }
+
+            isAttachedToWindow = true;
+            AttachInputObservers();
+            AttachKeyboardInput();
+            AttachMouseInput();
+        }
+
+        public void DisconnectInput()
+        {
+            isAttachedToWindow = false;
+            hasActiveHover = false;
+            ReleaseActivePointerState();
+            ReleaseMouseInput();
+            ReleaseKeyboardInput();
+            ReleaseInputObservers();
+            PublishFocus(false);
+        }
+
+        void AttachInputObservers()
+        {
+            keyboardDidConnectToken ??= GCKeyboard.Notifications.ObserveDidConnect((_, _) => AttachKeyboardInput());
+            keyboardDidDisconnectToken ??= GCKeyboard.Notifications.ObserveDidDisconnect((_, _) => AttachKeyboardInput());
+            mouseDidConnectToken ??= GCMouse.Notifications.ObserveDidConnect((_, _) => AttachMouseInput());
+            mouseDidDisconnectToken ??= GCMouse.Notifications.ObserveDidDisconnect((_, _) => AttachMouseInput());
+        }
+
+        void ReleaseInputObservers()
+        {
+            keyboardDidConnectToken?.Dispose();
+            keyboardDidConnectToken = null;
+            keyboardDidDisconnectToken?.Dispose();
+            keyboardDidDisconnectToken = null;
+            mouseDidConnectToken?.Dispose();
+            mouseDidConnectToken = null;
+            mouseDidDisconnectToken?.Dispose();
+            mouseDidDisconnectToken = null;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !isDisposed)
+            {
+                isDisposed = true;
+                DisconnectInput();
+                RemoveGestureRecognizer(hoverGesture);
+                hoverGesture.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
 
         [Export("handleViewportHover:")]
@@ -310,6 +376,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 UIGestureRecognizerState.Failed)
             {
                 hasActiveHover = false;
+                if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    ResetPointerSample();
+                }
                 return;
             }
             if (gesture.State is not UIGestureRecognizerState.Began and
@@ -319,6 +389,11 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             hasActiveHover = true;
+            if (!SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers))
+            {
+                return;
+            }
+
             var point = gesture.LocationInView(this);
             RecordPointerSample(point);
             PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
@@ -333,12 +408,53 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
         }
 
-        void PublishTouchButton(NSSet touches, uint button, bool pressed)
+        void PublishTouchButton(
+            NSSet touches,
+            NativeSceneViewportInputModifier modifier,
+            bool pressed)
         {
-            if (TryGetTouchPoint(touches, out var point))
+            if (modifier == NativeSceneViewportInputModifier.None ||
+                !TryGetTouchPoint(touches, out var point))
             {
-                RecordPointerSample(point);
-                PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, pressed);
+                return;
+            }
+
+            RecordPointerSample(point);
+            if (!SceneViewportPointerRouting.ShouldAcceptMouseButton(
+                pressed,
+                hasLocalHit: true,
+                hasPointerSample,
+                activeMouseModifiers,
+                modifier))
+            {
+                return;
+            }
+
+            if (pressed)
+            {
+                FocusInput();
+                if (!IsFirstResponder)
+                {
+                    return;
+                }
+                activeMouseModifiers |= modifier;
+            }
+            else
+            {
+                activeMouseModifiers &= ~modifier;
+            }
+
+            PublishPointer(
+                NativeSceneViewportInputKind.PointerButton,
+                point,
+                ResolvePointerButton(modifier),
+                pressed,
+                activeMouseModifiers);
+            if (!pressed &&
+                !hasActiveHover &&
+                activeMouseModifiers == NativeSceneViewportInputModifier.None)
+            {
+                ResetPointerSample();
             }
         }
 
@@ -377,59 +493,119 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         void AttachMouseInput()
         {
-            var input = GCMouse.Current?.MouseInput;
-            if (ReferenceEquals(input, mouseInput))
+            if (!isAttachedToWindow || isDisposed)
             {
                 return;
             }
 
-            if (mouseInput != null)
+            NativeSceneViewportPlatformView? releasedOwner = null;
+            NativeSceneViewportInputEvent? releaseInput = null;
+            lock (inputOwnershipGate)
             {
-                ReleaseActivePointerState();
-            }
-            ReleaseMouseInput();
-            mouseInput = input;
-            if (mouseInput == null)
-            {
-                return;
+                if (!isAttachedToWindow || isDisposed)
+                {
+                    return;
+                }
+
+                var input = GCMouse.Current?.MouseInput;
+                if (ReferenceEquals(input, mouseInput) &&
+                    ReferenceEquals(mouseInputOwner, this))
+                {
+                    return;
+                }
+
+                if (ReferenceEquals(mouseInputOwner, this))
+                {
+                    releasedOwner = this;
+                    releaseInput = DetachMouseInputForReplacement();
+                    mouseInputOwner = null;
+                }
+                else
+                {
+                    mouseInput = null;
+                    activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+                    ResetPointerSample();
+                }
+
+                if (input != null)
+                {
+                    if (mouseInputOwner != null &&
+                        !ReferenceEquals(mouseInputOwner, this))
+                    {
+                        releasedOwner = mouseInputOwner;
+                        releaseInput = releasedOwner.DetachMouseInputForReplacement();
+                    }
+
+                    mouseInputOwner = this;
+                    mouseInput = input;
+                    mouseInput.LeftButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(0, NativeSceneViewportInputModifier.MouseLeft, pressed);
+                    mouseInput.RightButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(1, NativeSceneViewportInputModifier.MouseRight, pressed);
+                    if (mouseInput.MiddleButton != null)
+                    {
+                        mouseInput.MiddleButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(2, NativeSceneViewportInputModifier.MouseMiddle, pressed);
+                    }
+                    mouseInput.MouseMovedHandler = HandleMouseMoved;
+                    mouseInput.Scroll.ValueChangedHandler = HandleMouseScroll;
+                }
             }
 
-            mouseInput.LeftButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(0, NativeSceneViewportInputModifier.MouseLeft, pressed);
-            mouseInput.RightButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(1, NativeSceneViewportInputModifier.MouseRight, pressed);
-            if (mouseInput.MiddleButton != null)
+            if (releasedOwner != null && releaseInput is { } captureInput)
             {
-                mouseInput.MiddleButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(2, NativeSceneViewportInputModifier.MouseMiddle, pressed);
+                releasedOwner.Publish(captureInput);
             }
-            mouseInput.MouseMovedHandler = HandleMouseMoved;
         }
 
         void ReleaseMouseInput()
         {
-            if (mouseInput == null)
+            NativeSceneViewportInputEvent? releaseInput = null;
+            lock (inputOwnershipGate)
             {
-                return;
+                if (ReferenceEquals(mouseInputOwner, this))
+                {
+                    releaseInput = DetachMouseInputForReplacement();
+                    mouseInputOwner = null;
+                }
+                else
+                {
+                    mouseInput = null;
+                    activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+                    ResetPointerSample();
+                }
             }
 
-            mouseInput.LeftButton.PressedChangedHandler = null;
-            mouseInput.RightButton.PressedChangedHandler = null;
-            if (mouseInput.MiddleButton != null)
+            if (releaseInput is { } captureInput)
             {
-                mouseInput.MiddleButton.PressedChangedHandler = null;
+                Publish(captureInput);
             }
-            mouseInput.MouseMovedHandler = null;
+        }
+
+        NativeSceneViewportInputEvent? DetachMouseInputForReplacement()
+        {
+            var releaseInput = CreatePointerCaptureReleaseInput();
+            activeMouseModifiers = NativeSceneViewportInputModifier.None;
+            if (mouseInput != null)
+            {
+                mouseInput.LeftButton.PressedChangedHandler = null;
+                mouseInput.RightButton.PressedChangedHandler = null;
+                if (mouseInput.MiddleButton != null)
+                {
+                    mouseInput.MiddleButton.PressedChangedHandler = null;
+                }
+                mouseInput.MouseMovedHandler = null;
+                mouseInput.Scroll.ValueChangedHandler = null;
+            }
+
             mouseInput = null;
-            hasPointerSample = false;
-            lastPointerSample = CGPoint.Empty;
+            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+            ResetPointerSample();
+            return releaseInput;
         }
 
         void HandleMouseMoved(GCMouseInput _, float deltaX, float deltaY)
         {
-            // UIHoverGestureRecognizer is the authoritative absolute pointer source.
-            // GCMouse provides only relative deltas, which remain useful while a
-            // button owns capture and the pointer has moved outside the view.
-            if (!hasPointerSample ||
-                hasActiveHover ||
-                activeMouseModifiers == NativeSceneViewportInputModifier.None)
+            if (!SceneViewportPointerRouting.ShouldPublishCapturedMove(
+                hasPointerSample,
+                activeMouseModifiers))
             {
                 return;
             }
@@ -441,99 +617,220 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 sensitivity = handler.VirtualView?.MouseSensitivity ?? 1.0;
             }
 
+            // GCMouse reports raw deltas, while the viewport event carries
+            // backing-pixel coordinates. Normalize here so ContentScaleFactor
+            // does not amplify camera motion on Retina displays.
+            var scale = ContentScaleFactor > 0 ? (double)ContentScaleFactor : UIScreen.MainScreen.Scale;
             var point = new CGPoint(
-                lastPointerSample.X + (deltaX * sensitivity),
-                lastPointerSample.Y - (deltaY * sensitivity));
+                lastPointerSample.X + ((deltaX * sensitivity) / scale),
+                lastPointerSample.Y - ((deltaY * sensitivity) / scale));
 
-            RecordPointerSample(point);
             PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
         }
 
         void HandleMouseButtonChanged(uint button, NativeSceneViewportInputModifier modifier, bool pressed)
         {
-            if (!IsFirstResponder)
+            if (!SceneViewportPointerRouting.ShouldAcceptMouseButton(
+                pressed,
+                hasLocalHit: hasActiveHover,
+                hasPointerSample,
+                activeMouseModifiers,
+                modifier))
             {
-                FocusInput();
-            }
-
-            if (!hasPointerSample)
-            {
+                if (pressed &&
+                    !hasActiveHover &&
+                    activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    QueueFocusReleaseIfPointerRemainsOutside();
+                }
                 return;
             }
 
             if (pressed)
             {
+                if (!IsFirstResponder)
+                {
+                    FocusInput();
+                    if (!IsFirstResponder)
+                    {
+                        return;
+                    }
+                }
+
                 activeMouseModifiers |= modifier;
-                var point = hasPointerSample ? lastPointerSample : CGPoint.Empty;
-                PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, true, activeMouseModifiers);
+                PublishPointer(NativeSceneViewportInputKind.PointerButton, lastPointerSample, button, true, activeMouseModifiers);
             }
             else
             {
-                var eventModifiers = activeMouseModifiers;
-                if ((eventModifiers & modifier) == 0)
-                {
-                    eventModifiers |= modifier;
-                }
-
-                var point = hasPointerSample ? lastPointerSample : CGPoint.Empty;
-                PublishPointer(NativeSceneViewportInputKind.PointerButton, point, button, false, eventModifiers);
                 activeMouseModifiers &= ~modifier;
+                PublishPointer(NativeSceneViewportInputKind.PointerButton, lastPointerSample, button, false, activeMouseModifiers);
+                if (!hasActiveHover && activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    ResetPointerSample();
+                }
             }
+        }
+
+        void QueueFocusReleaseIfPointerRemainsOutside()
+        {
+            var queuedPointerActivityRevision = Interlocked.Read(ref pointerActivityRevision);
+            DispatchQueue.MainQueue.DispatchAsync(() =>
+            {
+                if (!isDisposed &&
+                    isAttachedToWindow &&
+                    !hasActiveHover &&
+                    activeMouseModifiers == NativeSceneViewportInputModifier.None &&
+                    Interlocked.Read(ref pointerActivityRevision) == queuedPointerActivityRevision &&
+                    IsFirstResponder)
+                {
+                    ResignFirstResponder();
+                }
+            });
+        }
+
+        void HandleMouseScroll(GCControllerDirectionPad _, float deltaX, float deltaY)
+        {
+            if (!hasPointerSample ||
+                (!hasActiveHover && activeMouseModifiers == NativeSceneViewportInputModifier.None))
+            {
+                return;
+            }
+
+            var scale = ContentScaleFactor > 0 ? (double)ContentScaleFactor : UIScreen.MainScreen.Scale;
+            Publish(new NativeSceneViewportInputEvent(
+                NativeSceneViewportInputKind.PointerWheel,
+                PointerX: (float)(lastPointerSample.X * scale),
+                PointerY: (float)(lastPointerSample.Y * scale),
+                WheelDeltaX: deltaX,
+                WheelDeltaY: deltaY,
+                Modifiers: activeMouseModifiers | activeKeyboardModifiers,
+                Focused: isInputFocused,
+                Captured: HasMouseCapture(activeMouseModifiers)));
         }
 
         void RecordPointerSample(CGPoint point)
         {
             lastPointerSample = point;
             hasPointerSample = true;
+            Interlocked.Increment(ref pointerActivityRevision);
+        }
+
+        void ResetPointerSample()
+        {
+            hasPointerSample = false;
+            lastPointerSample = CGPoint.Empty;
         }
 
         void ReleaseActivePointerState()
         {
-            if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+            var releaseInput = CreatePointerCaptureReleaseInput();
+            activeMouseModifiers = NativeSceneViewportInputModifier.None;
+            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+            if (releaseInput is not { } captureInput)
             {
                 return;
             }
 
-            activeMouseModifiers = NativeSceneViewportInputModifier.None;
+            if (!hasActiveHover)
+            {
+                ResetPointerSample();
+            }
+            Publish(captureInput);
+        }
+
+        NativeSceneViewportInputEvent? CreatePointerCaptureReleaseInput()
+        {
+            if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+            {
+                return null;
+            }
+
             var point = hasPointerSample ? lastPointerSample : CGPoint.Empty;
             var scale = ContentScaleFactor > 0 ? (double)ContentScaleFactor : UIScreen.MainScreen.Scale;
-            Publish(new NativeSceneViewportInputEvent(
+            return new NativeSceneViewportInputEvent(
                 NativeSceneViewportInputKind.Capture,
                 PointerX: (float)(point.X * scale),
                 PointerY: (float)(point.Y * scale),
                 Modifiers: activeKeyboardModifiers,
                 Focused: isInputFocused,
-                Captured: false));
+                Captured: false);
         }
 
         void AttachKeyboardInput()
         {
-            var input = GCKeyboard.CoalescedKeyboard?.KeyboardInput;
-            if (ReferenceEquals(input, keyboardInput))
+            if (!isAttachedToWindow || isDisposed)
             {
                 return;
             }
 
-            ReleaseKeyboardInput();
-            keyboardInput = input;
-            if (keyboardInput != null)
+            lock (inputOwnershipGate)
             {
+                if (!isAttachedToWindow || isDisposed)
+                {
+                    return;
+                }
+
+                var input = GCKeyboard.CoalescedKeyboard?.KeyboardInput;
+                if (ReferenceEquals(input, keyboardInput) &&
+                    ReferenceEquals(keyboardInputOwner, this))
+                {
+                    return;
+                }
+
+                if (ReferenceEquals(keyboardInputOwner, this))
+                {
+                    DetachKeyboardInputForReplacement();
+                    keyboardInputOwner = null;
+                }
+                else
+                {
+                    keyboardInput = null;
+                    activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+                }
+
+                if (input == null)
+                {
+                    return;
+                }
+
+                if (keyboardInputOwner != null &&
+                    !ReferenceEquals(keyboardInputOwner, this))
+                {
+                    keyboardInputOwner.DetachKeyboardInputForReplacement();
+                }
+
+                keyboardInputOwner = this;
+                keyboardInput = input;
                 keyboardInput.KeyChangedHandler = HandleKeyboardKeyChanged;
             }
         }
 
         void ReleaseKeyboardInput()
         {
+            lock (inputOwnershipGate)
+            {
+                if (ReferenceEquals(keyboardInputOwner, this))
+                {
+                    DetachKeyboardInputForReplacement();
+                    keyboardInputOwner = null;
+                }
+                else
+                {
+                    keyboardInput = null;
+                    activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
+                }
+            }
+        }
+
+        void DetachKeyboardInputForReplacement()
+        {
             if (keyboardInput != null)
             {
                 keyboardInput.KeyChangedHandler = null;
-                keyboardInput = null;
-                activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
-                Publish(new NativeSceneViewportInputEvent(
-                    NativeSceneViewportInputKind.Capture,
-                    Focused: isInputFocused,
-                    Captured: false));
             }
+
+            keyboardInput = null;
+            activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
         }
 
         void HandleKeyboardKeyChanged(GCKeyboardInput keyboard, GCControllerButtonInput key, nint keyCode, bool pressed)
@@ -642,6 +939,37 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 NativeSceneViewportInputModifier.MouseMiddle;
             return (modifiers & mouseModifiers) != 0;
         }
+
+        static NativeSceneViewportInputModifier ResolvePointerModifier(UIEvent? evt)
+        {
+            if (evt == null)
+            {
+                return NativeSceneViewportInputModifier.MouseLeft;
+            }
+
+            var buttonMask = (ulong)evt.ButtonMask;
+            if ((buttonMask & (1UL << 2)) != 0)
+            {
+                return NativeSceneViewportInputModifier.MouseMiddle;
+            }
+            if ((evt.ButtonMask & UIEventButtonMask.Secondary) != 0)
+            {
+                return NativeSceneViewportInputModifier.MouseRight;
+            }
+            if ((evt.ButtonMask & UIEventButtonMask.Primary) != 0)
+            {
+                return NativeSceneViewportInputModifier.MouseLeft;
+            }
+            return NativeSceneViewportInputModifier.None;
+        }
+
+        static uint ResolvePointerButton(NativeSceneViewportInputModifier modifier) => modifier switch
+        {
+            NativeSceneViewportInputModifier.MouseLeft => 0,
+            NativeSceneViewportInputModifier.MouseRight => 1,
+            NativeSceneViewportInputModifier.MouseMiddle => 2,
+            _ => 0
+        };
 
         void UpdateKeyboardModifier(uint keyCode, bool pressed)
         {

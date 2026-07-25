@@ -104,6 +104,7 @@ namespace SailorEditor.Views
                     HorizontalOptions = LayoutOptions.Fill,
                     VerticalOptions = LayoutOptions.Fill
                 };
+                nativeViewportHost.GestureRecognizers.Add(CreateSceneDropGesture());
                 nativeViewportHost.HostHandleChanged += handle =>
                 {
                     nativeHostHandle = handle;
@@ -150,17 +151,17 @@ namespace SailorEditor.Views
                     }
                     else if (input.Kind == NativeSceneViewportInputKind.PointerButton)
                     {
-                        SetSceneFocus(true, sendRemoteFocus: true);
-                        nativeViewportHost?.RequestInputFocus();
                         if (input.Pressed)
                         {
-                            isInputCaptured = true;
-                            captured = true;
+                            SetSceneFocus(true, sendRemoteFocus: !isFocused);
+                            nativeViewportHost?.RequestInputFocus();
                         }
+                        isInputCaptured = input.Captured;
+                        captured = input.Captured;
                     }
                     else if (input.Kind == NativeSceneViewportInputKind.Key)
                     {
-                        SetSceneFocus(true, sendRemoteFocus: true);
+                        SetSceneFocus(true, sendRemoteFocus: !isFocused);
                     }
                     else if (!isFocused && !isInputCaptured)
                     {
@@ -171,12 +172,6 @@ namespace SailorEditor.Views
                     {
                         isInputCaptured = input.Captured;
                         captured = input.Captured;
-                    }
-
-                    if (input.Kind == NativeSceneViewportInputKind.PointerButton && !input.Pressed)
-                    {
-                        captured = isInputCaptured;
-                        isInputCaptured = false;
                     }
 
                     if (!isFocused && !captured && input.Kind != NativeSceneViewportInputKind.Focus)
@@ -198,8 +193,6 @@ namespace SailorEditor.Views
                         input.Pressed,
                         focused,
                         captured);
-
-                    UpdateViewportIntegration();
                 };
 
                 NativeViewportContainer.Content = nativeViewportHost;

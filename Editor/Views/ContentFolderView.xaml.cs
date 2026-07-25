@@ -621,7 +621,7 @@ namespace SailorEditor.Views
                     {
                         switch (model)
                         {
-                            case AssetFile assetFile when service.CanModifyAsset(assetFile):
+                            case AssetFile assetFile:
                                 e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
                                 return;
                             case AssetFolder folder when service.CanModifyFolder(folder):

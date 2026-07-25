@@ -131,8 +131,65 @@ public sealed class EditorViewportEventContractTests
             inputHandler,
             "input.Button == 0",
             "inspectorPendingEditCoordinator.CommitPendingChanges()",
-            "isInputCaptured = true",
+            "isInputCaptured = input.Captured",
             "viewportAdapter.SendInput(");
+    }
+
+    [Fact]
+    public void MacMouseInput_AcquiresFocusOnlyForOwnedPressAndReleasesLifecycleObservers()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "MacCatalyst",
+            "NativeSceneViewportHandler.MacCatalyst.cs");
+        var buttonHandler = Slice(source, "void HandleMouseButtonChanged", "void RecordPointerSample");
+        var windowLifecycle = Slice(source, "public override void WillMoveToWindow", "protected override void Dispose");
+        var touches = Slice(source, "public override void TouchesBegan", "public override void PressesBegan");
+
+        AssertInOrder(
+            buttonHandler,
+            "SceneViewportPointerRouting.ShouldAcceptMouseButton(",
+            "QueueFocusReleaseIfPointerRemainsOutside();",
+            "if (!IsFirstResponder)",
+            "FocusInput();",
+            "activeMouseModifiers |= modifier",
+            "activeMouseModifiers &= ~modifier");
+        AssertInOrder(
+            windowLifecycle,
+            "AttachInputObservers();",
+            "AttachKeyboardInput();",
+            "AttachMouseInput();",
+            "ReleaseMouseInput();",
+            "ReleaseKeyboardInput();",
+            "ReleaseInputObservers();");
+        Assert.Contains("ReferenceEquals(mouseInputOwner, this)", source, StringComparison.Ordinal);
+        Assert.Contains("releaseInput = releasedOwner.DetachMouseInputForReplacement();", source, StringComparison.Ordinal);
+        Assert.Contains("activeMouseModifiers != NativeSceneViewportInputModifier.None", touches, StringComparison.Ordinal);
+        Assert.Contains("PublishTouchButton(touches, activeLocalPointerModifier, false);", touches, StringComparison.Ordinal);
+        Assert.Contains("Trackpads can provide GCMouse motion without", touches, StringComparison.Ordinal);
+        Assert.Contains("mouseInput.MouseMovedHandler = HandleMouseMoved;", source, StringComparison.Ordinal);
+        Assert.Contains("(deltaX * sensitivity) / scale", source, StringComparison.Ordinal);
+        Assert.Contains("(deltaY * sensitivity) / scale", source, StringComparison.Ordinal);
+        Assert.Contains("queuedPointerActivityRevision", buttonHandler, StringComparison.Ordinal);
+        Assert.Contains("if (!isAttachedToWindow || isDisposed)", source, StringComparison.Ordinal);
+        Assert.Contains("protected override void Dispose(bool disposing)", source, StringComparison.Ordinal);
+        Assert.Equal(4, CountOccurrences(source, "Token?.Dispose();"));
+    }
+
+    [Fact]
+    public void NativeViewport_OwnsDropTargetAndUsesPostEventCaptureState()
+    {
+        var source = ReadRepositoryFile("Editor", "Views", "SceneView.xaml.cs");
+        var inputHandler = Slice(source, "nativeViewportHost.InputReceived += input =>", "NativeViewportContainer.Content = nativeViewportHost");
+
+        Assert.Contains(
+            "nativeViewportHost.GestureRecognizers.Add(CreateSceneDropGesture());",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("isInputCaptured = input.Captured;", inputHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("captured = isInputCaptured;", inputHandler, StringComparison.Ordinal);
+        Assert.DoesNotContain("UpdateViewportIntegration();", inputHandler, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -701,10 +701,12 @@ namespace
 		Require(imGuiSource.find("case VK_MENU: return ImGuiKey_ModAlt") != std::string::npos &&
 			imGuiSource.find("case VK_LWIN: return ImGuiKey_ModSuper") != std::string::npos,
 			"Mac modifier keys must reach ImGui selection suppression");
-		Require(macInputSource.find("hasActiveHover ||") != std::string::npos &&
-			macInputSource.find("UIHoverGestureRecognizer is the authoritative absolute pointer source") != std::string::npos &&
+		Require(macInputSource.find("SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers)") != std::string::npos &&
+			macInputSource.find("SceneViewportPointerRouting.ShouldPublishCapturedMove(") != std::string::npos &&
+			macInputSource.find("(deltaX * sensitivity) / scale") != std::string::npos &&
+			macInputSource.find("PublishTouchButton(touches, activeLocalPointerModifier, false);") != std::string::npos &&
 			macInputSource.find("activeMouseModifiers | activeKeyboardModifiers") != std::string::npos,
-			"Mac pointer input must use one absolute source in-view and preserve keyboard modifiers");
+			"Mac pointer input must arbitrate hover and captured motion, normalize Retina deltas, release local trackpad presses, and preserve keyboard modifiers");
 	}
 
 }

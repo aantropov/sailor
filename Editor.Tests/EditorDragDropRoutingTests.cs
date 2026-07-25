@@ -157,6 +157,21 @@ public sealed class EditorDragDropRoutingTests
     }
 
     [Fact]
+    public void TryCreateSceneDropCommand_AllowsReadOnlyEnginePrefabAsReferenceSource()
+    {
+        var prefab = new PrefabFile
+        {
+            FileId = new FileId("{ENGINE-PREFAB}"),
+            IsReadOnly = true
+        };
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(prefab, null, out var command);
+
+        Assert.True(resolved);
+        Assert.IsType<InstantiatePrefabAssetCommand>(command);
+    }
+
+    [Fact]
     public void TryCreateSceneDropCommand_RejectsSelfReparent()
     {
         var gameObject = new GameObject { InstanceId = new InstanceId("go-self") };

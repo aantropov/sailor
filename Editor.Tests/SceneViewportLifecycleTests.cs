@@ -149,6 +149,73 @@ public sealed class SceneViewportLifecycleTests
         Assert.Equal("scene:1", shellState.Focus.FocusedViewportId);
     }
 
+    [Fact]
+    public void PointerRouting_RejectsGlobalPressOutsideViewport()
+    {
+        Assert.False(SceneViewportPointerRouting.ShouldAcceptMouseButton(
+            pressed: true,
+            hasLocalHit: false,
+            hasPointerSample: true,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.None,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft));
+    }
+
+    [Fact]
+    public void PointerRouting_AcceptsInsidePressAndCapturedOutsideRelease()
+    {
+        Assert.True(SceneViewportPointerRouting.ShouldAcceptMouseButton(
+            pressed: true,
+            hasLocalHit: true,
+            hasPointerSample: true,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.None,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft));
+
+        Assert.True(SceneViewportPointerRouting.ShouldAcceptMouseButton(
+            pressed: false,
+            hasLocalHit: false,
+            hasPointerSample: true,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft));
+    }
+
+    [Fact]
+    public void PointerRouting_AcceptsAdditionalButtonWhileViewportOwnsCapture()
+    {
+        Assert.True(SceneViewportPointerRouting.ShouldAcceptMouseButton(
+            pressed: true,
+            hasLocalHit: false,
+            hasPointerSample: true,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseRight));
+    }
+
+    [Fact]
+    public void PointerRouting_RejectsReleaseForButtonViewportDidNotCapture()
+    {
+        Assert.False(SceneViewportPointerRouting.ShouldAcceptMouseButton(
+            pressed: false,
+            hasLocalHit: true,
+            hasPointerSample: true,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseRight,
+            SailorEditor.Controls.NativeSceneViewportInputModifier.MouseLeft));
+    }
+
+    [Fact]
+    public void PointerRouting_UsesCapturedMotionOnlyWhileViewportOwnsCapture()
+    {
+        var rightCaptured = SailorEditor.Controls.NativeSceneViewportInputModifier.MouseRight;
+
+        Assert.False(SceneViewportPointerRouting.ShouldPublishHoverMove(rightCaptured));
+        Assert.True(SceneViewportPointerRouting.ShouldPublishCapturedMove(
+            hasPointerSample: true,
+            rightCaptured));
+        Assert.False(SceneViewportPointerRouting.ShouldPublishCapturedMove(
+            hasPointerSample: false,
+            rightCaptured));
+        Assert.True(SceneViewportPointerRouting.ShouldPublishHoverMove(
+            SailorEditor.Controls.NativeSceneViewportInputModifier.None));
+    }
+
     [Theory]
     [InlineData(RemoteViewportSessionState.Active, "Remote viewport active")]
     [InlineData(RemoteViewportSessionState.Ready, "Remote viewport ready")]

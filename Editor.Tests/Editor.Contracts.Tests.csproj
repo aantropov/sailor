@@ -108,6 +108,7 @@
     <Compile Include="..\Editor\State\ShellState.cs" Link="State\ShellState.cs" />
     <Compile Include="..\Editor\State\ShellStateContracts.cs" Link="State\ShellStateContracts.cs" />
     <Compile Include="..\Editor\Scene\SceneViewportLifecycle.cs" Link="Scene\SceneViewportLifecycle.cs" />
+    <Compile Include="..\Editor\Scene\SceneViewportPointerRouting.cs" Link="Scene\SceneViewportPointerRouting.cs" />
     <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
     <Compile Include="..\Editor\Scene\EditorViewportEventContract.cs" Link="Scene\EditorViewportEventContract.cs" />
     <Compile Include="..\Editor\Commands\AlreadyAppliedTransformCommand.cs" Link="Commands\AlreadyAppliedTransformCommand.cs" />

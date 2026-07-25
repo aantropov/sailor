@@ -101,20 +101,12 @@ void EditorComponent::EditorTick(float deltaTime)
 		}
 		else
 		{
-			const float smoothFactor = 0.9f;
-			const float speed = 50.0f;
-			const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
+			constexpr float rotationDegreesPerPixel = 0.2f;
+			const vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
+			const vec2 rotationDelta = deltaCursorPos * rotationDegreesPerPixel;
 
-			vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
-			vec2 shift = deltaCursorPos * speed * smoothDeltaTime;
-
-			float adjustedYawSpeed = shift.x / (cos(glm::radians(m_pitch)) + 0.1f);
-
-			float targetYaw = m_yaw + adjustedYawSpeed;
-			float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
-
-			m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor);
-			m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor);
+			m_yaw += rotationDelta.x;
+			m_pitch = glm::clamp(m_pitch - rotationDelta.y, -85.0f, 85.0f);
 
 			glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
 			glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
