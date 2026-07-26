@@ -307,14 +307,24 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
-    public void PrefabSnapshotInterop_MarshalsYamlAsUtf8()
+    public void PrefabSnapshotInterop_UsesTypedProtocolRequest()
     {
-        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var serviceSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
 
         Assert.Contains(
-            "InstantiatePrefabFromYaml([MarshalAs(UnmanagedType.LPUTF8Str)] string strPrefabYaml, [MarshalAs(UnmanagedType.LPUTF8Str)] string strParentInstanceId)",
-            source,
+            "protocolClient.InstantiatePrefabFromYaml(prefabYaml, stringParentId)",
+            serviceSource,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "InstantiatePrefabFromYaml = new InstantiatePrefabFromYamlRequest",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PrefabYaml = ValidateString(prefabYaml, nameof(prefabYaml))",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("MarshalAs", serviceSource, StringComparison.Ordinal);
     }
 
     [Fact]

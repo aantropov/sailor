@@ -95,6 +95,9 @@ def main() -> int:
             continue
 
         relative_path = source_path.relative_to(runtime_dir)
+        if relative_path.parts[:2] == ("Protocol", "Generated"):
+            continue
+
         source = source_path.read_text(encoding="utf-8", errors="replace")
         masked = mask_comments_and_literals(source)
         for match in CONTAINER_PATTERN.finditer(masked):

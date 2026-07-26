@@ -50,6 +50,8 @@ Binaries/
 out/
 Editor.Tests/bin/
 Editor.Tests/obj/
+/Editor/Protocol/bin/
+/Editor/Protocol/obj/
 
 # Local/editor-generated files
 imgui.ini

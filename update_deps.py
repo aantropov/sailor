@@ -71,6 +71,7 @@ def main() -> int:
         'imguizmo',
         'magic-enum',
         'nlohmann-json',
+        'protobuf',
         'refl-cpp',
         'spirv-reflect',
         'stb',

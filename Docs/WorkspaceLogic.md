@@ -242,7 +242,7 @@ Standalone startup treats a configured module or requested-world activation fail
 
 ## Editor Type Metadata
 
-`SerializeEngineTypes` remains the legacy engine-only C export. Editor consumers use the distinct `SerializeEditorTypes` export, which starts from a fresh engine snapshot and appends the validated metadata of the active workspace module. The combined document keeps each custom component's fully-qualified `typename`, reflected properties, and default object values.
+`SerializeEngineTypes` is available as an engine-only protobuf command for consumers that need the unmodified engine catalog. Editor consumers normally use the distinct `SerializeEditorTypes` protobuf command, which starts from a fresh engine snapshot and appends the validated metadata of the active workspace module. Both commands use the shared `SailorProtocolInvoke`/`SailorProtocolFreeBuffer` transport; neither adds a dedicated C export. The combined document keeps each custom component's fully-qualified `typename`, reflected properties, and default object values.
 
 The merge validates all four catalogs before publishing a result. Type and CDO identities use `typename`, enum identities use their map key, and asset-type identities use `typename`. Duplicate entries, engine/workspace collisions, malformed sections, or mismatched workspace type/default sets reject the complete merge without returning a partial catalog. A missing, failed, or unloaded workspace module produces a fresh engine-only editor snapshot so custom types cannot survive through stale runtime state.
 

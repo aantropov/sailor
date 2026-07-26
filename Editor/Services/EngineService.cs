@@ -1,123 +1,12 @@
 using SailorEngine;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
-using YamlDotNet.Serialization;
+using SailorEditor.Protocol;
+using SailorEditor.Protocol.Generated;
 using SailorEditor.Utility;
 using SailorEditor.Workspace;
 using SailorEditor.Scene;
 using System.Threading;
 using System.Globalization;
-
-namespace SailorEngine
-{
-    public class EngineAppInterop
-    {
-#if MACCATALYST
-        static EngineAppInterop()
-        {
-            NativeLibrary.SetDllImportResolver(typeof(EngineAppInterop).Assembly, static (libraryName, assembly, searchPath) =>
-            {
-                if (libraryName != EngineLibrary)
-                {
-                    return IntPtr.Zero;
-                }
-
-                var bundledPath = Path.Combine(AppContext.BaseDirectory, "..", "Resources", $"{EngineLibrary}.dylib");
-                bundledPath = Path.GetFullPath(bundledPath);
-
-                return File.Exists(bundledPath)
-                    ? NativeLibrary.Load(bundledPath)
-                    : IntPtr.Zero;
-            });
-        }
-#endif
-#if MACCATALYST
-#if DEBUG
-        const string EngineLibrary = "Sailor-Debug";
-#else
-        const string EngineLibrary = "Sailor-Release";
-#endif
-#elif DEBUG
-        const string EngineLibrary = "../../../../../Sailor-RelWithDebInfo.dll";
-#else
-        const string EngineLibrary = "../../../../../Sailor-Release.dll";
-#endif
-
-        [DllImport(EngineLibrary, EntryPoint = "Initialize", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        static extern void InitializeNative([In] nint[] commandLineArgs, int num);
-
-        public static void Initialize(string[] commandLineArgs, int num)
-        {
-            var nativeArguments = Utf8InteropArguments.Allocate(commandLineArgs, num);
-            try
-            {
-                InitializeNative(nativeArguments, num);
-            }
-            finally
-            {
-                Utf8InteropArguments.Free(nativeArguments);
-            }
-        }
-
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Start();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Stop();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RequestAssetReload();
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool GetAssetReloadState(out ulong requestGeneration, out ulong completedGeneration, out ulong successfulGeneration);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern int GetExitCode();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEditorTypes(nint[] yamlNode);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeWorkspaceCacheIdentity(nint[] yamlNode);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateEditorWorld();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetEditorRenderTargetSize(uint width, uint height);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpsertRemoteViewport(ulong viewportId, uint windowPosX, uint windowPosY, uint width, uint height, [MarshalAs(UnmanagedType.I1)] bool visible, [MarshalAs(UnmanagedType.I1)] bool focused);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyRemoteViewport(ulong viewportId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportState(ulong viewportId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportDiagnostics(ulong viewportId, nint[] diagnostics);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RetryRemoteViewport(ulong viewportId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetRemoteViewportMacHostHandle(ulong viewportId, uint hostHandleKind, ulong hostHandleValue);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SendRemoteViewportInput(ulong viewportId, uint kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint keyCode, uint button, uint modifiers, [MarshalAs(UnmanagedType.I1)] bool pressed, [MarshalAs(UnmanagedType.I1)] bool focused, [MarshalAs(UnmanagedType.I1)] bool captured);
-        [DllImport(EngineLibrary, EntryPoint = "PullEditorViewportEvents", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)] public static extern uint PullEditorViewportEvents([Out] nint[] eventPtrs, uint maxEvents);
-        [DllImport(EngineLibrary, EntryPoint = "GetEditorManagedMutationRevision", ExactSpelling = true, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern ulong GetEditorManagedMutationRevision(uint kind, string strInstanceId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void FreeInteropString(nint text);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ReparentObject(string strInstanceId, string strParentInstanceId, [MarshalAs(UnmanagedType.I1)] bool bKeepWorldTransform);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateGameObject(string strParentInstanceId, string strPreferredInstanceId, nint[] outInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyObject(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ResetComponentToDefaults(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool AddComponent(string strInstanceId, string strComponentTypeName, string strPreferredInstanceId, nint[] outInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RemoveComponent(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
-
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefabFromYaml([MarshalAs(UnmanagedType.LPUTF8Str)] string strPrefabYaml, [MarshalAs(UnmanagedType.LPUTF8Str)] string strParentInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetEditorSelection(string strSelectionYaml);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
-    }
-}
 
 namespace SailorEditor.Services
 {
@@ -205,6 +94,7 @@ namespace SailorEditor.Services
 
         readonly object interopLock = new();
         readonly object runLock = new();
+        readonly EngineProtocolClient protocolClient;
         readonly SemaphoreSlim lifecycleGate = new(1, 1);
         readonly RingBufferedBatcher<ConsoleMessage> consoleMessages = new(MaxBufferedConsoleMessages);
         readonly WorldSnapshotPublicationGate worldSnapshotPublication = new();
@@ -230,8 +120,18 @@ namespace SailorEditor.Services
         readonly EditorTypeCacheStore editorTypeCacheStore = new();
 
         public EngineService(WorkspaceLifecycleService workspaceLifecycle)
+            : this(workspaceLifecycle, new EngineProtocolClient())
         {
-            this.workspaceLifecycle = workspaceLifecycle;
+        }
+
+        internal EngineService(
+            WorkspaceLifecycleService workspaceLifecycle,
+            EngineProtocolClient protocolClient)
+        {
+            this.workspaceLifecycle = workspaceLifecycle ??
+                throw new ArgumentNullException(nameof(workspaceLifecycle));
+            this.protocolClient = protocolClient ??
+                throw new ArgumentNullException(nameof(protocolClient));
             Volatile.Write(ref currentInstance, this);
         }
 
@@ -473,11 +373,16 @@ namespace SailorEditor.Services
             successfulGeneration = 0;
             lock (interopLock)
             {
-                return IsGenerationActive(generation) &&
-                    EngineAppInterop.GetAssetReloadState(
-                        out requestGeneration,
-                        out completedGeneration,
-                        out successfulGeneration);
+                if (!IsGenerationActive(generation))
+                {
+                    return false;
+                }
+
+                var state = protocolClient.GetAssetReloadState();
+                requestGeneration = state.RequestGeneration;
+                completedGeneration = state.CompletedGeneration;
+                successfulGeneration = state.SuccessfulGeneration;
+                return state.Available;
             }
         }
 
@@ -552,7 +457,7 @@ namespace SailorEditor.Services
                 return IsInteropRunningUnderLock() &&
                     EditorViewportMutationOrder.IsCurrent(
                         managedMutationRevision,
-                        EngineAppInterop.GetEditorManagedMutationRevision((uint)kind, instanceId));
+                        protocolClient.GetEditorManagedMutationRevision((uint)kind, instanceId));
             }
         }
 
@@ -577,7 +482,7 @@ namespace SailorEditor.Services
             {
                 if (instance.IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.ShowMainWindow(bShow);
+                    instance.protocolClient.ShowMainWindow(bShow);
                 }
             }
         }
@@ -619,7 +524,7 @@ namespace SailorEditor.Services
                     return;
                 }
 
-                if (EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle))
+                if (protocolClient.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle))
                 {
                     appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
                 }
@@ -670,7 +575,7 @@ namespace SailorEditor.Services
 
                 if (!viewportState.Rect.IsEmpty)
                 {
-                    EngineAppInterop.SetViewport(
+                    protocolClient.SetViewport(
                         (uint)viewportState.Rect.X,
                         (uint)viewportState.Rect.Y,
                         (uint)viewportState.Rect.Width,
@@ -693,7 +598,7 @@ namespace SailorEditor.Services
 #if WINDOWS || MACCATALYST
             return IsInteropRunningUnderLock() &&
                 !rect.IsEmpty &&
-                EngineAppInterop.UpsertRemoteViewport(
+                protocolClient.UpsertRemoteViewport(
                     viewportId,
                     (uint)rect.X,
                     (uint)rect.Y,
@@ -718,7 +623,7 @@ namespace SailorEditor.Services
                 sceneViewportState.RememberRect(rect);
                 if (IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.SetViewport((uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height);
+                    protocolClient.SetViewport((uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height);
                 }
             }
         }
@@ -730,7 +635,7 @@ namespace SailorEditor.Services
             {
                 if (IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.SetEditorRenderTargetSize(Math.Max(width, 1u), Math.Max(height, 1u));
+                    protocolClient.SetEditorRenderTargetSize(Math.Max(width, 1u), Math.Max(height, 1u));
                 }
             }
 #endif
@@ -743,7 +648,7 @@ namespace SailorEditor.Services
             {
                 if (IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.DestroyRemoteViewport(viewportId);
+                    protocolClient.DestroyRemoteViewport(viewportId);
                 }
             }
 #endif
@@ -755,7 +660,7 @@ namespace SailorEditor.Services
             lock (interopLock)
             {
                 return IsInteropRunningUnderLock()
-                    ? (RemoteViewportSessionState)EngineAppInterop.GetRemoteViewportState(viewportId)
+                    ? (RemoteViewportSessionState)protocolClient.GetRemoteViewportState(viewportId)
                     : RemoteViewportSessionState.Disposed;
             }
 #else
@@ -770,7 +675,7 @@ namespace SailorEditor.Services
             {
                 if (IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.RetryRemoteViewport(viewportId);
+                    protocolClient.RetryRemoteViewport(viewportId);
                 }
             }
 #endif
@@ -794,7 +699,19 @@ namespace SailorEditor.Services
             lock (interopLock)
             {
                 return IsInteropRunningUnderLock() &&
-                    EngineAppInterop.SendRemoteViewportInput(viewportId, (uint)kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, (uint)modifiers, pressed, focused, captured);
+                    protocolClient.SendRemoteViewportInput(
+                        viewportId,
+                        (uint)kind,
+                        pointerX,
+                        pointerY,
+                        wheelDeltaX,
+                        wheelDeltaY,
+                        keyCode,
+                        button,
+                        (uint)modifiers,
+                        pressed,
+                        focused,
+                        captured);
             }
 #else
             return false;
@@ -811,21 +728,7 @@ namespace SailorEditor.Services
                     return string.Empty;
                 }
 
-                nint[] textPtr = new nint[1];
-                uint length = EngineAppInterop.GetRemoteViewportDiagnostics(viewportId, textPtr);
-                if (length == 0 || textPtr[0] == nint.Zero)
-                {
-                    return string.Empty;
-                }
-
-                try
-                {
-                    return Marshal.PtrToStringAnsi(textPtr[0], (int)length) ?? string.Empty;
-                }
-                finally
-                {
-                    EngineAppInterop.FreeInteropString(textPtr[0]);
-                }
+                return protocolClient.GetRemoteViewportDiagnostics(viewportId);
             }
 #else
             return string.Empty;
@@ -918,13 +821,13 @@ namespace SailorEditor.Services
                 {
                     lock (interopLock)
                     {
-                        EngineAppInterop.Initialize(args, args.Length);
+                        protocolClient.Initialize(args);
                     }
                 });
 #else
                 lock (interopLock)
                 {
-                    EngineAppInterop.Initialize(args, args.Length);
+                    protocolClient.Initialize(args);
                 }
 #endif
                 initialized = true;
@@ -1082,7 +985,7 @@ namespace SailorEditor.Services
                     return Task.CompletedTask;
                 }, 1500, 0, pollCancellation.Token, generation));
 
-                var nativeRunTask = Task.Run(EngineAppInterop.Start, CancellationToken.None);
+                var nativeRunTask = Task.Run(protocolClient.Start, CancellationToken.None);
                 var session = new EngineSession
                 {
                     Generation = generation,
@@ -1203,7 +1106,7 @@ namespace SailorEditor.Services
                     {
                         try
                         {
-                            EngineAppInterop.Stop();
+                            protocolClient.Stop();
                         }
                         catch (Exception ex)
                         {
@@ -1417,7 +1320,7 @@ namespace SailorEditor.Services
         {
             lock (interopLock)
             {
-                return EngineAppInterop.GetExitCode();
+                return protocolClient.GetExitCode();
             }
         }
 
@@ -1466,7 +1369,7 @@ namespace SailorEditor.Services
                 {
                     try
                     {
-                        EngineAppInterop.Stop();
+                        protocolClient.Stop();
                     }
                     catch (Exception ex)
                     {
@@ -1478,7 +1381,7 @@ namespace SailorEditor.Services
                 {
                     try
                     {
-                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
+                        protocolClient.DestroyRemoteViewport(SceneViewportId);
                     }
                     catch (Exception ex)
                     {
@@ -1488,7 +1391,7 @@ namespace SailorEditor.Services
 
                 try
                 {
-                    EngineAppInterop.Shutdown();
+                    protocolClient.Shutdown();
                 }
                 catch (Exception ex)
                 {
@@ -1511,30 +1414,17 @@ namespace SailorEditor.Services
                 return null;
             }
 
-            uint numMessages = 64;
-            nint[] messagesPtrs = new nint[numMessages];
-
-            uint actualNumMessages;
+            string[] messages;
             lock (interopLock)
             {
                 if (!IsGenerationActive(generation, allowStarting))
                 {
                     return null;
                 }
-                actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
+                messages = protocolClient.GetMessages(64);
             }
 
-            if (actualNumMessages == 0)
-                return null;
-
-            string[] messages = new string[actualNumMessages];
-            for (int i = 0; i < actualNumMessages; i++)
-            {
-                messages[i] = Marshal.PtrToStringAnsi(messagesPtrs[i]);
-                EngineAppInterop.FreeInteropString(messagesPtrs[i]);
-            }
-
-            return messages;
+            return messages.Length == 0 ? null : messages;
         }
 
         IReadOnlyList<EditorViewportEvent> PullEditorViewportEvents(long generation, out long eventEpoch)
@@ -1545,53 +1435,43 @@ namespace SailorEditor.Services
                 return Array.Empty<EditorViewportEvent>();
             }
 
-            var eventPtrs = new nint[MaxEditorViewportEventsPerPoll];
+            IReadOnlyList<ViewportEvent> nativeEvents;
             var parsedEvents = new List<EditorViewportEvent>(MaxEditorViewportEventsPerPoll);
-            try
+            lock (interopLock)
             {
-                uint actualEventCount;
-                lock (interopLock)
+                if (!IsGenerationActive(generation))
                 {
-                    if (!IsGenerationActive(generation))
-                    {
-                        return Array.Empty<EditorViewportEvent>();
-                    }
-
-                    eventEpoch = editorViewportEventEpoch.Current;
-                    actualEventCount = EngineAppInterop.PullEditorViewportEvents(
-                        eventPtrs,
-                        (uint)eventPtrs.Length);
+                    return Array.Empty<EditorViewportEvent>();
                 }
 
-                var readableEventCount = (int)Math.Min(actualEventCount, (uint)eventPtrs.Length);
-                for (var i = 0; i < readableEventCount; ++i)
+                eventEpoch = editorViewportEventEpoch.Current;
+                try
                 {
-                    if (eventPtrs[i] == nint.Zero)
-                    {
-                        Console.WriteLine($"[EngineService] Native viewport event {i} returned a null payload.");
-                        continue;
-                    }
-
-                    var yaml = Marshal.PtrToStringUTF8(eventPtrs[i]) ?? string.Empty;
-                    if (EditorViewportEventContract.TryParse(yaml, out var viewportEvent, out var error) &&
-                        viewportEvent is not null)
-                    {
-                        parsedEvents.Add(viewportEvent);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[EngineService] Rejected native viewport event {i}: {error}");
-                    }
+                    nativeEvents = protocolClient.PullEditorViewportEvents(
+                        MaxEditorViewportEventsPerPoll);
+                }
+                catch (EngineProtocolException exception)
+                {
+                    Console.WriteLine(
+                        $"[EngineService] Failed to poll protocol viewport events: {exception.Message}");
+                    return Array.Empty<EditorViewportEvent>();
                 }
             }
-            finally
+
+            for (var i = 0; i < nativeEvents.Count; ++i)
             {
-                foreach (var eventPtr in eventPtrs)
+                if (EditorViewportEventContract.TryCreate(
+                        nativeEvents[i],
+                        out var viewportEvent,
+                        out var error) &&
+                    viewportEvent is not null)
                 {
-                    if (eventPtr != nint.Zero)
-                    {
-                        EngineAppInterop.FreeInteropString(eventPtr);
-                    }
+                    parsedEvents.Add(viewportEvent);
+                }
+                else
+                {
+                    Console.WriteLine(
+                        $"[EngineService] Rejected protocol viewport event {i}: {error}");
                 }
             }
 
@@ -1608,8 +1488,6 @@ namespace SailorEditor.Services
                 return string.Empty;
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
             lock (interopLock)
             {
                 if (!IsGenerationActive(generation, allowStarting))
@@ -1617,19 +1495,7 @@ namespace SailorEditor.Services
                     return string.Empty;
                 }
                 snapshotSequence = worldSnapshotPublication.ReserveSequence();
-                numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
-            }
-
-            if (numChars == 0)
-                return string.Empty;
-
-            try
-            {
-                return Marshal.PtrToStringAnsi(yamlNodeChar[0], (int)numChars) ?? string.Empty;
-            }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
+                return protocolClient.SerializeCurrentWorld();
             }
         }
 
@@ -1640,27 +1506,13 @@ namespace SailorEditor.Services
                 return string.Empty;
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
             lock (interopLock)
             {
                 if (!IsGenerationActive(generation, allowStarting))
                 {
                     return string.Empty;
                 }
-                numChars = EngineAppInterop.SerializeEditorTypes(yamlNodeChar);
-            }
-
-            if (numChars == 0)
-                return string.Empty;
-
-            try
-            {
-                return Marshal.PtrToStringAnsi(yamlNodeChar[0], (int)numChars) ?? string.Empty;
-            }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
+                return protocolClient.SerializeEditorTypes();
             }
         }
 
@@ -1676,8 +1528,7 @@ namespace SailorEditor.Services
                     -1);
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
+            string yaml;
             lock (interopLock)
             {
                 if (!IsGenerationActive(generation, allowStarting))
@@ -1686,24 +1537,14 @@ namespace SailorEditor.Services
                         "The engine generation changed before workspace cache identity could be read.",
                         -1);
                 }
-                numChars = EngineAppInterop.SerializeWorkspaceCacheIdentity(yamlNodeChar);
+                yaml = protocolClient.SerializeWorkspaceCacheIdentity();
             }
 
-            if (numChars == 0 || yamlNodeChar[0] == nint.Zero)
+            if (string.IsNullOrWhiteSpace(yaml))
             {
                 throw new EngineLifecycleException(
                     "SailorEngine did not provide a workspace cache identity.",
                     -1);
-            }
-
-            string yaml;
-            try
-            {
-                yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars) ?? string.Empty;
-            }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
             }
 
             EditorTypeCacheIdentity identity;
@@ -1800,13 +1641,13 @@ namespace SailorEditor.Services
         {
             var stringId = id.Value.ToString();
             return InvokeRunningInterop(
-                () => EngineAppInterop.UpdateObject(stringId, yamlChanges),
+                () => protocolClient.UpdateObject(stringId, yamlChanges),
                 invalidateQueuedWorldSnapshots: true);
         }
 
         public bool RequestAssetReload()
         {
-            return InvokeRunningInterop(EngineAppInterop.RequestAssetReload);
+            return InvokeRunningInterop(protocolClient.RequestAssetReload);
         }
 
         public async Task<bool> RequestAssetReloadAsync(CancellationToken cancellationToken = default)
@@ -1833,20 +1674,22 @@ namespace SailorEditor.Services
                 lock (interopLock)
                 {
                     if (!IsGenerationActive(generation) ||
-                        !EngineAppInterop.RequestAssetReload() ||
-                        !EngineAppInterop.GetAssetReloadState(
-                            out var requestedReloadGeneration,
-                            out var completedReloadGeneration,
-                            out var successfulReloadGeneration))
+                        !protocolClient.RequestAssetReload())
                     {
                         return false;
                     }
 
-                    var targetGeneration = checked((long)requestedReloadGeneration);
-                    Volatile.Write(ref targetReloadGeneration, targetGeneration);
-                    if (completedReloadGeneration >= (ulong)targetGeneration)
+                    var reloadState = protocolClient.GetAssetReloadState();
+                    if (!reloadState.Available)
                     {
-                        return successfulReloadGeneration == completedReloadGeneration;
+                        return false;
+                    }
+
+                    var targetGeneration = checked((long)reloadState.RequestGeneration);
+                    Volatile.Write(ref targetReloadGeneration, targetGeneration);
+                    if (reloadState.CompletedGeneration >= (ulong)targetGeneration)
+                    {
+                        return reloadState.SuccessfulGeneration == reloadState.CompletedGeneration;
                     }
                 }
 
@@ -1885,41 +1728,40 @@ namespace SailorEditor.Services
             }
         }
 
-        bool InvokeCreationInterop(Func<nint[], bool> interop, out InstanceId createdInstanceId)
+        bool InvokeCreationInterop(
+            Func<EngineProtocolCreationResult> interop,
+            out InstanceId createdInstanceId)
         {
             createdInstanceId = null;
-            nint[] instanceIdPtr = new nint[1];
-            try
+            var creationResult = default(EngineProtocolCreationResult);
+            if (!InvokeRunningInterop(() =>
+                {
+                    creationResult = interop();
+                    return creationResult.Succeeded;
+                }))
             {
-                if (!InvokeRunningInterop(() => interop(instanceIdPtr)) || instanceIdPtr[0] == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                var value = Marshal.PtrToStringAnsi(instanceIdPtr[0]);
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    return false;
-                }
-
-                createdInstanceId = new InstanceId(value);
-                RefreshCurrentWorld();
-                return true;
+                return false;
             }
-            finally
+
+            if (string.IsNullOrWhiteSpace(creationResult.InstanceId))
             {
-                if (instanceIdPtr[0] != IntPtr.Zero)
-                {
-                    EngineAppInterop.FreeInteropString(instanceIdPtr[0]);
-                }
+                return false;
             }
+
+            createdInstanceId = new InstanceId(creationResult.InstanceId);
+            RefreshCurrentWorld();
+            return true;
         }
 
         public bool ReparentObject(InstanceId instanceId, InstanceId parentId, bool keepWorldTransform = true)
         {
             var stringId = instanceId?.Value ?? string.Empty;
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.ReparentObject(stringId, stringParentId, keepWorldTransform));
+            bool result = InvokeRunningInterop(() =>
+                protocolClient.ReparentObject(
+                    stringId,
+                    stringParentId,
+                    keepWorldTransform));
 
             if (result)
             {
@@ -1937,14 +1779,16 @@ namespace SailorEditor.Services
             var stringParentId = parentId?.Value ?? string.Empty;
             var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
             return InvokeCreationInterop(
-                output => EngineAppInterop.CreateGameObject(stringParentId, stringPreferredInstanceId, output),
+                () => protocolClient.CreateGameObject(
+                    stringParentId,
+                    stringPreferredInstanceId),
                 out createdInstanceId);
         }
 
         public bool DestroyObject(InstanceId instanceId)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.DestroyObject(stringId));
+            bool result = InvokeRunningInterop(() => protocolClient.DestroyObject(stringId));
 
             if (result)
             {
@@ -1957,7 +1801,8 @@ namespace SailorEditor.Services
         public bool ResetComponentToDefaults(InstanceId instanceId)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.ResetComponentToDefaults(stringId));
+            bool result = InvokeRunningInterop(() =>
+                protocolClient.ResetComponentToDefaults(stringId));
 
             if (result)
             {
@@ -1979,18 +1824,17 @@ namespace SailorEditor.Services
             var stringId = instanceId?.Value ?? string.Empty;
             var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
             return InvokeCreationInterop(
-                output => EngineAppInterop.AddComponent(
+                () => protocolClient.AddComponent(
                     stringId,
                     componentTypeName ?? string.Empty,
-                    stringPreferredInstanceId,
-                    output),
+                    stringPreferredInstanceId),
                 out createdInstanceId);
         }
 
         public bool RemoveComponent(InstanceId instanceId)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.RemoveComponent(stringId));
+            bool result = InvokeRunningInterop(() => protocolClient.RemoveComponent(stringId));
 
             if (result)
             {
@@ -2004,7 +1848,8 @@ namespace SailorEditor.Services
         {
             var stringFileId = prefabId?.Value ?? string.Empty;
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefab(stringFileId, stringParentId));
+            bool result = InvokeRunningInterop(() =>
+                protocolClient.InstantiatePrefab(stringFileId, stringParentId));
 
             if (result)
             {
@@ -2022,7 +1867,8 @@ namespace SailorEditor.Services
             }
 
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefabFromYaml(prefabYaml, stringParentId));
+            bool result = InvokeRunningInterop(() =>
+                protocolClient.InstantiatePrefabFromYaml(prefabYaml, stringParentId));
 
             if (result)
             {
@@ -2037,7 +1883,7 @@ namespace SailorEditor.Services
             var stringFileId = worldId?.Value ?? string.Empty;
             bool result = InvokeRunningInterop(() =>
             {
-                if (!EngineAppInterop.LoadEditorWorld(stringFileId))
+                if (!protocolClient.LoadEditorWorld(stringFileId))
                 {
                     return false;
                 }
@@ -2058,7 +1904,7 @@ namespace SailorEditor.Services
         {
             bool result = InvokeRunningInterop(() =>
             {
-                if (!EngineAppInterop.CreateEditorWorld())
+                if (!protocolClient.CreateEditorWorld())
                 {
                     return false;
                 }
@@ -2083,24 +1929,27 @@ namespace SailorEditor.Services
 
         public bool UpdateEditorSelection(IEnumerable<InstanceId?> selection)
         {
-            var yaml = BuildEditorSelectionYaml(selection);
-
-            return InvokeRunningInterop(() => EngineAppInterop.SetEditorSelection(yaml));
+            var instanceIds = BuildEditorSelectionIds(selection);
+            return InvokeRunningInterop(() =>
+                protocolClient.SetEditorSelection(instanceIds));
         }
 
-        public static string BuildEditorSelectionYaml(IEnumerable<InstanceId?> selection)
-        {
-            var serializer = new SerializerBuilder().Build();
-            return serializer.Serialize(selection?
+        public static string[] BuildEditorSelectionIds(IEnumerable<InstanceId?> selection)
+            => selection?
                 .Where(id => id is not null && !id.IsEmpty())
                 .Select(id => id!.Value)
-                .ToArray() ?? Array.Empty<string>());
-        }
+                .ToArray() ?? Array.Empty<string>();
 
         public bool ExportPathTracedImage(string outputPath, InstanceId targetInstance = null, uint height = 720, uint samplesPerPixel = 64, uint maxBounces = 4)
         {
             string strInstanceId = targetInstance?.Value ?? string.Empty;
-            return InvokeRunningInterop(() => EngineAppInterop.RenderPathTracedImage(outputPath, strInstanceId, height, samplesPerPixel, maxBounces));
+            return InvokeRunningInterop(() =>
+                protocolClient.RenderPathTracedImage(
+                    outputPath,
+                    strInstanceId,
+                    height,
+                    samplesPerPixel,
+                    maxBounces));
         }
 
         public void RunWorld(string world, bool bDebug)

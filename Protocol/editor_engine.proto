@@ -1,0 +1,285 @@
+syntax = "proto3";
+
+package sailor.editor.v1;
+
+option csharp_namespace = "SailorEditor.Protocol.Generated";
+
+message Empty {
+}
+
+message ProtocolRequest {
+	uint32 protocol_version = 1;
+	uint64 request_id = 2;
+
+	oneof command {
+		InitializeRequest initialize = 10;
+		Empty start = 11;
+		Empty stop = 12;
+		Empty shutdown = 13;
+		Empty request_asset_reload = 14;
+		Empty get_asset_reload_state = 15;
+		Empty get_exit_code = 16;
+		CountRequest get_messages = 17;
+		Empty serialize_current_world = 18;
+		Empty serialize_editor_types = 19;
+		Empty serialize_workspace_cache_identity = 20;
+		FileIdRequest load_editor_world = 21;
+		Empty create_editor_world = 22;
+		ViewportRectRequest set_viewport = 23;
+		SizeRequest set_editor_render_target_size = 24;
+		RemoteViewportRequest upsert_remote_viewport = 25;
+		ViewportIdRequest destroy_remote_viewport = 26;
+		ViewportIdRequest get_remote_viewport_state = 27;
+		ViewportIdRequest get_remote_viewport_diagnostics = 28;
+		ViewportIdRequest retry_remote_viewport = 29;
+		RemoteViewportHostRequest set_remote_viewport_mac_host_handle = 30;
+		RemoteViewportInputRequest send_remote_viewport_input = 31;
+		CountRequest pull_editor_viewport_events = 32;
+		ManagedMutationRevisionRequest get_editor_managed_mutation_revision = 33;
+		UpdateObjectRequest update_object = 34;
+		ReparentObjectRequest reparent_object = 35;
+		CreateGameObjectRequest create_game_object = 36;
+		InstanceIdRequest destroy_object = 37;
+		InstanceIdRequest reset_component_to_defaults = 38;
+		AddComponentRequest add_component = 39;
+		InstanceIdRequest remove_component = 40;
+		InstantiatePrefabRequest instantiate_prefab = 41;
+		InstantiatePrefabFromYamlRequest instantiate_prefab_from_yaml = 42;
+		SelectionRequest set_editor_selection = 43;
+		ShowMainWindowRequest show_main_window = 44;
+		RenderPathTracedImageRequest render_path_traced_image = 45;
+		Empty serialize_engine_types = 46;
+	}
+
+	reserved 3 to 9;
+	reserved 47 to 99;
+}
+
+message ProtocolResponse {
+	uint32 protocol_version = 1;
+	uint64 request_id = 2;
+	bool success = 3;
+	string error = 4;
+
+	oneof result {
+		Empty empty_result = 10;
+		BoolResult bool_result = 11;
+		Int32Result int32_result = 12;
+		UInt32Result uint32_result = 13;
+		UInt64Result uint64_result = 14;
+		StringResult string_result = 15;
+		StringListResult string_list_result = 16;
+		AssetReloadStateResult asset_reload_state_result = 17;
+		InstanceIdResult instance_id_result = 18;
+		ViewportEventBatchResult viewport_event_batch_result = 19;
+	}
+
+	reserved 5 to 9;
+	reserved 20 to 99;
+}
+
+message InitializeRequest {
+	repeated string arguments = 1;
+}
+
+message CountRequest {
+	uint32 max_count = 1;
+}
+
+message FileIdRequest {
+	string file_id = 1;
+}
+
+message InstanceIdRequest {
+	string instance_id = 1;
+}
+
+message ViewportIdRequest {
+	uint64 viewport_id = 1;
+}
+
+message ViewportRectRequest {
+	uint32 window_pos_x = 1;
+	uint32 window_pos_y = 2;
+	uint32 width = 3;
+	uint32 height = 4;
+}
+
+message SizeRequest {
+	uint32 width = 1;
+	uint32 height = 2;
+}
+
+message RemoteViewportRequest {
+	uint64 viewport_id = 1;
+	uint32 window_pos_x = 2;
+	uint32 window_pos_y = 3;
+	uint32 width = 4;
+	uint32 height = 5;
+	bool visible = 6;
+	bool focused = 7;
+}
+
+message RemoteViewportHostRequest {
+	uint64 viewport_id = 1;
+	uint32 host_handle_kind = 2;
+	uint64 host_handle_value = 3;
+}
+
+message RemoteViewportInputRequest {
+	uint64 viewport_id = 1;
+	uint32 kind = 2;
+	float pointer_x = 3;
+	float pointer_y = 4;
+	float wheel_delta_x = 5;
+	float wheel_delta_y = 6;
+	uint32 key_code = 7;
+	uint32 button = 8;
+	uint32 modifiers = 9;
+	bool pressed = 10;
+	bool focused = 11;
+	bool captured = 12;
+}
+
+message ManagedMutationRevisionRequest {
+	uint32 kind = 1;
+	string instance_id = 2;
+}
+
+message UpdateObjectRequest {
+	string instance_id = 1;
+	string yaml_changes = 2;
+}
+
+message ReparentObjectRequest {
+	string instance_id = 1;
+	string parent_instance_id = 2;
+	bool keep_world_transform = 3;
+}
+
+message CreateGameObjectRequest {
+	string parent_instance_id = 1;
+	string preferred_instance_id = 2;
+}
+
+message AddComponentRequest {
+	string instance_id = 1;
+	string component_type_name = 2;
+	string preferred_instance_id = 3;
+}
+
+message InstantiatePrefabRequest {
+	string file_id = 1;
+	string parent_instance_id = 2;
+}
+
+message InstantiatePrefabFromYamlRequest {
+	string prefab_yaml = 1;
+	string parent_instance_id = 2;
+}
+
+message SelectionRequest {
+	repeated string instance_ids = 1;
+}
+
+message ShowMainWindowRequest {
+	bool show = 1;
+}
+
+message RenderPathTracedImageRequest {
+	string output_path = 1;
+	string instance_id = 2;
+	uint32 height = 3;
+	uint32 samples_per_pixel = 4;
+	uint32 max_bounces = 5;
+}
+
+message BoolResult {
+	bool value = 1;
+}
+
+message Int32Result {
+	int32 value = 1;
+}
+
+message UInt32Result {
+	uint32 value = 1;
+}
+
+message UInt64Result {
+	uint64 value = 1;
+}
+
+message StringResult {
+	bool has_value = 1;
+	string value = 2;
+}
+
+message StringListResult {
+	repeated string values = 1;
+}
+
+message AssetReloadStateResult {
+	bool available = 1;
+	uint64 request_generation = 2;
+	uint64 completed_generation = 3;
+	uint64 successful_generation = 4;
+}
+
+message InstanceIdResult {
+	bool succeeded = 1;
+	string instance_id = 2;
+}
+
+enum ViewportTransformOperation {
+	VIEWPORT_TRANSFORM_OPERATION_UNSPECIFIED = 0;
+	VIEWPORT_TRANSFORM_OPERATION_SELECT = 1;
+	VIEWPORT_TRANSFORM_OPERATION_TRANSLATE = 2;
+	VIEWPORT_TRANSFORM_OPERATION_ROTATE = 3;
+	VIEWPORT_TRANSFORM_OPERATION_SCALE = 4;
+}
+
+enum ViewportTransformSpace {
+	VIEWPORT_TRANSFORM_SPACE_UNSPECIFIED = 0;
+	VIEWPORT_TRANSFORM_SPACE_WORLD = 1;
+	VIEWPORT_TRANSFORM_SPACE_LOCAL = 2;
+}
+
+message Vector4 {
+	float x = 1;
+	float y = 2;
+	float z = 3;
+	float w = 4;
+}
+
+message ViewportSelectionEvent {
+	string selected_instance_id = 1;
+}
+
+message ViewportTransformEvent {
+	string instance_id = 1;
+	ViewportTransformOperation operation = 2;
+	ViewportTransformSpace space = 3;
+	Vector4 before_position = 4;
+	Vector4 before_rotation = 5;
+	Vector4 before_scale = 6;
+	Vector4 after_position = 7;
+	Vector4 after_rotation = 8;
+	Vector4 after_scale = 9;
+}
+
+message ViewportEvent {
+	uint64 revision = 1;
+	uint64 managed_mutation_revision = 2;
+
+	oneof payload {
+		ViewportSelectionEvent selection = 10;
+		ViewportTransformEvent transform = 11;
+	}
+
+	reserved 3 to 9;
+}
+
+message ViewportEventBatchResult {
+	repeated ViewportEvent events = 1;
+}

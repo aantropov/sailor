@@ -564,7 +564,9 @@ namespace
 		const std::string imGuiSource = ReadText(sourceRoot / "Runtime/Submodules/ImGuiApi.cpp");
 		const std::string macInputSource = ReadText(sourceRoot / "Editor/Platforms/MacCatalyst/NativeSceneViewportHandler.MacCatalyst.cs");
 		const std::string windowsExports = ReadText(sourceRoot / "Lib/DllMain.cpp");
-		const std::string portableExports = ReadText(sourceRoot / "Lib/InteropExports.cpp");
+		const std::string protocolExports = ReadText(sourceRoot / "Lib/EditorProtocolExports.cpp");
+		const std::string protocolDispatcherSource = ReadText(
+			sourceRoot / "Lib/EditorEngineProtocol.cpp");
 
 		const size_t drainBegin = bridgeSource.find("void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
 		const size_t resetBegin = bridgeSource.find("void Sailor::EditorRuntime::ResetForAppLifecycle()", drainBegin);
@@ -623,19 +625,53 @@ namespace
 			pullBody.find("SetInteropString(event") != std::string::npos,
 			"viewport events must be removed on the engine thread and returned as owned interop strings");
 
-		constexpr const char* exportSignature =
-			"SAILOR_API uint32_t PullEditorViewportEvents(char** events, uint32_t num)";
-		Require(windowsExports.find(exportSignature) != std::string::npos &&
-			portableExports.find(exportSignature) != std::string::npos,
-			"Windows and portable libraries must export the same viewport event ABI");
-		Require(windowsExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos &&
-			portableExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos,
-			"both libraries must expose the matching interop string release function");
-		constexpr const char* mutationRevisionExport =
-			"SAILOR_API uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)";
-		Require(windowsExports.find(mutationRevisionExport) != std::string::npos &&
-			portableExports.find(mutationRevisionExport) != std::string::npos,
-			"both libraries must expose the managed-mutation ordering fence");
+		const size_t protocolPullBegin = protocolDispatcherSource.find("void DispatchViewportEvents(");
+		const size_t protocolPullEnd = protocolDispatcherSource.find(
+			"void DispatchSerializeCurrentWorld(",
+			protocolPullBegin);
+		Require(protocolPullBegin != std::string::npos && protocolPullEnd > protocolPullBegin,
+			"the protobuf dispatcher must expose a bounded viewport event conversion path");
+		const std::string protocolPullBody =
+			protocolDispatcherSource.substr(protocolPullBegin, protocolPullEnd - protocolPullBegin);
+		const size_t invalidConversion = protocolPullBody.find(
+			"if (!TryConvertViewportEvent(events[i], event, error))");
+		const size_t skipInvalidEvent = protocolPullBody.find("continue;", invalidConversion);
+		const size_t appendValidEvent = protocolPullBody.find(
+			"result->add_events()->CopyFrom(event);",
+			skipInvalidEvent);
+		Require(
+			invalidConversion != std::string::npos &&
+			skipInvalidEvent > invalidConversion &&
+			appendValidEvent > skipInvalidEvent,
+			"malformed native viewport events must be skipped before valid events are appended");
+		Require(
+			protocolPullBody.substr(
+				invalidConversion,
+				appendValidEvent - invalidConversion).find("SetError(") == std::string::npos,
+			"one malformed viewport event must not reject the complete protobuf batch");
+
+		Require(
+			!std::filesystem::exists(sourceRoot / "Lib/InteropExports.cpp"),
+			"the duplicated portable editor export surface must be removed");
+		Require(
+			CountOccurrences(protocolExports, "SAILOR_API ") == 2 &&
+			protocolExports.find("SAILOR_API int32_t SailorProtocolInvoke(") != std::string::npos &&
+			protocolExports.find("SAILOR_API void SailorProtocolFreeBuffer(uint8_t* buffer)") != std::string::npos,
+			"the cross-platform editor boundary must expose exactly Invoke and FreeBuffer");
+		Require(
+			protocolExports.find("const uint8_t* requestData") != std::string::npos &&
+			protocolExports.find("uint32_t requestSize") != std::string::npos &&
+			protocolExports.find("uint8_t** responseData") != std::string::npos &&
+			protocolExports.find("uint32_t* responseSize") != std::string::npos,
+			"the protocol transport must use a fixed-width opaque byte-buffer ABI");
+		Require(
+			windowsExports.find("SAILOR_API void Initialize(") == std::string::npos &&
+			windowsExports.find("SAILOR_API uint32_t PullEditorViewportEvents(") == std::string::npos &&
+			windowsExports.find("SAILOR_API void FreeInteropString(") == std::string::npos,
+			"Windows DllMain must not retain the legacy editor ABI");
+		Require(
+			CountOccurrences(windowsExports, "SAILOR_API void Run") == 4,
+			"Windows DllMain must retain only the four benchmark exports");
 
 		const size_t setSelectionBegin = editorInteropSource.find("bool App::SetEditorSelection(const char* strSelectionYaml)");
 		const size_t setSelectionEnd = editorInteropSource.find("bool App::RenderPathTracedImage", setSelectionBegin);

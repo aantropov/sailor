@@ -49,6 +49,16 @@ if(NOT nlohmann_json_FOUND)
 	sailor_create_stub_target(nlohmann_json::nlohmann_json)
 endif()
 
+find_package(Protobuf CONFIG QUIET)
+if(Protobuf_FOUND)
+	if(NOT TARGET protobuf::libprotobuf OR NOT TARGET protobuf::protoc)
+		message(FATAL_ERROR "The protobuf package must provide protobuf::libprotobuf and protobuf::protoc targets.")
+	endif()
+else()
+	list(APPEND SAILOR_MISSING_DEPS "protobuf")
+	sailor_create_stub_target(protobuf::libprotobuf)
+endif()
+
 find_package(magic_enum CONFIG QUIET)
 if(NOT magic_enum_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "magic_enum")
@@ -105,6 +115,59 @@ file(GLOB_RECURSE SAILOR_LIB_SOURCES
   "*.h"
   "*.cpp")
 
+set(SAILOR_PROTOCOL_DIR "${PROJECT_SOURCE_DIR}/Protocol")
+set(SAILOR_PROTOCOL_GENERATED_CPP_DIR "${SAILOR_RUNTIME_DIR}Protocol/Generated")
+set(SAILOR_PROTOCOL_VERIFICATION_CPP_DIR
+	"${CMAKE_CURRENT_BINARY_DIR}/ProtocolGenerated/$<CONFIG>/Cxx")
+file(GLOB SAILOR_PROTOCOL_FILES CONFIGURE_DEPENDS
+	"${SAILOR_PROTOCOL_DIR}/*.proto")
+
+set(SAILOR_PROTOCOL_GENERATED_CPP_SOURCES "")
+set(SAILOR_PROTOCOL_GENERATED_CPP_HEADERS "")
+set(SAILOR_PROTOCOL_GENERATED_CPP_VERIFY_COMMANDS "")
+foreach(SAILOR_PROTOCOL_FILE IN LISTS SAILOR_PROTOCOL_FILES)
+	get_filename_component(SAILOR_PROTOCOL_NAME "${SAILOR_PROTOCOL_FILE}" NAME_WE)
+
+	list(APPEND SAILOR_PROTOCOL_GENERATED_CPP_SOURCES
+		"${SAILOR_PROTOCOL_GENERATED_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.cc")
+	list(APPEND SAILOR_PROTOCOL_GENERATED_CPP_HEADERS
+		"${SAILOR_PROTOCOL_GENERATED_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.h")
+	list(APPEND SAILOR_PROTOCOL_GENERATED_CPP_VERIFY_COMMANDS
+		COMMAND ${CMAKE_COMMAND} -E echo
+			"Comparing checked-in C++ protocol sources for ${SAILOR_PROTOCOL_NAME}.proto"
+		COMMAND ${CMAKE_COMMAND} -E compare_files
+			"${SAILOR_PROTOCOL_VERIFICATION_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.cc"
+			"${SAILOR_PROTOCOL_GENERATED_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.cc"
+		COMMAND ${CMAKE_COMMAND} -E compare_files
+			"${SAILOR_PROTOCOL_VERIFICATION_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.h"
+			"${SAILOR_PROTOCOL_GENERATED_CPP_DIR}/${SAILOR_PROTOCOL_NAME}.pb.h")
+endforeach()
+
+if(Protobuf_FOUND AND SAILOR_PROTOCOL_FILES)
+	add_custom_target(SailorProtocolGeneratedSourcesCheck
+		COMMAND ${CMAKE_COMMAND} -E rm -rf
+			"${SAILOR_PROTOCOL_VERIFICATION_CPP_DIR}"
+		COMMAND ${CMAKE_COMMAND} -E make_directory
+			"${SAILOR_PROTOCOL_VERIFICATION_CPP_DIR}"
+		COMMAND $<TARGET_FILE:protobuf::protoc>
+			"--proto_path=${SAILOR_PROTOCOL_DIR}"
+			"--cpp_out=${SAILOR_PROTOCOL_VERIFICATION_CPP_DIR}"
+			${SAILOR_PROTOCOL_FILES}
+		${SAILOR_PROTOCOL_GENERATED_CPP_VERIFY_COMMANDS}
+		DEPENDS
+			${SAILOR_PROTOCOL_FILES}
+			protobuf::protoc
+		COMMENT "Verifying checked-in C++ protocol sources"
+		VERBATIM)
+	set_property(TARGET SailorProtocolGeneratedSourcesCheck
+		PROPERTY FOLDER "Libraries")
+endif()
+
+list(APPEND SAILOR_RUNTIME_SOURCES
+	${SAILOR_PROTOCOL_GENERATED_CPP_SOURCES}
+	${SAILOR_PROTOCOL_GENERATED_CPP_HEADERS})
+list(REMOVE_DUPLICATES SAILOR_RUNTIME_SOURCES)
+
 if(APPLE)
 	list(REMOVE_ITEM SAILOR_RUNTIME_SOURCES
 		"${SAILOR_RUNTIME_DIR}/Platform/Win32/Window.cpp"
@@ -128,6 +191,9 @@ add_library(SailorLib SHARED ${SAILOR_RUNTIME_SOURCES} ${SAILOR_LIB_SOURCES})
 add_library(Sailor::Runtime ALIAS SailorLib)
 set_property(TARGET SailorLib PROPERTY FOLDER "Libraries")
 set_property(TARGET SailorLib PROPERTY EXPORT_NAME Runtime)
+if(TARGET SailorProtocolGeneratedSourcesCheck)
+	add_dependencies(SailorLib SailorProtocolGeneratedSourcesCheck)
+endif()
 
 # Dependencies
 target_link_libraries(SailorLib PUBLIC
@@ -141,6 +207,7 @@ target_link_libraries(SailorLib PUBLIC
 )
 target_link_libraries(SailorLib PRIVATE
   imguizmo::imguizmo
+  protobuf::libprotobuf
   ${CMAKE_DL_LIBS}
 )
 
@@ -173,7 +240,9 @@ target_include_directories(SailorLib PUBLIC
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/Sailor/Runtime>
 	$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/Sailor/External>
 )
-target_include_directories(SailorLib PRIVATE ${TINYGLTF_INCLUDE_DIRS})
+target_include_directories(SailorLib PRIVATE
+	${CMAKE_CURRENT_SOURCE_DIR}
+	${TINYGLTF_INCLUDE_DIRS})
 
 # Definitions
 target_compile_features(SailorLib PUBLIC cxx_std_20)
@@ -347,6 +416,7 @@ install(TARGETS SailorLib
 install(DIRECTORY "${SAILOR_RUNTIME_DIR}/"
 	DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/Sailor/Runtime"
 	FILES_MATCHING
+	PATTERN "Protocol/Generated" EXCLUDE
 	PATTERN "*.h"
 	PATTERN "*.hpp")
 

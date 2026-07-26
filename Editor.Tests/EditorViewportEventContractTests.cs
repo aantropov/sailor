@@ -1,4 +1,5 @@
 using SailorEditor.Scene;
+using SailorEditor.Protocol.Generated;
 
 namespace Editor.Tests;
 
@@ -51,6 +52,79 @@ public sealed class EditorViewportEventContractTests
         Assert.Equal(new EditorViewportVector4(0, 0, 0, 1), transform.BeforePosition);
         Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
         Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), transform.AfterScale);
+    }
+
+    [Fact]
+    public void TypedTransformEvent_MapsGeneratedProtocolPayload()
+    {
+        var source = new ViewportEvent
+        {
+            Revision = 21,
+            ManagedMutationRevision = 8,
+            Transform = new ViewportTransformEvent
+            {
+                InstanceId = "go-42",
+                Operation = ViewportTransformOperation.Rotate,
+                Space = ViewportTransformSpace.Local,
+                BeforePosition = new Vector4 { W = 1 },
+                BeforeRotation = new Vector4 { W = 1 },
+                BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
+                AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
+                AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
+                AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
+            }
+        };
+
+        Assert.True(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var viewportEvent,
+                out var error),
+            error);
+        var transform = Assert.IsType<EditorViewportTransformEvent>(viewportEvent);
+        Assert.Equal(21UL, transform.Revision);
+        Assert.Equal(8UL, transform.ManagedMutationRevision);
+        Assert.Equal(EditorViewportTransformOperation.Rotate, transform.Operation);
+        Assert.Equal(EditorViewportTransformSpace.Local, transform.Space);
+        Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
+    }
+
+    [Fact]
+    public void TypedTransformEvent_RejectsUnspecifiedEnumsAndNonFiniteVectors()
+    {
+        var source = new ViewportEvent
+        {
+            Transform = new ViewportTransformEvent
+            {
+                InstanceId = "go-42",
+                Operation = ViewportTransformOperation.Unspecified,
+                Space = ViewportTransformSpace.World
+            }
+        };
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var unsupported,
+                out var unsupportedError));
+        Assert.Null(unsupported);
+        Assert.Contains("unsupported", unsupportedError, StringComparison.OrdinalIgnoreCase);
+
+        source.Transform.Operation = ViewportTransformOperation.Translate;
+        source.Transform.BeforePosition = new Vector4 { X = float.PositiveInfinity };
+        source.Transform.BeforeRotation = new Vector4();
+        source.Transform.BeforeScale = new Vector4();
+        source.Transform.AfterPosition = new Vector4();
+        source.Transform.AfterRotation = new Vector4();
+        source.Transform.AfterScale = new Vector4();
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var nonFinite,
+                out var nonFiniteError));
+        Assert.Null(nonFinite);
+        Assert.Contains("non-finite", nonFiniteError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -110,8 +184,10 @@ public sealed class EditorViewportEventContractTests
             transformApply,
             "IsEditorViewportTransformEventCurrent(");
         Assert.Contains("viewportEvent.InstanceId", transformApply, StringComparison.Ordinal);
-        Assert.Contains("GetEditorManagedMutationRevision(uint kind, string strInstanceId)", engineSource, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.GetEditorManagedMutationRevision((uint)kind, instanceId)", engineSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.GetEditorManagedMutationRevision((uint)kind, instanceId)",
+            engineSource,
+            StringComparison.Ordinal);
         Assert.Contains("Selection = 1", engineSource, StringComparison.Ordinal);
         Assert.Contains("ObjectTransform = 2", engineSource, StringComparison.Ordinal);
 
@@ -247,16 +323,22 @@ public sealed class EditorViewportEventContractTests
     }
 
     [Fact]
-    public void EnginePolling_UsesUtf8OwnershipAndDocumentEpochGuards()
+    public void EnginePolling_UsesTypedProtocolEventsAndDocumentEpochGuards()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var pull = Slice(source, "IReadOnlyList<EditorViewportEvent> PullEditorViewportEvents", "string SerializeWorld");
-        Assert.Contains("Marshal.PtrToStringUTF8", pull, StringComparison.Ordinal);
-        Assert.Contains("finally", pull, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.FreeInteropString(eventPtr)", pull, StringComparison.Ordinal);
+        Assert.Contains("protocolClient.PullEditorViewportEvents(", pull, StringComparison.Ordinal);
+        Assert.Contains("EditorViewportEventContract.TryCreate(", pull, StringComparison.Ordinal);
+        Assert.DoesNotContain("Marshal.", pull, StringComparison.Ordinal);
         Assert.Contains("eventEpoch = editorViewportEventEpoch.Current", pull, StringComparison.Ordinal);
         Assert.Contains("editorViewportEventEpoch.IsCurrent(eventEpoch)", pull, StringComparison.Ordinal);
+        AssertInOrder(
+            pull,
+            "protocolClient.PullEditorViewportEvents(",
+            "catch (EngineProtocolException exception)",
+            "[EngineService] Failed to poll protocol viewport events:",
+            "return Array.Empty<EditorViewportEvent>();");
 
         var publish = Slice(source, "void PublishEditorViewportEvents", "bool InvokeRunningInterop");
         Assert.Contains("IsGenerationActive(generation)", publish, StringComparison.Ordinal);

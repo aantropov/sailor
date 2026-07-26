@@ -23,7 +23,7 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public void ResetForWorkspaceChange()", source, StringComparison.Ordinal);
         Assert.Contains("await session.NativeRunTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("await Task.WhenAll(session.PollTasks).ConfigureAwait(false)", source, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.Shutdown()", source, StringComparison.Ordinal);
+        Assert.Contains("protocolClient.Shutdown()", source, StringComparison.Ordinal);
         Assert.Contains("BuildInteropArgumentsAsync", source, StringComparison.Ordinal);
         Assert.Contains("MainThread.InvokeOnMainThreadAsync", source, StringComparison.Ordinal);
     }
@@ -34,7 +34,7 @@ public sealed class EngineLifecycleTests
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var start = source.IndexOf("public async Task StartAsync(", StringComparison.Ordinal);
-        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length);", start, StringComparison.Ordinal);
+        var initialize = source.IndexOf("protocolClient.Initialize(args);", start, StringComparison.Ordinal);
         var initializeDispatch = source.LastIndexOf("await MainThread.InvokeOnMainThreadAsync", initialize, StringComparison.Ordinal);
         var initializeLock = source.LastIndexOf("lock (interopLock)", initialize, StringComparison.Ordinal);
         Assert.True(start >= 0);
@@ -57,7 +57,7 @@ public sealed class EngineLifecycleTests
         var shutdownDispatchCall = source.IndexOf("ShutdownNativeSessionUnderLock", shutdownDispatch, StringComparison.Ordinal);
         var lockedHelper = source.IndexOf("Exception? ShutdownNativeSessionUnderLock", shutdownDispatchCall, StringComparison.Ordinal);
         var shutdownLock = source.IndexOf("lock (interopLock)", lockedHelper, StringComparison.Ordinal);
-        var nativeShutdown = source.IndexOf("EngineAppInterop.Shutdown();", shutdownLock, StringComparison.Ordinal);
+        var nativeShutdown = source.IndexOf("protocolClient.Shutdown();", shutdownLock, StringComparison.Ordinal);
         Assert.True(dispatchHelper >= 0);
         Assert.True(shutdownDispatch > dispatchHelper);
         Assert.True(shutdownDispatchCall > shutdownDispatch);
@@ -78,7 +78,7 @@ public sealed class EngineLifecycleTests
         var generation = source.IndexOf("Volatile.Read(ref engineGeneration)", bind, StringComparison.Ordinal);
         var runningGuard = source.IndexOf("if (!IsInteropRunningUnderLock())", generation, StringComparison.Ordinal);
         var removeWhileStopped = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", runningGuard, StringComparison.Ordinal);
-        var nativeBind = source.IndexOf("EngineAppInterop.SetRemoteViewportMacHostHandle", removeWhileStopped, StringComparison.Ordinal);
+        var nativeBind = source.IndexOf("protocolClient.SetRemoteViewportMacHostHandle", removeWhileStopped, StringComparison.Ordinal);
         var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);", nativeBind, StringComparison.Ordinal);
         Assert.True(bind >= 0);
         Assert.True(generation > bind);
@@ -259,31 +259,55 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void NativeExitCode_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void NativeExitCode_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var exportSource = ReadRepositoryFile("Lib", "EditorProtocolExports.cpp");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern int GetExitCode()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API int32_t GetExitCode()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::GetExitCode();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API int32_t GetExitCode()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::GetExitCode();", unixSource, StringComparison.Ordinal);
+        Assert.Contains("return protocolClient.GetExitCode();", managedSource, StringComparison.Ordinal);
+        Assert.Contains("public int GetExitCode()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("GetExitCode = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API int32_t SailorProtocolInvoke(", exportSource, StringComparison.Ordinal);
+        Assert.Contains("SAILOR_API void SailorProtocolFreeBuffer(", exportSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kGetExitCode:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::GetExitCode()", dispatcherSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void CreateEditorWorld_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void EngineTypeSerialization_IsRoutedThroughTheSharedProtocolAbi()
+    {
+        var schemaSource = ReadRepositoryFile("Protocol", "editor_engine.proto");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var exportSource = ReadRepositoryFile("Lib", "EditorProtocolExports.cpp");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
+        var workspaceDocumentation = ReadRepositoryFile("Docs", "WorkspaceLogic.md");
+
+        Assert.Contains("Empty serialize_engine_types = 46;", schemaSource, StringComparison.Ordinal);
+        Assert.Contains("public string SerializeEngineTypes()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("SerializeEngineTypes = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kSerializeEngineTypes:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::SerializeEngineTypes(value.GetOutput())", dispatcherSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("SerializeEngineTypes", exportSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "Both commands use the shared `SailorProtocolInvoke`/`SailorProtocolFreeBuffer` transport",
+            workspaceDocumentation,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateEditorWorld_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern bool CreateEditorWorld()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool CreateEditorWorld()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::CreateEditorWorld();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool CreateEditorWorld()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::CreateEditorWorld();", unixSource, StringComparison.Ordinal);
+        Assert.Contains("protocolClient.CreateEditorWorld()", managedSource, StringComparison.Ordinal);
+        Assert.Contains("public bool CreateEditorWorld()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("CreateEditorWorld = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kCreateEditorWorld:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::CreateEditorWorld()", dispatcherSource, StringComparison.Ordinal);
     }
 
     static void AssertMauiXamlGenerator(string project, string xamlPath)
@@ -305,17 +329,32 @@ public sealed class EngineLifecycleTests
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
         var macMenuSource = ReadRepositoryFile("Editor", "Platforms", "MacCatalyst", "AppDelegate.cs");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+        var protocolClientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var protocolDispatcherSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
         var schedulerHeader = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.h");
         var schedulerSource = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.cpp");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
 
-        Assert.Contains("extern bool RequestAssetReload()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("InvokeRunningInterop(EngineAppInterop.RequestAssetReload)", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool RequestAssetReload()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::RequestAssetReload();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool RequestAssetReload()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::RequestAssetReload();", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "InvokeRunningInterop(protocolClient.RequestAssetReload)",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestAssetReload = new Empty()",
+            protocolClientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kRequestAssetReload:",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SetBoolResult(response, Sailor::App::RequestAssetReload());",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
 
         var reloadBody = nativeSource.IndexOf("bool ReloadAssetsOnEngineMainThread()", StringComparison.Ordinal);
         Assert.True(reloadBody >= 0);
@@ -403,15 +442,32 @@ public sealed class EngineLifecycleTests
         var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
         var registryHeader = ReadRepositoryFile("Runtime", "AssetRegistry", "AssetRegistry.h");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var protocolClientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var protocolDispatcherSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern bool GetAssetReloadState(out ulong requestGeneration, out ulong completedGeneration, out ulong successfulGeneration)", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool GetAssetReloadState(", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool GetAssetReloadState(", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "var state = protocolClient.GetAssetReloadState();",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public EngineProtocolAssetReloadState GetAssetReloadState()",
+            protocolClientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kGetAssetReloadState:",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
         Assert.Contains("public event Action<AssetReloadCompletion> OnAssetReloadCompleted", managedSource, StringComparison.Ordinal);
         Assert.Contains("PublishAssetReloadCompletion(", managedSource, StringComparison.Ordinal);
-        Assert.Contains("successfulReloadGeneration == completedReloadGeneration", managedSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "reloadState.SuccessfulGeneration == reloadState.CompletedGeneration",
+            managedSource,
+            StringComparison.Ordinal);
 
         Assert.Contains("SAILOR_API bool ScanContentFolder();", registryHeader, StringComparison.Ordinal);
         Assert.Contains("m_assetReloadCompletedGeneration", nativeSource, StringComparison.Ordinal);
@@ -484,52 +540,85 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void WorkspaceCacheIdentity_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void WorkspaceCacheIdentity_IsReturnedByTheTypedProtocolClient()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern uint SerializeWorkspaceCacheIdentity", managedSource, StringComparison.Ordinal);
         Assert.Contains(
-            "yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars)",
+            "yaml = protocolClient.SerializeWorkspaceCacheIdentity();",
             managedSource,
             StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "SerializeWorkspaceCacheIdentity = new Empty()",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kSerializeWorkspaceCacheIdentity:",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DispatchSerializeWorkspaceCacheIdentity(response);",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Marshal.PtrToString", managedSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ManagedInitialization_MarshalsEveryCommandLineTokenAsUtf8AndAlwaysFreesIt()
+    public void ManagedInitialization_UsesTypedRepeatedUtf8ProtocolArguments()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var nativeInteropSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolNative.cs");
+        var clientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
 
         Assert.Contains(
-            "EntryPoint = \"Initialize\", ExactSpelling = true",
+            "protocolClient.Initialize(args);",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "static extern void InitializeNative([In] nint[] commandLineArgs, int num)",
-            managedSource,
+            "initialize.Arguments.Add(ValidateString(argument, nameof(arguments)));",
+            clientSource,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "extern void Initialize(string[] commandLineArgs",
-            managedSource,
+        Assert.Contains(
+            "normalizedValue.Contains('\\0', StringComparison.Ordinal)",
+            clientSource,
             StringComparison.Ordinal);
-
-        var allocation = managedSource.IndexOf(
-            "Utf8InteropArguments.Allocate(commandLineArgs, num)",
+        Assert.Contains(
+            "Initialize = initialize",
+            clientSource,
             StringComparison.Ordinal);
-        var invocation = managedSource.IndexOf("InitializeNative(nativeArguments, num)", allocation, StringComparison.Ordinal);
-        var finallyBlock = managedSource.IndexOf("finally", invocation, StringComparison.Ordinal);
-        var cleanup = managedSource.IndexOf("Utf8InteropArguments.Free(nativeArguments)", finallyBlock, StringComparison.Ordinal);
-        Assert.True(allocation >= 0);
-        Assert.True(invocation > allocation);
-        Assert.True(finallyBlock > invocation);
-        Assert.True(cleanup > finallyBlock);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolInvoke\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolFreeBuffer\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            2,
+            nativeInteropSource.Split("[DllImport(", StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "const int numArguments = request.arguments_size();",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "arguments[i] = request.arguments(i).c_str();",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);",
+            dispatcherSource,
+            StringComparison.Ordinal);
 
         Assert.Contains(
             "return Workspace::PathFromUtf8(params.m_workspace);",
@@ -546,7 +635,7 @@ public sealed class EngineLifecycleTests
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length)", StringComparison.Ordinal);
+        var initialize = source.IndexOf("protocolClient.Initialize(args)", StringComparison.Ordinal);
         var identity = source.IndexOf("ReadWorkspaceCacheIdentity(", initialize, StringComparison.Ordinal);
         var cacheLoad = source.IndexOf("editorTypeCacheStore.Load(", identity, StringComparison.Ordinal);
         var cachedValidation = source.IndexOf("TryParseEditorTypes(", cacheLoad, StringComparison.Ordinal);
@@ -596,7 +685,7 @@ public sealed class EngineLifecycleTests
             mainThreadDispatch,
             StringComparison.Ordinal);
         var nativeStart = source.IndexOf(
-            "Task.Run(EngineAppInterop.Start, CancellationToken.None)",
+            "Task.Run(protocolClient.Start, CancellationToken.None)",
             worldSerialization,
             StringComparison.Ordinal);
 

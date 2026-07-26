@@ -18,6 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Editor\Protocol\SailorEditor.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="CommandContractsTests.cs" />
     <Compile Include="HistoryContractsTests.cs" />
@@ -70,7 +74,10 @@
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="LatestSceneViewportStateTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
-    <Compile Include="Utf8InteropArgumentsTests.cs" />
+    <Compile Include="EditorEngineProtocolTests.cs" />
+    <Compile Include="EngineProtocolClientTests.cs" />
+    <Compile Include="..\Editor\Protocol\EngineProtocolClient.cs" Link="Protocol\EngineProtocolClient.cs" />
+    <Compile Include="..\Editor\Protocol\EngineProtocolNative.cs" Link="Protocol\EngineProtocolNative.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
@@ -126,7 +133,6 @@
     <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
     <Compile Include="..\Editor\Services\LatestSceneViewportState.cs" Link="Services\LatestSceneViewportState.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
-    <Compile Include="..\Editor\Services\Utf8InteropArguments.cs" Link="Services\Utf8InteropArguments.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
   </ItemGroup>
 </Project>
