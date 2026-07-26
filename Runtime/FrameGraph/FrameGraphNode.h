@@ -34,7 +34,7 @@ namespace Sailor::Framegraph
 
 	protected:
 
-		class SAILOR_API RegistrationFactoryMethod
+		class SAILOR_SHARED_API RegistrationFactoryMethod
 		{
 		public:
 
@@ -55,7 +55,7 @@ namespace Sailor::Framegraph
 			static bool s_bRegistered;
 		};
 
-		static RegistrationFactoryMethod s_registrationFactoryMethod;
+		SAILOR_SHARED_API static RegistrationFactoryMethod s_registrationFactoryMethod;
 	};
 
 
@@ -77,8 +77,12 @@ namespace Sailor::Framegraph
 	
 	protected:
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
+#ifndef _SAILOR_IMPORT_
 	template class TFrameGraphNode<RHINodeDefault>;
+#else
+	extern template class TFrameGraphNode<RHINodeDefault>;
+#endif
 };

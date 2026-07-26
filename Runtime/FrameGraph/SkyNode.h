@@ -107,7 +107,7 @@ namespace Sailor::Framegraph
 
 	protected:
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 
 		struct PushConstants
 		{
@@ -178,5 +178,9 @@ namespace Sailor::Framegraph
 		bool m_bIsDirty = true;
 	};
 
+#ifndef _SAILOR_IMPORT_
 	template class TFrameGraphNode<SkyNode>;
+#else
+	extern template class TFrameGraphNode<SkyNode>;
+#endif
 };

@@ -88,6 +88,11 @@ GlobalInput::GlobalInput()
 	memset(&m_rawState, 0, sizeof(InputState));
 }
 
+const InputState& GlobalInput::GetInputState()
+{
+	return m_rawState;
+}
+
 void GlobalInput::SetCursorPos(int32_t x, int32_t y)
 {
 #if defined(_WIN32)

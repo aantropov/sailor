@@ -134,7 +134,7 @@ namespace Sailor::Math
 		glm::vec3 m_max = -vec3(10e30f);
 
 		AABB() = default;
-		AABB(glm::vec3 center, glm::vec3 extents);
+		SAILOR_SHARED_API AABB(glm::vec3 center, glm::vec3 extents);
 
 		template<typename TContainer>
 		SAILOR_API __forceinline void GetPoints(TContainer& outPoints) const

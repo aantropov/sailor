@@ -13,7 +13,7 @@ namespace Sailor
 
 	public:
 		SAILOR_API virtual ~FrameGraphAssetInfo() = default;
-		IAssetInfoHandler* GetHandler() override;
+		SAILOR_SHARED_API IAssetInfoHandler* GetHandler() override;
 
 	private:
 	};
