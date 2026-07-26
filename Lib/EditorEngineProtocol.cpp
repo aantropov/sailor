@@ -13,6 +13,10 @@
 #include <new>
 #include <string>
 
+#if defined(GetMessage)
+#undef GetMessage
+#endif
+
 namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
