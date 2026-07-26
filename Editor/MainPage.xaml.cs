@@ -64,9 +64,12 @@ public partial class MainPage : ContentPage
     void UpdateStatusText()
     {
         var projection = _workspaceUi.Projection;
-        var workspaceStatus = projection.HasActiveWorkspace
-            ? $"{_shellHost.StatusText} • Workspace: {projection.ActiveWorkspaceName} - {projection.ActiveWorkspacePath}"
-            : _shellHost.StatusText;
+        var projectName = projection.Mode == EditorProjectMode.Workspace
+            ? $"{projection.ModeLabel}: {projection.ActiveWorkspaceName}"
+            : projection.ModeLabel;
+        var workspaceStatus = string.IsNullOrWhiteSpace(projection.ActiveRootPath)
+            ? $"{_shellHost.StatusText} • {projectName}"
+            : $"{_shellHost.StatusText} • {projectName} • Root: {projection.ActiveRootPath}";
         var statusText = projection.RequiresRepair
             ? $"{workspaceStatus} • Repair required: {projection.ActivationError}"
             : projection.IsActivationInProgress
@@ -89,10 +92,5 @@ public partial class MainPage : ContentPage
     }
 
     static string BuildWindowTitle(WorkspaceUiProjection projection)
-    {
-        var title = projection.HasActiveWorkspace
-            ? projection.ActiveWorkspaceName
-            : "New Workspace";
-        return projection.RequiresRepair ? $"{title} - Repair required" : title;
-    }
+        => projection.WindowTitle;
 }

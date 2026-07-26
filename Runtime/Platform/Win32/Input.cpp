@@ -88,6 +88,11 @@ GlobalInput::GlobalInput()
 	memset(&m_rawState, 0, sizeof(InputState));
 }
 
+const InputState& GlobalInput::GetInputState()
+{
+	return m_rawState;
+}
+
 void GlobalInput::SetCursorPos(int32_t x, int32_t y)
 {
 #if defined(_WIN32)
@@ -129,4 +134,9 @@ void GlobalInput::SetCursorPosition(int32_t x, int32_t y)
 {
 	m_rawState.m_cursorPosition[0] = x;
 	m_rawState.m_cursorPosition[1] = y;
+}
+
+void GlobalInput::Reset()
+{
+	m_rawState = {};
 }

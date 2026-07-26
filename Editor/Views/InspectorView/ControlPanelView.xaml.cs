@@ -1,5 +1,6 @@
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Controls.Xaml;
+using SailorEditor.Services;
 using SailorEditor.ViewModels;
 using System;
 
@@ -25,6 +26,12 @@ public partial class ControlPanelView : ContentView
         {
             await Task.Yield();
             await assetFile.Save();
+            var engineService = MauiProgram.GetService<EngineService>();
+            if (!await engineService.RequestAssetReloadAsync())
+            {
+                engineService.PushConsoleMessage(
+                    $"Asset was saved, but native reload did not commit: {assetFile.AssetInfo.FullName}");
+            }
         }
     }
 

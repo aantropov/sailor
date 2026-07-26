@@ -37,6 +37,12 @@ if(NOT imgui_FOUND)
 	sailor_create_stub_target(imgui::imgui)
 endif()
 
+find_package(imguizmo CONFIG QUIET)
+if(NOT imguizmo_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "imguizmo")
+	sailor_create_stub_target(imguizmo::imguizmo)
+endif()
+
 find_package(nlohmann_json CONFIG QUIET)
 if(NOT nlohmann_json_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "nlohmann_json")
@@ -133,7 +139,10 @@ target_link_libraries(SailorLib PUBLIC
   TBB::tbb
   unofficial::spirv-reflect
 )
-target_link_libraries(SailorLib PRIVATE ${CMAKE_DL_LIBS})
+target_link_libraries(SailorLib PRIVATE
+  imguizmo::imguizmo
+  ${CMAKE_DL_LIBS}
+)
 
 find_path(REFL_CPP_INCLUDE_DIRS "refl.hpp")
 find_path(TINYGLTF_INCLUDE_DIRS "tiny_gltf.h")

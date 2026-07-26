@@ -19,7 +19,7 @@ namespace SailorEditor
             _shellHost = MauiProgram.GetService<EditorShellHost>();
             _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
             InitializeComponent();
-            Title = "New Workspace";
+            Title = "Engine Mode";
             _workspaceUi.ProjectionChanged += OnWorkspaceProjectionChanged;
             UpdateWindowTitle();
             BuildMenus();
@@ -48,6 +48,8 @@ namespace SailorEditor
             file.Add(CreateWorkspaceMenuItem("Open Workspace...", () => _workspaceUi.OpenWorkspaceAsync()));
             file.Add(CreateWorkspaceMenuItem("Save Workspace", () => _workspaceUi.SaveWorkspaceAsync()));
             file.Add(BuildRecentWorkspacesMenu());
+            file.Add(new MenuFlyoutSeparator());
+            file.Add(CreateWorkspaceMenuItem("New Scene", () => MauiProgram.GetService<EditorToolbarActions>().NewSceneAsync()));
             file.Add(new MenuFlyoutSeparator());
 #endif
             file.Add(new MenuFlyoutItem { Text = "Undo", Command = new Command(async () => await history.UndoAsync(new CommandOrigin(CommandOriginKind.Menu, "Undo"))) });
@@ -135,11 +137,6 @@ namespace SailorEditor
         }
 
         static string BuildWindowTitle(WorkspaceUiProjection projection)
-        {
-            var title = projection.HasActiveWorkspace
-                ? projection.ActiveWorkspaceName
-                : "New Workspace";
-            return projection.RequiresRepair ? $"{title} - Repair required" : title;
-        }
+            => projection.WindowTitle;
     }
 }

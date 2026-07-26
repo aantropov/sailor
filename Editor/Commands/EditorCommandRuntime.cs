@@ -14,6 +14,9 @@ public interface ICommandHistoryService
     bool IsWorkspaceChangeInProgress { get; }
     Task<bool> UndoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default);
     Task<bool> RedoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default);
+    Task BeginDocumentChangeAsync(CancellationToken cancellationToken = default);
+    void ResetForDocumentChange();
+    void CompleteDocumentChange();
     void BeginWorkspaceChange();
     Task BeginWorkspaceChangeAsync(CancellationToken cancellationToken = default);
     void ResetForWorkspaceChange();
@@ -31,6 +34,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
     long _workspaceEpoch;
     int _inFlightExecutionCount;
     bool _workspaceChangeInProgress;
+    bool _documentChangeInProgress;
     bool _transactionRollbackInProgress;
     bool _isUndoRedo;
 
@@ -91,6 +95,8 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         {
             if (_workspaceChangeInProgress)
                 return WorkspaceChangingFailure(command.Name);
+            if (_documentChangeInProgress)
+                return DocumentChangingFailure(command.Name);
             if (_transactionRollbackInProgress)
                 return TransactionRollbackFailure(command.Name);
             if (_isUndoRedo)
@@ -146,6 +152,8 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         {
             if (_workspaceChangeInProgress)
                 throw new InvalidOperationException("A command transaction cannot begin while the active workspace is changing.");
+            if (_documentChangeInProgress)
+                throw new InvalidOperationException("A command transaction cannot begin while the active document is changing.");
             if (_transactionRollbackInProgress)
                 throw new InvalidOperationException("A command transaction cannot begin while another transaction is rolling back.");
             if (context.WorkspaceEpoch is { } contextEpoch && contextEpoch != WorkspaceEpoch)
@@ -163,7 +171,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         (long Epoch, CancellationTokenSource Cancellation) execution;
         lock (_workspaceStateLock)
         {
-            if (_workspaceChangeInProgress || _transactionRollbackInProgress || _isUndoRedo || _history.UndoCount == 0)
+            if (_workspaceChangeInProgress || _documentChangeInProgress || _transactionRollbackInProgress || _isUndoRedo || _history.UndoCount == 0)
                 return false;
 
             execution = BeginExecutionUnderLock(cancellationToken);
@@ -237,7 +245,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         (long Epoch, CancellationTokenSource Cancellation) execution;
         lock (_workspaceStateLock)
         {
-            if (_workspaceChangeInProgress || _transactionRollbackInProgress || _isUndoRedo || _history.RedoCount == 0)
+            if (_workspaceChangeInProgress || _documentChangeInProgress || _transactionRollbackInProgress || _isUndoRedo || _history.RedoCount == 0)
                 return false;
 
             execution = BeginExecutionUnderLock(cancellationToken);
@@ -311,6 +319,63 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         CancelAndDispose(transition.PreviousCancellation);
     }
 
+    public async Task BeginDocumentChangeAsync(CancellationToken cancellationToken = default)
+    {
+        Task executionDrain;
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress)
+                throw new InvalidOperationException("The active document cannot change while workspace activation is in progress.");
+            if (_documentChangeInProgress)
+                throw new InvalidOperationException("Another document change is already in progress.");
+            if (_transactions.Count != 0)
+                throw new InvalidOperationException("The active document cannot change while a command transaction is open.");
+
+            executionDrain = _inFlightExecutionCount == 0
+                ? Task.CompletedTask
+                : _executionDrain?.Task
+                    ?? throw new InvalidOperationException("Active command executions are missing their drain signal.");
+            _documentChangeInProgress = true;
+        }
+
+        try
+        {
+            await executionDrain.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            lock (_workspaceStateLock)
+                _documentChangeInProgress = false;
+            throw;
+        }
+    }
+
+    public void ResetForDocumentChange()
+    {
+        lock (_workspaceStateLock)
+        {
+            if (!_documentChangeInProgress)
+                throw new InvalidOperationException("A document change must begin before its command history can reset.");
+            if (_inFlightExecutionCount != 0)
+                throw new InvalidOperationException("Document command history cannot reset until active command executions have drained.");
+
+            _transactions.Clear();
+            _isUndoRedo = false;
+            _history.Clear();
+        }
+    }
+
+    public void CompleteDocumentChange()
+    {
+        lock (_workspaceStateLock)
+        {
+            if (!_documentChangeInProgress)
+                throw new InvalidOperationException("No document change is in progress.");
+
+            _documentChangeInProgress = false;
+        }
+    }
+
     public async Task BeginWorkspaceChangeAsync(CancellationToken cancellationToken = default)
     {
         var transition = BeginWorkspaceChangeUnderLock();
@@ -368,6 +433,9 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
     {
         lock (_workspaceStateLock)
         {
+            if (_documentChangeInProgress)
+                throw new InvalidOperationException("The active workspace cannot change while a document change is in progress.");
+
             CancellationTokenSource? previousCancellation = null;
             if (!_workspaceChangeInProgress)
             {
@@ -446,6 +514,9 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
 
     static CommandResult WorkspaceChangingFailure(string commandName) =>
         CommandResult.Failure($"Command '{commandName}' was discarded because workspace activation is in progress.");
+
+    static CommandResult DocumentChangingFailure(string commandName) =>
+        CommandResult.Failure($"Command '{commandName}' was discarded because the active document is changing.");
 
     static CommandResult TransactionRollbackFailure(string commandName) =>
         CommandResult.Failure($"Command '{commandName}' was discarded because a command transaction is rolling back.");

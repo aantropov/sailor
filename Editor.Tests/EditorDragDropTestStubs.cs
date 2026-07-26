@@ -24,12 +24,17 @@ namespace SailorEditor.ViewModels
         public SailorEngine.FileId? FileId { get; set; }
         public string AssetInfoTypeName { get; set; } = string.Empty;
         public FileInfo? Asset { get; set; }
+        public bool IsReadOnly { get; set; }
     }
 
     public sealed class MaterialFile : AssetFile;
     public sealed class TextureFile : AssetFile;
     public sealed class PrefabFile : AssetFile;
-    public sealed class AssetFolder;
+    public sealed class AssetFolder
+    {
+        public int Id { get; set; }
+        public bool IsReadOnly { get; set; }
+    }
 
     public sealed class GameObject
     {
@@ -77,6 +82,20 @@ namespace SailorEditor.Commands
     public sealed class InstantiatePrefabAssetCommand(SailorEditor.ViewModels.AssetFile prefabFile, SailorEditor.ViewModels.GameObject? parent = null) : IEditorCommand
     {
         public string Name => nameof(InstantiatePrefabAssetCommand);
+        public bool CanExecute(ActionContext context) => true;
+        public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
+    }
+
+    public sealed class MoveAssetCommand(SailorEditor.ViewModels.AssetFile assetFile, SailorEditor.ViewModels.AssetFolder? destinationFolder = null) : IEditorCommand
+    {
+        public string Name => nameof(MoveAssetCommand);
+        public bool CanExecute(ActionContext context) => true;
+        public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
+    }
+
+    public sealed class MoveFolderCommand(SailorEditor.ViewModels.AssetFolder folder, SailorEditor.ViewModels.AssetFolder? destinationFolder = null) : IEditorCommand
+    {
+        public string Name => nameof(MoveFolderCommand);
         public bool CanExecute(ActionContext context) => true;
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
     }

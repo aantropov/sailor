@@ -1,5 +1,15 @@
 #include "AssetRegistry/AssetCache.h"
+#include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
+#include "AssetRegistry/Material/MaterialAssetInfo.h"
+#include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
+#include "AssetRegistry/Model/ModelAssetInfo.h"
+#include "AssetRegistry/Prefab/PrefabAssetInfo.h"
+#include "AssetRegistry/Shader/ShaderAssetInfo.h"
+#include "AssetRegistry/Texture/TextureAssetInfo.h"
+#include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 
 #include <chrono>
 #include <ctime>
@@ -75,6 +85,8 @@ namespace
 		{
 			m_assetImportTime = assetImportTime;
 			m_metaLoadTime = metadataLoadTime;
+			Utils::TryGetFileRevision(GetAssetFilepath(), m_importedSourceRevision);
+			Utils::TryGetFileRevision(GetMetaFilepath(), m_metadataRevision);
 		}
 
 		std::time_t GetRuntimeMetadataLoadTime() const
@@ -195,6 +207,86 @@ namespace
 		return result;
 	}
 
+	FileRevision MakeRevision(
+		int64_t modificationTimeNanoseconds = 123456789,
+		uint64_t fileSize = 64,
+		uint64_t contentHash = 14695981039346656037ull)
+	{
+		FileRevision result;
+		result.m_modificationTimeNanoseconds = modificationTimeNanoseconds;
+		result.m_fileSize = fileSize;
+		result.m_contentHash = contentHash;
+		result.m_bIsValid = true;
+		return result;
+	}
+
+	template<typename TAssetInfo>
+	void RequireSerializedAssetInfoType(const std::string& expectedType)
+	{
+		const TAssetInfo assetInfo;
+		const YAML::Node metadata = assetInfo.Serialize();
+		Require(metadata.IsMap(), expectedType + " metadata must serialize as a map");
+		Require(metadata["assetInfoType"].IsScalar(),
+			expectedType + " metadata must contain a scalar assetInfoType");
+		Require(metadata["assetInfoType"].as<std::string>() == expectedType,
+			expectedType + " metadata must preserve its concrete reflected type");
+	}
+
+	void TestEveryAssetInfoSerializerWritesItsConcreteType()
+	{
+		RequireSerializedAssetInfoType<AssetInfo>("Sailor::AssetInfo");
+		RequireSerializedAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo");
+		RequireSerializedAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo");
+		RequireSerializedAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo");
+		RequireSerializedAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo");
+		RequireSerializedAssetInfoType<PrefabAssetInfo>("Sailor::PrefabAssetInfo");
+		RequireSerializedAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo");
+		RequireSerializedAssetInfoType<TextureAssetInfo>("Sailor::TextureAssetInfo");
+		RequireSerializedAssetInfoType<WorldPrefabAssetInfo>("Sailor::WorldPrefabAssetInfo");
+	}
+
+	void TestGeneratedGlbMetadataUsesTypedDefaults()
+	{
+		const FileId textureId = MakeFileId("{GENERATED-GLB-TEXTURE}");
+		const YAML::Node texture = GeneratedModelAssetMetadata::CreateTexture(
+			textureId,
+			"Character.glb",
+			7,
+			false,
+			RHI::ETextureFormat::R8G8B8A8_UNORM,
+			RHI::ETextureClamping::Clamp,
+			RHI::ETextureFiltration::Nearest,
+			true);
+		Require(texture["assetInfoType"].as<std::string>() == "Sailor::TextureAssetInfo",
+			"generated GLB textures must declare TextureAssetInfo");
+		Require(texture["fileId"].as<FileId>() == textureId,
+			"generated GLB textures must preserve their generated FileId");
+		Require(texture["filename"].as<std::string>() == "Character.glb" &&
+			texture["glbTextureIndex"].as<uint32_t>() == 7,
+			"generated GLB textures must reference the source model and embedded texture");
+		Require(!texture["bShouldGenerateMips"].as<bool>() &&
+			texture["bShouldKeepCpuBuffers"].as<bool>(),
+			"generated GLB textures must preserve importer options");
+		Require(texture["bShouldSupportStorageBinding"].IsDefined() &&
+			texture["reduction"].IsDefined(),
+			"generated GLB textures must retain every typed default field");
+
+		const FileId animationId = MakeFileId("{GENERATED-GLB-ANIMATION}");
+		const YAML::Node animation = GeneratedModelAssetMetadata::CreateAnimation(
+			animationId,
+			"Character.glb",
+			3,
+			2);
+		Require(animation["assetInfoType"].as<std::string>() == "Sailor::AnimationAssetInfo",
+			"generated GLB animations must declare AnimationAssetInfo");
+		Require(animation["fileId"].as<FileId>() == animationId,
+			"generated GLB animations must preserve their generated FileId");
+		Require(animation["filename"].as<std::string>() == "Character.glb" &&
+			animation["animationIndex"].as<uint32_t>() == 3 &&
+			animation["skinIndex"].as<uint32_t>() == 2,
+			"generated GLB animations must preserve every generated field");
+	}
+
 	TestAssetCache::CacheData MakeCache(
 		const std::string& fileIdValue,
 		const std::string& sourcePath,
@@ -206,6 +298,7 @@ namespace
 		entry.m_fileId = fileId;
 		entry.m_assetImportTime = assetImportTime;
 		entry.m_sourcePath = sourcePath;
+		entry.m_sourceRevision = MakeRevision();
 		result.m_data.Insert(fileId, std::move(entry));
 		return result;
 	}
@@ -226,8 +319,11 @@ namespace
 			40);
 		const std::string payload = TestAssetCache::SerializeAssetCachePayload(source);
 		const YAML::Node serializedEntry = YAML::Load(payload)["assetCache"]["assets"][fileId.ToString()];
-		Require(serializedEntry.IsMap() && serializedEntry.size() == 3,
-			"persisted asset cache entries must contain exactly three fields");
+		Require(serializedEntry.IsMap() && serializedEntry.size() == 4,
+			"persisted asset cache entries must contain exactly four fields");
+		const YAML::Node serializedRevision = serializedEntry["sourceRevision"];
+		Require(serializedRevision.IsMap() && serializedRevision.size() == 3,
+			"persisted source revisions must contain mtime, size, and content hash");
 		Require(payload.find("metadataLoadTime") == std::string::npos &&
 			payload.find("metadataPath") == std::string::npos,
 			"runtime metadata state must never be serialized into the asset cache");
@@ -242,6 +338,8 @@ namespace
 		Require(entry.m_fileId == fileId, "round-tripped entry identity should match its map key");
 		Require(entry.m_assetImportTime == 40, "round-tripped asset import time should be preserved");
 		Require(!entry.m_sourcePath.empty(), "round-tripped source path should be normalized");
+		Require(entry.m_sourceRevision == MakeRevision(),
+			"round-tripped exact source revision should be preserved");
 	}
 
 	void TestEmptyPayloadRoundTrip()
@@ -255,6 +353,26 @@ namespace
 			TestAssetCache::TryDeserializeAssetCachePayload(payload, loaded, diagnostic),
 			"deterministic empty asset payload should load: " + diagnostic);
 		Require(loaded.m_data.Num() == 0, "empty asset payload should remain empty");
+	}
+
+	void TestLegacyTimestampOnlyPayloadIsRejected()
+	{
+		const std::string legacyPayload =
+			"assetCache:\n"
+			"  assets:\n"
+			"    '{ASSET-CACHE-V1}':\n"
+			"      fileId: '{ASSET-CACHE-V1}'\n"
+			"      assetImportTime: 7\n"
+			"      sourcePath: '/workspace/Content/Test.mat'\n";
+		TestAssetCache::CacheData destination;
+		std::string diagnostic;
+		Require(!TestAssetCache::TryDeserializeAssetCachePayload(
+			legacyPayload,
+			destination,
+			diagnostic),
+			"a v1 timestamp-only entry must not be accepted as a v2 exact source revision");
+		Require(diagnostic.find("sourceRevision") != std::string::npos,
+			"the legacy payload diagnostic should name the missing source revision");
 	}
 
 	void TestCorruptPayloadDoesNotPartiallyPublish()
@@ -271,7 +389,11 @@ namespace
 			"    '{ASSET-CACHE-CORRUPT}':\n"
 			"      fileId: '{ASSET-CACHE-CORRUPT}'\n"
 			"      assetImportTime: 7\n"
-			"      sourcePath: ''\n";
+			"      sourcePath: ''\n"
+			"      sourceRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n";
 		std::string diagnostic;
 		Require(
 			!TestAssetCache::TryDeserializeAssetCachePayload(corruptPayload, destination, diagnostic),
@@ -289,7 +411,11 @@ namespace
 			"    '{ASSET-CACHE-KEY}':\n"
 			"      fileId: '{ASSET-CACHE-OTHER}'\n"
 			"      assetImportTime: 8\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n"
+			"      sourceRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n";
 
 		TestAssetCache::CacheData destination;
 		std::string diagnostic;
@@ -313,7 +439,11 @@ namespace
 			"    '{ASSET-CACHE-THROW}':\n"
 			"      fileId: '{ASSET-CACHE-THROW}'\n"
 			"      assetImportTime: abc\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n"
+			"      sourceRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n";
 		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
 
 		try
@@ -370,6 +500,10 @@ namespace
 			"a new raw asset must dispatch Update(false) followed by exactly one Import callback");
 		Require(static_cast<TestAssetInfo*>(imported)->m_numMetaSaves == 1,
 			"the import callback should finalize metadata exactly once");
+		const YAML::Node importedMetadata = YAML::LoadFile(
+			AssetRegistry::GetMetaFilePath(sourcePath.string()));
+		Require(importedMetadata["assetInfoType"].as<std::string>() == "Sailor::AssetInfo",
+			"the shared import path must add its handler's canonical AssetInfo type");
 		delete imported;
 
 		listener.m_events.clear();
@@ -479,11 +613,9 @@ namespace
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
 		WriteFile(sourcePath, "source-v2");
-		std::filesystem::last_write_time(
-			sourcePath,
-			initialSourceTime + std::chrono::seconds(2));
+		std::filesystem::last_write_time(sourcePath, initialSourceTime);
 		Require(info.IsAssetExpired(),
-			"a newer raw file should be expired before metadata reload");
+			"a same-timestamp raw content change should expire by runtime revision");
 
 		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
@@ -532,11 +664,9 @@ namespace
 			"fileId: '{ASSET-CACHE-META-EXPIRED}'\n"
 			"testValue: 9\n"
 			"lateValue: 1\n");
-		std::filesystem::last_write_time(
-			metadataPath,
-			initialMetadataTime + std::chrono::seconds(2));
+		std::filesystem::last_write_time(metadataPath, initialMetadataTime);
 		Require(info.IsMetaExpired(),
-			"newer metadata should be expired before reload");
+			"same-timestamp metadata content changes should expire by runtime revision");
 
 		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
@@ -597,16 +727,19 @@ namespace
 		TestAssetCache cache;
 		const FileId fileId = MakeFileId("{ASSET-CACHE-UPDATE}");
 		const std::string sourcePath = "/workspace/Content/Test.mat";
+		const FileRevision sourceRevision = MakeRevision();
 
-		Require(cache.Update(fileId, 90, sourcePath),
+		Require(cache.Update(fileId, 90, sourcePath, sourceRevision),
 			"new asset import state should change the cache");
 		Require(cache.IsDirty(), "new asset import state should mark the cache dirty");
-		Require(!cache.Update(fileId, 90, sourcePath),
+		Require(!cache.Update(fileId, 90, sourcePath, sourceRevision),
 			"unchanged asset import state should be a no-op");
 		Require(cache.IsDirty(), "a no-op update must not clear an already dirty cache");
-		Require(cache.Update(fileId, 91, sourcePath),
+		Require(cache.Update(fileId, 91, sourcePath, sourceRevision),
 			"a later successful asset import should change the source watermark");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved"),
+		Require(cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 64, 42)),
+			"a changed content hash should change the exact source revision");
+		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456789, 64, 42)),
 			"a source path change should change the cache");
 	}
 
@@ -615,9 +748,9 @@ namespace
 		TestAssetCache cache;
 		const FileId liveFileId = MakeFileId("{ASSET-CACHE-PRUNE-LIVE}");
 		const FileId staleFileId = MakeFileId("{ASSET-CACHE-PRUNE-STALE}");
-		Require(cache.Update(liveFileId, 10, "/workspace/Content/Live.mat"),
+		Require(cache.Update(liveFileId, 10, "/workspace/Content/Live.mat", MakeRevision()),
 			"the live entry should populate the cache");
-		Require(cache.Update(staleFileId, 20, "/workspace/Content/Stale.mat"),
+		Require(cache.Update(staleFileId, 20, "/workspace/Content/Stale.mat", MakeRevision()),
 			"the stale entry should populate the cache");
 
 		TSet<FileId> liveAssetIds;
@@ -636,15 +769,21 @@ namespace
 	{
 		TestAssetCache cache;
 		const FileId fileId = MakeFileId("{ASSET-CACHE-RUNTIME-METADATA}");
-		const std::filesystem::path sourcePath = "/workspace/Content/Test.mat";
-		const std::filesystem::path metadataPath = "/workspace/Content/Test.mat.asset";
-		Require(cache.Update(fileId, 123, sourcePath.string()),
+		TempDirectory directory("restore-import-time");
+		const std::filesystem::path sourcePath = directory.Path("Content/Test.mat");
+		const std::filesystem::path metadataPath = directory.Path("Content/Test.mat.asset");
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "metadata");
+		FileRevision sourceRevision;
+		Require(Utils::TryGetFileRevision(sourcePath.string(), sourceRevision),
+			"the source revision fixture should be readable");
+		Require(cache.Update(fileId, 123, sourcePath.string(), sourceRevision),
 			"asset import state should populate the cache");
 
 		TestAssetInfo info;
 		info.Configure(fileId, sourcePath, metadataPath);
 		info.SetProcessingTimes(0, 456);
-		Require(cache.RestoreAssetImportTime(&info),
+		Require(cache.RestoreAssetImportTime(&info, sourceRevision),
 			"matching file id and source path should restore the asset import time");
 		Require(info.GetAssetImportTime() == 123,
 			"the persisted asset import time should be restored");
@@ -676,16 +815,41 @@ namespace
 		WriteFile(sourcePath, "source-v2");
 		std::filesystem::last_write_time(sourcePath, initialTime + std::chrono::seconds(2));
 		Require(cache.IsExpired(&info), "a newer source file should expire the cache");
+		Require(!cache.Update(&info),
+			"cache update must not acknowledge a source revision that AssetInfo did not process");
+		Require(cache.IsExpired(&info),
+			"a rejected acknowledgement must preserve the previous cache revision");
 		info.SetProcessingTimes(
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
 		Require(cache.Update(&info), "the asset import watermark should advance");
 		Require(!cache.IsExpired(&info), "the processed source version should become current");
-		const std::time_t importedSourceTime = info.GetAssetImportTime();
 
-		std::filesystem::last_write_time(sourcePath, initialTime - std::chrono::seconds(2));
+		const auto backdatedTime = initialTime - std::chrono::seconds(2);
+		WriteFile(sourcePath, "source-v3");
+		std::filesystem::last_write_time(sourcePath, backdatedTime);
+		Require(cache.IsExpired(&info),
+			"a backdated same-size content change must expire the cache");
+		info.SetProcessingTimes(
+			info.GetAssetLastModificationTime(),
+			info.GetMetaLastModificationTime());
+		Require(cache.Update(&info),
+			"a successfully processed backdated revision should update the cache");
 		Require(!cache.IsExpired(&info),
-			"a backdated source should not invalidate an already newer processing watermark");
+			"the acknowledged backdated revision should become current");
+
+		WriteFile(sourcePath, "source-v4");
+		std::filesystem::last_write_time(sourcePath, backdatedTime);
+		Require(cache.IsExpired(&info),
+			"a same-timestamp same-size content change must expire by content hash");
+		info.SetProcessingTimes(
+			info.GetAssetLastModificationTime(),
+			info.GetMetaLastModificationTime());
+		Require(cache.Update(&info),
+			"the same-timestamp content revision should be acknowledgeable");
+		Require(!cache.IsExpired(&info),
+			"the processed same-timestamp revision should become current");
+		const std::time_t importedSourceTime = info.GetAssetImportTime();
 
 		std::filesystem::last_write_time(metadataPath, initialTime + std::chrono::seconds(4));
 		Require(!cache.IsExpired(&info),
@@ -719,7 +883,11 @@ namespace
 			"    '{ASSET-CACHE-STRICT}':\n"
 			"      fileId: '{ASSET-CACHE-STRICT}'\n"
 			"      assetImportTime: 1\n"
-			"      sourcePath: '/workspace/Content/Test.mat'\n";
+			"      sourcePath: '/workspace/Content/Test.mat'\n"
+			"      sourceRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n";
 		const std::string invalidPayloads[] =
 		{
 			prefix + "      metadataLoadTime: 2\n",
@@ -770,6 +938,38 @@ namespace
 		Require(TestAssetCache::ShouldWriteCacheFile(false, true, false),
 			"a dirty cache without an I/O preservation barrier should be persisted");
 	}
+
+	void TestAssetProcessingTokenRejectsStaleCompletion()
+	{
+		AssetRegistry::AssetProcessingToken current;
+		current.m_fileId = MakeFileId("{ASSET-PROCESSING-TOKEN}");
+		current.m_sourceRevision = MakeRevision(123, 64, 456);
+		current.m_sourcePath = "/workspace/Content/Retry.shader";
+		current.m_assetImportTime = 10;
+		current.m_generation = 2;
+		Require(current.Matches(current),
+			"an exact processing completion should match its current generation");
+
+		AssetRegistry::AssetProcessingToken staleGeneration = current;
+		staleGeneration.m_generation = 1;
+		Require(!current.Matches(staleGeneration),
+			"an older async completion must not acknowledge a newer generation");
+
+		AssetRegistry::AssetProcessingToken staleRevision = current;
+		staleRevision.m_sourceRevision = MakeRevision(124, 64, 789);
+		Require(!current.Matches(staleRevision),
+			"a completion for another source revision must remain pending for retry");
+
+		AssetRegistry::AssetProcessingToken stalePath = current;
+		stalePath.m_sourcePath = "/workspace/Content/Moved.shader";
+		Require(!current.Matches(stalePath),
+			"a completion for another source path must not acknowledge the current asset");
+
+		AssetRegistry::AssetProcessingToken staleImportTime = current;
+		staleImportTime.m_assetImportTime = 9;
+		Require(!current.Matches(staleImportTime),
+			"a completion for another source timestamp must not acknowledge the current asset");
+	}
 }
 
 int main()
@@ -778,10 +978,13 @@ int main()
 	{
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
+		TestLegacyTimestampOnlyPayloadIsRejected();
 		TestCorruptPayloadDoesNotPartiallyPublish();
 		TestMismatchedEntryIdentityIsCorrupt();
 		TestDirectDeserializeDoesNotThrowOnCorruptData();
 		TestEntryDeserializeDoesNotThrow();
+		TestEveryAssetInfoSerializerWritesItsConcreteType();
+		TestGeneratedGlbMetadataUsesTypedDefaults();
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
@@ -794,6 +997,7 @@ int main()
 		TestAssetImportCacheAndRuntimeMetadataExpiration();
 		TestRuntimeMetadataFieldsAreRejectedTransactionally();
 		TestIoFailurePreservesTheExistingCacheFile();
+		TestAssetProcessingTokenRejectsStaleCompletion();
 		std::cout << "Asset cache contract tests passed.\n";
 		return 0;
 	}

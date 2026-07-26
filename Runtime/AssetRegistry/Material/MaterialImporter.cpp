@@ -7,6 +7,7 @@
 #include "AssetRegistry/Shader/ShaderCompiler.h"
 #include "Math/Math.h"
 #include "Core/Utils.h"
+#include "YamlExceptionBoundary.h"
 #include "Engine/World.h"
 #include "Memory/WeakPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
@@ -65,11 +66,6 @@ Tasks::ITaskPtr Material::OnHotReload()
 void Material::ClearSamplers()
 {
 	SAILOR_PROFILE_FUNCTION();
-
-	for (auto& sampler : m_samplers)
-	{
-		sampler.m_second->RemoveHotReloadDependentObject(sampler.m_second);
-	}
 	m_samplers.Clear();
 }
 
@@ -391,6 +387,13 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 					auto pMaterial = material;
 
 					pMaterial->GetShader()->RemoveHotReloadDependentObject(material);
+					for (auto& sampler : pMaterial->m_samplers)
+					{
+						if (sampler.m_second)
+						{
+							sampler.m_second->RemoveHotReloadDependentObject(material);
+						}
+					}
 					pMaterial->ClearSamplers();
 					pMaterial->ClearUniforms();
 
@@ -453,6 +456,7 @@ void MaterialImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpire
 						pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
 					}
 
+					updateRHI->Join(pLoadShader);
 					updateRHI->Run();
 				});
 
@@ -482,15 +486,33 @@ TSharedPtr<MaterialAsset> MaterialImporter::LoadMaterialAsset(FileId uid)
 		const std::string& filepath = materialAssetInfo->GetAssetFilepath();
 
 		std::string materialYaml;
+		if (!AssetRegistry::ReadAllTextFile(filepath, materialYaml))
+		{
+			SAILOR_LOG_ERROR("Cannot read material YAML '%s'.", filepath.c_str());
+			return TSharedPtr<MaterialAsset>();
+		}
 
-		AssetRegistry::ReadAllTextFile(filepath, materialYaml);
+		YAML::Node yamlNode;
+		std::string yamlDiagnostic;
+		if (!External::TryLoadYaml(materialYaml, yamlNode, yamlDiagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot parse material YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+			return TSharedPtr<MaterialAsset>();
+		}
 
-		YAML::Node yamlNode = YAML::Load(materialYaml);
+		auto material = TSharedPtr<MaterialAsset>::Make();
+		if (!External::GuardYamlExceptions(
+				[&material, &yamlNode]()
+				{
+					material->Deserialize(yamlNode);
+				},
+				yamlDiagnostic))
+		{
+			SAILOR_LOG_ERROR("Cannot deserialize material YAML '%s': %s", filepath.c_str(), yamlDiagnostic.c_str());
+			return TSharedPtr<MaterialAsset>();
+		}
 
-		MaterialAsset* material = new MaterialAsset();
-		material->Deserialize(yamlNode);
-
-		return TSharedPtr<MaterialAsset>(material);
+		return material;
 	}
 
 	SAILOR_LOG("Cannot find material asset info with FileId: %s", uid.ToString().c_str());

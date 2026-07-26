@@ -62,61 +62,51 @@ void EditorComponent::EditorTick(float deltaTime)
 
 	const float sensitivity = 1500;
 
-	glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
-	if (GetWorld()->GetInput().IsKeyDown('A'))
-		delta += -cross(cameraViewDirection, Math::vec3_Up);
-
-	if (GetWorld()->GetInput().IsKeyDown('D'))
-		delta += cross(cameraViewDirection, Math::vec3_Up);
-
-	if (GetWorld()->GetInput().IsKeyDown('W'))
-		delta += cameraViewDirection;
-
-	if (GetWorld()->GetInput().IsKeyDown('S'))
-		delta += -cameraViewDirection;
-
-	if (GetWorld()->GetInput().IsKeyDown('X'))
-		delta += vec3(1, 0, 0);
-
-	if (GetWorld()->GetInput().IsKeyDown('Y'))
-		delta += vec3(0, 1, 0);
-
-	if (GetWorld()->GetInput().IsKeyDown('Z'))
-		delta += vec3(0, 0, 1);
-
-	const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) * (GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
-
-	if (glm::length(delta) > 0)
+	const bool bNavigatingViewport = GetWorld()->GetInput().IsKeyDown(VK_RBUTTON);
+	if (bNavigatingViewport)
 	{
-		vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+		glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
+		if (GetWorld()->GetInput().IsKeyDown('A'))
+			delta += -cross(cameraViewDirection, Math::vec3_Up);
 
-		const vec4 newPosition = transform.GetPosition() + shift;
+		if (GetWorld()->GetInput().IsKeyDown('D'))
+			delta += cross(cameraViewDirection, Math::vec3_Up);
 
-		transform.SetPosition(newPosition);
-	}
+		if (GetWorld()->GetInput().IsKeyDown('W'))
+			delta += cameraViewDirection;
 
-	if (GetWorld()->GetInput().IsKeyDown(VK_RBUTTON))
-	{
+		if (GetWorld()->GetInput().IsKeyDown('S'))
+			delta += -cameraViewDirection;
+
+		if (GetWorld()->GetInput().IsKeyDown('X'))
+			delta += vec3(1, 0, 0);
+
+		if (GetWorld()->GetInput().IsKeyDown('Y'))
+			delta += vec3(0, 1, 0);
+
+		if (GetWorld()->GetInput().IsKeyDown('Z'))
+			delta += vec3(0, 0, 1);
+
+		const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) *
+			(GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
+		if (glm::length(delta) > 0)
+		{
+			const vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+			transform.SetPosition(transform.GetPosition() + shift);
+		}
+
 		if (GetWorld()->GetInput().IsKeyPressed(VK_RBUTTON))
 		{
 			m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 		}
 		else
 		{
-			const float smoothFactor = 0.9f;
-			const float speed = 50.0f;
-			const float smoothDeltaTime = GetWorld()->GetSmoothDeltaTime();
+			constexpr float rotationDegreesPerPixel = 0.2f;
+			const vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
+			const vec2 rotationDelta = deltaCursorPos * rotationDegreesPerPixel;
 
-			vec2 deltaCursorPos = GetWorld()->GetInput().GetCursorPos() - m_lastCursorPos;
-			vec2 shift = deltaCursorPos * speed * smoothDeltaTime;
-
-			float adjustedYawSpeed = shift.x / (cos(glm::radians(m_pitch)) + 0.1f);
-
-			float targetYaw = m_yaw + adjustedYawSpeed;
-			float targetPitch = glm::clamp(m_pitch - shift.y, -85.0f, 85.0f);
-
-			m_yaw = glm::mix(m_yaw, targetYaw, smoothFactor);
-			m_pitch = glm::mix(m_pitch, targetPitch, smoothFactor);
+			m_yaw += rotationDelta.x;
+			m_pitch = glm::clamp(m_pitch - rotationDelta.y, -85.0f, 85.0f);
 
 			glm::quat hRotation = glm::angleAxis(glm::radians(-m_yaw), glm::vec3(0, 1, 0));
 			glm::quat vRotation = glm::angleAxis(glm::radians(m_pitch), glm::vec3(1, 0, 0));
@@ -164,14 +154,18 @@ void EditorComponent::EditorTick(float deltaTime)
 
 		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
 
-		if (m_mainLight)
+		auto mainLightComponent = m_mainLight
+			? m_mainLight->GetComponent<LightComponent>()
+			: TObjectPtr<LightComponent>{};
+		if (mainLightComponent)
 		{
 			m_mainLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
 			m_mainLight->GetTransformComponent().SetPosition(lightPosition);
-			m_mainLight->GetComponent<LightComponent>()->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
+			mainLightComponent->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
 		}
 		else
 		{
+			m_mainLight = {};
 			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsInited(); });
 
 			if (index != -1)

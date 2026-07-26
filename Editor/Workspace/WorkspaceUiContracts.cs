@@ -1,3 +1,5 @@
+using SailorEditor.Services;
+
 namespace SailorEditor.Workspace;
 
 public sealed record WorkspaceRecentItem(
@@ -15,9 +17,29 @@ public sealed record WorkspaceUiProjection(
     string? ActivationError = null,
     string? GeneratedProjectAttention = null)
 {
-    public static WorkspaceUiProjection Empty { get; } = new("No workspace", "Repository fallback", false, []);
+    public static WorkspaceUiProjection Empty { get; } = new("Engine Mode", string.Empty, false, [])
+    {
+        Mode = EditorProjectMode.Engine
+    };
 
-    public string ToolbarText => HasActiveWorkspace ? ActiveWorkspaceName : "No workspace";
+    public EditorProjectMode Mode { get; init; } = EditorProjectMode.Engine;
+    public string ActiveRootPath { get; init; } = string.Empty;
+    public string ActiveContentPath { get; init; } = string.Empty;
+    public string ModeLabel => Mode == EditorProjectMode.Engine ? "Engine Mode" : "Workspace";
+    public string ActiveProjectName => Mode == EditorProjectMode.Engine ? "Sailor Engine" : ActiveWorkspaceName;
+    public string ToolbarText => Mode == EditorProjectMode.Engine ? "Engine Mode" : ActiveWorkspaceName;
+    public string WindowTitle
+    {
+        get
+        {
+            var title = Mode == EditorProjectMode.Engine
+                ? "Engine Mode"
+                : $"Workspace: {ActiveWorkspaceName}";
+            if (!string.IsNullOrWhiteSpace(ActiveRootPath))
+                title = $"{title} — {ActiveRootPath}";
+            return RequiresRepair ? $"{title} — Repair required" : title;
+        }
+    }
     public bool IsActivationInProgress => ActivationPhase is
         WorkspaceActivationPhase.Preflighting or
         WorkspaceActivationPhase.Stopping or
@@ -33,7 +55,8 @@ public static class WorkspaceUiProjectionBuilder
     public static WorkspaceUiProjection Build(
         WorkspaceSession? current,
         IReadOnlyList<RecentWorkspaceEntry> recentWorkspaces,
-        WorkspaceActivationState? activation = null)
+        WorkspaceActivationState? activation = null,
+        EngineLaunchContext? projectContext = null)
     {
         var recent = recentWorkspaces
             .Where(x => !string.IsNullOrWhiteSpace(x.ManifestPath))
@@ -48,15 +71,22 @@ public static class WorkspaceUiProjectionBuilder
         var activationError = activation?.Error;
         if (current is null)
         {
-            return WorkspaceUiProjection.Empty with
+            var activeRootPath = projectContext?.ActiveRootPath ?? string.Empty;
+            return new WorkspaceUiProjection(
+                "Engine Mode",
+                activeRootPath,
+                false,
+                recent,
+                activationPhase,
+                activationError)
             {
-                RecentWorkspaces = recent,
-                ActivationPhase = activationPhase,
-                ActivationError = activationError
+                Mode = EditorProjectMode.Engine,
+                ActiveRootPath = activeRootPath,
+                ActiveContentPath = projectContext?.ContentDirectory ?? string.Empty
             };
         }
 
-        return new WorkspaceUiProjection(
+        var projection = new WorkspaceUiProjection(
             string.IsNullOrWhiteSpace(current.Manifest.Name) ? Path.GetFileName(current.WorkspaceRoot) : current.Manifest.Name,
             current.WorkspaceRoot,
             true,
@@ -66,6 +96,12 @@ public static class WorkspaceUiProjectionBuilder
             current.GeneratedProjectState.RequiresAttention
                 ? current.GeneratedProjectState.Guidance
                 : null);
+        return projection with
+        {
+            Mode = EditorProjectMode.Workspace,
+            ActiveRootPath = projectContext?.ActiveRootPath ?? current.WorkspaceRoot,
+            ActiveContentPath = projectContext?.ContentDirectory ?? current.ContentDirectory
+        };
     }
 
     static string CompactPath(string path)

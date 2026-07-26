@@ -18,10 +18,27 @@
 
 namespace Sailor
 {
+	struct ShaderSourceState final
+	{
+		std::time_t m_timestamp{};
+		uint64_t m_fingerprint = 0;
+	};
+
+	class IShaderSourceStateProvider
+	{
+	public:
+		virtual ~IShaderSourceStateProvider() = default;
+		virtual bool Capture(
+			const FileId& uid,
+			ShaderSourceState& outState,
+			std::string& outDiagnostic) const = 0;
+	};
+
 	class ShaderCache
 	{
 	public:
 		SAILOR_API ShaderCache();
+		SAILOR_API explicit ShaderCache(const IShaderSourceStateProvider* sourceStateProvider);
 		SAILOR_API ~ShaderCache();
 
 		struct ArtifactMetadata final : IYamlSerializable
@@ -141,10 +158,11 @@ namespace Sailor
 		public:
 			class Entry final : IYamlSerializable
 			{
-			public:
-				FileId m_fileId{};
-				std::time_t m_timestamp{};
-				uint32_t m_permutation = 0;
+				public:
+					FileId m_fileId{};
+					std::time_t m_timestamp{};
+					uint64_t m_sourceFingerprint = 0;
+					uint32_t m_permutation = 0;
 				std::string m_generation;
 				ArtifactSet m_regular;
 				ArtifactSet m_debug;
@@ -171,6 +189,7 @@ namespace Sailor
 		{
 			FileId m_fileId{};
 			std::time_t m_timestamp{};
+			uint64_t m_sourceFingerprint = 0;
 			uint32_t m_permutation = 0;
 			TVector<uint32_t> m_vertex;
 			TVector<uint32_t> m_fragment;
@@ -276,8 +295,24 @@ namespace Sailor
 			const TVector<uint32_t>& debugVertexSpirv,
 			const TVector<uint32_t>& debugFragmentSpirv,
 			const TVector<uint32_t>& debugComputeSpirv,
+			std::time_t sourceTimestamp,
+			uint64_t sourceFingerprint,
 			int32_t failArtifactIndex,
 			std::string& outDiagnostic);
+		bool CacheSpirvForSourceFingerprint_ThreadSafe(
+			const FileId& uid,
+			uint32_t permutation,
+			const TVector<uint32_t>& vertexSpirv,
+			const TVector<uint32_t>& fragmentSpirv,
+			const TVector<uint32_t>& computeSpirv,
+			const TVector<uint32_t>& debugVertexSpirv,
+			const TVector<uint32_t>& debugFragmentSpirv,
+			const TVector<uint32_t>& debugComputeSpirv,
+			uint64_t expectedSourceFingerprint);
+		bool CaptureSourceState(
+			const FileId& uid,
+			ShaderSourceState& outState,
+			std::string& outDiagnostic) const;
 		bool GenerateUniqueGenerationLocked(
 			const FileId& uid,
 			uint32_t permutation,
@@ -301,6 +336,7 @@ namespace Sailor
 		ShaderCacheData m_cache;
 		ShaderCacheData m_committedCache;
 		TVector<QuarantinedEntry> m_quarantinedEntries;
+		const IShaderSourceStateProvider* m_sourceStateProvider = nullptr;
 		std::filesystem::path m_cacheRoot;
 		bool m_bIsDirty = false;
 		bool m_bStorageReady = false;
@@ -310,11 +346,12 @@ namespace Sailor
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
 		std::string m_lastSaveDiagnostic;
 		[[maybe_unused]] std::optional<Workspace::WorkspaceCacheIdentity> m_identityOverride;
-		[[maybe_unused]] std::optional<std::time_t> m_timestampOverrideForTests;
 		[[maybe_unused]] Workspace::EWorkspaceCacheAtomicWriteFailurePoint m_nextSaveFailureForTests =
 			Workspace::EWorkspaceCacheAtomicWriteFailurePoint::None;
 		[[maybe_unused]] bool m_bArtifactReadIoFailureForTests = false;
 		[[maybe_unused]] bool m_bArtifactSweepFailureForTests = false;
+
+		friend class ShaderCompiler;
 
 #if defined(SAILOR_SHADER_CACHE_TEST_HOOKS)
 		friend class ShaderCacheTestAccess;
@@ -327,8 +364,7 @@ namespace Sailor
 	public:
 		SAILOR_API static bool Configure(
 			ShaderCache& cache,
-			const std::filesystem::path& cacheRoot,
-			std::time_t timestamp = 100);
+			const std::filesystem::path& cacheRoot);
 		SAILOR_API static std::string GetGeneration(
 			const ShaderCache& cache,
 			const FileId& uid,

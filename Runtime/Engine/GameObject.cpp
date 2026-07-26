@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
+#include "Editor/EditorViewportController.h"
 #include <algorithm>
 
 using namespace Sailor;
@@ -66,6 +67,7 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 
 	if (m_components.RemoveFirst(component))
 	{
+		m_pWorld->RemovePendingDependencyResolutions(component);
 		component->EndPlay();
 		component.DestroyObject(m_pWorld->GetAllocator());
 		return true;
@@ -78,6 +80,7 @@ void GameObject::RemoveAllComponents()
 {
 	for (auto& el : m_components)
 	{
+		m_pWorld->RemovePendingDependencyResolutions(el);
 		el->EndPlay();
 		el.DestroyObject(m_pWorld->GetAllocator());
 	}
@@ -108,6 +111,21 @@ void GameObject::DrawEditorSelectedGizmo()
 	const glm::vec4 localScale = transform.GetScale();
 	const float axisSize = std::max(25.0f,
 		std::max(std::abs(localScale.x), std::max(std::abs(localScale.y), std::abs(localScale.z))) * 100.0f);
+
+	Math::AABB selectionBounds{};
+	bool bUsesMeshBounds = false;
+	if (EditorViewport::ResolveGameObjectBounds(m_self, selectionBounds, bUsesMeshBounds))
+	{
+		const glm::vec4 selectionColor(1.0f, 0.62f, 0.05f, 1.0f);
+		if (bUsesMeshBounds)
+		{
+			GetWorld()->GetDebugContext()->DrawAABB(selectionBounds, selectionColor);
+		}
+		else
+		{
+			GetWorld()->GetDebugContext()->DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor);
+		}
+	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, transform.GetCachedWorldMatrix(), axisSize);
 

@@ -20,6 +20,8 @@ public class EngineLaunchContractTests
             fallbackRoot);
 
         Assert.Equal(Path.GetFullPath(workspaceRoot), context.WorkspaceRoot);
+        Assert.Equal(EditorProjectMode.Workspace, context.Mode);
+        Assert.Null(context.StartupWorld);
         Assert.Equal(Path.GetFullPath(manifestPath), context.WorkspaceManifestPath);
         Assert.Equal(Path.GetFullPath(contentDirectory), context.ContentDirectory);
         Assert.Equal(Path.GetFullPath(cacheDirectory), context.CacheDirectory);
@@ -47,6 +49,8 @@ public class EngineLaunchContractTests
             fallbackRoot);
 
         Assert.Equal(Path.GetFullPath(fallbackRoot), context.WorkspaceRoot);
+        Assert.Equal(EditorProjectMode.Engine, context.Mode);
+        Assert.Equal(EngineLaunchContext.EngineEditorWorld, context.StartupWorld);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Content"), context.ContentDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache"), context.CacheDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache", "EditorTypes.yaml"), context.EditorTypesCacheFilePath);
@@ -101,6 +105,42 @@ public class EngineLaunchContractTests
         Assert.Equal("--world", arguments[3]);
         Assert.Equal("Editor.world", arguments[4]);
         Assert.DoesNotContain("--world Editor.world", arguments);
+    }
+
+    [Fact]
+    public void EditorStartupArguments_UseEngineSceneOnlyInEngineMode()
+    {
+        var fallbackRoot = Path.Combine(Path.GetTempPath(), "Sailor");
+        var engineContext = EngineLaunchContract.Resolve(
+            null,
+            null,
+            null,
+            null,
+            fallbackRoot);
+        var workspaceRoot = Path.Combine(Path.GetTempPath(), "Sandbox");
+        var workspaceContext = Resolve(
+            workspaceRoot,
+            Path.Combine(workspaceRoot, "Sandbox.sailor"),
+            Path.Combine(workspaceRoot, "Content"),
+            Path.Combine(workspaceRoot, "Cache"),
+            fallbackRoot);
+
+        var engineArguments = engineContext.BuildInteropArguments(
+            "SailorEditor",
+            engineContext.StartupWorld,
+            ["--editor"]);
+        var workspaceArguments = workspaceContext.BuildInteropArguments(
+            "SailorEditor",
+            workspaceContext.StartupWorld,
+            ["--editor"]);
+
+        Assert.Contains("--world", engineArguments);
+        Assert.Contains(EngineLaunchContext.EngineEditorWorld, engineArguments);
+        Assert.DoesNotContain("--new-world", engineArguments);
+        Assert.Contains("--new-world", workspaceArguments);
+        Assert.DoesNotContain("--world", workspaceArguments);
+        Assert.DoesNotContain(EngineLaunchContext.EngineEditorWorld, workspaceArguments);
+        Assert.All(workspaceArguments, argument => Assert.False(string.IsNullOrEmpty(argument)));
     }
 
     [Fact]

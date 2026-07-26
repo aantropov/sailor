@@ -1,10 +1,15 @@
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "Platform/Win32/Input.h"
 #include "Submodules/EditorRemote/RemoteViewportRuntime.h"
 
 using namespace Sailor::EditorRemote;
@@ -17,6 +22,27 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	std::string ReadText(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		Require(input.is_open(), "test source should be readable: " + path.generic_string());
+		std::string text{ std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>() };
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
+	}
+
+	size_t CountOccurrences(const std::string& text, const std::string& value)
+	{
+		size_t count = 0;
+		size_t offset = 0;
+		while ((offset = text.find(value, offset)) != std::string::npos)
+		{
+			++count;
+			offset += value.size();
+		}
+		return count;
 	}
 
 	ViewportDescriptor MakeViewport(ViewportId viewportId = 1, uint32_t width = 1280, uint32_t height = 720)
@@ -509,6 +535,198 @@ namespace
 		Require(session.GetLastPublishedFrameIndex() == 1, "each recreate loop should reset frame indexing for the new epoch");
 	}
 
+	void TestGlobalInputResetClearsLifecycleState()
+	{
+		using Sailor::Win32::GlobalInput;
+		using Sailor::Win32::KeyState;
+
+		GlobalInput::SetKeyState('W', KeyState::Pressed);
+		GlobalInput::SetMouseButtonState(0, KeyState::Pressed);
+		GlobalInput::SetCursorPosition(320, 240);
+
+		GlobalInput::Reset();
+		const auto& state = GlobalInput::GetInputState();
+		Require(!state.IsKeyDown('W'), "lifecycle reset should release keyboard input");
+		Require(!state.IsButtonDown(0), "lifecycle reset should release mouse input");
+		const glm::ivec2 cursor = state.GetCursorPos();
+		Require(cursor.x == 0 && cursor.y == 0, "lifecycle reset should clear the stale cursor position");
+	}
+
+	void TestEditorRemoteInputAndViewportEventInteropContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string bridgeSource = ReadText(sourceRoot / "Runtime/Editor/EditorRuntimeBridge.cpp");
+		const std::string appSource = ReadText(sourceRoot / "Runtime/Sailor.cpp");
+		const std::string editorInteropSource = ReadText(sourceRoot / "Runtime/Editor/EditorInterop.cpp");
+		const std::string editorSource = ReadText(sourceRoot / "Runtime/Submodules/Editor.cpp");
+		const std::string viewportControllerSource = ReadText(sourceRoot / "Runtime/Editor/EditorViewportController.cpp");
+		const std::string gameObjectSource = ReadText(sourceRoot / "Runtime/Engine/GameObject.cpp");
+		const std::string imGuiSource = ReadText(sourceRoot / "Runtime/Submodules/ImGuiApi.cpp");
+		const std::string macInputSource = ReadText(sourceRoot / "Editor/Platforms/MacCatalyst/NativeSceneViewportHandler.MacCatalyst.cs");
+		const std::string windowsExports = ReadText(sourceRoot / "Lib/DllMain.cpp");
+		const std::string portableExports = ReadText(sourceRoot / "Lib/InteropExports.cpp");
+
+		const size_t drainBegin = bridgeSource.find("void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
+		const size_t resetBegin = bridgeSource.find("void Sailor::EditorRuntime::ResetForAppLifecycle()", drainBegin);
+		Require(drainBegin != std::string::npos && resetBegin != std::string::npos,
+			"editor runtime bridge must expose engine-thread input drain and lifecycle reset");
+		const std::string drainBody = bridgeSource.substr(drainBegin, resetBegin - drainBegin);
+		const size_t takePending = drainBody.find("pendingInput = std::move(g_pendingEditorInput)");
+		const size_t validatePending = drainBody.find("IsEditorInputCurrent(input)");
+		const size_t dispatchPending = drainBody.find("DispatchEditorInputToRuntime(input)");
+		Require(takePending != std::string::npos && validatePending > takePending && dispatchPending > validatePending,
+			"remote input must be removed from its FIFO and revalidated before engine-thread dispatch");
+		Require(drainBody.find("ResetEditorInputStateOnEngineThread()") != std::string::npos,
+			"stale or lifecycle-invalidated input must release runtime interaction state");
+		const size_t inputResetBegin = bridgeSource.find("void ResetEditorInputStateOnEngineThread()");
+		const size_t inputResetEnd = bridgeSource.find("bool IsEditorInputCurrent", inputResetBegin);
+		Require(inputResetBegin != std::string::npos && inputResetEnd != std::string::npos,
+			"editor runtime bridge must expose the complete input reset helper");
+		const std::string inputResetBody = bridgeSource.substr(inputResetBegin, inputResetEnd - inputResetBegin);
+		Require(inputResetBody.find("GlobalInput::Reset()") != std::string::npos &&
+			inputResetBody.find("io.ClearInputKeys()") != std::string::npos &&
+			inputResetBody.find("io.ClearInputMouse()") != std::string::npos &&
+			inputResetBody.find("#if defined(__APPLE__)") == std::string::npos,
+			"focus, capture, resize, and lifecycle reset must release native and ImGui input on every platform");
+		Require(bridgeSource.find("case InputKind::Capture:\n\t\t\tSyncEditorMouseButtons") != std::string::npos &&
+			bridgeSource.find("input.m_kind == InputKind::Capture && !input.m_captured") != std::string::npos,
+			"capture loss must release native and ImGui mouse buttons");
+		Require(bridgeSource.find("ResolveRemoteMouseButtonState(state, input)") != std::string::npos &&
+			bridgeSource.find("HasInputModifier(input.m_modifiers, InputModifier::MouseLeft)") == std::string::npos,
+			"mouse buttons must change only through explicit button input so resize cannot restart a held drag");
+
+		const size_t sendBegin = bridgeSource.find("bool App::SendEditorRemoteViewportInput(");
+		Require(sendBegin != std::string::npos, "editor runtime bridge must expose remote input interop");
+		const std::string sendBody = bridgeSource.substr(sendBegin);
+		Require(sendBody.find("g_pendingEditorInput.Add(input)") != std::string::npos,
+			"remote input interop must enqueue accepted packets");
+		Require(sendBody.find("DispatchEditorInputToRuntime(input)") == std::string::npos,
+			"remote input interop must never mutate runtime input from the caller thread");
+
+		const size_t startLoopDrain = appSource.find("EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
+		const size_t frameInputCapture = appSource.find("FrameInputState inputState =", startLoopDrain);
+		Require(startLoopDrain != std::string::npos && frameInputCapture > startLoopDrain,
+			"engine loop must drain remote input before capturing the frame input state");
+
+		const size_t resetEnd = bridgeSource.find("bool Sailor::EditorRuntime::HasAppliedEditorRenderArea()", resetBegin);
+		const std::string resetBody = bridgeSource.substr(resetBegin, resetEnd - resetBegin);
+		Require(resetBody.find("GlobalInput::Reset()") != std::string::npos &&
+			resetBody.find("g_pendingEditorInput.Clear()") != std::string::npos,
+			"application lifecycle reset must release active input and discard queued packets");
+
+		const size_t pullBegin = editorInteropSource.find("uint32_t App::PullEditorViewportEvents(char** events, uint32_t num)");
+		const size_t pullEnd = editorInteropSource.find("uint32_t App::SerializeCurrentWorld", pullBegin);
+		Require(pullBegin != std::string::npos && pullEnd != std::string::npos,
+			"editor interop must expose viewport event pulling");
+		const std::string pullBody = editorInteropSource.substr(pullBegin, pullEnd - pullBegin);
+		Require(pullBody.find("ExecuteOnEngineMainThread<uint32_t>") != std::string::npos &&
+			pullBody.find("SetInteropString(event") != std::string::npos,
+			"viewport events must be removed on the engine thread and returned as owned interop strings");
+
+		constexpr const char* exportSignature =
+			"SAILOR_API uint32_t PullEditorViewportEvents(char** events, uint32_t num)";
+		Require(windowsExports.find(exportSignature) != std::string::npos &&
+			portableExports.find(exportSignature) != std::string::npos,
+			"Windows and portable libraries must export the same viewport event ABI");
+		Require(windowsExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos &&
+			portableExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos,
+			"both libraries must expose the matching interop string release function");
+		constexpr const char* mutationRevisionExport =
+			"SAILOR_API uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)";
+		Require(windowsExports.find(mutationRevisionExport) != std::string::npos &&
+			portableExports.find(mutationRevisionExport) != std::string::npos,
+			"both libraries must expose the managed-mutation ordering fence");
+
+		const size_t setSelectionBegin = editorInteropSource.find("bool App::SetEditorSelection(const char* strSelectionYaml)");
+		const size_t setSelectionEnd = editorInteropSource.find("bool App::RenderPathTracedImage", setSelectionBegin);
+		Require(setSelectionBegin != std::string::npos && setSelectionEnd > setSelectionBegin,
+			"editor interop must expose a bounded managed selection path");
+		const std::string setSelectionBody = editorInteropSource.substr(setSelectionBegin, setSelectionEnd - setSelectionBegin);
+		const size_t applySelection = setSelectionBody.find("world->SetEditorSelection(selection);");
+		const size_t advanceSelectionFence = setSelectionBody.find("editor->NotifyManagedSelectionMutation();");
+		Require(applySelection != std::string::npos && advanceSelectionFence > applySelection &&
+			setSelectionBody.find("if (world->SetEditorSelection(selection))") == std::string::npos,
+			"every managed selection intent must advance the fence, including component-to-owner normalization");
+
+		const size_t updateObjectBegin = editorSource.find("bool Editor::UpdateObject(");
+		const size_t reparentObjectBegin = editorSource.find("bool Editor::ReparentObject(", updateObjectBegin);
+		Require(updateObjectBegin != std::string::npos && reparentObjectBegin > updateObjectBegin,
+			"editor object update source must be bounded");
+		const std::string updateObjectBody = editorSource.substr(updateObjectBegin, reparentObjectBegin - updateObjectBegin);
+		Require(CountOccurrences(updateObjectBody, "NotifyManagedObjectMutation(instanceId)") == 1,
+			"only GameObject transform updates may invalidate a pending transform event; component-only edits must not");
+		const size_t resetComponentBegin = editorSource.find("bool Editor::ResetComponentToDefaults(");
+		const size_t addComponentBegin = editorSource.find("bool Editor::AddComponent(", resetComponentBegin);
+		const size_t removeComponentBegin = editorSource.find("bool Editor::RemoveComponent(", addComponentBegin);
+		const size_t instantiatePrefabBegin = editorSource.find("bool Editor::InstantiatePrefab(", removeComponentBegin);
+		Require(resetComponentBegin != std::string::npos && addComponentBegin > resetComponentBegin &&
+			removeComponentBegin > addComponentBegin && instantiatePrefabBegin > removeComponentBegin,
+			"component mutation paths must be bounded for the transform-fence contract");
+		Require(editorSource.substr(resetComponentBegin, addComponentBegin - resetComponentBegin).find("NotifyManagedObjectMutation") == std::string::npos &&
+			editorSource.substr(addComponentBegin, removeComponentBegin - addComponentBegin).find("NotifyManagedObjectMutation") == std::string::npos &&
+			editorSource.substr(removeComponentBegin, instantiatePrefabBegin - removeComponentBegin).find("NotifyManagedObjectMutation") == std::string::npos,
+			"component reset/add/remove must preserve a queued transform event for the same owner");
+
+		const size_t completeBegin = viewportControllerSource.find("void EditorViewportController::CompleteActiveTransform(World& world)");
+		const size_t completeEnd = viewportControllerSource.find("void EditorViewportController::TickTransformGizmo", completeBegin);
+		Require(completeBegin != std::string::npos && completeEnd > completeBegin,
+			"viewport controller must expose a bounded transform completion path");
+		const std::string completeBody = viewportControllerSource.substr(completeBegin, completeEnd - completeBegin);
+		Require(CountOccurrences(completeBody, "QueueTransformEvent(") == 1 &&
+			completeBody.find("m_dragInstanceId = InstanceId::Invalid") != std::string::npos &&
+			completeBody.find("m_dragManagedObjectMutationRevision = 0") != std::string::npos,
+			"one completed drag must enqueue at most one event and consume its active gesture state");
+
+		const size_t transformTickBegin = viewportControllerSource.find("void EditorViewportController::TickTransformGizmo", completeEnd);
+		const size_t selectionTickBegin = viewportControllerSource.find("void EditorViewportController::TickSelection", transformTickBegin);
+		Require(transformTickBegin != std::string::npos && selectionTickBegin > transformTickBegin,
+			"transform gizmo tick must be bounded");
+		const std::string transformTickBody = viewportControllerSource.substr(transformTickBegin, selectionTickBegin - transformTickBegin);
+		Require(CountOccurrences(transformTickBody, "CompleteActiveTransform(world);") == 4,
+			"selection changes, camera loss, zero-sized viewports, and pointer release must each finalize an active drag");
+		Require(transformTickBody.find("m_gizmoSubmittedThisFrame = true;") != std::string::npos,
+			"pointer ownership must record that ImGuizmo was submitted in the current frame");
+		const size_t queueSelectionBegin = viewportControllerSource.find("void EditorViewportController::QueueSelectionEvent", selectionTickBegin);
+		Require(selectionTickBegin != std::string::npos && queueSelectionBegin > selectionTickBegin,
+			"scene selection tick must be bounded");
+		const std::string selectionTickBody = viewportControllerSource.substr(selectionTickBegin, queueSelectionBegin - selectionTickBegin);
+		Require(selectionTickBody.find("DoesSubmittedGizmoOwnPointer(") != std::string::npos,
+			"scene selection must ignore stale ImGuizmo hover or drag state from a frame without a submitted gizmo");
+		Require(selectionTickBody.find("ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&") != std::string::npos &&
+			selectionTickBody.find("bUsesMeshBounds)") != std::string::npos,
+			"viewport picking must exclude empty-object selection fallback bounds");
+		const size_t selectedGizmoBegin = gameObjectSource.find("void GameObject::DrawEditorSelectedGizmo()");
+		const size_t selectedGizmoEnd = gameObjectSource.find("void GameObject::Tick(", selectedGizmoBegin);
+		Require(selectedGizmoBegin != std::string::npos && selectedGizmoEnd > selectedGizmoBegin,
+			"selected GameObject gizmo drawing must be bounded");
+		const std::string selectedGizmoBody = gameObjectSource.substr(selectedGizmoBegin, selectedGizmoEnd - selectedGizmoBegin);
+		Require(selectedGizmoBody.find("if (bUsesMeshBounds)") != std::string::npos &&
+			selectedGizmoBody.find("DrawAABB(selectionBounds, selectionColor)") != std::string::npos &&
+			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor)") != std::string::npos,
+			"selected empty GameObjects must draw a unit center sphere without changing mesh selection bounds");
+		const size_t viewportTickBegin = viewportControllerSource.find("void EditorViewportController::Tick(World& world)");
+		const size_t viewportResetBegin = viewportControllerSource.find("void EditorViewportController::Reset()", viewportTickBegin);
+		Require(viewportTickBegin != std::string::npos && viewportResetBegin > viewportTickBegin &&
+			viewportControllerSource.substr(viewportTickBegin, viewportResetBegin - viewportTickBegin).find("ResetImGuizmoInteractionState();") != std::string::npos,
+			"a frame without a submitted gizmo must explicitly cancel stale ImGuizmo interaction state");
+		const size_t cancelInteractionBegin = viewportControllerSource.find("void EditorViewportController::CancelInteraction(World& world)");
+		const size_t cancelInteractionEnd = viewportControllerSource.find("bool EditorViewportController::PullEvent", cancelInteractionBegin);
+		Require(cancelInteractionBegin != std::string::npos && cancelInteractionEnd > cancelInteractionBegin &&
+			viewportControllerSource.substr(cancelInteractionBegin, cancelInteractionEnd - cancelInteractionBegin).find("CompleteActiveTransform(world);") != std::string::npos &&
+			editorSource.find("m_viewportController->CancelInteraction(*m_world);") != std::string::npos,
+			"focus or capture loss must finalize the active drag and unlock the toolbar");
+
+		Require(imGuiSource.find("case VK_MENU: return ImGuiKey_ModAlt") != std::string::npos &&
+			imGuiSource.find("case VK_LWIN: return ImGuiKey_ModSuper") != std::string::npos,
+			"Mac modifier keys must reach ImGui selection suppression");
+		Require(macInputSource.find("SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers)") != std::string::npos &&
+			macInputSource.find("SceneViewportPointerRouting.ShouldPublishCapturedMove(") != std::string::npos &&
+			macInputSource.find("(deltaX * sensitivity) / scale") != std::string::npos &&
+			macInputSource.find("PublishTouchButton(touches, activeLocalPointerModifier, false);") != std::string::npos &&
+			macInputSource.find("activeMouseModifiers | activeKeyboardModifiers") != std::string::npos,
+			"Mac pointer input must arbitrate hover and captured motion, normalize Retina deltas, release local trackpad presses, and preserve keyboard modifiers");
+	}
+
 }
 
 int main()
@@ -526,6 +744,8 @@ int main()
 		{ "RemoteViewportReconnectTimeoutBackoffAndDiagnostics", TestRemoteViewportReconnectTimeoutBackoffAndDiagnostics },
 		{ "RemoteViewportFrameFloodKeepsLatestFrameAndStableCounters", TestRemoteViewportFrameFloodKeepsLatestFrameAndStableCounters },
 		{ "RemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState", TestRemoteViewportDisconnectRecreateLoopResetsEpochGenerationAndState },
+		{ "GlobalInputResetClearsLifecycleState", TestGlobalInputResetClearsLifecycleState },
+		{ "EditorRemoteInputAndViewportEventInteropContract", TestEditorRemoteInputAndViewportEventInteropContract },
 	};
 
 	for (const auto& test : tests)

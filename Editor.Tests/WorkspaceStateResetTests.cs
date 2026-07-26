@@ -25,6 +25,86 @@ public sealed class WorkspaceStateResetTests
     }
 
     [Fact]
+    public async Task ResetForDocumentChange_ClearsHistoryWithoutAdvancingWorkspaceEpoch()
+    {
+        var dispatcher = new EditorCommandDispatcher(
+            new StubActionContextProvider(),
+            new InMemoryUndoRedoHistory());
+
+        Assert.True((await dispatcher.DispatchAsync(new ImmediateCommand("First edit"), new ActionContext())).Succeeded);
+        Assert.True((await dispatcher.DispatchAsync(new ImmediateCommand("Second edit"), new ActionContext())).Succeeded);
+        Assert.True(await dispatcher.UndoAsync());
+        var previousEpoch = dispatcher.WorkspaceEpoch;
+
+        await dispatcher.BeginDocumentChangeAsync();
+        try
+        {
+            dispatcher.ResetForDocumentChange();
+        }
+        finally
+        {
+            dispatcher.CompleteDocumentChange();
+        }
+
+        Assert.Equal(previousEpoch, dispatcher.WorkspaceEpoch);
+        Assert.Equal(0, dispatcher.UndoCount);
+        Assert.Equal(0, dispatcher.RedoCount);
+    }
+
+    [Fact]
+    public async Task BeginDocumentChangeAsync_DrainsCommandsAndGatesNewDispatchWithoutAdvancingEpoch()
+    {
+        var dispatcher = new EditorCommandDispatcher(
+            new StubActionContextProvider(),
+            new InMemoryUndoRedoHistory());
+        var command = new DelayedCommand("Delayed scene edit", () => false);
+        var previousEpoch = dispatcher.WorkspaceEpoch;
+
+        var dispatch = dispatcher.DispatchAsync(command, new ActionContext());
+        await command.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var transition = dispatcher.BeginDocumentChangeAsync();
+
+        Assert.False(transition.IsCompleted);
+        var blocked = await dispatcher.DispatchAsync(new ImmediateCommand("Blocked edit"), new ActionContext());
+        Assert.False(blocked.Succeeded);
+        Assert.Contains("document is changing", blocked.Message, StringComparison.OrdinalIgnoreCase);
+
+        command.Release.TrySetResult();
+        Assert.True((await dispatch.WaitAsync(TimeSpan.FromSeconds(5))).Succeeded);
+        await transition.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            dispatcher.ResetForDocumentChange();
+        }
+        finally
+        {
+            dispatcher.CompleteDocumentChange();
+        }
+
+        Assert.Equal(previousEpoch, dispatcher.WorkspaceEpoch);
+        Assert.Equal(0, dispatcher.UndoCount);
+        Assert.Equal(0, dispatcher.RedoCount);
+    }
+
+    [Fact]
+    public async Task DocumentChangeWithoutReset_PreservesHistoryWhenNativeSwitchFails()
+    {
+        var dispatcher = new EditorCommandDispatcher(
+            new StubActionContextProvider(),
+            new InMemoryUndoRedoHistory());
+
+        Assert.True((await dispatcher.DispatchAsync(new ImmediateCommand("Existing edit"), new ActionContext())).Succeeded);
+        var previousEpoch = dispatcher.WorkspaceEpoch;
+
+        await dispatcher.BeginDocumentChangeAsync();
+        dispatcher.CompleteDocumentChange();
+
+        Assert.Equal(previousEpoch, dispatcher.WorkspaceEpoch);
+        Assert.Equal(1, dispatcher.UndoCount);
+        Assert.Equal(0, dispatcher.RedoCount);
+    }
+
+    [Fact]
     public async Task BeginWorkspaceChangeAsync_DrainsNonCooperativeDispatchBeforeReset()
     {
         var history = new InMemoryUndoRedoHistory();

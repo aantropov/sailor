@@ -318,15 +318,18 @@ namespace Sailor
 #endif
 
 	template<typename TPropertyType>
-	__forceinline TPropertyType IReflectable::ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext, bool bImmediate)
+	__forceinline TPropertyType IReflectable::ResolveObject(const YAML::Node& node, const TMap<InstanceId, ObjectPtr>& resolveContext,
+		bool bImmediate, bool& outHasReference)
 	{
 		using ElementType = TemplateParameter_t<TPropertyType>;
 
+		outHasReference = false;
 		TPropertyType v{};
 		if (node["fileId"])
 		{
 			if (FileId fileId = node["fileId"].as<FileId>())
 			{
+				outHasReference = true;
 				v = ResolveAssetDependency(fileId, bImmediate).DynamicCast<ElementType>();
 			}
 		}
@@ -337,6 +340,7 @@ namespace Sailor
 
 			if (instanceId)
 			{
+				outHasReference = true;
 				check(!v);
 
 				if (resolveContext.ContainsKey(instanceId))
@@ -381,8 +385,9 @@ namespace Sailor
 									}
 									else
 									{
-										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
-										bResolved &= (bool)resolved;
+										bool bHasReference = false;
+										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate, bHasReference);
+										bResolved &= !bHasReference || (bool)resolved;
 
 										member(*ptr) = resolved;
 									}
@@ -399,8 +404,9 @@ namespace Sailor
 									}
 									else
 									{
-										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate);
-										bResolved &= (bool)resolved;
+										bool bHasReference = false;
+										auto resolved = ResolveObject<PropertyType>(node, resolveContext, bImmediate, bHasReference);
+										bResolved &= !bHasReference || (bool)resolved;
 
 										member(*ptr, resolved);
 									}

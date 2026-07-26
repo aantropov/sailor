@@ -143,7 +143,7 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
     {
         var editorTypes = MauiProgram.GetService<EngineService>().EngineTypes;
         var componentTypeName = await Views.AddComponentDialogPage.ShowAsync(
-            editorTypes.GetComponentTypeNames());
+            editorTypes.GetAddableComponentTypeNames());
 
         if (!string.IsNullOrWhiteSpace(componentTypeName))
         {

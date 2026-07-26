@@ -184,17 +184,25 @@ namespace
 		{
 			shaderCompiler->RecoverMissingShaderCacheStorage();
 		}
-		assetRegistry->ScanContentFolder();
+		const bool bReloaded = assetRegistry->ScanContentFolder();
 		if (scheduler)
 		{
-			scheduler->WaitIdle({ EThreadType::Render, EThreadType::RHI });
+			scheduler->WaitIdle({
+				EThreadType::Worker,
+				EThreadType::Render,
+				EThreadType::RHI
+			});
 		}
-		if (auto* renderer = App::GetSubmodule<Renderer>())
+		const bool bProcessingSucceeded = assetRegistry->CompleteScanProcessing();
+		if (bReloaded && bProcessingSucceeded)
 		{
-			renderer->RefreshFrameGraph();
+			if (auto* renderer = App::GetSubmodule<Renderer>())
+			{
+				renderer->RefreshFrameGraph();
+			}
 		}
 
-		return true;
+		return bReloaded && bProcessingSucceeded;
 	}
 }
 
@@ -299,6 +307,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_world = Utils::GetArgValue(args, i, num);
 		}
+		else if (arg == "--new-world")
+		{
+			params.m_world.clear();
+		}
 		else if (arg == "--pathtracer")
 		{
 			params.m_bRunPathTracer = true;
@@ -316,6 +328,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	{
 		return;
 	}
+
+	EditorRuntime::ResetForAppLifecycle();
 
 	{
 		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
@@ -507,7 +521,9 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	if (!pWorld)
 	{
-		pWorld = engineLoop->CreateEmptyWorld("New World", worldParams);
+		pWorld = engineLoop->CreateEmptyWorld(
+			params.m_bIsEditor ? "New Scene" : "New World",
+			worldParams);
 	}
 
 	if (auto editor = App::GetSubmodule<Editor>())
@@ -628,6 +644,7 @@ void App::Start()
 		if (bRunsInsideEditor)
 		{
 			EditorRuntime::ApplyPendingEditorViewportOnEngineThread();
+			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		}
 
 		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !pMainWindow->IsParentWindowValid())
@@ -794,6 +811,27 @@ bool App::RequestAssetReload()
 	return true;
 }
 
+bool App::GetAssetReloadState(
+	uint64_t& outRequestGeneration,
+	uint64_t& outCompletedGeneration,
+	uint64_t& outSuccessfulGeneration)
+{
+	outRequestGeneration = 0;
+	outCompletedGeneration = 0;
+	outSuccessfulGeneration = 0;
+
+	const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
+	if (!s_pInstance || g_engineShuttingDown)
+	{
+		return false;
+	}
+
+	outRequestGeneration = s_pInstance->m_assetReloadRequestGeneration;
+	outCompletedGeneration = s_pInstance->m_assetReloadCompletedGeneration;
+	outSuccessfulGeneration = s_pInstance->m_assetReloadSuccessfulGeneration;
+	return true;
+}
+
 void App::QueueAssetReloadTaskLocked(Tasks::Scheduler* scheduler)
 {
 	check(s_pInstance && scheduler);
@@ -822,7 +860,7 @@ void App::ProcessAssetReloadRequestOnEngineMainThread()
 		requestGeneration = s_pInstance->m_assetReloadRequestGeneration;
 	}
 
-	ReloadAssetsOnEngineMainThread();
+	const bool bReloaded = ReloadAssetsOnEngineMainThread();
 
 	const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
 	if (!s_pInstance || g_engineShuttingDown ||
@@ -833,6 +871,15 @@ void App::ProcessAssetReloadRequestOnEngineMainThread()
 			s_pInstance->m_pendingAssetReloadTask.Clear();
 		}
 		return;
+	}
+	s_pInstance->m_assetReloadCompletedGeneration = (std::max)(
+		s_pInstance->m_assetReloadCompletedGeneration,
+		requestGeneration);
+	if (bReloaded)
+	{
+		s_pInstance->m_assetReloadSuccessfulGeneration = (std::max)(
+			s_pInstance->m_assetReloadSuccessfulGeneration,
+			requestGeneration);
 	}
 
 	if (s_pInstance->m_assetReloadRequestGeneration == requestGeneration)
@@ -857,6 +904,8 @@ void App::Shutdown()
 	{
 		return;
 	}
+
+	EditorRuntime::ResetForAppLifecycle();
 
 	auto scheduler = GetSubmodule<Tasks::Scheduler>();
 	auto renderer = GetSubmodule<Renderer>();

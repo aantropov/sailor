@@ -1,23 +1,32 @@
 using SailorEditor.Workspace;
+using SailorEditor.Services;
 
 namespace SailorEditor.Editor.Tests;
 
 public sealed class WorkspaceUiProjectionTests
 {
     [Fact]
-    public void Build_UsesFallbackIdentity_WhenNoWorkspaceIsActive()
+    public void Build_UsesExplicitEngineMode_WhenNoWorkspaceIsActive()
     {
+        var engineRoot = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "SailorEngine"));
+        var engineContext = EngineLaunchContract.Resolve(null, null, null, null, engineRoot);
         var recent = new[]
         {
             new RecentWorkspaceEntry("id-1", "Sandbox", "/tmp/Sandbox/workspace.sailor", new DateTimeOffset(2026, 6, 25, 12, 0, 0, TimeSpan.Zero))
         };
 
-        var projection = WorkspaceUiProjectionBuilder.Build(null, recent);
+        var projection = WorkspaceUiProjectionBuilder.Build(
+            null,
+            recent,
+            projectContext: engineContext);
 
         Assert.False(projection.HasActiveWorkspace);
-        Assert.Equal("No workspace", projection.ActiveWorkspaceName);
-        Assert.Equal("Repository fallback", projection.ActiveWorkspacePath);
-        Assert.Equal("No workspace", projection.ToolbarText);
+        Assert.Equal(EditorProjectMode.Engine, projection.Mode);
+        Assert.Equal("Engine Mode", projection.ActiveWorkspaceName);
+        Assert.Equal(engineRoot, projection.ActiveRootPath);
+        Assert.Equal(Path.Combine(engineRoot, "Content"), projection.ActiveContentPath);
+        Assert.Equal("Engine Mode", projection.ToolbarText);
+        Assert.Equal($"Engine Mode — {engineRoot}", projection.WindowTitle);
         Assert.Single(projection.RecentWorkspaces);
     }
 
@@ -38,9 +47,13 @@ public sealed class WorkspaceUiProjectionTests
         var projection = WorkspaceUiProjectionBuilder.Build(session, []);
 
         Assert.True(projection.HasActiveWorkspace);
+        Assert.Equal(EditorProjectMode.Workspace, projection.Mode);
         Assert.Equal("Sandbox", projection.ActiveWorkspaceName);
         Assert.Equal(root, projection.ActiveWorkspacePath);
+        Assert.Equal(root, projection.ActiveRootPath);
+        Assert.Equal(Path.Combine(root, "Content"), projection.ActiveContentPath);
         Assert.Equal("Sandbox", projection.ToolbarText);
+        Assert.Equal($"Workspace: Sandbox — {root}", projection.WindowTitle);
     }
 
     [Fact]

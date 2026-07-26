@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using SailorEditor.Workflow;
 
 namespace Editor.Tests;
@@ -82,6 +84,60 @@ public sealed class WorkflowProjectionTests
                 Assert.False(row.HasChildren);
                 Assert.True(row.IsSelected);
             });
+    }
+
+    [Fact]
+    public void HierarchyRows_ReparentThenUnrelatedRefreshPreservesStableRowsAndSelection()
+    {
+        var selectedRow = new HierarchyListRow("c", 0, "C", false, false, true);
+        var rows = new ObservableCollection<HierarchyListRow>
+        {
+            new("a", 0, "A", false, false, false),
+            new("b", 0, "B", false, false, false),
+            selectedRow,
+        };
+        var actions = new List<NotifyCollectionChangedAction>();
+        rows.CollectionChanged += (_, args) => actions.Add(args.Action);
+
+        HierarchyListRow[] reparented =
+        [
+            new("a", 0, "A", true, true, false),
+            new("b", 1, "B", false, false, false),
+            new("c", 0, "C", false, false, true),
+        ];
+
+        HierarchyRowReconciler.Reconcile(rows, reparented);
+
+        Assert.Equal(3, rows.Count);
+        Assert.Equal(1, rows[1].Depth);
+        Assert.Same(selectedRow, rows[2]);
+        Assert.DoesNotContain(NotifyCollectionChangedAction.Reset, actions);
+
+        actions.Clear();
+        HierarchyRowReconciler.Reconcile(rows, [.. reparented]);
+
+        Assert.Empty(actions);
+        Assert.Same(selectedRow, rows.Single(row => row.IsSelected));
+    }
+
+    [Fact]
+    public void InspectorSelectionIdentity_UsesStableValueIdentity()
+    {
+        Assert.True(InspectorSelectionIdentity.AreEquivalent(
+            typeof(object),
+            new string("game-object".ToCharArray()),
+            typeof(object),
+            new string("game-object".ToCharArray())));
+        Assert.False(InspectorSelectionIdentity.AreEquivalent(
+            typeof(object),
+            "game-object",
+            typeof(string),
+            "game-object"));
+        Assert.False(InspectorSelectionIdentity.AreEquivalent(
+            typeof(object),
+            "game-object",
+            typeof(object),
+            "another-object"));
     }
 
     [Fact]
@@ -189,6 +245,27 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void WorldProjectionRefresh_DropsStaleSelectionBeforePublishing()
+    {
+        var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
+        var inspectorSource = ReadRepositoryFile("Editor", "Services", "InspectorProjectionService.cs");
+        var gameObjectTemplateSource = ReadRepositoryFile("Editor", "Views", "InspectorView", "GameObjectTemplate.xaml.cs");
+        var publish = Slice(worldSource, "void PublishCurrentWorld()", "void RefreshSelection()");
+        var getComponents = Slice(worldSource, "public List<Component> GetComponents", "public Component FindComponent");
+        var resolveSelection = Slice(inspectorSource, "object? ResolveSelectedItem()", "GameObject? ResolveOwner");
+
+        AssertInOrder(publish, "RefreshSelection();", "OnUpdateWorldAction?.Invoke(Current)");
+        Assert.Contains("componentIndex < 0 || componentIndex >= prefab.Components.Count", getComponents, StringComparison.Ordinal);
+        AssertInOrder(
+            resolveSelection,
+            "TryGetGameObject(selectedInstanceId",
+            "TryGetComponent(selectedInstanceId",
+            "return null;");
+        Assert.Contains("DispatchDelayed", gameObjectTemplateSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("CommitFrom(sender)", gameObjectTemplateSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ComponentMutations_StayOnTheCallingThreadUntilProjectionRefreshCompletes()
     {
         var source = ReadRepositoryFile("Editor", "ViewModels", "GameObject.cs");
@@ -267,7 +344,8 @@ public sealed class WorkflowProjectionTests
             "CreateGameObject(parentId, _createdId, out var createdId)",
             "_createdId = createdId;",
             "TryGetGameObject(createdId",
-            "DestroyObject(createdId)");
+            "DestroyObject(createdId)",
+            "SelectInstance(createdId)");
         AssertInOrder(
             addCommand,
             "AddComponent(_ownerId, componentTypeName, _componentId, out var createdId)",

@@ -48,11 +48,11 @@ namespace SailorEditor.Platforms.MacCatalyst
         static readonly NSToolbar CompactToolbar = CreateCompactToolbar();
         static NSObject? windowVisibleObserver;
         static UILabel? titleLabel;
-        static string currentTitle = "New Workspace";
+        static string currentTitle = "Engine Mode";
 
         public static void SetTitle(string title)
         {
-            currentTitle = string.IsNullOrWhiteSpace(title) ? "New Workspace" : title;
+            currentTitle = string.IsNullOrWhiteSpace(title) ? "Engine Mode" : title;
             UpdateTitleLabel();
             ApplySoon();
         }

@@ -99,6 +99,8 @@ public sealed partial class InspectorProjectionService : ObservableObject
 
             if (_worldService.TryGetComponent(selectedInstanceId, out var component))
                 return component;
+
+            return null;
         }
 
         return _selectionService.SelectedItem;

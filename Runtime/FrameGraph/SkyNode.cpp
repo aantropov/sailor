@@ -24,7 +24,7 @@ using namespace Sailor::Framegraph;
 const char* SkyNode::m_name = "Sky";
 #endif
 
-glm::vec3 SkyNode::s_rgbTemperatures[s_maxRgbTemperatures];
+glm::vec3 SkyNode::s_rgbTemperatures[s_numRgbTemperatures];
 
 using TParseRes = TPair<TVector<VertexP3C4>, TVector<uint32_t>>;
 
@@ -47,10 +47,12 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 
 				for (const auto& line : temperaturesData)
 				{
-					const auto temperatureK = line[0];
-
-					uint32_t index = uint32_t((temperatureK / 100.0f) - 10.0f); // 1000 / 100 = 10
-					index = glm::clamp(index, 0u, s_maxRgbTemperatures);
+					const uint32_t temperatureK = glm::clamp(
+						static_cast<uint32_t>(line[0]),
+						s_minRgbTemperature,
+						s_maxRgbTemperature);
+					const uint32_t index =
+						(temperatureK - s_minRgbTemperature) / s_rgbTemperatureStep;
 
 					// Should we inverse gamma correction?
 					const vec3 color = vec3(line[5], line[6], line[7]);
@@ -879,8 +881,12 @@ uint32_t SkyNode::MorganKeenanToTemperature(char spectralType, char subType)
 
 const glm::vec3& SkyNode::TemperatureToColor(uint32_t temperature)
 {
-	int32_t index = (temperature / 100) - 10; // 1000 / 100 = 10
-	index = glm::clamp(index, 0, (int32_t)s_maxRgbTemperatures);
+	const uint32_t clampedTemperature = glm::clamp(
+		temperature,
+		s_minRgbTemperature,
+		s_maxRgbTemperature);
+	const uint32_t index =
+		(clampedTemperature - s_minRgbTemperature) / s_rgbTemperatureStep;
 
 	return s_rgbTemperatures[index];
 }

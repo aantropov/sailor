@@ -76,6 +76,10 @@ namespace Sailor::Win32
 
 		HWND      m_parentHwnd = nullptr;
 
+#if defined(_WIN32)
+		ATOM m_windowClassAtom = 0;
+#endif
+
 		std::atomic<int> m_width = 1024;
 		std::atomic<int> m_height = 768;
 		std::string m_windowClassName;
@@ -93,7 +97,11 @@ namespace Sailor::Win32
 	public:
 
 		SAILOR_API Window() = default;
+#if defined(_WIN32) || defined(__APPLE__)
+		SAILOR_API ~Window() override;
+#else
 		SAILOR_API ~Window() override = default;
+#endif
 
 		SAILOR_API bool IsShown() const override { return m_bIsShown; }
 		SAILOR_API bool IsResizing() const override { return m_bIsResizing; }
@@ -119,6 +127,7 @@ namespace Sailor::Win32
 #if defined(__APPLE__)
 		SAILOR_API void* GetMetalLayer() const override;
 		SAILOR_API void* GetNativeView() const override;
+		SAILOR_API void HandleNativeWindowWillClose(HWND nativeWindow);
 #endif
 
 		SAILOR_API int32_t GetWidth() const override { return m_width; }

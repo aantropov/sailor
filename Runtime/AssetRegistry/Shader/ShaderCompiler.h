@@ -9,6 +9,7 @@
 #include "Core/YamlSerializable.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
+#include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetFactory.h"
 #include "ShaderAssetInfo.h"
@@ -108,13 +109,14 @@ namespace Sailor
 		TVector<std::string> m_defines;
 	};
 
-	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener, public IAssetFactory
+	class ShaderCompiler final : public TSubmodule<ShaderCompiler>, public IAssetInfoHandlerListener,
+		public IAssetRegistryContentListener, public IAssetFactory
 	{
 		const bool bShouldAutoCompileAllPermutations = false;
 
 	public:
 		// Bump whenever generated shader source or compiled artifact semantics change.
-		static constexpr uint32_t CacheProducerVersion = 4;
+		static constexpr uint32_t CacheProducerVersion = 5;
 
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 
@@ -125,6 +127,8 @@ namespace Sailor
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
+		SAILOR_API virtual Tasks::TaskPtr<bool> OnEffectiveContentChanged(
+			const std::string& virtualPath) override;
 		SAILOR_API bool RecoverMissingShaderCacheStorage();
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
@@ -145,7 +149,12 @@ namespace Sailor
 		SAILOR_API void UpdateConstantsLibrary();
 
 		// ShaderAsset related functions
-		SAILOR_API static void GeneratePrecompiledGlsl(ShaderAsset* shader, std::string& outGLSLCode, const TVector<std::string>& includes = {}, const TVector<std::string>& defines = {});
+		SAILOR_API static bool GeneratePrecompiledGlsl(
+			ShaderAsset* shader,
+			std::string& outGLSLCode,
+			const TVector<std::string>& includes,
+			const TVector<std::string>& defines,
+			std::string& outDiagnostic);
 
 		// Compile related functions
 		SAILOR_API bool ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint32_t permutation);
@@ -238,6 +247,14 @@ namespace Sailor
 		}
 
 		SAILOR_API void ReplaceTabsWithSpaces(AssetInfoPtr assetInfo) const;
+		Tasks::TaskPtr<bool> ReloadShader(ShaderAssetInfoPtr assetInfo);
+		Tasks::TaskPtr<bool> ReloadShadersDependingOn(AssetInfoPtr includeAssetInfo);
+		Tasks::TaskPtr<bool> ReloadShadersDependingOn(const std::string& includeVirtualPath);
+		bool ReloadLoadedShaderResources(
+			ShaderAssetInfoPtr assetInfo,
+			bool bCompileBeforeRhiUpdate);
+		static Tasks::TaskPtr<bool> AggregateShaderReloadTasks(
+			const TVector<Tasks::TaskPtr<bool>>& reloadTasks);
 		static bool ReadShaderSourceBinary(
 			const std::string& filepath,
 			std::string& outSource,

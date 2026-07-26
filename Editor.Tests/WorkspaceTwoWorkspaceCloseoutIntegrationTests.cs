@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SailorEditor.Content;
 using SailorEditor.Services;
 using SailorEditor.Workspace;
 using SailorEngine;
@@ -13,7 +14,8 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
     const int ScenarioSchemaVersion = 1;
     const string ScenarioRootEnvironmentVariable = "SAILOR_WORKSPACE_E2E_ROOT";
     const string ScenarioDescriptorFileName = "TwoWorkspaceScenario.json";
-    const string AssetRelativePath = "Shared/Identity.asset";
+    const string AssetSourceRelativePath = "Shared/Identity";
+    const string AssetRelativePath = AssetSourceRelativePath + ".asset";
     const string WorkspaceAModuleName = "CloseoutAlphaLogic";
     const string WorkspaceBModuleName = "CloseoutBetaLogic";
     const string WorkspaceAAssetFileId = "{E2E00000-0000-0000-0000-00000000000A}";
@@ -28,6 +30,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         "Source/WorkspaceTypes.h",
         "Source/WorkspaceModule.cpp",
         WorkspaceGeneratedProjectStateService.RelativePath,
+        $"Content/{AssetSourceRelativePath}",
         $"Content/{AssetRelativePath}"
     ];
 
@@ -44,7 +47,7 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             11.0f,
             AssetRelativePath,
             WorkspaceAAssetFileId,
-            BuildAssetContents(WorkspaceAAssetFileId, 101),
+            BuildAssetContents(WorkspaceAAssetFileId),
             "/scenario/A/Binaries/Release/CloseoutAlphaLogic.dll");
         var descriptor = new ScenarioDescriptor(
             ScenarioSchemaVersion,
@@ -95,7 +98,6 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             WorkspaceAModuleName,
             11.0f,
             WorkspaceAAssetFileId,
-            101,
             installPrefix);
         var workspaceB = await CreateBuildWorkspaceAsync(
             scenarioRoot,
@@ -105,7 +107,6 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             WorkspaceBModuleName,
             22.0f,
             WorkspaceBAssetFileId,
-            202,
             installPrefix);
 
         Assert.NotEqual(workspaceA.ModulePath, workspaceB.ModulePath);
@@ -303,7 +304,6 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         string moduleName,
         float moveSpeed,
         string assetFileId,
-        long assetImportTime,
         string installPrefix)
     {
         var workspaceRoot = Path.Combine(scenarioRoot, directoryName);
@@ -344,10 +344,24 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
         Assert.NotEqual(componentHeader, customizedHeader);
         await File.WriteAllTextAsync(componentHeaderPath, customizedHeader, new UTF8Encoding(false));
 
+        var sourcePath = ResolveRelativePath(session.ContentDirectory, AssetSourceRelativePath);
         var assetPath = ResolveRelativePath(session.ContentDirectory, AssetRelativePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(assetPath)!);
-        var assetContents = BuildAssetContents(assetFileId, assetImportTime);
+        Directory.CreateDirectory(Path.GetDirectoryName(sourcePath)!);
+        await File.WriteAllTextAsync(
+            sourcePath,
+            $"workspace identity source: {assetFileId}\n",
+            new UTF8Encoding(false));
+        var assetContents = BuildAssetContents(assetFileId);
         await File.WriteAllTextAsync(assetPath, assetContents, new UTF8Encoding(false));
+        Assert.True(
+            AssetSourcePathContract.TryResolve(
+                assetPath,
+                Path.GetFileName(sourcePath),
+                out var sourceResolution,
+                out var sourceError),
+            sourceError);
+        Assert.Equal(sourcePath, sourceResolution.SourcePath);
+        Assert.True(sourceResolution.OwnsSourceFile);
         var modulePath = await WorkspaceCMakeIntegrationHarness.ConfigureBuildAndAssertAsync(session);
 
         return new WorkspaceScenarioEntry(
@@ -464,13 +478,12 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             relativePath => HashFile(ResolveRelativePath(root, relativePath)),
             StringComparer.Ordinal);
 
-    static string BuildAssetContents(string fileId, long assetImportTime)
+    static string BuildAssetContents(string fileId)
         => string.Join('\n',
         [
             "assetInfoType: Sailor::AssetInfo",
             $"fileId: \"{fileId}\"",
             "filename: Identity",
-            $"assetImportTime: {assetImportTime}",
             string.Empty
         ]);
 
@@ -554,7 +567,20 @@ public sealed class WorkspaceTwoWorkspaceCloseoutIntegrationTests
             workspace.WorkspaceRoot,
             Path.GetFullPath(workspace.ModulePath),
             nameof(workspace.ModulePath));
-        _ = ResolveRelativePath(workspace.WorkspaceRoot, workspace.AssetRelativePath);
+        var contentRoot = ResolveRelativePath(workspace.WorkspaceRoot, "Content");
+        var assetPath = ResolveRelativePath(contentRoot, workspace.AssetRelativePath);
+        var sourcePath = ResolveRelativePath(contentRoot, AssetSourceRelativePath);
+        Assert.True(File.Exists(assetPath), $"Workspace asset metadata does not exist: {assetPath}");
+        Assert.True(File.Exists(sourcePath), $"Workspace asset source does not exist: {sourcePath}");
+        Assert.True(
+            AssetSourcePathContract.TryResolve(
+                assetPath,
+                Path.GetFileName(sourcePath),
+                out var sourceResolution,
+                out var sourceError),
+            sourceError);
+        Assert.Equal(sourcePath, sourceResolution.SourcePath);
+        Assert.True(sourceResolution.OwnsSourceFile);
     }
 
     static string GetScenarioRoot()

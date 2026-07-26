@@ -38,12 +38,20 @@ namespace SailorEditor.Views
         uint lastAppliedRenderTargetHeight = 0;
         string lastViewportStatusText = string.Empty;
         readonly Stopwatch uiUpdateStopwatch = Stopwatch.StartNew();
+        readonly EngineService engineService;
+        readonly WorldService worldService;
+        readonly ICommandDispatcher commandDispatcher;
+        readonly IActionContextProvider actionContextProvider;
+        readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
+        readonly IAlreadyAppliedTransformTarget viewportTransformTarget;
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
+        readonly EditorViewportEventRevisionGate viewportEventRevisionGate = new();
         readonly UnifiedSettingsStore settingsStore;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
+        bool lifecycleSubscribed;
 #if MACCATALYST
         static readonly bool UseNativeViewportHost = true;
 #else
@@ -54,7 +62,13 @@ namespace SailorEditor.Views
         {
             InitializeComponent();
             settingsStore = MauiProgram.GetService<UnifiedSettingsStore>();
-            viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(MauiProgram.GetService<EngineService>()), EngineService.SceneViewportId);
+            engineService = MauiProgram.GetService<EngineService>();
+            worldService = MauiProgram.GetService<WorldService>();
+            commandDispatcher = MauiProgram.GetService<ICommandDispatcher>();
+            actionContextProvider = MauiProgram.GetService<IActionContextProvider>();
+            inspectorPendingEditCoordinator = MauiProgram.GetService<InspectorPendingEditCoordinator>();
+            viewportTransformTarget = new EditorViewportTransformTarget(engineService, worldService);
+            viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(engineService), EngineService.SceneViewportId);
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
@@ -90,6 +104,7 @@ namespace SailorEditor.Views
                     HorizontalOptions = LayoutOptions.Fill,
                     VerticalOptions = LayoutOptions.Fill
                 };
+                nativeViewportHost.GestureRecognizers.Add(CreateSceneDropGesture());
                 nativeViewportHost.HostHandleChanged += handle =>
                 {
                     nativeHostHandle = handle;
@@ -117,6 +132,15 @@ namespace SailorEditor.Views
                 {
                     var captured = input.Captured || isInputCaptured;
 
+                    if (input.Kind == NativeSceneViewportInputKind.PointerButton &&
+                        input.Button == 0 &&
+                        input.Pressed &&
+                        !inspectorPendingEditCoordinator.CommitPendingChanges())
+                    {
+                        Console.WriteLine("[SceneView] Ignored primary pointer press because pending Inspector changes could not be committed.");
+                        return;
+                    }
+
                     if (input.Kind == NativeSceneViewportInputKind.Focus)
                     {
                         SetSceneFocus(input.Focused, sendRemoteFocus: false);
@@ -127,17 +151,17 @@ namespace SailorEditor.Views
                     }
                     else if (input.Kind == NativeSceneViewportInputKind.PointerButton)
                     {
-                        SetSceneFocus(true, sendRemoteFocus: true);
-                        nativeViewportHost?.RequestInputFocus();
                         if (input.Pressed)
                         {
-                            isInputCaptured = true;
-                            captured = true;
+                            SetSceneFocus(true, sendRemoteFocus: !isFocused);
+                            nativeViewportHost?.RequestInputFocus();
                         }
+                        isInputCaptured = input.Captured;
+                        captured = input.Captured;
                     }
                     else if (input.Kind == NativeSceneViewportInputKind.Key)
                     {
-                        SetSceneFocus(true, sendRemoteFocus: true);
+                        SetSceneFocus(true, sendRemoteFocus: !isFocused);
                     }
                     else if (!isFocused && !isInputCaptured)
                     {
@@ -150,34 +174,9 @@ namespace SailorEditor.Views
                         captured = input.Captured;
                     }
 
-                    if (input.Kind == NativeSceneViewportInputKind.PointerButton && !input.Pressed)
-                    {
-                        captured = isInputCaptured;
-                        isInputCaptured = false;
-                    }
-
                     if (!isFocused && !captured && input.Kind != NativeSceneViewportInputKind.Focus)
                     {
                         return;
-                    }
-
-                    if (input.Kind == NativeSceneViewportInputKind.Focus && !input.Focused)
-                    {
-                        foreach (var button in new uint[] { 0, 1, 2 })
-                        {
-                            viewportAdapter.SendInput(
-                                RemoteViewportInputKind.PointerButton,
-                                input.PointerX,
-                                input.PointerY,
-                                input.WheelDeltaX,
-                                input.WheelDeltaY,
-                                input.KeyCode,
-                                button,
-                                RemoteViewportInputModifier.None,
-                                false,
-                                false,
-                                false);
-                        }
                     }
 
                     var remoteModifiers = (RemoteViewportInputModifier)input.Modifiers;
@@ -194,8 +193,6 @@ namespace SailorEditor.Views
                         input.Pressed,
                         focused,
                         captured);
-
-                    UpdateViewportIntegration();
                 };
 
                 NativeViewportContainer.Content = nativeViewportHost;
@@ -206,6 +203,7 @@ namespace SailorEditor.Views
             Loaded += (sender, args) =>
             {
                 isRunning = true;
+                SubscribeToEngineLifecycle();
 #if MACCATALYST
                 if (!UseNativeViewportHost)
                 {
@@ -249,10 +247,223 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isRunning = false;
+                UnsubscribeFromEngineLifecycle();
                 focusCoordinator.ReleaseIfOwned();
                 viewportAdapter.Destroy();
             };
         }
+
+        void SubscribeToEngineLifecycle()
+        {
+            if (lifecycleSubscribed)
+                return;
+
+            engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
+            engineService.OnEditorViewportEvents += OnEditorViewportEvents;
+            viewportEventRevisionGate.Reset();
+            lifecycleSubscribed = true;
+        }
+
+        void UnsubscribeFromEngineLifecycle()
+        {
+            if (!lifecycleSubscribed)
+                return;
+
+            engineService.OnLifecycleStateChanged -= OnEngineLifecycleStateChanged;
+            engineService.OnEditorViewportEvents -= OnEditorViewportEvents;
+            lifecycleSubscribed = false;
+        }
+
+        void OnEngineLifecycleStateChanged(EngineLifecycleState state)
+        {
+            viewportEventRevisionGate.Reset();
+            if (state != EngineLifecycleState.Running || !isRunning)
+                return;
+
+            viewportAdapter.ResetForBackendRestart();
+            QueueViewportRetry(TimeSpan.FromSeconds(1));
+            UpdateViewportIntegration();
+        }
+
+        async void OnEditorViewportEvents(IReadOnlyList<EditorViewportEvent> viewportEvents)
+        {
+            if (!isRunning)
+            {
+                return;
+            }
+
+            foreach (var viewportEvent in viewportEvents)
+            {
+                if (!viewportEventRevisionGate.TryAccept(viewportEvent))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    switch (viewportEvent)
+                    {
+                        case EditorViewportSelectionEvent selectionEvent:
+                            await ApplyViewportSelectionAsync(selectionEvent);
+                            break;
+
+                        case EditorViewportTransformEvent transformEvent:
+                            await ApplyViewportTransformAsync(transformEvent);
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[SceneView] Failed to apply viewport event revision {viewportEvent.Revision}: {ex}");
+                }
+            }
+        }
+
+        async Task ApplyViewportSelectionAsync(EditorViewportSelectionEvent viewportEvent)
+        {
+            if (!engineService.IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision))
+            {
+                Console.WriteLine($"[SceneView] Rejected stale viewport selection revision {viewportEvent.Revision} after a newer managed mutation.");
+                return;
+            }
+
+            if (!inspectorPendingEditCoordinator.CommitPendingChanges())
+            {
+                Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: pending Inspector changes could not be committed.");
+                return;
+            }
+
+            if (!engineService.IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision))
+            {
+                Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision} after committing pending Inspector changes.");
+                return;
+            }
+
+            InstanceId? selectedId = null;
+            if (!string.IsNullOrEmpty(viewportEvent.SelectedInstanceId))
+            {
+                var candidate = new InstanceId(viewportEvent.SelectedInstanceId);
+                if (candidate.IsEmpty() || !worldService.TryGetGameObject(candidate, out _))
+                {
+                    Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: '{viewportEvent.SelectedInstanceId}' is not a live GameObject.");
+                    return;
+                }
+
+                selectedId = candidate;
+            }
+
+            var result = await commandDispatcher.DispatchAsync(
+                new ApplyRuntimeSelectionCommand(selectedId),
+                CreateViewportActionContext(viewportEvent));
+            if (!result.Succeeded)
+            {
+                Console.WriteLine($"[SceneView] Viewport selection revision {viewportEvent.Revision} failed: {result.Message}");
+            }
+        }
+
+        async Task ApplyViewportTransformAsync(EditorViewportTransformEvent viewportEvent)
+        {
+            if (!engineService.IsEditorViewportTransformEventCurrent(
+                viewportEvent.InstanceId,
+                viewportEvent.ManagedMutationRevision))
+            {
+                Console.WriteLine($"[SceneView] Rejected stale viewport transform revision {viewportEvent.Revision} after a newer managed mutation.");
+                return;
+            }
+
+            if (!inspectorPendingEditCoordinator.CommitPendingChanges())
+            {
+                Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision}: pending Inspector changes could not be committed.");
+                return;
+            }
+
+            if (!engineService.IsEditorViewportTransformEventCurrent(
+                viewportEvent.InstanceId,
+                viewportEvent.ManagedMutationRevision))
+            {
+                Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision} after committing pending Inspector changes.");
+                return;
+            }
+
+            var instanceId = new InstanceId(viewportEvent.InstanceId);
+            if (instanceId.IsEmpty() || !worldService.TryGetGameObject(instanceId, out var gameObject))
+            {
+                Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision}: '{viewportEvent.InstanceId}' is not a live GameObject.");
+                return;
+            }
+
+            var structure = CaptureGameObjectStructure(gameObject);
+            var beforeYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
+                structure,
+                viewportEvent.BeforePosition,
+                viewportEvent.BeforeRotation,
+                viewportEvent.BeforeScale));
+            var afterYaml = EditorYaml.SerializeGameObject(CreateTransformSnapshot(
+                structure,
+                viewportEvent.AfterPosition,
+                viewportEvent.AfterRotation,
+                viewportEvent.AfterScale));
+            if (string.Equals(beforeYaml, afterYaml, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var result = await commandDispatcher.DispatchAsync(
+                new AlreadyAppliedTransformCommand(
+                    viewportEvent.InstanceId,
+                    beforeYaml,
+                    afterYaml,
+                    viewportTransformTarget,
+                    $"{viewportEvent.Operation} {gameObject.Name}"),
+                CreateViewportActionContext(viewportEvent));
+            if (!result.Succeeded)
+            {
+                Console.WriteLine($"[SceneView] Viewport transform revision {viewportEvent.Revision} failed: {result.Message}");
+            }
+        }
+
+        ActionContext CreateViewportActionContext(EditorViewportEvent viewportEvent) =>
+            actionContextProvider.GetCurrentContext(
+                new CommandOrigin(CommandOriginKind.UI, nameof(SceneView)),
+                new Dictionary<string, string?>
+                {
+                    ["viewportEventRevision"] = viewportEvent.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                });
+
+        static Vec4 ToVec4(EditorViewportVector4 value) => new()
+        {
+            X = value.X,
+            Y = value.Y,
+            Z = value.Z,
+            W = value.W,
+        };
+
+        static GameObjectStructure CaptureGameObjectStructure(SailorEditor.ViewModels.GameObject gameObject) => new(
+            gameObject.Name,
+            gameObject.InstanceId.Value,
+            gameObject.ParentIndex,
+            new List<int>(gameObject.ComponentIndices ?? []));
+
+        static SailorEditor.ViewModels.GameObject CreateTransformSnapshot(
+            GameObjectStructure structure,
+            EditorViewportVector4 position,
+            EditorViewportVector4 rotation,
+            EditorViewportVector4 scale) => new()
+        {
+            Name = structure.Name,
+            InstanceId = new InstanceId(structure.InstanceId),
+            ParentIndex = structure.ParentIndex,
+            ComponentIndices = new List<int>(structure.ComponentIndices),
+            Position = ToVec4(position),
+            Rotation = new Rotation(new Quat(rotation.X, rotation.Y, rotation.Z, rotation.W)),
+            Scale = ToVec4(scale),
+        };
+
+        readonly record struct GameObjectStructure(
+            string Name,
+            string InstanceId,
+            uint ParentIndex,
+            IReadOnlyList<int> ComponentIndices);
 
         SceneShellFocusTarget ResolveFocusTarget(State.ShellState shellState)
         {

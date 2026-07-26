@@ -130,6 +130,26 @@ namespace
 		};
 	}
 
+	AssetMountResolutionResult ResolveLibraryCandidates(
+		const AssetMountDiscoveryResult& discovery,
+		const std::string& virtualPath)
+	{
+		TVector<AssetMountCandidate> candidates;
+		for (const AssetMountDiscoveredFile& file : discovery.m_files)
+		{
+			if (file.m_virtualPath == virtualPath)
+			{
+				candidates.Add(Candidate(
+					file,
+					virtualPath,
+					file.m_mount.m_kind == EAssetMountKind::Workspace
+						? "{WORKSPACE-LIBRARY}"
+						: "{ENGINE-LIBRARY}"));
+			}
+		}
+		return ResolveAssetMountCandidates(std::move(candidates));
+	}
+
 	bool HasDiagnostic(
 		const TVector<AssetMountDiagnostic>& diagnostics,
 		EAssetMountDiagnosticCode code)
@@ -373,6 +393,49 @@ namespace
 			"Virtual-path diagnostics should carry deterministic winner and loser provenance");
 	}
 
+	void TestShaderLibraryOverrideFallsBackToEngine()
+	{
+		TempDirectory engine("shader-library-engine");
+		TempDirectory workspace("shader-library-workspace");
+		const std::string virtualPath = "Shaders/Library/Math.glsl";
+		const std::filesystem::path engineLibrary = engine.Path(virtualPath);
+		const std::filesystem::path workspaceLibrary = workspace.Path(virtualPath);
+		WriteFile(engineLibrary, "vec3 engineMath() { return vec3(1.0); }\n");
+
+		auto discover = [&]()
+		{
+			return DiscoverAssetMountFiles({
+				Mount(engine.Get(), EAssetMountKind::Engine, 0, false),
+				Mount(workspace.Get(), EAssetMountKind::Workspace, 100, true)
+			});
+		};
+
+		AssetMountResolutionResult resolution = ResolveLibraryCandidates(discover(), virtualPath);
+		const AssetMountCandidate* winner = resolution.FindByVirtualPath(virtualPath);
+		Require(winner != nullptr && winner->m_mount.m_kind == EAssetMountKind::Engine,
+			"an Engine GLSL library should resolve when the workspace has no override");
+
+		WriteFile(workspaceLibrary, "vec3 workspaceMath() { return vec3(2.0); }\n");
+		resolution = ResolveLibraryCandidates(discover(), virtualPath);
+		winner = resolution.FindByVirtualPath(virtualPath);
+		Require(winner != nullptr && winner->m_mount.m_kind == EAssetMountKind::Workspace,
+			"a workspace GLSL library should override the Engine virtual path");
+
+		std::error_code removeError;
+		std::filesystem::remove(workspaceLibrary, removeError);
+		Require(!removeError, "the workspace GLSL override fixture should be removable");
+		resolution = ResolveLibraryCandidates(discover(), virtualPath);
+		winner = resolution.FindByVirtualPath(virtualPath);
+		Require(winner != nullptr && winner->m_mount.m_kind == EAssetMountKind::Engine,
+			"deleting a workspace GLSL override should fall back to the Engine winner");
+
+		std::filesystem::remove(engineLibrary, removeError);
+		Require(!removeError, "the Engine GLSL fallback fixture should be removable");
+		resolution = ResolveLibraryCandidates(discover(), virtualPath);
+		Require(resolution.FindByVirtualPath(virtualPath) == nullptr,
+			"deleting both GLSL candidates should leave the Content-root virtual path unresolved");
+	}
+
 	void TestWorkspaceWinsFileIdWhileUniqueVirtualPathsRemainAddressable()
 	{
 		TempDirectory engine("fileid-engine");
@@ -482,6 +545,7 @@ namespace
 			"The real Engine Content smoke must preserve read-only provenance");
 		FindFile(discovery, EAssetMountKind::Engine, "Editor.world.asset");
 		FindFile(discovery, EAssetMountKind::Engine, "Shaders/Constants.glsl");
+		FindFile(discovery, EAssetMountKind::Engine, "Shaders/Constants.glsl.asset");
 	}
 }
 
@@ -498,6 +562,7 @@ int main(int argc, char** argv)
 		TestOverlappingRootsAreRejectedInBothDirections();
 		TestDiscoverySkipsPhysicalEscapesAndCycles();
 		TestWorkspaceWinsVirtualPathIndependentOfInputOrder();
+		TestShaderLibraryOverrideFallsBackToEngine();
 		TestWorkspaceWinsFileIdWhileUniqueVirtualPathsRemainAddressable();
 		TestPriorityBreaksTiesWithinTheSameMountKind();
 		TestInvalidCandidatesAreRejected();

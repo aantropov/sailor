@@ -106,7 +106,7 @@ internal sealed class WorkspaceActivationOperations(
             await engineService.StartAsync(launchContext, cancellationToken).ConfigureAwait(false);
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
-                assetsService.AddProjectRoot(launchContext.ContentDirectory);
+                assetsService.AddProjectRoot(launchContext);
                 projectContentStore.Refresh();
             });
 
@@ -114,6 +114,12 @@ internal sealed class WorkspaceActivationOperations(
             {
                 throw new InvalidOperationException(
                     $"The candidate runtime did not remain running (state: {engineService.State}).");
+            }
+
+            if (launchContext.Mode == EditorProjectMode.Workspace)
+            {
+                await MainThread.InvokeOnMainThreadAsync(
+                    worldService.MarkCurrentWorldUntitledForWorkspaceStartup);
             }
         }
         catch (Exception activationFailure)

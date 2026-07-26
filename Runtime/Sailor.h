@@ -57,6 +57,10 @@ namespace Sailor
 		SAILOR_API static void Stop();
 		SAILOR_API static void Shutdown();
 		SAILOR_API static bool RequestAssetReload();
+		SAILOR_API static bool GetAssetReloadState(
+			uint64_t& outRequestGeneration,
+			uint64_t& outCompletedGeneration,
+			uint64_t& outSuccessfulGeneration);
 		SAILOR_API static bool IsRendererInitialized();
 		SAILOR_API static bool HasEditor();
 		SAILOR_API static bool IsEditorMode();
@@ -70,11 +74,14 @@ namespace Sailor
 		SAILOR_API static bool SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hostHandleKind, uint64_t hostHandleValue);
 		SAILOR_API static bool SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
+		SAILOR_API static uint32_t PullEditorViewportEvents(char** events, uint32_t num);
+		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEditorTypes(char** yamlNode);
 		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
 		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
+		SAILOR_API static bool CreateEditorWorld();
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
 		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
@@ -187,6 +194,8 @@ namespace Sailor
 
 		TSharedPtr<Tasks::ITask> m_pendingAssetReloadTask;
 		uint64_t m_assetReloadRequestGeneration = 0;
+		uint64_t m_assetReloadCompletedGeneration = 0;
+		uint64_t m_assetReloadSuccessfulGeneration = 0;
 		TUniquePtr<SubmoduleBase> m_submodules[MaxSubmodules];
 
 		static App* s_pInstance;

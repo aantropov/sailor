@@ -22,6 +22,9 @@ using namespace Sailor;
 
 namespace
 {
+	constexpr uint32_t c_selectionMutationRevisionKind = 1;
+	constexpr uint32_t c_objectMutationRevisionKind = 2;
+
 	void LogEditorTypeSerializationFailure(const char* message) noexcept
 	{
 		SAILOR_LOG_ERROR("Failed to serialize editor type metadata: %s", message);
@@ -103,6 +106,61 @@ uint32_t App::PullEditorMessages(char** messages, uint32_t num)
 	}
 
 	return numMsg;
+}
+
+uint32_t App::PullEditorViewportEvents(char** events, uint32_t num)
+{
+	if (!events || num == 0)
+	{
+		return 0;
+	}
+
+	return ExecuteOnEngineMainThread<uint32_t>(0, [events, num]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return 0u;
+			}
+
+			uint32_t numEvents = 0;
+			std::string event;
+			while (numEvents < num && editor->PullViewportEvent(event))
+			{
+				SetInteropString(event, &events[numEvents]);
+				++numEvents;
+			}
+
+			return numEvents;
+		});
+}
+
+uint64_t App::GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
+{
+	const std::string instanceId = strInstanceId ? strInstanceId : std::string{};
+
+	return ExecuteOnEngineMainThread<uint64_t>(0, [kind, instanceId]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return uint64_t{ 0 };
+			}
+
+			if (kind == c_selectionMutationRevisionKind)
+			{
+				return editor->GetManagedSelectionMutationRevision();
+			}
+
+			if (kind == c_objectMutationRevisionKind && !instanceId.empty())
+			{
+				InstanceId parsedInstanceId{};
+				parsedInstanceId.Deserialize(YAML::Node(instanceId));
+				return editor->GetManagedObjectMutationRevision(parsedInstanceId);
+			}
+
+			return uint64_t{ 0 };
+		});
 }
 
 uint32_t App::SerializeCurrentWorld(char** yamlNode)
@@ -282,6 +340,35 @@ bool App::LoadEditorWorld(const char* strFileId)
 
 			auto oldWorld = editor->GetWorld();
 			auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
+			if (!newWorld)
+			{
+				return false;
+			}
+
+			editor->SetWorld(newWorld.GetRawPtr());
+			if (oldWorld)
+			{
+				engineLoop->ExitWorld(oldWorld);
+				engineLoop->ProcessPendingWorldExits();
+			}
+
+			return true;
+		});
+}
+
+bool App::CreateEditorWorld()
+{
+	return ExecuteOnEngineMainThread<bool>(false, []()
+		{
+			auto editor = GetSubmodule<Editor>();
+			auto engineLoop = GetSubmodule<EngineLoop>();
+			if (!editor || !engineLoop)
+			{
+				return false;
+			}
+
+			auto oldWorld = editor->GetWorld();
+			auto newWorld = engineLoop->CreateEmptyWorld("New Scene", EngineLoop::EditorWorldMask);
 			if (!newWorld)
 			{
 				return false;
@@ -609,6 +696,7 @@ bool App::SetEditorSelection(const char* strSelectionYaml)
 			}
 
 			world->SetEditorSelection(selection);
+			editor->NotifyManagedSelectionMutation();
 			return true;
 		});
 }

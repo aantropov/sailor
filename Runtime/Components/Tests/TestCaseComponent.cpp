@@ -97,6 +97,12 @@ void TestCaseComponent::BeginPlay()
 
 void TestCaseComponent::EndPlay()
 {
+	if (!m_bBeginPlayCalled)
+	{
+		Component::EndPlay();
+		return;
+	}
+
 	if (!m_bFinished)
 	{
 		Finish(false, "Test ended before completion.");

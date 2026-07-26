@@ -83,6 +83,8 @@ namespace Sailor
 			TVector<ECS::TBaseSystemPtr>&& ecsArray);
 
 		size_t GetNumPendingDependencyResolutions() const { return ComponentsToResolveDependencies.Num(); }
+		void RemovePendingDependencyResolutions(const ComponentPtr& component);
+		void ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate);
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
 		void DestroyGameObjectHierarchy(GameObjectPtr root);
@@ -113,5 +115,8 @@ namespace Sailor
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 
 		TVector<TPair<ComponentPtr, ReflectedData>> ComponentsToResolveDependencies;
+
+		friend class GameObject;
+		friend class Editor;
 	};
 }

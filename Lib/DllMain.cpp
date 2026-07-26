@@ -36,6 +36,24 @@ extern "C"
 		return Sailor::App::RequestAssetReload();
 	}
 
+	SAILOR_API bool GetAssetReloadState(
+		uint64_t* outRequestGeneration,
+		uint64_t* outCompletedGeneration,
+		uint64_t* outSuccessfulGeneration)
+	{
+		if (outRequestGeneration == nullptr ||
+			outCompletedGeneration == nullptr ||
+			outSuccessfulGeneration == nullptr)
+		{
+			return false;
+		}
+
+		return Sailor::App::GetAssetReloadState(
+			*outRequestGeneration,
+			*outCompletedGeneration,
+			*outSuccessfulGeneration);
+	}
+
 	SAILOR_API int32_t GetExitCode()
 	{
 		return Sailor::App::GetExitCode();
@@ -95,6 +113,17 @@ extern "C"
 		return Sailor::App::PullEditorMessages(messages, num);
 	}
 
+	SAILOR_API uint32_t PullEditorViewportEvents(char** events, uint32_t num)
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::PullEditorViewportEvents(events, num);
+	}
+
+	SAILOR_API uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)
+	{
+		return Sailor::App::GetEditorManagedMutationRevision(kind, strInstanceId);
+	}
+
 	SAILOR_API uint32_t SerializeCurrentWorld(char** yamlNode)
 	{
 		SAILOR_PROFILE_FUNCTION();
@@ -126,6 +155,12 @@ extern "C"
 	{
 		SAILOR_PROFILE_FUNCTION();
 		return Sailor::App::LoadEditorWorld(strFileId);
+	}
+
+	SAILOR_API bool CreateEditorWorld()
+	{
+		SAILOR_PROFILE_FUNCTION();
+		return Sailor::App::CreateEditorWorld();
 	}
 
 	SAILOR_API void FreeInteropString(char* text)

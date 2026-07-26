@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cmath>
 #include <compare>
 #include <cstdint>
 #include <optional>
@@ -406,15 +408,54 @@ namespace Sailor::EditorRemote
 
 		Failure Validate() const
 		{
-			if (m_viewportId == 0 || m_connectionEpoch == 0 || m_generation == 0 || m_kind == InputKind::Unknown)
+			constexpr uint16_t validModifiers =
+				static_cast<uint16_t>(InputModifier::Shift) |
+				static_cast<uint16_t>(InputModifier::Control) |
+				static_cast<uint16_t>(InputModifier::Alt) |
+				static_cast<uint16_t>(InputModifier::Meta) |
+				static_cast<uint16_t>(InputModifier::MouseLeft) |
+				static_cast<uint16_t>(InputModifier::MouseRight) |
+				static_cast<uint16_t>(InputModifier::MouseMiddle);
+			const auto kind = static_cast<uint8_t>(m_kind);
+			const bool bValidKind = kind >= static_cast<uint8_t>(InputKind::PointerMove) &&
+				kind <= static_cast<uint8_t>(InputKind::Capture);
+			const bool bValidModifiers =
+				(static_cast<uint16_t>(m_modifiers) & ~validModifiers) == 0;
+			const bool bFiniteCoordinates =
+				std::isfinite(m_pointerX) && std::isfinite(m_pointerY) &&
+				std::isfinite(m_wheelDeltaX) && std::isfinite(m_wheelDeltaY);
+			const bool bValidKeyCode =
+				(m_kind != InputKind::PointerButton || m_keyCode < 3) &&
+				(m_kind != InputKind::Key || m_keyCode < 256);
+			if (m_viewportId == 0 || m_connectionEpoch == 0 || m_generation == 0 ||
+				!bValidKind || !bValidModifiers || !bFiniteCoordinates || !bValidKeyCode)
 			{
-				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Input packet requires valid ids and kind");
+				return Failure::FromDomain(ErrorDomain::Protocol, 1, "Input packet requires valid ids, kind, modifiers, coordinates, and key code");
 			}
 			return Failure::Ok();
 		}
 
 		auto operator<=>(const InputPacket&) const = default;
 	};
+
+	inline constexpr std::array<bool, 3> ResolveRemoteMouseButtonState(
+		const std::array<bool, 3>& current,
+		const InputPacket& input)
+	{
+		if ((input.m_kind == InputKind::Focus && !input.m_focused) ||
+			(input.m_kind == InputKind::Capture && !input.m_captured))
+		{
+			return {};
+		}
+
+		auto desired = current;
+		if (input.m_kind == InputKind::PointerButton && input.m_keyCode < desired.size())
+		{
+			desired[input.m_keyCode] = input.m_pressed;
+		}
+
+		return desired;
+	}
 
 	struct MessageEnvelope
 	{

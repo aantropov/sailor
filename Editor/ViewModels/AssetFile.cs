@@ -15,6 +15,15 @@ namespace SailorEditor.ViewModels;
 
 public partial class AssetFile : ObservableObject, ICloneable
 {
+    internal const string DefaultAssetInfoTypeName = "Sailor::AssetInfo";
+
+    static readonly HashSet<string> RuntimeOnlyAssetInfoFields = new(StringComparer.Ordinal)
+    {
+        "assetImportTime",
+        "metadataLoadTime",
+        "metadataPath"
+    };
+
     public AssetFile()
     {
         PropertyChanged += (s, args) =>
@@ -47,6 +56,9 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     [YamlIgnore]
     public bool CanOpenAssetFile { get => !IsDirty; }
+
+    [YamlIgnore]
+    public bool OwnsSourceFile { get; set; }
 
     [YamlIgnore]
     public ObservableDictionary<string, ObservableObject> AssetProperties { get; set; } = [];
@@ -84,9 +96,7 @@ public partial class AssetFile : ObservableObject, ICloneable
 
         SyncAssetPropertiesBeforeSave();
 
-        var yaml = new YamlStream(new YamlDocument(BuildAssetInfoYamlNode()));
-        using var writer = new StreamWriter(new FileStream(AssetInfo.FullName, FileMode.Create));
-        yaml.Save(writer, false);
+        WriteAssetInfoYaml(BuildAssetInfoYamlNode());
 
         IsDirty = false;
         return Task.CompletedTask;
@@ -207,6 +217,11 @@ public partial class AssetFile : ObservableObject, ICloneable
             foreach (var entry in root.Children)
             {
                 var name = (entry.Key as YamlScalarNode)?.Value ?? entry.Key.ToString();
+                if (RuntimeOnlyAssetInfoFields.Contains(name))
+                {
+                    continue;
+                }
+
                 PropertyBase property = null;
                 AssetType?.Properties.TryGetValue(name, out property);
                 originalAssetInfoNodes[name] = entry.Value;
@@ -317,10 +332,16 @@ public partial class AssetFile : ObservableObject, ICloneable
 
     YamlMappingNode BuildAssetInfoYamlNode()
     {
-        var root = new YamlMappingNode();
+        var root = new YamlMappingNode
+        {
+            { "assetInfoType", ResolveAssetInfoTypeNameForSave() }
+        };
+
         foreach (var field in AssetProperties)
         {
-            if (TransientAssetProperties.Contains(field.Key))
+            if (string.Equals(field.Key, "assetInfoType", StringComparison.Ordinal) ||
+                TransientAssetProperties.Contains(field.Key) ||
+                RuntimeOnlyAssetInfoFields.Contains(field.Key))
             {
                 continue;
             }
@@ -336,6 +357,96 @@ public partial class AssetFile : ObservableObject, ICloneable
             }
         }
         return root;
+    }
+
+    internal string ResolveAssetInfoTypeNameForSave()
+    {
+        var inferredType = this switch
+        {
+            AnimationFile => "Sailor::AnimationAssetInfo",
+            FrameGraphFile => "Sailor::FrameGraphAssetInfo",
+            MaterialFile => "Sailor::MaterialAssetInfo",
+            ModelFile => "Sailor::ModelAssetInfo",
+            PrefabFile => "Sailor::PrefabAssetInfo",
+            ShaderFile => "Sailor::ShaderAssetInfo",
+            ShaderLibraryFile => "Sailor::ShaderAssetInfo",
+            TextureFile => "Sailor::TextureAssetInfo",
+            WorldFile => "Sailor::WorldPrefabAssetInfo",
+            World => "Sailor::WorldPrefabAssetInfo",
+            _ => null
+        };
+
+        var typeName = NormalizeAssetInfoType(AssetInfoTypeName)
+            ?? NormalizeAssetInfoType(AssetType?.Name)
+            ?? inferredType
+            ?? DefaultAssetInfoTypeName;
+
+        AssetInfoTypeName = typeName;
+        return typeName;
+    }
+
+    static string NormalizeAssetInfoType(string typeName)
+    {
+        var normalized = typeName?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    void WriteAssetInfoYaml(YamlMappingNode generatedRoot)
+    {
+        var root = MergeAssetInfoYamlNodes(ReadExistingAssetInfoYaml(), generatedRoot);
+        var yaml = new YamlStream(new YamlDocument(root));
+        using var writer = new StreamWriter(new FileStream(AssetInfo.FullName, FileMode.Create));
+        yaml.Save(writer, false);
+    }
+
+    YamlMappingNode ReadExistingAssetInfoYaml()
+    {
+        if (AssetInfo?.Exists != true || AssetInfo.Length == 0)
+        {
+            return null;
+        }
+
+        var yaml = new YamlStream();
+        using var reader = new StreamReader(AssetInfo.FullName);
+        yaml.Load(reader);
+        if (yaml.Documents.Count != 1 || yaml.Documents[0].RootNode is not YamlMappingNode root)
+        {
+            throw new InvalidDataException($"Asset metadata must contain one YAML mapping: {AssetInfo.FullName}");
+        }
+
+        return root;
+    }
+
+    YamlMappingNode MergeAssetInfoYamlNodes(YamlMappingNode originalRoot, YamlMappingNode generatedRoot)
+    {
+        var mergedRoot = new YamlMappingNode
+        {
+            { "assetInfoType", ResolveAssetInfoTypeNameForSave() }
+        };
+
+        CopyPortableAssetInfoFields(originalRoot, mergedRoot);
+        CopyPortableAssetInfoFields(generatedRoot, mergedRoot);
+        return mergedRoot;
+    }
+
+    static void CopyPortableAssetInfoFields(YamlMappingNode source, YamlMappingNode destination)
+    {
+        if (source == null)
+        {
+            return;
+        }
+
+        foreach (var entry in source.Children)
+        {
+            var fieldName = (entry.Key as YamlScalarNode)?.Value;
+            if (string.Equals(fieldName, "assetInfoType", StringComparison.Ordinal) ||
+                (fieldName != null && RuntimeOnlyAssetInfoFields.Contains(fieldName)))
+            {
+                continue;
+            }
+
+            destination.Children[entry.Key] = entry.Value;
+        }
     }
 
     static YamlNode CreateYamlNode(ObservableObject property)
@@ -499,16 +610,23 @@ public partial class AssetFile : ObservableObject, ICloneable
     {
         EnsureWritable();
 
-        using (var yamlAssetInfo = new FileStream(AssetInfo.FullName, FileMode.Create))
-        using (var writer = new StreamWriter(yamlAssetInfo))
+        var serializer = SerializationUtils.CreateSerializerBuilder()
+            .WithTypeConverter(converter)
+            .Build();
+        var generatedYaml = serializer.Serialize(this);
+        var generatedStream = new YamlStream();
+        using (var reader = new StringReader(generatedYaml))
         {
-            var serializer = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(converter)
-                .Build();
-
-            var yaml = serializer.Serialize(this);
-            writer.Write(yaml);
+            generatedStream.Load(reader);
         }
+
+        if (generatedStream.Documents.Count != 1 ||
+            generatedStream.Documents[0].RootNode is not YamlMappingNode generatedRoot)
+        {
+            throw new InvalidDataException($"Generated asset metadata must contain one YAML mapping: {AssetInfo.FullName}");
+        }
+
+        WriteAssetInfoYaml(generatedRoot);
 
         IsDirty = false;
         return Task.CompletedTask;
@@ -565,6 +683,9 @@ public class AssetFileYamlConverter : IYamlTypeConverter
 
                 switch (propertyName)
                 {
+                    case "assetInfoType":
+                        assetFile.AssetInfoTypeName = deserializer.Deserialize<string>(parser);
+                        break;
                     case "fileId":
                         assetFile.FileId = deserializer.Deserialize<FileId>(parser);
                         break;
@@ -594,6 +715,9 @@ public class AssetFileYamlConverter : IYamlTypeConverter
         var assetFile = (AssetFile)value;
 
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+        emitter.Emit(new Scalar(null, "assetInfoType"));
+        emitter.Emit(new Scalar(null, assetFile.ResolveAssetInfoTypeNameForSave()));
 
         emitter.Emit(new Scalar(null, "fileId"));
         emitter.Emit(new Scalar(null, assetFile.FileId));

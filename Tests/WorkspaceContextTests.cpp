@@ -201,6 +201,8 @@ namespace
 			"legacy context should deduplicate the engine and workspace roots");
 		Require(result.m_context.GetEngineContent() == result.m_context.GetContent(),
 			"legacy context should deduplicate engine and workspace Content");
+		Require(result.m_context.IsEngineMode(),
+			"legacy same-root context should identify Engine mode");
 		Require(result.m_context.GetCache() == Canonical(workspace.Path("Cache")),
 			"legacy context should use the default Cache directory");
 		Require(std::filesystem::is_directory(workspace.Path("Content")),
@@ -268,6 +270,8 @@ namespace
 			"engine Content should resolve below the engine root");
 		Require(result.m_context.GetContent() == Canonical(workspace.Path(spec.m_content)),
 			"custom content path should preserve spaces");
+		Require(!result.m_context.IsEngineMode(),
+			"a manifest with distinct Engine and Workspace Content should not identify Engine mode");
 		Require(result.m_context.GetCache() == Canonical(workspace.Path(spec.m_cache)),
 			"custom cache path should preserve spaces and be created");
 		Require(result.m_context.GetSource() ==

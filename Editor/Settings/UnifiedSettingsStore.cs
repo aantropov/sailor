@@ -239,7 +239,11 @@ public sealed class EditorSettingsPersistenceStore
 
     public EditorSettingsPersistenceStore(string? settingsPath = null)
     {
+#if MACCATALYST
+        var appDataDirectory = Microsoft.Maui.Storage.FileSystem.Current.AppDataDirectory;
+#else
         var appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+#endif
         _settingsPath = settingsPath ?? Path.Combine(appDataDirectory, "SailorEditor", "Settings", "editor-settings.yaml");
     }
 

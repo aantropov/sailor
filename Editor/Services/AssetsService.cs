@@ -12,12 +12,18 @@ using SailorEditor.Content;
 
 namespace SailorEditor.Services
 {
-    public class AssetsService
+    public class AssetsService : IDisposable
     {
         const int ActiveProjectRootId = 1;
         const int EngineProjectRootId = 2;
 
         readonly string _engineContentDirectory;
+        readonly EngineService _engineService;
+        readonly ProjectContentFileOperations _fileOperations = new();
+        readonly object _watcherLock = new();
+        readonly List<FileSystemWatcher> _contentWatchers = [];
+        EngineLaunchContext? _activeLaunchContext;
+        CancellationTokenSource? _pendingFilesystemReload;
         ProjectContentFolderIdAllocator _folderIdAllocator = new();
         HashSet<string> _visitedDirectories = new(ProjectContentPathPolicy.PathComparer);
         int _nextAssetId = 1;
@@ -31,14 +37,49 @@ namespace SailorEditor.Services
         public Dictionary<FileId, AssetFile> Assets { get; private set; } = [];
         public List<AssetFile> Files { get; private set; } = new();
         public string CurrentProjectRootPath { get; private set; } = string.Empty;
+        public EditorProjectMode CurrentProjectMode { get; private set; } = EditorProjectMode.Engine;
         public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
 
         public AssetsService()
         {
-            var engineContentDirectory = Path.GetFullPath(MauiProgram.GetService<EngineService>().EngineContentDirectory);
+            var engineService = MauiProgram.GetService<EngineService>();
+            _engineService = engineService;
+            engineService.OnAssetReloadCompleted += HandleAssetReloadCompleted;
+            var engineContentDirectory = Path.GetFullPath(engineService.EngineContentDirectory);
             Directory.CreateDirectory(engineContentDirectory);
             _engineContentDirectory = ProjectContentPathPolicy.NormalizeRoot(engineContentDirectory);
-            AddProjectRoot(_engineContentDirectory);
+            AddProjectRoot(engineService.GetLaunchContext());
+        }
+
+        void HandleAssetReloadCompleted(AssetReloadCompletion completion)
+        {
+            if (!completion.Succeeded || _activeLaunchContext is null)
+            {
+                return;
+            }
+
+            try
+            {
+                var selectionService = MauiProgram.GetService<SelectionService>();
+                var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
+                Refresh();
+                if (selectedAssetId is not null && !selectedAssetId.IsEmpty())
+                {
+                    if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
+                    {
+                        selectionService.SelectObject(refreshedAsset, force: true);
+                    }
+                    else
+                    {
+                        selectionService.ClearSelection();
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[AssetsService] Failed to refresh after asset reload generation {completion.Generation}: {exception.Message}");
+            }
         }
 
         public string GetFolderPath(AssetFolder? folder)
@@ -93,85 +134,265 @@ namespace SailorEditor.Services
             return created;
         }
 
-        public bool RenameAsset(AssetFile assetFile, string newName)
+        public ProjectContentFileOperationResult RenameAsset(AssetFile assetFile, string newName)
         {
-            if (!CanModifyAsset(assetFile) || string.IsNullOrWhiteSpace(newName))
+            if (!CanRenameAsset(assetFile) || string.IsNullOrWhiteSpace(newName))
             {
-                return false;
+                return FileOperationFailure("The asset cannot be renamed in the active Content root.");
             }
 
-            var sanitizedName = string.Join("_", newName.Trim().Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
-            if (string.IsNullOrWhiteSpace(sanitizedName))
-            {
-                return false;
-            }
-
-            var oldAssetPath = assetFile.Asset?.FullName;
-            var oldAssetInfoPath = assetFile.AssetInfo.FullName;
-            var directory = Path.GetDirectoryName(oldAssetInfoPath);
-            var oldExtension = assetFile.Asset?.Extension ?? Path.GetExtension(Path.ChangeExtension(oldAssetInfoPath, null));
-            var requestedExtension = Path.GetExtension(sanitizedName);
-            var targetAssetFileName = string.IsNullOrEmpty(requestedExtension) ? sanitizedName + oldExtension : sanitizedName;
-            var targetAssetPath = Path.Combine(directory, targetAssetFileName);
-            var targetAssetInfoPath = targetAssetPath + ".asset";
-
-            if (!string.Equals(oldAssetPath, targetAssetPath, ProjectContentPathPolicy.PathComparison) && File.Exists(targetAssetPath))
-            {
-                return false;
-            }
-
-            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, ProjectContentPathPolicy.PathComparison) && File.Exists(targetAssetInfoPath))
-            {
-                return false;
-            }
-
-            if (!string.IsNullOrEmpty(oldAssetPath) && File.Exists(oldAssetPath) && !string.Equals(oldAssetPath, targetAssetPath, ProjectContentPathPolicy.PathComparison))
-            {
-                File.Move(oldAssetPath, targetAssetPath);
-            }
-
-            if (!string.Equals(oldAssetInfoPath, targetAssetInfoPath, ProjectContentPathPolicy.PathComparison))
-            {
-                File.Move(oldAssetInfoPath, targetAssetInfoPath);
-            }
-
-            UpdateAssetInfoFilename(targetAssetInfoPath, targetAssetFileName);
-            Refresh();
-            return true;
+            return ExecuteContentMutation(() =>
+                _fileOperations.RenameAssetGroup(
+                    CurrentProjectRootPath,
+                    assetFile.AssetInfo.FullName,
+                    newName));
         }
 
-        public bool DeleteAsset(AssetFile assetFile)
+        public ProjectContentFileOperationResult DeleteAsset(AssetFile assetFile)
         {
             if (!CanModifyAsset(assetFile))
-                return false;
+                return FileOperationFailure("The asset cannot be deleted from the active Content root.");
 
+            return ExecuteContentMutation(() =>
+                _fileOperations.DeleteAssetGroup(
+                    CurrentProjectRootPath,
+                    assetFile.AssetInfo.FullName));
+        }
+
+        public ProjectContentFileOperationResult DuplicateAsset(AssetFile assetFile)
+        {
+            if (!CanDuplicateAsset(assetFile))
+                return FileOperationFailure("The asset cannot be duplicated in the active Content root.");
+
+            return ExecuteContentMutation(() =>
+                _fileOperations.DuplicateAssetGroup(
+                    CurrentProjectRootPath,
+                    assetFile.AssetInfo.FullName));
+        }
+
+        public ProjectContentFileOperationResult MoveAsset(AssetFile assetFile, AssetFolder? destinationFolder)
+        {
+            if (!CanMoveAsset(assetFile, destinationFolder) || !TryGetWritableDestinationDirectory(destinationFolder, out var destinationDirectory))
+                return FileOperationFailure("The asset cannot be moved to the selected Content folder.");
+
+            return ExecuteContentMutation(() =>
+                _fileOperations.MoveAssetGroup(
+                    CurrentProjectRootPath,
+                    assetFile.AssetInfo.FullName,
+                    destinationDirectory));
+        }
+
+        public ProjectContentFileOperationResult MoveFolder(AssetFolder folder, AssetFolder? destinationFolder)
+        {
+            if (!CanMoveFolder(folder, destinationFolder) || !TryGetWritableDestinationDirectory(destinationFolder, out var destinationDirectory))
+                return FileOperationFailure("The folder cannot be moved to the selected Content folder.");
+
+            var sourceDirectory = folder.FullPath;
+            var targetDirectory = Path.Combine(destinationDirectory, Path.GetFileName(sourceDirectory));
+            var folderRebindPlan = CreateFolderRebindPlan(
+                sourceDirectory,
+                targetDirectory,
+                ProjectContentFolderMutationKind.MoveOrRename);
+
+            return ExecuteContentMutation(() =>
+                _fileOperations.MoveFolder(
+                    CurrentProjectRootPath,
+                    sourceDirectory,
+                    destinationDirectory),
+                folderRebindPlan);
+        }
+
+        public ProjectContentFileOperationResult CreateFolder(AssetFolder? parentFolder, string folderName)
+        {
+            if (!CanCreateFolder(parentFolder) ||
+                string.IsNullOrWhiteSpace(folderName) ||
+                !TryGetWritableDestinationDirectory(parentFolder, out var parentDirectory))
+            {
+                return FileOperationFailure("A folder cannot be created in the selected Content directory.");
+            }
+
+            var createdFolderPath = Path.Combine(parentDirectory, folderName.Trim());
+            return ExecuteContentMutation(
+                () => _fileOperations.CreateFolder(
+                    CurrentProjectRootPath,
+                    parentDirectory,
+                    folderName),
+                successfulFolderSelectionPath: createdFolderPath);
+        }
+
+        public ProjectContentFileOperationResult RenameFolder(AssetFolder folder, string newName)
+        {
+            if (!CanModifyFolder(folder) || string.IsNullOrWhiteSpace(newName))
+                return FileOperationFailure("The folder cannot be renamed in the active Content root.");
+
+            var sourceDirectory = folder.FullPath;
+            var folderRebindPlan = CreateRenameFolderRebindPlan(sourceDirectory, newName);
+
+            return ExecuteContentMutation(() =>
+                _fileOperations.RenameFolder(
+                    CurrentProjectRootPath,
+                    sourceDirectory,
+                    newName),
+                folderRebindPlan);
+        }
+
+        public ProjectContentFileOperationResult DeleteFolder(AssetFolder folder)
+        {
+            if (!CanModifyFolder(folder))
+                return FileOperationFailure("The folder cannot be deleted from the active Content root.");
+
+            var folderRebindPlan = CreateFolderRebindPlan(
+                folder.FullPath,
+                null,
+                ProjectContentFolderMutationKind.Delete);
+
+            return ExecuteContentMutation(() =>
+                _fileOperations.DeleteFolder(
+                    CurrentProjectRootPath,
+                    folder.FullPath),
+                folderRebindPlan);
+        }
+
+        ProjectContentFileOperationResult ExecuteContentMutation(
+            Func<ProjectContentFileOperationResult> mutation,
+            ProjectContentFolderRebindPlan? folderRebindPlan = null,
+            string? successfulFolderSelectionPath = null)
+        {
+            var selectionService = MauiProgram.GetService<SelectionService>();
+            var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
+            ProjectContentFileOperationResult result;
+
+            lock (_watcherLock)
+            {
+                var watcherStates = _contentWatchers
+                    .Select(watcher => watcher.EnableRaisingEvents)
+                    .ToArray();
+
+                try
+                {
+                    foreach (var watcher in _contentWatchers)
+                    {
+                        watcher.EnableRaisingEvents = false;
+                    }
+
+                    result = mutation();
+                }
+                finally
+                {
+                    for (var index = 0; index < _contentWatchers.Count; index++)
+                    {
+                        _contentWatchers[index].EnableRaisingEvents = watcherStates[index];
+                    }
+                }
+            }
+
+            if (result.Succeeded || !result.RollbackSucceeded)
+            {
+                Refresh();
+                if (result.Succeeded && !string.IsNullOrWhiteSpace(result.CreatedFileId))
+                {
+                    var createdFileId = new FileId(result.CreatedFileId);
+                    if (Assets.TryGetValue(createdFileId, out var createdAsset))
+                        selectionService.SelectObject(createdAsset, force: true);
+                    else
+                        selectionService.ClearSelection();
+                }
+                else if (result.Succeeded && !string.IsNullOrWhiteSpace(successfulFolderSelectionPath))
+                {
+                    if (selectionService.SelectedItem is AssetFile)
+                        selectionService.ClearSelection();
+
+                    MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
+                        successfulFolderSelectionPath);
+                }
+                else if (folderRebindPlan is { HasSelection: true } plan)
+                {
+                    if (selectionService.SelectedItem is AssetFile)
+                        selectionService.ClearSelection();
+
+                    MauiProgram.GetService<ProjectContentStore>().RestoreFolderSelectionByPath(
+                        result.Succeeded ? plan.SuccessPath : plan.OriginalPath);
+                }
+                else
+                {
+                    RestoreSelectedAsset(selectionService, selectedAssetId);
+                }
+            }
+
+            return result;
+        }
+
+        static ProjectContentFolderRebindPlan CreateFolderRebindPlan(
+            string sourceFolderPath,
+            string? targetFolderPath,
+            ProjectContentFolderMutationKind mutationKind)
+        {
             try
             {
-                if (assetFile.Asset?.Exists == true)
-                    File.Delete(assetFile.Asset.FullName);
-                if (assetFile.AssetInfo.Exists)
-                    File.Delete(assetFile.AssetInfo.FullName);
-
-                Refresh();
-                return true;
+                var selectedFolderPath = MauiProgram.GetService<ProjectContentStore>().GetSelectedFolderPath();
+                return ProjectContentFolderRebindPolicy.CreatePlan(
+                    selectedFolderPath,
+                    sourceFolderPath,
+                    targetFolderPath,
+                    mutationKind);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine($"[AssetsService] Failed to delete asset: {ex.Message}");
-                return false;
+                return default;
             }
         }
 
-        public void Refresh() => AddProjectRoot(CurrentProjectRootPath);
+        static ProjectContentFolderRebindPlan CreateRenameFolderRebindPlan(
+            string sourceFolderPath,
+            string newName)
+        {
+            try
+            {
+                var targetFolderPath = Path.Combine(Path.GetDirectoryName(sourceFolderPath)!, newName.Trim());
+                return CreateFolderRebindPlan(
+                    sourceFolderPath,
+                    targetFolderPath,
+                    ProjectContentFolderMutationKind.MoveOrRename);
+            }
+            catch
+            {
+                return default;
+            }
+        }
+
+        void RestoreSelectedAsset(SelectionService selectionService, FileId? selectedAssetId)
+        {
+            if (selectedAssetId is null || selectedAssetId.IsEmpty())
+                return;
+
+            if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
+            {
+                selectionService.SelectObject(refreshedAsset, force: true);
+            }
+            else
+            {
+                selectionService.ClearSelection();
+            }
+        }
+
+        public void Refresh()
+        {
+            if (_activeLaunchContext is null)
+                return;
+
+            AddProjectRoot(_activeLaunchContext);
+        }
 
         public void ResetForWorkspaceChange()
         {
             Interlocked.Increment(ref _workspaceEpoch);
+            DisposeContentWatchers();
             Root = new ProjectRoot { Name = string.Empty, Id = ActiveProjectRootId };
             Folders = [];
             Assets = [];
             Files = [];
             CurrentProjectRootPath = string.Empty;
+            _activeLaunchContext = null;
             _folderIdAllocator = new ProjectContentFolderIdAllocator();
             _visitedDirectories = new HashSet<string>(ProjectContentPathPolicy.PathComparer);
             _nextAssetId = 1;
@@ -179,11 +400,13 @@ namespace SailorEditor.Services
             Changed?.Invoke();
         }
 
-        public void AddProjectRoot(string projectRoot)
+        public void AddProjectRoot(EngineLaunchContext launchContext)
         {
             using var perfScope = EditorPerf.Scope("AssetsService.AddProjectRoot");
 
-            var requestedRoot = Path.GetFullPath(projectRoot);
+            ArgumentNullException.ThrowIfNull(launchContext);
+            var launchContextChanged = _activeLaunchContext is null || _activeLaunchContext != launchContext;
+            var requestedRoot = Path.GetFullPath(launchContext.ContentDirectory);
             if (!Directory.Exists(requestedRoot))
             {
                 throw new DirectoryNotFoundException(
@@ -200,14 +423,28 @@ namespace SailorEditor.Services
             _assetOverrideCount = 0;
 
             CurrentProjectRootPath = normalizedRoot;
+            CurrentProjectMode = launchContext.Mode;
+            _activeLaunchContext = launchContext;
 
             Root = new ProjectRoot { Name = CurrentProjectRootPath, Id = 1 };
-            if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
+            if (CurrentProjectMode == EditorProjectMode.Engine)
             {
+                if (!ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
+                {
+                    throw new InvalidOperationException(
+                        $"Engine mode content root must be the engine Content directory: {_engineContentDirectory}");
+                }
+
                 var engineRoot = new ProjectRoot { Name = "Engine Content", Id = EngineProjectRootId };
 
                 AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: false);
                 ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: false);
+            }
+            else if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
+            {
+                var workspaceRoot = new ProjectRoot { Name = "Content", Id = ActiveProjectRootId };
+                AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.ContentRootId, CurrentProjectRootPath, isReadOnly: false);
+                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.ContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
             else
             {
@@ -224,7 +461,115 @@ namespace SailorEditor.Services
             if (_assetOverrideCount > 0)
                 Console.WriteLine($"[AssetsService] Resolved {_assetOverrideCount} duplicate asset IDs; workspace content takes precedence when present.");
 
+            if (launchContextChanged)
+            {
+                ConfigureContentWatchers(launchContext);
+            }
+
             Changed?.Invoke();
+        }
+
+        void ConfigureContentWatchers(EngineLaunchContext launchContext)
+        {
+            DisposeContentWatchers();
+            var epoch = WorkspaceEpoch;
+            var roots = new HashSet<string>(ProjectContentPathPolicy.PathComparer)
+            {
+                ProjectContentPathPolicy.NormalizeRoot(launchContext.ContentDirectory),
+                _engineContentDirectory
+            };
+
+            lock (_watcherLock)
+            {
+                foreach (var root in roots)
+                {
+                    if (!Directory.Exists(root))
+                    {
+                        continue;
+                    }
+
+                    var watcher = new FileSystemWatcher(root)
+                    {
+                        IncludeSubdirectories = true,
+                        NotifyFilter = NotifyFilters.FileName |
+                            NotifyFilters.DirectoryName |
+                            NotifyFilters.LastWrite |
+                            NotifyFilters.Size
+                    };
+                    watcher.Changed += (_, args) => ScheduleFilesystemReload(epoch, args.FullPath);
+                    watcher.Created += (_, args) => ScheduleFilesystemReload(epoch, args.FullPath);
+                    watcher.Deleted += (_, args) => ScheduleFilesystemReload(epoch, args.FullPath);
+                    watcher.Renamed += (_, args) => ScheduleFilesystemReload(epoch, args.FullPath);
+                    watcher.Error += (_, args) =>
+                    {
+                        Console.WriteLine($"[AssetsService] Content watcher failed for '{root}': {args.GetException().Message}");
+                        ScheduleFilesystemReload(epoch, root);
+                    };
+                    watcher.EnableRaisingEvents = true;
+                    _contentWatchers.Add(watcher);
+                }
+            }
+        }
+
+        void ScheduleFilesystemReload(long epoch, string changedPath)
+        {
+            if (epoch != WorkspaceEpoch || _activeLaunchContext is null)
+            {
+                return;
+            }
+
+            var cancellation = new CancellationTokenSource();
+            var previous = Interlocked.Exchange(ref _pendingFilesystemReload, cancellation);
+            previous?.Cancel();
+            _ = ReloadAfterFilesystemDebounceAsync(epoch, changedPath, cancellation);
+        }
+
+        async Task ReloadAfterFilesystemDebounceAsync(
+            long epoch,
+            string changedPath,
+            CancellationTokenSource cancellation)
+        {
+            try
+            {
+                await Task.Delay(250, cancellation.Token).ConfigureAwait(false);
+                if (epoch != WorkspaceEpoch || _activeLaunchContext is null || !_engineService.IsRunning)
+                {
+                    return;
+                }
+
+                if (!await _engineService.RequestAssetReloadAsync(cancellation.Token).ConfigureAwait(false))
+                {
+                    Console.WriteLine($"[AssetsService] Native asset reload rejected filesystem change: {changedPath}");
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                Interlocked.CompareExchange(ref _pendingFilesystemReload, null, cancellation);
+                cancellation.Dispose();
+            }
+        }
+
+        void DisposeContentWatchers()
+        {
+            Interlocked.Exchange(ref _pendingFilesystemReload, null)?.Cancel();
+            lock (_watcherLock)
+            {
+                foreach (var watcher in _contentWatchers)
+                {
+                    watcher.EnableRaisingEvents = false;
+                    watcher.Dispose();
+                }
+                _contentWatchers.Clear();
+            }
+        }
+
+        public void Dispose()
+        {
+            _engineService.OnAssetReloadCompleted -= HandleAssetReloadCompleted;
+            DisposeContentWatchers();
         }
 
         void AddContentRootFolder(ProjectRoot root, int folderId, string rootPath, bool isReadOnly)
@@ -251,6 +596,69 @@ namespace SailorEditor.Services
             return assetFile.Asset is null
                 || ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, assetFile.Asset.FullName);
         }
+
+        public bool CanRenameAsset(AssetFile? assetFile)
+            => assetFile?.OwnsSourceFile == true && CanModifyAsset(assetFile);
+
+        public bool CanDuplicateAsset(AssetFile? assetFile)
+            => assetFile?.Asset?.Exists == true && CanModifyAsset(assetFile);
+
+        public bool CanModifyFolder(AssetFolder? folder)
+        {
+            if (folder is null || folder.IsReadOnly || IsContentRootFolder(folder) || string.IsNullOrWhiteSpace(folder.FullPath))
+                return false;
+
+            return Directory.Exists(folder.FullPath)
+                && ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, folder.FullPath)
+                && !ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, folder.FullPath);
+        }
+
+        public bool CanUseAsDestinationFolder(AssetFolder? folder)
+            => TryGetWritableDestinationDirectory(folder, out _);
+
+        public bool CanCreateFolder(AssetFolder? parentFolder)
+            => TryGetWritableDestinationDirectory(parentFolder, out _);
+
+        public bool CanMoveAsset(AssetFile? assetFile, AssetFolder? destinationFolder)
+        {
+            if (!CanModifyAsset(assetFile) || !TryGetWritableDestinationDirectory(destinationFolder, out var destinationDirectory))
+                return false;
+
+            var sourceDirectory = Path.GetDirectoryName(assetFile!.AssetInfo.FullName);
+            return !string.IsNullOrWhiteSpace(sourceDirectory)
+                && !ProjectContentPathPolicy.IsSamePath(sourceDirectory, destinationDirectory);
+        }
+
+        public bool CanMoveFolder(AssetFolder? folder, AssetFolder? destinationFolder)
+        {
+            if (!CanModifyFolder(folder) || !TryGetWritableDestinationDirectory(destinationFolder, out var destinationDirectory))
+                return false;
+
+            var sourceDirectory = folder!.FullPath;
+            var sourceParent = Path.GetDirectoryName(sourceDirectory);
+            return !string.IsNullOrWhiteSpace(sourceParent)
+                && !ProjectContentPathPolicy.IsSamePath(sourceParent, destinationDirectory)
+                && !ProjectContentPathPolicy.IsInsideRoot(sourceDirectory, destinationDirectory);
+        }
+
+        public static bool IsContentRootFolder(AssetFolder? folder)
+            => folder?.Id is ProjectContentFolderIds.ContentRootId or ProjectContentFolderIds.EngineContentRootId;
+
+        bool TryGetWritableDestinationDirectory(AssetFolder? folder, out string destinationDirectory)
+        {
+            destinationDirectory = folder is null ? CurrentProjectRootPath : GetFolderPath(folder);
+            if (string.IsNullOrWhiteSpace(destinationDirectory) ||
+                folder?.IsReadOnly == true ||
+                !Directory.Exists(destinationDirectory))
+            {
+                return false;
+            }
+
+            return ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, destinationDirectory);
+        }
+
+        static ProjectContentFileOperationResult FileOperationFailure(string error)
+            => new(false, error, true, Array.Empty<string>());
 
         static string GetUniqueAssetName(string folderPath, string baseName, string extension)
         {
@@ -296,52 +704,21 @@ namespace SailorEditor.Services
             yaml.Save(writer, false);
         }
 
-        static void UpdateAssetInfoFilename(string assetInfoPath, string filename)
-        {
-            var yaml = new YamlStream();
-            using (var reader = new StreamReader(assetInfoPath))
-            {
-                yaml.Load(reader);
-            }
-
-            YamlMappingNode root;
-            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping)
-            {
-                root = new YamlMappingNode();
-                yaml = new YamlStream(new YamlDocument(root));
-            }
-            else
-            {
-                root = mapping;
-            }
-
-            root.Children[new YamlScalarNode("filename")] = new YamlScalarNode(filename);
-
-            using var writer = new StreamWriter(new FileStream(assetInfoPath, FileMode.Create));
-            yaml.Save(writer, false);
-        }
-
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId, int projectRootId, bool isReadOnly)
         {
-            FileInfo assetFile = new(Path.ChangeExtension(assetInfo.FullName, null));
-
-            var extension = Path.GetExtension(assetFile.FullName);
-            var assetInfoType = TryReadScalar(assetInfo, "assetInfoType");
-
-            AssetFile newAssetFile = assetInfoType switch
+            var declaredFilename = TryReadScalar(assetInfo, "filename");
+            if (!AssetSourcePathContract.TryResolve(
+                    assetInfo.FullName,
+                    declaredFilename,
+                    out var sourceResolution,
+                    out var sourceError))
             {
-                "Sailor::TextureAssetInfo" => new TextureFile(),
-                "Sailor::ModelAssetInfo" => new ModelFile(),
-                "Sailor::AnimationAssetInfo" => new AnimationFile(),
-                "Sailor::PrefabAssetInfo" => new PrefabFile(),
-                "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
-                "Sailor::ShaderAssetInfo" => new ShaderFile(),
-                "Sailor::MaterialAssetInfo" => new MaterialFile(),
-                "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
-                _ => CreateAssetFileByExtension(extension)
-            };
+                throw new InvalidDataException($"{sourceError} Metadata: {assetInfo.FullName}");
+            }
+            FileInfo assetFile = new(sourceResolution.SourcePath);
 
-            newAssetFile.AssetInfoTypeName = assetInfoType;
+            var extension = sourceResolution.AssetExtension;
+            var assetInfoType = TryReadScalar(assetInfo, "assetInfoType");
 
             var engineTypes = MauiProgram.GetService<EngineService>()?.EngineTypes;
             AssetType assetType = null;
@@ -355,23 +732,39 @@ namespace SailorEditor.Services
                 engineTypes?.AssetTypesByExtension?.TryGetValue(extension.TrimStart('.').ToLowerInvariant(), out assetType);
             }
 
+            if (string.IsNullOrEmpty(assetInfoType) && assetType != null)
+            {
+                assetInfoType = assetType.Name;
+            }
+
+            AssetFile newAssetFile = assetInfoType switch
+            {
+                "Sailor::TextureAssetInfo" => new TextureFile(),
+                "Sailor::ModelAssetInfo" => new ModelFile(),
+                "Sailor::AnimationAssetInfo" => new AnimationFile(),
+                "Sailor::PrefabAssetInfo" => new PrefabFile(),
+                "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
+                "Sailor::ShaderAssetInfo" when string.Equals(extension, ".glsl", StringComparison.OrdinalIgnoreCase) => new ShaderLibraryFile(),
+                "Sailor::ShaderAssetInfo" => new ShaderFile(),
+                "Sailor::MaterialAssetInfo" => new MaterialFile(),
+                "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
+                _ => CreateAssetFileByExtension(extension)
+            };
+
+            newAssetFile.AssetInfoTypeName = assetInfoType;
+
             newAssetFile.Id = _nextAssetId++;
             newAssetFile.DisplayName = assetFile.Name;
             newAssetFile.FolderId = parentFolderId;
             newAssetFile.ProjectRootId = projectRootId;
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
+            newAssetFile.OwnsSourceFile = sourceResolution.OwnsSourceFile;
             newAssetFile.AssetType = assetType;
             newAssetFile.IsDirty = false;
             newAssetFile.IsReadOnly = isReadOnly;
 
             _ = newAssetFile.Revert();
-
-            // Resolve glb
-            if (newAssetFile is TextureFile)
-            {
-                newAssetFile.Asset = new(assetInfo.Directory + $"/{(newAssetFile as TextureFile).Filename.Value.ToString()}");
-            }
 
             return newAssetFile;
         }

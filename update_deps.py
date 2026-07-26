@@ -68,6 +68,7 @@ def main() -> int:
     packages = [
         'glm',
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',
+        'imguizmo',
         'magic-enum',
         'nlohmann-json',
         'refl-cpp',

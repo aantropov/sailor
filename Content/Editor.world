@@ -22,7 +22,6 @@ prefabs:
         components:
           - 0
           - 1
-          - 2
     components:
       - typename: Sailor::CameraComponent
         overrideProperties:
@@ -31,13 +30,6 @@ prefabs:
           zFar: 20000
           fileId: NullFileId
           instanceId: 70D60C2A2FF54D2BAE58E0B41C6BE43E_15011215773109224062
-      - typename: Sailor::TestComponent
-        overrideProperties:
-          m_meshRenderer:
-            fileId: NullFileId
-            instanceId: BAD35A5BC8EC4853849E3F6D535C4704_12501075873428063186
-          fileId: NullFileId
-          instanceId: 2BC0359C17504863A5C3010E0C451F7D_15011215773109224062
       - typename: Sailor::EditorComponent
         overrideProperties:
           fileId: NullFileId

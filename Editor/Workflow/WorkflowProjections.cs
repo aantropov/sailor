@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace SailorEditor.Workflow;
 
 public enum SelectionTargetKind
@@ -40,6 +42,62 @@ public sealed record HierarchyProjectionNode(string Id, string Label, bool IsSel
 public sealed record HierarchyListRow(string InstanceId, int Depth, string Label, bool HasChildren, bool IsExpanded, bool IsSelected)
 {
     public string ExpandGlyph => IsExpanded ? "−" : "+";
+}
+
+public static class HierarchyRowReconciler
+{
+    public static void Reconcile(
+        ObservableCollection<HierarchyListRow> current,
+        IReadOnlyList<HierarchyListRow> desired)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(desired);
+
+        for (var desiredIndex = 0; desiredIndex < desired.Count; desiredIndex++)
+        {
+            var desiredRow = desired[desiredIndex];
+            if (desiredIndex < current.Count &&
+                string.Equals(current[desiredIndex].InstanceId, desiredRow.InstanceId, StringComparison.Ordinal))
+            {
+                if (current[desiredIndex] != desiredRow)
+                    current[desiredIndex] = desiredRow;
+                continue;
+            }
+
+            var existingIndex = -1;
+            for (var currentIndex = desiredIndex + 1; currentIndex < current.Count; currentIndex++)
+            {
+                if (string.Equals(current[currentIndex].InstanceId, desiredRow.InstanceId, StringComparison.Ordinal))
+                {
+                    existingIndex = currentIndex;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                current.Move(existingIndex, desiredIndex);
+                if (current[desiredIndex] != desiredRow)
+                    current[desiredIndex] = desiredRow;
+            }
+            else
+            {
+                current.Insert(desiredIndex, desiredRow);
+            }
+        }
+
+        while (current.Count > desired.Count)
+            current.RemoveAt(current.Count - 1);
+    }
+}
+
+public static class InspectorSelectionIdentity
+{
+    public static bool AreEquivalent(Type? currentType, string? currentId, Type? nextType, string? nextId)
+        => currentType is not null &&
+           currentType == nextType &&
+           !string.IsNullOrWhiteSpace(currentId) &&
+           string.Equals(currentId, nextId, StringComparison.Ordinal);
 }
 
 public static class HierarchyProjectionBuilder

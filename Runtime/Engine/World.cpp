@@ -7,6 +7,7 @@
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
+#include <Submodules/Editor.h>
 
 using namespace Sailor;
 
@@ -156,6 +157,11 @@ void World::Tick(FrameState& frameState)
 		for (auto& el : m_objects)
 		{
 			el->EditorTick(deltaTime);
+		}
+
+		if (auto editor = App::GetSubmodule<Editor>())
+		{
+			editor->TickViewportTools();
 		}
 
 		for (auto& el : m_objects)
@@ -390,20 +396,52 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 
 void World::ResolveExternalDependencies()
 {
-	for (uint32_t i = 0; i < ComponentsToResolveDependencies.Num(); i++)
+	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
 	{
 		auto& el = ComponentsToResolveDependencies[i];
-		if (el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
+		if (!el.m_first || el.m_first->ResolveRefs(el.m_second, m_objectsMap, false))
 		{
 			ComponentsToResolveDependencies.RemoveAt(i);
-			i--;
+			continue;
 		}
+
+		i++;
+	}
+}
+
+void World::RemovePendingDependencyResolutions(const ComponentPtr& component)
+{
+	for (size_t i = 0; i < ComponentsToResolveDependencies.Num();)
+	{
+		const auto& pendingComponent = ComponentsToResolveDependencies[i].m_first;
+		if (!pendingComponent || pendingComponent == component)
+		{
+			ComponentsToResolveDependencies.RemoveAt(i);
+			continue;
+		}
+
+		i++;
+	}
+}
+
+void World::ApplyComponentReflection(ComponentPtr component, const ReflectedData& reflection, bool bImmediate)
+{
+	if (!component)
+	{
+		return;
+	}
+
+	component->ApplyReflection(reflection);
+	RemovePendingDependencyResolutions(component);
+	if (!component->ResolveRefs(reflection, m_objectsMap, bImmediate))
+	{
+		ComponentsToResolveDependencies.Add(TPair(component, reflection));
 	}
 }
 
 void World::SetEditorSelection(const TVector<InstanceId>& selection)
 {
-	m_editorSelection.Clear();
+	TSet<InstanceId> nextSelection;
 
 	for (const auto& instanceId : selection)
 	{
@@ -415,9 +453,11 @@ void World::SetEditorSelection(const TVector<InstanceId>& selection)
 		const InstanceId gameObjectId = instanceId.GameObjectId();
 		if (gameObjectId)
 		{
-			m_editorSelection.Insert(gameObjectId);
+			nextSelection.Insert(gameObjectId);
 		}
 	}
+
+	m_editorSelection = std::move(nextSelection);
 }
 
 bool World::IsEditorSelected(const InstanceId& instanceId) const
@@ -449,7 +489,7 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		for (size_t idx = 0; idx < ComponentsToResolveDependencies.Num();)
 		{
 			const auto& el = ComponentsToResolveDependencies[idx];
-			if (el.m_first->m_instanceId.GameObjectId() == go->m_instanceId)
+			if (!el.m_first || el.m_first->m_instanceId.GameObjectId() == go->m_instanceId)
 			{
 				ComponentsToResolveDependencies.RemoveAt(idx);
 				continue;
@@ -459,6 +499,7 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		}
 
 		destroyingObjects.AddRange(go->GetChildren());
+		m_editorSelection.Remove(go->m_instanceId);
 
 		go->RemoveAllComponents();
 		go->EndPlay();

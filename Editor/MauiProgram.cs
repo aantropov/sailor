@@ -13,6 +13,7 @@ using SailorEditor.Content;
 using SailorEditor.Settings;
 using SailorEditor.AI;
 using SailorEditor.Workspace;
+using SailorEditor.Workflow;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -47,6 +48,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<WorldService>();
             builder.Services.AddSingleton<HierarchyProjectionService>();
             builder.Services.AddSingleton<InspectorProjectionService>();
+            builder.Services.AddSingleton<InspectorPendingEditCoordinator>();
             builder.Services.AddSingleton<EngineService>();
             builder.Services.AddSingleton<EditorToolbarActions>();
             builder.Services.AddSingleton<EditorContextMenuService>();

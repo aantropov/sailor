@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Submodule.h"
+#include "Memory/UniquePtr.hpp"
 #include <yaml-cpp/yaml.h>
 #if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
@@ -17,7 +18,10 @@ namespace Sailor
 {
 	template<typename T>
 	class TObjectPtr;
+	class InstanceId;
 	class Prefab;
+	struct EditorManagedMutationState;
+	namespace EditorViewport { class EditorViewportController; }
 
 	namespace Win32 
 	{
@@ -29,9 +33,17 @@ namespace Sailor
 	public:
 
 		SAILOR_API Editor(HWND editorHwnd, uint32_t editorPort, Win32::Window* pMainWindow);
+		SAILOR_API ~Editor();
 
-		void SetWorld(class World* world) { m_world = world; }
+		SAILOR_SHARED_API void SetWorld(class World* world);
 		class World* GetWorld() const { return m_world; }
+		void TickViewportTools();
+		void CancelViewportInteraction();
+		bool PullViewportEvent(std::string& outEvent);
+		void NotifyManagedSelectionMutation() { ++m_managedSelectionMutationRevision; }
+		uint64_t GetManagedSelectionMutationRevision() const { return m_managedSelectionMutationRevision; }
+		void NotifyManagedObjectMutation(const InstanceId& instanceId);
+		uint64_t GetManagedObjectMutationRevision(const InstanceId& instanceId) const;
 
 		void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
@@ -46,13 +58,13 @@ namespace Sailor
 		void SetViewport(RECT window) { m_windowRect = window; }
 		RECT GetViewport() const { return m_windowRect; }
 
-		bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
+		SAILOR_SHARED_API bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
 		SAILOR_API bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
 		bool CreateGameObject(const class InstanceId& parentInstanceId, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
-		bool DestroyObject(const class InstanceId& instanceId);
+		SAILOR_SHARED_API bool DestroyObject(const class InstanceId& instanceId);
 		bool ResetComponentToDefaults(const class InstanceId& instanceId);
 		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
-		bool RemoveComponent(const class InstanceId& instanceId);
+		SAILOR_SHARED_API bool RemoveComponent(const class InstanceId& instanceId);
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
 		bool InstantiatePrefab(const TObjectPtr<Prefab>& prefab, const class InstanceId& parentInstanceId);
 		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
@@ -67,6 +79,9 @@ namespace Sailor
 
 		class Win32::Window* m_pMainWindow = nullptr;
 
-		class World* m_world;
+		class World* m_world = nullptr;
+		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
+		uint64_t m_managedSelectionMutationRevision = 0;
+		TUniquePtr<EditorManagedMutationState> m_managedMutationState{};
 	};
 }

@@ -92,6 +92,9 @@ struct RECT
 #ifndef VK_CONTROL
 #define VK_CONTROL 0x11
 #endif
+#ifndef VK_MENU
+#define VK_MENU 0x12
+#endif
 #ifndef VK_ESCAPE
 #define VK_ESCAPE 0x1B
 #endif
@@ -100,6 +103,9 @@ struct RECT
 #endif
 #ifndef VK_F6
 #define VK_F6 0x75
+#endif
+#ifndef VK_LWIN
+#define VK_LWIN 0x5B
 #endif
 
 inline DWORD GetCurrentThreadId()

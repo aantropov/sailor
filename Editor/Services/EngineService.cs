@@ -4,6 +4,7 @@ using System.Diagnostics;
 using YamlDotNet.Serialization;
 using SailorEditor.Utility;
 using SailorEditor.Workspace;
+using SailorEditor.Scene;
 using System.Threading;
 using System.Globalization;
 
@@ -63,6 +64,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RequestAssetReload();
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool GetAssetReloadState(out ulong requestGeneration, out ulong completedGeneration, out ulong successfulGeneration);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern int GetExitCode();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
@@ -70,6 +73,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeWorkspaceCacheIdentity(nint[] yamlNode);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
+        [return: MarshalAs(UnmanagedType.I1)]
+        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateEditorWorld();
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetEditorRenderTargetSize(uint width, uint height);
         [return: MarshalAs(UnmanagedType.I1)]
@@ -84,6 +89,8 @@ namespace SailorEngine
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetRemoteViewportMacHostHandle(ulong viewportId, uint hostHandleKind, ulong hostHandleValue);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SendRemoteViewportInput(ulong viewportId, uint kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint keyCode, uint button, uint modifiers, [MarshalAs(UnmanagedType.I1)] bool pressed, [MarshalAs(UnmanagedType.I1)] bool focused, [MarshalAs(UnmanagedType.I1)] bool captured);
+        [DllImport(EngineLibrary, EntryPoint = "PullEditorViewportEvents", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)] public static extern uint PullEditorViewportEvents([Out] nint[] eventPtrs, uint maxEvents);
+        [DllImport(EngineLibrary, EntryPoint = "GetEditorManagedMutationRevision", ExactSpelling = true, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern ulong GetEditorManagedMutationRevision(uint kind, string strInstanceId);
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void FreeInteropString(nint text);
         [return: MarshalAs(UnmanagedType.I1)]
         [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
@@ -132,6 +139,14 @@ namespace SailorEditor.Services
         }
 
         public int ExitCode { get; }
+    }
+
+    public readonly record struct AssetReloadCompletion(ulong Generation, bool Succeeded);
+
+    enum EditorManagedMutationKind : uint
+    {
+        Selection = 1,
+        ObjectTransform = 2,
     }
 
     public enum RemoteViewportInputKind : uint
@@ -193,16 +208,22 @@ namespace SailorEditor.Services
         readonly SemaphoreSlim lifecycleGate = new(1, 1);
         readonly RingBufferedBatcher<ConsoleMessage> consoleMessages = new(MaxBufferedConsoleMessages);
         readonly WorldSnapshotPublicationGate worldSnapshotPublication = new();
+        readonly EditorViewportEventEpochGate editorViewportEventEpoch = new();
+        readonly LatestSceneViewportState<Rect> sceneViewportState = new(new Rect(0, 0, 1024, 768));
         EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
+#if MACCATALYST
+        readonly Dictionary<ulong, (long Generation, nint Handle)> appliedMacRemoteViewportHosts = [];
+#endif
         EngineSession? activeSession;
         EngineLaunchContext? activeLaunchContext;
         int lastExitCode;
         Exception? lastFailure;
         static EngineService? currentInstance;
         const int MaxBufferedConsoleMessages = 1000;
+        const int MaxEditorViewportEventsPerPoll = 64;
 
         readonly string repoRoot = ResolveRepoRoot();
         readonly WorkspaceLifecycleService workspaceLifecycle;
@@ -252,6 +273,8 @@ namespace SailorEditor.Services
         }
 
         public event Action<EngineLifecycleState> OnLifecycleStateChanged = delegate { };
+        public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
+        public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
 
         public string EngineContentDirectory => Path.Combine(repoRoot, "Content");
 
@@ -260,7 +283,7 @@ namespace SailorEditor.Services
         {
             get
             {
-                var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                var localAppData = Microsoft.Maui.Storage.FileSystem.Current.AppDataDirectory;
                 return Path.Combine(localAppData, "SailorEditor", "Cache");
             }
         }
@@ -308,7 +331,23 @@ namespace SailorEditor.Services
             }
         }
 
-        public Rect Viewport { get; set; } = new Rect(0, 0, 1024, 768);
+        public Rect Viewport
+        {
+            get
+            {
+                lock (interopLock)
+                {
+                    return sceneViewportState.Capture().Rect;
+                }
+            }
+            set
+            {
+                lock (interopLock)
+                {
+                    sceneViewportState.RememberRect(value);
+                }
+            }
+        }
 
         public event Action<string[]> OnPullMessagesAction = delegate { };
         public event Action<string> OnUpdateCurrentWorldAction = delegate { };
@@ -423,6 +462,55 @@ namespace SailorEditor.Services
 
         bool IsInteropRunningUnderLock() => State == EngineLifecycleState.Running;
 
+        bool TryGetAssetReloadState(
+            long generation,
+            out ulong requestGeneration,
+            out ulong completedGeneration,
+            out ulong successfulGeneration)
+        {
+            requestGeneration = 0;
+            completedGeneration = 0;
+            successfulGeneration = 0;
+            lock (interopLock)
+            {
+                return IsGenerationActive(generation) &&
+                    EngineAppInterop.GetAssetReloadState(
+                        out requestGeneration,
+                        out completedGeneration,
+                        out successfulGeneration);
+            }
+        }
+
+        void PublishAssetReloadCompletion(AssetReloadCompletion completion, long generation)
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (IsGenerationActive(generation))
+                {
+                    OnAssetReloadCompleted?.Invoke(completion);
+                }
+            });
+        }
+
+        void PublishEditorViewportEvents(
+            IReadOnlyList<EditorViewportEvent> viewportEvents,
+            long generation,
+            long eventEpoch)
+        {
+            if (viewportEvents.Count == 0)
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (IsGenerationActive(generation) && editorViewportEventEpoch.IsCurrent(eventEpoch))
+                {
+                    OnEditorViewportEvents?.Invoke(viewportEvents);
+                }
+            });
+        }
+
         bool InvokeRunningInterop(Func<bool> action, bool invalidateQueuedWorldSnapshots = false)
         {
             lock (interopLock)
@@ -437,6 +525,43 @@ namespace SailorEditor.Services
                 }
 
                 return true;
+            }
+        }
+
+        public bool IsEditorViewportSelectionEventCurrent(ulong managedMutationRevision)
+            => IsEditorViewportEventCurrent(
+                EditorManagedMutationKind.Selection,
+                string.Empty,
+                managedMutationRevision);
+
+        public bool IsEditorViewportTransformEventCurrent(
+            string instanceId,
+            ulong managedMutationRevision)
+            => IsEditorViewportEventCurrent(
+                EditorManagedMutationKind.ObjectTransform,
+                instanceId,
+                managedMutationRevision);
+
+        bool IsEditorViewportEventCurrent(
+            EditorManagedMutationKind kind,
+            string instanceId,
+            ulong managedMutationRevision)
+        {
+            lock (interopLock)
+            {
+                return IsInteropRunningUnderLock() &&
+                    EditorViewportMutationOrder.IsCurrent(
+                        managedMutationRevision,
+                        EngineAppInterop.GetEditorManagedMutationRevision((uint)kind, instanceId));
+            }
+        }
+
+        public void InvalidateQueuedWorldSnapshots()
+        {
+            lock (interopLock)
+            {
+                var mutationSequence = worldSnapshotPublication.ReserveSequence();
+                worldSnapshotPublication.TryAdvance(mutationSequence);
             }
         }
 
@@ -478,16 +603,29 @@ namespace SailorEditor.Services
         public void BindMacRemoteViewportHost(ulong viewportId, nint hostHandle)
         {
 #if MACCATALYST
-            if (hostHandle == nint.Zero || !IsRunning)
-            {
-                return;
-            }
-
             lock (interopLock)
             {
-                if (IsInteropRunningUnderLock())
+                var generation = Volatile.Read(ref engineGeneration);
+                if (!IsInteropRunningUnderLock())
                 {
-                    EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle);
+                    appliedMacRemoteViewportHosts.Remove(viewportId);
+                    return;
+                }
+
+                if (appliedMacRemoteViewportHosts.TryGetValue(viewportId, out var applied) &&
+                    applied.Generation == generation &&
+                    applied.Handle == hostHandle)
+                {
+                    return;
+                }
+
+                if (EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle))
+                {
+                    appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
+                }
+                else
+                {
+                    appliedMacRemoteViewportHosts.Remove(viewportId);
                 }
             }
 #endif
@@ -496,16 +634,73 @@ namespace SailorEditor.Services
         public bool TryUpdateRemoteViewport(ulong viewportId, Rect rect, bool visible, bool focused)
         {
 #if WINDOWS || MACCATALYST
-            if (rect.IsEmpty || !IsRunning)
-            {
-                return false;
-            }
-
             lock (interopLock)
             {
-                return IsInteropRunningUnderLock() &&
-                    EngineAppInterop.UpsertRemoteViewport(viewportId, (uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height, visible, focused);
+                if (viewportId == SceneViewportId)
+                {
+                    sceneViewportState.Remember(rect, visible, focused);
+                }
+
+                return TryUpdateRemoteViewportUnderLock(viewportId, rect, visible, focused);
             }
+#else
+            return false;
+#endif
+        }
+
+        bool TryRefreshSceneRemoteViewport(long generation)
+        {
+#if WINDOWS
+            lock (interopLock)
+            {
+                if (!IsGenerationActive(generation))
+                {
+                    return false;
+                }
+
+                var viewportState = sceneViewportState.Capture();
+                if (TryUpdateRemoteViewportUnderLock(
+                    SceneViewportId,
+                    viewportState.Rect,
+                    viewportState.Visible,
+                    viewportState.Focused))
+                {
+                    return true;
+                }
+
+                if (!viewportState.Rect.IsEmpty)
+                {
+                    EngineAppInterop.SetViewport(
+                        (uint)viewportState.Rect.X,
+                        (uint)viewportState.Rect.Y,
+                        (uint)viewportState.Rect.Width,
+                        (uint)viewportState.Rect.Height);
+                }
+
+                return false;
+            }
+#else
+            return false;
+#endif
+        }
+
+        bool TryUpdateRemoteViewportUnderLock(
+            ulong viewportId,
+            Rect rect,
+            bool visible,
+            bool focused)
+        {
+#if WINDOWS || MACCATALYST
+            return IsInteropRunningUnderLock() &&
+                !rect.IsEmpty &&
+                EngineAppInterop.UpsertRemoteViewport(
+                    viewportId,
+                    (uint)rect.X,
+                    (uint)rect.Y,
+                    (uint)rect.Width,
+                    (uint)rect.Height,
+                    visible,
+                    focused);
 #else
             return false;
 #endif
@@ -513,13 +708,14 @@ namespace SailorEditor.Services
 
         public void SetViewport(Rect rect)
         {
-            if (rect.IsEmpty || !IsRunning)
+            if (rect.IsEmpty)
             {
                 return;
             }
 
             lock (interopLock)
             {
+                sceneViewportState.RememberRect(rect);
                 if (IsInteropRunningUnderLock())
                 {
                     EngineAppInterop.SetViewport((uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height);
@@ -717,7 +913,7 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Starting SailorEngine interop with workspace: {launchContext.WorkspaceRoot}");
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     lock (interopLock)
@@ -832,21 +1028,7 @@ namespace SailorEditor.Services
 #if !MACCATALYST
                 pollTasks.Add(RunPeriodicTaskAsync(() =>
                 {
-                    if (!IsGenerationActive(generation))
-                    {
-                        return Task.CompletedTask;
-                    }
-
-                    if (!TryUpdateRemoteViewport(SceneViewportId, Viewport, visible: true, focused: false))
-                    {
-                        lock (interopLock)
-                        {
-                            if (IsGenerationActive(generation))
-                            {
-                                EngineAppInterop.SetViewport((uint)Viewport.X, (uint)Viewport.Y, (uint)Viewport.Width, (uint)Viewport.Height);
-                            }
-                        }
-                    }
+                    TryRefreshSceneRemoteViewport(generation);
 
                     return Task.CompletedTask;
                 }, 500, 100, pollCancellation.Token, generation));
@@ -860,6 +1042,38 @@ namespace SailorEditor.Services
                     }
                     return Task.CompletedTask;
                 }, 300, 500, pollCancellation.Token, generation));
+
+                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                {
+                    var viewportEvents = PullEditorViewportEvents(generation, out var eventEpoch);
+                    if (viewportEvents.Count > 0)
+                    {
+                        PublishEditorViewportEvents(viewportEvents, generation, eventEpoch);
+                    }
+                    return Task.CompletedTask;
+                }, 33, 33, pollCancellation.Token, generation));
+
+                ulong lastAssetReloadCompletion = 0;
+                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                {
+                    if (TryGetAssetReloadState(
+                            generation,
+                            out var requestedReloadGeneration,
+                            out var completedReloadGeneration,
+                            out var successfulReloadGeneration) &&
+                        completedReloadGeneration > lastAssetReloadCompletion &&
+                        completedReloadGeneration <= requestedReloadGeneration)
+                    {
+                        lastAssetReloadCompletion = completedReloadGeneration;
+                        PublishAssetReloadCompletion(
+                            new AssetReloadCompletion(
+                                completedReloadGeneration,
+                                successfulReloadGeneration == completedReloadGeneration),
+                            generation);
+                    }
+
+                    return Task.CompletedTask;
+                }, 100, 100, pollCancellation.Token, generation));
 
                 pollTasks.Add(RunPeriodicTaskAsync(() =>
                 {
@@ -905,7 +1119,7 @@ namespace SailorEditor.Services
 
                     try
                     {
-                        ShutdownNativeAfterFailedStart();
+                        await ShutdownNativeAfterFailedStartAsync().ConfigureAwait(false);
                     }
                     catch (Exception teardownException)
                     {
@@ -1103,25 +1317,12 @@ namespace SailorEditor.Services
                     failure = CombineFailures(failure, ex);
                 }
 
-                lock (interopLock)
+                var shutdownFailure = await ShutdownNativeSessionAsync(
+                    stopNative: false,
+                    destroyRemoteViewport: true).ConfigureAwait(false);
+                if (shutdownFailure is not null)
                 {
-                    try
-                    {
-                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = CombineFailures(failure, ex);
-                    }
-
-                    try
-                    {
-                        EngineAppInterop.Shutdown();
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = CombineFailures(failure, ex);
-                    }
+                    failure = CombineFailures(failure, shutdownFailure);
                 }
 
                 if (exitCode == 0 && failure is not null)
@@ -1199,7 +1400,7 @@ namespace SailorEditor.Services
                 }.Concat(commandLineArgs ?? Array.Empty<string>());
                 return launchContext.BuildInteropArguments(
                     bDebug ? PathToEngineExecDebug : PathToEngineExec,
-                    "Editor.world",
+                    launchContext.StartupWorld,
                     extraArguments).ToArray();
             });
 #else
@@ -1207,7 +1408,7 @@ namespace SailorEditor.Services
                 .Concat(commandLineArgs ?? Array.Empty<string>());
             return launchContext.BuildInteropArguments(
                 "SailorEditor",
-                "Editor.world",
+                launchContext.StartupWorld,
                 extraArguments).ToArray();
 #endif
         }
@@ -1235,18 +1436,54 @@ namespace SailorEditor.Services
         static Exception CombineFailures(Exception? current, Exception next)
             => current is null ? next : new AggregateException(current, next);
 
-        void ShutdownNativeAfterFailedStart()
+        async Task ShutdownNativeAfterFailedStartAsync()
+        {
+            var failure = await ShutdownNativeSessionAsync(
+                stopNative: true,
+                destroyRemoteViewport: false).ConfigureAwait(false);
+            if (failure is not null)
+            {
+                throw failure;
+            }
+        }
+
+        Task<Exception?> ShutdownNativeSessionAsync(bool stopNative, bool destroyRemoteViewport)
+        {
+#if WINDOWS || MACCATALYST
+            return MainThread.InvokeOnMainThreadAsync(() =>
+                ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
+#else
+            return Task.FromResult(ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
+#endif
+        }
+
+        Exception? ShutdownNativeSessionUnderLock(bool stopNative, bool destroyRemoteViewport)
         {
             lock (interopLock)
             {
                 Exception? failure = null;
-                try
+                if (stopNative)
                 {
-                    EngineAppInterop.Stop();
+                    try
+                    {
+                        EngineAppInterop.Stop();
+                    }
+                    catch (Exception ex)
+                    {
+                        failure = ex;
+                    }
                 }
-                catch (Exception ex)
+
+                if (destroyRemoteViewport)
                 {
-                    failure = ex;
+                    try
+                    {
+                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
+                    }
+                    catch (Exception ex)
+                    {
+                        failure = failure is null ? ex : new AggregateException(failure, ex);
+                    }
                 }
 
                 try
@@ -1260,8 +1497,10 @@ namespace SailorEditor.Services
                         : new AggregateException(failure, ex);
                 }
 
-                if (failure is not null)
-                    throw failure;
+#if MACCATALYST
+                appliedMacRemoteViewportHosts.Clear();
+#endif
+                return failure;
             }
         }
 
@@ -1296,6 +1535,69 @@ namespace SailorEditor.Services
             }
 
             return messages;
+        }
+
+        IReadOnlyList<EditorViewportEvent> PullEditorViewportEvents(long generation, out long eventEpoch)
+        {
+            eventEpoch = editorViewportEventEpoch.Current;
+            if (!IsGenerationActive(generation))
+            {
+                return Array.Empty<EditorViewportEvent>();
+            }
+
+            var eventPtrs = new nint[MaxEditorViewportEventsPerPoll];
+            var parsedEvents = new List<EditorViewportEvent>(MaxEditorViewportEventsPerPoll);
+            try
+            {
+                uint actualEventCount;
+                lock (interopLock)
+                {
+                    if (!IsGenerationActive(generation))
+                    {
+                        return Array.Empty<EditorViewportEvent>();
+                    }
+
+                    eventEpoch = editorViewportEventEpoch.Current;
+                    actualEventCount = EngineAppInterop.PullEditorViewportEvents(
+                        eventPtrs,
+                        (uint)eventPtrs.Length);
+                }
+
+                var readableEventCount = (int)Math.Min(actualEventCount, (uint)eventPtrs.Length);
+                for (var i = 0; i < readableEventCount; ++i)
+                {
+                    if (eventPtrs[i] == nint.Zero)
+                    {
+                        Console.WriteLine($"[EngineService] Native viewport event {i} returned a null payload.");
+                        continue;
+                    }
+
+                    var yaml = Marshal.PtrToStringUTF8(eventPtrs[i]) ?? string.Empty;
+                    if (EditorViewportEventContract.TryParse(yaml, out var viewportEvent, out var error) &&
+                        viewportEvent is not null)
+                    {
+                        parsedEvents.Add(viewportEvent);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[EngineService] Rejected native viewport event {i}: {error}");
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var eventPtr in eventPtrs)
+                {
+                    if (eventPtr != nint.Zero)
+                    {
+                        EngineAppInterop.FreeInteropString(eventPtr);
+                    }
+                }
+            }
+
+            return IsGenerationActive(generation) && editorViewportEventEpoch.IsCurrent(eventEpoch)
+                ? parsedEvents.ToArray()
+                : Array.Empty<EditorViewportEvent>();
         }
 
         string SerializeWorld(long generation, out long snapshotSequence, bool allowStarting = false)
@@ -1507,6 +1809,61 @@ namespace SailorEditor.Services
             return InvokeRunningInterop(EngineAppInterop.RequestAssetReload);
         }
 
+        public async Task<bool> RequestAssetReloadAsync(CancellationToken cancellationToken = default)
+        {
+            var generation = Volatile.Read(ref engineGeneration);
+            var completionSource = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            long targetReloadGeneration = 0;
+
+            void HandleCompletion(AssetReloadCompletion completion)
+            {
+                var targetGeneration = Volatile.Read(ref targetReloadGeneration);
+                if (targetGeneration != 0 &&
+                    completion.Generation >= (ulong)targetGeneration &&
+                    IsGenerationActive(generation))
+                {
+                    completionSource.TrySetResult(completion.Succeeded);
+                }
+            }
+
+            OnAssetReloadCompleted += HandleCompletion;
+            try
+            {
+                lock (interopLock)
+                {
+                    if (!IsGenerationActive(generation) ||
+                        !EngineAppInterop.RequestAssetReload() ||
+                        !EngineAppInterop.GetAssetReloadState(
+                            out var requestedReloadGeneration,
+                            out var completedReloadGeneration,
+                            out var successfulReloadGeneration))
+                    {
+                        return false;
+                    }
+
+                    var targetGeneration = checked((long)requestedReloadGeneration);
+                    Volatile.Write(ref targetReloadGeneration, targetGeneration);
+                    if (completedReloadGeneration >= (ulong)targetGeneration)
+                    {
+                        return successfulReloadGeneration == completedReloadGeneration;
+                    }
+                }
+
+                return await completionSource.Task
+                    .WaitAsync(TimeSpan.FromSeconds(30), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                return false;
+            }
+            finally
+            {
+                OnAssetReloadCompleted -= HandleCompletion;
+            }
+        }
+
         public void RefreshCurrentWorld()
         {
             using var perfScope = EditorPerf.Scope("EngineService.RefreshCurrentWorld");
@@ -1678,7 +2035,16 @@ namespace SailorEditor.Services
         public bool LoadWorld(FileId worldId)
         {
             var stringFileId = worldId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.LoadEditorWorld(stringFileId));
+            bool result = InvokeRunningInterop(() =>
+            {
+                if (!EngineAppInterop.LoadEditorWorld(stringFileId))
+                {
+                    return false;
+                }
+
+                editorViewportEventEpoch.Advance();
+                return true;
+            });
 
             if (result)
             {
@@ -1686,6 +2052,33 @@ namespace SailorEditor.Services
             }
 
             return result;
+        }
+
+        public bool CreateWorld()
+        {
+            bool result = InvokeRunningInterop(() =>
+            {
+                if (!EngineAppInterop.CreateEditorWorld())
+                {
+                    return false;
+                }
+
+                editorViewportEventEpoch.Advance();
+                return true;
+            });
+
+            if (result)
+            {
+                RefreshCurrentWorld();
+            }
+
+            return result;
+        }
+
+        public string SerializeCurrentWorld()
+        {
+            var generation = Volatile.Read(ref engineGeneration);
+            return SerializeWorld(generation, out _);
         }
 
         public bool UpdateEditorSelection(IEnumerable<InstanceId?> selection)

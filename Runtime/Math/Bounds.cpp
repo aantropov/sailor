@@ -502,7 +502,7 @@ void AABB::Apply(const glm::mat4& transformMatrix)
 	TVector<glm::vec3> points;
 	GetPoints(points);
 
-	m_max = glm::vec3(std::numeric_limits<float>::min());
+	m_max = glm::vec3(std::numeric_limits<float>::lowest());
 	m_min = glm::vec3(std::numeric_limits<float>::max());
 
 	for (auto& point : points)

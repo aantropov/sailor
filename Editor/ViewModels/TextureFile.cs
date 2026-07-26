@@ -173,6 +173,9 @@ public class TextureFileYamlConverter : IYamlTypeConverter
 
                 switch (propertyName)
                 {
+                    case "assetInfoType":
+                        textureFile.AssetInfoTypeName = deserializer.Deserialize<string>(parser);
+                        break;
                     case "fileId":
                         textureFile.FileId = deserializer.Deserialize<FileId>(parser);
                         break;
@@ -227,6 +230,9 @@ public class TextureFileYamlConverter : IYamlTypeConverter
             var textureFile = (TextureFile)value;
 
             emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
+
+            emitter.Emit(new Scalar(null, "assetInfoType"));
+            emitter.Emit(new Scalar(null, textureFile.ResolveAssetInfoTypeNameForSave()));
 
             // Serialize inherited fields
             emitter.Emit(new Scalar(null, "fileId"));
