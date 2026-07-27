@@ -321,7 +321,11 @@ namespace SailorEditor.Views
 
         async Task ApplyViewportSelectionAsync(EditorViewportSelectionEvent viewportEvent)
         {
-            if (!engineService.IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision))
+            var isManagedRevisionCurrent =
+                await engineService.IsEditorViewportSelectionEventCurrentAsync(
+                    viewportEvent.ManagedMutationRevision);
+            if (!isManagedRevisionCurrent ||
+                !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected stale viewport selection revision {viewportEvent.Revision} after a newer managed mutation.");
                 return;
@@ -333,7 +337,11 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (!engineService.IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision))
+            isManagedRevisionCurrent =
+                await engineService.IsEditorViewportSelectionEventCurrentAsync(
+                    viewportEvent.ManagedMutationRevision);
+            if (!isManagedRevisionCurrent ||
+                !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision} after committing pending Inspector changes.");
                 return;
@@ -363,9 +371,12 @@ namespace SailorEditor.Views
 
         async Task ApplyViewportTransformAsync(EditorViewportTransformEvent viewportEvent)
         {
-            if (!engineService.IsEditorViewportTransformEventCurrent(
-                viewportEvent.InstanceId,
-                viewportEvent.ManagedMutationRevision))
+            var isManagedRevisionCurrent =
+                await engineService.IsEditorViewportTransformEventCurrentAsync(
+                    viewportEvent.InstanceId,
+                    viewportEvent.ManagedMutationRevision);
+            if (!isManagedRevisionCurrent ||
+                !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected stale viewport transform revision {viewportEvent.Revision} after a newer managed mutation.");
                 return;
@@ -377,9 +388,12 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (!engineService.IsEditorViewportTransformEventCurrent(
-                viewportEvent.InstanceId,
-                viewportEvent.ManagedMutationRevision))
+            isManagedRevisionCurrent =
+                await engineService.IsEditorViewportTransformEventCurrentAsync(
+                    viewportEvent.InstanceId,
+                    viewportEvent.ManagedMutationRevision);
+            if (!isManagedRevisionCurrent ||
+                !viewportEventRevisionGate.IsCurrent(viewportEvent))
             {
                 Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision} after committing pending Inspector changes.");
                 return;

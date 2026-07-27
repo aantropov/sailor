@@ -145,15 +145,22 @@ public sealed class EditorViewportEventContractTests
     public void RevisionGate_RejectsDuplicateAndStaleEventsAcrossKinds()
     {
         var gate = new EditorViewportEventRevisionGate();
+        var revisionSeven =
+            new EditorViewportSelectionEvent(7, 0, "go-1");
+        var revisionEight = Transform(8);
 
-        Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(7, 0, "go-1")));
+        Assert.True(gate.TryAccept(revisionSeven));
+        Assert.True(gate.IsCurrent(revisionSeven));
         Assert.False(gate.TryAccept(Transform(7)));
         Assert.False(gate.TryAccept(Transform(6)));
-        Assert.True(gate.TryAccept(Transform(8)));
+        Assert.True(gate.TryAccept(revisionEight));
+        Assert.False(gate.IsCurrent(revisionSeven));
+        Assert.True(gate.IsCurrent(revisionEight));
         Assert.Equal(8UL, gate.LastAcceptedRevision);
 
         gate.Reset();
         Assert.Null(gate.LastAcceptedRevision);
+        Assert.False(gate.IsCurrent(revisionEight));
         Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(0, 0, string.Empty)));
     }
 
@@ -175,17 +182,22 @@ public sealed class EditorViewportEventContractTests
 
         var selectionApply = Slice(sceneSource, "async Task ApplyViewportSelectionAsync", "async Task ApplyViewportTransformAsync");
         var transformApply = Slice(sceneSource, "async Task ApplyViewportTransformAsync", "ActionContext CreateViewportActionContext");
-        Assert.Equal(2, CountOccurrences(selectionApply, "IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision)"));
-        Assert.Equal(2, CountOccurrences(transformApply, "IsEditorViewportTransformEventCurrent("));
+        Assert.Equal(2, CountOccurrences(selectionApply, "await engineService.IsEditorViewportSelectionEventCurrentAsync("));
+        Assert.Equal(2, CountOccurrences(transformApply, "await engineService.IsEditorViewportTransformEventCurrentAsync("));
         AssertFenceIsRecheckedAfterInspectorFlush(
             selectionApply,
-            "IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision)");
+            "await engineService.IsEditorViewportSelectionEventCurrentAsync(");
         AssertFenceIsRecheckedAfterInspectorFlush(
             transformApply,
-            "IsEditorViewportTransformEventCurrent(");
+            "await engineService.IsEditorViewportTransformEventCurrentAsync(");
         Assert.Contains("viewportEvent.InstanceId", transformApply, StringComparison.Ordinal);
         Assert.Contains(
-            "protocolClient.GetEditorManagedMutationRevision((uint)kind, instanceId)",
+            "Task<bool> IsEditorViewportEventCurrentAsync(",
+            engineSource,
+            StringComparison.Ordinal);
+        Assert.Contains("=> Task.Run(() =>", engineSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.GetEditorManagedMutationRevision(",
             engineSource,
             StringComparison.Ordinal);
         Assert.Contains("Selection = 1", engineSource, StringComparison.Ordinal);

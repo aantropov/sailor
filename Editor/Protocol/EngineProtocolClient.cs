@@ -26,7 +26,7 @@ internal readonly record struct EngineProtocolCreationResult(
     bool Succeeded,
     string InstanceId);
 
-internal sealed class EngineProtocolClient : IDisposable
+internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 {
     internal const uint ProtocolVersion = 1;
     internal const uint MaxPayloadSize = 64u * 1024u * 1024u;
@@ -150,6 +150,14 @@ internal sealed class EngineProtocolClient : IDisposable
                 IsEngineMainThreadReady = new Empty()
             }, cancellationToken),
             nameof(ProtocolRequest.IsEngineMainThreadReady));
+
+    public bool IsEngineRunning(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            Send(
+                new ProtocolRequest { IsEngineRunning = new Empty() },
+                cancellationToken),
+            nameof(ProtocolRequest.IsEngineRunning));
 
     public string[] GetMessages(
         uint maxCount,
@@ -626,11 +634,12 @@ internal sealed class EngineProtocolClient : IDisposable
         => command switch
         {
             ProtocolRequest.CommandOneofCase.Start =>
-                EngineProtocolInvocationKind.LongRunning,
+                EngineProtocolInvocationKind.Lifecycle,
             ProtocolRequest.CommandOneofCase.RenderPathTracedImage =>
                 EngineProtocolInvocationKind.Background,
             ProtocolRequest.CommandOneofCase.Stop or
-                ProtocolRequest.CommandOneofCase.Shutdown =>
+                ProtocolRequest.CommandOneofCase.Shutdown or
+                ProtocolRequest.CommandOneofCase.IsEngineRunning =>
                 EngineProtocolInvocationKind.Lifecycle,
             ProtocolRequest.CommandOneofCase.SetViewport or
                 ProtocolRequest.CommandOneofCase.SetEditorRenderTargetSize or
@@ -698,4 +707,15 @@ internal sealed class EngineProtocolClient : IDisposable
             $"The protocol response for '{commandName}' has an unexpected result type.");
 
     public void Dispose() => transport.Dispose();
+
+    public ValueTask DisposeAsync()
+        => transport is IAsyncDisposable asyncTransport
+            ? asyncTransport.DisposeAsync()
+            : DisposeSynchronouslyAsync();
+
+    ValueTask DisposeSynchronouslyAsync()
+    {
+        transport.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

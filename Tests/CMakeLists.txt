@@ -414,6 +414,12 @@ add_test(
 )
 
 add_test(
+    NAME EditorEngineWebSocketLateStopTests
+    COMMAND EditorEngineWebSocketServerTests
+        --late-stop-after-static-teardown
+)
+
+add_test(
     NAME EditorViewportSessionTests
     COMMAND EditorViewportSessionTests
 )
@@ -532,6 +538,7 @@ set_tests_properties(
     EditorViewportControllerContractTests
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
+    EditorEngineWebSocketLateStopTests
     VulkanMemoryCounterContract
     SkyTemperatureTableContract
     ShaderConstantsModeContract

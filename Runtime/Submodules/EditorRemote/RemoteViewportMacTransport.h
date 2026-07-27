@@ -731,6 +731,30 @@ namespace Sailor::EditorRemote
 	public:
 		void BindHostHandle(ViewportId viewportId, const MacNativeHostHandle& hostHandle) override
 		{
+			const auto currentHandle = m_hostHandles.Find(viewportId);
+			const auto currentState = m_importedStates.Find(viewportId);
+			if (currentHandle != m_hostHandles.end() &&
+				currentHandle.Value() == hostHandle)
+			{
+				if (currentState == m_importedStates.end())
+				{
+					return;
+				}
+
+				const auto& state = *currentState.Value();
+				const bool bHasExpectedLayer =
+					hostHandle.IsValid()
+						? state.m_layerBinding.has_value() &&
+							state.m_layerBinding->IsValid() &&
+							state.m_usesRealCAMetalLayer
+						: !state.m_layerBinding.has_value();
+				if (state.m_hostHandle == hostHandle &&
+					bHasExpectedLayer)
+				{
+					return;
+				}
+			}
+
 			if (hostHandle.IsValid())
 			{
 				m_hostHandles[viewportId] = hostHandle;

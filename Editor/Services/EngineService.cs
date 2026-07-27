@@ -84,8 +84,8 @@ namespace SailorEditor.Services
             public required EngineLaunchContext LaunchContext { get; init; }
             public required CancellationTokenSource PollCancellation { get; init; }
             public required CancellationTokenSource BackgroundCancellation { get; init; }
-            public required CancellationTokenSource NativeRunCancellation { get; init; }
-            public required Task NativeRunTask { get; init; }
+            public required CancellationTokenSource RuntimeMonitorCancellation { get; init; }
+            public required Task RuntimeMonitorTask { get; init; }
             public required IReadOnlyList<Task> PollTasks { get; init; }
             public Task CompletionTask { get; set; } = Task.CompletedTask;
         }
@@ -156,6 +156,8 @@ namespace SailorEditor.Services
         const int MaxPendingPlatformInteropCommands = 128;
         static readonly TimeSpan LifecycleProbeTimeout =
             TimeSpan.FromSeconds(5);
+        static readonly TimeSpan RuntimeLivenessPollInterval =
+            TimeSpan.FromMilliseconds(250);
         static readonly TimeSpan DisposeOrderlyStopTimeout =
             TimeSpan.FromSeconds(5);
         static readonly TimeSpan DisposeCompletionTimeout =
@@ -211,13 +213,13 @@ namespace SailorEditor.Services
             }
         }
 
-        public Task NativeRunTask
+        public Task RuntimeMonitorTask
         {
             get
             {
                 lock (runLock)
                 {
-                    return activeSession?.NativeRunTask ?? Task.CompletedTask;
+                    return activeSession?.RuntimeMonitorTask ?? Task.CompletedTask;
                 }
             }
         }
@@ -538,33 +540,37 @@ namespace SailorEditor.Services
             }
         }
 
-        public bool IsEditorViewportSelectionEventCurrent(ulong managedMutationRevision)
-            => IsEditorViewportEventCurrent(
+        public Task<bool> IsEditorViewportSelectionEventCurrentAsync(
+            ulong managedMutationRevision)
+            => IsEditorViewportEventCurrentAsync(
                 EditorManagedMutationKind.Selection,
                 string.Empty,
                 managedMutationRevision);
 
-        public bool IsEditorViewportTransformEventCurrent(
+        public Task<bool> IsEditorViewportTransformEventCurrentAsync(
             string instanceId,
             ulong managedMutationRevision)
-            => IsEditorViewportEventCurrent(
+            => IsEditorViewportEventCurrentAsync(
                 EditorManagedMutationKind.ObjectTransform,
                 instanceId,
                 managedMutationRevision);
 
-        bool IsEditorViewportEventCurrent(
+        Task<bool> IsEditorViewportEventCurrentAsync(
             EditorManagedMutationKind kind,
             string instanceId,
             ulong managedMutationRevision)
-        {
-            lock (interopLock)
+            => Task.Run(() =>
             {
-                return IsInteropRunningUnderLock() &&
-                    EditorViewportMutationOrder.IsCurrent(
-                        managedMutationRevision,
-                        protocolClient.GetEditorManagedMutationRevision((uint)kind, instanceId));
-            }
-        }
+                lock (interopLock)
+                {
+                    return IsInteropRunningUnderLock() &&
+                        EditorViewportMutationOrder.IsCurrent(
+                            managedMutationRevision,
+                            protocolClient.GetEditorManagedMutationRevision(
+                                (uint)kind,
+                                instanceId));
+                }
+            });
 
         public void InvalidateQueuedWorldSnapshots()
         {
@@ -1064,11 +1070,12 @@ namespace SailorEditor.Services
             }
 
             var initialized = false;
+            var startRequested = false;
             var generation = 0L;
-            Task? nativeRunTask = null;
-            CancellationTokenSource? nativeRunCancellation = null;
-            CancellationTokenRegistration startupRunCancellation = default;
-            var nativeRunCancellationOwnedBySession = false;
+            Task? runtimeMonitorTask = null;
+            CancellationTokenSource? runtimeMonitorCancellation = null;
+            CancellationTokenRegistration startupMonitorCancellation = default;
+            var runtimeMonitorCancellationOwnedBySession = false;
             if (State == EngineLifecycleState.Running)
             {
                 try
@@ -1120,20 +1127,24 @@ namespace SailorEditor.Services
                 }
 #endif
                 initialized = true;
-                nativeRunCancellation =
+                runtimeMonitorCancellation =
                     CancellationTokenSource.CreateLinkedTokenSource(
                         disposeCancellation.Token);
-                startupRunCancellation = startCancellationToken.Register(
+                startupMonitorCancellation = startCancellationToken.Register(
                     static state =>
                         ((CancellationTokenSource)state!).Cancel(),
-                    nativeRunCancellation);
-                var runCancellation = nativeRunCancellation;
-                nativeRunTask = Task.Run(
-                    () => protocolClient.Start(runCancellation.Token),
-                    CancellationToken.None);
+                    runtimeMonitorCancellation);
+                var monitorCancellation = runtimeMonitorCancellation;
+                startRequested = true;
+                await Task.Run(
+                    () => protocolClient.Start(monitorCancellation.Token),
+                    CancellationToken.None).ConfigureAwait(false);
                 await WaitForEngineMainThreadAsync(
-                    nativeRunTask,
                     startCancellationToken).ConfigureAwait(false);
+                runtimeMonitorTask = MonitorEngineLifetimeAsync(
+                    generation,
+                    launchContext,
+                    monitorCancellation.Token);
 
                 var initializationExitCode = ReadNativeExitCode();
                 if (initializationExitCode != 0)
@@ -1321,8 +1332,8 @@ namespace SailorEditor.Services
                     LaunchContext = launchContext,
                     PollCancellation = pollCancellation,
                     BackgroundCancellation = backgroundCancellation,
-                    NativeRunCancellation = nativeRunCancellation,
-                    NativeRunTask = nativeRunTask,
+                    RuntimeMonitorCancellation = runtimeMonitorCancellation,
+                    RuntimeMonitorTask = runtimeMonitorTask,
                     PollTasks = pollTasks
                 };
 
@@ -1332,7 +1343,7 @@ namespace SailorEditor.Services
                 }
                 SetLifecycleState(EngineLifecycleState.Running);
                 session.CompletionTask = CompleteSessionAsync(session);
-                nativeRunCancellationOwnedBySession = true;
+                runtimeMonitorCancellationOwnedBySession = true;
             }
             catch (Exception startupException)
             {
@@ -1355,8 +1366,9 @@ namespace SailorEditor.Services
                     try
                     {
                         await ShutdownNativeAfterFailedStartAsync(
-                            nativeRunTask,
-                            nativeRunCancellation).ConfigureAwait(false);
+                            startRequested,
+                            runtimeMonitorTask,
+                            runtimeMonitorCancellation).ConfigureAwait(false);
                     }
                     catch (Exception teardownException)
                     {
@@ -1409,11 +1421,11 @@ namespace SailorEditor.Services
             }
             finally
             {
-                startupRunCancellation.Dispose();
-                if (!nativeRunCancellationOwnedBySession)
+                startupMonitorCancellation.Dispose();
+                if (!runtimeMonitorCancellationOwnedBySession)
                 {
-                    nativeRunCancellation?.Cancel();
-                    nativeRunCancellation?.Dispose();
+                    runtimeMonitorCancellation?.Cancel();
+                    runtimeMonitorCancellation?.Dispose();
                 }
                 lifecycleGate.Release();
             }
@@ -1452,11 +1464,11 @@ namespace SailorEditor.Services
                     session!.PollCancellation.Cancel();
                     session.BackgroundCancellation.Cancel();
 
+                    // The Start request was already acknowledged. Cancel the
+                    // liveness monitor before stopping so an expected readiness
+                    // transition cannot be reported as a runtime failure.
+                    session.RuntimeMonitorCancellation.Cancel();
                     stopFailure = RequestNativeStop();
-                    // Stop is sent on the independent lifecycle lane first.
-                    // Cancelling afterwards only aborts a half-open Start
-                    // response and cannot skip the orderly local stop request.
-                    session.NativeRunCancellation.Cancel();
                 }
             }
             finally
@@ -1537,10 +1549,10 @@ namespace SailorEditor.Services
             Exception? failure = null;
             try
             {
-                await session.NativeRunTask.ConfigureAwait(false);
+                await session.RuntimeMonitorTask.ConfigureAwait(false);
             }
             catch (OperationCanceledException)
-                when (session.NativeRunCancellation.IsCancellationRequested)
+                when (session.RuntimeMonitorCancellation.IsCancellationRequested)
             {
             }
             catch (Exception ex)
@@ -1566,7 +1578,7 @@ namespace SailorEditor.Services
                     using var exitCodeCancellation =
                         new CancellationTokenSource(
                             LifecycleProbeTimeout);
-                    failure = new EngineLifecycleException(
+                    failure ??= new EngineLifecycleException(
                         $"SailorEngine exited unexpectedly for workspace '{session.LaunchContext.WorkspaceRoot}'.",
                         ReadNativeExitCodeSafely(
                             exitCodeCancellation.Token));
@@ -1650,7 +1662,7 @@ namespace SailorEditor.Services
                 lifecycleGate.Release();
                 session.PollCancellation.Dispose();
                 session.BackgroundCancellation.Dispose();
-                session.NativeRunCancellation.Dispose();
+                session.RuntimeMonitorCancellation.Dispose();
             }
         }
 
@@ -1747,21 +1759,19 @@ namespace SailorEditor.Services
             => current is null ? next : new AggregateException(current, next);
 
         async Task WaitForEngineMainThreadAsync(
-            Task nativeRunTask,
             CancellationToken cancellationToken)
         {
             var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (nativeRunTask.IsCompleted)
+                if (!protocolClient.IsEngineRunning(
+                        cancellationToken))
                 {
-                    await nativeRunTask.ConfigureAwait(false);
                     throw new EngineLifecycleException(
                         "SailorEngine exited before its main thread became ready.",
-                        ReadNativeExitCodeSafely());
+                        ReadNativeExitCodeSafely(cancellationToken));
                 }
-
                 if (protocolClient.IsEngineMainThreadReady(
                         cancellationToken))
                 {
@@ -1777,37 +1787,73 @@ namespace SailorEditor.Services
             }
         }
 
+        async Task MonitorEngineLifetimeAsync(
+            long generation,
+            EngineLaunchContext launchContext,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                await Task.Delay(
+                    RuntimeLivenessPollInterval,
+                    cancellationToken).ConfigureAwait(false);
+                if (!IsGenerationActive(generation, allowStarting: true))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return;
+                }
+
+                bool isRunning;
+                lock (interopLock)
+                {
+                    isRunning = protocolClient.IsEngineRunning(
+                        cancellationToken);
+                }
+                if (!isRunning)
+                {
+                    throw new EngineLifecycleException(
+                        $"SailorEngine exited unexpectedly for workspace '{launchContext.WorkspaceRoot}'.",
+                        ReadNativeExitCodeSafely(cancellationToken));
+                }
+            }
+        }
+
         async Task ShutdownNativeAfterFailedStartAsync(
-            Task? nativeRunTask,
-            CancellationTokenSource? nativeRunCancellation)
+            bool startRequested,
+            Task? runtimeMonitorTask,
+            CancellationTokenSource? runtimeMonitorCancellation)
         {
             Exception? failure = null;
-            if (nativeRunTask is not null && !nativeRunTask.IsCompleted)
+            runtimeMonitorCancellation?.Cancel();
+            if (startRequested)
             {
                 failure = await StopNativeSessionAsync().ConfigureAwait(false);
-                nativeRunCancellation?.Cancel();
+            }
+
+            if (runtimeMonitorTask is not null)
+            {
                 try
                 {
-                    await nativeRunTask.WaitAsync(
+                    await runtimeMonitorTask.WaitAsync(
                         TimeSpan.FromSeconds(10)).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
-                    when (nativeRunCancellation?.IsCancellationRequested == true)
+                    when (runtimeMonitorCancellation?.IsCancellationRequested == true)
                 {
                 }
                 catch (Exception ex)
                 {
                     failure = CombineFailures(failure, ex);
                 }
-                if (!nativeRunTask.IsCompleted)
+                if (!runtimeMonitorTask.IsCompleted)
                 {
                     throw failure ?? new TimeoutException(
-                        "SailorEngine did not stop after startup failed.");
+                        "SailorEngine liveness monitor did not stop after startup failed.");
                 }
             }
 
             var shutdownFailure = await ShutdownNativeSessionAsync(
-                stopNative: nativeRunTask is null,
+                stopNative: !startRequested,
                 destroyRemoteViewport: false).ConfigureAwait(false);
             if (shutdownFailure is not null)
             {
@@ -2600,6 +2646,21 @@ namespace SailorEditor.Services
                 }
             }
 
+            async Task DrainProtocolClientAsync()
+            {
+                DisposeProtocolClientOnce();
+                try
+                {
+                    await protocolClient.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = CombineFailures(
+                        disposalFailure,
+                        exception);
+                }
+            }
+
             try
             {
                 try
@@ -2620,7 +2681,7 @@ namespace SailorEditor.Services
                 {
                     activeSession?.PollCancellation.Cancel();
                     activeSession?.BackgroundCancellation.Cancel();
-                    activeSession?.NativeRunCancellation.Cancel();
+                    activeSession?.RuntimeMonitorCancellation.Cancel();
                     completionTask = activeSession?.CompletionTask;
                 }
                 if (completionTask is not null &&
@@ -2677,7 +2738,7 @@ namespace SailorEditor.Services
                         exception);
                 }
 
-                DisposeProtocolClientOnce();
+                await DrainProtocolClientAsync().ConfigureAwait(false);
             }
             finally
             {

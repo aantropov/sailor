@@ -43,7 +43,8 @@ internal sealed class LocalEngineProtocolNativeBridge :
 
 internal sealed class LocalEngineProtocolTransport :
     IEngineProtocolTransport,
-    ILocalEngineProtocolTransport
+    ILocalEngineProtocolTransport,
+    IAsyncDisposable
 {
     sealed record LocalHostEndpoint(Uri Endpoint, string AuthorizationToken)
     {
@@ -56,12 +57,15 @@ internal sealed class LocalEngineProtocolTransport :
     static LocalHostEndpoint? activeHost;
 
     readonly object stateGate = new();
+    readonly TaskCompletionSource<bool> disposalCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     readonly ILocalEngineProtocolNativeBridge nativeBridge;
     readonly Func<Uri, string, IEngineProtocolTransport> transportFactory;
     IEngineProtocolTransport? webSocketTransport;
     LocalHostEndpoint? initializingHost;
     LocalHostEndpoint? ownedHost;
     bool initializing;
+    int pendingHostShutdowns;
     int disposed;
 
     public LocalEngineProtocolTransport()
@@ -146,6 +150,7 @@ internal sealed class LocalEngineProtocolTransport :
         catch
         {
             LocalHostEndpoint? hostToStop = null;
+            var shutdownAsPartOfDisposal = false;
             if (candidateHost is not null)
             {
                 lock (stateGate)
@@ -154,11 +159,17 @@ internal sealed class LocalEngineProtocolTransport :
                     {
                         initializingHost = null;
                         hostToStop = candidateHost;
+                        shutdownAsPartOfDisposal =
+                            Volatile.Read(ref disposed) != 0;
+                        if (shutdownAsPartOfDisposal)
+                        {
+                            pendingHostShutdowns += 1;
+                        }
                     }
                 }
             }
 
-            if (Volatile.Read(ref disposed) != 0 && hostToStop is not null)
+            if (shutdownAsPartOfDisposal && hostToStop is not null)
             {
                 BeginNonBlockingHostShutdown(
                     hostToStop,
@@ -188,6 +199,7 @@ internal sealed class LocalEngineProtocolTransport :
             lock (stateGate)
             {
                 initializing = false;
+                TryCompleteDisposalUnderLock();
             }
         }
     }
@@ -305,6 +317,10 @@ internal sealed class LocalEngineProtocolTransport :
             webSocketTransport = null;
             hostToStop = ownedHost;
             ownedHost = null;
+            if (hostToStop is not null)
+            {
+                pendingHostShutdowns += 1;
+            }
         }
 
         try
@@ -315,7 +331,14 @@ internal sealed class LocalEngineProtocolTransport :
         {
             if (hostToStop is not null)
             {
-                StopOwnedHost(hostToStop, shutdownEngine);
+                try
+                {
+                    StopOwnedHost(hostToStop, shutdownEngine);
+                }
+                finally
+                {
+                    CompleteHostShutdown();
+                }
             }
         }
     }
@@ -336,6 +359,10 @@ internal sealed class LocalEngineProtocolTransport :
             webSocketTransport = null;
             initializingHost = null;
             ownedHost = null;
+            if (hostToStop is not null)
+            {
+                pendingHostShutdowns += 1;
+            }
         }
 
         if (hostToStop is not null)
@@ -344,7 +371,20 @@ internal sealed class LocalEngineProtocolTransport :
             return;
         }
 
-        transport?.Dispose();
+        try
+        {
+            transport?.Dispose();
+        }
+        finally
+        {
+            CompleteDisposalIfReady();
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return new ValueTask(disposalCompletion.Task);
     }
 
     void BeginNonBlockingHostShutdown(
@@ -387,7 +427,38 @@ internal sealed class LocalEngineProtocolTransport :
                 Console.WriteLine(
                     $"[EngineProtocol] Local host teardown failed: {exception.Message}");
             }
+            finally
+            {
+                CompleteHostShutdown();
+            }
         });
+    }
+
+    void CompleteHostShutdown()
+    {
+        lock (stateGate)
+        {
+            pendingHostShutdowns -= 1;
+            TryCompleteDisposalUnderLock();
+        }
+    }
+
+    void CompleteDisposalIfReady()
+    {
+        lock (stateGate)
+        {
+            TryCompleteDisposalUnderLock();
+        }
+    }
+
+    void TryCompleteDisposalUnderLock()
+    {
+        if (Volatile.Read(ref disposed) != 0 &&
+            !initializing &&
+            pendingHostShutdowns == 0)
+        {
+            disposalCompletion.TrySetResult(true);
+        }
     }
 
     void RequestOwnedHostStop(LocalHostEndpoint host)

@@ -23,8 +23,12 @@ public sealed class EngineLifecycleTests
         Assert.Contains("IAsyncDisposable", source, StringComparison.Ordinal);
         Assert.Contains("public ValueTask DisposeAsync()", source, StringComparison.Ordinal);
         Assert.Contains("disposeTask = Task.Run(DisposeCoreAsync);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.DisposeAsync().ConfigureAwait(false);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("public void ResetForWorkspaceChange()", source, StringComparison.Ordinal);
-        Assert.Contains("await session.NativeRunTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
+        Assert.Contains("await session.RuntimeMonitorTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("await Task.WhenAll(session.PollTasks).ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("protocolClient.Shutdown()", source, StringComparison.Ordinal);
         Assert.Contains("BuildInteropArgumentsAsync", source, StringComparison.Ordinal);
@@ -35,6 +39,11 @@ public sealed class EngineLifecycleTests
     public void ManagedLifecycle_DisposalIsNonBlockingAndPathTracingIsSessionCancelled()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var macAppDelegate = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "MacCatalyst",
+            "AppDelegate.cs");
 
         var beginDispose = source.IndexOf("Task BeginDisposeAsync()", StringComparison.Ordinal);
         var disposeCore = source.IndexOf("async Task DisposeCoreAsync()", beginDispose, StringComparison.Ordinal);
@@ -48,6 +57,36 @@ public sealed class EngineLifecycleTests
             "GetAwaiter().GetResult()",
             source[beginDispose..],
             StringComparison.Ordinal);
+
+        var terminate = macAppDelegate.IndexOf(
+            "public override void WillTerminate",
+            StringComparison.Ordinal);
+        var disposeAsync = macAppDelegate.IndexOf(
+            ".DisposeAsync()",
+            terminate,
+            StringComparison.Ordinal);
+        var asTask = macAppDelegate.IndexOf(
+            ".AsTask();",
+            disposeAsync,
+            StringComparison.Ordinal);
+        var pumpMainRunLoop = macAppDelegate.IndexOf(
+            "NSRunLoop.Main.RunUntil(deadline);",
+            asTask,
+            StringComparison.Ordinal);
+        var observeShutdown = macAppDelegate.IndexOf(
+            "shutdownTask.GetAwaiter().GetResult();",
+            pumpMainRunLoop,
+            StringComparison.Ordinal);
+        var terminateBase = macAppDelegate.IndexOf(
+            "base.WillTerminate(application);",
+            observeShutdown,
+            StringComparison.Ordinal);
+        Assert.True(terminate >= 0);
+        Assert.True(disposeAsync > terminate);
+        Assert.True(asTask > disposeAsync);
+        Assert.True(pumpMainRunLoop > asTask);
+        Assert.True(observeShutdown > pumpMainRunLoop);
+        Assert.True(terminateBase > observeShutdown);
 
         var pathTrace = source.IndexOf("public bool ExportPathTracedImage", StringComparison.Ordinal);
         var runWorld = source.IndexOf("public void RunWorld", pathTrace, StringComparison.Ordinal);
@@ -69,7 +108,7 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void ManagedTransport_LivenessCancellationCoversRunAndPollLanes()
+    public void ManagedTransport_LivenessMonitorUsesBoundedProtocolPolls()
     {
         var serviceSource = ReadRepositoryFile(
             "Editor",
@@ -81,15 +120,39 @@ public sealed class EngineLifecycleTests
             "ClientWebSocketEngineProtocolTransport.cs");
 
         Assert.Contains(
-            "socket.Options.KeepAliveTimeout = KeepAliveTimeout;",
+            "lane.AllowsBlockingRequest",
             transportSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "protocolClient.Start(runCancellation.Token)",
+            "new(\"background\", allowsBlockingRequest: true)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "? Timeout.InfiniteTimeSpan",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ": KeepAliveTimeout;",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.Start(monitorCancellation.Token)",
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "session.NativeRunCancellation.Cancel();",
+            "MonitorEngineLifetimeAsync(",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RuntimeLivenessPollInterval",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.IsEngineRunning(",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "session.RuntimeMonitorCancellation.Cancel();",
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -104,13 +167,14 @@ public sealed class EngineLifecycleTests
             "stopFailure = RequestNativeStop();",
             stop,
             StringComparison.Ordinal);
-        var abortStartLane = serviceSource.IndexOf(
-            "session.NativeRunCancellation.Cancel();",
-            orderlyStop,
+        var cancelMonitor = serviceSource.IndexOf(
+            "session.RuntimeMonitorCancellation.Cancel();",
+            stop,
             StringComparison.Ordinal);
         Assert.True(stop >= 0);
+        Assert.True(cancelMonitor > stop);
         Assert.True(orderlyStop > stop);
-        Assert.True(abortStartLane > orderlyStop);
+        Assert.True(orderlyStop > cancelMonitor);
     }
 
     [Fact]
@@ -910,9 +974,13 @@ public sealed class EngineLifecycleTests
             "await WaitForEngineMainThreadAsync(",
             nativeStart,
             StringComparison.Ordinal);
+        var startMonitor = source.IndexOf(
+            "runtimeMonitorTask = MonitorEngineLifetimeAsync(",
+            waitUntilReady,
+            StringComparison.Ordinal);
         var startupOrder = source.IndexOf(
             "// Required startup order: combined editor catalog, world, then initial messages.",
-            waitUntilReady,
+            startMonitor,
             StringComparison.Ordinal);
         var liveCatalog = source.IndexOf(
             "string serializedEditorTypes = SerializeEditorTypes(",
@@ -930,14 +998,19 @@ public sealed class EngineLifecycleTests
 
         Assert.True(nativeStart >= 0);
         Assert.True(waitUntilReady > nativeStart);
+        Assert.True(startMonitor > waitUntilReady);
         Assert.True(startupOrder >= 0);
-        Assert.True(startupOrder > waitUntilReady);
+        Assert.True(startupOrder > startMonitor);
         Assert.True(liveCatalog > startupOrder);
         Assert.True(macBranch > liveCatalog);
         Assert.True(mainThreadDispatch > macBranch);
         Assert.True(worldSerialization > mainThreadDispatch);
         Assert.Contains(
             "protocolClient.IsEngineMainThreadReady(\n                        cancellationToken)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.IsEngineRunning(\n                        cancellationToken)",
             source,
             StringComparison.Ordinal);
     }

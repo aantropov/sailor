@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <mutex>
 #include <stdexcept>
@@ -20,9 +21,15 @@
 #include <csignal>
 #endif
 
+extern "C"
+{
+	void SailorProtocolStopLocalHost(bool bShutdownEngine) noexcept;
+}
+
 namespace
 {
 	using Sailor::Protocol::EEditorEngineWebSocketHostStatus;
+	using Sailor::Protocol::EEditorEngineTransportStatus;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 	using Sailor::Protocol::EditorEngineWebSocketPath;
 	using Sailor::Protocol::EditorEngineWebSocketSubprotocol;
@@ -243,6 +250,74 @@ namespace
 		Require(
 			actualStatus == static_cast<int32_t>(expectedStatus),
 			context + ", status=" + std::to_string(actualStatus));
+	}
+
+	void StopLocalHostAtProcessExit() noexcept
+	{
+		SailorProtocolStopLocalHost(false);
+	}
+
+	void TestLateStopAfterStaticTeardown()
+	{
+		// Register before the protocol lifecycle gate and WebSocket server
+		// state are first touched. atexit callbacks and function-static
+		// destructors run in reverse registration order, so destructible
+		// process state would be gone before this late host-stop callback.
+		Require(
+			std::atexit(StopLocalHostAtProcessExit) == 0,
+			"late local-host stop callback must register");
+
+		Require(
+			ix::initNetSystem(),
+			"IXWebSocket network system must initialize for port reservation");
+		const int port = ix::getFreePort();
+		Require(
+			ix::uninitNetSystem(),
+			"IXWebSocket network system must reset before testing host startup");
+		Require(
+			port > 0 && port <= 65535,
+			"IXWebSocket must provide a valid free TCP port");
+
+		const std::string authorizationToken =
+			"0123456789abcdef0123456789abcdef";
+		RequireHostStatus(
+			Sailor::Protocol::StartEditorEngineWebSocketServer(
+				static_cast<uint16_t>(port),
+				authorizationToken.data(),
+				static_cast<uint32_t>(authorizationToken.size())),
+			EEditorEngineWebSocketHostStatus::Ok,
+			"editor-engine WebSocket server must start for late stop");
+
+		const std::string request = MakeRequest(1u, 16u);
+		uint8_t* responseData = nullptr;
+		uint32_t responseSize = 0u;
+		const int32_t invokeStatus =
+			Sailor::Protocol::InvokeEditorEngineProtocol(
+				reinterpret_cast<const uint8_t*>(request.data()),
+				static_cast<uint32_t>(request.size()),
+				&responseData,
+				&responseSize);
+		Require(
+			invokeStatus == static_cast<int32_t>(
+				EEditorEngineTransportStatus::Ok),
+			"direct protocol request must initialize lifecycle state");
+		Require(
+			responseData != nullptr && responseSize > 0u,
+			"direct protocol request must return a response");
+		const std::string responsePayload(
+			reinterpret_cast<const char*>(responseData),
+			responseSize);
+		Sailor::Protocol::FreeEditorEngineProtocolBuffer(responseData);
+
+		TProtocolResponseWire response;
+		Require(
+			ParseResponse(responsePayload, response) &&
+				response.m_requestId == 1u &&
+				response.m_bSuccess,
+			"direct get-exit-code request must succeed before process exit");
+
+		// Deliberately leave the server running. StopLocalHostAtProcessExit
+		// performs the only teardown after later-registered static finalizers.
 	}
 
 	class TServerGuard final
@@ -855,13 +930,23 @@ namespace
 	}
 }
 
-int main()
+int main(const int argc, const char* const argv[])
 {
 	try
 	{
 #if !defined(_WIN32)
 		std::signal(SIGPIPE, SIG_IGN);
 #endif
+		if (argc == 2 &&
+			std::string(argv[1]) == "--late-stop-after-static-teardown")
+		{
+			TestLateStopAfterStaticTeardown();
+			return 0;
+		}
+		Require(
+			argc == 1,
+			"unknown EditorEngineWebSocketServerTests argument");
+
 			const std::string authorizationToken =
 				"0123456789abcdef0123456789abcdef";
 			TestInvalidServerArguments(authorizationToken);

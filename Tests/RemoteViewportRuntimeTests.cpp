@@ -612,8 +612,110 @@ namespace
 		const std::string protocolExports = ReadText(sourceRoot / "Lib/EditorProtocolExports.cpp");
 		const std::string protocolDispatcherSource = ReadText(
 			sourceRoot / "Lib/EditorEngineProtocol.cpp");
+		const std::string macTransportSource = ReadText(
+			sourceRoot /
+				"Runtime/Submodules/EditorRemote/RemoteViewportMacTransport.h");
+		const std::string macNativeBridgeSource = ReadText(
+			sourceRoot /
+				"Runtime/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm");
 
 		RequireRemoteViewportBindingLockOrder(bridgeSource);
+		const size_t bindNativeLayerBegin = macNativeBridgeSource.find(
+			"Failure BindMacNativeLayer(");
+		const size_t bindNativeLayerEnd = macNativeBridgeSource.find(
+			"Failure CaptureMacIOSurfaceFrameEvidence(",
+			bindNativeLayerBegin);
+		Require(
+			bindNativeLayerBegin != std::string::npos &&
+				bindNativeLayerEnd > bindNativeLayerBegin,
+			"mac native layer binding source must be bounded");
+		const std::string bindNativeLayerBody =
+			macNativeBridgeSource.substr(
+				bindNativeLayerBegin,
+				bindNativeLayerEnd - bindNativeLayerBegin);
+		const size_t cametalLayerCase = bindNativeLayerBody.find(
+			"case MacNativeHostHandleKind::CAMetalLayer:");
+		const size_t nsViewMainThreadGuard = bindNativeLayerBody.find(
+			"if (hostHandle.m_kind == MacNativeHostHandleKind::NSView)");
+		const size_t guardedMainThreadMarshal = bindNativeLayerBody.find(
+			"return RunOnMainThreadSync(bindNativeLayer);",
+			nsViewMainThreadGuard);
+		const size_t directLayerBind = bindNativeLayerBody.find(
+			"return bindNativeLayer();",
+			guardedMainThreadMarshal);
+		Require(
+			cametalLayerCase != std::string::npos &&
+				nsViewMainThreadGuard > cametalLayerCase &&
+				guardedMainThreadMarshal > nsViewMainThreadGuard &&
+				directLayerBind > guardedMainThreadMarshal &&
+				CountOccurrences(
+					bindNativeLayerBody,
+					"RunOnMainThreadSync(") == 1,
+			"CAMetalLayer binding must execute directly while only the NSView branch may marshal synchronously to the main thread");
+
+		const size_t setMacHostBegin = bridgeSource.find(
+			"bool App::SetEditorRemoteViewportMacHostHandle(");
+		const size_t sendRemoteInputBegin = bridgeSource.find(
+			"bool App::SendEditorRemoteViewportInput(",
+			setMacHostBegin);
+		Require(
+			setMacHostBegin != std::string::npos &&
+				sendRemoteInputBegin > setMacHostBegin,
+			"mac remote viewport host boundary must be bounded");
+		const std::string setMacHostBody = bridgeSource.substr(
+			setMacHostBegin,
+			sendRemoteInputBegin - setMacHostBegin);
+		const size_t nonzeroHostValidation = setMacHostBody.find(
+			"if (hostHandleValue != 0)");
+		const size_t cametalLayerValidation = setMacHostBody.find(
+			"MacNativeHostHandleKind::CAMetalLayer",
+			nonzeroHostValidation);
+		const size_t rejectUnsupportedHost = setMacHostBody.find(
+			"return false;",
+			cametalLayerValidation);
+		const size_t publishPendingHost = setMacHostBody.find(
+			"g_pendingRemoteViewportHostHandles[viewportId] = hostHandle;",
+			rejectUnsupportedHost);
+		Require(
+			nonzeroHostValidation != std::string::npos &&
+				cametalLayerValidation > nonzeroHostValidation &&
+				rejectUnsupportedHost > cametalLayerValidation &&
+				publishPendingHost > rejectUnsupportedHost &&
+				setMacHostBody.find(
+					"MacNativeHostHandleKind::NSView") ==
+					std::string::npos,
+			"editor runtime must reject every nonzero host except CAMetalLayer before publishing it to a binding, while zero remains the detach path");
+
+		const size_t bindHostBegin = macTransportSource.find(
+			"void BindHostHandle(ViewportId viewportId, "
+			"const MacNativeHostHandle& hostHandle) override");
+		const size_t importSurfaceBegin = macTransportSource.find(
+			"Failure ImportSurface(",
+			bindHostBegin);
+		Require(
+			bindHostBegin != std::string::npos &&
+				importSurfaceBegin > bindHostBegin,
+			"mac presenter host binding source must be bounded");
+		const std::string bindHostBody = macTransportSource.substr(
+			bindHostBegin,
+			importSurfaceBegin - bindHostBegin);
+		const size_t sameHandle = bindHostBody.find(
+			"currentHandle.Value() == hostHandle");
+		const size_t validLayer = bindHostBody.find(
+			"state.m_layerBinding->IsValid()",
+			sameHandle);
+		const size_t skipRedundantBind = bindHostBody.find(
+			"return;",
+			validLayer);
+		const size_t refreshNativeLayer = bindHostBody.find(
+			"RefreshNativeLayerBinding",
+			skipRedundantBind);
+		Require(
+			sameHandle != std::string::npos &&
+				validLayer > sameHandle &&
+				skipRedundantBind > validLayer &&
+				refreshNativeLayer > skipRedundantBind,
+			"an unchanged live mac host must skip synchronous native layer rebinding");
 
 		const size_t drainBegin = bridgeSource.find("void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
 		const size_t resetBegin = bridgeSource.find("void Sailor::EditorRuntime::ResetForAppLifecycle()", drainBegin);

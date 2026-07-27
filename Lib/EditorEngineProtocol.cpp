@@ -35,8 +35,39 @@ namespace
 	Sailor::Protocol::TEditorEngineProtocolLifecycleGate&
 		GetEditorEngineProtocolLifecycleGate()
 	{
-		static Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
-		return gate;
+		// Host-control exports may still be entered while the managed app is
+		// coordinating process termination. Keep the synchronization object
+		// alive until process reclamation; sessions are reset explicitly.
+		static auto* const gate =
+			new Sailor::Protocol::TEditorEngineProtocolLifecycleGate();
+		return *gate;
+	}
+
+	void StartEngine(void*)
+	{
+		Sailor::App::Start();
+	}
+
+	void StopEngine(
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (dependencies.m_stop)
+		{
+			dependencies.m_stop(dependencies.m_context);
+			return;
+		}
+		Sailor::App::Stop();
+	}
+
+	void ShutdownEngine(
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (dependencies.m_shutdown)
+		{
+			dependencies.m_shutdown(dependencies.m_context);
+			return;
+		}
+		Sailor::App::Shutdown();
 	}
 
 	class TInteropString final
@@ -640,17 +671,16 @@ namespace
 			break;
 
 		case ProtocolRequest::kStart:
-			Sailor::App::Start();
 			SetEmptyResult(response);
 			break;
 
 		case ProtocolRequest::kStop:
-			Sailor::App::Stop();
+			StopEngine(dependencies);
 			SetEmptyResult(response);
 			break;
 
 		case ProtocolRequest::kShutdown:
-			Sailor::App::Shutdown();
+			ShutdownEngine(dependencies);
 			SetEmptyResult(response);
 			break;
 
@@ -940,7 +970,6 @@ namespace
 	{
 		None,
 		Initialization,
-		Start,
 		Operation,
 		Shutdown
 	};
@@ -966,10 +995,6 @@ namespace
 			{
 			case EProtocolLifecycleCompletion::Initialization:
 				m_gate.CompleteInitialization(m_bSucceeded);
-				break;
-
-			case EProtocolLifecycleCompletion::Start:
-				m_gate.CompleteStart();
 				break;
 
 			case EProtocolLifecycleCompletion::Operation:
@@ -1035,16 +1060,19 @@ namespace
 
 		case ProtocolRequest::kStart:
 		{
-			if (!gate.TryBeginStart(admissionError))
+			const auto startRoutine = dependencies.m_start
+				? dependencies.m_start
+				: StartEngine;
+			if (!gate.TryBeginStartAsync(
+					dependencies.m_context,
+					startRoutine,
+					admissionError))
 			{
 				SetError(response, admissionError);
 				return;
 			}
 
-			const TProtocolLifecycleCompletion completion(
-				gate,
-				EProtocolLifecycleCompletion::Start);
-			DispatchRequest(request, response, dependencies);
+			SetEmptyResult(response);
 			return;
 		}
 
@@ -1052,6 +1080,7 @@ namespace
 			if (gate.NoteStopRequested())
 			{
 				DispatchRequest(request, response, dependencies);
+				gate.WaitForStartDrainAndJoin();
 			}
 			else
 			{
@@ -1074,11 +1103,16 @@ namespace
 			// Stop can safely release a blocking Start before the remaining
 			// regular operation leases are joined.
 			gate.WaitForInitializationDrain();
-			Sailor::App::Stop();
+			StopEngine(dependencies);
 			gate.WaitForShutdownDrain();
+			gate.WaitForStartDrainAndJoin();
 			DispatchRequest(request, response, dependencies);
 			return;
 		}
+
+		case ProtocolRequest::kIsEngineRunning:
+			SetBoolResult(response, gate.IsStartActive());
+			return;
 
 		default:
 		{
@@ -1236,6 +1270,11 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 void Sailor::Protocol::FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept
 {
 	delete[] buffer;
+}
+
+void Sailor::Protocol::WaitForEditorEngineProtocolStartDrain()
+{
+	GetEditorEngineProtocolLifecycleGate().WaitForStartDrainAndJoin();
 }
 
 void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()

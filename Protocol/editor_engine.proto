@@ -50,10 +50,11 @@ message ProtocolRequest {
 		RenderPathTracedImageRequest render_path_traced_image = 45;
 		Empty serialize_engine_types = 46;
 		Empty is_engine_main_thread_ready = 47;
+		Empty is_engine_running = 48;
 	}
 
 	reserved 3 to 9;
-	reserved 48 to 99;
+	reserved 49 to 99;
 }
 
 message ProtocolResponse {

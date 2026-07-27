@@ -4,9 +4,12 @@ namespace SailorEditor.Protocol;
 
 internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTransport
 {
-    sealed class WebSocketLane(string name)
+    sealed class WebSocketLane(
+        string name,
+        bool allowsBlockingRequest = false)
     {
         public string Name { get; } = name;
+        public bool AllowsBlockingRequest { get; } = allowsBlockingRequest;
         public SemaphoreSlim Gate { get; } = new(1, 1);
         public ClientWebSocket? Socket;
     }
@@ -34,8 +37,8 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
     readonly WebSocketLane requestLane = new("request");
     readonly WebSocketLane interactiveLane = new("interactive");
     readonly WebSocketLane lifecycleLane = new("lifecycle");
-    readonly WebSocketLane backgroundLane = new("background");
-    readonly WebSocketLane longRunningLane = new("long-running");
+    readonly WebSocketLane backgroundLane =
+        new("background", allowsBlockingRequest: true);
     readonly CancellationTokenSource disposeCancellation = new();
     int disposed;
     int activeInvocations;
@@ -96,13 +99,11 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
             EngineProtocolInvocationKind.Interactive => interactiveLane,
             EngineProtocolInvocationKind.Lifecycle => lifecycleLane,
             EngineProtocolInvocationKind.Background => backgroundLane,
-            EngineProtocolInvocationKind.LongRunning => longRunningLane,
             _ => requestLane
         };
         var timeout = invocationKind switch
         {
-            EngineProtocolInvocationKind.LongRunning or
-                EngineProtocolInvocationKind.Background =>
+            EngineProtocolInvocationKind.Background =>
                 Timeout.InfiniteTimeSpan,
             EngineProtocolInvocationKind.Interactive =>
                 InteractiveRequestTimeout,
@@ -279,10 +280,15 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
                 "X-Sailor-Channel",
                 lane.Name);
             // A finite timeout makes a half-open remote connection observable.
-            // With a timeout configured ClientWebSocket uses ping/pong rather
-            // than the unsolicited-pong compatibility mode.
+            // A blocking background command is executed synchronously by the
+            // current native server callback, which cannot service PING until
+            // the command completes. Caller cancellation and lane abort still
+            // bound that channel without a false keep-alive failure.
             socket.Options.KeepAliveInterval = KeepAliveInterval;
-            socket.Options.KeepAliveTimeout = KeepAliveTimeout;
+            socket.Options.KeepAliveTimeout =
+                lane.AllowsBlockingRequest
+                    ? Timeout.InfiniteTimeSpan
+                    : KeepAliveTimeout;
             using var connectCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(
                     invocationCancellation);
@@ -427,8 +433,7 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
             DisposeLane(requestLane) &
             DisposeLane(interactiveLane) &
             DisposeLane(lifecycleLane) &
-            DisposeLane(backgroundLane) &
-            DisposeLane(longRunningLane);
+            DisposeLane(backgroundLane);
         if (allLanesQuiesced &&
             Volatile.Read(ref activeInvocations) == 0)
         {
@@ -436,7 +441,6 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
             interactiveLane.Gate.Dispose();
             lifecycleLane.Gate.Dispose();
             backgroundLane.Gate.Dispose();
-            longRunningLane.Gate.Dispose();
             disposeCancellation.Dispose();
         }
     }

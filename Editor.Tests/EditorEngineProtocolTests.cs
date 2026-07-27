@@ -95,6 +95,7 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(
             47,
             ProtocolRequest.IsEngineMainThreadReadyFieldNumber);
+        Assert.Equal(48, ProtocolRequest.IsEngineRunningFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
     }

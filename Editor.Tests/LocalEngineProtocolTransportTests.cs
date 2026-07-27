@@ -59,6 +59,43 @@ public sealed class LocalEngineProtocolTransportTests
     }
 
     [Fact]
+    public async Task DisposeAsync_DuringNativeStart_WaitsForLateHostCleanup()
+    {
+        var startEntered = NewSignal();
+        using var startRelease = new ManualResetEventSlim();
+        var bridge = new FakeNativeBridge
+        {
+            Start = () =>
+            {
+                startEntered.TrySetResult();
+                WaitForRelease(startRelease, "native start");
+                return 0;
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(
+            bridge,
+            (_, _) => new RecordingTransport());
+
+        var initialization = Task.Run(() => transport.Initialize([1]));
+        await startEntered.Task.WaitAsync(TestTimeout);
+
+        var disposal = transport.DisposeAsync().AsTask();
+        Assert.False(await CompletesWithinTimeout(
+            disposal,
+            TimeSpan.FromMilliseconds(250)));
+        startRelease.Set();
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => initialization.WaitAsync(TestTimeout));
+        await disposal.WaitAsync(TestTimeout);
+
+        Assert.Equal(1, bridge.RequestStopCount);
+        Assert.Equal(1, bridge.StopCount);
+        Assert.True(bridge.LastShutdownEngine);
+        await AssertHostCanBeReused();
+    }
+
+    [Fact]
     public async Task Dispose_DuringTransportCreation_CleansHostAndCandidate()
     {
         var factoryEntered = NewSignal();
@@ -151,6 +188,39 @@ public sealed class LocalEngineProtocolTransportTests
     }
 
     [Fact]
+    public async Task DisposeAsync_WaitsWhileNativeShutdownIsBlocked()
+    {
+        var stopEntered = NewSignal();
+        using var stopRelease = new ManualResetEventSlim();
+        var bridge = new FakeNativeBridge
+        {
+            Stop = _ =>
+            {
+                stopEntered.TrySetResult();
+                WaitForRelease(stopRelease, "native shutdown");
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(
+            bridge,
+            (_, _) => new RecordingTransport());
+        transport.Initialize([1]);
+
+        var disposal = transport.DisposeAsync().AsTask();
+        await stopEntered.Task.WaitAsync(TestTimeout);
+        Assert.False(await CompletesWithinTimeout(
+            disposal,
+            TimeSpan.FromMilliseconds(250)));
+        stopRelease.Set();
+
+        await disposal.WaitAsync(TestTimeout);
+
+        Assert.Equal(1, bridge.RequestStopCount);
+        Assert.Equal(1, bridge.StopCount);
+        Assert.True(bridge.LastShutdownEngine);
+        await AssertHostCanBeReused();
+    }
+
+    [Fact]
     public async Task InFlightStopRequest_BlocksHostHandoffUntilTeardown()
     {
         var requestStopEntered = NewSignal();
@@ -218,6 +288,42 @@ public sealed class LocalEngineProtocolTransportTests
         Assert.False(stopObservedRequestInFlight);
         Assert.Equal(1, bridge.RequestStopCount);
         Assert.Equal(1, bridge.StopCount);
+        await AssertHostCanBeReused();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_WaitsForConcurrentCompleteShutdown()
+    {
+        var stopEntered = NewSignal();
+        using var stopRelease = new ManualResetEventSlim();
+        var bridge = new FakeNativeBridge
+        {
+            Stop = _ =>
+            {
+                stopEntered.TrySetResult();
+                WaitForRelease(stopRelease, "complete shutdown");
+            }
+        };
+        var transport = new LocalEngineProtocolTransport(
+            bridge,
+            (_, _) => new RecordingTransport());
+        transport.Initialize([1]);
+
+        var completeShutdown = Task.Run(
+            () => transport.CompleteShutdown(shutdownEngine: true));
+        await stopEntered.Task.WaitAsync(TestTimeout);
+        var disposal = transport.DisposeAsync().AsTask();
+
+        Assert.False(await CompletesWithinTimeout(
+            disposal,
+            TimeSpan.FromMilliseconds(250)));
+        stopRelease.Set();
+
+        await completeShutdown.WaitAsync(TestTimeout);
+        await disposal.WaitAsync(TestTimeout);
+
+        Assert.Equal(1, bridge.StopCount);
+        Assert.True(bridge.LastShutdownEngine);
         await AssertHostCanBeReused();
     }
 

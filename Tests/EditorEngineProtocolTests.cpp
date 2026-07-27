@@ -5,8 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <condition_variable>
 #include <future>
 #include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -38,14 +40,20 @@ namespace
 	constexpr uint32_t c_requestIdField = 2;
 	constexpr uint32_t c_successField = 3;
 	constexpr uint32_t c_errorField = 4;
+	constexpr uint32_t c_boolResultField = 11;
 	constexpr uint32_t c_int32ResultField = 12;
 	constexpr uint32_t c_uint64ResultField = 14;
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
+	constexpr uint32_t c_emptyResultField = 10;
 	constexpr uint32_t c_initializeCommandField = 10;
+	constexpr uint32_t c_startCommandField = 11;
+	constexpr uint32_t c_stopCommandField = 12;
+	constexpr uint32_t c_shutdownCommandField = 13;
 	constexpr uint32_t c_getExitCodeCommandField = 16;
 	constexpr uint32_t c_loadEditorWorldCommandField = 21;
 	constexpr uint32_t c_pullEditorViewportEventsCommandField = 32;
 	constexpr uint32_t c_getManagedMutationRevisionCommandField = 33;
+	constexpr uint32_t c_isEngineRunningCommandField = 48;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -131,6 +139,7 @@ namespace
 		bool m_success = false;
 		std::string m_error{};
 		uint32_t m_resultField = 0;
+		bool m_boolResult = false;
 		int32_t m_int32Result = 0;
 		std::string m_resultPayload{};
 	};
@@ -160,6 +169,36 @@ namespace
 			if (fieldNumber == 1)
 			{
 				outValue = static_cast<int32_t>(value);
+			}
+		}
+		return true;
+	}
+
+	bool TryDecodeBoolResult(
+		const uint8_t* data,
+		size_t size,
+		bool& outValue)
+	{
+		outValue = false;
+		size_t offset = 0;
+		while (offset < size)
+		{
+			uint64_t key = 0;
+			if (!ReadVarint(data, size, offset, key))
+			{
+				return false;
+			}
+
+			const uint32_t fieldNumber = static_cast<uint32_t>(key >> 3u);
+			const uint32_t wireType = static_cast<uint32_t>(key & 0x7u);
+			uint64_t value = 0;
+			if (wireType != 0 || !ReadVarint(data, size, offset, value))
+			{
+				return false;
+			}
+			if (fieldNumber == 1)
+			{
+				outValue = value != 0;
 			}
 		}
 		return true;
@@ -216,7 +255,16 @@ namespace
 				response.m_resultPayload.assign(
 					reinterpret_cast<const char*>(value),
 					static_cast<size_t>(length));
-				if (fieldNumber == c_int32ResultField)
+				if (fieldNumber == c_boolResultField)
+				{
+					Require(
+						TryDecodeBoolResult(
+							value,
+							static_cast<size_t>(length),
+							response.m_boolResult),
+						"bool result payload must be valid");
+				}
+				else if (fieldNumber == c_int32ResultField)
 				{
 					Require(
 						TryDecodeInt32Result(
@@ -947,6 +995,318 @@ namespace
 		shutdownInitGate.WaitForShutdownDrain();
 		shutdownInitGate.CompleteShutdown();
 	}
+
+	struct TBlockingLifecycleSource
+	{
+		std::mutex m_mutex{};
+		std::condition_variable m_condition{};
+		bool m_bStartEntered = false;
+		bool m_bReleaseStart = false;
+		bool m_bStartExited = false;
+		bool m_bShutdownObservedStartExit = false;
+		uint32_t m_numStops = 0;
+		uint32_t m_numShutdowns = 0;
+	};
+
+	void BlockingStart(void* context)
+	{
+		auto& source =
+			*static_cast<TBlockingLifecycleSource*>(context);
+		std::unique_lock<std::mutex> lock(source.m_mutex);
+		source.m_bStartEntered = true;
+		source.m_condition.notify_all();
+		source.m_condition.wait(lock, [&source]()
+			{
+				return source.m_bReleaseStart;
+			});
+		source.m_bStartExited = true;
+		source.m_condition.notify_all();
+	}
+
+	void ReleaseBlockingStart(void* context)
+	{
+		auto& source =
+			*static_cast<TBlockingLifecycleSource*>(context);
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			++source.m_numStops;
+			source.m_bReleaseStart = true;
+		}
+		source.m_condition.notify_all();
+	}
+
+	void RecordShutdown(void* context)
+	{
+		auto& source =
+			*static_cast<TBlockingLifecycleSource*>(context);
+		const std::lock_guard<std::mutex> lock(source.m_mutex);
+		++source.m_numShutdowns;
+		source.m_bShutdownObservedStartExit = source.m_bStartExited;
+	}
+
+	class TBlockingLifecycleRelease final
+	{
+	public:
+		explicit TBlockingLifecycleRelease(
+			TBlockingLifecycleSource& source)
+			: m_source(source)
+		{
+		}
+
+		~TBlockingLifecycleRelease()
+		{
+			{
+				const std::lock_guard<std::mutex> lock(m_source.m_mutex);
+				m_source.m_bReleaseStart = true;
+			}
+			m_source.m_condition.notify_all();
+		}
+
+	private:
+		TBlockingLifecycleSource& m_source;
+	};
+
+	Sailor::Protocol::EditorEngineProtocolDependencies
+		MakeBlockingLifecycleDependencies(
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+			TBlockingLifecycleSource& source)
+	{
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_start = BlockingStart;
+		dependencies.m_stop = ReleaseBlockingStart;
+		dependencies.m_shutdown = RecordShutdown;
+		dependencies.m_lifecycleGate = &gate;
+		return dependencies;
+	}
+
+	void PrepareInitializedLifecycle(
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate)
+	{
+		std::string error;
+		Require(
+			gate.TryBeginInitialization(error),
+			"async lifecycle test must initialize its session");
+		gate.CompleteInitialization(true);
+	}
+
+	TDecodedResponse InvokeStartPromptly(
+		const uint64_t requestId,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies,
+		TBlockingLifecycleSource& source)
+	{
+		using namespace std::chrono_literals;
+
+		auto invocation = std::async(
+			std::launch::async,
+			[requestId, &dependencies]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(
+					MakeRequest(
+						EditorEngineProtocolVersion,
+						requestId,
+						c_startCommandField),
+					buffer,
+					dependencies);
+			});
+		if (invocation.wait_for(500ms) != std::future_status::ready)
+		{
+			{
+				const std::lock_guard<std::mutex> lock(source.m_mutex);
+				source.m_bReleaseStart = true;
+			}
+			source.m_condition.notify_all();
+			invocation.wait();
+			Require(
+				false,
+				"Start acknowledgement must not wait for the Engine loop to exit");
+		}
+		return invocation.get();
+	}
+
+	void TestStartAcknowledgesBeforeWorkerExitAndStopJoins()
+	{
+		using namespace std::chrono_literals;
+
+		TBlockingLifecycleSource source;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		const TBlockingLifecycleRelease release(source);
+		PrepareInitializedLifecycle(gate);
+		const auto dependencies =
+			MakeBlockingLifecycleDependencies(gate, source);
+
+		const auto startResponse =
+			InvokeStartPromptly(51, dependencies, source);
+		Require(
+			startResponse.m_success &&
+				startResponse.m_resultField == c_emptyResultField,
+			"Start must acknowledge an admitted async worker");
+
+		{
+			std::unique_lock<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_condition.wait_for(
+					lock,
+					1s,
+					[&source]()
+					{
+						return source.m_bStartEntered;
+					}),
+				"the admitted Start worker must begin execution");
+			Require(
+				!source.m_bStartExited,
+				"the Start worker must still be blocked after its acknowledgement");
+		}
+
+		TProtocolBuffer livenessBuffer;
+		const auto livenessResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				58,
+				c_isEngineRunningCommandField),
+			livenessBuffer,
+			dependencies);
+		Require(
+			livenessResponse.m_success &&
+				livenessResponse.m_resultField == c_boolResultField &&
+				livenessResponse.m_boolResult,
+			"lifecycle probe must report the admitted Start worker as running");
+
+		TProtocolBuffer duplicateBuffer;
+		const auto duplicateResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				52,
+				c_startCommandField),
+			duplicateBuffer,
+			dependencies);
+		Require(
+			!duplicateResponse.m_success,
+			"an active async Start must still reject duplicate starts");
+
+		TProtocolBuffer stopBuffer;
+		const auto stopResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				53,
+				c_stopCommandField),
+			stopBuffer,
+			dependencies);
+		Require(
+			stopResponse.m_success &&
+				stopResponse.m_resultField == c_emptyResultField,
+			"Stop must acknowledge after releasing and joining the Start worker");
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_bStartExited && source.m_numStops == 1,
+				"Stop must not return before the Start worker exits");
+		}
+
+		TProtocolBuffer stoppedLivenessBuffer;
+		const auto stoppedLivenessResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				59,
+				c_isEngineRunningCommandField),
+			stoppedLivenessBuffer,
+			dependencies);
+		Require(
+			stoppedLivenessResponse.m_success &&
+				stoppedLivenessResponse.m_resultField == c_boolResultField &&
+				!stoppedLivenessResponse.m_boolResult,
+			"lifecycle probe must report a joined Start worker as stopped");
+	}
+
+	void TestImmediateStopAfterStartAcknowledgementCannotBeLost()
+	{
+		TBlockingLifecycleSource source;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		const TBlockingLifecycleRelease release(source);
+		PrepareInitializedLifecycle(gate);
+		const auto dependencies =
+			MakeBlockingLifecycleDependencies(gate, source);
+
+		const auto startResponse =
+			InvokeStartPromptly(56, dependencies, source);
+		Require(
+			startResponse.m_success,
+			"immediate Stop test must receive the Start acknowledgement");
+
+		// Do not wait for BlockingStart to enter. Stop must publish its request
+		// before or after the worker reaches the routine without losing it.
+		TProtocolBuffer stopBuffer;
+		const auto stopResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				57,
+				c_stopCommandField),
+			stopBuffer,
+			dependencies);
+		Require(
+			stopResponse.m_success,
+			"immediate Stop must release and join the admitted Start worker");
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_bStartEntered &&
+					source.m_bStartExited &&
+					source.m_numStops == 1,
+				"Stop immediately after ACK must not be lost before Start enters");
+		}
+	}
+
+	void TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine()
+	{
+		using namespace std::chrono_literals;
+
+		TBlockingLifecycleSource source;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		const TBlockingLifecycleRelease release(source);
+		PrepareInitializedLifecycle(gate);
+		const auto dependencies =
+			MakeBlockingLifecycleDependencies(gate, source);
+
+		const auto startResponse =
+			InvokeStartPromptly(54, dependencies, source);
+		Require(
+			startResponse.m_success,
+			"Shutdown ordering test must admit Start");
+		{
+			std::unique_lock<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_condition.wait_for(
+					lock,
+					1s,
+					[&source]()
+					{
+						return source.m_bStartEntered;
+					}),
+				"Shutdown ordering test Start worker must begin");
+		}
+
+		TProtocolBuffer shutdownBuffer;
+		const auto shutdownResponse = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				55,
+				c_shutdownCommandField),
+			shutdownBuffer,
+			dependencies);
+		Require(
+			shutdownResponse.m_success &&
+				shutdownResponse.m_resultField == c_emptyResultField,
+			"Shutdown must complete after draining async lifecycle work");
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_numStops == 1 &&
+					source.m_numShutdowns == 1 &&
+					source.m_bShutdownObservedStartExit,
+				"Shutdown must Stop and join Start before invoking App shutdown");
+		}
+	}
 }
 
 int main()
@@ -962,6 +1322,9 @@ int main()
 		TestGetExitCodeRoundTripAndFree();
 		TestMalformedViewportEventDoesNotDiscardValidBatchEvents();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
+		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
+		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
+		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();
 	}
 	catch (const std::exception& exception)
 	{

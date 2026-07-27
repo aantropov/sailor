@@ -303,22 +303,22 @@ namespace
 		std::unique_ptr<ix::WebSocketServer> m_server{};
 	};
 
-	std::mutex& GetServerMutex()
+	struct TEditorEngineWebSocketServerState final
 	{
-		static std::mutex serverMutex;
-		return serverMutex;
-	}
+		std::mutex m_mutex{};
+		std::unique_ptr<TEditorEngineWebSocketServer> m_server{};
+		bool m_bNetworkSystemInitialized = false;
+	};
 
-	std::unique_ptr<TEditorEngineWebSocketServer>& GetServer()
+	TEditorEngineWebSocketServerState& GetServerState()
 	{
-		static std::unique_ptr<TEditorEngineWebSocketServer> server;
-		return server;
-	}
-
-	bool& IsNetworkSystemInitialized()
-	{
-		static bool bInitialized = false;
-		return bInitialized;
+		// Native host control can be called from managed termination cleanup.
+		// Explicit Stop owns resource release; the mutex itself must outlive
+		// C++ static destruction so a late noexcept export cannot lock a
+		// destroyed synchronization primitive.
+		static auto* const state =
+			new TEditorEngineWebSocketServerState();
+		return *state;
 	}
 }
 
@@ -345,9 +345,9 @@ int32_t Sailor::Protocol::StartEditorEngineWebSocketServer(
 			EEditorEngineWebSocketHostStatus::InvalidArguments);
 	}
 
-	std::lock_guard lock(GetServerMutex());
-	auto& server = GetServer();
-	if (server)
+	auto& state = GetServerState();
+	std::lock_guard lock(state.m_mutex);
+	if (state.m_server)
 	{
 		return static_cast<int32_t>(
 			EEditorEngineWebSocketHostStatus::AlreadyRunning);
@@ -355,13 +355,13 @@ int32_t Sailor::Protocol::StartEditorEngineWebSocketServer(
 
 	try
 	{
-		auto& bNetworkSystemInitialized = IsNetworkSystemInitialized();
-		if (!bNetworkSystemInitialized && !ix::initNetSystem())
+		if (!state.m_bNetworkSystemInitialized &&
+			!ix::initNetSystem())
 		{
 			return static_cast<int32_t>(
 				EEditorEngineWebSocketHostStatus::NetworkInitializationFailed);
 		}
-		bNetworkSystemInitialized = true;
+		state.m_bNetworkSystemInitialized = true;
 
 		auto candidate = std::make_unique<TEditorEngineWebSocketServer>(
 			port,
@@ -371,23 +371,22 @@ int32_t Sailor::Protocol::StartEditorEngineWebSocketServer(
 		{
 			candidate.reset();
 			ix::uninitNetSystem();
-			bNetworkSystemInitialized = false;
+			state.m_bNetworkSystemInitialized = false;
 			return static_cast<int32_t>(
 				EEditorEngineWebSocketHostStatus::ListenFailed);
 		}
 
-		server = std::move(candidate);
+		state.m_server = std::move(candidate);
 		return static_cast<int32_t>(
 			EEditorEngineWebSocketHostStatus::Ok);
 	}
 	catch (...)
 	{
-		server.reset();
-		auto& bNetworkSystemInitialized = IsNetworkSystemInitialized();
-		if (bNetworkSystemInitialized)
+		state.m_server.reset();
+		if (state.m_bNetworkSystemInitialized)
 		{
 			ix::uninitNetSystem();
-			bNetworkSystemInitialized = false;
+			state.m_bNetworkSystemInitialized = false;
 		}
 		return static_cast<int32_t>(
 			EEditorEngineWebSocketHostStatus::ExecutionFailed);
@@ -398,17 +397,16 @@ void Sailor::Protocol::StopEditorEngineWebSocketServer() noexcept
 {
 	try
 	{
-		std::lock_guard lock(GetServerMutex());
-		auto& server = GetServer();
-		if (server)
+		auto& state = GetServerState();
+		std::lock_guard lock(state.m_mutex);
+		if (state.m_server)
 		{
-			server.reset();
+			state.m_server.reset();
 		}
-		auto& bNetworkSystemInitialized = IsNetworkSystemInitialized();
-		if (bNetworkSystemInitialized)
+		if (state.m_bNetworkSystemInitialized)
 		{
 			ix::uninitNetSystem();
-			bNetworkSystemInitialized = false;
+			state.m_bNetworkSystemInitialized = false;
 		}
 	}
 	catch (...)

@@ -39,6 +39,19 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public void WebSocketTransport_DoesNotReserveAConnectionForBlockingStart()
+    {
+        Assert.DoesNotContain(
+            "LongRunning",
+            Enum.GetNames<EngineProtocolInvocationKind>());
+        Assert.Null(
+            typeof(ClientWebSocketEngineProtocolTransport).GetField(
+                "longRunningLane",
+                System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic));
+    }
+
+    [Fact]
     public void WebSocketTransport_PreservesCallerCancellation()
     {
         using var transport =
@@ -66,7 +79,7 @@ public sealed class EngineProtocolClientTests
                 ValidAuthorizationToken);
         var laneField = typeof(ClientWebSocketEngineProtocolTransport)
             .GetField(
-                "longRunningLane",
+                "backgroundLane",
                 System.Reflection.BindingFlags.Instance |
                     System.Reflection.BindingFlags.NonPublic);
         Assert.NotNull(laneField);
@@ -91,6 +104,20 @@ public sealed class EngineProtocolClientTests
 
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
         transport.Dispose();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_AwaitsTransportDrain()
+    {
+        var transport = new AsyncDisposeRecordingTransport();
+        var client = new EngineProtocolClient(transport);
+
+        var disposal = client.DisposeAsync().AsTask();
+
+        Assert.Equal(1, transport.DisposeCount);
+        Assert.False(disposal.IsCompleted);
+        transport.CompleteDisposal();
+        await disposal.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Theory]
@@ -250,7 +277,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Start_UsesIndependentLongRunningTransportLane()
+    public void Start_UsesBoundedLifecycleTransportLane()
     {
         EngineProtocolInvocationKind? capturedKind = null;
         var client = CreateClient(
@@ -262,12 +289,12 @@ public sealed class EngineProtocolClientTests
         client.Start();
 
         Assert.Equal(
-            EngineProtocolInvocationKind.LongRunning,
+            EngineProtocolInvocationKind.Lifecycle,
             capturedKind);
     }
 
     [Fact]
-    public void Start_ForwardsSessionCancellationToTheLongRunningLane()
+    public void Start_ForwardsSessionCancellationToTheLifecycleLane()
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -278,7 +305,7 @@ public sealed class EngineProtocolClientTests
             client.Start(cancellation.Token));
 
         Assert.Equal(
-            EngineProtocolInvocationKind.LongRunning,
+            EngineProtocolInvocationKind.Lifecycle,
             transport.InvocationKind);
         Assert.Equal(cancellation.Token, transport.CancellationToken);
         Assert.Equal(cancellation.Token, exception.CancellationToken);
@@ -373,6 +400,33 @@ public sealed class EngineProtocolClientTests
         Assert.Equal(
             ProtocolRequest.CommandOneofCase.IsEngineMainThreadReady,
             captured.CommandCase);
+    }
+
+    [Fact]
+    public void EngineLiveness_UsesDedicatedLifecycleProbe()
+    {
+        ProtocolRequest? captured = null;
+        EngineProtocolInvocationKind? capturedKind = null;
+        var client = CreateClient(
+            request =>
+            {
+                captured = request;
+                return Success(
+                    request,
+                    response => response.BoolResult =
+                        new BoolResult { Value = true });
+            },
+            kind => capturedKind = kind);
+
+        Assert.True(client.IsEngineRunning());
+
+        Assert.NotNull(captured);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.IsEngineRunning,
+            captured.CommandCase);
+        Assert.Equal(
+            EngineProtocolInvocationKind.Lifecycle,
+            capturedKind);
     }
 
     [Fact]
@@ -593,5 +647,34 @@ public sealed class EngineProtocolClientTests
         public void Dispose()
         {
         }
+    }
+
+    sealed class AsyncDisposeRecordingTransport :
+        IEngineProtocolTransport,
+        IAsyncDisposable
+    {
+        readonly TaskCompletionSource<bool> disposalCompletion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int disposeCount;
+
+        public int DisposeCount => Volatile.Read(ref disposeCount);
+
+        public byte[] Invoke(
+            byte[] requestData,
+            EngineProtocolInvocationKind invocationKind,
+            CancellationToken cancellationToken = default)
+            => [];
+
+        public void Dispose()
+            => Interlocked.Increment(ref disposeCount);
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return new ValueTask(disposalCompletion.Task);
+        }
+
+        public void CompleteDisposal()
+            => disposalCompletion.TrySetResult(true);
     }
 }

@@ -1229,8 +1229,20 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 #if defined(__APPLE__)
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
 	Sailor::EditorRemote::MacNativeHostHandle hostHandle{};
-	hostHandle.m_kind = static_cast<Sailor::EditorRemote::MacNativeHostHandleKind>(hostHandleKind);
-	hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
+	if (hostHandleValue != 0)
+	{
+		// The editor creates and owns the CAMetalLayer on its UI thread.
+		// Accepting an NSView here would make native layer binding marshal
+		// synchronously to that thread while the viewport binding is locked.
+		if (hostHandleKind != static_cast<uint32_t>(
+				Sailor::EditorRemote::MacNativeHostHandleKind::CAMetalLayer))
+		{
+			return false;
+		}
+		hostHandle.m_kind =
+			Sailor::EditorRemote::MacNativeHostHandleKind::CAMetalLayer;
+		hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
+	}
 	TSharedPtr<RemoteViewportBinding> binding{};
 	{
 		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);

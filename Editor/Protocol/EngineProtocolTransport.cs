@@ -5,8 +5,7 @@ internal enum EngineProtocolInvocationKind
     Request,
     Interactive,
     Lifecycle,
-    Background,
-    LongRunning
+    Background
 }
 
 internal interface IEngineProtocolTransport : IDisposable

@@ -29,9 +29,13 @@ namespace Sailor::Protocol
 			void* context,
 			char** events,
 			uint32_t capacity);
+		using FLifecycleRoutine = void (*)(void* context);
 
 		void* m_context = nullptr;
 		FPullEditorViewportEvents m_pullEditorViewportEvents = nullptr;
+		FLifecycleRoutine m_start = nullptr;
+		FLifecycleRoutine m_stop = nullptr;
+		FLifecycleRoutine m_shutdown = nullptr;
 		TEditorEngineProtocolLifecycleGate* m_lifecycleGate = nullptr;
 		bool m_bAllowInitialize = true;
 	};
@@ -50,5 +54,6 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
+	void WaitForEditorEngineProtocolStartDrain();
 	void ResetEditorEngineProtocolLifecycle();
 }

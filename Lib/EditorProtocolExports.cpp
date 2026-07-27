@@ -21,12 +21,13 @@ namespace
 		Sailor::Protocol::StopEditorEngineWebSocketServer();
 		try
 		{
+			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
 			Sailor::App::Shutdown();
+			Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
 		}
 		catch (...)
 		{
 		}
-		Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
 	}
 }
 
@@ -142,27 +143,25 @@ extern "C"
 	SAILOR_API void SailorProtocolStopLocalHost(
 		const bool bShutdownEngine) noexcept
 	{
-		if (bShutdownEngine)
+		try
 		{
-			try
-			{
-				Sailor::App::Stop();
-			}
-			catch (...)
-			{
-			}
+			Sailor::App::Stop();
+		}
+		catch (...)
+		{
 		}
 		Sailor::Protocol::StopEditorEngineWebSocketServer();
-		if (bShutdownEngine)
+		try
 		{
-			try
+			Sailor::Protocol::WaitForEditorEngineProtocolStartDrain();
+			if (bShutdownEngine)
 			{
 				Sailor::App::Shutdown();
+				Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
 			}
-			catch (...)
-			{
-			}
-			Sailor::Protocol::ResetEditorEngineProtocolLifecycle();
+		}
+		catch (...)
+		{
 		}
 	}
 

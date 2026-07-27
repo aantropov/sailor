@@ -478,6 +478,16 @@ public sealed class EditorViewportEventRevisionGate
         }
     }
 
+    public bool IsCurrent(EditorViewportEvent viewportEvent)
+    {
+        ArgumentNullException.ThrowIfNull(viewportEvent);
+        lock (_sync)
+        {
+            return _hasAcceptedRevision &&
+                viewportEvent.Revision == _lastAcceptedRevision;
+        }
+    }
+
     public void Reset()
     {
         lock (_sync)
