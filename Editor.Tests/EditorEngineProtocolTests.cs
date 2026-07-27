@@ -92,6 +92,9 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(43, ProtocolRequest.SetEditorSelectionFieldNumber);
         Assert.Equal(45, ProtocolRequest.RenderPathTracedImageFieldNumber);
         Assert.Equal(46, ProtocolRequest.SerializeEngineTypesFieldNumber);
+        Assert.Equal(
+            47,
+            ProtocolRequest.IsEngineMainThreadReadyFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
     }

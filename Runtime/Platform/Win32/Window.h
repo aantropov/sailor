@@ -5,6 +5,7 @@
 #include <wtypes.h>
 #endif
 #include <atomic>
+#include <mutex>
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
@@ -166,6 +167,7 @@ namespace Sailor::Win32
 		SAILOR_API void SetIsIconic(bool value) { m_bIsIconic = value; }
 
 		static TVector<Window*> g_windows;
+		static std::mutex g_windowsMutex;
 
 		friend LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 	};

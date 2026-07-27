@@ -7202,6 +7202,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kShowMainWindow = 44,
     kRenderPathTracedImage = 45,
     kSerializeEngineTypes = 46,
+    kIsEngineMainThreadReady = 47,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -7334,6 +7335,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kShowMainWindowFieldNumber = 44,
     kRenderPathTracedImageFieldNumber = 45,
     kSerializeEngineTypesFieldNumber = 46,
+    kIsEngineMainThreadReadyFieldNumber = 47,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -8058,6 +8060,25 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::Empty* _internal_mutable_serialize_engine_types();
 
   public:
+  // .sailor.editor.v1.Empty is_engine_main_thread_ready = 47;
+  bool has_is_engine_main_thread_ready() const;
+  private:
+  bool _internal_has_is_engine_main_thread_ready() const;
+
+  public:
+  void clear_is_engine_main_thread_ready() ;
+  const ::sailor::editor::v1::Empty& is_engine_main_thread_ready() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::Empty* release_is_engine_main_thread_ready();
+  ::sailor::editor::v1::Empty* mutable_is_engine_main_thread_ready();
+  void set_allocated_is_engine_main_thread_ready(::sailor::editor::v1::Empty* value);
+  void unsafe_arena_set_allocated_is_engine_main_thread_ready(::sailor::editor::v1::Empty* value);
+  ::sailor::editor::v1::Empty* unsafe_arena_release_is_engine_main_thread_ready();
+
+  private:
+  const ::sailor::editor::v1::Empty& _internal_is_engine_main_thread_ready() const;
+  ::sailor::editor::v1::Empty* _internal_mutable_is_engine_main_thread_ready();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -8100,11 +8121,12 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_show_main_window();
   void set_has_render_path_traced_image();
   void set_has_serialize_engine_types();
+  void set_has_is_engine_main_thread_ready();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 39, 37,
+      1, 40, 38,
       0, 7>
       _table_;
 
@@ -8164,6 +8186,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::ShowMainWindowRequest* show_main_window_;
       ::sailor::editor::v1::RenderPathTracedImageRequest* render_path_traced_image_;
       ::sailor::editor::v1::Empty* serialize_engine_types_;
+      ::sailor::editor::v1::Empty* is_engine_main_thread_ready_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -12088,6 +12111,85 @@ inline ::sailor::editor::v1::Empty* ProtocolRequest::_internal_mutable_serialize
 inline ::sailor::editor::v1::Empty* ProtocolRequest::mutable_serialize_engine_types() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::Empty* _msg = _internal_mutable_serialize_engine_types();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.serialize_engine_types)
+  return _msg;
+}
+
+// .sailor.editor.v1.Empty is_engine_main_thread_ready = 47;
+inline bool ProtocolRequest::has_is_engine_main_thread_ready() const {
+  return command_case() == kIsEngineMainThreadReady;
+}
+inline bool ProtocolRequest::_internal_has_is_engine_main_thread_ready() const {
+  return command_case() == kIsEngineMainThreadReady;
+}
+inline void ProtocolRequest::set_has_is_engine_main_thread_ready() {
+  _impl_._oneof_case_[0] = kIsEngineMainThreadReady;
+}
+inline void ProtocolRequest::clear_is_engine_main_thread_ready() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kIsEngineMainThreadReady) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.is_engine_main_thread_ready_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.is_engine_main_thread_ready_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::release_is_engine_main_thread_ready() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.is_engine_main_thread_ready)
+  if (command_case() == kIsEngineMainThreadReady) {
+    clear_has_command();
+    auto* temp = _impl_.command_.is_engine_main_thread_ready_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.is_engine_main_thread_ready_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::Empty& ProtocolRequest::_internal_is_engine_main_thread_ready() const {
+  return command_case() == kIsEngineMainThreadReady ? *_impl_.command_.is_engine_main_thread_ready_ : reinterpret_cast<::sailor::editor::v1::Empty&>(::sailor::editor::v1::_Empty_default_instance_);
+}
+inline const ::sailor::editor::v1::Empty& ProtocolRequest::is_engine_main_thread_ready() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.is_engine_main_thread_ready)
+  return _internal_is_engine_main_thread_ready();
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::unsafe_arena_release_is_engine_main_thread_ready() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.is_engine_main_thread_ready)
+  if (command_case() == kIsEngineMainThreadReady) {
+    clear_has_command();
+    auto* temp = _impl_.command_.is_engine_main_thread_ready_;
+    _impl_.command_.is_engine_main_thread_ready_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_is_engine_main_thread_ready(::sailor::editor::v1::Empty* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_is_engine_main_thread_ready();
+    _impl_.command_.is_engine_main_thread_ready_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.is_engine_main_thread_ready)
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::_internal_mutable_is_engine_main_thread_ready() {
+  if (command_case() != kIsEngineMainThreadReady) {
+    clear_command();
+    set_has_is_engine_main_thread_ready();
+    _impl_.command_.is_engine_main_thread_ready_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Empty>(GetArena());
+  }
+  return _impl_.command_.is_engine_main_thread_ready_;
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::mutable_is_engine_main_thread_ready() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::Empty* _msg = _internal_mutable_is_engine_main_thread_ready();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.is_engine_main_thread_ready)
   return _msg;
 }
 

@@ -2,8 +2,28 @@
 
 `editor_engine.proto` is the single wire contract between SailorEditor and
 SailorLib. The editor and engine exchange only serialized protobuf envelopes
-through a fixed-width C transport ABI; generated language objects never cross
-the shared-library boundary.
+through an authenticated WebSocket endpoint; generated language objects never
+cross the transport boundary.
+
+Each binary WebSocket message contains exactly one `ProtocolRequest` or
+`ProtocolResponse`. The endpoint is `/sailor/editor/v1`, the requested
+protocol marker is `sailor.editor.v1`, compression is disabled, and the
+aggregate message limit is 64 MiB. IXWebSocket currently validates that marker
+from the request header after upgrade but does not echo it as a negotiated
+WebSocket subprotocol. Text, malformed, oversized, unauthorized, and wrong-path
+traffic is rejected.
+
+The current local editor host still loads SailorLib because the macOS viewport
+data plane passes same-process `CAMetalLayer` and `IOSurface` object handles.
+The one-time local bootstrap and fail-safe teardown use a small lifecycle-only
+C surface; normal command traffic, including orderly stop and shutdown, uses
+WebSocket. The bundled native host binds only to `127.0.0.1` and requires an
+ephemeral bearer token; it cannot be configured for a network-visible
+plaintext listener. A future process/remote host can expose the same endpoint
+over `wss://` without changing protobuf clients after the viewport presenter is
+moved across the process boundary. Before a native host is enabled for
+non-loopback traffic, it must also enforce the payload limit before buffering a
+complete WebSocket message.
 
 Compatibility rules:
 

@@ -78,6 +78,7 @@ def main() -> int:
         'glm',
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',
         'imguizmo',
+        'ixwebsocket[core]',
         'magic-enum',
         'nlohmann-json',
         'protobuf',

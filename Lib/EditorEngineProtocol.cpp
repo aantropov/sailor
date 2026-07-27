@@ -1,4 +1,5 @@
 #include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
 
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
@@ -30,6 +31,13 @@ namespace
 	using sailor::editor::v1::ViewportTransformSpace;
 
 	constexpr uint32_t c_maxBatchItems = 65536u;
+
+	Sailor::Protocol::TEditorEngineProtocolLifecycleGate&
+		GetEditorEngineProtocolLifecycleGate()
+	{
+		static Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		return gate;
+	}
 
 	class TInteropString final
 	{
@@ -915,10 +923,183 @@ namespace
 			DispatchSerializeEngineTypes(response);
 			break;
 
+		case ProtocolRequest::kIsEngineMainThreadReady:
+			SetBoolResult(
+				response,
+				Sailor::App::IsEngineMainThreadReady());
+			break;
+
 		case ProtocolRequest::COMMAND_NOT_SET:
 		default:
 			SetError(response, "Protocol command is not set or is unknown.");
 			break;
+		}
+	}
+
+	enum class EProtocolLifecycleCompletion : uint8_t
+	{
+		None,
+		Initialization,
+		Start,
+		Operation,
+		Shutdown
+	};
+
+	class TProtocolLifecycleCompletion final
+	{
+	public:
+		TProtocolLifecycleCompletion(
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate& gate,
+			const EProtocolLifecycleCompletion completion)
+			: m_gate(gate)
+			, m_completion(completion)
+		{
+		}
+
+		TProtocolLifecycleCompletion(const TProtocolLifecycleCompletion&) = delete;
+		TProtocolLifecycleCompletion& operator=(
+			const TProtocolLifecycleCompletion&) = delete;
+
+		~TProtocolLifecycleCompletion()
+		{
+			switch (m_completion)
+			{
+			case EProtocolLifecycleCompletion::Initialization:
+				m_gate.CompleteInitialization(m_bSucceeded);
+				break;
+
+			case EProtocolLifecycleCompletion::Start:
+				m_gate.CompleteStart();
+				break;
+
+			case EProtocolLifecycleCompletion::Operation:
+				m_gate.ReleaseOperation();
+				break;
+
+			case EProtocolLifecycleCompletion::Shutdown:
+				m_gate.CompleteShutdown();
+				break;
+
+			case EProtocolLifecycleCompletion::None:
+			default:
+				break;
+			}
+		}
+
+		void MarkSucceeded()
+		{
+			m_bSucceeded = true;
+		}
+
+	private:
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate& m_gate;
+		EProtocolLifecycleCompletion m_completion =
+			EProtocolLifecycleCompletion::None;
+		bool m_bSucceeded = false;
+	};
+
+	void DispatchRequestWithLifecycleAdmission(
+		const ProtocolRequest& request,
+		ProtocolResponse& response,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		auto& gate = dependencies.m_lifecycleGate
+			? *dependencies.m_lifecycleGate
+			: GetEditorEngineProtocolLifecycleGate();
+		std::string admissionError;
+
+		switch (request.command_case())
+		{
+		case ProtocolRequest::kInitialize:
+		{
+			if (!dependencies.m_bAllowInitialize)
+			{
+				SetError(
+					response,
+					"Engine initialization is available only during local host bootstrap.");
+				return;
+			}
+			if (!gate.TryBeginInitialization(admissionError))
+			{
+				SetError(response, admissionError);
+				return;
+			}
+
+			TProtocolLifecycleCompletion completion(
+				gate,
+				EProtocolLifecycleCompletion::Initialization);
+			DispatchRequest(request, response, dependencies);
+			completion.MarkSucceeded();
+			return;
+		}
+
+		case ProtocolRequest::kStart:
+		{
+			if (!gate.TryBeginStart(admissionError))
+			{
+				SetError(response, admissionError);
+				return;
+			}
+
+			const TProtocolLifecycleCompletion completion(
+				gate,
+				EProtocolLifecycleCompletion::Start);
+			DispatchRequest(request, response, dependencies);
+			return;
+		}
+
+		case ProtocolRequest::kStop:
+			if (gate.NoteStopRequested())
+			{
+				DispatchRequest(request, response, dependencies);
+			}
+			else
+			{
+				SetEmptyResult(response);
+			}
+			return;
+
+		case ProtocolRequest::kShutdown:
+		{
+			if (!gate.TryBeginShutdown(admissionError))
+			{
+				SetError(response, admissionError);
+				return;
+			}
+
+			const TProtocolLifecycleCompletion completion(
+				gate,
+				EProtocolLifecycleCompletion::Shutdown);
+			// Initialization owns partially built App state. Once it drains,
+			// Stop can safely release a blocking Start before the remaining
+			// regular operation leases are joined.
+			gate.WaitForInitializationDrain();
+			Sailor::App::Stop();
+			gate.WaitForShutdownDrain();
+			DispatchRequest(request, response, dependencies);
+			return;
+		}
+
+		default:
+		{
+			const bool bAllowWhenIdle =
+				request.command_case() == ProtocolRequest::kGetExitCode ||
+				request.command_case() ==
+					ProtocolRequest::kIsEngineMainThreadReady;
+			if (!gate.TryAcquireOperation(
+					admissionError,
+					bAllowWhenIdle))
+			{
+				SetError(response, admissionError);
+				return;
+			}
+
+			const TProtocolLifecycleCompletion completion(
+				gate,
+				EProtocolLifecycleCompletion::Operation);
+			DispatchRequest(request, response, dependencies);
+			return;
+		}
 		}
 	}
 
@@ -1041,7 +1222,10 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 		}
 		else
 		{
-			DispatchRequest(request, response, dependencies);
+			DispatchRequestWithLifecycleAdmission(
+				request,
+				response,
+				dependencies);
 		}
 	}
 
@@ -1052,4 +1236,9 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 void Sailor::Protocol::FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept
 {
 	delete[] buffer;
+}
+
+void Sailor::Protocol::ResetEditorEngineProtocolLifecycle()
+{
+	GetEditorEngineProtocolLifecycleGate().Reset();
 }

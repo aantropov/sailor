@@ -59,6 +59,12 @@ else()
 	sailor_create_stub_target(protobuf::libprotobuf)
 endif()
 
+find_package(ixwebsocket CONFIG QUIET)
+if(NOT ixwebsocket_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "ixwebsocket")
+	sailor_create_stub_target(ixwebsocket::ixwebsocket)
+endif()
+
 find_package(magic_enum CONFIG QUIET)
 if(NOT magic_enum_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "magic_enum")
@@ -215,6 +221,7 @@ target_link_libraries(SailorLib PUBLIC
 )
 target_link_libraries(SailorLib PRIVATE
   imguizmo::imguizmo
+  ixwebsocket::ixwebsocket
   protobuf::libprotobuf
   ${CMAKE_DL_LIBS}
 )

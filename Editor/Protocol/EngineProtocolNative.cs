@@ -44,19 +44,28 @@ internal static class EngineProtocolNative
 
     [DllImport(
         EngineLibrary,
-        EntryPoint = "SailorProtocolInvoke",
+        EntryPoint = "SailorProtocolStartLocalHost",
         ExactSpelling = true,
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern int SailorProtocolInvoke(
-        [In] byte[] requestData,
-        uint requestSize,
-        out nint responseData,
-        out uint responseSize);
+    internal static extern int SailorProtocolStartLocalHost(
+        [In] byte[] initializeRequestData,
+        uint initializeRequestSize,
+        ushort port,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string authorizationToken,
+        uint authorizationTokenSize);
 
     [DllImport(
         EngineLibrary,
-        EntryPoint = "SailorProtocolFreeBuffer",
+        EntryPoint = "SailorProtocolRequestLocalHostStop",
         ExactSpelling = true,
         CallingConvention = CallingConvention.Cdecl)]
-    internal static extern void SailorProtocolFreeBuffer(nint buffer);
+    internal static extern void SailorProtocolRequestLocalHostStop();
+
+    [DllImport(
+        EngineLibrary,
+        EntryPoint = "SailorProtocolStopLocalHost",
+        ExactSpelling = true,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern void SailorProtocolStopLocalHost(
+        [MarshalAs(UnmanagedType.I1)] bool shutdownEngine);
 }

@@ -1,16 +1,7 @@
 using Google.Protobuf;
 using SailorEditor.Protocol.Generated;
-using System.Runtime.InteropServices;
 
 namespace SailorEditor.Protocol;
-
-internal delegate int EngineProtocolInvokeDelegate(
-    byte[] requestData,
-    uint requestSize,
-    out nint responseData,
-    out uint responseSize);
-
-internal delegate void EngineProtocolFreeBufferDelegate(nint buffer);
 
 internal sealed class EngineProtocolException : Exception
 {
@@ -35,28 +26,28 @@ internal readonly record struct EngineProtocolCreationResult(
     bool Succeeded,
     string InstanceId);
 
-internal sealed class EngineProtocolClient
+internal sealed class EngineProtocolClient : IDisposable
 {
     internal const uint ProtocolVersion = 1;
     internal const uint MaxPayloadSize = 64u * 1024u * 1024u;
 
-    readonly EngineProtocolInvokeDelegate invoke;
-    readonly EngineProtocolFreeBufferDelegate freeBuffer;
+    readonly IEngineProtocolTransport transport;
     long nextRequestId;
 
     public EngineProtocolClient()
-        : this(
-            EngineProtocolNative.SailorProtocolInvoke,
-            EngineProtocolNative.SailorProtocolFreeBuffer)
+        : this(new LocalEngineProtocolTransport())
     {
     }
 
-    internal EngineProtocolClient(
-        EngineProtocolInvokeDelegate invoke,
-        EngineProtocolFreeBufferDelegate freeBuffer)
+    internal EngineProtocolClient(IEngineProtocolTransport transport)
     {
-        this.invoke = invoke ?? throw new ArgumentNullException(nameof(invoke));
-        this.freeBuffer = freeBuffer ?? throw new ArgumentNullException(nameof(freeBuffer));
+        this.transport = transport ??
+            throw new ArgumentNullException(nameof(transport));
+    }
+
+    internal EngineProtocolClient(EngineProtocolInvokeDelegate invoke)
+        : this(new DelegateEngineProtocolTransport(invoke))
+    {
     }
 
     public void Initialize(IEnumerable<string> arguments)
@@ -83,24 +74,58 @@ internal sealed class EngineProtocolClient
             nameof(ProtocolRequest.Initialize));
     }
 
-    public void Start()
-        => RequireEmpty(Send(new ProtocolRequest { Start = new Empty() }), nameof(ProtocolRequest.Start));
+    public void Start(CancellationToken cancellationToken = default)
+        => RequireEmpty(
+            Send(
+                new ProtocolRequest { Start = new Empty() },
+                cancellationToken),
+            nameof(ProtocolRequest.Start));
 
     public void Stop()
         => RequireEmpty(Send(new ProtocolRequest { Stop = new Empty() }), nameof(ProtocolRequest.Stop));
 
     public void Shutdown()
-        => RequireEmpty(Send(new ProtocolRequest { Shutdown = new Empty() }), nameof(ProtocolRequest.Shutdown));
+    {
+        RequireEmpty(
+            Send(new ProtocolRequest { Shutdown = new Empty() }),
+            nameof(ProtocolRequest.Shutdown));
+        if (transport is ILocalEngineProtocolTransport localTransport)
+        {
+            localTransport.CompleteShutdown(shutdownEngine: false);
+        }
+    }
 
-    public bool RequestAssetReload()
+    internal void RequestLocalStopFallback()
+    {
+        if (transport is ILocalEngineProtocolTransport localTransport)
+        {
+            localTransport.RequestStopFallback();
+        }
+    }
+
+    internal void CompleteLocalShutdownFallback()
+    {
+        if (transport is ILocalEngineProtocolTransport localTransport)
+        {
+            localTransport.CompleteShutdown(shutdownEngine: true);
+        }
+    }
+
+    public bool RequestAssetReload(
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest { RequestAssetReload = new Empty() }),
+            Send(
+                new ProtocolRequest { RequestAssetReload = new Empty() },
+                cancellationToken),
             nameof(ProtocolRequest.RequestAssetReload));
 
-    public EngineProtocolAssetReloadState GetAssetReloadState()
+    public EngineProtocolAssetReloadState GetAssetReloadState(
+        CancellationToken cancellationToken = default)
     {
         var result = RequireResult<AssetReloadStateResult>(
-            Send(new ProtocolRequest { GetAssetReloadState = new Empty() }).AssetReloadStateResult,
+            Send(
+                new ProtocolRequest { GetAssetReloadState = new Empty() },
+                cancellationToken).AssetReloadStateResult,
             nameof(ProtocolRequest.GetAssetReloadState));
         return new EngineProtocolAssetReloadState(
             result.Available,
@@ -109,37 +134,63 @@ internal sealed class EngineProtocolClient
             result.SuccessfulGeneration);
     }
 
-    public int GetExitCode()
+    public int GetExitCode(
+        CancellationToken cancellationToken = default)
         => RequireResult<Int32Result>(
-            Send(new ProtocolRequest { GetExitCode = new Empty() }).Int32Result,
+            Send(
+                new ProtocolRequest { GetExitCode = new Empty() },
+                cancellationToken).Int32Result,
             nameof(ProtocolRequest.GetExitCode)).Value;
 
-    public string[] GetMessages(uint maxCount)
+    public bool IsEngineMainThreadReady(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            Send(new ProtocolRequest
+            {
+                IsEngineMainThreadReady = new Empty()
+            }, cancellationToken),
+            nameof(ProtocolRequest.IsEngineMainThreadReady));
+
+    public string[] GetMessages(
+        uint maxCount,
+        CancellationToken cancellationToken = default)
         => RequireResult<StringListResult>(
             Send(new ProtocolRequest
             {
                 GetMessages = new CountRequest { MaxCount = maxCount }
-            }).StringListResult,
+            }, cancellationToken).StringListResult,
             nameof(ProtocolRequest.GetMessages)).Values.ToArray();
 
-    public string SerializeCurrentWorld()
+    public string SerializeCurrentWorld(
+        CancellationToken cancellationToken = default)
         => ReadString(
-            Send(new ProtocolRequest { SerializeCurrentWorld = new Empty() }),
+            Send(
+                new ProtocolRequest { SerializeCurrentWorld = new Empty() },
+                cancellationToken),
             nameof(ProtocolRequest.SerializeCurrentWorld));
 
-    public string SerializeEngineTypes()
+    public string SerializeEngineTypes(
+        CancellationToken cancellationToken = default)
         => ReadString(
-            Send(new ProtocolRequest { SerializeEngineTypes = new Empty() }),
+            Send(
+                new ProtocolRequest { SerializeEngineTypes = new Empty() },
+                cancellationToken),
             nameof(ProtocolRequest.SerializeEngineTypes));
 
-    public string SerializeEditorTypes()
+    public string SerializeEditorTypes(
+        CancellationToken cancellationToken = default)
         => ReadString(
-            Send(new ProtocolRequest { SerializeEditorTypes = new Empty() }),
+            Send(
+                new ProtocolRequest { SerializeEditorTypes = new Empty() },
+                cancellationToken),
             nameof(ProtocolRequest.SerializeEditorTypes));
 
-    public string SerializeWorkspaceCacheIdentity()
+    public string SerializeWorkspaceCacheIdentity(
+        CancellationToken cancellationToken = default)
         => ReadString(
-            Send(new ProtocolRequest { SerializeWorkspaceCacheIdentity = new Empty() }),
+            Send(
+                new ProtocolRequest { SerializeWorkspaceCacheIdentity = new Empty() },
+                cancellationToken),
             nameof(ProtocolRequest.SerializeWorkspaceCacheIdentity));
 
     public bool LoadEditorWorld(string fileId)
@@ -158,7 +209,12 @@ internal sealed class EngineProtocolClient
             Send(new ProtocolRequest { CreateEditorWorld = new Empty() }),
             nameof(ProtocolRequest.CreateEditorWorld));
 
-    public void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height)
+    public void SetViewport(
+        uint windowPosX,
+        uint windowPosY,
+        uint width,
+        uint height,
+        CancellationToken cancellationToken = default)
         => RequireEmpty(
             Send(new ProtocolRequest
             {
@@ -169,7 +225,7 @@ internal sealed class EngineProtocolClient
                     Width = width,
                     Height = height
                 }
-            }),
+            }, cancellationToken),
             nameof(ProtocolRequest.SetViewport));
 
     public void SetEditorRenderTargetSize(uint width, uint height)
@@ -191,7 +247,8 @@ internal sealed class EngineProtocolClient
         uint width,
         uint height,
         bool visible,
-        bool focused)
+        bool focused,
+        CancellationToken cancellationToken = default)
         => ReadBool(
             Send(new ProtocolRequest
             {
@@ -205,7 +262,7 @@ internal sealed class EngineProtocolClient
                     Visible = visible,
                     Focused = focused
                 }
-            }),
+            }, cancellationToken),
             nameof(ProtocolRequest.UpsertRemoteViewport));
 
     public bool DestroyRemoteViewport(ulong viewportId)
@@ -290,12 +347,14 @@ internal sealed class EngineProtocolClient
             }),
             nameof(ProtocolRequest.SendRemoteViewportInput));
 
-    public IReadOnlyList<ViewportEvent> PullEditorViewportEvents(uint maxCount)
+    public IReadOnlyList<ViewportEvent> PullEditorViewportEvents(
+        uint maxCount,
+        CancellationToken cancellationToken = default)
         => RequireResult<ViewportEventBatchResult>(
             Send(new ProtocolRequest
             {
                 PullEditorViewportEvents = new CountRequest { MaxCount = maxCount }
-            }).ViewportEventBatchResult,
+            }, cancellationToken).ViewportEventBatchResult,
             nameof(ProtocolRequest.PullEditorViewportEvents)).Events.ToArray();
 
     public ulong GetEditorManagedMutationRevision(uint kind, string instanceId)
@@ -459,7 +518,8 @@ internal sealed class EngineProtocolClient
         string instanceId,
         uint height,
         uint samplesPerPixel,
-        uint maxBounces)
+        uint maxBounces,
+        CancellationToken cancellationToken = default)
         => ReadBool(
             Send(new ProtocolRequest
             {
@@ -471,10 +531,12 @@ internal sealed class EngineProtocolClient
                     SamplesPerPixel = samplesPerPixel,
                     MaxBounces = maxBounces
                 }
-            }),
+            }, cancellationToken),
             nameof(ProtocolRequest.RenderPathTracedImage));
 
-    internal ProtocolResponse Send(ProtocolRequest request)
+    internal ProtocolResponse Send(
+        ProtocolRequest request,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.CommandCase == ProtocolRequest.CommandOneofCase.None)
@@ -495,31 +557,33 @@ internal sealed class EngineProtocolClient
                 $"The protocol request size {requestData.Length} is outside the supported range.");
         }
 
-        nint responseData = nint.Zero;
-        uint responseSize = 0;
-        try
+        ProtocolResponse response;
+        if (request.CommandCase == ProtocolRequest.CommandOneofCase.Initialize &&
+            transport is ILocalEngineProtocolTransport localTransport)
         {
-            var transportStatus = invoke(
+            localTransport.Initialize(requestData);
+            response = new ProtocolResponse
+            {
+                ProtocolVersion = ProtocolVersion,
+                RequestId = requestId,
+                Success = true,
+                EmptyResult = new Empty()
+            };
+        }
+        else
+        {
+            var responseBytes = transport.Invoke(
                 requestData,
-                checked((uint)requestData.Length),
-                out responseData,
-                out responseSize);
-            if (transportStatus != 0)
+                GetInvocationKind(request.CommandCase),
+                cancellationToken);
+            if (responseBytes.Length == 0 ||
+                responseBytes.Length > MaxPayloadSize)
             {
                 throw new EngineProtocolException(
-                    $"SailorProtocolInvoke failed with transport status {transportStatus}.");
+                    $"Engine protocol transport returned an invalid response " +
+                    $"({responseBytes.Length} bytes).");
             }
 
-            if (responseData == nint.Zero || responseSize == 0 || responseSize > MaxPayloadSize)
-            {
-                throw new EngineProtocolException(
-                    $"SailorProtocolInvoke returned an invalid response buffer ({responseSize} bytes).");
-            }
-
-            var responseBytes = new byte[checked((int)responseSize)];
-            Marshal.Copy(responseData, responseBytes, 0, responseBytes.Length);
-
-            ProtocolResponse response;
             try
             {
                 response = ProtocolResponse.Parser.ParseFrom(responseBytes);
@@ -527,40 +591,62 @@ internal sealed class EngineProtocolClient
             catch (InvalidProtocolBufferException ex)
             {
                 throw new EngineProtocolException(
-                    "SailorProtocolInvoke returned malformed protobuf data.",
+                    "Engine protocol transport returned malformed protobuf data.",
                     ex);
             }
-
-            if (response.ProtocolVersion != ProtocolVersion)
-            {
-                throw new EngineProtocolException(
-                    $"SailorProtocolInvoke returned protocol version {response.ProtocolVersion}; expected {ProtocolVersion}.");
-            }
-
-            if (response.RequestId != requestId)
-            {
-                throw new EngineProtocolException(
-                    $"SailorProtocolInvoke returned request id {response.RequestId}; expected {requestId}.");
-            }
-
-            if (!response.Success)
-            {
-                var error = string.IsNullOrWhiteSpace(response.Error)
-                    ? "The engine rejected the protocol request."
-                    : response.Error;
-                throw new EngineProtocolException(error);
-            }
-
-            return response;
         }
-        finally
+
+        if (response.ProtocolVersion != ProtocolVersion)
         {
-            if (responseData != nint.Zero)
-            {
-                freeBuffer(responseData);
-            }
+            throw new EngineProtocolException(
+                $"Engine protocol transport returned protocol version " +
+                $"{response.ProtocolVersion}; expected {ProtocolVersion}.");
         }
+
+        if (response.RequestId != requestId)
+        {
+            throw new EngineProtocolException(
+                $"Engine protocol transport returned request id " +
+                $"{response.RequestId}; expected {requestId}.");
+        }
+
+        if (!response.Success)
+        {
+            var error = string.IsNullOrWhiteSpace(response.Error)
+                ? "The engine rejected the protocol request."
+                : response.Error;
+            throw new EngineProtocolException(error);
+        }
+
+        return response;
     }
+
+    static EngineProtocolInvocationKind GetInvocationKind(
+        ProtocolRequest.CommandOneofCase command)
+        => command switch
+        {
+            ProtocolRequest.CommandOneofCase.Start =>
+                EngineProtocolInvocationKind.LongRunning,
+            ProtocolRequest.CommandOneofCase.RenderPathTracedImage =>
+                EngineProtocolInvocationKind.Background,
+            ProtocolRequest.CommandOneofCase.Stop or
+                ProtocolRequest.CommandOneofCase.Shutdown =>
+                EngineProtocolInvocationKind.Lifecycle,
+            ProtocolRequest.CommandOneofCase.SetViewport or
+                ProtocolRequest.CommandOneofCase.SetEditorRenderTargetSize or
+                ProtocolRequest.CommandOneofCase.UpsertRemoteViewport or
+                ProtocolRequest.CommandOneofCase.DestroyRemoteViewport or
+                ProtocolRequest.CommandOneofCase.GetRemoteViewportState or
+                ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics or
+                ProtocolRequest.CommandOneofCase.RetryRemoteViewport or
+                ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
+                ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or
+                ProtocolRequest.CommandOneofCase.PullEditorViewportEvents or
+                ProtocolRequest.CommandOneofCase.ShowMainWindow or
+                ProtocolRequest.CommandOneofCase.IsEngineMainThreadReady =>
+                EngineProtocolInvocationKind.Interactive,
+            _ => EngineProtocolInvocationKind.Request
+        };
 
     ulong NextRequestId()
     {
@@ -610,4 +696,6 @@ internal sealed class EngineProtocolClient
         where T : class
         => result ?? throw new EngineProtocolException(
             $"The protocol response for '{commandName}' has an unexpected result type.");
+
+    public void Dispose() => transport.Dispose();
 }

@@ -49,10 +49,11 @@ message ProtocolRequest {
 		ShowMainWindowRequest show_main_window = 44;
 		RenderPathTracedImageRequest render_path_traced_image = 45;
 		Empty serialize_engine_types = 46;
+		Empty is_engine_main_thread_ready = 47;
 	}
 
 	reserved 3 to 9;
-	reserved 47 to 99;
+	reserved 48 to 99;
 }
 
 message ProtocolResponse {

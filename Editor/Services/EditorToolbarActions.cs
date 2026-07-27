@@ -121,7 +121,10 @@ namespace SailorEditor.Services
             var mode = selectedOnly ? "selection" : "scene";
             var outputPath = Path.Combine(outputDir, $"pathtrace_{mode}_{DateTime.Now:yyyyMMdd_HHmmss}.png");
 
-            bool exported = engineService.ExportPathTracedImage(outputPath, targetInstance);
+            bool exported = await Task.Run(() =>
+                engineService.ExportPathTracedImage(
+                    outputPath,
+                    targetInstance));
             string message = exported ? $"Saved: {outputPath}" : "Path tracing export failed. Check Console panel for details.";
 
             await DisplayStatus("Path Tracing", message);

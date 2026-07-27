@@ -6,6 +6,8 @@
 
 namespace Sailor::Protocol
 {
+	class TEditorEngineProtocolLifecycleGate;
+
 	enum class EEditorEngineTransportStatus : int32_t
 	{
 		Ok = 0,
@@ -30,6 +32,8 @@ namespace Sailor::Protocol
 
 		void* m_context = nullptr;
 		FPullEditorViewportEvents m_pullEditorViewportEvents = nullptr;
+		TEditorEngineProtocolLifecycleGate* m_lifecycleGate = nullptr;
+		bool m_bAllowInitialize = true;
 	};
 
 	int32_t InvokeEditorEngineProtocol(
@@ -46,4 +50,5 @@ namespace Sailor::Protocol
 		const EditorEngineProtocolDependencies& dependencies);
 
 	void FreeEditorEngineProtocolBuffer(uint8_t* buffer) noexcept;
+	void ResetEditorEngineProtocolLifecycle();
 }

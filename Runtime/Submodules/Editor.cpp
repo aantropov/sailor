@@ -699,35 +699,46 @@ bool Editor::RenderPathTracedImage(const InstanceId& instanceId, const std::stri
 
 void Editor::PushMessage(const std::string& msg)
 {
-	if (NumMessages() < 1024)
-	{
-		std::time_t now = std::time(nullptr);
-		std::tm localTime;
+	std::time_t now = std::time(nullptr);
+	std::tm localTime;
 
 #if defined(_WIN32)
-		errno_t err = localtime_s(&localTime, &now);
-		if (err != 0)
-		{
-			return;
-		}
+	errno_t err = localtime_s(&localTime, &now);
+	if (err != 0)
+	{
+		return;
+	}
 #else
-		if (!localtime_r(&now, &localTime))
-		{
-			return;
-		}
+	if (!localtime_r(&now, &localTime))
+	{
+		return;
+	}
 #endif
 
-		std::ostringstream oss;
-		oss << '[' << std::put_time(&localTime, "%H:%M:%S") << "] " << msg;
+	std::ostringstream oss;
+	oss << '[' << std::put_time(&localTime, "%H:%M:%S") << "] " << msg;
 
-		m_messagesQueue.push(oss.str());
+	size_t numMessages = m_numMessages.load(std::memory_order_relaxed);
+	do
+	{
+		if (numMessages >= 1024)
+		{
+			return;
+		}
 	}
+	while (!m_numMessages.compare_exchange_weak(
+		numMessages,
+		numMessages + 1,
+		std::memory_order_relaxed));
+
+	m_messagesQueue.push(oss.str());
 }
 
 bool Editor::PullMessage(std::string& msg)
 {
 	if (m_messagesQueue.try_pop(msg))
 	{
+		m_numMessages.fetch_sub(1, std::memory_order_relaxed);
 		return true;
 	}
 

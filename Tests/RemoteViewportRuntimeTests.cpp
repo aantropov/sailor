@@ -45,6 +45,51 @@ namespace
 		return count;
 	}
 
+	void RequireRemoteViewportBindingLockOrder(const std::string& source)
+	{
+		constexpr const char* lockMarker = "g_remoteViewportBindingsMutex";
+		size_t offset = 0;
+		size_t checkedLocks = 0;
+		while ((offset = source.find(lockMarker, offset)) != std::string::npos)
+		{
+			const size_t lineBegin = source.rfind('\n', offset);
+			const size_t lineEnd = source.find('\n', offset);
+			const std::string line = source.substr(
+				lineBegin == std::string::npos ? 0 : lineBegin + 1,
+				(lineEnd == std::string::npos ? source.size() : lineEnd) -
+					(lineBegin == std::string::npos ? 0 : lineBegin + 1));
+			offset += std::char_traits<char>::length(lockMarker);
+			if (line.find("std::lock_guard") == std::string::npos &&
+				line.find("std::unique_lock") == std::string::npos &&
+				line.find("std::scoped_lock") == std::string::npos &&
+				line.find("std::lock(") == std::string::npos)
+			{
+				continue;
+			}
+
+			size_t indentation = 0;
+			while (indentation < line.size() && line[indentation] == '\t')
+			{
+				++indentation;
+			}
+			Require(indentation > 0, "remote viewport map lock should be scoped inside a function or explicit block");
+
+			const std::string scopeEndMarker = "\n" + std::string(indentation - 1, '\t') + "}";
+			const size_t scopeEnd = source.find(scopeEndMarker, offset);
+			Require(scopeEnd != std::string::npos, "remote viewport map lock scope should be syntactically bounded");
+			const std::string lockedTail = source.substr(offset, scopeEnd - offset);
+			Require(lockedTail.find("->m_mutex") == std::string::npos &&
+				lockedTail.find("->m_binding") == std::string::npos &&
+				lockedTail.find("->Pump(") == std::string::npos &&
+				lockedTail.find("->SetVisible(") == std::string::npos &&
+				lockedTail.find("->SetFocused(") == std::string::npos,
+				"remote viewport map lock must be released before acquiring or invoking a binding");
+			++checkedLocks;
+		}
+
+		Require(checkedLocks >= 8, "remote viewport lock-order contract should inspect every map access family");
+	}
+
 	ViewportDescriptor MakeViewport(ViewportId viewportId = 1, uint32_t width = 1280, uint32_t height = 720)
 	{
 		ViewportDescriptor viewport{};
@@ -568,6 +613,8 @@ namespace
 		const std::string protocolDispatcherSource = ReadText(
 			sourceRoot / "Lib/EditorEngineProtocol.cpp");
 
+		RequireRemoteViewportBindingLockOrder(bridgeSource);
+
 		const size_t drainBegin = bridgeSource.find("void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
 		const size_t resetBegin = bridgeSource.find("void Sailor::EditorRuntime::ResetForAppLifecycle()", drainBegin);
 		Require(drainBegin != std::string::npos && resetBegin != std::string::npos,
@@ -654,16 +701,25 @@ namespace
 			!std::filesystem::exists(sourceRoot / "Lib/InteropExports.cpp"),
 			"the duplicated portable editor export surface must be removed");
 		Require(
-			CountOccurrences(protocolExports, "SAILOR_API ") == 2 &&
+			CountOccurrences(protocolExports, "SAILOR_API ") == 5 &&
+			protocolExports.find(
+				"SAILOR_API int32_t SailorProtocolStartLocalHost(") !=
+				std::string::npos &&
+			protocolExports.find(
+				"SAILOR_API void SailorProtocolRequestLocalHostStop()") !=
+				std::string::npos &&
+			protocolExports.find(
+				"SAILOR_API void SailorProtocolStopLocalHost(") !=
+				std::string::npos &&
 			protocolExports.find("SAILOR_API int32_t SailorProtocolInvoke(") != std::string::npos &&
 			protocolExports.find("SAILOR_API void SailorProtocolFreeBuffer(uint8_t* buffer)") != std::string::npos,
-			"the cross-platform editor boundary must expose exactly Invoke and FreeBuffer");
+			"the native boundary must expose local host lifecycle bootstrap plus the two compatibility protocol exports");
 		Require(
-			protocolExports.find("const uint8_t* requestData") != std::string::npos &&
-			protocolExports.find("uint32_t requestSize") != std::string::npos &&
-			protocolExports.find("uint8_t** responseData") != std::string::npos &&
-			protocolExports.find("uint32_t* responseSize") != std::string::npos,
-			"the protocol transport must use a fixed-width opaque byte-buffer ABI");
+			protocolExports.find(
+				"StartEditorEngineWebSocketServer(") != std::string::npos &&
+			std::filesystem::exists(
+				sourceRoot / "Lib/EditorEngineWebSocketServer.cpp"),
+			"the local native bootstrap must start the WebSocket protocol host");
 		Require(
 			windowsExports.find("SAILOR_API void Initialize(") == std::string::npos &&
 			windowsExports.find("SAILOR_API uint32_t PullEditorViewportEvents(") == std::string::npos &&

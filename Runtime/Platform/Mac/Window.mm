@@ -325,6 +325,15 @@ void Window::SetWindowPos(const RECT& rect)
 
 void Window::Show(bool bShowWindow)
 {
+	if (![NSThread isMainThread])
+	{
+		dispatch_sync(dispatch_get_main_queue(), ^
+		{
+			Show(bShowWindow);
+		});
+		return;
+	}
+
 	NSWindow* window = (__bridge NSWindow*)m_hWnd;
 	if (window)
 	{

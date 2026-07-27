@@ -73,11 +73,16 @@
     <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="LatestSceneViewportStateTests.cs" />
+    <Compile Include="LatestQueuedCommandTests.cs" />
     <Compile Include="EditorTypeCacheStoreTests.cs" />
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
+    <Compile Include="LocalEngineProtocolTransportTests.cs" />
+    <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolClient.cs" Link="Protocol\EngineProtocolClient.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolNative.cs" Link="Protocol\EngineProtocolNative.cs" />
+    <Compile Include="..\Editor\Protocol\EngineProtocolTransport.cs" Link="Protocol\EngineProtocolTransport.cs" />
+    <Compile Include="..\Editor\Protocol\LocalEngineProtocolTransport.cs" Link="Protocol\LocalEngineProtocolTransport.cs" />
     <Compile Include="..\Editor\Panels\PanelContracts.cs" Link="Panels\PanelContracts.cs" />
     <Compile Include="..\Editor\Panels\PanelRegistry.cs" Link="Panels\PanelRegistry.cs" />
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
@@ -132,6 +137,7 @@
     <Compile Include="..\Editor\Services\WorldAssetRebindPolicy.cs" Link="Services\WorldAssetRebindPolicy.cs" />
     <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
     <Compile Include="..\Editor\Services\LatestSceneViewportState.cs" Link="Services\LatestSceneViewportState.cs" />
+    <Compile Include="..\Editor\Services\LatestQueuedCommand.cs" Link="Services\LatestQueuedCommand.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
   </ItemGroup>

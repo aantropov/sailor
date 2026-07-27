@@ -20,6 +20,9 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public enum EngineLifecycleState", source, StringComparison.Ordinal);
         Assert.Contains("public Task StartAsync(EngineLaunchContext launchContext, CancellationToken cancellationToken = default)", source, StringComparison.Ordinal);
         Assert.Contains("public async Task<int> StopAsync(CancellationToken cancellationToken = default)", source, StringComparison.Ordinal);
+        Assert.Contains("IAsyncDisposable", source, StringComparison.Ordinal);
+        Assert.Contains("public ValueTask DisposeAsync()", source, StringComparison.Ordinal);
+        Assert.Contains("disposeTask = Task.Run(DisposeCoreAsync);", source, StringComparison.Ordinal);
         Assert.Contains("public void ResetForWorkspaceChange()", source, StringComparison.Ordinal);
         Assert.Contains("await session.NativeRunTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("await Task.WhenAll(session.PollTasks).ConfigureAwait(false)", source, StringComparison.Ordinal);
@@ -29,7 +32,214 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void NativeLifecycle_CreatesAndDestroysPlatformWindowsInsideMainThreadInteropLock()
+    public void ManagedLifecycle_DisposalIsNonBlockingAndPathTracingIsSessionCancelled()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        var beginDispose = source.IndexOf("Task BeginDisposeAsync()", StringComparison.Ordinal);
+        var disposeCore = source.IndexOf("async Task DisposeCoreAsync()", beginDispose, StringComparison.Ordinal);
+        var syncDispose = source.IndexOf("public void Dispose()", disposeCore, StringComparison.Ordinal);
+        var asyncDispose = source.IndexOf("public ValueTask DisposeAsync()", syncDispose, StringComparison.Ordinal);
+        Assert.True(beginDispose >= 0);
+        Assert.True(disposeCore > beginDispose);
+        Assert.True(syncDispose > disposeCore);
+        Assert.True(asyncDispose > syncDispose);
+        Assert.DoesNotContain(
+            "GetAwaiter().GetResult()",
+            source[beginDispose..],
+            StringComparison.Ordinal);
+
+        var pathTrace = source.IndexOf("public bool ExportPathTracedImage", StringComparison.Ordinal);
+        var runWorld = source.IndexOf("public void RunWorld", pathTrace, StringComparison.Ordinal);
+        Assert.True(pathTrace >= 0);
+        Assert.True(runWorld > pathTrace);
+        var pathTraceBody = source[pathTrace..runWorld];
+        Assert.Contains(
+            "backgroundCancellationToken",
+            pathTraceBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "session?.BackgroundCancellation.Token ?? default",
+            pathTraceBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "InvokeRunningInterop",
+            pathTraceBody,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManagedTransport_LivenessCancellationCoversRunAndPollLanes()
+    {
+        var serviceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+
+        Assert.Contains(
+            "socket.Options.KeepAliveTimeout = KeepAliveTimeout;",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.Start(runCancellation.Token)",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "session.NativeRunCancellation.Cancel();",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "pollCancellation.Token",
+            serviceSource,
+            StringComparison.Ordinal);
+
+        var stop = serviceSource.IndexOf(
+            "public async Task<int> StopAsync",
+            StringComparison.Ordinal);
+        var orderlyStop = serviceSource.IndexOf(
+            "stopFailure = RequestNativeStop();",
+            stop,
+            StringComparison.Ordinal);
+        var abortStartLane = serviceSource.IndexOf(
+            "session.NativeRunCancellation.Cancel();",
+            orderlyStop,
+            StringComparison.Ordinal);
+        Assert.True(stop >= 0);
+        Assert.True(orderlyStop > stop);
+        Assert.True(abortStartLane > orderlyStop);
+    }
+
+    [Fact]
+    public void ManagedTeardown_HasBoundedCompletionAndLaneDrains()
+    {
+        var serviceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+
+        var disposeCore = serviceSource.IndexOf(
+            "async Task DisposeCoreAsync()",
+            StringComparison.Ordinal);
+        var syncDispose = serviceSource.IndexOf(
+            "public void Dispose()",
+            disposeCore,
+            StringComparison.Ordinal);
+        Assert.True(disposeCore >= 0);
+        Assert.True(syncDispose > disposeCore);
+        var disposeBody = serviceSource[disposeCore..syncDispose];
+        Assert.Contains(
+            "StopAsync(orderlyStopCancellation.Token)",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeOrderlyStopTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "StopAsync(CancellationToken.None)",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "completionTask.WaitAsync(",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeCompletionTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeProtocolClientOnce();",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeAbortDrainTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposePlatformQueueTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "await completionTask.ConfigureAwait(false);",
+            disposeBody,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "lane.Gate.Wait(LaneDisposeGracePeriod)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "lane.Gate.Wait(LaneAbortDrainTimeout)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Interlocked.Exchange(",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ref lane.Socket",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Volatile.Read(ref activeInvocations)",
+            transportSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ViewportHotPaths_AreBoundedQueuedAndKeyedPerViewport()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+
+        Assert.Contains(
+            "KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate>",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "KeyedLatestQueuedCommand<ulong, RemoteViewportInput>",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "remoteViewportUpdates.Enqueue(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "pointerMoves.Enqueue(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueRemoteViewportStatusRefresh(viewportId);",
+            source,
+            StringComparison.Ordinal);
+
+        var reload = source.IndexOf(
+            "public async Task<bool> RequestAssetReloadAsync",
+            StringComparison.Ordinal);
+        var reloadEnd = source.IndexOf(
+            "public void RefreshCurrentWorld",
+            reload,
+            StringComparison.Ordinal);
+        Assert.True(reload >= 0);
+        Assert.True(reloadEnd > reload);
+        Assert.Contains(
+            "await Task.Run(",
+            source[reload..reloadEnd],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativeLifecycle_InitializesOnMainThreadAndShutsDownOffTheUiThread()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
@@ -53,7 +263,7 @@ public sealed class EngineLifecycleTests
         Assert.True(failedStartShutdown > failedStart);
 
         var dispatchHelper = source.IndexOf("Task<Exception?> ShutdownNativeSessionAsync", StringComparison.Ordinal);
-        var shutdownDispatch = source.IndexOf("return MainThread.InvokeOnMainThreadAsync", dispatchHelper, StringComparison.Ordinal);
+        var shutdownDispatch = source.IndexOf("=> Task.Run(() =>", dispatchHelper, StringComparison.Ordinal);
         var shutdownDispatchCall = source.IndexOf("ShutdownNativeSessionUnderLock", shutdownDispatch, StringComparison.Ordinal);
         var lockedHelper = source.IndexOf("Exception? ShutdownNativeSessionUnderLock", shutdownDispatchCall, StringComparison.Ordinal);
         var shutdownLock = source.IndexOf("lock (interopLock)", lockedHelper, StringComparison.Ordinal);
@@ -67,7 +277,7 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void MacHostBinding_IsAcknowledgedPerGenerationAndRetriedUntilApplied()
+    public void MacHostBinding_IsQueuedOffTheUiThreadAndTrackedPerGeneration()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
         var lifecycleSource = ReadRepositoryFile("Editor", "Scene", "SceneViewportLifecycle.cs");
@@ -76,16 +286,20 @@ public sealed class EngineLifecycleTests
 
         var bind = source.IndexOf("public void BindMacRemoteViewportHost", StringComparison.Ordinal);
         var generation = source.IndexOf("Volatile.Read(ref engineGeneration)", bind, StringComparison.Ordinal);
-        var runningGuard = source.IndexOf("if (!IsInteropRunningUnderLock())", generation, StringComparison.Ordinal);
+        var runningGuard = source.IndexOf("if (!IsGenerationActive(generation))", generation, StringComparison.Ordinal);
         var removeWhileStopped = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", runningGuard, StringComparison.Ordinal);
-        var nativeBind = source.IndexOf("protocolClient.SetRemoteViewportMacHostHandle", removeWhileStopped, StringComparison.Ordinal);
-        var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);", nativeBind, StringComparison.Ordinal);
+        var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] =", removeWhileStopped, StringComparison.Ordinal);
+        var queuedInterop = source.IndexOf("QueuePlatformInterop(() =>", acknowledge, StringComparison.Ordinal);
+        var nativeBind = source.IndexOf("protocolClient.SetRemoteViewportMacHostHandle", queuedInterop, StringComparison.Ordinal);
+        var removeAfterFailure = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", nativeBind, StringComparison.Ordinal);
         Assert.True(bind >= 0);
         Assert.True(generation > bind);
         Assert.True(runningGuard > generation);
         Assert.True(removeWhileStopped > runningGuard);
-        Assert.True(nativeBind > removeWhileStopped);
-        Assert.True(acknowledge > nativeBind);
+        Assert.True(acknowledge > removeWhileStopped);
+        Assert.True(queuedInterop > acknowledge);
+        Assert.True(nativeBind > queuedInterop);
+        Assert.True(removeAfterFailure > nativeBind);
 
         var sync = lifecycleSource.IndexOf("public bool Sync", StringComparison.Ordinal);
         var announceHost = lifecycleSource.IndexOf("backend.BindMacHost(viewportId, frame.NativeHostHandle);", sync, StringComparison.Ordinal);
@@ -229,23 +443,25 @@ public sealed class EngineLifecycleTests
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var update = source.IndexOf("public bool TryUpdateRemoteViewport", StringComparison.Ordinal);
-        var interopLock = source.IndexOf("lock (interopLock)", update, StringComparison.Ordinal);
-        var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", interopLock, StringComparison.Ordinal);
+        var stateLock = source.IndexOf("lock (sceneViewportStateLock)", update, StringComparison.Ordinal);
+        var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", stateLock, StringComparison.Ordinal);
         var refresh = source.IndexOf("bool TryRefreshSceneRemoteViewport", rememberState, StringComparison.Ordinal);
-        var refreshLock = source.IndexOf("lock (interopLock)", refresh, StringComparison.Ordinal);
-        var captureState = source.IndexOf("var viewportState = sceneViewportState.Capture();", refreshLock, StringComparison.Ordinal);
+        var refreshStateLock = source.IndexOf("lock (sceneViewportStateLock)", refresh, StringComparison.Ordinal);
+        var captureState = source.IndexOf("viewportState = sceneViewportState.Capture();", refreshStateLock, StringComparison.Ordinal);
+        var refreshLock = source.IndexOf("lock (interopLock)", captureState, StringComparison.Ordinal);
         var preservedRect = source.IndexOf("viewportState.Rect,", captureState, StringComparison.Ordinal);
         var preservedVisibility = source.IndexOf("viewportState.Visible,", preservedRect, StringComparison.Ordinal);
         var preservedFocus = source.IndexOf("viewportState.Focused", preservedVisibility, StringComparison.Ordinal);
         var bootstrap = source.IndexOf("pollTasks.Add(RunPeriodicTaskAsync(() =>", rememberState, StringComparison.Ordinal);
-        var remoteUpdate = source.IndexOf("TryRefreshSceneRemoteViewport(generation)", bootstrap, StringComparison.Ordinal);
+        var remoteUpdate = source.IndexOf("TryRefreshSceneRemoteViewport(", bootstrap, StringComparison.Ordinal);
 
         Assert.True(update >= 0);
-        Assert.True(interopLock > update);
-        Assert.True(rememberState > interopLock);
+        Assert.True(stateLock > update);
+        Assert.True(rememberState > stateLock);
         Assert.True(refresh > rememberState);
-        Assert.True(refreshLock > refresh);
-        Assert.True(captureState > refreshLock);
+        Assert.True(refreshStateLock > refresh);
+        Assert.True(captureState > refreshStateLock);
+        Assert.True(refreshLock > captureState);
         Assert.True(preservedRect > captureState);
         Assert.True(preservedVisibility > preservedRect);
         Assert.True(preservedFocus > preservedVisibility);
@@ -259,18 +475,24 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void NativeExitCode_IsRoutedThroughTheSharedProtocolAbi()
+    public void NativeExitCode_IsRoutedThroughTheWebSocketProtocolGateway()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
         var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
-        var exportSource = ReadRepositoryFile("Lib", "EditorProtocolExports.cpp");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+        var serverSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineWebSocketServer.cpp");
         var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("return protocolClient.GetExitCode();", managedSource, StringComparison.Ordinal);
-        Assert.Contains("public int GetExitCode()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("return protocolClient.GetExitCode(", managedSource, StringComparison.Ordinal);
+        Assert.Contains("public int GetExitCode(", clientSource, StringComparison.Ordinal);
         Assert.Contains("GetExitCode = new Empty()", clientSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API int32_t SailorProtocolInvoke(", exportSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API void SailorProtocolFreeBuffer(", exportSource, StringComparison.Ordinal);
+        Assert.Contains("WebSocketMessageType.Binary", transportSource, StringComparison.Ordinal);
+        Assert.Contains("InvokeEditorEngineProtocol(", serverSource, StringComparison.Ordinal);
         Assert.Contains("case ProtocolRequest::kGetExitCode:", dispatcherSource, StringComparison.Ordinal);
         Assert.Contains("Sailor::App::GetExitCode()", dispatcherSource, StringComparison.Ordinal);
     }
@@ -285,13 +507,13 @@ public sealed class EngineLifecycleTests
         var workspaceDocumentation = ReadRepositoryFile("Docs", "WorkspaceLogic.md");
 
         Assert.Contains("Empty serialize_engine_types = 46;", schemaSource, StringComparison.Ordinal);
-        Assert.Contains("public string SerializeEngineTypes()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("public string SerializeEngineTypes(", clientSource, StringComparison.Ordinal);
         Assert.Contains("SerializeEngineTypes = new Empty()", clientSource, StringComparison.Ordinal);
         Assert.Contains("case ProtocolRequest::kSerializeEngineTypes:", dispatcherSource, StringComparison.Ordinal);
         Assert.Contains("Sailor::App::SerializeEngineTypes(value.GetOutput())", dispatcherSource, StringComparison.Ordinal);
         Assert.DoesNotContain("SerializeEngineTypes", exportSource, StringComparison.Ordinal);
         Assert.Contains(
-            "Both commands use the shared `SailorProtocolInvoke`/`SailorProtocolFreeBuffer` transport",
+            "Both commands use the shared authenticated binary WebSocket transport",
             workspaceDocumentation,
             StringComparison.Ordinal);
     }
@@ -340,7 +562,7 @@ public sealed class EngineLifecycleTests
         var schedulerSource = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.cpp");
 
         Assert.Contains(
-            "InvokeRunningInterop(protocolClient.RequestAssetReload)",
+            "() => protocolClient.RequestAssetReload()",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -451,11 +673,11 @@ public sealed class EngineLifecycleTests
             "EditorEngineProtocol.cpp");
 
         Assert.Contains(
-            "var state = protocolClient.GetAssetReloadState();",
+            "var state = protocolClient.GetAssetReloadState(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "public EngineProtocolAssetReloadState GetAssetReloadState()",
+            "public EngineProtocolAssetReloadState GetAssetReloadState(",
             protocolClientSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -465,7 +687,7 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public event Action<AssetReloadCompletion> OnAssetReloadCompleted", managedSource, StringComparison.Ordinal);
         Assert.Contains("PublishAssetReloadCompletion(", managedSource, StringComparison.Ordinal);
         Assert.Contains(
-            "reloadState.SuccessfulGeneration == reloadState.CompletedGeneration",
+            "reloadState.SuccessfulGeneration ==",
             managedSource,
             StringComparison.Ordinal);
 
@@ -547,7 +769,7 @@ public sealed class EngineLifecycleTests
         var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
         Assert.Contains(
-            "yaml = protocolClient.SerializeWorkspaceCacheIdentity();",
+            "yaml = protocolClient.SerializeWorkspaceCacheIdentity(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -597,15 +819,27 @@ public sealed class EngineLifecycleTests
             clientSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "EntryPoint = \"SailorProtocolInvoke\"",
+            "EntryPoint = \"SailorProtocolStartLocalHost\"",
             nativeInteropSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "EntryPoint = \"SailorProtocolFreeBuffer\"",
+            "EntryPoint = \"SailorProtocolRequestLocalHostStop\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolStopLocalHost\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SailorProtocolInvoke",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "SailorProtocolFreeBuffer",
             nativeInteropSource,
             StringComparison.Ordinal);
         Assert.Equal(
-            2,
+            3,
             nativeInteropSource.Split("[DllImport(", StringSplitOptions.None).Length - 1);
         Assert.Contains(
             "const int numArguments = request.arguments_size();",
@@ -639,7 +873,7 @@ public sealed class EngineLifecycleTests
         var identity = source.IndexOf("ReadWorkspaceCacheIdentity(", initialize, StringComparison.Ordinal);
         var cacheLoad = source.IndexOf("editorTypeCacheStore.Load(", identity, StringComparison.Ordinal);
         var cachedValidation = source.IndexOf("TryParseEditorTypes(", cacheLoad, StringComparison.Ordinal);
-        var liveCatalog = source.IndexOf("SerializeEditorTypes(generation, allowStarting: true)", cacheLoad, StringComparison.Ordinal);
+        var liveCatalog = source.IndexOf("string serializedEditorTypes = SerializeEditorTypes(", cacheLoad, StringComparison.Ordinal);
         var liveValidation = source.IndexOf("TryParseEditorTypes(", liveCatalog, StringComparison.Ordinal);
         var livePublication = source.IndexOf("Volatile.Write(ref editorTypes, liveEditorTypes)", liveValidation, StringComparison.Ordinal);
         var cacheSave = source.IndexOf("editorTypeCacheStore.Save(", liveCatalog, StringComparison.Ordinal);
@@ -664,15 +898,24 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void MacStartupWorldSerialization_RunsOnTheAttachedNativeSchedulerThreadBeforeStart()
+    public void StartupWaitsForTheEngineMainThreadBeforeBootstrapSerialization()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
+        var nativeStart = source.IndexOf(
+            "Task.Run(",
+            source.IndexOf("initialized = true;", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        var waitUntilReady = source.IndexOf(
+            "await WaitForEngineMainThreadAsync(",
+            nativeStart,
+            StringComparison.Ordinal);
         var startupOrder = source.IndexOf(
             "// Required startup order: combined editor catalog, world, then initial messages.",
+            waitUntilReady,
             StringComparison.Ordinal);
         var liveCatalog = source.IndexOf(
-            "SerializeEditorTypes(generation, allowStarting: true)",
+            "string serializedEditorTypes = SerializeEditorTypes(",
             startupOrder,
             StringComparison.Ordinal);
         var macBranch = source.IndexOf("#if MACCATALYST", liveCatalog, StringComparison.Ordinal);
@@ -681,20 +924,22 @@ public sealed class EngineLifecycleTests
             macBranch,
             StringComparison.Ordinal);
         var worldSerialization = source.IndexOf(
-            "() => SerializeWorld(generation, out serializedWorldSequence, allowStarting: true)",
+            "() => SerializeWorld(",
             mainThreadDispatch,
             StringComparison.Ordinal);
-        var nativeStart = source.IndexOf(
-            "Task.Run(protocolClient.Start, CancellationToken.None)",
-            worldSerialization,
-            StringComparison.Ordinal);
 
+        Assert.True(nativeStart >= 0);
+        Assert.True(waitUntilReady > nativeStart);
         Assert.True(startupOrder >= 0);
+        Assert.True(startupOrder > waitUntilReady);
         Assert.True(liveCatalog > startupOrder);
         Assert.True(macBranch > liveCatalog);
         Assert.True(mainThreadDispatch > macBranch);
         Assert.True(worldSerialization > mainThreadDispatch);
-        Assert.True(nativeStart > worldSerialization);
+        Assert.Contains(
+            "protocolClient.IsEngineMainThreadReady(\n                        cancellationToken)",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]

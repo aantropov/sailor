@@ -1,8 +1,11 @@
 #include "EditorEngineProtocolInternal.h"
+#include "EditorEngineProtocolLifecycle.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <future>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -500,6 +503,21 @@ namespace
 		return DecodeResponse(response.GetData(), response.GetSize());
 	}
 
+	TDecodedResponse RequireProtocolResponse(
+		const std::string& request,
+		TProtocolBuffer& response,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		Require(
+			Invoke(request, response, dependencies) ==
+				static_cast<int32_t>(EEditorEngineTransportStatus::Ok),
+			"valid request envelope must return transport success");
+		Require(
+			response.GetSize() <= EditorEngineProtocolMaxPayloadSize,
+			"response must stay within the 64 MiB transport limit");
+		return DecodeResponse(response.GetData(), response.GetSize());
+	}
+
 	void TestInvalidArgumentsResetOutputs()
 	{
 		uint8_t requestByte = 0;
@@ -675,6 +693,15 @@ namespace
 			"Editor-" "\xd0\xa3\xd1\x82\xd0\xba\xd0\xb0";
 		AppendMessageField(mutationRequest, 2u, unicodeInstanceId);
 
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"adapter test lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
 		TProtocolBuffer buffer;
 		const auto response = RequireProtocolResponse(
 			MakeRequest(
@@ -682,7 +709,8 @@ namespace
 				30,
 				c_getManagedMutationRevisionCommandField,
 				mutationRequest),
-			buffer);
+			buffer,
+			dependencies);
 		Require(
 			response.m_requestId == 30 &&
 			response.m_success &&
@@ -752,6 +780,13 @@ namespace
 		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
 		dependencies.m_context = &source;
 		dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"viewport adapter test lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		dependencies.m_lifecycleGate = &gate;
 
 		std::string countRequest;
 		AppendVarintField(countRequest, 1u, 2u);
@@ -792,6 +827,126 @@ namespace
 			event.m_selectedInstanceId == "Duck-123",
 			"the valid event following malformed YAML must be preserved");
 	}
+
+	void TestLifecycleGateDrainsStartAndOperationsBeforeShutdown()
+	{
+		using namespace std::chrono_literals;
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string error;
+		Require(
+			gate.TryAcquireOperation(error, true),
+			"idle protocol gate must admit explicit diagnostics");
+		gate.ReleaseOperation();
+		Require(
+			!gate.TryAcquireOperation(error, false),
+			"idle protocol gate must reject engine mutations");
+
+		Require(
+			gate.TryBeginInitialization(error),
+			"first initialization must be admitted");
+		Require(
+			!gate.TryAcquireOperation(error, true) &&
+				!gate.TryBeginInitialization(error),
+			"initialization must be exclusive");
+		gate.CompleteInitialization(true);
+		Require(
+			!gate.TryBeginInitialization(error),
+			"completed initialization must reject duplicates");
+
+		Require(
+			gate.TryBeginStart(error),
+			"initialized lifecycle must admit one Start");
+		Require(
+			!gate.TryBeginStart(error),
+			"active Start must reject duplicates");
+		Require(
+			gate.TryAcquireOperation(error, false),
+			"regular operations must remain concurrent with Start");
+		Require(
+			gate.TryBeginShutdown(error),
+			"Shutdown must close admission while Start is active");
+		Require(
+			!gate.TryAcquireOperation(error, true) &&
+				!gate.TryBeginShutdown(error),
+			"closed shutdown admission must reject new work and duplicates");
+
+		auto drain = std::async(std::launch::async, [&gate]()
+			{
+				gate.WaitForShutdownDrain();
+			});
+		Require(
+			drain.wait_for(20ms) == std::future_status::timeout,
+			"Shutdown must wait for both Start and regular operation leases");
+		gate.ReleaseOperation();
+		Require(
+			drain.wait_for(20ms) == std::future_status::timeout,
+			"Shutdown must continue waiting while Start is active");
+		gate.CompleteStart();
+		Require(
+			drain.wait_for(1s) == std::future_status::ready,
+			"Shutdown must continue after Start and operations drain");
+		drain.get();
+		gate.CompleteShutdown();
+		Require(
+			!gate.TryAcquireOperation(error, true),
+			"completed Shutdown must keep the old session closed");
+
+		Require(
+			gate.TryBeginInitialization(error),
+			"a new initialization must reopen a completed session");
+		gate.CompleteInitialization(true);
+		Require(
+			gate.TryBeginStart(error),
+			"a new session must not inherit the previous session's Stop");
+		gate.CompleteStart();
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate stoppedGate;
+		Require(
+			stoppedGate.TryBeginInitialization(error),
+			"fresh gate must admit initialization");
+		stoppedGate.CompleteInitialization(true);
+		stoppedGate.NoteStopRequested();
+		Require(
+			!stoppedGate.TryBeginStart(error),
+			"Stop before Start must prevent a late Start race");
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate initializingGate;
+		Require(
+			initializingGate.TryBeginInitialization(error),
+			"fresh gate must admit initialization");
+		Require(
+			!initializingGate.NoteStopRequested(),
+			"Stop during initialization must not enter partially built App state");
+		initializingGate.CompleteInitialization(true);
+		Require(
+			!initializingGate.TryBeginStart(error),
+			"Stop during initialization must prevent the subsequent Start");
+
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate shutdownInitGate;
+		Require(
+			shutdownInitGate.TryBeginInitialization(error),
+			"shutdown race gate must admit initialization");
+		Require(
+			shutdownInitGate.TryBeginShutdown(error),
+			"Shutdown must close admission while Initialize is active");
+		auto initializationDrain = std::async(
+			std::launch::async,
+			[&shutdownInitGate]()
+			{
+				shutdownInitGate.WaitForInitializationDrain();
+			});
+		Require(
+			initializationDrain.wait_for(20ms) == std::future_status::timeout,
+			"Shutdown must wait for the active Initialize owner");
+		shutdownInitGate.CompleteInitialization(true);
+		Require(
+			initializationDrain.wait_for(1s) == std::future_status::ready,
+			"Shutdown must continue when Initialize completes");
+		initializationDrain.get();
+		shutdownInitGate.WaitForShutdownDrain();
+		shutdownInitGate.CompleteShutdown();
+	}
 }
 
 int main()
@@ -806,6 +961,7 @@ int main()
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();
 		TestMalformedViewportEventDoesNotDiscardValidBatchEvents();
+		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
 	}
 	catch (const std::exception& exception)
 	{
