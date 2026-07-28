@@ -964,7 +964,10 @@ public sealed class EngineLifecycleTests
     [Fact]
     public void StartupWaitsForTheEngineMainThreadBeforeBootstrapSerialization()
     {
-        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs").ReplaceLineEndings("\n");
 
         var nativeStart = source.IndexOf(
             "Task.Run(",
