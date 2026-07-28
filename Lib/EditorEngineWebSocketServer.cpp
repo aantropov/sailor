@@ -83,8 +83,7 @@ namespace
 		TEditorEngineWebSocketServer(
 			const uint16_t port,
 			std::string authorizationToken)
-			: m_port(port)
-			, m_authorizationHeader(
+			: m_authorizationHeader(
 				"Bearer " + std::move(authorizationToken))
 			, m_server(
 				std::make_unique<ix::WebSocketServer>(
@@ -298,7 +297,6 @@ namespace
 			}
 		}
 
-		uint16_t m_port = 0;
 		std::string m_authorizationHeader{};
 		std::unique_ptr<ix::WebSocketServer> m_server{};
 	};

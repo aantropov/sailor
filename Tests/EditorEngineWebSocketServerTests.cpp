@@ -29,7 +29,6 @@ extern "C"
 namespace
 {
 	using Sailor::Protocol::EEditorEngineWebSocketHostStatus;
-	using Sailor::Protocol::EEditorEngineTransportStatus;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 	using Sailor::Protocol::EditorEngineWebSocketPath;
 	using Sailor::Protocol::EditorEngineWebSocketSubprotocol;
@@ -257,6 +256,10 @@ namespace
 		SailorProtocolStopLocalHost(false);
 	}
 
+	void TestValidBinaryProtobufRoundTrip(
+		uint16_t port,
+		const std::string& authorizationToken);
+
 	void TestLateStopAfterStaticTeardown()
 	{
 		// Register before the protocol lifecycle gate and WebSocket server
@@ -288,33 +291,9 @@ namespace
 			EEditorEngineWebSocketHostStatus::Ok,
 			"editor-engine WebSocket server must start for late stop");
 
-		const std::string request = MakeRequest(1u, 16u);
-		uint8_t* responseData = nullptr;
-		uint32_t responseSize = 0u;
-		const int32_t invokeStatus =
-			Sailor::Protocol::InvokeEditorEngineProtocol(
-				reinterpret_cast<const uint8_t*>(request.data()),
-				static_cast<uint32_t>(request.size()),
-				&responseData,
-				&responseSize);
-		Require(
-			invokeStatus == static_cast<int32_t>(
-				EEditorEngineTransportStatus::Ok),
-			"direct protocol request must initialize lifecycle state");
-		Require(
-			responseData != nullptr && responseSize > 0u,
-			"direct protocol request must return a response");
-		const std::string responsePayload(
-			reinterpret_cast<const char*>(responseData),
-			responseSize);
-		Sailor::Protocol::FreeEditorEngineProtocolBuffer(responseData);
-
-		TProtocolResponseWire response;
-		Require(
-			ParseResponse(responsePayload, response) &&
-				response.m_requestId == 1u &&
-				response.m_bSuccess,
-			"direct get-exit-code request must succeed before process exit");
+		TestValidBinaryProtobufRoundTrip(
+			static_cast<uint16_t>(port),
+			authorizationToken);
 
 		// Deliberately leave the server running. StopLocalHostAtProcessExit
 		// performs the only teardown after later-registered static finalizers.
