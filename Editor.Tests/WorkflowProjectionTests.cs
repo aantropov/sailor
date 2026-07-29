@@ -1162,7 +1162,7 @@ public sealed class WorkflowProjectionTests
         {
             var candidate = Path.Combine(relativePath.Prepend(current.FullName).ToArray());
             if (File.Exists(candidate))
-                return File.ReadAllText(candidate);
+                return File.ReadAllText(candidate).ReplaceLineEndings("\n");
 
             current = current.Parent;
         }
