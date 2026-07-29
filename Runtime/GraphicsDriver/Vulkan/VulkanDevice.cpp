@@ -211,7 +211,9 @@ void VulkanDevice::BeginConditionalDestroy()
 	m_swapchain.Clear();
 	m_commandPool.Clear();
 
-	size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2;
+	// Main, Render, and the dedicated Editor protocol worker may each
+	// allocate a Vulkan thread context in addition to the RHI workers.
+	size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 3;
 #if defined(__APPLE__)
 	if (App::HasEditor())
 	{
@@ -265,7 +267,9 @@ ThreadContext& VulkanDevice::GetOrAddThreadContext(DWORD threadId)
 #endif 
 		// Same-process editor interop adds a managed engine thread and can touch Vulkan from
 		// MAUI-triggered viewport probing before work moves fully onto engine scheduler threads.
-		size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 2;
+		// Main, Render, and the dedicated Editor protocol worker may each
+		// allocate a Vulkan thread context in addition to the RHI workers.
+		size_t maxThreadContexts = App::GetSubmodule<Tasks::Scheduler>()->GetNumRHIThreads() + 3;
 #if defined(__APPLE__)
 		if (App::HasEditor())
 		{

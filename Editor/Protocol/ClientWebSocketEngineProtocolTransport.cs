@@ -25,11 +25,8 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         TimeSpan.FromSeconds(10);
     static readonly TimeSpan KeepAliveTimeout =
         TimeSpan.FromSeconds(10);
-    static readonly TimeSpan LaneDisposeGracePeriod =
-        TimeSpan.FromMilliseconds(100);
-    static readonly TimeSpan LaneAbortDrainTimeout =
-        TimeSpan.FromMilliseconds(400);
-
+    static readonly TimeSpan DisposeDrainTimeout =
+        TimeSpan.FromMilliseconds(500);
     readonly Uri endpoint;
     readonly string authorizationHeader;
     readonly TimeSpan connectTimeout;
@@ -40,8 +37,11 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
     readonly WebSocketLane backgroundLane =
         new("background", allowsBlockingRequest: true);
     readonly CancellationTokenSource disposeCancellation = new();
+    readonly TaskCompletionSource disposalCompletion =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     int disposed;
     int activeInvocations;
+    int disposalResourcesReleased;
 
     public ClientWebSocketEngineProtocolTransport(
         Uri endpoint,
@@ -59,7 +59,7 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
             nameof(requestTimeout));
     }
 
-    public byte[] Invoke(
+    public async Task<byte[]> InvokeAsync(
         byte[] requestData,
         EngineProtocolInvocationKind invocationKind,
         CancellationToken cancellationToken = default)
@@ -78,18 +78,19 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         EnterInvocation();
         try
         {
-            return InvokeTracked(
-                requestData,
-                invocationKind,
-                cancellationToken);
+            return await InvokeTrackedAsync(
+                    requestData,
+                    invocationKind,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
-            Interlocked.Decrement(ref activeInvocations);
+            ExitInvocation();
         }
     }
 
-    byte[] InvokeTracked(
+    async Task<byte[]> InvokeTrackedAsync(
         byte[] requestData,
         EngineProtocolInvocationKind invocationKind,
         CancellationToken cancellationToken)
@@ -117,16 +118,18 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         var acquired = false;
         try
         {
-            lane.Gate.Wait(invocationCancellation.Token);
+            await lane.Gate.WaitAsync(invocationCancellation.Token)
+                .ConfigureAwait(false);
             acquired = true;
             ObjectDisposedException.ThrowIf(
                 Volatile.Read(ref disposed) != 0,
                 this);
-            return InvokeUnderLock(
-                lane,
-                requestData,
-                invocationCancellation.Token,
-                cancellationToken);
+            return await InvokeUnderLockAsync(
+                    lane,
+                    requestData,
+                    invocationCancellation.Token,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (OperationCanceledException ex)
         {
@@ -159,11 +162,18 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         }
 
         Interlocked.Decrement(ref activeInvocations);
+        TryCompleteDisposal();
         throw new ObjectDisposedException(
             nameof(ClientWebSocketEngineProtocolTransport));
     }
 
-    byte[] InvokeUnderLock(
+    void ExitInvocation()
+    {
+        Interlocked.Decrement(ref activeInvocations);
+        TryCompleteDisposal();
+    }
+
+    async Task<byte[]> InvokeUnderLockAsync(
         WebSocketLane lane,
         byte[] requestData,
         CancellationToken invocationCancellation,
@@ -171,28 +181,25 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
     {
         try
         {
-            var socket = EnsureConnected(
-                lane,
-                invocationCancellation);
-            socket.SendAsync(
+            var socket = await EnsureConnectedAsync(
+                    lane,
+                    invocationCancellation)
+                .ConfigureAwait(false);
+            await socket.SendAsync(
                     requestData.AsMemory(),
                     WebSocketMessageType.Binary,
                     endOfMessage: true,
                     invocationCancellation)
-                .AsTask()
-                .GetAwaiter()
-                .GetResult();
+                .ConfigureAwait(false);
 
             using var response = new MemoryStream();
             var receiveBuffer = new byte[64 * 1024];
             while (true)
             {
-                var result = socket.ReceiveAsync(
+                var result = await socket.ReceiveAsync(
                         receiveBuffer.AsMemory(),
                         invocationCancellation)
-                    .AsTask()
-                    .GetAwaiter()
-                    .GetResult();
+                    .ConfigureAwait(false);
                 if (result.MessageType == WebSocketMessageType.Close)
                 {
                     throw new EngineProtocolException(
@@ -257,7 +264,7 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
         }
     }
 
-    ClientWebSocket EnsureConnected(
+    async Task<ClientWebSocket> EnsureConnectedAsync(
         WebSocketLane lane,
         CancellationToken invocationCancellation)
     {
@@ -293,9 +300,10 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
                 CancellationTokenSource.CreateLinkedTokenSource(
                     invocationCancellation);
             connectCancellation.CancelAfter(connectTimeout);
-            socket.ConnectAsync(endpoint, connectCancellation.Token)
-                .GetAwaiter()
-                .GetResult();
+            await socket.ConnectAsync(
+                    endpoint,
+                    connectCancellation.Token)
+                .ConfigureAwait(false);
             Interlocked.Exchange(ref lane.Socket, socket);
             if (Volatile.Read(ref disposed) != 0)
             {
@@ -428,45 +436,57 @@ internal sealed class ClientWebSocketEngineProtocolTransport : IEngineProtocolTr
             return;
         }
         disposeCancellation.Cancel();
+        ResetLane(requestLane);
+        ResetLane(interactiveLane);
+        ResetLane(lifecycleLane);
+        ResetLane(backgroundLane);
+        TryCompleteDisposal();
+    }
 
-        var allLanesQuiesced =
-            DisposeLane(requestLane) &
-            DisposeLane(interactiveLane) &
-            DisposeLane(lifecycleLane) &
-            DisposeLane(backgroundLane);
-        if (allLanesQuiesced &&
+    public async ValueTask DisposeAsync()
+    {
+        Dispose();
+        try
+        {
+            await disposalCompletion.Task
+                .WaitAsync(DisposeDrainTimeout)
+                .ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            // Dispose has already cancelled and aborted every socket. A
+            // platform I/O callback that ignores both must not block Editor
+            // shutdown; the last invocation releases resources when it exits.
+            return;
+        }
+        ReleaseDisposalResources();
+    }
+
+    void TryCompleteDisposal()
+    {
+        if (Volatile.Read(ref disposed) != 0 &&
             Volatile.Read(ref activeInvocations) == 0)
         {
-            requestLane.Gate.Dispose();
-            interactiveLane.Gate.Dispose();
-            lifecycleLane.Gate.Dispose();
-            backgroundLane.Gate.Dispose();
-            disposeCancellation.Dispose();
+            if (disposalCompletion.TrySetResult())
+            {
+                ReleaseDisposalResources();
+            }
         }
     }
 
-    static bool DisposeLane(WebSocketLane lane)
+    void ReleaseDisposalResources()
     {
-        if (!lane.Gate.Wait(LaneDisposeGracePeriod))
+        if (Interlocked.Exchange(
+                ref disposalResourcesReleased,
+                1) != 0)
         {
-            // Cancellation should normally release the owner. Abort the socket
-            // without the lane lock as a fail-safe for a half-open native I/O
-            // operation, then give the owner one final bounded drain window.
-            ResetLane(lane);
-            if (!lane.Gate.Wait(LaneAbortDrainTimeout))
-            {
-                return false;
-            }
+            return;
         }
 
-        try
-        {
-            ResetLane(lane);
-        }
-        finally
-        {
-            lane.Gate.Release();
-        }
-        return true;
+        requestLane.Gate.Dispose();
+        interactiveLane.Gate.Dispose();
+        lifecycleLane.Gate.Dispose();
+        backgroundLane.Gate.Dispose();
+        disposeCancellation.Dispose();
     }
 }

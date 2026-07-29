@@ -57,9 +57,11 @@
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneSelectionRoutingTests.cs" />
+    <Compile Include="NativeViewportInputQueueTests.cs" />
     <Compile Include="EditorViewportEventContractTests.cs" />
     <Compile Include="AlreadyAppliedTransformCommandTests.cs" />
     <Compile Include="InspectorPendingEditCoordinatorTests.cs" />
+    <Compile Include="UiAsyncExceptionSafetyContractTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
@@ -78,6 +80,7 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
+    <Compile Include="ProtocolAsyncContractTests.cs" />
     <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolClient.cs" Link="Protocol\EngineProtocolClient.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolNative.cs" Link="Protocol\EngineProtocolNative.cs" />
@@ -122,6 +125,7 @@
     <Compile Include="..\Editor\Scene\SceneViewportLifecycle.cs" Link="Scene\SceneViewportLifecycle.cs" />
     <Compile Include="..\Editor\Scene\SceneViewportPointerRouting.cs" Link="Scene\SceneViewportPointerRouting.cs" />
     <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
+    <Compile Include="..\Editor\Scene\NativeViewportInputQueue.cs" Link="Scene\NativeViewportInputQueue.cs" />
     <Compile Include="..\Editor\Scene\EditorViewportEventContract.cs" Link="Scene\EditorViewportEventContract.cs" />
     <Compile Include="..\Editor\Commands\AlreadyAppliedTransformCommand.cs" Link="Commands\AlreadyAppliedTransformCommand.cs" />
     <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />

@@ -200,7 +200,10 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;
-	const unsigned numThreads = std::max(1u, coresCount - 2u - numRHIThreads);
+	const unsigned numReservedThreads = 3u + numRHIThreads;
+	const unsigned numThreads = coresCount > numReservedThreads
+		? coresCount - numReservedThreads
+		: 1u;
 
 	WorkerThread* newRenderingThread = new WorkerThread(
 		"Render Thread",
@@ -238,6 +241,17 @@ void Scheduler::Initialize()
 		m_workerThreads.Emplace(newThread);
 	}
 
+	WorkerThread* newEditorThread = new WorkerThread(
+		"Editor Thread",
+		EThreadType::Editor,
+		m_refreshCondVar[(uint32_t)EThreadType::Editor],
+		m_queueMutex[(uint32_t)EThreadType::Editor],
+		m_pSharedTaskQueue[(uint32_t)EThreadType::Editor]);
+
+	m_editorThreadId = newEditorThread->GetThreadId();
+	m_threadTypes[m_editorThreadId] = EThreadType::Editor;
+	m_workerThreads.Emplace(newEditorThread);
+
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
@@ -258,6 +272,7 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::Worker, true);
 	NotifyWorkerThread(EThreadType::Render, true);
 	NotifyWorkerThread(EThreadType::RHI, true);
+	NotifyWorkerThread(EThreadType::Editor, true);
 
 	for (auto& worker : m_workerThreads)
 	{
@@ -578,6 +593,11 @@ bool Scheduler::IsMainThread() const
 bool Scheduler::IsRendererThread() const
 {
 	return m_renderingThreadId == GetCurrentThreadId();
+}
+
+bool Scheduler::IsEditorThread() const
+{
+	return m_editorThreadId == GetCurrentThreadId();
 }
 
 bool Scheduler::HasThread(DWORD threadId) const

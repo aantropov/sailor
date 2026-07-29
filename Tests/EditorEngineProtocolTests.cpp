@@ -11,6 +11,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 
 #if defined(_WIN32)
@@ -53,6 +54,7 @@ namespace
 	constexpr uint32_t c_loadEditorWorldCommandField = 21;
 	constexpr uint32_t c_pullEditorViewportEventsCommandField = 32;
 	constexpr uint32_t c_getManagedMutationRevisionCommandField = 33;
+	constexpr uint32_t c_renderPathTracedImageCommandField = 45;
 	constexpr uint32_t c_isEngineRunningCommandField = 48;
 
 	void Require(bool condition, const std::string& message)
@@ -1307,6 +1309,247 @@ namespace
 				"Shutdown must Stop and join Start before invoking App shutdown");
 		}
 	}
+
+	struct TBlockingEditorDispatchSource
+	{
+		std::mutex m_mutex{};
+		std::condition_variable m_condition{};
+		bool m_bDispatchEntered = false;
+		bool m_bReleaseDispatch = false;
+		bool m_bOperationExecuted = false;
+		uint32_t m_numDispatches = 0;
+		uint32_t m_numStops = 0;
+		uint32_t m_numShutdowns = 0;
+	};
+
+	bool DispatchBlockingEditorOperation(
+		void* context,
+		Sailor::Protocol::EditorEngineProtocolDependencies::
+			FEditorEngineProtocolOperation operation,
+		void* operationContext)
+	{
+		auto& source =
+			*static_cast<TBlockingEditorDispatchSource*>(context);
+		{
+			std::unique_lock<std::mutex> lock(source.m_mutex);
+			++source.m_numDispatches;
+			source.m_bDispatchEntered = true;
+			source.m_condition.notify_all();
+			source.m_condition.wait(lock, [&source]()
+				{
+					return source.m_bReleaseDispatch;
+				});
+		}
+
+		operation(operationContext);
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			source.m_bOperationExecuted = true;
+		}
+		source.m_condition.notify_all();
+		return true;
+	}
+
+	void ReleaseBlockingEditorOperation(void* context)
+	{
+		auto& source =
+			*static_cast<TBlockingEditorDispatchSource*>(context);
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			++source.m_numStops;
+			source.m_bReleaseDispatch = true;
+		}
+		source.m_condition.notify_all();
+	}
+
+	void RecordEditorDispatchShutdown(void* context)
+	{
+		auto& source =
+			*static_cast<TBlockingEditorDispatchSource*>(context);
+		const std::lock_guard<std::mutex> lock(source.m_mutex);
+		++source.m_numShutdowns;
+	}
+
+	struct TEditorExceptionSource
+	{
+		std::thread::id m_dispatchThreadId{};
+	};
+
+	bool DispatchEditorOperationOnTestThread(
+		void* context,
+		Sailor::Protocol::EditorEngineProtocolDependencies::
+			FEditorEngineProtocolOperation operation,
+		void* operationContext)
+	{
+		auto& source = *static_cast<TEditorExceptionSource*>(context);
+		std::thread editorThread(
+			[&source, operation, operationContext]()
+			{
+				source.m_dispatchThreadId = std::this_thread::get_id();
+				operation(operationContext);
+			});
+		editorThread.join();
+		return true;
+	}
+
+	uint32_t ThrowFromEditorOperation(void*, char**, uint32_t)
+	{
+		throw std::runtime_error("test Editor worker failure");
+	}
+
+	void TestEditorWorkerExceptionIsRethrownOnInvoker()
+	{
+		using namespace std::chrono_literals;
+
+		TEditorExceptionSource source;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_pullEditorViewportEvents = ThrowFromEditorOperation;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_editorDispatchContext = &source;
+		dependencies.m_dispatchEditorOperation =
+			DispatchEditorOperationOnTestThread;
+
+		std::string countRequest;
+		AppendVarintField(countRequest, 1u, 1u);
+		TProtocolBuffer buffer;
+		bool bExceptionRethrown = false;
+		try
+		{
+			Invoke(
+				MakeRequest(
+					EditorEngineProtocolVersion,
+					60,
+					c_pullEditorViewportEventsCommandField,
+					countRequest),
+				buffer,
+				dependencies);
+		}
+		catch (const std::runtime_error& exception)
+		{
+			bExceptionRethrown =
+				std::string(exception.what()) ==
+					"test Editor worker failure";
+		}
+
+		Require(
+			source.m_dispatchThreadId != std::thread::id{} &&
+				source.m_dispatchThreadId != std::this_thread::get_id(),
+			"regular protocol operation must execute on the dispatched thread");
+		Require(
+			bExceptionRethrown,
+			"Editor worker exception must be rethrown on the protocol invoker");
+
+		std::string shutdownError;
+		Require(
+			gate.TryBeginShutdown(shutdownError),
+			"Editor worker exception must release its lifecycle operation lease");
+		auto drain = std::async(
+			std::launch::async,
+			[&gate]()
+			{
+				gate.WaitForShutdownDrain();
+			});
+		Require(
+			drain.wait_for(1s) == std::future_status::ready,
+			"shutdown must not remain blocked by a failed Editor operation");
+		drain.get();
+		gate.CompleteShutdown();
+	}
+
+	void TestPathTracingDoesNotBlockLifecycleDispatch()
+	{
+		using namespace std::chrono_literals;
+
+		TBlockingEditorDispatchSource source;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		PrepareInitializedLifecycle(gate);
+
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_stop = ReleaseBlockingEditorOperation;
+		dependencies.m_shutdown = RecordEditorDispatchShutdown;
+		dependencies.m_lifecycleGate = &gate;
+		dependencies.m_editorDispatchContext = &source;
+		dependencies.m_dispatchEditorOperation =
+			DispatchBlockingEditorOperation;
+
+		std::string renderRequest;
+		AppendMessageField(renderRequest, 1u, "PathTrace.png");
+		auto render = std::async(
+			std::launch::async,
+			[&dependencies, &renderRequest]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(
+					MakeRequest(
+						EditorEngineProtocolVersion,
+						61,
+						c_renderPathTracedImageCommandField,
+						renderRequest),
+					buffer,
+					dependencies);
+			});
+
+		{
+			std::unique_lock<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_condition.wait_for(
+					lock,
+					1s,
+					[&source]()
+					{
+						return source.m_bDispatchEntered;
+					}),
+				"path tracing must enter the dedicated Editor dispatcher");
+		}
+
+		auto shutdown = std::async(
+			std::launch::async,
+			[&dependencies]()
+			{
+				TProtocolBuffer buffer;
+				return RequireProtocolResponse(
+					MakeRequest(
+						EditorEngineProtocolVersion,
+						62,
+						c_shutdownCommandField),
+					buffer,
+					dependencies);
+			});
+
+		if (shutdown.wait_for(1s) != std::future_status::ready)
+		{
+			{
+				const std::lock_guard<std::mutex> lock(source.m_mutex);
+				source.m_bReleaseDispatch = true;
+			}
+			source.m_condition.notify_all();
+		}
+
+		const auto shutdownResponse = shutdown.get();
+		const auto renderResponse = render.get();
+		Require(
+			shutdownResponse.m_success &&
+				shutdownResponse.m_resultField == c_emptyResultField,
+			"Shutdown must bypass the Editor worker and drain it safely");
+		Require(
+			renderResponse.m_success &&
+				renderResponse.m_resultField == c_boolResultField,
+			"path tracing must complete its regular Editor operation response");
+		{
+			const std::lock_guard<std::mutex> lock(source.m_mutex);
+			Require(
+				source.m_numDispatches == 1 &&
+					source.m_numStops == 1 &&
+					source.m_numShutdowns == 1 &&
+					source.m_bOperationExecuted,
+				"lifecycle must interrupt and drain path tracing without entering the Editor dispatcher");
+		}
+	}
 }
 
 int main()
@@ -1325,6 +1568,8 @@ int main()
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();
 		TestShutdownStopsAndJoinsWorkerBeforeShutdownRoutine();
+		TestEditorWorkerExceptionIsRethrownOnInvoker();
+		TestPathTracingDoesNotBlockLifecycleDispatch();
 	}
 	catch (const std::exception& exception)
 	{

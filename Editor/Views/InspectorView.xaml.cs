@@ -13,8 +13,11 @@ namespace SailorEditor.Views
     {
         readonly InspectorProjectionService inspectorProjection;
         readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
+        readonly object inspectorCommitLock = new();
         bool isRefreshingInspector;
-        bool isCommittingInspectorChanges;
+        bool inspectorRefreshRequested;
+        Task<InspectorRefreshCommitOutcome>? inspectorCommitTask;
+        long inspectorCommitResetGeneration;
         bool lifecycleSubscribed;
 
         public InspectorView()
@@ -24,7 +27,7 @@ namespace SailorEditor.Views
             inspectorProjection = MauiProgram.GetService<InspectorProjectionService>();
             inspectorPendingEditCoordinator = MauiProgram.GetService<InspectorPendingEditCoordinator>();
             this.BindingContext = inspectorProjection;
-            RefreshInspector();
+            QueueInspectorRefresh();
 
             Loaded += (_, _) => SubscribeToLifecycle();
             Unloaded += (_, _) => UnsubscribeFromLifecycle();
@@ -40,7 +43,7 @@ namespace SailorEditor.Views
             inspectorPendingEditCoordinator.CommitPendingChangesRequested += CommitPendingInspectorChanges;
             inspectorProjection.PropertyChanged += OnProjectionChanged;
             lifecycleSubscribed = true;
-            RefreshInspector();
+            QueueInspectorRefresh();
         }
 
         void UnsubscribeFromLifecycle()
@@ -50,96 +53,238 @@ namespace SailorEditor.Views
                 return;
             }
 
+            inspectorPendingEditCoordinator.CommitPendingChangesRequested -= CommitPendingInspectorChanges;
+            inspectorProjection.PropertyChanged -= OnProjectionChanged;
+            lifecycleSubscribed = false;
+            _ = CommitPendingInspectorChangesOnUnloadAsync();
+        }
+
+        async Task CommitPendingInspectorChangesOnUnloadAsync()
+        {
             try
             {
-                CommitPendingInspectorChanges();
+                await CommitPendingInspectorChanges(
+                    CancellationToken.None);
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"Inspector pending edit commit failed while unloading: {ex}");
             }
-
-            inspectorPendingEditCoordinator.CommitPendingChangesRequested -= CommitPendingInspectorChanges;
-            inspectorProjection.PropertyChanged -= OnProjectionChanged;
-            lifecycleSubscribed = false;
         }
 
-        void OnProjectionChanged(object sender, PropertyChangedEventArgs args)
+        void OnProjectionChanged(
+            object sender,
+            PropertyChangedEventArgs args)
         {
             if (args.PropertyName == nameof(InspectorProjectionService.SelectedItem) || args.PropertyName == nameof(InspectorProjectionService.Current))
             {
-                RefreshInspector();
+                QueueInspectorRefresh();
             }
         }
 
-        void RefreshInspector()
+        void QueueInspectorRefresh()
         {
-            using var perfScope = EditorPerf.Scope("InspectorView.RefreshInspector");
-
+            inspectorRefreshRequested = true;
             if (isRefreshingInspector)
             {
                 return;
             }
 
             isRefreshingInspector = true;
+            _ = RefreshInspectorLoopSafelyAsync();
+        }
 
+        async Task RefreshInspectorLoopSafelyAsync()
+        {
             try
             {
-                CommitPendingInspectorChanges();
-
-                if (inspectorProjection.SelectedItem == null)
+                while (inspectorRefreshRequested)
                 {
-                    InspectedItemHost.Content = null;
-                    return;
+                    inspectorRefreshRequested = false;
+                    await RefreshInspectorAsync();
                 }
-
-                if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
-                {
-                    existingView.BindingContext = inspectorProjection.SelectedItem;
-                    return;
-                }
-
-                var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
-                var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
-                var content = template.CreateContent();
-                if (content is View view)
-                {
-                    view.BindingContext = inspectorProjection.SelectedItem;
-                    view.IsEnabled = inspectorProjection.SelectedItem is not AssetFile { IsReadOnly: true };
-                    InspectedItemHost.Content = view;
-                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Inspector refresh failed: {ex}");
             }
             finally
             {
                 isRefreshingInspector = false;
+                if (inspectorRefreshRequested)
+                {
+                    QueueInspectorRefresh();
+                }
             }
         }
 
-        bool CommitPendingInspectorChanges()
+        async Task RefreshInspectorAsync()
+        {
+            using var perfScope = EditorPerf.Scope("InspectorView.RefreshInspector");
+            var resetGeneration = inspectorProjection.ResetGeneration;
+
+            await InspectorRefreshCommitGate.TryApplyAsync(
+                CommitPendingInspectorChangesForRefresh,
+                ApplyInspectorRefresh,
+                () => inspectorProjection.ResetGeneration !=
+                    resetGeneration,
+                CancellationToken.None);
+        }
+
+        void ApplyInspectorRefresh()
+        {
+            if (inspectorProjection.SelectedItem == null)
+            {
+                InspectedItemHost.Content = null;
+                return;
+            }
+
+            if (InspectedItemHost.Content is View existingView && AreEquivalentSelection(existingView.BindingContext, inspectorProjection.SelectedItem))
+            {
+                existingView.BindingContext = inspectorProjection.SelectedItem;
+                return;
+            }
+
+            var selector = (DataTemplateSelector)Resources["InspectorTemplateSelector"];
+            var template = selector.SelectTemplate(inspectorProjection.SelectedItem, InspectedItemHost);
+            var content = template.CreateContent();
+            if (content is View view)
+            {
+                view.BindingContext = inspectorProjection.SelectedItem;
+                view.IsEnabled = inspectorProjection.SelectedItem is not AssetFile { IsReadOnly: true };
+                InspectedItemHost.Content = view;
+            }
+        }
+
+        async Task<bool> CommitPendingInspectorChanges(
+            CancellationToken cancellationToken)
         {
             if (inspectorProjection.IsWorkspaceResetInProgress)
             {
                 return false;
             }
 
-            if (isCommittingInspectorChanges ||
-                InspectedItemHost.Content?.BindingContext is not IInspectorEditable editable ||
-                !editable.HasPendingInspectorChanges)
+            var outcome = await CommitPendingInspectorChangesForRefresh(
+                cancellationToken);
+            return outcome.CanRefresh;
+        }
+
+        async Task<InspectorRefreshCommitOutcome>
+            CommitPendingInspectorChangesForRefresh(
+                CancellationToken cancellationToken)
+        {
+            var resetGeneration = inspectorProjection.ResetGeneration;
+            if (inspectorProjection.IsWorkspaceResetInProgress)
             {
-                return true;
+                return InspectorRefreshCommitOutcome.Ready;
             }
 
-            isCommittingInspectorChanges = true;
+            if (InspectedItemHost.Content?.BindingContext is not
+                    IInspectorEditable editable)
+            {
+                return InspectorRefreshCommitOutcome.Ready;
+            }
+
+            Task<InspectorRefreshCommitOutcome> commitTask;
+            lock (inspectorCommitLock)
+            {
+                if (inspectorCommitTask is not null)
+                {
+                    if (inspectorCommitResetGeneration != resetGeneration)
+                    {
+                        inspectorCommitTask = null;
+                        inspectorCommitResetGeneration = 0;
+                        return InspectorRefreshCommitOutcome.Ready;
+                    }
+
+                    commitTask = inspectorCommitTask;
+                }
+                else
+                {
+                    if (!editable.HasPendingInspectorChanges)
+                    {
+                        return InspectorRefreshCommitOutcome.Ready;
+                    }
+
+                    commitTask = CommitInspectorEditableAsync(
+                        editable,
+                        cancellationToken);
+                    inspectorCommitTask = commitTask;
+                    inspectorCommitResetGeneration = resetGeneration;
+                    _ = ClearInspectorCommitWhenCompleteAsync(
+                        commitTask);
+                }
+            }
+
             try
             {
-                editable.CommitInspectorChanges();
+                var outcome =
+                    await commitTask.WaitAsync(cancellationToken);
+                return inspectorProjection.ResetGeneration == resetGeneration
+                    ? outcome
+                    : InspectorRefreshCommitOutcome.Ready;
+            }
+            catch (OperationCanceledException)
+                when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch when (
+                inspectorProjection.ResetGeneration != resetGeneration)
+            {
+                return InspectorRefreshCommitOutcome.Ready;
             }
             finally
             {
-                isCommittingInspectorChanges = false;
+                if (commitTask.IsCompleted)
+                {
+                    ClearInspectorCommit(commitTask);
+                }
             }
+        }
 
-            return !editable.HasPendingInspectorChanges;
+        static async Task<InspectorRefreshCommitOutcome>
+            CommitInspectorEditableAsync(
+            IInspectorEditable editable,
+            CancellationToken cancellationToken)
+        {
+            var commitSucceeded = await editable.CommitInspectorChangesAsync(
+                cancellationToken);
+            return InspectorRefreshCommitOutcome.FromCompletedCommit(
+                commitSucceeded,
+                editable.HasPendingInspectorChanges);
+        }
+
+        async Task ClearInspectorCommitWhenCompleteAsync(
+            Task<InspectorRefreshCommitOutcome> commitTask)
+        {
+            try
+            {
+                await commitTask;
+            }
+            catch
+            {
+                // The caller observes and reports the commit failure.
+            }
+            finally
+            {
+                ClearInspectorCommit(commitTask);
+            }
+        }
+
+        void ClearInspectorCommit(
+            Task<InspectorRefreshCommitOutcome> commitTask)
+        {
+            lock (inspectorCommitLock)
+            {
+                if (ReferenceEquals(
+                        inspectorCommitTask,
+                        commitTask))
+                {
+                    inspectorCommitTask = null;
+                    inspectorCommitResetGeneration = 0;
+                }
+            }
         }
 
         static bool AreEquivalentSelection(object? current, object? next)

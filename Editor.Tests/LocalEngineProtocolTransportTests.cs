@@ -37,7 +37,8 @@ public sealed class LocalEngineProtocolTransportTests
                 return new RecordingTransport();
             });
 
-        var initialization = Task.Run(() => transport.Initialize([1]));
+        var initialization = Task.Run(
+            () => transport.InitializeAsync([1]));
         await startEntered.Task.WaitAsync(TestTimeout);
 
         var disposal = Task.Run(transport.Dispose);
@@ -76,7 +77,8 @@ public sealed class LocalEngineProtocolTransportTests
             bridge,
             (_, _) => new RecordingTransport());
 
-        var initialization = Task.Run(() => transport.Initialize([1]));
+        var initialization = Task.Run(
+            () => transport.InitializeAsync([1]));
         await startEntered.Task.WaitAsync(TestTimeout);
 
         var disposal = transport.DisposeAsync().AsTask();
@@ -111,7 +113,8 @@ public sealed class LocalEngineProtocolTransportTests
                 return candidateTransport;
             });
 
-        var initialization = Task.Run(() => transport.Initialize([1]));
+        var initialization = Task.Run(
+            () => transport.InitializeAsync([1]));
         await factoryEntered.Task.WaitAsync(TestTimeout);
 
         var disposal = Task.Run(transport.Dispose);
@@ -149,7 +152,7 @@ public sealed class LocalEngineProtocolTransportTests
         var transport = new LocalEngineProtocolTransport(
             bridge,
             (_, _) => candidateTransport);
-        transport.Initialize([1]);
+        await transport.InitializeAsync([1]);
 
         var disposal = Task.Run(transport.Dispose);
         await stopEntered.Task.WaitAsync(TestTimeout);
@@ -159,9 +162,8 @@ public sealed class LocalEngineProtocolTransportTests
         using var competingTransport = new LocalEngineProtocolTransport(
             competingBridge,
             (_, _) => new RecordingTransport());
-        var competingInitialization = Task.Run(() =>
-            Record.Exception(() =>
-                competingTransport.Initialize([2])));
+        var competingInitialization = Record.ExceptionAsync(() =>
+            competingTransport.InitializeAsync([2]));
         var competingInitializeRejectedBeforeShutdownReleased =
             await CompletesWithinTimeout(competingInitialization);
         stopRelease.Set();
@@ -172,7 +174,8 @@ public sealed class LocalEngineProtocolTransportTests
             await competingInitialization.WaitAsync(TestTimeout);
         if (competingException is null)
         {
-            competingTransport.CompleteShutdown(shutdownEngine: true);
+            await competingTransport.CompleteShutdownAsync(
+                shutdownEngine: true);
         }
 
         Assert.True(disposedBeforeShutdownReleased);
@@ -203,7 +206,7 @@ public sealed class LocalEngineProtocolTransportTests
         var transport = new LocalEngineProtocolTransport(
             bridge,
             (_, _) => new RecordingTransport());
-        transport.Initialize([1]);
+        await transport.InitializeAsync([1]);
 
         var disposal = transport.DisposeAsync().AsTask();
         await stopEntered.Task.WaitAsync(TestTimeout);
@@ -253,12 +256,12 @@ public sealed class LocalEngineProtocolTransportTests
         using var transport = new LocalEngineProtocolTransport(
             bridge,
             (_, _) => candidateTransport);
-        transport.Initialize([1]);
+        await transport.InitializeAsync([1]);
 
-        var stopRequest = Task.Run(transport.RequestStopFallback);
+        var stopRequest = transport.RequestStopFallbackAsync();
         await requestStopEntered.Task.WaitAsync(TestTimeout);
-        var shutdown = Task.Run(
-            () => transport.CompleteShutdown(shutdownEngine: true));
+        var shutdown = transport.CompleteShutdownAsync(
+            shutdownEngine: true);
         await transportDisposed.Task.WaitAsync(TestTimeout);
         var shutdownCompletedBeforeRequestReleased =
             await CompletesWithinTimeout(
@@ -268,9 +271,8 @@ public sealed class LocalEngineProtocolTransportTests
         using var competingTransport = new LocalEngineProtocolTransport(
             competingBridge,
             (_, _) => new RecordingTransport());
-        var competingInitialization = Task.Run(() =>
-            Record.Exception(() =>
-                competingTransport.Initialize([2])));
+        var competingInitialization = Record.ExceptionAsync(() =>
+            competingTransport.InitializeAsync([2]));
         var competingException =
             await competingInitialization.WaitAsync(TestTimeout);
         requestStopRelease.Set();
@@ -279,7 +281,8 @@ public sealed class LocalEngineProtocolTransportTests
         await shutdown.WaitAsync(TestTimeout);
         if (competingException is null)
         {
-            competingTransport.CompleteShutdown(shutdownEngine: true);
+            await competingTransport.CompleteShutdownAsync(
+                shutdownEngine: true);
         }
 
         Assert.False(shutdownCompletedBeforeRequestReleased);
@@ -307,10 +310,10 @@ public sealed class LocalEngineProtocolTransportTests
         var transport = new LocalEngineProtocolTransport(
             bridge,
             (_, _) => new RecordingTransport());
-        transport.Initialize([1]);
+        await transport.InitializeAsync([1]);
 
-        var completeShutdown = Task.Run(
-            () => transport.CompleteShutdown(shutdownEngine: true));
+        var completeShutdown = transport.CompleteShutdownAsync(
+            shutdownEngine: true);
         await stopEntered.Task.WaitAsync(TestTimeout);
         var disposal = transport.DisposeAsync().AsTask();
 
@@ -339,7 +342,7 @@ public sealed class LocalEngineProtocolTransportTests
         var transport = new LocalEngineProtocolTransport(
             bridge,
             (_, _) => candidateTransport);
-        transport.Initialize([1]);
+        await transport.InitializeAsync([1]);
 
         transport.Dispose();
         await bridge.StopCompleted.Task.WaitAsync(TestTimeout);
@@ -359,8 +362,8 @@ public sealed class LocalEngineProtocolTransportTests
             (_, _) => throw new InvalidOperationException(
                 "factory failed"));
 
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => transport.Initialize([1]));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => transport.InitializeAsync([1]));
 
         Assert.Equal("factory failed", exception.Message);
         Assert.Equal(0, bridge.RequestStopCount);
@@ -368,6 +371,30 @@ public sealed class LocalEngineProtocolTransportTests
         Assert.True(bridge.LastShutdownEngine);
         transport.Dispose();
         await AssertHostCanBeReused();
+    }
+
+    [Fact]
+    public async Task InitializeAsync_StartsNativeHostOnCallingThread()
+    {
+        var callingThreadId = Environment.CurrentManagedThreadId;
+        var startThreadId = 0;
+        var bridge = new FakeNativeBridge
+        {
+            Start = () =>
+            {
+                startThreadId = Environment.CurrentManagedThreadId;
+                return 0;
+            }
+        };
+        using var transport = new LocalEngineProtocolTransport(
+            bridge,
+            (_, _) => new RecordingTransport());
+
+        await transport.InitializeAsync([1]);
+
+        Assert.Equal(callingThreadId, startThreadId);
+        await transport.CompleteShutdownAsync(
+            shutdownEngine: true);
     }
 
     static TaskCompletionSource NewSignal()
@@ -407,7 +434,7 @@ public sealed class LocalEngineProtocolTransportTests
         {
             try
             {
-                transport.Initialize([2]);
+                await transport.InitializeAsync([2]);
                 break;
             }
             catch (EngineProtocolException) when (
@@ -417,7 +444,8 @@ public sealed class LocalEngineProtocolTransportTests
             }
         }
 
-        transport.CompleteShutdown(shutdownEngine: true);
+        await transport.CompleteShutdownAsync(
+            shutdownEngine: true);
         Assert.Equal(1, candidateTransport.DisposeCount);
         Assert.Equal(1, bridge.StopCount);
         Assert.True(bridge.LastShutdownEngine);
@@ -477,16 +505,24 @@ public sealed class LocalEngineProtocolTransportTests
 
         public int DisposeCount => Volatile.Read(ref disposeCount);
 
-        public byte[] Invoke(
+        public Task<byte[]> InvokeAsync(
             byte[] requestData,
             EngineProtocolInvocationKind invocationKind,
             CancellationToken cancellationToken = default)
-            => [];
+            => Task.FromResult<byte[]>([]);
 
         public void Dispose()
         {
-            Interlocked.Increment(ref disposeCount);
-            onDispose?.Invoke();
+            if (Interlocked.Exchange(ref disposeCount, 1) == 0)
+            {
+                onDispose?.Invoke();
+            }
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
         }
     }
 }

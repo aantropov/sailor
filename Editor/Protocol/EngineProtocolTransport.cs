@@ -8,9 +8,9 @@ internal enum EngineProtocolInvocationKind
     Background
 }
 
-internal interface IEngineProtocolTransport : IDisposable
+internal interface IEngineProtocolTransport : IDisposable, IAsyncDisposable
 {
-    byte[] Invoke(
+    Task<byte[]> InvokeAsync(
         byte[] requestData,
         EngineProtocolInvocationKind invocationKind,
         CancellationToken cancellationToken = default);
@@ -18,31 +18,40 @@ internal interface IEngineProtocolTransport : IDisposable
 
 internal interface ILocalEngineProtocolTransport
 {
-    void Initialize(byte[] requestData);
-    void RequestStopFallback();
-    void CompleteShutdown(bool shutdownEngine);
+    Task InitializeAsync(
+        byte[] requestData,
+        CancellationToken cancellationToken = default);
+    Task RequestStopFallbackAsync();
+    Task CompleteShutdownAsync(bool shutdownEngine);
 }
 
-internal delegate byte[] EngineProtocolInvokeDelegate(
+internal delegate Task<byte[]> EngineProtocolInvokeAsyncDelegate(
     byte[] requestData,
-    EngineProtocolInvocationKind invocationKind);
+    EngineProtocolInvocationKind invocationKind,
+    CancellationToken cancellationToken);
 
 internal sealed class DelegateEngineProtocolTransport(
-    EngineProtocolInvokeDelegate invoke) : IEngineProtocolTransport
+    EngineProtocolInvokeAsyncDelegate invoke) : IEngineProtocolTransport
 {
-    readonly EngineProtocolInvokeDelegate invoke =
+    readonly EngineProtocolInvokeAsyncDelegate invoke =
         invoke ?? throw new ArgumentNullException(nameof(invoke));
 
-    public byte[] Invoke(
+    public Task<byte[]> InvokeAsync(
         byte[] requestData,
         EngineProtocolInvocationKind invocationKind,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return invoke(requestData, invocationKind);
+        return invoke(
+            requestData,
+            invocationKind,
+            cancellationToken);
     }
 
     public void Dispose()
     {
     }
+
+    public ValueTask DisposeAsync()
+        => ValueTask.CompletedTask;
 }

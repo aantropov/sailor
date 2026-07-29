@@ -4,19 +4,57 @@
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
+#include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/message.h>
 #include <yaml-cpp/yaml.h>
 
 #include <cmath>
+#include <exception>
 #include <limits>
 #include <new>
+#include <stdexcept>
 #include <string>
 
 #if defined(GetMessage)
 #undef GetMessage
 #endif
+
+bool Sailor::Protocol::DispatchEditorEngineProtocolOperationOnEditorThread(
+	void*,
+	const EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
+	void* operationContext)
+{
+	if (!operation)
+	{
+		return false;
+	}
+
+	auto* scheduler = Sailor::App::GetSubmodule<Sailor::Tasks::Scheduler>();
+	if (!scheduler)
+	{
+		return false;
+	}
+
+	if (scheduler->IsEditorThread())
+	{
+		operation(operationContext);
+		return true;
+	}
+
+	auto task = Sailor::Tasks::CreateTask(
+		"Editor protocol operation",
+		[operation, operationContext]()
+		{
+			operation(operationContext);
+		},
+		Sailor::EThreadType::Editor);
+	scheduler->Run(task);
+	task->Wait();
+	return task->IsFinished();
+}
 
 namespace
 {
@@ -966,6 +1004,66 @@ namespace
 		}
 	}
 
+	struct TEditorProtocolDispatchContext final
+	{
+		const ProtocolRequest* m_request = nullptr;
+		ProtocolResponse* m_response = nullptr;
+		const Sailor::Protocol::EditorEngineProtocolDependencies* m_dependencies = nullptr;
+		std::exception_ptr m_exception{};
+		bool m_bExecuted = false;
+	};
+
+	void ExecuteDispatchedEditorProtocolRequest(void* context) noexcept
+	{
+		auto& dispatchContext =
+			*static_cast<TEditorProtocolDispatchContext*>(context);
+		try
+		{
+			DispatchRequest(
+				*dispatchContext.m_request,
+				*dispatchContext.m_response,
+				*dispatchContext.m_dependencies);
+		}
+		catch (...)
+		{
+			dispatchContext.m_exception = std::current_exception();
+		}
+		dispatchContext.m_bExecuted = true;
+	}
+
+	void DispatchRequestOnEditorThread(
+		const ProtocolRequest& request,
+		ProtocolResponse& response,
+		const Sailor::Protocol::EditorEngineProtocolDependencies& dependencies)
+	{
+		if (!dependencies.m_dispatchEditorOperation)
+		{
+			DispatchRequest(request, response, dependencies);
+			return;
+		}
+
+		TEditorProtocolDispatchContext context{
+			&request,
+			&response,
+			&dependencies,
+			{},
+			false
+		};
+		const bool bDispatched = dependencies.m_dispatchEditorOperation(
+			dependencies.m_editorDispatchContext,
+			ExecuteDispatchedEditorProtocolRequest,
+			&context);
+		if (!bDispatched || !context.m_bExecuted)
+		{
+			throw std::runtime_error(
+				"Failed to execute the Engine protocol operation on the Editor worker.");
+		}
+		if (context.m_exception)
+		{
+			std::rethrow_exception(context.m_exception);
+		}
+	}
+
 	enum class EProtocolLifecycleCompletion : uint8_t
 	{
 		None,
@@ -1131,7 +1229,20 @@ namespace
 			const TProtocolLifecycleCompletion completion(
 				gate,
 				EProtocolLifecycleCompletion::Operation);
-			DispatchRequest(request, response, dependencies);
+			if (bAllowWhenIdle)
+			{
+				// These lifecycle probes are valid before App initialization
+				// and after shutdown, when the Scheduler (and therefore the
+				// dedicated Editor worker) does not exist.
+				DispatchRequest(request, response, dependencies);
+			}
+			else
+			{
+				DispatchRequestOnEditorThread(
+					request,
+					response,
+					dependencies);
+			}
 			return;
 		}
 		}

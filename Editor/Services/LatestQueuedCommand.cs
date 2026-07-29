@@ -10,8 +10,8 @@ internal sealed class LatestQueuedCommand<T>
 
     public bool Enqueue(
         T value,
-        Func<Func<bool>, bool> schedule,
-        Func<T, bool> execute)
+        Func<Func<ValueTask<bool>>, bool> schedule,
+        Func<T, ValueTask<bool>> execute)
     {
         ArgumentNullException.ThrowIfNull(schedule);
         ArgumentNullException.ThrowIfNull(execute);
@@ -27,7 +27,7 @@ internal sealed class LatestQueuedCommand<T>
 
             var scheduledEpoch = epoch;
             scheduled = schedule(
-                () => Drain(scheduledEpoch, execute));
+                () => DrainAsync(scheduledEpoch, execute));
             if (!scheduled)
             {
                 hasValue = false;
@@ -36,9 +36,9 @@ internal sealed class LatestQueuedCommand<T>
         }
     }
 
-    bool Drain(
+    async ValueTask<bool> DrainAsync(
         long scheduledEpoch,
-        Func<T, bool> execute)
+        Func<T, ValueTask<bool>> execute)
     {
         T value;
         lock (gate)
@@ -61,7 +61,7 @@ internal sealed class LatestQueuedCommand<T>
             scheduled = false;
         }
 
-        return execute(value);
+        return await execute(value).ConfigureAwait(false);
     }
 
     public void Reset()
@@ -85,8 +85,8 @@ internal sealed class KeyedLatestQueuedCommand<TKey, TValue>
     public bool Enqueue(
         TKey key,
         TValue value,
-        Func<Func<bool>, bool> schedule,
-        Func<TValue, bool> execute)
+        Func<Func<ValueTask<bool>>, bool> schedule,
+        Func<TValue, ValueTask<bool>> execute)
     {
         lock (gate)
         {

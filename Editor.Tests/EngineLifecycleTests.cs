@@ -30,7 +30,10 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public void ResetForWorkspaceChange()", source, StringComparison.Ordinal);
         Assert.Contains("await session.RuntimeMonitorTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("await Task.WhenAll(session.PollTasks).ConfigureAwait(false)", source, StringComparison.Ordinal);
-        Assert.Contains("protocolClient.Shutdown()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.ShutdownAsync().ConfigureAwait(false);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("BuildInteropArgumentsAsync", source, StringComparison.Ordinal);
         Assert.Contains("MainThread.InvokeOnMainThreadAsync", source, StringComparison.Ordinal);
     }
@@ -88,7 +91,9 @@ public sealed class EngineLifecycleTests
         Assert.True(observeShutdown > pumpMainRunLoop);
         Assert.True(terminateBase > observeShutdown);
 
-        var pathTrace = source.IndexOf("public bool ExportPathTracedImage", StringComparison.Ordinal);
+        var pathTrace = source.IndexOf(
+            "public async Task<bool> ExportPathTracedImageAsync",
+            StringComparison.Ordinal);
         var runWorld = source.IndexOf("public void RunWorld", pathTrace, StringComparison.Ordinal);
         Assert.True(pathTrace >= 0);
         Assert.True(runWorld > pathTrace);
@@ -136,7 +141,7 @@ public sealed class EngineLifecycleTests
             transportSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "protocolClient.Start(monitorCancellation.Token)",
+            "await protocolClient.StartAsync(",
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -148,7 +153,7 @@ public sealed class EngineLifecycleTests
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "protocolClient.IsEngineRunning(",
+            "protocolClient.IsEngineRunningAsync(",
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -164,7 +169,7 @@ public sealed class EngineLifecycleTests
             "public async Task<int> StopAsync",
             StringComparison.Ordinal);
         var orderlyStop = serviceSource.IndexOf(
-            "stopFailure = RequestNativeStop();",
+            "stopFailure = await RequestNativeStopAsync()",
             stop,
             StringComparison.Ordinal);
         var cancelMonitor = serviceSource.IndexOf(
@@ -237,11 +242,35 @@ public sealed class EngineLifecycleTests
             StringComparison.Ordinal);
 
         Assert.Contains(
-            "lane.Gate.Wait(LaneDisposeGracePeriod)",
+            "public async ValueTask DisposeAsync()",
             transportSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "lane.Gate.Wait(LaneAbortDrainTimeout)",
+            "await disposalCompletion.Task",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".WaitAsync(DisposeDrainTimeout)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "disposeCancellation.Cancel();",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "disposalCompletion.TrySetResult()",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseDisposalResources();",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ".GetAwaiter().GetResult()",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ".Gate.Wait(",
             transportSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -291,13 +320,17 @@ public sealed class EngineLifecycleTests
             "public async Task<bool> RequestAssetReloadAsync",
             StringComparison.Ordinal);
         var reloadEnd = source.IndexOf(
-            "public void RefreshCurrentWorld",
+            "public async Task RefreshCurrentWorldAsync",
             reload,
             StringComparison.Ordinal);
         Assert.True(reload >= 0);
         Assert.True(reloadEnd > reload);
         Assert.Contains(
-            "await Task.Run(",
+            "await protocolClient.RequestAssetReloadAsync(",
+            source[reload..reloadEnd],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Task.Run(",
             source[reload..reloadEnd],
             StringComparison.Ordinal);
     }
@@ -308,13 +341,17 @@ public sealed class EngineLifecycleTests
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var start = source.IndexOf("public async Task StartAsync(", StringComparison.Ordinal);
-        var initialize = source.IndexOf("protocolClient.Initialize(args);", start, StringComparison.Ordinal);
-        var initializeDispatch = source.LastIndexOf("await MainThread.InvokeOnMainThreadAsync", initialize, StringComparison.Ordinal);
-        var initializeLock = source.LastIndexOf("lock (interopLock)", initialize, StringComparison.Ordinal);
+        var initializeDispatch = source.IndexOf(
+            "await MainThread.InvokeOnMainThreadAsync(",
+            start,
+            StringComparison.Ordinal);
+        var initialize = source.IndexOf(
+            "() => protocolClient.InitializeAsync(",
+            initializeDispatch,
+            StringComparison.Ordinal);
         Assert.True(start >= 0);
         Assert.True(initializeDispatch > start);
-        Assert.True(initializeLock > initializeDispatch);
-        Assert.True(initialize > initializeLock);
+        Assert.True(initialize > initializeDispatch);
 
         var complete = source.IndexOf("async Task CompleteSessionAsync", StringComparison.Ordinal);
         var completeShutdown = source.IndexOf("await ShutdownNativeSessionAsync(", complete, StringComparison.Ordinal);
@@ -326,18 +363,28 @@ public sealed class EngineLifecycleTests
         Assert.True(failedStart >= 0);
         Assert.True(failedStartShutdown > failedStart);
 
-        var dispatchHelper = source.IndexOf("Task<Exception?> ShutdownNativeSessionAsync", StringComparison.Ordinal);
-        var shutdownDispatch = source.IndexOf("=> Task.Run(() =>", dispatchHelper, StringComparison.Ordinal);
-        var shutdownDispatchCall = source.IndexOf("ShutdownNativeSessionUnderLock", shutdownDispatch, StringComparison.Ordinal);
-        var lockedHelper = source.IndexOf("Exception? ShutdownNativeSessionUnderLock", shutdownDispatchCall, StringComparison.Ordinal);
-        var shutdownLock = source.IndexOf("lock (interopLock)", lockedHelper, StringComparison.Ordinal);
-        var nativeShutdown = source.IndexOf("protocolClient.Shutdown();", shutdownLock, StringComparison.Ordinal);
-        Assert.True(dispatchHelper >= 0);
-        Assert.True(shutdownDispatch > dispatchHelper);
-        Assert.True(shutdownDispatchCall > shutdownDispatch);
-        Assert.True(lockedHelper > shutdownDispatchCall);
-        Assert.True(shutdownLock > lockedHelper);
-        Assert.True(nativeShutdown > shutdownLock);
+        var shutdownHelper = source.IndexOf(
+            "async Task<Exception?> ShutdownNativeSessionAsync",
+            StringComparison.Ordinal);
+        var nativeShutdown = source.IndexOf(
+            "await protocolClient.ShutdownAsync().ConfigureAwait(false);",
+            shutdownHelper,
+            StringComparison.Ordinal);
+        var shutdownEnd = source.IndexOf(
+            "async Task<string[]?> PullMessagesAsync",
+            shutdownHelper,
+            StringComparison.Ordinal);
+        Assert.True(shutdownHelper >= 0);
+        Assert.True(nativeShutdown > shutdownHelper);
+        Assert.True(shutdownEnd > nativeShutdown);
+        Assert.DoesNotContain(
+            "Task.Run(",
+            source[shutdownHelper..shutdownEnd],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "GetAwaiter().GetResult()",
+            source[shutdownHelper..shutdownEnd],
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -353,8 +400,14 @@ public sealed class EngineLifecycleTests
         var runningGuard = source.IndexOf("if (!IsGenerationActive(generation))", generation, StringComparison.Ordinal);
         var removeWhileStopped = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", runningGuard, StringComparison.Ordinal);
         var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] =", removeWhileStopped, StringComparison.Ordinal);
-        var queuedInterop = source.IndexOf("QueuePlatformInterop(() =>", acknowledge, StringComparison.Ordinal);
-        var nativeBind = source.IndexOf("protocolClient.SetRemoteViewportMacHostHandle", queuedInterop, StringComparison.Ordinal);
+        var queuedInterop = source.IndexOf(
+            "QueuePlatformInterop(async cancellationToken =>",
+            acknowledge,
+            StringComparison.Ordinal);
+        var nativeBind = source.IndexOf(
+            "await protocolClient.SetRemoteViewportMacHostHandleAsync(",
+            queuedInterop,
+            StringComparison.Ordinal);
         var removeAfterFailure = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", nativeBind, StringComparison.Ordinal);
         Assert.True(bind >= 0);
         Assert.True(generation > bind);
@@ -469,13 +522,17 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void SuccessfulLocalWorldMutation_AdvancesSnapshotGateUnderTheInteropLock()
+    public void SuccessfulLocalWorldMutation_AdvancesSnapshotGateAfterAwaitedInterop()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var helper = source.IndexOf("bool InvokeRunningInterop", StringComparison.Ordinal);
-        var interopLock = source.IndexOf("lock (interopLock)", helper, StringComparison.Ordinal);
-        var nativeAction = source.IndexOf("!action()", interopLock, StringComparison.Ordinal);
+        var helper = source.IndexOf(
+            "async Task<bool> InvokeRunningInteropAsync",
+            StringComparison.Ordinal);
+        var nativeAction = source.IndexOf(
+            "!await action(cancellationToken).ConfigureAwait(false)",
+            helper,
+            StringComparison.Ordinal);
         var reserveSequence = source.IndexOf(
             "worldSnapshotPublication.ReserveSequence()",
             nativeAction,
@@ -485,15 +542,17 @@ public sealed class EngineLifecycleTests
             reserveSequence,
             StringComparison.Ordinal);
         var helperEnd = source.IndexOf("public static void ShowMainWindow", advanceGate, StringComparison.Ordinal);
-        var commitChanges = source.IndexOf("public bool CommitChanges", helperEnd, StringComparison.Ordinal);
+        var commitChanges = source.IndexOf(
+            "public Task<bool> CommitChangesAsync",
+            helperEnd,
+            StringComparison.Ordinal);
         var invalidateQueuedSnapshots = source.IndexOf(
             "invalidateQueuedWorldSnapshots: true",
             commitChanges,
             StringComparison.Ordinal);
 
         Assert.True(helper >= 0);
-        Assert.True(interopLock > helper);
-        Assert.True(nativeAction > interopLock);
+        Assert.True(nativeAction > helper);
         Assert.True(reserveSequence > nativeAction);
         Assert.True(advanceGate > reserveSequence);
         Assert.True(helperEnd > advanceGate);
@@ -509,15 +568,23 @@ public sealed class EngineLifecycleTests
         var update = source.IndexOf("public bool TryUpdateRemoteViewport", StringComparison.Ordinal);
         var stateLock = source.IndexOf("lock (sceneViewportStateLock)", update, StringComparison.Ordinal);
         var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", stateLock, StringComparison.Ordinal);
-        var refresh = source.IndexOf("bool TryRefreshSceneRemoteViewport", rememberState, StringComparison.Ordinal);
+        var refresh = source.IndexOf(
+            "async Task<bool> TryRefreshSceneRemoteViewportAsync",
+            rememberState,
+            StringComparison.Ordinal);
         var refreshStateLock = source.IndexOf("lock (sceneViewportStateLock)", refresh, StringComparison.Ordinal);
         var captureState = source.IndexOf("viewportState = sceneViewportState.Capture();", refreshStateLock, StringComparison.Ordinal);
-        var refreshLock = source.IndexOf("lock (interopLock)", captureState, StringComparison.Ordinal);
         var preservedRect = source.IndexOf("viewportState.Rect,", captureState, StringComparison.Ordinal);
         var preservedVisibility = source.IndexOf("viewportState.Visible,", preservedRect, StringComparison.Ordinal);
         var preservedFocus = source.IndexOf("viewportState.Focused", preservedVisibility, StringComparison.Ordinal);
-        var bootstrap = source.IndexOf("pollTasks.Add(RunPeriodicTaskAsync(() =>", rememberState, StringComparison.Ordinal);
-        var remoteUpdate = source.IndexOf("TryRefreshSceneRemoteViewport(", bootstrap, StringComparison.Ordinal);
+        var bootstrap = source.IndexOf(
+            "pollTasks.Add(RunPeriodicTaskAsync(async () =>",
+            rememberState,
+            StringComparison.Ordinal);
+        var remoteUpdate = source.IndexOf(
+            "await TryRefreshSceneRemoteViewportAsync(",
+            bootstrap,
+            StringComparison.Ordinal);
 
         Assert.True(update >= 0);
         Assert.True(stateLock > update);
@@ -525,7 +592,6 @@ public sealed class EngineLifecycleTests
         Assert.True(refresh > rememberState);
         Assert.True(refreshStateLock > refresh);
         Assert.True(captureState > refreshStateLock);
-        Assert.True(refreshLock > captureState);
         Assert.True(preservedRect > captureState);
         Assert.True(preservedVisibility > preservedRect);
         Assert.True(preservedFocus > preservedVisibility);
@@ -552,8 +618,14 @@ public sealed class EngineLifecycleTests
             "EditorEngineWebSocketServer.cpp");
         var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("return protocolClient.GetExitCode(", managedSource, StringComparison.Ordinal);
-        Assert.Contains("public int GetExitCode(", clientSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "=> protocolClient.GetExitCodeAsync(cancellationToken);",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<int> GetExitCodeAsync(",
+            clientSource,
+            StringComparison.Ordinal);
         Assert.Contains("GetExitCode = new Empty()", clientSource, StringComparison.Ordinal);
         Assert.Contains("WebSocketMessageType.Binary", transportSource, StringComparison.Ordinal);
         Assert.Contains("InvokeEditorEngineProtocol(", serverSource, StringComparison.Ordinal);
@@ -571,7 +643,10 @@ public sealed class EngineLifecycleTests
         var workspaceDocumentation = ReadRepositoryFile("Docs", "WorkspaceLogic.md");
 
         Assert.Contains("Empty serialize_engine_types = 46;", schemaSource, StringComparison.Ordinal);
-        Assert.Contains("public string SerializeEngineTypes(", clientSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<string> SerializeEngineTypesAsync(",
+            clientSource,
+            StringComparison.Ordinal);
         Assert.Contains("SerializeEngineTypes = new Empty()", clientSource, StringComparison.Ordinal);
         Assert.Contains("case ProtocolRequest::kSerializeEngineTypes:", dispatcherSource, StringComparison.Ordinal);
         Assert.Contains("Sailor::App::SerializeEngineTypes(value.GetOutput())", dispatcherSource, StringComparison.Ordinal);
@@ -589,8 +664,14 @@ public sealed class EngineLifecycleTests
         var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
         var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("protocolClient.CreateEditorWorld()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("public bool CreateEditorWorld()", clientSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.CreateEditorWorldAsync(",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<bool> CreateEditorWorldAsync(",
+            clientSource,
+            StringComparison.Ordinal);
         Assert.Contains("CreateEditorWorld = new Empty()", clientSource, StringComparison.Ordinal);
         Assert.Contains("case ProtocolRequest::kCreateEditorWorld:", dispatcherSource, StringComparison.Ordinal);
         Assert.Contains("Sailor::App::CreateEditorWorld()", dispatcherSource, StringComparison.Ordinal);
@@ -626,7 +707,7 @@ public sealed class EngineLifecycleTests
         var schedulerSource = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.cpp");
 
         Assert.Contains(
-            "() => protocolClient.RequestAssetReload()",
+            "!await protocolClient.RequestAssetReloadAsync(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -737,11 +818,11 @@ public sealed class EngineLifecycleTests
             "EditorEngineProtocol.cpp");
 
         Assert.Contains(
-            "var state = protocolClient.GetAssetReloadState(",
+            "await protocolClient.GetAssetReloadStateAsync(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "public EngineProtocolAssetReloadState GetAssetReloadState(",
+            "public async Task<EngineProtocolAssetReloadState> GetAssetReloadStateAsync(",
             protocolClientSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -754,6 +835,45 @@ public sealed class EngineLifecycleTests
             "reloadState.SuccessfulGeneration ==",
             managedSource,
             StringComparison.Ordinal);
+
+        var requestReloadStart = managedSource.IndexOf(
+            "public async Task<bool> RequestAssetReloadAsync",
+            StringComparison.Ordinal);
+        var requestReloadEnd = managedSource.IndexOf(
+            "public async Task RefreshCurrentWorldAsync",
+            requestReloadStart,
+            StringComparison.Ordinal);
+        Assert.True(requestReloadStart >= 0);
+        Assert.True(requestReloadEnd > requestReloadStart);
+        var requestReloadBody =
+            managedSource[requestReloadStart..requestReloadEnd];
+        const string stateRead =
+            "await protocolClient.GetAssetReloadStateAsync(";
+        var initialStateRead = requestReloadBody.IndexOf(
+            stateRead,
+            StringComparison.Ordinal);
+        var publishTarget = requestReloadBody.IndexOf(
+            "ref targetReloadGeneration,",
+            initialStateRead,
+            StringComparison.Ordinal);
+        var postPublicationStateRead = requestReloadBody.IndexOf(
+            stateRead,
+            initialStateRead + stateRead.Length,
+            StringComparison.Ordinal);
+        var waitForEvent = requestReloadBody.IndexOf(
+            "return await completionSource.Task",
+            postPublicationStateRead,
+            StringComparison.Ordinal);
+        Assert.True(initialStateRead >= 0);
+        Assert.True(publishTarget > initialStateRead);
+        Assert.True(postPublicationStateRead > publishTarget);
+        Assert.True(waitForEvent > postPublicationStateRead);
+        Assert.Equal(
+            -1,
+            requestReloadBody.IndexOf(
+                stateRead,
+                postPublicationStateRead + stateRead.Length,
+                StringComparison.Ordinal));
 
         Assert.Contains("SAILOR_API bool ScanContentFolder();", registryHeader, StringComparison.Ordinal);
         Assert.Contains("m_assetReloadCompletedGeneration", nativeSource, StringComparison.Ordinal);
@@ -833,7 +953,7 @@ public sealed class EngineLifecycleTests
         var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
         Assert.Contains(
-            "yaml = protocolClient.SerializeWorkspaceCacheIdentity(",
+            "await protocolClient.SerializeWorkspaceCacheIdentityAsync(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -867,7 +987,7 @@ public sealed class EngineLifecycleTests
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
 
         Assert.Contains(
-            "protocolClient.Initialize(args);",
+            "() => protocolClient.InitializeAsync(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -933,11 +1053,23 @@ public sealed class EngineLifecycleTests
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var initialize = source.IndexOf("protocolClient.Initialize(args)", StringComparison.Ordinal);
-        var identity = source.IndexOf("ReadWorkspaceCacheIdentity(", initialize, StringComparison.Ordinal);
+        var initialize = source.IndexOf(
+            "() => protocolClient.InitializeAsync(",
+            StringComparison.Ordinal);
+        var identity = source.IndexOf(
+            "await ReadWorkspaceCacheIdentityAsync(",
+            initialize,
+            StringComparison.Ordinal);
         var cacheLoad = source.IndexOf("editorTypeCacheStore.Load(", identity, StringComparison.Ordinal);
         var cachedValidation = source.IndexOf("TryParseEditorTypes(", cacheLoad, StringComparison.Ordinal);
-        var liveCatalog = source.IndexOf("string serializedEditorTypes = SerializeEditorTypes(", cacheLoad, StringComparison.Ordinal);
+        var liveCatalog = source.IndexOf(
+            "string serializedEditorTypes =",
+            cacheLoad,
+            StringComparison.Ordinal);
+        var liveCatalogRead = source.IndexOf(
+            "await SerializeEditorTypesAsync(",
+            liveCatalog,
+            StringComparison.Ordinal);
         var liveValidation = source.IndexOf("TryParseEditorTypes(", liveCatalog, StringComparison.Ordinal);
         var livePublication = source.IndexOf("Volatile.Write(ref editorTypes, liveEditorTypes)", liveValidation, StringComparison.Ordinal);
         var cacheSave = source.IndexOf("editorTypeCacheStore.Save(", liveCatalog, StringComparison.Ordinal);
@@ -947,6 +1079,7 @@ public sealed class EngineLifecycleTests
         Assert.True(cacheLoad > identity);
         Assert.True(cachedValidation > cacheLoad);
         Assert.True(liveCatalog > cachedValidation);
+        Assert.True(liveCatalogRead > liveCatalog);
         Assert.True(liveCatalog > cacheLoad);
         Assert.True(liveValidation > liveCatalog);
         Assert.True(livePublication > liveValidation);
@@ -970,7 +1103,7 @@ public sealed class EngineLifecycleTests
             "EngineService.cs").ReplaceLineEndings("\n");
 
         var nativeStart = source.IndexOf(
-            "Task.Run(",
+            "await protocolClient.StartAsync(",
             source.IndexOf("initialized = true;", StringComparison.Ordinal),
             StringComparison.Ordinal);
         var waitUntilReady = source.IndexOf(
@@ -986,8 +1119,12 @@ public sealed class EngineLifecycleTests
             startMonitor,
             StringComparison.Ordinal);
         var liveCatalog = source.IndexOf(
-            "string serializedEditorTypes = SerializeEditorTypes(",
+            "string serializedEditorTypes =",
             startupOrder,
+            StringComparison.Ordinal);
+        var liveCatalogRead = source.IndexOf(
+            "await SerializeEditorTypesAsync(",
+            liveCatalog,
             StringComparison.Ordinal);
         var macBranch = source.IndexOf("#if MACCATALYST", liveCatalog, StringComparison.Ordinal);
         var mainThreadDispatch = source.IndexOf(
@@ -995,7 +1132,7 @@ public sealed class EngineLifecycleTests
             macBranch,
             StringComparison.Ordinal);
         var worldSerialization = source.IndexOf(
-            "() => SerializeWorld(",
+            "() => SerializeWorldAsync(",
             mainThreadDispatch,
             StringComparison.Ordinal);
 
@@ -1005,15 +1142,16 @@ public sealed class EngineLifecycleTests
         Assert.True(startupOrder >= 0);
         Assert.True(startupOrder > startMonitor);
         Assert.True(liveCatalog > startupOrder);
+        Assert.True(liveCatalogRead > liveCatalog);
         Assert.True(macBranch > liveCatalog);
         Assert.True(mainThreadDispatch > macBranch);
         Assert.True(worldSerialization > mainThreadDispatch);
         Assert.Contains(
-            "protocolClient.IsEngineMainThreadReady(\n                        cancellationToken)",
+            "protocolClient.IsEngineMainThreadReadyAsync(\n                        cancellationToken)",
             source,
             StringComparison.Ordinal);
         Assert.Contains(
-            "protocolClient.IsEngineRunning(\n                        cancellationToken)",
+            "protocolClient.IsEngineRunningAsync(\n                        cancellationToken)",
             source,
             StringComparison.Ordinal);
     }

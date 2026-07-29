@@ -25,6 +25,32 @@ moved across the process boundary. Before a native host is enabled for
 non-loopback traffic, it must also enforce the payload limit before buffering a
 complete WebSocket message.
 
+Managed protocol calls are asynchronous end to end. Waiting for a lane,
+connecting, sending, and receiving must use the corresponding asynchronous
+.NET APIs; normal RPC code must not block an editor or UI thread with
+`Wait`, `Result`, or `GetAwaiter().GetResult()`. Each transport lane still
+allows one in-flight request, while independent lanes may make progress
+concurrently. Cancelling the managed wait closes the affected lane but does not
+imply that an already admitted native mutation was rolled back.
+
+The local `Initialize` bootstrap is the only platform-affine exception: on
+macOS it executes on the MAUI/Cocoa main thread because `App::Initialize`
+creates the native `NSWindow`, `NSView`, and `CAMetalLayer`. Once that bootstrap
+has established the loopback host, all normal Editor RPC waits and WebSocket
+I/O are asynchronous.
+
+After WebSocket validation, regular Engine operations are serialized through
+the single Sailor `Editor` worker. An operation may synchronously marshal from
+that worker to the Engine main thread when its runtime contract requires main
+thread affinity. `Initialize`, `Start`, `Stop`, `Shutdown`, and
+`IsEngineRunning` do not enter the Editor worker. `GetExitCode` and
+`IsEngineMainThreadReady` also bypass it because those probes are valid before
+Scheduler creation and after shutdown. Initialization precedes Scheduler
+availability, and stop/shutdown must remain able to interrupt and drain a
+blocked regular operation. Shutdown waits for admitted operations to leave the
+Editor worker before destroying the Scheduler, so it must never run as an
+Editor-worker task and attempt to join itself.
+
 Compatibility rules:
 
 - Keep `protocol_version` at `1` for additive, wire-compatible changes.

@@ -5,10 +5,10 @@ namespace Editor.Tests;
 public sealed class LatestQueuedCommandTests
 {
     [Fact]
-    public void Enqueue_CoalescesPendingValuesToTheLatest()
+    public async Task Enqueue_CoalescesPendingValuesToTheLatest()
     {
         var queue = new LatestQueuedCommand<int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<int>();
 
         Assert.True(queue.Enqueue(
@@ -21,7 +21,7 @@ public sealed class LatestQueuedCommandTests
             value =>
             {
                 executed.Add(value);
-                return true;
+                return ValueTask.FromResult(true);
             }));
         Assert.True(queue.Enqueue(
             2,
@@ -33,54 +33,54 @@ public sealed class LatestQueuedCommandTests
             value =>
             {
                 executed.Add(value);
-                return true;
+                return ValueTask.FromResult(true);
             }));
 
         Assert.Single(scheduled);
-        Assert.True(scheduled[0]());
+        Assert.True(await scheduled[0]());
         Assert.Equal([2], executed);
     }
 
     [Fact]
-    public void Enqueue_PreservesValueArrivingDuringExecution()
+    public async Task Enqueue_PreservesValueArrivingDuringExecution()
     {
         var queue = new LatestQueuedCommand<int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<int>();
-        Func<Func<bool>, bool> schedule = action =>
+        Func<Func<ValueTask<bool>>, bool> schedule = action =>
         {
             scheduled.Add(action);
             return true;
         };
-        bool Execute(int value)
+        ValueTask<bool> Execute(int value)
         {
             executed.Add(value);
             if (value == 1)
             {
                 Assert.True(queue.Enqueue(2, schedule, Execute));
             }
-            return true;
+            return ValueTask.FromResult(true);
         }
 
         Assert.True(queue.Enqueue(1, schedule, Execute));
-        Assert.True(scheduled[0]());
+        Assert.True(await scheduled[0]());
         Assert.Equal(2, scheduled.Count);
-        Assert.True(scheduled[1]());
+        Assert.True(await scheduled[1]());
         Assert.Equal([1, 2], executed);
     }
 
     [Fact]
-    public void Enqueue_ValueArrivingDuringExecutionPrecedesLaterEdgeCommand()
+    public async Task Enqueue_ValueArrivingDuringExecutionPrecedesLaterEdgeCommand()
     {
         var queue = new LatestQueuedCommand<int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<string>();
-        bool Schedule(Func<bool> action)
+        bool Schedule(Func<ValueTask<bool>> action)
         {
             scheduled.Add(action);
             return true;
         }
-        bool Execute(int value)
+        ValueTask<bool> Execute(int value)
         {
             executed.Add($"value:{value}");
             if (value == 1)
@@ -89,44 +89,44 @@ public sealed class LatestQueuedCommandTests
                 Assert.True(Schedule(() =>
                 {
                     executed.Add("edge");
-                    return true;
+                    return ValueTask.FromResult(true);
                 }));
             }
-            return true;
+            return ValueTask.FromResult(true);
         }
 
         Assert.True(queue.Enqueue(1, Schedule, Execute));
-        Assert.True(scheduled[0]());
+        Assert.True(await scheduled[0]());
         Assert.Equal(3, scheduled.Count);
-        Assert.True(scheduled[1]());
-        Assert.True(scheduled[2]());
+        Assert.True(await scheduled[1]());
+        Assert.True(await scheduled[2]());
 
         Assert.Equal(["value:1", "value:2", "edge"], executed);
     }
 
     [Fact]
-    public void Reset_InvalidatesStaleScheduledWork()
+    public async Task Reset_InvalidatesStaleScheduledWork()
     {
         var queue = new LatestQueuedCommand<int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<int>();
-        bool Schedule(Func<bool> action)
+        bool Schedule(Func<ValueTask<bool>> action)
         {
             scheduled.Add(action);
             return true;
         }
-        bool Execute(int value)
+        ValueTask<bool> Execute(int value)
         {
             executed.Add(value);
-            return true;
+            return ValueTask.FromResult(true);
         }
 
         Assert.True(queue.Enqueue(1, Schedule, Execute));
         queue.Reset();
         Assert.True(queue.Enqueue(2, Schedule, Execute));
 
-        Assert.False(scheduled[0]());
-        Assert.True(scheduled[1]());
+        Assert.False(await scheduled[0]());
+        Assert.True(await scheduled[1]());
         Assert.Equal([2], executed);
     }
 
@@ -138,29 +138,29 @@ public sealed class LatestQueuedCommandTests
         Assert.False(queue.Enqueue(
             1,
             _ => false,
-            _ => true));
+            _ => ValueTask.FromResult(true)));
         Assert.False(queue.Enqueue(
             2,
             _ => false,
-            _ => true));
+            _ => ValueTask.FromResult(true)));
     }
 
     [Fact]
-    public void KeyedQueue_CoalescesEachViewportIndependently()
+    public async Task KeyedQueue_CoalescesEachViewportIndependently()
     {
         var queue = new KeyedLatestQueuedCommand<ulong, int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<int>();
 
-        bool Schedule(Func<bool> action)
+        bool Schedule(Func<ValueTask<bool>> action)
         {
             scheduled.Add(action);
             return true;
         }
-        bool Execute(int value)
+        ValueTask<bool> Execute(int value)
         {
             executed.Add(value);
-            return true;
+            return ValueTask.FromResult(true);
         }
 
         Assert.True(queue.Enqueue(1, 10, Schedule, Execute));
@@ -169,17 +169,20 @@ public sealed class LatestQueuedCommandTests
         Assert.True(queue.Enqueue(2, 21, Schedule, Execute));
 
         Assert.Equal(2, scheduled.Count);
-        Assert.All(scheduled, action => Assert.True(action()));
+        foreach (var action in scheduled)
+        {
+            Assert.True(await action());
+        }
         Assert.Equal([11, 21], executed);
     }
 
     [Fact]
-    public void KeyedQueue_ResetInvalidatesEveryPendingViewport()
+    public async Task KeyedQueue_ResetInvalidatesEveryPendingViewport()
     {
         var queue = new KeyedLatestQueuedCommand<ulong, int>();
-        var scheduled = new List<Func<bool>>();
+        var scheduled = new List<Func<ValueTask<bool>>>();
         var executed = new List<int>();
-        bool Schedule(Func<bool> action)
+        bool Schedule(Func<ValueTask<bool>> action)
         {
             scheduled.Add(action);
             return true;
@@ -192,7 +195,7 @@ public sealed class LatestQueuedCommandTests
             value =>
             {
                 executed.Add(value);
-                return true;
+                return ValueTask.FromResult(true);
             }));
         Assert.True(queue.Enqueue(
             2,
@@ -201,12 +204,15 @@ public sealed class LatestQueuedCommandTests
             value =>
             {
                 executed.Add(value);
-                return true;
+                return ValueTask.FromResult(true);
             }));
 
         queue.Reset();
 
-        Assert.All(scheduled, action => Assert.False(action()));
+        foreach (var action in scheduled)
+        {
+            Assert.False(await action());
+        }
         Assert.Empty(executed);
     }
 }

@@ -33,7 +33,11 @@ namespace Sailor
 		// RHI Threads are used for creating RHI resources 
 		// to decrease the num of RHIThreadContext that could lead to
 		// cache misses and extra consumed memory (ram and vram)
-		RHI = 3
+		RHI = 3,
+
+		// Serialized Editor protocol work. This is a dedicated worker,
+		// not part of the general-purpose Worker pool.
+		Editor = 4
 	};
 
 	namespace Tasks
@@ -140,10 +144,12 @@ namespace Sailor
 
 			SAILOR_API bool IsMainThread() const;
 			SAILOR_API bool IsRendererThread() const;
+			SAILOR_API bool IsEditorThread() const;
 			SAILOR_API bool HasThread(DWORD threadId) const;
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId.load(std::memory_order_acquire); }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
+			SAILOR_API DWORD GetEditorThreadId() const { return m_editorThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler();
@@ -174,6 +180,7 @@ namespace Sailor
 
 			std::atomic<DWORD> m_mainThreadId{ static_cast<DWORD>(-1) };
 			DWORD m_renderingThreadId = -1;
+			DWORD m_editorThreadId = -1;
 
 			// Task Synchronization primitives pool
 			concurrency::concurrent_queue<uint16_t> m_freeList{};

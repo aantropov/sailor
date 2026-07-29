@@ -1,5 +1,6 @@
 using SailorEditor.Commands;
 using SailorEditor.Services;
+using SailorEditor.Shell;
 using SailorEditor.Utility;
 using SailorEditor.Workflow;
 using SailorEngine;
@@ -336,7 +337,9 @@ namespace SailorEditor.Views
                 return contextMenu.CreateFlyout(new EditorContextMenuItem
                 {
                     Text = "New GameObject",
-                    Command = new Command(() => service.CreateGameObject())
+                    Command = CreateContextMenuCommand(
+                        () => service.CreateGameObjectAsync(),
+                        "Create GameObject")
                 });
             }
 
@@ -344,19 +347,68 @@ namespace SailorEditor.Views
                 new EditorContextMenuItem
                 {
                     Text = "New GameObject",
-                    Command = new Command(() => service.CreateGameObject(gameObject))
+                    Command = CreateContextMenuCommand(
+                        () => service.CreateGameObjectAsync(gameObject),
+                        "Create GameObject")
                 },
                 new EditorContextMenuItem
                 {
                     Text = "Rename",
-                    Command = new Command(async () => await RenameGameObject(gameObject))
+                    Command = CreateContextMenuCommand(
+                        () => RenameGameObject(gameObject),
+                        "Rename GameObject")
                 },
                 new EditorContextMenuItem
                 {
                     Text = "Remove",
                     IsDestructive = true,
-                    Command = new Command(() => service.RemoveGameObject(gameObject))
+                    Command = CreateContextMenuCommand(
+                        () => service.RemoveGameObjectAsync(gameObject),
+                        "Remove GameObject")
                 });
+        }
+
+        static Command CreateContextMenuCommand(
+            Func<Task> action,
+            string operation)
+        {
+            return new Command(
+                () => RunContextMenuAction(
+                    action,
+                    operation));
+        }
+
+        static void RunContextMenuAction(
+            Func<Task> action,
+            string operation)
+        {
+            _ = ExecuteContextMenuActionAsync(
+                action,
+                operation);
+        }
+
+        static async Task ExecuteContextMenuActionAsync(
+            Func<Task> action,
+            string operation)
+        {
+            try
+            {
+                await action();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{operation} failed: {ex}");
+                try
+                {
+                    MauiProgram.GetService<EditorShellHost>()
+                        .SetStatus($"{operation} failed: {ex.Message}");
+                }
+                catch (Exception statusException)
+                {
+                    Console.Error.WriteLine(
+                        $"Failed to publish hierarchy action error status: {statusException}");
+                }
+            }
         }
 
         async Task RenameGameObject(GameObject gameObject)
@@ -373,7 +425,9 @@ namespace SailorEditor.Views
                 return;
             }
 
-            service.RenameGameObject(gameObject, newName.Trim());
+            await service.RenameGameObjectAsync(
+                gameObject,
+                newName.Trim());
         }
     }
 }

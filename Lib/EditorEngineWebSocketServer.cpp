@@ -226,6 +226,9 @@ namespace
 				Sailor::Protocol::EditorEngineProtocolDependencies
 					dependencies{};
 				dependencies.m_bAllowInitialize = false;
+				dependencies.m_dispatchEditorOperation =
+					Sailor::Protocol::
+						DispatchEditorEngineProtocolOperationOnEditorThread;
 				status = Sailor::Protocol::InvokeEditorEngineProtocol(
 					reinterpret_cast<const uint8_t*>(message.str.data()),
 					static_cast<uint32_t>(message.str.size()),

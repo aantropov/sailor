@@ -49,6 +49,7 @@ namespace SailorEditor.Views
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
         readonly EditorViewportEventRevisionGate viewportEventRevisionGate = new();
         readonly UnifiedSettingsStore settingsStore;
+        readonly NativeViewportInputQueue nativeViewportInputQueue;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
         bool lifecycleSubscribed;
@@ -67,6 +68,10 @@ namespace SailorEditor.Views
             commandDispatcher = MauiProgram.GetService<ICommandDispatcher>();
             actionContextProvider = MauiProgram.GetService<IActionContextProvider>();
             inspectorPendingEditCoordinator = MauiProgram.GetService<InspectorPendingEditCoordinator>();
+            nativeViewportInputQueue = new NativeViewportInputQueue(
+                ProcessNativeViewportInputAsync,
+                exception => Console.WriteLine(
+                    $"[SceneView] Native viewport input failed: {exception}"));
             viewportTransformTarget = new EditorViewportTransformTarget(engineService, worldService);
             viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(engineService), EngineService.SceneViewportId);
             var shellState = MauiProgram.GetService<State.ShellState>();
@@ -128,72 +133,8 @@ namespace SailorEditor.Views
                         UpdateViewportIntegration();
                     }
                 };
-                nativeViewportHost.InputReceived += input =>
-                {
-                    var captured = input.Captured || isInputCaptured;
-
-                    if (input.Kind == NativeSceneViewportInputKind.PointerButton &&
-                        input.Button == 0 &&
-                        input.Pressed &&
-                        !inspectorPendingEditCoordinator.CommitPendingChanges())
-                    {
-                        Console.WriteLine("[SceneView] Ignored primary pointer press because pending Inspector changes could not be committed.");
-                        return;
-                    }
-
-                    if (input.Kind == NativeSceneViewportInputKind.Focus)
-                    {
-                        SetSceneFocus(input.Focused, sendRemoteFocus: false);
-                        if (!input.Focused)
-                        {
-                            isInputCaptured = false;
-                        }
-                    }
-                    else if (input.Kind == NativeSceneViewportInputKind.PointerButton)
-                    {
-                        if (input.Pressed)
-                        {
-                            SetSceneFocus(true, sendRemoteFocus: !isFocused);
-                            nativeViewportHost?.RequestInputFocus();
-                        }
-                        isInputCaptured = input.Captured;
-                        captured = input.Captured;
-                    }
-                    else if (input.Kind == NativeSceneViewportInputKind.Key)
-                    {
-                        SetSceneFocus(true, sendRemoteFocus: !isFocused);
-                    }
-                    else if (!isFocused && !isInputCaptured)
-                    {
-                        return;
-                    }
-
-                    if (input.Kind == NativeSceneViewportInputKind.Capture)
-                    {
-                        isInputCaptured = input.Captured;
-                        captured = input.Captured;
-                    }
-
-                    if (!isFocused && !captured && input.Kind != NativeSceneViewportInputKind.Focus)
-                    {
-                        return;
-                    }
-
-                    var remoteModifiers = (RemoteViewportInputModifier)input.Modifiers;
-                    var focused = input.Kind == NativeSceneViewportInputKind.Focus ? input.Focused : isFocused;
-                    viewportAdapter.SendInput(
-                        (RemoteViewportInputKind)input.Kind,
-                        input.PointerX,
-                        input.PointerY,
-                        input.WheelDeltaX,
-                        input.WheelDeltaY,
-                        input.KeyCode,
-                        input.Button,
-                        remoteModifiers,
-                        input.Pressed,
-                        focused,
-                        captured);
-                };
+                nativeViewportHost.InputReceived +=
+                    QueueNativeViewportInput;
 
                 NativeViewportContainer.Content = nativeViewportHost;
                 RequestNativeViewportLayout();
@@ -247,10 +188,119 @@ namespace SailorEditor.Views
             Unloaded += (sender, args) =>
             {
                 isRunning = false;
+                ResetNativeViewportInputQueue();
                 UnsubscribeFromEngineLifecycle();
                 focusCoordinator.ReleaseIfOwned();
                 viewportAdapter.Destroy();
             };
+        }
+
+        void QueueNativeViewportInput(
+            NativeSceneViewportInputEvent input)
+        {
+            if (!isRunning)
+            {
+                return;
+            }
+
+            nativeViewportInputQueue.Enqueue(input);
+        }
+
+        void ResetNativeViewportInputQueue()
+        {
+            nativeViewportInputQueue.Reset();
+            isInputCaptured = false;
+        }
+
+        async Task<NativeViewportInputDispatchResult> ProcessNativeViewportInputAsync(
+            NativeSceneViewportInputEvent input,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var captured = input.Captured || isInputCaptured;
+
+            if (input.Kind ==
+                    NativeSceneViewportInputKind.PointerButton &&
+                input.Button == 0 &&
+                input.Pressed)
+            {
+                var committed = await inspectorPendingEditCoordinator
+                    .CommitPendingChangesAsync(cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!committed)
+                {
+                    Console.WriteLine(
+                        "[SceneView] Ignored primary pointer gesture because pending Inspector changes could not be committed.");
+                    return NativeViewportInputDispatchResult
+                        .RejectPrimaryPointerGesture;
+                }
+            }
+
+            if (input.Kind == NativeSceneViewportInputKind.Focus)
+            {
+                SetSceneFocus(
+                    input.Focused,
+                    sendRemoteFocus: false);
+                if (!input.Focused)
+                {
+                    isInputCaptured = false;
+                }
+            }
+            else if (input.Kind ==
+                NativeSceneViewportInputKind.PointerButton)
+            {
+                if (input.Pressed)
+                {
+                    SetSceneFocus(
+                        true,
+                        sendRemoteFocus: !isFocused);
+                    nativeViewportHost?.RequestInputFocus();
+                }
+                isInputCaptured = input.Captured;
+                captured = input.Captured;
+            }
+            else if (input.Kind == NativeSceneViewportInputKind.Key)
+            {
+                SetSceneFocus(true, sendRemoteFocus: !isFocused);
+            }
+            else if (!isFocused && !isInputCaptured)
+            {
+                return NativeViewportInputDispatchResult.Forwarded;
+            }
+
+            if (input.Kind == NativeSceneViewportInputKind.Capture)
+            {
+                isInputCaptured = input.Captured;
+                captured = input.Captured;
+            }
+
+            if (!isFocused &&
+                !captured &&
+                input.Kind != NativeSceneViewportInputKind.Focus)
+            {
+                return NativeViewportInputDispatchResult.Forwarded;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var remoteModifiers =
+                (RemoteViewportInputModifier)input.Modifiers;
+            var focused =
+                input.Kind == NativeSceneViewportInputKind.Focus
+                    ? input.Focused
+                    : isFocused;
+            viewportAdapter.SendInput(
+                (RemoteViewportInputKind)input.Kind,
+                input.PointerX,
+                input.PointerY,
+                input.WheelDeltaX,
+                input.WheelDeltaY,
+                input.KeyCode,
+                input.Button,
+                remoteModifiers,
+                input.Pressed,
+                focused,
+                captured);
+            return NativeViewportInputDispatchResult.Forwarded;
         }
 
         void SubscribeToEngineLifecycle()
@@ -277,6 +327,7 @@ namespace SailorEditor.Views
         void OnEngineLifecycleStateChanged(EngineLifecycleState state)
         {
             viewportEventRevisionGate.Reset();
+            ResetNativeViewportInputQueue();
             if (state != EngineLifecycleState.Running || !isRunning)
                 return;
 
@@ -331,7 +382,8 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (!inspectorPendingEditCoordinator.CommitPendingChanges())
+            if (!await inspectorPendingEditCoordinator
+                    .CommitPendingChangesAsync())
             {
                 Console.WriteLine($"[SceneView] Rejected viewport selection revision {viewportEvent.Revision}: pending Inspector changes could not be committed.");
                 return;
@@ -382,7 +434,8 @@ namespace SailorEditor.Views
                 return;
             }
 
-            if (!inspectorPendingEditCoordinator.CommitPendingChanges())
+            if (!await inspectorPendingEditCoordinator
+                    .CommitPendingChangesAsync())
             {
                 Console.WriteLine($"[SceneView] Rejected viewport transform revision {viewportEvent.Revision}: pending Inspector changes could not be committed.");
                 return;

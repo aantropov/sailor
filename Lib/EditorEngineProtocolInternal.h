@@ -25,6 +25,13 @@ namespace Sailor::Protocol
 
 	struct EditorEngineProtocolDependencies
 	{
+		using FEditorEngineProtocolOperation = void (*)(void* context);
+		// Must return only after operation has completed. The protocol caller
+		// owns operationContext and synchronously consumes its response/error.
+		using FDispatchEditorEngineProtocolOperation = bool (*)(
+			void* dispatchContext,
+			FEditorEngineProtocolOperation operation,
+			void* operationContext);
 		using FPullEditorViewportEvents = uint32_t (*)(
 			void* context,
 			char** events,
@@ -37,8 +44,15 @@ namespace Sailor::Protocol
 		FLifecycleRoutine m_stop = nullptr;
 		FLifecycleRoutine m_shutdown = nullptr;
 		TEditorEngineProtocolLifecycleGate* m_lifecycleGate = nullptr;
+		void* m_editorDispatchContext = nullptr;
+		FDispatchEditorEngineProtocolOperation m_dispatchEditorOperation = nullptr;
 		bool m_bAllowInitialize = true;
 	};
+
+	bool DispatchEditorEngineProtocolOperationOnEditorThread(
+		void* dispatchContext,
+		EditorEngineProtocolDependencies::FEditorEngineProtocolOperation operation,
+		void* operationContext);
 
 	int32_t InvokeEditorEngineProtocol(
 		const uint8_t* requestData,

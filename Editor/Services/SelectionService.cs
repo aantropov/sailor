@@ -244,7 +244,21 @@ namespace SailorEditor.Services
             if (Volatile.Read(ref suppressRuntimeSelectionSync) != 0)
                 return;
 
-            MauiProgram.GetService<EngineService>().UpdateEditorSelection([SelectedInstanceId]);
+            _ = SyncEditorSelectionToRuntimeAsync();
+        }
+
+        async Task SyncEditorSelectionToRuntimeAsync()
+        {
+            try
+            {
+                await MauiProgram.GetService<EngineService>()
+                    .UpdateEditorSelectionAsync([SelectedInstanceId]);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[SelectionService] Failed to synchronize runtime selection: {exception.Message}");
+            }
         }
 
         static string? TryGetSelectionId(ObservableObject obj) => obj switch

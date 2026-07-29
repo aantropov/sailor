@@ -226,6 +226,34 @@ public class HistoryContractsTests
     }
 
     [Fact]
+    public async Task Dispatcher_UndoWaitsForActiveAsyncCommandAndPreservesItsHistory()
+    {
+        var history = new InMemoryUndoRedoHistory();
+        var dispatcher = new EditorCommandDispatcher(
+            new StubContextProvider(),
+            history);
+        var blocking = new BlockingExecuteCommand("Async edit");
+
+        var dispatch = dispatcher.DispatchAsync(
+            blocking,
+            new ActionContext());
+        await blocking.ExecuteStarted.WaitAsync(
+            TimeSpan.FromSeconds(5));
+
+        var undo = dispatcher.UndoAsync();
+        Assert.False(undo.IsCompleted);
+
+        blocking.ReleaseExecute();
+
+        Assert.True((await dispatch).Succeeded);
+        Assert.True(await undo);
+        Assert.False(blocking.IsApplied);
+        Assert.Equal(1, blocking.UndoCount);
+        Assert.Equal(0, history.UndoCount);
+        Assert.Equal(1, history.RedoCount);
+    }
+
+    [Fact]
     public async Task CompoundExecute_FailedChildRollsBackPriorChildrenAndCanRetryWithoutDoubleApply()
     {
         var operations = new List<string>();
@@ -521,6 +549,44 @@ public class HistoryContractsTests
         }
 
         public void ReleaseUndo() => _releaseUndo.TrySetResult(true);
+    }
+
+    private sealed class BlockingExecuteCommand(string description) :
+        IUndoableEditorCommand
+    {
+        readonly TaskCompletionSource<bool> _executeStarted =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        readonly TaskCompletionSource<bool> _releaseExecute =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string Name => description;
+        public string Description => description;
+        public bool IsApplied { get; private set; }
+        public int UndoCount { get; private set; }
+        public Task ExecuteStarted => _executeStarted.Task;
+        public bool CanExecute(ActionContext context) => !IsApplied;
+
+        public async Task<CommandResult> ExecuteAsync(
+            ActionContext context,
+            CancellationToken cancellationToken = default)
+        {
+            _executeStarted.TrySetResult(true);
+            await _releaseExecute.Task.WaitAsync(cancellationToken);
+            IsApplied = true;
+            return CommandResult.Success();
+        }
+
+        public ValueTask<CommandResult> UndoAsync(
+            ActionContext context,
+            CancellationToken cancellationToken = default)
+        {
+            UndoCount++;
+            IsApplied = false;
+            return ValueTask.FromResult(CommandResult.Success());
+        }
+
+        public void ReleaseExecute() =>
+            _releaseExecute.TrySetResult(true);
     }
 
     private sealed class StateTrackingCommand(string description) : IUndoableEditorCommand

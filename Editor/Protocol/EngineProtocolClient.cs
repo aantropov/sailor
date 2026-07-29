@@ -45,12 +45,14 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             throw new ArgumentNullException(nameof(transport));
     }
 
-    internal EngineProtocolClient(EngineProtocolInvokeDelegate invoke)
+    internal EngineProtocolClient(EngineProtocolInvokeAsyncDelegate invoke)
         : this(new DelegateEngineProtocolTransport(invoke))
     {
     }
 
-    public void Initialize(IEnumerable<string> arguments)
+    public async Task InitializeAsync(
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
@@ -70,62 +72,82 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         }
 
         RequireResult<Empty>(
-            Send(new ProtocolRequest { Initialize = initialize }).EmptyResult,
+            (await SendAsync(
+                    new ProtocolRequest { Initialize = initialize },
+                    cancellationToken)
+                .ConfigureAwait(false)).EmptyResult,
             nameof(ProtocolRequest.Initialize));
     }
 
-    public void Start(CancellationToken cancellationToken = default)
+    public async Task StartAsync(
+        CancellationToken cancellationToken = default)
         => RequireEmpty(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { Start = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.Start));
 
-    public void Stop()
-        => RequireEmpty(Send(new ProtocolRequest { Stop = new Empty() }), nameof(ProtocolRequest.Stop));
+    public async Task StopAsync(
+        CancellationToken cancellationToken = default)
+        => RequireEmpty(
+            await SendAsync(
+                    new ProtocolRequest { Stop = new Empty() },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.Stop));
 
-    public void Shutdown()
+    public async Task ShutdownAsync(
+        CancellationToken cancellationToken = default)
     {
         RequireEmpty(
-            Send(new ProtocolRequest { Shutdown = new Empty() }),
+            await SendAsync(
+                    new ProtocolRequest { Shutdown = new Empty() },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.Shutdown));
         if (transport is ILocalEngineProtocolTransport localTransport)
         {
-            localTransport.CompleteShutdown(shutdownEngine: false);
+            await localTransport.CompleteShutdownAsync(
+                    shutdownEngine: false)
+                .ConfigureAwait(false);
         }
     }
 
-    internal void RequestLocalStopFallback()
+    internal Task RequestLocalStopFallbackAsync()
     {
         if (transport is ILocalEngineProtocolTransport localTransport)
         {
-            localTransport.RequestStopFallback();
+            return localTransport.RequestStopFallbackAsync();
         }
+        return Task.CompletedTask;
     }
 
-    internal void CompleteLocalShutdownFallback()
+    internal Task CompleteLocalShutdownFallbackAsync()
     {
         if (transport is ILocalEngineProtocolTransport localTransport)
         {
-            localTransport.CompleteShutdown(shutdownEngine: true);
+            return localTransport.CompleteShutdownAsync(
+                shutdownEngine: true);
         }
+        return Task.CompletedTask;
     }
 
-    public bool RequestAssetReload(
+    public async Task<bool> RequestAssetReloadAsync(
         CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { RequestAssetReload = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.RequestAssetReload));
 
-    public EngineProtocolAssetReloadState GetAssetReloadState(
+    public async Task<EngineProtocolAssetReloadState> GetAssetReloadStateAsync(
         CancellationToken cancellationToken = default)
     {
         var result = RequireResult<AssetReloadStateResult>(
-            Send(
-                new ProtocolRequest { GetAssetReloadState = new Empty() },
-                cancellationToken).AssetReloadStateResult,
+            (await SendAsync(
+                    new ProtocolRequest { GetAssetReloadState = new Empty() },
+                    cancellationToken)
+                .ConfigureAwait(false)).AssetReloadStateResult,
             nameof(ProtocolRequest.GetAssetReloadState));
         return new EngineProtocolAssetReloadState(
             result.Available,
@@ -134,121 +156,151 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             result.SuccessfulGeneration);
     }
 
-    public int GetExitCode(
+    public async Task<int> GetExitCodeAsync(
         CancellationToken cancellationToken = default)
         => RequireResult<Int32Result>(
-            Send(
-                new ProtocolRequest { GetExitCode = new Empty() },
-                cancellationToken).Int32Result,
+            (await SendAsync(
+                    new ProtocolRequest { GetExitCode = new Empty() },
+                    cancellationToken)
+                .ConfigureAwait(false)).Int32Result,
             nameof(ProtocolRequest.GetExitCode)).Value;
 
-    public bool IsEngineMainThreadReady(
+    public async Task<bool> IsEngineMainThreadReadyAsync(
         CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                IsEngineMainThreadReady = new Empty()
-            }, cancellationToken),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        IsEngineMainThreadReady = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.IsEngineMainThreadReady));
 
-    public bool IsEngineRunning(
+    public async Task<bool> IsEngineRunningAsync(
         CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { IsEngineRunning = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.IsEngineRunning));
 
-    public string[] GetMessages(
+    public async Task<string[]> GetMessagesAsync(
         uint maxCount,
         CancellationToken cancellationToken = default)
         => RequireResult<StringListResult>(
-            Send(new ProtocolRequest
-            {
-                GetMessages = new CountRequest { MaxCount = maxCount }
-            }, cancellationToken).StringListResult,
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetMessages =
+                            new CountRequest { MaxCount = maxCount }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).StringListResult,
             nameof(ProtocolRequest.GetMessages)).Values.ToArray();
 
-    public string SerializeCurrentWorld(
+    public async Task<string> SerializeCurrentWorldAsync(
         CancellationToken cancellationToken = default)
         => ReadString(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { SerializeCurrentWorld = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.SerializeCurrentWorld));
 
-    public string SerializeEngineTypes(
+    public async Task<string> SerializeEngineTypesAsync(
         CancellationToken cancellationToken = default)
         => ReadString(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { SerializeEngineTypes = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.SerializeEngineTypes));
 
-    public string SerializeEditorTypes(
+    public async Task<string> SerializeEditorTypesAsync(
         CancellationToken cancellationToken = default)
         => ReadString(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { SerializeEditorTypes = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.SerializeEditorTypes));
 
-    public string SerializeWorkspaceCacheIdentity(
+    public async Task<string> SerializeWorkspaceCacheIdentityAsync(
         CancellationToken cancellationToken = default)
         => ReadString(
-            Send(
+            await SendAsync(
                 new ProtocolRequest { SerializeWorkspaceCacheIdentity = new Empty() },
-                cancellationToken),
+                cancellationToken).ConfigureAwait(false),
             nameof(ProtocolRequest.SerializeWorkspaceCacheIdentity));
 
-    public bool LoadEditorWorld(string fileId)
+    public async Task<bool> LoadEditorWorldAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                LoadEditorWorld = new FileIdRequest
-                {
-                    FileId = ValidateString(fileId, nameof(fileId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        LoadEditorWorld = new FileIdRequest
+                        {
+                            FileId = ValidateString(fileId, nameof(fileId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.LoadEditorWorld));
 
-    public bool CreateEditorWorld()
+    public async Task<bool> CreateEditorWorldAsync(
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest { CreateEditorWorld = new Empty() }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CreateEditorWorld = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.CreateEditorWorld));
 
-    public void SetViewport(
+    public async Task SetViewportAsync(
         uint windowPosX,
         uint windowPosY,
         uint width,
         uint height,
         CancellationToken cancellationToken = default)
         => RequireEmpty(
-            Send(new ProtocolRequest
-            {
-                SetViewport = new ViewportRectRequest
-                {
-                    WindowPosX = windowPosX,
-                    WindowPosY = windowPosY,
-                    Width = width,
-                    Height = height
-                }
-            }, cancellationToken),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetViewport = new ViewportRectRequest
+                        {
+                            WindowPosX = windowPosX,
+                            WindowPosY = windowPosY,
+                            Width = width,
+                            Height = height
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.SetViewport));
 
-    public void SetEditorRenderTargetSize(uint width, uint height)
+    public async Task SetEditorRenderTargetSizeAsync(
+        uint width,
+        uint height,
+        CancellationToken cancellationToken = default)
         => RequireEmpty(
-            Send(new ProtocolRequest
-            {
-                SetEditorRenderTargetSize = new SailorEditor.Protocol.Generated.SizeRequest
-                {
-                    Width = width,
-                    Height = height
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorRenderTargetSize =
+                            new SailorEditor.Protocol.Generated.SizeRequest
+                            {
+                                Width = width,
+                                Height = height
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.SetEditorRenderTargetSize));
 
-    public bool UpsertRemoteViewport(
+    public async Task<bool> UpsertRemoteViewportAsync(
         ulong viewportId,
         uint windowPosX,
         uint windowPosY,
@@ -258,70 +310,114 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         bool focused,
         CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                UpsertRemoteViewport = new RemoteViewportRequest
-                {
-                    ViewportId = viewportId,
-                    WindowPosX = windowPosX,
-                    WindowPosY = windowPosY,
-                    Width = width,
-                    Height = height,
-                    Visible = visible,
-                    Focused = focused
-                }
-            }, cancellationToken),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        UpsertRemoteViewport = new RemoteViewportRequest
+                        {
+                            ViewportId = viewportId,
+                            WindowPosX = windowPosX,
+                            WindowPosY = windowPosY,
+                            Width = width,
+                            Height = height,
+                            Visible = visible,
+                            Focused = focused
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.UpsertRemoteViewport));
 
-    public bool DestroyRemoteViewport(ulong viewportId)
+    public async Task<bool> DestroyRemoteViewportAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                DestroyRemoteViewport = new ViewportIdRequest { ViewportId = viewportId }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        DestroyRemoteViewport =
+                            new ViewportIdRequest
+                            {
+                                ViewportId = viewportId
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.DestroyRemoteViewport));
 
-    public uint GetRemoteViewportState(ulong viewportId)
+    public async Task<uint> GetRemoteViewportStateAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
         => RequireResult<UInt32Result>(
-            Send(new ProtocolRequest
-            {
-                GetRemoteViewportState = new ViewportIdRequest { ViewportId = viewportId }
-            }).Uint32Result,
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetRemoteViewportState =
+                            new ViewportIdRequest
+                            {
+                                ViewportId = viewportId
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).Uint32Result,
             nameof(ProtocolRequest.GetRemoteViewportState)).Value;
 
-    public string GetRemoteViewportDiagnostics(ulong viewportId)
+    public async Task<string> GetRemoteViewportDiagnosticsAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
         => ReadString(
-            Send(new ProtocolRequest
-            {
-                GetRemoteViewportDiagnostics = new ViewportIdRequest { ViewportId = viewportId }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetRemoteViewportDiagnostics =
+                            new ViewportIdRequest
+                            {
+                                ViewportId = viewportId
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.GetRemoteViewportDiagnostics));
 
-    public bool RetryRemoteViewport(ulong viewportId)
+    public async Task<bool> RetryRemoteViewportAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                RetryRemoteViewport = new ViewportIdRequest { ViewportId = viewportId }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RetryRemoteViewport =
+                            new ViewportIdRequest
+                            {
+                                ViewportId = viewportId
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.RetryRemoteViewport));
 
-    public bool SetRemoteViewportMacHostHandle(
+    public async Task<bool> SetRemoteViewportMacHostHandleAsync(
         ulong viewportId,
         uint hostHandleKind,
-        ulong hostHandleValue)
+        ulong hostHandleValue,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                SetRemoteViewportMacHostHandle = new RemoteViewportHostRequest
-                {
-                    ViewportId = viewportId,
-                    HostHandleKind = hostHandleKind,
-                    HostHandleValue = hostHandleValue
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetRemoteViewportMacHostHandle =
+                            new RemoteViewportHostRequest
+                            {
+                                ViewportId = viewportId,
+                                HostHandleKind = hostHandleKind,
+                                HostHandleValue = hostHandleValue
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.SetRemoteViewportMacHostHandle));
 
-    public bool SendRemoteViewportInput(
+    public async Task<bool> SendRemoteViewportInputAsync(
         ulong viewportId,
         uint kind,
         float pointerX,
@@ -333,172 +429,264 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         uint modifiers,
         bool pressed,
         bool focused,
-        bool captured)
+        bool captured,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                SendRemoteViewportInput = new RemoteViewportInputRequest
-                {
-                    ViewportId = viewportId,
-                    Kind = kind,
-                    PointerX = pointerX,
-                    PointerY = pointerY,
-                    WheelDeltaX = wheelDeltaX,
-                    WheelDeltaY = wheelDeltaY,
-                    KeyCode = keyCode,
-                    Button = button,
-                    Modifiers = modifiers,
-                    Pressed = pressed,
-                    Focused = focused,
-                    Captured = captured
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SendRemoteViewportInput =
+                            new RemoteViewportInputRequest
+                            {
+                                ViewportId = viewportId,
+                                Kind = kind,
+                                PointerX = pointerX,
+                                PointerY = pointerY,
+                                WheelDeltaX = wheelDeltaX,
+                                WheelDeltaY = wheelDeltaY,
+                                KeyCode = keyCode,
+                                Button = button,
+                                Modifiers = modifiers,
+                                Pressed = pressed,
+                                Focused = focused,
+                                Captured = captured
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.SendRemoteViewportInput));
 
-    public IReadOnlyList<ViewportEvent> PullEditorViewportEvents(
+    public async Task<IReadOnlyList<ViewportEvent>> PullEditorViewportEventsAsync(
         uint maxCount,
         CancellationToken cancellationToken = default)
         => RequireResult<ViewportEventBatchResult>(
-            Send(new ProtocolRequest
-            {
-                PullEditorViewportEvents = new CountRequest { MaxCount = maxCount }
-            }, cancellationToken).ViewportEventBatchResult,
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        PullEditorViewportEvents =
+                            new CountRequest { MaxCount = maxCount }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).ViewportEventBatchResult,
             nameof(ProtocolRequest.PullEditorViewportEvents)).Events.ToArray();
 
-    public ulong GetEditorManagedMutationRevision(uint kind, string instanceId)
+    public async Task<ulong> GetEditorManagedMutationRevisionAsync(
+        uint kind,
+        string instanceId,
+        CancellationToken cancellationToken = default)
         => RequireResult<UInt64Result>(
-            Send(new ProtocolRequest
-            {
-                GetEditorManagedMutationRevision = new ManagedMutationRevisionRequest
-                {
-                    Kind = kind,
-                    InstanceId = ValidateString(instanceId, nameof(instanceId))
-                }
-            }).Uint64Result,
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetEditorManagedMutationRevision =
+                            new ManagedMutationRevisionRequest
+                            {
+                                Kind = kind,
+                                InstanceId = ValidateString(
+                                    instanceId,
+                                    nameof(instanceId))
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).Uint64Result,
             nameof(ProtocolRequest.GetEditorManagedMutationRevision)).Value;
 
-    public bool UpdateObject(string instanceId, string yamlChanges)
+    public async Task<bool> UpdateObjectAsync(
+        string instanceId,
+        string yamlChanges,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                UpdateObject = new UpdateObjectRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId)),
-                    YamlChanges = ValidateString(yamlChanges, nameof(yamlChanges))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        UpdateObject = new UpdateObjectRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId)),
+                            YamlChanges = ValidateString(
+                                yamlChanges,
+                                nameof(yamlChanges))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.UpdateObject));
 
-    public bool ReparentObject(
+    public async Task<bool> ReparentObjectAsync(
         string instanceId,
         string parentInstanceId,
-        bool keepWorldTransform)
+        bool keepWorldTransform,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                ReparentObject = new ReparentObjectRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId)),
-                    ParentInstanceId = ValidateString(parentInstanceId, nameof(parentInstanceId)),
-                    KeepWorldTransform = keepWorldTransform
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        ReparentObject = new ReparentObjectRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId)),
+                            ParentInstanceId = ValidateString(
+                                parentInstanceId,
+                                nameof(parentInstanceId)),
+                            KeepWorldTransform = keepWorldTransform
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.ReparentObject));
 
-    public EngineProtocolCreationResult CreateGameObject(
+    public async Task<EngineProtocolCreationResult> CreateGameObjectAsync(
         string parentInstanceId,
-        string preferredInstanceId)
+        string preferredInstanceId,
+        CancellationToken cancellationToken = default)
         => ReadCreation(
-            Send(new ProtocolRequest
-            {
-                CreateGameObject = new CreateGameObjectRequest
-                {
-                    ParentInstanceId = ValidateString(parentInstanceId, nameof(parentInstanceId)),
-                    PreferredInstanceId = ValidateString(
-                        preferredInstanceId,
-                        nameof(preferredInstanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CreateGameObject = new CreateGameObjectRequest
+                        {
+                            ParentInstanceId = ValidateString(
+                                parentInstanceId,
+                                nameof(parentInstanceId)),
+                            PreferredInstanceId = ValidateString(
+                                preferredInstanceId,
+                                nameof(preferredInstanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.CreateGameObject));
 
-    public bool DestroyObject(string instanceId)
+    public async Task<bool> DestroyObjectAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                DestroyObject = new InstanceIdRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        DestroyObject = new InstanceIdRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.DestroyObject));
 
-    public bool ResetComponentToDefaults(string instanceId)
+    public async Task<bool> ResetComponentToDefaultsAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                ResetComponentToDefaults = new InstanceIdRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        ResetComponentToDefaults = new InstanceIdRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.ResetComponentToDefaults));
 
-    public EngineProtocolCreationResult AddComponent(
+    public async Task<EngineProtocolCreationResult> AddComponentAsync(
         string instanceId,
         string componentTypeName,
-        string preferredInstanceId)
+        string preferredInstanceId,
+        CancellationToken cancellationToken = default)
         => ReadCreation(
-            Send(new ProtocolRequest
-            {
-                AddComponent = new AddComponentRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId)),
-                    ComponentTypeName = ValidateString(
-                        componentTypeName,
-                        nameof(componentTypeName)),
-                    PreferredInstanceId = ValidateString(
-                        preferredInstanceId,
-                        nameof(preferredInstanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        AddComponent = new AddComponentRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId)),
+                            ComponentTypeName = ValidateString(
+                                componentTypeName,
+                                nameof(componentTypeName)),
+                            PreferredInstanceId = ValidateString(
+                                preferredInstanceId,
+                                nameof(preferredInstanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.AddComponent));
 
-    public bool RemoveComponent(string instanceId)
+    public async Task<bool> RemoveComponentAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                RemoveComponent = new InstanceIdRequest
-                {
-                    InstanceId = ValidateString(instanceId, nameof(instanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RemoveComponent = new InstanceIdRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.RemoveComponent));
 
-    public bool InstantiatePrefab(string fileId, string parentInstanceId)
+    public async Task<bool> InstantiatePrefabAsync(
+        string fileId,
+        string parentInstanceId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                InstantiatePrefab = new InstantiatePrefabRequest
-                {
-                    FileId = ValidateString(fileId, nameof(fileId)),
-                    ParentInstanceId = ValidateString(parentInstanceId, nameof(parentInstanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        InstantiatePrefab = new InstantiatePrefabRequest
+                        {
+                            FileId = ValidateString(
+                                fileId,
+                                nameof(fileId)),
+                            ParentInstanceId = ValidateString(
+                                parentInstanceId,
+                                nameof(parentInstanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefab));
 
-    public bool InstantiatePrefabFromYaml(string prefabYaml, string parentInstanceId)
+    public async Task<bool> InstantiatePrefabFromYamlAsync(
+        string prefabYaml,
+        string parentInstanceId,
+        CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                InstantiatePrefabFromYaml = new InstantiatePrefabFromYamlRequest
-                {
-                    PrefabYaml = ValidateString(prefabYaml, nameof(prefabYaml)),
-                    ParentInstanceId = ValidateString(parentInstanceId, nameof(parentInstanceId))
-                }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        InstantiatePrefabFromYaml =
+                            new InstantiatePrefabFromYamlRequest
+                            {
+                                PrefabYaml = ValidateString(
+                                    prefabYaml,
+                                    nameof(prefabYaml)),
+                                ParentInstanceId = ValidateString(
+                                    parentInstanceId,
+                                    nameof(parentInstanceId))
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefabFromYaml));
 
-    public bool SetEditorSelection(IEnumerable<string> instanceIds)
+    public async Task<bool> SetEditorSelectionAsync(
+        IEnumerable<string> instanceIds,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(instanceIds);
 
@@ -509,19 +697,31 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         }
 
         return ReadBool(
-            Send(new ProtocolRequest { SetEditorSelection = selection }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorSelection = selection
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.SetEditorSelection));
     }
 
-    public void ShowMainWindow(bool show)
+    public async Task ShowMainWindowAsync(
+        bool show,
+        CancellationToken cancellationToken = default)
         => RequireEmpty(
-            Send(new ProtocolRequest
-            {
-                ShowMainWindow = new ShowMainWindowRequest { Show = show }
-            }),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        ShowMainWindow =
+                            new ShowMainWindowRequest { Show = show }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.ShowMainWindow));
 
-    public bool RenderPathTracedImage(
+    public async Task<bool> RenderPathTracedImageAsync(
         string outputPath,
         string instanceId,
         uint height,
@@ -529,20 +729,28 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         uint maxBounces,
         CancellationToken cancellationToken = default)
         => ReadBool(
-            Send(new ProtocolRequest
-            {
-                RenderPathTracedImage = new RenderPathTracedImageRequest
-                {
-                    OutputPath = ValidateString(outputPath, nameof(outputPath)),
-                    InstanceId = ValidateString(instanceId, nameof(instanceId)),
-                    Height = height,
-                    SamplesPerPixel = samplesPerPixel,
-                    MaxBounces = maxBounces
-                }
-            }, cancellationToken),
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        RenderPathTracedImage =
+                            new RenderPathTracedImageRequest
+                            {
+                                OutputPath = ValidateString(
+                                    outputPath,
+                                    nameof(outputPath)),
+                                InstanceId = ValidateString(
+                                    instanceId,
+                                    nameof(instanceId)),
+                                Height = height,
+                                SamplesPerPixel = samplesPerPixel,
+                                MaxBounces = maxBounces
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
             nameof(ProtocolRequest.RenderPathTracedImage));
 
-    internal ProtocolResponse Send(
+    internal async Task<ProtocolResponse> SendAsync(
         ProtocolRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -569,7 +777,10 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         if (request.CommandCase == ProtocolRequest.CommandOneofCase.Initialize &&
             transport is ILocalEngineProtocolTransport localTransport)
         {
-            localTransport.Initialize(requestData);
+            await localTransport.InitializeAsync(
+                    requestData,
+                    cancellationToken)
+                .ConfigureAwait(false);
             response = new ProtocolResponse
             {
                 ProtocolVersion = ProtocolVersion,
@@ -580,10 +791,11 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         }
         else
         {
-            var responseBytes = transport.Invoke(
-                requestData,
-                GetInvocationKind(request.CommandCase),
-                cancellationToken);
+            var responseBytes = await transport.InvokeAsync(
+                    requestData,
+                    GetInvocationKind(request.CommandCase),
+                    cancellationToken)
+                .ConfigureAwait(false);
             if (responseBytes.Length == 0 ||
                 responseBytes.Length > MaxPayloadSize)
             {
@@ -708,14 +920,5 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 
     public void Dispose() => transport.Dispose();
 
-    public ValueTask DisposeAsync()
-        => transport is IAsyncDisposable asyncTransport
-            ? asyncTransport.DisposeAsync()
-            : DisposeSynchronouslyAsync();
-
-    ValueTask DisposeSynchronouslyAsync()
-    {
-        transport.Dispose();
-        return ValueTask.CompletedTask;
-    }
+    public ValueTask DisposeAsync() => transport.DisposeAsync();
 }

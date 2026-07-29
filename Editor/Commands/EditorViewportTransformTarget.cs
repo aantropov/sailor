@@ -7,21 +7,29 @@ internal sealed class EditorViewportTransformTarget(
     EngineService engineService,
     WorldService worldService) : IAlreadyAppliedTransformTarget
 {
-    public bool ApplyLocal(string instanceId, string yaml)
+    public Task<bool> ApplyLocalAsync(
+        string instanceId,
+        string yaml,
+        CancellationToken cancellationToken = default)
     {
         var id = new InstanceId(instanceId);
         engineService.InvalidateQueuedWorldSnapshots();
-        return EditorViewportTransformApplication.ApplyAlreadyCommitted(
+        return EditorViewportTransformApplication.ApplyAlreadyCommittedAsync(
             () => worldService.ApplyGameObjectYamlLocal(id, yaml),
-            engineService.RefreshCurrentWorld);
+            engineService.RefreshCurrentWorldAsync,
+            cancellationToken);
     }
 
-    public bool CommitAndApplyLocal(string instanceId, string yaml)
+    public Task<bool> CommitAndApplyLocalAsync(
+        string instanceId,
+        string yaml,
+        CancellationToken cancellationToken = default)
     {
         var id = new InstanceId(instanceId);
-        return EditorViewportTransformApplication.CommitAndApply(
-            () => engineService.CommitChanges(id, yaml),
+        return EditorViewportTransformApplication.CommitAndApplyAsync(
+            token => engineService.CommitChangesAsync(id, yaml, token),
             () => worldService.ApplyGameObjectYamlLocal(id, yaml),
-            engineService.RefreshCurrentWorld);
+            engineService.RefreshCurrentWorldAsync,
+            cancellationToken);
     }
 }

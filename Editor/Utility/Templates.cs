@@ -24,7 +24,19 @@ static class Templates
     static void CommitInspectorBindingContext(object? bindingContext)
     {
         if (bindingContext is IInspectorEditable editable && editable.HasPendingInspectorChanges)
-            editable.CommitInspectorChanges();
+            _ = CommitInspectorBindingContextAsync(editable);
+    }
+
+    static async Task CommitInspectorBindingContextAsync(IInspectorEditable editable)
+    {
+        try
+        {
+            await editable.CommitInspectorChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Inspector commit failed: {ex}");
+        }
     }
 
     static void ScheduleInspectorCommit(Entry entry)
@@ -32,14 +44,14 @@ static class Templates
         if (entry.BindingContext is not IInspectorEditable editable)
             return;
 
-        entry.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), () =>
+        entry.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), async () =>
         {
             if (!editable.HasPendingInspectorChanges)
                 return;
 
             try
             {
-                editable.CommitInspectorChanges();
+                await editable.CommitInspectorChangesAsync();
             }
             catch (Exception ex)
             {

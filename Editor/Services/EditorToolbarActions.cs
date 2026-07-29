@@ -17,7 +17,7 @@ namespace SailorEditor.Services
 
             if (selected is IInspectorEditable editable && editable.HasPendingInspectorChanges)
             {
-                if (!editable.CommitInspectorChanges())
+                if (!await editable.CommitInspectorChangesAsync())
                 {
                     await DisplayStatus("Save Scene", "Inspector changes could not be committed.");
                     return;
@@ -71,21 +71,27 @@ namespace SailorEditor.Services
             return MauiProgram.GetService<ICommandHistoryService>().RedoAsync(new CommandOrigin(CommandOriginKind.UI, "ToolbarRedo"));
         }
 
-        public void RunWorld(bool debug)
+        public async Task RunWorldAsync(
+            bool debug,
+            CancellationToken cancellationToken = default)
         {
-            var worldService = MauiProgram.GetService<WorldService>();
             var engineService = MauiProgram.GetService<EngineService>();
 
-            Task.Run(() =>
-            {
-                var launchContext = engineService.GetLaunchContext();
-                string world = worldService.SerializeCurrentWorld();
-                Directory.CreateDirectory(launchContext.CacheDirectory);
+            var launchContext = engineService.GetLaunchContext();
+            var world =
+                await engineService.SerializeCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(launchContext.CacheDirectory);
 
-                File.WriteAllText(launchContext.TempWorldFilePath, world);
+            await File.WriteAllTextAsync(
+                launchContext.TempWorldFilePath,
+                world,
+                cancellationToken).ConfigureAwait(false);
 
-                engineService.RunWorld(launchContext.TempWorldRuntimePath, debug, launchContext);
-            });
+            engineService.RunWorld(
+                launchContext.TempWorldRuntimePath,
+                debug,
+                launchContext);
         }
 
         public async Task ExportPathTracedImageAsync(bool selectedOnly)
@@ -121,10 +127,10 @@ namespace SailorEditor.Services
             var mode = selectedOnly ? "selection" : "scene";
             var outputPath = Path.Combine(outputDir, $"pathtrace_{mode}_{DateTime.Now:yyyyMMdd_HHmmss}.png");
 
-            bool exported = await Task.Run(() =>
-                engineService.ExportPathTracedImage(
+            bool exported =
+                await engineService.ExportPathTracedImageAsync(
                     outputPath,
-                    targetInstance));
+                    targetInstance);
             string message = exported ? $"Saved: {outputPath}" : "Path tracing export failed. Check Console panel for details.";
 
             await DisplayStatus("Path Tracing", message);

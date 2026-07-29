@@ -52,7 +52,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void WebSocketTransport_PreservesCallerCancellation()
+    public async Task WebSocketTransport_PreservesCallerCancellation()
     {
         using var transport =
             new ClientWebSocketEngineProtocolTransport(
@@ -61,8 +61,8 @@ public sealed class EngineProtocolClientTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
 
-        var exception = Assert.Throws<OperationCanceledException>(() =>
-            transport.Invoke(
+        var exception = await Assert.ThrowsAsync<OperationCanceledException>(
+            () => transport.InvokeAsync(
                 [1],
                 EngineProtocolInvocationKind.Request,
                 cancellation.Token));
@@ -71,39 +71,17 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public async Task WebSocketTransport_DisposeDoesNotWaitForeverForHeldLaneGate()
+    public async Task WebSocketTransport_DisposeIsNonBlockingAndAsyncDisposeDrains()
     {
         var transport =
             new ClientWebSocketEngineProtocolTransport(
                 new Uri("ws://127.0.0.1:4000/sailor/editor/v1"),
                 ValidAuthorizationToken);
-        var laneField = typeof(ClientWebSocketEngineProtocolTransport)
-            .GetField(
-                "backgroundLane",
-                System.Reflection.BindingFlags.Instance |
-                    System.Reflection.BindingFlags.NonPublic);
-        Assert.NotNull(laneField);
-        var lane = laneField.GetValue(transport);
-        Assert.NotNull(lane);
-        var gateProperty = lane.GetType().GetProperty("Gate");
-        Assert.NotNull(gateProperty);
-        var gate = Assert.IsType<SemaphoreSlim>(
-            gateProperty.GetValue(lane));
-        Assert.True(gate.Wait(0));
 
-        var disposeTask = Task.CompletedTask;
-        try
-        {
-            disposeTask = Task.Run(transport.Dispose);
-            await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
-        }
-        finally
-        {
-            gate.Release();
-        }
-
-        await disposeTask.WaitAsync(TimeSpan.FromSeconds(2));
         transport.Dispose();
+        await transport.DisposeAsync()
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     [Fact]
@@ -134,7 +112,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Invoke_StampsVersionAndMonotonicRequestIds()
+    public async Task InvokeAsync_StampsVersionAndMonotonicRequestIds()
     {
         var requests = new List<ProtocolRequest>();
         var client = CreateClient(request =>
@@ -146,8 +124,8 @@ public sealed class EngineProtocolClientTests
                     new BoolResult { Value = true });
         });
 
-        Assert.True(client.RequestAssetReload());
-        Assert.True(client.RequestAssetReload());
+        Assert.True(await client.RequestAssetReloadAsync());
+        Assert.True(await client.RequestAssetReloadAsync());
 
         Assert.Equal(2, requests.Count);
         Assert.All(
@@ -166,12 +144,12 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Invoke_RejectsMalformedTransportResponse()
+    public async Task InvokeAsync_RejectsMalformedTransportResponse()
     {
         var client = CreateRawClient(_ => [0xFF]);
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Contains(
             "malformed protobuf",
@@ -180,24 +158,26 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Invoke_PropagatesTransportFailure()
+    public async Task InvokeAsync_PropagatesTransportFailure()
     {
-        var client = new EngineProtocolClient((_, _) =>
-            throw new EngineProtocolException("transport disconnected"));
+        var client = new EngineProtocolClient((_, _, _) =>
+            Task.FromException<byte[]>(
+                new EngineProtocolException(
+                    "transport disconnected")));
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Equal("transport disconnected", exception.Message);
     }
 
     [Fact]
-    public void Invoke_RejectsEmptyTransportResponse()
+    public async Task InvokeAsync_RejectsEmptyTransportResponse()
     {
         var client = CreateRawClient(_ => []);
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Contains(
             "invalid response",
@@ -206,7 +186,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Invoke_PropagatesProtocolError()
+    public async Task InvokeAsync_PropagatesProtocolError()
     {
         var client = CreateClient(request => new ProtocolResponse
         {
@@ -216,14 +196,14 @@ public sealed class EngineProtocolClientTests
             Error = "engine command failed"
         });
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Equal("engine command failed", exception.Message);
     }
 
     [Fact]
-    public void Invoke_RejectsUnexpectedResultOneof()
+    public async Task InvokeAsync_RejectsUnexpectedResultOneof()
     {
         var client = CreateClient(request => Success(
             request,
@@ -233,8 +213,8 @@ public sealed class EngineProtocolClientTests
                 Value = "wrong result"
             }));
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Contains(
             "unexpected result type",
@@ -245,7 +225,7 @@ public sealed class EngineProtocolClientTests
     [Theory]
     [InlineData(true, false, "protocol version")]
     [InlineData(false, true, "request id")]
-    public void Invoke_RejectsMismatchedResponseEnvelope(
+    public async Task InvokeAsync_RejectsMismatchedResponseEnvelope(
         bool wrongVersion,
         bool wrongRequestId,
         string expectedError)
@@ -267,8 +247,8 @@ public sealed class EngineProtocolClientTests
             return response;
         });
 
-        var exception = Assert.Throws<EngineProtocolException>(
-            () => client.RequestAssetReload());
+        var exception = await Assert.ThrowsAsync<EngineProtocolException>(
+            () => client.RequestAssetReloadAsync());
 
         Assert.Contains(
             expectedError,
@@ -277,7 +257,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Start_UsesBoundedLifecycleTransportLane()
+    public async Task StartAsync_UsesBoundedLifecycleTransportLane()
     {
         EngineProtocolInvocationKind? capturedKind = null;
         var client = CreateClient(
@@ -286,7 +266,7 @@ public sealed class EngineProtocolClientTests
                 response => response.EmptyResult = new Empty()),
             kind => capturedKind = kind);
 
-        client.Start();
+        await client.StartAsync();
 
         Assert.Equal(
             EngineProtocolInvocationKind.Lifecycle,
@@ -294,15 +274,15 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Start_ForwardsSessionCancellationToTheLifecycleLane()
+    public async Task StartAsync_ForwardsSessionCancellationToTheLifecycleLane()
     {
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var transport = new CancellationRecordingTransport();
         using var client = new EngineProtocolClient(transport);
 
-        var exception = Assert.Throws<OperationCanceledException>(() =>
-            client.Start(cancellation.Token));
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.StartAsync(cancellation.Token));
 
         Assert.Equal(
             EngineProtocolInvocationKind.Lifecycle,
@@ -312,7 +292,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Stop_UsesBoundedLifecycleTransportTimeout()
+    public async Task StopAsync_UsesBoundedLifecycleTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;
         var client = CreateClient(
@@ -321,7 +301,7 @@ public sealed class EngineProtocolClientTests
                 response => response.EmptyResult = new Empty()),
             kind => capturedKind = kind);
 
-        client.Stop();
+        await client.StopAsync();
 
         Assert.Equal(
             EngineProtocolInvocationKind.Lifecycle,
@@ -329,7 +309,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void ViewportInput_UsesBoundedInteractiveTransportTimeout()
+    public async Task ViewportInputAsync_UsesBoundedInteractiveTransportTimeout()
     {
         EngineProtocolInvocationKind? capturedKind = null;
         var client = CreateClient(
@@ -339,7 +319,7 @@ public sealed class EngineProtocolClientTests
                     new BoolResult { Value = true }),
             kind => capturedKind = kind);
 
-        Assert.True(client.SendRemoteViewportInput(
+        Assert.True(await client.SendRemoteViewportInputAsync(
             1,
             1,
             0,
@@ -359,7 +339,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Initialize_UsesTypedRepeatedArguments()
+    public async Task InitializeAsync_UsesTypedRepeatedArguments()
     {
         ProtocolRequest? captured = null;
         var client = CreateClient(request =>
@@ -370,7 +350,8 @@ public sealed class EngineProtocolClientTests
                 response => response.EmptyResult = new Empty());
         });
 
-        client.Initialize(["SailorEditor", "--workspace", "/tmp/Project"]);
+        await client.InitializeAsync(
+            ["SailorEditor", "--workspace", "/tmp/Project"]);
 
         Assert.NotNull(captured);
         Assert.Equal(
@@ -382,7 +363,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void EngineReadiness_UsesDedicatedMainThreadProbe()
+    public async Task EngineReadinessAsync_UsesDedicatedMainThreadProbe()
     {
         ProtocolRequest? captured = null;
         var client = CreateClient(request =>
@@ -394,7 +375,7 @@ public sealed class EngineProtocolClientTests
                     new BoolResult { Value = true });
         });
 
-        Assert.True(client.IsEngineMainThreadReady());
+        Assert.True(await client.IsEngineMainThreadReadyAsync());
 
         Assert.NotNull(captured);
         Assert.Equal(
@@ -403,7 +384,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void EngineLiveness_UsesDedicatedLifecycleProbe()
+    public async Task EngineLivenessAsync_UsesDedicatedLifecycleProbe()
     {
         ProtocolRequest? captured = null;
         EngineProtocolInvocationKind? capturedKind = null;
@@ -418,7 +399,7 @@ public sealed class EngineProtocolClientTests
             },
             kind => capturedKind = kind);
 
-        Assert.True(client.IsEngineRunning());
+        Assert.True(await client.IsEngineRunningAsync());
 
         Assert.NotNull(captured);
         Assert.Equal(
@@ -430,7 +411,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void SetEditorSelection_UsesTypedRepeatedInstanceIds()
+    public async Task SetEditorSelectionAsync_UsesTypedRepeatedInstanceIds()
     {
         ProtocolRequest? captured = null;
         var client = CreateClient(request =>
@@ -443,7 +424,8 @@ public sealed class EngineProtocolClientTests
         });
 
         Assert.True(
-            client.SetEditorSelection(["go-1", "component-2"]));
+            await client.SetEditorSelectionAsync(
+                ["go-1", "component-2"]));
 
         Assert.NotNull(captured);
         Assert.Equal(
@@ -455,7 +437,7 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void SerializeEngineTypes_UsesDedicatedProtocolCommand()
+    public async Task SerializeEngineTypesAsync_UsesDedicatedProtocolCommand()
     {
         ProtocolRequest? captured = null;
         var client = CreateClient(request =>
@@ -472,7 +454,7 @@ public sealed class EngineProtocolClientTests
 
         Assert.Equal(
             "EngineTypes: []",
-            client.SerializeEngineTypes());
+            await client.SerializeEngineTypesAsync());
 
         Assert.NotNull(captured);
         Assert.Equal(
@@ -481,76 +463,77 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void ProtocolStrings_RejectEmbeddedNullBeforeInvokingTransport()
+    public async Task ProtocolStrings_RejectEmbeddedNullBeforeInvokingTransport()
     {
         var invokeCount = 0;
-        var client = new EngineProtocolClient((_, _) =>
+        var client = new EngineProtocolClient((_, _, _) =>
         {
             invokeCount++;
-            throw new EngineProtocolException(
-                "Transport should not be invoked.");
+            return Task.FromException<byte[]>(
+                new EngineProtocolException(
+                    "Transport should not be invoked."));
         });
-        Action[] invalidCalls =
+        Func<Task>[] invalidCalls =
         [
-            () => client.Initialize(
+            () => client.InitializeAsync(
                 ["SailorEditor", "workspace\0suffix"]),
-            () => client.LoadEditorWorld("file\0id"),
-            () => client.GetEditorManagedMutationRevision(
+            () => client.LoadEditorWorldAsync("file\0id"),
+            () => client.GetEditorManagedMutationRevisionAsync(
                 0,
                 "object\0id"),
-            () => client.UpdateObject("object\0id", "{}"),
-            () => client.UpdateObject("object", "yaml\0changes"),
-            () => client.ReparentObject(
+            () => client.UpdateObjectAsync("object\0id", "{}"),
+            () => client.UpdateObjectAsync("object", "yaml\0changes"),
+            () => client.ReparentObjectAsync(
                 "object\0id",
                 "parent",
                 true),
-            () => client.ReparentObject(
+            () => client.ReparentObjectAsync(
                 "object",
                 "parent\0id",
                 true),
-            () => client.CreateGameObject(
+            () => client.CreateGameObjectAsync(
                 "parent\0id",
                 "preferred"),
-            () => client.CreateGameObject(
+            () => client.CreateGameObjectAsync(
                 "parent",
                 "preferred\0id"),
-            () => client.DestroyObject("object\0id"),
-            () => client.ResetComponentToDefaults(
+            () => client.DestroyObjectAsync("object\0id"),
+            () => client.ResetComponentToDefaultsAsync(
                 "component\0id"),
-            () => client.AddComponent(
+            () => client.AddComponentAsync(
                 "object\0id",
                 "MeshRenderer",
                 "preferred"),
-            () => client.AddComponent(
+            () => client.AddComponentAsync(
                 "object",
                 "Mesh\0Renderer",
                 "preferred"),
-            () => client.AddComponent(
+            () => client.AddComponentAsync(
                 "object",
                 "MeshRenderer",
                 "preferred\0id"),
-            () => client.RemoveComponent("component\0id"),
-            () => client.InstantiatePrefab(
+            () => client.RemoveComponentAsync("component\0id"),
+            () => client.InstantiatePrefabAsync(
                 "file\0id",
                 "parent"),
-            () => client.InstantiatePrefab(
+            () => client.InstantiatePrefabAsync(
                 "file",
                 "parent\0id"),
-            () => client.InstantiatePrefabFromYaml(
+            () => client.InstantiatePrefabFromYamlAsync(
                 "yaml\0value",
                 "parent"),
-            () => client.InstantiatePrefabFromYaml(
+            () => client.InstantiatePrefabFromYamlAsync(
                 "yaml",
                 "parent\0id"),
-            () => client.SetEditorSelection(
+            () => client.SetEditorSelectionAsync(
                 ["object", "component\0id"]),
-            () => client.RenderPathTracedImage(
+            () => client.RenderPathTracedImageAsync(
                 "output\0path",
                 "object",
                 1,
                 1,
                 1),
-            () => client.RenderPathTracedImage(
+            () => client.RenderPathTracedImageAsync(
                 "output",
                 "object\0id",
                 1,
@@ -560,7 +543,7 @@ public sealed class EngineProtocolClientTests
 
         foreach (var invalidCall in invalidCalls)
         {
-            var exception = Assert.Throws<ArgumentException>(
+            var exception = await Assert.ThrowsAsync<ArgumentException>(
                 invalidCall);
             Assert.Contains(
                 "embedded null",
@@ -572,17 +555,17 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
-    public void Initialize_RejectsNullArgumentBeforeInvokingTransport()
+    public async Task InitializeAsync_RejectsNullArgumentBeforeInvokingTransport()
     {
         var invokeCount = 0;
-        var client = new EngineProtocolClient((_, _) =>
+        var client = new EngineProtocolClient((_, _, _) =>
         {
             invokeCount++;
-            return [];
+            return Task.FromResult<byte[]>([]);
         });
 
-        var exception = Assert.Throws<ArgumentException>(
-            () => client.Initialize(
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => client.InitializeAsync(
                 new string[] { "SailorEditor", null! }));
 
         Assert.Contains(
@@ -607,10 +590,10 @@ public sealed class EngineProtocolClientTests
     static EngineProtocolClient CreateRawClient(
         Func<byte[], byte[]> responder,
         Action<EngineProtocolInvocationKind>? onInvoke = null)
-        => new((requestData, invocationKind) =>
+        => new((requestData, invocationKind, _) =>
         {
             onInvoke?.Invoke(invocationKind);
-            return responder(requestData);
+            return Task.FromResult(responder(requestData));
         });
 
     static ProtocolResponse Success(
@@ -632,21 +615,26 @@ public sealed class EngineProtocolClientTests
         public EngineProtocolInvocationKind? InvocationKind { get; private set; }
         public CancellationToken CancellationToken { get; private set; }
 
-        public byte[] Invoke(
+        public Task<byte[]> InvokeAsync(
             byte[] requestData,
             EngineProtocolInvocationKind invocationKind,
             CancellationToken cancellationToken = default)
         {
             InvocationKind = invocationKind;
             CancellationToken = cancellationToken;
-            cancellationToken.ThrowIfCancellationRequested();
-            throw new InvalidOperationException(
-                "A cancelled request must not reach the responder.");
+            return cancellationToken.IsCancellationRequested
+                ? Task.FromCanceled<byte[]>(cancellationToken)
+                : Task.FromException<byte[]>(
+                    new InvalidOperationException(
+                        "A cancelled request must not reach the responder."));
         }
 
         public void Dispose()
         {
         }
+
+        public ValueTask DisposeAsync()
+            => ValueTask.CompletedTask;
     }
 
     sealed class AsyncDisposeRecordingTransport :
@@ -659,11 +647,11 @@ public sealed class EngineProtocolClientTests
 
         public int DisposeCount => Volatile.Read(ref disposeCount);
 
-        public byte[] Invoke(
+        public Task<byte[]> InvokeAsync(
             byte[] requestData,
             EngineProtocolInvocationKind invocationKind,
             CancellationToken cancellationToken = default)
-            => [];
+            => Task.FromResult<byte[]>([]);
 
         public void Dispose()
             => Interlocked.Increment(ref disposeCount);

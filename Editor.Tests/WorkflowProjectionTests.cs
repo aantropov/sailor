@@ -281,12 +281,16 @@ public sealed class WorkflowProjectionTests
             "new AsyncRelayCommand(AddComponentFromInspectorAsync)",
             source,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "new AsyncRelayCommand(ClearComponentsFromInspectorAsync)",
+            source,
+            StringComparison.Ordinal);
         AssertInOrder(
             mutationMethods,
             "ShowAsync(",
-            "WorldService>().AddComponent(this, componentTypeName)",
-            "public void ClearComponentsFromInspector()",
-            "WorldService>().RemoveComponent(component)");
+            "AddComponentAsync(this, componentTypeName)",
+            "public async Task ClearComponentsFromInspectorAsync()",
+            "RemoveComponentAsync(component)");
     }
 
     [Fact]
@@ -313,15 +317,23 @@ public sealed class WorkflowProjectionTests
         var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
 
         Assert.Contains(
-            "protocolClient.InstantiatePrefabFromYaml(prefabYaml, stringParentId)",
+            "protocolClient.InstantiatePrefabFromYamlAsync(",
             serviceSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "InstantiatePrefabFromYaml = new InstantiatePrefabFromYamlRequest",
+            "InstantiatePrefabFromYaml =",
             clientSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "PrefabYaml = ValidateString(prefabYaml, nameof(prefabYaml))",
+            "new InstantiatePrefabFromYamlRequest",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PrefabYaml = ValidateString(",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "nameof(prefabYaml)",
             clientSource,
             StringComparison.Ordinal);
         Assert.DoesNotContain("MarshalAs", serviceSource, StringComparison.Ordinal);
@@ -346,38 +358,41 @@ public sealed class WorkflowProjectionTests
             "public sealed class ResetComponentToDefaultsCommand");
         var refresh = Slice(
             engineSource,
-            "public void RefreshCurrentWorld()",
-            "bool InvokeCreationInterop");
+            "public async Task RefreshCurrentWorldAsync(",
+            "async Task<InstanceId?> InvokeCreationInteropAsync");
 
         AssertInOrder(
             createCommand,
-            "CreateGameObject(parentId, _createdId, out var createdId)",
+            "await engine.CreateGameObjectAsync(",
+            "if (createdId is null)",
             "_createdId = createdId;",
             "TryGetGameObject(createdId",
-            "DestroyObject(createdId)",
+            "DestroyObjectAsync(",
             "SelectInstance(createdId)");
         AssertInOrder(
             addCommand,
-            "AddComponent(_ownerId, componentTypeName, _componentId, out var createdId)",
+            "await engine.AddComponentAsync(",
+            "if (createdId is null)",
             "_componentId = createdId;",
             "TryGetComponent(createdId",
-            "RemoveComponent(createdId)");
+            "RemoveComponentAsync(");
         AssertInOrder(
             removeCommand,
-            "AddComponent(_ownerId, _componentTypeName, _originalInstanceId, out var restoredInstanceId)",
-            "CommitChanges(restored.InstanceId, _beforeYaml)",
+            "await engine.AddComponentAsync(",
+            "CommitChangesAsync(",
             "ApplyComponentYamlLocal(restored.InstanceId, _beforeYaml)",
             "_activeInstanceId = restoredInstanceId;");
         Assert.DoesNotContain("QueueWorldUpdate", refresh, StringComparison.Ordinal);
         Assert.Contains("MainThread.InvokeOnMainThreadAsync", refresh, StringComparison.Ordinal);
-        Assert.Contains("GetAwaiter().GetResult()", refresh, StringComparison.Ordinal);
+        Assert.Contains("await MainThread.InvokeOnMainThreadAsync", refresh, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetAwaiter().GetResult()", refresh, StringComparison.Ordinal);
     }
 
     static void AssertCommitClearsDirtyBeforeDispatch(string source)
     {
         var commit = Slice(
             source,
-            "public bool CommitInspectorChanges()",
+            "public async Task<bool> CommitInspectorChangesAsync(",
             "public bool HasPendingInspectorChanges");
 
         AssertInOrder(commit, "IsDirty = false;", "dispatcher.DispatchAsync(");
@@ -391,7 +406,7 @@ public sealed class WorkflowProjectionTests
     {
         var commit = Slice(
             source,
-            "public bool CommitInspectorChanges()",
+            "public async Task<bool> CommitInspectorChangesAsync(",
             "public bool HasPendingInspectorChanges");
 
         AssertInOrder(

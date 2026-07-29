@@ -88,7 +88,26 @@ internal sealed class LocalEngineProtocolTransport :
             throw new ArgumentNullException(nameof(transportFactory));
     }
 
-    public void Initialize(byte[] requestData)
+    public async Task InitializeAsync(
+        byte[] requestData,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(requestData);
+        cancellationToken.ThrowIfCancellationRequested();
+        // App::Initialize creates the native rendering window. On macOS that
+        // bootstrap must stay on the MAUI/Cocoa main thread selected by
+        // EngineService; normal protocol traffic becomes asynchronous after
+        // the local WebSocket host is established.
+        InitializeCore(requestData);
+        if (cancellationToken.IsCancellationRequested)
+        {
+            await CompleteShutdownAsync(shutdownEngine: true)
+                .ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+    }
+
+    void InitializeCore(byte[] requestData)
     {
         ArgumentNullException.ThrowIfNull(requestData);
         lock (stateGate)
@@ -268,7 +287,7 @@ internal sealed class LocalEngineProtocolTransport :
         throw new EngineProtocolException(message);
     }
 
-    public byte[] Invoke(
+    public Task<byte[]> InvokeAsync(
         byte[] requestData,
         EngineProtocolInvocationKind invocationKind,
         CancellationToken cancellationToken = default)
@@ -281,26 +300,29 @@ internal sealed class LocalEngineProtocolTransport :
                 throw new EngineProtocolException(
                     "Local Engine WebSocket host has not been initialized.");
         }
-        return transport.Invoke(
+        return transport.InvokeAsync(
             requestData,
             invocationKind,
             cancellationToken);
     }
 
-    public void RequestStopFallback()
-    {
-        LocalHostEndpoint host;
-        lock (stateGate)
-        {
-            ThrowIfDisposed();
-            host = ownedHost ??
-                throw new EngineProtocolException(
-                    "Local Engine WebSocket host has not been initialized.");
-        }
-        RequestOwnedHostStop(host);
-    }
+    public Task RequestStopFallbackAsync()
+        => Task.Run(
+            () =>
+            {
+                LocalHostEndpoint host;
+                lock (stateGate)
+                {
+                    ThrowIfDisposed();
+                    host = ownedHost ??
+                        throw new EngineProtocolException(
+                            "Local Engine WebSocket host has not been initialized.");
+                }
+                RequestOwnedHostStop(host);
+            },
+            CancellationToken.None);
 
-    public void CompleteShutdown(bool shutdownEngine)
+    public async Task CompleteShutdownAsync(bool shutdownEngine)
     {
         IEngineProtocolTransport? transport;
         LocalHostEndpoint? hostToStop = null;
@@ -325,7 +347,10 @@ internal sealed class LocalEngineProtocolTransport :
 
         try
         {
-            transport?.Dispose();
+            if (transport is not null)
+            {
+                await transport.DisposeAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
@@ -333,7 +358,12 @@ internal sealed class LocalEngineProtocolTransport :
             {
                 try
                 {
-                    StopOwnedHost(hostToStop, shutdownEngine);
+                    await Task.Run(
+                            () => StopOwnedHost(
+                                hostToStop,
+                                shutdownEngine),
+                            CancellationToken.None)
+                        .ConfigureAwait(false);
                 }
                 finally
                 {
@@ -411,27 +441,52 @@ internal sealed class LocalEngineProtocolTransport :
                 $"[EngineProtocol] Local WebSocket disposal failed: {exception.Message}");
         }
 
-        QueueOwnedHostShutdown(host);
+        QueueOwnedHostShutdown(host, transport);
     }
 
-    void QueueOwnedHostShutdown(LocalHostEndpoint host)
+    void QueueOwnedHostShutdown(
+        LocalHostEndpoint host,
+        IEngineProtocolTransport? transport)
     {
-        _ = Task.Run(() =>
+        _ = CompleteQueuedHostShutdownAsync(host, transport);
+    }
+
+    async Task CompleteQueuedHostShutdownAsync(
+        LocalHostEndpoint host,
+        IEngineProtocolTransport? transport)
+    {
+        try
         {
             try
             {
-                StopOwnedHost(host, shutdownEngine: true);
+                if (transport is not null)
+                {
+                    await transport.DisposeAsync()
+                        .ConfigureAwait(false);
+                }
             }
             catch (Exception exception)
             {
                 Console.WriteLine(
-                    $"[EngineProtocol] Local host teardown failed: {exception.Message}");
+                    $"[EngineProtocol] Local WebSocket disposal failed: {exception.Message}");
             }
-            finally
-            {
-                CompleteHostShutdown();
-            }
-        });
+
+            await Task.Run(
+                    () => StopOwnedHost(
+                        host,
+                        shutdownEngine: true),
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[EngineProtocol] Local host teardown failed: {exception.Message}");
+        }
+        finally
+        {
+            CompleteHostShutdown();
+        }
     }
 
     void CompleteHostShutdown()
