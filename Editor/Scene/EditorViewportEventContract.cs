@@ -49,6 +49,20 @@ public sealed record EditorViewportTransformEvent(
     EditorViewportVector4 AfterScale)
     : EditorViewportEvent(Revision, ManagedMutationRevision);
 
+public sealed record EditorViewportAssetDropEvent(
+    ulong Revision,
+    ulong ManagedMutationRevision,
+    string FileId,
+    float NormalizedX,
+    float NormalizedY)
+    : EditorViewportEvent(Revision, ManagedMutationRevision);
+
+public sealed record EditorViewportToolShortcutEvent(
+    ulong Revision,
+    ulong ManagedMutationRevision,
+    uint KeyCode)
+    : EditorViewportEvent(Revision, ManagedMutationRevision);
+
 public static class EditorViewportEventContract
 {
     public static bool TryCreate(
@@ -112,6 +126,45 @@ public static class EditorViewportEventContract
                     afterScale);
                 return true;
 
+            case ViewportEvent.PayloadOneofCase.AssetDrop:
+                var assetDrop = source.AssetDrop;
+                if (string.IsNullOrWhiteSpace(assetDrop.FileId))
+                {
+                    error = "Viewport asset-drop event file id must not be empty.";
+                    return false;
+                }
+
+                if (!IsNormalized(assetDrop.NormalizedX) ||
+                    !IsNormalized(assetDrop.NormalizedY))
+                {
+                    error =
+                        "Viewport asset-drop coordinates must be finite and normalized to [0, 1].";
+                    return false;
+                }
+
+                viewportEvent = new EditorViewportAssetDropEvent(
+                    source.Revision,
+                    source.ManagedMutationRevision,
+                    assetDrop.FileId,
+                    assetDrop.NormalizedX,
+                    assetDrop.NormalizedY);
+                return true;
+
+            case ViewportEvent.PayloadOneofCase.ToolShortcut:
+                var keyCode = source.ToolShortcut.KeyCode;
+                if (!IsToolShortcutKey(keyCode))
+                {
+                    error =
+                        "The viewport tool shortcut event contains an unsupported key.";
+                    return false;
+                }
+
+                viewportEvent = new EditorViewportToolShortcutEvent(
+                    source.Revision,
+                    source.ManagedMutationRevision,
+                    keyCode);
+                return true;
+
             default:
                 error = "The viewport event does not contain a supported payload.";
                 return false;
@@ -140,6 +193,24 @@ public static class EditorViewportEventContract
         "afterPosition",
         "afterRotation",
         "afterScale",
+    ];
+
+    static readonly HashSet<string> AssetDropFields =
+    [
+        "kind",
+        "revision",
+        "managedMutationRevision",
+        "fileId",
+        "normalizedX",
+        "normalizedY",
+    ];
+
+    static readonly HashSet<string> ToolShortcutFields =
+    [
+        "kind",
+        "revision",
+        "managedMutationRevision",
+        "keyCode",
     ];
 
     static bool TryMapOperation(
@@ -303,6 +374,61 @@ public static class EditorViewportEventContract
                     afterScale);
                 return true;
 
+            case "assetDrop":
+                if (!ValidateFields(fields, AssetDropFields, out error) ||
+                    !TryReadScalar(
+                        fields,
+                        "fileId",
+                        allowEmpty: false,
+                        out var fileId,
+                        out error) ||
+                    !TryReadNormalizedFloat(
+                        fields,
+                        "normalizedX",
+                        out var normalizedX,
+                        out error) ||
+                    !TryReadNormalizedFloat(
+                        fields,
+                        "normalizedY",
+                        out var normalizedY,
+                        out error))
+                {
+                    return false;
+                }
+
+                viewportEvent = new EditorViewportAssetDropEvent(
+                    revision,
+                    managedMutationRevision,
+                    fileId,
+                    normalizedX,
+                    normalizedY);
+                return true;
+
+            case "toolShortcut":
+                if (!ValidateFields(fields, ToolShortcutFields, out error) ||
+                    !TryReadUnsignedInteger(
+                        fields,
+                        "keyCode",
+                        out var serializedKeyCode,
+                        out error))
+                {
+                    return false;
+                }
+
+                if (serializedKeyCode > uint.MaxValue ||
+                    !IsToolShortcutKey((uint)serializedKeyCode))
+                {
+                    error =
+                        "Viewport tool shortcut event field 'keyCode' is unsupported.";
+                    return false;
+                }
+
+                viewportEvent = new EditorViewportToolShortcutEvent(
+                    revision,
+                    managedMutationRevision,
+                    (uint)serializedKeyCode);
+                return true;
+
             default:
                 error = $"Unsupported viewport event kind '{kind}'.";
                 return false;
@@ -352,6 +478,44 @@ public static class EditorViewportEventContract
 
         return true;
     }
+
+    static bool TryReadNormalizedFloat(
+        IReadOnlyDictionary<string, YamlNode> fields,
+        string field,
+        out float value,
+        out string error)
+    {
+        value = 0;
+        if (!TryReadScalar(
+                fields,
+                field,
+                allowEmpty: false,
+                out var scalar,
+                out error))
+        {
+            return false;
+        }
+
+        if (!float.TryParse(
+                scalar,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out value) ||
+            !IsNormalized(value))
+        {
+            error =
+                $"Viewport event field '{field}' must be finite and normalized to [0, 1].";
+            return false;
+        }
+
+        return true;
+    }
+
+    static bool IsNormalized(float value)
+        => float.IsFinite(value) && value >= 0.0f && value <= 1.0f;
+
+    static bool IsToolShortcutKey(uint keyCode)
+        => keyCode is 'Q' or 'W' or 'E' or 'R' or 'T';
 
     static bool TryReadScalar(
         IReadOnlyDictionary<string, YamlNode> fields,

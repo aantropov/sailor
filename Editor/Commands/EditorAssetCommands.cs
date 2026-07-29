@@ -166,35 +166,254 @@ public sealed class CreatePrefabAssetCommand(GameObject gameObject, AssetFolder?
 
     public async Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
     {
-        var prefab = MauiProgram.GetService<AssetsService>().CreatePrefabAsset(targetFolder, gameObject, overwrite: existingPrefab is not null, existingPrefab: existingPrefab);
-        if (prefab is null)
+        cancellationToken.ThrowIfCancellationRequested();
+        var atomicCancellationToken = CancellationToken.None;
+        var assets = MauiProgram.GetService<AssetsService>();
+        var world = MauiProgram.GetService<WorldService>();
+        if (gameObject.InstanceId is null ||
+            gameObject.InstanceId.IsEmpty())
+        {
+            return CommandResult.Failure(
+                "The source GameObject is no longer available");
+        }
+        if (HasProjectedPrefabLink(
+                world,
+                gameObject.InstanceId))
+        {
+            return CommandResult.Failure(
+                "Break the existing prefab link before creating another prefab");
+        }
+
+        var creation = assets.BeginCreatePrefabAsset(
+            targetFolder,
+            gameObject,
+            overwrite: existingPrefab is not null,
+            existingPrefab: existingPrefab);
+        if (creation is null)
             return CommandResult.Failure("Prefab asset creation failed");
 
-        return await MauiProgram.GetService<EngineService>().RequestAssetReloadAsync(cancellationToken)
-            ? CommandResult.Success(value: prefab.FileId)
-            : CommandResult.Failure("Prefab files were created, but the native registry rejected the reload");
+        var engine = MauiProgram.GetService<EngineService>();
+        var linkAttempted = false;
+        var linkEstablished = false;
+        try
+        {
+            if (!await engine.RequestAssetReloadAsync(
+                    atomicCancellationToken))
+            {
+                return await RollbackAsync(
+                    assets,
+                    creation,
+                    engine,
+                    gameObject.InstanceId,
+                    cleanupPossibleLink: false,
+                    "The native registry rejected the prefab reload",
+                    atomicCancellationToken);
+            }
+
+            if (gameObject.InstanceId is null ||
+                gameObject.InstanceId.IsEmpty() ||
+                creation.Prefab.FileId is null ||
+                creation.Prefab.FileId.IsEmpty())
+            {
+                return await RollbackAsync(
+                    assets,
+                    creation,
+                    engine,
+                    gameObject.InstanceId,
+                    cleanupPossibleLink: false,
+                    "The source GameObject could not be linked to the prefab",
+                    atomicCancellationToken);
+            }
+
+            linkAttempted = true;
+            linkEstablished = await engine.SetPrefabLinkAsync(
+                gameObject.InstanceId,
+                creation.Prefab.FileId,
+                atomicCancellationToken);
+            if (!linkEstablished)
+            {
+                return await RollbackAsync(
+                    assets,
+                    creation,
+                    engine,
+                    gameObject.InstanceId,
+                    cleanupPossibleLink: false,
+                    "The source GameObject could not be linked to the prefab",
+                    atomicCancellationToken);
+            }
+            if (!IsProjectedLinkedPrefab(
+                    world,
+                    gameObject.InstanceId,
+                    creation.Prefab.FileId))
+            {
+                return await RollbackAsync(
+                    assets,
+                    creation,
+                    engine,
+                    gameObject.InstanceId,
+                    cleanupPossibleLink: true,
+                    "The source GameObject prefab link was not projected",
+                    atomicCancellationToken);
+            }
+
+            var commit = assets.CompletePrefabAssetWrite(
+                creation.Transaction,
+                commit: true);
+            if (!commit.Succeeded)
+            {
+                return await RollbackAsync(
+                    assets,
+                    creation,
+                    engine,
+                    gameObject.InstanceId,
+                    cleanupPossibleLink: true,
+                    AssetCommandMessages.Error(
+                        commit,
+                        "The prefab write transaction could not be committed"),
+                    atomicCancellationToken);
+            }
+
+            return CommandResult.Success(value: creation.Prefab.FileId);
+        }
+        catch (Exception exception)
+        {
+            return await RollbackAsync(
+                assets,
+                creation,
+                engine,
+                gameObject.InstanceId,
+                cleanupPossibleLink: linkAttempted || linkEstablished,
+                $"Prefab creation failed unexpectedly: {exception.Message}",
+                atomicCancellationToken);
+        }
     }
-}
 
-public sealed class InstantiatePrefabAssetCommand(AssetFile prefabFile, GameObject? parent = null) : IEditorCommand
-{
-    readonly FileId prefabFileId = prefabFile?.FileId;
-
-    public string Name => nameof(InstantiatePrefabAssetCommand);
-    public bool CanExecute(ActionContext context) => prefabFileId is not null && !prefabFileId.IsEmpty();
-
-    public async Task<CommandResult> ExecuteAsync(
-        ActionContext context,
-        CancellationToken cancellationToken = default)
+    static async Task<CommandResult> RollbackAsync(
+        AssetsService assets,
+        PrefabAssetWriteResult creation,
+        EngineService engine,
+        InstanceId? linkedRootInstanceId,
+        bool cleanupPossibleLink,
+        string reason,
+        CancellationToken cancellationToken)
     {
-        var ok = await MauiProgram.GetService<EngineService>()
-            .InstantiatePrefabAsync(
-                prefabFileId,
-                parent?.InstanceId,
-                cancellationToken);
-        return ok
-            ? CommandResult.Success(value: prefabFileId)
-            : CommandResult.Failure("Instantiate prefab failed");
+        var diagnostics = new List<string> { reason };
+        if (cleanupPossibleLink &&
+            linkedRootInstanceId is not null &&
+            !linkedRootInstanceId.IsEmpty())
+        {
+            try
+            {
+                if (!await engine.BreakPrefabLinkAsync(
+                        linkedRootInstanceId,
+                        cancellationToken))
+                {
+                    diagnostics.Add(
+                        "The live prefab link cleanup could not be confirmed.");
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(
+                    $"The live prefab link cleanup failed: {exception.Message}");
+            }
+        }
+
+        try
+        {
+            if (creation.Transaction.IsActive)
+            {
+                var rollback = assets.CompletePrefabAssetWrite(
+                    creation.Transaction,
+                    commit: false);
+                if (!rollback.Succeeded)
+                {
+                    diagnostics.Add(
+                        AssetCommandMessages.Error(
+                            rollback,
+                            "Prefab file rollback failed"));
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Add(
+                $"Prefab file rollback failed: {exception.Message}");
+        }
+
+        try
+        {
+            if (!await engine.RequestAssetReloadAsync(
+                    cancellationToken))
+            {
+                diagnostics.Add(
+                    "The native registry rejected the rollback reconciliation reload.");
+            }
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Add(
+                $"The rollback reconciliation reload failed: {exception.Message}");
+        }
+        if (cleanupPossibleLink &&
+            linkedRootInstanceId is not null &&
+            !linkedRootInstanceId.IsEmpty())
+        {
+            try
+            {
+                await engine.RefreshCurrentWorldAsync(
+                    CancellationToken.None);
+                if (HasProjectedPrefabLink(
+                        MauiProgram.GetService<WorldService>(),
+                        linkedRootInstanceId))
+                {
+                    diagnostics.Add(
+                        "The live prefab link cleanup is still present in the world projection.");
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add(
+                    $"The world projection reconciliation failed: {exception.Message}");
+            }
+        }
+
+        return CommandResult.Failure(
+            string.Join(" ", diagnostics.Where(
+                diagnostic => !string.IsNullOrWhiteSpace(diagnostic))));
+    }
+
+    static bool IsProjectedLinkedPrefab(
+        WorldService world,
+        InstanceId rootInstanceId,
+        FileId prefabFileId)
+    {
+        if (!world.TryGetGameObject(rootInstanceId, out var root) ||
+            root.PrefabIndex < 0 ||
+            root.PrefabIndex >= world.Current.Prefabs.Count)
+        {
+            return false;
+        }
+
+        var projectedPrefab = world.Current.Prefabs[root.PrefabIndex];
+        return projectedPrefab.FileId is not null &&
+            projectedPrefab.FileId.Equals(prefabFileId);
+    }
+
+    static bool HasProjectedPrefabLink(
+        WorldService world,
+        InstanceId rootInstanceId)
+    {
+        if (!world.TryGetGameObject(rootInstanceId, out var root) ||
+            root.PrefabIndex < 0 ||
+            root.PrefabIndex >= world.Current.Prefabs.Count)
+        {
+            return false;
+        }
+
+        var projectedPrefab = world.Current.Prefabs[root.PrefabIndex];
+        return projectedPrefab.FileId is not null &&
+            !projectedPrefab.FileId.IsEmpty();
     }
 }
 

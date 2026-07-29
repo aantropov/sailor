@@ -107,6 +107,39 @@ namespace SailorEditor.Services
         public bool TryGetComponent(InstanceId instanceId, out Component component) => componentsDict.TryGetValue(instanceId, out component);
         public bool TryGetGameObject(InstanceId instanceId, out GameObject gameObject) => gameObjectsDict.TryGetValue(instanceId, out gameObject);
 
+        public InstanceId? ResolveParentInstanceId(GameObject gameObject)
+        {
+            if (gameObject is null ||
+                gameObject.PrefabIndex < 0 ||
+                gameObject.PrefabIndex >= Current.Prefabs.Count)
+            {
+                return null;
+            }
+
+            var prefab = Current.Prefabs[gameObject.PrefabIndex];
+            if (gameObject.ParentIndex != uint.MaxValue)
+            {
+                if (gameObject.ParentIndex >= prefab.GameObjects.Count)
+                {
+                    return null;
+                }
+
+                var parentInstanceId =
+                    prefab.GameObjects[(int)gameObject.ParentIndex].InstanceId;
+                return parentInstanceId is null || parentInstanceId.IsEmpty()
+                    ? null
+                    : new InstanceId(parentInstanceId.Value);
+            }
+
+            return string.IsNullOrWhiteSpace(prefab.ParentInstanceId) ||
+                string.Equals(
+                    prefab.ParentInstanceId,
+                    InstanceId.NullInstanceId,
+                    StringComparison.Ordinal)
+                ? null
+                : new InstanceId(prefab.ParentInstanceId);
+        }
+
         public List<Component> GetComponents(GameObject gameObject)
         {
             List<Component> res = [];
@@ -556,7 +589,8 @@ namespace SailorEditor.Services
             bool keepWorldTransform = true,
             CancellationToken cancellationToken = default)
         {
-            if (child == null || child.ParentIndex == uint.MaxValue)
+            if (child == null ||
+                ResolveParentInstanceId(child) is null)
             {
                 return false;
             }
@@ -807,7 +841,9 @@ namespace SailorEditor.Services
                 prefab.GameObjects ??= [];
                 prefab.Components ??= [];
 
-                var newPrefab = new Prefab();
+                var newPrefab = (Prefab)prefab.Clone();
+                newPrefab.GameObjects.Clear();
+                newPrefab.Components.Clear();
                 foreach (var go in prefab.GameObjects)
                 {
                     var gameObject = go;

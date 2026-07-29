@@ -5,6 +5,9 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "Engine/Frame.h"
 #include "Engine/Types.h"
+#include "Engine/InstanceId.h"
+#include "AssetRegistry/FileId.h"
+#include "Containers/Map.h"
 #include "RHI/DebugContext.h"
 #include "ECS/ECS.h"
 
@@ -19,6 +22,14 @@ namespace Sailor
 	};
 
 	typedef uint8_t EWorldBehaviourMask;
+
+	struct PrefabInstanceLink final
+	{
+		FileId m_sourcePrefabId{};
+		InstanceId m_rootInstanceId{};
+		TMap<InstanceId, InstanceId> m_sourceToInstanceIds{};
+		PrefabPtr m_effectiveBaseline{};
+	};
 
 	class World
 	{
@@ -35,6 +46,9 @@ namespace Sailor
 		SAILOR_API World& operator=(World&&) = default;
 
 		SAILOR_API GameObjectPtr Instantiate(PrefabPtr prefab);
+		SAILOR_API GameObjectPtr Instantiate(
+			PrefabPtr prefab,
+			bool bStrictInstanceIds);
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name, const InstanceId& preferredInstanceId);
 		SAILOR_API void Destroy(GameObjectPtr object);
@@ -74,6 +88,31 @@ namespace Sailor
 		SAILOR_API ObjectPtr GetObjectByInstanceId(const InstanceId& instanceId) const;
 
 		SAILOR_API const TMap<InstanceId, ObjectPtr>& GetObjects() const { return m_objectsMap; }
+		SAILOR_API const TMap<InstanceId, PrefabInstanceLink>& GetPrefabInstances() const { return m_prefabInstances; }
+		SAILOR_API bool TryGetPrefabInstance(
+			const InstanceId& objectInstanceId,
+			const PrefabInstanceLink*& outLink) const;
+		SAILOR_API bool IsPrefabLinked(const InstanceId& objectInstanceId) const;
+		SAILOR_API bool IsPrefabInstanceRoot(const InstanceId& objectInstanceId) const;
+		SAILOR_API bool LinkPrefabInstance(
+			GameObjectPtr root,
+			const PrefabPtr& sourcePrefab,
+			std::string& outDiagnostic);
+		SAILOR_API bool LinkPrefabInstance(
+			GameObjectPtr root,
+			const PrefabPtr& sourcePrefab,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			std::string& outDiagnostic);
+		SAILOR_API bool BreakPrefabLink(
+			const InstanceId& objectInstanceId,
+			PrefabInstanceLink* outPreviousLink = nullptr);
+		SAILOR_API bool CanModifyPrefabStructure(
+			const InstanceId& objectInstanceId,
+			std::string* outDiagnostic = nullptr) const;
+		SAILOR_API bool CanReparentPrefabObject(
+			const InstanceId& objectInstanceId,
+			const InstanceId& parentInstanceId,
+			std::string* outDiagnostic = nullptr) const;
 
 	protected:
 
@@ -88,6 +127,13 @@ namespace Sailor
 
 		SAILOR_API GameObjectPtr NewGameObject(const std::string& name, const InstanceId& instanceId);
 		void DestroyGameObjectHierarchy(GameObjectPtr root);
+		bool RegisterPrefabInstance(
+			GameObjectPtr root,
+			const FileId& sourcePrefabId,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			const PrefabPtr& effectiveBaseline,
+			std::string& outDiagnostic);
+		void RemovePrefabLinksInHierarchy(GameObjectPtr root);
 
 		float m_time{};
 		float m_smoothDeltaTime = 0.016f;
@@ -99,6 +145,8 @@ namespace Sailor
 
 		TVector<GameObjectPtr> m_objects;
 		TMap<InstanceId, ObjectPtr> m_objectsMap;
+		TMap<InstanceId, PrefabInstanceLink> m_prefabInstances;
+		TMap<InstanceId, InstanceId> m_prefabInstanceRootsByObject;
 		TSet<InstanceId> m_editorSelection;
 
 		TVector<size_t> m_sortedEcs;
@@ -118,5 +166,6 @@ namespace Sailor
 
 		friend class GameObject;
 		friend class Editor;
+		friend class WorldPrefab;
 	};
 }

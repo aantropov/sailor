@@ -3,6 +3,11 @@
 #include "Window.h"
 
 #include <algorithm>
+#include <cstring>
+#include <string_view>
+#include <utility>
+
+#include <ole2.h>
 
 #include "Input.h"
 #include "Sailor.h"
@@ -10,12 +15,344 @@
 #include "Tasks/Scheduler.h"
 #include "Submodules/ImGuiApi.h"
 
+#pragma comment(lib, "ole32.lib")
+
 using namespace Sailor;
 using namespace Sailor::Win32;
 
 namespace
 {
 	constexpr UINT c_destroyWindowMessage = WM_APP + 0x351;
+	constexpr std::wstring_view c_editorAssetDropPrefix =
+		L"SailorEditor.Asset:";
+	constexpr size_t c_unbracedFileIdLength = 36;
+	constexpr size_t c_bracedFileIdLength = 38;
+	constexpr size_t c_maxDropPayloadLength =
+		c_editorAssetDropPrefix.size() + c_bracedFileIdLength;
+
+	bool IsEditorViewportToolShortcutKey(uint32_t keyCode)
+	{
+		return keyCode == 'Q' ||
+			keyCode == 'W' ||
+			keyCode == 'E' ||
+			keyCode == 'R' ||
+			keyCode == 'T';
+	}
+
+	bool IsHexDigit(wchar_t value)
+	{
+		return (value >= L'0' && value <= L'9') ||
+			(value >= L'a' && value <= L'f') ||
+			(value >= L'A' && value <= L'F');
+	}
+
+	bool IsSerializedFileId(std::wstring_view fileId)
+	{
+		if (fileId.size() == c_bracedFileIdLength)
+		{
+			if (fileId.front() != L'{' || fileId.back() != L'}')
+			{
+				return false;
+			}
+
+			fileId = fileId.substr(1, c_unbracedFileIdLength);
+		}
+		else if (fileId.size() != c_unbracedFileIdLength)
+		{
+			return false;
+		}
+
+		for (size_t i = 0; i < fileId.size(); ++i)
+		{
+			const bool bHyphenPosition =
+				i == 8 || i == 13 || i == 18 || i == 23;
+			if ((bHyphenPosition && fileId[i] != L'-') ||
+				(!bHyphenPosition && !IsHexDigit(fileId[i])))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool TryReadEditorAssetFileId(
+		IDataObject* dataObject,
+		std::string& outFileId)
+	{
+		outFileId.clear();
+		if (!dataObject)
+		{
+			return false;
+		}
+
+		FORMATETC format{};
+		format.cfFormat = CF_UNICODETEXT;
+		format.dwAspect = DVASPECT_CONTENT;
+		format.lindex = -1;
+		format.tymed = TYMED_HGLOBAL;
+
+		STGMEDIUM medium{};
+		if (FAILED(dataObject->GetData(&format, &medium)))
+		{
+			return false;
+		}
+
+		bool bValid = false;
+		if (medium.tymed == TYMED_HGLOBAL && medium.hGlobal)
+		{
+			const SIZE_T bytes = GlobalSize(medium.hGlobal);
+			const size_t availableCharacters = bytes / sizeof(wchar_t);
+			const auto* text =
+				static_cast<const wchar_t*>(GlobalLock(medium.hGlobal));
+			if (text && availableCharacters > 0)
+			{
+				size_t length = 0;
+				const size_t scanLimit = std::min(
+					availableCharacters,
+					c_maxDropPayloadLength + 1);
+				while (length < scanLimit && text[length] != L'\0')
+				{
+					++length;
+				}
+
+				if (length < scanLimit &&
+					length > c_editorAssetDropPrefix.size())
+				{
+					const std::wstring_view payload(text, length);
+					const std::wstring_view fileId =
+						payload.substr(c_editorAssetDropPrefix.size());
+					if (payload.starts_with(c_editorAssetDropPrefix) &&
+						IsSerializedFileId(fileId))
+					{
+						outFileId.reserve(fileId.size());
+						for (const wchar_t value : fileId)
+						{
+							outFileId.push_back(
+								static_cast<char>(value));
+						}
+						bValid = true;
+					}
+				}
+
+				GlobalUnlock(medium.hGlobal);
+			}
+		}
+
+		ReleaseStgMedium(&medium);
+		return bValid;
+	}
+
+	class EditorViewportDropTarget final : public IDropTarget
+	{
+	public:
+		explicit EditorViewportDropTarget(Window* window) :
+			m_window(window)
+		{}
+
+		HRESULT STDMETHODCALLTYPE QueryInterface(
+			REFIID interfaceId,
+			void** object) override
+		{
+			if (!object)
+			{
+				return E_POINTER;
+			}
+
+			*object = nullptr;
+			if (IsEqualIID(interfaceId, IID_IUnknown) ||
+				IsEqualIID(interfaceId, IID_IDropTarget))
+			{
+				*object = static_cast<IDropTarget*>(this);
+				AddRef();
+				return S_OK;
+			}
+
+			return E_NOINTERFACE;
+		}
+
+		ULONG STDMETHODCALLTYPE AddRef() override
+		{
+			return static_cast<ULONG>(
+				InterlockedIncrement(&m_referenceCount));
+		}
+
+		ULONG STDMETHODCALLTYPE Release() override
+		{
+			const LONG referenceCount =
+				InterlockedDecrement(&m_referenceCount);
+			if (referenceCount == 0)
+			{
+				delete this;
+			}
+			return static_cast<ULONG>(referenceCount);
+		}
+
+		HRESULT STDMETHODCALLTYPE DragEnter(
+			IDataObject* dataObject,
+			DWORD,
+			POINTL,
+			DWORD* effect) override
+		{
+			std::string fileId;
+			const bool bCopyAllowed =
+				effect && ((*effect & DROPEFFECT_COPY) != 0);
+			m_bAcceptingDrop =
+				bCopyAllowed &&
+				TryReadEditorAssetFileId(dataObject, fileId);
+			if (effect)
+			{
+				*effect &=
+					m_bAcceptingDrop
+						? DROPEFFECT_COPY
+						: DROPEFFECT_NONE;
+			}
+			return S_OK;
+		}
+
+		HRESULT STDMETHODCALLTYPE DragOver(
+			DWORD,
+			POINTL,
+			DWORD* effect) override
+		{
+			if (effect)
+			{
+				*effect &=
+					m_bAcceptingDrop
+						? DROPEFFECT_COPY
+						: DROPEFFECT_NONE;
+			}
+			return S_OK;
+		}
+
+		HRESULT STDMETHODCALLTYPE DragLeave() override
+		{
+			m_bAcceptingDrop = false;
+			return S_OK;
+		}
+
+		HRESULT STDMETHODCALLTYPE Drop(
+			IDataObject* dataObject,
+			DWORD,
+			POINTL point,
+			DWORD* effect) override
+		{
+			std::string fileId;
+			const bool bCopyAllowed =
+				effect && ((*effect & DROPEFFECT_COPY) != 0);
+			bool bAccepted =
+				bCopyAllowed &&
+				m_bAcceptingDrop &&
+				m_window &&
+				TryReadEditorAssetFileId(dataObject, fileId);
+			if (bAccepted)
+			{
+				POINT clientPoint{ point.x, point.y };
+				RECT clientRect{};
+				const HWND windowHandle = m_window->GetHWND();
+				bAccepted =
+					windowHandle &&
+					ScreenToClient(windowHandle, &clientPoint) &&
+					GetClientRect(windowHandle, &clientRect);
+				const LONG width =
+					clientRect.right - clientRect.left;
+				const LONG height =
+					clientRect.bottom - clientRect.top;
+				bAccepted =
+					bAccepted &&
+					width > 0 &&
+					height > 0 &&
+					clientPoint.x >= clientRect.left &&
+					clientPoint.x <= clientRect.right &&
+					clientPoint.y >= clientRect.top &&
+					clientPoint.y <= clientRect.bottom;
+				if (bAccepted)
+				{
+					m_window->QueueEditorViewportAssetDrop(
+						std::move(fileId),
+						static_cast<float>(
+							clientPoint.x - clientRect.left) /
+							static_cast<float>(width),
+						static_cast<float>(
+							clientPoint.y - clientRect.top) /
+							static_cast<float>(height));
+				}
+			}
+
+			m_bAcceptingDrop = false;
+			if (effect)
+			{
+				*effect &=
+					bAccepted ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+			}
+			return S_OK;
+		}
+
+	private:
+		LONG m_referenceCount = 1;
+		Window* m_window = nullptr;
+		bool m_bAcceptingDrop = false;
+	};
+
+	void RegisterEditorViewportDropTarget(
+		Window& window,
+		IUnknown*& outDropTarget,
+		bool& outOleInitialized)
+	{
+		outDropTarget = nullptr;
+		outOleInitialized = false;
+
+		const HRESULT initializeResult = OleInitialize(nullptr);
+		if (FAILED(initializeResult))
+		{
+			SAILOR_LOG_ERROR(
+				"Failed to initialize OLE for the editor viewport drop target. error=0x%08lX",
+				static_cast<unsigned long>(initializeResult));
+			return;
+		}
+		outOleInitialized = true;
+
+		auto* dropTarget = new EditorViewportDropTarget(&window);
+		const HRESULT registerResult =
+			RegisterDragDrop(window.GetHWND(), dropTarget);
+		if (FAILED(registerResult))
+		{
+			SAILOR_LOG_ERROR(
+				"Failed to register the editor viewport drop target. error=0x%08lX",
+				static_cast<unsigned long>(registerResult));
+			dropTarget->Release();
+			OleUninitialize();
+			outOleInitialized = false;
+			return;
+		}
+
+		outDropTarget = dropTarget;
+	}
+
+	void RevokeEditorViewportDropTarget(
+		HWND window,
+		IUnknown*& dropTarget,
+		bool& oleInitialized)
+	{
+		if (dropTarget)
+		{
+			const HRESULT revokeResult = RevokeDragDrop(window);
+			if (FAILED(revokeResult))
+			{
+				SAILOR_LOG_ERROR(
+					"Failed to revoke the editor viewport drop target. error=0x%08lX",
+					static_cast<unsigned long>(revokeResult));
+			}
+			dropTarget->Release();
+			dropTarget = nullptr;
+		}
+
+		if (oleInitialized)
+		{
+			OleUninitialize();
+			oleInitialized = false;
+		}
+	}
 }
 
 TVector<Window*> Window::g_windows;
@@ -200,6 +537,15 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 	m_bIsFullscreen = inbIsFullScreen;
 
 	ChangeWindowSize(m_width, m_height, m_bIsFullscreen);
+
+	if (m_parentHwnd &&
+		m_windowClassName.starts_with("SailorEditor"))
+	{
+		RegisterEditorViewportDropTarget(
+			*this,
+			m_editorViewportDropTarget,
+			m_bEditorViewportDropOleInitialized);
+	}
 
 	SAILOR_LOG("Window created");
 	return true;
@@ -399,6 +745,15 @@ void Window::Destroy()
 
 	check(!hWnd || ::GetWindowThreadProcessId(hWnd, nullptr) == ::GetCurrentThreadId());
 
+	if (m_editorViewportDropTarget ||
+		m_bEditorViewportDropOleInitialized)
+	{
+		RevokeEditorViewportDropTarget(
+			hWnd,
+			m_editorViewportDropTarget,
+			m_bEditorViewportDropOleInitialized);
+	}
+
 	HDC hDC = nullptr;
 	HINSTANCE hInstance = nullptr;
 	ATOM windowClassAtom = 0;
@@ -430,6 +785,16 @@ void Window::Destroy()
 	m_renderArea = {};
 	m_viewport = {};
 	m_windowClassName.clear();
+	{
+		const std::lock_guard<std::mutex> lock(
+			m_editorViewportAssetDropMutex);
+		m_pendingEditorViewportAssetDrop.reset();
+	}
+	{
+		const std::lock_guard<std::mutex> lock(
+			m_editorViewportToolShortcutMutex);
+		m_pendingEditorViewportToolShortcuts.Clear();
+	}
 
 	if (bWasFullscreen)
 	{
@@ -453,6 +818,73 @@ void Window::Destroy()
 	{
 		SAILOR_LOG_ERROR("Failed to unregister Win32 window class. error=%lu", static_cast<unsigned long>(GetLastError()));
 	}
+}
+
+void Window::QueueEditorViewportAssetDrop(
+	std::string fileId,
+	float normalizedX,
+	float normalizedY)
+{
+	const std::lock_guard<std::mutex> lock(
+		m_editorViewportAssetDropMutex);
+	m_pendingEditorViewportAssetDrop = EditorViewportAssetDrop{
+		std::move(fileId),
+		normalizedX,
+		normalizedY
+	};
+}
+
+bool Window::PullEditorViewportAssetDrop(
+	std::string& outFileId,
+	float& outNormalizedX,
+	float& outNormalizedY)
+{
+	outFileId.clear();
+	outNormalizedX = 0.0f;
+	outNormalizedY = 0.0f;
+
+	const std::lock_guard<std::mutex> lock(
+		m_editorViewportAssetDropMutex);
+	if (!m_pendingEditorViewportAssetDrop)
+	{
+		return false;
+	}
+
+	outFileId = std::move(
+		m_pendingEditorViewportAssetDrop->m_fileId);
+	outNormalizedX =
+		m_pendingEditorViewportAssetDrop->m_normalizedX;
+	outNormalizedY =
+		m_pendingEditorViewportAssetDrop->m_normalizedY;
+	m_pendingEditorViewportAssetDrop.reset();
+	return true;
+}
+
+void Window::QueueEditorViewportToolShortcut(uint32_t keyCode)
+{
+	if (!IsEditorViewportToolShortcutKey(keyCode))
+	{
+		return;
+	}
+
+	const std::lock_guard<std::mutex> lock(
+		m_editorViewportToolShortcutMutex);
+	m_pendingEditorViewportToolShortcuts.Add(keyCode);
+}
+
+bool Window::PullEditorViewportToolShortcut(uint32_t& outKeyCode)
+{
+	outKeyCode = 0;
+	const std::lock_guard<std::mutex> lock(
+		m_editorViewportToolShortcutMutex);
+	if (m_pendingEditorViewportToolShortcuts.IsEmpty())
+	{
+		return false;
+	}
+
+	outKeyCode = m_pendingEditorViewportToolShortcuts[0];
+	m_pendingEditorViewportToolShortcuts.RemoveAt(0);
+	return true;
 }
 
 bool Window::IsIconic() const
@@ -528,7 +960,14 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 	{
 		if (wParam < 256 && (lParam & 0x40000000) == 0)
 		{
-			GlobalInput::SetKeyState((uint32_t)wParam, KeyState::Pressed);
+			const uint32_t keyCode = static_cast<uint32_t>(wParam);
+			GlobalInput::SetKeyState(keyCode, KeyState::Pressed);
+			if (pWindow->m_parentHwnd &&
+				pWindow->m_windowClassName.starts_with("SailorEditor") &&
+				IsEditorViewportToolShortcutKey(keyCode))
+			{
+				pWindow->QueueEditorViewportToolShortcut(keyCode);
+			}
 		}
 
 		return FALSE;
@@ -567,6 +1006,25 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 
 	case WM_NCDESTROY:
 	{
+		if (pWindow->m_editorViewportDropTarget ||
+			pWindow->m_bEditorViewportDropOleInitialized)
+		{
+			RevokeEditorViewportDropTarget(
+				hWnd,
+				pWindow->m_editorViewportDropTarget,
+				pWindow->m_bEditorViewportDropOleInitialized);
+		}
+		{
+			const std::lock_guard<std::mutex> assetDropLock(
+				pWindow->m_editorViewportAssetDropMutex);
+			pWindow->m_pendingEditorViewportAssetDrop.reset();
+		}
+		{
+			const std::lock_guard<std::mutex> shortcutLock(
+				pWindow->m_editorViewportToolShortcutMutex);
+			pWindow->m_pendingEditorViewportToolShortcuts.Clear();
+		}
+
 		const std::lock_guard<std::mutex> lock(Window::g_windowsMutex);
 		pWindow->m_hWnd = nullptr;
 		pWindow->m_hDC = nullptr;

@@ -3,6 +3,7 @@
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
+#include "Containers/Set.h"
 #include "Core/Submodule.h"
 #include "Memory/SharedPtr.hpp"
 #include "Memory/WeakPtr.hpp"
@@ -40,14 +41,53 @@ namespace Sailor
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
 		SAILOR_API const TVector<PrefabPtr>& GetGameObjects() const { return m_gameObjects; }
+		SAILOR_API const std::string& GetLoadDiagnostic() const { return m_loadDiagnostic; }
 
 		static WorldPrefabPtr FromWorld(WorldPtr world);
 
 	protected:
 
+		struct PendingPrefabLinkUpdate final
+		{
+			InstanceId m_rootInstanceId{};
+			TMap<InstanceId, InstanceId> m_sourceToInstanceIds{};
+			PrefabPtr m_effectiveBaseline{};
+		};
+
+		SAILOR_API static bool ReconcileLinkedInstanceIds(
+			const PrefabPtr& expandedPrefab,
+			const PrefabPtr& sourcePrefab,
+			const TMap<InstanceId, InstanceId>& savedSourceToInstanceIds,
+			TSet<InstanceId>& reservedInstanceIds,
+			TMap<InstanceId, InstanceId>& outSourceToInstanceIds,
+			std::string& outDiagnostic);
+
+		static bool BuildLinkedOverrides(
+			const PrefabPtr& expandedPrefab,
+			const PrefabPtr& sourcePrefab,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
+			TMap<InstanceId, ReflectedData>& outComponentOverrides,
+			std::string& outDiagnostic);
+
+		SAILOR_API static bool BuildUpdatedLinkedOverrides(
+			const PrefabPtr& expandedPrefab,
+			const PrefabPtr& sourcePrefab,
+			const PrefabPtr& effectiveBaseline,
+			const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+			TMap<InstanceId, YAML::Node>& outGameObjectOverrides,
+			TMap<InstanceId, ReflectedData>& outComponentOverrides,
+			std::string& outDiagnostic);
+
+		SAILOR_API static bool CommitLinkedInstanceUpdates(
+			WorldPtr world,
+			TVector<PendingPrefabLinkUpdate>& pendingUpdates,
+			std::string& outDiagnostic);
+
 		std::atomic<bool> m_bIsReady{};
 
 		std::string m_name{};
+		std::string m_loadDiagnostic{};
 		TVector<PrefabPtr> m_gameObjects;
 
 		friend class WorldPrefabImporter;
@@ -79,5 +119,7 @@ namespace Sailor
 		TConcurrentMap<FileId, WorldPrefabPtr> m_loadedWorldPrefabs;
 
 		ObjectAllocatorPtr m_allocator;
+		WorldPrefabAssetInfoHandler* m_worldInfoHandler{};
+		PrefabAssetInfoHandler* m_prefabInfoHandler{};
 	};
 }

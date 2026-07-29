@@ -6,6 +6,7 @@
 #include <functional>
 #include <set>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 #include <tuple>
 #include <utility>
@@ -57,6 +58,28 @@ namespace
 			});
 #endif
 		return path;
+	}
+
+	bool IsInternalTransactionDirectory(const std::filesystem::path& path)
+	{
+		std::string directoryName = path.filename().string();
+		std::transform(
+			directoryName.begin(),
+			directoryName.end(),
+			directoryName.begin(),
+			[](unsigned char character)
+			{
+				return static_cast<char>(std::tolower(character));
+			});
+
+		constexpr std::string_view Prefix = ".sailor-";
+		constexpr std::string_view Suffix = ".pending";
+		return directoryName.size() >= Prefix.size() + Suffix.size() &&
+			directoryName.compare(0, Prefix.size(), Prefix) == 0 &&
+			directoryName.compare(
+				directoryName.size() - Suffix.size(),
+				Suffix.size(),
+				Suffix) == 0;
 	}
 
 	bool IsSafeVirtualPath(const std::string& path)
@@ -358,6 +381,11 @@ namespace
 			}
 			if (bIsDirectory)
 			{
+				if (IsInternalTransactionDirectory(entry.path()))
+				{
+					continue;
+				}
+
 				DiscoverDirectory(mount, entry.path(), visitedDirectories, files, diagnostics);
 				continue;
 			}

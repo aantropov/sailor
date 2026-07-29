@@ -2,12 +2,14 @@
 #include "EditorEngineProtocolLifecycle.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <condition_variable>
 #include <future>
 #include <iostream>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -34,6 +36,7 @@ extern "C"
 namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
+	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 
@@ -41,10 +44,12 @@ namespace
 	constexpr uint32_t c_requestIdField = 2;
 	constexpr uint32_t c_successField = 3;
 	constexpr uint32_t c_errorField = 4;
+	constexpr uint32_t c_supportsStrictInstanceIdsField = 5;
 	constexpr uint32_t c_boolResultField = 11;
 	constexpr uint32_t c_int32ResultField = 12;
 	constexpr uint32_t c_uint64ResultField = 14;
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
+	constexpr uint32_t c_viewportToolStateResultField = 21;
 	constexpr uint32_t c_emptyResultField = 10;
 	constexpr uint32_t c_initializeCommandField = 10;
 	constexpr uint32_t c_startCommandField = 11;
@@ -56,6 +61,7 @@ namespace
 	constexpr uint32_t c_getManagedMutationRevisionCommandField = 33;
 	constexpr uint32_t c_renderPathTracedImageCommandField = 45;
 	constexpr uint32_t c_isEngineRunningCommandField = 48;
+	constexpr uint32_t c_instantiatePrefabFromYamlCommandField = 42;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -139,6 +145,7 @@ namespace
 		uint32_t m_protocolVersion = 0;
 		uint64_t m_requestId = 0;
 		bool m_success = false;
+		bool m_supportsStrictInstanceIds = false;
 		std::string m_error{};
 		uint32_t m_resultField = 0;
 		bool m_boolResult = false;
@@ -235,6 +242,12 @@ namespace
 				{
 					response.m_success = value != 0;
 				}
+				else if (fieldNumber ==
+					c_supportsStrictInstanceIdsField)
+				{
+					response.m_supportsStrictInstanceIds =
+						value != 0;
+				}
 				continue;
 			}
 
@@ -251,7 +264,8 @@ namespace
 					reinterpret_cast<const char*>(value),
 					static_cast<size_t>(length));
 			}
-			else if (fieldNumber >= 10u && fieldNumber <= 19u)
+			else if (fieldNumber >= 10u &&
+				fieldNumber <= c_viewportToolStateResultField)
 			{
 				response.m_resultField = fieldNumber;
 				response.m_resultPayload.assign(
@@ -300,6 +314,15 @@ namespace
 				return false;
 			}
 			offset += static_cast<size_t>(length);
+			return true;
+		}
+		if (wireType == 5)
+		{
+			if (size - offset < sizeof(uint32_t))
+			{
+				return false;
+			}
+			offset += sizeof(uint32_t);
 			return true;
 		}
 		return false;
@@ -372,12 +395,162 @@ namespace
 		return true;
 	}
 
+	bool TryReadFixed32(
+		const uint8_t* data,
+		size_t size,
+		size_t& offset,
+		uint32_t& outValue)
+	{
+		if (size - offset < sizeof(uint32_t))
+		{
+			return false;
+		}
+
+		outValue =
+			static_cast<uint32_t>(data[offset]) |
+			(static_cast<uint32_t>(data[offset + 1]) << 8u) |
+			(static_cast<uint32_t>(data[offset + 2]) << 16u) |
+			(static_cast<uint32_t>(data[offset + 3]) << 24u);
+		offset += sizeof(uint32_t);
+		return true;
+	}
+
+	bool TryDecodeViewportAssetDrop(
+		const uint8_t* data,
+		size_t size,
+		std::string& outFileId,
+		float& outNormalizedX,
+		float& outNormalizedY)
+	{
+		bool bHasFileId = false;
+		bool bHasNormalizedX = false;
+		bool bHasNormalizedY = false;
+		size_t offset = 0;
+		while (offset < size)
+		{
+			uint64_t key = 0;
+			if (!ReadVarint(data, size, offset, key))
+			{
+				return false;
+			}
+
+			const uint32_t fieldNumber =
+				static_cast<uint32_t>(key >> 3u);
+			const uint32_t wireType =
+				static_cast<uint32_t>(key & 0x7u);
+			if (fieldNumber == 1u)
+			{
+				const uint8_t* value = nullptr;
+				size_t valueSize = 0;
+				if (wireType != 2u ||
+					!TryReadLengthDelimited(
+						data,
+						size,
+						offset,
+						value,
+						valueSize))
+				{
+					return false;
+				}
+				outFileId.assign(
+					reinterpret_cast<const char*>(value),
+					valueSize);
+				bHasFileId = true;
+				continue;
+			}
+
+			if (fieldNumber == 2u || fieldNumber == 3u)
+			{
+				uint32_t bits = 0;
+				if (wireType != 5u ||
+					!TryReadFixed32(data, size, offset, bits))
+				{
+					return false;
+				}
+
+				float value = 0.0f;
+				std::memcpy(&value, &bits, sizeof(value));
+				if (fieldNumber == 2u)
+				{
+					outNormalizedX = value;
+					bHasNormalizedX = true;
+				}
+				else
+				{
+					outNormalizedY = value;
+					bHasNormalizedY = true;
+				}
+				continue;
+			}
+
+			if (!SkipField(data, size, offset, wireType))
+			{
+				return false;
+			}
+		}
+
+		return bHasFileId &&
+			bHasNormalizedX &&
+			bHasNormalizedY;
+	}
+
+	bool TryDecodeViewportToolShortcut(
+		const uint8_t* data,
+		size_t size,
+		uint32_t& outKeyCode)
+	{
+		bool bHasKeyCode = false;
+		size_t offset = 0;
+		while (offset < size)
+		{
+			uint64_t key = 0;
+			if (!ReadVarint(data, size, offset, key))
+			{
+				return false;
+			}
+
+			const uint32_t fieldNumber =
+				static_cast<uint32_t>(key >> 3u);
+			const uint32_t wireType =
+				static_cast<uint32_t>(key & 0x7u);
+			if (fieldNumber == 1u)
+			{
+				uint64_t keyCode = 0;
+				if (wireType != 0u ||
+					!ReadVarint(data, size, offset, keyCode) ||
+					keyCode >
+						static_cast<uint64_t>(
+							std::numeric_limits<uint32_t>::max()))
+				{
+					return false;
+				}
+
+				outKeyCode = static_cast<uint32_t>(keyCode);
+				bHasKeyCode = true;
+				continue;
+			}
+
+			if (!SkipField(data, size, offset, wireType))
+			{
+				return false;
+			}
+		}
+
+		return bHasKeyCode;
+	}
+
 	struct TDecodedViewportEvent
 	{
 		uint64_t m_revision = 0;
 		uint64_t m_managedMutationRevision = 0;
 		bool m_hasSelection = false;
 		std::string m_selectedInstanceId{};
+		bool m_hasAssetDrop = false;
+		std::string m_assetFileId{};
+		float m_normalizedX = 0.0f;
+		float m_normalizedY = 0.0f;
+		bool m_hasToolShortcut = false;
+		uint32_t m_toolShortcutKeyCode = 0;
 	};
 
 	bool TryDecodeViewportEvent(
@@ -433,6 +606,50 @@ namespace
 					return false;
 				}
 				outEvent.m_hasSelection = true;
+				continue;
+			}
+			if (fieldNumber == 12u)
+			{
+				const uint8_t* assetDrop = nullptr;
+				size_t assetDropSize = 0;
+				if (wireType != 2u ||
+					!TryReadLengthDelimited(
+						data,
+						size,
+						offset,
+						assetDrop,
+						assetDropSize) ||
+					!TryDecodeViewportAssetDrop(
+						assetDrop,
+						assetDropSize,
+						outEvent.m_assetFileId,
+						outEvent.m_normalizedX,
+						outEvent.m_normalizedY))
+				{
+					return false;
+				}
+				outEvent.m_hasAssetDrop = true;
+				continue;
+			}
+			if (fieldNumber == 13u)
+			{
+				const uint8_t* toolShortcut = nullptr;
+				size_t toolShortcutSize = 0;
+				if (wireType != 2u ||
+					!TryReadLengthDelimited(
+						data,
+						size,
+						offset,
+						toolShortcut,
+						toolShortcutSize) ||
+					!TryDecodeViewportToolShortcut(
+						toolShortcut,
+						toolShortcutSize,
+						outEvent.m_toolShortcutKeyCode))
+				{
+					return false;
+				}
+				outEvent.m_hasToolShortcut = true;
 				continue;
 			}
 			if (!SkipField(data, size, offset, wireType))
@@ -669,12 +886,13 @@ namespace
 			TProtocolBuffer buffer;
 			const auto response = RequireProtocolResponse(
 				MakeRequest(
-					EditorEngineProtocolVersion + 1u,
+					EditorEngineProtocolStrictInstanceIdsVersion + 1u,
 					17,
 					c_getExitCodeCommandField),
 				buffer);
 			Require(
-				response.m_protocolVersion == EditorEngineProtocolVersion &&
+				response.m_protocolVersion ==
+					EditorEngineProtocolStrictInstanceIdsVersion &&
 				response.m_requestId == 17 &&
 				!response.m_success &&
 				response.m_error.find("version") != std::string::npos &&
@@ -710,6 +928,85 @@ namespace
 				response.m_error.find("command") != std::string::npos &&
 				response.m_resultField == 0,
 				"missing command must return a correlated protocol error");
+		}
+	}
+
+	void TestStrictInstanceIdProtocolGate()
+	{
+		std::string strictInstantiateRequest;
+		AppendVarintField(
+			strictInstantiateRequest,
+			3u,
+			1u);
+
+		{
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(
+				MakeRequest(
+					EditorEngineProtocolVersion,
+					24,
+					c_instantiatePrefabFromYamlCommandField,
+					strictInstantiateRequest),
+				buffer);
+			Require(
+				response.m_protocolVersion ==
+					EditorEngineProtocolVersion &&
+				response.m_requestId == 24 &&
+				!response.m_success &&
+				response.m_error.find("Strict instance-id") !=
+					std::string::npos &&
+				response.m_supportsStrictInstanceIds,
+				"v1 strict restore must fail closed while advertising the compatible host capability");
+		}
+
+		{
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(
+				MakeRequest(
+					EditorEngineProtocolStrictInstanceIdsVersion,
+					25,
+					c_getExitCodeCommandField),
+				buffer);
+			Require(
+				response.m_protocolVersion ==
+					EditorEngineProtocolStrictInstanceIdsVersion &&
+				response.m_requestId == 25 &&
+				!response.m_success &&
+				response.m_error.find("reserved") !=
+					std::string::npos &&
+				response.m_supportsStrictInstanceIds,
+				"the strict protocol version must reject ordinary v1 commands");
+		}
+
+		{
+			Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+			std::string admissionError;
+			Require(
+				gate.TryBeginInitialization(admissionError),
+				"strict protocol fixture lifecycle must initialize");
+			gate.CompleteInitialization(true);
+			Sailor::Protocol::EditorEngineProtocolDependencies
+				dependencies{};
+			dependencies.m_lifecycleGate = &gate;
+
+			TProtocolBuffer buffer;
+			const auto response = RequireProtocolResponse(
+				MakeRequest(
+					EditorEngineProtocolStrictInstanceIdsVersion,
+					26,
+					c_instantiatePrefabFromYamlCommandField,
+					strictInstantiateRequest),
+				buffer,
+				dependencies);
+			Require(
+				response.m_protocolVersion ==
+					EditorEngineProtocolStrictInstanceIdsVersion &&
+				response.m_requestId == 26 &&
+				response.m_success &&
+				response.m_resultField == c_boolResultField &&
+				!response.m_boolResult &&
+				response.m_supportsStrictInstanceIds,
+				"a capability-compatible host must dispatch a version-gated strict restore request");
 		}
 	}
 
@@ -764,6 +1061,7 @@ namespace
 		Require(
 			response.m_requestId == 30 &&
 			response.m_success &&
+			response.m_supportsStrictInstanceIds &&
 			response.m_error.empty() &&
 			response.m_resultField == c_uint64ResultField,
 			"valid UTF-8 protobuf strings must pass native string validation");
@@ -876,6 +1174,132 @@ namespace
 			event.m_hasSelection &&
 			event.m_selectedInstanceId == "Duck-123",
 			"the valid event following malformed YAML must be preserved");
+	}
+
+	void TestViewportAssetDropEventIsTypedAndValidated()
+	{
+		const std::string fileId =
+			"{12345678-1234-1234-1234-123456789ABC}";
+		TViewportEventSource source{
+			{
+				"kind: assetDrop\n"
+				"revision: 43\n"
+				"managedMutationRevision: 10\n"
+				"fileId: \"" + fileId + "\"\n"
+				"normalizedX: 0.25\n"
+				"normalizedY: 0.75\n",
+				"kind: assetDrop\n"
+				"revision: 44\n"
+				"managedMutationRevision: 10\n"
+				"fileId: \"" + fileId + "\"\n"
+				"normalizedX: 1.5\n"
+				"normalizedY: 0.5\n"
+			}
+		};
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"asset-drop adapter test lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		dependencies.m_lifecycleGate = &gate;
+
+		std::string countRequest;
+		AppendVarintField(countRequest, 1u, 2u);
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				42,
+				c_pullEditorViewportEventsCommandField,
+				countRequest),
+			buffer,
+			dependencies);
+		Require(
+			response.m_success &&
+				response.m_resultField ==
+					c_viewportEventBatchResultField,
+			"viewport asset-drop response must report protocol success");
+
+		uint32_t numEvents = 0;
+		TDecodedViewportEvent event;
+		Require(
+			TryDecodeViewportEventBatch(
+				response.m_resultPayload,
+				numEvents,
+				event) &&
+				numEvents == 1,
+			"invalid normalized asset-drop events must be filtered");
+		Require(
+			event.m_revision == 43 &&
+				event.m_managedMutationRevision == 10 &&
+				event.m_hasAssetDrop &&
+				event.m_assetFileId == fileId &&
+				std::abs(event.m_normalizedX - 0.25f) < 0.0001f &&
+				std::abs(event.m_normalizedY - 0.75f) < 0.0001f,
+			"valid asset-drop data must survive native typed conversion");
+	}
+
+	void TestViewportToolShortcutEventIsTypedAndValidated()
+	{
+		TViewportEventSource source{
+			{
+				"kind: toolShortcut\n"
+				"revision: 45\n"
+				"managedMutationRevision: 11\n"
+				"keyCode: 87\n",
+				"kind: toolShortcut\n"
+				"revision: 46\n"
+				"managedMutationRevision: 11\n"
+				"keyCode: 88\n"
+			}
+		};
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_context = &source;
+		dependencies.m_pullEditorViewportEvents = PullViewportEvents;
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"tool-shortcut adapter test lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		dependencies.m_lifecycleGate = &gate;
+
+		std::string countRequest;
+		AppendVarintField(countRequest, 1u, 2u);
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				43,
+				c_pullEditorViewportEventsCommandField,
+				countRequest),
+			buffer,
+			dependencies);
+		Require(
+			response.m_success &&
+				response.m_resultField ==
+					c_viewportEventBatchResultField,
+			"viewport tool-shortcut response must report protocol success");
+
+		uint32_t numEvents = 0;
+		TDecodedViewportEvent event;
+		Require(
+			TryDecodeViewportEventBatch(
+				response.m_resultPayload,
+				numEvents,
+				event) &&
+				numEvents == 1,
+			"unsupported viewport shortcut keys must be filtered");
+		Require(
+			event.m_revision == 45 &&
+				event.m_managedMutationRevision == 11 &&
+				event.m_hasToolShortcut &&
+				event.m_toolShortcutKeyCode == 'W',
+			"valid viewport shortcuts must survive native typed conversion");
 	}
 
 	void TestLifecycleGateDrainsStartAndOperationsBeforeShutdown()
@@ -1560,10 +1984,13 @@ int main()
 		TestOversizedAndMalformedPayloads();
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();
+		TestStrictInstanceIdProtocolGate();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();
 		TestMalformedViewportEventDoesNotDiscardValidBatchEvents();
+		TestViewportAssetDropEventIsTypedAndValidated();
+		TestViewportToolShortcutEventIsTypedAndValidated();
 		TestLifecycleGateDrainsStartAndOperationsBeforeShutdown();
 		TestStartAcknowledgesBeforeWorkerExitAndStopJoins();
 		TestImmediateStopAfterStartAcknowledgementCannotBeLost();

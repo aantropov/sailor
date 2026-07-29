@@ -502,6 +502,13 @@ add_test(
 )
 
 add_test(
+    NAME Win32EditorAssetDropContract
+    COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/win32_editor_asset_drop_contract_test.py
+        ${PROJECT_SOURCE_DIR}
+)
+
+add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
         $<TARGET_FILE:WorkspaceModuleFixture>
@@ -542,6 +549,7 @@ set_tests_properties(
     VulkanMemoryCounterContract
     SkyTemperatureTableContract
     ShaderConstantsModeContract
+    Win32EditorAssetDropContract
     PROPERTIES TIMEOUT 30
 )
 

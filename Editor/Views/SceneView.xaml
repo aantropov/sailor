@@ -3,8 +3,60 @@
              x:Name="this"
              x:Class="SailorEditor.Views.SceneView">
 
-    <Grid>
+    <Grid RowDefinitions="32,*"
+          RowSpacing="0">
+        <Border Grid.Row="0"
+                BackgroundColor="#202020"
+                Stroke="#2A2A2A"
+                StrokeThickness="1"
+                Padding="3,2">
+            <HorizontalStackLayout Spacing="3"
+                                   VerticalOptions="Center">
+                <Button x:Name="SelectToolButton"
+                        Text="Q  Select"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnSelectToolClicked" />
+                <Button x:Name="TranslateToolButton"
+                        Text="W  Move"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnTranslateToolClicked" />
+                <Button x:Name="RotateToolButton"
+                        Text="E  Rotate"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnRotateToolClicked" />
+                <Button x:Name="ScaleToolButton"
+                        Text="R  Scale"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnScaleToolClicked" />
+                <Button x:Name="TransformSpaceButton"
+                        Text="T  World"
+                        HeightRequest="26"
+                        MinimumHeightRequest="26"
+                        Padding="7,0"
+                        FontSize="11"
+                        CornerRadius="3"
+                        Clicked="OnTransformSpaceClicked" />
+            </HorizontalStackLayout>
+        </Border>
+
         <Border x:Name="Viewport"
+                Grid.Row="1"
                 BackgroundColor="#111111"
                 Stroke="#2A2A2A"
                 StrokeThickness="1"

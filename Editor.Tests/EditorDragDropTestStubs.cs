@@ -15,12 +15,22 @@ namespace SailorEngine
         public string Value { get; set; } = value;
         public bool IsEmpty() => string.IsNullOrWhiteSpace(Value);
     }
+
+    public sealed class Vec4
+    {
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public float W { get; set; }
+    }
 }
 
 namespace SailorEditor.ViewModels
 {
     public class AssetFile
     {
+        internal const string DefaultAssetInfoTypeName = "Sailor::AssetInfo";
+
         public SailorEngine.FileId? FileId { get; set; }
         public string AssetInfoTypeName { get; set; } = string.Empty;
         public FileInfo? Asset { get; set; }
@@ -29,6 +39,7 @@ namespace SailorEditor.ViewModels
 
     public sealed class MaterialFile : AssetFile;
     public sealed class TextureFile : AssetFile;
+    public sealed class ModelFile : AssetFile;
     public sealed class PrefabFile : AssetFile;
     public sealed class AssetFolder
     {
@@ -57,6 +68,32 @@ namespace SailorEditor.Services
                 .FirstOrDefault(go => go.InstanceId is not null && instanceId is not null && string.Equals(go.InstanceId.Value, instanceId.Value, StringComparison.Ordinal));
             return gameObject is not null;
         }
+
+        public SailorEngine.InstanceId? ResolveParentInstanceId(
+            SailorEditor.ViewModels.GameObject gameObject)
+        {
+            if (gameObject.PrefabIndex < 0 ||
+                gameObject.PrefabIndex >= Current.Prefabs.Count)
+            {
+                return null;
+            }
+
+            var prefab = Current.Prefabs[gameObject.PrefabIndex];
+            if (gameObject.ParentIndex != uint.MaxValue)
+            {
+                if (gameObject.ParentIndex >= prefab.GameObjects.Count)
+                {
+                    return null;
+                }
+
+                return prefab.GameObjects[(int)gameObject.ParentIndex]
+                    .InstanceId;
+            }
+
+            return string.IsNullOrWhiteSpace(prefab.ParentInstanceId)
+                ? null
+                : new SailorEngine.InstanceId(prefab.ParentInstanceId);
+        }
     }
 
     public sealed class WorldState
@@ -66,6 +103,7 @@ namespace SailorEditor.Services
 
     public sealed class PrefabState
     {
+        public string? ParentInstanceId { get; set; }
         public List<SailorEditor.ViewModels.GameObject> GameObjects { get; } = [];
     }
 }
@@ -79,11 +117,29 @@ namespace SailorEditor.Commands
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
     }
 
-    public sealed class InstantiatePrefabAssetCommand(SailorEditor.ViewModels.AssetFile prefabFile, SailorEditor.ViewModels.GameObject? parent = null) : IEditorCommand
+    public sealed class InstantiatePrefabAssetCommand(
+        SailorEditor.ViewModels.AssetFile prefabFile,
+        SailorEditor.ViewModels.GameObject? parent = null,
+        SailorEngine.Vec4? worldPosition = null) : IUndoableEditorCommand
     {
         public string Name => nameof(InstantiatePrefabAssetCommand);
+        public string Description => "Instantiate Prefab";
         public bool CanExecute(ActionContext context) => true;
         public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
+        public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(CommandResult.Success());
+    }
+
+    public sealed class CreateModelGameObjectCommand(
+        SailorEditor.ViewModels.AssetFile modelFile,
+        string objectName,
+        SailorEditor.ViewModels.GameObject? parent = null,
+        SailorEngine.Vec4? worldPosition = null) : IUndoableEditorCommand
+    {
+        public string Name => nameof(CreateModelGameObjectCommand);
+        public string Description => $"Create {objectName}";
+        public bool CanExecute(ActionContext context) => true;
+        public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(CommandResult.Success());
+        public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default) => ValueTask.FromResult(CommandResult.Success());
     }
 
     public sealed class MoveAssetCommand(SailorEditor.ViewModels.AssetFile assetFile, SailorEditor.ViewModels.AssetFolder? destinationFolder = null) : IEditorCommand

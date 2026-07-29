@@ -114,6 +114,36 @@ public sealed class UiAsyncExceptionSafetyContractTests
     }
 
     [Fact]
+    public void ContentDropHandlers_ObserveAsyncFailures()
+    {
+        var contentSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "ContentFolderView.xaml.cs");
+        var helper = Slice(
+            contentSource,
+            "static async Task ExecuteContentUiActionAsync(",
+            "void EnsureFolderVisible(");
+
+        Assert.DoesNotContain(
+            "Drop += async",
+            contentSource,
+            StringComparison.Ordinal);
+        Assert.True(
+            CountOccurrences(
+                contentSource,
+                "RunContentUiAction(") >= 3);
+        AssertInOrder(
+            helper,
+            "try",
+            "await action();",
+            "catch (Exception exception)",
+            "Console.Error.WriteLine",
+            "DisplayAlert(",
+            "catch (Exception reportingException)");
+    }
+
+    [Fact]
     public void ToolbarAndNativeToolbarHandlers_ObserveAsyncFailures()
     {
         var toolbarSource = ReadRepositoryFile(
@@ -227,6 +257,24 @@ public sealed class UiAsyncExceptionSafetyContractTests
                 $"Missing or out-of-order source marker: {marker}");
             previous = current;
         }
+    }
+
+    static int CountOccurrences(
+        string source,
+        string value)
+    {
+        var count = 0;
+        var offset = 0;
+        while ((offset = source.IndexOf(
+                   value,
+                   offset,
+                   StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += value.Length;
+        }
+
+        return count;
     }
 
     static string ReadRepositoryFile(params string[] relativePath)

@@ -76,6 +76,12 @@ namespace Sailor
 		SAILOR_API static bool SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint32_t keyCode, uint32_t button, uint32_t modifiers, bool bPressed, bool bFocused, bool bCaptured);
 		SAILOR_API static uint32_t PullEditorMessages(char** messages, uint32_t num);
 		SAILOR_API static uint32_t PullEditorViewportEvents(char** events, uint32_t num);
+		SAILOR_API static bool ResolveEditorViewportDropPosition(
+			float normalizedX,
+			float normalizedY,
+			float& outWorldX,
+			float& outWorldY,
+			float& outWorldZ);
 		SAILOR_API static uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId);
 		SAILOR_API static uint32_t SerializeCurrentWorld(char** yamlNode);
 		SAILOR_API static uint32_t SerializeEngineTypes(char** yamlNode);
@@ -90,8 +96,38 @@ namespace Sailor
 		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
 		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);
 		SAILOR_API static bool RemoveEditorComponent(const char* strInstanceId);
+		SAILOR_API static bool CreateEditorModelGameObject(
+			const char* strModelFileId,
+			const char* strName,
+			const char* strParentInstanceId,
+			bool bHasWorldPosition,
+			float worldX,
+			float worldY,
+			float worldZ,
+			char** outInstanceId);
 		SAILOR_API static bool InstantiateEditorPrefab(const char* strFileId, const char* strParentInstanceId);
-		SAILOR_API static bool InstantiateEditorPrefabFromYaml(const char* strPrefabYaml, const char* strParentInstanceId);
+		SAILOR_API static bool InstantiateEditorPrefabInstance(
+			const char* strFileId,
+			const char* strParentInstanceId,
+			bool bHasWorldPosition,
+			float worldX,
+			float worldY,
+			float worldZ,
+			char** outInstanceId);
+		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
+			const char* strPrefabYaml,
+			const char* strParentInstanceId);
+		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
+			const char* strPrefabYaml,
+			const char* strParentInstanceId,
+			bool bStrictInstanceIds);
+		SAILOR_API static bool FocusEditorCamera(const char* strInstanceId);
+		SAILOR_API static bool SetEditorPrefabLink(
+			const char* strInstanceId,
+			const char* strFileId);
+		SAILOR_API static bool BreakEditorPrefabLink(const char* strInstanceId);
+		SAILOR_API static bool SetEditorViewportToolState(uint32_t operation, uint32_t space);
+		SAILOR_API static bool GetEditorViewportToolState(uint32_t& outOperation, uint32_t& outSpace);
 		SAILOR_API static bool SetEditorSelection(const char* strSelectionYaml);
 		SAILOR_API static bool RenderPathTracedImage(const char* strOutputPath, const char* strInstanceId, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 		SAILOR_API static void ShowMainWindow(bool bShow);

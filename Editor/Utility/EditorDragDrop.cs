@@ -53,8 +53,53 @@ public static class EditorDragDrop
             return true;
         }
 
+        if (TryResolveModelAsset(source, out var model) &&
+            (currentTarget is null || currentTarget.InstanceId is not null))
+        {
+            command = new CreateModelGameObjectCommand(
+                model,
+                ResolveAssetObjectName(model),
+                currentTarget);
+            return true;
+        }
+
         return false;
     }
+
+    public static bool TryCreateViewportDropCommand(
+        object? source,
+        Vec4 worldPosition,
+        out IEditorCommand? command)
+    {
+        command = null;
+        if (worldPosition is null)
+        {
+            return false;
+        }
+
+        if (TryResolvePrefabAsset(source, out var prefab))
+        {
+            command = new InstantiatePrefabAssetCommand(
+                prefab,
+                worldPosition: worldPosition);
+            return true;
+        }
+
+        if (TryResolveModelAsset(source, out var model))
+        {
+            command = new CreateModelGameObjectCommand(
+                model,
+                ResolveAssetObjectName(model),
+                worldPosition: worldPosition);
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool IsViewportAssetDrop(object? source) =>
+        TryResolvePrefabAsset(source, out _) ||
+        TryResolveModelAsset(source, out _);
 
     public static bool TryCreateContentDropCommand(object? source, object? target, out IEditorCommand? command, out bool requiresConfirmation)
     {
@@ -100,9 +145,30 @@ public static class EditorDragDrop
         if (source is not AssetFile assetFile || assetFile.FileId is null || assetFile.FileId.IsEmpty())
             return false;
 
-        if (assetFile is PrefabFile ||
-            string.Equals(assetFile.AssetInfoTypeName, "Sailor::PrefabAssetInfo", StringComparison.Ordinal) ||
-            string.Equals(assetFile.Asset?.Extension, ".prefab", StringComparison.OrdinalIgnoreCase))
+        if (assetFile is PrefabFile)
+        {
+            prefab = assetFile;
+            return true;
+        }
+
+        if (HasAuthoritativeAssetInfoType(assetFile))
+        {
+            if (string.Equals(
+                    assetFile.AssetInfoTypeName,
+                    "Sailor::PrefabAssetInfo",
+                    StringComparison.Ordinal))
+            {
+                prefab = assetFile;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (string.Equals(
+                assetFile.Asset?.Extension,
+                ".prefab",
+                StringComparison.OrdinalIgnoreCase))
         {
             prefab = assetFile;
             return true;
@@ -111,10 +177,76 @@ public static class EditorDragDrop
         return false;
     }
 
+    static bool TryResolveModelAsset(object? source, [NotNullWhen(true)] out AssetFile? model)
+    {
+        model = null;
+        if (source is not AssetFile assetFile ||
+            assetFile.FileId is null ||
+            assetFile.FileId.IsEmpty())
+        {
+            return false;
+        }
+
+        if (assetFile is ModelFile)
+        {
+            model = assetFile;
+            return true;
+        }
+
+        if (HasAuthoritativeAssetInfoType(assetFile))
+        {
+            if (string.Equals(
+                    assetFile.AssetInfoTypeName,
+                    "Sailor::ModelAssetInfo",
+                    StringComparison.Ordinal))
+            {
+                model = assetFile;
+                return true;
+            }
+
+            return false;
+        }
+
+        var extension = assetFile.Asset?.Extension;
+        if (string.Equals(extension, ".obj", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".gltf", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(extension, ".glb", StringComparison.OrdinalIgnoreCase))
+        {
+            model = assetFile;
+            return true;
+        }
+
+        return false;
+    }
+
+    static bool HasAuthoritativeAssetInfoType(AssetFile assetFile)
+        => !string.IsNullOrWhiteSpace(assetFile.AssetInfoTypeName) &&
+            !string.Equals(
+                assetFile.AssetInfoTypeName,
+                AssetFile.DefaultAssetInfoTypeName,
+                StringComparison.Ordinal);
+
+    public static string ResolveAssetObjectName(AssetFile assetFile)
+    {
+        var filename = assetFile.Asset?.Name;
+        if (string.IsNullOrWhiteSpace(filename))
+        {
+            return "GameObject";
+        }
+
+        var name = Path.GetFileNameWithoutExtension(filename);
+        return string.IsNullOrWhiteSpace(name)
+            ? "GameObject"
+            : name;
+    }
+
     static bool CanReparent(GameObject source, GameObject? target)
     {
         if (target is null)
-            return source.ParentIndex != uint.MaxValue;
+        {
+            return MauiProgram.GetService<WorldService>()
+                .ResolveParentInstanceId(source) is not null;
+        }
 
         if (ReferenceEquals(source, target) || HasSameInstanceId(source, target))
             return false;
@@ -127,17 +259,14 @@ public static class EditorDragDrop
 
     static bool HasSameParent(GameObject source, GameObject target)
     {
-        if (source.ParentIndex == uint.MaxValue)
-            return false;
-
-        if (source.PrefabIndex != target.PrefabIndex)
-            return false;
-
-        var prefab = MauiProgram.GetService<Services.WorldService>().Current.Prefabs[source.PrefabIndex];
-        if ((int)source.ParentIndex >= prefab.GameObjects.Count)
-            return false;
-
-        return ReferenceEquals(prefab.GameObjects[(int)source.ParentIndex], target) || HasSameInstanceId(prefab.GameObjects[(int)source.ParentIndex], target);
+        var parentInstanceId = MauiProgram.GetService<WorldService>()
+            .ResolveParentInstanceId(source);
+        return parentInstanceId is not null
+            && target.InstanceId is not null
+            && string.Equals(
+                parentInstanceId.Value,
+                target.InstanceId.Value,
+                StringComparison.Ordinal);
     }
 
     static bool HasSameInstanceId(GameObject? left, GameObject? right)

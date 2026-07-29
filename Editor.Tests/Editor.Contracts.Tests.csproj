@@ -25,6 +25,7 @@
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="CommandContractsTests.cs" />
     <Compile Include="HistoryContractsTests.cs" />
+    <Compile Include="HierarchyMutationRecoveryPolicyTests.cs" />
     <Compile Include="LayoutContractsTests.cs" />
     <Compile Include="LayoutOperationsTests.cs" />
     <Compile Include="PanelContractsTests.cs" />
@@ -56,6 +57,7 @@
     <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
+    <Compile Include="SceneViewportInteractionTests.cs" />
     <Compile Include="SceneSelectionRoutingTests.cs" />
     <Compile Include="NativeViewportInputQueueTests.cs" />
     <Compile Include="EditorViewportEventContractTests.cs" />
@@ -91,6 +93,7 @@
     <Compile Include="..\Editor\Layout\LayoutContracts.cs" Link="Layout\LayoutContracts.cs" />
     <Compile Include="..\Editor\Layout\LayoutOperations.cs" Link="Layout\LayoutOperations.cs" />
     <Compile Include="..\Editor\Commands\CommandContracts.cs" Link="Commands\CommandContracts.cs" />
+    <Compile Include="..\Editor\Commands\HierarchyMutationRecovery.cs" Link="Commands\HierarchyMutationRecovery.cs" />
     <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
     <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
     <Compile Include="..\Editor\Settings\UnifiedSettingsStore.cs" Link="Settings\UnifiedSettingsStore.cs" />
@@ -127,6 +130,9 @@
     <Compile Include="..\Editor\Scene\SceneSelectionRouting.cs" Link="Scene\SceneSelectionRouting.cs" />
     <Compile Include="..\Editor\Scene\NativeViewportInputQueue.cs" Link="Scene\NativeViewportInputQueue.cs" />
     <Compile Include="..\Editor\Scene\EditorViewportEventContract.cs" Link="Scene\EditorViewportEventContract.cs" />
+    <Compile Include="..\Editor\Scene\SceneViewportDropCoordinates.cs" Link="Scene\SceneViewportDropCoordinates.cs" />
+    <Compile Include="..\Editor\Scene\SceneViewportAssetDropPayload.cs" Link="Scene\SceneViewportAssetDropPayload.cs" />
+    <Compile Include="..\Editor\Scene\SceneViewportToolState.cs" Link="Scene\SceneViewportToolState.cs" />
     <Compile Include="..\Editor\Commands\AlreadyAppliedTransformCommand.cs" Link="Commands\AlreadyAppliedTransformCommand.cs" />
     <Compile Include="..\Editor\AI\AIContracts.cs" Link="AI\AIContracts.cs" />
     <Compile Include="..\Editor\AI\AIOperatorService.cs" Link="AI\AIOperatorService.cs" />

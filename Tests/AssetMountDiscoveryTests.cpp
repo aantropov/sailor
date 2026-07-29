@@ -281,6 +281,38 @@ namespace
 		}, "Discovery output should be globally sorted by normalized virtual path");
 	}
 
+	void TestDiscoverySkipsInternalTransactionDirectories()
+	{
+		TempDirectory content("transaction-staging");
+		WriteFile(content.Path("Prefabs/Duck.prefab"), "published source");
+		WriteFile(content.Path("Prefabs/Duck.prefab.asset"), "published metadata");
+		WriteFile(
+			content.Path("Prefabs/.sailor-asset-write-fixture.pending/source.backup"),
+			"old source");
+		WriteFile(
+			content.Path("Prefabs/.sailor-asset-write-fixture.pending/metadata.backup"),
+			"old metadata");
+		WriteFile(
+			content.Path("Prefabs/.sailor-asset-write-fixture.pending/source.backup.asset"),
+			"phantom metadata");
+
+		const AssetMountDiscoveryResult result = DiscoverAssetMountFiles({
+			Mount(content.Get(), EAssetMountKind::Workspace, 10, true)
+		});
+
+		Require(result.m_files.Num() == 2,
+			"An initial registry scan should see only the published final asset pair");
+		FindFile(result, EAssetMountKind::Workspace, "Prefabs/Duck.prefab");
+		FindFile(result, EAssetMountKind::Workspace, "Prefabs/Duck.prefab.asset");
+		Require(std::none_of(
+			result.m_files.begin(),
+			result.m_files.end(),
+			[](const AssetMountDiscoveredFile& file)
+			{
+				return file.m_virtualPath.find(".sailor-") != std::string::npos;
+			}), "Internal transaction staging directories must not enter native discovery");
+	}
+
 	void TestOverlappingRootsAreRejectedInBothDirections()
 	{
 		{
@@ -559,6 +591,7 @@ int main(int argc, char** argv)
 		TestIdenticalRootsAreDeduplicatedToWorkspace();
 		TestInvalidMountRootIsFatal();
 		TestDiscoveryIsSortedByVirtualPath();
+		TestDiscoverySkipsInternalTransactionDirectories();
 		TestOverlappingRootsAreRejectedInBothDirections();
 		TestDiscoverySkipsPhysicalEscapesAndCycles();
 		TestWorkspaceWinsVirtualPathIndependentOfInputOrder();

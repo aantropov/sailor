@@ -61,7 +61,12 @@ public sealed partial class HierarchyProjectionService : ObservableObject
             return;
 
         var parentById = _worldService.Current.Prefabs
-            .SelectMany(prefab => prefab.GameObjects.Select(gameObject => new { gameObject, parentId = ResolveParentId(prefab, gameObject) }))
+            .SelectMany(prefab => prefab.GameObjects.Select(gameObject => new
+            {
+                gameObject,
+                parentId = _worldService
+                    .ResolveParentInstanceId(gameObject)?.Value
+            }))
             .Where(x => x.gameObject.InstanceId is not null && !x.gameObject.InstanceId.IsEmpty())
             .ToDictionary(x => x.gameObject.InstanceId!.Value, x => x.parentId, StringComparer.Ordinal);
 
@@ -84,19 +89,29 @@ public sealed partial class HierarchyProjectionService : ObservableObject
             .Select(x => new HierarchySourceItem(
                 x.gameObject.InstanceId?.Value ?? string.Empty,
                 x.gameObject.Name,
-                ResolveParentId(x.prefab, x.gameObject)))
+                _worldService.ResolveParentInstanceId(x.gameObject)?.Value,
+                x.prefab.FileId is not null &&
+                    !x.prefab.FileId.IsEmpty(),
+                x.prefab.FileId is not null &&
+                    !x.prefab.FileId.IsEmpty()
+                    ? x.prefab.FileId.Value
+                    : null,
+                ResolvePrefabRootInstanceId(x.prefab)))
             .Where(x => !string.IsNullOrWhiteSpace(x.Id));
 
         Roots = HierarchyProjectionBuilder.Build(items, _expandedIds, _selectionService.SelectedInstanceId?.Value);
         VisibleRows = HierarchyProjectionBuilder.Flatten(Roots);
     }
 
-    static string? ResolveParentId(Prefab prefab, GameObject gameObject)
+    static string? ResolvePrefabRootInstanceId(Prefab prefab)
     {
-        if (gameObject.ParentIndex == uint.MaxValue || gameObject.ParentIndex >= prefab.GameObjects.Count)
+        if (prefab.FileId is null || prefab.FileId.IsEmpty())
             return null;
 
-        var parent = prefab.GameObjects[(int)gameObject.ParentIndex];
-        return parent.InstanceId is not null && !parent.InstanceId.IsEmpty() ? parent.InstanceId.Value : null;
+        var root = prefab.GameObjects.FirstOrDefault(
+            gameObject => gameObject.ParentIndex == uint.MaxValue);
+        return root?.InstanceId is not null && !root.InstanceId.IsEmpty()
+            ? root.InstanceId.Value
+            : null;
     }
 }

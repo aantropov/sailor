@@ -51,10 +51,18 @@ message ProtocolRequest {
 		Empty serialize_engine_types = 46;
 		Empty is_engine_main_thread_ready = 47;
 		Empty is_engine_running = 48;
+		ViewportDropPositionRequest resolve_viewport_drop_position = 49;
+		CreateModelGameObjectRequest create_model_game_object = 50;
+		InstantiatePrefabInstanceRequest instantiate_prefab_instance = 51;
+		ViewportObjectRequest focus_editor_camera = 52;
+		PrefabLinkRequest set_prefab_link = 53;
+		InstanceIdRequest break_prefab_link = 54;
+		ViewportToolStateRequest set_viewport_tool_state = 55;
+		ViewportIdRequest get_viewport_tool_state = 56;
 	}
 
 	reserved 3 to 9;
-	reserved 49 to 99;
+	reserved 57 to 99;
 }
 
 message ProtocolResponse {
@@ -62,6 +70,7 @@ message ProtocolResponse {
 	uint64 request_id = 2;
 	bool success = 3;
 	string error = 4;
+	bool supports_strict_instance_ids = 5;
 
 	oneof result {
 		Empty empty_result = 10;
@@ -74,10 +83,12 @@ message ProtocolResponse {
 		AssetReloadStateResult asset_reload_state_result = 17;
 		InstanceIdResult instance_id_result = 18;
 		ViewportEventBatchResult viewport_event_batch_result = 19;
+		Vector4Result vector4_result = 20;
+		ViewportToolStateResult viewport_tool_state_result = 21;
 	}
 
-	reserved 5 to 9;
-	reserved 20 to 99;
+	reserved 6 to 9;
+	reserved 22 to 99;
 }
 
 message InitializeRequest {
@@ -178,6 +189,44 @@ message InstantiatePrefabRequest {
 message InstantiatePrefabFromYamlRequest {
 	string prefab_yaml = 1;
 	string parent_instance_id = 2;
+	bool strict_instance_ids = 3;
+}
+
+message ViewportDropPositionRequest {
+	uint64 viewport_id = 1;
+	float normalized_x = 2;
+	float normalized_y = 3;
+}
+
+message CreateModelGameObjectRequest {
+	string model_file_id = 1;
+	string name = 2;
+	string parent_instance_id = 3;
+	bool apply_world_position = 4;
+	Vector4 world_position = 5;
+}
+
+message InstantiatePrefabInstanceRequest {
+	string file_id = 1;
+	string parent_instance_id = 2;
+	bool apply_world_position = 3;
+	Vector4 world_position = 4;
+}
+
+message ViewportObjectRequest {
+	uint64 viewport_id = 1;
+	string instance_id = 2;
+}
+
+message PrefabLinkRequest {
+	string instance_id = 1;
+	string file_id = 2;
+}
+
+message ViewportToolStateRequest {
+	uint64 viewport_id = 1;
+	ViewportTransformOperation operation = 2;
+	ViewportTransformSpace space = 3;
 }
 
 message SelectionRequest {
@@ -233,6 +282,15 @@ message InstanceIdResult {
 	string instance_id = 2;
 }
 
+message Vector4Result {
+	Vector4 value = 1;
+}
+
+message ViewportToolStateResult {
+	ViewportTransformOperation operation = 1;
+	ViewportTransformSpace space = 2;
+}
+
 enum ViewportTransformOperation {
 	VIEWPORT_TRANSFORM_OPERATION_UNSPECIFIED = 0;
 	VIEWPORT_TRANSFORM_OPERATION_SELECT = 1;
@@ -270,6 +328,16 @@ message ViewportTransformEvent {
 	Vector4 after_scale = 9;
 }
 
+message ViewportAssetDropEvent {
+	string file_id = 1;
+	float normalized_x = 2;
+	float normalized_y = 3;
+}
+
+message ViewportToolShortcutEvent {
+	uint32 key_code = 1;
+}
+
 message ViewportEvent {
 	uint64 revision = 1;
 	uint64 managed_mutation_revision = 2;
@@ -277,6 +345,8 @@ message ViewportEvent {
 	oneof payload {
 		ViewportSelectionEvent selection = 10;
 		ViewportTransformEvent transform = 11;
+		ViewportAssetDropEvent asset_drop = 12;
+		ViewportToolShortcutEvent tool_shortcut = 13;
 	}
 
 	reserved 3 to 9;

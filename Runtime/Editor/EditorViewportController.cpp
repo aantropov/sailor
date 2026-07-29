@@ -1,6 +1,7 @@
 #include "Editor/EditorViewportController.h"
 
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Components/CameraComponent.h"
 #include "Components/EditorComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Core/YamlSerializable.h"
@@ -25,6 +26,10 @@ namespace
 	constexpr float c_clickSlop = 4.0f;
 	constexpr float c_originFallbackExtent = 25.0f;
 	constexpr float c_matrixTolerance = 0.001f;
+	constexpr float c_dropFallbackDistance = 1000.0f;
+	constexpr float c_dropPlaneEpsilon = 0.000001f;
+	constexpr float c_cameraFramePadding = 1.2f;
+	constexpr float c_minimumCameraFrameRadius = 1.0f;
 
 	bool IsFiniteMatrix(const glm::mat4& matrix)
 	{
@@ -127,22 +132,29 @@ namespace
 		}
 	}
 
-	void DrawOperationButton(const char* label, ETransformOperation value, ETransformOperation& operation)
+	bool IsValidTransformOperation(ETransformOperation operation)
 	{
-		const bool bSelected = operation == value;
-		if (bSelected)
+		switch (operation)
 		{
-			ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.75f, 1.0f));
+		case ETransformOperation::Select:
+		case ETransformOperation::Translate:
+		case ETransformOperation::Rotate:
+		case ETransformOperation::Scale:
+			return true;
+		default:
+			return false;
 		}
+	}
 
-		if (ImGui::Button(label))
+	bool IsValidTransformSpace(ETransformSpace space)
+	{
+		switch (space)
 		{
-			operation = value;
-		}
-
-		if (bSelected)
-		{
-			ImGui::PopStyleColor();
+		case ETransformSpace::World:
+		case ETransformSpace::Local:
+			return true;
+		default:
+			return false;
 		}
 	}
 
@@ -241,6 +253,108 @@ bool EditorViewport::TryPickNearest(
 	}
 
 	return outInstanceId.IsGameObjectId();
+}
+
+bool EditorViewport::TryResolveDropPosition(
+	const Math::Ray& ray,
+	const TVector<PickCandidate>& candidates,
+	glm::vec3& outPosition)
+{
+	outPosition = {};
+	const float directionLength = glm::length(ray.GetDirection());
+	if (!Math::AllFinite(ray.GetOrigin()) ||
+		!Math::AllFinite(ray.GetDirection()) ||
+		!std::isfinite(directionLength) ||
+		directionLength <= std::numeric_limits<float>::epsilon())
+	{
+		return false;
+	}
+
+	InstanceId pickedId{};
+	float distance = std::numeric_limits<float>::max();
+	if (TryPickNearest(ray, candidates, pickedId, distance))
+	{
+		outPosition = ray.GetOrigin() + ray.GetDirection() * distance;
+		return Math::AllFinite(outPosition);
+	}
+
+	if (std::abs(ray.GetDirection().y) > c_dropPlaneEpsilon)
+	{
+		const float planeDistance = -ray.GetOrigin().y / ray.GetDirection().y;
+		if (std::isfinite(planeDistance) && planeDistance >= 0.0f)
+		{
+			outPosition = ray.GetOrigin() + ray.GetDirection() * planeDistance;
+			return Math::AllFinite(outPosition);
+		}
+	}
+
+	outPosition = ray.GetOrigin() + ray.GetDirection() * c_dropFallbackDistance;
+	return Math::AllFinite(outPosition);
+}
+
+bool EditorViewport::TryCalculateFramedCameraPosition(
+	const Math::AABB& bounds,
+	const Math::Transform& cameraWorldTransform,
+	float verticalFovDegrees,
+	float aspect,
+	float zNear,
+	glm::vec3& outPosition)
+{
+	if (!bounds.IsValid() ||
+		!std::isfinite(verticalFovDegrees) ||
+		verticalFovDegrees <= 0.0f ||
+		verticalFovDegrees >= 179.0f ||
+		!std::isfinite(aspect) ||
+		aspect <= 0.0f ||
+		!std::isfinite(zNear) ||
+		zNear < 0.0f)
+	{
+		return false;
+	}
+
+	const glm::vec4 cameraRotation(
+		cameraWorldTransform.m_rotation.x,
+		cameraWorldTransform.m_rotation.y,
+		cameraWorldTransform.m_rotation.z,
+		cameraWorldTransform.m_rotation.w);
+	const glm::vec3 forward = cameraWorldTransform.GetForward();
+	const float forwardLength = glm::length(forward);
+	if (!Math::AllFinite(cameraWorldTransform.m_position) ||
+		!Math::AllFinite(cameraRotation) ||
+		!Math::AllFinite(forward) ||
+		!std::isfinite(forwardLength) ||
+		forwardLength <= std::numeric_limits<float>::epsilon())
+	{
+		return false;
+	}
+
+	const float verticalHalfFov = glm::radians(verticalFovDegrees) * 0.5f;
+	const float horizontalHalfFov = std::atan(std::tan(verticalHalfFov) * aspect);
+	const float limitingHalfFov = std::min(verticalHalfFov, horizontalHalfFov);
+	const float sineHalfFov = std::sin(limitingHalfFov);
+	if (!std::isfinite(sineHalfFov) ||
+		sineHalfFov <= std::numeric_limits<float>::epsilon())
+	{
+		return false;
+	}
+
+	const float radius = std::max(
+		glm::length(bounds.GetExtents()),
+		c_minimumCameraFrameRadius);
+	const float distance = std::max(
+		radius * c_cameraFramePadding / sineHalfFov,
+		radius + zNear * 2.0f);
+	const glm::vec3 position =
+		bounds.GetCenter() - (forward / forwardLength) * distance;
+	if (!std::isfinite(radius) ||
+		!std::isfinite(distance) ||
+		!Math::AllFinite(position))
+	{
+		return false;
+	}
+
+	outPosition = position;
+	return true;
 }
 
 bool EditorViewport::CanBeginSelectionGesture(
@@ -381,8 +495,6 @@ void EditorViewportController::Tick(World& world)
 		return;
 	}
 
-	DrawToolbar();
-
 	const auto selectedObject = ResolveSelectedObject(world);
 	TickTransformGizmo(world, selectedObject);
 	if (!m_gizmoSubmittedThisFrame)
@@ -437,6 +549,222 @@ bool EditorViewportController::PullEvent(std::string& outEvent)
 	return true;
 }
 
+bool EditorViewportController::QueueAssetDropEvent(
+	const std::string& fileId,
+	float normalizedX,
+	float normalizedY)
+{
+	if (fileId.empty() ||
+		!std::isfinite(normalizedX) ||
+		!std::isfinite(normalizedY) ||
+		normalizedX < 0.0f ||
+		normalizedX > 1.0f ||
+		normalizedY < 0.0f ||
+		normalizedY > 1.0f)
+	{
+		return false;
+	}
+
+	YAML::Node event{};
+	event["kind"] = "assetDrop";
+	event["revision"] = ++m_eventRevision;
+	event["managedMutationRevision"] =
+		m_managedSelectionMutationRevision;
+	event["fileId"] = fileId;
+	event["normalizedX"] = normalizedX;
+	event["normalizedY"] = normalizedY;
+	m_pendingEvents.Add(YAML::Dump(event));
+	return true;
+}
+
+bool EditorViewportController::QueueToolShortcutEvent(uint32_t keyCode)
+{
+	if (keyCode != 'Q' &&
+		keyCode != 'W' &&
+		keyCode != 'E' &&
+		keyCode != 'R' &&
+		keyCode != 'T')
+	{
+		return false;
+	}
+
+	YAML::Node event{};
+	event["kind"] = "toolShortcut";
+	event["revision"] = ++m_eventRevision;
+	event["managedMutationRevision"] =
+		m_managedSelectionMutationRevision;
+	event["keyCode"] = keyCode;
+	m_pendingEvents.Add(YAML::Dump(event));
+	return true;
+}
+
+bool EditorViewportController::TryResolveDropPosition(
+	World& world,
+	float normalizedX,
+	float normalizedY,
+	glm::vec3& outPosition) const
+{
+	outPosition = {};
+	if (!std::isfinite(normalizedX) ||
+		!std::isfinite(normalizedY) ||
+		normalizedX < 0.0f ||
+		normalizedX > 1.0f ||
+		normalizedY < 0.0f ||
+		normalizedY > 1.0f)
+	{
+		return false;
+	}
+
+	Math::Transform cameraTransform{};
+	CameraData cameraData{};
+	auto* cameraEcs = world.GetECS<CameraECS>();
+	Math::Ray ray{};
+	if (!cameraEcs ||
+		!cameraEcs->TryGetActiveCamera(cameraTransform, cameraData) ||
+		!BuildWorldRay(
+			normalizedX,
+			normalizedY,
+			1.0f,
+			1.0f,
+			cameraData.GetViewMatrix(),
+			cameraData.GetProjectionMatrix(),
+			ray))
+	{
+		return false;
+	}
+
+	TVector<PickCandidate> candidates{};
+	for (const auto& gameObject : world.GetGameObjects())
+	{
+		Math::AABB bounds{};
+		bool bUsesMeshBounds = false;
+		if (ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&
+			bUsesMeshBounds)
+		{
+			candidates.Add(PickCandidate{ gameObject->GetInstanceId(), bounds });
+		}
+	}
+
+	return EditorViewport::TryResolveDropPosition(
+		ray,
+		candidates,
+		outPosition);
+}
+
+bool EditorViewportController::FocusCameraOnObject(
+	World& world,
+	const InstanceId& instanceId)
+{
+	if (!instanceId.IsGameObjectId())
+	{
+		return false;
+	}
+
+	const auto targetObject =
+		world.GetObjectByInstanceId(instanceId).DynamicCast<GameObject>();
+	Math::AABB targetBounds{};
+	bool bUsesMeshBounds = false;
+	if (!targetObject ||
+		!ResolveGameObjectBounds(
+			targetObject,
+			targetBounds,
+			bUsesMeshBounds))
+	{
+		return false;
+	}
+
+	if (!bUsesMeshBounds)
+	{
+		targetBounds = Math::AABB(
+			targetBounds.GetCenter(),
+			glm::vec3(c_minimumCameraFrameRadius));
+	}
+
+	TObjectPtr<GameObject> cameraObject{};
+	TObjectPtr<CameraComponent> cameraComponent{};
+	for (const auto& gameObject : world.GetGameObjects())
+	{
+		if (!gameObject || !gameObject->GetComponent<EditorComponent>())
+		{
+			continue;
+		}
+
+		auto candidateCamera = gameObject->GetComponent<CameraComponent>();
+		if (candidateCamera)
+		{
+			cameraObject = gameObject;
+			cameraComponent = candidateCamera;
+			break;
+		}
+	}
+
+	if (!cameraObject || !cameraComponent)
+	{
+		return false;
+	}
+
+	const glm::mat4 cameraWorldMatrix =
+		CalculateCurrentWorldMatrix(cameraObject);
+	if (!IsFiniteMatrix(cameraWorldMatrix))
+	{
+		return false;
+	}
+
+	Math::Transform cameraWorldTransform =
+		Math::Transform::FromMatrix(cameraWorldMatrix);
+	glm::vec3 framedPosition{};
+	if (!TryCalculateFramedCameraPosition(
+			targetBounds,
+			cameraWorldTransform,
+			cameraComponent->GetFov(),
+			cameraComponent->GetAspect(),
+			cameraComponent->GetZNear(),
+			framedPosition))
+	{
+		return false;
+	}
+
+	const auto cameraParent = cameraObject->GetParent();
+	glm::vec4 localPosition(framedPosition, 1.0f);
+	if (cameraParent)
+	{
+		glm::mat4 inverseParentWorldMatrix{};
+		if (!TryInvertTransformMatrix(
+				CalculateCurrentWorldMatrix(cameraParent),
+				inverseParentWorldMatrix))
+		{
+			return false;
+		}
+
+		localPosition = inverseParentWorldMatrix * localPosition;
+		if (!Math::AllFinite(localPosition) ||
+			std::abs(localPosition.w) <= std::numeric_limits<float>::epsilon())
+		{
+			return false;
+		}
+		localPosition /= localPosition.w;
+	}
+
+	cameraObject->GetTransformComponent().SetPosition(glm::vec3(localPosition));
+	return true;
+}
+
+bool EditorViewportController::SetTransformToolState(
+	ETransformOperation operation,
+	ETransformSpace space)
+{
+	if (m_wasUsingGizmo ||
+		!IsValidTransformOperation(operation) ||
+		!IsValidTransformSpace(space))
+	{
+		return false;
+	}
+
+	m_operation = operation;
+	m_space = space;
+	return true;
+}
+
 TObjectPtr<GameObject> EditorViewportController::ResolveSelectedObject(World& world) const
 {
 	for (auto gameObject : world.GetGameObjects())
@@ -450,59 +778,6 @@ TObjectPtr<GameObject> EditorViewportController::ResolveSelectedObject(World& wo
 	}
 
 	return {};
-}
-
-void EditorViewportController::DrawToolbar()
-{
-	ImGuiIO& io = ImGui::GetIO();
-	const bool bCanChangeTool = !m_wasUsingGizmo;
-	const bool bCanUseHotkeys = bCanChangeTool && !io.WantTextInput && !io.MouseDown[1];
-	if (bCanUseHotkeys)
-	{
-		if (ImGui::IsKeyPressed(ImGuiKey_Q, false)) m_operation = ETransformOperation::Select;
-		if (ImGui::IsKeyPressed(ImGuiKey_W, false)) m_operation = ETransformOperation::Translate;
-		if (ImGui::IsKeyPressed(ImGuiKey_E, false)) m_operation = ETransformOperation::Rotate;
-		if (ImGui::IsKeyPressed(ImGuiKey_R, false)) m_operation = ETransformOperation::Scale;
-		if (ImGui::IsKeyPressed(ImGuiKey_T, false))
-		{
-			m_space = m_space == ETransformSpace::World ? ETransformSpace::Local : ETransformSpace::World;
-		}
-	}
-
-	ImGui::SetNextWindowPos(ImVec2(12.0f, 12.0f), ImGuiCond_Always);
-	ImGui::SetNextWindowBgAlpha(0.85f);
-	constexpr ImGuiWindowFlags flags =
-		ImGuiWindowFlags_NoTitleBar |
-		ImGuiWindowFlags_NoResize |
-		ImGuiWindowFlags_NoMove |
-		ImGuiWindowFlags_NoScrollbar |
-		ImGuiWindowFlags_NoSavedSettings |
-		ImGuiWindowFlags_AlwaysAutoResize |
-		ImGuiWindowFlags_NoFocusOnAppearing |
-		ImGuiWindowFlags_NoNav;
-
-	if (ImGui::Begin("Scene transform##SailorSceneTransform", nullptr, flags))
-	{
-		ImGui::BeginDisabled(!bCanChangeTool);
-		DrawOperationButton("Q Select", ETransformOperation::Select, m_operation);
-		ImGui::SameLine();
-		DrawOperationButton("W Move", ETransformOperation::Translate, m_operation);
-		ImGui::SameLine();
-		DrawOperationButton("E Rotate", ETransformOperation::Rotate, m_operation);
-		ImGui::SameLine();
-		DrawOperationButton("R Scale", ETransformOperation::Scale, m_operation);
-		ImGui::SameLine();
-		if (ImGui::Button(m_space == ETransformSpace::World ? "World (T)" : "Local (T)"))
-		{
-			m_space = m_space == ETransformSpace::World ? ETransformSpace::Local : ETransformSpace::World;
-		}
-		ImGui::EndDisabled();
-		if (ImGui::IsItemHovered())
-		{
-			ImGui::SetTooltip("Hold Ctrl while dragging to snap");
-		}
-	}
-	ImGui::End();
 }
 
 void EditorViewportController::CompleteActiveTransform(World& world)
