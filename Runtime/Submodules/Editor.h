@@ -76,10 +76,10 @@ namespace Sailor
 		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
 		SAILOR_SHARED_API bool RemoveComponent(const class InstanceId& instanceId);
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
-		bool InstantiatePrefab(
+		SAILOR_API bool InstantiatePrefab(
 			const TObjectPtr<Prefab>& prefab,
 			const class InstanceId& parentInstanceId);
-		bool InstantiatePrefab(
+		SAILOR_API bool InstantiatePrefab(
 			const TObjectPtr<Prefab>& prefab,
 			const class InstanceId& parentInstanceId,
 			bool bStrictInstanceIds);

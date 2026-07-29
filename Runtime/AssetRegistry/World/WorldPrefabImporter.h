@@ -54,7 +54,7 @@ namespace Sailor
 			PrefabPtr m_effectiveBaseline{};
 		};
 
-		static bool ReconcileLinkedInstanceIds(
+		SAILOR_API static bool ReconcileLinkedInstanceIds(
 			const PrefabPtr& expandedPrefab,
 			const PrefabPtr& sourcePrefab,
 			const TMap<InstanceId, InstanceId>& savedSourceToInstanceIds,
@@ -70,7 +70,7 @@ namespace Sailor
 			TMap<InstanceId, ReflectedData>& outComponentOverrides,
 			std::string& outDiagnostic);
 
-		static bool BuildUpdatedLinkedOverrides(
+		SAILOR_API static bool BuildUpdatedLinkedOverrides(
 			const PrefabPtr& expandedPrefab,
 			const PrefabPtr& sourcePrefab,
 			const PrefabPtr& effectiveBaseline,
@@ -79,7 +79,7 @@ namespace Sailor
 			TMap<InstanceId, ReflectedData>& outComponentOverrides,
 			std::string& outDiagnostic);
 
-		static bool CommitLinkedInstanceUpdates(
+		SAILOR_API static bool CommitLinkedInstanceUpdates(
 			WorldPtr world,
 			TVector<PendingPrefabLinkUpdate>& pendingUpdates,
 			std::string& outDiagnostic);

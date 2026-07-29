@@ -100,7 +100,7 @@ namespace Sailor
 
 	protected:
 
-		static void SerializeGameObject(
+		SAILOR_API static void SerializeGameObject(
 			GameObjectPtr root,
 			uint32_t parentIndex,
 			TVector<ReflectedData>& components,
