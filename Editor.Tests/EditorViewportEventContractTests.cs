@@ -511,7 +511,8 @@ public sealed class EditorViewportEventContractTests
             if (Directory.Exists(Path.Combine(current.FullName, "Editor")) &&
                 Directory.Exists(Path.Combine(current.FullName, "Runtime")))
             {
-                return File.ReadAllText(Path.Combine([current.FullName, .. relativePath]));
+                return File.ReadAllText(Path.Combine([current.FullName, .. relativePath]))
+                    .ReplaceLineEndings("\n");
             }
 
             current = current.Parent;
