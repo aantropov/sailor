@@ -12,6 +12,10 @@ using SailorEditor.Content;
 
 namespace SailorEditor.Services
 {
+    public sealed record PrefabAssetWriteResult(
+        PrefabFile Prefab,
+        ProjectContentAssetWriteTransaction Transaction);
+
     public class AssetsService : IDisposable
     {
         const int ActiveProjectRootId = 1;
@@ -105,7 +109,39 @@ namespace SailorEditor.Services
             return Path.Combine(CurrentProjectRootPath, Path.Combine(parts.ToArray()));
         }
 
-        public PrefabFile? CreatePrefabAsset(AssetFolder? targetFolder, GameObject root, bool overwrite = false, PrefabFile? existingPrefab = null)
+        public PrefabFile? CreatePrefabAsset(
+            AssetFolder? targetFolder,
+            GameObject root,
+            bool overwrite = false,
+            PrefabFile? existingPrefab = null)
+        {
+            var creation = BeginCreatePrefabAsset(
+                targetFolder,
+                root,
+                overwrite,
+                existingPrefab);
+            if (creation is null)
+                return null;
+
+            var commit = CompletePrefabAssetWrite(
+                creation.Transaction,
+                commit: true);
+            if (!commit.Succeeded)
+            {
+                CompletePrefabAssetWrite(
+                    creation.Transaction,
+                    commit: false);
+            }
+            return commit.Succeeded
+                ? creation.Prefab
+                : null;
+        }
+
+        public PrefabAssetWriteResult? BeginCreatePrefabAsset(
+            AssetFolder? targetFolder,
+            GameObject root,
+            bool overwrite = false,
+            PrefabFile? existingPrefab = null)
         {
             if ((targetFolder?.IsReadOnly ?? false) || (existingPrefab?.IsReadOnly ?? false))
                 return null;
@@ -116,22 +152,107 @@ namespace SailorEditor.Services
             if (!ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, folderPath))
                 return null;
 
-            Directory.CreateDirectory(folderPath);
+            if (!Directory.Exists(folderPath))
+                return null;
 
             var prefabName = existingPrefab?.Asset?.Name ?? GetUniqueAssetName(folderPath, root.Name, ".prefab");
             var prefabPath = existingPrefab?.Asset?.FullName ?? Path.Combine(folderPath, prefabName);
-            var assetInfoPath = prefabPath + ".asset";
             var fileId = existingPrefab?.FileId ?? new FileId($"{{{Guid.NewGuid().ToString().ToUpperInvariant()}}}");
+            var sourceContents =
+                SailorEditor.Commands.EditorYaml.SerializePrefab(prefab);
+            var metadataContents = SerializePrefabAssetInfo(
+                fileId,
+                Path.GetFileName(prefabPath),
+                externalRefs);
 
-            WritePrefab(prefabPath, prefab);
-            WritePrefabAssetInfo(assetInfoPath, fileId, Path.GetFileName(prefabPath), externalRefs);
+            ProjectContentAssetWriteTransaction transaction;
+            lock (_watcherLock)
+            {
+                var watcherStates = _contentWatchers
+                    .Select(watcher => watcher.EnableRaisingEvents)
+                    .ToArray();
+                try
+                {
+                    foreach (var watcher in _contentWatchers)
+                        watcher.EnableRaisingEvents = false;
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        prefabPath,
+                        sourceContents,
+                        metadataContents,
+                        fileId.Value,
+                        overwrite);
+                }
+                finally
+                {
+                    for (var index = 0;
+                        index < _contentWatchers.Count;
+                        index++)
+                    {
+                        _contentWatchers[index].EnableRaisingEvents =
+                            watcherStates[index];
+                    }
+                }
+            }
 
-            Refresh();
+            if (!transaction.Result.Succeeded)
+                return null;
+
+            try
+            {
+                Refresh();
+            }
+            catch
+            {
+                CompletePrefabAssetWrite(transaction, commit: false);
+                return null;
+            }
+
             var created = Assets.TryGetValue(fileId, out var asset) && asset is PrefabFile prefabFile
                 ? prefabFile
                 : null;
+            if (created is null)
+            {
+                CompletePrefabAssetWrite(transaction, commit: false);
+                return null;
+            }
 
-            return created;
+            return new PrefabAssetWriteResult(created, transaction);
+        }
+
+        public ProjectContentFileOperationResult CompletePrefabAssetWrite(
+            ProjectContentAssetWriteTransaction transaction,
+            bool commit)
+        {
+            ProjectContentFileOperationResult result;
+            lock (_watcherLock)
+            {
+                var watcherStates = _contentWatchers
+                    .Select(watcher => watcher.EnableRaisingEvents)
+                    .ToArray();
+                try
+                {
+                    foreach (var watcher in _contentWatchers)
+                        watcher.EnableRaisingEvents = false;
+                    result = commit
+                        ? transaction.Commit()
+                        : transaction.Rollback();
+                }
+                finally
+                {
+                    for (var index = 0;
+                        index < _contentWatchers.Count;
+                        index++)
+                    {
+                        _contentWatchers[index].EnableRaisingEvents =
+                            watcherStates[index];
+                    }
+                }
+            }
+
+            if (!commit || !result.Succeeded)
+                Refresh();
+            return result;
         }
 
         public ProjectContentFileOperationResult RenameAsset(AssetFile assetFile, string newName)
@@ -678,12 +799,10 @@ namespace SailorEditor.Services
             return fileName;
         }
 
-        static void WritePrefab(string path, Prefab prefab)
-        {
-            File.WriteAllText(path, SailorEditor.Commands.EditorYaml.SerializePrefab(prefab));
-        }
-
-        static void WritePrefabAssetInfo(string path, FileId fileId, string filename, List<InstanceId> externalRefs)
+        static string SerializePrefabAssetInfo(
+            FileId fileId,
+            string filename,
+            List<InstanceId> externalRefs)
         {
             var root = new YamlMappingNode
             {
@@ -700,8 +819,9 @@ namespace SailorEditor.Services
             }
 
             var yaml = new YamlStream(new YamlDocument(root));
-            using var writer = new StreamWriter(new FileStream(path, FileMode.Create));
+            using var writer = new StringWriter();
             yaml.Save(writer, false);
+            return writer.ToString();
         }
 
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId, int projectRootId, bool isReadOnly)
@@ -871,6 +991,9 @@ namespace SailorEditor.Services
 
             foreach (var directory in Directory.GetDirectories(directoryPath).Order(ProjectContentPathPolicy.PathComparer))
             {
+                if (ProjectContentInternalPathPolicy.IsTransactionDirectory(directory))
+                    continue;
+
                 var canonicalChildPath = ProjectContentPathPolicy.NormalizeRoot(directory);
                 if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, canonicalChildPath)
                     || _visitedDirectories.Contains($"{root.Id}:{canonicalChildPath}"))

@@ -6,6 +6,8 @@
 #endif
 #include <atomic>
 #include <mutex>
+#include <optional>
+#include <string>
 #include "Math/Math.h"
 #include "Containers/Containers.h"
 
@@ -79,6 +81,21 @@ namespace Sailor::Win32
 
 #if defined(_WIN32)
 		ATOM m_windowClassAtom = 0;
+		IUnknown* m_editorViewportDropTarget = nullptr;
+		bool m_bEditorViewportDropOleInitialized = false;
+
+		struct EditorViewportAssetDrop
+		{
+			std::string m_fileId{};
+			float m_normalizedX = 0.0f;
+			float m_normalizedY = 0.0f;
+		};
+
+		std::mutex m_editorViewportAssetDropMutex{};
+		std::optional<EditorViewportAssetDrop>
+			m_pendingEditorViewportAssetDrop{};
+		std::mutex m_editorViewportToolShortcutMutex{};
+		TVector<uint32_t> m_pendingEditorViewportToolShortcuts{};
 #endif
 
 		std::atomic<int> m_width = 1024;
@@ -156,6 +173,18 @@ namespace Sailor::Win32
 
 		SAILOR_API static void ProcessWin32Msgs();
 		SAILOR_API static bool IsWindowAlive(const Window* pWindow);
+#if defined(_WIN32)
+		void QueueEditorViewportAssetDrop(
+			std::string fileId,
+			float normalizedX,
+			float normalizedY);
+		bool PullEditorViewportAssetDrop(
+			std::string& outFileId,
+			float& outNormalizedX,
+			float& outNormalizedY);
+		void QueueEditorViewportToolShortcut(uint32_t keyCode);
+		bool PullEditorViewportToolShortcut(uint32_t& outKeyCode);
+#endif
 #if defined(__APPLE__)
 		SAILOR_API static void ProcessMacMsgs();
 #endif

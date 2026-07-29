@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/EngineLoop.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
 #include "YamlExceptionBoundary.h"
@@ -108,6 +109,563 @@ ObjectPtr World::GetObjectByInstanceId(const InstanceId& instanceId) const
 	return ObjectPtr();
 }
 
+bool World::TryGetPrefabInstance(
+	const InstanceId& objectInstanceId,
+	const PrefabInstanceLink*& outLink) const
+{
+	outLink = nullptr;
+	if (!m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId))
+	{
+		return false;
+	}
+
+	const InstanceId& rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
+	if (!m_prefabInstances.ContainsKey(rootInstanceId))
+	{
+		return false;
+	}
+
+	outLink = &m_prefabInstances[rootInstanceId];
+	return true;
+}
+
+bool World::IsPrefabLinked(const InstanceId& objectInstanceId) const
+{
+	return m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId);
+}
+
+bool World::IsPrefabInstanceRoot(const InstanceId& objectInstanceId) const
+{
+	return m_prefabInstances.ContainsKey(objectInstanceId);
+}
+
+bool World::RegisterPrefabInstance(
+	GameObjectPtr root,
+	const FileId& sourcePrefabId,
+	const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+	const PrefabPtr& effectiveBaseline,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	if (!root ||
+		!sourcePrefabId ||
+		sourceToInstanceIds.IsEmpty() ||
+		!effectiveBaseline ||
+		effectiveBaseline->GetFileId() != sourcePrefabId)
+	{
+		outDiagnostic = "the prefab link has no root, source asset, instance mapping, or effective baseline";
+		return false;
+	}
+
+	if (!effectiveBaseline->ValidateForInstantiation(outDiagnostic))
+	{
+		outDiagnostic = "the prefab link has an invalid effective baseline: " +
+			outDiagnostic;
+		return false;
+	}
+
+	if (root->GetWorld() != this ||
+		!m_objectsMap.ContainsKey(root->GetInstanceId()) ||
+		GetObjectByInstanceId(root->GetInstanceId()).DynamicCast<GameObject>() !=
+			root)
+	{
+		outDiagnostic = "the prefab instance root does not belong to this world";
+		return false;
+	}
+
+	if (m_prefabInstances.ContainsKey(root->GetInstanceId()))
+	{
+		outDiagnostic = "the prefab instance root is already linked";
+		return false;
+	}
+
+	TSet<InstanceId> liveInstanceIds;
+	for (const auto& mapping : sourceToInstanceIds)
+	{
+		const InstanceId& liveInstanceId = *mapping.m_second;
+		if (!mapping.m_first.IsGameObjectId() ||
+			!liveInstanceId.IsGameObjectId() ||
+			!liveInstanceIds.Insert(liveInstanceId) ||
+			!m_objectsMap.ContainsKey(liveInstanceId))
+		{
+			outDiagnostic = "the prefab link contains an invalid, duplicate, or missing game object";
+			return false;
+		}
+
+		for (GameObjectPtr current = GetObjectByInstanceId(liveInstanceId).DynamicCast<GameObject>();
+			current;
+			current = current->GetParent())
+		{
+			if (current == root)
+			{
+				break;
+			}
+
+			if (!current->GetParent())
+			{
+				outDiagnostic = "a mapped game object is outside the prefab instance hierarchy";
+				return false;
+			}
+		}
+
+		if (m_prefabInstanceRootsByObject.ContainsKey(liveInstanceId))
+		{
+			outDiagnostic = "a mapped game object already belongs to another linked prefab instance";
+			return false;
+		}
+	}
+
+	if (!liveInstanceIds.Contains(root->GetInstanceId()))
+	{
+		outDiagnostic = "the prefab instance mapping does not contain its live root";
+		return false;
+	}
+
+	PrefabInstanceLink link;
+	link.m_sourcePrefabId = sourcePrefabId;
+	link.m_rootInstanceId = root->GetInstanceId();
+	link.m_sourceToInstanceIds = sourceToInstanceIds;
+	link.m_effectiveBaseline =
+		PrefabPtr::Make(m_allocator, sourcePrefabId);
+	link.m_effectiveBaseline->m_gameObjects =
+		effectiveBaseline->m_gameObjects;
+	link.m_effectiveBaseline->m_components =
+		effectiveBaseline->m_components;
+	link.m_effectiveBaseline->m_linkedInstanceIds =
+		effectiveBaseline->m_linkedInstanceIds;
+	link.m_effectiveBaseline->m_gameObjectOverrides =
+		effectiveBaseline->m_gameObjectOverrides;
+	link.m_effectiveBaseline->m_componentOverrides =
+		effectiveBaseline->m_componentOverrides;
+	link.m_effectiveBaseline->m_detachedSupplementalInstanceIds =
+		effectiveBaseline->m_detachedSupplementalInstanceIds;
+	link.m_effectiveBaseline->m_linkedParentInstanceId =
+		effectiveBaseline->m_linkedParentInstanceId;
+	link.m_effectiveBaseline->m_bLinkedInstanceRecord =
+		effectiveBaseline->m_bLinkedInstanceRecord;
+	link.m_effectiveBaseline->m_bExpandedLinkedInstanceRecord =
+		effectiveBaseline->m_bExpandedLinkedInstanceRecord;
+	link.m_effectiveBaseline->m_bIsReady.store(
+		effectiveBaseline->IsReady(),
+		std::memory_order_release);
+	for (const auto& mapping : sourceToInstanceIds)
+	{
+		GameObjectPtr liveGameObject =
+			GetObjectByInstanceId(*mapping.m_second).DynamicCast<GameObject>();
+		if (!liveGameObject)
+		{
+			continue;
+		}
+
+		for (Prefab::ReflectedGameObject& baselineGameObject :
+			link.m_effectiveBaseline->m_gameObjects)
+		{
+			if (baselineGameObject.m_instanceId != mapping.m_first)
+			{
+				continue;
+			}
+
+			baselineGameObject.m_name = liveGameObject->GetName();
+			baselineGameObject.m_position =
+				liveGameObject->GetTransformComponent().GetPosition();
+			baselineGameObject.m_rotation =
+				liveGameObject->GetTransformComponent().GetRotation();
+			baselineGameObject.m_scale =
+				liveGameObject->GetTransformComponent().GetScale();
+			break;
+		}
+	}
+
+	m_prefabInstances[link.m_rootInstanceId] = link;
+	for (const auto& mapping : sourceToInstanceIds)
+	{
+		m_prefabInstanceRootsByObject[*mapping.m_second] = link.m_rootInstanceId;
+	}
+
+	root->m_fileId = sourcePrefabId;
+	return true;
+}
+
+bool World::LinkPrefabInstance(
+	GameObjectPtr root,
+	const PrefabPtr& sourcePrefab,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	if (!root || !sourcePrefab)
+	{
+		outDiagnostic = "the prefab instance root or source prefab is invalid";
+		return false;
+	}
+
+	TVector<GameObjectPtr> liveGameObjects;
+	TVector<GameObjectPtr> pendingGameObjects;
+	pendingGameObjects.Add(root);
+	while (!pendingGameObjects.IsEmpty())
+	{
+		GameObjectPtr current =
+			pendingGameObjects[pendingGameObjects.Num() - 1];
+		pendingGameObjects.RemoveLast();
+		liveGameObjects.Add(current);
+
+		const auto& children = current->GetChildren();
+		for (size_t childIndex = children.Num();
+			childIndex > 0;
+			--childIndex)
+		{
+			pendingGameObjects.Add(children[childIndex - 1]);
+		}
+	}
+
+	if (liveGameObjects.Num() != sourcePrefab->m_gameObjects.Num())
+	{
+		outDiagnostic = "the live hierarchy size does not match the source prefab";
+		return false;
+	}
+
+	const uint32_t invalidParentIndex = static_cast<uint32_t>(-1);
+	uint32_t sourceRootIndex = invalidParentIndex;
+	for (uint32_t gameObjectIndex = 0;
+		gameObjectIndex < sourcePrefab->m_gameObjects.Num();
+		++gameObjectIndex)
+	{
+		if (sourcePrefab->m_gameObjects[gameObjectIndex].m_parentIndex ==
+			invalidParentIndex)
+		{
+			sourceRootIndex = gameObjectIndex;
+			break;
+		}
+	}
+
+	if (sourceRootIndex == invalidParentIndex)
+	{
+		outDiagnostic = "the source prefab has no hierarchy root";
+		return false;
+	}
+
+	TVector<uint32_t> sourcePreorder;
+	TVector<uint32_t> pendingSourceIndices;
+	pendingSourceIndices.Add(sourceRootIndex);
+	while (!pendingSourceIndices.IsEmpty())
+	{
+		const uint32_t currentSourceIndex =
+			pendingSourceIndices[pendingSourceIndices.Num() - 1];
+		pendingSourceIndices.RemoveLast();
+		sourcePreorder.Add(currentSourceIndex);
+
+		for (uint32_t candidateIndex = static_cast<uint32_t>(
+				sourcePrefab->m_gameObjects.Num());
+			candidateIndex > 0;
+			--candidateIndex)
+		{
+			const uint32_t childIndex = candidateIndex - 1;
+			if (sourcePrefab->m_gameObjects[childIndex].m_parentIndex ==
+				currentSourceIndex)
+			{
+				pendingSourceIndices.Add(childIndex);
+			}
+		}
+	}
+
+	if (sourcePreorder.Num() != sourcePrefab->m_gameObjects.Num())
+	{
+		outDiagnostic = "the source prefab hierarchy is disconnected";
+		return false;
+	}
+
+	TMap<InstanceId, InstanceId> sourceToInstanceIds;
+	for (uint32_t preorderIndex = 0;
+		preorderIndex < sourcePreorder.Num();
+		++preorderIndex)
+	{
+		sourceToInstanceIds[
+			sourcePrefab->m_gameObjects[
+				sourcePreorder[preorderIndex]].m_instanceId] =
+			liveGameObjects[preorderIndex]->GetInstanceId();
+	}
+
+	return LinkPrefabInstance(
+		root,
+		sourcePrefab,
+		sourceToInstanceIds,
+		outDiagnostic);
+}
+
+bool World::LinkPrefabInstance(
+	GameObjectPtr root,
+	const PrefabPtr& sourcePrefab,
+	const TMap<InstanceId, InstanceId>& sourceToInstanceIds,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	if (!root || !sourcePrefab || !sourcePrefab->GetFileId())
+	{
+		outDiagnostic = "the prefab instance root or source prefab is invalid";
+		return false;
+	}
+
+	if (!sourcePrefab->ValidateForInstantiation(outDiagnostic))
+	{
+		return false;
+	}
+
+	if (sourceToInstanceIds.Num() != sourcePrefab->m_gameObjects.Num())
+	{
+		outDiagnostic = "the source-to-instance mapping does not cover the complete prefab hierarchy";
+		return false;
+	}
+
+	const uint32_t invalidParentIndex = static_cast<uint32_t>(-1);
+	uint32_t numLiveObjects = 0;
+	TVector<GameObjectPtr> pendingObjects;
+	pendingObjects.Add(root);
+	while (!pendingObjects.IsEmpty())
+	{
+		GameObjectPtr current = pendingObjects[pendingObjects.Num() - 1];
+		pendingObjects.RemoveLast();
+		++numLiveObjects;
+		pendingObjects.AddRange(current->GetChildren());
+	}
+
+	if (numLiveObjects != sourcePrefab->m_gameObjects.Num())
+	{
+		outDiagnostic = "the live hierarchy has structural changes and cannot be linked";
+		return false;
+	}
+
+	for (uint32_t gameObjectIndex = 0;
+		gameObjectIndex < sourcePrefab->m_gameObjects.Num();
+		++gameObjectIndex)
+	{
+		const auto& sourceGameObject = sourcePrefab->m_gameObjects[gameObjectIndex];
+		if (!sourceToInstanceIds.ContainsKey(sourceGameObject.m_instanceId))
+		{
+			outDiagnostic = "the source-to-instance mapping is missing a source game object";
+			return false;
+		}
+
+		GameObjectPtr liveGameObject = GetObjectByInstanceId(
+			sourceToInstanceIds[sourceGameObject.m_instanceId]).DynamicCast<GameObject>();
+		if (!liveGameObject)
+		{
+			outDiagnostic = "the source-to-instance mapping references a missing live game object";
+			return false;
+		}
+
+		if (sourceGameObject.m_parentIndex == invalidParentIndex)
+		{
+			if (liveGameObject != root)
+			{
+				outDiagnostic = "the source prefab root maps to a different live game object";
+				return false;
+			}
+		}
+		else
+		{
+			const InstanceId& expectedParentId = sourceToInstanceIds[
+				sourcePrefab->m_gameObjects[sourceGameObject.m_parentIndex].m_instanceId];
+			if (!liveGameObject->GetParent() ||
+				liveGameObject->GetParent()->GetInstanceId() != expectedParentId)
+			{
+				outDiagnostic = "the live prefab hierarchy does not match its source hierarchy";
+				return false;
+			}
+		}
+
+		if (liveGameObject->GetComponents().Num() != sourceGameObject.m_components.Num())
+		{
+			outDiagnostic = "the live prefab components do not match the source prefab";
+			return false;
+		}
+
+		for (const uint32_t componentIndex : sourceGameObject.m_components)
+		{
+			const ReflectedData& sourceReflection = sourcePrefab->m_components[componentIndex];
+			InstanceId sourceComponentId;
+			std::string conversionDiagnostic;
+			if (!External::TryConvertYaml(
+					sourceReflection.GetProperties()["instanceId"],
+					sourceComponentId,
+					conversionDiagnostic))
+			{
+				outDiagnostic = "the source prefab contains an invalid component identity: " +
+					conversionDiagnostic;
+				return false;
+			}
+
+			const InstanceId expectedLiveComponentId(
+				sourceComponentId.ComponentId(),
+				liveGameObject->GetInstanceId());
+			bool bFoundComponent = false;
+			for (const auto& liveComponent : liveGameObject->GetComponents())
+			{
+				if (liveComponent->GetInstanceId() == expectedLiveComponentId &&
+					liveComponent->GetTypeInfo() == sourceReflection.GetTypeInfo())
+				{
+					bFoundComponent = true;
+					break;
+				}
+			}
+
+			if (!bFoundComponent)
+			{
+				outDiagnostic = "the live prefab component identities or types do not match the source prefab";
+				return false;
+			}
+		}
+	}
+
+	PrefabPtr expandedPrefab =
+		PrefabPtr::Make(m_allocator, sourcePrefab->GetFileId());
+	Prefab::SerializeGameObject(
+		root,
+		static_cast<uint32_t>(-1),
+		expandedPrefab->m_components,
+		expandedPrefab->m_gameObjects,
+		nullptr);
+	if (!expandedPrefab->ValidateForInstantiation(outDiagnostic))
+	{
+		outDiagnostic = "cannot capture the linked prefab baseline: " +
+			outDiagnostic;
+		return false;
+	}
+
+	TMap<InstanceId, YAML::Node> gameObjectOverrides;
+	TMap<InstanceId, ReflectedData> componentOverrides;
+	if (!WorldPrefab::BuildLinkedOverrides(
+			expandedPrefab,
+			sourcePrefab,
+			sourceToInstanceIds,
+			gameObjectOverrides,
+			componentOverrides,
+			outDiagnostic))
+	{
+		outDiagnostic = "cannot derive the linked prefab baseline overrides: " +
+			outDiagnostic;
+		return false;
+	}
+
+	PrefabPtr effectiveBaseline =
+		PrefabPtr::Make(m_allocator, sourcePrefab->GetFileId());
+	const InstanceId parentInstanceId = root->GetParent()
+		? root->GetParent()->GetInstanceId()
+		: InstanceId::Invalid;
+	if (!effectiveBaseline->ConfigureLinkedInstance(
+			sourcePrefab,
+			sourceToInstanceIds,
+			parentInstanceId,
+			gameObjectOverrides,
+			componentOverrides,
+			outDiagnostic))
+	{
+		outDiagnostic = "cannot configure the linked prefab baseline: " +
+			outDiagnostic;
+		return false;
+	}
+
+	return RegisterPrefabInstance(
+		root,
+		sourcePrefab->GetFileId(),
+		sourceToInstanceIds,
+		effectiveBaseline,
+		outDiagnostic);
+}
+
+bool World::BreakPrefabLink(
+	const InstanceId& objectInstanceId,
+	PrefabInstanceLink* outPreviousLink)
+{
+	if (!m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId))
+	{
+		return false;
+	}
+
+	const InstanceId rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
+	auto purgeRootMembership = [this, &rootInstanceId]()
+		{
+			TVector<InstanceId> memberInstanceIds;
+			for (const auto& membership :
+				m_prefabInstanceRootsByObject)
+			{
+				if (*membership.m_second == rootInstanceId)
+				{
+					memberInstanceIds.Add(membership.m_first);
+				}
+			}
+
+			for (const InstanceId& memberInstanceId :
+				memberInstanceIds)
+			{
+				m_prefabInstanceRootsByObject.Remove(
+					memberInstanceId);
+			}
+		};
+
+	if (!m_prefabInstances.ContainsKey(rootInstanceId))
+	{
+		purgeRootMembership();
+		return false;
+	}
+
+	const PrefabInstanceLink previousLink = m_prefabInstances[rootInstanceId];
+	if (outPreviousLink)
+	{
+		*outPreviousLink = previousLink;
+	}
+
+	purgeRootMembership();
+	m_prefabInstances.Remove(rootInstanceId);
+
+	if (GameObjectPtr root = GetObjectByInstanceId(rootInstanceId).DynamicCast<GameObject>())
+	{
+		root->m_fileId = FileId::Invalid;
+	}
+
+	return true;
+}
+
+bool World::CanModifyPrefabStructure(
+	const InstanceId& objectInstanceId,
+	std::string* outDiagnostic) const
+{
+	const bool bCanModify = !IsPrefabLinked(objectInstanceId);
+	if (!bCanModify && outDiagnostic)
+	{
+		*outDiagnostic = "structural changes are disabled for linked prefab instances; break the prefab link first";
+	}
+	return bCanModify;
+}
+
+bool World::CanReparentPrefabObject(
+	const InstanceId& objectInstanceId,
+	const InstanceId& parentInstanceId,
+	std::string* outDiagnostic) const
+{
+	if (IsPrefabLinked(objectInstanceId))
+	{
+		const InstanceId& rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
+		if (rootInstanceId != objectInstanceId)
+		{
+			if (outDiagnostic)
+			{
+				*outDiagnostic = "internal linked prefab game objects cannot be reparented";
+			}
+			return false;
+		}
+	}
+
+	if (parentInstanceId && IsPrefabLinked(parentInstanceId))
+	{
+		if (outDiagnostic)
+		{
+			*outDiagnostic = "game objects cannot be parented inside a linked prefab instance";
+		}
+		return false;
+	}
+
+	return true;
+}
+
 void World::Tick(FrameState& frameState)
 {
 	const bool bShouldCallBeginPlay = (m_mask & (uint8_t)EWorldBehaviourBit::CallBeginPlay) != 0;
@@ -211,6 +769,11 @@ void World::Tick(FrameState& frameState)
 
 GameObjectPtr World::Instantiate(PrefabPtr prefab)
 {
+	return Instantiate(prefab, false);
+}
+
+GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
+{
 	if (!prefab || prefab->m_gameObjects.IsEmpty())
 	{
 		SAILOR_LOG_ERROR("Cannot instantiate an invalid or empty prefab.");
@@ -226,16 +789,299 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 		return {};
 	}
 
+	if (prefab->m_bLinkedPrefabSnapshotRecord)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot instantiate linked prefab snapshot directly; it must be resolved against its current source first.");
+		return {};
+	}
+
+	if (prefab->m_bExpandedLinkedInstanceRecord)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot instantiate an expanded linked serialization record directly.");
+		return {};
+	}
+
+	GameObjectPtr detachedParent;
+	if (prefab->m_bDetachedFromPrefabRecord)
+	{
+		if (!bStrictInstanceIds)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate detached prefab snapshot: exact instance ids are required.");
+			return {};
+		}
+
+		detachedParent = GetObjectByInstanceId(
+			prefab->m_detachedParentInstanceId).DynamicCast<GameObject>();
+		if (!detachedParent ||
+			!IsPrefabLinked(
+				prefab->m_detachedParentInstanceId))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate detached prefab snapshot: parent '%s' is missing or is not a linked prefab member.",
+				prefab->m_detachedParentInstanceId.ToString().c_str());
+			return {};
+		}
+	}
+
+	if (prefab->m_bLinkedInstanceRecord)
+	{
+		TMap<InstanceId, InstanceId> dependencyAliasTargets;
+		auto registerDependencyAlias =
+			[&dependencyAliasTargets](
+				const InstanceId& alias,
+				const InstanceId& target)
+			{
+				if (!alias || !target)
+				{
+					return false;
+				}
+
+				if (dependencyAliasTargets.ContainsKey(alias))
+				{
+					return dependencyAliasTargets[alias] ==
+						target;
+				}
+
+				dependencyAliasTargets[alias] = target;
+				return true;
+			};
+
+		for (const auto& sourceGameObject :
+			prefab->m_gameObjects)
+		{
+			const InstanceId& sourceInstanceId =
+				sourceGameObject.m_instanceId;
+			const InstanceId desiredGameObjectId =
+				prefab->m_linkedInstanceIds.ContainsKey(
+					sourceInstanceId)
+					? prefab->m_linkedInstanceIds[
+						sourceInstanceId]
+					: sourceInstanceId;
+			if (!registerDependencyAlias(
+					sourceInstanceId,
+					desiredGameObjectId) ||
+				!registerDependencyAlias(
+					desiredGameObjectId,
+					desiredGameObjectId))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate linked prefab '%s': source and live game object dependency aliases are ambiguous.",
+					prefab->GetFileId().ToString().c_str());
+				return {};
+			}
+
+			for (const uint32_t componentIndex :
+				sourceGameObject.m_components)
+			{
+				const ReflectedData& reflection =
+					prefab->m_components[componentIndex];
+				InstanceId sourceComponentId;
+				std::string conversionDiagnostic;
+				if (!External::TryConvertYaml(
+						reflection.GetProperties()[
+							"instanceId"],
+						sourceComponentId,
+						conversionDiagnostic))
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot instantiate reflected component %u from linked prefab '%s': %s.",
+						componentIndex,
+						prefab->GetFileId().ToString().c_str(),
+						conversionDiagnostic.c_str());
+					return {};
+				}
+
+				const InstanceId desiredComponentId(
+					sourceComponentId.ComponentId(),
+					desiredGameObjectId);
+				if (!registerDependencyAlias(
+						sourceComponentId,
+						desiredComponentId) ||
+					!registerDependencyAlias(
+						desiredComponentId,
+						desiredComponentId))
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot instantiate linked prefab '%s': source and live component dependency aliases are ambiguous.",
+						prefab->GetFileId().ToString().c_str());
+					return {};
+				}
+			}
+		}
+	}
+
+	TMap<InstanceId, InstanceId> strictSourceToInstanceIds;
+	if (bStrictInstanceIds)
+	{
+		TSet<InstanceId> desiredGameObjectIds;
+		TSet<InstanceId> desiredComponentIds;
+		TSet<InstanceId> existingComponentIds;
+		for (const auto& existingGameObject : m_objects)
+		{
+			if (!existingGameObject)
+			{
+				continue;
+			}
+
+			for (const auto& existingComponent :
+				existingGameObject->GetComponents())
+			{
+				if (existingComponent)
+				{
+					existingComponentIds.Insert(
+						existingComponent->GetInstanceId());
+				}
+			}
+		}
+
+		for (const auto& sourceGameObject : prefab->m_gameObjects)
+		{
+			const InstanceId& sourceInstanceId =
+				sourceGameObject.m_instanceId;
+			InstanceId desiredGameObjectId = sourceInstanceId;
+			if (prefab->m_bLinkedInstanceRecord)
+			{
+				if (prefab->m_linkedInstanceIds.ContainsKey(
+						sourceInstanceId))
+				{
+					desiredGameObjectId =
+						prefab->m_linkedInstanceIds[
+							sourceInstanceId];
+				}
+				else if (prefab->m_detachedSupplementalInstanceIds.Contains(
+						sourceInstanceId))
+				{
+					desiredGameObjectId = sourceInstanceId;
+				}
+				else
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot strictly instantiate linked prefab '%s': a game object is neither mapped source data nor detached supplemental data.",
+						prefab->GetFileId().ToString().c_str());
+					return {};
+				}
+			}
+
+			if (!desiredGameObjectId.IsGameObjectId() ||
+				m_objectsMap.ContainsKey(desiredGameObjectId) ||
+				!desiredGameObjectIds.Insert(desiredGameObjectId))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot strictly instantiate prefab '%s': game object id '%s' is invalid, duplicated, or already in use.",
+					prefab->GetFileId().ToString().c_str(),
+					desiredGameObjectId.ToString().c_str());
+				return {};
+			}
+
+			strictSourceToInstanceIds[sourceInstanceId] =
+				desiredGameObjectId;
+			for (const uint32_t componentIndex :
+				sourceGameObject.m_components)
+			{
+				const ReflectedData& reflection =
+					prefab->m_components[componentIndex];
+				InstanceId sourceComponentId;
+				std::string conversionDiagnostic;
+				if (!External::TryConvertYaml(
+						reflection.GetProperties()["instanceId"],
+						sourceComponentId,
+						conversionDiagnostic))
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot strictly instantiate reflected component %u from prefab '%s': %s.",
+						componentIndex,
+						prefab->GetFileId().ToString().c_str(),
+						conversionDiagnostic.c_str());
+					return {};
+				}
+
+				const InstanceId desiredComponentId(
+					sourceComponentId.ComponentId(),
+					desiredGameObjectId);
+				if (!desiredComponentId ||
+					existingComponentIds.Contains(desiredComponentId) ||
+					!desiredComponentIds.Insert(desiredComponentId))
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot strictly instantiate prefab '%s': component id '%s' is invalid, duplicated, or already in use.",
+						prefab->GetFileId().ToString().c_str(),
+						desiredComponentId.ToString().c_str());
+					return {};
+				}
+			}
+		}
+	}
+
 	TVector<GameObjectPtr> gameObjects;
 	gameObjects.Reserve(prefab->m_gameObjects.Num());
 	TMap<InstanceId, ObjectPtr> internalDependencies;
+	TMap<InstanceId, InstanceId> sourceToInstanceIds;
+	TSet<InstanceId> reservedInstanceIds;
 	PrefabInstantiationTransaction transaction(*this, gameObjects, ComponentsToResolveDependencies);
 
 	for (uint32_t j = 0; j < prefab->m_gameObjects.Num(); j++)
 	{
-		// We generate new instance id for game objects if the same is already in use
-		const bool bShouldGenerateNewId = !prefab->m_gameObjects[j].m_instanceId || m_objectsMap.ContainsKey(prefab->m_gameObjects[j].m_instanceId);
-		const InstanceId gameObjectId = bShouldGenerateNewId ? InstanceId::GenerateNewInstanceId() : prefab->m_gameObjects[j].m_instanceId;
+		const InstanceId& sourceInstanceId = prefab->m_gameObjects[j].m_instanceId;
+		InstanceId gameObjectId;
+		if (prefab->m_bLinkedInstanceRecord)
+		{
+			if (prefab->m_linkedInstanceIds.ContainsKey(
+					sourceInstanceId))
+			{
+				gameObjectId =
+					prefab->m_linkedInstanceIds[
+						sourceInstanceId];
+				sourceToInstanceIds[sourceInstanceId] =
+					gameObjectId;
+			}
+			else if (prefab->m_detachedSupplementalInstanceIds.Contains(
+					sourceInstanceId))
+			{
+				gameObjectId = sourceInstanceId;
+			}
+			else
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate linked prefab '%s': a game object is neither mapped source data nor detached supplemental data.",
+					prefab->GetFileId().ToString().c_str());
+				return {};
+			}
+
+			if (!gameObjectId.IsGameObjectId() ||
+				m_objectsMap.ContainsKey(gameObjectId) ||
+				!reservedInstanceIds.Insert(gameObjectId))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate linked prefab '%s': preferred game object id '%s' is invalid or already in use.",
+					prefab->GetFileId().ToString().c_str(),
+					gameObjectId.ToString().c_str());
+				return {};
+			}
+		}
+		else
+		{
+			gameObjectId = bStrictInstanceIds
+				? strictSourceToInstanceIds[sourceInstanceId]
+				: sourceInstanceId;
+			if (!bStrictInstanceIds &&
+				(!gameObjectId ||
+					m_objectsMap.ContainsKey(gameObjectId) ||
+					reservedInstanceIds.Contains(gameObjectId)))
+			{
+				do
+				{
+					gameObjectId = InstanceId::GenerateNewInstanceId();
+				}
+				while (m_objectsMap.ContainsKey(gameObjectId) || reservedInstanceIds.Contains(gameObjectId));
+			}
+
+			reservedInstanceIds.Insert(gameObjectId);
+			sourceToInstanceIds[sourceInstanceId] =
+				gameObjectId;
+		}
 
 		GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
 		gameObjects.Add(gameObject);
@@ -274,7 +1120,17 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 				return {};
 			}
 
-			gameObject->AddComponentRaw(newComponent);
+			const InstanceId newComponentInstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
+			if (!gameObject->AddComponentRaw(newComponent, newComponentInstanceId))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot instantiate reflected component %u from prefab '%s': component id '%s' is invalid or already in use.",
+					componentIndex,
+					prefab->GetFileId().ToString().c_str(),
+					newComponentInstanceId.ToString().c_str());
+				return {};
+			}
+
 			std::string applyDiagnostic;
 			if (!External::GuardYamlExceptions(
 					[newComponent, &reflection]() mutable
@@ -290,14 +1146,17 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 					applyDiagnostic.c_str());
 				return {};
 			}
-			newComponent->m_instanceId = InstanceId(oldInstanceId.ComponentId(), gameObject->GetInstanceId());
 
 			// We store the old ids for internal dependencies during resolve
 			internalDependencies[oldInstanceId] = newComponent;
+			internalDependencies[newComponentInstanceId] =
+				newComponent;
 		}
 
 		// We store the old ids for internal dependencies during resolve
 		internalDependencies[prefab->m_gameObjects[j].m_instanceId] = gameObject;
+		internalDependencies[gameObject->GetInstanceId()] =
+			gameObject;
 	}
 
 	for (uint32_t goIndex = 0; goIndex < gameObjects.Num(); goIndex++)
@@ -322,7 +1181,10 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 			if (!External::TryInvokeYaml(
 					[newComp, &reflection, &internalDependencies]() mutable
 					{
-						return newComp->ResolveRefs(reflection, internalDependencies, false);
+						return newComp->ResolveRefs(
+							reflection,
+							internalDependencies,
+							false);
 					},
 					bResolved,
 					resolveDiagnostic))
@@ -385,6 +1247,62 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 		SAILOR_LOG_ERROR("Cannot instantiate prefab '%s': no root game object was found.",
 			prefab->GetFileId().ToString().c_str());
 		return {};
+	}
+
+	if (prefab->m_bLinkedInstanceRecord && prefab->m_linkedParentInstanceId)
+	{
+		GameObjectPtr externalParent =
+			GetObjectByInstanceId(prefab->m_linkedParentInstanceId).DynamicCast<GameObject>();
+		if (!externalParent)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate linked prefab '%s': external parent '%s' does not exist.",
+				prefab->GetFileId().ToString().c_str(),
+				prefab->m_linkedParentInstanceId.ToString().c_str());
+			return {};
+		}
+
+		root->SetParent(externalParent);
+		if (root->GetParent() != externalParent)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate linked prefab '%s': external parent '%s' rejects structural changes.",
+				prefab->GetFileId().ToString().c_str(),
+				prefab->m_linkedParentInstanceId.ToString().c_str());
+			return {};
+		}
+	}
+
+	if (prefab->m_bDetachedFromPrefabRecord)
+	{
+		root->SetParentInternal(
+			detachedParent,
+			true);
+		if (root->GetParent() != detachedParent)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot restore detached prefab snapshot under linked parent '%s'.",
+				prefab->m_detachedParentInstanceId.ToString().c_str());
+			return {};
+		}
+	}
+
+	if (prefab->GetFileId())
+	{
+		std::string linkDiagnostic;
+		if (!RegisterPrefabInstance(
+				root,
+				prefab->GetFileId(),
+				sourceToInstanceIds,
+				prefab,
+				linkDiagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot register linked prefab '%s': %s.",
+				prefab->GetFileId().ToString().c_str(),
+				linkDiagnostic.c_str());
+			return {};
+		}
 	}
 
 	// Should we try to resolve the previous open dependencies?
@@ -472,6 +1390,8 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		return;
 	}
 
+	RemovePrefabLinksInHierarchy(root);
+
 	TVector<GameObjectPtr> destroyingObjects;
 	destroyingObjects.Reserve(root->GetChildren().Num() + 1);
 	destroyingObjects.Add(root);
@@ -507,6 +1427,38 @@ void World::DestroyGameObjectHierarchy(GameObjectPtr root)
 		m_objectsMap.Remove(go->m_instanceId);
 		m_objects.RemoveFirst(go);
 		go.DestroyObject(m_allocator);
+	}
+}
+
+void World::RemovePrefabLinksInHierarchy(GameObjectPtr root)
+{
+	if (!root)
+	{
+		return;
+	}
+
+	TVector<InstanceId> linkedRoots;
+	TVector<GameObjectPtr> pendingObjects;
+	pendingObjects.Add(root);
+	while (!pendingObjects.IsEmpty())
+	{
+		GameObjectPtr current = pendingObjects[pendingObjects.Num() - 1];
+		pendingObjects.RemoveLast();
+		if (!current)
+		{
+			continue;
+		}
+
+		if (IsPrefabInstanceRoot(current->GetInstanceId()))
+		{
+			linkedRoots.Add(current->GetInstanceId());
+		}
+		pendingObjects.AddRange(current->GetChildren());
+	}
+
+	for (const InstanceId& rootInstanceId : linkedRoots)
+	{
+		BreakPrefabLink(rootInstanceId);
 	}
 }
 
@@ -557,6 +1509,15 @@ void World::Destroy(GameObjectPtr object)
 {
 	if (object && !object->m_bPendingDestroy)
 	{
+		if (IsPrefabLinked(object->GetInstanceId()) &&
+			!IsPrefabInstanceRoot(object->GetInstanceId()))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot destroy internal linked prefab game object '%s'; break the prefab link first.",
+				object->GetInstanceId().ToString().c_str());
+			return;
+		}
+
 		object->m_bPendingDestroy = true;
 		m_pendingDestroyObjects.PushBack(std::move(object));
 	}
@@ -566,6 +1527,15 @@ void World::DestroyImmediate(GameObjectPtr object)
 {
 	if (!object || !m_objectsMap.ContainsKey(object->m_instanceId))
 	{
+		return;
+	}
+
+	if (IsPrefabLinked(object->GetInstanceId()) &&
+		!IsPrefabInstanceRoot(object->GetInstanceId()))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot destroy internal linked prefab game object '%s'; break the prefab link first.",
+			object->GetInstanceId().ToString().c_str());
 		return;
 	}
 
@@ -590,6 +1560,8 @@ void World::Clear()
 
 	m_objects.Clear();
 	m_pendingDestroyObjects.Clear();
+	m_prefabInstances.Clear();
+	m_prefabInstanceRootsByObject.Clear();
 	m_editorSelection.Clear();
 	m_pDebugContext.Clear();
 

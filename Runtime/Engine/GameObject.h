@@ -33,6 +33,11 @@ namespace Sailor
 		SAILOR_API TObjectPtr<TComponent> AddComponent(TArgs&& ... args) requires IsBaseOf<Component, TComponent>
 		{
 			check(m_pWorld);
+			if (!m_pWorld->CanModifyPrefabStructure(m_instanceId))
+			{
+				return {};
+			}
+
 			auto newObject = TObjectPtr<TComponent>::Make(m_pWorld->GetAllocator(), std::forward<TArgs>(args) ...);
 
 			newObject->m_instanceId = InstanceId::GenerateNewComponentId(m_instanceId);
@@ -56,6 +61,10 @@ namespace Sailor
 			check(m_pWorld);
 			check(!component->m_bBeginPlayCalled);
 			check(!component->GetOwner().IsValid());
+			if (!m_pWorld->CanModifyPrefabStructure(m_instanceId))
+			{
+				return {};
+			}
 
 			if (preferredInstanceId)
 			{
@@ -138,6 +147,10 @@ namespace Sailor
 		SAILOR_API ComponentPtr GetComponent(uint32_t index) { return m_components[index]; }
 
 	protected:
+
+		void SetParentInternal(
+			GameObjectPtr parent,
+			bool bAllowLinkedParent);
 
 		size_t m_transformHandle = (size_t)(-1);
 

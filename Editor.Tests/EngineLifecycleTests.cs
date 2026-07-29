@@ -907,6 +907,17 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AssetProjection_SkipsInternalTransactionDirectories()
+    {
+        var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");
+
+        Assert.Contains(
+            "ProjectContentInternalPathPolicy.IsTransactionDirectory(directory)",
+            assetsSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ContentAssetDuplicate_RoutesTheWholeGroupThroughOneRegistryReload()
     {
         var viewSource = ReadRepositoryFile("Editor", "Views", "ContentFolderView.xaml.cs");

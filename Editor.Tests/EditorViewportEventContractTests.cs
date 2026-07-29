@@ -127,6 +127,191 @@ public sealed class EditorViewportEventContractTests
         Assert.Contains("non-finite", nonFiniteError, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void AssetDropEvent_MapsTypedAndYamlPayloads()
+    {
+        var source = new ViewportEvent
+        {
+            Revision = 31,
+            ManagedMutationRevision = 9,
+            AssetDrop = new ViewportAssetDropEvent
+            {
+                FileId = "{12345678-1234-1234-1234-123456789ABC}",
+                NormalizedX = 0.25f,
+                NormalizedY = 0.75f
+            }
+        };
+
+        Assert.True(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var typedEvent,
+                out var typedError),
+            typedError);
+        var typedDrop =
+            Assert.IsType<EditorViewportAssetDropEvent>(typedEvent);
+        Assert.Equal(31ul, typedDrop.Revision);
+        Assert.Equal(9ul, typedDrop.ManagedMutationRevision);
+        Assert.Equal(source.AssetDrop.FileId, typedDrop.FileId);
+        Assert.Equal(0.25f, typedDrop.NormalizedX);
+        Assert.Equal(0.75f, typedDrop.NormalizedY);
+
+        Assert.True(
+            EditorViewportEventContract.TryParse(
+                """
+                kind: assetDrop
+                revision: 32
+                managedMutationRevision: 10
+                fileId: "{12345678-1234-1234-1234-123456789ABC}"
+                normalizedX: 0
+                normalizedY: 1
+                """,
+                out var yamlEvent,
+                out var yamlError),
+            yamlError);
+        var yamlDrop =
+            Assert.IsType<EditorViewportAssetDropEvent>(yamlEvent);
+        Assert.Equal(0f, yamlDrop.NormalizedX);
+        Assert.Equal(1f, yamlDrop.NormalizedY);
+    }
+
+    [Fact]
+    public void AssetDropEvent_RejectsMissingIdentityAndInvalidCoordinates()
+    {
+        var source = new ViewportEvent
+        {
+            AssetDrop = new ViewportAssetDropEvent
+            {
+                FileId = string.Empty,
+                NormalizedX = 0.5f,
+                NormalizedY = 0.5f
+            }
+        };
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var missingId,
+                out var missingIdError));
+        Assert.Null(missingId);
+        Assert.Contains(
+            "file",
+            missingIdError,
+            StringComparison.OrdinalIgnoreCase);
+
+        source.AssetDrop.FileId =
+            "{12345678-1234-1234-1234-123456789ABC}";
+        source.AssetDrop.NormalizedX = float.NaN;
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var nonFinite,
+                out var nonFiniteError));
+        Assert.Null(nonFinite);
+        Assert.Contains(
+            "normalized",
+            nonFiniteError,
+            StringComparison.OrdinalIgnoreCase);
+
+        Assert.False(
+            EditorViewportEventContract.TryParse(
+                """
+                kind: assetDrop
+                revision: 33
+                managedMutationRevision: 10
+                fileId: "{12345678-1234-1234-1234-123456789ABC}"
+                normalizedX: -0.1
+                normalizedY: 0.5
+                """,
+                out var outOfRange,
+                out var outOfRangeError));
+        Assert.Null(outOfRange);
+        Assert.Contains(
+            "normalized",
+            outOfRangeError,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ToolShortcutEvent_MapsTypedAndYamlPayloads()
+    {
+        var source = new ViewportEvent
+        {
+            Revision = 34,
+            ManagedMutationRevision = 12,
+            ToolShortcut = new ViewportToolShortcutEvent
+            {
+                KeyCode = 'W'
+            }
+        };
+
+        Assert.True(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var typedEvent,
+                out var typedError),
+            typedError);
+        var typedShortcut =
+            Assert.IsType<EditorViewportToolShortcutEvent>(typedEvent);
+        Assert.Equal(34ul, typedShortcut.Revision);
+        Assert.Equal(12ul, typedShortcut.ManagedMutationRevision);
+        Assert.Equal((uint)'W', typedShortcut.KeyCode);
+
+        Assert.True(
+            EditorViewportEventContract.TryParse(
+                """
+                kind: toolShortcut
+                revision: 35
+                managedMutationRevision: 13
+                keyCode: 84
+                """,
+                out var yamlEvent,
+                out var yamlError),
+            yamlError);
+        var yamlShortcut =
+            Assert.IsType<EditorViewportToolShortcutEvent>(yamlEvent);
+        Assert.Equal((uint)'T', yamlShortcut.KeyCode);
+    }
+
+    [Fact]
+    public void ToolShortcutEvent_RejectsUnsupportedKeys()
+    {
+        var source = new ViewportEvent
+        {
+            ToolShortcut = new ViewportToolShortcutEvent
+            {
+                KeyCode = 'X'
+            }
+        };
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var typedEvent,
+                out var typedError));
+        Assert.Null(typedEvent);
+        Assert.Contains(
+            "unsupported",
+            typedError,
+            StringComparison.OrdinalIgnoreCase);
+
+        Assert.False(
+            EditorViewportEventContract.TryParse(
+                """
+                kind: toolShortcut
+                revision: 36
+                managedMutationRevision: 13
+                keyCode: 119
+                """,
+                out var yamlEvent,
+                out var yamlError));
+        Assert.Null(yamlEvent);
+        Assert.Contains(
+            "unsupported",
+            yamlError,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("kind: unknown\nrevision: 1\nmanagedMutationRevision: 0\n", "Unsupported viewport event kind")]
     [InlineData("kind: selection\nrevision: 1\nmanagedMutationRevision: 0\nselectedInstanceId: go\nunexpected: true\n", "unexpected field")]

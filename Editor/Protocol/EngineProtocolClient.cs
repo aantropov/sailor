@@ -26,13 +26,28 @@ internal readonly record struct EngineProtocolCreationResult(
     bool Succeeded,
     string InstanceId);
 
+internal readonly record struct EngineProtocolVector4(
+    float X,
+    float Y,
+    float Z,
+    float W);
+
+internal readonly record struct EngineProtocolViewportToolState(
+    ViewportTransformOperation Operation,
+    ViewportTransformSpace Space);
+
 internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 {
     internal const uint ProtocolVersion = 1;
+    internal const uint StrictInstanceIdsProtocolVersion = 2;
     internal const uint MaxPayloadSize = 64u * 1024u * 1024u;
+    const int CapabilityUnknown = -1;
+    const int CapabilityUnsupported = 0;
+    const int CapabilitySupported = 1;
 
     readonly IEngineProtocolTransport transport;
     long nextRequestId;
+    int strictInstanceIdsCapability = CapabilityUnknown;
 
     public EngineProtocolClient()
         : this(new LocalEngineProtocolTransport())
@@ -71,12 +86,18 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             argumentIndex++;
         }
 
+        Volatile.Write(
+            ref strictInstanceIdsCapability,
+            CapabilityUnknown);
         RequireResult<Empty>(
             (await SendAsync(
                     new ProtocolRequest { Initialize = initialize },
                     cancellationToken)
                 .ConfigureAwait(false)).EmptyResult,
             nameof(ProtocolRequest.Initialize));
+        await EnsureProtocolCapabilitiesNegotiatedAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task StartAsync(
@@ -661,10 +682,229 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefab));
 
-    public async Task<bool> InstantiatePrefabFromYamlAsync(
+    public async Task<EngineProtocolVector4> ResolveViewportDropPositionAsync(
+        ulong viewportId,
+        float normalizedX,
+        float normalizedY,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateNormalizedCoordinate(normalizedX, nameof(normalizedX));
+        ValidateNormalizedCoordinate(normalizedY, nameof(normalizedY));
+        var result = RequireResult<Vector4Result>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        ResolveViewportDropPosition =
+                            new ViewportDropPositionRequest
+                            {
+                                ViewportId = viewportId,
+                                NormalizedX = normalizedX,
+                                NormalizedY = normalizedY
+                            }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).Vector4Result,
+            nameof(ProtocolRequest.ResolveViewportDropPosition));
+        return ReadVector4(result.Value, nameof(ProtocolRequest.ResolveViewportDropPosition));
+    }
+
+    public async Task<EngineProtocolCreationResult> CreateModelGameObjectAsync(
+        string modelFileId,
+        string name,
+        string parentInstanceId,
+        EngineProtocolVector4? worldPosition,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new CreateModelGameObjectRequest
+        {
+            ModelFileId = ValidateString(modelFileId, nameof(modelFileId)),
+            Name = ValidateString(name, nameof(name)),
+            ParentInstanceId = ValidateString(
+                parentInstanceId,
+                nameof(parentInstanceId)),
+            ApplyWorldPosition = worldPosition.HasValue
+        };
+        if (worldPosition is { } position)
+        {
+            request.WorldPosition = CreateVector4(position, nameof(worldPosition));
+        }
+
+        return ReadCreation(
+            await SendAsync(
+                    new ProtocolRequest { CreateModelGameObject = request },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CreateModelGameObject));
+    }
+
+    public async Task<EngineProtocolCreationResult> InstantiatePrefabInstanceAsync(
+        string fileId,
+        string parentInstanceId,
+        EngineProtocolVector4? worldPosition,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new InstantiatePrefabInstanceRequest
+        {
+            FileId = ValidateString(fileId, nameof(fileId)),
+            ParentInstanceId = ValidateString(
+                parentInstanceId,
+                nameof(parentInstanceId)),
+            ApplyWorldPosition = worldPosition.HasValue
+        };
+        if (worldPosition is { } position)
+        {
+            request.WorldPosition = CreateVector4(position, nameof(worldPosition));
+        }
+
+        return ReadCreation(
+            await SendAsync(
+                    new ProtocolRequest { InstantiatePrefabInstance = request },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.InstantiatePrefabInstance));
+    }
+
+    public async Task<bool> FocusEditorCameraAsync(
+        ulong viewportId,
+        string instanceId,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        FocusEditorCamera = new ViewportObjectRequest
+                        {
+                            ViewportId = viewportId,
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.FocusEditorCamera));
+
+    public async Task<bool> SetPrefabLinkAsync(
+        string instanceId,
+        string fileId,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetPrefabLink = new PrefabLinkRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId)),
+                            FileId = ValidateString(fileId, nameof(fileId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetPrefabLink));
+
+    public async Task<bool> BreakPrefabLinkAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        BreakPrefabLink = new InstanceIdRequest
+                        {
+                            InstanceId = ValidateString(
+                                instanceId,
+                                nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.BreakPrefabLink));
+
+    public async Task<bool> SetViewportToolStateAsync(
+        ulong viewportId,
+        ViewportTransformOperation operation,
+        ViewportTransformSpace space,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetViewportToolState = new ViewportToolStateRequest
+                        {
+                            ViewportId = viewportId,
+                            Operation = ValidateTransformOperation(operation),
+                            Space = ValidateTransformSpace(space)
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetViewportToolState));
+
+    public async Task<EngineProtocolViewportToolState> GetViewportToolStateAsync(
+        ulong viewportId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = RequireResult<ViewportToolStateResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetViewportToolState =
+                            new ViewportIdRequest { ViewportId = viewportId }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).ViewportToolStateResult,
+            nameof(ProtocolRequest.GetViewportToolState));
+        return new EngineProtocolViewportToolState(
+            ValidateTransformOperation(result.Operation),
+            ValidateTransformSpace(result.Space));
+    }
+
+    public Task<bool> InstantiatePrefabFromYamlAsync(
         string prefabYaml,
         string parentInstanceId,
         CancellationToken cancellationToken = default)
+        => InstantiatePrefabFromYamlCoreAsync(
+            prefabYaml,
+            parentInstanceId,
+            strictInstanceIds: false,
+            protocolVersion: ProtocolVersion,
+            cancellationToken: cancellationToken);
+
+    public async Task<bool> InstantiatePrefabFromYamlStrictAsync(
+        string prefabYaml,
+        string parentInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateString(prefabYaml, nameof(prefabYaml));
+        ValidateString(parentInstanceId, nameof(parentInstanceId));
+        await EnsureProtocolCapabilitiesNegotiatedAsync(
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (Volatile.Read(ref strictInstanceIdsCapability) !=
+            CapabilitySupported)
+        {
+            throw new EngineProtocolException(
+                "The connected Engine host does not advertise strict " +
+                "instance-id restoration support.");
+        }
+
+        return await InstantiatePrefabFromYamlCoreAsync(
+                prefabYaml,
+                parentInstanceId,
+                strictInstanceIds: true,
+                protocolVersion: StrictInstanceIdsProtocolVersion,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    async Task<bool> InstantiatePrefabFromYamlCoreAsync(
+        string prefabYaml,
+        string parentInstanceId,
+        bool strictInstanceIds,
+        uint protocolVersion,
+        CancellationToken cancellationToken)
         => ReadBool(
             await SendAsync(
                     new ProtocolRequest
@@ -677,12 +917,27 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                                     nameof(prefabYaml)),
                                 ParentInstanceId = ValidateString(
                                     parentInstanceId,
-                                    nameof(parentInstanceId))
+                                    nameof(parentInstanceId)),
+                                StrictInstanceIds = strictInstanceIds
                             }
                     },
-                    cancellationToken)
+                    cancellationToken,
+                    protocolVersion)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefabFromYaml));
+
+    async Task EnsureProtocolCapabilitiesNegotiatedAsync(
+        CancellationToken cancellationToken)
+    {
+        if (Volatile.Read(ref strictInstanceIdsCapability) !=
+            CapabilityUnknown)
+        {
+            return;
+        }
+
+        _ = await GetExitCodeAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     public async Task<bool> SetEditorSelectionAsync(
         IEnumerable<string> instanceIds,
@@ -752,7 +1007,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 
     internal async Task<ProtocolResponse> SendAsync(
         ProtocolRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        uint protocolVersion = ProtocolVersion)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.CommandCase == ProtocolRequest.CommandOneofCase.None)
@@ -763,7 +1019,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         }
 
         var requestId = NextRequestId();
-        request.ProtocolVersion = ProtocolVersion;
+        request.ProtocolVersion = protocolVersion;
         request.RequestId = requestId;
 
         var requestData = request.ToByteArray();
@@ -783,7 +1039,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false);
             response = new ProtocolResponse
             {
-                ProtocolVersion = ProtocolVersion,
+                ProtocolVersion = protocolVersion,
                 RequestId = requestId,
                 Success = true,
                 EmptyResult = new Empty()
@@ -816,11 +1072,11 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             }
         }
 
-        if (response.ProtocolVersion != ProtocolVersion)
+        if (response.ProtocolVersion != protocolVersion)
         {
             throw new EngineProtocolException(
                 $"Engine protocol transport returned protocol version " +
-                $"{response.ProtocolVersion}; expected {ProtocolVersion}.");
+                $"{response.ProtocolVersion}; expected {protocolVersion}.");
         }
 
         if (response.RequestId != requestId)
@@ -836,6 +1092,17 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 ? "The engine rejected the protocol request."
                 : response.Error;
             throw new EngineProtocolException(error);
+        }
+
+        if (!(request.CommandCase ==
+                ProtocolRequest.CommandOneofCase.Initialize &&
+            transport is ILocalEngineProtocolTransport))
+        {
+            Volatile.Write(
+                ref strictInstanceIdsCapability,
+                response.SupportsStrictInstanceIds
+                    ? CapabilitySupported
+                    : CapabilityUnsupported);
         }
 
         return response;
@@ -860,9 +1127,13 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportState or
                 ProtocolRequest.CommandOneofCase.GetRemoteViewportDiagnostics or
                 ProtocolRequest.CommandOneofCase.RetryRemoteViewport or
-                ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
+            ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
                 ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or
                 ProtocolRequest.CommandOneofCase.PullEditorViewportEvents or
+                ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition or
+                ProtocolRequest.CommandOneofCase.FocusEditorCamera or
+                ProtocolRequest.CommandOneofCase.SetViewportToolState or
+                ProtocolRequest.CommandOneofCase.GetViewportToolState or
                 ProtocolRequest.CommandOneofCase.ShowMainWindow or
                 ProtocolRequest.CommandOneofCase.IsEngineMainThreadReady =>
                 EngineProtocolInvocationKind.Interactive,
@@ -892,6 +1163,82 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 
         return normalizedValue;
     }
+
+    static void ValidateNormalizedCoordinate(float value, string parameterName)
+    {
+        if (!float.IsFinite(value) || value < 0.0f || value > 1.0f)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                value,
+                "Viewport coordinates must be finite and normalized to [0, 1].");
+        }
+    }
+
+    static Vector4 CreateVector4(
+        EngineProtocolVector4 value,
+        string parameterName)
+    {
+        if (!float.IsFinite(value.X) ||
+            !float.IsFinite(value.Y) ||
+            !float.IsFinite(value.Z) ||
+            !float.IsFinite(value.W))
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                value,
+                "Vector components must be finite.");
+        }
+
+        return new Vector4
+        {
+            X = value.X,
+            Y = value.Y,
+            Z = value.Z,
+            W = value.W
+        };
+    }
+
+    static EngineProtocolVector4 ReadVector4(
+        Vector4? value,
+        string commandName)
+    {
+        if (value is null ||
+            !float.IsFinite(value.X) ||
+            !float.IsFinite(value.Y) ||
+            !float.IsFinite(value.Z) ||
+            !float.IsFinite(value.W))
+        {
+            throw new EngineProtocolException(
+                $"The protocol response for '{commandName}' contains an invalid vector.");
+        }
+
+        return new EngineProtocolVector4(value.X, value.Y, value.Z, value.W);
+    }
+
+    static ViewportTransformOperation ValidateTransformOperation(
+        ViewportTransformOperation operation)
+        => operation is
+            ViewportTransformOperation.Select or
+            ViewportTransformOperation.Translate or
+            ViewportTransformOperation.Rotate or
+            ViewportTransformOperation.Scale
+            ? operation
+            : throw new ArgumentOutOfRangeException(
+                nameof(operation),
+                operation,
+                "The viewport transform operation is unsupported.");
+
+    static ViewportTransformSpace ValidateTransformSpace(
+        ViewportTransformSpace space)
+        => space is
+            ViewportTransformSpace.World or
+            ViewportTransformSpace.Local
+            ? space
+            : throw new ArgumentOutOfRangeException(
+                nameof(space),
+                space,
+                "The viewport transform space is unsupported.");
 
     static void RequireEmpty(ProtocolResponse response, string commandName)
         => RequireResult<Empty>(response.EmptyResult, commandName);

@@ -50,6 +50,19 @@ namespace Sailor
 			InstanceId& outInstanceId,
 			float& outDistance);
 
+		SAILOR_API bool TryResolveDropPosition(
+			const Math::Ray& ray,
+			const TVector<PickCandidate>& candidates,
+			glm::vec3& outPosition);
+
+		SAILOR_API bool TryCalculateFramedCameraPosition(
+			const Math::AABB& bounds,
+			const Math::Transform& cameraWorldTransform,
+			float verticalFovDegrees,
+			float aspect,
+			float zNear,
+			glm::vec3& outPosition);
+
 		SAILOR_API bool TryConvertWorldToLocalTransform(
 			const glm::mat4& worldMatrix,
 			const glm::mat4* parentWorldMatrix,
@@ -82,19 +95,34 @@ namespace Sailor
 			SAILOR_API void CancelPointerInteraction();
 			SAILOR_API void CancelInteraction(World& world);
 			SAILOR_API bool PullEvent(std::string& outEvent);
+			SAILOR_API bool QueueAssetDropEvent(
+				const std::string& fileId,
+				float normalizedX,
+				float normalizedY);
+			SAILOR_API bool QueueToolShortcutEvent(uint32_t keyCode);
+			SAILOR_API bool TryResolveDropPosition(
+				World& world,
+				float normalizedX,
+				float normalizedY,
+				glm::vec3& outPosition) const;
+			SAILOR_API bool FocusCameraOnObject(
+				World& world,
+				const InstanceId& instanceId);
+			SAILOR_API bool SetTransformToolState(
+				ETransformOperation operation,
+				ETransformSpace space);
 			void SetManagedMutationRevisions(uint64_t selectionRevision, uint64_t selectedObjectRevision)
 			{
 				m_managedSelectionMutationRevision = selectionRevision;
 				m_selectedObjectMutationRevision = selectedObjectRevision;
 			}
 
-			ETransformOperation GetOperation() const { return m_operation; }
-			ETransformSpace GetSpace() const { return m_space; }
+			SAILOR_API ETransformOperation GetOperation() const { return m_operation; }
+			SAILOR_API ETransformSpace GetSpace() const { return m_space; }
 
 		private:
 			TObjectPtr<GameObject> ResolveSelectedObject(World& world) const;
 			void CompleteActiveTransform(World& world);
-			void DrawToolbar();
 			void TickTransformGizmo(World& world, TObjectPtr<GameObject> selectedObject);
 			void TickSelection(World& world);
 			void QueueSelectionEvent(const InstanceId& selectedInstanceId);

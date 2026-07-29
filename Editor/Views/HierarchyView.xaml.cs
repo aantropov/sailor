@@ -16,6 +16,7 @@ namespace SailorEditor.Views
 
         readonly WorldService service;
         readonly HierarchyProjectionService projectionService;
+        readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
         readonly ObservableCollection<HierarchyListRow> visibleRows = [];
         readonly Dictionary<string, GameObject> gameObjectsById = new(StringComparer.Ordinal);
         bool suppressSelectionChanged;
@@ -27,6 +28,8 @@ namespace SailorEditor.Views
 
             service = MauiProgram.GetService<WorldService>();
             projectionService = MauiProgram.GetService<HierarchyProjectionService>();
+            inspectorPendingEditCoordinator =
+                MauiProgram.GetService<InspectorPendingEditCoordinator>();
 
             HierarchyList.ItemsSource = visibleRows;
             HierarchyList.SelectionChanged += OnHierarchySelectionChanged;
@@ -78,6 +81,11 @@ namespace SailorEditor.Views
         }
 
         async void OnHierarchySelectionChanged(object? sender, SelectionChangedEventArgs args)
+            => await ExecuteHierarchyActionAsync(
+                () => ApplyHierarchySelectionAsync(args),
+                "Select GameObject");
+
+        async Task ApplyHierarchySelectionAsync(SelectionChangedEventArgs args)
         {
             if (suppressSelectionChanged)
             {
@@ -101,9 +109,9 @@ namespace SailorEditor.Views
         }
 
         async void OnHierarchyRootDrop(object? sender, DropEventArgs e)
-        {
-            await HandleDrop(e, null);
-        }
+            => await ExecuteHierarchyActionAsync(
+                () => HandleDrop(e, null),
+                "Drop hierarchy item");
 
         async Task HandleDrop(DropEventArgs e, GameObject? target)
         {
@@ -130,7 +138,8 @@ namespace SailorEditor.Views
                 return;
             }
 
-            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
+            e.Handled = true;
+            await dispatcher.DispatchAsync(command, context);
         }
 
         void ToggleRowExpansion(HierarchyListRow row)
@@ -265,6 +274,22 @@ namespace SailorEditor.Views
                 };
                 nameLabel.SetBinding(Label.TextProperty, nameof(HierarchyListRow.Label));
 
+                var prefabLinkLabel = new Label
+                {
+                    WidthRequest = 14,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    FontSize = 9,
+                    TextColor = Color.FromArgb("#74B9FF"),
+                    Margin = new Thickness(0, 0, 3, 0)
+                };
+                prefabLinkLabel.SetBinding(
+                    Label.TextProperty,
+                    nameof(HierarchyListRow.PrefabLinkGlyph));
+                prefabLinkLabel.SetBinding(
+                    IsVisibleProperty,
+                    nameof(HierarchyListRow.IsPrefabLinked));
+
                 var rowLayout = new HorizontalStackLayout
                 {
                     Spacing = 0,
@@ -274,6 +299,7 @@ namespace SailorEditor.Views
                     HorizontalOptions = LayoutOptions.Fill
                 };
                 rowLayout.Children.Add(expandLabel);
+                rowLayout.Children.Add(prefabLinkLabel);
                 rowLayout.Children.Add(nameLabel);
 
                 var border = new Border
@@ -296,7 +322,7 @@ namespace SailorEditor.Views
 
                 var dropGesture = new DropGestureRecognizer();
                 dropGesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
-                dropGesture.Drop += async (_, e) =>
+                dropGesture.Drop += (_, e) =>
                 {
                     if (border.BindingContext is not HierarchyListRow row)
                     {
@@ -304,9 +330,24 @@ namespace SailorEditor.Views
                     }
 
                     gameObjectsById.TryGetValue(row.InstanceId, out var target);
-                    await HandleDrop(e, target);
+                    _ = ExecuteHierarchyActionAsync(
+                        () => HandleDrop(e, target),
+                        "Drop hierarchy item");
                 };
                 border.GestureRecognizers.Add(dropGesture);
+
+                var focusGesture = new TapGestureRecognizer
+                {
+                    NumberOfTapsRequired = 2
+                };
+                focusGesture.Tapped += (_, _) =>
+                {
+                    if (border.BindingContext is HierarchyListRow row)
+                    {
+                        _ = FocusGameObjectAsync(row);
+                    }
+                };
+                border.GestureRecognizers.Add(focusGesture);
 
                 border.BindingContextChanged += (_, _) =>
                 {
@@ -317,7 +358,9 @@ namespace SailorEditor.Views
 
                         if (gameObjectsById.TryGetValue(row.InstanceId, out var gameObject))
                         {
-                            FlyoutBase.SetContextFlyout(border, CreateHierarchyContextFlyout(gameObject));
+                            FlyoutBase.SetContextFlyout(
+                                border,
+                                CreateHierarchyContextFlyout(gameObject, row));
                             return;
                         }
                     }
@@ -329,7 +372,9 @@ namespace SailorEditor.Views
             });
         }
 
-        MenuFlyout CreateHierarchyContextFlyout(GameObject? gameObject)
+        MenuFlyout CreateHierarchyContextFlyout(
+            GameObject? gameObject,
+            HierarchyListRow? row = null)
         {
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
             if (gameObject == null)
@@ -343,7 +388,8 @@ namespace SailorEditor.Views
                 });
             }
 
-            return contextMenu.CreateFlyout(
+            var items = new List<EditorContextMenuItem>
+            {
                 new EditorContextMenuItem
                 {
                     Text = "New GameObject",
@@ -365,7 +411,31 @@ namespace SailorEditor.Views
                     Command = CreateContextMenuCommand(
                         () => service.RemoveGameObjectAsync(gameObject),
                         "Remove GameObject")
-                });
+                }
+            };
+            if (row is
+                {
+                    IsPrefabLinked: true,
+                    PrefabFileId: not null,
+                    PrefabRootInstanceId: not null
+                } &&
+                !string.IsNullOrWhiteSpace(row.PrefabRootInstanceId))
+            {
+                items.Insert(
+                    2,
+                    new EditorContextMenuItem
+                    {
+                        Text = "Break Prefab Link",
+                        Command = CreateContextMenuCommand(
+                            () => BreakPrefabLinkAsync(
+                                new InstanceId(
+                                    row.PrefabRootInstanceId),
+                                row.PrefabFileId),
+                            "Break Prefab Link")
+                    });
+            }
+
+            return contextMenu.CreateFlyout([.. items]);
         }
 
         static Command CreateContextMenuCommand(
@@ -408,6 +478,90 @@ namespace SailorEditor.Views
                     Console.Error.WriteLine(
                         $"Failed to publish hierarchy action error status: {statusException}");
                 }
+            }
+        }
+
+        async Task FocusGameObjectAsync(HierarchyListRow row)
+        {
+            try
+            {
+                if (!await inspectorPendingEditCoordinator
+                        .CommitPendingChangesAsync())
+                {
+                    throw new InvalidOperationException(
+                        "Pending Inspector changes could not be committed.");
+                }
+
+                if (!gameObjectsById.TryGetValue(
+                        row.InstanceId,
+                        out var gameObject) ||
+                    gameObject.InstanceId is null ||
+                    gameObject.InstanceId.IsEmpty())
+                {
+                    return;
+                }
+
+                var contextProvider =
+                    MauiProgram.GetService<IActionContextProvider>();
+                var context = contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(HierarchyView)));
+                var result = await MauiProgram
+                    .GetService<ICommandDispatcher>()
+                    .DispatchAsync(
+                        new FocusEditorCameraCommand(
+                            gameObject.InstanceId),
+                        context);
+                if (!result.Succeeded)
+                {
+                    throw new InvalidOperationException(
+                        result.Message ??
+                        "Focus editor camera failed");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"Focus editor camera failed: {ex}");
+            }
+        }
+
+        async Task BreakPrefabLinkAsync(
+            InstanceId instanceId,
+            string prefabFileId)
+        {
+            var contextProvider =
+                MauiProgram.GetService<IActionContextProvider>();
+            var context = contextProvider.GetCurrentContext(
+                new CommandOrigin(
+                    CommandOriginKind.Menu,
+                    nameof(HierarchyView)));
+            var result = await MauiProgram
+                .GetService<ICommandDispatcher>()
+                .DispatchAsync(
+                    new BreakPrefabLinkCommand(
+                        instanceId,
+                        new FileId(prefabFileId)),
+                    context);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    result.Message ?? "Break prefab link failed");
+            }
+        }
+
+        static async Task ExecuteHierarchyActionAsync(
+            Func<Task> action,
+            string operation)
+        {
+            try
+            {
+                await action();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"{operation} failed: {ex}");
             }
         }
 

@@ -2,6 +2,7 @@
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 #include <atomic>
+#include <glm/vec3.hpp>
 #include <yaml-cpp/yaml.h>
 #if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
@@ -22,7 +23,12 @@ namespace Sailor
 	class InstanceId;
 	class Prefab;
 	struct EditorManagedMutationState;
-	namespace EditorViewport { class EditorViewportController; }
+	namespace EditorViewport
+	{
+		enum class ETransformOperation : uint8_t;
+		enum class ETransformSpace : uint8_t;
+		class EditorViewportController;
+	}
 
 	namespace Win32 
 	{
@@ -70,7 +76,45 @@ namespace Sailor
 		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
 		SAILOR_SHARED_API bool RemoveComponent(const class InstanceId& instanceId);
 		bool InstantiatePrefab(const class FileId& prefabId, const class InstanceId& parentInstanceId);
-		bool InstantiatePrefab(const TObjectPtr<Prefab>& prefab, const class InstanceId& parentInstanceId);
+		bool InstantiatePrefab(
+			const TObjectPtr<Prefab>& prefab,
+			const class InstanceId& parentInstanceId);
+		bool InstantiatePrefab(
+			const TObjectPtr<Prefab>& prefab,
+			const class InstanceId& parentInstanceId,
+			bool bStrictInstanceIds);
+		bool InstantiatePrefab(
+			const class FileId& prefabId,
+			const class InstanceId& parentInstanceId,
+			const glm::vec3* worldPosition,
+			class InstanceId& outInstanceId);
+		bool InstantiatePrefab(
+			const TObjectPtr<Prefab>& prefab,
+			const class InstanceId& parentInstanceId,
+			const glm::vec3* worldPosition,
+			class InstanceId& outInstanceId,
+			bool bStrictInstanceIds = false);
+		bool CreateModelGameObject(
+			const class FileId& modelId,
+			const std::string& name,
+			const class InstanceId& parentInstanceId,
+			const glm::vec3* worldPosition,
+			class InstanceId& outInstanceId);
+		bool ResolveViewportDropPosition(
+			float normalizedX,
+			float normalizedY,
+			glm::vec3& outPosition) const;
+		bool FocusEditorCamera(const class InstanceId& instanceId);
+		bool SetPrefabLink(
+			const class InstanceId& instanceId,
+			const class FileId& prefabId);
+		bool BreakPrefabLink(const class InstanceId& instanceId);
+		bool SetViewportToolState(
+			EditorViewport::ETransformOperation operation,
+			EditorViewport::ETransformSpace space);
+		void GetViewportToolState(
+			EditorViewport::ETransformOperation& outOperation,
+			EditorViewport::ETransformSpace& outSpace) const;
 		bool RenderPathTracedImage(const class InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces);
 
 	protected:

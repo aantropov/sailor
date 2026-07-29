@@ -154,6 +154,7 @@ public sealed class EditorDragDropRoutingTests
         Assert.True(resolved);
         Assert.NotNull(command);
         Assert.IsType<InstantiatePrefabAssetCommand>(command);
+        Assert.IsAssignableFrom<IUndoableEditorCommand>(command);
     }
 
     [Fact]
@@ -169,6 +170,113 @@ public sealed class EditorDragDropRoutingTests
 
         Assert.True(resolved);
         Assert.IsType<InstantiatePrefabAssetCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RoutesModelCreationToTarget()
+    {
+        var model = new ModelFile
+        {
+            FileId = new FileId("{MODEL}"),
+            Asset = new FileInfo("/Content/Models/Duck.glb")
+        };
+        var target = new GameObject
+        {
+            InstanceId = new InstanceId("go-target")
+        };
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(
+            model,
+            target,
+            out var command);
+
+        Assert.True(resolved);
+        Assert.IsType<CreateModelGameObjectCommand>(command);
+        Assert.IsAssignableFrom<IUndoableEditorCommand>(command);
+        Assert.Equal("Duck", EditorDragDrop.ResolveAssetObjectName(model));
+    }
+
+    [Fact]
+    public void TryCreateViewportDropCommand_RoutesModelAndPrefabAtResolvedPosition()
+    {
+        var position = new Vec4 { X = 1, Y = 2, Z = 3, W = 1 };
+        var model = new ModelFile
+        {
+            FileId = new FileId("{MODEL}"),
+            Asset = new FileInfo("/Content/Models/Duck.glb")
+        };
+        var prefab = new PrefabFile
+        {
+            FileId = new FileId("{PREFAB}")
+        };
+
+        Assert.True(EditorDragDrop.TryCreateViewportDropCommand(
+            model,
+            position,
+            out var modelCommand));
+        Assert.IsType<CreateModelGameObjectCommand>(modelCommand);
+        Assert.IsAssignableFrom<IUndoableEditorCommand>(modelCommand);
+        Assert.True(EditorDragDrop.TryCreateViewportDropCommand(
+            prefab,
+            position,
+            out var prefabCommand));
+        Assert.IsType<InstantiatePrefabAssetCommand>(prefabCommand);
+        Assert.IsAssignableFrom<IUndoableEditorCommand>(prefabCommand);
+    }
+
+    [Fact]
+    public void IsViewportAssetDrop_RecognizesAssetInfoTypeFallbacks()
+    {
+        var model = new AssetFile
+        {
+            FileId = new FileId("{MODEL}"),
+            AssetInfoTypeName = "Sailor::ModelAssetInfo"
+        };
+        var prefab = new AssetFile
+        {
+            FileId = new FileId("{PREFAB}"),
+            AssetInfoTypeName = "Sailor::PrefabAssetInfo"
+        };
+
+        Assert.True(EditorDragDrop.IsViewportAssetDrop(model));
+        Assert.True(EditorDragDrop.IsViewportAssetDrop(prefab));
+        Assert.False(EditorDragDrop.IsViewportAssetDrop(
+            new MaterialFile { FileId = new FileId("{MATERIAL}") }));
+    }
+
+    [Fact]
+    public void IsViewportAssetDrop_UsesExplicitAssetInfoTypeBeforeSourceExtension()
+    {
+        var secondaryTextureFromGlb = new AssetFile
+        {
+            FileId = new FileId("{TEXTURE}"),
+            AssetInfoTypeName = "Sailor::TextureAssetInfo",
+            Asset = new FileInfo("/Content/Models/Duck.glb")
+        };
+        var nonPrefabWithPrefabFilename = new AssetFile
+        {
+            FileId = new FileId("{MATERIAL}"),
+            AssetInfoTypeName = "Sailor::MaterialAssetInfo",
+            Asset = new FileInfo("/Content/Prefabs/Duck.prefab")
+        };
+        var legacyModel = new AssetFile
+        {
+            FileId = new FileId("{LEGACY-MODEL}"),
+            Asset = new FileInfo("/Content/Models/Legacy.glb")
+        };
+        var genericModel = new AssetFile
+        {
+            FileId = new FileId("{GENERIC-MODEL}"),
+            AssetInfoTypeName = "Sailor::AssetInfo",
+            Asset = new FileInfo("/Content/Models/Generic.obj")
+        };
+
+        Assert.False(EditorDragDrop.IsViewportAssetDrop(
+            secondaryTextureFromGlb));
+        Assert.False(EditorDragDrop.IsViewportAssetDrop(
+            nonPrefabWithPrefabFilename));
+        Assert.True(EditorDragDrop.IsViewportAssetDrop(legacyModel));
+        Assert.True(EditorDragDrop.IsViewportAssetDrop(genericModel));
     }
 
     [Fact]
@@ -215,6 +323,82 @@ public sealed class EditorDragDropRoutingTests
         Assert.True(resolved);
         Assert.NotNull(command);
         Assert.IsType<ReparentGameObjectCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RoutesExternallyParentedRootToWorldRoot()
+    {
+        var parent = new GameObject
+        {
+            InstanceId = new InstanceId("go-parent"),
+            PrefabIndex = 0,
+            ParentIndex = uint.MaxValue
+        };
+        var child = new GameObject
+        {
+            InstanceId = new InstanceId("go-external-child"),
+            PrefabIndex = 1,
+            ParentIndex = uint.MaxValue
+        };
+        var worldService =
+            SailorEditor.MauiProgram
+                .GetService<SailorEditor.Services.WorldService>();
+        worldService.Current.Prefabs.Clear();
+        var parentPrefab = new SailorEditor.Services.PrefabState();
+        parentPrefab.GameObjects.Add(parent);
+        var childPrefab = new SailorEditor.Services.PrefabState
+        {
+            ParentInstanceId = parent.InstanceId!.Value
+        };
+        childPrefab.GameObjects.Add(child);
+        worldService.Current.Prefabs.Add(parentPrefab);
+        worldService.Current.Prefabs.Add(childPrefab);
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(
+            child,
+            null,
+            out var command);
+
+        Assert.True(resolved);
+        Assert.IsType<ReparentGameObjectCommand>(command);
+    }
+
+    [Fact]
+    public void TryCreateSceneDropCommand_RejectsNoOpReparentToExternalParent()
+    {
+        var parent = new GameObject
+        {
+            InstanceId = new InstanceId("go-parent"),
+            PrefabIndex = 0,
+            ParentIndex = uint.MaxValue
+        };
+        var child = new GameObject
+        {
+            InstanceId = new InstanceId("go-external-child"),
+            PrefabIndex = 1,
+            ParentIndex = uint.MaxValue
+        };
+        var worldService =
+            SailorEditor.MauiProgram
+                .GetService<SailorEditor.Services.WorldService>();
+        worldService.Current.Prefabs.Clear();
+        var parentPrefab = new SailorEditor.Services.PrefabState();
+        parentPrefab.GameObjects.Add(parent);
+        var childPrefab = new SailorEditor.Services.PrefabState
+        {
+            ParentInstanceId = parent.InstanceId!.Value
+        };
+        childPrefab.GameObjects.Add(child);
+        worldService.Current.Prefabs.Add(parentPrefab);
+        worldService.Current.Prefabs.Add(childPrefab);
+
+        var resolved = EditorDragDrop.TryCreateSceneDropCommand(
+            child,
+            parent,
+            out var command);
+
+        Assert.False(resolved);
+        Assert.Null(command);
     }
 
     [Fact]

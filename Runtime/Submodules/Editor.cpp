@@ -7,11 +7,13 @@
 #include "ECS/PathTracerECS.h"
 #include "Components/PathTracerProxyComponent.h"
 #include "Components/EditorComponent.h"
+#include "Components/MeshRendererComponent.h"
 #include "Raytracing/PathTracer.h"
 #include "Editor.h"
 #include "Containers/Map.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Reflection.h"
 #include "Math/Math.h"
@@ -27,6 +29,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "Platform/Win32/Window.h"
 
 using namespace Sailor;
@@ -166,6 +169,43 @@ namespace
 		outParent = parentObject.DynamicCast<GameObject>();
 		return outParent.IsValid();
 	}
+
+	bool TrySetWorldPosition(
+		GameObjectPtr gameObject,
+		const glm::vec3& worldPosition)
+	{
+		if (!gameObject || !Math::AllFinite(worldPosition))
+		{
+			return false;
+		}
+
+		glm::vec3 localPosition = worldPosition;
+		if (const auto& parent = gameObject->GetParent())
+		{
+			glm::mat4 inverseParentMatrix{};
+			if (!TryInvertTransformMatrix(
+					CalculateCurrentWorldMatrix(parent),
+					inverseParentMatrix))
+			{
+				return false;
+			}
+
+			glm::vec4 localHomogeneous =
+				inverseParentMatrix * glm::vec4(worldPosition, 1.0f);
+			if (!Math::AllFinite(localHomogeneous) ||
+				std::abs(localHomogeneous.w) <=
+					std::numeric_limits<float>::epsilon())
+			{
+				return false;
+			}
+
+			localHomogeneous /= localHomogeneous.w;
+			localPosition = glm::vec3(localHomogeneous);
+		}
+
+		gameObject->GetTransformComponent().SetPosition(localPosition);
+		return true;
+	}
 }
 
 Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMainWindow) :
@@ -208,6 +248,32 @@ void Editor::TickViewportTools()
 		m_viewportController->SetManagedMutationRevisions(
 			m_managedSelectionMutationRevision,
 			selectedObjectRevision);
+#if defined(_WIN32)
+		if (m_pMainWindow)
+		{
+			std::string fileId{};
+			float normalizedX = 0.0f;
+			float normalizedY = 0.0f;
+			while (m_pMainWindow->PullEditorViewportAssetDrop(
+				fileId,
+				normalizedX,
+				normalizedY))
+			{
+				m_viewportController->QueueAssetDropEvent(
+					fileId,
+					normalizedX,
+					normalizedY);
+			}
+
+			uint32_t shortcutKeyCode = 0;
+			while (m_pMainWindow->PullEditorViewportToolShortcut(
+				shortcutKeyCode))
+			{
+				m_viewportController->QueueToolShortcutEvent(
+					shortcutKeyCode);
+			}
+		}
+#endif
 		m_viewportController->Tick(*m_world);
 	}
 }
@@ -445,6 +511,10 @@ bool Editor::ReparentObject(const InstanceId& instanceId, const InstanceId& pare
 	}
 
 	gameObject->SetParent(parentGameObject);
+	if (gameObject->GetParent() != parentGameObject)
+	{
+		return false;
+	}
 
 	if (bKeepWorldTransform)
 	{
@@ -485,6 +555,11 @@ bool Editor::CreateGameObject(const InstanceId& parentInstanceId, const Instance
 	if (parentGameObject)
 	{
 		gameObject->SetParent(parentGameObject);
+		if (gameObject->GetParent() != parentGameObject)
+		{
+			m_world->DestroyImmediate(gameObject);
+			return false;
+		}
 	}
 
 	outInstanceId = gameObject->GetInstanceId();
@@ -504,6 +579,12 @@ bool Editor::DestroyObject(const InstanceId& instanceId)
 	auto object = m_world->GetObjectByInstanceId(instanceId.GameObjectId());
 	auto gameObject = object.DynamicCast<GameObject>();
 	if (!gameObject)
+	{
+		return false;
+	}
+
+	if (m_world->IsPrefabLinked(instanceId) &&
+		!m_world->IsPrefabInstanceRoot(instanceId))
 	{
 		return false;
 	}
@@ -620,9 +701,45 @@ bool Editor::RemoveComponent(const InstanceId& instanceId)
 
 bool Editor::InstantiatePrefab(const FileId& prefabId, const InstanceId& parentInstanceId)
 {
-	SAILOR_PROFILE_FUNCTION();
+	InstanceId instanceId{};
+	return InstantiatePrefab(
+		prefabId,
+		parentInstanceId,
+		nullptr,
+		instanceId);
+}
 
-	if (!m_world)
+bool Editor::InstantiatePrefab(
+	const PrefabPtr& prefab,
+	const InstanceId& parentInstanceId)
+{
+	return InstantiatePrefab(prefab, parentInstanceId, false);
+}
+
+bool Editor::InstantiatePrefab(
+	const PrefabPtr& prefab,
+	const InstanceId& parentInstanceId,
+	bool bStrictInstanceIds)
+{
+	InstanceId instanceId{};
+	return InstantiatePrefab(
+		prefab,
+		parentInstanceId,
+		nullptr,
+		instanceId,
+		bStrictInstanceIds);
+}
+
+bool Editor::InstantiatePrefab(
+	const FileId& prefabId,
+	const InstanceId& parentInstanceId,
+	const glm::vec3* worldPosition,
+	InstanceId& outInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
+
+	if (!m_world || !prefabId)
 	{
 		return false;
 	}
@@ -634,17 +751,29 @@ bool Editor::InstantiatePrefab(const FileId& prefabId, const InstanceId& parentI
 	}
 
 	PrefabPtr prefab;
-	if (!prefabImporter->LoadPrefab_Immediate(prefabId, prefab) || !prefab || !prefab->IsReady())
+	if (!prefabImporter->LoadPrefab_Immediate(prefabId, prefab) ||
+		!prefab ||
+		!prefab->IsReady())
 	{
 		return false;
 	}
 
-	return InstantiatePrefab(prefab, parentInstanceId);
+	return InstantiatePrefab(
+		prefab,
+		parentInstanceId,
+		worldPosition,
+		outInstanceId);
 }
 
-bool Editor::InstantiatePrefab(const PrefabPtr& prefab, const InstanceId& parentInstanceId)
+bool Editor::InstantiatePrefab(
+	const PrefabPtr& prefab,
+	const InstanceId& parentInstanceId,
+	const glm::vec3* worldPosition,
+	InstanceId& outInstanceId,
+	bool bStrictInstanceIds)
 {
 	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
 
 	if (!m_world || !prefab)
 	{
@@ -657,19 +786,230 @@ bool Editor::InstantiatePrefab(const PrefabPtr& prefab, const InstanceId& parent
 		return false;
 	}
 
-	auto root = m_world->Instantiate(prefab);
+	const bool bDetachedFromPrefabRestore =
+		prefab->IsDetachedFromPrefabRecord();
+	if (bDetachedFromPrefabRestore)
+	{
+		if (!bStrictInstanceIds ||
+			!parentGameObject ||
+			prefab->GetFileId() ||
+			prefab->GetDetachedParentInstanceId() !=
+				parentInstanceId ||
+			!m_world->IsPrefabLinked(parentInstanceId))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot restore detached prefab snapshot: strict ids, an invalid source FileId, and the exact linked parent are required.");
+			return false;
+		}
+	}
+	else if (parentGameObject)
+	{
+		std::string reparentDiagnostic;
+		if (!m_world->CanReparentPrefabObject(
+				InstanceId::Invalid,
+				parentInstanceId,
+				&reparentDiagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot instantiate prefab under parent '%s': %s.",
+				parentInstanceId.ToString().c_str(),
+				reparentDiagnostic.c_str());
+			return false;
+		}
+	}
+
+	auto root = m_world->Instantiate(prefab, bStrictInstanceIds);
 	if (!root)
+	{
+		return false;
+	}
+
+	if (parentGameObject &&
+		!bDetachedFromPrefabRestore)
+	{
+		root->SetParent(parentGameObject);
+		if (root->GetParent() != parentGameObject)
+		{
+			m_world->DestroyImmediate(root);
+			return false;
+		}
+	}
+	else if (bDetachedFromPrefabRestore &&
+		root->GetParent() != parentGameObject)
+	{
+		m_world->DestroyImmediate(root);
+		return false;
+	}
+
+	if (worldPosition && !TrySetWorldPosition(root, *worldPosition))
+	{
+		m_world->DestroyImmediate(root);
+		return false;
+	}
+
+	outInstanceId = root->GetInstanceId();
+	NotifyManagedObjectMutation(root->GetInstanceId());
+	return true;
+}
+
+bool Editor::CreateModelGameObject(
+	const FileId& modelId,
+	const std::string& name,
+	const InstanceId& parentInstanceId,
+	const glm::vec3* worldPosition,
+	InstanceId& outInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
+
+	if (!m_world || !modelId || name.empty())
+	{
+		return false;
+	}
+
+	GameObjectPtr parentGameObject{};
+	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
+	{
+		return false;
+	}
+
+	auto modelImporter = App::GetSubmodule<ModelImporter>();
+	ModelPtr model{};
+	if (!modelImporter ||
+		!modelImporter->LoadModel_Immediate(modelId, model) ||
+		!model ||
+		!model->IsReady())
+	{
+		return false;
+	}
+
+	auto gameObject = m_world->Instantiate(name);
+	if (!gameObject)
 	{
 		return false;
 	}
 
 	if (parentGameObject)
 	{
-		root->SetParent(parentGameObject);
+		gameObject->SetParent(parentGameObject);
+		if (gameObject->GetParent() != parentGameObject)
+		{
+			m_world->DestroyImmediate(gameObject);
+			return false;
+		}
 	}
 
-	NotifyManagedObjectMutation(root->GetInstanceId());
+	if (worldPosition && !TrySetWorldPosition(gameObject, *worldPosition))
+	{
+		m_world->DestroyImmediate(gameObject);
+		return false;
+	}
+
+	auto meshRenderer = gameObject->AddComponent<MeshRendererComponent>();
+	if (!meshRenderer)
+	{
+		m_world->DestroyImmediate(gameObject);
+		return false;
+	}
+
+	meshRenderer->SetModel(model);
+	outInstanceId = gameObject->GetInstanceId();
+	NotifyManagedObjectMutation(outInstanceId);
 	return true;
+}
+
+bool Editor::ResolveViewportDropPosition(
+	float normalizedX,
+	float normalizedY,
+	glm::vec3& outPosition) const
+{
+	return m_world &&
+		m_viewportController &&
+		m_viewportController->TryResolveDropPosition(
+			*m_world,
+			normalizedX,
+			normalizedY,
+			outPosition);
+}
+
+bool Editor::FocusEditorCamera(const InstanceId& instanceId)
+{
+	return m_world &&
+		m_viewportController &&
+		m_viewportController->FocusCameraOnObject(*m_world, instanceId);
+}
+
+bool Editor::SetPrefabLink(
+	const InstanceId& instanceId,
+	const FileId& prefabId)
+{
+	if (!m_world ||
+		!instanceId.IsGameObjectId() ||
+		!prefabId)
+	{
+		return false;
+	}
+
+	auto root = m_world
+		->GetObjectByInstanceId(instanceId)
+		.DynamicCast<GameObject>();
+	auto prefabImporter = App::GetSubmodule<PrefabImporter>();
+	PrefabPtr prefab{};
+	if (!root ||
+		!prefabImporter ||
+		!prefabImporter->LoadPrefab_Immediate(prefabId, prefab) ||
+		!prefab ||
+		!prefab->IsReady())
+	{
+		return false;
+	}
+
+	std::string diagnostic{};
+	if (!m_world->LinkPrefabInstance(root, prefab, diagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot link game object '%s' to prefab '%s': %s.",
+			instanceId.ToString().c_str(),
+			prefabId.ToString().c_str(),
+			diagnostic.c_str());
+		return false;
+	}
+
+	NotifyManagedObjectMutation(instanceId);
+	return true;
+}
+
+bool Editor::BreakPrefabLink(const InstanceId& instanceId)
+{
+	if (!m_world ||
+		!instanceId.IsGameObjectId() ||
+		!m_world->BreakPrefabLink(instanceId))
+	{
+		return false;
+	}
+
+	NotifyManagedObjectMutation(instanceId);
+	return true;
+}
+
+bool Editor::SetViewportToolState(
+	EditorViewport::ETransformOperation operation,
+	EditorViewport::ETransformSpace space)
+{
+	return m_viewportController &&
+		m_viewportController->SetTransformToolState(operation, space);
+}
+
+void Editor::GetViewportToolState(
+	EditorViewport::ETransformOperation& outOperation,
+	EditorViewport::ETransformSpace& outSpace) const
+{
+	outOperation = m_viewportController
+		? m_viewportController->GetOperation()
+		: EditorViewport::ETransformOperation::Translate;
+	outSpace = m_viewportController
+		? m_viewportController->GetSpace()
+		: EditorViewport::ETransformSpace::World;
 }
 
 bool Editor::RenderPathTracedImage(const InstanceId& instanceId, const std::string& outputPath, uint32_t height, uint32_t samplesPerPixel, uint32_t maxBounces)
@@ -755,6 +1095,15 @@ YAML::Node Editor::SerializeWorld() const
 	}
 
 	auto prefab = WorldPrefab::FromWorld(m_world);
-	auto node = prefab->Serialize();
-	return node;
+	if (!prefab || !prefab->IsReady())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot serialize the current world: %s.",
+			prefab
+				? prefab->GetLoadDiagnostic().c_str()
+				: "world serialization did not create a document");
+		return YAML::Node();
+	}
+
+	return prefab->Serialize();
 }

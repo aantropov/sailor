@@ -11,6 +11,117 @@ public sealed record ProjectContentFileOperationResult(
     string? CreatedAssetInfoPath = null,
     string? CreatedFileId = null);
 
+public static class ProjectContentInternalPathPolicy
+{
+    const string TransactionDirectoryPrefix = ".sailor-";
+    const string TransactionDirectorySuffix = ".pending";
+
+    public static bool IsTransactionDirectory(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var directoryName = Path.GetFileName(
+            Path.TrimEndingDirectorySeparator(path));
+        return directoryName.StartsWith(
+                TransactionDirectoryPrefix,
+                StringComparison.OrdinalIgnoreCase) &&
+            directoryName.EndsWith(
+                TransactionDirectorySuffix,
+                StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+public sealed class ProjectContentAssetWriteTransaction
+{
+    readonly object stateLock = new();
+    readonly Func<ProjectContentFileOperationResult>? commit;
+    readonly Func<ProjectContentFileOperationResult>? rollback;
+    ProjectContentFileOperationResult? completion;
+    TransactionState state;
+
+    internal ProjectContentAssetWriteTransaction(
+        ProjectContentFileOperationResult result,
+        Func<ProjectContentFileOperationResult>? commit = null,
+        Func<ProjectContentFileOperationResult>? rollback = null)
+    {
+        Result = result;
+        this.commit = commit;
+        this.rollback = rollback;
+        state = result.Succeeded
+            ? TransactionState.Active
+            : TransactionState.Failed;
+    }
+
+    public ProjectContentFileOperationResult Result { get; }
+    public bool IsActive
+    {
+        get
+        {
+            lock (stateLock)
+            {
+                return state == TransactionState.Active;
+            }
+        }
+    }
+
+    public ProjectContentFileOperationResult Commit()
+    {
+        lock (stateLock)
+        {
+            if (state == TransactionState.Failed)
+                return Result;
+            if (state == TransactionState.Committed)
+                return completion!;
+            if (state == TransactionState.RolledBack)
+            {
+                return new ProjectContentFileOperationResult(
+                    false,
+                    "The content write transaction was already rolled back.",
+                    true,
+                    Array.Empty<string>());
+            }
+
+            completion = commit!();
+            if (completion.Succeeded)
+                state = TransactionState.Committed;
+            return completion;
+        }
+    }
+
+    public ProjectContentFileOperationResult Rollback()
+    {
+        lock (stateLock)
+        {
+            if (state == TransactionState.Failed)
+                return Result;
+            if (state == TransactionState.RolledBack)
+                return completion!;
+            if (state == TransactionState.Committed)
+            {
+                return new ProjectContentFileOperationResult(
+                    false,
+                    "The content write transaction was already committed.",
+                    false,
+                    Array.Empty<string>());
+            }
+
+            completion = rollback!();
+            if (completion.Succeeded)
+                state = TransactionState.RolledBack;
+            return completion;
+        }
+    }
+
+    enum TransactionState
+    {
+        Failed,
+        Active,
+        Committed,
+        RolledBack
+    }
+}
+
 public interface IProjectContentFileSystem
 {
     bool FileExists(string path);
@@ -243,6 +354,169 @@ public sealed class ProjectContentFileOperations
                     $"Cannot delete the asset group: {exception.Message}",
                     unrestored);
             }
+        }
+    }
+
+    public ProjectContentAssetWriteTransaction BeginWriteAssetPair(
+        string writableRoot,
+        string sourcePath,
+        string sourceContents,
+        string metadataContents,
+        string fileId,
+        bool overwrite)
+    {
+        lock (mutationLock)
+        {
+            if (!TryResolveWritableRoot(writableRoot, out var root, out var error))
+                return FailedAssetWrite(error);
+
+            string finalSourcePath;
+            try
+            {
+                finalSourcePath =
+                    ProjectContentPathPolicy.NormalizeRoot(sourcePath);
+            }
+            catch (Exception exception)
+            {
+                return FailedAssetWrite(
+                    $"The asset path is invalid: {exception.Message}");
+            }
+
+            var finalMetadataPath = finalSourcePath + ".asset";
+            var parentDirectory = Path.GetDirectoryName(finalSourcePath);
+            if (string.IsNullOrWhiteSpace(parentDirectory) ||
+                !ProjectContentPathPolicy.IsInsideRoot(root, finalSourcePath) ||
+                !ProjectContentPathPolicy.IsInsideRoot(root, finalMetadataPath))
+            {
+                return FailedAssetWrite(
+                    "The asset and metadata must stay inside the writable Content root.");
+            }
+            if (!fileSystem.DirectoryExists(parentDirectory))
+            {
+                return FailedAssetWrite(
+                    "The destination Content directory does not exist.");
+            }
+            if (fileSystem.DirectoryExists(finalSourcePath) ||
+                fileSystem.DirectoryExists(finalMetadataPath))
+            {
+                return FailedAssetWrite(
+                    "An asset destination is occupied by a directory.");
+            }
+
+            var sourceExists = fileSystem.FileExists(finalSourcePath);
+            var metadataExists = fileSystem.FileExists(finalMetadataPath);
+            if (overwrite)
+            {
+                if (!sourceExists || !metadataExists)
+                {
+                    return FailedAssetWrite(
+                        "Both the source and primary metadata must exist before overwrite.");
+                }
+            }
+            else if (sourceExists || metadataExists)
+            {
+                return FailedAssetWrite(
+                    "The asset source or primary metadata already exists.");
+            }
+
+            string? originalSourceContents = null;
+            string? originalMetadataContents = null;
+            if (overwrite)
+            {
+                try
+                {
+                    originalSourceContents =
+                        fileSystem.ReadAllText(finalSourcePath);
+                    originalMetadataContents =
+                        fileSystem.ReadAllText(finalMetadataPath);
+                }
+                catch (Exception exception)
+                {
+                    return FailedAssetWrite(
+                        $"Cannot read the existing asset before overwrite: {exception.Message}");
+                }
+            }
+
+            if (!TryCreateStagingDirectory(
+                    root,
+                    parentDirectory,
+                    "asset-write",
+                    out var stagingDirectory,
+                    out error))
+            {
+                return FailedAssetWrite(error);
+            }
+
+            var pending = new PendingAssetWrite(
+                finalSourcePath,
+                finalMetadataPath,
+                sourceContents,
+                metadataContents,
+                originalSourceContents,
+                originalMetadataContents,
+                overwrite,
+                stagingDirectory,
+                Path.Combine(stagingDirectory, "source.backup"),
+                Path.Combine(stagingDirectory, "metadata.backup"),
+                Path.Combine(stagingDirectory, "source.pending"),
+                Path.Combine(stagingDirectory, "metadata.pending"));
+
+            try
+            {
+                fileSystem.CreateDirectory(stagingDirectory);
+                if (overwrite)
+                {
+                    pending.SourceBackedUp = true;
+                    fileSystem.MoveFile(
+                        finalSourcePath,
+                        pending.SourceBackupPath);
+                    pending.MetadataBackedUp = true;
+                    fileSystem.MoveFile(
+                        finalMetadataPath,
+                        pending.MetadataBackupPath);
+                }
+
+                fileSystem.WriteAllTextNew(
+                    pending.SourcePendingPath,
+                    sourceContents);
+                fileSystem.WriteAllTextNew(
+                    pending.MetadataPendingPath,
+                    metadataContents);
+
+                pending.SourcePublished = true;
+                fileSystem.MoveFile(
+                    pending.SourcePendingPath,
+                    finalSourcePath);
+                pending.MetadataPublished = true;
+                fileSystem.MoveFile(
+                    pending.MetadataPendingPath,
+                    finalMetadataPath);
+            }
+            catch (Exception exception)
+            {
+                var rollbackResult = RollbackAssetWrite(pending);
+                return new ProjectContentAssetWriteTransaction(
+                    Failure(
+                        $"Cannot write the asset pair: {exception.Message}",
+                        rollbackResult.UnrestoredPaths));
+            }
+
+            return new ProjectContentAssetWriteTransaction(
+                Success(finalMetadataPath, fileId),
+                () =>
+                {
+                    lock (mutationLock)
+                    {
+                        return CommitAssetWrite(pending);
+                    }
+                },
+                () =>
+                {
+                    lock (mutationLock)
+                    {
+                        return RollbackAssetWrite(pending);
+                    }
+                });
         }
     }
 
@@ -1210,6 +1484,183 @@ public sealed class ProjectContentFileOperations
         return true;
     }
 
+    ProjectContentFileOperationResult CommitAssetWrite(
+        PendingAssetWrite pending)
+    {
+        var unrestored = new List<string>();
+        if (!FileHasContents(
+                pending.SourcePath,
+                pending.SourceContents) ||
+            !FileHasContents(
+                pending.MetadataPath,
+                pending.MetadataContents))
+        {
+            unrestored.Add(pending.SourcePath);
+            unrestored.Add(pending.MetadataPath);
+            unrestored.Add(pending.StagingDirectory);
+            return Failure(
+                "The published asset changed before the write transaction could be committed.",
+                unrestored);
+        }
+
+        TryRemoveStagingDirectory(pending.StagingDirectory, unrestored);
+        return unrestored.Count == 0
+            ? Success(pending.MetadataPath)
+            : CommittedWithCleanupDiagnostic(
+                "The asset pair was committed, but its transaction backup could not be removed.",
+                unrestored,
+                pending.MetadataPath);
+    }
+
+    ProjectContentFileOperationResult RollbackAssetWrite(
+        PendingAssetWrite pending)
+    {
+        var unrestored = new List<string>();
+        TryRemovePublishedFile(
+            pending.SourcePath,
+            pending.SourceContents,
+            pending.SourcePublished,
+            unrestored);
+        TryRemovePublishedFile(
+            pending.MetadataPath,
+            pending.MetadataContents,
+            pending.MetadataPublished,
+            unrestored);
+
+        if (pending.Overwrite)
+        {
+            TryRestoreAssetBackup(
+                pending.SourceBackupPath,
+                pending.SourcePath,
+                pending.OriginalSourceContents!,
+                pending.SourceBackedUp,
+                unrestored);
+            TryRestoreAssetBackup(
+                pending.MetadataBackupPath,
+                pending.MetadataPath,
+                pending.OriginalMetadataContents!,
+                pending.MetadataBackedUp,
+                unrestored);
+        }
+        else
+        {
+            if (PathExists(pending.SourcePath))
+                unrestored.Add(pending.SourcePath);
+            if (PathExists(pending.MetadataPath))
+                unrestored.Add(pending.MetadataPath);
+        }
+
+        var finalStateRestored = pending.Overwrite
+            ? FileHasContents(
+                    pending.SourcePath,
+                    pending.OriginalSourceContents!) &&
+                FileHasContents(
+                    pending.MetadataPath,
+                    pending.OriginalMetadataContents!)
+            : !PathExists(pending.SourcePath) &&
+                !PathExists(pending.MetadataPath);
+        if (!finalStateRestored)
+        {
+            unrestored.Add(pending.SourcePath);
+            unrestored.Add(pending.MetadataPath);
+        }
+        else
+        {
+            TryRemoveStagingDirectory(
+                pending.StagingDirectory,
+                unrestored);
+        }
+
+        return unrestored.Count == 0
+            ? Success()
+            : Failure(
+                "The asset write transaction could not be rolled back completely.",
+                unrestored);
+    }
+
+    void TryRemovePublishedFile(
+        string path,
+        string expectedContents,
+        bool publicationAttempted,
+        List<string> unrestored)
+    {
+        if (!publicationAttempted || !fileSystem.FileExists(path))
+            return;
+
+        try
+        {
+            if (!FileHasContents(path, expectedContents))
+            {
+                unrestored.Add(path);
+                return;
+            }
+
+            fileSystem.DeleteFile(path);
+            if (PathExists(path))
+                unrestored.Add(path);
+        }
+        catch
+        {
+            unrestored.Add(path);
+        }
+    }
+
+    void TryRestoreAssetBackup(
+        string backupPath,
+        string finalPath,
+        string expectedOriginalContents,
+        bool backupAttempted,
+        List<string> unrestored)
+    {
+        if (!backupAttempted)
+            return;
+
+        try
+        {
+            if (fileSystem.FileExists(backupPath))
+            {
+                if (!PathExists(finalPath))
+                {
+                    fileSystem.MoveFile(backupPath, finalPath);
+                }
+                else if (!FileHasContents(
+                    finalPath,
+                    expectedOriginalContents))
+                {
+                    unrestored.Add(finalPath);
+                    unrestored.Add(backupPath);
+                }
+            }
+
+            if (!FileHasContents(finalPath, expectedOriginalContents))
+                unrestored.Add(finalPath);
+        }
+        catch
+        {
+            unrestored.Add(finalPath);
+            if (fileSystem.FileExists(backupPath))
+                unrestored.Add(backupPath);
+        }
+    }
+
+    bool FileHasContents(string path, string contents)
+    {
+        if (!fileSystem.FileExists(path))
+            return false;
+
+        try
+        {
+            return string.Equals(
+                fileSystem.ReadAllText(path),
+                contents,
+                StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     bool TryCreateStagingDirectory(
         string root,
         string parentDirectory,
@@ -1269,6 +1720,23 @@ public sealed class ProjectContentFileOperations
             createdAssetInfoPath,
             createdFileId);
 
+    static ProjectContentFileOperationResult CommittedWithCleanupDiagnostic(
+        string diagnostic,
+        IEnumerable<string> pendingCleanupPaths,
+        string? createdAssetInfoPath = null)
+    {
+        var paths = pendingCleanupPaths
+            .Distinct(ProjectContentPathPolicy.PathComparer)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        return new(
+            true,
+            diagnostic,
+            true,
+            paths,
+            createdAssetInfoPath);
+    }
+
     static ProjectContentFileOperationResult Failure(
         string error,
         IEnumerable<string>? unrestoredPaths = null)
@@ -1279,6 +1747,10 @@ public sealed class ProjectContentFileOperations
             .ToArray();
         return new(false, error, unrestored.Length == 0, unrestored);
     }
+
+    static ProjectContentAssetWriteTransaction FailedAssetWrite(
+        string error)
+        => new(Failure(error));
 
     sealed record AssetGroup(string SourcePath, IReadOnlyList<string> AssetInfoPaths);
     sealed record DuplicateAssetPlan(
@@ -1305,4 +1777,38 @@ public sealed class ProjectContentFileOperations
         string FinalPath,
         string OriginalContents,
         string UpdatedContents);
+
+    sealed class PendingAssetWrite(
+        string sourcePath,
+        string metadataPath,
+        string sourceContents,
+        string metadataContents,
+        string? originalSourceContents,
+        string? originalMetadataContents,
+        bool overwrite,
+        string stagingDirectory,
+        string sourceBackupPath,
+        string metadataBackupPath,
+        string sourcePendingPath,
+        string metadataPendingPath)
+    {
+        public string SourcePath { get; } = sourcePath;
+        public string MetadataPath { get; } = metadataPath;
+        public string SourceContents { get; } = sourceContents;
+        public string MetadataContents { get; } = metadataContents;
+        public string? OriginalSourceContents { get; } =
+            originalSourceContents;
+        public string? OriginalMetadataContents { get; } =
+            originalMetadataContents;
+        public bool Overwrite { get; } = overwrite;
+        public string StagingDirectory { get; } = stagingDirectory;
+        public string SourceBackupPath { get; } = sourceBackupPath;
+        public string MetadataBackupPath { get; } = metadataBackupPath;
+        public string SourcePendingPath { get; } = sourcePendingPath;
+        public string MetadataPendingPath { get; } = metadataPendingPath;
+        public bool SourceBackedUp { get; set; }
+        public bool MetadataBackedUp { get; set; }
+        public bool SourcePublished { get; set; }
+        public bool MetadataPublished { get; set; }
+    }
 }

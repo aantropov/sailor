@@ -139,6 +139,7 @@ namespace
 		uint64_t m_protocolVersion = 0u;
 		uint64_t m_requestId = 0u;
 		bool m_bSuccess = false;
+		bool m_bSupportsStrictInstanceIds = false;
 		std::string m_error{};
 		uint32_t m_resultField = 0u;
 		std::string m_resultPayload{};
@@ -180,6 +181,11 @@ namespace
 
 				case 3u:
 					outResponse.m_bSuccess = value != 0u;
+					break;
+
+				case 5u:
+					outResponse.m_bSupportsStrictInstanceIds =
+						value != 0u;
 					break;
 
 				default:
@@ -656,8 +662,10 @@ namespace
 			response.m_requestId == requestId,
 			"WebSocket response must preserve the request id");
 		Require(
-			response.m_bSuccess && response.m_error.empty(),
-			"get-exit-code request must succeed");
+			response.m_bSuccess &&
+				response.m_bSupportsStrictInstanceIds &&
+				response.m_error.empty(),
+			"get-exit-code request must succeed and advertise strict restore support");
 		uint64_t exitCode = 1u;
 		Require(
 			response.m_resultField == 12u &&

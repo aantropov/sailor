@@ -60,6 +60,8 @@ namespace
 {
 	using Sailor::Protocol::EEditorEngineTransportStatus;
 	using Sailor::Protocol::EditorEngineProtocolMaxPayloadSize;
+	using Sailor::Protocol::EditorEngineProtocolLatestVersion;
+	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
 	using sailor::editor::v1::ProtocolRequest;
 	using sailor::editor::v1::ProtocolResponse;
@@ -208,6 +210,43 @@ namespace
 	{
 		SetSuccess(response);
 		response.mutable_uint64_result()->set_value(value);
+	}
+
+	void SetVector4Result(
+		ProtocolResponse& response,
+		float x,
+		float y,
+		float z,
+		float w)
+	{
+		SetSuccess(response);
+		auto* value = response.mutable_vector4_result()->mutable_value();
+		value->set_x(x);
+		value->set_y(y);
+		value->set_z(z);
+		value->set_w(w);
+	}
+
+	void SetInstanceIdResult(
+		ProtocolResponse& response,
+		bool bSucceeded,
+		const char* instanceId)
+	{
+		SetSuccess(response);
+		auto* result = response.mutable_instance_id_result();
+		result->set_succeeded(bSucceeded);
+		if (instanceId)
+		{
+			result->set_instance_id(instanceId);
+		}
+	}
+
+	bool IsFiniteVector4(const Vector4& value)
+	{
+		return std::isfinite(value.x()) &&
+			std::isfinite(value.y()) &&
+			std::isfinite(value.z()) &&
+			std::isfinite(value.w());
 	}
 
 	void SetStringResult(
@@ -438,6 +477,67 @@ namespace
 
 			outEvent.mutable_selection()->set_selected_instance_id(
 				selectedInstanceIdNode.as<std::string>());
+			return true;
+		}
+
+		if (kind == "assetDrop")
+		{
+			const YAML::Node fileIdNode = event["fileId"];
+			const YAML::Node normalizedXNode = event["normalizedX"];
+			const YAML::Node normalizedYNode = event["normalizedY"];
+			if (!fileIdNode.IsScalar() ||
+				!normalizedXNode.IsScalar() ||
+				!normalizedYNode.IsScalar())
+			{
+				outError =
+					"The native viewport asset drop event is missing scalar fields.";
+				return false;
+			}
+
+			const float normalizedX = normalizedXNode.as<float>();
+			const float normalizedY = normalizedYNode.as<float>();
+			if (!std::isfinite(normalizedX) ||
+				!std::isfinite(normalizedY) ||
+				normalizedX < 0.0f ||
+				normalizedX > 1.0f ||
+				normalizedY < 0.0f ||
+				normalizedY > 1.0f)
+			{
+				outError =
+					"The native viewport asset drop coordinates are invalid.";
+				return false;
+			}
+
+			auto* assetDrop = outEvent.mutable_asset_drop();
+			assetDrop->set_file_id(fileIdNode.as<std::string>());
+			assetDrop->set_normalized_x(normalizedX);
+			assetDrop->set_normalized_y(normalizedY);
+			return true;
+		}
+
+		if (kind == "toolShortcut")
+		{
+			const YAML::Node keyCodeNode = event["keyCode"];
+			if (!keyCodeNode.IsScalar())
+			{
+				outError =
+					"The native viewport tool shortcut event is missing keyCode.";
+				return false;
+			}
+
+			const uint32_t keyCode = keyCodeNode.as<uint32_t>();
+			if (keyCode != 'Q' &&
+				keyCode != 'W' &&
+				keyCode != 'E' &&
+				keyCode != 'R' &&
+				keyCode != 'T')
+			{
+				outError =
+					"The native viewport tool shortcut key is unsupported.";
+				return false;
+			}
+
+			outEvent.mutable_tool_shortcut()->set_key_code(keyCode);
 			return true;
 		}
 
@@ -679,6 +779,115 @@ namespace
 		{
 			result->set_instance_id(instanceId.GetValue());
 		}
+	}
+
+	void DispatchResolveViewportDropPosition(
+		const sailor::editor::v1::ViewportDropPositionRequest& request,
+		ProtocolResponse& response)
+	{
+		if (request.viewport_id() == 0 ||
+			!std::isfinite(request.normalized_x()) ||
+			!std::isfinite(request.normalized_y()) ||
+			request.normalized_x() < 0.0f ||
+			request.normalized_x() > 1.0f ||
+			request.normalized_y() < 0.0f ||
+			request.normalized_y() > 1.0f)
+		{
+			SetError(response, "The viewport drop request is invalid.");
+			return;
+		}
+
+		float worldX = 0.0f;
+		float worldY = 0.0f;
+		float worldZ = 0.0f;
+		if (!Sailor::App::ResolveEditorViewportDropPosition(
+				request.normalized_x(),
+				request.normalized_y(),
+				worldX,
+				worldY,
+				worldZ))
+		{
+			SetError(response, "Failed to resolve the viewport drop position.");
+			return;
+		}
+
+		SetVector4Result(response, worldX, worldY, worldZ, 1.0f);
+	}
+
+	void DispatchCreateModelGameObject(
+		const sailor::editor::v1::CreateModelGameObjectRequest& request,
+		ProtocolResponse& response)
+	{
+		if (request.apply_world_position() &&
+			(!request.has_world_position() ||
+				!IsFiniteVector4(request.world_position())))
+		{
+			SetError(response, "The model world position is invalid.");
+			return;
+		}
+
+		TInteropString instanceId;
+		const Vector4& worldPosition = request.world_position();
+		const bool bSucceeded = Sailor::App::CreateEditorModelGameObject(
+			request.model_file_id().c_str(),
+			request.name().c_str(),
+			request.parent_instance_id().c_str(),
+			request.apply_world_position(),
+			worldPosition.x(),
+			worldPosition.y(),
+			worldPosition.z(),
+			instanceId.GetOutput());
+		SetInstanceIdResult(response, bSucceeded, instanceId.GetValue());
+	}
+
+	void DispatchInstantiatePrefabInstance(
+		const sailor::editor::v1::InstantiatePrefabInstanceRequest& request,
+		ProtocolResponse& response)
+	{
+		if (request.apply_world_position() &&
+			(!request.has_world_position() ||
+				!IsFiniteVector4(request.world_position())))
+		{
+			SetError(response, "The prefab world position is invalid.");
+			return;
+		}
+
+		TInteropString instanceId;
+		const Vector4& worldPosition = request.world_position();
+		const bool bSucceeded = Sailor::App::InstantiateEditorPrefabInstance(
+			request.file_id().c_str(),
+			request.parent_instance_id().c_str(),
+			request.apply_world_position(),
+			worldPosition.x(),
+			worldPosition.y(),
+			worldPosition.z(),
+			instanceId.GetOutput());
+		SetInstanceIdResult(response, bSucceeded, instanceId.GetValue());
+	}
+
+	void DispatchGetViewportToolState(
+		const sailor::editor::v1::ViewportIdRequest& request,
+		ProtocolResponse& response)
+	{
+		if (request.viewport_id() == 0)
+		{
+			SetError(response, "The viewport id is invalid.");
+			return;
+		}
+
+		uint32_t operation = 0;
+		uint32_t space = 0;
+		if (!Sailor::App::GetEditorViewportToolState(operation, space))
+		{
+			SetError(response, "Failed to read the viewport tool state.");
+			return;
+		}
+
+		SetSuccess(response);
+		auto* result = response.mutable_viewport_tool_state_result();
+		result->set_operation(
+			static_cast<ViewportTransformOperation>(operation));
+		result->set_space(static_cast<ViewportTransformSpace>(space));
 	}
 
 	void DispatchSelection(
@@ -960,7 +1169,8 @@ namespace
 				response,
 				Sailor::App::InstantiateEditorPrefabFromYaml(
 					instantiate.prefab_yaml().c_str(),
-					instantiate.parent_instance_id().c_str()));
+					instantiate.parent_instance_id().c_str(),
+					instantiate.strict_instance_ids()));
 			break;
 		}
 
@@ -995,6 +1205,73 @@ namespace
 			SetBoolResult(
 				response,
 				Sailor::App::IsEngineMainThreadReady());
+			break;
+
+		case ProtocolRequest::kResolveViewportDropPosition:
+			DispatchResolveViewportDropPosition(
+				request.resolve_viewport_drop_position(),
+				response);
+			break;
+
+		case ProtocolRequest::kCreateModelGameObject:
+			DispatchCreateModelGameObject(
+				request.create_model_game_object(),
+				response);
+			break;
+
+		case ProtocolRequest::kInstantiatePrefabInstance:
+			DispatchInstantiatePrefabInstance(
+				request.instantiate_prefab_instance(),
+				response);
+			break;
+
+		case ProtocolRequest::kFocusEditorCamera:
+		{
+			const auto& focus = request.focus_editor_camera();
+			SetBoolResult(
+				response,
+				focus.viewport_id() != 0 &&
+					Sailor::App::FocusEditorCamera(
+						focus.instance_id().c_str()));
+			break;
+		}
+
+		case ProtocolRequest::kSetPrefabLink:
+		{
+			const auto& link = request.set_prefab_link();
+			SetBoolResult(
+				response,
+				Sailor::App::SetEditorPrefabLink(
+					link.instance_id().c_str(),
+					link.file_id().c_str()));
+			break;
+		}
+
+		case ProtocolRequest::kBreakPrefabLink:
+			SetBoolResult(
+				response,
+				Sailor::App::BreakEditorPrefabLink(
+					request.break_prefab_link()
+						.instance_id()
+						.c_str()));
+			break;
+
+		case ProtocolRequest::kSetViewportToolState:
+		{
+			const auto& state = request.set_viewport_tool_state();
+			SetBoolResult(
+				response,
+				state.viewport_id() != 0 &&
+					Sailor::App::SetEditorViewportToolState(
+						static_cast<uint32_t>(state.operation()),
+						static_cast<uint32_t>(state.space())));
+			break;
+		}
+
+		case ProtocolRequest::kGetViewportToolState:
+			DispatchGetViewportToolState(
+				request.get_viewport_tool_state(),
+				response);
 			break;
 
 		case ProtocolRequest::COMMAND_NOT_SET:
@@ -1337,10 +1614,24 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 	}
 
 	ProtocolResponse response;
-	response.set_protocol_version(EditorEngineProtocolVersion);
+	const bool bUsesStrictInstanceIdsVersion =
+		request.protocol_version() ==
+			EditorEngineProtocolStrictInstanceIdsVersion;
+	response.set_protocol_version(
+		bUsesStrictInstanceIdsVersion
+			? EditorEngineProtocolStrictInstanceIdsVersion
+			: request.protocol_version() == EditorEngineProtocolVersion
+				? EditorEngineProtocolVersion
+				: EditorEngineProtocolLatestVersion);
 	response.set_request_id(request.request_id());
+	response.set_supports_strict_instance_ids(true);
 
-	if (request.protocol_version() != EditorEngineProtocolVersion)
+	const bool bRequestsStrictInstanceIds =
+		request.command_case() ==
+			ProtocolRequest::kInstantiatePrefabFromYaml &&
+		request.instantiate_prefab_from_yaml().strict_instance_ids();
+	if (request.protocol_version() != EditorEngineProtocolVersion &&
+		!bUsesStrictInstanceIdsVersion)
 	{
 		SetError(
 			response,
@@ -1348,7 +1639,30 @@ int32_t Sailor::Protocol::InvokeEditorEngineProtocol(
 			std::to_string(request.protocol_version()) +
 			"; expected " +
 			std::to_string(EditorEngineProtocolVersion) +
+			" or " +
+			std::to_string(
+				EditorEngineProtocolStrictInstanceIdsVersion) +
 			".");
+	}
+	else if (bRequestsStrictInstanceIds &&
+		!bUsesStrictInstanceIdsVersion)
+	{
+		SetError(
+			response,
+			"Strict instance-id restoration requires protocol version " +
+			std::to_string(
+				EditorEngineProtocolStrictInstanceIdsVersion) +
+			".");
+	}
+	else if (bUsesStrictInstanceIdsVersion &&
+		!bRequestsStrictInstanceIds)
+	{
+		SetError(
+			response,
+			"Protocol version " +
+			std::to_string(
+				EditorEngineProtocolStrictInstanceIdsVersion) +
+			" is reserved for strict instance-id restoration.");
 	}
 	else if (request.request_id() == 0)
 	{

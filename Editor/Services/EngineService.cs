@@ -2359,6 +2359,53 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<bool> RefreshCurrentWorldAuthoritativelyAsync(
+            CancellationToken cancellationToken = default)
+        {
+            using var perfScope = EditorPerf.Scope(
+                "EngineService.RefreshCurrentWorldAuthoritatively");
+            var generation = Volatile.Read(ref engineGeneration);
+            var world = MauiProgram.GetService<WorldService>();
+            var workspaceEpoch = world.WorkspaceEpoch;
+            var snapshot =
+                await SerializeWorldAsync(
+                    generation,
+                    cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            if (string.IsNullOrEmpty(snapshot.SerializedWorld))
+            {
+                return false;
+            }
+
+            var populated = false;
+            void PopulateAuthoritativeSnapshot()
+            {
+                if (!IsGenerationActive(generation) ||
+                    !worldSnapshotPublication.TryAdvance(snapshot.Sequence))
+                {
+                    return;
+                }
+
+                populated = world.TryPopulateWorld(
+                    snapshot.SerializedWorld,
+                    workspaceEpoch);
+            }
+
+            if (MainThread.IsMainThread)
+            {
+                PopulateAuthoritativeSnapshot();
+            }
+            else
+            {
+                await MainThread.InvokeOnMainThreadAsync(
+                    PopulateAuthoritativeSnapshot);
+            }
+
+            return populated &&
+                IsGenerationActive(generation) &&
+                world.WorkspaceEpoch == workspaceEpoch;
+        }
+
         async Task<InstanceId?> InvokeCreationInteropAsync(
             Func<CancellationToken, Task<EngineProtocolCreationResult>> interop,
             CancellationToken cancellationToken)
@@ -2427,16 +2474,75 @@ namespace SailorEditor.Services
                 cancellationToken);
         }
 
+        public async Task<Vec4?> ResolveViewportDropPositionAsync(
+            double normalizedX,
+            double normalizedY,
+            CancellationToken cancellationToken = default)
+        {
+            if (!double.IsFinite(normalizedX) ||
+                !double.IsFinite(normalizedY) ||
+                normalizedX < 0.0 ||
+                normalizedX > 1.0 ||
+                normalizedY < 0.0 ||
+                normalizedY > 1.0)
+            {
+                return null;
+            }
+
+            var resolved = default(EngineProtocolVector4);
+            var succeeded = await InvokeRunningInteropAsync(async token =>
+                {
+                    resolved =
+                        await protocolClient.ResolveViewportDropPositionAsync(
+                            SceneViewportId,
+                            (float)normalizedX,
+                            (float)normalizedY,
+                            token).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return succeeded
+                ? new Vec4
+                {
+                    X = resolved.X,
+                    Y = resolved.Y,
+                    Z = resolved.Z,
+                    W = resolved.W
+                }
+                : null;
+        }
+
+        public Task<InstanceId?> CreateModelGameObjectAsync(
+            FileId modelFileId,
+            string name,
+            InstanceId? parentId = null,
+            Vec4? worldPosition = null,
+            CancellationToken cancellationToken = default)
+        {
+            var position = worldPosition is null
+                ? (EngineProtocolVector4?)null
+                : new EngineProtocolVector4(
+                    worldPosition.X,
+                    worldPosition.Y,
+                    worldPosition.Z,
+                    worldPosition.W);
+            return InvokeCreationInteropAsync(
+                token => protocolClient.CreateModelGameObjectAsync(
+                    modelFileId?.Value ?? string.Empty,
+                    name ?? string.Empty,
+                    parentId?.Value ?? string.Empty,
+                    position,
+                    token),
+                cancellationToken);
+        }
+
         public async Task<bool> DestroyObjectAsync(
             InstanceId instanceId,
             CancellationToken cancellationToken = default)
         {
-            var stringId = instanceId?.Value ?? string.Empty;
-            var result = await InvokeRunningInteropAsync(
-                token => protocolClient.DestroyObjectAsync(
-                    stringId,
-                    token),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
+            var result = await RequestDestroyObjectAsync(
+                instanceId,
+                cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
@@ -2445,6 +2551,18 @@ namespace SailorEditor.Services
             }
 
             return result;
+        }
+
+        internal Task<bool> RequestDestroyObjectAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = instanceId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.DestroyObjectAsync(
+                    stringId,
+                    token),
+                cancellationToken: cancellationToken);
         }
 
         public async Task<bool> ResetComponentToDefaultsAsync(
@@ -2527,10 +2645,211 @@ namespace SailorEditor.Services
             return result;
         }
 
-        public async Task<bool> InstantiatePrefabFromYamlAsync(
+        public Task<InstanceId?> InstantiatePrefabInstanceAsync(
+            FileId prefabId,
+            InstanceId? parentId = null,
+            Vec4? worldPosition = null,
+            CancellationToken cancellationToken = default)
+        {
+            var position = worldPosition is null
+                ? (EngineProtocolVector4?)null
+                : new EngineProtocolVector4(
+                    worldPosition.X,
+                    worldPosition.Y,
+                    worldPosition.Z,
+                    worldPosition.W);
+            return InvokeCreationInteropAsync(
+                token => protocolClient.InstantiatePrefabInstanceAsync(
+                    prefabId?.Value ?? string.Empty,
+                    parentId?.Value ?? string.Empty,
+                    position,
+                    token),
+                cancellationToken);
+        }
+
+        public Task<bool> FocusEditorCameraAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.FocusEditorCameraAsync(
+                    SceneViewportId,
+                    instanceId?.Value ?? string.Empty,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public async Task<bool> SetPrefabLinkAsync(
+            InstanceId instanceId,
+            FileId prefabId,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.SetPrefabLinkAsync(
+                    instanceId?.Value ?? string.Empty,
+                    prefabId?.Value ?? string.Empty,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (result)
+            {
+                await RefreshCurrentWorldAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return result;
+        }
+
+        public async Task<bool> BreakPrefabLinkAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.BreakPrefabLinkAsync(
+                    instanceId?.Value ?? string.Empty,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (result)
+            {
+                await RefreshCurrentWorldAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return result;
+        }
+
+        public Task<bool> SetViewportToolStateAsync(
+            EditorViewportTransformOperation operation,
+            EditorViewportTransformSpace space,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetViewportToolStateAsync(
+                    SceneViewportId,
+                    ToProtocolOperation(operation),
+                    ToProtocolSpace(space),
+                    token),
+                cancellationToken: cancellationToken);
+
+        public async Task<SceneViewportToolState?> GetViewportToolStateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var state = default(EngineProtocolViewportToolState);
+            var succeeded = await InvokeRunningInteropAsync(async token =>
+                {
+                    state = await protocolClient.GetViewportToolStateAsync(
+                        SceneViewportId,
+                        token).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return succeeded
+                ? new SceneViewportToolState(
+                    FromProtocolOperation(state.Operation),
+                    FromProtocolSpace(state.Space))
+                : null;
+        }
+
+        static ViewportTransformOperation ToProtocolOperation(
+            EditorViewportTransformOperation operation)
+            => operation switch
+            {
+                EditorViewportTransformOperation.Select =>
+                    ViewportTransformOperation.Select,
+                EditorViewportTransformOperation.Translate =>
+                    ViewportTransformOperation.Translate,
+                EditorViewportTransformOperation.Rotate =>
+                    ViewportTransformOperation.Rotate,
+                EditorViewportTransformOperation.Scale =>
+                    ViewportTransformOperation.Scale,
+                _ => throw new ArgumentOutOfRangeException(nameof(operation))
+            };
+
+        static ViewportTransformSpace ToProtocolSpace(
+            EditorViewportTransformSpace space)
+            => space switch
+            {
+                EditorViewportTransformSpace.World =>
+                    ViewportTransformSpace.World,
+                EditorViewportTransformSpace.Local =>
+                    ViewportTransformSpace.Local,
+                _ => throw new ArgumentOutOfRangeException(nameof(space))
+            };
+
+        static EditorViewportTransformOperation FromProtocolOperation(
+            ViewportTransformOperation operation)
+            => operation switch
+            {
+                ViewportTransformOperation.Select =>
+                    EditorViewportTransformOperation.Select,
+                ViewportTransformOperation.Translate =>
+                    EditorViewportTransformOperation.Translate,
+                ViewportTransformOperation.Rotate =>
+                    EditorViewportTransformOperation.Rotate,
+                ViewportTransformOperation.Scale =>
+                    EditorViewportTransformOperation.Scale,
+                _ => throw new EngineProtocolException(
+                    $"Unsupported viewport transform operation '{operation}'.")
+            };
+
+        static EditorViewportTransformSpace FromProtocolSpace(
+            ViewportTransformSpace space)
+            => space switch
+            {
+                ViewportTransformSpace.World =>
+                    EditorViewportTransformSpace.World,
+                ViewportTransformSpace.Local =>
+                    EditorViewportTransformSpace.Local,
+                _ => throw new EngineProtocolException(
+                    $"Unsupported viewport transform space '{space}'.")
+            };
+
+        public Task<bool> InstantiatePrefabFromYamlAsync(
             string prefabYaml,
             InstanceId? parentId = null,
             CancellationToken cancellationToken = default)
+            => InstantiatePrefabFromYamlCoreAsync(
+                prefabYaml,
+                parentId,
+                cancellationToken);
+
+        public async Task<bool> InstantiatePrefabFromYamlStrictAsync(
+            string prefabYaml,
+            InstanceId? parentId,
+            CancellationToken cancellationToken = default)
+        {
+            var result =
+                await RequestInstantiatePrefabFromYamlStrictAsync(
+                    prefabYaml,
+                    parentId,
+                    cancellationToken).ConfigureAwait(false);
+
+            if (result)
+            {
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            return result;
+        }
+
+        internal Task<bool> RequestInstantiatePrefabFromYamlStrictAsync(
+            string prefabYaml,
+            InstanceId? parentId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(prefabYaml))
+            {
+                return Task.FromResult(false);
+            }
+
+            var stringParentId = parentId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.InstantiatePrefabFromYamlStrictAsync(
+                    prefabYaml,
+                    stringParentId,
+                    token),
+                cancellationToken: cancellationToken);
+        }
+
+        async Task<bool> InstantiatePrefabFromYamlCoreAsync(
+            string prefabYaml,
+            InstanceId? parentId,
+            CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(prefabYaml))
             {

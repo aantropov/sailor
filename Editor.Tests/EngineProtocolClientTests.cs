@@ -363,6 +363,49 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task InitializeAsync_LocalTransportNegotiatesCapabilitiesOverHost()
+    {
+        var transport = new LocalCapabilityRecordingTransport();
+        var client = new EngineProtocolClient(transport);
+
+        await client.InitializeAsync(["SailorEditor"]);
+        Assert.True(
+            await client.InstantiatePrefabFromYamlStrictAsync(
+                "prefab: undo",
+                string.Empty));
+
+        Assert.Single(transport.InitializeRequests);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.Initialize,
+            transport.InitializeRequests[0].CommandCase);
+        Assert.Equal(
+            EngineProtocolClient.ProtocolVersion,
+            transport.InitializeRequests[0].ProtocolVersion);
+        Assert.Collection(
+            transport.InvokedRequests,
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.GetExitCode,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.ProtocolVersion,
+                    request.ProtocolVersion);
+            },
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    request.ProtocolVersion);
+                Assert.True(
+                    request.InstantiatePrefabFromYaml.StrictInstanceIds);
+            });
+    }
+
+    [Fact]
     public async Task EngineReadinessAsync_UsesDedicatedMainThreadProbe()
     {
         ProtocolRequest? captured = null;
@@ -437,6 +480,209 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task InstantiatePrefabFromYamlAsync_UsesVersionGatedStrictRequest()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(
+            await client.InstantiatePrefabFromYamlAsync(
+                "prefab: default",
+                string.Empty));
+        Assert.True(
+            await client.InstantiatePrefabFromYamlStrictAsync(
+                "prefab: undo",
+                "parent"));
+
+        Assert.Collection(
+            requests,
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.ProtocolVersion,
+                    request.ProtocolVersion);
+                Assert.Equal(
+                    "prefab: default",
+                    request.InstantiatePrefabFromYaml.PrefabYaml);
+                Assert.False(
+                    request.InstantiatePrefabFromYaml.StrictInstanceIds);
+            },
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    request.ProtocolVersion);
+                Assert.Equal(
+                    "prefab: undo",
+                    request.InstantiatePrefabFromYaml.PrefabYaml);
+                Assert.Equal(
+                    "parent",
+                    request.InstantiatePrefabFromYaml.ParentInstanceId);
+                Assert.True(
+                    request.InstantiatePrefabFromYaml.StrictInstanceIds);
+            });
+    }
+
+    [Fact]
+    public async Task InstantiatePrefabFromYamlStrictAsync_ProbesCapabilityBeforeColdRequest()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return request.CommandCase switch
+            {
+                ProtocolRequest.CommandOneofCase.GetExitCode =>
+                    Success(
+                        request,
+                        response => response.Int32Result =
+                            new Int32Result { Value = 0 }),
+                ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml =>
+                    Success(
+                        request,
+                        response => response.BoolResult =
+                            new BoolResult { Value = true }),
+                _ => throw new InvalidOperationException(
+                    $"Unexpected command {request.CommandCase}.")
+            };
+        });
+
+        Assert.True(
+            await client.InstantiatePrefabFromYamlStrictAsync(
+                "prefab: undo",
+                "parent"));
+
+        Assert.Collection(
+            requests,
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.GetExitCode,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.ProtocolVersion,
+                    request.ProtocolVersion);
+            },
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml,
+                    request.CommandCase);
+                Assert.Equal(
+                    EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+                    request.ProtocolVersion);
+                Assert.True(
+                    request.InstantiatePrefabFromYaml.StrictInstanceIds);
+            });
+    }
+
+    [Fact]
+    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsOldV1HostWithoutSendingMutation()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(
+                request,
+                response =>
+                {
+                    if (request.CommandCase ==
+                        ProtocolRequest.CommandOneofCase.Initialize)
+                    {
+                        response.EmptyResult = new Empty();
+                    }
+                    else
+                    {
+                        response.BoolResult =
+                            new BoolResult { Value = true };
+                    }
+                },
+                supportsStrictInstanceIds: false);
+        });
+
+        await client.InitializeAsync(["SailorEditor"]);
+        Assert.True(
+            await client.InstantiatePrefabFromYamlAsync(
+                "prefab: legacy",
+                string.Empty));
+
+        var exception =
+            await Assert.ThrowsAsync<EngineProtocolException>(
+                () => client.InstantiatePrefabFromYamlStrictAsync(
+                    "prefab: undo",
+                    string.Empty));
+        Assert.Contains(
+            "does not advertise strict",
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.Equal(2, requests.Count);
+        Assert.DoesNotContain(
+            requests,
+            request =>
+                request.CommandCase ==
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml &&
+                request.InstantiatePrefabFromYaml.StrictInstanceIds);
+    }
+
+    [Fact]
+    public async Task InstantiatePrefabFromYamlStrictAsync_RejectsV1ResponseAfterStaleCapability()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            if (request.CommandCase ==
+                ProtocolRequest.CommandOneofCase.RequestAssetReload)
+            {
+                return Success(
+                    request,
+                    response => response.BoolResult =
+                        new BoolResult { Value = true });
+            }
+
+            return new ProtocolResponse
+            {
+                ProtocolVersion = EngineProtocolClient.ProtocolVersion,
+                RequestId = request.RequestId,
+                Success = true,
+                BoolResult = new BoolResult { Value = true }
+            };
+        });
+
+        Assert.True(await client.RequestAssetReloadAsync());
+        var exception =
+            await Assert.ThrowsAsync<EngineProtocolException>(
+                () => client.InstantiatePrefabFromYamlStrictAsync(
+                    "prefab: undo",
+                    string.Empty));
+
+        Assert.Contains(
+            "protocol version",
+            exception.Message,
+            StringComparison.Ordinal);
+        Assert.Equal(2, requests.Count);
+        Assert.Equal(
+            EngineProtocolClient.StrictInstanceIdsProtocolVersion,
+            requests[1].ProtocolVersion);
+        Assert.True(
+            requests[1].InstantiatePrefabFromYaml.StrictInstanceIds);
+    }
+
+    [Fact]
     public async Task SerializeEngineTypesAsync_UsesDedicatedProtocolCommand()
     {
         ProtocolRequest? captured = null;
@@ -460,6 +706,185 @@ public sealed class EngineProtocolClientTests
         Assert.Equal(
             ProtocolRequest.CommandOneofCase.SerializeEngineTypes,
             captured.CommandCase);
+    }
+
+    [Fact]
+    public async Task EditorControlCommands_UseTypedPayloadsAndExpectedLanes()
+    {
+        var requests = new List<ProtocolRequest>();
+        var lanes = new List<EngineProtocolInvocationKind>();
+        var client = CreateClient(
+            request =>
+            {
+                requests.Add(request);
+                return request.CommandCase switch
+                {
+                    ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition =>
+                        Success(
+                            request,
+                            response => response.Vector4Result =
+                                new Vector4Result
+                                {
+                                    Value = new Vector4
+                                    {
+                                        X = 1,
+                                        Y = 2,
+                                        Z = 3,
+                                        W = 1
+                                    }
+                                }),
+                    ProtocolRequest.CommandOneofCase.CreateModelGameObject or
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabInstance =>
+                        Success(
+                            request,
+                            response => response.InstanceIdResult =
+                                new InstanceIdResult
+                                {
+                                    Succeeded = true,
+                                    InstanceId = "go-created"
+                                }),
+                    ProtocolRequest.CommandOneofCase.GetViewportToolState =>
+                        Success(
+                            request,
+                            response => response.ViewportToolStateResult =
+                                new ViewportToolStateResult
+                                {
+                                    Operation =
+                                        ViewportTransformOperation.Rotate,
+                                    Space =
+                                        ViewportTransformSpace.Local
+                                }),
+                    _ => Success(
+                        request,
+                        response => response.BoolResult =
+                            new BoolResult { Value = true })
+                };
+            },
+            lanes.Add);
+
+        Assert.Equal(
+            new EngineProtocolVector4(1, 2, 3, 1),
+            await client.ResolveViewportDropPositionAsync(
+                1,
+                0.25f,
+                0.75f));
+        Assert.True((await client.CreateModelGameObjectAsync(
+            "{MODEL}",
+            "Duck",
+            "parent",
+            new EngineProtocolVector4(4, 5, 6, 1))).Succeeded);
+        Assert.True((await client.InstantiatePrefabInstanceAsync(
+            "{PREFAB}",
+            string.Empty,
+            null)).Succeeded);
+        Assert.True(await client.FocusEditorCameraAsync(1, "go-created"));
+        Assert.True(await client.SetPrefabLinkAsync("go-created", "{PREFAB}"));
+        Assert.True(await client.BreakPrefabLinkAsync("go-created"));
+        Assert.True(await client.SetViewportToolStateAsync(
+            1,
+            ViewportTransformOperation.Scale,
+            ViewportTransformSpace.World));
+        Assert.Equal(
+            new EngineProtocolViewportToolState(
+                ViewportTransformOperation.Rotate,
+                ViewportTransformSpace.Local),
+            await client.GetViewportToolStateAsync(1));
+
+        Assert.Collection(
+            requests,
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition,
+                    request.CommandCase);
+                Assert.Equal(1ul, request.ResolveViewportDropPosition.ViewportId);
+                Assert.Equal(0.25f, request.ResolveViewportDropPosition.NormalizedX);
+                Assert.Equal(0.75f, request.ResolveViewportDropPosition.NormalizedY);
+            },
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.CreateModelGameObject,
+                    request.CommandCase);
+                Assert.Equal("{MODEL}", request.CreateModelGameObject.ModelFileId);
+                Assert.Equal("Duck", request.CreateModelGameObject.Name);
+                Assert.Equal("parent", request.CreateModelGameObject.ParentInstanceId);
+                Assert.True(request.CreateModelGameObject.ApplyWorldPosition);
+                Assert.NotNull(request.CreateModelGameObject.WorldPosition);
+                Assert.Equal(4f, request.CreateModelGameObject.WorldPosition.X);
+            },
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.InstantiatePrefabInstance,
+                    request.CommandCase);
+                Assert.Equal("{PREFAB}", request.InstantiatePrefabInstance.FileId);
+                Assert.False(request.InstantiatePrefabInstance.ApplyWorldPosition);
+                Assert.Null(request.InstantiatePrefabInstance.WorldPosition);
+            },
+            request => Assert.Equal(
+                ProtocolRequest.CommandOneofCase.FocusEditorCamera,
+                request.CommandCase),
+            request => Assert.Equal(
+                ProtocolRequest.CommandOneofCase.SetPrefabLink,
+                request.CommandCase),
+            request => Assert.Equal(
+                ProtocolRequest.CommandOneofCase.BreakPrefabLink,
+                request.CommandCase),
+            request =>
+            {
+                Assert.Equal(
+                    ProtocolRequest.CommandOneofCase.SetViewportToolState,
+                    request.CommandCase);
+                Assert.Equal(
+                    ViewportTransformOperation.Scale,
+                    request.SetViewportToolState.Operation);
+                Assert.Equal(
+                    ViewportTransformSpace.World,
+                    request.SetViewportToolState.Space);
+            },
+            request => Assert.Equal(
+                ProtocolRequest.CommandOneofCase.GetViewportToolState,
+                request.CommandCase));
+        Assert.Equal(
+            [
+                EngineProtocolInvocationKind.Interactive,
+                EngineProtocolInvocationKind.Request,
+                EngineProtocolInvocationKind.Request,
+                EngineProtocolInvocationKind.Interactive,
+                EngineProtocolInvocationKind.Request,
+                EngineProtocolInvocationKind.Request,
+                EngineProtocolInvocationKind.Interactive,
+                EngineProtocolInvocationKind.Interactive
+            ],
+            lanes);
+    }
+
+    [Theory]
+    [InlineData(float.NaN, 0.5f)]
+    [InlineData(0.5f, float.PositiveInfinity)]
+    [InlineData(-0.01f, 0.5f)]
+    [InlineData(0.5f, 1.01f)]
+    public async Task ViewportDropPosition_RejectsInvalidCoordinates(
+        float normalizedX,
+        float normalizedY)
+    {
+        var invokeCount = 0;
+        var client = CreateClient(request =>
+        {
+            invokeCount++;
+            return Success(
+                request,
+                response => response.Vector4Result =
+                    new Vector4Result { Value = new Vector4() });
+        });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.ResolveViewportDropPositionAsync(
+                1,
+                normalizedX,
+                normalizedY));
+        Assert.Equal(0, invokeCount);
     }
 
     [Fact]
@@ -523,6 +948,12 @@ public sealed class EngineProtocolClientTests
                 "yaml\0value",
                 "parent"),
             () => client.InstantiatePrefabFromYamlAsync(
+                "yaml",
+                "parent\0id"),
+            () => client.InstantiatePrefabFromYamlStrictAsync(
+                "yaml\0value",
+                "parent"),
+            () => client.InstantiatePrefabFromYamlStrictAsync(
                 "yaml",
                 "parent\0id"),
             () => client.SetEditorSelectionAsync(
@@ -598,13 +1029,15 @@ public sealed class EngineProtocolClientTests
 
     static ProtocolResponse Success(
         ProtocolRequest request,
-        Action<ProtocolResponse> setResult)
+        Action<ProtocolResponse> setResult,
+        bool supportsStrictInstanceIds = true)
     {
         var response = new ProtocolResponse
         {
-            ProtocolVersion = EngineProtocolClient.ProtocolVersion,
+            ProtocolVersion = request.ProtocolVersion,
             RequestId = request.RequestId,
-            Success = true
+            Success = true,
+            SupportsStrictInstanceIds = supportsStrictInstanceIds
         };
         setResult(response);
         return response;
@@ -664,5 +1097,63 @@ public sealed class EngineProtocolClientTests
 
         public void CompleteDisposal()
             => disposalCompletion.TrySetResult(true);
+    }
+
+    sealed class LocalCapabilityRecordingTransport :
+        IEngineProtocolTransport,
+        ILocalEngineProtocolTransport
+    {
+        public List<ProtocolRequest> InitializeRequests { get; } = [];
+        public List<ProtocolRequest> InvokedRequests { get; } = [];
+
+        public Task InitializeAsync(
+            byte[] requestData,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            InitializeRequests.Add(
+                ProtocolRequest.Parser.ParseFrom(requestData));
+            return Task.CompletedTask;
+        }
+
+        public Task<byte[]> InvokeAsync(
+            byte[] requestData,
+            EngineProtocolInvocationKind invocationKind,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var request = ProtocolRequest.Parser.ParseFrom(requestData);
+            InvokedRequests.Add(request);
+            return Task.FromResult(
+                Success(
+                    request,
+                    response =>
+                    {
+                        if (request.CommandCase ==
+                            ProtocolRequest.CommandOneofCase.GetExitCode)
+                        {
+                            response.Int32Result =
+                                new Int32Result { Value = 0 };
+                        }
+                        else
+                        {
+                            response.BoolResult =
+                                new BoolResult { Value = true };
+                        }
+                    }).ToByteArray());
+        }
+
+        public Task RequestStopFallbackAsync()
+            => Task.CompletedTask;
+
+        public Task CompleteShutdownAsync(bool shutdownEngine)
+            => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync()
+            => ValueTask.CompletedTask;
     }
 }

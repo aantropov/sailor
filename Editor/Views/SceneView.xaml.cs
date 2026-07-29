@@ -50,6 +50,10 @@ namespace SailorEditor.Views
         readonly EditorViewportEventRevisionGate viewportEventRevisionGate = new();
         readonly UnifiedSettingsStore settingsStore;
         readonly NativeViewportInputQueue nativeViewportInputQueue;
+        readonly object viewportToolStateLock = new();
+        readonly SemaphoreSlim viewportToolStateGate = new(1, 1);
+        SceneViewportToolState viewportToolState =
+            SceneViewportToolShortcuts.Default;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
         bool lifecycleSubscribed;
@@ -62,6 +66,7 @@ namespace SailorEditor.Views
         public SceneView()
         {
             InitializeComponent();
+            UpdateViewportToolVisuals();
             settingsStore = MauiProgram.GetService<UnifiedSettingsStore>();
             engineService = MauiProgram.GetService<EngineService>();
             worldService = MauiProgram.GetService<WorldService>();
@@ -145,6 +150,7 @@ namespace SailorEditor.Views
             {
                 isRunning = true;
                 SubscribeToEngineLifecycle();
+                _ = RefreshViewportToolStateAsync();
 #if MACCATALYST
                 if (!UseNativeViewportHost)
                 {
@@ -218,6 +224,20 @@ namespace SailorEditor.Views
         {
             cancellationToken.ThrowIfCancellationRequested();
             var captured = input.Captured || isInputCaptured;
+
+            if (input.Kind == NativeSceneViewportInputKind.Key &&
+                SceneViewportToolShortcuts.TryApply(
+                    input.KeyCode,
+                    input.Pressed,
+                    isFocused,
+                    GetViewportToolState(),
+                    out var shortcutState) &&
+                await ApplyViewportToolStateAsync(
+                    shortcutState,
+                    cancellationToken))
+            {
+                return NativeViewportInputDispatchResult.Forwarded;
+            }
 
             if (input.Kind ==
                     NativeSceneViewportInputKind.PointerButton &&
@@ -334,6 +354,7 @@ namespace SailorEditor.Views
             viewportAdapter.ResetForBackendRestart();
             QueueViewportRetry(TimeSpan.FromSeconds(1));
             UpdateViewportIntegration();
+            _ = RefreshViewportToolStateAsync();
         }
 
         async void OnEditorViewportEvents(IReadOnlyList<EditorViewportEvent> viewportEvents)
@@ -360,6 +381,14 @@ namespace SailorEditor.Views
 
                         case EditorViewportTransformEvent transformEvent:
                             await ApplyViewportTransformAsync(transformEvent);
+                            break;
+
+                        case EditorViewportAssetDropEvent assetDropEvent:
+                            await ApplyViewportAssetDropAsync(assetDropEvent);
+                            break;
+
+                        case EditorViewportToolShortcutEvent shortcutEvent:
+                            await ApplyViewportToolShortcutAsync(shortcutEvent);
                             break;
                     }
                 }
@@ -489,6 +518,54 @@ namespace SailorEditor.Views
             }
         }
 
+        async Task ApplyViewportAssetDropAsync(
+            EditorViewportAssetDropEvent viewportEvent)
+        {
+            var fileId = new FileId(viewportEvent.FileId);
+            if (!MauiProgram.GetService<AssetsService>()
+                    .Assets.TryGetValue(fileId, out var assetFile))
+            {
+                Console.WriteLine(
+                    $"[SceneView] Rejected viewport asset drop revision {viewportEvent.Revision}: '{viewportEvent.FileId}' is not a known asset.");
+                return;
+            }
+
+            var result = await DispatchViewportAssetDropAsync(
+                assetFile,
+                viewportEvent.NormalizedX,
+                viewportEvent.NormalizedY,
+                CreateViewportActionContext(viewportEvent));
+            if (!result.Succeeded)
+            {
+                Console.WriteLine(
+                    $"[SceneView] Viewport asset drop revision {viewportEvent.Revision} failed: {result.Message}");
+            }
+        }
+
+        async Task ApplyViewportToolShortcutAsync(
+            EditorViewportToolShortcutEvent viewportEvent)
+        {
+            SetSceneFocus(true, sendRemoteFocus: !isFocused);
+            if (!SceneViewportToolShortcuts.TryApply(
+                    viewportEvent.KeyCode,
+                    isPressed: true,
+                    hasViewportFocus: true,
+                    GetViewportToolState(),
+                    out var shortcutState))
+            {
+                Console.WriteLine(
+                    $"[SceneView] Rejected viewport tool shortcut revision {viewportEvent.Revision}: key={viewportEvent.KeyCode}.");
+                return;
+            }
+
+            lock (viewportToolStateLock)
+            {
+                viewportToolState = shortcutState;
+            }
+            UpdateViewportToolVisuals();
+            await ApplyViewportToolStateSafelyAsync(shortcutState);
+        }
+
         ActionContext CreateViewportActionContext(EditorViewportEvent viewportEvent) =>
             actionContextProvider.GetCurrentContext(
                 new CommandOrigin(CommandOriginKind.UI, nameof(SceneView)),
@@ -541,29 +618,305 @@ namespace SailorEditor.Views
         }
 
         async void OnSceneDrop(object? sender, DropEventArgs e)
+            => await ExecuteSceneUiActionAsync(
+                () => HandleSceneDropAsync(e),
+                "Viewport drop");
+
+        async Task HandleSceneDropAsync(DropEventArgs e)
         {
             if (e.Handled || !e.Data.Properties.TryGetValue(EditorDragDrop.DragItemKey, out var source))
             {
                 return;
             }
 
-            if (!EditorDragDrop.TryCreateSceneDropCommand(source, null, out var command) || command is null)
+            var context = actionContextProvider.GetCurrentContext(
+                new CommandOrigin(
+                    CommandOriginKind.DragDrop,
+                    nameof(SceneView)));
+            if (EditorDragDrop.IsViewportAssetDrop(source))
             {
+                e.Handled = true;
+                var pointer = e.GetPosition(NativeViewportContainer) ??
+                    e.GetPosition(Viewport);
+                if (pointer is null ||
+                    !SceneViewportDropCoordinateResolver.TryResolve(
+                        pointer.Value.X,
+                        pointer.Value.Y,
+                        NativeViewportContainer.Width,
+                        NativeViewportContainer.Height,
+                        out var coordinates))
+                {
+                    return;
+                }
+
+                var result = await DispatchViewportAssetDropAsync(
+                    source,
+                    coordinates.NormalizedX,
+                    coordinates.NormalizedY,
+                    context);
+                if (!result.Succeeded)
+                {
+                    Console.WriteLine(
+                        $"[SceneView] Viewport drop failed: {result.Message}");
+                }
                 return;
             }
 
-            var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
-            var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var context = contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(SceneView)));
-            e.Handled = (await dispatcher.DispatchAsync(command, context)).Succeeded;
+            if (EditorDragDrop.TryCreateSceneDropCommand(
+                    source,
+                    null,
+                    out var command) &&
+                command is not null)
+            {
+                e.Handled = true;
+                await commandDispatcher.DispatchAsync(command, context);
+            }
+        }
+
+        async Task<CommandResult> DispatchViewportAssetDropAsync(
+            object source,
+            double normalizedX,
+            double normalizedY,
+            ActionContext context)
+        {
+            var worldPosition = await engineService
+                .ResolveViewportDropPositionAsync(
+                    normalizedX,
+                    normalizedY);
+            if (worldPosition is null)
+            {
+                return CommandResult.Failure(
+                    "Viewport drop position could not be resolved");
+            }
+
+            if (!EditorDragDrop.TryCreateViewportDropCommand(
+                    source,
+                    worldPosition,
+                    out var command) ||
+                command is null)
+            {
+                return CommandResult.Failure(
+                    "The dropped asset is not a model or prefab");
+            }
+
+            return await commandDispatcher.DispatchAsync(
+                command,
+                context);
         }
 
         DropGestureRecognizer CreateSceneDropGesture()
         {
             var gesture = new DropGestureRecognizer();
-            gesture.DragOver += (_, e) => e.AcceptedOperation = DataPackageOperation.Copy;
+            gesture.DragOver += (_, e) =>
+            {
+                if (e.Data.Properties.TryGetValue(
+                        EditorDragDrop.DragItemKey,
+                        out var source) &&
+                    (EditorDragDrop.IsViewportAssetDrop(source) ||
+                     source is SailorEditor.ViewModels.GameObject))
+                {
+                    e.AcceptedOperation = DataPackageOperation.Copy;
+                }
+            };
             gesture.Drop += OnSceneDrop;
             return gesture;
+        }
+
+        void OnSelectToolClicked(object sender, EventArgs e) =>
+            QueueViewportToolState(
+                GetViewportToolState() with
+                {
+                    Operation =
+                        EditorViewportTransformOperation.Select
+                });
+
+        void OnTranslateToolClicked(object sender, EventArgs e) =>
+            QueueViewportToolState(
+                GetViewportToolState() with
+                {
+                    Operation =
+                        EditorViewportTransformOperation.Translate
+                });
+
+        void OnRotateToolClicked(object sender, EventArgs e) =>
+            QueueViewportToolState(
+                GetViewportToolState() with
+                {
+                    Operation =
+                        EditorViewportTransformOperation.Rotate
+                });
+
+        void OnScaleToolClicked(object sender, EventArgs e) =>
+            QueueViewportToolState(
+                GetViewportToolState() with
+                {
+                    Operation =
+                        EditorViewportTransformOperation.Scale
+                });
+
+        void OnTransformSpaceClicked(object sender, EventArgs e)
+        {
+            var current = GetViewportToolState();
+            QueueViewportToolState(
+                current with
+                {
+                    Space =
+                        current.Space ==
+                        EditorViewportTransformSpace.Local
+                            ? EditorViewportTransformSpace.World
+                            : EditorViewportTransformSpace.Local
+                });
+        }
+
+        void QueueViewportToolState(SceneViewportToolState state)
+        {
+            SetSceneFocus(true, sendRemoteFocus: !isFocused);
+            nativeViewportHost?.RequestInputFocus();
+            lock (viewportToolStateLock)
+            {
+                viewportToolState = state;
+            }
+            UpdateViewportToolVisuals();
+            _ = ApplyViewportToolStateSafelyAsync(state);
+        }
+
+        async Task ApplyViewportToolStateSafelyAsync(
+            SceneViewportToolState state)
+        {
+            try
+            {
+                if (!await ApplyViewportToolStateAsync(
+                        state,
+                        CancellationToken.None))
+                {
+                    Console.WriteLine(
+                        "[SceneView] Viewport tool state was rejected by the engine.");
+                    await RefreshViewportToolStateAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[SceneView] Failed to set viewport tool state: {ex}");
+                await RefreshViewportToolStateAsync();
+            }
+        }
+
+        async Task<bool> ApplyViewportToolStateAsync(
+            SceneViewportToolState state,
+            CancellationToken cancellationToken)
+        {
+            await viewportToolStateGate.WaitAsync(cancellationToken);
+            try
+            {
+                if (!await engineService.SetViewportToolStateAsync(
+                        state.Operation,
+                        state.Space,
+                        cancellationToken))
+                {
+                    return false;
+                }
+
+                lock (viewportToolStateLock)
+                {
+                    viewportToolState = state;
+                }
+
+                Dispatcher.Dispatch(UpdateViewportToolVisuals);
+                return true;
+            }
+            finally
+            {
+                viewportToolStateGate.Release();
+            }
+        }
+
+        async Task RefreshViewportToolStateAsync()
+        {
+            try
+            {
+                await viewportToolStateGate.WaitAsync();
+                try
+                {
+                    var state = await engineService
+                        .GetViewportToolStateAsync();
+                    if (state is null)
+                    {
+                        return;
+                    }
+
+                    lock (viewportToolStateLock)
+                    {
+                        viewportToolState = state.Value;
+                    }
+
+                    Dispatcher.Dispatch(UpdateViewportToolVisuals);
+                }
+                finally
+                {
+                    viewportToolStateGate.Release();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[SceneView] Failed to read viewport tool state: {ex}");
+            }
+        }
+
+        SceneViewportToolState GetViewportToolState()
+        {
+            lock (viewportToolStateLock)
+            {
+                return viewportToolState;
+            }
+        }
+
+        void UpdateViewportToolVisuals()
+        {
+            var state = GetViewportToolState();
+            var activeColor = Color.FromArgb("#455F80");
+            var inactiveColor = Color.FromArgb("#303030");
+            SelectToolButton.BackgroundColor =
+                state.Operation ==
+                EditorViewportTransformOperation.Select
+                    ? activeColor
+                    : inactiveColor;
+            TranslateToolButton.BackgroundColor =
+                state.Operation ==
+                EditorViewportTransformOperation.Translate
+                    ? activeColor
+                    : inactiveColor;
+            RotateToolButton.BackgroundColor =
+                state.Operation ==
+                EditorViewportTransformOperation.Rotate
+                    ? activeColor
+                    : inactiveColor;
+            ScaleToolButton.BackgroundColor =
+                state.Operation ==
+                EditorViewportTransformOperation.Scale
+                    ? activeColor
+                    : inactiveColor;
+            TransformSpaceButton.BackgroundColor = inactiveColor;
+            TransformSpaceButton.Text =
+                state.Space == EditorViewportTransformSpace.Local
+                    ? "T  Local"
+                    : "T  World";
+        }
+
+        static async Task ExecuteSceneUiActionAsync(
+            Func<Task> action,
+            string operation)
+        {
+            try
+            {
+                await action();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[SceneView] {operation} failed: {ex}");
+            }
         }
 
         void SetSceneFocus(bool focused, bool sendRemoteFocus)

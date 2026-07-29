@@ -53,7 +53,14 @@ Editor-worker task and attempt to join itself.
 
 Compatibility rules:
 
-- Keep `protocol_version` at `1` for additive, wire-compatible changes.
+- Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId
+  restoration uses feature version `2`; the current host accepts version `2`
+  only for `instantiate_prefab_from_yaml` with `strict_instance_ids = true`.
+- Every current host response advertises
+  `supports_strict_instance_ids = true`. A new Editor probes this additive
+  capability over a baseline v1 request before sending a strict restore. An
+  older v1 host omits the field, so ordinary v1 commands remain available but
+  strict restore fails closed without sending the mutation.
 - Never reuse a field number. Reserve removed fields and enum values.
 - Keep `InstanceId` and `FileId` strings byte-for-byte compatible with their
   existing serialized forms.

@@ -25,7 +25,7 @@ namespace SailorEditor.Protocol.Generated {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChNlZGl0b3JfZW5naW5lLnByb3RvEhBzYWlsb3IuZWRpdG9yLnYxIgcKBUVt",
-            "cHR5IoMVCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
+            "cHR5IuwZCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
             "IAEoDRISCgpyZXF1ZXN0X2lkGAIgASgEEjkKCmluaXRpYWxpemUYCiABKAsy",
             "Iy5zYWlsb3IuZWRpdG9yLnYxLkluaXRpYWxpemVSZXF1ZXN0SAASKAoFc3Rh",
             "cnQYCyABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASJwoEc3RvcBgM",
@@ -84,105 +84,150 @@ namespace SailorEditor.Protocol.Generated {
             "cGVzGC4gASgLMhcuc2FpbG9yLmVkaXRvci52MS5FbXB0eUgAEj4KG2lzX2Vu",
             "Z2luZV9tYWluX3RocmVhZF9yZWFkeRgvIAEoCzIXLnNhaWxvci5lZGl0b3Iu",
             "djEuRW1wdHlIABI0ChFpc19lbmdpbmVfcnVubmluZxgwIAEoCzIXLnNhaWxv",
-            "ci5lZGl0b3IudjEuRW1wdHlIAEIJCgdjb21tYW5kSgQIAxAKSgQIMRBkIuQF",
-            "ChBQcm90b2NvbFJlc3BvbnNlEhgKEHByb3RvY29sX3ZlcnNpb24YASABKA0S",
-            "EgoKcmVxdWVzdF9pZBgCIAEoBBIPCgdzdWNjZXNzGAMgASgIEg0KBWVycm9y",
-            "GAQgASgJEi8KDGVtcHR5X3Jlc3VsdBgKIAEoCzIXLnNhaWxvci5lZGl0b3Iu",
-            "djEuRW1wdHlIABIzCgtib29sX3Jlc3VsdBgLIAEoCzIcLnNhaWxvci5lZGl0",
-            "b3IudjEuQm9vbFJlc3VsdEgAEjUKDGludDMyX3Jlc3VsdBgMIAEoCzIdLnNh",
-            "aWxvci5lZGl0b3IudjEuSW50MzJSZXN1bHRIABI3Cg11aW50MzJfcmVzdWx0",
-            "GA0gASgLMh4uc2FpbG9yLmVkaXRvci52MS5VSW50MzJSZXN1bHRIABI3Cg11",
-            "aW50NjRfcmVzdWx0GA4gASgLMh4uc2FpbG9yLmVkaXRvci52MS5VSW50NjRS",
-            "ZXN1bHRIABI3Cg1zdHJpbmdfcmVzdWx0GA8gASgLMh4uc2FpbG9yLmVkaXRv",
-            "ci52MS5TdHJpbmdSZXN1bHRIABJAChJzdHJpbmdfbGlzdF9yZXN1bHQYECAB",
-            "KAsyIi5zYWlsb3IuZWRpdG9yLnYxLlN0cmluZ0xpc3RSZXN1bHRIABJNChlh",
-            "c3NldF9yZWxvYWRfc3RhdGVfcmVzdWx0GBEgASgLMiguc2FpbG9yLmVkaXRv",
-            "ci52MS5Bc3NldFJlbG9hZFN0YXRlUmVzdWx0SAASQAoSaW5zdGFuY2VfaWRf",
-            "cmVzdWx0GBIgASgLMiIuc2FpbG9yLmVkaXRvci52MS5JbnN0YW5jZUlkUmVz",
-            "dWx0SAASUQobdmlld3BvcnRfZXZlbnRfYmF0Y2hfcmVzdWx0GBMgASgLMiou",
-            "c2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHRIAEII",
-            "CgZyZXN1bHRKBAgFEApKBAgUEGQiJgoRSW5pdGlhbGl6ZVJlcXVlc3QSEQoJ",
-            "YXJndW1lbnRzGAEgAygJIiEKDENvdW50UmVxdWVzdBIRCgltYXhfY291bnQY",
-            "ASABKA0iIAoNRmlsZUlkUmVxdWVzdBIPCgdmaWxlX2lkGAEgASgJIigKEUlu",
-            "c3RhbmNlSWRSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJIigKEVZpZXdw",
-            "b3J0SWRSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEImAKE1ZpZXdwb3J0",
-            "UmVjdFJlcXVlc3QSFAoMd2luZG93X3Bvc194GAEgASgNEhQKDHdpbmRvd19w",
-            "b3NfeRgCIAEoDRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0iLAoL",
-            "U2l6ZVJlcXVlc3QSDQoFd2lkdGgYASABKA0SDgoGaGVpZ2h0GAIgASgNIpkB",
-            "ChVSZW1vdGVWaWV3cG9ydFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQS",
-            "FAoMd2luZG93X3Bvc194GAIgASgNEhQKDHdpbmRvd19wb3NfeRgDIAEoDRIN",
-            "CgV3aWR0aBgEIAEoDRIOCgZoZWlnaHQYBSABKA0SDwoHdmlzaWJsZRgGIAEo",
-            "CBIPCgdmb2N1c2VkGAcgASgIImUKGVJlbW90ZVZpZXdwb3J0SG9zdFJlcXVl",
-            "c3QSEwoLdmlld3BvcnRfaWQYASABKAQSGAoQaG9zdF9oYW5kbGVfa2luZBgC",
-            "IAEoDRIZChFob3N0X2hhbmRsZV92YWx1ZRgDIAEoBCL8AQoaUmVtb3RlVmll",
-            "d3BvcnRJbnB1dFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQSDAoEa2lu",
-            "ZBgCIAEoDRIRCglwb2ludGVyX3gYAyABKAISEQoJcG9pbnRlcl95GAQgASgC",
-            "EhUKDXdoZWVsX2RlbHRhX3gYBSABKAISFQoNd2hlZWxfZGVsdGFfeRgGIAEo",
-            "AhIQCghrZXlfY29kZRgHIAEoDRIOCgZidXR0b24YCCABKA0SEQoJbW9kaWZp",
-            "ZXJzGAkgASgNEg8KB3ByZXNzZWQYCiABKAgSDwoHZm9jdXNlZBgLIAEoCBIQ",
-            "CghjYXB0dXJlZBgMIAEoCCJDCh5NYW5hZ2VkTXV0YXRpb25SZXZpc2lvblJl",
-            "cXVlc3QSDAoEa2luZBgBIAEoDRITCgtpbnN0YW5jZV9pZBgCIAEoCSJAChNV",
-            "cGRhdGVPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJEhQKDHlh",
-            "bWxfY2hhbmdlcxgCIAEoCSJmChVSZXBhcmVudE9iamVjdFJlcXVlc3QSEwoL",
-            "aW5zdGFuY2VfaWQYASABKAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJ",
-            "EhwKFGtlZXBfd29ybGRfdHJhbnNmb3JtGAMgASgIIlQKF0NyZWF0ZUdhbWVP",
-            "YmplY3RSZXF1ZXN0EhoKEnBhcmVudF9pbnN0YW5jZV9pZBgBIAEoCRIdChVw",
-            "cmVmZXJyZWRfaW5zdGFuY2VfaWQYAiABKAkiZgoTQWRkQ29tcG9uZW50UmVx",
-            "dWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIbChNjb21wb25lbnRfdHlwZV9u",
-            "YW1lGAIgASgJEh0KFXByZWZlcnJlZF9pbnN0YW5jZV9pZBgDIAEoCSJHChhJ",
-            "bnN0YW50aWF0ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJw",
-            "YXJlbnRfaW5zdGFuY2VfaWQYAiABKAkiUwogSW5zdGFudGlhdGVQcmVmYWJG",
-            "cm9tWWFtbFJlcXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50",
-            "X2luc3RhbmNlX2lkGAIgASgJIigKEFNlbGVjdGlvblJlcXVlc3QSFAoMaW5z",
-            "dGFuY2VfaWRzGAEgAygJIiUKFVNob3dNYWluV2luZG93UmVxdWVzdBIMCgRz",
-            "aG93GAEgASgIIogBChxSZW5kZXJQYXRoVHJhY2VkSW1hZ2VSZXF1ZXN0EhMK",
-            "C291dHB1dF9wYXRoGAEgASgJEhMKC2luc3RhbmNlX2lkGAIgASgJEg4KBmhl",
-            "aWdodBgDIAEoDRIZChFzYW1wbGVzX3Blcl9waXhlbBgEIAEoDRITCgttYXhf",
-            "Ym91bmNlcxgFIAEoDSIbCgpCb29sUmVzdWx0Eg0KBXZhbHVlGAEgASgIIhwK",
-            "C0ludDMyUmVzdWx0Eg0KBXZhbHVlGAEgASgFIh0KDFVJbnQzMlJlc3VsdBIN",
-            "CgV2YWx1ZRgBIAEoDSIdCgxVSW50NjRSZXN1bHQSDQoFdmFsdWUYASABKAQi",
-            "MAoMU3RyaW5nUmVzdWx0EhEKCWhhc192YWx1ZRgBIAEoCBINCgV2YWx1ZRgC",
-            "IAEoCSIiChBTdHJpbmdMaXN0UmVzdWx0Eg4KBnZhbHVlcxgBIAMoCSKEAQoW",
-            "QXNzZXRSZWxvYWRTdGF0ZVJlc3VsdBIRCglhdmFpbGFibGUYASABKAgSGgoS",
-            "cmVxdWVzdF9nZW5lcmF0aW9uGAIgASgEEhwKFGNvbXBsZXRlZF9nZW5lcmF0",
-            "aW9uGAMgASgEEh0KFXN1Y2Nlc3NmdWxfZ2VuZXJhdGlvbhgEIAEoBCI6ChBJ",
-            "bnN0YW5jZUlkUmVzdWx0EhEKCXN1Y2NlZWRlZBgBIAEoCBITCgtpbnN0YW5j",
-            "ZV9pZBgCIAEoCSI1CgdWZWN0b3I0EgkKAXgYASABKAISCQoBeRgCIAEoAhIJ",
-            "CgF6GAMgASgCEgkKAXcYBCABKAIiNgoWVmlld3BvcnRTZWxlY3Rpb25FdmVu",
-            "dBIcChRzZWxlY3RlZF9pbnN0YW5jZV9pZBgBIAEoCSLWAwoWVmlld3BvcnRU",
-            "cmFuc2Zvcm1FdmVudBITCgtpbnN0YW5jZV9pZBgBIAEoCRI/CglvcGVyYXRp",
-            "b24YAiABKA4yLC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3Jt",
-            "T3BlcmF0aW9uEjcKBXNwYWNlGAMgASgOMiguc2FpbG9yLmVkaXRvci52MS5W",
-            "aWV3cG9ydFRyYW5zZm9ybVNwYWNlEjIKD2JlZm9yZV9wb3NpdGlvbhgEIAEo",
-            "CzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIyCg9iZWZvcmVfcm90YXRp",
-            "b24YBSABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSLwoMYmVmb3Jl",
-            "X3NjYWxlGAYgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjEKDmFm",
-            "dGVyX3Bvc2l0aW9uGAcgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0",
-            "EjEKDmFmdGVyX3JvdGF0aW9uGAggASgLMhkuc2FpbG9yLmVkaXRvci52MS5W",
-            "ZWN0b3I0Ei4KC2FmdGVyX3NjYWxlGAkgASgLMhkuc2FpbG9yLmVkaXRvci52",
-            "MS5WZWN0b3I0ItMBCg1WaWV3cG9ydEV2ZW50EhAKCHJldmlzaW9uGAEgASgE",
-            "EiEKGW1hbmFnZWRfbXV0YXRpb25fcmV2aXNpb24YAiABKAQSPQoJc2VsZWN0",
-            "aW9uGAogASgLMiguc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFNlbGVjdGlv",
-            "bkV2ZW50SAASPQoJdHJhbnNmb3JtGAsgASgLMiguc2FpbG9yLmVkaXRvci52",
-            "MS5WaWV3cG9ydFRyYW5zZm9ybUV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJL",
-            "ChhWaWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8u",
-            "c2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50KvABChpWaWV3cG9ydFRy",
-            "YW5zZm9ybU9wZXJhdGlvbhIsCihWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFU",
-            "SU9OX1VOU1BFQ0lGSUVEEAASJwojVklFV1BPUlRfVFJBTlNGT1JNX09QRVJB",
-            "VElPTl9TRUxFQ1QQARIqCiZWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9O",
-            "X1RSQU5TTEFURRACEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05f",
-            "Uk9UQVRFEAMSJgoiVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9TQ0FM",
-            "RRAEKooBChZWaWV3cG9ydFRyYW5zZm9ybVNwYWNlEigKJFZJRVdQT1JUX1RS",
-            "QU5TRk9STV9TUEFDRV9VTlNQRUNJRklFRBAAEiIKHlZJRVdQT1JUX1RSQU5T",
-            "Rk9STV9TUEFDRV9XT1JMRBABEiIKHlZJRVdQT1JUX1RSQU5TRk9STV9TUEFD",
-            "RV9MT0NBTBACQiKqAh9TYWlsb3JFZGl0b3IuUHJvdG9jb2wuR2VuZXJhdGVk",
-            "YgZwcm90bzM="));
+            "ci5lZGl0b3IudjEuRW1wdHlIABJXCh5yZXNvbHZlX3ZpZXdwb3J0X2Ryb3Bf",
+            "cG9zaXRpb24YMSABKAsyLS5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0RHJv",
+            "cFBvc2l0aW9uUmVxdWVzdEgAElIKGGNyZWF0ZV9tb2RlbF9nYW1lX29iamVj",
+            "dBgyIAEoCzIuLnNhaWxvci5lZGl0b3IudjEuQ3JlYXRlTW9kZWxHYW1lT2Jq",
+            "ZWN0UmVxdWVzdEgAElkKG2luc3RhbnRpYXRlX3ByZWZhYl9pbnN0YW5jZRgz",
+            "IAEoCzIyLnNhaWxvci5lZGl0b3IudjEuSW5zdGFudGlhdGVQcmVmYWJJbnN0",
+            "YW5jZVJlcXVlc3RIABJGChNmb2N1c19lZGl0b3JfY2FtZXJhGDQgASgLMicu",
+            "c2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydE9iamVjdFJlcXVlc3RIABI+Cg9z",
+            "ZXRfcHJlZmFiX2xpbmsYNSABKAsyIy5zYWlsb3IuZWRpdG9yLnYxLlByZWZh",
+            "YkxpbmtSZXF1ZXN0SAASQAoRYnJlYWtfcHJlZmFiX2xpbmsYNiABKAsyIy5z",
+            "YWlsb3IuZWRpdG9yLnYxLkluc3RhbmNlSWRSZXF1ZXN0SAASTQoXc2V0X3Zp",
+            "ZXdwb3J0X3Rvb2xfc3RhdGUYNyABKAsyKi5zYWlsb3IuZWRpdG9yLnYxLlZp",
+            "ZXdwb3J0VG9vbFN0YXRlUmVxdWVzdEgAEkYKF2dldF92aWV3cG9ydF90b29s",
+            "X3N0YXRlGDggASgLMiMuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydElkUmVx",
+            "dWVzdEgAQgkKB2NvbW1hbmRKBAgDEApKBAg5EGQilgcKEFByb3RvY29sUmVz",
+            "cG9uc2USGAoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDRISCgpyZXF1ZXN0X2lk",
+            "GAIgASgEEg8KB3N1Y2Nlc3MYAyABKAgSDQoFZXJyb3IYBCABKAkSJAocc3Vw",
+            "cG9ydHNfc3RyaWN0X2luc3RhbmNlX2lkcxgFIAEoCBIvCgxlbXB0eV9yZXN1",
+            "bHQYCiABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASMwoLYm9vbF9y",
+            "ZXN1bHQYCyABKAsyHC5zYWlsb3IuZWRpdG9yLnYxLkJvb2xSZXN1bHRIABI1",
+            "CgxpbnQzMl9yZXN1bHQYDCABKAsyHS5zYWlsb3IuZWRpdG9yLnYxLkludDMy",
+            "UmVzdWx0SAASNwoNdWludDMyX3Jlc3VsdBgNIAEoCzIeLnNhaWxvci5lZGl0",
+            "b3IudjEuVUludDMyUmVzdWx0SAASNwoNdWludDY0X3Jlc3VsdBgOIAEoCzIe",
+            "LnNhaWxvci5lZGl0b3IudjEuVUludDY0UmVzdWx0SAASNwoNc3RyaW5nX3Jl",
+            "c3VsdBgPIAEoCzIeLnNhaWxvci5lZGl0b3IudjEuU3RyaW5nUmVzdWx0SAAS",
+            "QAoSc3RyaW5nX2xpc3RfcmVzdWx0GBAgASgLMiIuc2FpbG9yLmVkaXRvci52",
+            "MS5TdHJpbmdMaXN0UmVzdWx0SAASTQoZYXNzZXRfcmVsb2FkX3N0YXRlX3Jl",
+            "c3VsdBgRIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuQXNzZXRSZWxvYWRTdGF0",
+            "ZVJlc3VsdEgAEkAKEmluc3RhbmNlX2lkX3Jlc3VsdBgSIAEoCzIiLnNhaWxv",
+            "ci5lZGl0b3IudjEuSW5zdGFuY2VJZFJlc3VsdEgAElEKG3ZpZXdwb3J0X2V2",
+            "ZW50X2JhdGNoX3Jlc3VsdBgTIAEoCzIqLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRFdmVudEJhdGNoUmVzdWx0SAASOQoOdmVjdG9yNF9yZXN1bHQYFCAB",
+            "KAsyHy5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjRSZXN1bHRIABJPChp2aWV3",
+            "cG9ydF90b29sX3N0YXRlX3Jlc3VsdBgVIAEoCzIpLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmlld3BvcnRUb29sU3RhdGVSZXN1bHRIAEIICgZyZXN1bHRKBAgGEApK",
+            "BAgWEGQiJgoRSW5pdGlhbGl6ZVJlcXVlc3QSEQoJYXJndW1lbnRzGAEgAygJ",
+            "IiEKDENvdW50UmVxdWVzdBIRCgltYXhfY291bnQYASABKA0iIAoNRmlsZUlk",
+            "UmVxdWVzdBIPCgdmaWxlX2lkGAEgASgJIigKEUluc3RhbmNlSWRSZXF1ZXN0",
+            "EhMKC2luc3RhbmNlX2lkGAEgASgJIigKEVZpZXdwb3J0SWRSZXF1ZXN0EhMK",
+            "C3ZpZXdwb3J0X2lkGAEgASgEImAKE1ZpZXdwb3J0UmVjdFJlcXVlc3QSFAoM",
+            "d2luZG93X3Bvc194GAEgASgNEhQKDHdpbmRvd19wb3NfeRgCIAEoDRINCgV3",
+            "aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0iLAoLU2l6ZVJlcXVlc3QSDQoF",
+            "d2lkdGgYASABKA0SDgoGaGVpZ2h0GAIgASgNIpkBChVSZW1vdGVWaWV3cG9y",
+            "dFJlcXVlc3QSEwoLdmlld3BvcnRfaWQYASABKAQSFAoMd2luZG93X3Bvc194",
+            "GAIgASgNEhQKDHdpbmRvd19wb3NfeRgDIAEoDRINCgV3aWR0aBgEIAEoDRIO",
+            "CgZoZWlnaHQYBSABKA0SDwoHdmlzaWJsZRgGIAEoCBIPCgdmb2N1c2VkGAcg",
+            "ASgIImUKGVJlbW90ZVZpZXdwb3J0SG9zdFJlcXVlc3QSEwoLdmlld3BvcnRf",
+            "aWQYASABKAQSGAoQaG9zdF9oYW5kbGVfa2luZBgCIAEoDRIZChFob3N0X2hh",
+            "bmRsZV92YWx1ZRgDIAEoBCL8AQoaUmVtb3RlVmlld3BvcnRJbnB1dFJlcXVl",
+            "c3QSEwoLdmlld3BvcnRfaWQYASABKAQSDAoEa2luZBgCIAEoDRIRCglwb2lu",
+            "dGVyX3gYAyABKAISEQoJcG9pbnRlcl95GAQgASgCEhUKDXdoZWVsX2RlbHRh",
+            "X3gYBSABKAISFQoNd2hlZWxfZGVsdGFfeRgGIAEoAhIQCghrZXlfY29kZRgH",
+            "IAEoDRIOCgZidXR0b24YCCABKA0SEQoJbW9kaWZpZXJzGAkgASgNEg8KB3By",
+            "ZXNzZWQYCiABKAgSDwoHZm9jdXNlZBgLIAEoCBIQCghjYXB0dXJlZBgMIAEo",
+            "CCJDCh5NYW5hZ2VkTXV0YXRpb25SZXZpc2lvblJlcXVlc3QSDAoEa2luZBgB",
+            "IAEoDRITCgtpbnN0YW5jZV9pZBgCIAEoCSJAChNVcGRhdGVPYmplY3RSZXF1",
+            "ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJEhQKDHlhbWxfY2hhbmdlcxgCIAEo",
+            "CSJmChVSZXBhcmVudE9iamVjdFJlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASAB",
+            "KAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGtlZXBfd29ybGRf",
+            "dHJhbnNmb3JtGAMgASgIIlQKF0NyZWF0ZUdhbWVPYmplY3RSZXF1ZXN0EhoK",
+            "EnBhcmVudF9pbnN0YW5jZV9pZBgBIAEoCRIdChVwcmVmZXJyZWRfaW5zdGFu",
+            "Y2VfaWQYAiABKAkiZgoTQWRkQ29tcG9uZW50UmVxdWVzdBITCgtpbnN0YW5j",
+            "ZV9pZBgBIAEoCRIbChNjb21wb25lbnRfdHlwZV9uYW1lGAIgASgJEh0KFXBy",
+            "ZWZlcnJlZF9pbnN0YW5jZV9pZBgDIAEoCSJHChhJbnN0YW50aWF0ZVByZWZh",
+            "YlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRfaW5zdGFuY2Vf",
+            "aWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFtbFJlcXVlc3QS",
+            "EwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIg",
+            "ASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiXgobVmlld3BvcnRE",
+            "cm9wUG9zaXRpb25SZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5v",
+            "cm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIisAEKHENy",
+            "ZWF0ZU1vZGVsR2FtZU9iamVjdFJlcXVlc3QSFQoNbW9kZWxfZmlsZV9pZBgB",
+            "IAEoCRIMCgRuYW1lGAIgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgDIAEo",
+            "CRIcChRhcHBseV93b3JsZF9wb3NpdGlvbhgEIAEoCBIxCg53b3JsZF9wb3Np",
+            "dGlvbhgFIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNCKgAQogSW5z",
+            "dGFudGlhdGVQcmVmYWJJbnN0YW5jZVJlcXVlc3QSDwoHZmlsZV9pZBgBIAEo",
+            "CRIaChJwYXJlbnRfaW5zdGFuY2VfaWQYAiABKAkSHAoUYXBwbHlfd29ybGRf",
+            "cG9zaXRpb24YAyABKAgSMQoOd29ybGRfcG9zaXRpb24YBCABKAsyGS5zYWls",
+            "b3IuZWRpdG9yLnYxLlZlY3RvcjQiQQoVVmlld3BvcnRPYmplY3RSZXF1ZXN0",
+            "EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhMKC2luc3RhbmNlX2lkGAIgASgJIjkK",
+            "EVByZWZhYkxpbmtSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEgASgJEg8KB2Zp",
+            "bGVfaWQYAiABKAkiqQEKGFZpZXdwb3J0VG9vbFN0YXRlUmVxdWVzdBITCgt2",
+            "aWV3cG9ydF9pZBgBIAEoBBI/CglvcGVyYXRpb24YAiABKA4yLC5zYWlsb3Iu",
+            "ZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3JtT3BlcmF0aW9uEjcKBXNwYWNl",
+            "GAMgASgOMiguc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybVNw",
+            "YWNlIigKEFNlbGVjdGlvblJlcXVlc3QSFAoMaW5zdGFuY2VfaWRzGAEgAygJ",
+            "IiUKFVNob3dNYWluV2luZG93UmVxdWVzdBIMCgRzaG93GAEgASgIIogBChxS",
+            "ZW5kZXJQYXRoVHJhY2VkSW1hZ2VSZXF1ZXN0EhMKC291dHB1dF9wYXRoGAEg",
+            "ASgJEhMKC2luc3RhbmNlX2lkGAIgASgJEg4KBmhlaWdodBgDIAEoDRIZChFz",
+            "YW1wbGVzX3Blcl9waXhlbBgEIAEoDRITCgttYXhfYm91bmNlcxgFIAEoDSIb",
+            "CgpCb29sUmVzdWx0Eg0KBXZhbHVlGAEgASgIIhwKC0ludDMyUmVzdWx0Eg0K",
+            "BXZhbHVlGAEgASgFIh0KDFVJbnQzMlJlc3VsdBINCgV2YWx1ZRgBIAEoDSId",
+            "CgxVSW50NjRSZXN1bHQSDQoFdmFsdWUYASABKAQiMAoMU3RyaW5nUmVzdWx0",
+            "EhEKCWhhc192YWx1ZRgBIAEoCBINCgV2YWx1ZRgCIAEoCSIiChBTdHJpbmdM",
+            "aXN0UmVzdWx0Eg4KBnZhbHVlcxgBIAMoCSKEAQoWQXNzZXRSZWxvYWRTdGF0",
+            "ZVJlc3VsdBIRCglhdmFpbGFibGUYASABKAgSGgoScmVxdWVzdF9nZW5lcmF0",
+            "aW9uGAIgASgEEhwKFGNvbXBsZXRlZF9nZW5lcmF0aW9uGAMgASgEEh0KFXN1",
+            "Y2Nlc3NmdWxfZ2VuZXJhdGlvbhgEIAEoBCI6ChBJbnN0YW5jZUlkUmVzdWx0",
+            "EhEKCXN1Y2NlZWRlZBgBIAEoCBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5Cg1W",
+            "ZWN0b3I0UmVzdWx0EigKBXZhbHVlGAEgASgLMhkuc2FpbG9yLmVkaXRvci52",
+            "MS5WZWN0b3I0IpMBChdWaWV3cG9ydFRvb2xTdGF0ZVJlc3VsdBI/CglvcGVy",
+            "YXRpb24YASABKA4yLC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNm",
+            "b3JtT3BlcmF0aW9uEjcKBXNwYWNlGAIgASgOMiguc2FpbG9yLmVkaXRvci52",
+            "MS5WaWV3cG9ydFRyYW5zZm9ybVNwYWNlIjUKB1ZlY3RvcjQSCQoBeBgBIAEo",
+            "AhIJCgF5GAIgASgCEgkKAXoYAyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9y",
+            "dFNlbGVjdGlvbkV2ZW50EhwKFHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJ",
+            "ItYDChZWaWV3cG9ydFRyYW5zZm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEg",
+            "ASgJEj8KCW9wZXJhdGlvbhgCIAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRUcmFuc2Zvcm1PcGVyYXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWls",
+            "b3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3Jl",
+            "X3Bvc2l0aW9uGAQgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIK",
+            "D2JlZm9yZV9yb3RhdGlvbhgFIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVj",
+            "dG9yNBIvCgxiZWZvcmVfc2NhbGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYx",
+            "LlZlY3RvcjQSMQoOYWZ0ZXJfcG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRp",
+            "dG9yLnYxLlZlY3RvcjQSMQoOYWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWls",
+            "b3IuZWRpdG9yLnYxLlZlY3RvcjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5z",
+            "YWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BF",
+            "dmVudBIPCgdmaWxlX2lkGAEgASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIU",
+            "Cgxub3JtYWxpemVkX3kYAyABKAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRF",
+            "dmVudBIQCghrZXlfY29kZRgBIAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghy",
+            "ZXZpc2lvbhgBIAEoBBIhChltYW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIg",
+            "ASgEEj0KCXNlbGVjdGlvbhgKIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmll",
+            "d3BvcnRTZWxlY3Rpb25FdmVudEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNh",
+            "aWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFz",
+            "c2V0X2Ryb3AYDCABKAsyKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNz",
+            "ZXREcm9wRXZlbnRIABJECg10b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9y",
+            "LmVkaXRvci52MS5WaWV3cG9ydFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5",
+            "bG9hZEoECAMQCiJLChhWaWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZl",
+            "bnRzGAEgAygLMh8uc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50KvAB",
+            "ChpWaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhIsCihWSUVXUE9SVF9UUkFO",
+            "U0ZPUk1fT1BFUkFUSU9OX1VOU1BFQ0lGSUVEEAASJwojVklFV1BPUlRfVFJB",
+            "TlNGT1JNX09QRVJBVElPTl9TRUxFQ1QQARIqCiZWSUVXUE9SVF9UUkFOU0ZP",
+            "Uk1fT1BFUkFUSU9OX1RSQU5TTEFURRACEicKI1ZJRVdQT1JUX1RSQU5TRk9S",
+            "TV9PUEVSQVRJT05fUk9UQVRFEAMSJgoiVklFV1BPUlRfVFJBTlNGT1JNX09Q",
+            "RVJBVElPTl9TQ0FMRRAEKooBChZWaWV3cG9ydFRyYW5zZm9ybVNwYWNlEigK",
+            "JFZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9VTlNQRUNJRklFRBAAEiIKHlZJ",
+            "RVdQT1JUX1RSQU5TRk9STV9TUEFDRV9XT1JMRBABEiIKHlZJRVdQT1JUX1RS",
+            "QU5TRk9STV9TUEFDRV9MT0NBTBACQiKqAh9TYWlsb3JFZGl0b3IuUHJvdG9j",
+            "b2wuR2VuZXJhdGVkYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Empty), global::SailorEditor.Protocol.Generated.Empty.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning" }, new[]{ "Command" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult" }, new[]{ "Result" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "ResolveViewportDropPosition", "CreateModelGameObject", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState" }, new[]{ "Command" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InitializeRequest), global::SailorEditor.Protocol.Generated.InitializeRequest.Parser, new[]{ "Arguments" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CountRequest), global::SailorEditor.Protocol.Generated.CountRequest.Parser, new[]{ "MaxCount" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.FileIdRequest), global::SailorEditor.Protocol.Generated.FileIdRequest.Parser, new[]{ "FileId" }, null, null, null, null),
@@ -199,7 +244,13 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CreateGameObjectRequest), global::SailorEditor.Protocol.Generated.CreateGameObjectRequest.Parser, new[]{ "ParentInstanceId", "PreferredInstanceId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.AddComponentRequest), global::SailorEditor.Protocol.Generated.AddComponentRequest.Parser, new[]{ "InstanceId", "ComponentTypeName", "PreferredInstanceId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InstantiatePrefabRequest), global::SailorEditor.Protocol.Generated.InstantiatePrefabRequest.Parser, new[]{ "FileId", "ParentInstanceId" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InstantiatePrefabFromYamlRequest), global::SailorEditor.Protocol.Generated.InstantiatePrefabFromYamlRequest.Parser, new[]{ "PrefabYaml", "ParentInstanceId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InstantiatePrefabFromYamlRequest), global::SailorEditor.Protocol.Generated.InstantiatePrefabFromYamlRequest.Parser, new[]{ "PrefabYaml", "ParentInstanceId", "StrictInstanceIds" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest), global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest.Parser, new[]{ "ViewportId", "NormalizedX", "NormalizedY" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest), global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest.Parser, new[]{ "ModelFileId", "Name", "ParentInstanceId", "ApplyWorldPosition", "WorldPosition" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest), global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest.Parser, new[]{ "FileId", "ParentInstanceId", "ApplyWorldPosition", "WorldPosition" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportObjectRequest), global::SailorEditor.Protocol.Generated.ViewportObjectRequest.Parser, new[]{ "ViewportId", "InstanceId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.PrefabLinkRequest), global::SailorEditor.Protocol.Generated.PrefabLinkRequest.Parser, new[]{ "InstanceId", "FileId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportToolStateRequest), global::SailorEditor.Protocol.Generated.ViewportToolStateRequest.Parser, new[]{ "ViewportId", "Operation", "Space" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SelectionRequest), global::SailorEditor.Protocol.Generated.SelectionRequest.Parser, new[]{ "InstanceIds" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ShowMainWindowRequest), global::SailorEditor.Protocol.Generated.ShowMainWindowRequest.Parser, new[]{ "Show" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RenderPathTracedImageRequest), global::SailorEditor.Protocol.Generated.RenderPathTracedImageRequest.Parser, new[]{ "OutputPath", "InstanceId", "Height", "SamplesPerPixel", "MaxBounces" }, null, null, null, null),
@@ -211,10 +262,14 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StringListResult), global::SailorEditor.Protocol.Generated.StringListResult.Parser, new[]{ "Values" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.AssetReloadStateResult), global::SailorEditor.Protocol.Generated.AssetReloadStateResult.Parser, new[]{ "Available", "RequestGeneration", "CompletedGeneration", "SuccessfulGeneration" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InstanceIdResult), global::SailorEditor.Protocol.Generated.InstanceIdResult.Parser, new[]{ "Succeeded", "InstanceId" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Vector4Result), global::SailorEditor.Protocol.Generated.Vector4Result.Parser, new[]{ "Value" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportToolStateResult), global::SailorEditor.Protocol.Generated.ViewportToolStateResult.Parser, new[]{ "Operation", "Space" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Vector4), global::SailorEditor.Protocol.Generated.Vector4.Parser, new[]{ "X", "Y", "Z", "W" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportSelectionEvent), global::SailorEditor.Protocol.Generated.ViewportSelectionEvent.Parser, new[]{ "SelectedInstanceId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportTransformEvent), global::SailorEditor.Protocol.Generated.ViewportTransformEvent.Parser, new[]{ "InstanceId", "Operation", "Space", "BeforePosition", "BeforeRotation", "BeforeScale", "AfterPosition", "AfterRotation", "AfterScale" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportEvent), global::SailorEditor.Protocol.Generated.ViewportEvent.Parser, new[]{ "Revision", "ManagedMutationRevision", "Selection", "Transform" }, new[]{ "Payload" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent), global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent.Parser, new[]{ "FileId", "NormalizedX", "NormalizedY" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent), global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent.Parser, new[]{ "KeyCode" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportEvent), global::SailorEditor.Protocol.Generated.ViewportEvent.Parser, new[]{ "Revision", "ManagedMutationRevision", "Selection", "Transform", "AssetDrop", "ToolShortcut" }, new[]{ "Payload" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ViewportEventBatchResult), global::SailorEditor.Protocol.Generated.ViewportEventBatchResult.Parser, new[]{ "Events" }, null, null, null, null)
           }));
     }
@@ -554,6 +609,30 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case CommandOneofCase.IsEngineRunning:
           IsEngineRunning = other.IsEngineRunning.Clone();
+          break;
+        case CommandOneofCase.ResolveViewportDropPosition:
+          ResolveViewportDropPosition = other.ResolveViewportDropPosition.Clone();
+          break;
+        case CommandOneofCase.CreateModelGameObject:
+          CreateModelGameObject = other.CreateModelGameObject.Clone();
+          break;
+        case CommandOneofCase.InstantiatePrefabInstance:
+          InstantiatePrefabInstance = other.InstantiatePrefabInstance.Clone();
+          break;
+        case CommandOneofCase.FocusEditorCamera:
+          FocusEditorCamera = other.FocusEditorCamera.Clone();
+          break;
+        case CommandOneofCase.SetPrefabLink:
+          SetPrefabLink = other.SetPrefabLink.Clone();
+          break;
+        case CommandOneofCase.BreakPrefabLink:
+          BreakPrefabLink = other.BreakPrefabLink.Clone();
+          break;
+        case CommandOneofCase.SetViewportToolState:
+          SetViewportToolState = other.SetViewportToolState.Clone();
+          break;
+        case CommandOneofCase.GetViewportToolState:
+          GetViewportToolState = other.GetViewportToolState.Clone();
           break;
       }
 
@@ -1058,6 +1137,102 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "resolve_viewport_drop_position" field.</summary>
+    public const int ResolveViewportDropPositionFieldNumber = 49;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest ResolveViewportDropPosition {
+      get { return commandCase_ == CommandOneofCase.ResolveViewportDropPosition ? (global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.ResolveViewportDropPosition;
+      }
+    }
+
+    /// <summary>Field number for the "create_model_game_object" field.</summary>
+    public const int CreateModelGameObjectFieldNumber = 50;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest CreateModelGameObject {
+      get { return commandCase_ == CommandOneofCase.CreateModelGameObject ? (global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.CreateModelGameObject;
+      }
+    }
+
+    /// <summary>Field number for the "instantiate_prefab_instance" field.</summary>
+    public const int InstantiatePrefabInstanceFieldNumber = 51;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest InstantiatePrefabInstance {
+      get { return commandCase_ == CommandOneofCase.InstantiatePrefabInstance ? (global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.InstantiatePrefabInstance;
+      }
+    }
+
+    /// <summary>Field number for the "focus_editor_camera" field.</summary>
+    public const int FocusEditorCameraFieldNumber = 52;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportObjectRequest FocusEditorCamera {
+      get { return commandCase_ == CommandOneofCase.FocusEditorCamera ? (global::SailorEditor.Protocol.Generated.ViewportObjectRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.FocusEditorCamera;
+      }
+    }
+
+    /// <summary>Field number for the "set_prefab_link" field.</summary>
+    public const int SetPrefabLinkFieldNumber = 53;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.PrefabLinkRequest SetPrefabLink {
+      get { return commandCase_ == CommandOneofCase.SetPrefabLink ? (global::SailorEditor.Protocol.Generated.PrefabLinkRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.SetPrefabLink;
+      }
+    }
+
+    /// <summary>Field number for the "break_prefab_link" field.</summary>
+    public const int BreakPrefabLinkFieldNumber = 54;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.InstanceIdRequest BreakPrefabLink {
+      get { return commandCase_ == CommandOneofCase.BreakPrefabLink ? (global::SailorEditor.Protocol.Generated.InstanceIdRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.BreakPrefabLink;
+      }
+    }
+
+    /// <summary>Field number for the "set_viewport_tool_state" field.</summary>
+    public const int SetViewportToolStateFieldNumber = 55;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportToolStateRequest SetViewportToolState {
+      get { return commandCase_ == CommandOneofCase.SetViewportToolState ? (global::SailorEditor.Protocol.Generated.ViewportToolStateRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.SetViewportToolState;
+      }
+    }
+
+    /// <summary>Field number for the "get_viewport_tool_state" field.</summary>
+    public const int GetViewportToolStateFieldNumber = 56;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportIdRequest GetViewportToolState {
+      get { return commandCase_ == CommandOneofCase.GetViewportToolState ? (global::SailorEditor.Protocol.Generated.ViewportIdRequest) command_ : null; }
+      set {
+        command_ = value;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetViewportToolState;
+      }
+    }
+
     private object command_;
     /// <summary>Enum of possible cases for the "command" oneof.</summary>
     public enum CommandOneofCase {
@@ -1101,6 +1276,14 @@ namespace SailorEditor.Protocol.Generated {
       SerializeEngineTypes = 46,
       IsEngineMainThreadReady = 47,
       IsEngineRunning = 48,
+      ResolveViewportDropPosition = 49,
+      CreateModelGameObject = 50,
+      InstantiatePrefabInstance = 51,
+      FocusEditorCamera = 52,
+      SetPrefabLink = 53,
+      BreakPrefabLink = 54,
+      SetViewportToolState = 55,
+      GetViewportToolState = 56,
     }
     private CommandOneofCase commandCase_ = CommandOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -1172,6 +1355,14 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(SerializeEngineTypes, other.SerializeEngineTypes)) return false;
       if (!object.Equals(IsEngineMainThreadReady, other.IsEngineMainThreadReady)) return false;
       if (!object.Equals(IsEngineRunning, other.IsEngineRunning)) return false;
+      if (!object.Equals(ResolveViewportDropPosition, other.ResolveViewportDropPosition)) return false;
+      if (!object.Equals(CreateModelGameObject, other.CreateModelGameObject)) return false;
+      if (!object.Equals(InstantiatePrefabInstance, other.InstantiatePrefabInstance)) return false;
+      if (!object.Equals(FocusEditorCamera, other.FocusEditorCamera)) return false;
+      if (!object.Equals(SetPrefabLink, other.SetPrefabLink)) return false;
+      if (!object.Equals(BreakPrefabLink, other.BreakPrefabLink)) return false;
+      if (!object.Equals(SetViewportToolState, other.SetViewportToolState)) return false;
+      if (!object.Equals(GetViewportToolState, other.GetViewportToolState)) return false;
       if (CommandCase != other.CommandCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -1221,6 +1412,14 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.SerializeEngineTypes) hash ^= SerializeEngineTypes.GetHashCode();
       if (commandCase_ == CommandOneofCase.IsEngineMainThreadReady) hash ^= IsEngineMainThreadReady.GetHashCode();
       if (commandCase_ == CommandOneofCase.IsEngineRunning) hash ^= IsEngineRunning.GetHashCode();
+      if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) hash ^= ResolveViewportDropPosition.GetHashCode();
+      if (commandCase_ == CommandOneofCase.CreateModelGameObject) hash ^= CreateModelGameObject.GetHashCode();
+      if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) hash ^= InstantiatePrefabInstance.GetHashCode();
+      if (commandCase_ == CommandOneofCase.FocusEditorCamera) hash ^= FocusEditorCamera.GetHashCode();
+      if (commandCase_ == CommandOneofCase.SetPrefabLink) hash ^= SetPrefabLink.GetHashCode();
+      if (commandCase_ == CommandOneofCase.BreakPrefabLink) hash ^= BreakPrefabLink.GetHashCode();
+      if (commandCase_ == CommandOneofCase.SetViewportToolState) hash ^= SetViewportToolState.GetHashCode();
+      if (commandCase_ == CommandOneofCase.GetViewportToolState) hash ^= GetViewportToolState.GetHashCode();
       hash ^= (int) commandCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -1404,6 +1603,38 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(130, 3);
         output.WriteMessage(IsEngineRunning);
       }
+      if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) {
+        output.WriteRawTag(138, 3);
+        output.WriteMessage(ResolveViewportDropPosition);
+      }
+      if (commandCase_ == CommandOneofCase.CreateModelGameObject) {
+        output.WriteRawTag(146, 3);
+        output.WriteMessage(CreateModelGameObject);
+      }
+      if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) {
+        output.WriteRawTag(154, 3);
+        output.WriteMessage(InstantiatePrefabInstance);
+      }
+      if (commandCase_ == CommandOneofCase.FocusEditorCamera) {
+        output.WriteRawTag(162, 3);
+        output.WriteMessage(FocusEditorCamera);
+      }
+      if (commandCase_ == CommandOneofCase.SetPrefabLink) {
+        output.WriteRawTag(170, 3);
+        output.WriteMessage(SetPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.BreakPrefabLink) {
+        output.WriteRawTag(178, 3);
+        output.WriteMessage(BreakPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.SetViewportToolState) {
+        output.WriteRawTag(186, 3);
+        output.WriteMessage(SetViewportToolState);
+      }
+      if (commandCase_ == CommandOneofCase.GetViewportToolState) {
+        output.WriteRawTag(194, 3);
+        output.WriteMessage(GetViewportToolState);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1578,6 +1809,38 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(130, 3);
         output.WriteMessage(IsEngineRunning);
       }
+      if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) {
+        output.WriteRawTag(138, 3);
+        output.WriteMessage(ResolveViewportDropPosition);
+      }
+      if (commandCase_ == CommandOneofCase.CreateModelGameObject) {
+        output.WriteRawTag(146, 3);
+        output.WriteMessage(CreateModelGameObject);
+      }
+      if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) {
+        output.WriteRawTag(154, 3);
+        output.WriteMessage(InstantiatePrefabInstance);
+      }
+      if (commandCase_ == CommandOneofCase.FocusEditorCamera) {
+        output.WriteRawTag(162, 3);
+        output.WriteMessage(FocusEditorCamera);
+      }
+      if (commandCase_ == CommandOneofCase.SetPrefabLink) {
+        output.WriteRawTag(170, 3);
+        output.WriteMessage(SetPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.BreakPrefabLink) {
+        output.WriteRawTag(178, 3);
+        output.WriteMessage(BreakPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.SetViewportToolState) {
+        output.WriteRawTag(186, 3);
+        output.WriteMessage(SetViewportToolState);
+      }
+      if (commandCase_ == CommandOneofCase.GetViewportToolState) {
+        output.WriteRawTag(194, 3);
+        output.WriteMessage(GetViewportToolState);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1710,6 +1973,30 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (commandCase_ == CommandOneofCase.IsEngineRunning) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(IsEngineRunning);
+      }
+      if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(ResolveViewportDropPosition);
+      }
+      if (commandCase_ == CommandOneofCase.CreateModelGameObject) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(CreateModelGameObject);
+      }
+      if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(InstantiatePrefabInstance);
+      }
+      if (commandCase_ == CommandOneofCase.FocusEditorCamera) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(FocusEditorCamera);
+      }
+      if (commandCase_ == CommandOneofCase.SetPrefabLink) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(SetPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.BreakPrefabLink) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(BreakPrefabLink);
+      }
+      if (commandCase_ == CommandOneofCase.SetViewportToolState) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(SetViewportToolState);
+      }
+      if (commandCase_ == CommandOneofCase.GetViewportToolState) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetViewportToolState);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1964,6 +2251,54 @@ namespace SailorEditor.Protocol.Generated {
           }
           IsEngineRunning.MergeFrom(other.IsEngineRunning);
           break;
+        case CommandOneofCase.ResolveViewportDropPosition:
+          if (ResolveViewportDropPosition == null) {
+            ResolveViewportDropPosition = new global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest();
+          }
+          ResolveViewportDropPosition.MergeFrom(other.ResolveViewportDropPosition);
+          break;
+        case CommandOneofCase.CreateModelGameObject:
+          if (CreateModelGameObject == null) {
+            CreateModelGameObject = new global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest();
+          }
+          CreateModelGameObject.MergeFrom(other.CreateModelGameObject);
+          break;
+        case CommandOneofCase.InstantiatePrefabInstance:
+          if (InstantiatePrefabInstance == null) {
+            InstantiatePrefabInstance = new global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest();
+          }
+          InstantiatePrefabInstance.MergeFrom(other.InstantiatePrefabInstance);
+          break;
+        case CommandOneofCase.FocusEditorCamera:
+          if (FocusEditorCamera == null) {
+            FocusEditorCamera = new global::SailorEditor.Protocol.Generated.ViewportObjectRequest();
+          }
+          FocusEditorCamera.MergeFrom(other.FocusEditorCamera);
+          break;
+        case CommandOneofCase.SetPrefabLink:
+          if (SetPrefabLink == null) {
+            SetPrefabLink = new global::SailorEditor.Protocol.Generated.PrefabLinkRequest();
+          }
+          SetPrefabLink.MergeFrom(other.SetPrefabLink);
+          break;
+        case CommandOneofCase.BreakPrefabLink:
+          if (BreakPrefabLink == null) {
+            BreakPrefabLink = new global::SailorEditor.Protocol.Generated.InstanceIdRequest();
+          }
+          BreakPrefabLink.MergeFrom(other.BreakPrefabLink);
+          break;
+        case CommandOneofCase.SetViewportToolState:
+          if (SetViewportToolState == null) {
+            SetViewportToolState = new global::SailorEditor.Protocol.Generated.ViewportToolStateRequest();
+          }
+          SetViewportToolState.MergeFrom(other.SetViewportToolState);
+          break;
+        case CommandOneofCase.GetViewportToolState:
+          if (GetViewportToolState == null) {
+            GetViewportToolState = new global::SailorEditor.Protocol.Generated.ViewportIdRequest();
+          }
+          GetViewportToolState.MergeFrom(other.GetViewportToolState);
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -2344,6 +2679,78 @@ namespace SailorEditor.Protocol.Generated {
             IsEngineRunning = subBuilder;
             break;
           }
+          case 394: {
+            global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest();
+            if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) {
+              subBuilder.MergeFrom(ResolveViewportDropPosition);
+            }
+            input.ReadMessage(subBuilder);
+            ResolveViewportDropPosition = subBuilder;
+            break;
+          }
+          case 402: {
+            global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest subBuilder = new global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest();
+            if (commandCase_ == CommandOneofCase.CreateModelGameObject) {
+              subBuilder.MergeFrom(CreateModelGameObject);
+            }
+            input.ReadMessage(subBuilder);
+            CreateModelGameObject = subBuilder;
+            break;
+          }
+          case 410: {
+            global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest subBuilder = new global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest();
+            if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) {
+              subBuilder.MergeFrom(InstantiatePrefabInstance);
+            }
+            input.ReadMessage(subBuilder);
+            InstantiatePrefabInstance = subBuilder;
+            break;
+          }
+          case 418: {
+            global::SailorEditor.Protocol.Generated.ViewportObjectRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportObjectRequest();
+            if (commandCase_ == CommandOneofCase.FocusEditorCamera) {
+              subBuilder.MergeFrom(FocusEditorCamera);
+            }
+            input.ReadMessage(subBuilder);
+            FocusEditorCamera = subBuilder;
+            break;
+          }
+          case 426: {
+            global::SailorEditor.Protocol.Generated.PrefabLinkRequest subBuilder = new global::SailorEditor.Protocol.Generated.PrefabLinkRequest();
+            if (commandCase_ == CommandOneofCase.SetPrefabLink) {
+              subBuilder.MergeFrom(SetPrefabLink);
+            }
+            input.ReadMessage(subBuilder);
+            SetPrefabLink = subBuilder;
+            break;
+          }
+          case 434: {
+            global::SailorEditor.Protocol.Generated.InstanceIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.InstanceIdRequest();
+            if (commandCase_ == CommandOneofCase.BreakPrefabLink) {
+              subBuilder.MergeFrom(BreakPrefabLink);
+            }
+            input.ReadMessage(subBuilder);
+            BreakPrefabLink = subBuilder;
+            break;
+          }
+          case 442: {
+            global::SailorEditor.Protocol.Generated.ViewportToolStateRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolStateRequest();
+            if (commandCase_ == CommandOneofCase.SetViewportToolState) {
+              subBuilder.MergeFrom(SetViewportToolState);
+            }
+            input.ReadMessage(subBuilder);
+            SetViewportToolState = subBuilder;
+            break;
+          }
+          case 450: {
+            global::SailorEditor.Protocol.Generated.ViewportIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportIdRequest();
+            if (commandCase_ == CommandOneofCase.GetViewportToolState) {
+              subBuilder.MergeFrom(GetViewportToolState);
+            }
+            input.ReadMessage(subBuilder);
+            GetViewportToolState = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -2722,6 +3129,78 @@ namespace SailorEditor.Protocol.Generated {
             IsEngineRunning = subBuilder;
             break;
           }
+          case 394: {
+            global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportDropPositionRequest();
+            if (commandCase_ == CommandOneofCase.ResolveViewportDropPosition) {
+              subBuilder.MergeFrom(ResolveViewportDropPosition);
+            }
+            input.ReadMessage(subBuilder);
+            ResolveViewportDropPosition = subBuilder;
+            break;
+          }
+          case 402: {
+            global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest subBuilder = new global::SailorEditor.Protocol.Generated.CreateModelGameObjectRequest();
+            if (commandCase_ == CommandOneofCase.CreateModelGameObject) {
+              subBuilder.MergeFrom(CreateModelGameObject);
+            }
+            input.ReadMessage(subBuilder);
+            CreateModelGameObject = subBuilder;
+            break;
+          }
+          case 410: {
+            global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest subBuilder = new global::SailorEditor.Protocol.Generated.InstantiatePrefabInstanceRequest();
+            if (commandCase_ == CommandOneofCase.InstantiatePrefabInstance) {
+              subBuilder.MergeFrom(InstantiatePrefabInstance);
+            }
+            input.ReadMessage(subBuilder);
+            InstantiatePrefabInstance = subBuilder;
+            break;
+          }
+          case 418: {
+            global::SailorEditor.Protocol.Generated.ViewportObjectRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportObjectRequest();
+            if (commandCase_ == CommandOneofCase.FocusEditorCamera) {
+              subBuilder.MergeFrom(FocusEditorCamera);
+            }
+            input.ReadMessage(subBuilder);
+            FocusEditorCamera = subBuilder;
+            break;
+          }
+          case 426: {
+            global::SailorEditor.Protocol.Generated.PrefabLinkRequest subBuilder = new global::SailorEditor.Protocol.Generated.PrefabLinkRequest();
+            if (commandCase_ == CommandOneofCase.SetPrefabLink) {
+              subBuilder.MergeFrom(SetPrefabLink);
+            }
+            input.ReadMessage(subBuilder);
+            SetPrefabLink = subBuilder;
+            break;
+          }
+          case 434: {
+            global::SailorEditor.Protocol.Generated.InstanceIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.InstanceIdRequest();
+            if (commandCase_ == CommandOneofCase.BreakPrefabLink) {
+              subBuilder.MergeFrom(BreakPrefabLink);
+            }
+            input.ReadMessage(subBuilder);
+            BreakPrefabLink = subBuilder;
+            break;
+          }
+          case 442: {
+            global::SailorEditor.Protocol.Generated.ViewportToolStateRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolStateRequest();
+            if (commandCase_ == CommandOneofCase.SetViewportToolState) {
+              subBuilder.MergeFrom(SetViewportToolState);
+            }
+            input.ReadMessage(subBuilder);
+            SetViewportToolState = subBuilder;
+            break;
+          }
+          case 450: {
+            global::SailorEditor.Protocol.Generated.ViewportIdRequest subBuilder = new global::SailorEditor.Protocol.Generated.ViewportIdRequest();
+            if (commandCase_ == CommandOneofCase.GetViewportToolState) {
+              subBuilder.MergeFrom(GetViewportToolState);
+            }
+            input.ReadMessage(subBuilder);
+            GetViewportToolState = subBuilder;
+            break;
+          }
         }
       }
     }
@@ -2768,6 +3247,7 @@ namespace SailorEditor.Protocol.Generated {
       requestId_ = other.requestId_;
       success_ = other.success_;
       error_ = other.error_;
+      supportsStrictInstanceIds_ = other.supportsStrictInstanceIds_;
       switch (other.ResultCase) {
         case ResultOneofCase.EmptyResult:
           EmptyResult = other.EmptyResult.Clone();
@@ -2798,6 +3278,12 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case ResultOneofCase.ViewportEventBatchResult:
           ViewportEventBatchResult = other.ViewportEventBatchResult.Clone();
+          break;
+        case ResultOneofCase.Vector4Result:
+          Vector4Result = other.Vector4Result.Clone();
+          break;
+        case ResultOneofCase.ViewportToolStateResult:
+          ViewportToolStateResult = other.ViewportToolStateResult.Clone();
           break;
       }
 
@@ -2855,6 +3341,18 @@ namespace SailorEditor.Protocol.Generated {
       get { return error_; }
       set {
         error_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "supports_strict_instance_ids" field.</summary>
+    public const int SupportsStrictInstanceIdsFieldNumber = 5;
+    private bool supportsStrictInstanceIds_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SupportsStrictInstanceIds {
+      get { return supportsStrictInstanceIds_; }
+      set {
+        supportsStrictInstanceIds_ = value;
       }
     }
 
@@ -2978,6 +3476,30 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "vector4_result" field.</summary>
+    public const int Vector4ResultFieldNumber = 20;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4Result Vector4Result {
+      get { return resultCase_ == ResultOneofCase.Vector4Result ? (global::SailorEditor.Protocol.Generated.Vector4Result) result_ : null; }
+      set {
+        result_ = value;
+        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.Vector4Result;
+      }
+    }
+
+    /// <summary>Field number for the "viewport_tool_state_result" field.</summary>
+    public const int ViewportToolStateResultFieldNumber = 21;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportToolStateResult ViewportToolStateResult {
+      get { return resultCase_ == ResultOneofCase.ViewportToolStateResult ? (global::SailorEditor.Protocol.Generated.ViewportToolStateResult) result_ : null; }
+      set {
+        result_ = value;
+        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.ViewportToolStateResult;
+      }
+    }
+
     private object result_;
     /// <summary>Enum of possible cases for the "result" oneof.</summary>
     public enum ResultOneofCase {
@@ -2992,6 +3514,8 @@ namespace SailorEditor.Protocol.Generated {
       AssetReloadStateResult = 17,
       InstanceIdResult = 18,
       ViewportEventBatchResult = 19,
+      Vector4Result = 20,
+      ViewportToolStateResult = 21,
     }
     private ResultOneofCase resultCase_ = ResultOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -3026,6 +3550,7 @@ namespace SailorEditor.Protocol.Generated {
       if (RequestId != other.RequestId) return false;
       if (Success != other.Success) return false;
       if (Error != other.Error) return false;
+      if (SupportsStrictInstanceIds != other.SupportsStrictInstanceIds) return false;
       if (!object.Equals(EmptyResult, other.EmptyResult)) return false;
       if (!object.Equals(BoolResult, other.BoolResult)) return false;
       if (!object.Equals(Int32Result, other.Int32Result)) return false;
@@ -3036,6 +3561,8 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(AssetReloadStateResult, other.AssetReloadStateResult)) return false;
       if (!object.Equals(InstanceIdResult, other.InstanceIdResult)) return false;
       if (!object.Equals(ViewportEventBatchResult, other.ViewportEventBatchResult)) return false;
+      if (!object.Equals(Vector4Result, other.Vector4Result)) return false;
+      if (!object.Equals(ViewportToolStateResult, other.ViewportToolStateResult)) return false;
       if (ResultCase != other.ResultCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -3048,6 +3575,7 @@ namespace SailorEditor.Protocol.Generated {
       if (RequestId != 0UL) hash ^= RequestId.GetHashCode();
       if (Success != false) hash ^= Success.GetHashCode();
       if (Error.Length != 0) hash ^= Error.GetHashCode();
+      if (SupportsStrictInstanceIds != false) hash ^= SupportsStrictInstanceIds.GetHashCode();
       if (resultCase_ == ResultOneofCase.EmptyResult) hash ^= EmptyResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.BoolResult) hash ^= BoolResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.Int32Result) hash ^= Int32Result.GetHashCode();
@@ -3058,6 +3586,8 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.AssetReloadStateResult) hash ^= AssetReloadStateResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.InstanceIdResult) hash ^= InstanceIdResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.ViewportEventBatchResult) hash ^= ViewportEventBatchResult.GetHashCode();
+      if (resultCase_ == ResultOneofCase.Vector4Result) hash ^= Vector4Result.GetHashCode();
+      if (resultCase_ == ResultOneofCase.ViewportToolStateResult) hash ^= ViewportToolStateResult.GetHashCode();
       hash ^= (int) resultCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -3093,6 +3623,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(34);
         output.WriteString(Error);
       }
+      if (SupportsStrictInstanceIds != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(SupportsStrictInstanceIds);
+      }
       if (resultCase_ == ResultOneofCase.EmptyResult) {
         output.WriteRawTag(82);
         output.WriteMessage(EmptyResult);
@@ -3132,6 +3666,14 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.ViewportEventBatchResult) {
         output.WriteRawTag(154, 1);
         output.WriteMessage(ViewportEventBatchResult);
+      }
+      if (resultCase_ == ResultOneofCase.Vector4Result) {
+        output.WriteRawTag(162, 1);
+        output.WriteMessage(Vector4Result);
+      }
+      if (resultCase_ == ResultOneofCase.ViewportToolStateResult) {
+        output.WriteRawTag(170, 1);
+        output.WriteMessage(ViewportToolStateResult);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -3159,6 +3701,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(34);
         output.WriteString(Error);
       }
+      if (SupportsStrictInstanceIds != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(SupportsStrictInstanceIds);
+      }
       if (resultCase_ == ResultOneofCase.EmptyResult) {
         output.WriteRawTag(82);
         output.WriteMessage(EmptyResult);
@@ -3199,6 +3745,14 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(154, 1);
         output.WriteMessage(ViewportEventBatchResult);
       }
+      if (resultCase_ == ResultOneofCase.Vector4Result) {
+        output.WriteRawTag(162, 1);
+        output.WriteMessage(Vector4Result);
+      }
+      if (resultCase_ == ResultOneofCase.ViewportToolStateResult) {
+        output.WriteRawTag(170, 1);
+        output.WriteMessage(ViewportToolStateResult);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -3220,6 +3774,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (Error.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(Error);
+      }
+      if (SupportsStrictInstanceIds != false) {
+        size += 1 + 1;
       }
       if (resultCase_ == ResultOneofCase.EmptyResult) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(EmptyResult);
@@ -3251,6 +3808,12 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.ViewportEventBatchResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(ViewportEventBatchResult);
       }
+      if (resultCase_ == ResultOneofCase.Vector4Result) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(Vector4Result);
+      }
+      if (resultCase_ == ResultOneofCase.ViewportToolStateResult) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(ViewportToolStateResult);
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -3274,6 +3837,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.Error.Length != 0) {
         Error = other.Error;
+      }
+      if (other.SupportsStrictInstanceIds != false) {
+        SupportsStrictInstanceIds = other.SupportsStrictInstanceIds;
       }
       switch (other.ResultCase) {
         case ResultOneofCase.EmptyResult:
@@ -3336,6 +3902,18 @@ namespace SailorEditor.Protocol.Generated {
           }
           ViewportEventBatchResult.MergeFrom(other.ViewportEventBatchResult);
           break;
+        case ResultOneofCase.Vector4Result:
+          if (Vector4Result == null) {
+            Vector4Result = new global::SailorEditor.Protocol.Generated.Vector4Result();
+          }
+          Vector4Result.MergeFrom(other.Vector4Result);
+          break;
+        case ResultOneofCase.ViewportToolStateResult:
+          if (ViewportToolStateResult == null) {
+            ViewportToolStateResult = new global::SailorEditor.Protocol.Generated.ViewportToolStateResult();
+          }
+          ViewportToolStateResult.MergeFrom(other.ViewportToolStateResult);
+          break;
       }
 
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
@@ -3373,6 +3951,10 @@ namespace SailorEditor.Protocol.Generated {
             Error = input.ReadString();
             break;
           }
+          case 40: {
+            SupportsStrictInstanceIds = input.ReadBool();
+            break;
+          }
           case 82: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
             if (resultCase_ == ResultOneofCase.EmptyResult) {
@@ -3461,6 +4043,24 @@ namespace SailorEditor.Protocol.Generated {
             }
             input.ReadMessage(subBuilder);
             ViewportEventBatchResult = subBuilder;
+            break;
+          }
+          case 162: {
+            global::SailorEditor.Protocol.Generated.Vector4Result subBuilder = new global::SailorEditor.Protocol.Generated.Vector4Result();
+            if (resultCase_ == ResultOneofCase.Vector4Result) {
+              subBuilder.MergeFrom(Vector4Result);
+            }
+            input.ReadMessage(subBuilder);
+            Vector4Result = subBuilder;
+            break;
+          }
+          case 170: {
+            global::SailorEditor.Protocol.Generated.ViewportToolStateResult subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolStateResult();
+            if (resultCase_ == ResultOneofCase.ViewportToolStateResult) {
+              subBuilder.MergeFrom(ViewportToolStateResult);
+            }
+            input.ReadMessage(subBuilder);
+            ViewportToolStateResult = subBuilder;
             break;
           }
         }
@@ -3498,6 +4098,10 @@ namespace SailorEditor.Protocol.Generated {
             Error = input.ReadString();
             break;
           }
+          case 40: {
+            SupportsStrictInstanceIds = input.ReadBool();
+            break;
+          }
           case 82: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
             if (resultCase_ == ResultOneofCase.EmptyResult) {
@@ -3586,6 +4190,24 @@ namespace SailorEditor.Protocol.Generated {
             }
             input.ReadMessage(subBuilder);
             ViewportEventBatchResult = subBuilder;
+            break;
+          }
+          case 162: {
+            global::SailorEditor.Protocol.Generated.Vector4Result subBuilder = new global::SailorEditor.Protocol.Generated.Vector4Result();
+            if (resultCase_ == ResultOneofCase.Vector4Result) {
+              subBuilder.MergeFrom(Vector4Result);
+            }
+            input.ReadMessage(subBuilder);
+            Vector4Result = subBuilder;
+            break;
+          }
+          case 170: {
+            global::SailorEditor.Protocol.Generated.ViewportToolStateResult subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolStateResult();
+            if (resultCase_ == ResultOneofCase.ViewportToolStateResult) {
+              subBuilder.MergeFrom(ViewportToolStateResult);
+            }
+            input.ReadMessage(subBuilder);
+            ViewportToolStateResult = subBuilder;
             break;
           }
         }
@@ -7936,6 +8558,7 @@ namespace SailorEditor.Protocol.Generated {
     public InstantiatePrefabFromYamlRequest(InstantiatePrefabFromYamlRequest other) : this() {
       prefabYaml_ = other.prefabYaml_;
       parentInstanceId_ = other.parentInstanceId_;
+      strictInstanceIds_ = other.strictInstanceIds_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -7969,6 +8592,18 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "strict_instance_ids" field.</summary>
+    public const int StrictInstanceIdsFieldNumber = 3;
+    private bool strictInstanceIds_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool StrictInstanceIds {
+      get { return strictInstanceIds_; }
+      set {
+        strictInstanceIds_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -7986,6 +8621,7 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (PrefabYaml != other.PrefabYaml) return false;
       if (ParentInstanceId != other.ParentInstanceId) return false;
+      if (StrictInstanceIds != other.StrictInstanceIds) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -7995,6 +8631,7 @@ namespace SailorEditor.Protocol.Generated {
       int hash = 1;
       if (PrefabYaml.Length != 0) hash ^= PrefabYaml.GetHashCode();
       if (ParentInstanceId.Length != 0) hash ^= ParentInstanceId.GetHashCode();
+      if (StrictInstanceIds != false) hash ^= StrictInstanceIds.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -8021,6 +8658,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(18);
         output.WriteString(ParentInstanceId);
       }
+      if (StrictInstanceIds != false) {
+        output.WriteRawTag(24);
+        output.WriteBool(StrictInstanceIds);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -8039,6 +8680,10 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(18);
         output.WriteString(ParentInstanceId);
       }
+      if (StrictInstanceIds != false) {
+        output.WriteRawTag(24);
+        output.WriteBool(StrictInstanceIds);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -8054,6 +8699,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (ParentInstanceId.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(ParentInstanceId);
+      }
+      if (StrictInstanceIds != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -8072,6 +8720,9 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.ParentInstanceId.Length != 0) {
         ParentInstanceId = other.ParentInstanceId;
+      }
+      if (other.StrictInstanceIds != false) {
+        StrictInstanceIds = other.StrictInstanceIds;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -8098,6 +8749,10 @@ namespace SailorEditor.Protocol.Generated {
           }
           case 18: {
             ParentInstanceId = input.ReadString();
+            break;
+          }
+          case 24: {
+            StrictInstanceIds = input.ReadBool();
             break;
           }
         }
@@ -8127,6 +8782,1697 @@ namespace SailorEditor.Protocol.Generated {
             ParentInstanceId = input.ReadString();
             break;
           }
+          case 24: {
+            StrictInstanceIds = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportDropPositionRequest : pb::IMessage<ViewportDropPositionRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportDropPositionRequest> _parser = new pb::MessageParser<ViewportDropPositionRequest>(() => new ViewportDropPositionRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportDropPositionRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[20]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportDropPositionRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportDropPositionRequest(ViewportDropPositionRequest other) : this() {
+      viewportId_ = other.viewportId_;
+      normalizedX_ = other.normalizedX_;
+      normalizedY_ = other.normalizedY_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportDropPositionRequest Clone() {
+      return new ViewportDropPositionRequest(this);
+    }
+
+    /// <summary>Field number for the "viewport_id" field.</summary>
+    public const int ViewportIdFieldNumber = 1;
+    private ulong viewportId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong ViewportId {
+      get { return viewportId_; }
+      set {
+        viewportId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "normalized_x" field.</summary>
+    public const int NormalizedXFieldNumber = 2;
+    private float normalizedX_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float NormalizedX {
+      get { return normalizedX_; }
+      set {
+        normalizedX_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "normalized_y" field.</summary>
+    public const int NormalizedYFieldNumber = 3;
+    private float normalizedY_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float NormalizedY {
+      get { return normalizedY_; }
+      set {
+        normalizedY_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportDropPositionRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportDropPositionRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (ViewportId != other.ViewportId) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(NormalizedX, other.NormalizedX)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(NormalizedY, other.NormalizedY)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (ViewportId != 0UL) hash ^= ViewportId.GetHashCode();
+      if (NormalizedX != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(NormalizedX);
+      if (NormalizedY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(NormalizedY);
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (NormalizedX != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(NormalizedX);
+      }
+      if (NormalizedY != 0F) {
+        output.WriteRawTag(29);
+        output.WriteFloat(NormalizedY);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (NormalizedX != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(NormalizedX);
+      }
+      if (NormalizedY != 0F) {
+        output.WriteRawTag(29);
+        output.WriteFloat(NormalizedY);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (ViewportId != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(ViewportId);
+      }
+      if (NormalizedX != 0F) {
+        size += 1 + 4;
+      }
+      if (NormalizedY != 0F) {
+        size += 1 + 4;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportDropPositionRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.ViewportId != 0UL) {
+        ViewportId = other.ViewportId;
+      }
+      if (other.NormalizedX != 0F) {
+        NormalizedX = other.NormalizedX;
+      }
+      if (other.NormalizedY != 0F) {
+        NormalizedY = other.NormalizedY;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 21: {
+            NormalizedX = input.ReadFloat();
+            break;
+          }
+          case 29: {
+            NormalizedY = input.ReadFloat();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 21: {
+            NormalizedX = input.ReadFloat();
+            break;
+          }
+          case 29: {
+            NormalizedY = input.ReadFloat();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class CreateModelGameObjectRequest : pb::IMessage<CreateModelGameObjectRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<CreateModelGameObjectRequest> _parser = new pb::MessageParser<CreateModelGameObjectRequest>(() => new CreateModelGameObjectRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<CreateModelGameObjectRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[21]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public CreateModelGameObjectRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public CreateModelGameObjectRequest(CreateModelGameObjectRequest other) : this() {
+      modelFileId_ = other.modelFileId_;
+      name_ = other.name_;
+      parentInstanceId_ = other.parentInstanceId_;
+      applyWorldPosition_ = other.applyWorldPosition_;
+      worldPosition_ = other.worldPosition_ != null ? other.worldPosition_.Clone() : null;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public CreateModelGameObjectRequest Clone() {
+      return new CreateModelGameObjectRequest(this);
+    }
+
+    /// <summary>Field number for the "model_file_id" field.</summary>
+    public const int ModelFileIdFieldNumber = 1;
+    private string modelFileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ModelFileId {
+      get { return modelFileId_; }
+      set {
+        modelFileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "name" field.</summary>
+    public const int NameFieldNumber = 2;
+    private string name_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Name {
+      get { return name_; }
+      set {
+        name_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "parent_instance_id" field.</summary>
+    public const int ParentInstanceIdFieldNumber = 3;
+    private string parentInstanceId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ParentInstanceId {
+      get { return parentInstanceId_; }
+      set {
+        parentInstanceId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "apply_world_position" field.</summary>
+    public const int ApplyWorldPositionFieldNumber = 4;
+    private bool applyWorldPosition_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ApplyWorldPosition {
+      get { return applyWorldPosition_; }
+      set {
+        applyWorldPosition_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "world_position" field.</summary>
+    public const int WorldPositionFieldNumber = 5;
+    private global::SailorEditor.Protocol.Generated.Vector4 worldPosition_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 WorldPosition {
+      get { return worldPosition_; }
+      set {
+        worldPosition_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as CreateModelGameObjectRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(CreateModelGameObjectRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (ModelFileId != other.ModelFileId) return false;
+      if (Name != other.Name) return false;
+      if (ParentInstanceId != other.ParentInstanceId) return false;
+      if (ApplyWorldPosition != other.ApplyWorldPosition) return false;
+      if (!object.Equals(WorldPosition, other.WorldPosition)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (ModelFileId.Length != 0) hash ^= ModelFileId.GetHashCode();
+      if (Name.Length != 0) hash ^= Name.GetHashCode();
+      if (ParentInstanceId.Length != 0) hash ^= ParentInstanceId.GetHashCode();
+      if (ApplyWorldPosition != false) hash ^= ApplyWorldPosition.GetHashCode();
+      if (worldPosition_ != null) hash ^= WorldPosition.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (ModelFileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(ModelFileId);
+      }
+      if (Name.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Name);
+      }
+      if (ParentInstanceId.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        output.WriteRawTag(32);
+        output.WriteBool(ApplyWorldPosition);
+      }
+      if (worldPosition_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (ModelFileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(ModelFileId);
+      }
+      if (Name.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Name);
+      }
+      if (ParentInstanceId.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        output.WriteRawTag(32);
+        output.WriteBool(ApplyWorldPosition);
+      }
+      if (worldPosition_ != null) {
+        output.WriteRawTag(42);
+        output.WriteMessage(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (ModelFileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ModelFileId);
+      }
+      if (Name.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Name);
+      }
+      if (ParentInstanceId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        size += 1 + 1;
+      }
+      if (worldPosition_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(CreateModelGameObjectRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.ModelFileId.Length != 0) {
+        ModelFileId = other.ModelFileId;
+      }
+      if (other.Name.Length != 0) {
+        Name = other.Name;
+      }
+      if (other.ParentInstanceId.Length != 0) {
+        ParentInstanceId = other.ParentInstanceId;
+      }
+      if (other.ApplyWorldPosition != false) {
+        ApplyWorldPosition = other.ApplyWorldPosition;
+      }
+      if (other.worldPosition_ != null) {
+        if (worldPosition_ == null) {
+          WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        WorldPosition.MergeFrom(other.WorldPosition);
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            ModelFileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            Name = input.ReadString();
+            break;
+          }
+          case 26: {
+            ParentInstanceId = input.ReadString();
+            break;
+          }
+          case 32: {
+            ApplyWorldPosition = input.ReadBool();
+            break;
+          }
+          case 42: {
+            if (worldPosition_ == null) {
+              WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(WorldPosition);
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            ModelFileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            Name = input.ReadString();
+            break;
+          }
+          case 26: {
+            ParentInstanceId = input.ReadString();
+            break;
+          }
+          case 32: {
+            ApplyWorldPosition = input.ReadBool();
+            break;
+          }
+          case 42: {
+            if (worldPosition_ == null) {
+              WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(WorldPosition);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class InstantiatePrefabInstanceRequest : pb::IMessage<InstantiatePrefabInstanceRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<InstantiatePrefabInstanceRequest> _parser = new pb::MessageParser<InstantiatePrefabInstanceRequest>(() => new InstantiatePrefabInstanceRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<InstantiatePrefabInstanceRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[22]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public InstantiatePrefabInstanceRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public InstantiatePrefabInstanceRequest(InstantiatePrefabInstanceRequest other) : this() {
+      fileId_ = other.fileId_;
+      parentInstanceId_ = other.parentInstanceId_;
+      applyWorldPosition_ = other.applyWorldPosition_;
+      worldPosition_ = other.worldPosition_ != null ? other.worldPosition_.Clone() : null;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public InstantiatePrefabInstanceRequest Clone() {
+      return new InstantiatePrefabInstanceRequest(this);
+    }
+
+    /// <summary>Field number for the "file_id" field.</summary>
+    public const int FileIdFieldNumber = 1;
+    private string fileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileId {
+      get { return fileId_; }
+      set {
+        fileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "parent_instance_id" field.</summary>
+    public const int ParentInstanceIdFieldNumber = 2;
+    private string parentInstanceId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ParentInstanceId {
+      get { return parentInstanceId_; }
+      set {
+        parentInstanceId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "apply_world_position" field.</summary>
+    public const int ApplyWorldPositionFieldNumber = 3;
+    private bool applyWorldPosition_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ApplyWorldPosition {
+      get { return applyWorldPosition_; }
+      set {
+        applyWorldPosition_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "world_position" field.</summary>
+    public const int WorldPositionFieldNumber = 4;
+    private global::SailorEditor.Protocol.Generated.Vector4 worldPosition_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 WorldPosition {
+      get { return worldPosition_; }
+      set {
+        worldPosition_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as InstantiatePrefabInstanceRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(InstantiatePrefabInstanceRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (FileId != other.FileId) return false;
+      if (ParentInstanceId != other.ParentInstanceId) return false;
+      if (ApplyWorldPosition != other.ApplyWorldPosition) return false;
+      if (!object.Equals(WorldPosition, other.WorldPosition)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (FileId.Length != 0) hash ^= FileId.GetHashCode();
+      if (ParentInstanceId.Length != 0) hash ^= ParentInstanceId.GetHashCode();
+      if (ApplyWorldPosition != false) hash ^= ApplyWorldPosition.GetHashCode();
+      if (worldPosition_ != null) hash ^= WorldPosition.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (FileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileId);
+      }
+      if (ParentInstanceId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        output.WriteRawTag(24);
+        output.WriteBool(ApplyWorldPosition);
+      }
+      if (worldPosition_ != null) {
+        output.WriteRawTag(34);
+        output.WriteMessage(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (FileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileId);
+      }
+      if (ParentInstanceId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        output.WriteRawTag(24);
+        output.WriteBool(ApplyWorldPosition);
+      }
+      if (worldPosition_ != null) {
+        output.WriteRawTag(34);
+        output.WriteMessage(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (FileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileId);
+      }
+      if (ParentInstanceId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(ParentInstanceId);
+      }
+      if (ApplyWorldPosition != false) {
+        size += 1 + 1;
+      }
+      if (worldPosition_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(WorldPosition);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(InstantiatePrefabInstanceRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.FileId.Length != 0) {
+        FileId = other.FileId;
+      }
+      if (other.ParentInstanceId.Length != 0) {
+        ParentInstanceId = other.ParentInstanceId;
+      }
+      if (other.ApplyWorldPosition != false) {
+        ApplyWorldPosition = other.ApplyWorldPosition;
+      }
+      if (other.worldPosition_ != null) {
+        if (worldPosition_ == null) {
+          WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        WorldPosition.MergeFrom(other.WorldPosition);
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            FileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            ParentInstanceId = input.ReadString();
+            break;
+          }
+          case 24: {
+            ApplyWorldPosition = input.ReadBool();
+            break;
+          }
+          case 34: {
+            if (worldPosition_ == null) {
+              WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(WorldPosition);
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            FileId = input.ReadString();
+            break;
+          }
+          case 18: {
+            ParentInstanceId = input.ReadString();
+            break;
+          }
+          case 24: {
+            ApplyWorldPosition = input.ReadBool();
+            break;
+          }
+          case 34: {
+            if (worldPosition_ == null) {
+              WorldPosition = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(WorldPosition);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportObjectRequest : pb::IMessage<ViewportObjectRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportObjectRequest> _parser = new pb::MessageParser<ViewportObjectRequest>(() => new ViewportObjectRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportObjectRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[23]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportObjectRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportObjectRequest(ViewportObjectRequest other) : this() {
+      viewportId_ = other.viewportId_;
+      instanceId_ = other.instanceId_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportObjectRequest Clone() {
+      return new ViewportObjectRequest(this);
+    }
+
+    /// <summary>Field number for the "viewport_id" field.</summary>
+    public const int ViewportIdFieldNumber = 1;
+    private ulong viewportId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong ViewportId {
+      get { return viewportId_; }
+      set {
+        viewportId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "instance_id" field.</summary>
+    public const int InstanceIdFieldNumber = 2;
+    private string instanceId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string InstanceId {
+      get { return instanceId_; }
+      set {
+        instanceId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportObjectRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportObjectRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (ViewportId != other.ViewportId) return false;
+      if (InstanceId != other.InstanceId) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (ViewportId != 0UL) hash ^= ViewportId.GetHashCode();
+      if (InstanceId.Length != 0) hash ^= InstanceId.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (InstanceId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(InstanceId);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (InstanceId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(InstanceId);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (ViewportId != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(ViewportId);
+      }
+      if (InstanceId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(InstanceId);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportObjectRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.ViewportId != 0UL) {
+        ViewportId = other.ViewportId;
+      }
+      if (other.InstanceId.Length != 0) {
+        InstanceId = other.InstanceId;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 18: {
+            InstanceId = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 18: {
+            InstanceId = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class PrefabLinkRequest : pb::IMessage<PrefabLinkRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<PrefabLinkRequest> _parser = new pb::MessageParser<PrefabLinkRequest>(() => new PrefabLinkRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<PrefabLinkRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[24]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PrefabLinkRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PrefabLinkRequest(PrefabLinkRequest other) : this() {
+      instanceId_ = other.instanceId_;
+      fileId_ = other.fileId_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public PrefabLinkRequest Clone() {
+      return new PrefabLinkRequest(this);
+    }
+
+    /// <summary>Field number for the "instance_id" field.</summary>
+    public const int InstanceIdFieldNumber = 1;
+    private string instanceId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string InstanceId {
+      get { return instanceId_; }
+      set {
+        instanceId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "file_id" field.</summary>
+    public const int FileIdFieldNumber = 2;
+    private string fileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileId {
+      get { return fileId_; }
+      set {
+        fileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as PrefabLinkRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(PrefabLinkRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (InstanceId != other.InstanceId) return false;
+      if (FileId != other.FileId) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (InstanceId.Length != 0) hash ^= InstanceId.GetHashCode();
+      if (FileId.Length != 0) hash ^= FileId.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (InstanceId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(InstanceId);
+      }
+      if (FileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(FileId);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (InstanceId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(InstanceId);
+      }
+      if (FileId.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(FileId);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (InstanceId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(InstanceId);
+      }
+      if (FileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileId);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(PrefabLinkRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.InstanceId.Length != 0) {
+        InstanceId = other.InstanceId;
+      }
+      if (other.FileId.Length != 0) {
+        FileId = other.FileId;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            InstanceId = input.ReadString();
+            break;
+          }
+          case 18: {
+            FileId = input.ReadString();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            InstanceId = input.ReadString();
+            break;
+          }
+          case 18: {
+            FileId = input.ReadString();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportToolStateRequest : pb::IMessage<ViewportToolStateRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportToolStateRequest> _parser = new pb::MessageParser<ViewportToolStateRequest>(() => new ViewportToolStateRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportToolStateRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[25]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateRequest(ViewportToolStateRequest other) : this() {
+      viewportId_ = other.viewportId_;
+      operation_ = other.operation_;
+      space_ = other.space_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateRequest Clone() {
+      return new ViewportToolStateRequest(this);
+    }
+
+    /// <summary>Field number for the "viewport_id" field.</summary>
+    public const int ViewportIdFieldNumber = 1;
+    private ulong viewportId_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ulong ViewportId {
+      get { return viewportId_; }
+      set {
+        viewportId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "operation" field.</summary>
+    public const int OperationFieldNumber = 2;
+    private global::SailorEditor.Protocol.Generated.ViewportTransformOperation operation_ = global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportTransformOperation Operation {
+      get { return operation_; }
+      set {
+        operation_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "space" field.</summary>
+    public const int SpaceFieldNumber = 3;
+    private global::SailorEditor.Protocol.Generated.ViewportTransformSpace space_ = global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportTransformSpace Space {
+      get { return space_; }
+      set {
+        space_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportToolStateRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportToolStateRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (ViewportId != other.ViewportId) return false;
+      if (Operation != other.Operation) return false;
+      if (Space != other.Space) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (ViewportId != 0UL) hash ^= ViewportId.GetHashCode();
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) hash ^= Operation.GetHashCode();
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) hash ^= Space.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Space);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (ViewportId != 0UL) {
+        output.WriteRawTag(8);
+        output.WriteUInt64(ViewportId);
+      }
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        output.WriteRawTag(24);
+        output.WriteEnum((int) Space);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (ViewportId != 0UL) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt64Size(ViewportId);
+      }
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Space);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportToolStateRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.ViewportId != 0UL) {
+        ViewportId = other.ViewportId;
+      }
+      if (other.Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        Operation = other.Operation;
+      }
+      if (other.Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        Space = other.Space;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 16: {
+            Operation = (global::SailorEditor.Protocol.Generated.ViewportTransformOperation) input.ReadEnum();
+            break;
+          }
+          case 24: {
+            Space = (global::SailorEditor.Protocol.Generated.ViewportTransformSpace) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            ViewportId = input.ReadUInt64();
+            break;
+          }
+          case 16: {
+            Operation = (global::SailorEditor.Protocol.Generated.ViewportTransformOperation) input.ReadEnum();
+            break;
+          }
+          case 24: {
+            Space = (global::SailorEditor.Protocol.Generated.ViewportTransformSpace) input.ReadEnum();
+            break;
+          }
         }
       }
     }
@@ -8149,7 +10495,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[20]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[26]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8336,7 +10682,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[21]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[27]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8534,7 +10880,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[22]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[28]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -8880,7 +11226,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[23]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[29]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9078,7 +11424,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[24]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[30]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9276,7 +11622,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[25]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[31]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9474,7 +11820,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[26]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[32]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9672,7 +12018,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[27]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[33]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9907,7 +12253,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[28]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[34]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10094,7 +12440,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[29]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[35]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10403,7 +12749,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[30]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[36]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10624,6 +12970,448 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class Vector4Result : pb::IMessage<Vector4Result>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<Vector4Result> _parser = new pb::MessageParser<Vector4Result>(() => new Vector4Result());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<Vector4Result> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[37]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Vector4Result() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Vector4Result(Vector4Result other) : this() {
+      value_ = other.value_ != null ? other.value_.Clone() : null;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Vector4Result Clone() {
+      return new Vector4Result(this);
+    }
+
+    /// <summary>Field number for the "value" field.</summary>
+    public const int ValueFieldNumber = 1;
+    private global::SailorEditor.Protocol.Generated.Vector4 value_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.Vector4 Value {
+      get { return value_; }
+      set {
+        value_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as Vector4Result);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(Vector4Result other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (!object.Equals(Value, other.Value)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (value_ != null) hash ^= Value.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (value_ != null) {
+        output.WriteRawTag(10);
+        output.WriteMessage(Value);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (value_ != null) {
+        output.WriteRawTag(10);
+        output.WriteMessage(Value);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (value_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Value);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(Vector4Result other) {
+      if (other == null) {
+        return;
+      }
+      if (other.value_ != null) {
+        if (value_ == null) {
+          Value = new global::SailorEditor.Protocol.Generated.Vector4();
+        }
+        Value.MergeFrom(other.Value);
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            if (value_ == null) {
+              Value = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(Value);
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            if (value_ == null) {
+              Value = new global::SailorEditor.Protocol.Generated.Vector4();
+            }
+            input.ReadMessage(Value);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportToolStateResult : pb::IMessage<ViewportToolStateResult>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportToolStateResult> _parser = new pb::MessageParser<ViewportToolStateResult>(() => new ViewportToolStateResult());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportToolStateResult> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[38]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateResult() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateResult(ViewportToolStateResult other) : this() {
+      operation_ = other.operation_;
+      space_ = other.space_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolStateResult Clone() {
+      return new ViewportToolStateResult(this);
+    }
+
+    /// <summary>Field number for the "operation" field.</summary>
+    public const int OperationFieldNumber = 1;
+    private global::SailorEditor.Protocol.Generated.ViewportTransformOperation operation_ = global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportTransformOperation Operation {
+      get { return operation_; }
+      set {
+        operation_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "space" field.</summary>
+    public const int SpaceFieldNumber = 2;
+    private global::SailorEditor.Protocol.Generated.ViewportTransformSpace space_ = global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportTransformSpace Space {
+      get { return space_; }
+      set {
+        space_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportToolStateResult);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportToolStateResult other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Operation != other.Operation) return false;
+      if (Space != other.Space) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) hash ^= Operation.GetHashCode();
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) hash ^= Space.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Space);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        output.WriteRawTag(16);
+        output.WriteEnum((int) Space);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Operation);
+      }
+      if (Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Space);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportToolStateResult other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Operation != global::SailorEditor.Protocol.Generated.ViewportTransformOperation.Unspecified) {
+        Operation = other.Operation;
+      }
+      if (other.Space != global::SailorEditor.Protocol.Generated.ViewportTransformSpace.Unspecified) {
+        Space = other.Space;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Operation = (global::SailorEditor.Protocol.Generated.ViewportTransformOperation) input.ReadEnum();
+            break;
+          }
+          case 16: {
+            Space = (global::SailorEditor.Protocol.Generated.ViewportTransformSpace) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Operation = (global::SailorEditor.Protocol.Generated.ViewportTransformOperation) input.ReadEnum();
+            break;
+          }
+          case 16: {
+            Space = (global::SailorEditor.Protocol.Generated.ViewportTransformSpace) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class Vector4 : pb::IMessage<Vector4>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -10638,7 +13426,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[31]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[39]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10947,7 +13735,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[32]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[40]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11145,7 +13933,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[33]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[41]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11679,6 +14467,476 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportAssetDropEvent : pb::IMessage<ViewportAssetDropEvent>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportAssetDropEvent> _parser = new pb::MessageParser<ViewportAssetDropEvent>(() => new ViewportAssetDropEvent());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportAssetDropEvent> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[42]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportAssetDropEvent() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportAssetDropEvent(ViewportAssetDropEvent other) : this() {
+      fileId_ = other.fileId_;
+      normalizedX_ = other.normalizedX_;
+      normalizedY_ = other.normalizedY_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportAssetDropEvent Clone() {
+      return new ViewportAssetDropEvent(this);
+    }
+
+    /// <summary>Field number for the "file_id" field.</summary>
+    public const int FileIdFieldNumber = 1;
+    private string fileId_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string FileId {
+      get { return fileId_; }
+      set {
+        fileId_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "normalized_x" field.</summary>
+    public const int NormalizedXFieldNumber = 2;
+    private float normalizedX_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float NormalizedX {
+      get { return normalizedX_; }
+      set {
+        normalizedX_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "normalized_y" field.</summary>
+    public const int NormalizedYFieldNumber = 3;
+    private float normalizedY_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public float NormalizedY {
+      get { return normalizedY_; }
+      set {
+        normalizedY_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportAssetDropEvent);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportAssetDropEvent other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (FileId != other.FileId) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(NormalizedX, other.NormalizedX)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(NormalizedY, other.NormalizedY)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (FileId.Length != 0) hash ^= FileId.GetHashCode();
+      if (NormalizedX != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(NormalizedX);
+      if (NormalizedY != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(NormalizedY);
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (FileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileId);
+      }
+      if (NormalizedX != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(NormalizedX);
+      }
+      if (NormalizedY != 0F) {
+        output.WriteRawTag(29);
+        output.WriteFloat(NormalizedY);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (FileId.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(FileId);
+      }
+      if (NormalizedX != 0F) {
+        output.WriteRawTag(21);
+        output.WriteFloat(NormalizedX);
+      }
+      if (NormalizedY != 0F) {
+        output.WriteRawTag(29);
+        output.WriteFloat(NormalizedY);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (FileId.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(FileId);
+      }
+      if (NormalizedX != 0F) {
+        size += 1 + 4;
+      }
+      if (NormalizedY != 0F) {
+        size += 1 + 4;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportAssetDropEvent other) {
+      if (other == null) {
+        return;
+      }
+      if (other.FileId.Length != 0) {
+        FileId = other.FileId;
+      }
+      if (other.NormalizedX != 0F) {
+        NormalizedX = other.NormalizedX;
+      }
+      if (other.NormalizedY != 0F) {
+        NormalizedY = other.NormalizedY;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            FileId = input.ReadString();
+            break;
+          }
+          case 21: {
+            NormalizedX = input.ReadFloat();
+            break;
+          }
+          case 29: {
+            NormalizedY = input.ReadFloat();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            FileId = input.ReadString();
+            break;
+          }
+          case 21: {
+            NormalizedX = input.ReadFloat();
+            break;
+          }
+          case 29: {
+            NormalizedY = input.ReadFloat();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class ViewportToolShortcutEvent : pb::IMessage<ViewportToolShortcutEvent>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<ViewportToolShortcutEvent> _parser = new pb::MessageParser<ViewportToolShortcutEvent>(() => new ViewportToolShortcutEvent());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<ViewportToolShortcutEvent> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[43]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolShortcutEvent() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolShortcutEvent(ViewportToolShortcutEvent other) : this() {
+      keyCode_ = other.keyCode_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public ViewportToolShortcutEvent Clone() {
+      return new ViewportToolShortcutEvent(this);
+    }
+
+    /// <summary>Field number for the "key_code" field.</summary>
+    public const int KeyCodeFieldNumber = 1;
+    private uint keyCode_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint KeyCode {
+      get { return keyCode_; }
+      set {
+        keyCode_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as ViewportToolShortcutEvent);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(ViewportToolShortcutEvent other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (KeyCode != other.KeyCode) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (KeyCode != 0) hash ^= KeyCode.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (KeyCode != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(KeyCode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (KeyCode != 0) {
+        output.WriteRawTag(8);
+        output.WriteUInt32(KeyCode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (KeyCode != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(KeyCode);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(ViewportToolShortcutEvent other) {
+      if (other == null) {
+        return;
+      }
+      if (other.KeyCode != 0) {
+        KeyCode = other.KeyCode;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            KeyCode = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            KeyCode = input.ReadUInt32();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
   public sealed partial class ViewportEvent : pb::IMessage<ViewportEvent>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
@@ -11693,7 +14951,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[34]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[44]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11721,6 +14979,12 @@ namespace SailorEditor.Protocol.Generated {
           break;
         case PayloadOneofCase.Transform:
           Transform = other.Transform.Clone();
+          break;
+        case PayloadOneofCase.AssetDrop:
+          AssetDrop = other.AssetDrop.Clone();
+          break;
+        case PayloadOneofCase.ToolShortcut:
+          ToolShortcut = other.ToolShortcut.Clone();
           break;
       }
 
@@ -11781,12 +15045,38 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
+    /// <summary>Field number for the "asset_drop" field.</summary>
+    public const int AssetDropFieldNumber = 12;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent AssetDrop {
+      get { return payloadCase_ == PayloadOneofCase.AssetDrop ? (global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent) payload_ : null; }
+      set {
+        payload_ = value;
+        payloadCase_ = value == null ? PayloadOneofCase.None : PayloadOneofCase.AssetDrop;
+      }
+    }
+
+    /// <summary>Field number for the "tool_shortcut" field.</summary>
+    public const int ToolShortcutFieldNumber = 13;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent ToolShortcut {
+      get { return payloadCase_ == PayloadOneofCase.ToolShortcut ? (global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent) payload_ : null; }
+      set {
+        payload_ = value;
+        payloadCase_ = value == null ? PayloadOneofCase.None : PayloadOneofCase.ToolShortcut;
+      }
+    }
+
     private object payload_;
     /// <summary>Enum of possible cases for the "payload" oneof.</summary>
     public enum PayloadOneofCase {
       None = 0,
       Selection = 10,
       Transform = 11,
+      AssetDrop = 12,
+      ToolShortcut = 13,
     }
     private PayloadOneofCase payloadCase_ = PayloadOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11821,6 +15111,8 @@ namespace SailorEditor.Protocol.Generated {
       if (ManagedMutationRevision != other.ManagedMutationRevision) return false;
       if (!object.Equals(Selection, other.Selection)) return false;
       if (!object.Equals(Transform, other.Transform)) return false;
+      if (!object.Equals(AssetDrop, other.AssetDrop)) return false;
+      if (!object.Equals(ToolShortcut, other.ToolShortcut)) return false;
       if (PayloadCase != other.PayloadCase) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
@@ -11833,6 +15125,8 @@ namespace SailorEditor.Protocol.Generated {
       if (ManagedMutationRevision != 0UL) hash ^= ManagedMutationRevision.GetHashCode();
       if (payloadCase_ == PayloadOneofCase.Selection) hash ^= Selection.GetHashCode();
       if (payloadCase_ == PayloadOneofCase.Transform) hash ^= Transform.GetHashCode();
+      if (payloadCase_ == PayloadOneofCase.AssetDrop) hash ^= AssetDrop.GetHashCode();
+      if (payloadCase_ == PayloadOneofCase.ToolShortcut) hash ^= ToolShortcut.GetHashCode();
       hash ^= (int) payloadCase_;
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
@@ -11868,6 +15162,14 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(90);
         output.WriteMessage(Transform);
       }
+      if (payloadCase_ == PayloadOneofCase.AssetDrop) {
+        output.WriteRawTag(98);
+        output.WriteMessage(AssetDrop);
+      }
+      if (payloadCase_ == PayloadOneofCase.ToolShortcut) {
+        output.WriteRawTag(106);
+        output.WriteMessage(ToolShortcut);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -11894,6 +15196,14 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(90);
         output.WriteMessage(Transform);
       }
+      if (payloadCase_ == PayloadOneofCase.AssetDrop) {
+        output.WriteRawTag(98);
+        output.WriteMessage(AssetDrop);
+      }
+      if (payloadCase_ == PayloadOneofCase.ToolShortcut) {
+        output.WriteRawTag(106);
+        output.WriteMessage(ToolShortcut);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -11915,6 +15225,12 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (payloadCase_ == PayloadOneofCase.Transform) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Transform);
+      }
+      if (payloadCase_ == PayloadOneofCase.AssetDrop) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(AssetDrop);
+      }
+      if (payloadCase_ == PayloadOneofCase.ToolShortcut) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(ToolShortcut);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -11946,6 +15262,18 @@ namespace SailorEditor.Protocol.Generated {
             Transform = new global::SailorEditor.Protocol.Generated.ViewportTransformEvent();
           }
           Transform.MergeFrom(other.Transform);
+          break;
+        case PayloadOneofCase.AssetDrop:
+          if (AssetDrop == null) {
+            AssetDrop = new global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent();
+          }
+          AssetDrop.MergeFrom(other.AssetDrop);
+          break;
+        case PayloadOneofCase.ToolShortcut:
+          if (ToolShortcut == null) {
+            ToolShortcut = new global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent();
+          }
+          ToolShortcut.MergeFrom(other.ToolShortcut);
           break;
       }
 
@@ -11994,6 +15322,24 @@ namespace SailorEditor.Protocol.Generated {
             Transform = subBuilder;
             break;
           }
+          case 98: {
+            global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent subBuilder = new global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent();
+            if (payloadCase_ == PayloadOneofCase.AssetDrop) {
+              subBuilder.MergeFrom(AssetDrop);
+            }
+            input.ReadMessage(subBuilder);
+            AssetDrop = subBuilder;
+            break;
+          }
+          case 106: {
+            global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent();
+            if (payloadCase_ == PayloadOneofCase.ToolShortcut) {
+              subBuilder.MergeFrom(ToolShortcut);
+            }
+            input.ReadMessage(subBuilder);
+            ToolShortcut = subBuilder;
+            break;
+          }
         }
       }
     #endif
@@ -12039,6 +15385,24 @@ namespace SailorEditor.Protocol.Generated {
             Transform = subBuilder;
             break;
           }
+          case 98: {
+            global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent subBuilder = new global::SailorEditor.Protocol.Generated.ViewportAssetDropEvent();
+            if (payloadCase_ == PayloadOneofCase.AssetDrop) {
+              subBuilder.MergeFrom(AssetDrop);
+            }
+            input.ReadMessage(subBuilder);
+            AssetDrop = subBuilder;
+            break;
+          }
+          case 106: {
+            global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent subBuilder = new global::SailorEditor.Protocol.Generated.ViewportToolShortcutEvent();
+            if (payloadCase_ == PayloadOneofCase.ToolShortcut) {
+              subBuilder.MergeFrom(ToolShortcut);
+            }
+            input.ReadMessage(subBuilder);
+            ToolShortcut = subBuilder;
+            break;
+          }
         }
       }
     }
@@ -12061,7 +15425,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[35]; }
+      get { return global::SailorEditor.Protocol.Generated.EditorEngineReflection.Descriptor.MessageTypes[45]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]

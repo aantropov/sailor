@@ -35,13 +35,37 @@ public sealed class SelectionStore
     public bool Clear() => Select(null, SelectionTargetKind.None);
 }
 
-public sealed record HierarchySourceItem(string Id, string Label, string? ParentId);
+public sealed record HierarchySourceItem(
+    string Id,
+    string Label,
+    string? ParentId,
+    bool IsPrefabLinked = false,
+    string? PrefabFileId = null,
+    string? PrefabRootInstanceId = null);
 
-public sealed record HierarchyProjectionNode(string Id, string Label, bool IsSelected, bool IsExpanded, IReadOnlyList<HierarchyProjectionNode> Children);
+public sealed record HierarchyProjectionNode(
+    string Id,
+    string Label,
+    bool IsSelected,
+    bool IsExpanded,
+    IReadOnlyList<HierarchyProjectionNode> Children,
+    bool IsPrefabLinked = false,
+    string? PrefabFileId = null,
+    string? PrefabRootInstanceId = null);
 
-public sealed record HierarchyListRow(string InstanceId, int Depth, string Label, bool HasChildren, bool IsExpanded, bool IsSelected)
+public sealed record HierarchyListRow(
+    string InstanceId,
+    int Depth,
+    string Label,
+    bool HasChildren,
+    bool IsExpanded,
+    bool IsSelected,
+    bool IsPrefabLinked = false,
+    string? PrefabFileId = null,
+    string? PrefabRootInstanceId = null)
 {
     public string ExpandGlyph => IsExpanded ? "−" : "+";
+    public string PrefabLinkGlyph => IsPrefabLinked ? "◆" : string.Empty;
 }
 
 public static class HierarchyRowReconciler
@@ -139,7 +163,10 @@ public static class HierarchyProjectionBuilder
                 item.Label,
                 string.Equals(item.Id, selectedId, StringComparison.Ordinal),
                 expandedIds.Contains(item.Id),
-                Array.Empty<HierarchyProjectionNode>());
+                Array.Empty<HierarchyProjectionNode>(),
+                item.IsPrefabLinked,
+                item.PrefabFileId,
+                item.PrefabRootInstanceId);
         }
 
         var children = childrenLookup.TryGetValue(item.Id, out var childItems)
@@ -151,12 +178,24 @@ public static class HierarchyProjectionBuilder
             item.Label,
             string.Equals(item.Id, selectedId, StringComparison.Ordinal),
             expandedIds.Contains(item.Id),
-            children);
+            children,
+            item.IsPrefabLinked,
+            item.PrefabFileId,
+            item.PrefabRootInstanceId);
     }
 
     static void AppendVisibleRows(HierarchyProjectionNode node, int depth, ICollection<HierarchyListRow> rows)
     {
-        rows.Add(new HierarchyListRow(node.Id, depth, node.Label, node.Children.Count > 0, node.IsExpanded, node.IsSelected));
+        rows.Add(new HierarchyListRow(
+            node.Id,
+            depth,
+            node.Label,
+            node.Children.Count > 0,
+            node.IsExpanded,
+            node.IsSelected,
+            node.IsPrefabLinked,
+            node.PrefabFileId,
+            node.PrefabRootInstanceId));
         if (!node.IsExpanded)
             return;
 

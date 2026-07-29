@@ -3,6 +3,7 @@ using SailorEditor.Commands;
 using SailorEditor.Content;
 using SailorEditor.Controls;
 using SailorEditor.Services;
+using SailorEditor.Scene;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Workflow;
@@ -28,6 +29,7 @@ namespace SailorEditor.Views
         readonly ProjectContentStore contentStore;
         readonly ICommandDispatcher dispatcher;
         readonly IActionContextProvider contextProvider;
+        readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
         readonly ObservableCollection<ContentListRow> visibleRows = [];
         readonly HashSet<int> expandedFolderIds = [];
         readonly Dictionary<string, object> rowModelsById = new(StringComparer.Ordinal);
@@ -42,6 +44,8 @@ namespace SailorEditor.Views
             contentStore = MauiProgram.GetService<ProjectContentStore>();
             dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             contextProvider = MauiProgram.GetService<IActionContextProvider>();
+            inspectorPendingEditCoordinator =
+                MauiProgram.GetService<InspectorPendingEditCoordinator>();
 
             if (!string.IsNullOrEmpty(contentStore.State.Filter))
             {
@@ -54,7 +58,10 @@ namespace SailorEditor.Views
 
             var rootDropGesture = new DropGestureRecognizer();
             rootDropGesture.DragOver += (_, e) => ApplyContentDropOperation(e, null);
-            rootDropGesture.Drop += async (_, e) => await HandleContentDrop(e, null);
+            rootDropGesture.Drop += (_, e) =>
+                RunContentUiAction(
+                    () => HandleContentDrop(e, null),
+                    "Drop Content item");
             ContentDropSurface.GestureRecognizers.Add(rootDropGesture);
 
             contentStore.ProjectionChanged += PopulateRows;
@@ -179,6 +186,33 @@ namespace SailorEditor.Views
 
                 if (!overwrite)
                 {
+                    return;
+                }
+            }
+
+            if (command is CreatePrefabAssetCommand)
+            {
+                if (!await inspectorPendingEditCoordinator
+                        .CommitPendingChangesAsync())
+                {
+                    await Application.Current.MainPage.DisplayAlert(
+                        "Drop failed",
+                        "Pending Inspector changes could not be committed.",
+                        "OK");
+                    return;
+                }
+
+                if (!EditorDragDrop.TryCreateContentDropCommand(
+                        source,
+                        target,
+                        out command,
+                        out _) ||
+                    command is not CreatePrefabAssetCommand)
+                {
+                    await Application.Current.MainPage.DisplayAlert(
+                        "Drop failed",
+                        "The GameObject is no longer available for prefab creation.",
+                        "OK");
                     return;
                 }
             }
@@ -623,6 +657,15 @@ namespace SailorEditor.Views
                         {
                             case AssetFile assetFile:
                                 e.Data.Properties[EditorDragDrop.DragItemKey] = assetFile;
+#if WINDOWS
+                                if (EditorDragDrop.IsViewportAssetDrop(assetFile) &&
+                                    SceneViewportAssetDropPayload.TryCreate(
+                                        assetFile.FileId,
+                                        out var payload))
+                                {
+                                    e.Data.Text = payload;
+                                }
+#endif
                                 return;
                             case AssetFolder folder when service.CanModifyFolder(folder):
                                 e.Data.Properties[EditorDragDrop.DragItemKey] = folder;
@@ -645,7 +688,7 @@ namespace SailorEditor.Views
 
                     ApplyContentDropOperation(e, target);
                 };
-                dropGesture.Drop += async (_, e) =>
+                dropGesture.Drop += (_, e) =>
                 {
                     object target = null;
                     if (border.BindingContext is ContentListRow row && rowModelsById.TryGetValue(row.Id, out var model))
@@ -653,7 +696,9 @@ namespace SailorEditor.Views
                         target = model is ProjectContentFolderItem ? null : model;
                     }
 
-                    await HandleContentDrop(e, target);
+                    RunContentUiAction(
+                        () => HandleContentDrop(e, target),
+                        "Drop Content item");
                 };
                 border.GestureRecognizers.Add(dropGesture);
 
@@ -791,6 +836,49 @@ namespace SailorEditor.Views
             finally
             {
                 suppressSelectionChanged = false;
+            }
+        }
+
+        static void RunContentUiAction(
+            Func<Task> action,
+            string operation)
+        {
+            _ = ExecuteContentUiActionAsync(
+                action,
+                operation);
+        }
+
+        static async Task ExecuteContentUiActionAsync(
+            Func<Task> action,
+            string operation)
+        {
+            try
+            {
+                await action();
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"{operation} failed: {exception}");
+                try
+                {
+                    var page =
+                        Application.Current?.Windows
+                            .FirstOrDefault()?.Page ??
+                        Application.Current?.MainPage;
+                    if (page is not null)
+                    {
+                        await page.DisplayAlert(
+                            "Content operation failed",
+                            exception.Message,
+                            "OK");
+                    }
+                }
+                catch (Exception reportingException)
+                {
+                    Console.Error.WriteLine(
+                        $"Failed to report {operation} error: {reportingException}");
+                }
             }
         }
 

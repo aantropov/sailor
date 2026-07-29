@@ -22,6 +22,190 @@ public sealed class ProjectContentFileOperationsTests : IDisposable
     }
 
     [Fact]
+    public void AssetPairWrite_RollbackRemovesANewlyPublishedPair()
+    {
+        var directory = Directory.CreateDirectory(
+            Path.Combine(contentRoot, "Prefabs")).FullName;
+        var sourcePath = Path.Combine(directory, "Duck.prefab");
+        var transaction = new ProjectContentFileOperations()
+            .BeginWriteAssetPair(
+                contentRoot,
+                sourcePath,
+                "new prefab",
+                "new metadata",
+                "{NEW}",
+                overwrite: false);
+
+        Assert.True(transaction.Result.Succeeded, transaction.Result.Error);
+        Assert.True(File.Exists(sourcePath));
+        Assert.True(File.Exists(sourcePath + ".asset"));
+
+        var rollback = transaction.Rollback();
+
+        Assert.True(rollback.Succeeded, rollback.Error);
+        Assert.False(File.Exists(sourcePath));
+        Assert.False(File.Exists(sourcePath + ".asset"));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(
+            directory,
+            ".sailor-asset-write-*"));
+    }
+
+    [Fact]
+    public void AssetPairWrite_CommitKeepsPublishedPairAndRemovesBackup()
+    {
+        var directory = Directory.CreateDirectory(
+            Path.Combine(contentRoot, "Prefabs")).FullName;
+        var sourcePath = WriteSource(
+            directory,
+            "Duck.prefab",
+            "old prefab");
+        var metadataPath = WriteSource(
+            directory,
+            "Duck.prefab.asset",
+            "old metadata");
+        var transaction = new ProjectContentFileOperations()
+            .BeginWriteAssetPair(
+                contentRoot,
+                sourcePath,
+                "new prefab",
+                "new metadata",
+                "{EXISTING}",
+                overwrite: true);
+
+        Assert.True(transaction.Result.Succeeded, transaction.Result.Error);
+        var commit = transaction.Commit();
+
+        Assert.True(commit.Succeeded, commit.Error);
+        Assert.Equal("new prefab", File.ReadAllText(sourcePath));
+        Assert.Equal("new metadata", File.ReadAllText(metadataPath));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(
+            directory,
+            ".sailor-asset-write-*"));
+    }
+
+    [Fact]
+    public void AssetPairWrite_PartialCommitCleanupPreservesPublishedPairAndCommitsTransaction()
+    {
+        var directory = Directory.CreateDirectory(
+            Path.Combine(contentRoot, "Prefabs")).FullName;
+        var sourcePath = WriteSource(
+            directory,
+            "Duck.prefab",
+            "old prefab");
+        var metadataPath = WriteSource(
+            directory,
+            "Duck.prefab.asset",
+            "old metadata");
+        var transaction = new ProjectContentFileOperations(
+                new FaultInjectingFileSystem
+                {
+                    DeleteOneFileThenThrowOnDeleteNumber = 1
+                })
+            .BeginWriteAssetPair(
+                contentRoot,
+                sourcePath,
+                "new prefab",
+                "new metadata",
+                "{EXISTING}",
+                overwrite: true);
+
+        Assert.True(transaction.Result.Succeeded, transaction.Result.Error);
+
+        var commit = transaction.Commit();
+
+        Assert.True(commit.Succeeded, commit.Error);
+        Assert.False(transaction.IsActive);
+        Assert.Contains("committed", commit.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEmpty(commit.UnrestoredPaths);
+        Assert.Equal("new prefab", File.ReadAllText(sourcePath));
+        Assert.Equal("new metadata", File.ReadAllText(metadataPath));
+
+        var rollback = transaction.Rollback();
+
+        Assert.False(rollback.Succeeded);
+        Assert.Contains("already committed", rollback.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("new prefab", File.ReadAllText(sourcePath));
+        Assert.Equal("new metadata", File.ReadAllText(metadataPath));
+    }
+
+    [Theory]
+    [InlineData(".sailor-asset-write-fixture.pending", true)]
+    [InlineData(".SAILOR-ASSET-WRITE-FIXTURE.PENDING", true)]
+    [InlineData(".sailor-asset-write-fixture", false)]
+    [InlineData("sailor-asset-write-fixture.pending", false)]
+    [InlineData(".sailor-assets", false)]
+    public void InternalPathPolicy_RecognizesOnlyTransactionDirectories(
+        string directoryName,
+        bool expected)
+    {
+        Assert.Equal(
+            expected,
+            ProjectContentInternalPathPolicy.IsTransactionDirectory(
+                Path.Combine(contentRoot, directoryName)));
+    }
+
+    [Fact]
+    public void AssetPairWrite_OverwriteRollbackRestoresBothOriginalFiles()
+    {
+        var directory = Directory.CreateDirectory(
+            Path.Combine(contentRoot, "Prefabs")).FullName;
+        var sourcePath = WriteSource(
+            directory,
+            "Duck.prefab",
+            "old prefab");
+        var metadataPath = WriteSource(
+            directory,
+            "Duck.prefab.asset",
+            "old metadata");
+        var transaction = new ProjectContentFileOperations()
+            .BeginWriteAssetPair(
+                contentRoot,
+                sourcePath,
+                "new prefab",
+                "new metadata",
+                "{EXISTING}",
+                overwrite: true);
+
+        Assert.True(transaction.Result.Succeeded, transaction.Result.Error);
+        var rollback = transaction.Rollback();
+
+        Assert.True(rollback.Succeeded, rollback.Error);
+        Assert.Equal("old prefab", File.ReadAllText(sourcePath));
+        Assert.Equal("old metadata", File.ReadAllText(metadataPath));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(
+            directory,
+            ".sailor-asset-write-*"));
+    }
+
+    [Fact]
+    public void AssetPairWrite_PartialWriteFailureLeavesNoFiles()
+    {
+        var directory = Directory.CreateDirectory(
+            Path.Combine(contentRoot, "Prefabs")).FullName;
+        var sourcePath = Path.Combine(directory, "Duck.prefab");
+        var transaction = new ProjectContentFileOperations(
+                new FaultInjectingFileSystem
+                {
+                    WriteThenThrowOnWriteNumber = 1
+                })
+            .BeginWriteAssetPair(
+                contentRoot,
+                sourcePath,
+                "new prefab",
+                "new metadata",
+                "{NEW}",
+                overwrite: false);
+
+        Assert.False(transaction.Result.Succeeded);
+        Assert.True(transaction.Result.RollbackSucceeded);
+        Assert.False(File.Exists(sourcePath));
+        Assert.False(File.Exists(sourcePath + ".asset"));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(
+            directory,
+            ".sailor-asset-write-*"));
+    }
+
+    [Fact]
     public void MoveAssetGroup_MovesSourceAndEverySidecarThatResolvesToIt()
     {
         var sourceDirectory = Directory.CreateDirectory(Path.Combine(contentRoot, "Models")).FullName;

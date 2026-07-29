@@ -3,6 +3,7 @@
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
 #include "Editor/EditorViewportController.h"
+#include "Core/LogMacros.h"
 #include <algorithm>
 
 using namespace Sailor;
@@ -30,6 +31,13 @@ TransformComponent& GameObject::GetTransformComponent()
 
 void GameObject::SetParent(GameObjectPtr parent)
 {
+	SetParentInternal(parent, false);
+}
+
+void GameObject::SetParentInternal(
+	GameObjectPtr parent,
+	bool bAllowLinkedParent)
+{
 	for (auto current = parent; current.IsValid(); current = current->m_parent)
 	{
 		if (current == m_self)
@@ -40,6 +48,20 @@ void GameObject::SetParent(GameObjectPtr parent)
 
 	if (m_parent == parent)
 	{
+		return;
+	}
+
+	std::string diagnostic;
+	if (!bAllowLinkedParent &&
+		!m_pWorld->CanReparentPrefabObject(
+			m_instanceId,
+			parent ? parent->GetInstanceId() : InstanceId::Invalid,
+			&diagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot reparent game object '%s': %s.",
+			m_instanceId.ToString().c_str(),
+			diagnostic.c_str());
 		return;
 	}
 
@@ -64,6 +86,10 @@ void GameObject::SetParent(GameObjectPtr parent)
 bool GameObject::RemoveComponent(ComponentPtr component)
 {
 	check(component);
+	if (!m_pWorld->CanModifyPrefabStructure(m_instanceId))
+	{
+		return false;
+	}
 
 	if (m_components.RemoveFirst(component))
 	{
@@ -78,6 +104,11 @@ bool GameObject::RemoveComponent(ComponentPtr component)
 
 void GameObject::RemoveAllComponents()
 {
+	if (!m_pWorld->CanModifyPrefabStructure(m_instanceId))
+	{
+		return;
+	}
+
 	for (auto& el : m_components)
 	{
 		m_pWorld->RemovePendingDependencyResolutions(el);

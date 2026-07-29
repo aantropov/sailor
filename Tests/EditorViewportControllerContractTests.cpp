@@ -12,6 +12,7 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -215,6 +216,297 @@ namespace
 		Require(std::abs(distance) <= c_tolerance, "a ray starting inside an AABB must report zero distance");
 	}
 
+	void TestResolveDropPositionUsesNearestMeshBounds()
+	{
+		const InstanceId nearId = ParseInstanceId("0000000000000010");
+		const InstanceId farId = ParseInstanceId("0000000000000020");
+		const Math::Ray ray(glm::vec3(0.0f, 2.0f, 0.0f), Math::vec3_Forward);
+		const TVector<EditorViewport::PickCandidate> candidates = {
+			{ farId, MakeBounds(glm::vec3(-1.0f, 1.0f, -9.0f), glm::vec3(1.0f, 3.0f, -8.0f)) },
+			{ nearId, MakeBounds(glm::vec3(-1.0f, 1.0f, -4.0f), glm::vec3(1.0f, 3.0f, -3.0f)) },
+		};
+		glm::vec3 position{};
+
+		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
+			"a drop ray crossing mesh bounds must resolve successfully");
+		Require(AreVectorsNear(position, glm::vec3(0.0f, 2.0f, -3.0f)),
+			"drop placement must use the nearest mesh AABB before fallback surfaces");
+	}
+
+	void TestResolveDropPositionUsesGroundPlane()
+	{
+		const glm::vec3 origin(2.0f, 4.0f, 3.0f);
+		const glm::vec3 direction = glm::normalize(glm::vec3(1.0f, -2.0f, -1.0f));
+		const Math::Ray ray(origin, direction);
+		const TVector<EditorViewport::PickCandidate> candidates{};
+		glm::vec3 position{};
+		const float planeDistance = -origin.y / direction.y;
+
+		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
+			"a drop ray facing the ground plane must resolve successfully");
+		Require(AreVectorsNear(position, origin + direction * planeDistance),
+			"drop placement without mesh hits must intersect the y=0 plane");
+		Require(std::abs(position.y) <= c_tolerance,
+			"ground-plane drop placement must land on y=0");
+	}
+
+	void TestResolveDropPositionUsesFiniteForwardFallback()
+	{
+		const glm::vec3 origin(1.0f, 2.0f, 3.0f);
+		const glm::vec3 direction = glm::normalize(glm::vec3(1.0f, 0.0f, -1.0f));
+		const Math::Ray ray(origin, direction);
+		const TVector<EditorViewport::PickCandidate> candidates{};
+		glm::vec3 position{};
+
+		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
+			"a drop ray parallel to the ground plane must still resolve");
+		Require(Math::AllFinite(position),
+			"the forward fallback must remain finite");
+		Require(AreVectorsNear(position, origin + direction * 1000.0f),
+			"the final drop fallback must use a finite forward distance");
+
+		const Math::Ray upwardRay(
+			origin,
+			glm::normalize(glm::vec3(0.0f, 1.0f, -1.0f)));
+		Require(EditorViewport::TryResolveDropPosition(
+			upwardRay,
+			candidates,
+			position),
+			"a ground-plane intersection behind the camera must use the forward fallback");
+		Require(position.y > origin.y,
+			"drop placement must never follow the ray backwards to reach the ground plane");
+	}
+
+	void TestResolveDropPositionRejectsInvalidRay()
+	{
+		const TVector<EditorViewport::PickCandidate> candidates{};
+		glm::vec3 position(4.0f, 5.0f, 6.0f);
+
+		Require(!EditorViewport::TryResolveDropPosition(
+			Math::Ray(glm::vec3(0.0f), glm::vec3(0.0f)),
+			candidates,
+			position),
+			"a zero-length drop ray must be rejected");
+		Require(AreVectorsNear(position, glm::vec3(0.0f)),
+			"a rejected drop ray must not leak a stale position");
+
+		const float nan = std::numeric_limits<float>::quiet_NaN();
+		Require(!EditorViewport::TryResolveDropPosition(
+			Math::Ray(glm::vec3(nan, 0.0f, 0.0f), Math::vec3_Forward),
+			candidates,
+			position),
+			"a non-finite drop ray must be rejected");
+	}
+
+	void TestCalculateFramedCameraPositionPreservesViewDirection()
+	{
+		const Math::AABB bounds(
+			glm::vec3(10.0f, 2.0f, -5.0f),
+			glm::vec3(2.0f, 1.0f, 3.0f));
+		const Math::Transform cameraTransform(
+			glm::vec4(-20.0f, 15.0f, 30.0f, 1.0f),
+			glm::angleAxis(
+				glm::radians(35.0f),
+				glm::normalize(glm::vec3(1.0f, 2.0f, 0.5f))),
+			glm::vec4(1.0f));
+		glm::vec3 position{};
+
+		Require(EditorViewport::TryCalculateFramedCameraPosition(
+			bounds,
+			cameraTransform,
+			70.0f,
+			16.0f / 9.0f,
+			0.1f,
+			position),
+			"valid bounds and camera data must produce a framing position");
+		const glm::vec3 viewDirection =
+			glm::normalize(bounds.GetCenter() - position);
+		Require(AreVectorsNear(
+			viewDirection,
+			glm::normalize(cameraTransform.GetForward())),
+			"camera framing must preserve the current camera view direction");
+		Require(glm::distance(position, bounds.GetCenter()) >
+			glm::length(bounds.GetExtents()),
+			"camera framing must place the camera outside the target bounds");
+	}
+
+	void TestCalculateFramedCameraPositionAccountsForViewportAspect()
+	{
+		const Math::AABB bounds(glm::vec3(0.0f), glm::vec3(1.0f));
+		const Math::Transform cameraTransform(
+			glm::vec4(0.0f),
+			glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+			glm::vec4(1.0f));
+		glm::vec3 landscapePosition{};
+		glm::vec3 portraitPosition{};
+
+		Require(EditorViewport::TryCalculateFramedCameraPosition(
+			bounds,
+			cameraTransform,
+			60.0f,
+			2.0f,
+			0.1f,
+			landscapePosition),
+			"a landscape viewport must produce a framing position");
+		Require(EditorViewport::TryCalculateFramedCameraPosition(
+			bounds,
+			cameraTransform,
+			60.0f,
+			0.5f,
+			0.1f,
+			portraitPosition),
+			"a portrait viewport must produce a framing position");
+		Require(glm::distance(portraitPosition, bounds.GetCenter()) >
+			glm::distance(landscapePosition, bounds.GetCenter()),
+			"a narrow viewport must frame the same bounds from farther away");
+	}
+
+	void TestCalculateFramedCameraPositionRejectsInvalidInput()
+	{
+		const Math::AABB bounds(glm::vec3(0.0f), glm::vec3(1.0f));
+		const Math::Transform cameraTransform{};
+		const glm::vec3 sentinel(4.0f, 5.0f, 6.0f);
+		glm::vec3 position = sentinel;
+
+		Require(!EditorViewport::TryCalculateFramedCameraPosition(
+			bounds,
+			cameraTransform,
+			0.0f,
+			1.0f,
+			0.1f,
+			position),
+			"a zero camera FOV must be rejected");
+		Require(AreVectorsNear(position, sentinel),
+			"rejected camera framing must leave its output unchanged");
+		Require(!EditorViewport::TryCalculateFramedCameraPosition(
+			bounds,
+			cameraTransform,
+			60.0f,
+			0.0f,
+			0.1f,
+			position),
+			"a zero camera aspect must be rejected");
+		Require(!EditorViewport::TryCalculateFramedCameraPosition(
+			Math::AABB{},
+			cameraTransform,
+			60.0f,
+			1.0f,
+			0.1f,
+			position),
+			"invalid target bounds must be rejected");
+	}
+
+	void TestTransformToolStateIsValidatedAtomically()
+	{
+		EditorViewport::EditorViewportController controller{};
+		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Translate,
+			"the viewport controller must default to the translate tool");
+		Require(controller.GetSpace() == EditorViewport::ETransformSpace::World,
+			"the viewport controller must default to world space");
+		Require(controller.SetTransformToolState(
+			EditorViewport::ETransformOperation::Rotate,
+			EditorViewport::ETransformSpace::Local),
+			"a valid transform tool state must be accepted outside an active drag");
+		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
+			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
+			"accepted operation and space values must be applied together");
+
+		Require(!controller.SetTransformToolState(
+			static_cast<EditorViewport::ETransformOperation>(255),
+			EditorViewport::ETransformSpace::World),
+			"an unknown transform operation must be rejected");
+		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
+			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
+			"a rejected operation must leave the full tool state unchanged");
+		Require(!controller.SetTransformToolState(
+			EditorViewport::ETransformOperation::Scale,
+			static_cast<EditorViewport::ETransformSpace>(255)),
+			"an unknown transform space must be rejected");
+		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
+			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
+			"a rejected space must leave the full tool state unchanged");
+	}
+
+	void TestAssetDropEventUsesValidatedViewportQueue()
+	{
+		EditorViewport::EditorViewportController controller{};
+		controller.SetManagedMutationRevisions(17, 0);
+		Require(controller.QueueAssetDropEvent(
+			"00000000000000ab",
+			0.25f,
+			0.75f),
+			"a finite normalized native asset drop must enter the viewport queue");
+
+		std::string serializedEvent{};
+		Require(controller.PullEvent(serializedEvent),
+			"a queued native asset drop must be observable by the protocol bridge");
+		const YAML::Node event = YAML::Load(serializedEvent);
+		Require(event["kind"].as<std::string>() == "assetDrop",
+			"the viewport queue must identify native asset-drop events");
+		Require(event["revision"].as<uint64_t>() == 1,
+			"the first native asset drop must receive the first event revision");
+		Require(event["managedMutationRevision"].as<uint64_t>() == 17,
+			"native asset drops must carry the current managed mutation revision");
+		Require(event["fileId"].as<std::string>() == "00000000000000ab",
+			"native asset drops must preserve their source FileId");
+		Require(std::abs(event["normalizedX"].as<float>() - 0.25f) <= c_tolerance &&
+			std::abs(event["normalizedY"].as<float>() - 0.75f) <= c_tolerance,
+			"native asset drops must preserve normalized viewport coordinates");
+		Require(!controller.PullEvent(serializedEvent),
+			"pulling the only native asset drop must empty the viewport queue");
+
+		const float nan = std::numeric_limits<float>::quiet_NaN();
+		Require(!controller.QueueAssetDropEvent("", 0.5f, 0.5f),
+			"an empty native asset FileId must be rejected");
+		Require(!controller.QueueAssetDropEvent("asset", nan, 0.5f),
+			"a non-finite native asset-drop coordinate must be rejected");
+		Require(!controller.QueueAssetDropEvent("asset", -0.01f, 0.5f) &&
+			!controller.QueueAssetDropEvent("asset", 0.5f, 1.01f),
+			"native asset-drop coordinates outside the viewport must be rejected");
+		Require(!controller.PullEvent(serializedEvent),
+			"rejected native asset drops must not enter the viewport queue");
+
+		Require(controller.QueueAssetDropEvent("asset", 0.0f, 1.0f),
+			"native asset drops on inclusive viewport edges must be accepted");
+		Require(controller.PullEvent(serializedEvent),
+			"a second valid native asset drop must enter the queue");
+		Require(YAML::Load(serializedEvent)["revision"].as<uint64_t>() == 2,
+			"rejected native asset drops must not consume event revisions");
+	}
+
+	void TestToolShortcutEventUsesValidatedViewportQueue()
+	{
+		EditorViewport::EditorViewportController controller{};
+		controller.SetManagedMutationRevisions(23, 0);
+		const uint32_t supportedKeys[] = { 'Q', 'W', 'E', 'R', 'T' };
+		for (const uint32_t keyCode : supportedKeys)
+		{
+			Require(controller.QueueToolShortcutEvent(keyCode),
+				"supported Win32 viewport shortcuts must enter the viewport queue");
+		}
+		Require(!controller.QueueToolShortcutEvent('X') &&
+			!controller.QueueToolShortcutEvent('w'),
+			"unknown and non-canonical viewport shortcuts must be rejected");
+
+		std::string serializedEvent{};
+		for (size_t index = 0; index < std::size(supportedKeys); ++index)
+		{
+			Require(controller.PullEvent(serializedEvent),
+				"every queued viewport shortcut must remain observable");
+			const YAML::Node event = YAML::Load(serializedEvent);
+			Require(event["kind"].as<std::string>() == "toolShortcut",
+				"viewport shortcut events must use their dedicated event kind");
+			Require(event["revision"].as<uint64_t>() == index + 1,
+				"viewport shortcuts must share the ordered event revision stream");
+			Require(event["managedMutationRevision"].as<uint64_t>() == 23,
+				"viewport shortcuts must carry the current managed mutation revision");
+			Require(event["keyCode"].as<uint32_t>() == supportedKeys[index],
+				"viewport shortcut events must preserve the detected key code");
+		}
+		Require(!controller.PullEvent(serializedEvent),
+			"rejected viewport shortcuts must not enter the event queue");
+	}
+
 	void TestConvertWorldToLocalTransformUnderParent()
 	{
 		const Math::Transform parentTransform(
@@ -372,6 +664,16 @@ int main()
 		{ "BuildWorldRayRejectsInvalidViewport", TestBuildWorldRayRejectsInvalidViewport },
 		{ "PickNearestUsesDistance", TestPickNearestUsesDistance },
 		{ "PickNearestTreatsInsideBoundsAsZeroDistance", TestPickNearestTreatsInsideBoundsAsZeroDistance },
+		{ "ResolveDropPositionUsesNearestMeshBounds", TestResolveDropPositionUsesNearestMeshBounds },
+		{ "ResolveDropPositionUsesGroundPlane", TestResolveDropPositionUsesGroundPlane },
+		{ "ResolveDropPositionUsesFiniteForwardFallback", TestResolveDropPositionUsesFiniteForwardFallback },
+		{ "ResolveDropPositionRejectsInvalidRay", TestResolveDropPositionRejectsInvalidRay },
+		{ "CalculateFramedCameraPositionPreservesViewDirection", TestCalculateFramedCameraPositionPreservesViewDirection },
+		{ "CalculateFramedCameraPositionAccountsForViewportAspect", TestCalculateFramedCameraPositionAccountsForViewportAspect },
+		{ "CalculateFramedCameraPositionRejectsInvalidInput", TestCalculateFramedCameraPositionRejectsInvalidInput },
+			{ "TransformToolStateIsValidatedAtomically", TestTransformToolStateIsValidatedAtomically },
+			{ "AssetDropEventUsesValidatedViewportQueue", TestAssetDropEventUsesValidatedViewportQueue },
+			{ "ToolShortcutEventUsesValidatedViewportQueue", TestToolShortcutEventUsesValidatedViewportQueue },
 		{ "ConvertWorldToLocalTransformUnderParent", TestConvertWorldToLocalTransformUnderParent },
 		{ "ConvertWorldToLocalTransformRejectsSingularParent", TestConvertWorldToLocalTransformRejectsSingularParent },
 		{ "PickNearestBreaksTiesDeterministically", TestPickNearestBreaksTiesDeterministically },
