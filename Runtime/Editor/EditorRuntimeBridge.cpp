@@ -482,6 +482,46 @@ namespace
 	glm::ivec2 GetEditorRemoteViewportRenderArea(uint32_t fallbackWidth, uint32_t fallbackHeight);
 	glm::ivec2 GetAppliedEditorRenderArea();
 
+	TSharedPtr<RemoteViewportBinding> FindRemoteViewportBinding(ViewportId viewportId)
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		const auto it = g_remoteViewportBindings.Find(viewportId);
+		return it != g_remoteViewportBindings.end() ? it.Value() : nullptr;
+	}
+
+	bool IsCurrentRemoteViewportBinding(
+		ViewportId viewportId,
+		const TSharedPtr<RemoteViewportBinding>& binding)
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		const auto it = g_remoteViewportBindings.Find(viewportId);
+		return it != g_remoteViewportBindings.end() && it.Value() == binding;
+	}
+
+	bool TryGetCurrentRemoteViewportHostHandle(
+		ViewportId viewportId,
+		const TSharedPtr<RemoteViewportBinding>& binding,
+		std::optional<MacNativeHostHandle>& outHostHandle)
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		const auto it = g_remoteViewportBindings.Find(viewportId);
+		if (it == g_remoteViewportBindings.end() || it.Value() != binding)
+		{
+			return false;
+		}
+
+		const auto hostIt = g_pendingRemoteViewportHostHandles.Find(viewportId);
+		if (hostIt != g_pendingRemoteViewportHostHandles.end())
+		{
+			outHostHandle = hostIt.Value();
+		}
+		else
+		{
+			outHostHandle.reset();
+		}
+		return true;
+	}
+
 	ViewportDescriptor MakeRemoteViewportDescriptor(ViewportId viewportId, uint32_t width, uint32_t height)
 	{
 		ViewportDescriptor descriptor{};
@@ -522,15 +562,18 @@ namespace
 
 	bool IsEditorInputCurrent(const InputPacket& input)
 	{
-		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-		auto it = g_remoteViewportBindings.Find(input.m_viewportId);
-		if (it == g_remoteViewportBindings.end())
+		auto binding = FindRemoteViewportBinding(input.m_viewportId);
+		if (!binding)
 		{
 			return false;
 		}
 
-		const auto& binding = it.Value();
 		std::lock_guard bindingLock(binding->m_mutex);
+		if (!IsCurrentRemoteViewportBinding(input.m_viewportId, binding))
+		{
+			return false;
+		}
+
 		const auto& runtimeSession = binding->m_binding.GetRuntimeSession();
 		const auto state = runtimeSession.GetState();
 		return binding->m_created &&
@@ -777,21 +820,15 @@ void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()
 
 void Sailor::EditorRuntime::ResetForAppLifecycle()
 {
+	TVector<TSharedPtr<RemoteViewportBinding>> bindings{};
 	{
 		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
 		for (const auto& bindingEntry : g_remoteViewportBindings)
 		{
 			const auto& binding = *bindingEntry.m_second;
-			if (!binding)
+			if (binding)
 			{
-				continue;
-			}
-
-			std::lock_guard bindingLock(binding->m_mutex);
-			if (binding->m_created)
-			{
-				binding->m_binding.Destroy();
-				binding->m_created = false;
+				bindings.Add(binding);
 			}
 		}
 
@@ -799,6 +836,17 @@ void Sailor::EditorRuntime::ResetForAppLifecycle()
 		g_pendingRemoteViewportHostHandles.Clear();
 		g_remoteViewportMouseButtons.Clear();
 	}
+
+	for (auto& binding : bindings)
+	{
+		std::lock_guard bindingLock(binding->m_mutex);
+		if (binding->m_created)
+		{
+			binding->m_binding.Destroy();
+			binding->m_created = false;
+		}
+	}
+
 	Win32::GlobalInput::Reset();
 	{
 		std::lock_guard inputLock(g_pendingEditorInputMutex);
@@ -861,16 +909,23 @@ void App::SetEditorViewport(uint32_t windowPosX, uint32_t windowPosY, uint32_t w
 	width = std::max(width, 1u);
 	height = std::max(height, 1u);
 
-	if (auto editor = GetSubmodule<Editor>())
-	{
-		RECT rect{};
-		rect.left = windowPosX;
-		rect.right = windowPosX + width;
-		rect.bottom = windowPosY + height;
-		rect.top = windowPosY;
+	RECT rect{};
+	rect.left = windowPosX;
+	rect.right = windowPosX + width;
+	rect.bottom = windowPosY + height;
+	rect.top = windowPosY;
 
-		editor->SetViewport(rect);
-	}
+	ExecuteOnEngineMainThread<bool>(false, [rect]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			editor->SetViewport(rect);
+			return true;
+		});
 }
 
 void App::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
@@ -922,11 +977,19 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	}
 #endif
 
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto& binding = g_remoteViewportBindings[viewportId];
+	auto binding = FindRemoteViewportBinding(viewportId);
 	if (!binding)
 	{
-		binding = TSharedPtr<RemoteViewportBinding>::Make(MakeRemoteViewportDescriptor(viewportId, remoteWidth, remoteHeight));
+		auto newBinding = TSharedPtr<RemoteViewportBinding>::Make(MakeRemoteViewportDescriptor(viewportId, remoteWidth, remoteHeight));
+		{
+			std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+			auto& registeredBinding = g_remoteViewportBindings[viewportId];
+			if (!registeredBinding)
+			{
+				registeredBinding = std::move(newBinding);
+			}
+			binding = registeredBinding;
+		}
 	}
 
 	RECT rect{};
@@ -940,9 +1003,15 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	{
 		return true;
 	}
-	if (const auto hostIt = g_pendingRemoteViewportHostHandles.Find(viewportId); hostIt != g_pendingRemoteViewportHostHandles.end())
+
+	std::optional<MacNativeHostHandle> hostHandle{};
+	if (!TryGetCurrentRemoteViewportHostHandle(viewportId, binding, hostHandle))
 	{
-		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, hostIt.Value());
+		return true;
+	}
+	if (hostHandle.has_value())
+	{
+		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *hostHandle);
 	}
 	if (!binding->m_created)
 	{
@@ -980,41 +1049,54 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 bool App::DestroyEditorRemoteViewport(uint64_t viewportId)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end())
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
 	{
 		return false;
 	}
 
-	auto binding = it.Value();
 	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return false;
 	}
+
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		const auto it = g_remoteViewportBindings.Find(viewportId);
+		if (it == g_remoteViewportBindings.end() || it.Value() != binding)
+		{
+			return false;
+		}
+		g_remoteViewportBindings.Remove(viewportId);
+	}
+
 	binding->m_binding.Destroy();
+	binding->m_created = false;
 	RequestEditorInputReset(viewportId);
-	g_remoteViewportBindings.Remove(viewportId);
 	return true;
 }
 
 uint32_t App::GetEditorRemoteViewportState(uint64_t viewportId)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end())
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
 	{
 		return static_cast<uint32_t>(Sailor::EditorRemote::SessionState::Created);
 	}
 
-	std::unique_lock bindingLock(it.Value()->m_mutex, std::try_to_lock);
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return static_cast<uint32_t>(Sailor::EditorRemote::SessionState::Active);
 	}
-	return static_cast<uint32_t>(it.Value()->m_binding.GetRuntimeSession().GetState());
+
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		return static_cast<uint32_t>(Sailor::EditorRemote::SessionState::Created);
+	}
+	return static_cast<uint32_t>(binding->m_binding.GetRuntimeSession().GetState());
 }
 
 uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** diagnostics)
@@ -1025,15 +1107,14 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 	}
 
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end())
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
 	{
 		diagnostics[0] = nullptr;
 		return 0;
 	}
 
-	std::unique_lock bindingLock(it.Value()->m_mutex, std::try_to_lock);
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		static constexpr const char* kBusyDiagnostics = "busy";
@@ -1043,10 +1124,16 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 		return static_cast<uint32_t>(kBusyDiagnosticsLen);
 	}
 
-	auto info = it.Value()->m_binding.GetRuntimeSession().GetDiagnostics();
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		diagnostics[0] = nullptr;
+		return 0;
+	}
+
+	auto info = binding->m_binding.GetRuntimeSession().GetDiagnostics();
 #if defined(__APPLE__)
-	info.m_nativePresenterSummary = it.Value()->m_presenter.BuildViewportSummary(viewportId);
-	if (const auto* allocation = it.Value()->m_surfaceProvider.FindAllocation({ viewportId, info.m_connectionEpoch, info.m_generation }))
+	info.m_nativePresenterSummary = binding->m_presenter.BuildViewportSummary(viewportId);
+	if (const auto* allocation = binding->m_surfaceProvider.FindAllocation({ viewportId, info.m_connectionEpoch, info.m_generation }))
 	{
 		if (!allocation->m_lastRendererSource.m_debugName.empty())
 		{
@@ -1065,7 +1152,7 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 		}
 	}
 
-	const std::string probeSummary = it.Value()->m_rendererFrameSourceProvider.GetLastProbeSummary();
+	const std::string probeSummary = binding->m_rendererFrameSourceProvider.GetLastProbeSummary();
 	if (!probeSummary.empty())
 	{
 		if (!info.m_nativePresenterSummary.empty())
@@ -1112,23 +1199,27 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 bool App::RetryEditorRemoteViewport(uint64_t viewportId)
 {
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end())
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
 	{
 		return false;
 	}
 
-	std::unique_lock bindingLock(it.Value()->m_mutex, std::try_to_lock);
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return false;
 	}
-	if (it.Value()->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Recovering ||
-		it.Value()->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Lost)
+
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
 	{
-		it.Value()->m_binding.Create();
-		it.Value()->Pump();
+		return false;
+	}
+	if (binding->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Recovering ||
+		binding->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Lost)
+	{
+		binding->m_binding.Create();
+		binding->Pump();
 	}
 	return true;
 }
@@ -1137,24 +1228,50 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 {
 #if defined(__APPLE__)
 	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
 	Sailor::EditorRemote::MacNativeHostHandle hostHandle{};
-	hostHandle.m_kind = static_cast<Sailor::EditorRemote::MacNativeHostHandleKind>(hostHandleKind);
-	hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
-	g_pendingRemoteViewportHostHandles[viewportId] = hostHandle;
+	if (hostHandleValue != 0)
+	{
+		// The editor creates and owns the CAMetalLayer on its UI thread.
+		// Accepting an NSView here would make native layer binding marshal
+		// synchronously to that thread while the viewport binding is locked.
+		if (hostHandleKind != static_cast<uint32_t>(
+				Sailor::EditorRemote::MacNativeHostHandleKind::CAMetalLayer))
+		{
+			return false;
+		}
+		hostHandle.m_kind =
+			Sailor::EditorRemote::MacNativeHostHandleKind::CAMetalLayer;
+		hostHandle.m_value = static_cast<uintptr_t>(hostHandleValue);
+	}
+	TSharedPtr<RemoteViewportBinding> binding{};
+	{
+		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
+		g_pendingRemoteViewportHostHandles[viewportId] = hostHandle;
+		const auto it = g_remoteViewportBindings.Find(viewportId);
+		if (it != g_remoteViewportBindings.end())
+		{
+			binding = it.Value();
+		}
+	}
 
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end() || !it.Value())
+	if (!binding)
 	{
 		return true;
 	}
 
-	std::unique_lock bindingLock(it.Value()->m_mutex, std::try_to_lock);
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
 	if (!bindingLock.owns_lock())
 	{
 		return true;
 	}
-	it.Value()->m_binding.GetHost().BindNativeHostHandle(viewportId, hostHandle);
+
+	std::optional<MacNativeHostHandle> currentHostHandle{};
+	if (!TryGetCurrentRemoteViewportHostHandle(viewportId, binding, currentHostHandle) ||
+		!currentHostHandle.has_value())
+	{
+		return true;
+	}
+	binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *currentHostHandle);
 	return true;
 #else
 	(void)viewportId;
@@ -1198,20 +1315,23 @@ bool App::SendEditorRemoteViewportInput(uint64_t viewportId, uint32_t kind, floa
 	input.m_focused = bFocused;
 	input.m_captured = bCaptured;
 
-	std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
-	auto it = g_remoteViewportBindings.Find(viewportId);
-	if (it == g_remoteViewportBindings.end())
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
 	{
 		return false;
 	}
 
-	std::lock_guard bindingLock(it.Value()->m_mutex);
+	std::lock_guard bindingLock(binding->m_mutex);
+	if (!IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		return false;
+	}
 
-	auto& runtimeSession = it.Value()->m_binding.GetRuntimeSession();
+	auto& runtimeSession = binding->m_binding.GetRuntimeSession();
 	input.m_viewportId = runtimeSession.GetViewportId();
 	input.m_connectionEpoch = runtimeSession.GetConnectionEpoch();
 	input.m_generation = runtimeSession.GetGeneration();
-	input.m_timestampNs = ++it.Value()->m_nowMs;
+	input.m_timestampNs = ++binding->m_nowMs;
 	if (!runtimeSession.HandleInput(input).IsOk())
 	{
 		return false;

@@ -1,4 +1,9 @@
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
+find_package(ixwebsocket CONFIG QUIET)
+
+if(NOT TARGET ixwebsocket::ixwebsocket)
+    add_library(ixwebsocket::ixwebsocket INTERFACE IMPORTED)
+endif()
 
 if(WIN32)
     find_package(VulkanLoader CONFIG REQUIRED)
@@ -25,6 +30,17 @@ add_executable(RemoteViewportContractTests
 
 add_executable(RemoteViewportRuntimeTests
     RemoteViewportRuntimeTests.cpp
+)
+
+add_executable(EditorEngineProtocolTests
+    EditorEngineProtocolTests.cpp
+)
+
+# Keep this executable wire-only. Compiling editor_engine.pb.cc here as well
+# as inside SailorLib registers the same descriptors twice when both modules
+# share the dynamic protobuf runtime on Windows.
+add_executable(EditorEngineWebSocketServerTests
+    EditorEngineWebSocketServerTests.cpp
 )
 
 add_executable(EditorViewportSessionTests
@@ -167,6 +183,8 @@ target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
 target_compile_definitions(RemoteViewportRuntimeTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
+target_compile_features(EditorEngineProtocolTests PRIVATE cxx_std_20)
+target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
 target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
@@ -207,6 +225,11 @@ target_compile_definitions(WorkspaceModuleMissingEntryFixture PRIVATE
 target_link_libraries(WorkspaceModuleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleIncompatibleFixture PRIVATE Sailor::Runtime)
 target_link_libraries(RemoteViewportRuntimeTests PRIVATE Sailor::Runtime)
+target_link_libraries(EditorEngineProtocolTests PRIVATE Sailor::Runtime)
+target_link_libraries(EditorEngineWebSocketServerTests PRIVATE
+    Sailor::Runtime
+    ixwebsocket::ixwebsocket
+)
 target_link_libraries(EditorViewportSessionTests PRIVATE Sailor::Runtime)
 target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
@@ -255,6 +278,8 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(BoundsContractTests)
     sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
+    sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
+    sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
 endif()
 if(WIN32)
     target_compile_features(RemoteViewportWindowsTransportTests PRIVATE cxx_std_20)
@@ -275,6 +300,14 @@ target_include_directories(RemoteViewportContractTests PRIVATE
 )
 target_include_directories(RemoteViewportRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(EditorEngineProtocolTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+    ${PROJECT_SOURCE_DIR}/Lib
+)
+target_include_directories(EditorEngineWebSocketServerTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+    ${PROJECT_SOURCE_DIR}/Lib
 )
 target_include_directories(EditorViewportSessionTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
@@ -368,6 +401,22 @@ add_test(
 add_test(
     NAME RemoteViewportRuntimeTests
     COMMAND RemoteViewportRuntimeTests
+)
+
+add_test(
+    NAME EditorEngineProtocolTests
+    COMMAND EditorEngineProtocolTests
+)
+
+add_test(
+    NAME EditorEngineWebSocketServerTests
+    COMMAND EditorEngineWebSocketServerTests
+)
+
+add_test(
+    NAME EditorEngineWebSocketLateStopTests
+    COMMAND EditorEngineWebSocketServerTests
+        --late-stop-after-static-teardown
 )
 
 add_test(
@@ -487,6 +536,9 @@ set_tests_properties(
     EcsLifecycleContractTests
     BoundsContractTests
     EditorViewportControllerContractTests
+    EditorEngineProtocolTests
+    EditorEngineWebSocketServerTests
+    EditorEngineWebSocketLateStopTests
     VulkanMemoryCounterContract
     SkyTemperatureTableContract
     ShaderConstantsModeContract

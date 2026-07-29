@@ -3,6 +3,7 @@ using CoreFoundation;
 using Foundation;
 using ObjCRuntime;
 using SailorEditor.Services;
+using SailorEditor.Shell;
 using UIKit;
 using MauiWindow = Microsoft.Maui.Controls.Window;
 
@@ -165,18 +166,18 @@ namespace SailorEditor.Platforms.MacCatalyst
                     SaveItem => CreateItem(SaveItem, "Save", "square.and.arrow.down", () => MauiProgram.GetService<EditorToolbarActions>().SaveAsync()),
                     UndoItem => CreateItem(UndoItem, "Undo", "arrow.uturn.backward", () => MauiProgram.GetService<EditorToolbarActions>().UndoAsync()),
                     RedoItem => CreateItem(RedoItem, "Redo", "arrow.uturn.forward", () => MauiProgram.GetService<EditorToolbarActions>().RedoAsync()),
-                    PlayItem => CreateItem(PlayItem, "Play", "play.fill", () =>
-                    {
-                        var actions = MauiProgram.GetService<EditorToolbarActions>();
-                        actions.RunWorld(false);
-                        return Task.CompletedTask;
-                    }),
-                    DebugItem => CreateItem(DebugItem, "Debug", "ladybug.fill", () =>
-                    {
-                        var actions = MauiProgram.GetService<EditorToolbarActions>();
-                        actions.RunWorld(true);
-                        return Task.CompletedTask;
-                    }),
+                    PlayItem => CreateItem(
+                        PlayItem,
+                        "Play",
+                        "play.fill",
+                        () => MauiProgram.GetService<EditorToolbarActions>()
+                            .RunWorldAsync(false)),
+                    DebugItem => CreateItem(
+                        DebugItem,
+                        "Debug",
+                        "ladybug.fill",
+                        () => MauiProgram.GetService<EditorToolbarActions>()
+                            .RunWorldAsync(true)),
                     TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(false)),
                     TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(true)),
                     SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", () => MauiProgram.GetService<EditorToolbarActions>().SaveLayoutAsync()),
@@ -210,7 +211,9 @@ namespace SailorEditor.Platforms.MacCatalyst
 
             NSToolbarItem CreateItem(string identifier, string label, string symbolName, Func<Task> action)
             {
-                var target = new ToolbarActionTarget(action);
+                var target = new ToolbarActionTarget(
+                    label,
+                    action);
                 actionTargets[identifier] = target;
 
                 var barButton = CreateButton(label, symbolName, target);
@@ -235,17 +238,49 @@ namespace SailorEditor.Platforms.MacCatalyst
 
             sealed class ToolbarActionTarget : NSObject
             {
+                readonly string label;
                 readonly Func<Task> action;
 
-                public ToolbarActionTarget(Func<Task> action)
+                public ToolbarActionTarget(
+                    string label,
+                    Func<Task> action)
                 {
+                    this.label = label;
                     this.action = action;
                 }
 
                 [Export("invoke:")]
-                public async void Invoke(NSObject sender)
+                public void Invoke(NSObject sender)
                 {
-                    await Microsoft.Maui.ApplicationModel.MainThread.InvokeOnMainThreadAsync(action);
+                    _ = InvokeAsync();
+                }
+
+                async Task InvokeAsync()
+                {
+                    try
+                    {
+                        await Microsoft.Maui.ApplicationModel.MainThread
+                            .InvokeOnMainThreadAsync(action);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"{label} failed: {ex}");
+
+                        try
+                        {
+                            await Microsoft.Maui.ApplicationModel.MainThread
+                                .InvokeOnMainThreadAsync(
+                                    () => MauiProgram
+                                        .GetService<EditorShellHost>()
+                                        .SetStatus(
+                                            $"{label} failed: {ex.Message}"));
+                        }
+                        catch (Exception statusException)
+                        {
+                            Console.Error.WriteLine(
+                                $"Failed to publish toolbar error status: {statusException}");
+                        }
+                    }
                 }
             }
         }

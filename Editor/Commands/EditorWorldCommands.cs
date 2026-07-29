@@ -98,9 +98,14 @@ public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
     public string Description { get; }
     public IHistoryMergePolicy? MergePolicy => new TimeWindowHistoryMergePolicy(TimeSpan.FromMilliseconds(750));
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(_afterYaml));
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
-        => ValueTask.FromResult(Apply(_beforeYaml));
+    public Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => ApplyAsync(_afterYaml, cancellationToken);
+    public ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => new(ApplyAsync(_beforeYaml, cancellationToken));
     public bool CanCoalesceWith(IUndoableEditorCommand next) =>
         next is UpdateGameObjectCommand command && _instanceId.Equals(command._instanceId);
     public IUndoableEditorCommand CoalesceWith(IUndoableEditorCommand next)
@@ -108,9 +113,15 @@ public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
         var command = (UpdateGameObjectCommand)next;
         return new UpdateGameObjectCommand(_instanceId, _beforeYaml, command._afterYaml, command.Description);
     }
-    CommandResult Apply(string yaml)
+    async Task<CommandResult> ApplyAsync(
+        string yaml,
+        CancellationToken cancellationToken)
     {
-        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
+        if (!await MauiProgram.GetService<EngineService>()
+                .CommitChangesAsync(
+                    _instanceId,
+                    yaml,
+                    cancellationToken))
             return CommandResult.Failure();
 
         return MauiProgram.GetService<WorldService>().ApplyGameObjectYamlLocal(_instanceId, yaml)
@@ -142,9 +153,14 @@ public sealed class UpdateComponentCommand : IHistoryCoalescibleCommand
     public string Description { get; }
     public IHistoryMergePolicy? MergePolicy => new TimeWindowHistoryMergePolicy(TimeSpan.FromMilliseconds(750));
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default) => Task.FromResult(Apply(_afterYaml));
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
-        => ValueTask.FromResult(Apply(_beforeYaml));
+    public Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => ApplyAsync(_afterYaml, cancellationToken);
+    public ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => new(ApplyAsync(_beforeYaml, cancellationToken));
     public bool CanCoalesceWith(IUndoableEditorCommand next) =>
         next is UpdateComponentCommand command && _instanceId.Equals(command._instanceId);
     public IUndoableEditorCommand CoalesceWith(IUndoableEditorCommand next)
@@ -152,9 +168,15 @@ public sealed class UpdateComponentCommand : IHistoryCoalescibleCommand
         var command = (UpdateComponentCommand)next;
         return new UpdateComponentCommand(_instanceId, _beforeYaml, command._afterYaml, command.Description);
     }
-    CommandResult Apply(string yaml)
+    async Task<CommandResult> ApplyAsync(
+        string yaml,
+        CancellationToken cancellationToken)
     {
-        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, yaml))
+        if (!await MauiProgram.GetService<EngineService>()
+                .CommitChangesAsync(
+                    _instanceId,
+                    yaml,
+                    cancellationToken))
             return CommandResult.Failure();
 
         return MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, yaml)
@@ -170,32 +192,43 @@ public sealed class CreateGameObjectCommand(InstanceId? parentId = null) : IUndo
     public string Description => "Create GameObject";
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => true;
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var world = MauiProgram.GetService<WorldService>();
         var engine = MauiProgram.GetService<EngineService>();
-        if (!engine.CreateGameObject(parentId, _createdId, out var createdId))
-            return Task.FromResult(CommandResult.Failure());
+        var createdId = await engine.CreateGameObjectAsync(
+            parentId,
+            _createdId,
+            cancellationToken);
+        if (createdId is null)
+            return CommandResult.Failure();
 
         _createdId = createdId;
         if (!world.TryGetGameObject(createdId, out _))
         {
-            engine.DestroyObject(createdId);
-            return Task.FromResult(CommandResult.Failure("Created object was not projected"));
+            await engine.DestroyObjectAsync(
+                createdId,
+                CancellationToken.None);
+            return CommandResult.Failure("Created object was not projected");
         }
 
         MauiProgram.GetService<SelectionService>().SelectInstance(createdId);
 
-        return Task.FromResult(CommandResult.Success(value: _createdId));
+        return CommandResult.Success(value: _createdId);
     }
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         if (_createdId is null || _createdId.IsEmpty())
-            return ValueTask.FromResult(CommandResult.Failure("Created object was not found"));
+            return CommandResult.Failure("Created object was not found");
 
-        return ValueTask.FromResult(MauiProgram.GetService<EngineService>().DestroyObject(_createdId)
+        return await MauiProgram.GetService<EngineService>()
+            .DestroyObjectAsync(_createdId, cancellationToken)
             ? CommandResult.Success()
-            : CommandResult.Failure("Destroy created object failed"));
+            : CommandResult.Failure("Destroy created object failed");
     }
 }
 
@@ -213,20 +246,30 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _activeInstanceId is not null && !_activeInstanceId.IsEmpty() && !string.IsNullOrWhiteSpace(_prefabSnapshotYaml);
 
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
-        => Task.FromResult(MauiProgram.GetService<EngineService>().DestroyObject(_activeInstanceId) ? CommandResult.Success() : CommandResult.Failure("Destroy failed"));
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => await MauiProgram.GetService<EngineService>()
+            .DestroyObjectAsync(_activeInstanceId, cancellationToken)
+            ? CommandResult.Success()
+            : CommandResult.Failure("Destroy failed");
 
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
         var beforeIds = world.Current.Prefabs.SelectMany(x => x.GameObjects).Select(x => x.InstanceId?.Value).ToHashSet();
 
-        if (!engine.InstantiatePrefabFromYaml(_prefabSnapshotYaml, _parentId))
-            return ValueTask.FromResult(CommandResult.Failure("Restore deleted hierarchy failed"));
+        if (!await engine.InstantiatePrefabFromYamlAsync(
+                _prefabSnapshotYaml,
+                _parentId,
+                cancellationToken))
+            return CommandResult.Failure("Restore deleted hierarchy failed");
 
         if (world.TryGetGameObject(_activeInstanceId, out _))
-            return ValueTask.FromResult(CommandResult.Success());
+            return CommandResult.Success();
 
         var restored = world.Current.Prefabs
             .SelectMany(x => x.GameObjects)
@@ -235,10 +278,13 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
             ?? world.Current.Prefabs.SelectMany(x => x.GameObjects).FirstOrDefault(x => x.InstanceId is not null && !beforeIds.Contains(x.InstanceId.Value));
 
         if (restored is null)
-            return ValueTask.FromResult(CommandResult.Failure("Restored hierarchy root was not found"));
+            return CommandResult.Failure("Restored hierarchy root was not found");
 
-        engine.DestroyObject(restored.InstanceId);
-        return ValueTask.FromResult(CommandResult.Failure("Restored hierarchy did not preserve its instance identity"));
+        await engine.DestroyObjectAsync(
+            restored.InstanceId,
+            CancellationToken.None);
+        return CommandResult.Failure(
+            "Restored hierarchy did not preserve its instance identity");
     }
 
     static string CreateSnapshotYaml(GameObject root)
@@ -257,21 +303,33 @@ public sealed class ReparentGameObjectCommand(GameObject child, GameObject? newP
     public string Description => "Reparent GameObject";
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _childId is not null && !_childId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
-        if (!engine.ReparentObject(_childId, _newParentId, keepWorldTransform))
-            return Task.FromResult(CommandResult.Failure());
+        if (!await engine.ReparentObjectAsync(
+                _childId,
+                _newParentId,
+                keepWorldTransform,
+                cancellationToken))
+            return CommandResult.Failure();
 
-        return Task.FromResult(CommandResult.Success());
+        return CommandResult.Success();
     }
 
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
-        return ValueTask.FromResult(engine.ReparentObject(_childId, _oldParentId, keepWorldTransform)
+        return await engine.ReparentObjectAsync(
+            _childId,
+            _oldParentId,
+            keepWorldTransform,
+            cancellationToken)
             ? CommandResult.Success()
-            : CommandResult.Failure("Restore parent failed"));
+            : CommandResult.Failure("Restore parent failed");
     }
 }
 
@@ -283,33 +341,45 @@ public sealed class AddComponentCommand(GameObject gameObject, string componentT
     public string Description => $"Add {componentTypeName}";
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _ownerId is not null && !_ownerId.IsEmpty() && !string.IsNullOrWhiteSpace(componentTypeName);
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var world = MauiProgram.GetService<WorldService>();
         if (!world.TryGetGameObject(_ownerId, out var owner))
-            return Task.FromResult(CommandResult.Failure("Owner not found"));
+            return CommandResult.Failure("Owner not found");
 
         var engine = MauiProgram.GetService<EngineService>();
-        if (!engine.AddComponent(_ownerId, componentTypeName, _componentId, out var createdId))
-            return Task.FromResult(CommandResult.Failure());
+        var createdId = await engine.AddComponentAsync(
+            _ownerId,
+            componentTypeName,
+            _componentId,
+            cancellationToken);
+        if (createdId is null)
+            return CommandResult.Failure();
 
         _componentId = createdId;
         if (!world.TryGetComponent(createdId, out _))
         {
-            engine.RemoveComponent(createdId);
-            return Task.FromResult(CommandResult.Failure("Created component was not projected"));
+            await engine.RemoveComponentAsync(
+                createdId,
+                CancellationToken.None);
+            return CommandResult.Failure("Created component was not projected");
         }
 
-        return Task.FromResult(CommandResult.Success(value: _componentId));
+        return CommandResult.Success(value: _componentId);
     }
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         if (_componentId is null || _componentId.IsEmpty())
-            return ValueTask.FromResult(CommandResult.Failure("Created component was not found"));
+            return CommandResult.Failure("Created component was not found");
 
-        return ValueTask.FromResult(MauiProgram.GetService<EngineService>().RemoveComponent(_componentId)
+        return await MauiProgram.GetService<EngineService>()
+            .RemoveComponentAsync(_componentId, cancellationToken)
             ? CommandResult.Success()
-            : CommandResult.Failure("Remove created component failed"));
+            : CommandResult.Failure("Remove created component failed");
     }
 }
 
@@ -326,40 +396,62 @@ public sealed class RemoveComponentCommand(Component component) : IUndoableEdito
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _activeInstanceId is not null && !_activeInstanceId.IsEmpty() && _ownerId is not null && !_ownerId.IsEmpty() && !string.IsNullOrWhiteSpace(_componentTypeName);
 
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
-        => Task.FromResult(MauiProgram.GetService<EngineService>().RemoveComponent(_activeInstanceId) ? CommandResult.Success() : CommandResult.Failure());
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => await MauiProgram.GetService<EngineService>()
+            .RemoveComponentAsync(_activeInstanceId, cancellationToken)
+            ? CommandResult.Success()
+            : CommandResult.Failure();
 
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
 
         if (!world.TryGetGameObject(_ownerId, out var owner))
-            return ValueTask.FromResult(CommandResult.Failure("Component owner was not found"));
+            return CommandResult.Failure("Component owner was not found");
 
-        if (!engine.AddComponent(_ownerId, _componentTypeName, _originalInstanceId, out var restoredInstanceId))
-            return ValueTask.FromResult(CommandResult.Failure("Restore component failed"));
+        var restoredInstanceId = await engine.AddComponentAsync(
+            _ownerId,
+            _componentTypeName,
+            _originalInstanceId,
+            cancellationToken);
+        if (restoredInstanceId is null)
+            return CommandResult.Failure("Restore component failed");
 
         if (!restoredInstanceId.Equals(_originalInstanceId) || !world.TryGetComponent(restoredInstanceId, out var restored))
         {
-            engine.RemoveComponent(restoredInstanceId);
-            return ValueTask.FromResult(CommandResult.Failure("Restored component was not found"));
+            await engine.RemoveComponentAsync(
+                restoredInstanceId,
+                CancellationToken.None);
+            return CommandResult.Failure("Restored component was not found");
         }
 
-        if (!engine.CommitChanges(restored.InstanceId, _beforeYaml))
+        if (!await engine.CommitChangesAsync(
+                restored.InstanceId,
+                _beforeYaml,
+                cancellationToken))
         {
-            engine.RemoveComponent(restored.InstanceId);
-            return ValueTask.FromResult(CommandResult.Failure("Restore component state failed"));
+            await engine.RemoveComponentAsync(
+                restored.InstanceId,
+                CancellationToken.None);
+            return CommandResult.Failure("Restore component state failed");
         }
 
         if (!world.ApplyComponentYamlLocal(restored.InstanceId, _beforeYaml))
         {
-            engine.RemoveComponent(restored.InstanceId);
-            return ValueTask.FromResult(CommandResult.Failure("Refresh restored component state failed"));
+            await engine.RemoveComponentAsync(
+                restored.InstanceId,
+                CancellationToken.None);
+            return CommandResult.Failure(
+                "Refresh restored component state failed");
         }
 
         _activeInstanceId = restoredInstanceId;
-        return ValueTask.FromResult(CommandResult.Success());
+        return CommandResult.Success();
     }
 }
 
@@ -372,20 +464,32 @@ public sealed class ResetComponentToDefaultsCommand(Component component) : IUndo
     public string Description => $"Reset {component.Typename?.Name}";
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) => _instanceId is not null && !_instanceId.IsEmpty();
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
-        var ok = MauiProgram.GetService<EngineService>().ResetComponentToDefaults(_instanceId);
+        var ok = await MauiProgram.GetService<EngineService>()
+            .ResetComponentToDefaultsAsync(
+                _instanceId,
+                cancellationToken);
         if (ok && MauiProgram.GetService<WorldService>().TryGetComponent(_instanceId, out var refreshed))
             _afterYaml = EditorYaml.SerializeComponent(refreshed);
-        return Task.FromResult(ok ? CommandResult.Success() : CommandResult.Failure());
+        return ok ? CommandResult.Success() : CommandResult.Failure();
     }
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
-        if (!MauiProgram.GetService<EngineService>().CommitChanges(_instanceId, _beforeYaml))
-            return ValueTask.FromResult(CommandResult.Failure("Restore component state failed"));
+        if (!await MauiProgram.GetService<EngineService>()
+                .CommitChangesAsync(
+                    _instanceId,
+                    _beforeYaml,
+                    cancellationToken))
+            return CommandResult.Failure("Restore component state failed");
 
-        return ValueTask.FromResult(MauiProgram.GetService<WorldService>().ApplyComponentYamlLocal(_instanceId, _beforeYaml)
+        return MauiProgram.GetService<WorldService>()
+            .ApplyComponentYamlLocal(_instanceId, _beforeYaml)
             ? CommandResult.Success()
-            : CommandResult.Failure("Refresh restored component state failed"));
+            : CommandResult.Failure("Refresh restored component state failed");
     }
 }

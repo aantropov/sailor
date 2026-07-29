@@ -183,10 +183,18 @@ public sealed class InstantiatePrefabAssetCommand(AssetFile prefabFile, GameObje
     public string Name => nameof(InstantiatePrefabAssetCommand);
     public bool CanExecute(ActionContext context) => prefabFileId is not null && !prefabFileId.IsEmpty();
 
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
-        var ok = MauiProgram.GetService<EngineService>().InstantiatePrefab(prefabFileId, parent?.InstanceId);
-        return Task.FromResult(ok ? CommandResult.Success(value: prefabFileId) : CommandResult.Failure("Instantiate prefab failed"));
+        var ok = await MauiProgram.GetService<EngineService>()
+            .InstantiatePrefabAsync(
+                prefabFileId,
+                parent?.InstanceId,
+                cancellationToken);
+        return ok
+            ? CommandResult.Success(value: prefabFileId)
+            : CommandResult.Failure("Instantiate prefab failed");
     }
 }
 

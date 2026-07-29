@@ -43,61 +43,76 @@ public sealed class AlreadyAppliedTransformCommandTests
     }
 
     [Fact]
-    public void NativeCommitSucceeded_LocalProjectionFailed_RefreshesAndReportsSuccess()
+    public async Task NativeCommitSucceeded_LocalProjectionFailed_RefreshesAndReportsSuccess()
     {
         var calls = new List<string>();
 
-        var result = EditorViewportTransformApplication.CommitAndApply(
-            () =>
+        var result =
+            await EditorViewportTransformApplication.CommitAndApplyAsync(
+            _ =>
             {
                 calls.Add("commit");
-                return true;
+                return Task.FromResult(true);
             },
             () =>
             {
                 calls.Add("local");
                 return false;
             },
-            () => calls.Add("refresh"));
+            _ =>
+            {
+                calls.Add("refresh");
+                return Task.CompletedTask;
+            });
 
         Assert.True(result);
         Assert.Equal(["commit", "local", "refresh"], calls);
     }
 
     [Fact]
-    public void AlreadyAppliedState_LocalProjectionException_RefreshesAndReportsSuccess()
+    public async Task AlreadyAppliedState_LocalProjectionException_RefreshesAndReportsSuccess()
     {
         var calls = new List<string>();
 
-        var result = EditorViewportTransformApplication.ApplyAlreadyCommitted(
+        var result =
+            await EditorViewportTransformApplication.ApplyAlreadyCommittedAsync(
             () =>
             {
                 calls.Add("local");
                 throw new InvalidOperationException("projection failed");
             },
-            () => calls.Add("refresh"));
+            _ =>
+            {
+                calls.Add("refresh");
+                return Task.CompletedTask;
+            });
 
         Assert.True(result);
         Assert.Equal(["local", "refresh"], calls);
     }
 
     [Fact]
-    public void NativeCommitFailed_DoesNotProjectOrRefresh()
+    public async Task NativeCommitFailed_DoesNotProjectOrRefresh()
     {
         var calls = new List<string>();
 
-        var result = EditorViewportTransformApplication.CommitAndApply(
-            () =>
+        var result =
+            await EditorViewportTransformApplication.CommitAndApplyAsync(
+            _ =>
             {
                 calls.Add("commit");
-                return false;
+                return Task.FromResult(false);
             },
             () =>
             {
                 calls.Add("local");
                 return true;
             },
-            () => calls.Add("refresh"));
+            _ =>
+            {
+                calls.Add("refresh");
+                return Task.CompletedTask;
+            });
 
         Assert.False(result);
         Assert.Equal(["commit"], calls);
@@ -109,18 +124,29 @@ public sealed class AlreadyAppliedTransformCommandTests
         public bool LocalResult { get; set; } = true;
         public bool CommitResult { get; set; } = true;
 
-        public bool ApplyLocal(string instanceId, string yaml)
+        public Task<bool> ApplyLocalAsync(
+            string instanceId,
+            string yaml,
+            CancellationToken cancellationToken = default)
         {
             Calls.Add($"local:{instanceId}:{yaml}");
-            return EditorViewportTransformApplication.ApplyAlreadyCommitted(
+            return EditorViewportTransformApplication.ApplyAlreadyCommittedAsync(
                 () => LocalResult,
-                () => Calls.Add("refresh"));
+                _ =>
+                {
+                    Calls.Add("refresh");
+                    return Task.CompletedTask;
+                },
+                cancellationToken);
         }
 
-        public bool CommitAndApplyLocal(string instanceId, string yaml)
+        public Task<bool> CommitAndApplyLocalAsync(
+            string instanceId,
+            string yaml,
+            CancellationToken cancellationToken = default)
         {
             Calls.Add($"commit:{instanceId}:{yaml}");
-            return CommitResult;
+            return Task.FromResult(CommitResult);
         }
     }
 }

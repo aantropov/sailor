@@ -18,7 +18,8 @@ namespace SailorEditor.ViewModels;
 public interface IInspectorEditable
 {
     bool HasPendingInspectorChanges { get; }
-    bool CommitInspectorChanges();
+    Task<bool> CommitInspectorChangesAsync(
+        CancellationToken cancellationToken = default);
 }
 
 public partial class GameObject : ObservableObject, ICloneable, IInspectorEditable
@@ -26,11 +27,14 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
     readonly InspectorAutoCommitController _autoCommit = new(
         propertyName => propertyName == nameof(IsDirty),
         propertyName => false);
+    readonly SemaphoreSlim _commitGate = new(1, 1);
+    int pendingInspectorCommits;
 
     public GameObject()
     {
         AddNewComponent = new AsyncRelayCommand(AddComponentFromInspectorAsync);
-        ClearComponentsCommand = new Command(ClearComponentsFromInspector);
+        ClearComponentsCommand =
+            new AsyncRelayCommand(ClearComponentsFromInspectorAsync);
 
         PropertyChanged += (s, args) =>
         {
@@ -40,14 +44,39 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
             IsDirty = true;
             if (decision.CommitNow)
-                CommitInspectorChanges();
+                _ = CommitInspectorChangesSafelyAsync();
         };
     }
 
-    public bool CommitInspectorChanges()
+    public async Task<bool> CommitInspectorChangesAsync(
+        CancellationToken cancellationToken = default)
     {
-        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty) || !isInited)
+        Interlocked.Increment(ref pendingInspectorCommits);
+        var acquired = false;
+        try
+        {
+            await _commitGate.WaitAsync(cancellationToken);
+            acquired = true;
+            return await CommitInspectorChangesCoreAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            if (acquired)
+            {
+                _commitGate.Release();
+            }
+            Interlocked.Decrement(ref pendingInspectorCommits);
+        }
+    }
+
+    async Task<bool> CommitInspectorChangesCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!isInited)
             return false;
+        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty))
+            return true;
 
         var yamlGameObject = EditorYaml.SerializeGameObject(this);
         var previousYaml = _lastCommittedYaml ?? yamlGameObject;
@@ -64,11 +93,13 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         CommandResult result;
         try
         {
-            result = dispatcher.DispatchAsync(
+            result = await dispatcher.DispatchAsync(
                 new UpdateGameObjectCommand(this, previousYaml, yamlGameObject, $"Edit {Name}"),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(CommitInspectorChangesAsync))),
+                cancellationToken);
         }
         catch
         {
@@ -86,8 +117,22 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         return false;
     }
 
+    async Task CommitInspectorChangesSafelyAsync()
+    {
+        try
+        {
+            await CommitInspectorChangesAsync();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Automatic GameObject inspector commit failed: {exception}");
+        }
+    }
+
     [YamlIgnore]
-    public bool HasPendingInspectorChanges => IsDirty;
+    public bool HasPendingInspectorChanges =>
+        IsDirty || Volatile.Read(ref pendingInspectorCommits) != 0;
 
     public void Initialize()
     {
@@ -147,16 +192,18 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
         if (!string.IsNullOrWhiteSpace(componentTypeName))
         {
-            MauiProgram.GetService<WorldService>().AddComponent(this, componentTypeName);
+            await MauiProgram.GetService<WorldService>()
+                .AddComponentAsync(this, componentTypeName);
         }
     }
 
-    public void ClearComponentsFromInspector()
+    public async Task ClearComponentsFromInspectorAsync()
     {
         var components = Components.ToList();
         foreach (var component in components)
         {
-            MauiProgram.GetService<WorldService>().RemoveComponent(component);
+            await MauiProgram.GetService<WorldService>()
+                .RemoveComponentAsync(component);
         }
     }
 

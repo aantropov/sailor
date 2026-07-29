@@ -20,27 +20,338 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public enum EngineLifecycleState", source, StringComparison.Ordinal);
         Assert.Contains("public Task StartAsync(EngineLaunchContext launchContext, CancellationToken cancellationToken = default)", source, StringComparison.Ordinal);
         Assert.Contains("public async Task<int> StopAsync(CancellationToken cancellationToken = default)", source, StringComparison.Ordinal);
+        Assert.Contains("IAsyncDisposable", source, StringComparison.Ordinal);
+        Assert.Contains("public ValueTask DisposeAsync()", source, StringComparison.Ordinal);
+        Assert.Contains("disposeTask = Task.Run(DisposeCoreAsync);", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.DisposeAsync().ConfigureAwait(false);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("public void ResetForWorkspaceChange()", source, StringComparison.Ordinal);
-        Assert.Contains("await session.NativeRunTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
+        Assert.Contains("await session.RuntimeMonitorTask.ConfigureAwait(false)", source, StringComparison.Ordinal);
         Assert.Contains("await Task.WhenAll(session.PollTasks).ConfigureAwait(false)", source, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.Shutdown()", source, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.ShutdownAsync().ConfigureAwait(false);",
+            source,
+            StringComparison.Ordinal);
         Assert.Contains("BuildInteropArgumentsAsync", source, StringComparison.Ordinal);
         Assert.Contains("MainThread.InvokeOnMainThreadAsync", source, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void NativeLifecycle_CreatesAndDestroysPlatformWindowsInsideMainThreadInteropLock()
+    public void ManagedLifecycle_DisposalIsNonBlockingAndPathTracingIsSessionCancelled()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var macAppDelegate = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "MacCatalyst",
+            "AppDelegate.cs");
+
+        var beginDispose = source.IndexOf("Task BeginDisposeAsync()", StringComparison.Ordinal);
+        var disposeCore = source.IndexOf("async Task DisposeCoreAsync()", beginDispose, StringComparison.Ordinal);
+        var syncDispose = source.IndexOf("public void Dispose()", disposeCore, StringComparison.Ordinal);
+        var asyncDispose = source.IndexOf("public ValueTask DisposeAsync()", syncDispose, StringComparison.Ordinal);
+        Assert.True(beginDispose >= 0);
+        Assert.True(disposeCore > beginDispose);
+        Assert.True(syncDispose > disposeCore);
+        Assert.True(asyncDispose > syncDispose);
+        Assert.DoesNotContain(
+            "GetAwaiter().GetResult()",
+            source[beginDispose..],
+            StringComparison.Ordinal);
+
+        var terminate = macAppDelegate.IndexOf(
+            "public override void WillTerminate",
+            StringComparison.Ordinal);
+        var disposeAsync = macAppDelegate.IndexOf(
+            ".DisposeAsync()",
+            terminate,
+            StringComparison.Ordinal);
+        var asTask = macAppDelegate.IndexOf(
+            ".AsTask();",
+            disposeAsync,
+            StringComparison.Ordinal);
+        var pumpMainRunLoop = macAppDelegate.IndexOf(
+            "NSRunLoop.Main.RunUntil(deadline);",
+            asTask,
+            StringComparison.Ordinal);
+        var observeShutdown = macAppDelegate.IndexOf(
+            "shutdownTask.GetAwaiter().GetResult();",
+            pumpMainRunLoop,
+            StringComparison.Ordinal);
+        var terminateBase = macAppDelegate.IndexOf(
+            "base.WillTerminate(application);",
+            observeShutdown,
+            StringComparison.Ordinal);
+        Assert.True(terminate >= 0);
+        Assert.True(disposeAsync > terminate);
+        Assert.True(asTask > disposeAsync);
+        Assert.True(pumpMainRunLoop > asTask);
+        Assert.True(observeShutdown > pumpMainRunLoop);
+        Assert.True(terminateBase > observeShutdown);
+
+        var pathTrace = source.IndexOf(
+            "public async Task<bool> ExportPathTracedImageAsync",
+            StringComparison.Ordinal);
+        var runWorld = source.IndexOf("public void RunWorld", pathTrace, StringComparison.Ordinal);
+        Assert.True(pathTrace >= 0);
+        Assert.True(runWorld > pathTrace);
+        var pathTraceBody = source[pathTrace..runWorld];
+        Assert.Contains(
+            "backgroundCancellationToken",
+            pathTraceBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "session?.BackgroundCancellation.Token ?? default",
+            pathTraceBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "InvokeRunningInterop",
+            pathTraceBody,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ManagedTransport_LivenessMonitorUsesBoundedProtocolPolls()
+    {
+        var serviceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+
+        Assert.Contains(
+            "lane.AllowsBlockingRequest",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new(\"background\", allowsBlockingRequest: true)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "? Timeout.InfiniteTimeSpan",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ": KeepAliveTimeout;",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.StartAsync(",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MonitorEngineLifetimeAsync(",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RuntimeLivenessPollInterval",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.IsEngineRunningAsync(",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "session.RuntimeMonitorCancellation.Cancel();",
+            serviceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "pollCancellation.Token",
+            serviceSource,
+            StringComparison.Ordinal);
+
+        var stop = serviceSource.IndexOf(
+            "public async Task<int> StopAsync",
+            StringComparison.Ordinal);
+        var orderlyStop = serviceSource.IndexOf(
+            "stopFailure = await RequestNativeStopAsync()",
+            stop,
+            StringComparison.Ordinal);
+        var cancelMonitor = serviceSource.IndexOf(
+            "session.RuntimeMonitorCancellation.Cancel();",
+            stop,
+            StringComparison.Ordinal);
+        Assert.True(stop >= 0);
+        Assert.True(cancelMonitor > stop);
+        Assert.True(orderlyStop > stop);
+        Assert.True(orderlyStop > cancelMonitor);
+    }
+
+    [Fact]
+    public void ManagedTeardown_HasBoundedCompletionAndLaneDrains()
+    {
+        var serviceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+
+        var disposeCore = serviceSource.IndexOf(
+            "async Task DisposeCoreAsync()",
+            StringComparison.Ordinal);
+        var syncDispose = serviceSource.IndexOf(
+            "public void Dispose()",
+            disposeCore,
+            StringComparison.Ordinal);
+        Assert.True(disposeCore >= 0);
+        Assert.True(syncDispose > disposeCore);
+        var disposeBody = serviceSource[disposeCore..syncDispose];
+        Assert.Contains(
+            "StopAsync(orderlyStopCancellation.Token)",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeOrderlyStopTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "StopAsync(CancellationToken.None)",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "completionTask.WaitAsync(",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeCompletionTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeProtocolClientOnce();",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposeAbortDrainTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DisposePlatformQueueTimeout",
+            disposeBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "await completionTask.ConfigureAwait(false);",
+            disposeBody,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "public async ValueTask DisposeAsync()",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await disposalCompletion.Task",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".WaitAsync(DisposeDrainTimeout)",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "disposeCancellation.Cancel();",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "disposalCompletion.TrySetResult()",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseDisposalResources();",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ".GetAwaiter().GetResult()",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            ".Gate.Wait(",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Interlocked.Exchange(",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ref lane.Socket",
+            transportSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Volatile.Read(ref activeInvocations)",
+            transportSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ViewportHotPaths_AreBoundedQueuedAndKeyedPerViewport()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+
+        Assert.Contains(
+            "KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate>",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "KeyedLatestQueuedCommand<ulong, RemoteViewportInput>",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "remoteViewportUpdates.Enqueue(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "pointerMoves.Enqueue(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "QueueRemoteViewportStatusRefresh(viewportId);",
+            source,
+            StringComparison.Ordinal);
+
+        var reload = source.IndexOf(
+            "public async Task<bool> RequestAssetReloadAsync",
+            StringComparison.Ordinal);
+        var reloadEnd = source.IndexOf(
+            "public async Task RefreshCurrentWorldAsync",
+            reload,
+            StringComparison.Ordinal);
+        Assert.True(reload >= 0);
+        Assert.True(reloadEnd > reload);
+        Assert.Contains(
+            "await protocolClient.RequestAssetReloadAsync(",
+            source[reload..reloadEnd],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Task.Run(",
+            source[reload..reloadEnd],
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NativeLifecycle_InitializesOnMainThreadAndShutsDownOffTheUiThread()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var start = source.IndexOf("public async Task StartAsync(", StringComparison.Ordinal);
-        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length);", start, StringComparison.Ordinal);
-        var initializeDispatch = source.LastIndexOf("await MainThread.InvokeOnMainThreadAsync", initialize, StringComparison.Ordinal);
-        var initializeLock = source.LastIndexOf("lock (interopLock)", initialize, StringComparison.Ordinal);
+        var initializeDispatch = source.IndexOf(
+            "await MainThread.InvokeOnMainThreadAsync(",
+            start,
+            StringComparison.Ordinal);
+        var initialize = source.IndexOf(
+            "() => protocolClient.InitializeAsync(",
+            initializeDispatch,
+            StringComparison.Ordinal);
         Assert.True(start >= 0);
         Assert.True(initializeDispatch > start);
-        Assert.True(initializeLock > initializeDispatch);
-        Assert.True(initialize > initializeLock);
+        Assert.True(initialize > initializeDispatch);
 
         var complete = source.IndexOf("async Task CompleteSessionAsync", StringComparison.Ordinal);
         var completeShutdown = source.IndexOf("await ShutdownNativeSessionAsync(", complete, StringComparison.Ordinal);
@@ -52,22 +363,32 @@ public sealed class EngineLifecycleTests
         Assert.True(failedStart >= 0);
         Assert.True(failedStartShutdown > failedStart);
 
-        var dispatchHelper = source.IndexOf("Task<Exception?> ShutdownNativeSessionAsync", StringComparison.Ordinal);
-        var shutdownDispatch = source.IndexOf("return MainThread.InvokeOnMainThreadAsync", dispatchHelper, StringComparison.Ordinal);
-        var shutdownDispatchCall = source.IndexOf("ShutdownNativeSessionUnderLock", shutdownDispatch, StringComparison.Ordinal);
-        var lockedHelper = source.IndexOf("Exception? ShutdownNativeSessionUnderLock", shutdownDispatchCall, StringComparison.Ordinal);
-        var shutdownLock = source.IndexOf("lock (interopLock)", lockedHelper, StringComparison.Ordinal);
-        var nativeShutdown = source.IndexOf("EngineAppInterop.Shutdown();", shutdownLock, StringComparison.Ordinal);
-        Assert.True(dispatchHelper >= 0);
-        Assert.True(shutdownDispatch > dispatchHelper);
-        Assert.True(shutdownDispatchCall > shutdownDispatch);
-        Assert.True(lockedHelper > shutdownDispatchCall);
-        Assert.True(shutdownLock > lockedHelper);
-        Assert.True(nativeShutdown > shutdownLock);
+        var shutdownHelper = source.IndexOf(
+            "async Task<Exception?> ShutdownNativeSessionAsync",
+            StringComparison.Ordinal);
+        var nativeShutdown = source.IndexOf(
+            "await protocolClient.ShutdownAsync().ConfigureAwait(false);",
+            shutdownHelper,
+            StringComparison.Ordinal);
+        var shutdownEnd = source.IndexOf(
+            "async Task<string[]?> PullMessagesAsync",
+            shutdownHelper,
+            StringComparison.Ordinal);
+        Assert.True(shutdownHelper >= 0);
+        Assert.True(nativeShutdown > shutdownHelper);
+        Assert.True(shutdownEnd > nativeShutdown);
+        Assert.DoesNotContain(
+            "Task.Run(",
+            source[shutdownHelper..shutdownEnd],
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "GetAwaiter().GetResult()",
+            source[shutdownHelper..shutdownEnd],
+            StringComparison.Ordinal);
     }
 
     [Fact]
-    public void MacHostBinding_IsAcknowledgedPerGenerationAndRetriedUntilApplied()
+    public void MacHostBinding_IsQueuedOffTheUiThreadAndTrackedPerGeneration()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
         var lifecycleSource = ReadRepositoryFile("Editor", "Scene", "SceneViewportLifecycle.cs");
@@ -76,16 +397,26 @@ public sealed class EngineLifecycleTests
 
         var bind = source.IndexOf("public void BindMacRemoteViewportHost", StringComparison.Ordinal);
         var generation = source.IndexOf("Volatile.Read(ref engineGeneration)", bind, StringComparison.Ordinal);
-        var runningGuard = source.IndexOf("if (!IsInteropRunningUnderLock())", generation, StringComparison.Ordinal);
+        var runningGuard = source.IndexOf("if (!IsGenerationActive(generation))", generation, StringComparison.Ordinal);
         var removeWhileStopped = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", runningGuard, StringComparison.Ordinal);
-        var nativeBind = source.IndexOf("EngineAppInterop.SetRemoteViewportMacHostHandle", removeWhileStopped, StringComparison.Ordinal);
-        var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);", nativeBind, StringComparison.Ordinal);
+        var acknowledge = source.IndexOf("appliedMacRemoteViewportHosts[viewportId] =", removeWhileStopped, StringComparison.Ordinal);
+        var queuedInterop = source.IndexOf(
+            "QueuePlatformInterop(async cancellationToken =>",
+            acknowledge,
+            StringComparison.Ordinal);
+        var nativeBind = source.IndexOf(
+            "await protocolClient.SetRemoteViewportMacHostHandleAsync(",
+            queuedInterop,
+            StringComparison.Ordinal);
+        var removeAfterFailure = source.IndexOf("appliedMacRemoteViewportHosts.Remove(viewportId);", nativeBind, StringComparison.Ordinal);
         Assert.True(bind >= 0);
         Assert.True(generation > bind);
         Assert.True(runningGuard > generation);
         Assert.True(removeWhileStopped > runningGuard);
-        Assert.True(nativeBind > removeWhileStopped);
-        Assert.True(acknowledge > nativeBind);
+        Assert.True(acknowledge > removeWhileStopped);
+        Assert.True(queuedInterop > acknowledge);
+        Assert.True(nativeBind > queuedInterop);
+        Assert.True(removeAfterFailure > nativeBind);
 
         var sync = lifecycleSource.IndexOf("public bool Sync", StringComparison.Ordinal);
         var announceHost = lifecycleSource.IndexOf("backend.BindMacHost(viewportId, frame.NativeHostHandle);", sync, StringComparison.Ordinal);
@@ -191,13 +522,17 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void SuccessfulLocalWorldMutation_AdvancesSnapshotGateUnderTheInteropLock()
+    public void SuccessfulLocalWorldMutation_AdvancesSnapshotGateAfterAwaitedInterop()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var helper = source.IndexOf("bool InvokeRunningInterop", StringComparison.Ordinal);
-        var interopLock = source.IndexOf("lock (interopLock)", helper, StringComparison.Ordinal);
-        var nativeAction = source.IndexOf("!action()", interopLock, StringComparison.Ordinal);
+        var helper = source.IndexOf(
+            "async Task<bool> InvokeRunningInteropAsync",
+            StringComparison.Ordinal);
+        var nativeAction = source.IndexOf(
+            "!await action(cancellationToken).ConfigureAwait(false)",
+            helper,
+            StringComparison.Ordinal);
         var reserveSequence = source.IndexOf(
             "worldSnapshotPublication.ReserveSequence()",
             nativeAction,
@@ -207,15 +542,17 @@ public sealed class EngineLifecycleTests
             reserveSequence,
             StringComparison.Ordinal);
         var helperEnd = source.IndexOf("public static void ShowMainWindow", advanceGate, StringComparison.Ordinal);
-        var commitChanges = source.IndexOf("public bool CommitChanges", helperEnd, StringComparison.Ordinal);
+        var commitChanges = source.IndexOf(
+            "public Task<bool> CommitChangesAsync",
+            helperEnd,
+            StringComparison.Ordinal);
         var invalidateQueuedSnapshots = source.IndexOf(
             "invalidateQueuedWorldSnapshots: true",
             commitChanges,
             StringComparison.Ordinal);
 
         Assert.True(helper >= 0);
-        Assert.True(interopLock > helper);
-        Assert.True(nativeAction > interopLock);
+        Assert.True(nativeAction > helper);
         Assert.True(reserveSequence > nativeAction);
         Assert.True(advanceGate > reserveSequence);
         Assert.True(helperEnd > advanceGate);
@@ -229,23 +566,32 @@ public sealed class EngineLifecycleTests
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         var update = source.IndexOf("public bool TryUpdateRemoteViewport", StringComparison.Ordinal);
-        var interopLock = source.IndexOf("lock (interopLock)", update, StringComparison.Ordinal);
-        var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", interopLock, StringComparison.Ordinal);
-        var refresh = source.IndexOf("bool TryRefreshSceneRemoteViewport", rememberState, StringComparison.Ordinal);
-        var refreshLock = source.IndexOf("lock (interopLock)", refresh, StringComparison.Ordinal);
-        var captureState = source.IndexOf("var viewportState = sceneViewportState.Capture();", refreshLock, StringComparison.Ordinal);
+        var stateLock = source.IndexOf("lock (sceneViewportStateLock)", update, StringComparison.Ordinal);
+        var rememberState = source.IndexOf("sceneViewportState.Remember(rect, visible, focused)", stateLock, StringComparison.Ordinal);
+        var refresh = source.IndexOf(
+            "async Task<bool> TryRefreshSceneRemoteViewportAsync",
+            rememberState,
+            StringComparison.Ordinal);
+        var refreshStateLock = source.IndexOf("lock (sceneViewportStateLock)", refresh, StringComparison.Ordinal);
+        var captureState = source.IndexOf("viewportState = sceneViewportState.Capture();", refreshStateLock, StringComparison.Ordinal);
         var preservedRect = source.IndexOf("viewportState.Rect,", captureState, StringComparison.Ordinal);
         var preservedVisibility = source.IndexOf("viewportState.Visible,", preservedRect, StringComparison.Ordinal);
         var preservedFocus = source.IndexOf("viewportState.Focused", preservedVisibility, StringComparison.Ordinal);
-        var bootstrap = source.IndexOf("pollTasks.Add(RunPeriodicTaskAsync(() =>", rememberState, StringComparison.Ordinal);
-        var remoteUpdate = source.IndexOf("TryRefreshSceneRemoteViewport(generation)", bootstrap, StringComparison.Ordinal);
+        var bootstrap = source.IndexOf(
+            "pollTasks.Add(RunPeriodicTaskAsync(async () =>",
+            rememberState,
+            StringComparison.Ordinal);
+        var remoteUpdate = source.IndexOf(
+            "await TryRefreshSceneRemoteViewportAsync(",
+            bootstrap,
+            StringComparison.Ordinal);
 
         Assert.True(update >= 0);
-        Assert.True(interopLock > update);
-        Assert.True(rememberState > interopLock);
+        Assert.True(stateLock > update);
+        Assert.True(rememberState > stateLock);
         Assert.True(refresh > rememberState);
-        Assert.True(refreshLock > refresh);
-        Assert.True(captureState > refreshLock);
+        Assert.True(refreshStateLock > refresh);
+        Assert.True(captureState > refreshStateLock);
         Assert.True(preservedRect > captureState);
         Assert.True(preservedVisibility > preservedRect);
         Assert.True(preservedFocus > preservedVisibility);
@@ -259,31 +605,76 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void NativeExitCode_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void NativeExitCode_IsRoutedThroughTheWebSocketProtocolGateway()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var transportSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "ClientWebSocketEngineProtocolTransport.cs");
+        var serverSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineWebSocketServer.cpp");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern int GetExitCode()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API int32_t GetExitCode()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::GetExitCode();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API int32_t GetExitCode()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::GetExitCode();", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "=> protocolClient.GetExitCodeAsync(cancellationToken);",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<int> GetExitCodeAsync(",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains("GetExitCode = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("WebSocketMessageType.Binary", transportSource, StringComparison.Ordinal);
+        Assert.Contains("InvokeEditorEngineProtocol(", serverSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kGetExitCode:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::GetExitCode()", dispatcherSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void CreateEditorWorld_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void EngineTypeSerialization_IsRoutedThroughTheSharedProtocolAbi()
+    {
+        var schemaSource = ReadRepositoryFile("Protocol", "editor_engine.proto");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var exportSource = ReadRepositoryFile("Lib", "EditorProtocolExports.cpp");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
+        var workspaceDocumentation = ReadRepositoryFile("Docs", "WorkspaceLogic.md");
+
+        Assert.Contains("Empty serialize_engine_types = 46;", schemaSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<string> SerializeEngineTypesAsync(",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains("SerializeEngineTypes = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kSerializeEngineTypes:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::SerializeEngineTypes(value.GetOutput())", dispatcherSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("SerializeEngineTypes", exportSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "Both commands use the shared authenticated binary WebSocket transport",
+            workspaceDocumentation,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateEditorWorld_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern bool CreateEditorWorld()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool CreateEditorWorld()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::CreateEditorWorld();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool CreateEditorWorld()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::CreateEditorWorld();", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.CreateEditorWorldAsync(",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<bool> CreateEditorWorldAsync(",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains("CreateEditorWorld = new Empty()", clientSource, StringComparison.Ordinal);
+        Assert.Contains("case ProtocolRequest::kCreateEditorWorld:", dispatcherSource, StringComparison.Ordinal);
+        Assert.Contains("Sailor::App::CreateEditorWorld()", dispatcherSource, StringComparison.Ordinal);
     }
 
     static void AssertMauiXamlGenerator(string project, string xamlPath)
@@ -305,17 +696,32 @@ public sealed class EngineLifecycleTests
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
         var macMenuSource = ReadRepositoryFile("Editor", "Platforms", "MacCatalyst", "AppDelegate.cs");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+        var protocolClientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var protocolDispatcherSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
         var schedulerHeader = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.h");
         var schedulerSource = ReadRepositoryFile("Runtime", "Tasks", "Scheduler.cpp");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
 
-        Assert.Contains("extern bool RequestAssetReload()", managedSource, StringComparison.Ordinal);
-        Assert.Contains("InvokeRunningInterop(EngineAppInterop.RequestAssetReload)", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool RequestAssetReload()", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::RequestAssetReload();", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool RequestAssetReload()", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::RequestAssetReload();", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "!await protocolClient.RequestAssetReloadAsync(",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestAssetReload = new Empty()",
+            protocolClientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kRequestAssetReload:",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SetBoolResult(response, Sailor::App::RequestAssetReload());",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
 
         var reloadBody = nativeSource.IndexOf("bool ReloadAssetsOnEngineMainThread()", StringComparison.Ordinal);
         Assert.True(reloadBody >= 0);
@@ -403,15 +809,71 @@ public sealed class EngineLifecycleTests
         var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
         var registryHeader = ReadRepositoryFile("Runtime", "AssetRegistry", "AssetRegistry.h");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var protocolClientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var protocolDispatcherSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern bool GetAssetReloadState(out ulong requestGeneration, out ulong completedGeneration, out ulong successfulGeneration)", managedSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool GetAssetReloadState(", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API bool GetAssetReloadState(", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.GetAssetReloadStateAsync(",
+            managedSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<EngineProtocolAssetReloadState> GetAssetReloadStateAsync(",
+            protocolClientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kGetAssetReloadState:",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
         Assert.Contains("public event Action<AssetReloadCompletion> OnAssetReloadCompleted", managedSource, StringComparison.Ordinal);
         Assert.Contains("PublishAssetReloadCompletion(", managedSource, StringComparison.Ordinal);
-        Assert.Contains("successfulReloadGeneration == completedReloadGeneration", managedSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "reloadState.SuccessfulGeneration ==",
+            managedSource,
+            StringComparison.Ordinal);
+
+        var requestReloadStart = managedSource.IndexOf(
+            "public async Task<bool> RequestAssetReloadAsync",
+            StringComparison.Ordinal);
+        var requestReloadEnd = managedSource.IndexOf(
+            "public async Task RefreshCurrentWorldAsync",
+            requestReloadStart,
+            StringComparison.Ordinal);
+        Assert.True(requestReloadStart >= 0);
+        Assert.True(requestReloadEnd > requestReloadStart);
+        var requestReloadBody =
+            managedSource[requestReloadStart..requestReloadEnd];
+        const string stateRead =
+            "await protocolClient.GetAssetReloadStateAsync(";
+        var initialStateRead = requestReloadBody.IndexOf(
+            stateRead,
+            StringComparison.Ordinal);
+        var publishTarget = requestReloadBody.IndexOf(
+            "ref targetReloadGeneration,",
+            initialStateRead,
+            StringComparison.Ordinal);
+        var postPublicationStateRead = requestReloadBody.IndexOf(
+            stateRead,
+            initialStateRead + stateRead.Length,
+            StringComparison.Ordinal);
+        var waitForEvent = requestReloadBody.IndexOf(
+            "return await completionSource.Task",
+            postPublicationStateRead,
+            StringComparison.Ordinal);
+        Assert.True(initialStateRead >= 0);
+        Assert.True(publishTarget > initialStateRead);
+        Assert.True(postPublicationStateRead > publishTarget);
+        Assert.True(waitForEvent > postPublicationStateRead);
+        Assert.Equal(
+            -1,
+            requestReloadBody.IndexOf(
+                stateRead,
+                postPublicationStateRead + stateRead.Length,
+                StringComparison.Ordinal));
 
         Assert.Contains("SAILOR_API bool ScanContentFolder();", registryHeader, StringComparison.Ordinal);
         Assert.Contains("m_assetReloadCompletedGeneration", nativeSource, StringComparison.Ordinal);
@@ -484,52 +946,97 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void WorkspaceCacheIdentity_IsAvailableOnBothExportSurfacesAndManagedInterop()
+    public void WorkspaceCacheIdentity_IsReturnedByTheTypedProtocolClient()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
-        var windowsSource = ReadRepositoryFile("Lib", "DllMain.cpp");
-        var unixSource = ReadRepositoryFile("Lib", "InteropExports.cpp");
+        var clientSource = ReadRepositoryFile("Editor", "Protocol", "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
 
-        Assert.Contains("extern uint SerializeWorkspaceCacheIdentity", managedSource, StringComparison.Ordinal);
         Assert.Contains(
-            "yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars)",
+            "await protocolClient.SerializeWorkspaceCacheIdentityAsync(",
             managedSource,
             StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", windowsSource, StringComparison.Ordinal);
-        Assert.Contains("SAILOR_API uint32_t SerializeWorkspaceCacheIdentity", unixSource, StringComparison.Ordinal);
-        Assert.Contains("return Sailor::App::SerializeWorkspaceCacheIdentity(yamlNode);", unixSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "SerializeWorkspaceCacheIdentity = new Empty()",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kSerializeWorkspaceCacheIdentity:",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "DispatchSerializeWorkspaceCacheIdentity(response);",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Marshal.PtrToString", managedSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void ManagedInitialization_MarshalsEveryCommandLineTokenAsUtf8AndAlwaysFreesIt()
+    public void ManagedInitialization_UsesTypedRepeatedUtf8ProtocolArguments()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var nativeInteropSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolNative.cs");
+        var clientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var dispatcherSource = ReadRepositoryFile("Lib", "EditorEngineProtocol.cpp");
         var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
 
         Assert.Contains(
-            "EntryPoint = \"Initialize\", ExactSpelling = true",
+            "() => protocolClient.InitializeAsync(",
             managedSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "static extern void InitializeNative([In] nint[] commandLineArgs, int num)",
-            managedSource,
+            "initialize.Arguments.Add(ValidateString(argument, nameof(arguments)));",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "normalizedValue.Contains('\\0', StringComparison.Ordinal)",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Initialize = initialize",
+            clientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolStartLocalHost\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolRequestLocalHostStop\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolStopLocalHost\"",
+            nativeInteropSource,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "extern void Initialize(string[] commandLineArgs",
-            managedSource,
+            "SailorProtocolInvoke",
+            nativeInteropSource,
             StringComparison.Ordinal);
-
-        var allocation = managedSource.IndexOf(
-            "Utf8InteropArguments.Allocate(commandLineArgs, num)",
+        Assert.DoesNotContain(
+            "SailorProtocolFreeBuffer",
+            nativeInteropSource,
             StringComparison.Ordinal);
-        var invocation = managedSource.IndexOf("InitializeNative(nativeArguments, num)", allocation, StringComparison.Ordinal);
-        var finallyBlock = managedSource.IndexOf("finally", invocation, StringComparison.Ordinal);
-        var cleanup = managedSource.IndexOf("Utf8InteropArguments.Free(nativeArguments)", finallyBlock, StringComparison.Ordinal);
-        Assert.True(allocation >= 0);
-        Assert.True(invocation > allocation);
-        Assert.True(finallyBlock > invocation);
-        Assert.True(cleanup > finallyBlock);
+        Assert.Equal(
+            3,
+            nativeInteropSource.Split("[DllImport(", StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "const int numArguments = request.arguments_size();",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "arguments[i] = request.arguments(i).c_str();",
+            dispatcherSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Sailor::App::Initialize(arguments.GetRawPtr(), numArguments);",
+            dispatcherSource,
+            StringComparison.Ordinal);
 
         Assert.Contains(
             "return Workspace::PathFromUtf8(params.m_workspace);",
@@ -546,11 +1053,23 @@ public sealed class EngineLifecycleTests
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var initialize = source.IndexOf("EngineAppInterop.Initialize(args, args.Length)", StringComparison.Ordinal);
-        var identity = source.IndexOf("ReadWorkspaceCacheIdentity(", initialize, StringComparison.Ordinal);
+        var initialize = source.IndexOf(
+            "() => protocolClient.InitializeAsync(",
+            StringComparison.Ordinal);
+        var identity = source.IndexOf(
+            "await ReadWorkspaceCacheIdentityAsync(",
+            initialize,
+            StringComparison.Ordinal);
         var cacheLoad = source.IndexOf("editorTypeCacheStore.Load(", identity, StringComparison.Ordinal);
         var cachedValidation = source.IndexOf("TryParseEditorTypes(", cacheLoad, StringComparison.Ordinal);
-        var liveCatalog = source.IndexOf("SerializeEditorTypes(generation, allowStarting: true)", cacheLoad, StringComparison.Ordinal);
+        var liveCatalog = source.IndexOf(
+            "string serializedEditorTypes =",
+            cacheLoad,
+            StringComparison.Ordinal);
+        var liveCatalogRead = source.IndexOf(
+            "await SerializeEditorTypesAsync(",
+            liveCatalog,
+            StringComparison.Ordinal);
         var liveValidation = source.IndexOf("TryParseEditorTypes(", liveCatalog, StringComparison.Ordinal);
         var livePublication = source.IndexOf("Volatile.Write(ref editorTypes, liveEditorTypes)", liveValidation, StringComparison.Ordinal);
         var cacheSave = source.IndexOf("editorTypeCacheStore.Save(", liveCatalog, StringComparison.Ordinal);
@@ -560,6 +1079,7 @@ public sealed class EngineLifecycleTests
         Assert.True(cacheLoad > identity);
         Assert.True(cachedValidation > cacheLoad);
         Assert.True(liveCatalog > cachedValidation);
+        Assert.True(liveCatalogRead > liveCatalog);
         Assert.True(liveCatalog > cacheLoad);
         Assert.True(liveValidation > liveCatalog);
         Assert.True(livePublication > liveValidation);
@@ -575,16 +1095,36 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void MacStartupWorldSerialization_RunsOnTheAttachedNativeSchedulerThreadBeforeStart()
+    public void StartupWaitsForTheEngineMainThreadBeforeBootstrapSerialization()
     {
-        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs").ReplaceLineEndings("\n");
 
+        var nativeStart = source.IndexOf(
+            "await protocolClient.StartAsync(",
+            source.IndexOf("initialized = true;", StringComparison.Ordinal),
+            StringComparison.Ordinal);
+        var waitUntilReady = source.IndexOf(
+            "await WaitForEngineMainThreadAsync(",
+            nativeStart,
+            StringComparison.Ordinal);
+        var startMonitor = source.IndexOf(
+            "runtimeMonitorTask = MonitorEngineLifetimeAsync(",
+            waitUntilReady,
+            StringComparison.Ordinal);
         var startupOrder = source.IndexOf(
             "// Required startup order: combined editor catalog, world, then initial messages.",
+            startMonitor,
             StringComparison.Ordinal);
         var liveCatalog = source.IndexOf(
-            "SerializeEditorTypes(generation, allowStarting: true)",
+            "string serializedEditorTypes =",
             startupOrder,
+            StringComparison.Ordinal);
+        var liveCatalogRead = source.IndexOf(
+            "await SerializeEditorTypesAsync(",
+            liveCatalog,
             StringComparison.Ordinal);
         var macBranch = source.IndexOf("#if MACCATALYST", liveCatalog, StringComparison.Ordinal);
         var mainThreadDispatch = source.IndexOf(
@@ -592,20 +1132,28 @@ public sealed class EngineLifecycleTests
             macBranch,
             StringComparison.Ordinal);
         var worldSerialization = source.IndexOf(
-            "() => SerializeWorld(generation, out serializedWorldSequence, allowStarting: true)",
+            "() => SerializeWorldAsync(",
             mainThreadDispatch,
             StringComparison.Ordinal);
-        var nativeStart = source.IndexOf(
-            "Task.Run(EngineAppInterop.Start, CancellationToken.None)",
-            worldSerialization,
-            StringComparison.Ordinal);
 
+        Assert.True(nativeStart >= 0);
+        Assert.True(waitUntilReady > nativeStart);
+        Assert.True(startMonitor > waitUntilReady);
         Assert.True(startupOrder >= 0);
+        Assert.True(startupOrder > startMonitor);
         Assert.True(liveCatalog > startupOrder);
+        Assert.True(liveCatalogRead > liveCatalog);
         Assert.True(macBranch > liveCatalog);
         Assert.True(mainThreadDispatch > macBranch);
         Assert.True(worldSerialization > mainThreadDispatch);
-        Assert.True(nativeStart > worldSerialization);
+        Assert.Contains(
+            "protocolClient.IsEngineMainThreadReadyAsync(\n                        cancellationToken)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.IsEngineRunningAsync(\n                        cancellationToken)",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]

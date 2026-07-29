@@ -1,0 +1,5 @@
+/Protocol/*.proto text eol=lf
+/Runtime/Protocol/Generated/*.pb.cc text eol=lf
+/Runtime/Protocol/Generated/*.pb.h text eol=lf
+/Editor/Protocol/Generated/*.cs text eol=lf
+/.github/vcpkg-ports/protobuf/*.patch text eol=lf whitespace=-blank-at-eol

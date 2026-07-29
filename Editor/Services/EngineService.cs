@@ -1,123 +1,12 @@
 using SailorEngine;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
-using YamlDotNet.Serialization;
+using SailorEditor.Protocol;
+using SailorEditor.Protocol.Generated;
 using SailorEditor.Utility;
 using SailorEditor.Workspace;
 using SailorEditor.Scene;
 using System.Threading;
 using System.Globalization;
-
-namespace SailorEngine
-{
-    public class EngineAppInterop
-    {
-#if MACCATALYST
-        static EngineAppInterop()
-        {
-            NativeLibrary.SetDllImportResolver(typeof(EngineAppInterop).Assembly, static (libraryName, assembly, searchPath) =>
-            {
-                if (libraryName != EngineLibrary)
-                {
-                    return IntPtr.Zero;
-                }
-
-                var bundledPath = Path.Combine(AppContext.BaseDirectory, "..", "Resources", $"{EngineLibrary}.dylib");
-                bundledPath = Path.GetFullPath(bundledPath);
-
-                return File.Exists(bundledPath)
-                    ? NativeLibrary.Load(bundledPath)
-                    : IntPtr.Zero;
-            });
-        }
-#endif
-#if MACCATALYST
-#if DEBUG
-        const string EngineLibrary = "Sailor-Debug";
-#else
-        const string EngineLibrary = "Sailor-Release";
-#endif
-#elif DEBUG
-        const string EngineLibrary = "../../../../../Sailor-RelWithDebInfo.dll";
-#else
-        const string EngineLibrary = "../../../../../Sailor-Release.dll";
-#endif
-
-        [DllImport(EngineLibrary, EntryPoint = "Initialize", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)]
-        static extern void InitializeNative([In] nint[] commandLineArgs, int num);
-
-        public static void Initialize(string[] commandLineArgs, int num)
-        {
-            var nativeArguments = Utf8InteropArguments.Allocate(commandLineArgs, num);
-            try
-            {
-                InitializeNative(nativeArguments, num);
-            }
-            finally
-            {
-                Utf8InteropArguments.Free(nativeArguments);
-            }
-        }
-
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Start();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Stop();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void Shutdown();
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RequestAssetReload();
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool GetAssetReloadState(out ulong requestGeneration, out ulong completedGeneration, out ulong successfulGeneration);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern int GetExitCode();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetMessages(nint[] messages, uint num);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeCurrentWorld(nint[] yamlNode);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeEditorTypes(nint[] yamlNode);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint SerializeWorkspaceCacheIdentity(nint[] yamlNode);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool LoadEditorWorld(string strFileId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateEditorWorld();
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetViewport(uint windowPosX, uint windowPosY, uint width, uint height);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void SetEditorRenderTargetSize(uint width, uint height);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpsertRemoteViewport(ulong viewportId, uint windowPosX, uint windowPosY, uint width, uint height, [MarshalAs(UnmanagedType.I1)] bool visible, [MarshalAs(UnmanagedType.I1)] bool focused);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyRemoteViewport(ulong viewportId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportState(ulong viewportId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern uint GetRemoteViewportDiagnostics(ulong viewportId, nint[] diagnostics);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RetryRemoteViewport(ulong viewportId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetRemoteViewportMacHostHandle(ulong viewportId, uint hostHandleKind, ulong hostHandleValue);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SendRemoteViewportInput(ulong viewportId, uint kind, float pointerX, float pointerY, float wheelDeltaX, float wheelDeltaY, uint keyCode, uint button, uint modifiers, [MarshalAs(UnmanagedType.I1)] bool pressed, [MarshalAs(UnmanagedType.I1)] bool focused, [MarshalAs(UnmanagedType.I1)] bool captured);
-        [DllImport(EngineLibrary, EntryPoint = "PullEditorViewportEvents", ExactSpelling = true, CallingConvention = CallingConvention.Cdecl)] public static extern uint PullEditorViewportEvents([Out] nint[] eventPtrs, uint maxEvents);
-        [DllImport(EngineLibrary, EntryPoint = "GetEditorManagedMutationRevision", ExactSpelling = true, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern ulong GetEditorManagedMutationRevision(uint kind, string strInstanceId);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void FreeInteropString(nint text);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool UpdateObject(string strInstanceId, string strYamlNode);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ReparentObject(string strInstanceId, string strParentInstanceId, [MarshalAs(UnmanagedType.I1)] bool bKeepWorldTransform);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool CreateGameObject(string strParentInstanceId, string strPreferredInstanceId, nint[] outInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool DestroyObject(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool ResetComponentToDefaults(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool AddComponent(string strInstanceId, string strComponentTypeName, string strPreferredInstanceId, nint[] outInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RemoveComponent(string strInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefab(string strFileId, string strParentInstanceId);
-
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool InstantiatePrefabFromYaml([MarshalAs(UnmanagedType.LPUTF8Str)] string strPrefabYaml, [MarshalAs(UnmanagedType.LPUTF8Str)] string strParentInstanceId);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool SetEditorSelection(string strSelectionYaml);
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern void ShowMainWindow([MarshalAs(UnmanagedType.I1)] bool bShow);
-        [return: MarshalAs(UnmanagedType.I1)]
-        [DllImport(EngineLibrary, CharSet = CharSet.Ansi, CallingConvention = CallingConvention.Cdecl)] public static extern bool RenderPathTracedImage(string strOutputPath, string strInstanceId, uint height, uint samplesPerPixel, uint maxBounces);
-    }
-}
 
 namespace SailorEditor.Services
 {
@@ -187,34 +76,73 @@ namespace SailorEditor.Services
         Disposed = 9
     }
 
-    internal class EngineService
+    internal class EngineService : IDisposable, IAsyncDisposable
     {
         sealed class EngineSession
         {
             public required long Generation { get; init; }
             public required EngineLaunchContext LaunchContext { get; init; }
             public required CancellationTokenSource PollCancellation { get; init; }
-            public required Task NativeRunTask { get; init; }
+            public required CancellationTokenSource BackgroundCancellation { get; init; }
+            public required CancellationTokenSource RuntimeMonitorCancellation { get; init; }
+            public required Task RuntimeMonitorTask { get; init; }
             public required IReadOnlyList<Task> PollTasks { get; init; }
             public Task CompletionTask { get; set; } = Task.CompletedTask;
         }
 
         readonly record struct ConsoleMessage(long Generation, string Text);
+        readonly record struct RemoteViewportUpdate(
+            ulong ViewportId,
+            Rect Rect,
+            bool Visible,
+            bool Focused);
+        readonly record struct RemoteViewportInput(
+            ulong ViewportId,
+            RemoteViewportInputKind Kind,
+            float PointerX,
+            float PointerY,
+            float WheelDeltaX,
+            float WheelDeltaY,
+            uint KeyCode,
+            uint Button,
+            RemoteViewportInputModifier Modifiers,
+            bool Pressed,
+            bool Focused,
+            bool Captured);
 
         public const ulong SceneViewportId = 1;
 
-        readonly object interopLock = new();
+        readonly object platformInteropQueueLock = new();
+        readonly object sceneViewportStateLock = new();
         readonly object runLock = new();
+        readonly object disposeGate = new();
+        readonly EngineProtocolClient protocolClient;
         readonly SemaphoreSlim lifecycleGate = new(1, 1);
+        readonly CancellationTokenSource disposeCancellation = new();
         readonly RingBufferedBatcher<ConsoleMessage> consoleMessages = new(MaxBufferedConsoleMessages);
         readonly WorldSnapshotPublicationGate worldSnapshotPublication = new();
         readonly EditorViewportEventEpochGate editorViewportEventEpoch = new();
         readonly LatestSceneViewportState<Rect> sceneViewportState = new(new Rect(0, 0, 1024, 768));
+        Task platformInteropQueue = Task.CompletedTask;
+        int pendingPlatformInteropCommands;
+        Task? disposeTask;
         EngineTypes editorTypes = new();
         int consoleDispatchScheduled = 0;
+        int disposeState;
         int lifecycleState = (int)EngineLifecycleState.Stopped;
         long engineGeneration;
+#if WINDOWS || MACCATALYST
+        readonly object remoteViewportStateLock = new();
+        readonly Dictionary<ulong, RemoteViewportSessionState> remoteViewportStates = [];
+        readonly Dictionary<ulong, string> remoteViewportDiagnostics = [];
+        readonly KeyedLatestQueuedCommand<ulong, RemoteViewportUpdate> remoteViewportUpdates = new();
+        readonly LatestQueuedCommand<Rect> editorViewportUpdate = new();
+        readonly LatestQueuedCommand<(uint Width, uint Height)> renderTargetUpdate = new();
+        readonly KeyedLatestQueuedCommand<ulong, RemoteViewportInput> pointerMoves = new();
+        readonly KeyedLatestQueuedCommand<ulong, ulong> viewportStatusRefreshes = new();
+#endif
 #if MACCATALYST
+        readonly object macRemoteViewportHostLock = new();
         readonly Dictionary<ulong, (long Generation, nint Handle)> appliedMacRemoteViewportHosts = [];
 #endif
         EngineSession? activeSession;
@@ -224,14 +152,37 @@ namespace SailorEditor.Services
         static EngineService? currentInstance;
         const int MaxBufferedConsoleMessages = 1000;
         const int MaxEditorViewportEventsPerPoll = 64;
+        const int MaxPendingPlatformInteropCommands = 128;
+        static readonly TimeSpan LifecycleProbeTimeout =
+            TimeSpan.FromSeconds(5);
+        static readonly TimeSpan RuntimeLivenessPollInterval =
+            TimeSpan.FromMilliseconds(250);
+        static readonly TimeSpan DisposeOrderlyStopTimeout =
+            TimeSpan.FromSeconds(5);
+        static readonly TimeSpan DisposeCompletionTimeout =
+            TimeSpan.FromSeconds(5);
+        static readonly TimeSpan DisposeAbortDrainTimeout =
+            TimeSpan.FromSeconds(2);
+        static readonly TimeSpan DisposePlatformQueueTimeout =
+            TimeSpan.FromSeconds(2);
 
         readonly string repoRoot = ResolveRepoRoot();
         readonly WorkspaceLifecycleService workspaceLifecycle;
         readonly EditorTypeCacheStore editorTypeCacheStore = new();
 
         public EngineService(WorkspaceLifecycleService workspaceLifecycle)
+            : this(workspaceLifecycle, new EngineProtocolClient())
         {
-            this.workspaceLifecycle = workspaceLifecycle;
+        }
+
+        internal EngineService(
+            WorkspaceLifecycleService workspaceLifecycle,
+            EngineProtocolClient protocolClient)
+        {
+            this.workspaceLifecycle = workspaceLifecycle ??
+                throw new ArgumentNullException(nameof(workspaceLifecycle));
+            this.protocolClient = protocolClient ??
+                throw new ArgumentNullException(nameof(protocolClient));
             Volatile.Write(ref currentInstance, this);
         }
 
@@ -261,13 +212,13 @@ namespace SailorEditor.Services
             }
         }
 
-        public Task NativeRunTask
+        public Task RuntimeMonitorTask
         {
             get
             {
                 lock (runLock)
                 {
-                    return activeSession?.NativeRunTask ?? Task.CompletedTask;
+                    return activeSession?.RuntimeMonitorTask ?? Task.CompletedTask;
                 }
             }
         }
@@ -335,14 +286,14 @@ namespace SailorEditor.Services
         {
             get
             {
-                lock (interopLock)
+                lock (sceneViewportStateLock)
                 {
                     return sceneViewportState.Capture().Rect;
                 }
             }
             set
             {
-                lock (interopLock)
+                lock (sceneViewportStateLock)
                 {
                     sceneViewportState.RememberRect(value);
                 }
@@ -460,25 +411,22 @@ namespace SailorEditor.Services
                 (allowStarting && state == EngineLifecycleState.Starting);
         }
 
-        bool IsInteropRunningUnderLock() => State == EngineLifecycleState.Running;
+        bool IsInteropRunning() => State == EngineLifecycleState.Running;
 
-        bool TryGetAssetReloadState(
+        async Task<EngineProtocolAssetReloadState?> TryGetAssetReloadStateAsync(
             long generation,
-            out ulong requestGeneration,
-            out ulong completedGeneration,
-            out ulong successfulGeneration)
+            CancellationToken cancellationToken = default)
         {
-            requestGeneration = 0;
-            completedGeneration = 0;
-            successfulGeneration = 0;
-            lock (interopLock)
+            if (!IsGenerationActive(generation))
             {
-                return IsGenerationActive(generation) &&
-                    EngineAppInterop.GetAssetReloadState(
-                        out requestGeneration,
-                        out completedGeneration,
-                        out successfulGeneration);
+                return null;
             }
+
+            var state = await protocolClient.GetAssetReloadStateAsync(
+                cancellationToken).ConfigureAwait(false);
+            return IsGenerationActive(generation) && state.Available
+                ? state
+                : null;
         }
 
         void PublishAssetReloadCompletion(AssetReloadCompletion completion, long generation)
@@ -511,58 +459,144 @@ namespace SailorEditor.Services
             });
         }
 
-        bool InvokeRunningInterop(Func<bool> action, bool invalidateQueuedWorldSnapshots = false)
+        async Task<bool> InvokeRunningInteropAsync(
+            Func<CancellationToken, Task<bool>> action,
+            bool invalidateQueuedWorldSnapshots = false,
+            CancellationToken cancellationToken = default)
         {
-            lock (interopLock)
+            ArgumentNullException.ThrowIfNull(action);
+            if (!IsInteropRunning() ||
+                !await action(cancellationToken).ConfigureAwait(false))
             {
-                if (!IsInteropRunningUnderLock() || !action())
-                    return false;
-
-                if (invalidateQueuedWorldSnapshots)
-                {
-                    var mutationSequence = worldSnapshotPublication.ReserveSequence();
-                    worldSnapshotPublication.TryAdvance(mutationSequence);
-                }
-
-                return true;
+                return false;
             }
-        }
 
-        public bool IsEditorViewportSelectionEventCurrent(ulong managedMutationRevision)
-            => IsEditorViewportEventCurrent(
-                EditorManagedMutationKind.Selection,
-                string.Empty,
-                managedMutationRevision);
-
-        public bool IsEditorViewportTransformEventCurrent(
-            string instanceId,
-            ulong managedMutationRevision)
-            => IsEditorViewportEventCurrent(
-                EditorManagedMutationKind.ObjectTransform,
-                instanceId,
-                managedMutationRevision);
-
-        bool IsEditorViewportEventCurrent(
-            EditorManagedMutationKind kind,
-            string instanceId,
-            ulong managedMutationRevision)
-        {
-            lock (interopLock)
-            {
-                return IsInteropRunningUnderLock() &&
-                    EditorViewportMutationOrder.IsCurrent(
-                        managedMutationRevision,
-                        EngineAppInterop.GetEditorManagedMutationRevision((uint)kind, instanceId));
-            }
-        }
-
-        public void InvalidateQueuedWorldSnapshots()
-        {
-            lock (interopLock)
+            if (invalidateQueuedWorldSnapshots)
             {
                 var mutationSequence = worldSnapshotPublication.ReserveSequence();
                 worldSnapshotPublication.TryAdvance(mutationSequence);
             }
+
+            return true;
+        }
+
+        bool QueuePlatformInterop(Func<CancellationToken, ValueTask<bool>> action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            var generation = Volatile.Read(ref engineGeneration);
+            if (!IsGenerationActive(generation))
+            {
+                return false;
+            }
+
+            lock (platformInteropQueueLock)
+            {
+                if (pendingPlatformInteropCommands >=
+                    MaxPendingPlatformInteropCommands)
+                {
+                    return false;
+                }
+                pendingPlatformInteropCommands++;
+                platformInteropQueue = ExecuteQueuedPlatformInteropAsync(
+                    platformInteropQueue,
+                    action,
+                    generation);
+            }
+            return true;
+        }
+
+        bool QueuePlatformInterop(Func<ValueTask<bool>> action)
+        {
+            ArgumentNullException.ThrowIfNull(action);
+            return QueuePlatformInterop(_ => action());
+        }
+
+        async Task ExecuteQueuedPlatformInteropAsync(
+            Task predecessor,
+            Func<CancellationToken, ValueTask<bool>> action,
+            long generation)
+        {
+            await Task.Yield();
+            try
+            {
+                await predecessor.ConfigureAwait(false);
+                if (!IsGenerationActive(generation))
+                {
+                    return;
+                }
+
+                CancellationToken cancellationToken;
+                lock (runLock)
+                {
+                    cancellationToken =
+                        activeSession?.PollCancellation.Token ??
+                        disposeCancellation.Token;
+                }
+                await action(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+                when (!IsGenerationActive(generation) ||
+                    disposeCancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[EngineService] Platform interop command failed: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref pendingPlatformInteropCommands);
+            }
+        }
+
+        Task CapturePlatformInteropQueue()
+        {
+            lock (platformInteropQueueLock)
+            {
+                return platformInteropQueue;
+            }
+        }
+
+        public Task<bool> IsEditorViewportSelectionEventCurrentAsync(
+            ulong managedMutationRevision)
+            => IsEditorViewportEventCurrentAsync(
+                EditorManagedMutationKind.Selection,
+                string.Empty,
+                managedMutationRevision);
+
+        public Task<bool> IsEditorViewportTransformEventCurrentAsync(
+            string instanceId,
+            ulong managedMutationRevision)
+            => IsEditorViewportEventCurrentAsync(
+                EditorManagedMutationKind.ObjectTransform,
+                instanceId,
+                managedMutationRevision);
+
+        async Task<bool> IsEditorViewportEventCurrentAsync(
+            EditorManagedMutationKind kind,
+            string instanceId,
+            ulong managedMutationRevision)
+        {
+            if (!IsInteropRunning())
+            {
+                return false;
+            }
+
+            var currentRevision =
+                await protocolClient.GetEditorManagedMutationRevisionAsync(
+                    (uint)kind,
+                    instanceId).ConfigureAwait(false);
+            return IsInteropRunning() &&
+                EditorViewportMutationOrder.IsCurrent(
+                    managedMutationRevision,
+                    currentRevision);
+        }
+
+        public void InvalidateQueuedWorldSnapshots()
+        {
+            var mutationSequence = worldSnapshotPublication.ReserveSequence();
+            worldSnapshotPublication.TryAdvance(mutationSequence);
         }
 
         public static void ShowMainWindow(bool bShow)
@@ -573,13 +607,20 @@ namespace SailorEditor.Services
                 return;
             }
 
-            lock (instance.interopLock)
+#if WINDOWS || MACCATALYST
+            instance.QueuePlatformInterop(async cancellationToken =>
             {
-                if (instance.IsInteropRunningUnderLock())
-                {
-                    EngineAppInterop.ShowMainWindow(bShow);
-                }
+                await instance.protocolClient.ShowMainWindowAsync(
+                    bShow,
+                    cancellationToken).ConfigureAwait(false);
+                return true;
+            });
+#else
+            if (instance.IsInteropRunning())
+            {
+                _ = instance.protocolClient.ShowMainWindowAsync(bShow);
             }
+#endif
         }
 
         static string ResolveRepoRoot()
@@ -603,15 +644,18 @@ namespace SailorEditor.Services
         public void BindMacRemoteViewportHost(ulong viewportId, nint hostHandle)
         {
 #if MACCATALYST
-            lock (interopLock)
+            var generation = Volatile.Read(ref engineGeneration);
+            if (!IsGenerationActive(generation))
             {
-                var generation = Volatile.Read(ref engineGeneration);
-                if (!IsInteropRunningUnderLock())
+                lock (macRemoteViewportHostLock)
                 {
                     appliedMacRemoteViewportHosts.Remove(viewportId);
-                    return;
                 }
+                return;
+            }
 
+            lock (macRemoteViewportHostLock)
+            {
                 if (appliedMacRemoteViewportHosts.TryGetValue(viewportId, out var applied) &&
                     applied.Generation == generation &&
                     applied.Handle == hostHandle)
@@ -619,11 +663,36 @@ namespace SailorEditor.Services
                     return;
                 }
 
-                if (EngineAppInterop.SetRemoteViewportMacHostHandle(viewportId, 2u, (ulong)hostHandle))
+                appliedMacRemoteViewportHosts[viewportId] =
+                    (generation, hostHandle);
+            }
+
+            if (!QueuePlatformInterop(async cancellationToken =>
+            {
+                if (await protocolClient.SetRemoteViewportMacHostHandleAsync(
+                        viewportId,
+                        2u,
+                        (ulong)hostHandle,
+                        cancellationToken).ConfigureAwait(false))
                 {
-                    appliedMacRemoteViewportHosts[viewportId] = (generation, hostHandle);
+                    return true;
                 }
-                else
+
+                lock (macRemoteViewportHostLock)
+                {
+                    if (appliedMacRemoteViewportHosts.TryGetValue(
+                            viewportId,
+                            out var pending) &&
+                        pending.Generation == generation &&
+                        pending.Handle == hostHandle)
+                    {
+                        appliedMacRemoteViewportHosts.Remove(viewportId);
+                    }
+                }
+                return false;
+            }))
+            {
+                lock (macRemoteViewportHostLock)
                 {
                     appliedMacRemoteViewportHosts.Remove(viewportId);
                 }
@@ -634,74 +703,99 @@ namespace SailorEditor.Services
         public bool TryUpdateRemoteViewport(ulong viewportId, Rect rect, bool visible, bool focused)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
+            lock (sceneViewportStateLock)
             {
                 if (viewportId == SceneViewportId)
                 {
                     sceneViewportState.Remember(rect, visible, focused);
                 }
-
-                return TryUpdateRemoteViewportUnderLock(viewportId, rect, visible, focused);
             }
+
+            return !rect.IsEmpty &&
+                remoteViewportUpdates.Enqueue(
+                    viewportId,
+                    new RemoteViewportUpdate(
+                        viewportId,
+                        rect,
+                        visible,
+                        focused),
+                    QueuePlatformInterop,
+                    async update =>
+                        await protocolClient.UpsertRemoteViewportAsync(
+                            update.ViewportId,
+                            (uint)update.Rect.X,
+                            (uint)update.Rect.Y,
+                            (uint)update.Rect.Width,
+                            (uint)update.Rect.Height,
+                            update.Visible,
+                            update.Focused).ConfigureAwait(false));
 #else
             return false;
 #endif
         }
 
-        bool TryRefreshSceneRemoteViewport(long generation)
+        async Task<bool> TryRefreshSceneRemoteViewportAsync(
+            long generation,
+            CancellationToken cancellationToken = default)
         {
 #if WINDOWS
-            lock (interopLock)
+            SceneViewportStateSnapshot<Rect> viewportState;
+            lock (sceneViewportStateLock)
             {
-                if (!IsGenerationActive(generation))
-                {
-                    return false;
-                }
-
-                var viewportState = sceneViewportState.Capture();
-                if (TryUpdateRemoteViewportUnderLock(
+                viewportState = sceneViewportState.Capture();
+            }
+            if (!IsGenerationActive(generation))
+            {
+                return false;
+            }
+            if (await TryUpdateRemoteViewportAsync(
                     SceneViewportId,
                     viewportState.Rect,
                     viewportState.Visible,
-                    viewportState.Focused))
-                {
-                    return true;
-                }
+                    viewportState.Focused,
+                    cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
 
-                if (!viewportState.Rect.IsEmpty)
-                {
-                    EngineAppInterop.SetViewport(
+            if (!viewportState.Rect.IsEmpty)
+            {
+                await protocolClient.SetViewportAsync(
                         (uint)viewportState.Rect.X,
                         (uint)viewportState.Rect.Y,
                         (uint)viewportState.Rect.Width,
-                        (uint)viewportState.Rect.Height);
-                }
-
-                return false;
+                        (uint)viewportState.Rect.Height,
+                        cancellationToken).ConfigureAwait(false);
             }
+
+            return false;
 #else
+            await Task.CompletedTask;
             return false;
 #endif
         }
 
-        bool TryUpdateRemoteViewportUnderLock(
+        async Task<bool> TryUpdateRemoteViewportAsync(
             ulong viewportId,
             Rect rect,
             bool visible,
-            bool focused)
+            bool focused,
+            CancellationToken cancellationToken = default)
         {
 #if WINDOWS || MACCATALYST
-            return IsInteropRunningUnderLock() &&
+            return IsInteropRunning() &&
                 !rect.IsEmpty &&
-                EngineAppInterop.UpsertRemoteViewport(
+                await protocolClient.UpsertRemoteViewportAsync(
                     viewportId,
                     (uint)rect.X,
                     (uint)rect.Y,
                     (uint)rect.Width,
                     (uint)rect.Height,
                     visible,
-                    focused);
+                    focused,
+                    cancellationToken).ConfigureAwait(false);
 #else
+            await Task.CompletedTask;
             return false;
 #endif
         }
@@ -713,50 +807,102 @@ namespace SailorEditor.Services
                 return;
             }
 
-            lock (interopLock)
+#if WINDOWS || MACCATALYST
+            lock (sceneViewportStateLock)
             {
                 sceneViewportState.RememberRect(rect);
-                if (IsInteropRunningUnderLock())
-                {
-                    EngineAppInterop.SetViewport((uint)rect.X, (uint)rect.Y, (uint)rect.Width, (uint)rect.Height);
-                }
             }
+            editorViewportUpdate.Enqueue(
+                rect,
+                QueuePlatformInterop,
+                async update =>
+                {
+                    await protocolClient.SetViewportAsync(
+                        (uint)update.X,
+                        (uint)update.Y,
+                        (uint)update.Width,
+                        (uint)update.Height).ConfigureAwait(false);
+                    return true;
+                });
+#else
+            lock (sceneViewportStateLock)
+            {
+                sceneViewportState.RememberRect(rect);
+            }
+            if (IsInteropRunning())
+            {
+                QueuePlatformInterop(async cancellationToken =>
+                {
+                    await protocolClient.SetViewportAsync(
+                        (uint)rect.X,
+                        (uint)rect.Y,
+                        (uint)rect.Width,
+                        (uint)rect.Height,
+                        cancellationToken).ConfigureAwait(false);
+                    return true;
+                });
+            }
+#endif
         }
 
         public void SetEditorRenderTargetSize(uint width, uint height)
         {
 #if MACCATALYST
-            lock (interopLock)
-            {
-                if (IsInteropRunningUnderLock())
+            renderTargetUpdate.Enqueue(
+                (Math.Max(width, 1u), Math.Max(height, 1u)),
+                QueuePlatformInterop,
+                async size =>
                 {
-                    EngineAppInterop.SetEditorRenderTargetSize(Math.Max(width, 1u), Math.Max(height, 1u));
-                }
-            }
+                    await protocolClient.SetEditorRenderTargetSizeAsync(
+                        size.Width,
+                        size.Height).ConfigureAwait(false);
+                    return true;
+                });
 #endif
         }
 
         public void DestroyRemoteViewport(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
+            viewportStatusRefreshes.Reset(viewportId);
+            lock (remoteViewportStateLock)
             {
-                if (IsInteropRunningUnderLock())
-                {
-                    EngineAppInterop.DestroyRemoteViewport(viewportId);
-                }
+                remoteViewportStates[viewportId] =
+                    RemoteViewportSessionState.Terminating;
+                remoteViewportDiagnostics.Remove(viewportId);
             }
+            QueuePlatformInterop(async cancellationToken =>
+            {
+                var destroyed =
+                    await protocolClient.DestroyRemoteViewportAsync(
+                        viewportId,
+                        cancellationToken).ConfigureAwait(false);
+                lock (remoteViewportStateLock)
+                {
+                    remoteViewportStates[viewportId] = destroyed
+                        ? RemoteViewportSessionState.Disposed
+                        : RemoteViewportSessionState.Lost;
+                }
+                return destroyed;
+            });
 #endif
         }
 
         public RemoteViewportSessionState GetRemoteViewportState(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
+            if (State != EngineLifecycleState.Running)
             {
-                return IsInteropRunningUnderLock()
-                    ? (RemoteViewportSessionState)EngineAppInterop.GetRemoteViewportState(viewportId)
-                    : RemoteViewportSessionState.Disposed;
+                return RemoteViewportSessionState.Disposed;
+            }
+            QueueRemoteViewportStatusRefresh(viewportId);
+            lock (remoteViewportStateLock)
+            {
+                return remoteViewportStates.TryGetValue(
+                    viewportId,
+                    out var state)
+                    ? state
+                    : RemoteViewportSessionState.Created;
             }
 #else
             return RemoteViewportSessionState.Created;
@@ -766,13 +912,11 @@ namespace SailorEditor.Services
         public void RetryRemoteViewport(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
-            {
-                if (IsInteropRunningUnderLock())
-                {
-                    EngineAppInterop.RetryRemoteViewport(viewportId);
-                }
-            }
+            QueuePlatformInterop(cancellationToken =>
+                new ValueTask<bool>(
+                    protocolClient.RetryRemoteViewportAsync(
+                        viewportId,
+                        cancellationToken)));
 #endif
         }
 
@@ -791,11 +935,41 @@ namespace SailorEditor.Services
             bool captured = false)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
-            {
-                return IsInteropRunningUnderLock() &&
-                    EngineAppInterop.SendRemoteViewportInput(viewportId, (uint)kind, pointerX, pointerY, wheelDeltaX, wheelDeltaY, keyCode, button, (uint)modifiers, pressed, focused, captured);
-            }
+            var input = new RemoteViewportInput(
+                viewportId,
+                kind,
+                pointerX,
+                pointerY,
+                wheelDeltaX,
+                wheelDeltaY,
+                keyCode,
+                button,
+                modifiers,
+                pressed,
+                focused,
+                captured);
+            async ValueTask<bool> SendInput(RemoteViewportInput value)
+                => await protocolClient.SendRemoteViewportInputAsync(
+                    value.ViewportId,
+                    (uint)value.Kind,
+                    value.PointerX,
+                    value.PointerY,
+                    value.WheelDeltaX,
+                    value.WheelDeltaY,
+                    value.KeyCode,
+                    value.Button,
+                    (uint)value.Modifiers,
+                    value.Pressed,
+                    value.Focused,
+                    value.Captured).ConfigureAwait(false);
+
+            return kind == RemoteViewportInputKind.PointerMove
+                ? pointerMoves.Enqueue(
+                    viewportId,
+                    input,
+                    QueuePlatformInterop,
+                    SendInput)
+                : QueuePlatformInterop(_ => SendInput(input));
 #else
             return false;
 #endif
@@ -804,33 +978,68 @@ namespace SailorEditor.Services
         public string GetRemoteViewportDiagnostics(ulong viewportId)
         {
 #if WINDOWS || MACCATALYST
-            lock (interopLock)
+            if (State != EngineLifecycleState.Running)
             {
-                if (!IsInteropRunningUnderLock())
-                {
-                    return string.Empty;
-                }
-
-                nint[] textPtr = new nint[1];
-                uint length = EngineAppInterop.GetRemoteViewportDiagnostics(viewportId, textPtr);
-                if (length == 0 || textPtr[0] == nint.Zero)
-                {
-                    return string.Empty;
-                }
-
-                try
-                {
-                    return Marshal.PtrToStringAnsi(textPtr[0], (int)length) ?? string.Empty;
-                }
-                finally
-                {
-                    EngineAppInterop.FreeInteropString(textPtr[0]);
-                }
+                return string.Empty;
+            }
+            QueueRemoteViewportStatusRefresh(viewportId);
+            lock (remoteViewportStateLock)
+            {
+                return remoteViewportDiagnostics.TryGetValue(
+                    viewportId,
+                    out var diagnostics)
+                    ? diagnostics
+                    : string.Empty;
             }
 #else
             return string.Empty;
 #endif
         }
+
+#if WINDOWS || MACCATALYST
+        void QueueRemoteViewportStatusRefresh(ulong viewportId)
+        {
+            viewportStatusRefreshes.Enqueue(
+                viewportId,
+                viewportId,
+                QueuePlatformInterop,
+                async id =>
+                {
+                    var state = (RemoteViewportSessionState)
+                        await protocolClient.GetRemoteViewportStateAsync(
+                            id).ConfigureAwait(false);
+                    var diagnostics =
+                        await protocolClient.GetRemoteViewportDiagnosticsAsync(
+                            id).ConfigureAwait(false);
+                    lock (remoteViewportStateLock)
+                    {
+                        remoteViewportStates[id] = state;
+                        remoteViewportDiagnostics[id] = diagnostics;
+                    }
+                    return true;
+                });
+        }
+
+        void ResetPlatformInteropState()
+        {
+            remoteViewportUpdates.Reset();
+            editorViewportUpdate.Reset();
+            renderTargetUpdate.Reset();
+            pointerMoves.Reset();
+            viewportStatusRefreshes.Reset();
+            lock (remoteViewportStateLock)
+            {
+                remoteViewportStates.Clear();
+                remoteViewportDiagnostics.Clear();
+            }
+#if MACCATALYST
+            lock (macRemoteViewportHostLock)
+            {
+                appliedMacRemoteViewportHosts.Clear();
+            }
+#endif
+        }
+#endif
 
         public Task StartAsync(EngineLaunchContext launchContext, CancellationToken cancellationToken = default)
             => StartAsync(launchContext, false, Array.Empty<string>(), cancellationToken);
@@ -846,9 +1055,17 @@ namespace SailorEditor.Services
 #if !WINDOWS && !MACCATALYST
             throw new PlatformNotSupportedException("The in-process engine is supported only by the Windows and Mac Catalyst editor hosts.");
 #else
+            ObjectDisposedException.ThrowIf(
+                Volatile.Read(ref disposeState) != 0,
+                this);
+            using var startCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    disposeCancellation.Token);
+            var startCancellationToken = startCancellation.Token;
             while (true)
             {
-                await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await lifecycleGate.WaitAsync(startCancellationToken).ConfigureAwait(false);
                 Task? stoppingTask = null;
                 try
                 {
@@ -874,12 +1091,17 @@ namespace SailorEditor.Services
 
                 if (stoppingTask is not null)
                 {
-                    await stoppingTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    await stoppingTask.WaitAsync(startCancellationToken).ConfigureAwait(false);
                 }
             }
 
             var initialized = false;
+            var startRequested = false;
             var generation = 0L;
+            Task? runtimeMonitorTask = null;
+            CancellationTokenSource? runtimeMonitorCancellation = null;
+            CancellationTokenRegistration startupMonitorCancellation = default;
+            var runtimeMonitorCancellationOwnedBySession = false;
             if (State == EngineLifecycleState.Running)
             {
                 try
@@ -899,8 +1121,11 @@ namespace SailorEditor.Services
 
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                startCancellationToken.ThrowIfCancellationRequested();
                 generation = Interlocked.Increment(ref engineGeneration);
+#if WINDOWS || MACCATALYST
+                ResetPlatformInteropState();
+#endif
                 Volatile.Write(ref lastExitCode, 0);
                 lock (runLock)
                 {
@@ -914,22 +1139,37 @@ namespace SailorEditor.Services
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
 #if WINDOWS || MACCATALYST
-                await MainThread.InvokeOnMainThreadAsync(() =>
-                {
-                    lock (interopLock)
-                    {
-                        EngineAppInterop.Initialize(args, args.Length);
-                    }
-                });
+                await MainThread.InvokeOnMainThreadAsync(
+                    () => protocolClient.InitializeAsync(
+                        args,
+                        startCancellationToken));
 #else
-                lock (interopLock)
-                {
-                    EngineAppInterop.Initialize(args, args.Length);
-                }
+                await protocolClient.InitializeAsync(
+                    args,
+                    startCancellationToken).ConfigureAwait(false);
 #endif
                 initialized = true;
+                runtimeMonitorCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        disposeCancellation.Token);
+                startupMonitorCancellation = startCancellationToken.Register(
+                    static state =>
+                        ((CancellationTokenSource)state!).Cancel(),
+                    runtimeMonitorCancellation);
+                var monitorCancellation = runtimeMonitorCancellation;
+                startRequested = true;
+                await protocolClient.StartAsync(
+                    monitorCancellation.Token).ConfigureAwait(false);
+                await WaitForEngineMainThreadAsync(
+                    startCancellationToken).ConfigureAwait(false);
+                runtimeMonitorTask = MonitorEngineLifetimeAsync(
+                    generation,
+                    launchContext,
+                    monitorCancellation.Token);
 
-                var initializationExitCode = ReadNativeExitCode();
+                var initializationExitCode =
+                    await ReadNativeExitCodeAsync(
+                        startCancellationToken).ConfigureAwait(false);
                 if (initializationExitCode != 0)
                 {
                     throw new EngineLifecycleException(
@@ -937,10 +1177,13 @@ namespace SailorEditor.Services
                         initializationExitCode);
                 }
 
-                var editorTypeCacheIdentity = ReadWorkspaceCacheIdentity(
+                var editorTypeCacheIdentity =
+                    await ReadWorkspaceCacheIdentityAsync(
                     generation,
                     launchContext,
-                    allowStarting: true);
+                    allowStarting: true,
+                    cancellationToken: startCancellationToken)
+                    .ConfigureAwait(false);
                 var cachedEditorTypes = editorTypeCacheStore.Load(
                     launchContext.EditorTypesCacheFilePath,
                     editorTypeCacheIdentity);
@@ -971,7 +1214,12 @@ namespace SailorEditor.Services
                 }
 
                 // Required startup order: combined editor catalog, world, then initial messages.
-                string serializedEditorTypes = SerializeEditorTypes(generation, allowStarting: true);
+                string serializedEditorTypes =
+                    await SerializeEditorTypesAsync(
+                    generation,
+                    allowStarting: true,
+                    cancellationToken: startCancellationToken)
+                    .ConfigureAwait(false);
                 if (TryParseEditorTypes(
                         serializedEditorTypes,
                         out var liveEditorTypes,
@@ -1010,85 +1258,113 @@ namespace SailorEditor.Services
                 string serializedWorld;
                 long serializedWorldSequence = 0;
 #if MACCATALYST
-                serializedWorld = await MainThread.InvokeOnMainThreadAsync(
-                    () => SerializeWorld(generation, out serializedWorldSequence, allowStarting: true));
+                var serializedWorldResult =
+                    await MainThread.InvokeOnMainThreadAsync(
+                    () => SerializeWorldAsync(
+                        generation,
+                        allowStarting: true,
+                        cancellationToken: startCancellationToken));
+                serializedWorld = serializedWorldResult.SerializedWorld;
+                serializedWorldSequence = serializedWorldResult.Sequence;
 #else
-                serializedWorld = SerializeWorld(generation, out serializedWorldSequence, allowStarting: true);
+                var serializedWorldResult =
+                    await SerializeWorldAsync(
+                    generation,
+                    allowStarting: true,
+                    cancellationToken: startCancellationToken)
+                    .ConfigureAwait(false);
+                serializedWorld = serializedWorldResult.SerializedWorld;
+                serializedWorldSequence = serializedWorldResult.Sequence;
 #endif
                 QueueWorldUpdate(serializedWorld, generation, serializedWorldSequence);
 
-                var bootstrapMessages = PullMessages(generation, allowStarting: true);
+                var bootstrapMessages = await PullMessagesAsync(
+                    generation,
+                    allowStarting: true,
+                    cancellationToken: startCancellationToken)
+                    .ConfigureAwait(false);
                 if (bootstrapMessages is not null)
                 {
                     PublishConsoleMessages(bootstrapMessages, generation);
                 }
 
                 var pollCancellation = new CancellationTokenSource();
+                var backgroundCancellation = new CancellationTokenSource();
                 var pollTasks = new List<Task>();
 #if !MACCATALYST
-                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
-                    TryRefreshSceneRemoteViewport(generation);
-
-                    return Task.CompletedTask;
+                    await TryRefreshSceneRemoteViewportAsync(
+                        generation,
+                        pollCancellation.Token).ConfigureAwait(false);
                 }, 500, 100, pollCancellation.Token, generation));
 #endif
-                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
-                    var messages = PullMessages(generation);
+                    var messages = await PullMessagesAsync(
+                        generation,
+                        cancellationToken: pollCancellation.Token)
+                        .ConfigureAwait(false);
                     if (messages is not null)
                     {
                         PublishConsoleMessages(messages, generation);
                     }
-                    return Task.CompletedTask;
                 }, 300, 500, pollCancellation.Token, generation));
 
-                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
-                    var viewportEvents = PullEditorViewportEvents(generation, out var eventEpoch);
+                    var (viewportEvents, eventEpoch) =
+                        await PullEditorViewportEventsAsync(
+                        generation,
+                        pollCancellation.Token).ConfigureAwait(false);
                     if (viewportEvents.Count > 0)
                     {
                         PublishEditorViewportEvents(viewportEvents, generation, eventEpoch);
                     }
-                    return Task.CompletedTask;
                 }, 33, 33, pollCancellation.Token, generation));
 
                 ulong lastAssetReloadCompletion = 0;
-                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
-                    if (TryGetAssetReloadState(
+                    var reloadState =
+                        await TryGetAssetReloadStateAsync(
                             generation,
-                            out var requestedReloadGeneration,
-                            out var completedReloadGeneration,
-                            out var successfulReloadGeneration) &&
-                        completedReloadGeneration > lastAssetReloadCompletion &&
-                        completedReloadGeneration <= requestedReloadGeneration)
+                            pollCancellation.Token).ConfigureAwait(false);
+                    if (reloadState is { } state &&
+                        state.CompletedGeneration > lastAssetReloadCompletion &&
+                        state.CompletedGeneration <= state.RequestGeneration)
                     {
-                        lastAssetReloadCompletion = completedReloadGeneration;
+                        lastAssetReloadCompletion = state.CompletedGeneration;
                         PublishAssetReloadCompletion(
                             new AssetReloadCompletion(
-                                completedReloadGeneration,
-                                successfulReloadGeneration == completedReloadGeneration),
+                                state.CompletedGeneration,
+                                state.SuccessfulGeneration ==
+                                    state.CompletedGeneration),
                             generation);
                     }
-
-                    return Task.CompletedTask;
                 }, 100, 100, pollCancellation.Token, generation));
 
-                pollTasks.Add(RunPeriodicTaskAsync(() =>
+                pollTasks.Add(RunPeriodicTaskAsync(async () =>
                 {
-                    var serializedWorld = SerializeWorld(generation, out var serializedWorldSequence);
-                    QueueWorldUpdate(serializedWorld, generation, serializedWorldSequence);
-                    return Task.CompletedTask;
+                    var serializedWorldResult =
+                        await SerializeWorldAsync(
+                        generation,
+                        cancellationToken: pollCancellation.Token)
+                        .ConfigureAwait(false);
+                    QueueWorldUpdate(
+                        serializedWorldResult.SerializedWorld,
+                        generation,
+                        serializedWorldResult.Sequence);
                 }, 1500, 0, pollCancellation.Token, generation));
 
-                var nativeRunTask = Task.Run(EngineAppInterop.Start, CancellationToken.None);
                 var session = new EngineSession
                 {
                     Generation = generation,
                     LaunchContext = launchContext,
                     PollCancellation = pollCancellation,
-                    NativeRunTask = nativeRunTask,
+                    BackgroundCancellation = backgroundCancellation,
+                    RuntimeMonitorCancellation = runtimeMonitorCancellation,
+                    RuntimeMonitorTask = runtimeMonitorTask,
                     PollTasks = pollTasks
                 };
 
@@ -1098,6 +1374,7 @@ namespace SailorEditor.Services
                 }
                 SetLifecycleState(EngineLifecycleState.Running);
                 session.CompletionTask = CompleteSessionAsync(session);
+                runtimeMonitorCancellationOwnedBySession = true;
             }
             catch (Exception startupException)
             {
@@ -1107,7 +1384,8 @@ namespace SailorEditor.Services
                 {
                     try
                     {
-                        exitCode = ReadNativeExitCode();
+                        exitCode = await ReadNativeExitCodeAsync()
+                            .ConfigureAwait(false);
                     }
                     catch (Exception exitCodeException)
                     {
@@ -1119,7 +1397,10 @@ namespace SailorEditor.Services
 
                     try
                     {
-                        await ShutdownNativeAfterFailedStartAsync().ConfigureAwait(false);
+                        await ShutdownNativeAfterFailedStartAsync(
+                            startRequested,
+                            runtimeMonitorTask,
+                            runtimeMonitorCancellation).ConfigureAwait(false);
                     }
                     catch (Exception teardownException)
                     {
@@ -1134,7 +1415,11 @@ namespace SailorEditor.Services
                 {
                     exitCode = lifecycleException.ExitCode;
                 }
-                if (exitCode == 0)
+                var cleanCancellation =
+                    startupException is OperationCanceledException &&
+                    startCancellationToken.IsCancellationRequested &&
+                    ReferenceEquals(failure, startupException);
+                if (exitCode == 0 && !cleanCancellation)
                 {
                     exitCode = -1;
                 }
@@ -1145,11 +1430,17 @@ namespace SailorEditor.Services
                 {
                     activeLaunchContext = null;
                     activeSession = null;
-                    lastFailure = failure;
+                    lastFailure = cleanCancellation ? null : failure;
                 }
-                SetLifecycleState(EngineLifecycleState.Faulted);
+                SetLifecycleState(cleanCancellation
+                    ? EngineLifecycleState.Stopped
+                    : EngineLifecycleState.Faulted);
                 Volatile.Write(ref editorTypes, new EngineTypes());
 
+                if (cleanCancellation)
+                {
+                    throw;
+                }
                 if (ReferenceEquals(failure, startupException) && startupException is EngineLifecycleException)
                 {
                     throw;
@@ -1162,6 +1453,12 @@ namespace SailorEditor.Services
             }
             finally
             {
+                startupMonitorCancellation.Dispose();
+                if (!runtimeMonitorCancellationOwnedBySession)
+                {
+                    runtimeMonitorCancellation?.Cancel();
+                    runtimeMonitorCancellation?.Dispose();
+                }
                 lifecycleGate.Release();
             }
 #endif
@@ -1174,12 +1471,14 @@ namespace SailorEditor.Services
 #else
             await lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             Task? completionTask;
+            EngineSession? session;
             Exception? stopFailure = null;
             try
             {
                 lock (runLock)
                 {
-                    completionTask = activeSession?.CompletionTask;
+                    session = activeSession;
+                    completionTask = session?.CompletionTask;
                 }
 
                 if (completionTask is null)
@@ -1194,22 +1493,15 @@ namespace SailorEditor.Services
                 {
                     SetLifecycleState(EngineLifecycleState.Stopping);
                     Interlocked.Increment(ref engineGeneration);
-                    lock (runLock)
-                    {
-                        activeSession?.PollCancellation.Cancel();
-                    }
+                    session!.PollCancellation.Cancel();
+                    session.BackgroundCancellation.Cancel();
 
-                    lock (interopLock)
-                    {
-                        try
-                        {
-                            EngineAppInterop.Stop();
-                        }
-                        catch (Exception ex)
-                        {
-                            stopFailure = ex;
-                        }
-                    }
+                    // The Start request was already acknowledged. Cancel the
+                    // liveness monitor before stopping so an expected readiness
+                    // transition cannot be reported as a runtime failure.
+                    session.RuntimeMonitorCancellation.Cancel();
+                    stopFailure = await RequestNativeStopAsync()
+                        .ConfigureAwait(false);
                 }
             }
             finally
@@ -1218,7 +1510,44 @@ namespace SailorEditor.Services
             }
 
             // Teardown is deliberately non-cancellable once native shutdown starts.
-            await completionTask.ConfigureAwait(false);
+            try
+            {
+                await completionTask.WaitAsync(
+                    TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+            }
+            catch (TimeoutException timeoutException)
+            {
+                Exception? fallbackFailure = null;
+                try
+                {
+                    await protocolClient.RequestLocalStopFallbackAsync()
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    fallbackFailure = ex;
+                }
+                try
+                {
+                    await completionTask.WaitAsync(
+                        TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    fallbackFailure = CombineFailures(
+                        fallbackFailure,
+                        ex);
+                }
+                stopFailure = CombineFailures(
+                    stopFailure,
+                    timeoutException);
+                if (fallbackFailure is not null)
+                {
+                    stopFailure = CombineFailures(
+                        stopFailure,
+                        fallbackFailure);
+                }
+            }
             if (stopFailure is not null)
             {
                 lock (runLock)
@@ -1254,7 +1583,11 @@ namespace SailorEditor.Services
             Exception? failure = null;
             try
             {
-                await session.NativeRunTask.ConfigureAwait(false);
+                await session.RuntimeMonitorTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+                when (session.RuntimeMonitorCancellation.IsCancellationRequested)
+            {
             }
             catch (Exception ex)
             {
@@ -1272,15 +1605,22 @@ namespace SailorEditor.Services
                     }
                 }
 
+                session.PollCancellation.Cancel();
+                session.BackgroundCancellation.Cancel();
                 if (State == EngineLifecycleState.Running)
                 {
-                    failure = new EngineLifecycleException(
+                    using var exitCodeCancellation =
+                        new CancellationTokenSource(
+                            LifecycleProbeTimeout);
+                    var exitCode =
+                        await ReadNativeExitCodeSafelyAsync(
+                            exitCodeCancellation.Token).ConfigureAwait(false);
+                    failure ??= new EngineLifecycleException(
                         $"SailorEngine exited unexpectedly for workspace '{session.LaunchContext.WorkspaceRoot}'.",
-                        ReadNativeExitCodeSafely());
+                        exitCode);
                     SetLifecycleState(EngineLifecycleState.Stopping);
                     Interlocked.Increment(ref engineGeneration);
                 }
-                session.PollCancellation.Cancel();
             }
             finally
             {
@@ -1290,6 +1630,15 @@ namespace SailorEditor.Services
             try
             {
                 await Task.WhenAll(session.PollTasks).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                failure ??= ex;
+            }
+
+            try
+            {
+                await CapturePlatformInteropQueue().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -1310,7 +1659,11 @@ namespace SailorEditor.Services
                 var exitCode = 0;
                 try
                 {
-                    exitCode = ReadNativeExitCode();
+                    using var exitCodeCancellation =
+                        new CancellationTokenSource(
+                            LifecycleProbeTimeout);
+                    exitCode = await ReadNativeExitCodeAsync(
+                        exitCodeCancellation.Token).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -1344,6 +1697,8 @@ namespace SailorEditor.Services
             {
                 lifecycleGate.Release();
                 session.PollCancellation.Dispose();
+                session.BackgroundCancellation.Dispose();
+                session.RuntimeMonitorCancellation.Dispose();
             }
         }
 
@@ -1413,19 +1768,17 @@ namespace SailorEditor.Services
 #endif
         }
 
-        int ReadNativeExitCode()
-        {
-            lock (interopLock)
-            {
-                return EngineAppInterop.GetExitCode();
-            }
-        }
+        Task<int> ReadNativeExitCodeAsync(
+            CancellationToken cancellationToken = default)
+            => protocolClient.GetExitCodeAsync(cancellationToken);
 
-        int ReadNativeExitCodeSafely()
+        async Task<int> ReadNativeExitCodeSafelyAsync(
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                return ReadNativeExitCode();
+                return await ReadNativeExitCodeAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
             catch
             {
@@ -1436,59 +1789,160 @@ namespace SailorEditor.Services
         static Exception CombineFailures(Exception? current, Exception next)
             => current is null ? next : new AggregateException(current, next);
 
-        async Task ShutdownNativeAfterFailedStartAsync()
+        async Task WaitForEngineMainThreadAsync(
+            CancellationToken cancellationToken)
         {
-            var failure = await ShutdownNativeSessionAsync(
-                stopNative: true,
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(15);
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!await protocolClient.IsEngineRunningAsync(
+                        cancellationToken).ConfigureAwait(false))
+                {
+                    throw new EngineLifecycleException(
+                        "SailorEngine exited before its main thread became ready.",
+                        await ReadNativeExitCodeSafelyAsync(
+                            cancellationToken).ConfigureAwait(false));
+                }
+                if (await protocolClient.IsEngineMainThreadReadyAsync(
+                        cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                if (DateTime.UtcNow >= deadline)
+                {
+                    throw new TimeoutException(
+                        "Timed out waiting for the SailorEngine main thread.");
+                }
+                await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        async Task MonitorEngineLifetimeAsync(
+            long generation,
+            EngineLaunchContext launchContext,
+            CancellationToken cancellationToken)
+        {
+            while (true)
+            {
+                await Task.Delay(
+                    RuntimeLivenessPollInterval,
+                    cancellationToken).ConfigureAwait(false);
+                if (!IsGenerationActive(generation, allowStarting: true))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return;
+                }
+
+                var isRunning =
+                    await protocolClient.IsEngineRunningAsync(
+                        cancellationToken).ConfigureAwait(false);
+                if (!isRunning)
+                {
+                    throw new EngineLifecycleException(
+                        $"SailorEngine exited unexpectedly for workspace '{launchContext.WorkspaceRoot}'.",
+                        await ReadNativeExitCodeSafelyAsync(
+                            cancellationToken).ConfigureAwait(false));
+                }
+            }
+        }
+
+        async Task ShutdownNativeAfterFailedStartAsync(
+            bool startRequested,
+            Task? runtimeMonitorTask,
+            CancellationTokenSource? runtimeMonitorCancellation)
+        {
+            Exception? failure = null;
+            runtimeMonitorCancellation?.Cancel();
+            if (startRequested)
+            {
+                failure = await StopNativeSessionAsync().ConfigureAwait(false);
+            }
+
+            if (runtimeMonitorTask is not null)
+            {
+                try
+                {
+                    await runtimeMonitorTask.WaitAsync(
+                        TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                    when (runtimeMonitorCancellation?.IsCancellationRequested == true)
+                {
+                }
+                catch (Exception ex)
+                {
+                    failure = CombineFailures(failure, ex);
+                }
+                if (!runtimeMonitorTask.IsCompleted)
+                {
+                    throw failure ?? new TimeoutException(
+                        "SailorEngine liveness monitor did not stop after startup failed.");
+                }
+            }
+
+            var shutdownFailure = await ShutdownNativeSessionAsync(
+                stopNative: !startRequested,
                 destroyRemoteViewport: false).ConfigureAwait(false);
+            if (shutdownFailure is not null)
+            {
+                failure = CombineFailures(failure, shutdownFailure);
+            }
             if (failure is not null)
             {
                 throw failure;
             }
         }
 
-        Task<Exception?> ShutdownNativeSessionAsync(bool stopNative, bool destroyRemoteViewport)
-        {
-#if WINDOWS || MACCATALYST
-            return MainThread.InvokeOnMainThreadAsync(() =>
-                ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
-#else
-            return Task.FromResult(ShutdownNativeSessionUnderLock(stopNative, destroyRemoteViewport));
-#endif
-        }
+        async Task<Exception?> StopNativeSessionAsync()
+            => await RequestNativeStopAsync().ConfigureAwait(false);
 
-        Exception? ShutdownNativeSessionUnderLock(bool stopNative, bool destroyRemoteViewport)
+        async Task<Exception?> RequestNativeStopAsync()
         {
-            lock (interopLock)
+            try
             {
-                Exception? failure = null;
-                if (stopNative)
-                {
-                    try
-                    {
-                        EngineAppInterop.Stop();
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = ex;
-                    }
-                }
-
-                if (destroyRemoteViewport)
-                {
-                    try
-                    {
-                        EngineAppInterop.DestroyRemoteViewport(SceneViewportId);
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = failure is null ? ex : new AggregateException(failure, ex);
-                    }
-                }
-
+                await protocolClient.StopAsync().ConfigureAwait(false);
+                return null;
+            }
+            catch (Exception stopException)
+            {
                 try
                 {
-                    EngineAppInterop.Shutdown();
+                    await protocolClient.RequestLocalStopFallbackAsync()
+                        .ConfigureAwait(false);
+                }
+                catch (Exception fallbackException)
+                {
+                    return new AggregateException(
+                        stopException,
+                        fallbackException);
+                }
+                return stopException;
+            }
+        }
+
+        async Task<Exception?> ShutdownNativeSessionAsync(
+            bool stopNative,
+            bool destroyRemoteViewport)
+        {
+            Exception? failure = null;
+            if (stopNative)
+            {
+                var stopFailure =
+                    await RequestNativeStopAsync().ConfigureAwait(false);
+                if (stopFailure is not null)
+                {
+                    failure = stopFailure;
+                }
+            }
+
+            if (destroyRemoteViewport)
+            {
+                try
+                {
+                    await protocolClient.DestroyRemoteViewportAsync(
+                        SceneViewportId).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -1496,178 +1950,159 @@ namespace SailorEditor.Services
                         ? ex
                         : new AggregateException(failure, ex);
                 }
-
-#if MACCATALYST
-                appliedMacRemoteViewportHosts.Clear();
-#endif
-                return failure;
             }
+
+            try
+            {
+                await protocolClient.ShutdownAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                failure = failure is null
+                    ? ex
+                    : new AggregateException(failure, ex);
+                try
+                {
+                    await protocolClient.CompleteLocalShutdownFallbackAsync()
+                        .ConfigureAwait(false);
+                }
+                catch (Exception fallbackException)
+                {
+                    failure = new AggregateException(
+                        failure,
+                        fallbackException);
+                }
+            }
+#if WINDOWS || MACCATALYST
+            ResetPlatformInteropState();
+#endif
+            return failure;
         }
 
-        string[]? PullMessages(long generation, bool allowStarting = false)
+        async Task<string[]?> PullMessagesAsync(
+            long generation,
+            bool allowStarting = false,
+            CancellationToken cancellationToken = default)
         {
             if (!IsGenerationActive(generation, allowStarting))
             {
                 return null;
             }
 
-            uint numMessages = 64;
-            nint[] messagesPtrs = new nint[numMessages];
-
-            uint actualNumMessages;
-            lock (interopLock)
+            if (!IsGenerationActive(generation, allowStarting))
             {
-                if (!IsGenerationActive(generation, allowStarting))
-                {
-                    return null;
-                }
-                actualNumMessages = EngineAppInterop.GetMessages(messagesPtrs, numMessages);
-            }
-
-            if (actualNumMessages == 0)
                 return null;
-
-            string[] messages = new string[actualNumMessages];
-            for (int i = 0; i < actualNumMessages; i++)
-            {
-                messages[i] = Marshal.PtrToStringAnsi(messagesPtrs[i]);
-                EngineAppInterop.FreeInteropString(messagesPtrs[i]);
             }
+            var messages = await protocolClient.GetMessagesAsync(
+                64,
+                cancellationToken).ConfigureAwait(false);
 
-            return messages;
+            return messages.Length == 0 ? null : messages;
         }
 
-        IReadOnlyList<EditorViewportEvent> PullEditorViewportEvents(long generation, out long eventEpoch)
+        async Task<(IReadOnlyList<EditorViewportEvent> Events, long EventEpoch)>
+            PullEditorViewportEventsAsync(
+            long generation,
+            CancellationToken cancellationToken = default)
         {
-            eventEpoch = editorViewportEventEpoch.Current;
+            var eventEpoch = editorViewportEventEpoch.Current;
             if (!IsGenerationActive(generation))
             {
-                return Array.Empty<EditorViewportEvent>();
+                return (Array.Empty<EditorViewportEvent>(), eventEpoch);
             }
 
-            var eventPtrs = new nint[MaxEditorViewportEventsPerPoll];
+            IReadOnlyList<ViewportEvent> nativeEvents;
             var parsedEvents = new List<EditorViewportEvent>(MaxEditorViewportEventsPerPoll);
+            if (!IsGenerationActive(generation))
+            {
+                return (Array.Empty<EditorViewportEvent>(), eventEpoch);
+            }
+
+            eventEpoch = editorViewportEventEpoch.Current;
             try
             {
-                uint actualEventCount;
-                lock (interopLock)
-                {
-                    if (!IsGenerationActive(generation))
-                    {
-                        return Array.Empty<EditorViewportEvent>();
-                    }
-
-                    eventEpoch = editorViewportEventEpoch.Current;
-                    actualEventCount = EngineAppInterop.PullEditorViewportEvents(
-                        eventPtrs,
-                        (uint)eventPtrs.Length);
-                }
-
-                var readableEventCount = (int)Math.Min(actualEventCount, (uint)eventPtrs.Length);
-                for (var i = 0; i < readableEventCount; ++i)
-                {
-                    if (eventPtrs[i] == nint.Zero)
-                    {
-                        Console.WriteLine($"[EngineService] Native viewport event {i} returned a null payload.");
-                        continue;
-                    }
-
-                    var yaml = Marshal.PtrToStringUTF8(eventPtrs[i]) ?? string.Empty;
-                    if (EditorViewportEventContract.TryParse(yaml, out var viewportEvent, out var error) &&
-                        viewportEvent is not null)
-                    {
-                        parsedEvents.Add(viewportEvent);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[EngineService] Rejected native viewport event {i}: {error}");
-                    }
-                }
+                nativeEvents =
+                    await protocolClient.PullEditorViewportEventsAsync(
+                        MaxEditorViewportEventsPerPoll,
+                        cancellationToken).ConfigureAwait(false);
             }
-            finally
+            catch (EngineProtocolException exception)
             {
-                foreach (var eventPtr in eventPtrs)
+                Console.WriteLine(
+                    $"[EngineService] Failed to poll protocol viewport events: {exception.Message}");
+                return (Array.Empty<EditorViewportEvent>(), eventEpoch);
+            }
+
+            for (var i = 0; i < nativeEvents.Count; ++i)
+            {
+                if (EditorViewportEventContract.TryCreate(
+                        nativeEvents[i],
+                        out var viewportEvent,
+                        out var error) &&
+                    viewportEvent is not null)
                 {
-                    if (eventPtr != nint.Zero)
-                    {
-                        EngineAppInterop.FreeInteropString(eventPtr);
-                    }
+                    parsedEvents.Add(viewportEvent);
+                }
+                else
+                {
+                    Console.WriteLine(
+                        $"[EngineService] Rejected protocol viewport event {i}: {error}");
                 }
             }
 
-            return IsGenerationActive(generation) && editorViewportEventEpoch.IsCurrent(eventEpoch)
-                ? parsedEvents.ToArray()
-                : Array.Empty<EditorViewportEvent>();
+            return (
+                IsGenerationActive(generation) &&
+                    editorViewportEventEpoch.IsCurrent(eventEpoch)
+                    ? parsedEvents.ToArray()
+                    : Array.Empty<EditorViewportEvent>(),
+                eventEpoch);
         }
 
-        string SerializeWorld(long generation, out long snapshotSequence, bool allowStarting = false)
+        async Task<(string SerializedWorld, long Sequence)> SerializeWorldAsync(
+            long generation,
+            bool allowStarting = false,
+            CancellationToken cancellationToken = default)
         {
-            snapshotSequence = 0;
             if (!IsGenerationActive(generation, allowStarting))
             {
-                return string.Empty;
+                return (string.Empty, 0);
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
-            lock (interopLock)
+            if (!IsGenerationActive(generation, allowStarting))
             {
-                if (!IsGenerationActive(generation, allowStarting))
-                {
-                    return string.Empty;
-                }
-                snapshotSequence = worldSnapshotPublication.ReserveSequence();
-                numChars = EngineAppInterop.SerializeCurrentWorld(yamlNodeChar);
+                return (string.Empty, 0);
             }
-
-            if (numChars == 0)
-                return string.Empty;
-
-            try
-            {
-                return Marshal.PtrToStringAnsi(yamlNodeChar[0], (int)numChars) ?? string.Empty;
-            }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
-            }
+            var snapshotSequence =
+                worldSnapshotPublication.ReserveSequence();
+            var serializedWorld =
+                await protocolClient.SerializeCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
+            return (serializedWorld, snapshotSequence);
         }
 
-        string SerializeEditorTypes(long generation, bool allowStarting = false)
+        async Task<string> SerializeEditorTypesAsync(
+            long generation,
+            bool allowStarting = false,
+            CancellationToken cancellationToken = default)
         {
             if (!IsGenerationActive(generation, allowStarting))
             {
                 return string.Empty;
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
-            lock (interopLock)
+            if (!IsGenerationActive(generation, allowStarting))
             {
-                if (!IsGenerationActive(generation, allowStarting))
-                {
-                    return string.Empty;
-                }
-                numChars = EngineAppInterop.SerializeEditorTypes(yamlNodeChar);
-            }
-
-            if (numChars == 0)
                 return string.Empty;
-
-            try
-            {
-                return Marshal.PtrToStringAnsi(yamlNodeChar[0], (int)numChars) ?? string.Empty;
             }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
-            }
+            return await protocolClient.SerializeEditorTypesAsync(
+                cancellationToken).ConfigureAwait(false);
         }
 
-        EditorTypeCacheIdentity ReadWorkspaceCacheIdentity(
+        async Task<EditorTypeCacheIdentity> ReadWorkspaceCacheIdentityAsync(
             long generation,
             EngineLaunchContext launchContext,
-            bool allowStarting = false)
+            bool allowStarting = false,
+            CancellationToken cancellationToken = default)
         {
             if (!IsGenerationActive(generation, allowStarting))
             {
@@ -1676,34 +2111,21 @@ namespace SailorEditor.Services
                     -1);
             }
 
-            nint[] yamlNodeChar = new nint[1];
-            uint numChars;
-            lock (interopLock)
+            if (!IsGenerationActive(generation, allowStarting))
             {
-                if (!IsGenerationActive(generation, allowStarting))
-                {
-                    throw new EngineLifecycleException(
-                        "The engine generation changed before workspace cache identity could be read.",
-                        -1);
-                }
-                numChars = EngineAppInterop.SerializeWorkspaceCacheIdentity(yamlNodeChar);
+                throw new EngineLifecycleException(
+                    "The engine generation changed before workspace cache identity could be read.",
+                    -1);
             }
+            var yaml =
+                await protocolClient.SerializeWorkspaceCacheIdentityAsync(
+                    cancellationToken).ConfigureAwait(false);
 
-            if (numChars == 0 || yamlNodeChar[0] == nint.Zero)
+            if (string.IsNullOrWhiteSpace(yaml))
             {
                 throw new EngineLifecycleException(
                     "SailorEngine did not provide a workspace cache identity.",
                     -1);
-            }
-
-            string yaml;
-            try
-            {
-                yaml = Marshal.PtrToStringUTF8(yamlNodeChar[0], (int)numChars) ?? string.Empty;
-            }
-            finally
-            {
-                EngineAppInterop.FreeInteropString(yamlNodeChar[0]);
             }
 
             EditorTypeCacheIdentity identity;
@@ -1796,29 +2218,44 @@ namespace SailorEditor.Services
                 : invalidation.Diagnostic);
         }
 
-        public bool CommitChanges(InstanceId id, string yamlChanges)
+        public Task<bool> CommitChangesAsync(
+            InstanceId id,
+            string yamlChanges,
+            CancellationToken cancellationToken = default)
         {
-            var stringId = id.Value.ToString();
-            return InvokeRunningInterop(
-                () => EngineAppInterop.UpdateObject(stringId, yamlChanges),
-                invalidateQueuedWorldSnapshots: true);
-        }
-
-        public bool RequestAssetReload()
-        {
-            return InvokeRunningInterop(EngineAppInterop.RequestAssetReload);
+            var stringId = id?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.UpdateObjectAsync(
+                    stringId,
+                    yamlChanges,
+                    token),
+                invalidateQueuedWorldSnapshots: true,
+                cancellationToken);
         }
 
         public async Task<bool> RequestAssetReloadAsync(CancellationToken cancellationToken = default)
         {
             var generation = Volatile.Read(ref engineGeneration);
+            CancellationToken sessionCancellationToken;
+            lock (runLock)
+            {
+                sessionCancellationToken =
+                    activeSession?.PollCancellation.Token ?? default;
+            }
+            using var operationCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellationToken,
+                    sessionCancellationToken);
+            var operationCancellationToken =
+                operationCancellation.Token;
             var completionSource = new TaskCompletionSource<bool>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             long targetReloadGeneration = 0;
 
             void HandleCompletion(AssetReloadCompletion completion)
             {
-                var targetGeneration = Volatile.Read(ref targetReloadGeneration);
+                var targetGeneration = Volatile.Read(
+                    ref targetReloadGeneration);
                 if (targetGeneration != 0 &&
                     completion.Generation >= (ulong)targetGeneration &&
                     IsGenerationActive(generation))
@@ -1830,28 +2267,56 @@ namespace SailorEditor.Services
             OnAssetReloadCompleted += HandleCompletion;
             try
             {
-                lock (interopLock)
+                if (!IsGenerationActive(generation) ||
+                    !await protocolClient.RequestAssetReloadAsync(
+                        operationCancellationToken).ConfigureAwait(false))
                 {
-                    if (!IsGenerationActive(generation) ||
-                        !EngineAppInterop.RequestAssetReload() ||
-                        !EngineAppInterop.GetAssetReloadState(
-                            out var requestedReloadGeneration,
-                            out var completedReloadGeneration,
-                            out var successfulReloadGeneration))
-                    {
-                        return false;
-                    }
+                    return false;
+                }
 
-                    var targetGeneration = checked((long)requestedReloadGeneration);
-                    Volatile.Write(ref targetReloadGeneration, targetGeneration);
-                    if (completedReloadGeneration >= (ulong)targetGeneration)
-                    {
-                        return successfulReloadGeneration == completedReloadGeneration;
-                    }
+                var reloadState =
+                    await protocolClient.GetAssetReloadStateAsync(
+                        operationCancellationToken).ConfigureAwait(false);
+                if (!reloadState.Available)
+                {
+                    return false;
+                }
+
+                var targetGeneration =
+                    checked((long)reloadState.RequestGeneration);
+                Volatile.Write(
+                    ref targetReloadGeneration,
+                    targetGeneration);
+                if (reloadState.CompletedGeneration >=
+                    (ulong)targetGeneration)
+                {
+                    return reloadState.SuccessfulGeneration ==
+                        reloadState.CompletedGeneration;
+                }
+
+                // Completion can occur after the first state snapshot but
+                // before targetReloadGeneration is published. An event in
+                // that window is intentionally ignored because it cannot be
+                // associated with this request yet. Re-read after publishing
+                // the target so that such a completion cannot be lost.
+                var postPublicationState =
+                    await protocolClient.GetAssetReloadStateAsync(
+                        operationCancellationToken).ConfigureAwait(false);
+                if (!postPublicationState.Available)
+                {
+                    return false;
+                }
+                if (postPublicationState.CompletedGeneration >=
+                    (ulong)targetGeneration)
+                {
+                    return postPublicationState.SuccessfulGeneration ==
+                        postPublicationState.CompletedGeneration;
                 }
 
                 return await completionSource.Task
-                    .WaitAsync(TimeSpan.FromSeconds(30), cancellationToken)
+                    .WaitAsync(
+                        TimeSpan.FromSeconds(30),
+                        operationCancellationToken)
                     .ConfigureAwait(false);
             }
             catch (TimeoutException)
@@ -1864,157 +2329,208 @@ namespace SailorEditor.Services
             }
         }
 
-        public void RefreshCurrentWorld()
+        public async Task RefreshCurrentWorldAsync(
+            CancellationToken cancellationToken = default)
         {
             using var perfScope = EditorPerf.Scope("EngineService.RefreshCurrentWorld");
             var generation = Volatile.Read(ref engineGeneration);
-            string serializedWorld = SerializeWorld(generation, out var serializedWorldSequence);
-            if (!string.IsNullOrEmpty(serializedWorld))
+            var snapshot =
+                await SerializeWorldAsync(
+                    generation,
+                    cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(snapshot.SerializedWorld))
             {
                 if (MainThread.IsMainThread)
                 {
-                    PublishWorldUpdate(serializedWorld, generation, serializedWorldSequence);
+                    PublishWorldUpdate(
+                        snapshot.SerializedWorld,
+                        generation,
+                        snapshot.Sequence);
                 }
                 else
                 {
-                    MainThread.InvokeOnMainThreadAsync(() =>
-                    {
-                        PublishWorldUpdate(serializedWorld, generation, serializedWorldSequence);
-                    }).GetAwaiter().GetResult();
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                        PublishWorldUpdate(
+                            snapshot.SerializedWorld,
+                            generation,
+                            snapshot.Sequence));
                 }
             }
         }
 
-        bool InvokeCreationInterop(Func<nint[], bool> interop, out InstanceId createdInstanceId)
+        async Task<InstanceId?> InvokeCreationInteropAsync(
+            Func<CancellationToken, Task<EngineProtocolCreationResult>> interop,
+            CancellationToken cancellationToken)
         {
-            createdInstanceId = null;
-            nint[] instanceIdPtr = new nint[1];
-            try
+            var creationResult = default(EngineProtocolCreationResult);
+            if (!await InvokeRunningInteropAsync(async token =>
+                {
+                    creationResult =
+                        await interop(token).ConfigureAwait(false);
+                    return creationResult.Succeeded;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false))
             {
-                if (!InvokeRunningInterop(() => interop(instanceIdPtr)) || instanceIdPtr[0] == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                var value = Marshal.PtrToStringAnsi(instanceIdPtr[0]);
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    return false;
-                }
-
-                createdInstanceId = new InstanceId(value);
-                RefreshCurrentWorld();
-                return true;
+                return null;
             }
-            finally
+
+            if (string.IsNullOrWhiteSpace(creationResult.InstanceId))
             {
-                if (instanceIdPtr[0] != IntPtr.Zero)
-                {
-                    EngineAppInterop.FreeInteropString(instanceIdPtr[0]);
-                }
+                return null;
             }
+
+            var createdInstanceId =
+                new InstanceId(creationResult.InstanceId);
+            await RefreshCurrentWorldAsync(
+                cancellationToken).ConfigureAwait(false);
+            return createdInstanceId;
         }
 
-        public bool ReparentObject(InstanceId instanceId, InstanceId parentId, bool keepWorldTransform = true)
+        public async Task<bool> ReparentObjectAsync(
+            InstanceId instanceId,
+            InstanceId? parentId,
+            bool keepWorldTransform = true,
+            CancellationToken cancellationToken = default)
         {
             var stringId = instanceId?.Value ?? string.Empty;
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.ReparentObject(stringId, stringParentId, keepWorldTransform));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.ReparentObjectAsync(
+                    stringId,
+                    stringParentId,
+                    keepWorldTransform,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool CreateGameObject(InstanceId parentId = null)
-            => CreateGameObject(parentId, null, out _);
-
-        public bool CreateGameObject(InstanceId parentId, InstanceId preferredInstanceId, out InstanceId createdInstanceId)
+        public Task<InstanceId?> CreateGameObjectAsync(
+            InstanceId? parentId = null,
+            InstanceId? preferredInstanceId = null,
+            CancellationToken cancellationToken = default)
         {
             var stringParentId = parentId?.Value ?? string.Empty;
             var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
-            return InvokeCreationInterop(
-                output => EngineAppInterop.CreateGameObject(stringParentId, stringPreferredInstanceId, output),
-                out createdInstanceId);
+            return InvokeCreationInteropAsync(
+                token => protocolClient.CreateGameObjectAsync(
+                    stringParentId,
+                    stringPreferredInstanceId,
+                    token),
+                cancellationToken);
         }
 
-        public bool DestroyObject(InstanceId instanceId)
+        public async Task<bool> DestroyObjectAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.DestroyObject(stringId));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.DestroyObjectAsync(
+                    stringId,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool ResetComponentToDefaults(InstanceId instanceId)
+        public async Task<bool> ResetComponentToDefaultsAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.ResetComponentToDefaults(stringId));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.ResetComponentToDefaultsAsync(
+                    stringId,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool AddComponent(InstanceId instanceId, string componentTypeName)
-            => AddComponent(instanceId, componentTypeName, null, out _);
-
-        public bool AddComponent(
+        public Task<InstanceId?> AddComponentAsync(
             InstanceId instanceId,
             string componentTypeName,
-            InstanceId preferredInstanceId,
-            out InstanceId createdInstanceId)
+            InstanceId? preferredInstanceId = null,
+            CancellationToken cancellationToken = default)
         {
             var stringId = instanceId?.Value ?? string.Empty;
             var stringPreferredInstanceId = preferredInstanceId?.Value ?? string.Empty;
-            return InvokeCreationInterop(
-                output => EngineAppInterop.AddComponent(
+            return InvokeCreationInteropAsync(
+                token => protocolClient.AddComponentAsync(
                     stringId,
                     componentTypeName ?? string.Empty,
                     stringPreferredInstanceId,
-                    output),
-                out createdInstanceId);
+                    token),
+                cancellationToken);
         }
 
-        public bool RemoveComponent(InstanceId instanceId)
+        public async Task<bool> RemoveComponentAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
         {
             var stringId = instanceId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.RemoveComponent(stringId));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.RemoveComponentAsync(
+                    stringId,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool InstantiatePrefab(FileId prefabId, InstanceId parentId = null)
+        public async Task<bool> InstantiatePrefabAsync(
+            FileId prefabId,
+            InstanceId? parentId = null,
+            CancellationToken cancellationToken = default)
         {
             var stringFileId = prefabId?.Value ?? string.Empty;
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefab(stringFileId, stringParentId));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.InstantiatePrefabAsync(
+                    stringFileId,
+                    stringParentId,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool InstantiatePrefabFromYaml(string prefabYaml, InstanceId parentId = null)
+        public async Task<bool> InstantiatePrefabFromYamlAsync(
+            string prefabYaml,
+            InstanceId? parentId = null,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(prefabYaml))
             {
@@ -2022,85 +2538,146 @@ namespace SailorEditor.Services
             }
 
             var stringParentId = parentId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() => EngineAppInterop.InstantiatePrefabFromYaml(prefabYaml, stringParentId));
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.InstantiatePrefabFromYamlAsync(
+                    prefabYaml,
+                    stringParentId,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool LoadWorld(FileId worldId)
+        public async Task<bool> LoadWorldAsync(
+            FileId worldId,
+            CancellationToken cancellationToken = default)
         {
             var stringFileId = worldId?.Value ?? string.Empty;
-            bool result = InvokeRunningInterop(() =>
+            var result = await InvokeRunningInteropAsync(async token =>
             {
-                if (!EngineAppInterop.LoadEditorWorld(stringFileId))
+                if (!await protocolClient.LoadEditorWorldAsync(
+                        stringFileId,
+                        token).ConfigureAwait(false))
                 {
                     return false;
                 }
 
                 editorViewportEventEpoch.Advance();
                 return true;
-            });
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public bool CreateWorld()
+        public async Task<bool> CreateWorldAsync(
+            CancellationToken cancellationToken = default)
         {
-            bool result = InvokeRunningInterop(() =>
+            var result = await InvokeRunningInteropAsync(async token =>
             {
-                if (!EngineAppInterop.CreateEditorWorld())
+                if (!await protocolClient.CreateEditorWorldAsync(
+                        token).ConfigureAwait(false))
                 {
                     return false;
                 }
 
                 editorViewportEventEpoch.Advance();
                 return true;
-            });
+            }, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             if (result)
             {
-                RefreshCurrentWorld();
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
             }
 
             return result;
         }
 
-        public string SerializeCurrentWorld()
+        public async Task<string> SerializeCurrentWorldAsync(
+            CancellationToken cancellationToken = default)
         {
             var generation = Volatile.Read(ref engineGeneration);
-            return SerializeWorld(generation, out _);
+            var result =
+                await SerializeWorldAsync(
+                    generation,
+                    cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            return result.SerializedWorld;
         }
 
-        public bool UpdateEditorSelection(IEnumerable<InstanceId?> selection)
+        public Task<bool> UpdateEditorSelectionAsync(
+            IEnumerable<InstanceId?> selection,
+            CancellationToken cancellationToken = default)
         {
-            var yaml = BuildEditorSelectionYaml(selection);
-
-            return InvokeRunningInterop(() => EngineAppInterop.SetEditorSelection(yaml));
+            var instanceIds = BuildEditorSelectionIds(selection);
+            return InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorSelectionAsync(
+                    instanceIds,
+                    token),
+                cancellationToken: cancellationToken);
         }
 
-        public static string BuildEditorSelectionYaml(IEnumerable<InstanceId?> selection)
-        {
-            var serializer = new SerializerBuilder().Build();
-            return serializer.Serialize(selection?
+        public static string[] BuildEditorSelectionIds(IEnumerable<InstanceId?> selection)
+            => selection?
                 .Where(id => id is not null && !id.IsEmpty())
                 .Select(id => id!.Value)
-                .ToArray() ?? Array.Empty<string>());
-        }
+                .ToArray() ?? Array.Empty<string>();
 
-        public bool ExportPathTracedImage(string outputPath, InstanceId targetInstance = null, uint height = 720, uint samplesPerPixel = 64, uint maxBounces = 4)
+        public async Task<bool> ExportPathTracedImageAsync(
+            string outputPath,
+            InstanceId? targetInstance = null,
+            uint height = 720,
+            uint samplesPerPixel = 64,
+            uint maxBounces = 4,
+            CancellationToken cancellationToken = default)
         {
             string strInstanceId = targetInstance?.Value ?? string.Empty;
-            return InvokeRunningInterop(() => EngineAppInterop.RenderPathTracedImage(outputPath, strInstanceId, height, samplesPerPixel, maxBounces));
+            EngineSession? session;
+            CancellationToken backgroundCancellationToken;
+            lock (runLock)
+            {
+                session = State == EngineLifecycleState.Running
+                    ? activeSession
+                    : null;
+                backgroundCancellationToken =
+                    session?.BackgroundCancellation.Token ?? default;
+            }
+            if (session is null)
+            {
+                return false;
+            }
+
+            try
+            {
+                using var linkedCancellation =
+                    CancellationTokenSource.CreateLinkedTokenSource(
+                        backgroundCancellationToken,
+                        cancellationToken);
+                return await protocolClient.RenderPathTracedImageAsync(
+                    outputPath,
+                    strInstanceId,
+                    height,
+                    samplesPerPixel,
+                    maxBounces,
+                    linkedCancellation.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+                when (backgroundCancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
         }
 
         public void RunWorld(string world, bool bDebug)
@@ -2129,5 +2706,172 @@ namespace SailorEditor.Services
                 Console.WriteLine($"Cannot run SailorEngine process: {ex.Message}");
             }
         }
+
+        Task BeginDisposeAsync()
+        {
+            lock (disposeGate)
+            {
+                if (disposeTask is not null)
+                {
+                    return disposeTask;
+                }
+
+                Interlocked.Exchange(ref disposeState, 1);
+                disposeCancellation.Cancel();
+                if (ReferenceEquals(currentInstance, this))
+                {
+                    currentInstance = null;
+                }
+                disposeTask = Task.Run(DisposeCoreAsync);
+                return disposeTask;
+            }
+        }
+
+        async Task DisposeCoreAsync()
+        {
+            Exception? disposalFailure = null;
+            var protocolClientDisposed = false;
+            void DisposeProtocolClientOnce()
+            {
+                if (protocolClientDisposed)
+                {
+                    return;
+                }
+                protocolClientDisposed = true;
+                try
+                {
+                    protocolClient.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = CombineFailures(
+                        disposalFailure,
+                        exception);
+                }
+            }
+
+            async Task DrainProtocolClientAsync()
+            {
+                DisposeProtocolClientOnce();
+                try
+                {
+                    await protocolClient.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = CombineFailures(
+                        disposalFailure,
+                        exception);
+                }
+            }
+
+            try
+            {
+                try
+                {
+                    using var orderlyStopCancellation =
+                        new CancellationTokenSource(
+                            DisposeOrderlyStopTimeout);
+                    await StopAsync(orderlyStopCancellation.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = exception;
+                }
+
+                Task? completionTask;
+                lock (runLock)
+                {
+                    activeSession?.PollCancellation.Cancel();
+                    activeSession?.BackgroundCancellation.Cancel();
+                    activeSession?.RuntimeMonitorCancellation.Cancel();
+                    completionTask = activeSession?.CompletionTask;
+                }
+                if (completionTask is not null &&
+                    !completionTask.IsCompleted)
+                {
+                    try
+                    {
+                        await completionTask.WaitAsync(
+                            DisposeCompletionTimeout).ConfigureAwait(false);
+                    }
+                    catch (TimeoutException exception)
+                    {
+                        disposalFailure = CombineFailures(
+                            disposalFailure,
+                            exception);
+                        DisposeProtocolClientOnce();
+                        try
+                        {
+                            await completionTask.WaitAsync(
+                                DisposeAbortDrainTimeout).ConfigureAwait(false);
+                        }
+                        catch (Exception drainException)
+                        {
+                            disposalFailure = CombineFailures(
+                                disposalFailure,
+                                drainException);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        disposalFailure = CombineFailures(
+                            disposalFailure,
+                            exception);
+                    }
+                }
+
+                try
+                {
+                    var platformQueue = CapturePlatformInteropQueue();
+                    await platformQueue.WaitAsync(
+                        DisposePlatformQueueTimeout).ConfigureAwait(false);
+                }
+                catch (TimeoutException exception)
+                {
+                    disposalFailure = CombineFailures(
+                        disposalFailure,
+                        exception);
+                    DisposeProtocolClientOnce();
+                }
+                catch (Exception exception)
+                {
+                    disposalFailure = CombineFailures(
+                        disposalFailure,
+                        exception);
+                }
+
+                await DrainProtocolClientAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                disposeCancellation.Dispose();
+            }
+
+            if (disposalFailure is null)
+            {
+                if (State != EngineLifecycleState.Faulted)
+                {
+                    SetLifecycleState(EngineLifecycleState.Stopped);
+                }
+            }
+            else
+            {
+                lock (runLock)
+                {
+                    lastFailure ??= disposalFailure;
+                }
+                SetLifecycleState(EngineLifecycleState.Faulted);
+                Console.WriteLine(
+                    $"[EngineService] Native transport disposal failed: {disposalFailure.Message}");
+            }
+        }
+
+        public void Dispose()
+            => _ = BeginDisposeAsync();
+
+        public ValueTask DisposeAsync()
+            => new(BeginDisposeAsync());
     }
 }

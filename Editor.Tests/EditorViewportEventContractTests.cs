@@ -1,4 +1,5 @@
 using SailorEditor.Scene;
+using SailorEditor.Protocol.Generated;
 
 namespace Editor.Tests;
 
@@ -53,6 +54,79 @@ public sealed class EditorViewportEventContractTests
         Assert.Equal(new EditorViewportVector4(1, 2, 3, 0), transform.AfterScale);
     }
 
+    [Fact]
+    public void TypedTransformEvent_MapsGeneratedProtocolPayload()
+    {
+        var source = new ViewportEvent
+        {
+            Revision = 21,
+            ManagedMutationRevision = 8,
+            Transform = new ViewportTransformEvent
+            {
+                InstanceId = "go-42",
+                Operation = ViewportTransformOperation.Rotate,
+                Space = ViewportTransformSpace.Local,
+                BeforePosition = new Vector4 { W = 1 },
+                BeforeRotation = new Vector4 { W = 1 },
+                BeforeScale = new Vector4 { X = 1, Y = 1, Z = 1 },
+                AfterPosition = new Vector4 { X = 1, Y = 2.5f, Z = -3, W = 1 },
+                AfterRotation = new Vector4 { Y = 0.70710677f, W = 0.70710677f },
+                AfterScale = new Vector4 { X = 1, Y = 2, Z = 3 }
+            }
+        };
+
+        Assert.True(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var viewportEvent,
+                out var error),
+            error);
+        var transform = Assert.IsType<EditorViewportTransformEvent>(viewportEvent);
+        Assert.Equal(21UL, transform.Revision);
+        Assert.Equal(8UL, transform.ManagedMutationRevision);
+        Assert.Equal(EditorViewportTransformOperation.Rotate, transform.Operation);
+        Assert.Equal(EditorViewportTransformSpace.Local, transform.Space);
+        Assert.Equal(new EditorViewportVector4(1, 2.5f, -3, 1), transform.AfterPosition);
+    }
+
+    [Fact]
+    public void TypedTransformEvent_RejectsUnspecifiedEnumsAndNonFiniteVectors()
+    {
+        var source = new ViewportEvent
+        {
+            Transform = new ViewportTransformEvent
+            {
+                InstanceId = "go-42",
+                Operation = ViewportTransformOperation.Unspecified,
+                Space = ViewportTransformSpace.World
+            }
+        };
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var unsupported,
+                out var unsupportedError));
+        Assert.Null(unsupported);
+        Assert.Contains("unsupported", unsupportedError, StringComparison.OrdinalIgnoreCase);
+
+        source.Transform.Operation = ViewportTransformOperation.Translate;
+        source.Transform.BeforePosition = new Vector4 { X = float.PositiveInfinity };
+        source.Transform.BeforeRotation = new Vector4();
+        source.Transform.BeforeScale = new Vector4();
+        source.Transform.AfterPosition = new Vector4();
+        source.Transform.AfterRotation = new Vector4();
+        source.Transform.AfterScale = new Vector4();
+
+        Assert.False(
+            EditorViewportEventContract.TryCreate(
+                source,
+                out var nonFinite,
+                out var nonFiniteError));
+        Assert.Null(nonFinite);
+        Assert.Contains("non-finite", nonFiniteError, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Theory]
     [InlineData("kind: unknown\nrevision: 1\nmanagedMutationRevision: 0\n", "Unsupported viewport event kind")]
     [InlineData("kind: selection\nrevision: 1\nmanagedMutationRevision: 0\nselectedInstanceId: go\nunexpected: true\n", "unexpected field")]
@@ -71,15 +145,22 @@ public sealed class EditorViewportEventContractTests
     public void RevisionGate_RejectsDuplicateAndStaleEventsAcrossKinds()
     {
         var gate = new EditorViewportEventRevisionGate();
+        var revisionSeven =
+            new EditorViewportSelectionEvent(7, 0, "go-1");
+        var revisionEight = Transform(8);
 
-        Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(7, 0, "go-1")));
+        Assert.True(gate.TryAccept(revisionSeven));
+        Assert.True(gate.IsCurrent(revisionSeven));
         Assert.False(gate.TryAccept(Transform(7)));
         Assert.False(gate.TryAccept(Transform(6)));
-        Assert.True(gate.TryAccept(Transform(8)));
+        Assert.True(gate.TryAccept(revisionEight));
+        Assert.False(gate.IsCurrent(revisionSeven));
+        Assert.True(gate.IsCurrent(revisionEight));
         Assert.Equal(8UL, gate.LastAcceptedRevision);
 
         gate.Reset();
         Assert.Null(gate.LastAcceptedRevision);
+        Assert.False(gate.IsCurrent(revisionEight));
         Assert.True(gate.TryAccept(new EditorViewportSelectionEvent(0, 0, string.Empty)));
     }
 
@@ -101,17 +182,24 @@ public sealed class EditorViewportEventContractTests
 
         var selectionApply = Slice(sceneSource, "async Task ApplyViewportSelectionAsync", "async Task ApplyViewportTransformAsync");
         var transformApply = Slice(sceneSource, "async Task ApplyViewportTransformAsync", "ActionContext CreateViewportActionContext");
-        Assert.Equal(2, CountOccurrences(selectionApply, "IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision)"));
-        Assert.Equal(2, CountOccurrences(transformApply, "IsEditorViewportTransformEventCurrent("));
+        Assert.Equal(2, CountOccurrences(selectionApply, "await engineService.IsEditorViewportSelectionEventCurrentAsync("));
+        Assert.Equal(2, CountOccurrences(transformApply, "await engineService.IsEditorViewportTransformEventCurrentAsync("));
         AssertFenceIsRecheckedAfterInspectorFlush(
             selectionApply,
-            "IsEditorViewportSelectionEventCurrent(viewportEvent.ManagedMutationRevision)");
+            "await engineService.IsEditorViewportSelectionEventCurrentAsync(");
         AssertFenceIsRecheckedAfterInspectorFlush(
             transformApply,
-            "IsEditorViewportTransformEventCurrent(");
+            "await engineService.IsEditorViewportTransformEventCurrentAsync(");
         Assert.Contains("viewportEvent.InstanceId", transformApply, StringComparison.Ordinal);
-        Assert.Contains("GetEditorManagedMutationRevision(uint kind, string strInstanceId)", engineSource, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.GetEditorManagedMutationRevision((uint)kind, instanceId)", engineSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "async Task<bool> IsEditorViewportEventCurrentAsync(",
+            engineSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("=> Task.Run(() =>", engineSource, StringComparison.Ordinal);
+        Assert.Contains(
+            "await protocolClient.GetEditorManagedMutationRevisionAsync(",
+            engineSource,
+            StringComparison.Ordinal);
         Assert.Contains("Selection = 1", engineSource, StringComparison.Ordinal);
         Assert.Contains("ObjectTransform = 2", engineSource, StringComparison.Ordinal);
 
@@ -125,14 +213,58 @@ public sealed class EditorViewportEventContractTests
     public void PrimaryPointerPress_FlushesInspectorBeforeNativeGestureStarts()
     {
         var source = ReadRepositoryFile("Editor", "Views", "SceneView.xaml.cs");
-        var inputHandler = Slice(source, "nativeViewportHost.InputReceived += input =>", "NativeViewportContainer.Content = nativeViewportHost");
+        var inputHandler = Slice(
+            source,
+            "async Task<NativeViewportInputDispatchResult> ProcessNativeViewportInputAsync(",
+            "void SubscribeToEngineLifecycle()");
+
+        Assert.Contains(
+            "nativeViewportHost.InputReceived +=\n                    QueueNativeViewportInput;",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "InputReceived += async",
+            source,
+            StringComparison.Ordinal);
 
         AssertInOrder(
             inputHandler,
             "input.Button == 0",
-            "inspectorPendingEditCoordinator.CommitPendingChanges()",
+            "await inspectorPendingEditCoordinator",
+            ".CommitPendingChangesAsync(cancellationToken)",
+            "cancellationToken.ThrowIfCancellationRequested();",
+            "RejectPrimaryPointerGesture",
             "isInputCaptured = input.Captured",
             "viewportAdapter.SendInput(");
+    }
+
+    [Fact]
+    public void NativeInputQueue_ResetsAcrossViewAndBackendLifecycle()
+    {
+        var source = ReadRepositoryFile("Editor", "Views", "SceneView.xaml.cs");
+        var unload = Slice(
+            source,
+            "Unloaded += (sender, args) =>\n            {\n                isRunning = false;",
+            "        }\n\n        void QueueNativeViewportInput(");
+        var lifecycle = Slice(
+            source,
+            "void OnEngineLifecycleStateChanged(EngineLifecycleState state)",
+            "async void OnEditorViewportEvents(");
+
+        Assert.Contains("ResetNativeViewportInputQueue();", unload, StringComparison.Ordinal);
+        AssertInOrder(
+            lifecycle,
+            "viewportEventRevisionGate.Reset();",
+            "ResetNativeViewportInputQueue();",
+            "viewportAdapter.ResetForBackendRestart();");
+        Assert.Contains(
+            "nativeViewportInputQueue.Enqueue(input);",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Task nativeViewportInputQueue",
+            source,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -181,7 +313,10 @@ public sealed class EditorViewportEventContractTests
     public void NativeViewport_OwnsDropTargetAndUsesPostEventCaptureState()
     {
         var source = ReadRepositoryFile("Editor", "Views", "SceneView.xaml.cs");
-        var inputHandler = Slice(source, "nativeViewportHost.InputReceived += input =>", "NativeViewportContainer.Content = nativeViewportHost");
+        var inputHandler = Slice(
+            source,
+            "async Task<NativeViewportInputDispatchResult> ProcessNativeViewportInputAsync(",
+            "void SubscribeToEngineLifecycle()");
 
         Assert.Contains(
             "nativeViewportHost.GestureRecognizers.Add(CreateSceneDropGesture());",
@@ -247,23 +382,44 @@ public sealed class EditorViewportEventContractTests
     }
 
     [Fact]
-    public void EnginePolling_UsesUtf8OwnershipAndDocumentEpochGuards()
+    public void EnginePolling_UsesTypedProtocolEventsAndDocumentEpochGuards()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
-        var pull = Slice(source, "IReadOnlyList<EditorViewportEvent> PullEditorViewportEvents", "string SerializeWorld");
-        Assert.Contains("Marshal.PtrToStringUTF8", pull, StringComparison.Ordinal);
-        Assert.Contains("finally", pull, StringComparison.Ordinal);
-        Assert.Contains("EngineAppInterop.FreeInteropString(eventPtr)", pull, StringComparison.Ordinal);
+        var pull = Slice(
+            source,
+            "async Task<(IReadOnlyList<EditorViewportEvent> Events, long EventEpoch)>",
+            "async Task<(string SerializedWorld, long Sequence)> SerializeWorldAsync(");
+        Assert.Contains(
+            "await protocolClient.PullEditorViewportEventsAsync(",
+            pull,
+            StringComparison.Ordinal);
+        Assert.Contains("EditorViewportEventContract.TryCreate(", pull, StringComparison.Ordinal);
+        Assert.DoesNotContain("Marshal.", pull, StringComparison.Ordinal);
         Assert.Contains("eventEpoch = editorViewportEventEpoch.Current", pull, StringComparison.Ordinal);
         Assert.Contains("editorViewportEventEpoch.IsCurrent(eventEpoch)", pull, StringComparison.Ordinal);
+        AssertInOrder(
+            pull,
+            "await protocolClient.PullEditorViewportEventsAsync(",
+            "catch (EngineProtocolException exception)",
+            "[EngineService] Failed to poll protocol viewport events:",
+            "return (Array.Empty<EditorViewportEvent>(), eventEpoch);");
 
-        var publish = Slice(source, "void PublishEditorViewportEvents", "bool InvokeRunningInterop");
+        var publish = Slice(
+            source,
+            "void PublishEditorViewportEvents",
+            "async Task<bool> InvokeRunningInteropAsync");
         Assert.Contains("IsGenerationActive(generation)", publish, StringComparison.Ordinal);
         Assert.Contains("editorViewportEventEpoch.IsCurrent(eventEpoch)", publish, StringComparison.Ordinal);
 
-        var load = Slice(source, "public bool LoadWorld", "public bool CreateWorld");
-        var create = Slice(source, "public bool CreateWorld", "public string SerializeCurrentWorld");
+        var load = Slice(
+            source,
+            "public async Task<bool> LoadWorldAsync(",
+            "public async Task<bool> CreateWorldAsync(");
+        var create = Slice(
+            source,
+            "public async Task<bool> CreateWorldAsync(",
+            "public async Task<string> SerializeCurrentWorldAsync(");
         Assert.Contains("editorViewportEventEpoch.Advance()", load, StringComparison.Ordinal);
         Assert.Contains("editorViewportEventEpoch.Advance()", create, StringComparison.Ordinal);
     }
@@ -303,7 +459,10 @@ public sealed class EditorViewportEventContractTests
     static void AssertFenceIsRecheckedAfterInspectorFlush(string source, string fenceMarker)
     {
         var firstFence = source.IndexOf(fenceMarker, StringComparison.Ordinal);
-        var flush = source.IndexOf("inspectorPendingEditCoordinator.CommitPendingChanges()", firstFence, StringComparison.Ordinal);
+        var flush = source.IndexOf(
+            ".CommitPendingChangesAsync()",
+            firstFence,
+            StringComparison.Ordinal);
         var secondFence = source.IndexOf(fenceMarker, firstFence + fenceMarker.Length, StringComparison.Ordinal);
 
         Assert.True(firstFence >= 0);
@@ -352,7 +511,8 @@ public sealed class EditorViewportEventContractTests
             if (Directory.Exists(Path.Combine(current.FullName, "Editor")) &&
                 Directory.Exists(Path.Combine(current.FullName, "Runtime")))
             {
-                return File.ReadAllText(Path.Combine([current.FullName, .. relativePath]));
+                return File.ReadAllText(Path.Combine([current.FullName, .. relativePath]))
+                    .ReplaceLineEndings("\n");
             }
 
             current = current.Parent;

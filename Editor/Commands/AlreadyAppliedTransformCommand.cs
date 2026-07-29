@@ -5,15 +5,22 @@ namespace SailorEditor.Commands;
 
 public interface IAlreadyAppliedTransformTarget
 {
-    bool ApplyLocal(string instanceId, string yaml);
-    bool CommitAndApplyLocal(string instanceId, string yaml);
+    Task<bool> ApplyLocalAsync(
+        string instanceId,
+        string yaml,
+        CancellationToken cancellationToken = default);
+    Task<bool> CommitAndApplyLocalAsync(
+        string instanceId,
+        string yaml,
+        CancellationToken cancellationToken = default);
 }
 
 internal static class EditorViewportTransformApplication
 {
-    public static bool ApplyAlreadyCommitted(
+    public static async Task<bool> ApplyAlreadyCommittedAsync(
         Func<bool> applyLocal,
-        Action refreshWorld)
+        Func<CancellationToken, Task> refreshWorld,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -29,7 +36,7 @@ internal static class EditorViewportTransformApplication
 
         try
         {
-            refreshWorld();
+            await refreshWorld(cancellationToken);
         }
         catch (Exception ex)
         {
@@ -41,17 +48,21 @@ internal static class EditorViewportTransformApplication
         return true;
     }
 
-    public static bool CommitAndApply(
-        Func<bool> commitEngine,
+    public static async Task<bool> CommitAndApplyAsync(
+        Func<CancellationToken, Task<bool>> commitEngine,
         Func<bool> applyLocal,
-        Action refreshWorld)
+        Func<CancellationToken, Task> refreshWorld,
+        CancellationToken cancellationToken = default)
     {
-        if (!commitEngine())
+        if (!await commitEngine(cancellationToken))
         {
             return false;
         }
 
-        return ApplyAlreadyCommitted(applyLocal, refreshWorld);
+        return await ApplyAlreadyCommittedAsync(
+            applyLocal,
+            refreshWorld,
+            cancellationToken);
     }
 }
 
@@ -86,36 +97,54 @@ public sealed class AlreadyAppliedTransformCommand : IUndoableEditorCommand
         !string.IsNullOrWhiteSpace(_beforeYaml) &&
         !string.IsNullOrWhiteSpace(_afterYaml);
 
-    public Task<CommandResult> ExecuteAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_initialExecutionPending)
         {
-            if (!_target.ApplyLocal(_instanceId, _afterYaml))
+            if (!await _target.ApplyLocalAsync(
+                    _instanceId,
+                    _afterYaml,
+                    cancellationToken))
             {
-                return Task.FromResult(CommandResult.Failure("The completed viewport transform could not be projected locally."));
+                return CommandResult.Failure(
+                    "The completed viewport transform could not be projected locally.");
             }
 
             _initialExecutionPending = false;
-            return Task.FromResult(CommandResult.Success());
+            return CommandResult.Success();
         }
 
-        return Task.FromResult(ApplyCommitted(_afterYaml));
+        return await ApplyCommittedAsync(
+            _afterYaml,
+            cancellationToken);
     }
 
-    public ValueTask<CommandResult> UndoAsync(ActionContext context, CancellationToken cancellationToken = default)
+    public async ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_initialExecutionPending)
         {
-            return ValueTask.FromResult(CommandResult.Failure("The viewport transform has not been applied yet."));
+            return CommandResult.Failure(
+                "The viewport transform has not been applied yet.");
         }
 
-        return ValueTask.FromResult(ApplyCommitted(_beforeYaml));
+        return await ApplyCommittedAsync(
+            _beforeYaml,
+            cancellationToken);
     }
 
-    CommandResult ApplyCommitted(string yaml) =>
-        _target.CommitAndApplyLocal(_instanceId, yaml)
+    async Task<CommandResult> ApplyCommittedAsync(
+        string yaml,
+        CancellationToken cancellationToken) =>
+        await _target.CommitAndApplyLocalAsync(
+            _instanceId,
+            yaml,
+            cancellationToken)
             ? CommandResult.Success()
             : CommandResult.Failure("The viewport transform could not be committed to the engine.");
 }

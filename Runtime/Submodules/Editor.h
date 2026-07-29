@@ -1,6 +1,7 @@
 #pragma once
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
+#include <atomic>
 #include <yaml-cpp/yaml.h>
 #if __has_include(<concurrent_queue.h>)
 #include <concurrent_queue.h>
@@ -48,7 +49,10 @@ namespace Sailor
 		void PushMessage(const std::string& msg);
 		bool PullMessage(std::string& msg);
 
-		__forceinline size_t NumMessages() const { return m_messagesQueue.unsafe_size(); }
+		__forceinline size_t NumMessages() const
+		{
+			return m_numMessages.load(std::memory_order_relaxed);
+		}
 
 		YAML::Node SerializeWorld() const;
 
@@ -72,6 +76,7 @@ namespace Sailor
 	protected:
 
 		concurrency::concurrent_queue<std::string> m_messagesQueue;
+		std::atomic_size_t m_numMessages = 0;
 
 		RECT m_windowRect{};
 		uint32_t m_editorPort;

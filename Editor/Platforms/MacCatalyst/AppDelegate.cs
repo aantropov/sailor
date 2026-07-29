@@ -19,6 +19,34 @@ public class AppDelegate : MauiUIApplicationDelegate
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
 
+    public override void WillTerminate(UIApplication application)
+    {
+        try
+        {
+            var shutdownTask =
+                MauiProgram.GetService<EngineService>()
+                    .DisposeAsync()
+                    .AsTask();
+            while (!shutdownTask.IsCompleted)
+            {
+                using var deadline =
+                    NSDate.FromTimeIntervalSinceNow(0.01);
+                NSRunLoop.Main.RunUntil(deadline);
+            }
+
+            shutdownTask.GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[EngineService] Application termination drain failed: {exception.Message}");
+        }
+        finally
+        {
+            base.WillTerminate(application);
+        }
+    }
+
     public override void BuildMenu(IUIMenuBuilder builder)
     {
         base.BuildMenu(builder);

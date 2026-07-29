@@ -43,9 +43,9 @@ jobs:
         path: |
           ${{ env.VCPKG_ROOT }}/installed
           ${{ env.VCPKG_ROOT }}/packages
-        key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-installed-${{ env.BUILD_TYPE }}
+        key: vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-${{ hashFiles('update_deps.py', '.github/vcpkg-ports/**', '.github/vcpkg-triplets/**') }}-installed-${{ env.BUILD_TYPE }}
         restore-keys: |
-          vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-installed-
+          vcpkg-${{ runner.os }}-${{ matrix.compiler }}-${{ steps.vcpkg.outputs.revision }}-${{ hashFiles('update_deps.py', '.github/vcpkg-ports/**', '.github/vcpkg-triplets/**') }}-installed-
 
     - name: Show CMake version
       run: cmake --version

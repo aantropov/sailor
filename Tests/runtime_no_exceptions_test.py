@@ -86,6 +86,10 @@ def main() -> int:
         if not path.is_file() or path.suffix.lower() not in SOURCE_SUFFIXES:
             continue
 
+        relative_path = path.relative_to(runtime_directory)
+        if relative_path.parts[:2] == ("Protocol", "Generated"):
+            continue
+
         source = strip_comments_and_literals(path.read_text(encoding="utf-8"))
         for match in FORBIDDEN_PATTERN.finditer(source):
             line = source.count("\n", 0, match.start()) + 1

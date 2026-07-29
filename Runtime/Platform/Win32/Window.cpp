@@ -13,7 +13,13 @@
 using namespace Sailor;
 using namespace Sailor::Win32;
 
+namespace
+{
+	constexpr UINT c_destroyWindowMessage = WM_APP + 0x351;
+}
+
 TVector<Window*> Window::g_windows;
+std::mutex Window::g_windowsMutex;
 
 Window::~Window()
 {
@@ -183,7 +189,10 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		return false;
 	}
 
-	g_windows.Add(this);
+	{
+		const std::lock_guard<std::mutex> lock(g_windowsMutex);
+		g_windows.Add(this);
+	}
 
 	m_bIsVsyncRequested = bIsVsyncRequested;
 	m_width = inWidth;
@@ -285,13 +294,25 @@ void Sailor::Win32::Window::ProcessWin32Msgs()
 	SAILOR_PROFILE_FUNCTION();
 
 	MSG msg;
-	for (int i = 0; i < g_windows.Num(); i++)
+	for (int i = 0; ; i++)
 	{
-		while (PeekMessage(&msg, g_windows[i]->GetHWND(), 0, 0, PM_REMOVE))
+		Window* pWindow = nullptr;
+		HWND hWnd = nullptr;
+		{
+			const std::lock_guard<std::mutex> lock(g_windowsMutex);
+			if (i >= g_windows.Num())
+			{
+				break;
+			}
+			pWindow = g_windows[i];
+			hWnd = pWindow->m_hWnd;
+		}
+
+		while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
 			{
-				g_windows[i]->SetRunning(false);
+				pWindow->SetRunning(false);
 				break;
 			}
 			DispatchMessage(&msg);
@@ -338,19 +359,65 @@ void Window::RecalculateWindowSize()
 
 void Window::Destroy()
 {
-	check(!m_hWnd || ::GetWindowThreadProcessId(m_hWnd, nullptr) == ::GetCurrentThreadId());
+	HWND hWnd = nullptr;
+	{
+		const std::lock_guard<std::mutex> lock(g_windowsMutex);
+		hWnd = m_hWnd;
+	}
 
-	HWND hWnd = m_hWnd;
-	HDC hDC = m_hDC;
-	HINSTANCE hInstance = m_hInstance;
-	const ATOM windowClassAtom = m_windowClassAtom;
+	if (hWnd &&
+		::GetWindowThreadProcessId(hWnd, nullptr) !=
+			::GetCurrentThreadId())
+	{
+		// The Window object cannot be released until its HWND has been
+		// destroyed. A timeout would let the destructor return while
+		// WindowProc still retains this pointer in g_windows.
+		const LRESULT result = ::SendMessage(
+			hWnd,
+			c_destroyWindowMessage,
+			0,
+			0);
+		if (result != TRUE)
+		{
+			const std::lock_guard<std::mutex> lock(g_windowsMutex);
+			// The owner may have destroyed the HWND between the thread check
+			// and SendMessage. Never leave WindowProc with a soon-to-be-freed
+			// Window pointer even if native resources can no longer be
+			// reclaimed safely from this thread.
+			if (m_hWnd == hWnd)
+			{
+				SAILOR_LOG_ERROR(
+					"Win32 window owner did not acknowledge destruction. error=%lu",
+					static_cast<unsigned long>(GetLastError()));
+				m_hWnd = nullptr;
+				m_hDC = nullptr;
+				g_windows.Remove(this);
+			}
+		}
+		return;
+	}
+
+	check(!hWnd || ::GetWindowThreadProcessId(hWnd, nullptr) == ::GetCurrentThreadId());
+
+	HDC hDC = nullptr;
+	HINSTANCE hInstance = nullptr;
+	ATOM windowClassAtom = 0;
 	const bool bWasFullscreen = m_bIsFullscreen;
 
-	m_hWnd = nullptr;
-	m_hDC = nullptr;
-	m_hInstance = nullptr;
-	m_parentHwnd = nullptr;
-	m_windowClassAtom = 0;
+	{
+		const std::lock_guard<std::mutex> lock(g_windowsMutex);
+		hWnd = m_hWnd;
+		hDC = m_hDC;
+		hInstance = m_hInstance;
+		windowClassAtom = m_windowClassAtom;
+		m_hWnd = nullptr;
+		m_hDC = nullptr;
+		m_hInstance = nullptr;
+		m_parentHwnd = nullptr;
+		m_windowClassAtom = 0;
+		g_windows.Remove(this);
+	}
+
 	m_bIsShown = false;
 	m_bIsFullscreen = false;
 	m_bIsActive = false;
@@ -363,7 +430,6 @@ void Window::Destroy()
 	m_renderArea = {};
 	m_viewport = {};
 	m_windowClassName.clear();
-	g_windows.Remove(this);
 
 	if (bWasFullscreen)
 	{
@@ -396,12 +462,18 @@ bool Window::IsIconic() const
 
 LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	auto windowIndex = Window::g_windows.FindIf([hWnd](Window* pWindow) { return pWindow->GetHWND() == hWnd; });
-
 	Window* pWindow = nullptr;
-	if (windowIndex != -1)
 	{
-		pWindow = Window::g_windows[windowIndex];
+		const std::lock_guard<std::mutex> lock(Window::g_windowsMutex);
+		auto windowIndex = Window::g_windows.FindIf(
+			[hWnd](Window* pCandidate)
+			{
+				return pCandidate->m_hWnd == hWnd;
+			});
+		if (windowIndex != -1)
+		{
+			pWindow = Window::g_windows[windowIndex];
+		}
 	}
 	if (!pWindow)
 	{
@@ -489,6 +561,22 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		PostQuitMessage(0);
 		return FALSE;
 	}
+	case c_destroyWindowMessage:
+		pWindow->Destroy();
+		return TRUE;
+
+	case WM_NCDESTROY:
+	{
+		const std::lock_guard<std::mutex> lock(Window::g_windowsMutex);
+		pWindow->m_hWnd = nullptr;
+		pWindow->m_hDC = nullptr;
+		Window::g_windows.Remove(pWindow);
+	}
+		pWindow->m_bIsShown = false;
+		pWindow->m_bIsActive = false;
+		pWindow->m_bIsRunning = false;
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+
 	case WM_SYSCOMMAND:
 	{
 		switch (wParam & 0xFFF0)

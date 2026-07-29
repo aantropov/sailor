@@ -1,6 +1,7 @@
 ﻿using SailorEditor;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
+using SailorEditor.Shell;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEditor.Views;
@@ -108,12 +109,16 @@ public class ComponentTemplate : DataTemplate
                     new EditorContextMenuItem
                     {
                         Text = "Reset to Defaults",
-                        Command = new Command(() => worldService.ResetComponentToDefaults(component))
+                        Command = CreateContextMenuCommand(
+                            () => worldService.ResetComponentToDefaultsAsync(component),
+                            "Reset component")
                     },
                     new EditorContextMenuItem
                     {
                         Text = "Remove Component",
-                        Command = new Command(() => worldService.RemoveComponent(component))
+                        Command = CreateContextMenuCommand(
+                            () => worldService.RemoveComponentAsync(component),
+                            "Remove component")
                     }
                 };
 
@@ -215,5 +220,48 @@ public class ComponentTemplate : DataTemplate
         return !string.IsNullOrWhiteSpace(typeName) && typeName.StartsWith(prefix, StringComparison.Ordinal)
             ? typeName[prefix.Length..]
             : typeName;
+    }
+
+    static Command CreateContextMenuCommand(
+        Func<Task> action,
+        string operation)
+    {
+        return new Command(
+            () => RunContextMenuAction(
+                action,
+                operation));
+    }
+
+    static void RunContextMenuAction(
+        Func<Task> action,
+        string operation)
+    {
+        _ = ExecuteContextMenuActionAsync(
+            action,
+            operation);
+    }
+
+    static async Task ExecuteContextMenuActionAsync(
+        Func<Task> action,
+        string operation)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"{operation} failed: {ex}");
+            try
+            {
+                MauiProgram.GetService<EditorShellHost>()
+                    .SetStatus($"{operation} failed: {ex.Message}");
+            }
+            catch (Exception statusException)
+            {
+                Console.Error.WriteLine(
+                    $"Failed to publish component action error status: {statusException}");
+            }
+        }
     }
 }

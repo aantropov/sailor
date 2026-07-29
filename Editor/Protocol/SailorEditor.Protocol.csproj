@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SailorEditor.Protocol.Generated</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ProtocolGeneratedIntermediateDir>$(MSBuildProjectDirectory)/obj/$(Configuration)/$(TargetFramework)/ProtocolGenerated/</ProtocolGeneratedIntermediateDir>
+    <ProtocolGeneratedCheckedInDir>$(MSBuildProjectDirectory)/Generated/</ProtocolGeneratedCheckedInDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.69.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="../../Protocol/*.proto"
+              ProtoRoot="../../Protocol"
+              GrpcServices="None"
+              CompileOutputs="false"
+              OutputDir="$(ProtocolGeneratedIntermediateDir)" />
+    <Compile Include="Generated/*.cs" />
+  </ItemGroup>
+
+  <Target Name="ForceProtocolCodeGeneration"
+          BeforeTargets="_Protobuf_GatherStaleBatched"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <RemoveDir Directories="$(ProtocolGeneratedIntermediateDir)" />
+  </Target>
+
+  <Target Name="VerifyCheckedInProtocolGeneratedSources"
+          AfterTargets="Protobuf_Compile"
+          BeforeTargets="CoreCompile"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_ProtocolGeneratedIntermediateFile>$(ProtocolGeneratedIntermediateDir)EditorEngine.cs</_ProtocolGeneratedIntermediateFile>
+      <_ProtocolGeneratedCheckedInFile>$(ProtocolGeneratedCheckedInDir)EditorEngine.cs</_ProtocolGeneratedCheckedInFile>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(_ProtocolGeneratedIntermediateFile)')"
+           Text="Protocol generation did not produce '$(_ProtocolGeneratedIntermediateFile)'." />
+    <Error Condition="!Exists('$(_ProtocolGeneratedCheckedInFile)')"
+           Text="Checked-in protocol source '$(_ProtocolGeneratedCheckedInFile)' is missing." />
+
+    <GetFileHash Files="$(_ProtocolGeneratedIntermediateFile)" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="_ProtocolGeneratedIntermediateHash" />
+    </GetFileHash>
+    <GetFileHash Files="$(_ProtocolGeneratedCheckedInFile)" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="_ProtocolGeneratedCheckedInHash" />
+    </GetFileHash>
+
+    <Error Condition="'$(_ProtocolGeneratedIntermediateHash)' != '$(_ProtocolGeneratedCheckedInHash)'"
+           Text="Checked-in C# protocol source '$(_ProtocolGeneratedCheckedInFile)' is stale. Regenerate it from Protocol/editor_engine.proto and commit the exact output." />
+  </Target>
+</Project>

@@ -29,9 +29,11 @@
 #include "Engine/EngineLoop.h"
 #include <algorithm>
 #include <cctype>
+#include <condition_variable>
 #include <filesystem>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include "Memory/MemoryBlockAllocator.hpp"
 #include "ECS/ECS.h"
 #include "FrameGraph/RHIFrameGraph.h"
@@ -87,7 +89,27 @@ namespace
 	std::mutex g_engineMainThreadDispatchMutex;
 	EEngineMainLoopState g_engineMainLoopState = EEngineMainLoopState::Pending;
 	bool g_engineShuttingDown = false;
+	bool g_engineStopRequested = false;
 	thread_local bool g_bExecutingEngineMainThreadDispatch = false;
+	std::mutex g_engineShutdownMutex;
+	std::condition_variable g_engineShutdownCondition;
+	bool g_engineShutdownInProgress = false;
+	std::thread::id g_engineShutdownOwner{};
+
+	class TEngineShutdownCompletion final
+	{
+	public:
+		~TEngineShutdownCompletion()
+		{
+			{
+				const std::lock_guard<std::mutex> shutdownLock(
+					g_engineShutdownMutex);
+				g_engineShutdownInProgress = false;
+				g_engineShutdownOwner = {};
+			}
+			g_engineShutdownCondition.notify_all();
+		}
+	};
 
 	void ProcessPendingEngineMainThreadTasks(Tasks::Scheduler* scheduler)
 	{
@@ -266,6 +288,11 @@ bool App::DispatchOnEngineMainThread(std::function<void()> command)
 	return task->IsFinished();
 }
 
+bool App::IsEngineMainThreadReady()
+{
+	return DispatchOnEngineMainThread([]() {});
+}
+
 AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 {
 	AppArgs params{};
@@ -331,6 +358,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	EditorRuntime::ResetForAppLifecycle();
 
+	{
+		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
+		g_engineStopRequested = false;
+	}
 	{
 		const std::lock_guard<std::mutex> dispatchLock(g_engineMainThreadDispatchMutex);
 		g_engineMainLoopState = EEngineMainLoopState::Pending;
@@ -545,9 +576,14 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 void App::Start()
 {
-	if (!s_pInstance)
 	{
-		return;
+		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
+		if (!s_pInstance ||
+			g_engineShutdownInProgress ||
+			g_engineStopRequested)
+		{
+			return;
+		}
 	}
 
 	if (s_pInstance->m_bSkipMainLoop)
@@ -582,8 +618,26 @@ void App::Start()
 
 	auto& pMainWindow = s_pInstance->m_pMainWindow;
 
-	pMainWindow->SetActive(true);
-	pMainWindow->SetRunning(true);
+	bool bStartCancelled = false;
+	{
+		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
+		if (g_engineShutdownInProgress || g_engineStopRequested)
+		{
+			bStartCancelled = true;
+		}
+		else
+		{
+			pMainWindow->SetActive(true);
+			pMainWindow->SetRunning(true);
+		}
+	}
+	if (bStartCancelled)
+	{
+		const std::lock_guard<std::mutex> dispatchLock(
+			g_engineMainThreadDispatchMutex);
+		g_engineMainLoopState = EEngineMainLoopState::Exited;
+		return;
+	}
 
 	uint32_t frameCounter = 0U;
 	Utils::Timer timer{};
@@ -776,6 +830,12 @@ void App::Start()
 
 void App::Stop()
 {
+	const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
+	g_engineStopRequested = true;
+	if (g_engineShutdownInProgress)
+	{
+		return;
+	}
 	if (!s_pInstance || !s_pInstance->m_pMainWindow)
 	{
 		return;
@@ -900,10 +960,32 @@ void App::ProcessAssetReloadRequestOnEngineMainThread()
 
 void App::Shutdown()
 {
-	if (!s_pInstance)
 	{
-		return;
+		std::unique_lock<std::mutex> shutdownLock(g_engineShutdownMutex);
+		if (g_engineShutdownInProgress)
+		{
+			if (g_engineShutdownOwner == std::this_thread::get_id())
+			{
+				return;
+			}
+			g_engineShutdownCondition.wait(
+				shutdownLock,
+				[]()
+				{
+					return !g_engineShutdownInProgress;
+				});
+			return;
+		}
+		if (!s_pInstance)
+		{
+			return;
+		}
+
+		g_engineStopRequested = true;
+		g_engineShutdownInProgress = true;
+		g_engineShutdownOwner = std::this_thread::get_id();
 	}
+	const TEngineShutdownCompletion shutdownCompletion{};
 
 	EditorRuntime::ResetForAppLifecycle();
 
@@ -928,7 +1010,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -979,6 +1061,11 @@ void App::Shutdown()
 			pSubmodule.Clear();
 		}
 	}
+
+	// Window destruction may marshal back to the platform UI thread. Release it
+	// while App storage and the (now empty) submodule table are still valid so
+	// platform callbacks can safely inspect the application during teardown.
+	s_pInstance->m_pMainWindow.Clear();
 
 	delete s_pInstance;
 	s_pInstance = nullptr;

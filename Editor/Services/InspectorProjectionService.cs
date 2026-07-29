@@ -10,8 +10,10 @@ public sealed partial class InspectorProjectionService : ObservableObject
     readonly SelectionService _selectionService;
     readonly WorldService _worldService;
     long _workspaceEpoch;
+    long _resetGeneration;
 
     public long WorkspaceEpoch => Interlocked.Read(ref _workspaceEpoch);
+    public long ResetGeneration => Interlocked.Read(ref _resetGeneration);
     public bool IsWorkspaceResetInProgress { get; private set; }
 
     [ObservableProperty]
@@ -40,7 +42,10 @@ public sealed partial class InspectorProjectionService : ObservableObject
         using var perfScope = EditorPerf.Scope("InspectorProjectionService.Refresh");
         var suppressCommit = _selectionService.IsWorkspaceResetInProgress;
         if (suppressCommit)
+        {
+            Interlocked.Increment(ref _resetGeneration);
             IsWorkspaceResetInProgress = true;
+        }
 
         try
         {
@@ -75,6 +80,7 @@ public sealed partial class InspectorProjectionService : ObservableObject
     public void ResetForWorkspaceChange()
     {
         Interlocked.Increment(ref _workspaceEpoch);
+        Interlocked.Increment(ref _resetGeneration);
         IsWorkspaceResetInProgress = true;
         try
         {

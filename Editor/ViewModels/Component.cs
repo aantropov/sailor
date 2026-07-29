@@ -21,6 +21,8 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
     readonly InspectorAutoCommitController _autoCommit = new(
         propertyName => propertyName == nameof(IsDirty),
         propertyName => propertyName == nameof(OverrideProperties));
+    readonly SemaphoreSlim _commitGate = new(1, 1);
+    int pendingInspectorCommits;
 
     public Component()
     {
@@ -32,14 +34,39 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
 
             IsDirty = true;
             if (decision.CommitNow)
-                CommitInspectorChanges();
+                _ = CommitInspectorChangesSafelyAsync();
         };
     }
 
-    public bool CommitInspectorChanges()
+    public async Task<bool> CommitInspectorChangesAsync(
+        CancellationToken cancellationToken = default)
     {
-        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty) || !isInited)
+        Interlocked.Increment(ref pendingInspectorCommits);
+        var acquired = false;
+        try
+        {
+            await _commitGate.WaitAsync(cancellationToken);
+            acquired = true;
+            return await CommitInspectorChangesCoreAsync(
+                cancellationToken);
+        }
+        finally
+        {
+            if (acquired)
+            {
+                _commitGate.Release();
+            }
+            Interlocked.Decrement(ref pendingInspectorCommits);
+        }
+    }
+
+    async Task<bool> CommitInspectorChangesCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        if (!isInited)
             return false;
+        if (!_autoCommit.ShouldCommitPendingChanges(IsDirty))
+            return true;
 
         var yamlComponent = EditorYaml.SerializeComponent(this);
         var previousYaml = _lastCommittedYaml ?? yamlComponent;
@@ -56,11 +83,13 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
         CommandResult result;
         try
         {
-            result = dispatcher.DispatchAsync(
+            result = await dispatcher.DispatchAsync(
                 new UpdateComponentCommand(this, previousYaml, yamlComponent, $"Edit {Typename?.Name}"),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CommitInspectorChanges))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(CommitInspectorChangesAsync))),
+                cancellationToken);
         }
         catch
         {
@@ -78,8 +107,22 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
         return false;
     }
 
+    async Task CommitInspectorChangesSafelyAsync()
+    {
+        try
+        {
+            await CommitInspectorChangesAsync();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine(
+                $"Automatic component inspector commit failed: {exception}");
+        }
+    }
+
     [YamlIgnore]
-    public bool HasPendingInspectorChanges => IsDirty;
+    public bool HasPendingInspectorChanges =>
+        IsDirty || Volatile.Read(ref pendingInspectorCommits) != 0;
 
     public void Initialize()
     {

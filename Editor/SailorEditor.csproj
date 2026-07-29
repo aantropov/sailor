@@ -98,6 +98,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<Compile Remove="Protocol\Generated\**\*.cs;Protocol\obj\**\*.cs" />
+		<ProjectReference Include="Protocol\SailorEditor.Protocol.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
 	  <Compile Update="Controls\HorizontalGridSplitterControl.xaml.cs">
 	    <DependentUpon>HorizontalGridSplitterControl.xaml</DependentUpon>
 	  </Compile>

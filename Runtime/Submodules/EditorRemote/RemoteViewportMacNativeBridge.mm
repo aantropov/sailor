@@ -534,7 +534,7 @@ namespace Sailor::EditorRemote
 
 	Failure BindMacNativeLayer(const MacNativeHostHandle& hostHandle, uint32_t width, uint32_t height, PixelFormat pixelFormat, MacNativeLayerBinding& inOutBinding)
 	{
-		return RunOnMainThreadSync([&]() -> Failure
+		auto bindNativeLayer = [&]() -> Failure
 		{
 			const uint64_t nextBindingToken = inOutBinding.m_bindingToken + 1;
 			ResetMacNativeLayerBinding(inOutBinding);
@@ -626,7 +626,17 @@ namespace Sailor::EditorRemote
 			inOutBinding.m_sourceTextureToken = 0;
 			inOutBinding.m_usesSyntheticSourceTexture = false;
 			return Failure::Ok();
-		});
+		};
+
+		if (hostHandle.m_kind == MacNativeHostHandleKind::NSView)
+		{
+			return RunOnMainThreadSync(bindNativeLayer);
+		}
+
+		// CAMetalLayer hosts are created and attached by the editor UI. Metal
+		// presentation already runs on the Engine thread, so binding the
+		// supplied layer must not synchronously re-enter the UI main thread.
+		return bindNativeLayer();
 	}
 
 	Failure CaptureMacIOSurfaceFrameEvidence(const MacIOSurfaceHandle& surfaceHandle, uint32_t width, uint32_t height, MacNativeSurfaceFrameEvidence& outEvidence)

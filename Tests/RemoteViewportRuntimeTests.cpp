@@ -45,6 +45,51 @@ namespace
 		return count;
 	}
 
+	void RequireRemoteViewportBindingLockOrder(const std::string& source)
+	{
+		constexpr const char* lockMarker = "g_remoteViewportBindingsMutex";
+		size_t offset = 0;
+		size_t checkedLocks = 0;
+		while ((offset = source.find(lockMarker, offset)) != std::string::npos)
+		{
+			const size_t lineBegin = source.rfind('\n', offset);
+			const size_t lineEnd = source.find('\n', offset);
+			const std::string line = source.substr(
+				lineBegin == std::string::npos ? 0 : lineBegin + 1,
+				(lineEnd == std::string::npos ? source.size() : lineEnd) -
+					(lineBegin == std::string::npos ? 0 : lineBegin + 1));
+			offset += std::char_traits<char>::length(lockMarker);
+			if (line.find("std::lock_guard") == std::string::npos &&
+				line.find("std::unique_lock") == std::string::npos &&
+				line.find("std::scoped_lock") == std::string::npos &&
+				line.find("std::lock(") == std::string::npos)
+			{
+				continue;
+			}
+
+			size_t indentation = 0;
+			while (indentation < line.size() && line[indentation] == '\t')
+			{
+				++indentation;
+			}
+			Require(indentation > 0, "remote viewport map lock should be scoped inside a function or explicit block");
+
+			const std::string scopeEndMarker = "\n" + std::string(indentation - 1, '\t') + "}";
+			const size_t scopeEnd = source.find(scopeEndMarker, offset);
+			Require(scopeEnd != std::string::npos, "remote viewport map lock scope should be syntactically bounded");
+			const std::string lockedTail = source.substr(offset, scopeEnd - offset);
+			Require(lockedTail.find("->m_mutex") == std::string::npos &&
+				lockedTail.find("->m_binding") == std::string::npos &&
+				lockedTail.find("->Pump(") == std::string::npos &&
+				lockedTail.find("->SetVisible(") == std::string::npos &&
+				lockedTail.find("->SetFocused(") == std::string::npos,
+				"remote viewport map lock must be released before acquiring or invoking a binding");
+			++checkedLocks;
+		}
+
+		Require(checkedLocks >= 8, "remote viewport lock-order contract should inspect every map access family");
+	}
+
 	ViewportDescriptor MakeViewport(ViewportId viewportId = 1, uint32_t width = 1280, uint32_t height = 720)
 	{
 		ViewportDescriptor viewport{};
@@ -564,7 +609,113 @@ namespace
 		const std::string imGuiSource = ReadText(sourceRoot / "Runtime/Submodules/ImGuiApi.cpp");
 		const std::string macInputSource = ReadText(sourceRoot / "Editor/Platforms/MacCatalyst/NativeSceneViewportHandler.MacCatalyst.cs");
 		const std::string windowsExports = ReadText(sourceRoot / "Lib/DllMain.cpp");
-		const std::string portableExports = ReadText(sourceRoot / "Lib/InteropExports.cpp");
+		const std::string protocolExports = ReadText(sourceRoot / "Lib/EditorProtocolExports.cpp");
+		const std::string protocolDispatcherSource = ReadText(
+			sourceRoot / "Lib/EditorEngineProtocol.cpp");
+		const std::string macTransportSource = ReadText(
+			sourceRoot /
+				"Runtime/Submodules/EditorRemote/RemoteViewportMacTransport.h");
+		const std::string macNativeBridgeSource = ReadText(
+			sourceRoot /
+				"Runtime/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm");
+
+		RequireRemoteViewportBindingLockOrder(bridgeSource);
+		const size_t bindNativeLayerBegin = macNativeBridgeSource.find(
+			"Failure BindMacNativeLayer(");
+		const size_t bindNativeLayerEnd = macNativeBridgeSource.find(
+			"Failure CaptureMacIOSurfaceFrameEvidence(",
+			bindNativeLayerBegin);
+		Require(
+			bindNativeLayerBegin != std::string::npos &&
+				bindNativeLayerEnd > bindNativeLayerBegin,
+			"mac native layer binding source must be bounded");
+		const std::string bindNativeLayerBody =
+			macNativeBridgeSource.substr(
+				bindNativeLayerBegin,
+				bindNativeLayerEnd - bindNativeLayerBegin);
+		const size_t cametalLayerCase = bindNativeLayerBody.find(
+			"case MacNativeHostHandleKind::CAMetalLayer:");
+		const size_t nsViewMainThreadGuard = bindNativeLayerBody.find(
+			"if (hostHandle.m_kind == MacNativeHostHandleKind::NSView)");
+		const size_t guardedMainThreadMarshal = bindNativeLayerBody.find(
+			"return RunOnMainThreadSync(bindNativeLayer);",
+			nsViewMainThreadGuard);
+		const size_t directLayerBind = bindNativeLayerBody.find(
+			"return bindNativeLayer();",
+			guardedMainThreadMarshal);
+		Require(
+			cametalLayerCase != std::string::npos &&
+				nsViewMainThreadGuard > cametalLayerCase &&
+				guardedMainThreadMarshal > nsViewMainThreadGuard &&
+				directLayerBind > guardedMainThreadMarshal &&
+				CountOccurrences(
+					bindNativeLayerBody,
+					"RunOnMainThreadSync(") == 1,
+			"CAMetalLayer binding must execute directly while only the NSView branch may marshal synchronously to the main thread");
+
+		const size_t setMacHostBegin = bridgeSource.find(
+			"bool App::SetEditorRemoteViewportMacHostHandle(");
+		const size_t sendRemoteInputBegin = bridgeSource.find(
+			"bool App::SendEditorRemoteViewportInput(",
+			setMacHostBegin);
+		Require(
+			setMacHostBegin != std::string::npos &&
+				sendRemoteInputBegin > setMacHostBegin,
+			"mac remote viewport host boundary must be bounded");
+		const std::string setMacHostBody = bridgeSource.substr(
+			setMacHostBegin,
+			sendRemoteInputBegin - setMacHostBegin);
+		const size_t nonzeroHostValidation = setMacHostBody.find(
+			"if (hostHandleValue != 0)");
+		const size_t cametalLayerValidation = setMacHostBody.find(
+			"MacNativeHostHandleKind::CAMetalLayer",
+			nonzeroHostValidation);
+		const size_t rejectUnsupportedHost = setMacHostBody.find(
+			"return false;",
+			cametalLayerValidation);
+		const size_t publishPendingHost = setMacHostBody.find(
+			"g_pendingRemoteViewportHostHandles[viewportId] = hostHandle;",
+			rejectUnsupportedHost);
+		Require(
+			nonzeroHostValidation != std::string::npos &&
+				cametalLayerValidation > nonzeroHostValidation &&
+				rejectUnsupportedHost > cametalLayerValidation &&
+				publishPendingHost > rejectUnsupportedHost &&
+				setMacHostBody.find(
+					"MacNativeHostHandleKind::NSView") ==
+					std::string::npos,
+			"editor runtime must reject every nonzero host except CAMetalLayer before publishing it to a binding, while zero remains the detach path");
+
+		const size_t bindHostBegin = macTransportSource.find(
+			"void BindHostHandle(ViewportId viewportId, "
+			"const MacNativeHostHandle& hostHandle) override");
+		const size_t importSurfaceBegin = macTransportSource.find(
+			"Failure ImportSurface(",
+			bindHostBegin);
+		Require(
+			bindHostBegin != std::string::npos &&
+				importSurfaceBegin > bindHostBegin,
+			"mac presenter host binding source must be bounded");
+		const std::string bindHostBody = macTransportSource.substr(
+			bindHostBegin,
+			importSurfaceBegin - bindHostBegin);
+		const size_t sameHandle = bindHostBody.find(
+			"currentHandle.Value() == hostHandle");
+		const size_t validLayer = bindHostBody.find(
+			"state.m_layerBinding->IsValid()",
+			sameHandle);
+		const size_t skipRedundantBind = bindHostBody.find(
+			"return;",
+			validLayer);
+		const size_t refreshNativeLayer = bindHostBody.find(
+			"RefreshNativeLayerBinding",
+			skipRedundantBind);
+		Require(
+			sameHandle != std::string::npos &&
+				validLayer > sameHandle &&
+				skipRedundantBind > validLayer &&
+				refreshNativeLayer > skipRedundantBind,
+			"an unchanged live mac host must skip synchronous native layer rebinding");
 
 		const size_t drainBegin = bridgeSource.find("void Sailor::EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread()");
 		const size_t resetBegin = bridgeSource.find("void Sailor::EditorRuntime::ResetForAppLifecycle()", drainBegin);
@@ -623,19 +774,62 @@ namespace
 			pullBody.find("SetInteropString(event") != std::string::npos,
 			"viewport events must be removed on the engine thread and returned as owned interop strings");
 
-		constexpr const char* exportSignature =
-			"SAILOR_API uint32_t PullEditorViewportEvents(char** events, uint32_t num)";
-		Require(windowsExports.find(exportSignature) != std::string::npos &&
-			portableExports.find(exportSignature) != std::string::npos,
-			"Windows and portable libraries must export the same viewport event ABI");
-		Require(windowsExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos &&
-			portableExports.find("SAILOR_API void FreeInteropString(char* text)") != std::string::npos,
-			"both libraries must expose the matching interop string release function");
-		constexpr const char* mutationRevisionExport =
-			"SAILOR_API uint64_t GetEditorManagedMutationRevision(uint32_t kind, const char* strInstanceId)";
-		Require(windowsExports.find(mutationRevisionExport) != std::string::npos &&
-			portableExports.find(mutationRevisionExport) != std::string::npos,
-			"both libraries must expose the managed-mutation ordering fence");
+		const size_t protocolPullBegin = protocolDispatcherSource.find("void DispatchViewportEvents(");
+		const size_t protocolPullEnd = protocolDispatcherSource.find(
+			"void DispatchSerializeCurrentWorld(",
+			protocolPullBegin);
+		Require(protocolPullBegin != std::string::npos && protocolPullEnd > protocolPullBegin,
+			"the protobuf dispatcher must expose a bounded viewport event conversion path");
+		const std::string protocolPullBody =
+			protocolDispatcherSource.substr(protocolPullBegin, protocolPullEnd - protocolPullBegin);
+		const size_t invalidConversion = protocolPullBody.find(
+			"if (!TryConvertViewportEvent(events[i], event, error))");
+		const size_t skipInvalidEvent = protocolPullBody.find("continue;", invalidConversion);
+		const size_t appendValidEvent = protocolPullBody.find(
+			"result->add_events()->CopyFrom(event);",
+			skipInvalidEvent);
+		Require(
+			invalidConversion != std::string::npos &&
+			skipInvalidEvent > invalidConversion &&
+			appendValidEvent > skipInvalidEvent,
+			"malformed native viewport events must be skipped before valid events are appended");
+		Require(
+			protocolPullBody.substr(
+				invalidConversion,
+				appendValidEvent - invalidConversion).find("SetError(") == std::string::npos,
+			"one malformed viewport event must not reject the complete protobuf batch");
+
+		Require(
+			!std::filesystem::exists(sourceRoot / "Lib/InteropExports.cpp"),
+			"the duplicated portable editor export surface must be removed");
+		Require(
+			CountOccurrences(protocolExports, "SAILOR_API ") == 5 &&
+			protocolExports.find(
+				"SAILOR_API int32_t SailorProtocolStartLocalHost(") !=
+				std::string::npos &&
+			protocolExports.find(
+				"SAILOR_API void SailorProtocolRequestLocalHostStop()") !=
+				std::string::npos &&
+			protocolExports.find(
+				"SAILOR_API void SailorProtocolStopLocalHost(") !=
+				std::string::npos &&
+			protocolExports.find("SAILOR_API int32_t SailorProtocolInvoke(") != std::string::npos &&
+			protocolExports.find("SAILOR_API void SailorProtocolFreeBuffer(uint8_t* buffer)") != std::string::npos,
+			"the native boundary must expose local host lifecycle bootstrap plus the two compatibility protocol exports");
+		Require(
+			protocolExports.find(
+				"StartEditorEngineWebSocketServer(") != std::string::npos &&
+			std::filesystem::exists(
+				sourceRoot / "Lib/EditorEngineWebSocketServer.cpp"),
+			"the local native bootstrap must start the WebSocket protocol host");
+		Require(
+			windowsExports.find("SAILOR_API void Initialize(") == std::string::npos &&
+			windowsExports.find("SAILOR_API uint32_t PullEditorViewportEvents(") == std::string::npos &&
+			windowsExports.find("SAILOR_API void FreeInteropString(") == std::string::npos,
+			"Windows DllMain must not retain the legacy editor ABI");
+		Require(
+			CountOccurrences(windowsExports, "SAILOR_API void Run") == 4,
+			"Windows DllMain must retain only the four benchmark exports");
 
 		const size_t setSelectionBegin = editorInteropSource.find("bool App::SetEditorSelection(const char* strSelectionYaml)");
 		const size_t setSelectionEnd = editorInteropSource.find("bool App::RenderPathTracedImage", setSelectionBegin);

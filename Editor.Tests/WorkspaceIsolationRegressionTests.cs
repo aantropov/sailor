@@ -55,18 +55,21 @@ public sealed class WorkspaceIsolationRegressionTests
 
         var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
         var create = Slice(worldSource, "public async Task<bool> CreateNewWorldAsync", "public async Task<bool> LoadWorldAsync");
-        var load = Slice(worldSource, "public async Task<bool> LoadWorldAsync", "SceneSaveResult SaveExistingWorld");
+        var load = Slice(
+            worldSource,
+            "public async Task<bool> LoadWorldAsync",
+            "async Task<SceneSaveResult> SaveExistingWorldAsync");
         AssertInOrder(
             create,
             "await commandHistory.BeginDocumentChangeAsync",
-            "engineService.CreateWorld()",
+            "await engineService.CreateWorldAsync(",
             "commandHistory.ResetForDocumentChange()",
             "MauiProgram.GetService<SelectionService>().ResetForDocumentChange()",
             "commandHistory.CompleteDocumentChange()");
         AssertInOrder(
             load,
             "await commandHistory.BeginDocumentChangeAsync",
-            "engineService.LoadWorld(worldFile.FileId)",
+            "await engineService.LoadWorldAsync(",
             "commandHistory.ResetForDocumentChange()",
             "MauiProgram.GetService<SelectionService>().ResetForDocumentChange()",
             "commandHistory.CompleteDocumentChange()");
@@ -105,33 +108,109 @@ public sealed class WorkspaceIsolationRegressionTests
     public void InspectorRefresh_DiscardsPendingEditsDuringWorkspaceReset()
     {
         var source = ReadRepositoryFile("Editor", "Views", "InspectorView.xaml.cs");
-        var refresh = Slice(source, "void RefreshInspector", "static bool AreEquivalentSelection");
+        var projectionSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "InspectorProjectionService.cs");
+        var refresh = Slice(
+            source,
+            "async Task RefreshInspectorAsync",
+            "static bool AreEquivalentSelection");
+        var projectionRefresh = Slice(
+            projectionSource,
+            "public void Refresh()",
+            "public void ResetForWorkspaceChange()");
+        var projectionReset = Slice(
+            projectionSource,
+            "public void ResetForWorkspaceChange()",
+            "object? ResolveSelectedItem()");
+        var coordinatorCommit = Slice(
+            source,
+            "async Task<bool> CommitPendingInspectorChanges(",
+            "async Task<InspectorRefreshCommitOutcome>");
+        var refreshCommit = Slice(
+            source,
+            "async Task<InspectorRefreshCommitOutcome>",
+            "static async Task<InspectorRefreshCommitOutcome>");
+        var editableCommit = Slice(
+            source,
+            "static async Task<InspectorRefreshCommitOutcome>",
+            "async Task ClearInspectorCommitWhenCompleteAsync");
 
-        Assert.Contains("CommitPendingInspectorChanges()", refresh, StringComparison.Ordinal);
+        Assert.Contains(
+            "await InspectorRefreshCommitGate.TryApplyAsync(",
+            refresh,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            projectionRefresh,
+            "var suppressCommit = _selectionService.IsWorkspaceResetInProgress",
+            "Interlocked.Increment(ref _resetGeneration)",
+            "IsWorkspaceResetInProgress = true");
+        AssertInOrder(
+            projectionReset,
+            "Interlocked.Increment(ref _workspaceEpoch)",
+            "Interlocked.Increment(ref _resetGeneration)",
+            "IsWorkspaceResetInProgress = true");
         AssertInOrder(
             refresh,
+            "var resetGeneration = inspectorProjection.ResetGeneration",
+            "CommitPendingInspectorChangesForRefresh",
+            "ApplyInspectorRefresh",
+            "() => inspectorProjection.ResetGeneration");
+        AssertInOrder(
+            coordinatorCommit,
             "if (inspectorProjection.IsWorkspaceResetInProgress)",
             "return false",
+            "CommitPendingInspectorChangesForRefresh");
+        AssertInOrder(
+            refreshCommit,
+            "var resetGeneration = inspectorProjection.ResetGeneration",
+            "if (inspectorProjection.IsWorkspaceResetInProgress)",
+            "return InspectorRefreshCommitOutcome.Ready",
+            "inspectorCommitResetGeneration != resetGeneration",
+            "inspectorCommitTask = null",
             "!editable.HasPendingInspectorChanges",
-            "editable.CommitInspectorChanges()");
+            "commitTask = CommitInspectorEditableAsync(",
+            "inspectorCommitResetGeneration = resetGeneration");
+        Assert.True(
+            CountOccurrences(
+                refreshCommit,
+                "inspectorProjection.ResetGeneration") >= 3);
+        AssertInOrder(
+            editableCommit,
+            "var commitSucceeded = await editable.CommitInspectorChangesAsync(",
+            "editable.HasPendingInspectorChanges");
     }
 
     [Fact]
-    public void InspectorLifecycle_CommitsBeforeUnsubscribingAndDoesNotRetainClosedViews()
+    public void InspectorLifecycle_UnsubscribesSynchronouslyBeforeAsyncCommit()
     {
         var source = ReadRepositoryFile("Editor", "Views", "InspectorView.xaml.cs");
         var subscribe = Slice(source, "void SubscribeToLifecycle", "void UnsubscribeFromLifecycle");
-        var unsubscribe = Slice(source, "void UnsubscribeFromLifecycle", "void OnProjectionChanged");
+        var unsubscribe = Slice(
+            source,
+            "void UnsubscribeFromLifecycle",
+            "async Task CommitPendingInspectorChangesOnUnloadAsync");
+        var pendingCommit = Slice(
+            source,
+            "async Task CommitPendingInspectorChangesOnUnloadAsync",
+            "void OnProjectionChanged");
 
         Assert.Contains("if (lifecycleSubscribed)", subscribe, StringComparison.Ordinal);
         Assert.Contains("CommitPendingChangesRequested += CommitPendingInspectorChanges", subscribe, StringComparison.Ordinal);
         Assert.Contains("inspectorProjection.PropertyChanged += OnProjectionChanged", subscribe, StringComparison.Ordinal);
         AssertInOrder(
             unsubscribe,
-            "CommitPendingInspectorChanges()",
             "CommitPendingChangesRequested -= CommitPendingInspectorChanges",
             "inspectorProjection.PropertyChanged -= OnProjectionChanged",
-            "lifecycleSubscribed = false");
+            "lifecycleSubscribed = false",
+            "_ = CommitPendingInspectorChangesOnUnloadAsync();");
+        AssertInOrder(
+            pendingCommit,
+            "try",
+            "await CommitPendingInspectorChanges(",
+            "catch (Exception ex)",
+            "Console.Error.WriteLine");
     }
 
     [Fact]
@@ -177,7 +256,7 @@ public sealed class WorkspaceIsolationRegressionTests
         var buildArguments = Slice(
             engineSource,
             "async Task<string[]> BuildInteropArgumentsAsync",
-            "int ReadNativeExitCode");
+            "Task<int> ReadNativeExitCodeAsync");
         Assert.Equal(2, CountOccurrences(buildArguments, "launchContext.StartupWorld"));
         Assert.DoesNotContain("\"Editor.world\"", buildArguments, StringComparison.Ordinal);
 

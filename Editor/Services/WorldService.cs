@@ -151,19 +151,25 @@ namespace SailorEditor.Services
             return componentOwnersDict.TryGetValue(component.InstanceId, out var owner) ? owner : null;
         }
 
-        public bool CreateGameObject(GameObject parent = null)
+        public async Task<bool> CreateGameObjectAsync(
+            GameObject? parent = null,
+            CancellationToken cancellationToken = default)
         {
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new CreateGameObjectCommand(parent?.InstanceId),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(CreateGameObject))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(CreateGameObjectAsync))),
+                cancellationToken);
             return result.Succeeded;
         }
 
-        public bool RemoveGameObject(GameObject gameObject)
+        public async Task<bool> RemoveGameObjectAsync(
+            GameObject gameObject,
+            CancellationToken cancellationToken = default)
         {
             if (gameObject == null)
             {
@@ -172,11 +178,13 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new DestroyGameObjectCommand(gameObject),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RemoveGameObject))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(RemoveGameObjectAsync))),
+                cancellationToken);
             if (result.Succeeded)
             {
                 MauiProgram.GetService<SelectionService>().ClearSelection();
@@ -185,7 +193,9 @@ namespace SailorEditor.Services
             return result.Succeeded;
         }
 
-        public bool ResetComponentToDefaults(Component component)
+        public async Task<bool> ResetComponentToDefaultsAsync(
+            Component component,
+            CancellationToken cancellationToken = default)
         {
             if (component == null)
             {
@@ -194,15 +204,20 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new ResetComponentToDefaultsCommand(component),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(ResetComponentToDefaults))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(ResetComponentToDefaultsAsync))),
+                cancellationToken);
             return result.Succeeded;
         }
 
-        public bool AddComponent(GameObject gameObject, string componentTypeName)
+        public async Task<bool> AddComponentAsync(
+            GameObject gameObject,
+            string componentTypeName,
+            CancellationToken cancellationToken = default)
         {
             if (gameObject == null || string.IsNullOrWhiteSpace(componentTypeName))
             {
@@ -211,15 +226,19 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new AddComponentCommand(gameObject, componentTypeName),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(AddComponent))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(AddComponentAsync))),
+                cancellationToken);
             return result.Succeeded;
         }
 
-        public bool RemoveComponent(Component component)
+        public async Task<bool> RemoveComponentAsync(
+            Component component,
+            CancellationToken cancellationToken = default)
         {
             if (component == null)
             {
@@ -228,11 +247,13 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new RemoveComponentCommand(component),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RemoveComponent))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(RemoveComponentAsync))),
+                cancellationToken);
             if (result.Succeeded && ReferenceEquals(MauiProgram.GetService<SelectionService>().SelectedItem, component))
             {
                 MauiProgram.GetService<SelectionService>().ClearSelection();
@@ -241,7 +262,10 @@ namespace SailorEditor.Services
             return result.Succeeded;
         }
 
-        public bool RenameGameObject(GameObject gameObject, string newName)
+        public async Task<bool> RenameGameObjectAsync(
+            GameObject gameObject,
+            string newName,
+            CancellationToken cancellationToken = default)
         {
             if (gameObject == null || string.IsNullOrWhiteSpace(newName))
             {
@@ -255,24 +279,14 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new UpdateGameObjectCommand(gameObject, yamlBefore, yamlAfter, $"Rename {gameObject.Name}"),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.UI, nameof(RenameGameObject))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.UI,
+                        nameof(RenameGameObjectAsync))),
+                cancellationToken);
             return result.Succeeded;
-        }
-
-        public bool SaveCurrentWorld()
-        {
-            var worldAsset = CurrentWorldAsset ?? (IsCurrentWorldUntitled ? null : ResolveCurrentWorldAsset());
-            var assetsService = MauiProgram.GetService<AssetsService>();
-            if (worldAsset?.Asset?.FullName == null || !assetsService.CanModifyAsset(worldAsset))
-            {
-                return false;
-            }
-
-            return SaveExistingWorld(worldAsset, assetsService).Succeeded;
         }
 
         public async Task<SceneSaveResult> SaveCurrentWorldAsync(
@@ -299,7 +313,10 @@ namespace SailorEditor.Services
                         return new SceneSaveResult(SceneSaveOutcome.Cancelled);
                 }
 
-                return SaveExistingWorld(worldAsset, assetsService);
+                return await SaveExistingWorldAsync(
+                    worldAsset,
+                    assetsService,
+                    cancellationToken);
             }
 
             return await SaveCurrentWorldAsAsync(page, assetsService, cancellationToken);
@@ -311,7 +328,8 @@ namespace SailorEditor.Services
             await commandHistory.BeginDocumentChangeAsync(cancellationToken);
             try
             {
-                if (!engineService.CreateWorld())
+                if (!await engineService.CreateWorldAsync(
+                        cancellationToken))
                     return false;
 
                 commandHistory.ResetForDocumentChange();
@@ -337,7 +355,9 @@ namespace SailorEditor.Services
             await commandHistory.BeginDocumentChangeAsync(cancellationToken);
             try
             {
-                if (!engineService.LoadWorld(worldFile.FileId))
+                if (!await engineService.LoadWorldAsync(
+                        worldFile.FileId,
+                        cancellationToken))
                     return false;
 
                 commandHistory.ResetForDocumentChange();
@@ -352,17 +372,32 @@ namespace SailorEditor.Services
             }
         }
 
-        SceneSaveResult SaveExistingWorld(WorldFile worldAsset, AssetsService assetsService)
+        async Task<SceneSaveResult> SaveExistingWorldAsync(
+            WorldFile worldAsset,
+            AssetsService assetsService,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var serializedWorld = engineService.SerializeCurrentWorld();
+                var serializedWorld =
+                    await engineService.SerializeCurrentWorldAsync(
+                        cancellationToken);
                 if (string.IsNullOrWhiteSpace(serializedWorld))
                     return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The native world could not be serialized.");
 
-                File.WriteAllText(worldAsset.Asset.FullName, serializedWorld);
+                await File.WriteAllTextAsync(
+                    worldAsset.Asset.FullName,
+                    serializedWorld,
+                    cancellationToken);
                 worldAsset.IsDirty = false;
-                engineService.RequestAssetReload();
+                if (!await engineService.RequestAssetReloadAsync(
+                        cancellationToken))
+                {
+                    return new SceneSaveResult(
+                        SceneSaveOutcome.Failed,
+                        worldAsset.Asset.FullName,
+                        "The scene was saved, but the native registry rejected the reload.");
+                }
                 assetsService.Refresh();
                 CurrentWorldAsset = assetsService.Assets.TryGetValue(worldAsset.FileId, out var refreshed)
                     ? refreshed as WorldFile ?? worldAsset
@@ -427,24 +462,39 @@ namespace SailorEditor.Services
 
             try
             {
-                var serializedWorld = engineService.SerializeCurrentWorld();
+                var serializedWorld =
+                    await engineService.SerializeCurrentWorldAsync(
+                        cancellationToken);
                 if (string.IsNullOrWhiteSpace(serializedWorld))
                     return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The native world could not be serialized.");
 
                 var directory = Path.GetDirectoryName(target.ScenePath)
                     ?? throw new InvalidOperationException("The scene directory is invalid.");
                 Directory.CreateDirectory(directory);
-                File.WriteAllText(target.ScenePath, serializedWorld);
+                await File.WriteAllTextAsync(
+                    target.ScenePath,
+                    serializedWorld,
+                    cancellationToken);
 
                 var fileId = existingWorld?.FileId ?? new FileId($"{{{Guid.NewGuid().ToString().ToUpperInvariant()}}}");
                 if (!metadataExists)
                 {
-                    File.WriteAllText(
+                    await File.WriteAllTextAsync(
                         target.AssetInfoPath,
-                        SceneDocumentContract.BuildAssetInfo(fileId.Value, target.Filename));
+                        SceneDocumentContract.BuildAssetInfo(
+                            fileId.Value,
+                            target.Filename),
+                        cancellationToken);
                 }
 
-                engineService.RequestAssetReload();
+                if (!await engineService.RequestAssetReloadAsync(
+                        cancellationToken))
+                {
+                    return new SceneSaveResult(
+                        SceneSaveOutcome.Failed,
+                        target.ScenePath,
+                        "The scene was saved, but the native registry rejected the reload.");
+                }
                 assetsService.Refresh();
                 if (!assetsService.Assets.TryGetValue(fileId, out var asset) || asset is not WorldFile savedWorld)
                 {
@@ -478,7 +528,11 @@ namespace SailorEditor.Services
             return CurrentWorldAsset;
         }
 
-        public bool Reparent(GameObject child, GameObject newParent, bool keepWorldTransform = true)
+        public async Task<bool> ReparentAsync(
+            GameObject child,
+            GameObject newParent,
+            bool keepWorldTransform = true,
+            CancellationToken cancellationToken = default)
         {
             if (child == null || newParent == null || ReferenceEquals(child, newParent) || IsDescendantOf(newParent, child))
             {
@@ -487,15 +541,20 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new ReparentGameObjectCommand(child, newParent, keepWorldTransform),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(Reparent))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.DragDrop,
+                        nameof(ReparentAsync))),
+                cancellationToken);
             return result.Succeeded;
         }
 
-        public bool ReparentToRoot(GameObject child, bool keepWorldTransform = true)
+        public async Task<bool> ReparentToRootAsync(
+            GameObject child,
+            bool keepWorldTransform = true,
+            CancellationToken cancellationToken = default)
         {
             if (child == null || child.ParentIndex == uint.MaxValue)
             {
@@ -504,11 +563,13 @@ namespace SailorEditor.Services
 
             var dispatcher = MauiProgram.GetService<ICommandDispatcher>();
             var contextProvider = MauiProgram.GetService<IActionContextProvider>();
-            var result = dispatcher.DispatchAsync(
+            var result = await dispatcher.DispatchAsync(
                 new ReparentGameObjectCommand(child, null, keepWorldTransform),
-                contextProvider.GetCurrentContext(new CommandOrigin(CommandOriginKind.DragDrop, nameof(ReparentToRoot))))
-                .GetAwaiter()
-                .GetResult();
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.DragDrop,
+                        nameof(ReparentToRootAsync))),
+                cancellationToken);
             return result.Succeeded;
         }
 

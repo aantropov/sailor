@@ -7,6 +7,8 @@ import sys
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VCPKG_ROOT = os.path.join(SCRIPT_DIR, 'External', 'vcpkg')
 VCPKG_TOOL_METADATA = os.path.join(VCPKG_ROOT, 'scripts', 'vcpkg-tool-metadata.txt')
+VCPKG_OVERLAY_PORTS = os.path.join(SCRIPT_DIR, '.github', 'vcpkg-ports')
+VCPKG_OVERLAY_TRIPLETS = os.path.join(SCRIPT_DIR, '.github', 'vcpkg-triplets')
 
 
 def required_vcpkg_tool_release() -> str:
@@ -55,8 +57,15 @@ def main() -> int:
     def run_vcpkg(*args: str) -> None:
         subprocess.check_call([vcpkg_exe] + list(args), cwd=VCPKG_ROOT)
 
-    run_vcpkg('update')
-    run_vcpkg('upgrade', '--no-dry-run')
+    overlay_args = []
+    if system == 'Windows':
+        overlay_args = [
+            f'--overlay-ports={VCPKG_OVERLAY_PORTS}',
+            f'--overlay-triplets={VCPKG_OVERLAY_TRIPLETS}',
+        ]
+
+    run_vcpkg('update', *overlay_args)
+    run_vcpkg('upgrade', '--no-dry-run', *overlay_args)
 
     if system == 'Windows':
         triplet = 'x64-windows'
@@ -69,8 +78,10 @@ def main() -> int:
         'glm',
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',
         'imguizmo',
+        'ixwebsocket[core]',
         'magic-enum',
         'nlohmann-json',
+        'protobuf',
         'refl-cpp',
         'spirv-reflect',
         'stb',
@@ -83,7 +94,7 @@ def main() -> int:
         packages.append('vulkan-loader')
 
     for pkg in packages:
-        run_vcpkg('install', f'{pkg}:{triplet}')
+        run_vcpkg('install', f'{pkg}:{triplet}', *overlay_args)
 
     print('Dependencies updated and installed.')
     return 0

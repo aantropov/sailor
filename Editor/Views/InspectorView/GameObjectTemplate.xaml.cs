@@ -21,14 +21,14 @@ public partial class GameObjectTemplate : DataTemplate
         if (sender is not Entry { BindingContext: IInspectorEditable editable } entry)
             return;
 
-        entry.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), () =>
+        entry.Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(1), async () =>
         {
             if (!editable.HasPendingInspectorChanges)
                 return;
 
             try
             {
-                editable.CommitInspectorChanges();
+                await editable.CommitInspectorChangesAsync();
             }
             catch (Exception ex)
             {

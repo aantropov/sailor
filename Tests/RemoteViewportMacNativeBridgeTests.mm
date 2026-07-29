@@ -229,6 +229,102 @@ namespace
 		ResetMacNativeLayerBinding(binding);
 	}
 
+	void TestBridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue()
+	{
+		CAMetalLayer* layer = [CAMetalLayer layer];
+		MacNativeHostHandle hostHandle{
+			MacNativeHostHandleKind::CAMetalLayer,
+			reinterpret_cast<uintptr_t>((__bridge void*)layer)
+		};
+
+		struct BackgroundBindState
+		{
+			MacNativeLayerBinding m_binding{};
+			Failure m_failure{};
+			std::mutex m_mutex;
+			std::condition_variable m_completedCondition;
+			bool m_completed = false;
+		};
+
+		auto state = std::make_shared<BackgroundBindState>();
+		std::thread binder([state, hostHandle]()
+			{
+				@autoreleasepool
+				{
+					state->m_failure = BindMacNativeLayer(
+						hostHandle,
+						64,
+						64,
+						PixelFormat::B8G8R8A8_UNorm,
+						state->m_binding);
+				}
+				{
+					std::lock_guard lock(state->m_mutex);
+					state->m_completed = true;
+				}
+				state->m_completedCondition.notify_one();
+			});
+
+		bool completedWithoutMainQueuePump = false;
+		{
+			std::unique_lock lock(state->m_mutex);
+			completedWithoutMainQueuePump =
+				state->m_completedCondition.wait_for(
+					lock,
+					std::chrono::seconds(2),
+					[state]() { return state->m_completed; });
+		}
+
+		// Drain a regressed dispatch_sync(main) before reporting the failure so
+		// the worker cannot remain blocked after the test exits.
+		if (!completedWithoutMainQueuePump)
+		{
+			const auto cleanupDeadline =
+				std::chrono::steady_clock::now() + std::chrono::seconds(2);
+			while (std::chrono::steady_clock::now() < cleanupDeadline)
+			{
+				{
+					std::lock_guard lock(state->m_mutex);
+					if (state->m_completed)
+					{
+						break;
+					}
+				}
+
+				@autoreleasepool
+				{
+					[[NSRunLoop mainRunLoop]
+						runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
+				}
+			}
+		}
+
+		bool completedEventually = false;
+		{
+			std::lock_guard lock(state->m_mutex);
+			completedEventually = state->m_completed;
+		}
+		if (completedEventually)
+		{
+			binder.join();
+			ResetMacNativeLayerBinding(state->m_binding);
+		}
+		else
+		{
+			binder.detach();
+		}
+
+		Require(
+			completedEventually,
+			"background CAMetalLayer bind should eventually complete while unwinding the regression test");
+		Require(
+			completedWithoutMainQueuePump,
+			"CAMetalLayer binding must not synchronously dispatch to the main queue");
+		Require(
+			state->m_failure.IsOk(),
+			"background CAMetalLayer binding should succeed");
+	}
+
 	void TestBridgePresentsOffMainThreadWithoutWaitingForMainQueue()
 	{
 		CAMetalLayer* layer = [CAMetalLayer layer];
@@ -332,6 +428,7 @@ int main()
 		{ "SynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists", TestSynchronizeMacVulkanRenderTargetPrefersMetalSharedEventWhenSemaphoreExportSeamExists },
 		{ "BridgeWaitsOnMetalSharedEventBeforeProducerCopy", TestBridgeWaitsOnMetalSharedEventBeforeProducerCopy },
 		{ "BridgeBindsExistingCAMetalLayerAndPresentsDrawable", TestBridgeBindsExistingCAMetalLayerAndPresentsDrawable },
+		{ "BridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue", TestBridgeBindsCAMetalLayerOffMainThreadWithoutWaitingForMainQueue },
 		{ "BridgePresentsOffMainThreadWithoutWaitingForMainQueue", TestBridgePresentsOffMainThreadWithoutWaitingForMainQueue },
 	};
 

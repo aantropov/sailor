@@ -29,6 +29,7 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
     readonly IUndoRedoHistory _history;
     readonly Stack<TransactionScope> _transactions = new();
     readonly object _workspaceStateLock = new();
+    readonly SemaphoreSlim _commandExecutionGate = new(1, 1);
     CancellationTokenSource _workspaceCancellation = new();
     TaskCompletionSource<bool>? _executionDrain;
     long _workspaceEpoch;
@@ -88,7 +89,41 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         }
     }
 
-    public async Task<CommandResult> DispatchAsync(IEditorCommand command, ActionContext context, CancellationToken cancellationToken = default)
+    public async Task<CommandResult> DispatchAsync(
+        IEditorCommand command,
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress)
+                return WorkspaceChangingFailure(command.Name);
+            if (_documentChangeInProgress)
+                return DocumentChangingFailure(command.Name);
+            if (_transactionRollbackInProgress)
+                return TransactionRollbackFailure(command.Name);
+            if (_isUndoRedo)
+                return HistoryOperationInProgressFailure(command.Name);
+        }
+
+        await _commandExecutionGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await DispatchCoreAsync(
+                command,
+                context,
+                cancellationToken);
+        }
+        finally
+        {
+            _commandExecutionGate.Release();
+        }
+    }
+
+    async Task<CommandResult> DispatchCoreAsync(
+        IEditorCommand command,
+        ActionContext context,
+        CancellationToken cancellationToken)
     {
         (long Epoch, CancellationTokenSource Cancellation) execution;
         lock (_workspaceStateLock)
@@ -165,7 +200,33 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         }
     }
 
-    public async Task<bool> UndoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default)
+    public async Task<bool> UndoAsync(
+        CommandOrigin? origin = null,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress ||
+                _documentChangeInProgress ||
+                _transactionRollbackInProgress ||
+                _isUndoRedo)
+                return false;
+        }
+
+        await _commandExecutionGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await UndoCoreAsync(origin, cancellationToken);
+        }
+        finally
+        {
+            _commandExecutionGate.Release();
+        }
+    }
+
+    async Task<bool> UndoCoreAsync(
+        CommandOrigin? origin,
+        CancellationToken cancellationToken)
     {
         HistoryEntry entry;
         (long Epoch, CancellationTokenSource Cancellation) execution;
@@ -239,7 +300,33 @@ public sealed class EditorCommandDispatcher : ICommandDispatcher, ICommandHistor
         }
     }
 
-    public async Task<bool> RedoAsync(CommandOrigin? origin = null, CancellationToken cancellationToken = default)
+    public async Task<bool> RedoAsync(
+        CommandOrigin? origin = null,
+        CancellationToken cancellationToken = default)
+    {
+        lock (_workspaceStateLock)
+        {
+            if (_workspaceChangeInProgress ||
+                _documentChangeInProgress ||
+                _transactionRollbackInProgress ||
+                _isUndoRedo)
+                return false;
+        }
+
+        await _commandExecutionGate.WaitAsync(cancellationToken);
+        try
+        {
+            return await RedoCoreAsync(origin, cancellationToken);
+        }
+        finally
+        {
+            _commandExecutionGate.Release();
+        }
+    }
+
+    async Task<bool> RedoCoreAsync(
+        CommandOrigin? origin,
+        CancellationToken cancellationToken)
     {
         HistoryEntry entry;
         (long Epoch, CancellationTokenSource Cancellation) execution;
