@@ -3,6 +3,7 @@
 
 #include "Components/Component.h"
 #include "Core/Reflection.h"
+#include "Core/Utils.h"
 #include "Workspace/WorkspaceModuleApi.h"
 
 #include <algorithm>
@@ -176,9 +177,6 @@ namespace
 	};
 
 	using EditorTypeSchemas = TMap<std::string, EditorTypeSchema>;
-	constexpr size_t MaxCanonicalYamlDepth = 64;
-	constexpr size_t MaxCanonicalYamlNodes = 262144;
-	constexpr size_t MaxCanonicalYamlBytes = 64 * 1024 * 1024;
 
 	bool IndexMetadataEntries(
 		const YAML::Node& entries,
@@ -311,169 +309,9 @@ namespace
 		return false;
 	}
 
-	bool AppendCanonicalText(
-		std::string& destination,
-		const std::string& value,
-		size_t& remainingBytes)
-	{
-		if (value.size() > remainingBytes)
-		{
-			return false;
-		}
-
-		destination.append(value);
-		remainingBytes -= value.size();
-		return true;
-	}
-
-	bool AppendCanonicalCharacter(
-		std::string& destination,
-		char value,
-		size_t& remainingBytes)
-	{
-		if (remainingBytes == 0)
-		{
-			return false;
-		}
-
-		destination.push_back(value);
-		--remainingBytes;
-		return true;
-	}
-
-	bool AppendCanonicalField(
-		std::string& destination,
-		const std::string& value,
-		size_t& remainingBytes)
-	{
-		const std::string length = std::to_string(value.size());
-		return AppendCanonicalText(destination, length, remainingBytes) &&
-			AppendCanonicalCharacter(destination, ':', remainingBytes) &&
-			AppendCanonicalText(destination, value, remainingBytes);
-	}
-
-	bool AppendCanonicalYaml(
-		const YAML::Node& node,
-		std::string& destination,
-		size_t depth,
-		size_t& remainingNodes,
-		size_t& remainingBytes)
-	{
-		if (depth > MaxCanonicalYamlDepth || remainingNodes == 0)
-		{
-			return false;
-		}
-		--remainingNodes;
-
-		switch (node.Type())
-		{
-		case YAML::NodeType::Undefined:
-			return AppendCanonicalCharacter(destination, 'U', remainingBytes);
-		case YAML::NodeType::Null:
-			return AppendCanonicalCharacter(destination, 'N', remainingBytes) &&
-				AppendCanonicalField(destination, node.Tag(), remainingBytes);
-		case YAML::NodeType::Scalar:
-			return AppendCanonicalCharacter(destination, 'S', remainingBytes) &&
-				AppendCanonicalField(destination, node.Tag(), remainingBytes) &&
-				AppendCanonicalField(destination, node.Scalar(), remainingBytes);
-		case YAML::NodeType::Sequence:
-		{
-			const std::string numElements = std::to_string(node.size());
-			if (!AppendCanonicalCharacter(destination, 'Q', remainingBytes) ||
-				!AppendCanonicalField(destination, node.Tag(), remainingBytes) ||
-				!AppendCanonicalText(destination, numElements, remainingBytes) ||
-				!AppendCanonicalCharacter(destination, ':', remainingBytes))
-			{
-				return false;
-			}
-			for (const YAML::Node& element : node)
-			{
-				std::string canonicalElement;
-				if (!AppendCanonicalYaml(
-					element,
-					canonicalElement,
-					depth + 1,
-					remainingNodes,
-					remainingBytes) ||
-					!AppendCanonicalField(destination, canonicalElement, remainingBytes))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		case YAML::NodeType::Map:
-		{
-			TVector<std::pair<std::string, std::string>> entries;
-			entries.Reserve(node.size());
-			for (const auto& entry : node)
-			{
-				std::string canonicalKey;
-				std::string canonicalValue;
-				if (!AppendCanonicalYaml(
-					entry.first,
-					canonicalKey,
-					depth + 1,
-					remainingNodes,
-					remainingBytes) ||
-					!AppendCanonicalYaml(
-						entry.second,
-						canonicalValue,
-						depth + 1,
-						remainingNodes,
-						remainingBytes))
-				{
-					return false;
-				}
-				entries.Add(std::make_pair(std::move(canonicalKey), std::move(canonicalValue)));
-			}
-
-			std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs)
-				{
-					return lhs.first < rhs.first;
-				});
-			for (size_t index = 1; index < entries.Num(); ++index)
-			{
-				if (entries[index - 1].first == entries[index].first)
-				{
-					return false;
-				}
-			}
-
-			const std::string numEntries = std::to_string(entries.Num());
-			if (!AppendCanonicalCharacter(destination, 'M', remainingBytes) ||
-				!AppendCanonicalField(destination, node.Tag(), remainingBytes) ||
-				!AppendCanonicalText(destination, numEntries, remainingBytes) ||
-				!AppendCanonicalCharacter(destination, ':', remainingBytes))
-			{
-				return false;
-			}
-			for (const auto& entry : entries)
-			{
-				if (!AppendCanonicalField(destination, entry.first, remainingBytes) ||
-					!AppendCanonicalField(destination, entry.second, remainingBytes))
-				{
-					return false;
-				}
-			}
-			return true;
-		}
-		}
-
-		return false;
-	}
-
-	bool CanonicalizeYaml(const YAML::Node& node, std::string& destination)
-	{
-		destination.clear();
-		size_t remainingNodes = MaxCanonicalYamlNodes;
-		size_t remainingBytes = MaxCanonicalYamlBytes;
-		return AppendCanonicalYaml(node, destination, 0, remainingNodes, remainingBytes);
-	}
-
 	bool HasUniqueScalarStringKeys(const YAML::Node& node)
 	{
-		if (!node.IsMap() || node.size() > MaxCanonicalYamlNodes)
+		if (!node.IsMap())
 		{
 			return false;
 		}
@@ -498,10 +336,16 @@ namespace
 		const YAML::Node canonicalDefaultValues = YAML::Load(collected.m_canonicalDefaultValues);
 		std::string canonicalMetadata;
 		std::string canonicalDescriptor;
-		if (!HasUniqueScalarStringKeys(defaultValues) ||
+		if (!Utils::CanonicalizeYaml(
+				defaultValues,
+				canonicalMetadata,
+				Utils::EYamlCanonicalizationMode::StrictDocument) ||
+			!Utils::CanonicalizeYaml(
+				canonicalDefaultValues,
+				canonicalDescriptor,
+				Utils::EYamlCanonicalizationMode::StrictDocument) ||
+			!HasUniqueScalarStringKeys(defaultValues) ||
 			!HasUniqueScalarStringKeys(canonicalDefaultValues) ||
-			!CanonicalizeYaml(defaultValues, canonicalMetadata) ||
-			!CanonicalizeYaml(canonicalDefaultValues, canonicalDescriptor) ||
 			canonicalMetadata != canonicalDescriptor)
 		{
 			outError = "Workspace metadata defaults for '" + collected.m_typeName +

@@ -19,34 +19,6 @@ using namespace Sailor;
 
 namespace
 {
-	bool TryGetComponentInstanceId(
-		const ReflectedData& reflection,
-		InstanceId& outInstanceId,
-		std::string& outDiagnostic)
-	{
-		if (!reflection.IsValid() || !reflection.GetProperties().ContainsKey("instanceId"))
-		{
-			outDiagnostic = "the reflected component has no valid instanceId";
-			return false;
-		}
-
-		if (!External::TryConvertYaml(
-				reflection.GetProperties()["instanceId"],
-				outInstanceId,
-				outDiagnostic) ||
-			outInstanceId.ComponentId() == InstanceId::Invalid ||
-			outInstanceId.GameObjectId() == InstanceId::Invalid)
-		{
-			if (outDiagnostic.empty())
-			{
-				outDiagnostic = "the reflected component has an invalid instanceId";
-			}
-			return false;
-		}
-
-		return true;
-	}
-
 	bool TryMergeComponentOverride(
 		const ReflectedData& base,
 		const ReflectedData& delta,
@@ -280,26 +252,15 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 			return false;
 		}
 
-		const auto& properties = reflection.GetProperties();
-		if (!properties.ContainsKey("instanceId"))
-		{
-			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
-				" has no instanceId";
-			return false;
-		}
-
 		InstanceId componentInstanceId;
 		std::string conversionDiagnostic;
-		if (!External::TryConvertYaml(properties["instanceId"], componentInstanceId, conversionDiagnostic) ||
-			componentInstanceId.ComponentId() == InstanceId::Invalid ||
-			componentInstanceId.GameObjectId() == InstanceId::Invalid)
+		if (!Utils::TryGetComponentInstanceId(
+				reflection,
+				componentInstanceId,
+				conversionDiagnostic))
 		{
 			outDiagnostic = "reflected component " + std::to_string(componentIndex) +
-				" has an invalid instanceId";
-			if (!conversionDiagnostic.empty())
-			{
-				outDiagnostic += ": " + conversionDiagnostic;
-			}
+				" has an invalid identity: " + conversionDiagnostic;
 			return false;
 		}
 
@@ -672,7 +633,7 @@ bool Prefab::ConfigureLinkedInstance(
 		{
 			InstanceId componentInstanceId;
 			std::string conversionDiagnostic;
-			if (!TryGetComponentInstanceId(m_components[index], componentInstanceId, conversionDiagnostic))
+			if (!Utils::TryGetComponentInstanceId(m_components[index], componentInstanceId, conversionDiagnostic))
 			{
 				outDiagnostic = conversionDiagnostic;
 				return false;

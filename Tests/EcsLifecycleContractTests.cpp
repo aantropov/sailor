@@ -172,6 +172,17 @@ namespace
 
 		PrefabTestWorld() : World("PrefabRollbackTests", 0, CreateEcs()) {}
 		size_t GetPendingDependencyCount() const { return GetNumPendingDependencyResolutions(); }
+		bool RemovePrefabMetadataForTest(
+			const InstanceId& rootInstanceId)
+		{
+			if (!m_prefabInstances.ContainsKey(rootInstanceId))
+			{
+				return false;
+			}
+
+			m_prefabInstances.Remove(rootInstanceId);
+			return true;
+		}
 
 	private:
 
@@ -1198,8 +1209,11 @@ namespace
 				child->GetInstanceId(),
 				registeredLink) &&
 			registeredLink &&
-			registeredLink->m_sourcePrefabId == sourceFileId,
-			"every linked member should resolve to its registered prefab source");
+			registeredLink->m_effectiveBaseline &&
+			registeredLink->m_effectiveBaseline->GetFileId() ==
+				root->GetFileId() &&
+			root->GetFileId() == sourceFileId,
+			"the root FileId should be authoritative while linked members resolve through matching derived metadata");
 
 		ComponentPtr rejectedComponent =
 			TObjectPtr<PrefabRollbackTestComponent>::Make(
@@ -1234,6 +1248,7 @@ namespace
 		Require(world.BreakPrefabLink(childIdBeforeBreak),
 			"breaking a prefab link through any linked member should succeed");
 		Require(!world.IsPrefabLinked(rootIdBeforeBreak) &&
+			!root->GetFileId() &&
 			root->GetInstanceId() == rootIdBeforeBreak &&
 			child->GetInstanceId() == childIdBeforeBreak &&
 			child->GetTransformComponent().GetPosition() ==
@@ -1256,8 +1271,9 @@ namespace
 				diagnostic),
 			"relink should rebuild the deterministic source-to-live mapping: " +
 				diagnostic);
-		Require(world.IsPrefabLinked(childIdBeforeBreak),
-			"relink should restore linked membership for the whole hierarchy");
+		Require(root->GetFileId() == sourceFileId &&
+			world.IsPrefabLinked(childIdBeforeBreak),
+			"relink should restore the authoritative source FileId and derived membership");
 
 		const size_t linkedCountBeforeRejectedInstantiation =
 			world.GetPrefabInstances().Num();
@@ -1860,6 +1876,65 @@ namespace
 			!world.IsPrefabLinked(rootInstanceId) &&
 			!world.BreakPrefabLink(rootInstanceId),
 			"breaking the surviving root should purge the remaining membership exactly once");
+
+		world.Clear();
+	}
+
+	void TestPrefabRootFileIdRemainsAuthoritativeWhenDerivedMetadataIsMissing()
+	{
+		constexpr uint32_t noParent =
+			static_cast<uint32_t>(-1);
+		const FileId sourceFileId =
+			DeserializeFileId(
+				"{11111111-2222-3333-4444-666666666666}");
+
+		PrefabTestWorld world;
+		PrefabPtr sourcePrefab = DeserializePrefab(
+			world,
+			sourceFileId,
+			MakePrefabNode({ noParent, 0 }));
+		std::string diagnostic;
+		Require(sourcePrefab->ValidateForInstantiation(
+				diagnostic),
+			"the FileId-authority fixture should be valid: " +
+				diagnostic);
+
+		GameObjectPtr root = world.Instantiate(sourcePrefab);
+		Require(root &&
+			root->GetChildren().Num() == 1 &&
+			root->GetFileId() == sourceFileId &&
+			world.IsPrefabInstanceRoot(root->GetInstanceId()) &&
+			world.IsPrefabLinked(root->GetInstanceId()),
+			"a non-empty root FileId should establish the prefab link");
+		GameObjectPtr child = root->GetChildren()[0];
+		Require(world.IsPrefabLinked(child->GetInstanceId()),
+			"a mapped source child should initially resolve through derived membership");
+
+		Require(world.RemovePrefabMetadataForTest(
+				root->GetInstanceId()),
+			"the fixture should remove only derived prefab metadata");
+		const PrefabInstanceLink* missingLink = nullptr;
+		Require(root->GetFileId() == sourceFileId &&
+			world.IsPrefabInstanceRoot(root->GetInstanceId()) &&
+			world.IsPrefabLinked(root->GetInstanceId()) &&
+			!world.TryGetPrefabInstance(
+				root->GetInstanceId(),
+				missingLink) &&
+			!world.IsPrefabLinked(child->GetInstanceId()),
+			"missing derived metadata must not erase the authoritative root link or create a valid child membership");
+
+		Require(world.BreakPrefabLink(root->GetInstanceId()) &&
+			!root->GetFileId() &&
+			!world.IsPrefabLinked(root->GetInstanceId()) &&
+			world.LinkPrefabInstance(
+				root,
+				sourcePrefab,
+				diagnostic),
+			"break should clear the authoritative FileId and stale caches so the hierarchy can be relinked: " +
+				diagnostic);
+		Require(root->GetFileId() == sourceFileId &&
+			world.IsPrefabLinked(child->GetInstanceId()),
+			"relink should republish the source FileId after rebuilding derived membership");
 
 		world.Clear();
 	}
@@ -3084,6 +3159,7 @@ int main()
 		{ "LinkedPrefabBaselineAndSaveFailureContract", TestLinkedPrefabBaselineAndSaveFailureContract },
 		{ "LinkedPrefabSourceStructureEvolutionContract", TestLinkedPrefabSourceStructureEvolutionContract },
 		{ "LinkedPrefabMembershipFollowsEvolvedSourceMapping", TestLinkedPrefabMembershipFollowsEvolvedSourceMapping },
+		{ "PrefabRootFileIdRemainsAuthoritativeWhenDerivedMetadataIsMissing", TestPrefabRootFileIdRemainsAuthoritativeWhenDerivedMetadataIsMissing },
 		{ "DetachedSupplementalPrefabPersistenceAndStrictRestore", TestDetachedSupplementalPrefabPersistenceAndStrictRestore },
 		{ "StrictPrefabInstantiationPreservesIdsAndRejectsAtomically", TestStrictPrefabInstantiationPreservesIdsAndRejectsAtomically },
 		{ "EditorPrefabInstantiationRejectsLinkedParentBeforeMutation", TestEditorPrefabInstantiationRejectsLinkedParentBeforeMutation },

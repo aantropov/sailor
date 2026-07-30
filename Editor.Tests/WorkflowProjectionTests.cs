@@ -152,6 +152,67 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void HierarchySelectPrefab_OpensContentAndSelectsProjectedAsset()
+    {
+        var hierarchySource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "HierarchyView.xaml.cs");
+        var contentSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "ContentFolderView.xaml.cs");
+        var assetCommandsSource = ReadRepositoryFile(
+            "Editor",
+            "Commands",
+            "EditorAssetCommands.cs");
+        var hierarchyMenu = Slice(
+            hierarchySource,
+            "MenuFlyout CreateHierarchyContextFlyout(",
+            "static Command CreateContextMenuCommand(");
+        var selectPrefab = Slice(
+            hierarchySource,
+            "async Task SelectPrefabAsync(",
+            "static async Task ExecuteHierarchyActionAsync(");
+        var contentSelection = Slice(
+            contentSource,
+            "void SelectAssetFile(",
+            "void OnContentSelectionChanged(");
+        var openAssetCommand = Slice(
+            assetCommandsSource,
+            "public sealed class OpenAssetCommand",
+            "public sealed class RenameAssetCommand");
+
+        AssertInOrder(
+            hierarchyMenu,
+            "IsPrefabLinked: true",
+            "!string.IsNullOrWhiteSpace(row.PrefabFileId)",
+            "Text = \"Select Prefab\"",
+            "() => SelectPrefabAsync(row.PrefabFileId)",
+            "PrefabRootInstanceId: not null",
+            "Text = \"Break Prefab Link\"");
+        AssertInOrder(
+            selectPrefab,
+            "new FileId(prefabFileId)",
+            ".Assets.TryGetValue(fileId, out var asset)",
+            "asset is not PrefabFile prefab",
+            ".OpenPanelAsync(KnownPanelTypes.Content)",
+            "new OpenAssetCommand(prefab)");
+        Assert.Contains(
+            "OnSelectAssetAction += SelectAssetFile",
+            contentSource,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            contentSelection,
+            "EnsureFolderVisible(file.FolderId);",
+            "contentStore.SelectAsset(file);");
+        Assert.Contains(
+            "SelectObject(assetFile, force: true)",
+            openAssetCommand,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void HierarchyProjection_NestsLinkedRootUnderExternalParent()
     {
         var roots = HierarchyProjectionBuilder.Build(
@@ -313,6 +374,140 @@ public sealed class WorkflowProjectionTests
         Assert.Empty(actions);
         Assert.Same(selectedRow, rows.Single(row => row.IsSelected));
     }
+
+    [Fact]
+    public void ContentRows_AddReorderAndRemoveWithoutResetOrEmptyProjection()
+    {
+        var first = new ContentProjectionTestRow("a", "A");
+        var second = new ContentProjectionTestRow("b", "B");
+        var rows = new ObservableCollection<ContentProjectionTestRow>
+        {
+            first,
+            second,
+        };
+        var actions = new List<NotifyCollectionChangedAction>();
+        var observedCounts = new List<int>();
+        rows.CollectionChanged += (_, args) =>
+        {
+            actions.Add(args.Action);
+            observedCounts.Add(rows.Count);
+        };
+
+        ContentProjectionTestRow[] withPrefab =
+        [
+            first,
+            new("prefab", "Prefab"),
+            second,
+        ];
+        ContentRowReconciler.Reconcile(
+            rows,
+            withPrefab,
+            row => row.Id);
+
+        Assert.Equal(
+            ["a", "prefab", "b"],
+            rows.Select(row => row.Id));
+        Assert.Same(first, rows[0]);
+        Assert.Same(second, rows[2]);
+        Assert.DoesNotContain(
+            NotifyCollectionChangedAction.Reset,
+            actions);
+        Assert.DoesNotContain(0, observedCounts);
+
+        actions.Clear();
+        observedCounts.Clear();
+        ContentRowReconciler.Reconcile(
+            rows,
+            [
+                first,
+                second,
+            ],
+            row => row.Id);
+
+        Assert.Equal(
+            [NotifyCollectionChangedAction.Remove],
+            actions);
+        Assert.Equal(
+            ["a", "b"],
+            rows.Select(row => row.Id));
+        Assert.DoesNotContain(0, observedCounts);
+
+        actions.Clear();
+        observedCounts.Clear();
+        ContentRowReconciler.Reconcile(
+            rows,
+            [
+                new("b", "B updated"),
+                new("a", "A"),
+            ],
+            row => row.Id);
+
+        Assert.Equal(
+            ["b", "a"],
+            rows.Select(row => row.Id));
+        Assert.Equal("B updated", rows[0].Label);
+        Assert.DoesNotContain(
+            NotifyCollectionChangedAction.Reset,
+            actions);
+        Assert.DoesNotContain(0, observedCounts);
+    }
+
+    [Fact]
+    public void ContentRefresh_ClearsInvalidNativeSelectionBeforeRemovingRows()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "ContentFolderView.xaml.cs");
+        var populateRows = Slice(
+            source,
+            "void PopulateRows(ProjectContentProjection projection)",
+            "void AppendChildren(");
+
+        AssertInOrder(
+            populateRows,
+            "var currentSelectedRow =",
+            "suppressSelectionChanged = true;",
+            "ContentList.SelectedItem = null;",
+            "ContentRowReconciler.Reconcile(",
+            "ContentList.SelectedItem =",
+            "suppressSelectionChanged = false;");
+    }
+
+    [Fact]
+    public void ContentContextMenuActions_ReportAsyncFailures()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "ContentFolderView.xaml.cs");
+        var contextMenu = Slice(
+            source,
+            "void ShowContextMenu(object model)",
+            "static Command CreateContentContextMenuCommand(");
+
+        Assert.DoesNotContain(
+            "new Command(async",
+            contextMenu,
+            StringComparison.Ordinal);
+        Assert.True(
+            CountOccurrences(
+                contextMenu,
+                "CreateContentContextMenuCommand(") >= 7,
+            "Every Content context-menu action must use the exception-safe async wrapper.");
+        Assert.Contains(
+            "RunContentUiAction(",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "catch (Exception exception)",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    sealed record ContentProjectionTestRow(
+        string Id,
+        string Label);
 
     [Fact]
     public void InspectorSelectionIdentity_UsesStableValueIdentity()
@@ -607,11 +802,11 @@ public sealed class WorkflowProjectionTests
             destroyCommand,
             StringComparison.Ordinal);
         Assert.Contains(
-            "DestroyObjectAsync(\n                rootInstanceId,",
+            "RequestDestroyObjectAsync(",
             ownedRollback,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RefreshCurrentWorldAsync(",
+            "RefreshAndCheckRootAbsentAsync(",
             ownedRollback,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -903,6 +1098,10 @@ public sealed class WorkflowProjectionTests
             source,
             "sealed class CreatedHierarchySnapshot",
             "public sealed class CreateModelGameObjectCommand");
+        var createdState = Slice(
+            source,
+            "sealed class CreatedHierarchyCommandState",
+            "public sealed class CreateModelGameObjectCommand");
         var modelCommand = Slice(
             source,
             "public sealed class CreateModelGameObjectCommand",
@@ -970,6 +1169,97 @@ public sealed class WorkflowProjectionTests
             StringComparison.Ordinal);
         Assert.Contains(
             "public ValueTask<CommandResult> UndoAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RefreshAndClassifyAsync(",
+            createdState,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestDestroyObjectAsync(",
+            createdState,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "postMutation.Projection !=" +
+            "\n            AuthoritativeHierarchyProjection.Absent",
+            createdState,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Created hierarchy was already absent; undo reconciled without another mutation.",
+            createdState,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            modelCommand,
+            "CreateGameObjectAsync(",
+            "AddComponentAsync(",
+            "CommitChangesAsync(",
+            "CommitChangesAsync(",
+            "RefreshCurrentWorldAuthoritativelyAsync(");
+        Assert.Contains(
+            "\"Sailor::MeshRendererComponent\"",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new ObjectPtr",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "new FileId(_modelFileId.Value)",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "OwnedHierarchyRollback.EnsureAbsentAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RandomNumberGenerator.GetBytes(10)",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RandomNumberGenerator.GetBytes(8)",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "initialParentId,\n" +
+            "                _ownedGameObjectId,",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MeshRendererComponentTypeName,\n" +
+            "                ownedComponentId,",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RefreshAndCheckRootAbsentAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "MatchesFinalProjection(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "TryResolveWorldPosition(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "world.ResolveParentInstanceId(gameObject)",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "model.FileId.Value,\n" +
+            "                _modelFileId.Value",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "rollback could not confirm owned GameObject",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "projectedComponents.Count != 1",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CreateModelGameObjectAsync(",
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -1073,7 +1363,7 @@ public sealed class WorkflowProjectionTests
             "HierarchyView.xaml.cs");
         var prefabDrop = Slice(
             contentSource,
-            "if (command is CreatePrefabAssetCommand)",
+            "e.Handled = true;",
             "var context = contextProvider.GetCurrentContext");
         var focus = Slice(
             hierarchySource,
@@ -1082,6 +1372,8 @@ public sealed class WorkflowProjectionTests
 
         AssertInOrder(
             prefabDrop,
+            "e.Handled = true;",
+            "await Task.Yield();",
             "CommitPendingChangesAsync()",
             "EditorDragDrop.TryCreateContentDropCommand(");
         AssertInOrder(
@@ -1089,6 +1381,37 @@ public sealed class WorkflowProjectionTests
             "CommitPendingChangesAsync()",
             "gameObjectsById.TryGetValue(",
             "new FocusEditorCameraCommand(");
+    }
+
+    [Fact]
+    public void HierarchyRowGestures_SelectOnSingleTapAndSelectBeforeDoubleTapFocus()
+    {
+        var hierarchySource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "HierarchyView.xaml.cs");
+        var selection = Slice(
+            hierarchySource,
+            "async Task SelectHierarchyRowAsync(",
+            "async void OnHierarchyRootDrop(");
+        var gestures = Slice(
+            hierarchySource,
+            "var selectGesture = new TapGestureRecognizer",
+            "border.BindingContextChanged +=");
+
+        AssertInOrder(
+            selection,
+            "updateCollectionSelection",
+            "SetHierarchySelection(row);",
+            "new SelectObjectCommand(selectedObject: gameObject)");
+        AssertInOrder(
+            gestures,
+            "NumberOfTapsRequired = 1",
+            "SelectHierarchyRowAsync(",
+            "updateCollectionSelection: true",
+            "NumberOfTapsRequired = 2",
+            "SelectHierarchyRowAsync(",
+            "FocusGameObjectAsync(row)");
     }
 
     static void AssertCommitClearsDirtyBeforeDispatch(string source)

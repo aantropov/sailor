@@ -620,6 +620,70 @@ namespace
 				"Runtime/Submodules/EditorRemote/RemoteViewportMacNativeBridge.mm");
 
 		RequireRemoteViewportBindingLockOrder(bridgeSource);
+		const size_t enginePumpBegin = bridgeSource.find(
+			"void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()");
+		const size_t setViewportBegin = bridgeSource.find(
+			"void App::SetEditorViewport(",
+			enginePumpBegin);
+		Require(
+			enginePumpBegin != std::string::npos &&
+				setViewportBegin > enginePumpBegin,
+			"engine-owned remote viewport pump source must be bounded");
+		const std::string enginePumpBody = bridgeSource.substr(
+			enginePumpBegin,
+			setViewportBegin - enginePumpBegin);
+		const size_t schedulerLookup = enginePumpBody.find(
+			"App::GetSubmodule<Tasks::Scheduler>()");
+		const size_t mainThreadGuard = enginePumpBody.find(
+			"if (!scheduler || !scheduler->IsMainThread())",
+			schedulerLookup);
+		const size_t pumpBinding = enginePumpBody.find(
+			"binding->Pump();",
+			mainThreadGuard);
+		Require(
+			schedulerLookup != std::string::npos &&
+				mainThreadGuard > schedulerLookup &&
+				pumpBinding > mainThreadGuard &&
+				CountOccurrences(enginePumpBody, "binding->Pump();") == 1,
+			"remote viewport frame acquisition must be release-guarded and pumped exactly once from the engine main thread");
+
+		const size_t upsertViewportBegin = bridgeSource.find(
+			"bool App::UpsertEditorRemoteViewport(",
+			setViewportBegin);
+		const size_t destroyViewportBegin = bridgeSource.find(
+			"bool App::DestroyEditorRemoteViewport(",
+			upsertViewportBegin);
+		Require(
+			upsertViewportBegin != std::string::npos &&
+				destroyViewportBegin > upsertViewportBegin,
+			"remote viewport upsert source must be bounded");
+		const std::string upsertViewportBody = bridgeSource.substr(
+			upsertViewportBegin,
+			destroyViewportBegin - upsertViewportBegin);
+		Require(
+			upsertViewportBody.find("binding->Pump();") ==
+				std::string::npos,
+			"protocol-thread viewport upsert must defer frame acquisition to the engine main-thread pump");
+
+		const size_t retryViewportBegin = bridgeSource.find(
+			"bool App::RetryEditorRemoteViewport(",
+			destroyViewportBegin);
+		const size_t setMacHostBeginForPumpContract = bridgeSource.find(
+			"bool App::SetEditorRemoteViewportMacHostHandle(",
+			retryViewportBegin);
+		Require(
+			retryViewportBegin != std::string::npos &&
+				setMacHostBeginForPumpContract > retryViewportBegin,
+			"remote viewport retry source must be bounded");
+		const std::string retryViewportBody = bridgeSource.substr(
+			retryViewportBegin,
+			setMacHostBeginForPumpContract - retryViewportBegin);
+		Require(
+			retryViewportBody.find("binding->Pump();") ==
+				std::string::npos &&
+				CountOccurrences(bridgeSource, "binding->Pump();") == 1,
+			"protocol-thread viewport retry must defer frame acquisition and the engine main-thread boundary must remain the sole binding pump owner");
+
 		const size_t bindNativeLayerBegin = macNativeBridgeSource.find(
 			"Failure BindMacNativeLayer(");
 		const size_t bindNativeLayerEnd = macNativeBridgeSource.find(
@@ -896,8 +960,8 @@ namespace
 		const std::string selectedGizmoBody = gameObjectSource.substr(selectedGizmoBegin, selectedGizmoEnd - selectedGizmoBegin);
 		Require(selectedGizmoBody.find("if (bUsesMeshBounds)") != std::string::npos &&
 			selectedGizmoBody.find("DrawAABB(selectionBounds, selectionColor)") != std::string::npos &&
-			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor)") != std::string::npos,
-			"selected empty GameObjects must draw a unit center sphere without changing mesh selection bounds");
+			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor)") != std::string::npos,
+			"selected empty GameObjects must draw a radius-10 center sphere without changing mesh selection bounds");
 		const size_t viewportTickBegin = viewportControllerSource.find("void EditorViewportController::Tick(World& world)");
 		const size_t viewportResetBegin = viewportControllerSource.find("void EditorViewportController::Reset()", viewportTickBegin);
 		Require(viewportTickBegin != std::string::npos && viewportResetBegin > viewportTickBegin &&

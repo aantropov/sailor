@@ -216,7 +216,7 @@ namespace
 		Require(std::abs(distance) <= c_tolerance, "a ray starting inside an AABB must report zero distance");
 	}
 
-	void TestResolveDropPositionUsesNearestMeshBounds()
+	void TestResolveRayTargetUsesNearestMeshBounds()
 	{
 		const InstanceId nearId = ParseInstanceId("0000000000000010");
 		const InstanceId farId = ParseInstanceId("0000000000000020");
@@ -227,13 +227,13 @@ namespace
 		};
 		glm::vec3 position{};
 
-		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
-			"a drop ray crossing mesh bounds must resolve successfully");
+		Require(EditorViewport::TryResolveRayTarget(ray, candidates, position),
+			"a viewport ray crossing mesh bounds must resolve successfully");
 		Require(AreVectorsNear(position, glm::vec3(0.0f, 2.0f, -3.0f)),
 			"drop placement must use the nearest mesh AABB before fallback surfaces");
 	}
 
-	void TestResolveDropPositionUsesGroundPlane()
+	void TestResolveRayTargetUsesGroundPlane()
 	{
 		const glm::vec3 origin(2.0f, 4.0f, 3.0f);
 		const glm::vec3 direction = glm::normalize(glm::vec3(1.0f, -2.0f, -1.0f));
@@ -242,15 +242,15 @@ namespace
 		glm::vec3 position{};
 		const float planeDistance = -origin.y / direction.y;
 
-		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
-			"a drop ray facing the ground plane must resolve successfully");
+		Require(EditorViewport::TryResolveRayTarget(ray, candidates, position),
+			"a viewport ray facing the ground plane must resolve successfully");
 		Require(AreVectorsNear(position, origin + direction * planeDistance),
 			"drop placement without mesh hits must intersect the y=0 plane");
 		Require(std::abs(position.y) <= c_tolerance,
 			"ground-plane drop placement must land on y=0");
 	}
 
-	void TestResolveDropPositionUsesFiniteForwardFallback()
+	void TestResolveRayTargetUsesFiniteForwardFallback()
 	{
 		const glm::vec3 origin(1.0f, 2.0f, 3.0f);
 		const glm::vec3 direction = glm::normalize(glm::vec3(1.0f, 0.0f, -1.0f));
@@ -258,8 +258,8 @@ namespace
 		const TVector<EditorViewport::PickCandidate> candidates{};
 		glm::vec3 position{};
 
-		Require(EditorViewport::TryResolveDropPosition(ray, candidates, position),
-			"a drop ray parallel to the ground plane must still resolve");
+		Require(EditorViewport::TryResolveRayTarget(ray, candidates, position),
+			"a viewport ray parallel to the ground plane must still resolve");
 		Require(Math::AllFinite(position),
 			"the forward fallback must remain finite");
 		Require(AreVectorsNear(position, origin + direction * 1000.0f),
@@ -268,7 +268,7 @@ namespace
 		const Math::Ray upwardRay(
 			origin,
 			glm::normalize(glm::vec3(0.0f, 1.0f, -1.0f)));
-		Require(EditorViewport::TryResolveDropPosition(
+		Require(EditorViewport::TryResolveRayTarget(
 			upwardRay,
 			candidates,
 			position),
@@ -277,12 +277,12 @@ namespace
 			"drop placement must never follow the ray backwards to reach the ground plane");
 	}
 
-	void TestResolveDropPositionRejectsInvalidRay()
+	void TestResolveRayTargetRejectsInvalidRay()
 	{
 		const TVector<EditorViewport::PickCandidate> candidates{};
 		glm::vec3 position(4.0f, 5.0f, 6.0f);
 
-		Require(!EditorViewport::TryResolveDropPosition(
+		Require(!EditorViewport::TryResolveRayTarget(
 			Math::Ray(glm::vec3(0.0f), glm::vec3(0.0f)),
 			candidates,
 			position),
@@ -291,7 +291,7 @@ namespace
 			"a rejected drop ray must not leak a stale position");
 
 		const float nan = std::numeric_limits<float>::quiet_NaN();
-		Require(!EditorViewport::TryResolveDropPosition(
+		Require(!EditorViewport::TryResolveRayTarget(
 			Math::Ray(glm::vec3(nan, 0.0f, 0.0f), Math::vec3_Forward),
 			candidates,
 			position),
@@ -664,10 +664,10 @@ int main()
 		{ "BuildWorldRayRejectsInvalidViewport", TestBuildWorldRayRejectsInvalidViewport },
 		{ "PickNearestUsesDistance", TestPickNearestUsesDistance },
 		{ "PickNearestTreatsInsideBoundsAsZeroDistance", TestPickNearestTreatsInsideBoundsAsZeroDistance },
-		{ "ResolveDropPositionUsesNearestMeshBounds", TestResolveDropPositionUsesNearestMeshBounds },
-		{ "ResolveDropPositionUsesGroundPlane", TestResolveDropPositionUsesGroundPlane },
-		{ "ResolveDropPositionUsesFiniteForwardFallback", TestResolveDropPositionUsesFiniteForwardFallback },
-		{ "ResolveDropPositionRejectsInvalidRay", TestResolveDropPositionRejectsInvalidRay },
+		{ "ResolveRayTargetUsesNearestMeshBounds", TestResolveRayTargetUsesNearestMeshBounds },
+		{ "ResolveRayTargetUsesGroundPlane", TestResolveRayTargetUsesGroundPlane },
+		{ "ResolveRayTargetUsesFiniteForwardFallback", TestResolveRayTargetUsesFiniteForwardFallback },
+		{ "ResolveRayTargetRejectsInvalidRay", TestResolveRayTargetRejectsInvalidRay },
 		{ "CalculateFramedCameraPositionPreservesViewDirection", TestCalculateFramedCameraPositionPreservesViewDirection },
 		{ "CalculateFramedCameraPositionAccountsForViewportAspect", TestCalculateFramedCameraPositionAccountsForViewportAspect },
 		{ "CalculateFramedCameraPositionRejectsInvalidInput", TestCalculateFramedCameraPositionRejectsInvalidInput },

@@ -71,9 +71,6 @@ extern CountRequestDefaultTypeInternal _CountRequest_default_instance_;
 class CreateGameObjectRequest;
 struct CreateGameObjectRequestDefaultTypeInternal;
 extern CreateGameObjectRequestDefaultTypeInternal _CreateGameObjectRequest_default_instance_;
-class CreateModelGameObjectRequest;
-struct CreateModelGameObjectRequestDefaultTypeInternal;
-extern CreateModelGameObjectRequestDefaultTypeInternal _CreateModelGameObjectRequest_default_instance_;
 class Empty;
 struct EmptyDefaultTypeInternal;
 extern EmptyDefaultTypeInternal _Empty_default_instance_;
@@ -161,9 +158,6 @@ extern Vector4ResultDefaultTypeInternal _Vector4Result_default_instance_;
 class ViewportAssetDropEvent;
 struct ViewportAssetDropEventDefaultTypeInternal;
 extern ViewportAssetDropEventDefaultTypeInternal _ViewportAssetDropEvent_default_instance_;
-class ViewportDropPositionRequest;
-struct ViewportDropPositionRequestDefaultTypeInternal;
-extern ViewportDropPositionRequestDefaultTypeInternal _ViewportDropPositionRequest_default_instance_;
 class ViewportEvent;
 struct ViewportEventDefaultTypeInternal;
 extern ViewportEventDefaultTypeInternal _ViewportEvent_default_instance_;
@@ -176,6 +170,9 @@ extern ViewportIdRequestDefaultTypeInternal _ViewportIdRequest_default_instance_
 class ViewportObjectRequest;
 struct ViewportObjectRequestDefaultTypeInternal;
 extern ViewportObjectRequestDefaultTypeInternal _ViewportObjectRequest_default_instance_;
+class ViewportRayRequest;
+struct ViewportRayRequestDefaultTypeInternal;
+extern ViewportRayRequestDefaultTypeInternal _ViewportRayRequest_default_instance_;
 class ViewportRectRequest;
 struct ViewportRectRequestDefaultTypeInternal;
 extern ViewportRectRequestDefaultTypeInternal _ViewportRectRequest_default_instance_;
@@ -340,7 +337,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateResult*>(
         &_ViewportToolStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 38;
+  static constexpr int kIndexInFileMessages = 37;
   friend void swap(ViewportToolStateResult& a, ViewportToolStateResult& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateResult* other) {
     if (other == this) return;
@@ -542,7 +539,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateRequest*>(
         &_ViewportToolStateRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 25;
+  static constexpr int kIndexInFileMessages = 24;
   friend void swap(ViewportToolStateRequest& a, ViewportToolStateRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateRequest* other) {
     if (other == this) return;
@@ -756,7 +753,7 @@ class ViewportToolShortcutEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolShortcutEvent*>(
         &_ViewportToolShortcutEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 43;
+  static constexpr int kIndexInFileMessages = 42;
   friend void swap(ViewportToolShortcutEvent& a, ViewportToolShortcutEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportToolShortcutEvent* other) {
     if (other == this) return;
@@ -946,7 +943,7 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportSelectionEvent*>(
         &_ViewportSelectionEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 40;
+  static constexpr int kIndexInFileMessages = 39;
   friend void swap(ViewportSelectionEvent& a, ViewportSelectionEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportSelectionEvent* other) {
     if (other == this) return;
@@ -1309,6 +1306,220 @@ class ViewportRectRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
+class ViewportRayRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportRayRequest) */ {
+ public:
+  inline ViewportRayRequest() : ViewportRayRequest(nullptr) {}
+  ~ViewportRayRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(ViewportRayRequest* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(ViewportRayRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR ViewportRayRequest(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline ViewportRayRequest(const ViewportRayRequest& from) : ViewportRayRequest(nullptr, from) {}
+  inline ViewportRayRequest(ViewportRayRequest&& from) noexcept
+      : ViewportRayRequest(nullptr, std::move(from)) {}
+  inline ViewportRayRequest& operator=(const ViewportRayRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline ViewportRayRequest& operator=(ViewportRayRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const ViewportRayRequest& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const ViewportRayRequest* internal_default_instance() {
+    return reinterpret_cast<const ViewportRayRequest*>(
+        &_ViewportRayRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 20;
+  friend void swap(ViewportRayRequest& a, ViewportRayRequest& b) { a.Swap(&b); }
+  inline void Swap(ViewportRayRequest* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(ViewportRayRequest* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  ViewportRayRequest* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<ViewportRayRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const ViewportRayRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const ViewportRayRequest& from) { ViewportRayRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(ViewportRayRequest* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ViewportRayRequest"; }
+
+ protected:
+  explicit ViewportRayRequest(::google::protobuf::Arena* arena);
+  ViewportRayRequest(::google::protobuf::Arena* arena, const ViewportRayRequest& from);
+  ViewportRayRequest(::google::protobuf::Arena* arena, ViewportRayRequest&& from) noexcept
+      : ViewportRayRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kViewportIdFieldNumber = 1,
+    kNormalizedXFieldNumber = 2,
+    kNormalizedYFieldNumber = 3,
+  };
+  // uint64 viewport_id = 1;
+  void clear_viewport_id() ;
+  ::uint64_t viewport_id() const;
+  void set_viewport_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_viewport_id() const;
+  void _internal_set_viewport_id(::uint64_t value);
+
+  public:
+  // float normalized_x = 2;
+  void clear_normalized_x() ;
+  float normalized_x() const;
+  void set_normalized_x(float value);
+
+  private:
+  float _internal_normalized_x() const;
+  void _internal_set_normalized_x(float value);
+
+  public:
+  // float normalized_y = 3;
+  void clear_normalized_y() ;
+  float normalized_y() const;
+  void set_normalized_y(float value);
+
+  private:
+  float _internal_normalized_y() const;
+  void _internal_set_normalized_y(float value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportRayRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      2, 3, 0,
+      0, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const ViewportRayRequest& from_msg);
+    ::uint64_t viewport_id_;
+    float normalized_x_;
+    float normalized_y_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
 class ViewportObjectRequest final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportObjectRequest) */ {
  public:
@@ -1368,7 +1579,7 @@ class ViewportObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportObjectRequest*>(
         &_ViewportObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 23;
+  static constexpr int kIndexInFileMessages = 22;
   friend void swap(ViewportObjectRequest& a, ViewportObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportObjectRequest* other) {
     if (other == this) return;
@@ -1707,220 +1918,6 @@ class ViewportIdRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
-class ViewportDropPositionRequest final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportDropPositionRequest) */ {
- public:
-  inline ViewportDropPositionRequest() : ViewportDropPositionRequest(nullptr) {}
-  ~ViewportDropPositionRequest() PROTOBUF_FINAL;
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(ViewportDropPositionRequest* msg, std::destroying_delete_t) {
-    SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(ViewportDropPositionRequest));
-  }
-#endif
-
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR ViewportDropPositionRequest(
-      ::google::protobuf::internal::ConstantInitialized);
-
-  inline ViewportDropPositionRequest(const ViewportDropPositionRequest& from) : ViewportDropPositionRequest(nullptr, from) {}
-  inline ViewportDropPositionRequest(ViewportDropPositionRequest&& from) noexcept
-      : ViewportDropPositionRequest(nullptr, std::move(from)) {}
-  inline ViewportDropPositionRequest& operator=(const ViewportDropPositionRequest& from) {
-    CopyFrom(from);
-    return *this;
-  }
-  inline ViewportDropPositionRequest& operator=(ViewportDropPositionRequest&& from) noexcept {
-    if (this == &from) return *this;
-    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
-      InternalSwap(&from);
-    } else {
-      CopyFrom(from);
-    }
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
-  }
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor() {
-    return GetDescriptor();
-  }
-  static const ::google::protobuf::Descriptor* GetDescriptor() {
-    return default_instance().GetMetadata().descriptor;
-  }
-  static const ::google::protobuf::Reflection* GetReflection() {
-    return default_instance().GetMetadata().reflection;
-  }
-  static const ViewportDropPositionRequest& default_instance() {
-    return *internal_default_instance();
-  }
-  static inline const ViewportDropPositionRequest* internal_default_instance() {
-    return reinterpret_cast<const ViewportDropPositionRequest*>(
-        &_ViewportDropPositionRequest_default_instance_);
-  }
-  static constexpr int kIndexInFileMessages = 20;
-  friend void swap(ViewportDropPositionRequest& a, ViewportDropPositionRequest& b) { a.Swap(&b); }
-  inline void Swap(ViewportDropPositionRequest* other) {
-    if (other == this) return;
-    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
-      InternalSwap(other);
-    } else {
-      ::google::protobuf::internal::GenericSwap(this, other);
-    }
-  }
-  void UnsafeArenaSwap(ViewportDropPositionRequest* other) {
-    if (other == this) return;
-    ABSL_DCHECK(GetArena() == other->GetArena());
-    InternalSwap(other);
-  }
-
-  // implements Message ----------------------------------------------
-
-  ViewportDropPositionRequest* New(::google::protobuf::Arena* arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<ViewportDropPositionRequest>(arena);
-  }
-  using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const ViewportDropPositionRequest& from);
-  using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const ViewportDropPositionRequest& from) { ViewportDropPositionRequest::MergeImpl(*this, from); }
-
-  private:
-  static void MergeImpl(
-      ::google::protobuf::MessageLite& to_msg,
-      const ::google::protobuf::MessageLite& from_msg);
-
-  public:
-  bool IsInitialized() const {
-    return true;
-  }
-  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
-  #if defined(PROTOBUF_CUSTOM_VTABLE)
-  private:
-  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
-  static ::uint8_t* _InternalSerialize(
-      const MessageLite& msg, ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream);
-
-  public:
-  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
-    return _InternalSerialize(*this, target, stream);
-  }
-  #else   // PROTOBUF_CUSTOM_VTABLE
-  ::size_t ByteSizeLong() const final;
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
-  #endif  // PROTOBUF_CUSTOM_VTABLE
-  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
-
-  private:
-  void SharedCtor(::google::protobuf::Arena* arena);
-  static void SharedDtor(MessageLite& self);
-  void InternalSwap(ViewportDropPositionRequest* other);
- private:
-  template <typename T>
-  friend ::absl::string_view(
-      ::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.ViewportDropPositionRequest"; }
-
- protected:
-  explicit ViewportDropPositionRequest(::google::protobuf::Arena* arena);
-  ViewportDropPositionRequest(::google::protobuf::Arena* arena, const ViewportDropPositionRequest& from);
-  ViewportDropPositionRequest(::google::protobuf::Arena* arena, ViewportDropPositionRequest&& from) noexcept
-      : ViewportDropPositionRequest(arena) {
-    *this = ::std::move(from);
-  }
-  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
-  static void* PlacementNew_(const void*, void* mem,
-                             ::google::protobuf::Arena* arena);
-  static constexpr auto InternalNewImpl_();
-  static const ::google::protobuf::internal::ClassDataFull _class_data_;
-
- public:
-  ::google::protobuf::Metadata GetMetadata() const;
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-  enum : int {
-    kViewportIdFieldNumber = 1,
-    kNormalizedXFieldNumber = 2,
-    kNormalizedYFieldNumber = 3,
-  };
-  // uint64 viewport_id = 1;
-  void clear_viewport_id() ;
-  ::uint64_t viewport_id() const;
-  void set_viewport_id(::uint64_t value);
-
-  private:
-  ::uint64_t _internal_viewport_id() const;
-  void _internal_set_viewport_id(::uint64_t value);
-
-  public:
-  // float normalized_x = 2;
-  void clear_normalized_x() ;
-  float normalized_x() const;
-  void set_normalized_x(float value);
-
-  private:
-  float _internal_normalized_x() const;
-  void _internal_set_normalized_x(float value);
-
-  public:
-  // float normalized_y = 3;
-  void clear_normalized_y() ;
-  float normalized_y() const;
-  void set_normalized_y(float value);
-
-  private:
-  float _internal_normalized_y() const;
-  void _internal_set_normalized_y(float value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:sailor.editor.v1.ViewportDropPositionRequest)
- private:
-  class _Internal;
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<
-      2, 3, 0,
-      0, 2>
-      _table_;
-
-  friend class ::google::protobuf::MessageLite;
-  friend class ::google::protobuf::Arena;
-  template <typename T>
-  friend class ::google::protobuf::Arena::InternalHelper;
-  using InternalArenaConstructable_ = void;
-  using DestructorSkippable_ = void;
-  struct Impl_ {
-    inline explicit constexpr Impl_(
-        ::google::protobuf::internal::ConstantInitialized) noexcept;
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena);
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena, const Impl_& from,
-                          const ViewportDropPositionRequest& from_msg);
-    ::uint64_t viewport_id_;
-    float normalized_x_;
-    float normalized_y_;
-    ::google::protobuf::internal::CachedSize _cached_size_;
-    PROTOBUF_TSAN_DECLARE_MEMBER
-  };
-  union { Impl_ _impl_; };
-  friend struct ::TableStruct_editor_5fengine_2eproto;
-};
-// -------------------------------------------------------------------
-
 class ViewportAssetDropEvent final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportAssetDropEvent) */ {
  public:
@@ -1980,7 +1977,7 @@ class ViewportAssetDropEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportAssetDropEvent*>(
         &_ViewportAssetDropEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 42;
+  static constexpr int kIndexInFileMessages = 41;
   friend void swap(ViewportAssetDropEvent& a, ViewportAssetDropEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportAssetDropEvent* other) {
     if (other == this) return;
@@ -2200,7 +2197,7 @@ class Vector4 final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4*>(
         &_Vector4_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 39;
+  static constexpr int kIndexInFileMessages = 38;
   friend void swap(Vector4& a, Vector4& b) { a.Swap(&b); }
   inline void Swap(Vector4* other) {
     if (other == this) return;
@@ -2640,7 +2637,7 @@ class UInt64Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt64Result*>(
         &_UInt64Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 32;
+  static constexpr int kIndexInFileMessages = 31;
   friend void swap(UInt64Result& a, UInt64Result& b) { a.Swap(&b); }
   inline void Swap(UInt64Result* other) {
     if (other == this) return;
@@ -2830,7 +2827,7 @@ class UInt32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt32Result*>(
         &_UInt32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 31;
+  static constexpr int kIndexInFileMessages = 30;
   friend void swap(UInt32Result& a, UInt32Result& b) { a.Swap(&b); }
   inline void Swap(UInt32Result* other) {
     if (other == this) return;
@@ -3020,7 +3017,7 @@ class StringResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringResult*>(
         &_StringResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 33;
+  static constexpr int kIndexInFileMessages = 32;
   friend void swap(StringResult& a, StringResult& b) { a.Swap(&b); }
   inline void Swap(StringResult* other) {
     if (other == this) return;
@@ -3228,7 +3225,7 @@ class StringListResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringListResult*>(
         &_StringListResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 34;
+  static constexpr int kIndexInFileMessages = 33;
   friend void swap(StringListResult& a, StringListResult& b) { a.Swap(&b); }
   inline void Swap(StringListResult* other) {
     if (other == this) return;
@@ -3632,7 +3629,7 @@ class ShowMainWindowRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ShowMainWindowRequest*>(
         &_ShowMainWindowRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 27;
+  static constexpr int kIndexInFileMessages = 26;
   friend void swap(ShowMainWindowRequest& a, ShowMainWindowRequest& b) { a.Swap(&b); }
   inline void Swap(ShowMainWindowRequest* other) {
     if (other == this) return;
@@ -3822,7 +3819,7 @@ class SelectionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const SelectionRequest*>(
         &_SelectionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 26;
+  static constexpr int kIndexInFileMessages = 25;
   friend void swap(SelectionRequest& a, SelectionRequest& b) { a.Swap(&b); }
   inline void Swap(SelectionRequest* other) {
     if (other == this) return;
@@ -4250,7 +4247,7 @@ class RenderPathTracedImageRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RenderPathTracedImageRequest*>(
         &_RenderPathTracedImageRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 28;
+  static constexpr int kIndexInFileMessages = 27;
   friend void swap(RenderPathTracedImageRequest& a, RenderPathTracedImageRequest& b) { a.Swap(&b); }
   inline void Swap(RenderPathTracedImageRequest* other) {
     if (other == this) return;
@@ -5298,7 +5295,7 @@ class PrefabLinkRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const PrefabLinkRequest*>(
         &_PrefabLinkRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 24;
+  static constexpr int kIndexInFileMessages = 23;
   friend void swap(PrefabLinkRequest& a, PrefabLinkRequest& b) { a.Swap(&b); }
   inline void Swap(PrefabLinkRequest* other) {
     if (other == this) return;
@@ -5720,7 +5717,7 @@ class Int32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Int32Result*>(
         &_Int32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 30;
+  static constexpr int kIndexInFileMessages = 29;
   friend void swap(Int32Result& a, Int32Result& b) { a.Swap(&b); }
   inline void Swap(Int32Result* other) {
     if (other == this) return;
@@ -6350,7 +6347,7 @@ class InstanceIdResult final : public ::google::protobuf::Message
     return reinterpret_cast<const InstanceIdResult*>(
         &_InstanceIdResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 36;
+  static constexpr int kIndexInFileMessages = 35;
   friend void swap(InstanceIdResult& a, InstanceIdResult& b) { a.Swap(&b); }
   inline void Swap(InstanceIdResult* other) {
     if (other == this) return;
@@ -7701,7 +7698,7 @@ class BoolResult final : public ::google::protobuf::Message
     return reinterpret_cast<const BoolResult*>(
         &_BoolResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 29;
+  static constexpr int kIndexInFileMessages = 28;
   friend void swap(BoolResult& a, BoolResult& b) { a.Swap(&b); }
   inline void Swap(BoolResult* other) {
     if (other == this) return;
@@ -7891,7 +7888,7 @@ class AssetReloadStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AssetReloadStateResult*>(
         &_AssetReloadStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 35;
+  static constexpr int kIndexInFileMessages = 34;
   friend void swap(AssetReloadStateResult& a, AssetReloadStateResult& b) { a.Swap(&b); }
   inline void Swap(AssetReloadStateResult* other) {
     if (other == this) return;
@@ -8349,7 +8346,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportTransformEvent*>(
         &_ViewportTransformEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 41;
+  static constexpr int kIndexInFileMessages = 40;
   friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportTransformEvent* other) {
     if (other == this) return;
@@ -8672,7 +8669,7 @@ class Vector4Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4Result*>(
         &_Vector4Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 37;
+  static constexpr int kIndexInFileMessages = 36;
   friend void swap(Vector4Result& a, Vector4Result& b) { a.Swap(&b); }
   inline void Swap(Vector4Result* other) {
     if (other == this) return;
@@ -8868,7 +8865,7 @@ class InstantiatePrefabInstanceRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabInstanceRequest*>(
         &_InstantiatePrefabInstanceRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 22;
+  static constexpr int kIndexInFileMessages = 21;
   friend void swap(InstantiatePrefabInstanceRequest& a, InstantiatePrefabInstanceRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabInstanceRequest* other) {
     if (other == this) return;
@@ -9053,268 +9050,6 @@ class InstantiatePrefabInstanceRequest final : public ::google::protobuf::Messag
 };
 // -------------------------------------------------------------------
 
-class CreateModelGameObjectRequest final : public ::google::protobuf::Message
-/* @@protoc_insertion_point(class_definition:sailor.editor.v1.CreateModelGameObjectRequest) */ {
- public:
-  inline CreateModelGameObjectRequest() : CreateModelGameObjectRequest(nullptr) {}
-  ~CreateModelGameObjectRequest() PROTOBUF_FINAL;
-
-#if defined(PROTOBUF_CUSTOM_VTABLE)
-  void operator delete(CreateModelGameObjectRequest* msg, std::destroying_delete_t) {
-    SharedDtor(*msg);
-    ::google::protobuf::internal::SizedDelete(msg, sizeof(CreateModelGameObjectRequest));
-  }
-#endif
-
-  template <typename = void>
-  explicit PROTOBUF_CONSTEXPR CreateModelGameObjectRequest(
-      ::google::protobuf::internal::ConstantInitialized);
-
-  inline CreateModelGameObjectRequest(const CreateModelGameObjectRequest& from) : CreateModelGameObjectRequest(nullptr, from) {}
-  inline CreateModelGameObjectRequest(CreateModelGameObjectRequest&& from) noexcept
-      : CreateModelGameObjectRequest(nullptr, std::move(from)) {}
-  inline CreateModelGameObjectRequest& operator=(const CreateModelGameObjectRequest& from) {
-    CopyFrom(from);
-    return *this;
-  }
-  inline CreateModelGameObjectRequest& operator=(CreateModelGameObjectRequest&& from) noexcept {
-    if (this == &from) return *this;
-    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
-      InternalSwap(&from);
-    } else {
-      CopyFrom(from);
-    }
-    return *this;
-  }
-
-  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
-  }
-  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
-      ABSL_ATTRIBUTE_LIFETIME_BOUND {
-    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
-  }
-
-  static const ::google::protobuf::Descriptor* descriptor() {
-    return GetDescriptor();
-  }
-  static const ::google::protobuf::Descriptor* GetDescriptor() {
-    return default_instance().GetMetadata().descriptor;
-  }
-  static const ::google::protobuf::Reflection* GetReflection() {
-    return default_instance().GetMetadata().reflection;
-  }
-  static const CreateModelGameObjectRequest& default_instance() {
-    return *internal_default_instance();
-  }
-  static inline const CreateModelGameObjectRequest* internal_default_instance() {
-    return reinterpret_cast<const CreateModelGameObjectRequest*>(
-        &_CreateModelGameObjectRequest_default_instance_);
-  }
-  static constexpr int kIndexInFileMessages = 21;
-  friend void swap(CreateModelGameObjectRequest& a, CreateModelGameObjectRequest& b) { a.Swap(&b); }
-  inline void Swap(CreateModelGameObjectRequest* other) {
-    if (other == this) return;
-    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
-      InternalSwap(other);
-    } else {
-      ::google::protobuf::internal::GenericSwap(this, other);
-    }
-  }
-  void UnsafeArenaSwap(CreateModelGameObjectRequest* other) {
-    if (other == this) return;
-    ABSL_DCHECK(GetArena() == other->GetArena());
-    InternalSwap(other);
-  }
-
-  // implements Message ----------------------------------------------
-
-  CreateModelGameObjectRequest* New(::google::protobuf::Arena* arena = nullptr) const {
-    return ::google::protobuf::Message::DefaultConstruct<CreateModelGameObjectRequest>(arena);
-  }
-  using ::google::protobuf::Message::CopyFrom;
-  void CopyFrom(const CreateModelGameObjectRequest& from);
-  using ::google::protobuf::Message::MergeFrom;
-  void MergeFrom(const CreateModelGameObjectRequest& from) { CreateModelGameObjectRequest::MergeImpl(*this, from); }
-
-  private:
-  static void MergeImpl(
-      ::google::protobuf::MessageLite& to_msg,
-      const ::google::protobuf::MessageLite& from_msg);
-
-  public:
-  bool IsInitialized() const {
-    return true;
-  }
-  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
-  #if defined(PROTOBUF_CUSTOM_VTABLE)
-  private:
-  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
-  static ::uint8_t* _InternalSerialize(
-      const MessageLite& msg, ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream);
-
-  public:
-  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
-    return _InternalSerialize(*this, target, stream);
-  }
-  #else   // PROTOBUF_CUSTOM_VTABLE
-  ::size_t ByteSizeLong() const final;
-  ::uint8_t* _InternalSerialize(
-      ::uint8_t* target,
-      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
-  #endif  // PROTOBUF_CUSTOM_VTABLE
-  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
-
-  private:
-  void SharedCtor(::google::protobuf::Arena* arena);
-  static void SharedDtor(MessageLite& self);
-  void InternalSwap(CreateModelGameObjectRequest* other);
- private:
-  template <typename T>
-  friend ::absl::string_view(
-      ::google::protobuf::internal::GetAnyMessageName)();
-  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.CreateModelGameObjectRequest"; }
-
- protected:
-  explicit CreateModelGameObjectRequest(::google::protobuf::Arena* arena);
-  CreateModelGameObjectRequest(::google::protobuf::Arena* arena, const CreateModelGameObjectRequest& from);
-  CreateModelGameObjectRequest(::google::protobuf::Arena* arena, CreateModelGameObjectRequest&& from) noexcept
-      : CreateModelGameObjectRequest(arena) {
-    *this = ::std::move(from);
-  }
-  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
-  static void* PlacementNew_(const void*, void* mem,
-                             ::google::protobuf::Arena* arena);
-  static constexpr auto InternalNewImpl_();
-  static const ::google::protobuf::internal::ClassDataFull _class_data_;
-
- public:
-  ::google::protobuf::Metadata GetMetadata() const;
-  // nested types ----------------------------------------------------
-
-  // accessors -------------------------------------------------------
-  enum : int {
-    kModelFileIdFieldNumber = 1,
-    kNameFieldNumber = 2,
-    kParentInstanceIdFieldNumber = 3,
-    kWorldPositionFieldNumber = 5,
-    kApplyWorldPositionFieldNumber = 4,
-  };
-  // string model_file_id = 1;
-  void clear_model_file_id() ;
-  const std::string& model_file_id() const;
-  template <typename Arg_ = const std::string&, typename... Args_>
-  void set_model_file_id(Arg_&& arg, Args_... args);
-  std::string* mutable_model_file_id();
-  PROTOBUF_NODISCARD std::string* release_model_file_id();
-  void set_allocated_model_file_id(std::string* value);
-
-  private:
-  const std::string& _internal_model_file_id() const;
-  inline PROTOBUF_ALWAYS_INLINE void _internal_set_model_file_id(
-      const std::string& value);
-  std::string* _internal_mutable_model_file_id();
-
-  public:
-  // string name = 2;
-  void clear_name() ;
-  const std::string& name() const;
-  template <typename Arg_ = const std::string&, typename... Args_>
-  void set_name(Arg_&& arg, Args_... args);
-  std::string* mutable_name();
-  PROTOBUF_NODISCARD std::string* release_name();
-  void set_allocated_name(std::string* value);
-
-  private:
-  const std::string& _internal_name() const;
-  inline PROTOBUF_ALWAYS_INLINE void _internal_set_name(
-      const std::string& value);
-  std::string* _internal_mutable_name();
-
-  public:
-  // string parent_instance_id = 3;
-  void clear_parent_instance_id() ;
-  const std::string& parent_instance_id() const;
-  template <typename Arg_ = const std::string&, typename... Args_>
-  void set_parent_instance_id(Arg_&& arg, Args_... args);
-  std::string* mutable_parent_instance_id();
-  PROTOBUF_NODISCARD std::string* release_parent_instance_id();
-  void set_allocated_parent_instance_id(std::string* value);
-
-  private:
-  const std::string& _internal_parent_instance_id() const;
-  inline PROTOBUF_ALWAYS_INLINE void _internal_set_parent_instance_id(
-      const std::string& value);
-  std::string* _internal_mutable_parent_instance_id();
-
-  public:
-  // .sailor.editor.v1.Vector4 world_position = 5;
-  bool has_world_position() const;
-  void clear_world_position() ;
-  const ::sailor::editor::v1::Vector4& world_position() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::Vector4* release_world_position();
-  ::sailor::editor::v1::Vector4* mutable_world_position();
-  void set_allocated_world_position(::sailor::editor::v1::Vector4* value);
-  void unsafe_arena_set_allocated_world_position(::sailor::editor::v1::Vector4* value);
-  ::sailor::editor::v1::Vector4* unsafe_arena_release_world_position();
-
-  private:
-  const ::sailor::editor::v1::Vector4& _internal_world_position() const;
-  ::sailor::editor::v1::Vector4* _internal_mutable_world_position();
-
-  public:
-  // bool apply_world_position = 4;
-  void clear_apply_world_position() ;
-  bool apply_world_position() const;
-  void set_apply_world_position(bool value);
-
-  private:
-  bool _internal_apply_world_position() const;
-  void _internal_set_apply_world_position(bool value);
-
-  public:
-  // @@protoc_insertion_point(class_scope:sailor.editor.v1.CreateModelGameObjectRequest)
- private:
-  class _Internal;
-  friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<
-      3, 5, 1,
-      89, 2>
-      _table_;
-
-  friend class ::google::protobuf::MessageLite;
-  friend class ::google::protobuf::Arena;
-  template <typename T>
-  friend class ::google::protobuf::Arena::InternalHelper;
-  using InternalArenaConstructable_ = void;
-  using DestructorSkippable_ = void;
-  struct Impl_ {
-    inline explicit constexpr Impl_(
-        ::google::protobuf::internal::ConstantInitialized) noexcept;
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena);
-    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
-                          ::google::protobuf::Arena* arena, const Impl_& from,
-                          const CreateModelGameObjectRequest& from_msg);
-    ::google::protobuf::internal::HasBits<1> _has_bits_;
-    ::google::protobuf::internal::CachedSize _cached_size_;
-    ::google::protobuf::internal::ArenaStringPtr model_file_id_;
-    ::google::protobuf::internal::ArenaStringPtr name_;
-    ::google::protobuf::internal::ArenaStringPtr parent_instance_id_;
-    ::sailor::editor::v1::Vector4* world_position_;
-    bool apply_world_position_;
-    PROTOBUF_TSAN_DECLARE_MEMBER
-  };
-  union { Impl_ _impl_; };
-  friend struct ::TableStruct_editor_5fengine_2eproto;
-};
-// -------------------------------------------------------------------
-
 class ViewportEvent final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportEvent) */ {
  public:
@@ -9381,7 +9116,7 @@ class ViewportEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEvent*>(
         &_ViewportEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 44;
+  static constexpr int kIndexInFileMessages = 43;
   friend void swap(ViewportEvent& a, ViewportEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportEvent* other) {
     if (other == this) return;
@@ -9716,8 +9451,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kSerializeEngineTypes = 46,
     kIsEngineMainThreadReady = 47,
     kIsEngineRunning = 48,
-    kResolveViewportDropPosition = 49,
-    kCreateModelGameObject = 50,
+    kTraceViewportRay = 49,
     kInstantiatePrefabInstance = 51,
     kFocusEditorCamera = 52,
     kSetPrefabLink = 53,
@@ -9858,8 +9592,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kSerializeEngineTypesFieldNumber = 46,
     kIsEngineMainThreadReadyFieldNumber = 47,
     kIsEngineRunningFieldNumber = 48,
-    kResolveViewportDropPositionFieldNumber = 49,
-    kCreateModelGameObjectFieldNumber = 50,
+    kTraceViewportRayFieldNumber = 49,
     kInstantiatePrefabInstanceFieldNumber = 51,
     kFocusEditorCameraFieldNumber = 52,
     kSetPrefabLinkFieldNumber = 53,
@@ -10628,42 +10361,23 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::Empty* _internal_mutable_is_engine_running();
 
   public:
-  // .sailor.editor.v1.ViewportDropPositionRequest resolve_viewport_drop_position = 49;
-  bool has_resolve_viewport_drop_position() const;
+  // .sailor.editor.v1.ViewportRayRequest trace_viewport_ray = 49;
+  bool has_trace_viewport_ray() const;
   private:
-  bool _internal_has_resolve_viewport_drop_position() const;
+  bool _internal_has_trace_viewport_ray() const;
 
   public:
-  void clear_resolve_viewport_drop_position() ;
-  const ::sailor::editor::v1::ViewportDropPositionRequest& resolve_viewport_drop_position() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::ViewportDropPositionRequest* release_resolve_viewport_drop_position();
-  ::sailor::editor::v1::ViewportDropPositionRequest* mutable_resolve_viewport_drop_position();
-  void set_allocated_resolve_viewport_drop_position(::sailor::editor::v1::ViewportDropPositionRequest* value);
-  void unsafe_arena_set_allocated_resolve_viewport_drop_position(::sailor::editor::v1::ViewportDropPositionRequest* value);
-  ::sailor::editor::v1::ViewportDropPositionRequest* unsafe_arena_release_resolve_viewport_drop_position();
+  void clear_trace_viewport_ray() ;
+  const ::sailor::editor::v1::ViewportRayRequest& trace_viewport_ray() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::ViewportRayRequest* release_trace_viewport_ray();
+  ::sailor::editor::v1::ViewportRayRequest* mutable_trace_viewport_ray();
+  void set_allocated_trace_viewport_ray(::sailor::editor::v1::ViewportRayRequest* value);
+  void unsafe_arena_set_allocated_trace_viewport_ray(::sailor::editor::v1::ViewportRayRequest* value);
+  ::sailor::editor::v1::ViewportRayRequest* unsafe_arena_release_trace_viewport_ray();
 
   private:
-  const ::sailor::editor::v1::ViewportDropPositionRequest& _internal_resolve_viewport_drop_position() const;
-  ::sailor::editor::v1::ViewportDropPositionRequest* _internal_mutable_resolve_viewport_drop_position();
-
-  public:
-  // .sailor.editor.v1.CreateModelGameObjectRequest create_model_game_object = 50;
-  bool has_create_model_game_object() const;
-  private:
-  bool _internal_has_create_model_game_object() const;
-
-  public:
-  void clear_create_model_game_object() ;
-  const ::sailor::editor::v1::CreateModelGameObjectRequest& create_model_game_object() const;
-  PROTOBUF_NODISCARD ::sailor::editor::v1::CreateModelGameObjectRequest* release_create_model_game_object();
-  ::sailor::editor::v1::CreateModelGameObjectRequest* mutable_create_model_game_object();
-  void set_allocated_create_model_game_object(::sailor::editor::v1::CreateModelGameObjectRequest* value);
-  void unsafe_arena_set_allocated_create_model_game_object(::sailor::editor::v1::CreateModelGameObjectRequest* value);
-  ::sailor::editor::v1::CreateModelGameObjectRequest* unsafe_arena_release_create_model_game_object();
-
-  private:
-  const ::sailor::editor::v1::CreateModelGameObjectRequest& _internal_create_model_game_object() const;
-  ::sailor::editor::v1::CreateModelGameObjectRequest* _internal_mutable_create_model_game_object();
+  const ::sailor::editor::v1::ViewportRayRequest& _internal_trace_viewport_ray() const;
+  ::sailor::editor::v1::ViewportRayRequest* _internal_mutable_trace_viewport_ray();
 
   public:
   // .sailor.editor.v1.InstantiatePrefabInstanceRequest instantiate_prefab_instance = 51;
@@ -10824,8 +10538,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_serialize_engine_types();
   void set_has_is_engine_main_thread_ready();
   void set_has_is_engine_running();
-  void set_has_resolve_viewport_drop_position();
-  void set_has_create_model_game_object();
+  void set_has_trace_viewport_ray();
   void set_has_instantiate_prefab_instance();
   void set_has_focus_editor_camera();
   void set_has_set_prefab_link();
@@ -10836,7 +10549,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 49, 47,
+      1, 48, 46,
       0, 9>
       _table_;
 
@@ -10898,8 +10611,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::Empty* serialize_engine_types_;
       ::sailor::editor::v1::Empty* is_engine_main_thread_ready_;
       ::sailor::editor::v1::Empty* is_engine_running_;
-      ::sailor::editor::v1::ViewportDropPositionRequest* resolve_viewport_drop_position_;
-      ::sailor::editor::v1::CreateModelGameObjectRequest* create_model_game_object_;
+      ::sailor::editor::v1::ViewportRayRequest* trace_viewport_ray_;
       ::sailor::editor::v1::InstantiatePrefabInstanceRequest* instantiate_prefab_instance_;
       ::sailor::editor::v1::ViewportObjectRequest* focus_editor_camera_;
       ::sailor::editor::v1::PrefabLinkRequest* set_prefab_link_;
@@ -10975,7 +10687,7 @@ class ViewportEventBatchResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEventBatchResult*>(
         &_ViewportEventBatchResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 45;
+  static constexpr int kIndexInFileMessages = 44;
   friend void swap(ViewportEventBatchResult& a, ViewportEventBatchResult& b) { a.Swap(&b); }
   inline void Swap(ViewportEventBatchResult* other) {
     if (other == this) return;
@@ -14789,161 +14501,82 @@ inline ::sailor::editor::v1::Empty* ProtocolRequest::mutable_is_engine_running()
   return _msg;
 }
 
-// .sailor.editor.v1.ViewportDropPositionRequest resolve_viewport_drop_position = 49;
-inline bool ProtocolRequest::has_resolve_viewport_drop_position() const {
-  return command_case() == kResolveViewportDropPosition;
+// .sailor.editor.v1.ViewportRayRequest trace_viewport_ray = 49;
+inline bool ProtocolRequest::has_trace_viewport_ray() const {
+  return command_case() == kTraceViewportRay;
 }
-inline bool ProtocolRequest::_internal_has_resolve_viewport_drop_position() const {
-  return command_case() == kResolveViewportDropPosition;
+inline bool ProtocolRequest::_internal_has_trace_viewport_ray() const {
+  return command_case() == kTraceViewportRay;
 }
-inline void ProtocolRequest::set_has_resolve_viewport_drop_position() {
-  _impl_._oneof_case_[0] = kResolveViewportDropPosition;
+inline void ProtocolRequest::set_has_trace_viewport_ray() {
+  _impl_._oneof_case_[0] = kTraceViewportRay;
 }
-inline void ProtocolRequest::clear_resolve_viewport_drop_position() {
+inline void ProtocolRequest::clear_trace_viewport_ray() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (command_case() == kResolveViewportDropPosition) {
+  if (command_case() == kTraceViewportRay) {
     if (GetArena() == nullptr) {
-      delete _impl_.command_.resolve_viewport_drop_position_;
+      delete _impl_.command_.trace_viewport_ray_;
     } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.resolve_viewport_drop_position_);
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.trace_viewport_ray_);
     }
     clear_has_command();
   }
 }
-inline ::sailor::editor::v1::ViewportDropPositionRequest* ProtocolRequest::release_resolve_viewport_drop_position() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.resolve_viewport_drop_position)
-  if (command_case() == kResolveViewportDropPosition) {
+inline ::sailor::editor::v1::ViewportRayRequest* ProtocolRequest::release_trace_viewport_ray() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.trace_viewport_ray)
+  if (command_case() == kTraceViewportRay) {
     clear_has_command();
-    auto* temp = _impl_.command_.resolve_viewport_drop_position_;
+    auto* temp = _impl_.command_.trace_viewport_ray_;
     if (GetArena() != nullptr) {
       temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
     }
-    _impl_.command_.resolve_viewport_drop_position_ = nullptr;
+    _impl_.command_.trace_viewport_ray_ = nullptr;
     return temp;
   } else {
     return nullptr;
   }
 }
-inline const ::sailor::editor::v1::ViewportDropPositionRequest& ProtocolRequest::_internal_resolve_viewport_drop_position() const {
-  return command_case() == kResolveViewportDropPosition ? *_impl_.command_.resolve_viewport_drop_position_ : reinterpret_cast<::sailor::editor::v1::ViewportDropPositionRequest&>(::sailor::editor::v1::_ViewportDropPositionRequest_default_instance_);
+inline const ::sailor::editor::v1::ViewportRayRequest& ProtocolRequest::_internal_trace_viewport_ray() const {
+  return command_case() == kTraceViewportRay ? *_impl_.command_.trace_viewport_ray_ : reinterpret_cast<::sailor::editor::v1::ViewportRayRequest&>(::sailor::editor::v1::_ViewportRayRequest_default_instance_);
 }
-inline const ::sailor::editor::v1::ViewportDropPositionRequest& ProtocolRequest::resolve_viewport_drop_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.resolve_viewport_drop_position)
-  return _internal_resolve_viewport_drop_position();
+inline const ::sailor::editor::v1::ViewportRayRequest& ProtocolRequest::trace_viewport_ray() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.trace_viewport_ray)
+  return _internal_trace_viewport_ray();
 }
-inline ::sailor::editor::v1::ViewportDropPositionRequest* ProtocolRequest::unsafe_arena_release_resolve_viewport_drop_position() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.resolve_viewport_drop_position)
-  if (command_case() == kResolveViewportDropPosition) {
+inline ::sailor::editor::v1::ViewportRayRequest* ProtocolRequest::unsafe_arena_release_trace_viewport_ray() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.trace_viewport_ray)
+  if (command_case() == kTraceViewportRay) {
     clear_has_command();
-    auto* temp = _impl_.command_.resolve_viewport_drop_position_;
-    _impl_.command_.resolve_viewport_drop_position_ = nullptr;
+    auto* temp = _impl_.command_.trace_viewport_ray_;
+    _impl_.command_.trace_viewport_ray_ = nullptr;
     return temp;
   } else {
     return nullptr;
   }
 }
-inline void ProtocolRequest::unsafe_arena_set_allocated_resolve_viewport_drop_position(::sailor::editor::v1::ViewportDropPositionRequest* value) {
+inline void ProtocolRequest::unsafe_arena_set_allocated_trace_viewport_ray(::sailor::editor::v1::ViewportRayRequest* value) {
   // We rely on the oneof clear method to free the earlier contents
   // of this oneof. We can directly use the pointer we're given to
   // set the new value.
   clear_command();
   if (value) {
-    set_has_resolve_viewport_drop_position();
-    _impl_.command_.resolve_viewport_drop_position_ = value;
+    set_has_trace_viewport_ray();
+    _impl_.command_.trace_viewport_ray_ = value;
   }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.resolve_viewport_drop_position)
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.trace_viewport_ray)
 }
-inline ::sailor::editor::v1::ViewportDropPositionRequest* ProtocolRequest::_internal_mutable_resolve_viewport_drop_position() {
-  if (command_case() != kResolveViewportDropPosition) {
+inline ::sailor::editor::v1::ViewportRayRequest* ProtocolRequest::_internal_mutable_trace_viewport_ray() {
+  if (command_case() != kTraceViewportRay) {
     clear_command();
-    set_has_resolve_viewport_drop_position();
-    _impl_.command_.resolve_viewport_drop_position_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::ViewportDropPositionRequest>(GetArena());
+    set_has_trace_viewport_ray();
+    _impl_.command_.trace_viewport_ray_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::ViewportRayRequest>(GetArena());
   }
-  return _impl_.command_.resolve_viewport_drop_position_;
+  return _impl_.command_.trace_viewport_ray_;
 }
-inline ::sailor::editor::v1::ViewportDropPositionRequest* ProtocolRequest::mutable_resolve_viewport_drop_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::ViewportDropPositionRequest* _msg = _internal_mutable_resolve_viewport_drop_position();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.resolve_viewport_drop_position)
-  return _msg;
-}
-
-// .sailor.editor.v1.CreateModelGameObjectRequest create_model_game_object = 50;
-inline bool ProtocolRequest::has_create_model_game_object() const {
-  return command_case() == kCreateModelGameObject;
-}
-inline bool ProtocolRequest::_internal_has_create_model_game_object() const {
-  return command_case() == kCreateModelGameObject;
-}
-inline void ProtocolRequest::set_has_create_model_game_object() {
-  _impl_._oneof_case_[0] = kCreateModelGameObject;
-}
-inline void ProtocolRequest::clear_create_model_game_object() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (command_case() == kCreateModelGameObject) {
-    if (GetArena() == nullptr) {
-      delete _impl_.command_.create_model_game_object_;
-    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
-      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.create_model_game_object_);
-    }
-    clear_has_command();
-  }
-}
-inline ::sailor::editor::v1::CreateModelGameObjectRequest* ProtocolRequest::release_create_model_game_object() {
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.create_model_game_object)
-  if (command_case() == kCreateModelGameObject) {
-    clear_has_command();
-    auto* temp = _impl_.command_.create_model_game_object_;
-    if (GetArena() != nullptr) {
-      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
-    }
-    _impl_.command_.create_model_game_object_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline const ::sailor::editor::v1::CreateModelGameObjectRequest& ProtocolRequest::_internal_create_model_game_object() const {
-  return command_case() == kCreateModelGameObject ? *_impl_.command_.create_model_game_object_ : reinterpret_cast<::sailor::editor::v1::CreateModelGameObjectRequest&>(::sailor::editor::v1::_CreateModelGameObjectRequest_default_instance_);
-}
-inline const ::sailor::editor::v1::CreateModelGameObjectRequest& ProtocolRequest::create_model_game_object() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.create_model_game_object)
-  return _internal_create_model_game_object();
-}
-inline ::sailor::editor::v1::CreateModelGameObjectRequest* ProtocolRequest::unsafe_arena_release_create_model_game_object() {
-  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.create_model_game_object)
-  if (command_case() == kCreateModelGameObject) {
-    clear_has_command();
-    auto* temp = _impl_.command_.create_model_game_object_;
-    _impl_.command_.create_model_game_object_ = nullptr;
-    return temp;
-  } else {
-    return nullptr;
-  }
-}
-inline void ProtocolRequest::unsafe_arena_set_allocated_create_model_game_object(::sailor::editor::v1::CreateModelGameObjectRequest* value) {
-  // We rely on the oneof clear method to free the earlier contents
-  // of this oneof. We can directly use the pointer we're given to
-  // set the new value.
-  clear_command();
-  if (value) {
-    set_has_create_model_game_object();
-    _impl_.command_.create_model_game_object_ = value;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.create_model_game_object)
-}
-inline ::sailor::editor::v1::CreateModelGameObjectRequest* ProtocolRequest::_internal_mutable_create_model_game_object() {
-  if (command_case() != kCreateModelGameObject) {
-    clear_command();
-    set_has_create_model_game_object();
-    _impl_.command_.create_model_game_object_ =
-        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::CreateModelGameObjectRequest>(GetArena());
-  }
-  return _impl_.command_.create_model_game_object_;
-}
-inline ::sailor::editor::v1::CreateModelGameObjectRequest* ProtocolRequest::mutable_create_model_game_object() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  ::sailor::editor::v1::CreateModelGameObjectRequest* _msg = _internal_mutable_create_model_game_object();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.create_model_game_object)
+inline ::sailor::editor::v1::ViewportRayRequest* ProtocolRequest::mutable_trace_viewport_ray() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::ViewportRayRequest* _msg = _internal_mutable_trace_viewport_ray();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.trace_viewport_ray)
   return _msg;
 }
 
@@ -18155,338 +17788,72 @@ inline void InstantiatePrefabFromYamlRequest::_internal_set_strict_instance_ids(
 
 // -------------------------------------------------------------------
 
-// ViewportDropPositionRequest
+// ViewportRayRequest
 
 // uint64 viewport_id = 1;
-inline void ViewportDropPositionRequest::clear_viewport_id() {
+inline void ViewportRayRequest::clear_viewport_id() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.viewport_id_ = ::uint64_t{0u};
 }
-inline ::uint64_t ViewportDropPositionRequest::viewport_id() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportDropPositionRequest.viewport_id)
+inline ::uint64_t ViewportRayRequest::viewport_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportRayRequest.viewport_id)
   return _internal_viewport_id();
 }
-inline void ViewportDropPositionRequest::set_viewport_id(::uint64_t value) {
+inline void ViewportRayRequest::set_viewport_id(::uint64_t value) {
   _internal_set_viewport_id(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportDropPositionRequest.viewport_id)
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportRayRequest.viewport_id)
 }
-inline ::uint64_t ViewportDropPositionRequest::_internal_viewport_id() const {
+inline ::uint64_t ViewportRayRequest::_internal_viewport_id() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.viewport_id_;
 }
-inline void ViewportDropPositionRequest::_internal_set_viewport_id(::uint64_t value) {
+inline void ViewportRayRequest::_internal_set_viewport_id(::uint64_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.viewport_id_ = value;
 }
 
 // float normalized_x = 2;
-inline void ViewportDropPositionRequest::clear_normalized_x() {
+inline void ViewportRayRequest::clear_normalized_x() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.normalized_x_ = 0;
 }
-inline float ViewportDropPositionRequest::normalized_x() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportDropPositionRequest.normalized_x)
+inline float ViewportRayRequest::normalized_x() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportRayRequest.normalized_x)
   return _internal_normalized_x();
 }
-inline void ViewportDropPositionRequest::set_normalized_x(float value) {
+inline void ViewportRayRequest::set_normalized_x(float value) {
   _internal_set_normalized_x(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportDropPositionRequest.normalized_x)
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportRayRequest.normalized_x)
 }
-inline float ViewportDropPositionRequest::_internal_normalized_x() const {
+inline float ViewportRayRequest::_internal_normalized_x() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.normalized_x_;
 }
-inline void ViewportDropPositionRequest::_internal_set_normalized_x(float value) {
+inline void ViewportRayRequest::_internal_set_normalized_x(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.normalized_x_ = value;
 }
 
 // float normalized_y = 3;
-inline void ViewportDropPositionRequest::clear_normalized_y() {
+inline void ViewportRayRequest::clear_normalized_y() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.normalized_y_ = 0;
 }
-inline float ViewportDropPositionRequest::normalized_y() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportDropPositionRequest.normalized_y)
+inline float ViewportRayRequest::normalized_y() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ViewportRayRequest.normalized_y)
   return _internal_normalized_y();
 }
-inline void ViewportDropPositionRequest::set_normalized_y(float value) {
+inline void ViewportRayRequest::set_normalized_y(float value) {
   _internal_set_normalized_y(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportDropPositionRequest.normalized_y)
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.ViewportRayRequest.normalized_y)
 }
-inline float ViewportDropPositionRequest::_internal_normalized_y() const {
+inline float ViewportRayRequest::_internal_normalized_y() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
   return _impl_.normalized_y_;
 }
-inline void ViewportDropPositionRequest::_internal_set_normalized_y(float value) {
+inline void ViewportRayRequest::_internal_set_normalized_y(float value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.normalized_y_ = value;
-}
-
-// -------------------------------------------------------------------
-
-// CreateModelGameObjectRequest
-
-// string model_file_id = 1;
-inline void CreateModelGameObjectRequest::clear_model_file_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.model_file_id_.ClearToEmpty();
-}
-inline const std::string& CreateModelGameObjectRequest::model_file_id() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.CreateModelGameObjectRequest.model_file_id)
-  return _internal_model_file_id();
-}
-template <typename Arg_, typename... Args_>
-inline PROTOBUF_ALWAYS_INLINE void CreateModelGameObjectRequest::set_model_file_id(Arg_&& arg,
-                                                     Args_... args) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.model_file_id_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.CreateModelGameObjectRequest.model_file_id)
-}
-inline std::string* CreateModelGameObjectRequest::mutable_model_file_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  std::string* _s = _internal_mutable_model_file_id();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.CreateModelGameObjectRequest.model_file_id)
-  return _s;
-}
-inline const std::string& CreateModelGameObjectRequest::_internal_model_file_id() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.model_file_id_.Get();
-}
-inline void CreateModelGameObjectRequest::_internal_set_model_file_id(const std::string& value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.model_file_id_.Set(value, GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::_internal_mutable_model_file_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _impl_.model_file_id_.Mutable( GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::release_model_file_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.CreateModelGameObjectRequest.model_file_id)
-  return _impl_.model_file_id_.Release();
-}
-inline void CreateModelGameObjectRequest::set_allocated_model_file_id(std::string* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.model_file_id_.SetAllocated(value, GetArena());
-  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.model_file_id_.IsDefault()) {
-    _impl_.model_file_id_.Set("", GetArena());
-  }
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.CreateModelGameObjectRequest.model_file_id)
-}
-
-// string name = 2;
-inline void CreateModelGameObjectRequest::clear_name() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.name_.ClearToEmpty();
-}
-inline const std::string& CreateModelGameObjectRequest::name() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.CreateModelGameObjectRequest.name)
-  return _internal_name();
-}
-template <typename Arg_, typename... Args_>
-inline PROTOBUF_ALWAYS_INLINE void CreateModelGameObjectRequest::set_name(Arg_&& arg,
-                                                     Args_... args) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.CreateModelGameObjectRequest.name)
-}
-inline std::string* CreateModelGameObjectRequest::mutable_name() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  std::string* _s = _internal_mutable_name();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.CreateModelGameObjectRequest.name)
-  return _s;
-}
-inline const std::string& CreateModelGameObjectRequest::_internal_name() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.name_.Get();
-}
-inline void CreateModelGameObjectRequest::_internal_set_name(const std::string& value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.name_.Set(value, GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::_internal_mutable_name() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _impl_.name_.Mutable( GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::release_name() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.CreateModelGameObjectRequest.name)
-  return _impl_.name_.Release();
-}
-inline void CreateModelGameObjectRequest::set_allocated_name(std::string* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.name_.SetAllocated(value, GetArena());
-  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
-    _impl_.name_.Set("", GetArena());
-  }
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.CreateModelGameObjectRequest.name)
-}
-
-// string parent_instance_id = 3;
-inline void CreateModelGameObjectRequest::clear_parent_instance_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.parent_instance_id_.ClearToEmpty();
-}
-inline const std::string& CreateModelGameObjectRequest::parent_instance_id() const
-    ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.CreateModelGameObjectRequest.parent_instance_id)
-  return _internal_parent_instance_id();
-}
-template <typename Arg_, typename... Args_>
-inline PROTOBUF_ALWAYS_INLINE void CreateModelGameObjectRequest::set_parent_instance_id(Arg_&& arg,
-                                                     Args_... args) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.parent_instance_id_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.CreateModelGameObjectRequest.parent_instance_id)
-}
-inline std::string* CreateModelGameObjectRequest::mutable_parent_instance_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  std::string* _s = _internal_mutable_parent_instance_id();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.CreateModelGameObjectRequest.parent_instance_id)
-  return _s;
-}
-inline const std::string& CreateModelGameObjectRequest::_internal_parent_instance_id() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.parent_instance_id_.Get();
-}
-inline void CreateModelGameObjectRequest::_internal_set_parent_instance_id(const std::string& value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.parent_instance_id_.Set(value, GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::_internal_mutable_parent_instance_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  return _impl_.parent_instance_id_.Mutable( GetArena());
-}
-inline std::string* CreateModelGameObjectRequest::release_parent_instance_id() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.CreateModelGameObjectRequest.parent_instance_id)
-  return _impl_.parent_instance_id_.Release();
-}
-inline void CreateModelGameObjectRequest::set_allocated_parent_instance_id(std::string* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.parent_instance_id_.SetAllocated(value, GetArena());
-  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.parent_instance_id_.IsDefault()) {
-    _impl_.parent_instance_id_.Set("", GetArena());
-  }
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.CreateModelGameObjectRequest.parent_instance_id)
-}
-
-// bool apply_world_position = 4;
-inline void CreateModelGameObjectRequest::clear_apply_world_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.apply_world_position_ = false;
-}
-inline bool CreateModelGameObjectRequest::apply_world_position() const {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.CreateModelGameObjectRequest.apply_world_position)
-  return _internal_apply_world_position();
-}
-inline void CreateModelGameObjectRequest::set_apply_world_position(bool value) {
-  _internal_set_apply_world_position(value);
-  // @@protoc_insertion_point(field_set:sailor.editor.v1.CreateModelGameObjectRequest.apply_world_position)
-}
-inline bool CreateModelGameObjectRequest::_internal_apply_world_position() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  return _impl_.apply_world_position_;
-}
-inline void CreateModelGameObjectRequest::_internal_set_apply_world_position(bool value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  _impl_.apply_world_position_ = value;
-}
-
-// .sailor.editor.v1.Vector4 world_position = 5;
-inline bool CreateModelGameObjectRequest::has_world_position() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
-  PROTOBUF_ASSUME(!value || _impl_.world_position_ != nullptr);
-  return value;
-}
-inline void CreateModelGameObjectRequest::clear_world_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.world_position_ != nullptr) _impl_.world_position_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000001u;
-}
-inline const ::sailor::editor::v1::Vector4& CreateModelGameObjectRequest::_internal_world_position() const {
-  ::google::protobuf::internal::TSanRead(&_impl_);
-  const ::sailor::editor::v1::Vector4* p = _impl_.world_position_;
-  return p != nullptr ? *p : reinterpret_cast<const ::sailor::editor::v1::Vector4&>(::sailor::editor::v1::_Vector4_default_instance_);
-}
-inline const ::sailor::editor::v1::Vector4& CreateModelGameObjectRequest::world_position() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  // @@protoc_insertion_point(field_get:sailor.editor.v1.CreateModelGameObjectRequest.world_position)
-  return _internal_world_position();
-}
-inline void CreateModelGameObjectRequest::unsafe_arena_set_allocated_world_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (GetArena() == nullptr) {
-    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.world_position_);
-  }
-  _impl_.world_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000001u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000001u;
-  }
-  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.CreateModelGameObjectRequest.world_position)
-}
-inline ::sailor::editor::v1::Vector4* CreateModelGameObjectRequest::release_world_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-
-  _impl_._has_bits_[0] &= ~0x00000001u;
-  ::sailor::editor::v1::Vector4* released = _impl_.world_position_;
-  _impl_.world_position_ = nullptr;
-  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
-    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
-    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    if (GetArena() == nullptr) {
-      delete old;
-    }
-  } else {
-    if (GetArena() != nullptr) {
-      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
-    }
-  }
-  return released;
-}
-inline ::sailor::editor::v1::Vector4* CreateModelGameObjectRequest::unsafe_arena_release_world_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  // @@protoc_insertion_point(field_release:sailor.editor.v1.CreateModelGameObjectRequest.world_position)
-
-  _impl_._has_bits_[0] &= ~0x00000001u;
-  ::sailor::editor::v1::Vector4* temp = _impl_.world_position_;
-  _impl_.world_position_ = nullptr;
-  return temp;
-}
-inline ::sailor::editor::v1::Vector4* CreateModelGameObjectRequest::_internal_mutable_world_position() {
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (_impl_.world_position_ == nullptr) {
-    auto* p = ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Vector4>(GetArena());
-    _impl_.world_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(p);
-  }
-  return _impl_.world_position_;
-}
-inline ::sailor::editor::v1::Vector4* CreateModelGameObjectRequest::mutable_world_position() ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000001u;
-  ::sailor::editor::v1::Vector4* _msg = _internal_mutable_world_position();
-  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.CreateModelGameObjectRequest.world_position)
-  return _msg;
-}
-inline void CreateModelGameObjectRequest::set_allocated_world_position(::sailor::editor::v1::Vector4* value) {
-  ::google::protobuf::Arena* message_arena = GetArena();
-  ::google::protobuf::internal::TSanWrite(&_impl_);
-  if (message_arena == nullptr) {
-    delete (_impl_.world_position_);
-  }
-
-  if (value != nullptr) {
-    ::google::protobuf::Arena* submessage_arena = (value)->GetArena();
-    if (message_arena != submessage_arena) {
-      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
-    }
-    _impl_._has_bits_[0] |= 0x00000001u;
-  } else {
-    _impl_._has_bits_[0] &= ~0x00000001u;
-  }
-
-  _impl_.world_position_ = reinterpret_cast<::sailor::editor::v1::Vector4*>(value);
-  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.CreateModelGameObjectRequest.world_position)
 }
 
 // -------------------------------------------------------------------

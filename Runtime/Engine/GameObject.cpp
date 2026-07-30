@@ -154,7 +154,7 @@ void GameObject::DrawEditorSelectedGizmo()
 		}
 		else
 		{
-			GetWorld()->GetDebugContext()->DrawSphere(selectionBounds.GetCenter(), 1.0f, selectionColor);
+			GetWorld()->GetDebugContext()->DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor);
 		}
 	}
 

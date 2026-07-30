@@ -5,6 +5,7 @@
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Containers/Set.h"
 #include "Core/LogMacros.h"
+#include "Core/Utils.h"
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
@@ -114,29 +115,87 @@ bool World::TryGetPrefabInstance(
 	const PrefabInstanceLink*& outLink) const
 {
 	outLink = nullptr;
-	if (!m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId))
+	GameObjectPtr object = GetObjectByInstanceId(
+		objectInstanceId).DynamicCast<GameObject>();
+	if (!object)
 	{
 		return false;
 	}
 
-	const InstanceId& rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
+	InstanceId rootInstanceId;
+	if (object->GetFileId())
+	{
+		rootInstanceId = objectInstanceId;
+	}
+	else if (m_prefabInstanceRootsByObject.ContainsKey(
+			objectInstanceId))
+	{
+		rootInstanceId =
+			m_prefabInstanceRootsByObject[objectInstanceId];
+	}
+	else
+	{
+		return false;
+	}
+
 	if (!m_prefabInstances.ContainsKey(rootInstanceId))
 	{
 		return false;
 	}
 
-	outLink = &m_prefabInstances[rootInstanceId];
+	GameObjectPtr root = GetObjectByInstanceId(
+		rootInstanceId).DynamicCast<GameObject>();
+	const PrefabInstanceLink& link =
+		m_prefabInstances[rootInstanceId];
+	if (!root ||
+		!root->GetFileId() ||
+		link.m_rootInstanceId != rootInstanceId ||
+		!link.m_effectiveBaseline ||
+		link.m_effectiveBaseline->GetFileId() !=
+			root->GetFileId() ||
+		!m_prefabInstanceRootsByObject.ContainsKey(
+			objectInstanceId) ||
+		m_prefabInstanceRootsByObject[objectInstanceId] !=
+			rootInstanceId)
+	{
+		return false;
+	}
+
+	bool bContainsObject = false;
+	bool bContainsRoot = false;
+	for (const auto& mapping : link.m_sourceToInstanceIds)
+	{
+		bContainsObject |= *mapping.m_second ==
+			objectInstanceId;
+		bContainsRoot |= *mapping.m_second ==
+			rootInstanceId;
+	}
+
+	if (!bContainsObject || !bContainsRoot)
+	{
+		return false;
+	}
+
+	outLink = &link;
 	return true;
 }
 
 bool World::IsPrefabLinked(const InstanceId& objectInstanceId) const
 {
-	return m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId);
+	if (IsPrefabInstanceRoot(objectInstanceId))
+	{
+		return true;
+	}
+
+	const PrefabInstanceLink* link = nullptr;
+	return TryGetPrefabInstance(objectInstanceId, link);
 }
 
 bool World::IsPrefabInstanceRoot(const InstanceId& objectInstanceId) const
 {
-	return m_prefabInstances.ContainsKey(objectInstanceId);
+	GameObjectPtr object = GetObjectByInstanceId(
+		objectInstanceId).DynamicCast<GameObject>();
+	return object && object->GetFileId();
 }
 
 bool World::RegisterPrefabInstance(
@@ -173,7 +232,10 @@ bool World::RegisterPrefabInstance(
 		return false;
 	}
 
-	if (m_prefabInstances.ContainsKey(root->GetInstanceId()))
+	if (root->GetFileId() ||
+		m_prefabInstances.ContainsKey(root->GetInstanceId()) ||
+		m_prefabInstanceRootsByObject.ContainsKey(
+			root->GetInstanceId()))
 	{
 		outDiagnostic = "the prefab instance root is already linked";
 		return false;
@@ -183,16 +245,21 @@ bool World::RegisterPrefabInstance(
 	for (const auto& mapping : sourceToInstanceIds)
 	{
 		const InstanceId& liveInstanceId = *mapping.m_second;
+		GameObjectPtr liveGameObject =
+			GetObjectByInstanceId(
+				liveInstanceId).DynamicCast<GameObject>();
 		if (!mapping.m_first.IsGameObjectId() ||
 			!liveInstanceId.IsGameObjectId() ||
 			!liveInstanceIds.Insert(liveInstanceId) ||
-			!m_objectsMap.ContainsKey(liveInstanceId))
+			!liveGameObject ||
+			(liveGameObject != root &&
+				liveGameObject->GetFileId()))
 		{
 			outDiagnostic = "the prefab link contains an invalid, duplicate, or missing game object";
 			return false;
 		}
 
-		for (GameObjectPtr current = GetObjectByInstanceId(liveInstanceId).DynamicCast<GameObject>();
+		for (GameObjectPtr current = liveGameObject;
 			current;
 			current = current->GetParent())
 		{
@@ -222,7 +289,6 @@ bool World::RegisterPrefabInstance(
 	}
 
 	PrefabInstanceLink link;
-	link.m_sourcePrefabId = sourcePrefabId;
 	link.m_rootInstanceId = root->GetInstanceId();
 	link.m_sourceToInstanceIds = sourceToInstanceIds;
 	link.m_effectiveBaseline =
@@ -282,6 +348,8 @@ bool World::RegisterPrefabInstance(
 		m_prefabInstanceRootsByObject[*mapping.m_second] = link.m_rootInstanceId;
 	}
 
+	// The root FileId is the authoritative prefab-link marker. Publish it only
+	// after the derived metadata and membership cache are complete.
 	root->m_fileId = sourcePrefabId;
 	return true;
 }
@@ -483,8 +551,8 @@ bool World::LinkPrefabInstance(
 			const ReflectedData& sourceReflection = sourcePrefab->m_components[componentIndex];
 			InstanceId sourceComponentId;
 			std::string conversionDiagnostic;
-			if (!External::TryConvertYaml(
-					sourceReflection.GetProperties()["instanceId"],
+			if (!Utils::TryGetComponentInstanceId(
+					sourceReflection,
 					sourceComponentId,
 					conversionDiagnostic))
 			{
@@ -575,12 +643,45 @@ bool World::BreakPrefabLink(
 	const InstanceId& objectInstanceId,
 	PrefabInstanceLink* outPreviousLink)
 {
-	if (!m_prefabInstanceRootsByObject.ContainsKey(objectInstanceId))
+	if (outPreviousLink)
+	{
+		*outPreviousLink = {};
+	}
+
+	GameObjectPtr object = GetObjectByInstanceId(
+		objectInstanceId).DynamicCast<GameObject>();
+	if (!object)
 	{
 		return false;
 	}
 
-	const InstanceId rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
+	InstanceId rootInstanceId;
+	if (object->GetFileId())
+	{
+		rootInstanceId = objectInstanceId;
+	}
+	else
+	{
+		const PrefabInstanceLink* link = nullptr;
+		if (!TryGetPrefabInstance(objectInstanceId, link) ||
+			!link)
+		{
+			return false;
+		}
+		rootInstanceId = link->m_rootInstanceId;
+	}
+
+	GameObjectPtr root = GetObjectByInstanceId(
+		rootInstanceId).DynamicCast<GameObject>();
+	if (!root || !root->GetFileId())
+	{
+		return false;
+	}
+
+	// Clear the authoritative marker first. Any observation while the derived
+	// caches are being purged sees an unlinked root.
+	root->m_fileId = FileId::Invalid;
+
 	auto purgeRootMembership = [this, &rootInstanceId]()
 		{
 			TVector<InstanceId> memberInstanceIds;
@@ -601,25 +702,18 @@ bool World::BreakPrefabLink(
 			}
 		};
 
-	if (!m_prefabInstances.ContainsKey(rootInstanceId))
+	if (m_prefabInstances.ContainsKey(rootInstanceId))
 	{
-		purgeRootMembership();
-		return false;
-	}
-
-	const PrefabInstanceLink previousLink = m_prefabInstances[rootInstanceId];
-	if (outPreviousLink)
-	{
-		*outPreviousLink = previousLink;
+		const PrefabInstanceLink previousLink =
+			m_prefabInstances[rootInstanceId];
+		if (outPreviousLink)
+		{
+			*outPreviousLink = previousLink;
+		}
 	}
 
 	purgeRootMembership();
 	m_prefabInstances.Remove(rootInstanceId);
-
-	if (GameObjectPtr root = GetObjectByInstanceId(rootInstanceId).DynamicCast<GameObject>())
-	{
-		root->m_fileId = FileId::Invalid;
-	}
 
 	return true;
 }
@@ -641,17 +735,14 @@ bool World::CanReparentPrefabObject(
 	const InstanceId& parentInstanceId,
 	std::string* outDiagnostic) const
 {
-	if (IsPrefabLinked(objectInstanceId))
+	if (IsPrefabLinked(objectInstanceId) &&
+		!IsPrefabInstanceRoot(objectInstanceId))
 	{
-		const InstanceId& rootInstanceId = m_prefabInstanceRootsByObject[objectInstanceId];
-		if (rootInstanceId != objectInstanceId)
+		if (outDiagnostic)
 		{
-			if (outDiagnostic)
-			{
-				*outDiagnostic = "internal linked prefab game objects cannot be reparented";
-			}
-			return false;
+			*outDiagnostic = "internal linked prefab game objects cannot be reparented";
 		}
+		return false;
 	}
 
 	if (parentInstanceId && IsPrefabLinked(parentInstanceId))
@@ -880,9 +971,8 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 					prefab->m_components[componentIndex];
 				InstanceId sourceComponentId;
 				std::string conversionDiagnostic;
-				if (!External::TryConvertYaml(
-						reflection.GetProperties()[
-							"instanceId"],
+				if (!Utils::TryGetComponentInstanceId(
+						reflection,
 						sourceComponentId,
 						conversionDiagnostic))
 				{
@@ -985,8 +1075,8 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 					prefab->m_components[componentIndex];
 				InstanceId sourceComponentId;
 				std::string conversionDiagnostic;
-				if (!External::TryConvertYaml(
-						reflection.GetProperties()["instanceId"],
+				if (!Utils::TryGetComponentInstanceId(
+						reflection,
 						sourceComponentId,
 						conversionDiagnostic))
 				{
@@ -1097,8 +1187,8 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
 			InstanceId oldInstanceId;
 			std::string conversionDiagnostic;
-			if (!External::TryConvertYaml(
-					reflection.GetProperties()["instanceId"],
+			if (!Utils::TryGetComponentInstanceId(
+					reflection,
 					oldInstanceId,
 					conversionDiagnostic))
 			{
@@ -1238,7 +1328,6 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 		else
 		{
 			root = go;
-			root->m_fileId = prefab->GetFileId();
 		}
 	}
 

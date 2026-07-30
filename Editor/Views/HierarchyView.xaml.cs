@@ -1,4 +1,5 @@
 using SailorEditor.Commands;
+using SailorEditor.Panels;
 using SailorEditor.Services;
 using SailorEditor.Shell;
 using SailorEditor.Utility;
@@ -6,6 +7,7 @@ using SailorEditor.Workflow;
 using SailorEngine;
 using System.Collections.ObjectModel;
 using GameObject = SailorEditor.ViewModels.GameObject;
+using PrefabFile = SailorEditor.ViewModels.PrefabFile;
 using World = SailorEditor.ViewModels.World;
 
 namespace SailorEditor.Views
@@ -82,19 +84,29 @@ namespace SailorEditor.Views
 
         async void OnHierarchySelectionChanged(object? sender, SelectionChangedEventArgs args)
             => await ExecuteHierarchyActionAsync(
-                () => ApplyHierarchySelectionAsync(args),
+                () => SelectHierarchyRowAsync(
+                    args.CurrentSelection.FirstOrDefault()
+                        as HierarchyListRow,
+                    updateCollectionSelection: false),
                 "Select GameObject");
 
-        async Task ApplyHierarchySelectionAsync(SelectionChangedEventArgs args)
+        async Task SelectHierarchyRowAsync(
+            HierarchyListRow? row,
+            bool updateCollectionSelection)
         {
             if (suppressSelectionChanged)
             {
                 return;
             }
 
-            if (args.CurrentSelection.FirstOrDefault() is not HierarchyListRow row)
+            if (row == null)
             {
                 return;
+            }
+
+            if (updateCollectionSelection)
+            {
+                SetHierarchySelection(row);
             }
 
             if (!gameObjectsById.TryGetValue(row.InstanceId, out var gameObject))
@@ -336,6 +348,23 @@ namespace SailorEditor.Views
                 };
                 border.GestureRecognizers.Add(dropGesture);
 
+                var selectGesture = new TapGestureRecognizer
+                {
+                    NumberOfTapsRequired = 1
+                };
+                selectGesture.Tapped += (_, _) =>
+                {
+                    if (border.BindingContext is HierarchyListRow row)
+                    {
+                        _ = ExecuteHierarchyActionAsync(
+                            () => SelectHierarchyRowAsync(
+                                row,
+                                updateCollectionSelection: true),
+                            "Select GameObject");
+                    }
+                };
+                border.GestureRecognizers.Add(selectGesture);
+
                 var focusGesture = new TapGestureRecognizer
                 {
                     NumberOfTapsRequired = 2
@@ -344,7 +373,15 @@ namespace SailorEditor.Views
                 {
                     if (border.BindingContext is HierarchyListRow row)
                     {
-                        _ = FocusGameObjectAsync(row);
+                        _ = ExecuteHierarchyActionAsync(
+                            async () =>
+                            {
+                                await SelectHierarchyRowAsync(
+                                    row,
+                                    updateCollectionSelection: true);
+                                await FocusGameObjectAsync(row);
+                            },
+                            "Focus GameObject");
                     }
                 };
                 border.GestureRecognizers.Add(focusGesture);
@@ -416,23 +453,39 @@ namespace SailorEditor.Views
             if (row is
                 {
                     IsPrefabLinked: true,
-                    PrefabFileId: not null,
-                    PrefabRootInstanceId: not null
+                    PrefabFileId: not null
                 } &&
-                !string.IsNullOrWhiteSpace(row.PrefabRootInstanceId))
+                !string.IsNullOrWhiteSpace(row.PrefabFileId))
             {
                 items.Insert(
                     2,
                     new EditorContextMenuItem
                     {
-                        Text = "Break Prefab Link",
+                        Text = "Select Prefab",
                         Command = CreateContextMenuCommand(
-                            () => BreakPrefabLinkAsync(
-                                new InstanceId(
-                                    row.PrefabRootInstanceId),
-                                row.PrefabFileId),
-                            "Break Prefab Link")
+                            () => SelectPrefabAsync(row.PrefabFileId),
+                            "Select Prefab")
                     });
+
+                if (row is
+                    {
+                        PrefabRootInstanceId: not null
+                    } &&
+                    !string.IsNullOrWhiteSpace(row.PrefabRootInstanceId))
+                {
+                    items.Insert(
+                        3,
+                        new EditorContextMenuItem
+                        {
+                            Text = "Break Prefab Link",
+                            Command = CreateContextMenuCommand(
+                                () => BreakPrefabLinkAsync(
+                                    new InstanceId(
+                                        row.PrefabRootInstanceId),
+                                    row.PrefabFileId),
+                                "Break Prefab Link")
+                        });
+                }
             }
 
             return contextMenu.CreateFlyout([.. items]);
@@ -548,6 +601,38 @@ namespace SailorEditor.Views
             {
                 throw new InvalidOperationException(
                     result.Message ?? "Break prefab link failed");
+            }
+        }
+
+        async Task SelectPrefabAsync(string prefabFileId)
+        {
+            var fileId = new FileId(prefabFileId);
+            if (!MauiProgram.GetService<AssetsService>()
+                    .Assets.TryGetValue(fileId, out var asset) ||
+                asset is not PrefabFile prefab)
+            {
+                throw new InvalidOperationException(
+                    $"Prefab asset '{prefabFileId}' is not available.");
+            }
+
+            await MauiProgram.GetService<EditorShellHost>()
+                .OpenPanelAsync(KnownPanelTypes.Content);
+
+            var contextProvider =
+                MauiProgram.GetService<IActionContextProvider>();
+            var context = contextProvider.GetCurrentContext(
+                new CommandOrigin(
+                    CommandOriginKind.Menu,
+                    nameof(HierarchyView)));
+            var result = await MauiProgram
+                .GetService<ICommandDispatcher>()
+                .DispatchAsync(
+                    new OpenAssetCommand(prefab),
+                    context);
+            if (!result.Succeeded)
+            {
+                throw new InvalidOperationException(
+                    result.Message ?? "Select prefab failed");
             }
         }
 

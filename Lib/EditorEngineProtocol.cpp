@@ -781,11 +781,11 @@ namespace
 		}
 	}
 
-	void DispatchResolveViewportDropPosition(
-		const sailor::editor::v1::ViewportDropPositionRequest& request,
+	void DispatchTraceViewportRay(
+		const sailor::editor::v1::ViewportRayRequest& request,
 		ProtocolResponse& response)
 	{
-		if (request.viewport_id() == 0 ||
+		if (request.viewport_id() != 1u ||
 			!std::isfinite(request.normalized_x()) ||
 			!std::isfinite(request.normalized_y()) ||
 			request.normalized_x() < 0.0f ||
@@ -793,51 +793,26 @@ namespace
 			request.normalized_y() < 0.0f ||
 			request.normalized_y() > 1.0f)
 		{
-			SetError(response, "The viewport drop request is invalid.");
+			SetError(response, "The viewport ray request is invalid.");
 			return;
 		}
 
 		float worldX = 0.0f;
 		float worldY = 0.0f;
 		float worldZ = 0.0f;
-		if (!Sailor::App::ResolveEditorViewportDropPosition(
+		if (!Sailor::App::TraceViewportRay(
+				request.viewport_id(),
 				request.normalized_x(),
 				request.normalized_y(),
 				worldX,
 				worldY,
 				worldZ))
 		{
-			SetError(response, "Failed to resolve the viewport drop position.");
+			SetError(response, "Failed to trace the viewport ray.");
 			return;
 		}
 
 		SetVector4Result(response, worldX, worldY, worldZ, 1.0f);
-	}
-
-	void DispatchCreateModelGameObject(
-		const sailor::editor::v1::CreateModelGameObjectRequest& request,
-		ProtocolResponse& response)
-	{
-		if (request.apply_world_position() &&
-			(!request.has_world_position() ||
-				!IsFiniteVector4(request.world_position())))
-		{
-			SetError(response, "The model world position is invalid.");
-			return;
-		}
-
-		TInteropString instanceId;
-		const Vector4& worldPosition = request.world_position();
-		const bool bSucceeded = Sailor::App::CreateEditorModelGameObject(
-			request.model_file_id().c_str(),
-			request.name().c_str(),
-			request.parent_instance_id().c_str(),
-			request.apply_world_position(),
-			worldPosition.x(),
-			worldPosition.y(),
-			worldPosition.z(),
-			instanceId.GetOutput());
-		SetInstanceIdResult(response, bSucceeded, instanceId.GetValue());
 	}
 
 	void DispatchInstantiatePrefabInstance(
@@ -1207,15 +1182,9 @@ namespace
 				Sailor::App::IsEngineMainThreadReady());
 			break;
 
-		case ProtocolRequest::kResolveViewportDropPosition:
-			DispatchResolveViewportDropPosition(
-				request.resolve_viewport_drop_position(),
-				response);
-			break;
-
-		case ProtocolRequest::kCreateModelGameObject:
-			DispatchCreateModelGameObject(
-				request.create_model_game_object(),
+		case ProtocolRequest::kTraceViewportRay:
+			DispatchTraceViewportRay(
+				request.trace_viewport_ray(),
 				response);
 			break;
 

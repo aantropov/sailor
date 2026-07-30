@@ -231,12 +231,11 @@ namespace SailorEditor.Views
                     input.Pressed,
                     isFocused,
                     GetViewportToolState(),
-                    out var shortcutState) &&
+                    out var shortcutState))
+            {
                 await ApplyViewportToolStateAsync(
                     shortcutState,
-                    cancellationToken))
-            {
-                return NativeViewportInputDispatchResult.Forwarded;
+                    cancellationToken);
             }
 
             if (input.Kind ==
@@ -680,13 +679,13 @@ namespace SailorEditor.Views
             ActionContext context)
         {
             var worldPosition = await engineService
-                .ResolveViewportDropPositionAsync(
+                .TraceViewportRayAsync(
                     normalizedX,
                     normalizedY);
             if (worldPosition is null)
             {
                 return CommandResult.Failure(
-                    "Viewport drop position could not be resolved");
+                    "Viewport ray target could not be resolved");
             }
 
             if (!EditorDragDrop.TryCreateViewportDropCommand(

@@ -23,9 +23,10 @@ namespace Sailor
 
 	typedef uint8_t EWorldBehaviourMask;
 
+	// Runtime-only data derived for a linked prefab root. The source asset is
+	// authoritative only on the live root GameObject::GetFileId().
 	struct PrefabInstanceLink final
 	{
-		FileId m_sourcePrefabId{};
 		InstanceId m_rootInstanceId{};
 		TMap<InstanceId, InstanceId> m_sourceToInstanceIds{};
 		PrefabPtr m_effectiveBaseline{};

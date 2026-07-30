@@ -51,8 +51,7 @@ message ProtocolRequest {
 		Empty serialize_engine_types = 46;
 		Empty is_engine_main_thread_ready = 47;
 		Empty is_engine_running = 48;
-		ViewportDropPositionRequest resolve_viewport_drop_position = 49;
-		CreateModelGameObjectRequest create_model_game_object = 50;
+		ViewportRayRequest trace_viewport_ray = 49;
 		InstantiatePrefabInstanceRequest instantiate_prefab_instance = 51;
 		ViewportObjectRequest focus_editor_camera = 52;
 		PrefabLinkRequest set_prefab_link = 53;
@@ -62,6 +61,9 @@ message ProtocolRequest {
 	}
 
 	reserved 3 to 9;
+	reserved 50;
+	reserved "create_model_game_object";
+	reserved "resolve_viewport_drop_position";
 	reserved 57 to 99;
 }
 
@@ -192,18 +194,10 @@ message InstantiatePrefabFromYamlRequest {
 	bool strict_instance_ids = 3;
 }
 
-message ViewportDropPositionRequest {
+message ViewportRayRequest {
 	uint64 viewport_id = 1;
 	float normalized_x = 2;
 	float normalized_y = 3;
-}
-
-message CreateModelGameObjectRequest {
-	string model_file_id = 1;
-	string name = 2;
-	string parent_instance_id = 3;
-	bool apply_world_position = 4;
-	Vector4 world_position = 5;
 }
 
 message InstantiatePrefabInstanceRequest {

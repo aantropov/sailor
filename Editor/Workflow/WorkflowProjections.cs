@@ -115,6 +115,86 @@ public static class HierarchyRowReconciler
     }
 }
 
+public static class ContentRowReconciler
+{
+    public static void Reconcile<T>(
+        ObservableCollection<T> current,
+        IReadOnlyList<T> desired,
+        Func<T, string> getIdentity)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        ArgumentNullException.ThrowIfNull(desired);
+        ArgumentNullException.ThrowIfNull(getIdentity);
+
+        var desiredIdentities = desired
+            .Select(getIdentity)
+            .ToHashSet(StringComparer.Ordinal);
+        for (var currentIndex = current.Count - 1;
+            currentIndex >= 0;
+            currentIndex--)
+        {
+            if (!desiredIdentities.Contains(
+                    getIdentity(current[currentIndex])))
+            {
+                current.RemoveAt(currentIndex);
+            }
+        }
+
+        for (var desiredIndex = 0; desiredIndex < desired.Count; desiredIndex++)
+        {
+            var desiredRow = desired[desiredIndex];
+            var desiredIdentity = getIdentity(desiredRow);
+            if (desiredIndex < current.Count &&
+                string.Equals(
+                    getIdentity(current[desiredIndex]),
+                    desiredIdentity,
+                    StringComparison.Ordinal))
+            {
+                if (!EqualityComparer<T>.Default.Equals(
+                        current[desiredIndex],
+                        desiredRow))
+                {
+                    current[desiredIndex] = desiredRow;
+                }
+                continue;
+            }
+
+            var existingIndex = -1;
+            for (var currentIndex = desiredIndex + 1;
+                currentIndex < current.Count;
+                currentIndex++)
+            {
+                if (string.Equals(
+                        getIdentity(current[currentIndex]),
+                        desiredIdentity,
+                        StringComparison.Ordinal))
+                {
+                    existingIndex = currentIndex;
+                    break;
+                }
+            }
+
+            if (existingIndex >= 0)
+            {
+                current.Move(existingIndex, desiredIndex);
+                if (!EqualityComparer<T>.Default.Equals(
+                        current[desiredIndex],
+                        desiredRow))
+                {
+                    current[desiredIndex] = desiredRow;
+                }
+            }
+            else
+            {
+                current.Insert(desiredIndex, desiredRow);
+            }
+        }
+
+        while (current.Count > desired.Count)
+            current.RemoveAt(current.Count - 1);
+    }
+}
+
 public static class InspectorSelectionIdentity
 {
     public static bool AreEquivalent(Type? currentType, string? currentId, Type? nextType, string? nextId)
