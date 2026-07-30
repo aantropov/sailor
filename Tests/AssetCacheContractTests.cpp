@@ -33,6 +33,8 @@ namespace
 		using CacheEntry = AssetCacheData::Entry;
 		using AssetCache::SerializeAssetCachePayload;
 		using AssetCache::Prune;
+		using AssetCache::Remove;
+		using AssetCache::Contains;
 		using AssetCache::ShouldResetCacheFile;
 		using AssetCache::ShouldWriteCacheFile;
 		using AssetCache::TryDeserializeAssetCachePayload;
@@ -874,6 +876,51 @@ namespace
 			"runtime metadata validity must remain independent from persisted source import state");
 	}
 
+	void TestRemovingFailedProcessingWatermarkForcesRetry()
+	{
+		TestAssetCache cache;
+		const FileId fileId = MakeFileId("{ASSET-CACHE-FAILED-PROCESSING}");
+		TempDirectory directory("failed-processing-retry");
+		const std::filesystem::path sourcePath =
+			directory.Path("Content/Retry.glb");
+		const std::filesystem::path metadataPath =
+			directory.Path("Content/Retry.glb.asset");
+		WriteFile(sourcePath, "model-source");
+		WriteFile(metadataPath, "metadata");
+
+		FileRevision sourceRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				sourcePath.string(),
+				sourceRevision),
+			"failed-processing source revision fixture must be readable");
+		Require(
+			cache.Update(
+				fileId,
+				123,
+				sourcePath.string(),
+				sourceRevision),
+			"a successful processing watermark must initially populate the cache");
+
+		TestAssetInfo info;
+		info.Configure(fileId, sourcePath, metadataPath);
+		info.SetProcessingTimes(0, 0);
+		Require(
+			cache.RestoreAssetImportTime(&info, sourceRevision),
+			"the previous successful processing watermark must restore before failure");
+
+		cache.Remove(fileId);
+		Require(
+			!cache.Contains(fileId),
+			"a failed processing attempt must invalidate the persisted source watermark");
+		Require(
+			!cache.RestoreAssetImportTime(&info, sourceRevision),
+			"an invalidated watermark must not suppress processing after restart");
+		Require(
+			cache.IsExpired(&info),
+			"the unchanged source must remain expired until processing succeeds again");
+	}
+
 	void TestRuntimeMetadataFieldsAreRejectedTransactionally()
 	{
 		const FileId retainedId = MakeFileId("{ASSET-CACHE-STRICT-RETAINED}");
@@ -994,6 +1041,7 @@ int main()
 		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
 		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
 		TestRestoreChangesOnlyAssetImportTime();
+		TestRemovingFailedProcessingWatermarkForcesRetry();
 		TestAssetImportCacheAndRuntimeMetadataExpiration();
 		TestRuntimeMetadataFieldsAreRejectedTransactionally();
 		TestIoFailurePreservesTheExistingCacheFile();
