@@ -7,7 +7,6 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "Containers/Octree.h"
-#include "FrameGraph/SkyNode.h"
 #include "Math/Math.h"
 #include "Components/MeshRendererComponent.h"
 #include <string>
@@ -45,16 +44,10 @@ namespace Sailor
 		TVector<Math::AABB> m_culledBoxes{};
 		TVector<Math::AABB> m_boxes{};
 
-		GameObjectPtr m_dirLight;
-
 		glm::mat4 m_cachedFrustum{ 1 };
 
 		ModelPtr m_model{};
 		GameObjectPtr m_mainModel;
-		float m_sunAngleRad = glm::radians(60.0f);
-
-		size_t m_skyHash = 0;
-
 		uint32_t m_pathTraceHeight = 720;
 		uint32_t m_pathTraceSamplesPerPixel = 4;
 		uint32_t m_pathTraceMaxBounces = 1;

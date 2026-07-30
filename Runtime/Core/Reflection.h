@@ -251,6 +251,20 @@ namespace Sailor
 			{
 				return GetReflectedEnumTypeName<PropertyType>();
 			}
+			else if constexpr (IsObjectPtr<PropertyType>)
+			{
+				using ElementType = TemplateParameter_t<PropertyType>;
+				if constexpr (requires { ElementType::GetStaticTypeInfo(); })
+				{
+					return "TObjectPtr<" +
+						ElementType::GetStaticTypeInfo().Name() +
+						">";
+				}
+				else
+				{
+					return typeid(PropertyType).name();
+				}
+			}
 			else
 			{
 				return typeid(PropertyType).name();

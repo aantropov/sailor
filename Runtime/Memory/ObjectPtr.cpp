@@ -6,7 +6,9 @@ namespace Sailor
 	YAML::Node TObjectPtrBase::Serialize() const
 	{
 		YAML::Node res;
-		if (m_pRawPtr)
+		if (m_pRawPtr &&
+			m_pControlBlock &&
+			m_pControlBlock->m_sharedPtrCounter > 0)
 		{
 			Sailor::Serialize(res, "fileId", m_pRawPtr->GetFileId());
 			Sailor::Serialize(res, "instanceId", m_pRawPtr->GetInstanceId());
@@ -17,7 +19,10 @@ namespace Sailor
 
 	bool TObjectPtrBase::IsValid() const noexcept
 	{
-		return m_pRawPtr != nullptr && m_pControlBlock->m_sharedPtrCounter > 0 && static_cast<Object*>(m_pRawPtr)->IsValid();
+		return m_pRawPtr != nullptr &&
+			m_pControlBlock != nullptr &&
+			m_pControlBlock->m_sharedPtrCounter > 0 &&
+			static_cast<Object*>(m_pRawPtr)->IsValid();
 	}
 
 	void TObjectPtrBase::ForcelyDestroyObject()
