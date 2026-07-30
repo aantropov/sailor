@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
@@ -105,6 +106,55 @@ public static class ModelMiniatureLoader
         {
             return false;
         }
+    }
+
+    public static async Task<byte[]?> WaitForChangeAsync(
+        string? cacheDirectory,
+        string? fileId,
+        ReadOnlyMemory<byte> baselineBytes,
+        TimeSpan timeout,
+        TimeSpan pollingInterval,
+        CancellationToken cancellationToken = default)
+    {
+        if (timeout <= TimeSpan.Zero ||
+            !ModelMiniaturePath.TryResolve(
+                cacheDirectory,
+                fileId,
+                out _))
+        {
+            return null;
+        }
+
+        var interval = pollingInterval > TimeSpan.Zero
+            ? pollingInterval
+            : TimeSpan.FromMilliseconds(1);
+        var elapsed = Stopwatch.StartNew();
+        while (elapsed.Elapsed < timeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (TryLoad(
+                    cacheDirectory,
+                    fileId,
+                    out var refreshedBytes) &&
+                !refreshedBytes.AsSpan().SequenceEqual(
+                    baselineBytes.Span))
+            {
+                return refreshedBytes;
+            }
+
+            var remaining = timeout - elapsed.Elapsed;
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(
+                        remaining < interval
+                            ? remaining
+                            : interval,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        return null;
     }
 
     static bool HasExpectedPngEnvelope(ReadOnlySpan<byte> bytes)

@@ -175,6 +175,62 @@ public sealed class ModelMiniatureTests
     }
 
     [Fact]
+    public async Task Loader_WaitsForAtomicMiniatureAppearance()
+    {
+        using var directory = new TempDirectory();
+        Assert.True(
+            ModelMiniaturePath.TryResolve(
+                directory.Root,
+                ModelFileId,
+                out var miniaturePath));
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(miniaturePath)!);
+        var expected = CreatePngEnvelope(
+            ModelMiniaturePath.Resolution,
+            ModelMiniaturePath.Resolution);
+        var wait = ModelMiniatureLoader.WaitForChangeAsync(
+            directory.Root,
+            ModelFileId,
+            ReadOnlyMemory<byte>.Empty,
+            TimeSpan.FromSeconds(2),
+            TimeSpan.FromMilliseconds(10));
+        var stagingPath = miniaturePath + ".pending";
+        File.WriteAllBytes(stagingPath, expected);
+        File.Move(stagingPath, miniaturePath);
+
+        var actual = await wait;
+
+        Assert.NotNull(actual);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public async Task Loader_WaitReturnsNullForUnchangedMiniature()
+    {
+        using var directory = new TempDirectory();
+        Assert.True(
+            ModelMiniaturePath.TryResolve(
+                directory.Root,
+                ModelFileId,
+                out var miniaturePath));
+        Directory.CreateDirectory(
+            Path.GetDirectoryName(miniaturePath)!);
+        var baseline = CreatePngEnvelope(
+            ModelMiniaturePath.Resolution,
+            ModelMiniaturePath.Resolution);
+        File.WriteAllBytes(miniaturePath, baseline);
+
+        var actual = await ModelMiniatureLoader.WaitForChangeAsync(
+            directory.Root,
+            ModelFileId,
+            baseline,
+            TimeSpan.FromMilliseconds(50),
+            TimeSpan.FromMilliseconds(10));
+
+        Assert.Null(actual);
+    }
+
+    [Fact]
     public void EditorModelInspector_LoadsRuntimeOnlyMiniatureAndKeepsFallback()
     {
         var viewModel = ReadRepositoryFile(
@@ -186,6 +242,10 @@ public sealed class ModelMiniatureTests
             "Views",
             "InspectorView",
             "ModelFileTemplate.xaml");
+        var selectionService = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "SelectionService.cs");
 
         Assert.Contains(
             "public override Task<bool> LoadDependentResources()",
@@ -208,6 +268,18 @@ public sealed class ModelMiniatureTests
             viewModel,
             StringComparison.Ordinal);
         Assert.Contains(
+            "ModelMiniatureLoader.WaitForChangeAsync(",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public override async Task Revert()",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await LoadDependentResources();",
+            viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
             "[property: YamlIgnore]",
             viewModel,
             StringComparison.Ordinal);
@@ -218,6 +290,10 @@ public sealed class ModelMiniatureTests
         Assert.Contains(
             "IsLoaded = HasMiniature;",
             viewModel,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "obj is not AssetFile { IsLoaded: false }",
+            selectionService,
             StringComparison.Ordinal);
 
         Assert.Contains(

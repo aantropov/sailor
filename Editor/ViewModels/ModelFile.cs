@@ -16,6 +16,13 @@ namespace SailorEditor.ViewModels;
 
 public partial class ModelFile : AssetFile
 {
+    static readonly TimeSpan MiniatureRefreshTimeout =
+        TimeSpan.FromSeconds(10);
+    static readonly TimeSpan MiniatureRefreshInterval =
+        TimeSpan.FromMilliseconds(250);
+
+    CancellationTokenSource miniatureRefreshCancellation;
+
     [ObservableProperty]
     bool shouldGenerateMaterials;
 
@@ -97,49 +104,155 @@ public partial class ModelFile : AssetFile
 
     public override Task<bool> LoadDependentResources()
     {
-        if (IsLoaded)
-        {
-            return Task.FromResult(true);
-        }
-
         try
         {
             var cacheDirectory =
                 MauiProgram.GetService<EngineService>()
                     ?.GetLaunchContext()
                     .CacheDirectory;
+            var fileId = FileId?.Value;
             var hasMiniature = ModelMiniatureLoader.TryLoad(
                 cacheDirectory,
-                FileId?.Value,
+                fileId,
                 out var miniatureBytes);
 
-            LoadRuntimeDataWithoutDirtyTracking(() =>
-            {
-                Miniature = hasMiniature
-                    ? ImageSource.FromStream(
-                        () => new MemoryStream(
-                            miniatureBytes,
-                            writable: false))
-                    : null;
-            });
+            ApplyMiniature(
+                hasMiniature
+                    ? miniatureBytes
+                    : null);
+            StartMiniatureRefresh(
+                cacheDirectory,
+                fileId,
+                hasMiniature
+                    ? miniatureBytes
+                    : []);
         }
         catch (Exception exception)
         {
-            LoadRuntimeDataWithoutDirtyTracking(
-                () => Miniature = null);
+            ApplyMiniature(null);
             Console.WriteLine(
                 $"[ModelFile] Failed to load miniature for " +
                 $"{DisplayName}: {exception.Message}");
         }
 
-        IsLoaded = HasMiniature;
         return Task.FromResult(true);
+    }
+
+    void ApplyMiniature(byte[] miniatureBytes)
+    {
+        LoadRuntimeDataWithoutDirtyTracking(() =>
+        {
+            Miniature = miniatureBytes is { Length: > 0 }
+                ? ImageSource.FromStream(
+                    () => new MemoryStream(
+                        miniatureBytes,
+                        writable: false))
+                : null;
+            IsLoaded = HasMiniature;
+        });
+    }
+
+    void StartMiniatureRefresh(
+        string cacheDirectory,
+        string fileId,
+        byte[] baselineBytes)
+    {
+        CancelMiniatureRefresh();
+        if (!ModelMiniaturePath.TryResolve(
+                cacheDirectory,
+                fileId,
+                out _))
+        {
+            return;
+        }
+
+        var refreshCancellation = new CancellationTokenSource();
+        miniatureRefreshCancellation = refreshCancellation;
+        _ = Task.Run(
+            () => RefreshMiniatureAsync(
+                cacheDirectory,
+                fileId,
+                baselineBytes,
+                refreshCancellation));
+    }
+
+    async Task RefreshMiniatureAsync(
+        string cacheDirectory,
+        string fileId,
+        byte[] baselineBytes,
+        CancellationTokenSource refreshCancellation)
+    {
+        try
+        {
+            var refreshedBytes =
+                await ModelMiniatureLoader.WaitForChangeAsync(
+                    cacheDirectory,
+                    fileId,
+                    baselineBytes,
+                    MiniatureRefreshTimeout,
+                    MiniatureRefreshInterval,
+                    refreshCancellation.Token);
+            if (refreshedBytes is null)
+            {
+                return;
+            }
+
+            await MainThread.InvokeOnMainThreadAsync(
+                () =>
+                {
+                    if (ReferenceEquals(
+                            miniatureRefreshCancellation,
+                            refreshCancellation))
+                    {
+                        ApplyMiniature(refreshedBytes);
+                    }
+                });
+        }
+        catch (OperationCanceledException)
+            when (refreshCancellation.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[ModelFile] Failed to refresh miniature for " +
+                $"{DisplayName}: {exception.Message}");
+        }
+        finally
+        {
+            Interlocked.CompareExchange(
+                ref miniatureRefreshCancellation,
+                null,
+                refreshCancellation);
+            refreshCancellation.Dispose();
+        }
+    }
+
+    void CancelMiniatureRefresh()
+    {
+        var refreshCancellation = Interlocked.Exchange(
+            ref miniatureRefreshCancellation,
+            null);
+        if (refreshCancellation is null)
+        {
+            return;
+        }
+
+        try
+        {
+            refreshCancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The completed refresh owns disposal.
+        }
     }
 
     public override Task Save() => Save(new ModelFileYamlConverter());
 
-    public override Task Revert()
+    public override async Task Revert()
     {
+        CancelMiniatureRefresh();
         try
         {
             RunWithoutDirtyTracking(() =>
@@ -180,7 +293,7 @@ public partial class ModelFile : AssetFile
         }
 
         ResetDirtyState();
-        return Task.CompletedTask;
+        await LoadDependentResources();
     }
 }
 

@@ -249,6 +249,26 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
+		FileRevision sourceRevision;
+		if (!Utils::TryGetFileRevision(
+				modelAssetInfo->GetAssetFilepath(),
+				sourceRevision))
+		{
+			if (AssetRegistry* assetRegistry =
+					App::GetSubmodule<AssetRegistry>())
+			{
+				const AssetRegistry::AssetProcessingToken processingToken =
+					assetRegistry->BeginAssetProcessing(modelAssetInfo);
+				assetRegistry->CompleteAssetProcessing(
+					processingToken,
+					false);
+			}
+			SAILOR_LOG_ERROR(
+				"Cannot capture model revision before generating dependent assets: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
+			return;
+		}
+
 		const bool bShouldPrepareGeneratedAssets =
 			bWasExpired || modelAssetInfo->IsImportPending();
 		bool bMetadataChanged = false;
@@ -308,7 +328,9 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 			existsError);
 		if (bWasExpired || !bMiniatureExists || existsError)
 		{
-			ScheduleModelMiniature(modelAssetInfo);
+			ScheduleModelMiniature(
+				modelAssetInfo,
+				sourceRevision);
 		}
 	}
 }
@@ -317,7 +339,9 @@ void ModelImporter::OnImportAsset(AssetInfoPtr)
 {
 }
 
-Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr assetInfo)
+Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
+	ModelAssetInfoPtr assetInfo,
+	const FileRevision& sourceRevision)
 {
 	if (assetInfo == nullptr || !assetInfo->GetFileId())
 	{
@@ -330,14 +354,6 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr ass
 		return {};
 	}
 
-	FileRevision sourceRevision;
-	if (!Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), sourceRevision))
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot capture model revision for miniature generation: %s",
-			assetInfo->GetAssetFilepath().c_str());
-		return {};
-	}
 	FileRevision metadataRevision;
 	if (!Utils::TryGetFileRevision(assetInfo->GetMetaFilepath(), metadataRevision))
 	{
@@ -359,6 +375,7 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr ass
 		return {};
 	}
 	Tasks::TaskPtr<bool> miniatureTask;
+	bool bMiniatureTaskNeedsRun = false;
 
 	{
 		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
@@ -373,10 +390,18 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr ass
 			const bool bOutputExists = std::filesystem::is_regular_file(
 				outputPath,
 				existsError);
-			if (!existingState->m_task->IsFinished() ||
-				(bOutputExists && !existsError))
+			const bool bTaskFinished =
+				existingState->m_task->IsFinished();
+			if (!bTaskFinished ||
+				(existingState->m_task->GetResult() &&
+					bOutputExists &&
+					!existsError))
 			{
 				miniatureTask = existingState->m_task;
+				bMiniatureTaskNeedsRun =
+					!miniatureTask->IsStarted() &&
+					!miniatureTask->IsFinished() &&
+					!miniatureTask->IsInQueue();
 			}
 		}
 
@@ -384,6 +409,20 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr ass
 		{
 			const AssetRegistry::AssetProcessingToken processingToken =
 				assetRegistry->BeginAssetProcessing(assetInfo);
+			if (!processingToken)
+			{
+				return {};
+			}
+			if (processingToken.m_sourceRevision != sourceRevision)
+			{
+				assetRegistry->CompleteAssetProcessing(
+					processingToken,
+					false);
+				SAILOR_LOG_ERROR(
+					"Model source changed while generating dependent assets; retrying on the next scan: %s",
+					assetInfo->GetAssetFilepath().c_str());
+				return {};
+			}
 			const std::string assetFilepath = assetInfo->GetAssetFilepath();
 			const float unitScale = assetInfo->GetUnitScale();
 			const bool bShouldBatchByMaterial = assetInfo->ShouldBatchByMaterial();
@@ -432,11 +471,13 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr ass
 				metadataRevision,
 				miniatureTask
 			};
-			miniatureTask->Run();
+			bMiniatureTaskNeedsRun = true;
 		}
 	}
 
-	assetRegistry->TrackScanProcessingTask(miniatureTask);
+	assetRegistry->TrackScanProcessingTask(
+		miniatureTask,
+		bMiniatureTaskNeedsRun);
 	return miniatureTask;
 }
 

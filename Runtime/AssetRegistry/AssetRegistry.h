@@ -204,7 +204,8 @@ namespace Sailor
 			const AssetProcessingToken& token,
 			bool bSucceeded);
 		SAILOR_API void TrackScanProcessingTask(
-			const Tasks::TaskPtr<bool>& processingTask);
+			const Tasks::TaskPtr<bool>& processingTask,
+			bool bDeferRunUntilNotificationsComplete = false);
 		SAILOR_API bool CompleteScanProcessing();
 
 		template<typename T>
@@ -254,6 +255,7 @@ namespace Sailor
 		std::mutex m_assetProcessingMutex;
 		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
+		TVector<Tasks::TaskPtr<bool>> m_deferredScanProcessingTasks;
 		bool m_bCollectScanProcessingTasks = false;
 
 		AssetCache m_assetCache;

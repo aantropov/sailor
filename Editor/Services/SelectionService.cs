@@ -83,7 +83,10 @@ namespace SailorEditor.Services
                 return;
             }
 
-            if (!force && SelectedItems.Count == 1 && ReferenceEquals(SelectedItems[0], obj))
+            if (!force &&
+                SelectedItems.Count == 1 &&
+                ReferenceEquals(SelectedItems[0], obj) &&
+                obj is not AssetFile { IsLoaded: false })
             {
                 return;
             }

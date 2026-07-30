@@ -131,7 +131,9 @@ namespace Sailor
 			Math::Sphere& outBoundsSphere,
 			TVector<glm::mat4>& outInverseBind);
 
-		Tasks::TaskPtr<bool> ScheduleModelMiniature(ModelAssetInfoPtr assetInfo);
+		Tasks::TaskPtr<bool> ScheduleModelMiniature(
+			ModelAssetInfoPtr assetInfo,
+			const FileRevision& sourceRevision);
 		bool GenerateModelMiniature(
 			const FileId& fileId,
 			const std::string& assetFilepath,

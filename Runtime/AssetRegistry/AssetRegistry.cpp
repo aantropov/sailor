@@ -395,12 +395,25 @@ void AssetRegistry::CompleteAssetProcessing(
 }
 
 void AssetRegistry::TrackScanProcessingTask(
-	const Tasks::TaskPtr<bool>& processingTask)
+	const Tasks::TaskPtr<bool>& processingTask,
+	bool bDeferRunUntilNotificationsComplete)
 {
-	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
-	if (m_bCollectScanProcessingTasks)
+	bool bRunImmediately = bDeferRunUntilNotificationsComplete;
 	{
-		m_scanProcessingTasks.Add(processingTask);
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		if (m_bCollectScanProcessingTasks)
+		{
+			m_scanProcessingTasks.Add(processingTask);
+			if (bDeferRunUntilNotificationsComplete)
+			{
+				m_deferredScanProcessingTasks.Add(processingTask);
+			}
+			bRunImmediately = false;
+		}
+	}
+	if (bRunImmediately && processingTask)
+	{
+		processingTask->Run();
 	}
 }
 
@@ -569,6 +582,7 @@ bool AssetRegistry::ScanContentFolder()
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 		m_scanProcessingTasks.Clear();
+		m_deferredScanProcessingTasks.Clear();
 		m_bCollectScanProcessingTasks = false;
 	}
 
@@ -1074,9 +1088,20 @@ bool AssetRegistry::ScanContentFolder()
 			}
 		}
 	}
+	TVector<Tasks::TaskPtr<bool>> deferredProcessingTasks;
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		deferredProcessingTasks =
+			std::move(m_deferredScanProcessingTasks);
+		m_deferredScanProcessingTasks.Clear();
 		m_bCollectScanProcessingTasks = false;
+	}
+	for (const Tasks::TaskPtr<bool>& processingTask : deferredProcessingTasks)
+	{
+		if (processingTask)
+		{
+			processingTask->Run();
+		}
 	}
 	TSet<FileId> liveAssetIds;
 	for (const auto& loadedAsset : m_loadedAssetInfo)
