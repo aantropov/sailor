@@ -133,6 +133,40 @@ namespace
 		std::function<void()> m_onDeserialize;
 	};
 
+	class SavingTestAssetInfo final : public AssetInfo
+	{
+	public:
+		void Configure(
+			const FileId& fileId,
+			const std::filesystem::path& sourcePath,
+			const std::filesystem::path& metadataPath)
+		{
+			m_fileId = fileId;
+			m_folder = sourcePath.parent_path().generic_string() + '/';
+			m_assetFilename = sourcePath.filename().string();
+			m_metaFilepath = metadataPath.string();
+			m_bWritable = true;
+		}
+
+		YAML::Node Serialize() const override
+		{
+			YAML::Node result(YAML::NodeType::Map);
+			result["fileId"] = m_fileId;
+			result["filename"] = m_assetFilename;
+			result["value"] = m_value;
+			return result;
+		}
+
+		void Deserialize(const YAML::Node& inData) override
+		{
+			m_fileId = inData["fileId"].as<FileId>();
+			m_assetFilename = inData["filename"].as<std::string>();
+			m_value = inData["value"].as<int32_t>();
+		}
+
+		int32_t m_value = 1;
+	};
+
 	class RecordingAssetListener final : public IAssetInfoHandlerListener
 	{
 	public:
@@ -313,6 +347,63 @@ namespace
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream stream(path, std::ios::binary);
 		stream << content;
+	}
+
+	void TestSaveMetaFileSkipsEquivalentYaml()
+	{
+		TempDirectory directory("semantic-metadata-save");
+		const std::filesystem::path sourcePath =
+			directory.Path("Model.glb");
+		const std::filesystem::path metadataPath =
+			directory.Path("Model.glb.asset");
+		WriteFile(sourcePath, "model");
+
+		SavingTestAssetInfo info;
+		info.Configure(
+			MakeFileId("{ASSET-METADATA-SEMANTIC-SAVE}"),
+			sourcePath,
+			metadataPath);
+		YAML::Node reorderedMetadata(YAML::NodeType::Map);
+		reorderedMetadata["value"] = info.m_value;
+		reorderedMetadata["filename"] = sourcePath.filename().string();
+		reorderedMetadata["fileId"] = info.GetFileId();
+		std::stringstream initialMetadata;
+		initialMetadata << reorderedMetadata;
+		WriteFile(metadataPath, initialMetadata.str());
+
+		FileRevision initialRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				metadataPath.string(),
+				initialRevision),
+			"the semantic metadata fixture must have a revision");
+		info.SaveMetaFile();
+		FileRevision equivalentRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				metadataPath.string(),
+				equivalentRevision) &&
+			equivalentRevision == initialRevision,
+			"saving equivalent YAML must not rewrite the metadata file");
+
+		info.m_value = 2;
+		info.SaveMetaFile();
+		FileRevision changedRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				metadataPath.string(),
+				changedRevision) &&
+			changedRevision != equivalentRevision &&
+			YAML::LoadFile(metadataPath.string())["value"].as<int32_t>() == 2,
+			"a semantic metadata change must still be written");
+		info.SaveMetaFile();
+		FileRevision repeatedRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				metadataPath.string(),
+				repeatedRevision) &&
+			repeatedRevision == changedRevision,
+			"repeating the same semantic metadata save must remain a no-op");
 	}
 
 	Workspace::WorkspaceContext CreateWorkspaceContext(
@@ -1342,6 +1433,7 @@ int main()
 		TestEntryDeserializeDoesNotThrow();
 		TestEveryAssetInfoSerializerWritesItsConcreteType();
 		TestGeneratedGlbMetadataUsesTypedDefaults();
+		TestSaveMetaFileSkipsEquivalentYaml();
 		TestImportAndUpdateCallbackContract();
 		TestImportNeverOverwritesExistingMetadata();
 		TestRejectedReloadRestoresTheLiveAsset();
