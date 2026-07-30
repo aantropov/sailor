@@ -197,7 +197,8 @@ uint32_t App::PullEditorViewportEvents(char** events, uint32_t num)
 		});
 }
 
-bool App::ResolveEditorViewportDropPosition(
+bool App::TraceViewportRay(
+	uint64_t viewportId,
 	float normalizedX,
 	float normalizedY,
 	float& outWorldX,
@@ -210,12 +211,18 @@ bool App::ResolveEditorViewportDropPosition(
 
 	return ExecuteOnEngineMainThread<bool>(
 		false,
-		[normalizedX, normalizedY, &outWorldX, &outWorldY, &outWorldZ]()
+		[viewportId,
+			normalizedX,
+			normalizedY,
+			&outWorldX,
+			&outWorldY,
+			&outWorldZ]()
 		{
 			auto editor = GetSubmodule<Editor>();
 			glm::vec3 worldPosition{};
 			if (!editor ||
-				!editor->ResolveViewportDropPosition(
+				!editor->TraceViewportRay(
+					viewportId,
 					normalizedX,
 					normalizedY,
 					worldPosition))
@@ -682,78 +689,6 @@ bool App::RemoveEditorComponent(const char* strInstanceId)
 			InstanceId instanceId;
 			instanceId.Deserialize(YAML::Node(instanceIdValue));
 			return editor->RemoveComponent(instanceId);
-		});
-}
-
-bool App::CreateEditorModelGameObject(
-	const char* strModelFileId,
-	const char* strName,
-	const char* strParentInstanceId,
-	bool bHasWorldPosition,
-	float worldX,
-	float worldY,
-	float worldZ,
-	char** outInstanceId)
-{
-	if (!strModelFileId ||
-		!strName ||
-		strName[0] == '\0' ||
-		!outInstanceId)
-	{
-		return false;
-	}
-
-	outInstanceId[0] = nullptr;
-	const std::string modelFileIdValue = strModelFileId;
-	const std::string name = strName;
-	const std::string parentInstanceIdValue =
-		strParentInstanceId ? strParentInstanceId : "";
-	return ExecuteOnEngineMainThread<bool>(
-		false,
-		[modelFileIdValue,
-			name,
-			parentInstanceIdValue,
-			bHasWorldPosition,
-			worldX,
-			worldY,
-			worldZ,
-			outInstanceId]()
-		{
-			auto editor = GetSubmodule<Editor>();
-			if (!editor)
-			{
-				return false;
-			}
-
-			FileId modelFileId{};
-			modelFileId.Deserialize(YAML::Node(modelFileIdValue));
-			if (!modelFileId)
-			{
-				return false;
-			}
-
-			InstanceId parentInstanceId{};
-			if (!TryParseOptionalParent(
-					parentInstanceIdValue,
-					parentInstanceId))
-			{
-				return false;
-			}
-
-			const glm::vec3 worldPosition(worldX, worldY, worldZ);
-			InstanceId createdInstanceId{};
-			if (!editor->CreateModelGameObject(
-					modelFileId,
-					name,
-					parentInstanceId,
-					bHasWorldPosition ? &worldPosition : nullptr,
-					createdInstanceId))
-			{
-				return false;
-			}
-
-			SetInteropString(createdInstanceId.ToString(), outInstanceId);
-			return true;
 		});
 }
 

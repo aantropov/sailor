@@ -6,8 +6,16 @@
 #include "Containers/Containers.h"
 #include <ctime>
 
+namespace YAML
+{
+	class Node;
+}
+
 namespace Sailor
 {
+	class InstanceId;
+	class ReflectedData;
+
 	namespace Utils
 	{
 		struct WindowSizeAndPosition
@@ -39,6 +47,12 @@ namespace Sailor
 		SAILOR_API void FindAllOccurances(const std::string& str, const std::string& substr, TVector<size_t>& outLocations, size_t startPos = 0, size_t endPos = std::string::npos);
 
 		SAILOR_API void Trim(std::string& s);
+
+		SAILOR_API bool AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs);
+		SAILOR_API bool TryGetComponentInstanceId(
+			const ReflectedData& reflection,
+			InstanceId& outInstanceId,
+			std::string& outDiagnostic);
 
 		SAILOR_API void SetThreadName(size_t dwThreadID, const std::string& threadName);
 		SAILOR_API void SetThreadName(const std::string& threadName);

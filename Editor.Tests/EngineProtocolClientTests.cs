@@ -719,7 +719,7 @@ public sealed class EngineProtocolClientTests
                 requests.Add(request);
                 return request.CommandCase switch
                 {
-                    ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition =>
+                    ProtocolRequest.CommandOneofCase.TraceViewportRay =>
                         Success(
                             request,
                             response => response.Vector4Result =
@@ -733,7 +733,6 @@ public sealed class EngineProtocolClientTests
                                         W = 1
                                     }
                                 }),
-                    ProtocolRequest.CommandOneofCase.CreateModelGameObject or
                     ProtocolRequest.CommandOneofCase.InstantiatePrefabInstance =>
                         Success(
                             request,
@@ -764,15 +763,10 @@ public sealed class EngineProtocolClientTests
 
         Assert.Equal(
             new EngineProtocolVector4(1, 2, 3, 1),
-            await client.ResolveViewportDropPositionAsync(
+            await client.TraceViewportRayAsync(
                 1,
                 0.25f,
                 0.75f));
-        Assert.True((await client.CreateModelGameObjectAsync(
-            "{MODEL}",
-            "Duck",
-            "parent",
-            new EngineProtocolVector4(4, 5, 6, 1))).Succeeded);
         Assert.True((await client.InstantiatePrefabInstanceAsync(
             "{PREFAB}",
             string.Empty,
@@ -795,23 +789,11 @@ public sealed class EngineProtocolClientTests
             request =>
             {
                 Assert.Equal(
-                    ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition,
+                    ProtocolRequest.CommandOneofCase.TraceViewportRay,
                     request.CommandCase);
-                Assert.Equal(1ul, request.ResolveViewportDropPosition.ViewportId);
-                Assert.Equal(0.25f, request.ResolveViewportDropPosition.NormalizedX);
-                Assert.Equal(0.75f, request.ResolveViewportDropPosition.NormalizedY);
-            },
-            request =>
-            {
-                Assert.Equal(
-                    ProtocolRequest.CommandOneofCase.CreateModelGameObject,
-                    request.CommandCase);
-                Assert.Equal("{MODEL}", request.CreateModelGameObject.ModelFileId);
-                Assert.Equal("Duck", request.CreateModelGameObject.Name);
-                Assert.Equal("parent", request.CreateModelGameObject.ParentInstanceId);
-                Assert.True(request.CreateModelGameObject.ApplyWorldPosition);
-                Assert.NotNull(request.CreateModelGameObject.WorldPosition);
-                Assert.Equal(4f, request.CreateModelGameObject.WorldPosition.X);
+                Assert.Equal(1ul, request.TraceViewportRay.ViewportId);
+                Assert.Equal(0.25f, request.TraceViewportRay.NormalizedX);
+                Assert.Equal(0.75f, request.TraceViewportRay.NormalizedY);
             },
             request =>
             {
@@ -850,7 +832,6 @@ public sealed class EngineProtocolClientTests
             [
                 EngineProtocolInvocationKind.Interactive,
                 EngineProtocolInvocationKind.Request,
-                EngineProtocolInvocationKind.Request,
                 EngineProtocolInvocationKind.Interactive,
                 EngineProtocolInvocationKind.Request,
                 EngineProtocolInvocationKind.Request,
@@ -865,7 +846,7 @@ public sealed class EngineProtocolClientTests
     [InlineData(0.5f, float.PositiveInfinity)]
     [InlineData(-0.01f, 0.5f)]
     [InlineData(0.5f, 1.01f)]
-    public async Task ViewportDropPosition_RejectsInvalidCoordinates(
+    public async Task ViewportRay_RejectsInvalidCoordinates(
         float normalizedX,
         float normalizedY)
     {
@@ -880,7 +861,7 @@ public sealed class EngineProtocolClientTests
         });
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            client.ResolveViewportDropPositionAsync(
+            client.TraceViewportRayAsync(
                 1,
                 normalizedX,
                 normalizedY));

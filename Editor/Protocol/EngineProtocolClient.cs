@@ -682,7 +682,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.InstantiatePrefab));
 
-    public async Task<EngineProtocolVector4> ResolveViewportDropPositionAsync(
+    public async Task<EngineProtocolVector4> TraceViewportRayAsync(
         ulong viewportId,
         float normalizedX,
         float normalizedY,
@@ -694,8 +694,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             (await SendAsync(
                     new ProtocolRequest
                     {
-                        ResolveViewportDropPosition =
-                            new ViewportDropPositionRequest
+                        TraceViewportRay =
+                            new ViewportRayRequest
                             {
                                 ViewportId = viewportId,
                                 NormalizedX = normalizedX,
@@ -704,37 +704,10 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                     },
                     cancellationToken)
                 .ConfigureAwait(false)).Vector4Result,
-            nameof(ProtocolRequest.ResolveViewportDropPosition));
-        return ReadVector4(result.Value, nameof(ProtocolRequest.ResolveViewportDropPosition));
-    }
-
-    public async Task<EngineProtocolCreationResult> CreateModelGameObjectAsync(
-        string modelFileId,
-        string name,
-        string parentInstanceId,
-        EngineProtocolVector4? worldPosition,
-        CancellationToken cancellationToken = default)
-    {
-        var request = new CreateModelGameObjectRequest
-        {
-            ModelFileId = ValidateString(modelFileId, nameof(modelFileId)),
-            Name = ValidateString(name, nameof(name)),
-            ParentInstanceId = ValidateString(
-                parentInstanceId,
-                nameof(parentInstanceId)),
-            ApplyWorldPosition = worldPosition.HasValue
-        };
-        if (worldPosition is { } position)
-        {
-            request.WorldPosition = CreateVector4(position, nameof(worldPosition));
-        }
-
-        return ReadCreation(
-            await SendAsync(
-                    new ProtocolRequest { CreateModelGameObject = request },
-                    cancellationToken)
-                .ConfigureAwait(false),
-            nameof(ProtocolRequest.CreateModelGameObject));
+            nameof(ProtocolRequest.TraceViewportRay));
+        return ReadVector4(
+            result.Value,
+            nameof(ProtocolRequest.TraceViewportRay));
     }
 
     public async Task<EngineProtocolCreationResult> InstantiatePrefabInstanceAsync(
@@ -1130,7 +1103,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             ProtocolRequest.CommandOneofCase.SetRemoteViewportMacHostHandle or
                 ProtocolRequest.CommandOneofCase.SendRemoteViewportInput or
                 ProtocolRequest.CommandOneofCase.PullEditorViewportEvents or
-                ProtocolRequest.CommandOneofCase.ResolveViewportDropPosition or
+                ProtocolRequest.CommandOneofCase.TraceViewportRay or
                 ProtocolRequest.CommandOneofCase.FocusEditorCamera or
                 ProtocolRequest.CommandOneofCase.SetViewportToolState or
                 ProtocolRequest.CommandOneofCase.GetViewportToolState or

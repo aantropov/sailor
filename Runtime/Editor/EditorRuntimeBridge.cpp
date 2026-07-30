@@ -871,6 +871,12 @@ bool Sailor::EditorRuntime::HasAppliedEditorRenderArea()
 
 void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 {
+	auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+	if (!scheduler || !scheduler->IsMainThread())
+	{
+		return;
+	}
+
 	TVector<TSharedPtr<RemoteViewportBinding>> bindings{};
 	{
 		std::lock_guard lock(g_remoteViewportBindingsMutex);
@@ -1042,7 +1048,6 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 		RequestEditorInputReset(viewportId);
 	}
 	binding->SetFocused(bFocused);
-	binding->Pump();
 	return true;
 }
 
@@ -1219,7 +1224,6 @@ bool App::RetryEditorRemoteViewport(uint64_t viewportId)
 		binding->m_binding.GetRuntimeSession().GetState() == Sailor::EditorRemote::SessionState::Lost)
 	{
 		binding->m_binding.Create();
-		binding->Pump();
 	}
 	return true;
 }

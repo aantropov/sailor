@@ -255,7 +255,7 @@ bool EditorViewport::TryPickNearest(
 	return outInstanceId.IsGameObjectId();
 }
 
-bool EditorViewport::TryResolveDropPosition(
+bool EditorViewport::TryResolveRayTarget(
 	const Math::Ray& ray,
 	const TVector<PickCandidate>& candidates,
 	glm::vec3& outPosition)
@@ -598,7 +598,7 @@ bool EditorViewportController::QueueToolShortcutEvent(uint32_t keyCode)
 	return true;
 }
 
-bool EditorViewportController::TryResolveDropPosition(
+bool EditorViewportController::TraceViewportRay(
 	World& world,
 	float normalizedX,
 	float normalizedY,
@@ -645,7 +645,7 @@ bool EditorViewportController::TryResolveDropPosition(
 		}
 	}
 
-	return EditorViewport::TryResolveDropPosition(
+	return EditorViewport::TryResolveRayTarget(
 		ray,
 		candidates,
 		outPosition);

@@ -4,6 +4,8 @@ using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
 using SailorEngine;
+using System.Numerics;
+using System.Security.Cryptography;
 using YamlDotNet.Serialization;
 
 namespace SailorEditor.Commands;
@@ -465,54 +467,143 @@ sealed class CreatedHierarchySnapshot
                     StringComparison.Ordinal)) == true;
 }
 
+static class AuthoritativeHierarchyReconciliation
+{
+    public static async Task<(
+        AuthoritativeHierarchyProjection Projection,
+        string? Diagnostic)> RefreshAndClassifyAsync(
+        EngineService engine,
+        WorldService world,
+        CreatedHierarchySnapshot snapshot,
+        InstanceId? parentId)
+    {
+        try
+        {
+            if (!await engine.RefreshCurrentWorldAuthoritativelyAsync(
+                    CancellationToken.None))
+            {
+                return (
+                    AuthoritativeHierarchyProjection.Unavailable,
+                    "authoritative refresh was not published");
+            }
+
+            return (
+                snapshot.ClassifyProjection(world, parentId),
+                null);
+        }
+        catch (Exception exception)
+        {
+            return (
+                AuthoritativeHierarchyProjection.Unavailable,
+                exception.Message);
+        }
+    }
+
+    public static async Task<(
+        bool Available,
+        bool RootAbsent,
+        string? Diagnostic)> RefreshAndCheckRootAbsentAsync(
+        EngineService engine,
+        WorldService world,
+        InstanceId rootInstanceId)
+    {
+        try
+        {
+            if (!await engine.RefreshCurrentWorldAuthoritativelyAsync(
+                    CancellationToken.None))
+            {
+                return (
+                    false,
+                    false,
+                    "authoritative refresh was not published");
+            }
+
+            return (
+                true,
+                !world.TryGetGameObject(rootInstanceId, out _),
+                null);
+        }
+        catch (Exception exception)
+        {
+            return (false, false, exception.Message);
+        }
+    }
+}
+
 static class OwnedHierarchyRollback
 {
+    public static async Task<(
+        bool ConfirmedAbsent,
+        string? Diagnostic)> EnsureAbsentAsync(
+        EngineService engine,
+        WorldService world,
+        InstanceId rootInstanceId)
+    {
+        var probe =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndCheckRootAbsentAsync(
+                    engine,
+                    world,
+                    rootInstanceId);
+        if (probe.Available && probe.RootAbsent)
+        {
+            return (true, null);
+        }
+
+        var diagnostic = probe.Diagnostic;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                if (!await engine.RequestDestroyObjectAsync(
+                        rootInstanceId,
+                        CancellationToken.None))
+                {
+                    diagnostic =
+                        "the engine rejected the exact-root destroy request";
+                }
+            }
+            catch (Exception exception)
+            {
+                diagnostic = exception.Message;
+            }
+
+            probe =
+                await AuthoritativeHierarchyReconciliation
+                    .RefreshAndCheckRootAbsentAsync(
+                        engine,
+                        world,
+                        rootInstanceId);
+            if (probe.Available && probe.RootAbsent)
+            {
+                return (true, null);
+            }
+
+            diagnostic ??= probe.Diagnostic;
+        }
+
+        return (false, diagnostic);
+    }
+
     public static async Task<CommandResult> FailureAsync(
         EngineService engine,
         WorldService world,
         InstanceId rootInstanceId,
         string failureMessage)
     {
-        string? cleanupDiagnostic = null;
-        var destroyed = false;
-        try
-        {
-            destroyed = await engine.DestroyObjectAsync(
-                rootInstanceId,
-                CancellationToken.None);
-        }
-        catch (Exception exception)
-        {
-            cleanupDiagnostic =
-                $"exact-root destroy failed: {exception.Message}";
-        }
-
-        if (destroyed &&
-            !world.TryGetGameObject(rootInstanceId, out _))
+        var cleanup = await EnsureAbsentAsync(
+            engine,
+            world,
+            rootInstanceId);
+        if (cleanup.ConfirmedAbsent)
         {
             return CommandResult.Failure(failureMessage);
         }
 
-        try
-        {
-            await engine.RefreshCurrentWorldAsync(
-                CancellationToken.None);
-            if (!world.TryGetGameObject(rootInstanceId, out _))
-            {
-                return CommandResult.Failure(failureMessage);
-            }
-        }
-        catch (Exception exception)
-        {
-            cleanupDiagnostic = cleanupDiagnostic is null
-                ? $"exact-root verification failed: {exception.Message}"
-                : $"{cleanupDiagnostic}; exact-root verification failed: {exception.Message}";
-        }
-
         return CommandResult.Failure(
-            cleanupDiagnostic is null
+            string.IsNullOrWhiteSpace(cleanup.Diagnostic)
                 ? $"{failureMessage}; exact-root rollback could not be confirmed"
-                : $"{failureMessage}; exact-root rollback could not be confirmed ({cleanupDiagnostic})");
+                : $"{failureMessage}; exact-root rollback could not be confirmed ({cleanup.Diagnostic})");
     }
 }
 
@@ -810,33 +901,78 @@ sealed class CreatedHierarchyCommandState(
 
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
-        if (!world.TryGetGameObject(_snapshot.RootInstanceId, out _))
+        var preflight =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndClassifyAsync(
+                    engine,
+                    world,
+                    _snapshot,
+                    _parentId);
+        if (preflight.Projection ==
+            AuthoritativeHierarchyProjection.Unavailable)
         {
             return CommandResult.Failure(
-                "Created hierarchy root was not found");
+                $"Destroy created hierarchy failed: authoritative preflight refresh failed{FormatDiagnostic(preflight.Diagnostic)}");
         }
-
-        if (!await engine.DestroyObjectAsync(
-                _snapshot.RootInstanceId,
-                CancellationToken.None))
+        if (preflight.Projection ==
+            AuthoritativeHierarchyProjection.Mismatch)
         {
             return CommandResult.Failure(
-                "Destroy created hierarchy failed");
+                "Destroy created hierarchy failed: the authoritative hierarchy no longer matches the saved snapshot");
+        }
+        if (preflight.Projection ==
+            AuthoritativeHierarchyProjection.Absent)
+        {
+            ClearSelectionIfOwned(_snapshot);
+            return CommandResult.Success(
+                "Created hierarchy was already absent; undo reconciled without another mutation.");
         }
 
-        if (!_snapshot.IsAbsent(world))
+        var response = EngineMutationResponseState.Unknown;
+        string? requestDiagnostic = null;
+        try
         {
+            response = await engine.RequestDestroyObjectAsync(
+                    _snapshot.RootInstanceId,
+                    CancellationToken.None)
+                ? EngineMutationResponseState.Accepted
+                : EngineMutationResponseState.Rejected;
+        }
+        catch (Exception exception)
+        {
+            requestDiagnostic = exception.Message;
+        }
+
+        var postMutation =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndClassifyAsync(
+                    engine,
+                    world,
+                    _snapshot,
+                    _parentId);
+        if (postMutation.Projection !=
+            AuthoritativeHierarchyProjection.Absent)
+        {
+            var responseDescription = response switch
+            {
+                EngineMutationResponseState.Accepted =>
+                    "the engine accepted destroy",
+                EngineMutationResponseState.Rejected =>
+                    "the engine rejected destroy",
+                _ => "the destroy response was lost"
+            };
             return CommandResult.Failure(
-                "Destroyed hierarchy is still present in the projection");
+                $"Destroy created hierarchy could not be confirmed absent ({responseDescription})" +
+                FormatDiagnostics(
+                    requestDiagnostic,
+                    postMutation.Diagnostic));
         }
 
-        var selection = MauiProgram.GetService<SelectionService>();
-        if (_snapshot.Contains(selection.SelectedInstanceId))
-        {
-            selection.ClearSelection();
-        }
-
-        return CommandResult.Success();
+        ClearSelectionIfOwned(_snapshot);
+        return CommandResult.Success(
+            response == EngineMutationResponseState.Accepted
+                ? null
+                : "Destroy created hierarchy was reconciled from the authoritative world snapshot.");
     }
 
     async Task<CommandResult> RestoreAsync(string createFailureMessage)
@@ -870,6 +1006,40 @@ sealed class CreatedHierarchyCommandState(
         return result;
     }
 
+    static void ClearSelectionIfOwned(
+        CreatedHierarchySnapshot snapshot)
+    {
+        var selection = MauiProgram.GetService<SelectionService>();
+        if (snapshot.Contains(selection.SelectedInstanceId))
+        {
+            selection.ClearSelection();
+        }
+    }
+
+    static string FormatDiagnostic(string? diagnostic) =>
+        string.IsNullOrWhiteSpace(diagnostic)
+            ? string.Empty
+            : $": {diagnostic}";
+
+    static string FormatDiagnostics(
+        string? requestDiagnostic,
+        string? refreshDiagnostic)
+    {
+        var diagnostics = new List<string>();
+        if (!string.IsNullOrWhiteSpace(requestDiagnostic))
+        {
+            diagnostics.Add($"request: {requestDiagnostic}");
+        }
+        if (!string.IsNullOrWhiteSpace(refreshDiagnostic))
+        {
+            diagnostics.Add($"refresh: {refreshDiagnostic}");
+        }
+
+        return diagnostics.Count == 0
+            ? string.Empty
+            : $" ({string.Join("; ", diagnostics)})";
+    }
+
 }
 
 public sealed class CreateModelGameObjectCommand(
@@ -878,10 +1048,17 @@ public sealed class CreateModelGameObjectCommand(
     GameObject? parent = null,
     Vec4? worldPosition = null) : IUndoableEditorCommand
 {
+    const string MeshRendererComponentTypeName =
+        "Sailor::MeshRendererComponent";
+    const string ModelPropertyName = "model";
+    const float WorldPositionEpsilon = 0.001f;
+
     readonly FileId _modelFileId = modelFile?.FileId;
     readonly InstanceId? _parentId = parent?.InstanceId;
     readonly Vec4? _worldPosition = worldPosition;
     readonly string _objectName = objectName;
+    readonly InstanceId _ownedGameObjectId =
+        CreateCanonicalGameObjectInstanceId();
     readonly CreatedHierarchyCommandState _state = new(
         parent?.InstanceId);
 
@@ -897,14 +1074,8 @@ public sealed class CreateModelGameObjectCommand(
         ActionContext context,
         CancellationToken cancellationToken = default)
     {
-        var engine = MauiProgram.GetService<EngineService>();
         return await _state.ExecuteAsync(
-            () => engine.CreateModelGameObjectAsync(
-                _modelFileId,
-                _objectName,
-                _parentId,
-                _worldPosition,
-                CancellationToken.None),
+            CreateWithGenericOperationsAsync,
             "Create model GameObject failed",
             cancellationToken);
     }
@@ -913,6 +1084,386 @@ public sealed class CreateModelGameObjectCommand(
         ActionContext context,
         CancellationToken cancellationToken = default)
         => _state.UndoAsync(cancellationToken);
+
+    async Task<InstanceId?> CreateWithGenericOperationsAsync()
+    {
+        var engine = MauiProgram.GetService<EngineService>();
+        var world = MauiProgram.GetService<WorldService>();
+        var ownedComponentId =
+            CreateCanonicalComponentInstanceId(
+                _ownedGameObjectId);
+        var creationSubmitted = false;
+        string? failureDiagnostic = null;
+
+        try
+        {
+            var preflight =
+                await AuthoritativeHierarchyReconciliation
+                    .RefreshAndCheckRootAbsentAsync(
+                        engine,
+                        world,
+                        _ownedGameObjectId);
+            if (!preflight.Available || !preflight.RootAbsent)
+            {
+                Console.Error.WriteLine(
+                    "Create model GameObject preflight could not prove the owned instance id absent" +
+                    FormatDiagnostic(preflight.Diagnostic));
+                return null;
+            }
+
+            var initialParentId = _worldPosition is null
+                ? _parentId
+                : null;
+
+            creationSubmitted = true;
+            var createdId = await engine.CreateGameObjectAsync(
+                initialParentId,
+                _ownedGameObjectId,
+                CancellationToken.None);
+            if (!SameInstanceId(
+                    createdId,
+                    _ownedGameObjectId) ||
+                !world.TryGetGameObject(
+                    _ownedGameObjectId,
+                    out _))
+            {
+                throw new InvalidOperationException(
+                    "CreateGameObject did not project the owned GameObject");
+            }
+
+            var componentId = await engine.AddComponentAsync(
+                _ownedGameObjectId,
+                MeshRendererComponentTypeName,
+                ownedComponentId,
+                CancellationToken.None);
+            if (!SameInstanceId(
+                    componentId,
+                    ownedComponentId) ||
+                !world.TryGetGameObject(
+                    _ownedGameObjectId,
+                    out var createdObject) ||
+                !world.TryGetComponent(
+                    ownedComponentId,
+                    out var meshRenderer))
+            {
+                throw new InvalidOperationException(
+                    "AddComponent did not project the owned MeshRenderer");
+            }
+
+            var updatedObject = CloneGameObject(createdObject);
+            updatedObject.Name = _objectName;
+            if (_worldPosition is not null)
+            {
+                updatedObject.Position = new Vec4(_worldPosition);
+            }
+
+            if (!await engine.CommitChangesAsync(
+                    _ownedGameObjectId,
+                    EditorYaml.SerializeGameObject(updatedObject),
+                    CancellationToken.None))
+            {
+                throw new InvalidOperationException(
+                    "ChangeValue failed for GameObject");
+            }
+
+            var updatedMeshRenderer = CloneComponent(meshRenderer);
+            if (!updatedMeshRenderer.OverrideProperties.ContainsKey(
+                    ModelPropertyName))
+            {
+                throw new InvalidOperationException(
+                    "MeshRenderer has no reflected model property");
+            }
+
+            updatedMeshRenderer.OverrideProperties[ModelPropertyName] =
+                new ObjectPtr
+                {
+                    FileId = new FileId(_modelFileId.Value),
+                    InstanceId = new InstanceId(
+                        InstanceId.NullInstanceId)
+                };
+            if (!await engine.CommitChangesAsync(
+                    ownedComponentId,
+                    EditorYaml.SerializeComponent(
+                        updatedMeshRenderer),
+                    CancellationToken.None))
+            {
+                throw new InvalidOperationException(
+                    "ChangeValue failed for MeshRenderer.model");
+            }
+
+            if (_worldPosition is not null &&
+                _parentId is not null &&
+                !_parentId.IsEmpty() &&
+                !await engine.ReparentObjectAsync(
+                    _ownedGameObjectId,
+                    _parentId,
+                    keepWorldTransform: true,
+                    CancellationToken.None))
+            {
+                throw new InvalidOperationException(
+                    "ReparentObject failed");
+            }
+
+            if (!await engine.RefreshCurrentWorldAuthoritativelyAsync(
+                    CancellationToken.None) ||
+                !MatchesFinalProjection(
+                    world,
+                    ownedComponentId))
+            {
+                throw new InvalidOperationException(
+                    "The authoritative result did not match the requested name, parent, world position, component, and model");
+            }
+
+            return _ownedGameObjectId;
+        }
+        catch (Exception exception)
+        {
+            failureDiagnostic = exception.Message;
+        }
+
+        if (!creationSubmitted)
+        {
+            Console.Error.WriteLine(
+                $"Create model GameObject failed: {failureDiagnostic}");
+            return null;
+        }
+
+        var cleanup = await OwnedHierarchyRollback.EnsureAbsentAsync(
+            engine,
+            world,
+            _ownedGameObjectId);
+        if (!cleanup.ConfirmedAbsent ||
+            world.TryGetComponent(ownedComponentId, out _))
+        {
+            throw new InvalidOperationException(
+                $"Create model GameObject failed ({failureDiagnostic}); rollback could not confirm owned GameObject/component absent for '{_ownedGameObjectId.Value}'" +
+                FormatDiagnostic(cleanup.Diagnostic));
+        }
+
+        Console.Error.WriteLine(
+            $"Create model GameObject failed and was rolled back: {failureDiagnostic}");
+        return null;
+    }
+
+    bool MatchesFinalProjection(
+        WorldService world,
+        InstanceId componentId)
+    {
+        if (!world.TryGetGameObject(
+                _ownedGameObjectId,
+                out var gameObject) ||
+            !string.Equals(
+                gameObject.Name,
+                _objectName,
+                StringComparison.Ordinal) ||
+            !SameInstanceId(
+                world.ResolveParentInstanceId(gameObject),
+                _parentId) ||
+            !world.TryGetComponent(
+                componentId,
+                out var meshRenderer) ||
+            !string.Equals(
+                meshRenderer.Typename?.Name,
+                MeshRendererComponentTypeName,
+                StringComparison.Ordinal) ||
+            !SameInstanceId(
+                world.FindOwner(meshRenderer)?.InstanceId,
+                _ownedGameObjectId))
+        {
+            return false;
+        }
+
+        var projectedComponents =
+            world.GetComponents(gameObject);
+        if (projectedComponents.Count != 1 ||
+            !SameInstanceId(
+                projectedComponents[0].InstanceId,
+                componentId) ||
+            !meshRenderer.OverrideProperties.TryGetValue(
+                ModelPropertyName,
+                out var modelValue) ||
+            modelValue is not ObjectPtr model ||
+            model.FileId is null ||
+            !string.Equals(
+                model.FileId.Value,
+                _modelFileId.Value,
+                StringComparison.Ordinal) ||
+            (model.InstanceId is not null &&
+                !model.InstanceId.IsEmpty()))
+        {
+            return false;
+        }
+
+        if (_worldPosition is null)
+        {
+            return IsNear(
+                ToVector3(gameObject.Position),
+                Vector3.Zero);
+        }
+
+        return TryResolveWorldPosition(
+                world,
+                gameObject,
+                out var projectedWorldPosition) &&
+            IsNear(
+                projectedWorldPosition,
+                ToVector3(_worldPosition));
+    }
+
+    static bool TryResolveWorldPosition(
+        WorldService world,
+        GameObject gameObject,
+        out Vector3 worldPosition)
+    {
+        worldPosition = ToVector3(gameObject.Position);
+        var current = gameObject;
+        var visited = new HashSet<string>(
+            StringComparer.Ordinal)
+        {
+            gameObject.InstanceId.Value
+        };
+
+        while (world.ResolveParentInstanceId(current) is
+            { } parentInstanceId)
+        {
+            if (!visited.Add(parentInstanceId.Value) ||
+                !world.TryGetGameObject(
+                    parentInstanceId,
+                    out var parent) ||
+                parent.Position is null ||
+                parent.Rotation is null ||
+                parent.Scale is null)
+            {
+                return false;
+            }
+
+            worldPosition *= new Vector3(
+                parent.Scale.X,
+                parent.Scale.Y,
+                parent.Scale.Z);
+            worldPosition = Vector3.Transform(
+                    worldPosition,
+                    ToQuaternion(parent.Rotation)) +
+                ToVector3(parent.Position);
+            current = parent;
+        }
+
+        return IsFinite(worldPosition);
+    }
+
+    static Quaternion ToQuaternion(Rotation rotation)
+    {
+        var quat = rotation?.Quat ??
+            Quat.FromYawPitchRoll(
+                rotation?.Yaw ?? 0.0f,
+                rotation?.Pitch ?? 0.0f,
+                rotation?.Roll ?? 0.0f);
+        var result = new Quaternion(
+            quat.X,
+            quat.Y,
+            quat.Z,
+            quat.W);
+        return result.LengthSquared() > 0.0f &&
+            IsFinite(result)
+            ? Quaternion.Normalize(result)
+            : Quaternion.Identity;
+    }
+
+    static GameObject CloneGameObject(GameObject gameObject) => new()
+    {
+        Name = gameObject.Name,
+        InstanceId = new InstanceId(gameObject.InstanceId.Value),
+        ParentIndex = gameObject.ParentIndex,
+        Position = new Vec4(gameObject.Position),
+        Rotation = new Rotation(gameObject.Rotation),
+        Scale = new Vec4(gameObject.Scale),
+        ComponentIndices = [.. gameObject.ComponentIndices]
+    };
+
+    static Component CloneComponent(Component component)
+    {
+        var yaml = EditorYaml.SerializeComponent(component);
+        return SerializationUtils.CreateDeserializerBuilder()
+            .WithTypeConverter(new ComponentYamlConverter())
+            .Build()
+            .Deserialize<Component>(yaml);
+    }
+
+    static Vector3 ToVector3(Vec4 value) =>
+        value is null
+            ? new Vector3(
+                float.NaN,
+                float.NaN,
+                float.NaN)
+            : new Vector3(
+                value.X,
+                value.Y,
+                value.Z);
+
+    static bool IsNear(
+        Vector3 actual,
+        Vector3 expected)
+    {
+        return IsFinite(actual) &&
+            IsFinite(expected) &&
+            NearlyEqual(actual.X, expected.X) &&
+            NearlyEqual(actual.Y, expected.Y) &&
+            NearlyEqual(actual.Z, expected.Z);
+    }
+
+    static bool NearlyEqual(
+        float actual,
+        float expected)
+    {
+        var magnitude = MathF.Max(
+            1.0f,
+            MathF.Max(
+                MathF.Abs(actual),
+                MathF.Abs(expected)));
+        return MathF.Abs(actual - expected) <=
+            WorldPositionEpsilon * magnitude;
+    }
+
+    static bool IsFinite(Vector3 value) =>
+        float.IsFinite(value.X) &&
+        float.IsFinite(value.Y) &&
+        float.IsFinite(value.Z);
+
+    static bool IsFinite(Quaternion value) =>
+        float.IsFinite(value.X) &&
+        float.IsFinite(value.Y) &&
+        float.IsFinite(value.Z) &&
+        float.IsFinite(value.W);
+
+    static bool SameInstanceId(
+        InstanceId? left,
+        InstanceId? right)
+    {
+        var leftValue = left is null || left.IsEmpty()
+            ? null
+            : left.Value;
+        var rightValue = right is null || right.IsEmpty()
+            ? null
+            : right.Value;
+        return string.Equals(
+            leftValue,
+            rightValue,
+            StringComparison.Ordinal);
+    }
+
+    static string FormatDiagnostic(string? diagnostic) =>
+        string.IsNullOrWhiteSpace(diagnostic)
+            ? string.Empty
+            : $": {diagnostic}";
+
+    static InstanceId CreateCanonicalGameObjectInstanceId() =>
+        new(Convert.ToHexString(
+            RandomNumberGenerator.GetBytes(10)));
+
+    static InstanceId CreateCanonicalComponentInstanceId(
+        InstanceId owner) =>
+        new(
+            $"{Convert.ToHexString(RandomNumberGenerator.GetBytes(8))}_{owner.Value}");
 }
 
 public sealed class InstantiatePrefabAssetCommand(
@@ -1226,11 +1777,13 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
 
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
-        var preflight = await RefreshAndClassifyAsync(
-            engine,
-            world,
-            _snapshot,
-            _parentId);
+        var preflight =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndClassifyAsync(
+                    engine,
+                    world,
+                    _snapshot,
+                    _parentId);
         if (preflight.Projection ==
             AuthoritativeHierarchyProjection.Unavailable)
         {
@@ -1268,11 +1821,13 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
             requestDiagnostic = exception.Message;
         }
 
-        var postMutation = await RefreshAndClassifyAsync(
-            engine,
-            world,
-            _snapshot,
-            _parentId);
+        var postMutation =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndClassifyAsync(
+                    engine,
+                    world,
+                    _snapshot,
+                    _parentId);
         var resolution = HierarchyMutationRecoveryPolicy.ResolveDestroy(
             response,
             postMutation.Projection);
@@ -1305,11 +1860,13 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
                 "Restore deleted hierarchy failed: hierarchy snapshot was not captured");
         }
 
-        var preflight = await RefreshAndClassifyAsync(
-            engine,
-            world,
-            _snapshot,
-            _parentId);
+        var preflight =
+            await AuthoritativeHierarchyReconciliation
+                .RefreshAndClassifyAsync(
+                    engine,
+                    world,
+                    _snapshot,
+                    _parentId);
         if (preflight.Projection ==
             AuthoritativeHierarchyProjection.Unavailable)
         {
@@ -1393,36 +1950,6 @@ public sealed class DestroyGameObjectCommand(GameObject gameObject) : IUndoableE
             out _)
             ? snapshot
             : null;
-    }
-
-    static async Task<(
-        AuthoritativeHierarchyProjection Projection,
-        string? Diagnostic)> RefreshAndClassifyAsync(
-        EngineService engine,
-        WorldService world,
-        CreatedHierarchySnapshot snapshot,
-        InstanceId? parentId)
-    {
-        try
-        {
-            if (!await engine.RefreshCurrentWorldAuthoritativelyAsync(
-                    CancellationToken.None))
-            {
-                return (
-                    AuthoritativeHierarchyProjection.Unavailable,
-                    "authoritative refresh was not published");
-            }
-
-            return (
-                snapshot.ClassifyProjection(world, parentId),
-                null);
-        }
-        catch (Exception exception)
-        {
-            return (
-                AuthoritativeHierarchyProjection.Unavailable,
-                exception.Message);
-        }
     }
 
     CommandResult RecoverySuccess(

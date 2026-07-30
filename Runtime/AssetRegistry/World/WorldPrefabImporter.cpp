@@ -22,102 +22,6 @@ using namespace Sailor;
 
 namespace
 {
-	bool AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs)
-	{
-		if (lhs.IsDefined() != rhs.IsDefined())
-		{
-			return false;
-		}
-
-		if (!lhs.IsDefined())
-		{
-			return true;
-		}
-
-		if (lhs.Type() != rhs.Type())
-		{
-			return false;
-		}
-
-		switch (lhs.Type())
-		{
-		case YAML::NodeType::Null:
-			return true;
-
-		case YAML::NodeType::Scalar:
-			return lhs.Scalar() == rhs.Scalar();
-
-		case YAML::NodeType::Sequence:
-			if (lhs.size() != rhs.size())
-			{
-				return false;
-			}
-
-			for (size_t index = 0; index < lhs.size(); ++index)
-			{
-				if (!AreYamlNodesEqual(lhs[index], rhs[index]))
-				{
-					return false;
-				}
-			}
-			return true;
-
-		case YAML::NodeType::Map:
-			if (lhs.size() != rhs.size())
-			{
-				return false;
-			}
-
-			{
-				TVector<bool> matchedRightEntries(rhs.size());
-				for (const auto& leftEntry : lhs)
-				{
-					bool bFoundMatch = false;
-					size_t rightIndex = 0;
-					for (const auto& rightEntry : rhs)
-					{
-						if (!matchedRightEntries[rightIndex] &&
-							AreYamlNodesEqual(leftEntry.first, rightEntry.first) &&
-							AreYamlNodesEqual(leftEntry.second, rightEntry.second))
-						{
-							matchedRightEntries[rightIndex] = true;
-							bFoundMatch = true;
-							break;
-						}
-						++rightIndex;
-					}
-
-					if (!bFoundMatch)
-					{
-						return false;
-					}
-				}
-			}
-			return true;
-
-		case YAML::NodeType::Undefined:
-		default:
-			return false;
-		}
-	}
-
-	bool TryGetComponentInstanceId(
-		const ReflectedData& reflection,
-		InstanceId& outInstanceId,
-		std::string& outDiagnostic)
-	{
-		if (!reflection.IsValid() || !reflection.GetProperties().ContainsKey("instanceId"))
-		{
-			outDiagnostic = "a reflected component has no instanceId";
-			return false;
-		}
-
-		return External::TryConvertYaml(
-			reflection.GetProperties()["instanceId"],
-			outInstanceId,
-			outDiagnostic);
-	}
-
 	InstanceId NormalizeInstanceId(
 		const InstanceId& liveInstanceId,
 		const TMap<InstanceId, InstanceId>& instanceToSourceIds)
@@ -461,7 +365,7 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 		{
 			InstanceId sourceComponentId;
 			std::string conversionDiagnostic;
-			if (!TryGetComponentInstanceId(
+			if (!Utils::TryGetComponentInstanceId(
 					sourceComponent,
 					sourceComponentId,
 					conversionDiagnostic))
@@ -745,21 +649,21 @@ bool WorldPrefab::BuildLinkedOverrides(
 			gameObjectOverride["name"] = expandedGameObject->m_name;
 		}
 
-		if (!AreYamlNodesEqual(
+		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_position),
 				YAML::Node(sourceGameObject.m_position)))
 		{
 			gameObjectOverride["position"] = expandedGameObject->m_position;
 		}
 
-		if (!AreYamlNodesEqual(
+		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_rotation),
 				YAML::Node(sourceGameObject.m_rotation)))
 		{
 			gameObjectOverride["rotation"] = expandedGameObject->m_rotation;
 		}
 
-		if (!AreYamlNodesEqual(
+		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_scale),
 				YAML::Node(sourceGameObject.m_scale)))
 		{
@@ -778,7 +682,7 @@ bool WorldPrefab::BuildLinkedOverrides(
 			const ReflectedData& sourceReflection =
 				sourcePrefab->m_components[sourceComponentIndex];
 			InstanceId sourceComponentId;
-			if (!TryGetComponentInstanceId(
+			if (!Utils::TryGetComponentInstanceId(
 					sourceReflection,
 					sourceComponentId,
 					outDiagnostic))
@@ -797,7 +701,7 @@ bool WorldPrefab::BuildLinkedOverrides(
 					expandedPrefab->m_components[expandedComponentIndex];
 				InstanceId candidateInstanceId;
 				std::string conversionDiagnostic;
-				if (!TryGetComponentInstanceId(
+				if (!Utils::TryGetComponentInstanceId(
 						candidate,
 						candidateInstanceId,
 						conversionDiagnostic))
@@ -838,7 +742,7 @@ bool WorldPrefab::BuildLinkedOverrides(
 						instanceToSourceIds);
 				if (!sourceReflection.GetProperties().ContainsKey(
 						liveProperty.m_first) ||
-					!AreYamlNodesEqual(
+					!Utils::AreYamlNodesEqual(
 						normalizedLiveValue,
 						sourceReflection.GetProperties()[
 							liveProperty.m_first]))
@@ -997,10 +901,10 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 				{
 					const bool bChangedFromBaseline =
 						bHasBaseline &&
-						!AreYamlNodesEqual(liveValue, baselineValue);
+						!Utils::AreYamlNodesEqual(liveValue, baselineValue);
 					if (bChangedFromBaseline)
 					{
-						if (!AreYamlNodesEqual(liveValue, sourceValue))
+						if (!Utils::AreYamlNodesEqual(liveValue, sourceValue))
 						{
 							gameObjectOverride[propertyName] =
 								YAML::Clone(liveValue);
@@ -1052,7 +956,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			const ReflectedData& sourceReflection =
 				sourcePrefab->m_components[sourceComponentIndex];
 			InstanceId sourceComponentId;
-			if (!TryGetComponentInstanceId(
+			if (!Utils::TryGetComponentInstanceId(
 					sourceReflection,
 					sourceComponentId,
 					outDiagnostic))
@@ -1073,7 +977,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 						expandedPrefab->m_components[componentIndex];
 					InstanceId candidateInstanceId;
 					std::string conversionDiagnostic;
-					if (!TryGetComponentInstanceId(
+					if (!Utils::TryGetComponentInstanceId(
 							candidate,
 							candidateInstanceId,
 							conversionDiagnostic))
@@ -1102,7 +1006,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 						effectiveBaseline->m_components[componentIndex];
 					InstanceId candidateInstanceId;
 					std::string conversionDiagnostic;
-					if (!TryGetComponentInstanceId(
+					if (!Utils::TryGetComponentInstanceId(
 							candidate,
 							candidateInstanceId,
 							conversionDiagnostic))
@@ -1163,7 +1067,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 				const bool bChangedFromBaseline =
 					baselineReflection &&
 					(!bHasBaselineProperty ||
-						!AreYamlNodesEqual(
+						!Utils::AreYamlNodesEqual(
 							normalizedLiveValue,
 							baselineReflection->GetProperties()[
 								liveProperty.m_first]));
@@ -1172,7 +1076,7 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 				{
 					if (!sourceReflection.GetProperties().ContainsKey(
 							liveProperty.m_first) ||
-						!AreYamlNodesEqual(
+						!Utils::AreYamlNodesEqual(
 							normalizedLiveValue,
 							sourceReflection.GetProperties()[
 								liveProperty.m_first]))
@@ -1230,7 +1134,17 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 		return false;
 	}
 
-	if (pendingUpdates.Num() != world->m_prefabInstances.Num())
+	size_t numPrefabInstanceRoots = 0;
+	for (const auto& object : world->m_objects)
+	{
+		if (object && object->GetFileId())
+		{
+			++numPrefabInstanceRoots;
+		}
+	}
+
+	if (pendingUpdates.Num() != numPrefabInstanceRoots ||
+		world->m_prefabInstances.Num() != numPrefabInstanceRoots)
 	{
 		outDiagnostic =
 			"the linked prefab set changed before its baselines could be committed";
@@ -1250,6 +1164,33 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 			return false;
 		}
 
+		GameObjectPtr root = world->GetObjectByInstanceId(
+			pendingUpdate.m_rootInstanceId).DynamicCast<GameObject>();
+		const PrefabInstanceLink* currentLink = nullptr;
+		std::string baselineDiagnostic;
+		if (!root ||
+			!root->GetFileId() ||
+			!pendingUpdate.m_effectiveBaseline ||
+			pendingUpdate.m_effectiveBaseline->GetFileId() !=
+				root->GetFileId() ||
+			!pendingUpdate.m_effectiveBaseline->
+				ValidateForInstantiation(
+					baselineDiagnostic) ||
+			!world->TryGetPrefabInstance(
+				pendingUpdate.m_rootInstanceId,
+				currentLink) ||
+			!currentLink)
+		{
+			outDiagnostic =
+				"a linked prefab root, source FileId, baseline, or derived metadata changed before commit";
+			if (!baselineDiagnostic.empty())
+			{
+				outDiagnostic += ": " +
+					baselineDiagnostic;
+			}
+			return false;
+		}
+
 		for (const auto& mapping :
 			pendingUpdate.m_sourceToInstanceIds)
 		{
@@ -1266,6 +1207,29 @@ bool WorldPrefab::CommitLinkedInstanceUpdates(
 			if (!world->m_objectsMap.ContainsKey(liveInstanceId))
 			{
 				continue;
+			}
+
+			GameObjectPtr liveObject = world->GetObjectByInstanceId(
+				liveInstanceId).DynamicCast<GameObject>();
+			bool bIsInRootHierarchy = false;
+			for (GameObjectPtr current = liveObject;
+				current;
+				current = current->GetParent())
+			{
+				if (current == root)
+				{
+					bIsInRootHierarchy = true;
+					break;
+				}
+			}
+			if (!liveObject ||
+				!bIsInRootHierarchy ||
+				(liveObject != root &&
+					liveObject->GetFileId()))
+			{
+				outDiagnostic =
+					"a linked prefab mapping references a live object outside its authoritative root";
+				return false;
 			}
 
 			if (nextPrefabInstanceRootsByObject.ContainsKey(
@@ -1323,20 +1287,29 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 
 	TVector<PendingPrefabLinkUpdate> pendingLinkUpdates;
 
-	TSet<InstanceId> linkedRoots;
-	for (const auto& linkEntry : world->GetPrefabInstances())
-	{
-		linkedRoots.Insert(linkEntry.m_first);
-	}
-
 	const auto& gameObjects = world->GetGameObjects();
 	TSet<InstanceId> reservedInstanceIds;
+	TSet<InstanceId> linkedRoots;
+	TVector<GameObjectPtr> linkedRootObjects;
 	for (const auto& gameObject : gameObjects)
 	{
 		if (gameObject)
 		{
 			reservedInstanceIds.Insert(gameObject->GetInstanceId());
+			if (gameObject->GetFileId())
+			{
+				linkedRoots.Insert(gameObject->GetInstanceId());
+				linkedRootObjects.Add(gameObject);
+			}
 		}
+	}
+
+	if (linkedRoots.Num() != world->m_prefabInstances.Num())
+	{
+		res->m_loadDiagnostic =
+			"cannot serialize world: authoritative prefab roots and derived metadata are inconsistent";
+		SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
+		return res;
 	}
 
 	for (const auto& go : gameObjects)
@@ -1354,29 +1327,65 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		}
 	}
 
-	for (auto linkEntry : world->m_prefabInstances)
+	TSet<InstanceId> validatedLinkedMembers;
+	for (const GameObjectPtr& root : linkedRootObjects)
 	{
-		PrefabInstanceLink& link = *linkEntry.m_second;
-		GameObjectPtr root = world->GetObjectByInstanceId(
-			link.m_rootInstanceId).DynamicCast<GameObject>();
-		if (!root)
+		const InstanceId& rootInstanceId =
+			root->GetInstanceId();
+		const FileId& sourcePrefabId =
+			root->GetFileId();
+		const PrefabInstanceLink* validatedLink = nullptr;
+		if (!world->m_prefabInstances.ContainsKey(
+				rootInstanceId) ||
+			!world->TryGetPrefabInstance(
+				rootInstanceId,
+				validatedLink) ||
+			!validatedLink)
 		{
 			res->m_loadDiagnostic =
 				"cannot serialize linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
-				"': live root '" +
-				link.m_rootInstanceId.ToString() +
-				"' is missing";
+				sourcePrefabId.ToString() +
+				"': its derived runtime metadata is missing or inconsistent";
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
 			res->m_gameObjects.Clear();
 			return res;
+		}
+		PrefabInstanceLink& link =
+			world->m_prefabInstances[rootInstanceId];
+		for (const auto& mapping :
+			link.m_sourceToInstanceIds)
+		{
+			const InstanceId& liveInstanceId =
+				*mapping.m_second;
+			if (!world->m_objectsMap.ContainsKey(
+					liveInstanceId))
+			{
+				continue;
+			}
+
+			if (!validatedLinkedMembers.Insert(
+					liveInstanceId) ||
+				!world->m_prefabInstanceRootsByObject.
+					ContainsKey(liveInstanceId) ||
+				world->m_prefabInstanceRootsByObject[
+					liveInstanceId] != rootInstanceId)
+			{
+				res->m_loadDiagnostic =
+					"cannot serialize linked prefab '" +
+					sourcePrefabId.ToString() +
+					"': its derived membership cache is inconsistent";
+				SAILOR_LOG_ERROR("%s.",
+					res->m_loadDiagnostic.c_str());
+				res->m_gameObjects.Clear();
+				return res;
+			}
 		}
 
 		if (!link.m_effectiveBaseline)
 		{
 			res->m_loadDiagnostic =
 				"cannot serialize linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"': its effective baseline is unavailable";
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
 			res->m_gameObjects.Clear();
@@ -1385,12 +1394,12 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 
 		PrefabPtr sourcePrefab;
 		if (!App::GetSubmodule<PrefabImporter>()->LoadPrefab_Immediate(
-				link.m_sourcePrefabId,
+				sourcePrefabId,
 				sourcePrefab))
 		{
 			res->m_loadDiagnostic =
 				"cannot serialize linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"': source asset is unavailable";
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
 			res->m_gameObjects.Clear();
@@ -1398,7 +1407,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		}
 
 		PrefabPtr expandedPrefab =
-			Prefab::FromGameObject(root, link.m_sourcePrefabId);
+			Prefab::FromGameObject(root, sourcePrefabId);
 		std::string diagnostic;
 		TMap<InstanceId, InstanceId> reconciledInstanceIds;
 		if (!ReconcileLinkedInstanceIds(
@@ -1411,7 +1420,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		{
 			res->m_loadDiagnostic =
 				"cannot reconcile linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"': " +
 				diagnostic;
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
@@ -1430,7 +1439,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		{
 			res->m_loadDiagnostic =
 				"cannot serialize linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"': " +
 				diagnostic;
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
@@ -1441,7 +1450,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		PrefabPtr nextEffectiveBaseline =
 			PrefabPtr::Make(
 				world->GetAllocator(),
-				link.m_sourcePrefabId);
+				sourcePrefabId);
 		nextEffectiveBaseline->m_gameObjects =
 			sourcePrefab->m_gameObjects;
 		nextEffectiveBaseline->m_components =
@@ -1506,7 +1515,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 					sourcePrefab->m_components[
 						sourceComponentIndex];
 				InstanceId sourceComponentId;
-				if (!TryGetComponentInstanceId(
+				if (!Utils::TryGetComponentInstanceId(
 						sourceReflection,
 						sourceComponentId,
 						diagnostic))
@@ -1527,7 +1536,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 							liveComponentIndex];
 					InstanceId candidateInstanceId;
 					std::string conversionDiagnostic;
-					if (!TryGetComponentInstanceId(
+					if (!Utils::TryGetComponentInstanceId(
 							candidate,
 							candidateInstanceId,
 							conversionDiagnostic))
@@ -1607,7 +1616,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		{
 			res->m_loadDiagnostic =
 				"cannot update linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"' baseline: " +
 				diagnostic;
 			SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
@@ -1651,7 +1660,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 		{
 			res->m_loadDiagnostic =
 				"cannot validate expanded linked prefab '" +
-				link.m_sourcePrefabId.ToString() +
+				sourcePrefabId.ToString() +
 				"': " +
 				diagnostic;
 			SAILOR_LOG_ERROR("%s.",
@@ -1663,12 +1672,22 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 
 		PendingPrefabLinkUpdate pendingUpdate;
 		pendingUpdate.m_rootInstanceId =
-			link.m_rootInstanceId;
+			rootInstanceId;
 		pendingUpdate.m_sourceToInstanceIds =
 			std::move(reconciledInstanceIds);
 		pendingUpdate.m_effectiveBaseline =
 			std::move(nextEffectiveBaseline);
 		pendingLinkUpdates.Add(std::move(pendingUpdate));
+	}
+
+	if (validatedLinkedMembers.Num() !=
+		world->m_prefabInstanceRootsByObject.Num())
+	{
+		res->m_loadDiagnostic =
+			"cannot serialize world: the derived prefab membership cache contains stale entries";
+		SAILOR_LOG_ERROR("%s.", res->m_loadDiagnostic.c_str());
+		res->m_gameObjects.Clear();
+		return res;
 	}
 
 	std::string commitDiagnostic;

@@ -424,6 +424,33 @@ public sealed class EditorViewportEventContractTests
     }
 
     [Fact]
+    public void ToolShortcutKeys_AlsoReachRuntimeCameraInput()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "SceneView.xaml.cs");
+        var inputHandler = Slice(
+            source,
+            "async Task<NativeViewportInputDispatchResult> ProcessNativeViewportInputAsync(",
+            "void SubscribeToEngineLifecycle()");
+        var shortcutBlock = Slice(
+            inputHandler,
+            "if (input.Kind == NativeSceneViewportInputKind.Key &&",
+            "if (input.Kind ==\n                    NativeSceneViewportInputKind.PointerButton");
+
+        AssertInOrder(
+            inputHandler,
+            "SceneViewportToolShortcuts.TryApply(",
+            "ApplyViewportToolStateAsync(",
+            "viewportAdapter.SendInput(");
+        Assert.DoesNotContain(
+            "return NativeViewportInputDispatchResult.Forwarded;",
+            shortcutBlock,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void NativeInputQueue_ResetsAcrossViewAndBackendLifecycle()
     {
         var source = ReadRepositoryFile("Editor", "Views", "SceneView.xaml.cs");

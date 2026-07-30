@@ -93,7 +93,7 @@ namespace SailorEditor.Views
             contentStore.SelectAsset(file);
         }
 
-        async void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)
+        void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)
         {
             if (suppressSelectionChanged)
             {
@@ -106,7 +106,9 @@ namespace SailorEditor.Views
                 return;
             }
 
-            await SelectRow(row, false);
+            RunContentUiAction(
+                () => SelectRow(row, false),
+                "Select Content item");
         }
 
         async Task SelectRow(ContentListRow row, bool updateCollectionSelection)
@@ -175,6 +177,7 @@ namespace SailorEditor.Views
             }
 
             e.Handled = true;
+            await Task.Yield();
 
             if (requiresConfirmation && target is PrefabFile prefab && source is GameObject gameObject)
             {
@@ -529,8 +532,41 @@ namespace SailorEditor.Views
                 AppendChildren(rows, foldersByParent, assetsByFolder, foldersById, -1, projection.TopLevelDepth, projection);
             }
 
-            ReplaceRows(visibleRows, rows);
-            RestoreSelection();
+            var desiredSelectedRow = rows.FirstOrDefault(
+                row => row.IsSelected);
+            var currentSelectedRow =
+                ContentList.SelectedItem as ContentListRow;
+            var preservesCurrentSelection =
+                currentSelectedRow is not null &&
+                desiredSelectedRow is not null &&
+                string.Equals(
+                    currentSelectedRow.Id,
+                    desiredSelectedRow.Id,
+                    StringComparison.Ordinal) &&
+                EqualityComparer<ContentListRow>.Default.Equals(
+                    currentSelectedRow,
+                    desiredSelectedRow) &&
+                visibleRows.Contains(currentSelectedRow);
+            suppressSelectionChanged = true;
+            try
+            {
+                if (!preservesCurrentSelection &&
+                    currentSelectedRow is not null)
+                {
+                    ContentList.SelectedItem = null;
+                }
+
+                ContentRowReconciler.Reconcile(
+                    visibleRows,
+                    rows,
+                    row => row.Id);
+                ContentList.SelectedItem =
+                    visibleRows.FirstOrDefault(row => row.IsSelected);
+            }
+            finally
+            {
+                suppressSelectionChanged = false;
+            }
         }
 
         void AppendChildren(
@@ -703,32 +739,39 @@ namespace SailorEditor.Views
                 border.GestureRecognizers.Add(dropGesture);
 
                 var singleTap = new TapGestureRecognizer { NumberOfTapsRequired = 1 };
-                singleTap.Tapped += async (_, _) =>
+                singleTap.Tapped += (_, _) =>
                 {
                     if (border.BindingContext is ContentListRow row)
                     {
-                        await SelectRow(row, true);
+                        RunContentUiAction(
+                            () => SelectRow(row, true),
+                            "Select Content item");
                     }
                 };
                 border.GestureRecognizers.Add(singleTap);
 
                 var doubleTap = new TapGestureRecognizer { NumberOfTapsRequired = 2 };
-                doubleTap.Tapped += async (_, _) =>
+                doubleTap.Tapped += (_, _) =>
                 {
                     if (border.BindingContext is not ContentListRow row || !rowModelsById.TryGetValue(row.Id, out var model))
                     {
                         return;
                     }
 
-                    switch (model)
-                    {
-                        case WorldFile worldFile:
-                            await OpenWorldWithConfirmation(worldFile);
-                            break;
-                        case AssetFolder or ProjectContentFolderItem:
-                            ToggleFolder(row);
-                            break;
-                    }
+                    RunContentUiAction(
+                        async () =>
+                        {
+                            switch (model)
+                            {
+                                case WorldFile worldFile:
+                                    await OpenWorldWithConfirmation(worldFile);
+                                    break;
+                                case AssetFolder or ProjectContentFolderItem:
+                                    ToggleFolder(row);
+                                    break;
+                            }
+                        },
+                        "Open Content item");
                 };
                 border.GestureRecognizers.Add(doubleTap);
 
@@ -766,7 +809,9 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Duplicate",
-                        Command = new Command(async () => await DuplicateAsset(assetFile))
+                        Command = CreateContentContextMenuCommand(
+                            () => DuplicateAsset(assetFile),
+                            "Duplicate asset")
                     });
                 }
 
@@ -775,7 +820,9 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Rename",
-                        Command = new Command(async () => await RenameAsset(assetFile))
+                        Command = CreateContentContextMenuCommand(
+                            () => RenameAsset(assetFile),
+                            "Rename asset")
                     });
                 }
 
@@ -783,7 +830,9 @@ namespace SailorEditor.Views
                 {
                     Text = "Delete",
                     IsDestructive = true,
-                    Command = new Command(async () => await DeleteAsset(assetFile))
+                    Command = CreateContentContextMenuCommand(
+                        () => DeleteAsset(assetFile),
+                        "Delete asset")
                 };
                 items.Add(deleteItem);
                 contextMenu.Show(items.ToArray());
@@ -795,7 +844,9 @@ namespace SailorEditor.Views
                     new EditorContextMenuItem
                     {
                         Text = "Create Folder",
-                        Command = new Command(async () => await CreateFolder(folder))
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateFolder(folder),
+                            "Create folder")
                     }
                 };
                 if (service.CanModifyFolder(folder))
@@ -803,13 +854,17 @@ namespace SailorEditor.Views
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Rename",
-                        Command = new Command(async () => await RenameFolder(folder))
+                        Command = CreateContentContextMenuCommand(
+                            () => RenameFolder(folder),
+                            "Rename folder")
                     });
                     items.Add(new EditorContextMenuItem
                     {
                         Text = "Delete",
                         IsDestructive = true,
-                        Command = new Command(async () => await DeleteFolder(folder))
+                        Command = CreateContentContextMenuCommand(
+                            () => DeleteFolder(folder),
+                            "Delete folder")
                     });
                 }
                 contextMenu.Show(items.ToArray());
@@ -820,23 +875,21 @@ namespace SailorEditor.Views
                 contextMenu.Show(new EditorContextMenuItem
                 {
                     Text = "Create Folder",
-                    Command = new Command(async () => await CreateFolder(null))
+                    Command = CreateContentContextMenuCommand(
+                        () => CreateFolder(null),
+                        "Create folder")
                 });
             }
         }
 
-        void RestoreSelection()
+        static Command CreateContentContextMenuCommand(
+            Func<Task> action,
+            string operation)
         {
-            var selected = visibleRows.FirstOrDefault(row => row.IsSelected);
-            suppressSelectionChanged = true;
-            try
-            {
-                ContentList.SelectedItem = selected;
-            }
-            finally
-            {
-                suppressSelectionChanged = false;
-            }
+            return new Command(
+                () => RunContentUiAction(
+                    action,
+                    operation));
         }
 
         static void RunContentUiAction(
@@ -934,14 +987,6 @@ namespace SailorEditor.Views
                 int.TryParse(id["folder:".Length..], out folderId);
         }
 
-        static void ReplaceRows(ObservableCollection<ContentListRow> target, IReadOnlyList<ContentListRow> desired)
-        {
-            target.Clear();
-            foreach (var row in desired)
-            {
-                target.Add(row);
-            }
-        }
     }
 
     public sealed record ContentListRow(string Id, int Depth, string Label, string Icon, bool HasChildren, bool IsExpanded, bool IsSelected)

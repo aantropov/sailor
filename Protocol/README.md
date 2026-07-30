@@ -51,6 +51,13 @@ blocked regular operation. Shutdown waits for admitted operations to leave the
 Editor worker before destroying the Scheduler, so it must never run as an
 Editor-worker task and attempt to join itself.
 
+`trace_viewport_ray` resolves a finite world-space target for normalized
+top-left viewport coordinates. The current scene viewport chooses the nearest
+ready-mesh world AABB entry, then a forward intersection with the `y=0` plane,
+then a point 1000 units forward. A request fails only when the viewport,
+coordinates, active camera, or resulting ray is invalid; an empty scene is not
+a trace failure.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

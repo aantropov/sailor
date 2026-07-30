@@ -50,7 +50,7 @@ namespace Sailor
 			InstanceId& outInstanceId,
 			float& outDistance);
 
-		SAILOR_API bool TryResolveDropPosition(
+		SAILOR_API bool TryResolveRayTarget(
 			const Math::Ray& ray,
 			const TVector<PickCandidate>& candidates,
 			glm::vec3& outPosition);
@@ -100,7 +100,7 @@ namespace Sailor
 				float normalizedX,
 				float normalizedY);
 			SAILOR_API bool QueueToolShortcutEvent(uint32_t keyCode);
-			SAILOR_API bool TryResolveDropPosition(
+			SAILOR_API bool TraceViewportRay(
 				World& world,
 				float normalizedX,
 				float normalizedY,

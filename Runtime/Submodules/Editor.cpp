@@ -7,13 +7,11 @@
 #include "ECS/PathTracerECS.h"
 #include "Components/PathTracerProxyComponent.h"
 #include "Components/EditorComponent.h"
-#include "Components/MeshRendererComponent.h"
 #include "Raytracing/PathTracer.h"
 #include "Editor.h"
 #include "Containers/Map.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
-#include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/FileId.h"
 #include "Core/Reflection.h"
 #include "Math/Math.h"
@@ -44,6 +42,8 @@ namespace Sailor
 
 namespace
 {
+	constexpr uint64_t c_primaryEditorViewportId = 1u;
+
 	bool IsDescendantOf(GameObjectPtr object, GameObjectPtr possibleParent)
 	{
 		for (auto current = object; current.IsValid(); current = current->GetParent())
@@ -852,80 +852,16 @@ bool Editor::InstantiatePrefab(
 	return true;
 }
 
-bool Editor::CreateModelGameObject(
-	const FileId& modelId,
-	const std::string& name,
-	const InstanceId& parentInstanceId,
-	const glm::vec3* worldPosition,
-	InstanceId& outInstanceId)
-{
-	SAILOR_PROFILE_FUNCTION();
-	outInstanceId = InstanceId::Invalid;
-
-	if (!m_world || !modelId || name.empty())
-	{
-		return false;
-	}
-
-	GameObjectPtr parentGameObject{};
-	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
-	{
-		return false;
-	}
-
-	auto modelImporter = App::GetSubmodule<ModelImporter>();
-	ModelPtr model{};
-	if (!modelImporter ||
-		!modelImporter->LoadModel_Immediate(modelId, model) ||
-		!model ||
-		!model->IsReady())
-	{
-		return false;
-	}
-
-	auto gameObject = m_world->Instantiate(name);
-	if (!gameObject)
-	{
-		return false;
-	}
-
-	if (parentGameObject)
-	{
-		gameObject->SetParent(parentGameObject);
-		if (gameObject->GetParent() != parentGameObject)
-		{
-			m_world->DestroyImmediate(gameObject);
-			return false;
-		}
-	}
-
-	if (worldPosition && !TrySetWorldPosition(gameObject, *worldPosition))
-	{
-		m_world->DestroyImmediate(gameObject);
-		return false;
-	}
-
-	auto meshRenderer = gameObject->AddComponent<MeshRendererComponent>();
-	if (!meshRenderer)
-	{
-		m_world->DestroyImmediate(gameObject);
-		return false;
-	}
-
-	meshRenderer->SetModel(model);
-	outInstanceId = gameObject->GetInstanceId();
-	NotifyManagedObjectMutation(outInstanceId);
-	return true;
-}
-
-bool Editor::ResolveViewportDropPosition(
+bool Editor::TraceViewportRay(
+	uint64_t viewportId,
 	float normalizedX,
 	float normalizedY,
 	glm::vec3& outPosition) const
 {
-	return m_world &&
+	return viewportId == c_primaryEditorViewportId &&
+		m_world &&
 		m_viewportController &&
-		m_viewportController->TryResolveDropPosition(
+		m_viewportController->TraceViewportRay(
 			*m_world,
 			normalizedX,
 			normalizedY,

@@ -2474,7 +2474,7 @@ namespace SailorEditor.Services
                 cancellationToken);
         }
 
-        public async Task<Vec4?> ResolveViewportDropPositionAsync(
+        public async Task<Vec4?> TraceViewportRayAsync(
             double normalizedX,
             double normalizedY,
             CancellationToken cancellationToken = default)
@@ -2493,7 +2493,7 @@ namespace SailorEditor.Services
             var succeeded = await InvokeRunningInteropAsync(async token =>
                 {
                     resolved =
-                        await protocolClient.ResolveViewportDropPositionAsync(
+                        await protocolClient.TraceViewportRayAsync(
                             SceneViewportId,
                             (float)normalizedX,
                             (float)normalizedY,
@@ -2510,30 +2510,6 @@ namespace SailorEditor.Services
                     W = resolved.W
                 }
                 : null;
-        }
-
-        public Task<InstanceId?> CreateModelGameObjectAsync(
-            FileId modelFileId,
-            string name,
-            InstanceId? parentId = null,
-            Vec4? worldPosition = null,
-            CancellationToken cancellationToken = default)
-        {
-            var position = worldPosition is null
-                ? (EngineProtocolVector4?)null
-                : new EngineProtocolVector4(
-                    worldPosition.X,
-                    worldPosition.Y,
-                    worldPosition.Z,
-                    worldPosition.W);
-            return InvokeCreationInteropAsync(
-                token => protocolClient.CreateModelGameObjectAsync(
-                    modelFileId?.Value ?? string.Empty,
-                    name ?? string.Empty,
-                    parentId?.Value ?? string.Empty,
-                    position,
-                    token),
-                cancellationToken);
         }
 
         public async Task<bool> DestroyObjectAsync(

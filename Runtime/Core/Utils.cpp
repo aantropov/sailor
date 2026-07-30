@@ -1,4 +1,7 @@
 #include "Utils.h"
+#include "Core/Reflection.h"
+#include "Engine/InstanceId.h"
+#include "YamlExceptionBoundary.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #if defined(_WIN32)
@@ -30,6 +33,134 @@
 
 using namespace Sailor;
 using namespace Sailor::Utils;
+
+bool Utils::AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs)
+{
+	if (lhs.IsDefined() != rhs.IsDefined())
+	{
+		return false;
+	}
+
+	if (!lhs.IsDefined())
+	{
+		return true;
+	}
+
+	if (lhs.Type() != rhs.Type())
+	{
+		return false;
+	}
+
+	switch (lhs.Type())
+	{
+	case YAML::NodeType::Null:
+		return true;
+
+	case YAML::NodeType::Scalar:
+		return lhs.Scalar() == rhs.Scalar();
+
+	case YAML::NodeType::Sequence:
+		if (lhs.size() != rhs.size())
+		{
+			return false;
+		}
+
+		for (size_t index = 0; index < lhs.size(); ++index)
+		{
+			if (!AreYamlNodesEqual(lhs[index], rhs[index]))
+			{
+				return false;
+			}
+		}
+		return true;
+
+	case YAML::NodeType::Map:
+		if (lhs.size() != rhs.size())
+		{
+			return false;
+		}
+
+		{
+			TVector<bool> matchedRightEntries(rhs.size());
+			for (const auto& leftEntry : lhs)
+			{
+				bool bFoundMatch = false;
+				size_t rightIndex = 0;
+				for (const auto& rightEntry : rhs)
+				{
+					if (!matchedRightEntries[rightIndex] &&
+						AreYamlNodesEqual(leftEntry.first, rightEntry.first) &&
+						AreYamlNodesEqual(leftEntry.second, rightEntry.second))
+					{
+						matchedRightEntries[rightIndex] = true;
+						bFoundMatch = true;
+						break;
+					}
+					++rightIndex;
+				}
+
+				if (!bFoundMatch)
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+
+	case YAML::NodeType::Undefined:
+	default:
+		return false;
+	}
+}
+
+bool Utils::TryGetComponentInstanceId(
+	const ReflectedData& reflection,
+	InstanceId& outInstanceId,
+	std::string& outDiagnostic)
+{
+	outInstanceId = InstanceId::Invalid;
+	outDiagnostic.clear();
+
+	if (!reflection.IsValid())
+	{
+		outDiagnostic = "the reflected component is invalid";
+		return false;
+	}
+
+	const auto& properties = reflection.GetProperties();
+	if (!properties.ContainsKey("instanceId"))
+	{
+		outDiagnostic = "the reflected component has no instanceId";
+		return false;
+	}
+
+	InstanceId instanceId;
+	std::string conversionDiagnostic;
+	if (!External::TryConvertYaml(
+			properties["instanceId"],
+			instanceId,
+			conversionDiagnostic))
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId";
+		if (!conversionDiagnostic.empty())
+		{
+			outDiagnostic += ": " + conversionDiagnostic;
+		}
+		return false;
+	}
+
+	if (instanceId.ComponentId() == InstanceId::Invalid ||
+		instanceId.GameObjectId() == InstanceId::Invalid)
+	{
+		outDiagnostic =
+			"the reflected component has an invalid instanceId: "
+			"both component and game-object IDs must be valid";
+		return false;
+	}
+
+	outInstanceId = instanceId;
+	return true;
+}
 
 glm::vec4 Utils::LinearToSRGB(const glm::u8vec4& linearRGB)
 {

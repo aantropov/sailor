@@ -94,13 +94,8 @@ namespace Sailor
 			const glm::vec3* worldPosition,
 			class InstanceId& outInstanceId,
 			bool bStrictInstanceIds = false);
-		bool CreateModelGameObject(
-			const class FileId& modelId,
-			const std::string& name,
-			const class InstanceId& parentInstanceId,
-			const glm::vec3* worldPosition,
-			class InstanceId& outInstanceId);
-		bool ResolveViewportDropPosition(
+		bool TraceViewportRay(
+			uint64_t viewportId,
 			float normalizedX,
 			float normalizedY,
 			glm::vec3& outPosition) const;

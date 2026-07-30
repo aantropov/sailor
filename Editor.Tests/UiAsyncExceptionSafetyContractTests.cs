@@ -114,7 +114,7 @@ public sealed class UiAsyncExceptionSafetyContractTests
     }
 
     [Fact]
-    public void ContentDropHandlers_ObserveAsyncFailures()
+    public void ContentHandlersAndContextCommands_ObserveAsyncFailures()
     {
         var contentSource = ReadRepositoryFile(
             "Editor",
@@ -129,10 +129,29 @@ public sealed class UiAsyncExceptionSafetyContractTests
             "Drop += async",
             contentSource,
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "async void OnContentSelectionChanged",
+            contentSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Tapped += async",
+            contentSource,
+            StringComparison.Ordinal);
+        var contextMenu = Slice(
+            contentSource,
+            "void ShowContextMenu(object model)",
+            "static Command CreateContentContextMenuCommand(");
+        Assert.DoesNotMatch(
+            @"new\s+Command\s*\(\s*async",
+            contextMenu);
+        Assert.True(
+            CountOccurrences(
+                contextMenu,
+                "Command = CreateContentContextMenuCommand(") >= 7);
         Assert.True(
             CountOccurrences(
                 contentSource,
-                "RunContentUiAction(") >= 3);
+                "RunContentUiAction(") >= 4);
         AssertInOrder(
             helper,
             "try",
