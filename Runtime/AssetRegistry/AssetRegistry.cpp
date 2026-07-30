@@ -288,15 +288,21 @@ std::string AssetRegistry::GetCacheFolder()
 	return AsFolderPath(App::GetWorkspaceContext().GetCache());
 }
 
-AssetRegistry::AssetRegistry()
+AssetRegistry::AssetRegistry() :
+	AssetRegistry(App::GetWorkspaceContext())
 {
-	const Workspace::WorkspaceContext& context = App::GetWorkspaceContext();
+}
+
+AssetRegistry::AssetRegistry(
+	const Workspace::WorkspaceContext& workspaceContext) :
+	m_workspaceContext(workspaceContext)
+{
 	m_contentMounts =
 	{
-		AssetMountDescriptor{ context.GetEngineContent(), EAssetMountKind::Engine, 0, false },
-		AssetMountDescriptor{ context.GetContent(), EAssetMountKind::Workspace, 100, true }
+		AssetMountDescriptor{ m_workspaceContext.GetEngineContent(), EAssetMountKind::Engine, 0, false },
+		AssetMountDescriptor{ m_workspaceContext.GetContent(), EAssetMountKind::Workspace, 100, true }
 	};
-	m_assetCache.Initialize();
+	m_assetCache.Initialize(m_workspaceContext);
 }
 
 bool AssetRegistry::RestoreAssetImportTime(
@@ -336,15 +342,16 @@ void AssetRegistry::CacheAsset(const AssetInfoPtr info)
 AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInfoPtr info)
 {
 	AssetProcessingToken token;
+	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	if (info == nullptr || !info->GetFileId())
 	{
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
 		return token;
 	}
 
 	// Serialize capture, generation assignment, and publication. File revisions
 	// are not time-ordered (a valid edit may be backdated), so generation alone
 	// cannot safely decide which concurrently captured revision is newer.
-	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	token.m_fileId = info->GetFileId();
 	token.m_sourcePath = info->GetAssetFilepath();
 	m_assetCache.Remove(token.m_fileId);
@@ -356,6 +363,7 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	{
 		m_assetProcessingStates[token.m_fileId] =
 			AssetProcessingState{ token, true };
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
 		SAILOR_LOG_ERROR(
 			"Cannot capture asset processing revision after invalidating its cache watermark: %s",
 			token.m_sourcePath.c_str());
@@ -365,6 +373,7 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	{
 		m_assetProcessingStates[token.m_fileId] =
 			AssetProcessingState{ token, true };
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
 		SAILOR_LOG_ERROR(
 			"Cannot start retry-safe asset processing because its invalidated cache watermark was not persisted: %s",
 			token.m_sourcePath.c_str());
@@ -389,12 +398,12 @@ void AssetRegistry::CompleteAssetProcessing(
 	const AssetProcessingToken& token,
 	bool bSucceeded)
 {
+	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	if (!token)
 	{
 		return;
 	}
 
-	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	auto processingState = m_assetProcessingStates.Find(token.m_fileId);
 	if (processingState == m_assetProcessingStates.end() ||
 		!processingState.Value().m_token.Matches(token))
@@ -405,8 +414,23 @@ void AssetRegistry::CompleteAssetProcessing(
 	if (!bSucceeded)
 	{
 		processingState.Value().m_bRejected = true;
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
 		SAILOR_LOG_ERROR(
 			"Asset processing failed; invalidated the cached source watermark for retry: %s",
+			token.m_sourcePath.c_str());
+		return;
+	}
+
+	FileRevision currentSourceRevision;
+	if (!Utils::TryGetFileRevision(
+			token.m_sourcePath,
+			currentSourceRevision) ||
+		currentSourceRevision != token.m_sourceRevision)
+	{
+		processingState.Value().m_bRejected = true;
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
+		SAILOR_LOG_ERROR(
+			"Asset source changed while it was being processed; invalidated its cached source watermark for retry: %s",
 			token.m_sourcePath.c_str());
 		return;
 	}
@@ -417,7 +441,16 @@ void AssetRegistry::CompleteAssetProcessing(
 		acknowledgedToken.m_assetImportTime,
 		acknowledgedToken.m_sourcePath,
 		acknowledgedToken.m_sourceRevision);
-	m_assetCache.SaveCache();
+	if (!m_assetCache.SaveCache())
+	{
+		m_assetCache.Remove(acknowledgedToken.m_fileId);
+		processingState.Value().m_bRejected = true;
+		m_bScanProcessingFailed |= m_bScanProcessingActive;
+		SAILOR_LOG_ERROR(
+			"Cannot persist the completed asset processing watermark; preserving retry state: %s",
+			token.m_sourcePath.c_str());
+		return;
+	}
 	m_assetProcessingStates.Remove(acknowledgedToken.m_fileId);
 }
 
@@ -460,6 +493,12 @@ bool AssetRegistry::CompleteScanProcessing()
 		bSucceeded &= processingTask &&
 			processingTask->IsFinished() &&
 			processingTask->GetResult();
+	}
+	{
+		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+		bSucceeded &= !m_bScanProcessingFailed;
+		m_bScanProcessingActive = false;
+		m_bScanProcessingFailed = false;
 	}
 	return bSucceeded;
 }
@@ -543,7 +582,7 @@ bool AssetRegistry::ResolveWorkspaceContentPathForWrite(
 	}
 
 	std::error_code error;
-	const std::filesystem::path root = App::GetWorkspaceContext().GetContent();
+	const std::filesystem::path root = m_workspaceContext.GetContent();
 	outPath = std::filesystem::weakly_canonical(root / std::filesystem::path(virtualPath), error);
 	return !error && IsInside(root, outPath);
 }
@@ -611,6 +650,8 @@ bool AssetRegistry::ScanContentFolder()
 		m_scanProcessingTasks.Clear();
 		m_deferredScanProcessingTasks.Clear();
 		m_bCollectScanProcessingTasks = false;
+		m_bScanProcessingActive = false;
+		m_bScanProcessingFailed = false;
 	}
 
 	const AssetMountDiscoveryResult discovery = DiscoverAssetMountFiles(m_contentMounts);
@@ -1081,6 +1122,7 @@ bool AssetRegistry::ScanContentFolder()
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 		m_bCollectScanProcessingTasks = true;
+		m_bScanProcessingActive = true;
 	}
 
 	for (const PendingAssetNotification& pending : pendingNotifications)
@@ -1200,12 +1242,12 @@ bool AssetRegistry::ResolveDirectLoadPath(
 	{
 		std::error_code workspaceError;
 		const std::filesystem::path workspaceCandidate = std::filesystem::weakly_canonical(
-			App::GetWorkspaceContext().GetContent() / requestedPath,
+			m_workspaceContext.GetContent() / requestedPath,
 			workspaceError);
 		if (!workspaceError &&
 			std::filesystem::is_regular_file(workspaceCandidate, workspaceError) &&
 			!workspaceError &&
-			IsInside(App::GetWorkspaceContext().GetContent(), workspaceCandidate))
+			IsInside(m_workspaceContext.GetContent(), workspaceCandidate))
 		{
 			const std::string virtualPath = std::filesystem::path(requestedPath).generic_string();
 			const auto winner = m_contentFileWinners.Find(VirtualPathKey(virtualPath));
@@ -1233,7 +1275,7 @@ bool AssetRegistry::ResolveDirectLoadPath(
 	const std::filesystem::path candidate = std::filesystem::weakly_canonical(
 		requested.is_absolute()
 			? requested
-			: App::GetWorkspaceContext().GetContent() / requested,
+			: m_workspaceContext.GetContent() / requested,
 		error);
 	if (error || !std::filesystem::is_regular_file(candidate, error) || error)
 	{
@@ -1267,7 +1309,7 @@ bool AssetRegistry::ResolveDirectLoadPath(
 		}
 	}
 
-	const std::filesystem::path cache = App::GetWorkspaceContext().GetCache();
+	const std::filesystem::path cache = m_workspaceContext.GetCache();
 	const std::filesystem::path tempWorld = std::filesystem::weakly_canonical(
 		cache / "Temp.world",
 		error);
@@ -1275,7 +1317,7 @@ bool AssetRegistry::ResolveDirectLoadPath(
 	{
 		outLocation.m_physicalPath = candidate;
 		outLocation.m_virtualPath = candidate.lexically_relative(
-			App::GetWorkspaceContext().GetContent()).generic_string();
+			m_workspaceContext.GetContent()).generic_string();
 		outLocation.m_mountKind = EAssetMountKind::Workspace;
 		outLocation.m_bWritable = true;
 		return true;

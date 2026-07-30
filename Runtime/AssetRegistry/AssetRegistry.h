@@ -77,6 +77,8 @@ namespace Sailor
 		static constexpr const char* MetaFileExtension = "asset";
 
 		SAILOR_API AssetRegistry();
+		SAILOR_API explicit AssetRegistry(
+			const Workspace::WorkspaceContext& workspaceContext);
 		SAILOR_API virtual ~AssetRegistry() override;
 
 		template<typename TBinaryType, typename TFilepath>
@@ -240,6 +242,7 @@ namespace Sailor
 			const std::string& assetInfoType,
 			bool bPrimary) const;
 
+		Workspace::WorkspaceContext m_workspaceContext;
 		TMap<FileId, AssetInfoPtr> m_loadedAssetInfo;
 		TMap<std::string, FileId> m_fileIds;
 		TMap<std::string, FileId> m_physicalFileIds;
@@ -257,6 +260,8 @@ namespace Sailor
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
 		TVector<Tasks::TaskPtr<bool>> m_deferredScanProcessingTasks;
 		bool m_bCollectScanProcessingTasks = false;
+		bool m_bScanProcessingActive = false;
+		bool m_bScanProcessingFailed = false;
 
 		AssetCache m_assetCache;
 
