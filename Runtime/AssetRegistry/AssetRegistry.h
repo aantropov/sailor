@@ -164,6 +164,8 @@ namespace Sailor
 
 		SAILOR_API bool ScanContentFolder();
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
+		SAILOR_API FileId RegisterGeneratedSecondaryAssetInfo(
+			const std::filesystem::path& metadataPath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
 		TAssetInfoPtr GetAssetInfoPtr(FileId uid) const

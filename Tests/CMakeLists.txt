@@ -156,6 +156,10 @@ add_executable(ShaderCacheArtifactTests
     ShaderCacheArtifactTests.cpp
 )
 
+add_executable(ModelMiniatureContractTests
+    ModelMiniatureContractTests.cpp
+)
+
 add_executable(AssetMountDiscoveryTests
     AssetMountDiscoveryTests.cpp
     ${SAILOR_RUNTIME_DIR}/AssetRegistry/AssetMountDiscovery.cpp
@@ -213,6 +217,7 @@ target_compile_features(WorkspaceContextTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(AssetCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(ShaderCacheArtifactTests PRIVATE cxx_std_20)
+target_compile_features(ModelMiniatureContractTests PRIVATE cxx_std_20)
 target_compile_features(AssetMountDiscoveryTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE
@@ -256,6 +261,7 @@ target_link_libraries(WorkspaceContextTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceCacheContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetCacheContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(ShaderCacheArtifactTests PRIVATE Sailor::Runtime)
+target_link_libraries(ModelMiniatureContractTests PRIVATE Sailor::Runtime)
 add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleFixture
     WorkspaceModuleIncompatibleFixture
@@ -286,6 +292,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(WorkspaceCacheContractTests)
     sailor_stage_workspace_test_runtime(AssetCacheContractTests)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
+    sailor_stage_workspace_test_runtime(ModelMiniatureContractTests)
     sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
     sailor_stage_workspace_test_runtime(BoundsContractTests)
     sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
@@ -368,6 +375,9 @@ target_include_directories(AssetCacheContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(ShaderCacheArtifactTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(ModelMiniatureContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(AssetMountDiscoveryTests PRIVATE
@@ -496,6 +506,11 @@ add_test(
 )
 
 add_test(
+    NAME ModelMiniatureContractTests
+    COMMAND ModelMiniatureContractTests
+)
+
+add_test(
     NAME AssetMountDiscoveryTests
     COMMAND AssetMountDiscoveryTests "${PROJECT_SOURCE_DIR}/Content"
 )
@@ -557,6 +572,7 @@ set_tests_properties(
     WorkspaceCacheContractTests
     AssetCacheContractTests
     ShaderCacheArtifactTests
+    ModelMiniatureContractTests
     AssetMountDiscoveryTests
     WorkspaceModuleContractTests
     WorkspaceModuleRuntimeTests
@@ -582,6 +598,7 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
         WorkspaceCacheContractTests
         AssetCacheContractTests
         ShaderCacheArtifactTests
+        ModelMiniatureContractTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION

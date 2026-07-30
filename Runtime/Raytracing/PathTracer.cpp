@@ -16,6 +16,7 @@
 #include <glm/gtx/matrix_transform_2d.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <algorithm>
+#include <cstring>
 #include <functional>
 #include <thread>
 
@@ -43,6 +44,19 @@ namespace
 	constexpr uint32_t DefaultGroupSize = 32;
 	constexpr float DefaultAspectRatio = 4.0f / 3.0f;
 	constexpr float DefaultHfov = glm::radians(60.0f);
+
+	void AppendPngBytes(void* context, void* data, int32_t size)
+	{
+		if (context == nullptr || data == nullptr || size <= 0)
+		{
+			return;
+		}
+
+		auto* output = static_cast<TVector<uint8_t>*>(context);
+		const size_t offset = output->Num();
+		output->Resize(offset + static_cast<size_t>(size));
+		std::memcpy(output->GetData() + offset, data, static_cast<size_t>(size));
+	}
 
 	__forceinline uint32_t XorShift32(uint32_t& state)
 	{
@@ -352,7 +366,15 @@ namespace
 				return false;
 			}
 
-			const RHI::ETextureClamping clamping = pTexture->GetRHI() ? pTexture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+			AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+			const TextureAssetInfoPtr textureAssetInfo = assetRegistry
+				? assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(pTexture->GetFileId())
+				: nullptr;
+			const RHI::ETextureClamping clamping = pTexture->GetRHI()
+				? pTexture->GetRHI()->GetClamping()
+				: textureAssetInfo
+					? textureAssetInfo->GetClamping()
+					: RHI::ETextureClamping::Repeat;
 			const char* clampingKey = clamping == RHI::ETextureClamping::Repeat ? "r" : "c";
 			const std::string key = pTexture->GetFileId().ToString() + "_" + std::to_string(channels) + "_" + std::to_string((int)bLinear) + "_" + std::to_string((int)bNormalMap) + "_" + clampingKey;
 
@@ -368,7 +390,9 @@ namespace
 			sampler->m_channels = channels;
 			sampler->m_clamping = clamping == RHI::ETextureClamping::Repeat ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
-			const bool bIsFloatTexture = pTexture->GetRHI() && RHI::IsFloatFormat(pTexture->GetRHI()->GetFormat());
+			const bool bIsFloatTexture = pTexture->GetRHI()
+				? RHI::IsFloatFormat(pTexture->GetRHI()->GetFormat())
+				: textureAssetInfo && RHI::IsFloatFormat(textureAssetInfo->GetFormat());
 			if (bIsFloatTexture)
 			{
 				if (channels == 4)
@@ -625,7 +649,16 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 			continue;
 		}
 
-		m_tlasOctree.Update(instance.m_worldBounds.GetCenter(), instance.m_worldBounds.GetExtents(), i);
+		const glm::ivec3 integerMin = glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
+		const glm::ivec3 integerMax = glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
+		const glm::ivec3 integerCenter = (integerMin + integerMax) / 2;
+		const glm::ivec3 integerExtents = glm::max(
+			integerCenter - integerMin,
+			integerMax - integerCenter);
+		m_tlasOctree.Update(
+			integerCenter,
+			glm::max(integerExtents, glm::ivec3(1)),
+			i);
 	}
 
 	const size_t materialsSignature = ComputeMaterialsSignature(materials);
@@ -776,6 +809,15 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	m_lastRenderedImage.Clear();
 	m_lastRenderedExtent = glm::uvec2(0, 0);
 
+	if (params.m_height == 0 ||
+		params.m_msaa == 0 ||
+		params.m_numSamples == 0 ||
+		params.m_numAmbientSamples == 0)
+	{
+		SAILOR_LOG_ERROR("PathTracer requires non-zero output and sample parameters.");
+		return false;
+	}
+
 	if (m_tlasInstances.Num() == 0)
 	{
 		SAILOR_LOG_ERROR("PathTracer scene has no TLASInstances.");
@@ -832,7 +874,13 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	}
 
 	const uint32_t height = params.m_height;
-	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
+	const uint32_t width = params.m_width > 0
+		? params.m_width
+		: (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
+	if (params.m_width > 0)
+	{
+		aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+	}
 	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
 	if (m_lightProxies.Num() == 0)
@@ -913,7 +961,11 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 						finishedTasks++;
 					}, EThreadType::Worker);
 
-				if (((x + y) / DefaultGroupSize) % 32 == 0)
+				if (params.m_bRunTasksInline)
+				{
+					task->Execute();
+				}
+				else if (((x + y) / DefaultGroupSize) % 32 == 0)
 				{
 					tasksThisThread.Emplace(task);
 				}
@@ -976,6 +1028,35 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	}
 
 	return true;
+}
+
+bool PathTracer::EncodePng(
+	const TVector<u8vec4>& image,
+	const glm::uvec2& extent,
+	TVector<uint8_t>& outPng)
+{
+	outPng.Clear();
+	if (extent.x == 0 ||
+		extent.y == 0 ||
+		image.Num() < static_cast<size_t>(extent.x) * static_cast<size_t>(extent.y))
+	{
+		return false;
+	}
+
+	constexpr int32_t Channels = 4;
+	const bool bEncoded = stbi_write_png_to_func(
+		AppendPngBytes,
+		&outPng,
+		static_cast<int32_t>(extent.x),
+		static_cast<int32_t>(extent.y),
+		Channels,
+		image.GetData(),
+		static_cast<int32_t>(extent.x) * Channels) != 0;
+	if (!bEncoded)
+	{
+		outPng.Clear();
+	}
+	return bEncoded;
 }
 
 void PathTracer::Run(const PathTracer::Params& params)
@@ -1114,9 +1195,15 @@ void PathTracer::Run(const PathTracer::Params& params)
 		cameraForward = glm::normalize(vec3(0, 0, -1.0f));
 	}
 
-	const float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
+	float aspectRatio = std::max(view.m_aspectRatio, 0.1f);
 	const uint32_t height = params.m_height;
-	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
+	const uint32_t width = params.m_width > 0
+		? params.m_width
+		: (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
+	if (params.m_width > 0)
+	{
+		aspectRatio = static_cast<float>(width) / static_cast<float>(height);
+	}
 
 	const float hFov = std::max(view.m_hFov, glm::radians(10.0f));
 
@@ -1619,12 +1706,26 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				vec3 direction = vec3(0);
 				bool bSample = false;
 
-				while (!bSample || (bThickVolume && !bHasTransmissionRay && i == (numExtraSamples - 1)))
+				constexpr uint32_t MaxSamplingAttempts = 64;
+				for (uint32_t attempt = 0;
+					attempt < MaxSamplingAttempts &&
+					(!bSample ||
+						(bThickVolume &&
+							!bHasTransmissionRay &&
+							i == (numExtraSamples - 1)));
+					attempt++)
 				{
 					direction = vec3(0);
 					const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
 					bSample = LightingModel::Sample(sample, worldNormal, viewDirection, environmentIor, toIor, term, pdf, bTransmissionRay, direction, randomSample);
 					bHasTransmissionRay |= bTransmissionRay;
+				}
+				if (!bSample)
+				{
+					term = vec3(0.0f);
+					pdf = 1.0f;
+					bTransmissionRay = false;
+					direction = worldNormal;
 				}
 
 				float newEnvironmentIor = environmentIor;
@@ -1959,6 +2060,3 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	return res;
 }
-
-
-

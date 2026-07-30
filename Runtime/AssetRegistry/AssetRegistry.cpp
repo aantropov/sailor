@@ -1236,6 +1236,196 @@ const FileId& AssetRegistry::GetOrLoadFile(const std::string& assetFilepath)
 	return LoadFile(assetFilepath);
 }
 
+FileId AssetRegistry::RegisterGeneratedSecondaryAssetInfo(
+	const std::filesystem::path& metadataPath)
+{
+	if (Tasks::Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+		scheduler != nullptr && !scheduler->IsMainThread())
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata may only be registered from the main thread: %s",
+			metadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	std::error_code pathError;
+	const std::filesystem::path canonicalMetadataPath =
+		std::filesystem::weakly_canonical(metadataPath, pathError);
+	if (pathError ||
+		!std::filesystem::is_regular_file(canonicalMetadataPath, pathError) ||
+		pathError)
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata is not a regular file: %s",
+			metadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	const AssetMountDescriptor* metadataMount = nullptr;
+	for (const AssetMountDescriptor& mount : m_contentMounts)
+	{
+		if (mount.m_kind == EAssetMountKind::Workspace &&
+			mount.m_bWritable &&
+			IsInside(mount.m_root, canonicalMetadataPath))
+		{
+			metadataMount = &mount;
+			break;
+		}
+	}
+	if (metadataMount == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata must be inside the writable workspace Content mount: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	std::string fileIdString;
+	std::string filename;
+	std::string assetInfoType;
+	std::string metadataError;
+	if (!ReadMetadataIdentity(
+			canonicalMetadataPath,
+			fileIdString,
+			filename,
+			assetInfoType,
+			metadataError))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot register generated secondary asset metadata '%s': %s.",
+			canonicalMetadataPath.generic_string().c_str(),
+			metadataError.c_str());
+		return FileId::Invalid;
+	}
+
+	const std::filesystem::path canonicalSourcePath =
+		std::filesystem::weakly_canonical(
+			canonicalMetadataPath.parent_path() / filename,
+			pathError);
+	if (pathError ||
+		!std::filesystem::is_regular_file(canonicalSourcePath, pathError) ||
+		pathError ||
+		!IsInside(metadataMount->m_root, canonicalSourcePath))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata '%s' references an invalid source '%s'.",
+			canonicalMetadataPath.generic_string().c_str(),
+			filename.c_str());
+		return FileId::Invalid;
+	}
+
+	const FileId expectedFileId = ParseFileId(fileIdString);
+	auto existingAssetInfo = m_loadedAssetInfo.Find(expectedFileId);
+	if (existingAssetInfo != m_loadedAssetInfo.end())
+	{
+		if (existingAssetInfo.Value() != nullptr &&
+			PathKey(existingAssetInfo.Value()->GetMetaFilepath()) ==
+				PathKey(canonicalMetadataPath))
+		{
+			AssetInfoPtr existingInfo = existingAssetInfo.Value();
+			if (!existingInfo->IsMetaExpired())
+			{
+				return expectedFileId;
+			}
+
+			IAssetInfoHandler* existingHandler = existingInfo->GetHandler();
+			const bool bHadPendingUpdate =
+				existingInfo->m_bPendingUpdateNotification;
+			const bool bHadPendingWasExpired =
+				existingInfo->m_bPendingWasExpired;
+			const bool bHadPendingImport =
+				existingInfo->m_bPendingImportNotification;
+			if (existingHandler == nullptr ||
+				!existingHandler->ReloadAssetInfo(
+					existingInfo,
+					false,
+					false))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot refresh generated secondary asset metadata: %s",
+					canonicalMetadataPath.generic_string().c_str());
+				return FileId::Invalid;
+			}
+			existingInfo->m_bPendingUpdateNotification =
+				bHadPendingUpdate;
+			existingInfo->m_bPendingWasExpired =
+				bHadPendingWasExpired;
+			existingInfo->m_bPendingImportNotification =
+				bHadPendingImport;
+			return expectedFileId;
+		}
+
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata '%s' collides with an active FileId.",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+	for (const auto& loadedAsset : m_loadedAssetInfo)
+	{
+		if (loadedAsset.m_second != nullptr &&
+			*loadedAsset.m_second != nullptr &&
+			PathKey((*loadedAsset.m_second)->GetMetaFilepath()) ==
+				PathKey(canonicalMetadataPath))
+		{
+			SAILOR_LOG_ERROR(
+				"Generated secondary asset metadata path is already registered with another FileId: %s",
+				canonicalMetadataPath.generic_string().c_str());
+			return FileId::Invalid;
+		}
+	}
+
+	const std::string virtualMetadataPath = canonicalMetadataPath
+		.lexically_relative(metadataMount->m_root)
+		.generic_string();
+	if (!IsSafeVirtualPath(virtualMetadataPath))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata has an unsafe virtual path: %s",
+			virtualMetadataPath.c_str());
+		return FileId::Invalid;
+	}
+
+	const std::string handlerPath = std::filesystem::path(virtualMetadataPath)
+		.replace_extension()
+		.generic_string();
+	IAssetInfoHandler* handler = GetAssetInfoHandler(
+		Extension(handlerPath),
+		assetInfoType,
+		false);
+	if (handler == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot find an asset info handler for generated metadata: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	AssetInfoPtr assetInfo = handler->LoadAssetInfo(
+		canonicalMetadataPath.string(),
+		virtualMetadataPath,
+		metadataMount->m_kind,
+		metadataMount->m_bWritable,
+		false,
+		false);
+	if (assetInfo == nullptr ||
+		assetInfo->GetFileId().ToString() != fileIdString ||
+		PathKey(assetInfo->GetMetaFilepath()) != PathKey(canonicalMetadataPath) ||
+		PathKey(assetInfo->GetAssetFilepath()) != PathKey(canonicalSourcePath))
+	{
+		delete assetInfo;
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata failed identity or path validation: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	assetInfo->m_bPendingUpdateNotification = false;
+	assetInfo->m_bPendingWasExpired = false;
+	assetInfo->m_bPendingImportNotification = false;
+	m_loadedAssetInfo[expectedFileId] = assetInfo;
+	return expectedFileId;
+}
+
 const FileId& AssetRegistry::LoadFile(const std::string& requestedPath)
 {
 	AssetReadLocation location;

@@ -32,36 +32,79 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
 
+        <Grid Grid.Row="1"
+              Grid.ColumnSpan="2"
+              WidthRequest="256"
+              HeightRequest="256"
+              HorizontalOptions="Start">
+            <Image Source="box_24.png"
+                   WidthRequest="64"
+                   HeightRequest="64"
+                   Aspect="AspectFit"
+                   Opacity="0.35"
+                   HorizontalOptions="Center"
+                   VerticalOptions="Center">
+                <Image.Triggers>
+                    <DataTrigger TargetType="Image"
+                                 Binding="{Binding HasMiniature}"
+                                 Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Image.Triggers>
+            </Image>
+            <Label Text="Preview unavailable"
+                   HorizontalOptions="Center"
+                   VerticalOptions="End"
+                   Margin="0,0,0,32">
+                <Label.Triggers>
+                    <DataTrigger TargetType="Label"
+                                 Binding="{Binding HasMiniature}"
+                                 Value="True">
+                        <Setter Property="IsVisible" Value="False" />
+                    </DataTrigger>
+                </Label.Triggers>
+            </Label>
+            <Image Source="{Binding Miniature}"
+                   WidthRequest="256"
+                   HeightRequest="256"
+                   Aspect="AspectFit"
+                   HorizontalOptions="Start"
+                   VerticalOptions="Start"
+                   IsVisible="{Binding HasMiniature}" />
+        </Grid>
+
         <!-- Properties Label -->
-        <Label Text="Properties" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
+        <Label Text="Properties" FontAttributes="Bold" Grid.Row="2" Grid.ColumnSpan="2" />
 
-        <Label Text="Should Generate materials" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <CheckBox IsChecked="{Binding ShouldGenerateMaterials}" Grid.Row="2" Grid.Column="1"/>
+        <Label Text="Should Generate materials" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding ShouldGenerateMaterials}" Grid.Row="3" Grid.Column="1"/>
 
-        <Label Text="Should Batch by material" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
-        <CheckBox IsChecked="{Binding ShouldBatchByMaterial}" Grid.Row="3" Grid.Column="1"/>
+        <Label Text="Should Batch by material" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding ShouldBatchByMaterial}" Grid.Row="4" Grid.Column="1"/>
 
-        <Label Text="Keep CPU Buffers" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
-        <CheckBox IsChecked="{Binding ShouldKeepCpuBuffers}" Grid.Row="4" Grid.Column="1"/>
+        <Label Text="Keep CPU Buffers" VerticalOptions="Center" Grid.Row="5" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding ShouldKeepCpuBuffers}" Grid.Row="5" Grid.Column="1"/>
 
-        <Label Text="Generate BLAS" VerticalOptions="Center" Grid.Row="5" Grid.Column="0"/>
-        <CheckBox IsChecked="{Binding ShouldGenerateBLAS}" Grid.Row="5" Grid.Column="1"/>
+        <Label Text="Generate BLAS" VerticalOptions="Center" Grid.Row="6" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding ShouldGenerateBLAS}" Grid.Row="6" Grid.Column="1"/>
 
-        <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="6" Grid.Column="0"/>
-        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="6" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+        <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
+        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="7" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
 
-        <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="7" Grid.ColumnSpan="2" />
+        <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="8" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="8" Grid.ColumnSpan="2">
+        <HorizontalStackLayout Grid.Row="9" Grid.ColumnSpan="2">
             <Button Text="+" Command="{Binding AddMaterialCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
             <Button Text="Clear" Width ="40" Command="{Binding ClearMaterialsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="9" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
+        <CollectionView Grid.Row="10" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
@@ -78,14 +121,14 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Label Text="Animations" FontAttributes="Bold" Grid.Row="10" Grid.ColumnSpan="2" />
+        <Label Text="Animations" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="11" Grid.ColumnSpan="2">
+        <HorizontalStackLayout Grid.Row="12" Grid.ColumnSpan="2">
             <Button Text="+" Command="{Binding AddAnimationCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
             <Button Text="Clear" Width ="40" Command="{Binding ClearAnimationsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="12" Grid.ColumnSpan="2" ItemsSource="{Binding Animations}">
+        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Animations}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>

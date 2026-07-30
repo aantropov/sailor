@@ -21,7 +21,9 @@
 #include "RHI/VertexDescription.h"
 #include "Math/Bounds.h"
 #include "Raytracing/BVH.h"
+#include <filesystem>
 #include <glm/mat4x4.hpp>
+#include <mutex>
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
 
@@ -117,12 +119,39 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
+		static bool ImportModel(
+			const std::string& assetFilepath,
+			float unitScale,
+			bool bShouldBatchByMaterial,
+			TVector<MeshContext>& outParsedMeshes,
+			Math::AABB& outBoundsAabb,
+			Math::Sphere& outBoundsSphere,
+			TVector<glm::mat4>& outInverseBind);
+
+		Tasks::TaskPtr<bool> ScheduleModelMiniature(ModelAssetInfoPtr assetInfo);
+		bool GenerateModelMiniature(
+			const FileId& fileId,
+			const std::string& assetFilepath,
+			float unitScale,
+			bool bShouldBatchByMaterial,
+			const TVector<FileId>& defaultMaterials,
+			const std::filesystem::path& outputPath);
+
+		struct ModelMiniatureTaskState final
+		{
+			FileRevision m_sourceRevision{};
+			FileRevision m_metadataRevision{};
+			Tasks::TaskPtr<bool> m_task{};
+		};
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
+		TMap<FileId, ModelMiniatureTaskState> m_miniatureTasks;
+		Tasks::TaskPtr<bool> m_lastMiniatureTask;
+		std::mutex m_miniatureTasksMutex;
 
 		ObjectAllocatorPtr m_allocator;
 	};

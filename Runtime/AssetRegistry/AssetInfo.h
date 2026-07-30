@@ -31,6 +31,7 @@ namespace Sailor
 		SAILOR_API std::string GetRelativeAssetFilepath() const;
 		SAILOR_API std::string GetRelativeMetaFilepath() const;
 		SAILOR_API bool IsWritable() const noexcept { return m_bWritable; }
+		SAILOR_API bool IsImportPending() const noexcept { return m_bPendingImportNotification; }
 		SAILOR_API EAssetMountKind GetMountKind() const noexcept { return m_mountKind; }
 		SAILOR_API const std::string& GetVirtualAssetFilepath() const noexcept { return m_virtualAssetFilepath; }
 		SAILOR_API const std::string& GetVirtualMetaFilepath() const noexcept { return m_virtualMetaFilepath; }

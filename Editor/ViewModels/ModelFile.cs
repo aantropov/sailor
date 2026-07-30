@@ -37,6 +37,14 @@ public partial class ModelFile : AssetFile
     [ObservableProperty]
     ObservableList<Observable<FileId>> animations = [];
 
+    [property: YamlIgnore]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMiniature))]
+    ImageSource miniature;
+
+    [YamlIgnore]
+    public bool HasMiniature => Miniature != null;
+
     public ModelFile()
     {
         AddMaterialCommand = new AsyncRelayCommand(OnAddMaterial);
@@ -87,6 +95,47 @@ public partial class ModelFile : AssetFile
     private void OnRemoveAnimation(Observable<FileId> animation) => Animations.Remove(animation);
     private void OnClearAnimations() => Animations.Clear();
 
+    public override Task<bool> LoadDependentResources()
+    {
+        if (IsLoaded)
+        {
+            return Task.FromResult(true);
+        }
+
+        try
+        {
+            var cacheDirectory =
+                MauiProgram.GetService<EngineService>()
+                    ?.GetLaunchContext()
+                    .CacheDirectory;
+            var hasMiniature = ModelMiniatureLoader.TryLoad(
+                cacheDirectory,
+                FileId?.Value,
+                out var miniatureBytes);
+
+            LoadRuntimeDataWithoutDirtyTracking(() =>
+            {
+                Miniature = hasMiniature
+                    ? ImageSource.FromStream(
+                        () => new MemoryStream(
+                            miniatureBytes,
+                            writable: false))
+                    : null;
+            });
+        }
+        catch (Exception exception)
+        {
+            LoadRuntimeDataWithoutDirtyTracking(
+                () => Miniature = null);
+            Console.WriteLine(
+                $"[ModelFile] Failed to load miniature for " +
+                $"{DisplayName}: {exception.Message}");
+        }
+
+        IsLoaded = HasMiniature;
+        return Task.FromResult(true);
+    }
+
     public override Task Save() => Save(new ModelFileYamlConverter());
 
     public override Task Revert()
@@ -121,6 +170,7 @@ public partial class ModelFile : AssetFile
                 Animations.CollectionChanged += (a, e) => MarkDirty(nameof(Animations));
                 Animations.ItemChanged += (a, e) => MarkDirty(nameof(Animations));
 
+                Miniature = null;
                 IsLoaded = false;
             });
         }

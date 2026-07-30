@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <string>
 
@@ -9,12 +10,17 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
+#include "AssetRegistry/Model/ModelMiniature.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
+#include "Raytracing/PathTracer.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
 #include "Memory/ObjectAllocator.hpp"
+#include "Tasks/Scheduler.h"
+#include "Workspace/WorkspaceCacheContract.h"
 
 #ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
@@ -22,6 +28,62 @@
 #endif
 
 using namespace Sailor;
+
+namespace
+{
+	constexpr float BasisLengthEpsilon = 1e-12f;
+
+	bool IsFiniteVector(const vec3& value)
+	{
+		return std::isfinite(value.x) &&
+			std::isfinite(value.y) &&
+			std::isfinite(value.z);
+	}
+
+	vec3 NormalizeOrFallback(const vec3& value, const vec3& fallback)
+	{
+		if (IsFiniteVector(value) && glm::dot(value, value) > BasisLengthEpsilon)
+		{
+			return glm::normalize(value);
+		}
+
+		if (IsFiniteVector(fallback) &&
+			glm::dot(fallback, fallback) > BasisLengthEpsilon)
+		{
+			return glm::normalize(fallback);
+		}
+
+		return vec3(0.0f, 1.0f, 0.0f);
+	}
+
+	void BuildSafeBasis(
+		const vec3& normalCandidate,
+		const vec3& tangentCandidate,
+		const vec3& bitangentCandidate,
+		const vec3& geometricNormal,
+		vec3& outNormal,
+		vec3& outTangent,
+		vec3& outBitangent)
+	{
+		outNormal = NormalizeOrFallback(normalCandidate, geometricNormal);
+		const vec3 tangentFallback = glm::cross(
+			glm::abs(outNormal.y) < 0.999f
+				? vec3(0.0f, 1.0f, 0.0f)
+				: vec3(1.0f, 0.0f, 0.0f),
+			outNormal);
+		const vec3 orthogonalTangent =
+			tangentCandidate - outNormal * glm::dot(tangentCandidate, outNormal);
+		outTangent = NormalizeOrFallback(orthogonalTangent, tangentFallback);
+
+		const vec3 orthogonalBitangent =
+			bitangentCandidate -
+			outNormal * glm::dot(bitangentCandidate, outNormal) -
+			outTangent * glm::dot(bitangentCandidate, outTangent);
+		outBitangent = NormalizeOrFallback(
+			orthogonalBitangent,
+			glm::cross(outNormal, outTangent));
+	}
+}
 
 YAML::Node Model::Serialize() const
 {
@@ -95,17 +157,33 @@ bool Model::BuildBLAS()
 			tri.m_vertices[1] = v1.m_position;
 			tri.m_vertices[2] = v2.m_position;
 
-			tri.m_normals[0] = glm::normalize(v0.m_normal);
-			tri.m_normals[1] = glm::normalize(v1.m_normal);
-			tri.m_normals[2] = glm::normalize(v2.m_normal);
-
-			tri.m_tangent[0] = glm::normalize(v0.m_tangent);
-			tri.m_tangent[1] = glm::normalize(v1.m_tangent);
-			tri.m_tangent[2] = glm::normalize(v2.m_tangent);
-
-			tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
-			tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
-			tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
+			const vec3 geometricNormal = glm::cross(
+				tri.m_vertices[1] - tri.m_vertices[0],
+				tri.m_vertices[2] - tri.m_vertices[0]);
+			BuildSafeBasis(
+				v0.m_normal,
+				v0.m_tangent,
+				v0.m_bitangent,
+				geometricNormal,
+				tri.m_normals[0],
+				tri.m_tangent[0],
+				tri.m_bitangent[0]);
+			BuildSafeBasis(
+				v1.m_normal,
+				v1.m_tangent,
+				v1.m_bitangent,
+				geometricNormal,
+				tri.m_normals[1],
+				tri.m_tangent[1],
+				tri.m_bitangent[1]);
+			BuildSafeBasis(
+				v2.m_normal,
+				v2.m_tangent,
+				v2.m_bitangent,
+				geometricNormal,
+				tri.m_normals[2],
+				tri.m_tangent[2],
+				tri.m_bitangent[2]);
 
 			tri.m_uvs[0] = v0.m_texcoord;
 			tri.m_uvs[1] = v1.m_texcoord;
@@ -171,28 +249,392 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		if (!modelAssetInfo->IsWritable())
+		const bool bShouldPrepareGeneratedAssets =
+			bWasExpired || modelAssetInfo->IsImportPending();
+		bool bMetadataChanged = false;
+		bool bGeneratedAssetsReady = true;
+
+		if (modelAssetInfo->IsWritable() &&
+			bShouldPrepareGeneratedAssets &&
+			modelAssetInfo->ShouldGenerateMaterials() &&
+			modelAssetInfo->GetDefaultMaterials().Num() == 0)
 		{
+			bGeneratedAssetsReady = GenerateMaterialAssets(modelAssetInfo);
+			bMetadataChanged = bGeneratedAssetsReady;
+		}
+		if (!bGeneratedAssetsReady)
+		{
+			if (AssetRegistry* assetRegistry =
+					App::GetSubmodule<AssetRegistry>())
+			{
+				const AssetRegistry::AssetProcessingToken processingToken =
+					assetRegistry->BeginAssetProcessing(modelAssetInfo);
+				assetRegistry->CompleteAssetProcessing(
+					processingToken,
+					false);
+			}
+			SAILOR_LOG_ERROR(
+				"Cannot schedule a model miniature until generated material assets are ready: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
 			return;
 		}
 
-		if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		if (modelAssetInfo->IsWritable() &&
+			bShouldPrepareGeneratedAssets &&
+			modelAssetInfo->GetAnimations().Num() == 0)
 		{
-			GenerateMaterialAssets(modelAssetInfo);
+			GenerateAnimationAssets(modelAssetInfo);
+			bMetadataChanged = true;
+		}
+
+		if (bMetadataChanged)
+		{
 			assetInfo->SaveMetaFile();
 		}
 
-		if (bWasExpired && modelAssetInfo->GetAnimations().Num() == 0)
+		const std::filesystem::path miniaturePath = ModelMiniature::GetCachePath(
+			AssetRegistry::GetCacheFolder(),
+			modelAssetInfo->GetFileId());
+		if (miniaturePath.empty())
 		{
-			GenerateAnimationAssets(modelAssetInfo);
-			assetInfo->SaveMetaFile();
+			SAILOR_LOG_ERROR(
+				"Cannot resolve a safe miniature cache path for model FileId: %s",
+				modelAssetInfo->GetFileId().ToString().c_str());
+			return;
+		}
+		std::error_code existsError;
+		const bool bMiniatureExists = std::filesystem::is_regular_file(
+			miniaturePath,
+			existsError);
+		if (bWasExpired || !bMiniatureExists || existsError)
+		{
+			ScheduleModelMiniature(modelAssetInfo);
 		}
 	}
 }
 
-void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
+void ModelImporter::OnImportAsset(AssetInfoPtr)
 {
-	OnUpdateAssetInfo(assetInfo, true);
+}
+
+Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(ModelAssetInfoPtr assetInfo)
+{
+	if (assetInfo == nullptr || !assetInfo->GetFileId())
+	{
+		return {};
+	}
+
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return {};
+	}
+
+	FileRevision sourceRevision;
+	if (!Utils::TryGetFileRevision(assetInfo->GetAssetFilepath(), sourceRevision))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot capture model revision for miniature generation: %s",
+			assetInfo->GetAssetFilepath().c_str());
+		return {};
+	}
+	FileRevision metadataRevision;
+	if (!Utils::TryGetFileRevision(assetInfo->GetMetaFilepath(), metadataRevision))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot capture model metadata revision for miniature generation: %s",
+			assetInfo->GetMetaFilepath().c_str());
+		return {};
+	}
+
+	const FileId fileId = assetInfo->GetFileId();
+	const std::filesystem::path outputPath = ModelMiniature::GetCachePath(
+		AssetRegistry::GetCacheFolder(),
+		fileId);
+	if (outputPath.empty())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot resolve a safe miniature cache path for model FileId: %s",
+			fileId.ToString().c_str());
+		return {};
+	}
+	Tasks::TaskPtr<bool> miniatureTask;
+
+	{
+		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
+		ModelMiniatureTaskState* existingState = nullptr;
+		if (m_miniatureTasks.Find(fileId, existingState) &&
+			existingState != nullptr &&
+			existingState->m_sourceRevision == sourceRevision &&
+			existingState->m_metadataRevision == metadataRevision &&
+			existingState->m_task)
+		{
+			std::error_code existsError;
+			const bool bOutputExists = std::filesystem::is_regular_file(
+				outputPath,
+				existsError);
+			if (!existingState->m_task->IsFinished() ||
+				(bOutputExists && !existsError))
+			{
+				miniatureTask = existingState->m_task;
+			}
+		}
+
+		if (!miniatureTask)
+		{
+			const AssetRegistry::AssetProcessingToken processingToken =
+				assetRegistry->BeginAssetProcessing(assetInfo);
+			const std::string assetFilepath = assetInfo->GetAssetFilepath();
+			const float unitScale = assetInfo->GetUnitScale();
+			const bool bShouldBatchByMaterial = assetInfo->ShouldBatchByMaterial();
+			const TVector<FileId> defaultMaterials = assetInfo->GetDefaultMaterials();
+
+			miniatureTask = Tasks::CreateTaskWithResult<bool>(
+				"Generate model miniature",
+				[
+					this,
+					fileId,
+					assetFilepath,
+					unitScale,
+					bShouldBatchByMaterial,
+					defaultMaterials,
+					outputPath,
+					processingToken
+				]()
+				{
+					const bool bSucceeded = GenerateModelMiniature(
+						fileId,
+						assetFilepath,
+						unitScale,
+						bShouldBatchByMaterial,
+						defaultMaterials,
+						outputPath);
+					if (AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>())
+					{
+						currentRegistry->CompleteAssetProcessing(
+							processingToken,
+							bSucceeded);
+					}
+					return bSucceeded;
+				},
+				EThreadType::Worker);
+
+			if (m_lastMiniatureTask && !m_lastMiniatureTask->IsFinished())
+			{
+				miniatureTask->Join(m_lastMiniatureTask);
+			}
+
+			m_lastMiniatureTask = miniatureTask;
+			m_miniatureTasks[fileId] = ModelMiniatureTaskState{
+				processingToken
+					? processingToken.m_sourceRevision
+					: sourceRevision,
+				metadataRevision,
+				miniatureTask
+			};
+			miniatureTask->Run();
+		}
+	}
+
+	assetRegistry->TrackScanProcessingTask(miniatureTask);
+	return miniatureTask;
+}
+
+bool ModelImporter::GenerateModelMiniature(
+	const FileId& fileId,
+	const std::string& assetFilepath,
+	float unitScale,
+	bool bShouldBatchByMaterial,
+	const TVector<FileId>& defaultMaterials,
+	const std::filesystem::path& outputPath)
+{
+	Utils::Timer timer;
+	timer.Start();
+
+	TVector<MeshContext> parsedMeshes;
+	TVector<glm::mat4> inverseBind;
+	Math::AABB boundsAabb;
+	Math::Sphere boundsSphere;
+	if (!ImportModel(
+			assetFilepath,
+			unitScale,
+			bShouldBatchByMaterial,
+			parsedMeshes,
+			boundsAabb,
+			boundsSphere,
+			inverseBind) ||
+		parsedMeshes.Num() == 0 ||
+		!boundsAabb.IsValid())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot prepare model geometry for miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	ObjectAllocatorPtr previewAllocator =
+		ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
+	ModelPtr previewModel = ModelPtr::Make(previewAllocator, fileId);
+	previewModel->m_boundsAabb = boundsAabb;
+	previewModel->m_boundsSphere = boundsSphere;
+	previewModel->m_inverseBind = std::move(inverseBind);
+	previewModel->m_cpuMeshes.Reserve(parsedMeshes.Num());
+
+	for (MeshContext& mesh : parsedMeshes)
+	{
+		Model::MeshCpuData cpuMesh{};
+		cpuMesh.m_vertices = std::move(mesh.outVertices);
+		cpuMesh.m_indices = std::move(mesh.outIndices);
+		cpuMesh.m_bounds = mesh.bounds;
+		cpuMesh.m_materialIndex = mesh.materialIndex;
+		previewModel->m_cpuMeshes.Add(std::move(cpuMesh));
+	}
+
+	if (!previewModel->BuildBLAS())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot build model BLAS for miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	TVector<MaterialPtr> previewMaterials(defaultMaterials.Num());
+	TMap<FileId, TexturePtr> previewTextures;
+	MaterialImporter* materialImporter = App::GetSubmodule<MaterialImporter>();
+	TextureImporter* textureImporter = App::GetSubmodule<TextureImporter>();
+	if (materialImporter != nullptr && textureImporter != nullptr)
+	{
+		for (size_t i = 0; i < defaultMaterials.Num(); ++i)
+		{
+			const FileId materialFileId = defaultMaterials[i];
+			const TSharedPtr<MaterialAsset> materialAsset =
+				materialImporter->LoadMaterialAsset(materialFileId);
+			if (!materialAsset)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot load material %s for model miniature: %s",
+					materialFileId.ToString().c_str(),
+					assetFilepath.c_str());
+				return false;
+			}
+
+			MaterialPtr material = MaterialPtr::Make(
+				previewAllocator,
+				materialFileId);
+			material->SetRenderState(materialAsset->GetRenderState());
+			for (const auto& uniform : materialAsset->GetUniformsVec4())
+			{
+				material->SetUniform(uniform.m_first, *uniform.m_second);
+			}
+			for (const auto& uniform : materialAsset->GetUniformsFloat())
+			{
+				material->SetUniform(uniform.m_first, *uniform.m_second);
+			}
+			for (const auto& sampler : materialAsset->GetSamplers())
+			{
+				TexturePtr texture;
+				TexturePtr* cachedTexture = nullptr;
+				if (previewTextures.Find(*sampler.m_second, cachedTexture) &&
+					cachedTexture != nullptr)
+				{
+					texture = *cachedTexture;
+				}
+				else if (textureImporter->LoadTextureCpu_Immediate(
+					*sampler.m_second,
+					texture,
+					ModelMiniature::TextureResolution))
+				{
+					previewTextures[*sampler.m_second] = texture;
+				}
+
+				if (!texture)
+				{
+					SAILOR_LOG_ERROR(
+						"Cannot load texture %s for model miniature: %s",
+						sampler.m_second->ToString().c_str(),
+						assetFilepath.c_str());
+					return false;
+				}
+				else
+				{
+					material->SetSampler(sampler.m_first, texture);
+				}
+			}
+			previewMaterials[i] = std::move(material);
+		}
+	}
+
+	Raytracing::PathTracer::TLASInstance instance{};
+	instance.m_model = previewModel;
+	instance.m_worldBounds = boundsAabb;
+	instance.m_worldMatrix = glm::mat4(1.0f);
+	instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+	instance.m_materialBaseOffset = 0;
+
+	Raytracing::PathTracer pathTracer;
+	if (!pathTracer.InitializeScene(
+			TVector<Raytracing::PathTracer::TLASInstance>{ instance },
+			previewMaterials,
+			{}))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot initialize path tracer for model miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	Raytracing::PathTracer::Params params{};
+	params.m_width = ModelMiniature::Resolution;
+	params.m_height = ModelMiniature::Resolution;
+	params.m_numSamples = 1;
+	params.m_numAmbientSamples = 1;
+	params.m_maxBounces = 1;
+	params.m_msaa = 4;
+	params.m_ambient = vec3(0.08f);
+	params.m_rayBiasScale = 3e-4f;
+	params.m_bRunTasksInline = true;
+	if (!pathTracer.RenderPreparedScene(params) ||
+		pathTracer.GetLastRenderedExtent() !=
+			glm::uvec2(ModelMiniature::Resolution, ModelMiniature::Resolution))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot render model miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	TVector<uint8_t> png;
+	if (!Raytracing::PathTracer::EncodePng(
+			pathTracer.GetLastRenderedImage(),
+			pathTracer.GetLastRenderedExtent(),
+			png))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot encode model miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	std::string writeDiagnostic;
+	if (!Workspace::AtomicReplaceWorkspaceCacheBinary(
+			outputPath,
+			png.GetData(),
+			static_cast<uint64_t>(png.Num()),
+			writeDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot publish model miniature '%s': %s",
+			outputPath.string().c_str(),
+			writeDiagnostic.c_str());
+		return false;
+	}
+
+	timer.Stop();
+	SAILOR_LOG(
+		"Generated model miniature '%s' in %.2f ms.",
+		outputPath.string().c_str(),
+		static_cast<double>(timer.ResultAccumulatedMs()));
+	return true;
 }
 
 FileId CreateTextureAsset(const std::string& filepath,
@@ -204,10 +646,62 @@ FileId CreateTextureAsset(const std::string& filepath,
 	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 	bool bShouldKeepCpuBuffers = false)
 {
-	FileId newFileId = FileId::CreateNewFileId();
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return FileId::Invalid;
+	}
+
+	FileId fileId;
+	std::error_code existsError;
+	const std::filesystem::file_status metadataStatus =
+		std::filesystem::symlink_status(
+		filepath,
+		existsError);
+	if (existsError == std::errc::no_such_file_or_directory ||
+		existsError == std::errc::not_a_directory)
+	{
+		existsError.clear();
+	}
+	if (existsError)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot inspect generated texture metadata path: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
+	if (bMetadataExists &&
+		!std::filesystem::is_regular_file(metadataStatus))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated texture metadata path is not a regular file: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+	if (bMetadataExists)
+	{
+		fileId = assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath);
+		TextureAssetInfoPtr existingTextureInfo =
+			assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId);
+		if (!fileId ||
+			existingTextureInfo == nullptr ||
+			existingTextureInfo->GetAssetFilename() != glbFilename)
+		{
+			SAILOR_LOG_ERROR(
+				"Existing generated texture metadata is incompatible: %s",
+				filepath.c_str());
+			return FileId::Invalid;
+		}
+		return fileId;
+	}
+	else
+	{
+		fileId = FileId::CreateNewFileId();
+	}
 
 	YAML::Node newTexture = GeneratedModelAssetMetadata::CreateTexture(
-		newFileId,
+		fileId,
 		glbFilename,
 		glbTextureIndex,
 		bShouldGenerateMips,
@@ -219,8 +713,23 @@ FileId CreateTextureAsset(const std::string& filepath,
 	std::ofstream assetFile(filepath);
 	assetFile << newTexture;
 	assetFile.close();
+	if (!assetFile)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot write generated texture metadata: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
 
-	return newFileId;
+	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot register generated texture metadata for immediate model processing: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+
+	return fileId;
 }
 
 FileId CreateAnimationAsset(const std::string& filepath,
@@ -281,7 +790,7 @@ void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 	}
 }
 
-void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
+bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -307,19 +816,32 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 	if (!bGltfParsed)
 	{
-		return;
+		return false;
 	}
 
 	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
 	TVector<MaterialAsset::Data> materials(gltfModel.materials.size());
+	TSet<std::string> materialNames;
+	bool bGeneratedTexturesReady = true;
 
 	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
 	{
 		const auto& material = gltfModel.materials[i];
 
 		MaterialAsset::Data& data = materials[i];
-		data.m_name = !material.name.empty() ? material.name : ("material" + std::to_string(i));
+		const std::string materialBaseName =
+			!material.name.empty()
+				? material.name
+				: ("material" + std::to_string(i));
+		data.m_name = materialBaseName;
+		for (size_t suffix = 1; !materialNames.Insert(data.m_name); ++suffix)
+		{
+			data.m_name =
+				materialBaseName +
+				"_" +
+				std::to_string(suffix);
+		}
 
 		std::filesystem::path materialNamePath;
 		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
@@ -327,38 +849,77 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				materialNamePath))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated material output for %s.", assetInfo->GetAssetFilepath().c_str());
-			continue;
+			return false;
 		}
 		const std::string materialName = materialNamePath.string();
+		auto addTexture = [&](
+			const std::string& sampler,
+			const std::string& metadataPath,
+			int32_t textureIndex,
+			RHI::ETextureFormat format)
+			{
+				const FileId textureFileId = CreateTextureAsset(
+					metadataPath,
+					assetInfo->GetAssetFilename(),
+					static_cast<uint32_t>(textureIndex),
+					true,
+					format,
+					RHI::ETextureClamping::Repeat,
+					RHI::ETextureFiltration::Linear,
+					assetInfo->ShouldKeepCpuBuffers());
+				if (textureFileId)
+				{
+					data.m_samplers.Add(sampler, textureFileId);
+				}
+				else
+				{
+					bGeneratedTexturesReady = false;
+				}
+			};
 
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
-			data.m_samplers.Add("baseColorSampler",
-				CreateTextureAsset(materialName + "_baseColorTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			addTexture(
+				"baseColorSampler",
+				materialName + "_baseColorTexture.png.asset",
+				material.pbrMetallicRoughness.baseColorTexture.index,
+				RHI::ETextureFormat::R8G8B8A8_SRGB);
 		}
 
 		if (material.normalTexture.index != -1)
 		{
-			data.m_samplers.Add("normalSampler",
-				CreateTextureAsset(materialName + "_normalTexture.png.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			addTexture(
+				"normalSampler",
+				materialName + "_normalTexture.png.asset",
+				material.normalTexture.index,
+				RHI::ETextureFormat::R8G8B8A8_UNORM);
 		}
 
 		if (material.emissiveTexture.index != -1)
 		{
-			data.m_samplers.Add("emissiveSampler",
-				CreateTextureAsset(materialName + "_emissionTexture.png.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			addTexture(
+				"emissiveSampler",
+				materialName + "_emissionTexture.png.asset",
+				material.emissiveTexture.index,
+				RHI::ETextureFormat::R8G8B8A8_SRGB);
 		}
 
 		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
 		{
-			data.m_samplers.Add("ormSampler",
-				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			addTexture(
+				"ormSampler",
+				materialName + "_ormTexture.png.asset",
+				material.pbrMetallicRoughness.metallicRoughnessTexture.index,
+				RHI::ETextureFormat::R8G8B8A8_SRGB);
 		}
 
 		if (material.occlusionTexture.index != -1)
 		{
-			data.m_samplers.Add("occlusionSampler",
-				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			addTexture(
+				"occlusionSampler",
+				materialName + "_occlusionTexture.png.asset",
+				material.occlusionTexture.index,
+				RHI::ETextureFormat::R8G8B8A8_SRGB);
 		}
 
 		auto ccIt = material.extensions.find("KHR_materials_clearcoat");
@@ -385,8 +946,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						data.m_samplers.Add("clearcoatSampler",
-							CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+						addTexture(
+							"clearcoatSampler",
+							materialName + "_clearcoatTexture.png.asset",
+							idx,
+							RHI::ETextureFormat::R8G8B8A8_SRGB);
 					}
 				}
 			}
@@ -399,8 +963,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						data.m_samplers.Add("clearcoatRoughnessSampler",
-							CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+						addTexture(
+							"clearcoatRoughnessSampler",
+							materialName + "_clearcoatRoughnessTexture.png.asset",
+							idx,
+							RHI::ETextureFormat::R8G8B8A8_SRGB);
 					}
 				}
 			}
@@ -417,8 +984,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						data.m_samplers.Add("clearcoatNormalSampler",
-							CreateTextureAsset(materialName + "_clearcoatNormalTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+						addTexture(
+							"clearcoatNormalSampler",
+							materialName + "_clearcoatNormalTexture.png.asset",
+							idx,
+							RHI::ETextureFormat::R8G8B8A8_UNORM);
 					}
 				}
 				data.m_uniformsFloat.Add("material.clearcoatNormalScale", (float)scale);
@@ -456,8 +1026,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						data.m_samplers.Add("sheenColorSampler",
-							CreateTextureAsset(materialName + "_sheenColorTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+						addTexture(
+							"sheenColorSampler",
+							materialName + "_sheenColorTexture.png.asset",
+							idx,
+							RHI::ETextureFormat::R8G8B8A8_SRGB);
 					}
 				}
 			}
@@ -470,8 +1043,11 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						data.m_samplers.Add("sheenRoughnessSampler",
-							CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+						addTexture(
+							"sheenRoughnessSampler",
+							materialName + "_sheenRoughnessTexture.png.asset",
+							idx,
+							RHI::ETextureFormat::R8G8B8A8_SRGB);
 					}
 				}
 			}
@@ -515,6 +1091,10 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
 	}
+	if (!bGeneratedTexturesReady)
+	{
+		return false;
+	}
 
 	TVector<FileId> materialFiles;
 
@@ -526,13 +1106,17 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				materialsFolder))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated materials folder for %s.", assetInfo->GetAssetFilepath().c_str());
-			continue;
+			return false;
 		}
 		std::filesystem::create_directories(materialsFolder);
 
 		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(
 			(materialsFolder / (material.m_name + ".mat")).string(),
 			material);
+		if (!materialFileId)
+		{
+			return false;
+		}
 		materialFiles.Add(materialFileId);
 	}
 
@@ -553,6 +1137,7 @@ void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			}
 		}
 	}
+	return true;
 }
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
@@ -680,6 +1265,9 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 
 void CalculateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv)
 {
+	outTangent = vec3(0.0f);
+	outBitangent = vec3(0.0f);
+
 	vec3 edge1 = vert[1] - vert[0];
 	vec3 edge2 = vert[2] - vert[0];
 
@@ -689,6 +1277,16 @@ void CalculateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3*
 	float denominator = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
 	if (abs(denominator) < 1e-6f)
 	{
+		const vec3 normal = glm::cross(edge1, edge2);
+		const vec3 tangentFallback = glm::cross(
+			glm::abs(normal.y) < 0.999f
+				? vec3(0.0f, 1.0f, 0.0f)
+				: vec3(1.0f, 0.0f, 0.0f),
+			normal);
+		outTangent = NormalizeOrFallback(tangentFallback, vec3(1.0f, 0.0f, 0.0f));
+		outBitangent = NormalizeOrFallback(
+			glm::cross(normal, outTangent),
+			vec3(0.0f, 0.0f, 1.0f));
 		return;
 	}
 
@@ -765,8 +1363,16 @@ static void GenerateTangents(ModelImporter::MeshContext& meshContext,
 
 	for (uint32_t i = 0; i < vertexCount; ++i)
 	{
-		meshContext.outVertices[vertexOffset + i].m_tangent = glm::normalize(tangents[i]);
-		meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
+		auto& vertex = meshContext.outVertices[vertexOffset + i];
+		vec3 safeNormal;
+		BuildSafeBasis(
+			vertex.m_normal,
+			tangents[i],
+			bitangents[i],
+			vertex.m_normal,
+			safeNormal,
+			vertex.m_tangent,
+			vertex.m_bitangent);
 	}
 }
 
@@ -817,23 +1423,47 @@ static void GenerateNormals(ModelImporter::MeshContext& meshContext,
 
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind)
 {
+	if (assetInfo == nullptr)
+	{
+		return false;
+	}
+
+	return ImportModel(
+		assetInfo->GetAssetFilepath(),
+		assetInfo->GetUnitScale(),
+		assetInfo->ShouldBatchByMaterial(),
+		outParsedMeshes,
+		outBoundsAabb,
+		outBoundsSphere,
+		outInverseBind);
+}
+
+bool ModelImporter::ImportModel(
+	const std::string& assetFilepath,
+	float unitScale,
+	bool bShouldBatchByMaterial,
+	TVector<MeshContext>& outParsedMeshes,
+	Math::AABB& outBoundsAabb,
+	Math::Sphere& outBoundsSphere,
+	TVector<glm::mat4>& outInverseBind)
+{
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
 	std::string err;
 	std::string warn;
 
-	const bool bGltfParsed = (Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb") ?
-		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str())
-		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+	const bool bGltfParsed = (Utils::GetFileExtension(assetFilepath.c_str()) == "glb") ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetFilepath.c_str())
+		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetFilepath.c_str());
 
 	if (!err.empty())
 	{
-		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetFilepath.c_str(), err.c_str());
 	}
 
 	if (!warn.empty())
 	{
-		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
+		SAILOR_LOG("Parsing gltf %s warning: %s", assetFilepath.c_str(), warn.c_str());
 	}
 
 	if (!bGltfParsed)
@@ -841,9 +1471,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		return false;
 	}
 
-	const float unitScale = assetInfo->GetUnitScale();
-
-	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
+	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::lowest());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
 	outInverseBind.Clear();
@@ -880,7 +1508,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			uint32_t startIndex = 0;
 			uint32_t indicesStart = 0;
 
-			if (assetInfo->ShouldBatchByMaterial())
+			if (bShouldBatchByMaterial)
 			{
 				pMeshContext = &batchedMeshContexts[std::max(primitive.material, 0)];
 				startIndex = (uint32_t)pMeshContext->outVertices.Num();
@@ -1133,7 +1761,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		}
 	}
 
-	if (assetInfo->ShouldBatchByMaterial())
+	if (bShouldBatchByMaterial)
 	{
 		for (auto& meshContext : batchedMeshContexts)
 		{
@@ -1220,5 +1848,26 @@ void ModelImporter::CollectGarbage()
 	for (auto& uid : uidsToRemove)
 	{
 		m_promises.Remove(uid);
+	}
+
+	{
+		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
+		TVector<FileId> finishedMiniatures;
+		for (const auto& miniature : m_miniatureTasks)
+		{
+			if (miniature.m_second->m_task &&
+				miniature.m_second->m_task->IsFinished())
+			{
+				finishedMiniatures.Add(miniature.m_first);
+			}
+		}
+		for (const FileId& fileId : finishedMiniatures)
+		{
+			m_miniatureTasks.Remove(fileId);
+		}
+		if (m_lastMiniatureTask && m_lastMiniatureTask->IsFinished())
+		{
+			m_lastMiniatureTask.Clear();
+		}
 	}
 }
