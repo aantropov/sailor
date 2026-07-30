@@ -48,6 +48,16 @@ namespace Sailor
 
 		SAILOR_API void Trim(std::string& s);
 
+		enum class EYamlCanonicalizationMode
+		{
+			SemanticValue,
+			StrictDocument
+		};
+
+		SAILOR_API bool CanonicalizeYaml(
+			const YAML::Node& node,
+			std::string& destination,
+			EYamlCanonicalizationMode mode);
 		SAILOR_API bool AreYamlNodesEqual(const YAML::Node& lhs, const YAML::Node& rhs);
 		SAILOR_API bool TryGetComponentInstanceId(
 			const ReflectedData& reflection,

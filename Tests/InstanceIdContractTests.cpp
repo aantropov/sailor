@@ -161,21 +161,164 @@ namespace
 			"{ name: Duck, transform: { enabled: true, position: [3, 2, 1] } }");
 		const YAML::Node changedValue = YAML::Load(
 			"{ name: Goose, transform: { enabled: true, position: [1, 2, 3] } }");
+		YAML::Node programmatic;
+		programmatic["name"] = "Duck";
+		programmatic["transform"]["enabled"] = true;
+		programmatic["transform"]["position"].push_back(1);
+		programmatic["transform"]["position"].push_back(2);
+		programmatic["transform"]["position"].push_back(3);
 
 		Require(Utils::AreYamlNodesEqual(lhs, reordered),
 			"YAML map equality must ignore insertion order at every nesting level");
+		Require(Utils::AreYamlNodesEqual(lhs, programmatic),
+			"semantic YAML equality must ignore parser-specific tags");
 		Require(!Utils::AreYamlNodesEqual(lhs, reorderedSequence),
 			"YAML sequence equality must preserve element order");
 		Require(!Utils::AreYamlNodesEqual(lhs, changedValue),
 			"YAML scalar changes must make structurally similar nodes unequal");
 
+		std::string canonicalLhs;
+		std::string canonicalReordered;
+		Require(Utils::CanonicalizeYaml(
+				lhs,
+				canonicalLhs,
+				Utils::EYamlCanonicalizationMode::SemanticValue),
+			"semantic YAML canonicalization must accept ordinary maps");
+		Require(Utils::CanonicalizeYaml(
+				reordered,
+				canonicalReordered,
+				Utils::EYamlCanonicalizationMode::SemanticValue),
+			"semantic YAML canonicalization must accept reordered maps");
+		Require(canonicalLhs == canonicalReordered,
+			"semantic YAML canonicalization must be map-order independent");
+
+		std::string strictCanonicalLhs;
+		std::string strictCanonicalReordered;
+		Require(Utils::CanonicalizeYaml(
+				lhs,
+				strictCanonicalLhs,
+				Utils::EYamlCanonicalizationMode::StrictDocument) &&
+			Utils::CanonicalizeYaml(
+				reordered,
+				strictCanonicalReordered,
+				Utils::EYamlCanonicalizationMode::StrictDocument) &&
+			strictCanonicalLhs == strictCanonicalReordered,
+			"strict YAML canonicalization must be map-order independent");
+
+		YAML::Node duplicateKeys(YAML::NodeType::Map);
+		duplicateKeys.force_insert("name", "Duck");
+		duplicateKeys.force_insert("name", "Duck");
+		std::string canonicalDuplicateKeys;
+		Require(Utils::CanonicalizeYaml(
+				duplicateKeys,
+				canonicalDuplicateKeys,
+				Utils::EYamlCanonicalizationMode::SemanticValue),
+			"semantic YAML canonicalization must preserve duplicate pairs");
+		Require(!Utils::CanonicalizeYaml(
+				duplicateKeys,
+				canonicalDuplicateKeys,
+				Utils::EYamlCanonicalizationMode::StrictDocument),
+			"strict YAML canonicalization must reject duplicate keys");
+
+		YAML::Node nestedDuplicateKeys(YAML::NodeType::Map);
+		nestedDuplicateKeys.force_insert("name", "Duck");
+		nestedDuplicateKeys.force_insert("name", "Goose");
+		YAML::Node nestedDuplicateDocument;
+		nestedDuplicateDocument["object"] = nestedDuplicateKeys;
+		Require(!Utils::CanonicalizeYaml(
+				nestedDuplicateDocument,
+				canonicalDuplicateKeys,
+				Utils::EYamlCanonicalizationMode::StrictDocument),
+			"strict YAML canonicalization must reject nested duplicate keys");
+
+		YAML::Node taggedAsset("Duck");
+		taggedAsset.SetTag("!asset");
+		YAML::Node taggedModel("Duck");
+		taggedModel.SetTag("!model");
+		Require(Utils::AreYamlNodesEqual(taggedAsset, taggedModel),
+			"semantic YAML equality must ignore explicit tags");
+		std::string canonicalTaggedAsset;
+		std::string canonicalTaggedModel;
+		Require(Utils::CanonicalizeYaml(
+				taggedAsset,
+				canonicalTaggedAsset,
+				Utils::EYamlCanonicalizationMode::StrictDocument) &&
+			Utils::CanonicalizeYaml(
+				taggedModel,
+				canonicalTaggedModel,
+				Utils::EYamlCanonicalizationMode::StrictDocument) &&
+			canonicalTaggedAsset != canonicalTaggedModel,
+			"strict YAML canonicalization must preserve explicit tags");
+
+		std::string deepYaml;
+		for (size_t depth = 0; depth < 66; ++depth)
+		{
+			deepYaml += "{ child: ";
+		}
+		deepYaml += "Duck";
+		deepYaml.append(66, '}');
+		const YAML::Node deepNode = YAML::Load(deepYaml);
+		const YAML::Node clonedDeepNode = YAML::Clone(deepNode);
+		Require(Utils::AreYamlNodesEqual(deepNode, clonedDeepNode),
+			"semantic YAML equality must preserve the previous unbounded value semantics");
+		Require(!Utils::CanonicalizeYaml(
+				deepNode,
+				canonicalLhs,
+				Utils::EYamlCanonicalizationMode::StrictDocument),
+			"strict YAML canonicalization must enforce its depth limit");
+
 		const YAML::Node undefined(YAML::NodeType::Undefined);
 		const YAML::Node anotherUndefined(YAML::NodeType::Undefined);
 		const YAML::Node nullNode(YAML::NodeType::Null);
+		const YAML::Node emptyMap = YAML::Load("{}");
+		const YAML::Node anotherEmptyMap = YAML::Load("{}");
+		const YAML::Node missing = emptyMap["missing"];
+		const YAML::Node anotherMissing = anotherEmptyMap["missing"];
 		Require(Utils::AreYamlNodesEqual(undefined, anotherUndefined),
 			"two undefined YAML nodes must compare equal");
+		Require(Utils::AreYamlNodesEqual(missing, anotherMissing),
+			"invalid nodes from missing const lookups must compare as undefined");
 		Require(!Utils::AreYamlNodesEqual(undefined, nullNode),
 			"undefined and explicit null YAML nodes must remain distinct");
+	}
+
+	void TestReflectedDataEqualityUsesSemanticYamlValues()
+	{
+		const std::string componentId =
+			"FFF4417DA65649588B6B279D47D0EC3E_0123456789ABCDEFFFFF";
+		const YAML::Node lhsProperties = YAML::Load(
+			"{ instanceId: " + componentId +
+			", settings: { enabled: true, values: [1, 2, 3] } }");
+		YAML::Node equivalentProperties;
+		equivalentProperties["settings"]["values"].push_back(1);
+		equivalentProperties["settings"]["values"].push_back(2);
+		equivalentProperties["settings"]["values"].push_back(3);
+		equivalentProperties["settings"]["enabled"] = true;
+		equivalentProperties["instanceId"] = componentId;
+		const YAML::Node changedProperties = YAML::Load(
+			"{ instanceId: " + componentId +
+			", settings: { enabled: false, values: [1, 2, 3] } }");
+
+		const ReflectedData lhs = MakeComponentReflection(lhsProperties);
+		const ReflectedData equivalent =
+			MakeComponentReflection(equivalentProperties);
+		const ReflectedData changed =
+			MakeComponentReflection(changedProperties);
+
+		Require(lhs == equivalent,
+			"reflected equality must compare YAML values instead of node identity");
+		Require(!(lhs == changed),
+			"reflected equality must reject changed YAML values");
+		Require(lhs.DiffTo(equivalent).GetProperties().Num() == 0,
+			"reflected diff must omit independently allocated equal YAML values");
+		const ReflectedData changedDiff = lhs.DiffTo(changed);
+		Require(changedDiff.GetProperties().Num() == 1 &&
+				changedDiff.GetProperties().ContainsKey("settings"),
+			"reflected diff must retain only structurally changed YAML values");
+		Require(Utils::AreYamlNodesEqual(
+				changedDiff.GetProperties()["settings"],
+				lhs.GetProperties()["settings"]),
+			"reflected diff must retain the changed property's YAML value");
 	}
 
 	void TestReflectedComponentIdentityUsesStrictSharedValidation()
@@ -267,6 +410,7 @@ int main()
 		{ "ComponentIdsResolveLegacyAndCanonicalParents", TestComponentIdsResolveLegacyAndCanonicalParents },
 		{ "MalformedComponentIdsAreRejected", TestMalformedComponentIdsAreRejected },
 		{ "YamlNodeEqualityIsStructuralAndMapOrderIndependent", TestYamlNodeEqualityIsStructuralAndMapOrderIndependent },
+		{ "ReflectedDataEqualityUsesSemanticYamlValues", TestReflectedDataEqualityUsesSemanticYamlValues },
 		{ "ReflectedComponentIdentityUsesStrictSharedValidation", TestReflectedComponentIdentityUsesStrictSharedValidation },
 	};
 

@@ -1,4 +1,5 @@
 #include "Reflection.h"
+#include "Utils.h"
 #include "Containers/Containers.h"
 #include "Components/Component.h"
 #include "Containers/ConcurrentMap.h"
@@ -552,7 +553,24 @@ void ReflectedData::Deserialize(const YAML::Node& inData)
 
 bool ReflectedData::operator==(const ReflectedData& rhs) const
 {
-	return m_typeInfo == rhs.m_typeInfo && m_properties == rhs.m_properties;
+	if (m_typeInfo != rhs.m_typeInfo ||
+		m_properties.Num() != rhs.m_properties.Num())
+	{
+		return false;
+	}
+
+	for (const auto& property : m_properties)
+	{
+		if (!rhs.m_properties.ContainsKey(property.m_first) ||
+			!Utils::AreYamlNodesEqual(
+				*property.m_second,
+				rhs.m_properties[property.m_first]))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 TMap<std::string, YAML::Node> ReflectedData::GetOverrideProperties() const
@@ -571,9 +589,12 @@ ReflectedData ReflectedData::DiffTo(const ReflectedData& rhs) const
 
 	for (const auto& prop : GetProperties())
 	{
-		if (*prop.m_second != rhs.m_properties[prop.m_first])
+		if (!rhs.m_properties.ContainsKey(prop.m_first) ||
+			!Utils::AreYamlNodesEqual(
+				*prop.m_second,
+				rhs.m_properties[prop.m_first]))
 		{
-			res.m_properties[prop.m_first] = prop.m_second;
+			res.m_properties[prop.m_first] = *prop.m_second;
 		}
 	}
 
