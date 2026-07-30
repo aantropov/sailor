@@ -113,6 +113,7 @@ prefabs:
         instanceId: 4835008624012338468
         components:
           - 0
+          - 1
     components:
       - typename: Sailor::LightComponent
         overrideProperties:
@@ -134,3 +135,10 @@ prefabs:
             - 45
           fileId: NullFileId
           instanceId: FFF4417DA65649588B6B279D47D0EC3E_4835008624012338468
+      - typename: Sailor::SkyComponent
+        overrideProperties:
+          m_directionalLight:
+            fileId: NullFileId
+            instanceId: FFF4417DA65649588B6B279D47D0EC3E_4835008624012338468
+          fileId: NullFileId
+          instanceId: 79873CAD7F4240CD92CE12896669CF51_4835008624012338468

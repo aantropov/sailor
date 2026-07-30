@@ -1,10 +1,12 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/SkyParameters.h"
 
 namespace Sailor::Framegraph
 {
@@ -45,50 +47,6 @@ namespace Sailor::Framegraph
 
 	public:
 
-		struct SkyParams
-		{
-			glm::vec4 m_lightDirection = Math::SafeNormalize(glm::vec4(0.0f, -1.0f, 1.0f, 0.0f), glm::vec4(0.0f, -1.0f, 0.0f, 0.0f));
-			float m_cloudsAttenuation1 = 0.3f;
-			float m_cloudsAttenuation2 = 0.06f;
-			float m_cloudsDensity = 0.3f;
-			float m_cloudsCoverage = 0.56f;
-			float m_phaseInfluence1 = 0.025f;
-			float m_phaseInfluence2 = 0.9f;
-			float m_eccentrisy1 = 0.95f;
-			float m_eccentrisy2 = 0.51f;
-			float m_fog = 10.0f;
-			float m_sunIntensity = 500.0f;
-			float m_ambient = 0.5f;
-			int32_t m_scatteringSteps = 5;
-			float m_scatteringDensity = 0.5f;
-			float m_scatteringIntensity = 0.5f;
-			float m_scatteringPhase = 0.5f;
-			float m_sunShaftsIntensity = 0.45f;
-			int32_t m_sunShaftsDistance = 60;
-
-			__forceinline size_t GetHash() const
-			{
-				size_t hash = (size_t)m_sunIntensity;
-				if (glm::dot(Math::vec4_Down, m_lightDirection) > -0.85f)
-				{
-					const glm::ivec3 quantizedLight = m_lightDirection * 10.0f;
-					HashCombine(hash, quantizedLight.x);
-					HashCombine(hash, quantizedLight.y * 10);
-					HashCombine(hash, quantizedLight.z * 100);
-				}
-
-				return hash;
-			}
-
-			SAILOR_API bool operator==(const SkyParams& rhs) const 
-			{
-				const glm::ivec3 quantizedLight1 = m_lightDirection * 10.0f;
-				const glm::ivec3 quantizedLight2 = rhs.m_lightDirection * 10.0f;
-
-				return quantizedLight1 == quantizedLight2;
-			}
-		};
-
 		SAILOR_API static const char* GetName() { return m_name; }
 
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph,
@@ -101,9 +59,9 @@ namespace Sailor::Framegraph
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_pShaderBindings; }
 		SAILOR_API void SetLocation(float latitudeDegrees, float longitudeDegrees);
 		SAILOR_API void MarkDirty() { m_bIsDirty = true;  m_updateEnvCubemapPattern = 0; }
-
-		const SkyParams& GetSkyParams() const { return m_skyParams; }
-		SkyParams& GetSkyParams() { return m_skyParams; }
+		SAILOR_API void SetSkyParams(const SkyParameters& skyParams);
+		SAILOR_API void ResetSkyParams();
+		SAILOR_API SkyParameters GetSkyParams() const;
 
 	protected:
 
@@ -114,7 +72,13 @@ namespace Sailor::Framegraph
 			mat4 m_starsModelView{};
 		};
 
-		SkyParams m_skyParams{};
+		void ConsumePendingSkyParams();
+
+		mutable SpinLock m_skyParamsLock;
+		SkyParameters m_skyParams{};
+		SkyParameters m_pendingSkyParams{};
+		uint64_t m_skyParamsRevision = 0;
+		uint64_t m_pendingSkyParamsRevision = 0;
 
 		mat4 m_starsModelView{};
 

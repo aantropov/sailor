@@ -118,6 +118,48 @@ Tasks::TaskPtr<RHI::RHIMeshPtr, TParseRes> SkyNode::CreateStarsMesh()
 		return task;
 }
 
+void SkyNode::SetSkyParams(const SkyParameters& skyParams)
+{
+	m_skyParamsLock.Lock();
+	if (!(m_pendingSkyParams == skyParams))
+	{
+		m_pendingSkyParams = skyParams;
+		m_pendingSkyParamsRevision++;
+	}
+	m_skyParamsLock.Unlock();
+}
+
+void SkyNode::ResetSkyParams()
+{
+	SetSkyParams(SkyParameters{});
+}
+
+SkyParameters SkyNode::GetSkyParams() const
+{
+	m_skyParamsLock.Lock();
+	const SkyParameters skyParams = m_skyParams;
+	m_skyParamsLock.Unlock();
+	return skyParams;
+}
+
+void SkyNode::ConsumePendingSkyParams()
+{
+	m_skyParamsLock.Lock();
+	if (m_skyParamsRevision != m_pendingSkyParamsRevision)
+	{
+		const SkyEnvironmentKey previousEnvironment =
+			m_skyParams.GetEnvironmentKey();
+		m_skyParams = m_pendingSkyParams;
+		m_skyParamsRevision = m_pendingSkyParamsRevision;
+
+		if (!(previousEnvironment == m_skyParams.GetEnvironmentKey()))
+		{
+			MarkDirty();
+		}
+	}
+	m_skyParamsLock.Unlock();
+}
+
 float Remap(float value, float minValue, float maxValue, float newMinValue, float newMaxValue)
 {
 	return newMinValue + (value - minValue) / (maxValue - minValue) * (newMaxValue - newMinValue);
@@ -219,6 +261,8 @@ void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
 
 void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
+	ConsumePendingSkyParams();
+
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdPostProcess);
@@ -443,7 +487,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->FillShadersLayout(m_pShaderBindings, { m_pSkyShader->GetDebugVertexShaderRHI(), m_pSkyShader->GetDebugFragmentShaderRHI() }, 1);
 
 		// That should be enough to handle all the uniforms 
-		const size_t uniformsSize = std::max(sizeof(SkyParams), m_vectorParams.Num() * sizeof(glm::vec4));
+		const size_t uniformsSize = std::max(sizeof(SkyParameters), m_vectorParams.Num() * sizeof(glm::vec4));
 		RHIShaderBindingPtr data = driver->AddBufferToShaderBindings(m_pShaderBindings, "data", uniformsSize, 0, RHI::EShaderBindingType::UniformBuffer);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "skySampler", m_pSkyTexture, 1);
 		driver->AddSamplerToShaderBindings(m_pShaderBindings, "sunSampler", m_pSunTexture, 2);
@@ -480,7 +524,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		{
 			if (auto binding = bindings->GetOrAddShaderBinding("data"))
 			{
-				commands->UpdateShaderBinding(transferCommandList, binding, &m_skyParams, sizeof(SkyNode::SkyParams));
+				commands->UpdateShaderBinding(transferCommandList, binding, &m_skyParams, sizeof(SkyParameters));
 			}
 		}
 	}

@@ -333,25 +333,38 @@ void TestComponent::Tick(float deltaTime)
 		}
 	}
 
-	if (auto node = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("Sky"))
 	{
-		auto sky = node.DynamicCast<Framegraph::SkyNode>();
-
-		SkyNode::SkyParams& skyParams = sky->GetSkyParams();
+		auto* renderer = App::GetSubmodule<RHI::Renderer>();
+		FrameGraphPtr frameGraph =
+			renderer ? renderer->GetFrameGraph() : FrameGraphPtr{};
+		RHI::RHIFrameGraphPtr rhiFrameGraph =
+			frameGraph ? frameGraph->GetRHI() : RHI::RHIFrameGraphPtr{};
 
 		ImGui::Begin("Screenshot");
 		if (ImGui::Button("Capture"))
 		{
-			if (auto snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam"))
+			if (rhiFrameGraph)
 			{
-				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-				snapshot->DoOneCapture();
-			}
+				if (auto snapshot =
+					rhiFrameGraph->
+						GetGraphNode("CopyTextureToRam").
+						DynamicCast<
+							Framegraph::CopyTextureToRamNode>())
+				{
+					snapshot->DoOneCapture();
+				}
 
-			if (auto snapshotNode = *App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraph().Last())
-			{
-				auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-				snapshot->DoOneCapture();
+				auto& graph = rhiFrameGraph->GetGraph();
+				if (!graph.IsEmpty())
+				{
+					if (auto snapshot =
+						graph.Last()->
+							DynamicCast<
+								Framegraph::CopyTextureToRamNode>())
+					{
+						snapshot->DoOneCapture();
+					}
+				}
 			}
 		}
 
@@ -360,102 +373,87 @@ void TestComponent::Tick(float deltaTime)
 
 		FrameGraphNodePtr snapshotNode = nullptr;
 
-		if (bSave)
+		if (bSave && rhiFrameGraph)
 		{
-			snapshotNode = App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraphNode("CopyTextureToRam");
+			snapshotNode =
+				rhiFrameGraph->GetGraphNode("CopyTextureToRam");
 		}
-		else if (bSaveMask)
+		else if (bSaveMask && rhiFrameGraph)
 		{
-			snapshotNode = *App::GetSubmodule<RHI::Renderer>()->GetFrameGraph()->GetRHI()->GetGraph().Last();
+			auto& graph = rhiFrameGraph->GetGraph();
+			if (!graph.IsEmpty())
+			{
+				snapshotNode = *graph.Last();
+			}
 		}
 
-		if (bSave || bSaveMask)
+		if (snapshotNode)
 		{
 			auto snapshot = snapshotNode.DynamicCast<Framegraph::CopyTextureToRamNode>();
-			auto cpuRam = snapshot->GetBuffer();
-			auto texture = snapshot->GetTexture();
-			if (vec4* ptr = (vec4*)cpuRam->GetPointer())
+			auto cpuRam = snapshot ? snapshot->GetBuffer() : nullptr;
+			auto texture = snapshot ? snapshot->GetTexture() : nullptr;
+			if (cpuRam && texture)
 			{
-				TVector<u8vec3> outSrgb(texture->GetExtent().x * texture->GetExtent().y);
-
-				for (int y = 0; y < texture->GetExtent().y; y++)
+				if (vec4* ptr = (vec4*)cpuRam->GetPointer())
 				{
-					for (int x = 0; x < texture->GetExtent().x; x++)
+					TVector<u8vec3> outSrgb(
+						texture->GetExtent().x *
+						texture->GetExtent().y);
+
+					for (int y = 0;
+						y < texture->GetExtent().y;
+						y++)
 					{
-						vec2 uv = vec2((float)x / texture->GetExtent().x, (float)y / texture->GetExtent().y);
+						for (int x = 0;
+							x < texture->GetExtent().x;
+							x++)
+						{
+							uint32_t index =
+								x + y *
+									texture->GetExtent().x;
+							vec3 value = ptr[index];
+							value.x =
+								powf(
+									value.x,
+									1.0f / 2.2f);
+							value.y =
+								powf(
+									value.y,
+									1.0f / 2.2f);
+							value.z =
+								powf(
+									value.z,
+									1.0f / 2.2f);
 
-						uint32_t index = x + y * texture->GetExtent().x;
-						vec3 value = ptr[index];
-						value.x = powf(value.x, 1.0f / 2.2f);
-						value.y = powf(value.y, 1.0f / 2.2f);
-						value.z = powf(value.z, 1.0f / 2.2f);
+							outSrgb[index] =
+								u8vec3(
+									glm::clamp(
+										value * 255.0f,
+										0.0f,
+										255.0f));
+						}
+					}
 
-						outSrgb[index] = u8vec3(glm::clamp(value * 255.0f, 0.0f, 255.0f));
+					const uint32_t Channels = 3;
+					if (!stbi_write_png(
+						bSave
+							? "screenshot.png"
+							: "mask.png",
+						texture->GetExtent().x,
+						texture->GetExtent().y,
+						Channels,
+						outSrgb.GetData(),
+						texture->GetExtent().x *
+							Channels))
+					{
+						SAILOR_LOG_ERROR(
+							"Cannot write screenshot");
 					}
 				}
-
-				const uint32_t Channels = 3;
-				if (!stbi_write_png(bSave ? "screenshot.png" : "mask.png",
-					texture->GetExtent().x, texture->GetExtent().y, Channels, outSrgb.GetData(), texture->GetExtent().x * Channels))
-				{
-					SAILOR_LOG_ERROR("Cannot write screenshot");
-				}
 			}
 		}
 
 		ImGui::End();
-
-		ImGui::Begin("Sky Settings");
-
-		ImGui::SliderAngle("Sun angle", &m_sunAngleRad, -25.0f, 89.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds density", &skyParams.m_cloudsDensity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds coverage", &skyParams.m_cloudsCoverage, 0.0f, 2.0f, "%.2f", ImGuiSliderFlags_::ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds attenuation 1", &skyParams.m_cloudsAttenuation1, 0.1f, 0.3f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds attenuation 2", &skyParams.m_cloudsAttenuation2, 0.001f, 0.1f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase influence 1", &skyParams.m_phaseInfluence1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase eccentrisy 1", &skyParams.m_eccentrisy1, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase influence 2", &skyParams.m_phaseInfluence2, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds phase eccentrisy 2", &skyParams.m_eccentrisy2, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds horizon blend", &skyParams.m_fog, 0.0f, 20.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds sun intensity", &skyParams.m_sunIntensity, 0.0f, 800.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds ambient", &skyParams.m_ambient, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderInt("Clouds scattering steps", &skyParams.m_scatteringSteps, 1, 10, "%d");
-		ImGui::SliderFloat("Clouds scattering density", &skyParams.m_scatteringDensity, 0.1f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds scattering intensity", &skyParams.m_scatteringIntensity, 0.01f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderFloat("Clouds scattering phase", &skyParams.m_scatteringPhase, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::SliderInt("Sun Shafts Distance", &skyParams.m_sunShaftsDistance, 1, 100, "%d");
-		ImGui::SliderFloat("Sun Shafts Intensity", &skyParams.m_sunShaftsIntensity, 0.001f, 1.0f, "%.3f", ImGuiSliderFlags_::ImGuiSliderFlags_NoRoundToFormat);
-		ImGui::End();
-
-		if (m_skyHash != skyParams.GetHash())
-		{
-			sky->MarkDirty();
-			m_skyHash = skyParams.GetHash();
-		}
-
-		glm::vec4 lightPosition = (-skyParams.m_lightDirection) * 9000.0f;
-
-		skyParams.m_lightDirection = normalize(vec4(0.2f, std::sin(-m_sunAngleRad), std::cos(m_sunAngleRad), 0));
-
-		auto directionalLightComponent = m_dirLight
-			? m_dirLight->GetComponent<LightComponent>()
-			: TObjectPtr<LightComponent>{};
-		if (directionalLightComponent)
-		{
-			m_dirLight->GetTransformComponent().SetRotation(glm::quatLookAt(skyParams.m_lightDirection.xyz(), Math::vec3_Up));
-			m_dirLight->GetTransformComponent().SetPosition(lightPosition);
-			directionalLightComponent->SetIntensity(m_sunAngleRad > 0 ? vec3(17.0f, 17.0f, 17.0f) : vec3(0));
-		}
-		else
-		{
-			m_dirLight = {};
-			auto index = GetWorld()->GetGameObjects().FindIf([](const GameObjectPtr& el) mutable { return el->GetComponent<LightComponent>().IsValid(); });
-
-			if (index != -1)
-			{
-				m_dirLight = GetWorld()->GetGameObjects()[index];
-			}
-		}
 	}
 
 	ImGui::Begin("Path Tracer");

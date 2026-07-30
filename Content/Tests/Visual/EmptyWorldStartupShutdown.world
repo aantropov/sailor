@@ -80,6 +80,7 @@ prefabs:
         instanceId: 210B5A989F3E1BF694FC
         components:
           - 0
+          - 1
     components:
       - typename: Sailor::LightComponent
         overrideProperties:
@@ -101,3 +102,14 @@ prefabs:
             - 45
           fileId: NullFileId
           instanceId: 21EDB035AC31897E_210B5A989F3E1BF694FC
+      - typename: Sailor::SkyComponent
+        overrideProperties:
+          m_directionalLight:
+            fileId: NullFileId
+            instanceId: 21EDB035AC31897E_210B5A989F3E1BF694FC
+          directionalLightIntensity:
+            - 5
+            - 5
+            - 5
+          fileId: NullFileId
+          instanceId: 2F509D4F456E4DAE946D4BF6EDD85E2E_210B5A989F3E1BF694FC
