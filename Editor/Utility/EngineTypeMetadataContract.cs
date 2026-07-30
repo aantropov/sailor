@@ -2,6 +2,7 @@
 
 using System.Collections;
 using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -23,7 +24,31 @@ public sealed class EngineTypeMetadataType
     public string Typename { get; set; } = string.Empty;
     public string Base { get; set; } = string.Empty;
     public Dictionary<string, string> Properties { get; set; } = [];
+    public Dictionary<string, EngineTypeMetadataPropertyRange> PropertyRanges { get; set; } = [];
     public List<string> ReadOnlyProperties { get; set; } = [];
+}
+
+public sealed class EngineTypeMetadataPropertyRange
+{
+    public double? Min { get; set; }
+    public double? Max { get; set; }
+}
+
+public sealed record NumericPropertyRange(double Minimum, double Maximum)
+{
+    public double Clamp(double value) => Math.Clamp(value, Minimum, Maximum);
+
+    public float Clamp(float value) => (float)Clamp((double)value);
+
+    public int Clamp(int value) => (int)Clamp((double)value);
+
+    public uint Clamp(uint value) => (uint)Clamp((double)value);
+
+    public int SnapInt32(double value)
+        => (int)Math.Round(Clamp(value), MidpointRounding.AwayFromZero);
+
+    public uint SnapUInt32(double value)
+        => (uint)Math.Round(Clamp(value), MidpointRounding.AwayFromZero);
 }
 
 public sealed class EngineTypeMetadataDefaults
@@ -122,6 +147,7 @@ public sealed class EditorTypeCatalogSnapshot
                 .Build()
                 .Deserialize<EngineTypeMetadataContract>(yaml)
                 ?? throw new InvalidDataException("The editor type catalog document is empty.");
+            ValidatePropertyRangeYamlShape(yaml);
         }
         catch (YamlException ex)
         {
@@ -158,6 +184,11 @@ public sealed class EditorTypeCatalogSnapshot
         foreach (var type in types.Values)
         {
             type.Properties ??= [];
+            if (type.PropertyRanges is null)
+            {
+                throw new InvalidDataException(
+                    $"Reflected type '{type.Typename}' contains a null propertyRanges map.");
+            }
             type.ReadOnlyProperties ??= [];
             foreach (var property in type.Properties)
             {
@@ -166,6 +197,11 @@ public sealed class EditorTypeCatalogSnapshot
                     throw new InvalidDataException(
                         $"Reflected type '{type.Typename}' contains a property with an empty name or type.");
                 }
+            }
+
+            foreach (var propertyRange in type.PropertyRanges)
+            {
+                ValidatePropertyRange(type, propertyRange.Key, propertyRange.Value);
             }
 
             var readOnlyProperties = new HashSet<string>(StringComparer.Ordinal);
@@ -250,6 +286,156 @@ public sealed class EditorTypeCatalogSnapshot
         }
 
         return new EditorTypeCatalogSnapshot(document, types, defaults);
+    }
+
+    static void ValidatePropertyRangeYamlShape(string yaml)
+    {
+        var yamlStream = new YamlStream();
+        using var reader = new StringReader(yaml);
+        yamlStream.Load(reader);
+        if (yamlStream.Documents.Count == 0 ||
+            yamlStream.Documents[0].RootNode is not YamlMappingNode root ||
+            !TryGetMappingValue(root, "engineTypes", out var engineTypesNode) ||
+            engineTypesNode is not YamlSequenceNode engineTypes)
+        {
+            return;
+        }
+
+        foreach (var engineTypeNode in engineTypes.Children)
+        {
+            if (engineTypeNode is not YamlMappingNode engineType ||
+                !TryGetMappingValue(engineType, "propertyRanges", out var propertyRangesNode))
+            {
+                continue;
+            }
+
+            var typeName = TryGetMappingValue(engineType, "typename", out var typeNameNode) &&
+                typeNameNode is YamlScalarNode typeNameScalar
+                ? typeNameScalar.Value ?? string.Empty
+                : string.Empty;
+            if (propertyRangesNode is not YamlMappingNode propertyRanges)
+            {
+                throw new InvalidDataException(
+                    $"Reflected type '{typeName}' must declare propertyRanges as a map.");
+            }
+
+            foreach (var propertyRange in propertyRanges.Children)
+            {
+                var propertyName = propertyRange.Key is YamlScalarNode propertyNameScalar
+                    ? propertyNameScalar.Value ?? string.Empty
+                    : string.Empty;
+                var qualifiedPropertyName = $"{typeName}.{propertyName}";
+                if (string.IsNullOrWhiteSpace(propertyName) ||
+                    propertyRange.Value is not YamlMappingNode range ||
+                    range.Children.Count != 2 ||
+                    !HasScalarMappingValue(range, "min") ||
+                    !HasScalarMappingValue(range, "max"))
+                {
+                    throw new InvalidDataException(
+                        $"Property range '{qualifiedPropertyName}' must contain exactly scalar min and max fields.");
+                }
+            }
+        }
+    }
+
+    static bool HasScalarMappingValue(YamlMappingNode mapping, string key)
+        => TryGetMappingValue(mapping, key, out var value) &&
+            value is YamlScalarNode;
+
+    static bool TryGetMappingValue(
+        YamlMappingNode mapping,
+        string key,
+        out YamlNode value)
+    {
+        foreach (var child in mapping.Children)
+        {
+            if (child.Key is YamlScalarNode scalar &&
+                string.Equals(scalar.Value, key, StringComparison.Ordinal))
+            {
+                value = child.Value;
+                return true;
+            }
+        }
+
+        value = null!;
+        return false;
+    }
+
+    static void ValidatePropertyRange(
+        EngineTypeMetadataType type,
+        string propertyName,
+        EngineTypeMetadataPropertyRange? propertyRange)
+    {
+        var qualifiedPropertyName = $"{type.Typename}.{propertyName}";
+        if (string.IsNullOrWhiteSpace(propertyName) ||
+            !type.Properties.TryGetValue(propertyName, out var propertyType))
+        {
+            throw new InvalidDataException(
+                $"Property range '{qualifiedPropertyName}' does not reference a reflected writable property.");
+        }
+        if (propertyRange?.Min is not double minimum ||
+            propertyRange.Max is not double maximum)
+        {
+            throw new InvalidDataException(
+                $"Property range '{qualifiedPropertyName}' must declare both min and max.");
+        }
+        if (!double.IsFinite(minimum) ||
+            !double.IsFinite(maximum) ||
+            minimum >= maximum)
+        {
+            throw new InvalidDataException(
+                $"Property range '{qualifiedPropertyName}' must contain finite bounds with min less than max.");
+        }
+
+        switch (propertyType)
+        {
+            case "float":
+                if (minimum < -float.MaxValue || maximum > float.MaxValue)
+                {
+                    throw new InvalidDataException(
+                        $"Property range '{qualifiedPropertyName}' exceeds the supported float bounds.");
+                }
+                break;
+            case "int32":
+                ValidateIntegralRange(
+                    qualifiedPropertyName,
+                    minimum,
+                    maximum,
+                    int.MinValue,
+                    int.MaxValue,
+                    "int32");
+                break;
+            case "uint32":
+                ValidateIntegralRange(
+                    qualifiedPropertyName,
+                    minimum,
+                    maximum,
+                    uint.MinValue,
+                    uint.MaxValue,
+                    "uint32");
+                break;
+            default:
+                throw new InvalidDataException(
+                    $"Property range '{qualifiedPropertyName}' cannot be applied to '{propertyType}'.");
+        }
+    }
+
+    static void ValidateIntegralRange(
+        string qualifiedPropertyName,
+        double minimum,
+        double maximum,
+        double supportedMinimum,
+        double supportedMaximum,
+        string propertyType)
+    {
+        if (minimum != Math.Truncate(minimum) ||
+            maximum != Math.Truncate(maximum) ||
+            minimum < supportedMinimum ||
+            maximum > supportedMaximum)
+        {
+            throw new InvalidDataException(
+                $"Property range '{qualifiedPropertyName}' must use representable integral {propertyType} bounds.");
+        }
     }
 
     public bool TryGetType(string typeName, out EngineTypeMetadataType type)

@@ -519,6 +519,16 @@ YAML::Node TypeInfo::Serialize() const
 	::Serialize(res, "base", m_base);
 	::Serialize(res, "properties", m_props);
 
+	YAML::Node propertyRanges(YAML::NodeType::Map);
+	for (const auto& propertyRange : m_propertyRanges)
+	{
+		YAML::Node range(YAML::NodeType::Map);
+		range["min"] = propertyRange.m_second->m_min;
+		range["max"] = propertyRange.m_second->m_max;
+		propertyRanges[propertyRange.m_first] = std::move(range);
+	}
+	res["propertyRanges"] = std::move(propertyRanges);
+
 	return res;
 };
 
@@ -527,6 +537,54 @@ void TypeInfo::Deserialize(const YAML::Node& inData)
 	::Deserialize(inData, "typename", m_name);
 	::Deserialize(inData, "base", m_base);
 	::Deserialize(inData, "properties", m_props);
+
+	m_propertyRanges.Clear();
+	YAML::Node propertyRanges(YAML::NodeType::Undefined);
+	for (const auto& field : inData)
+	{
+		if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
+		{
+			propertyRanges = field.second;
+			break;
+		}
+	}
+	if (propertyRanges.IsMap())
+	{
+		for (const auto& propertyRange : propertyRanges)
+		{
+			const YAML::Node range = propertyRange.second;
+			if (!propertyRange.first.IsScalar() || !range.IsMap())
+			{
+				continue;
+			}
+
+			YAML::Node min(YAML::NodeType::Undefined);
+			YAML::Node max(YAML::NodeType::Undefined);
+			for (const auto& field : range)
+			{
+				if (!field.first.IsScalar())
+				{
+					continue;
+				}
+
+				const std::string fieldName = field.first.as<std::string>();
+				if (fieldName == "min")
+				{
+					min = field.second;
+				}
+				else if (fieldName == "max")
+				{
+					max = field.second;
+				}
+			}
+
+			if (min.IsScalar() && max.IsScalar())
+			{
+				m_propertyRanges[propertyRange.first.as<std::string>()] =
+					PropertyRange{ min.as<double>(), max.as<double>() };
+			}
+		}
+	}
 }
 
 YAML::Node ReflectedData::Serialize() const

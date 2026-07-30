@@ -147,8 +147,9 @@ public class ComponentTemplate : DataTemplate
                         continue;
 
                     View propertyEditor = null;
+                    var propertyDescriptor = component.Typename.Properties[property.Key];
 
-                    if (component.Typename.Properties[property.Key] is EnumProperty enumProp)
+                    if (propertyDescriptor is EnumProperty enumProp)
                     {
                         var observableString = property.Value as Observable<string>;
                         if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
@@ -167,7 +168,7 @@ public class ComponentTemplate : DataTemplate
                     }
                     else
                     {
-                        if (component.Typename.Properties[property.Key] is ObjectPtrProperty objectPtr)
+                        if (propertyDescriptor is ObjectPtrProperty objectPtr)
                         {
                             if (property.Value is ObjectPtr ptr)
                             {
@@ -191,6 +192,18 @@ public class ComponentTemplate : DataTemplate
                         else
                             propertyEditor = property.Value switch
                             {
+                                Observable<float> observableFloat when propertyDescriptor.Range is { } range => Templates.RangedFloatEditor(
+                                    (Component vm) => observableFloat.Value,
+                                    (vm, value) => observableFloat.Value = value,
+                                    range),
+                                Observable<int> observableInt when propertyDescriptor.Range is { } range => Templates.RangedIntEditor(
+                                    (Component vm) => observableInt.Value,
+                                    (vm, value) => observableInt.Value = value,
+                                    range),
+                                Observable<uint> observableUInt when propertyDescriptor.Range is { } range => Templates.RangedUIntEditor(
+                                    (Component vm) => observableUInt.Value,
+                                    (vm, value) => observableUInt.Value = value,
+                                    range),
                                 Observable<float> observableFloat => Templates.FloatEditor((Component vm) => observableFloat.Value, (vm, value) => observableFloat.Value = value),
                                 Observable<int> observableInt => Templates.IntEditor((Component vm) => observableInt.Value, (vm, value) => observableInt.Value = value),
                                 Observable<uint> observableUInt => Templates.UIntEditor((Component vm) => observableUInt.Value, (vm, value) => observableUInt.Value = value),

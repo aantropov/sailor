@@ -52,7 +52,7 @@ using namespace Sailor;
 REFL_AUTO(
 	type(Sailor::CameraComponent, bases<Component>),
 
-	func(GetFov, property("fov"), Attributes::SkipCDO()),
+	func(GetFov, property("fov"), Attributes::SkipCDO(), Attributes::Range(1.0, 179.0)),
 	func(SetFov, property("fov"), Attributes::SkipCDO()),
 
 	func(GetZNear, property("zNear"), Attributes::SkipCDO()),

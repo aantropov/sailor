@@ -7,7 +7,9 @@
 #include "Workspace/WorkspaceModuleApi.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cctype>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <unordered_map>
@@ -177,6 +179,168 @@ namespace
 	};
 
 	using EditorTypeSchemas = TMap<std::string, EditorTypeSchema>;
+
+	bool TryParsePropertyRangeBound(
+		const YAML::Node& value,
+		double& outValue)
+	{
+		if (!value.IsScalar())
+		{
+			return false;
+		}
+
+		const std::string& scalar = value.Scalar();
+		const char* begin = scalar.data();
+		const char* end = begin + scalar.size();
+		const auto parsed = std::from_chars(
+			begin,
+			end,
+			outValue,
+			std::chars_format::general);
+
+		return parsed.ec == std::errc{} &&
+			parsed.ptr == end &&
+			std::isfinite(outValue);
+	}
+
+	bool TryReadPropertyRange(
+		const YAML::Node& range,
+		double& outMin,
+		double& outMax)
+	{
+		if (!range.IsMap() || range.size() != 2)
+		{
+			return false;
+		}
+
+		bool bHasMin = false;
+		bool bHasMax = false;
+		TSet<std::string> fields;
+		for (const auto& field : range)
+		{
+			if (!field.first.IsScalar() ||
+				!field.second.IsScalar())
+			{
+				return false;
+			}
+
+			const std::string& fieldName = field.first.Scalar();
+			if (!fields.Insert(fieldName))
+			{
+				return false;
+			}
+
+			if (fieldName == "min")
+			{
+				if (!TryParsePropertyRangeBound(field.second, outMin))
+				{
+					return false;
+				}
+				bHasMin = true;
+			}
+			else if (fieldName == "max")
+			{
+				if (!TryParsePropertyRangeBound(field.second, outMax))
+				{
+					return false;
+				}
+				bHasMax = true;
+			}
+			else
+			{
+				return false;
+			}
+		}
+
+		return bHasMin &&
+			bHasMax &&
+			outMin < outMax;
+	}
+
+	bool IsPropertyRangeRepresentable(
+		const std::string& propertyType,
+		double min,
+		double max)
+	{
+		if (propertyType == "float")
+		{
+			return min >= static_cast<double>(std::numeric_limits<float>::lowest()) &&
+				max <= static_cast<double>(std::numeric_limits<float>::max());
+		}
+
+		if (propertyType == "int32")
+		{
+			return min >= static_cast<double>(std::numeric_limits<int32_t>::lowest()) &&
+				max <= static_cast<double>(std::numeric_limits<int32_t>::max()) &&
+				std::trunc(min) == min &&
+				std::trunc(max) == max;
+		}
+
+		if (propertyType == "uint32")
+		{
+			return min >= 0.0 &&
+				max <= static_cast<double>(std::numeric_limits<uint32_t>::max()) &&
+				std::trunc(min) == min &&
+				std::trunc(max) == max;
+		}
+
+		return false;
+	}
+
+	bool ValidatePropertyRangeSchema(
+		const YAML::Node& metadataPropertyRanges,
+		const TypeInfo& typeInfo,
+		std::string& outError)
+	{
+		const auto& reflectedPropertyRanges = typeInfo.PropertyRanges();
+		if (!metadataPropertyRanges.IsDefined())
+		{
+			if (reflectedPropertyRanges.Num() == 0)
+			{
+				return true;
+			}
+
+			outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
+				"' does not match its reflected TypeInfo.";
+			return false;
+		}
+
+		if (!metadataPropertyRanges.IsMap() ||
+			metadataPropertyRanges.size() != reflectedPropertyRanges.Num())
+		{
+			outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
+				"' does not match its reflected TypeInfo.";
+			return false;
+		}
+
+		TSet<std::string> propertyNames;
+		for (const auto& propertyRange : metadataPropertyRanges)
+		{
+			if (!propertyRange.first.IsScalar())
+			{
+				outError = "Workspace metadata propertyRanges schema for '" + typeInfo.Name() +
+					"' contains a non-scalar property name.";
+				return false;
+			}
+
+			const std::string propertyName = propertyRange.first.as<std::string>();
+			const auto reflectedRange = reflectedPropertyRanges.Find(propertyName);
+			double min = 0.0;
+			double max = 0.0;
+			if (!propertyNames.Insert(propertyName) ||
+				reflectedRange == reflectedPropertyRanges.end() ||
+				!TryReadPropertyRange(propertyRange.second, min, max) ||
+				reflectedRange.Value().m_min != min ||
+				reflectedRange.Value().m_max != max)
+			{
+				outError = "Workspace metadata property range '" + typeInfo.Name() + "::" +
+					propertyName + "' does not match its reflected TypeInfo.";
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	bool IndexMetadataEntries(
 		const YAML::Node& entries,
@@ -474,6 +638,58 @@ namespace
 					{
 						outError = "Editor metadata type '" + typeName +
 							"' contains an empty or duplicate property '" + propertyName + "'.";
+						return false;
+					}
+				}
+			}
+
+			YAML::Node propertyRanges(YAML::NodeType::Undefined);
+			for (const auto& field : type)
+			{
+				if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
+				{
+					propertyRanges = field.second;
+					break;
+				}
+			}
+			if (propertyRanges.IsDefined() && !propertyRanges.IsMap())
+			{
+				outError = "Editor metadata type '" + typeName +
+					"' has an invalid propertyRanges schema.";
+				return false;
+			}
+
+			TSet<std::string> rangedPropertyNames;
+			if (propertyRanges.IsMap())
+			{
+				for (const auto& propertyRange : propertyRanges)
+				{
+					if (!propertyRange.first.IsScalar())
+					{
+						outError = "Editor metadata type '" + typeName +
+							"' contains a non-scalar propertyRanges name.";
+						return false;
+					}
+
+					const std::string propertyName = propertyRange.first.as<std::string>();
+					double min = 0.0;
+					double max = 0.0;
+					if (IsBlank(propertyName) ||
+						!propertyNames.Contains(propertyName) ||
+						!rangedPropertyNames.Insert(propertyName) ||
+						!TryReadPropertyRange(propertyRange.second, min, max))
+					{
+						outError = "Editor metadata property range '" + typeName + "::" +
+							propertyName + "' has an invalid propertyRanges schema.";
+						return false;
+					}
+
+					const std::string propertyType = properties[propertyName].as<std::string>();
+					if (!IsPropertyRangeRepresentable(propertyType, min, max))
+					{
+						outError = "Editor metadata property range '" + typeName + "::" +
+							propertyName + "' is not representable by property type '" +
+							propertyType + "'.";
 						return false;
 					}
 				}
@@ -1135,12 +1351,24 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 				collected.m_typeName + "'.");
 		}
 
+		YAML::Node metadataPropertyRanges(YAML::NodeType::Undefined);
+		for (const auto& field : metadataType)
+		{
+			if (field.first.IsScalar() && field.first.as<std::string>() == "propertyRanges")
+			{
+				metadataPropertyRanges = field.second;
+				break;
+			}
+		}
+
 		if (!ValidateComponentHierarchy(
 			*collected.m_typeInfo,
 			collectedTypeInfos,
 			metadataError) ||
 			!ValidatePropertySchema(
 				metadataType["properties"], *collected.m_typeInfo, metadataError) ||
+			!ValidatePropertyRangeSchema(
+				metadataPropertyRanges, *collected.m_typeInfo, metadataError) ||
 			!ValidateCanonicalDefaultValues(
 				metadataDefaultObject["defaultValues"], collected, metadataError))
 		{

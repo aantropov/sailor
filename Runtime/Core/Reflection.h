@@ -9,6 +9,7 @@
 #include "Memory/ObjectPtr.hpp"
 #include "RHI/Types.h"
 #include "YamlSerializable.h"
+#include <limits>
 #include <vector>
 
 using refl::reflect;
@@ -116,6 +117,18 @@ namespace Sailor
 	{
 		struct Transient : refl::attr::usage::field, refl::attr::usage::function { };
 		struct SkipCDO : refl::attr::usage::field, refl::attr::usage::function { };
+
+		struct Range : refl::attr::usage::member
+		{
+			constexpr Range(double min, double max) noexcept
+				: m_min(min)
+				, m_max(max)
+			{
+			}
+
+			double m_min;
+			double m_max;
+		};
 	}
 
 #if defined(_MSC_VER)
@@ -126,6 +139,12 @@ namespace Sailor
 	class SAILOR_SHARED_API TypeInfo : public IYamlSerializable
 	{
 	public:
+
+		struct PropertyRange
+		{
+			double m_min = 0.0;
+			double m_max = 0.0;
+		};
 
 		virtual YAML::Node Serialize() const;
 		virtual void Deserialize(const YAML::Node& inData);
@@ -141,6 +160,7 @@ namespace Sailor
 		const std::string& Name() const { return m_name; }
 		const std::string& Base() const { return m_base; }
 		const TMap<std::string, std::string>& Properties() const { return m_props; }
+		const TMap<std::string, PropertyRange>& PropertyRanges() const { return m_propertyRanges; }
 
 		size_t Size() const { return m_size; }
 		size_t GetHash() const { std::hash<std::string> h; return h(m_name); }
@@ -243,6 +263,58 @@ namespace Sailor
 		std::string m_base;
 		size_t m_size;
 		TMap<std::string, std::string> m_props;
+		TMap<std::string, PropertyRange> m_propertyRanges;
+
+		template<typename TProperty, typename TMember>
+		void AddPropertyRange(const std::string& propertyName, TMember)
+		{
+			if constexpr (refl::descriptor::has_attribute<Attributes::Range>(TMember{}))
+			{
+				static_assert(
+					std::is_same_v<TProperty, float> ||
+					std::is_same_v<TProperty, int32_t> ||
+					std::is_same_v<TProperty, uint32_t>,
+					"Attributes::Range supports only float, int32_t, and uint32_t properties");
+
+				constexpr const auto& range =
+					refl::descriptor::get_attribute<Attributes::Range>(TMember{});
+				static_assert(
+					range.m_min >= std::numeric_limits<double>::lowest() &&
+					range.m_min <= std::numeric_limits<double>::max() &&
+					range.m_max >= std::numeric_limits<double>::lowest() &&
+					range.m_max <= std::numeric_limits<double>::max() &&
+					range.m_min < range.m_max,
+					"Attributes::Range bounds must be finite and min must be less than max");
+
+				if constexpr (std::is_same_v<TProperty, float>)
+				{
+					static_assert(
+						range.m_min >= std::numeric_limits<float>::lowest() &&
+						range.m_max <= std::numeric_limits<float>::max(),
+						"Attributes::Range bounds must be representable by float");
+				}
+				else if constexpr (std::is_same_v<TProperty, int32_t>)
+				{
+					static_assert(
+						range.m_min >= static_cast<double>(std::numeric_limits<int32_t>::lowest()) &&
+						range.m_max <= static_cast<double>(std::numeric_limits<int32_t>::max()) &&
+						range.m_min == static_cast<double>(static_cast<int32_t>(range.m_min)) &&
+						range.m_max == static_cast<double>(static_cast<int32_t>(range.m_max)),
+						"Attributes::Range bounds must be representable integral int32_t values");
+				}
+				else if constexpr (std::is_same_v<TProperty, uint32_t>)
+				{
+					static_assert(
+						range.m_min >= 0.0 &&
+						range.m_max <= static_cast<double>(std::numeric_limits<uint32_t>::max()) &&
+						range.m_min == static_cast<double>(static_cast<uint32_t>(range.m_min)) &&
+						range.m_max == static_cast<double>(static_cast<uint32_t>(range.m_max)),
+						"Attributes::Range bounds must be representable integral uint32_t values");
+				}
+
+				m_propertyRanges[propertyName] = PropertyRange{ range.m_min, range.m_max };
+			}
+		}
 
 		// given a type_descriptor, we construct a TypeInfo
 		// with all the metadata we care about (currently only name)
@@ -273,6 +345,37 @@ namespace Sailor
 							using PropertyType = ::refl::trait::remove_qualifiers_t<decltype(get_reader(member)(*empty))>;
 
 							m_props[displayName] = GetReflectedPropertyTypeName<PropertyType>();
+
+							if constexpr (is_readable(member))
+							{
+								AddPropertyRange<PropertyType>(displayName, member);
+							}
+							else
+							{
+								constexpr auto reader = get_reader(member);
+								if constexpr (
+									refl::descriptor::has_attribute<Attributes::Range>(member) &&
+									refl::descriptor::has_attribute<Attributes::Range>(reader))
+								{
+									constexpr const auto& memberRange =
+										refl::descriptor::get_attribute<Attributes::Range>(decltype(member){});
+									constexpr const auto& readerRange =
+										refl::descriptor::get_attribute<Attributes::Range>(decltype(reader){});
+									static_assert(
+										memberRange.m_min == readerRange.m_min &&
+										memberRange.m_max == readerRange.m_max,
+										"Getter and setter Attributes::Range bounds must match");
+								}
+
+								if constexpr (refl::descriptor::has_attribute<Attributes::Range>(member))
+								{
+									AddPropertyRange<PropertyType>(displayName, member);
+								}
+								else
+								{
+									AddPropertyRange<PropertyType>(displayName, reader);
+								}
+							}
 						}
 					}
 				});

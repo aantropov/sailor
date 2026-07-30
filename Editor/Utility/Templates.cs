@@ -429,12 +429,28 @@ static class Templates
 
     public static View FloatEditor<TBindingContext>(Expression<Func<TBindingContext, float>> getter, Action<TBindingContext, float> setter)
         where TBindingContext : class
+        => CreateFloatEditor(getter, setter, normalizeOnUnfocus: false);
+
+    static Entry CreateFloatEditor<TBindingContext>(
+        Expression<Func<TBindingContext, float>> getter,
+        Action<TBindingContext, float> setter,
+        bool normalizeOnUnfocus)
+        where TBindingContext : class
     {
         var value = CreateInspectorEntry();
         value.Keyboard = Keyboard.Numeric;
         value.ReturnType = ReturnType.Done;
         value.IsTextPredictionEnabled = false;
-        ConfigureCommittingEntry(value);
+        var getValue = getter.Compile();
+        ConfigureCommittingEntry(
+            value,
+            normalizeOnUnfocus
+                ? entry =>
+                {
+                    if (entry.BindingContext is TBindingContext bindingContext)
+                        entry.Text = NumericRangeEntryInteraction.Format(getValue(bindingContext));
+                }
+                : null);
 
         value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
             getter: getter,
@@ -445,14 +461,48 @@ static class Templates
         return value;
     }
 
+    public static View RangedFloatEditor<TBindingContext>(
+        Expression<Func<TBindingContext, float>> getter,
+        Action<TBindingContext, float> setter,
+        NumericPropertyRange range)
+        where TBindingContext : class
+    {
+        return CreateRangedNumericEditor(
+            CreateRangeSlider(
+                getter,
+                setter,
+                range,
+                value => (float)value),
+            CreateFloatEditor(
+                getter,
+                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
+                normalizeOnUnfocus: true));
+    }
+
     public static View IntEditor<TBindingContext>(Expression<Func<TBindingContext, int>> getter, Action<TBindingContext, int> setter)
+        where TBindingContext : class
+        => CreateIntEditor(getter, setter, normalizeOnUnfocus: false);
+
+    static Entry CreateIntEditor<TBindingContext>(
+        Expression<Func<TBindingContext, int>> getter,
+        Action<TBindingContext, int> setter,
+        bool normalizeOnUnfocus)
         where TBindingContext : class
     {
         var value = CreateInspectorEntry();
         value.Keyboard = Keyboard.Numeric;
         value.ReturnType = ReturnType.Done;
         value.IsTextPredictionEnabled = false;
-        ConfigureCommittingEntry(value);
+        var getValue = getter.Compile();
+        ConfigureCommittingEntry(
+            value,
+            normalizeOnUnfocus
+                ? entry =>
+                {
+                    if (entry.BindingContext is TBindingContext bindingContext)
+                        entry.Text = NumericRangeEntryInteraction.Format(getValue(bindingContext));
+                }
+                : null);
 
         value.Bind<Entry, TBindingContext, int, string>(Entry.TextProperty,
             getter: getter,
@@ -463,14 +513,48 @@ static class Templates
         return value;
     }
 
+    public static View RangedIntEditor<TBindingContext>(
+        Expression<Func<TBindingContext, int>> getter,
+        Action<TBindingContext, int> setter,
+        NumericPropertyRange range)
+        where TBindingContext : class
+    {
+        return CreateRangedNumericEditor(
+            CreateRangeSlider(
+                getter,
+                setter,
+                range,
+                range.SnapInt32),
+            CreateIntEditor(
+                getter,
+                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
+                normalizeOnUnfocus: true));
+    }
+
     public static View UIntEditor<TBindingContext>(Expression<Func<TBindingContext, uint>> getter, Action<TBindingContext, uint> setter)
+        where TBindingContext : class
+        => CreateUIntEditor(getter, setter, normalizeOnUnfocus: false);
+
+    static Entry CreateUIntEditor<TBindingContext>(
+        Expression<Func<TBindingContext, uint>> getter,
+        Action<TBindingContext, uint> setter,
+        bool normalizeOnUnfocus)
         where TBindingContext : class
     {
         var value = CreateInspectorEntry();
         value.Keyboard = Keyboard.Numeric;
         value.ReturnType = ReturnType.Done;
         value.IsTextPredictionEnabled = false;
-        ConfigureCommittingEntry(value);
+        var getValue = getter.Compile();
+        ConfigureCommittingEntry(
+            value,
+            normalizeOnUnfocus
+                ? entry =>
+                {
+                    if (entry.BindingContext is TBindingContext bindingContext)
+                        entry.Text = NumericRangeEntryInteraction.Format(getValue(bindingContext));
+                }
+                : null);
 
         value.Bind<Entry, TBindingContext, uint, string>(Entry.TextProperty,
             getter: getter,
@@ -479,6 +563,152 @@ static class Templates
             converter: new UIntValueConverter());
 
         return value;
+    }
+
+    public static View RangedUIntEditor<TBindingContext>(
+        Expression<Func<TBindingContext, uint>> getter,
+        Action<TBindingContext, uint> setter,
+        NumericPropertyRange range)
+        where TBindingContext : class
+    {
+        return CreateRangedNumericEditor(
+            CreateRangeSlider(
+                getter,
+                setter,
+                range,
+                range.SnapUInt32),
+            CreateUIntEditor(
+                getter,
+                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
+                normalizeOnUnfocus: true));
+    }
+
+    static Slider CreateRangeSlider<TBindingContext, TValue>(
+        Expression<Func<TBindingContext, TValue>> getter,
+        Action<TBindingContext, TValue> setter,
+        NumericPropertyRange range,
+        Func<double, TValue> convertSliderValue)
+        where TBindingContext : class
+    {
+        var slider = new NumericRangeSlider(range);
+        var getValue = getter.Compile();
+
+        void ApplyDecision(NumericRangeSlider current, NumericRangeSliderDecision decision)
+        {
+            if (decision.ShouldApply &&
+                current.BindingContext is TBindingContext bindingContext)
+            {
+                setter(bindingContext, convertSliderValue(decision.Value));
+                current.SynchronizeFromModel(
+                    System.Convert.ToDouble(
+                        getValue(bindingContext),
+                        System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        slider.Bind<NumericRangeSlider, TBindingContext, TValue, double>(
+            NumericRangeSlider.ModelValueProperty,
+            getter: getter,
+            setter: static (_, _) => { },
+            mode: BindingMode.OneWay,
+            converter: new NumericRangeSliderConverter());
+
+        slider.DragStarted += (sender, args) =>
+        {
+            var current = (NumericRangeSlider)sender;
+            current.Interaction.BeginDrag(current.Value);
+        };
+        slider.ValueChanged += (sender, args) =>
+        {
+            var current = (NumericRangeSlider)sender;
+            ApplyDecision(
+                current,
+                current.Interaction.HandleValueChanged(args.NewValue));
+        };
+        slider.DragCompleted += (sender, args) =>
+        {
+            var current = (NumericRangeSlider)sender;
+            ApplyDecision(
+                current,
+                current.Interaction.EndDrag());
+        };
+
+        return slider;
+    }
+
+    static Grid CreateRangedNumericEditor(Slider slider, View exactValueEditor)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = new GridLength(96) }
+            },
+            ColumnSpacing = InspectorFieldSpacing,
+            HorizontalOptions = LayoutOptions.Fill,
+            MinimumWidthRequest = 0
+        };
+
+        grid.Add(slider, 0, 0);
+        grid.Add(exactValueEditor, 1, 0);
+        return grid;
+    }
+
+    sealed class NumericRangeSlider : Slider
+    {
+        public static readonly BindableProperty ModelValueProperty = BindableProperty.Create(
+            nameof(ModelValue),
+            typeof(double),
+            typeof(NumericRangeSlider),
+            0.0,
+            BindingMode.OneWay,
+            propertyChanged: OnModelValueChanged);
+
+        public NumericRangeSlider(NumericPropertyRange range)
+        {
+            Interaction = new NumericRangeSliderInteraction(range);
+            Minimum = range.Minimum;
+            Maximum = range.Maximum;
+            HorizontalOptions = LayoutOptions.Fill;
+            MinimumWidthRequest = 0;
+        }
+
+        public NumericRangeSliderInteraction Interaction { get; }
+
+        public double ModelValue
+        {
+            get => (double)GetValue(ModelValueProperty);
+            set => SetValue(ModelValueProperty, value);
+        }
+
+        static void OnModelValueChanged(BindableObject bindable, object oldValue, object newValue)
+        {
+            var slider = (NumericRangeSlider)bindable;
+            slider.SynchronizeFromModel((double)newValue);
+        }
+
+        public void SynchronizeFromModel(double modelValue)
+        {
+            var displayedValue = Interaction.BeginModelSynchronization(modelValue);
+            try
+            {
+                Value = displayedValue;
+            }
+            finally
+            {
+                Interaction.EndModelSynchronization();
+            }
+        }
+    }
+
+    sealed class NumericRangeSliderConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => System.Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture)
+            => BindableProperty.UnsetValue;
     }
 
     public static View StringEditor<TBindingContext>(Expression<Func<TBindingContext, string>> getter, Action<TBindingContext, string> setter)
@@ -497,14 +727,19 @@ static class Templates
         return value;
     }
 
-    static void ConfigureCommittingEntry(Entry entry)
+    static void ConfigureCommittingEntry(Entry entry, Action<Entry> normalizeOnUnfocus = null)
     {
         entry.Completed += (sender, args) =>
         {
             var current = (Entry)sender;
             current.Unfocus();
         };
-        entry.Unfocused += (sender, args) => ScheduleInspectorCommit((Entry)sender);
+        entry.Unfocused += (sender, args) =>
+        {
+            var current = (Entry)sender;
+            normalizeOnUnfocus?.Invoke(current);
+            ScheduleInspectorCommit(current);
+        };
     }
 
     public static View UniformEditor<TBindingContext, T>(
