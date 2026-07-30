@@ -432,7 +432,7 @@ void AssetCache::Shutdown()
 	SaveCache();
 }
 
-void AssetCache::SaveCache(bool bForcely)
+bool AssetCache::SaveCache(bool bForcely)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -451,7 +451,7 @@ void AssetCache::SaveCache(bool bForcely)
 	}
 	if (!ShouldWriteCacheFile(bForcely, m_bIsDirty, m_bPreserveStorageAfterLoadFailure))
 	{
-		return;
+		return !m_bPreserveStorageAfterLoadFailure;
 	}
 	if (bForcely)
 	{
@@ -463,13 +463,13 @@ void AssetCache::SaveCache(bool bForcely)
 	{
 		m_bIsDirty = false;
 		m_lastSaveDiagnostic.clear();
+		return true;
 	}
-	else
-	{
-		m_bIsDirty = true;
-		m_lastSaveDiagnostic = std::move(diagnostic);
-		SAILOR_LOG_ERROR("Asset cache save failed: %s", m_lastSaveDiagnostic.c_str());
-	}
+
+	m_bIsDirty = true;
+	m_lastSaveDiagnostic = std::move(diagnostic);
+	SAILOR_LOG_ERROR("Asset cache save failed: %s", m_lastSaveDiagnostic.c_str());
+	return false;
 }
 
 void AssetCache::LoadCache()

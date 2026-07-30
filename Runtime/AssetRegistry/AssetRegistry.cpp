@@ -301,8 +301,18 @@ AssetRegistry::AssetRegistry()
 
 bool AssetRegistry::RestoreAssetImportTime(
 	AssetInfoPtr info,
-	const FileRevision& sourceRevision) const
+	const FileRevision& sourceRevision)
 {
+	if (info == nullptr)
+	{
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+	if (m_assetProcessingStates.ContainsKey(info->GetFileId()))
+	{
+		return false;
+	}
 	return m_assetCache.RestoreAssetImportTime(info, sourceRevision);
 }
 
@@ -337,10 +347,27 @@ AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInf
 	std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 	token.m_fileId = info->GetFileId();
 	token.m_sourcePath = info->GetAssetFilepath();
+	m_assetCache.Remove(token.m_fileId);
+	const bool bRetryWatermarkPersisted =
+		m_assetCache.SaveCache();
 	token.m_assetImportTime = Utils::GetFileModificationTime(token.m_sourcePath);
 	if (token.m_assetImportTime <= 0 ||
 		!Utils::TryGetFileRevision(token.m_sourcePath, token.m_sourceRevision))
 	{
+		m_assetProcessingStates[token.m_fileId] =
+			AssetProcessingState{ token, true };
+		SAILOR_LOG_ERROR(
+			"Cannot capture asset processing revision after invalidating its cache watermark: %s",
+			token.m_sourcePath.c_str());
+		return {};
+	}
+	if (!bRetryWatermarkPersisted)
+	{
+		m_assetProcessingStates[token.m_fileId] =
+			AssetProcessingState{ token, true };
+		SAILOR_LOG_ERROR(
+			"Cannot start retry-safe asset processing because its invalidated cache watermark was not persisted: %s",
+			token.m_sourcePath.c_str());
 		return {};
 	}
 
@@ -379,7 +406,7 @@ void AssetRegistry::CompleteAssetProcessing(
 	{
 		processingState.Value().m_bRejected = true;
 		SAILOR_LOG_ERROR(
-			"Asset processing failed; preserving the previous cache revision for retry: %s",
+			"Asset processing failed; invalidated the cached source watermark for retry: %s",
 			token.m_sourcePath.c_str());
 		return;
 	}

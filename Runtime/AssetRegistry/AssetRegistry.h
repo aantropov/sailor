@@ -227,7 +227,7 @@ namespace Sailor
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
 		bool RestoreAssetImportTime(
 			AssetInfoPtr info,
-			const FileRevision& sourceRevision) const;
+			const FileRevision& sourceRevision);
 		bool ResolveDirectLoadPath(
 			const std::string& requestedPath,
 			AssetReadLocation& outLocation) const;

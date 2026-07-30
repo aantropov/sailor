@@ -27,7 +27,7 @@ namespace Sailor
 		SAILOR_API bool IsExpired(const class AssetInfo* info) const;
 
 		SAILOR_API void LoadCache();
-		SAILOR_API void SaveCache(bool bForcely = false);
+		SAILOR_API bool SaveCache(bool bForcely = false);
 
 		SAILOR_API void ClearAll();
 		SAILOR_API Workspace::WorkspaceCacheLoadResult GetLastLoadResult() const;
