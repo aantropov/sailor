@@ -420,10 +420,26 @@ bool AssetCache::ShouldWriteCacheFile(
 
 void AssetCache::Initialize()
 {
+	Initialize(App::GetWorkspaceContext());
+}
+
+void AssetCache::Initialize(
+	const Workspace::WorkspaceContext& workspaceContext)
+{
 	SAILOR_PROFILE_FUNCTION();
 
+	{
+		std::lock_guard<std::mutex> lock(m_cacheMutex);
+		m_cacheFolder = workspaceContext.GetCache();
+		m_cacheIdentity = Workspace::MakeWorkspaceCacheIdentity(
+			AssetCacheKind,
+			AssetCacheProducer,
+			AssetCachePayloadVersion,
+			workspaceContext);
+		m_bHasStorageContext = true;
+	}
 	std::error_code createError;
-	std::filesystem::create_directories(AssetRegistry::GetCacheFolder(), createError);
+	std::filesystem::create_directories(m_cacheFolder, createError);
 	LoadCache();
 }
 
@@ -439,11 +455,13 @@ bool AssetCache::SaveCache(bool bForcely)
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	std::error_code createCacheFolderError;
 	std::filesystem::create_directories(
-		AssetRegistry::GetCacheFolder(),
+		m_bHasStorageContext
+			? m_cacheFolder
+			: std::filesystem::path(AssetRegistry::GetCacheFolder()),
 		createCacheFolderError);
 	std::error_code cacheFileError;
 	const bool bCacheFileExists = std::filesystem::is_regular_file(
-		GetAssetCacheFilepath(),
+		GetConfiguredAssetCacheFilepath(),
 		cacheFileError);
 	if (!bCacheFileExists)
 	{
@@ -478,8 +496,10 @@ void AssetCache::LoadCache()
 
 	std::lock_guard<std::mutex> lock(m_cacheMutex);
 	Workspace::WorkspaceCacheLoadResult loadResult;
-	const auto identity = MakeExpectedIdentity();
-	loadResult = Workspace::LoadWorkspaceCacheEnvelope(GetAssetCacheFilepath(), identity);
+	const auto identity = GetConfiguredIdentity();
+	loadResult = Workspace::LoadWorkspaceCacheEnvelope(
+		GetConfiguredAssetCacheFilepath(),
+		identity);
 	if (loadResult.IsLoaded())
 	{
 		AssetCacheData candidate;
@@ -518,7 +538,7 @@ void AssetCache::LoadCache()
 bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 {
 	std::string envelope;
-	const auto identity = MakeExpectedIdentity();
+	const auto identity = GetConfiguredIdentity();
 	if (!Workspace::SerializeWorkspaceCacheEnvelope(
 		identity,
 		SerializeAssetCachePayload(m_cache),
@@ -529,9 +549,23 @@ bool AssetCache::WriteCacheLocked(std::string& outDiagnostic) noexcept
 	}
 
 	return Workspace::AtomicReplaceWorkspaceCacheText(
-		GetAssetCacheFilepath(),
+		GetConfiguredAssetCacheFilepath(),
 		envelope,
 		outDiagnostic);
+}
+
+std::string AssetCache::GetConfiguredAssetCacheFilepath() const
+{
+	return m_bHasStorageContext
+		? (m_cacheFolder / "AssetCache.yaml").string()
+		: GetAssetCacheFilepath();
+}
+
+Workspace::WorkspaceCacheIdentity AssetCache::GetConfiguredIdentity() const
+{
+	return m_bHasStorageContext
+		? m_cacheIdentity
+		: MakeExpectedIdentity();
 }
 
 void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult)
@@ -573,7 +607,7 @@ void AssetCache::ClearAll()
 	m_bPreserveStorageAfterLoadFailure = false;
 
 	std::error_code removeError;
-	std::filesystem::remove(GetAssetCacheFilepath(), removeError);
+	std::filesystem::remove(GetConfiguredAssetCacheFilepath(), removeError);
 	if (removeError)
 	{
 		m_bIsDirty = true;

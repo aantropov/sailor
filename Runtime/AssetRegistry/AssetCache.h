@@ -12,12 +12,19 @@
 
 namespace Sailor
 {
+	namespace Workspace
+	{
+		class WorkspaceContext;
+	}
+
 	class AssetCache
 	{
 	public:
 		SAILOR_API static std::string GetAssetCacheFilepath();
 
 		SAILOR_API void Initialize();
+		SAILOR_API void Initialize(
+			const Workspace::WorkspaceContext& workspaceContext);
 		SAILOR_API void Shutdown();
 
 		SAILOR_API bool Update(const class AssetInfo* info);
@@ -93,6 +100,8 @@ namespace Sailor
 			const std::string& payload,
 			AssetCacheData& outData,
 			std::string& outDiagnostic) noexcept;
+		std::string GetConfiguredAssetCacheFilepath() const;
+		Workspace::WorkspaceCacheIdentity GetConfiguredIdentity() const;
 		bool WriteCacheLocked(std::string& outDiagnostic) noexcept;
 		void ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loadResult);
 
@@ -100,6 +109,9 @@ namespace Sailor
 
 	private:
 		AssetCacheData m_cache;
+		std::filesystem::path m_cacheFolder;
+		Workspace::WorkspaceCacheIdentity m_cacheIdentity;
+		bool m_bHasStorageContext = false;
 		bool m_bIsDirty = false;
 		bool m_bPreserveStorageAfterLoadFailure = false;
 		Workspace::WorkspaceCacheLoadResult m_lastLoadResult{};
