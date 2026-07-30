@@ -1,7 +1,7 @@
 #pragma once
 #include "Components/Component.h"
 #include "Components/LightComponent.h"
-#include "Engine/SkyParameters.h"
+#include "FrameGraph/SkyParameters.h"
 
 namespace Sailor
 {

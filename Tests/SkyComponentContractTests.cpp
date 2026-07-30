@@ -20,7 +20,7 @@
 #include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
-#include "Engine/SkyParameters.h"
+#include "FrameGraph/SkyParameters.h"
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
 

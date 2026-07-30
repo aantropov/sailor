@@ -6,7 +6,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
-#include "Engine/SkyParameters.h"
+#include "FrameGraph/SkyParameters.h"
 
 namespace Sailor::Framegraph
 {
