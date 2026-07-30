@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <new>
 #include <stdexcept>
 #include <string>
@@ -252,6 +253,76 @@ namespace
 			std::move(malformedReadOnlyProperties),
 			"readOnlyProperties",
 			"editor metadata merge should reject malformed read-only property schemas");
+
+		YAML::Node legacyMetadata = YAML::Clone(workspaceMetadata);
+		legacyMetadata["engineTypes"][0].remove("propertyRanges");
+		YAML::Node legacyOutput;
+		std::string legacyError;
+		Require(WorkspaceModuleManager::MergeEditorTypeMetadata(
+				engineMetadata,
+				legacyMetadata,
+				legacyOutput,
+				legacyError),
+			"editor metadata merge should accept legacy catalogs without propertyRanges: " +
+				legacyError);
+
+		YAML::Node malformedPropertyRanges = YAML::Clone(workspaceMetadata);
+		malformedPropertyRanges["engineTypes"][0]["propertyRanges"] =
+			YAML::Node(YAML::NodeType::Sequence);
+		requireCrossSchemaRejection(
+			std::move(malformedPropertyRanges),
+			"propertyRanges",
+			"editor metadata merge should reject malformed propertyRanges schemas");
+
+		YAML::Node unknownPropertyRange = YAML::Clone(workspaceMetadata);
+		unknownPropertyRange["engineTypes"][0]["propertyRanges"]["unknownProperty"]["min"] = 0.0;
+		unknownPropertyRange["engineTypes"][0]["propertyRanges"]["unknownProperty"]["max"] = 1.0;
+		requireCrossSchemaRejection(
+			std::move(unknownPropertyRange),
+			"unknownProperty",
+			"editor metadata merge should reject ranges for unknown properties");
+
+		YAML::Node invertedPropertyRange = YAML::Clone(workspaceMetadata);
+		invertedPropertyRange["engineTypes"][0]["propertyRanges"]["moveSpeed"]["min"] = 10.0;
+		invertedPropertyRange["engineTypes"][0]["propertyRanges"]["moveSpeed"]["max"] = 10.0;
+		requireCrossSchemaRejection(
+			std::move(invertedPropertyRange),
+			"propertyRanges",
+			"editor metadata merge should reject non-increasing property ranges");
+
+		YAML::Node nonFinitePropertyRange = YAML::Clone(workspaceMetadata);
+		nonFinitePropertyRange["engineTypes"][0]["propertyRanges"]["moveSpeed"]["max"] =
+			std::numeric_limits<double>::infinity();
+		requireCrossSchemaRejection(
+			std::move(nonFinitePropertyRange),
+			"propertyRanges",
+			"editor metadata merge should reject non-finite property range bounds");
+
+		YAML::Node unsupportedPropertyRange = YAML::Clone(workspaceMetadata);
+		unsupportedPropertyRange["engineTypes"][0]["propertyRanges"]["registryLookupSucceeded"]["min"] = 0;
+		unsupportedPropertyRange["engineTypes"][0]["propertyRanges"]["registryLookupSucceeded"]["max"] = 1;
+		requireCrossSchemaRejection(
+			std::move(unsupportedPropertyRange),
+			"not representable",
+			"editor metadata merge should reject ranges on non-numeric properties");
+
+		YAML::Node fractionalIntegerRange = YAML::Clone(workspaceMetadata);
+		fractionalIntegerRange["engineTypes"][0]["properties"]["syntheticInteger"] = "int32";
+		fractionalIntegerRange["engineTypes"][0]["propertyRanges"]["syntheticInteger"]["min"] = 0.5;
+		fractionalIntegerRange["engineTypes"][0]["propertyRanges"]["syntheticInteger"]["max"] = 10.0;
+		requireCrossSchemaRejection(
+			std::move(fractionalIntegerRange),
+			"not representable",
+			"editor metadata merge should reject fractional int32 range bounds");
+
+		YAML::Node negativeUnsignedRange = YAML::Clone(workspaceMetadata);
+		negativeUnsignedRange["engineTypes"][0]["properties"]["syntheticUnsigned"] = "uint32";
+		negativeUnsignedRange["engineTypes"][0]["propertyRanges"]["syntheticUnsigned"]["min"] = -1.0;
+		negativeUnsignedRange["engineTypes"][0]["propertyRanges"]["syntheticUnsigned"]["max"] = 10.0;
+		requireCrossSchemaRejection(
+			std::move(negativeUnsignedRange),
+			"not representable",
+			"editor metadata merge should reject negative uint32 range bounds");
 
 		YAML::Node duplicateReadOnlyProperty = YAML::Clone(workspaceMetadata);
 		duplicateReadOnlyProperty["engineTypes"][0]["readOnlyProperties"].push_back(
@@ -598,6 +669,7 @@ namespace
 		const std::filesystem::path& aliasExpansionLibrary,
 		const std::filesystem::path& invalidReadOnlyPropertiesLibrary,
 		const std::filesystem::path& missingEnumDefinitionLibrary,
+		const std::filesystem::path& rangeMismatchLibrary,
 		const std::string& config)
 	{
 		auto requireRejected = [&](const char* directoryName,
@@ -709,6 +781,12 @@ namespace
 			"MissingEnumDefinitionWorkspaceFixture::FixtureComponent",
 			missingEnumDefinitionLibrary,
 			"references missing enum metadata");
+		requireRejected(
+			"range-mismatch",
+			"RangeMismatchFixture",
+			"RangeMismatchWorkspaceFixture::FixtureComponent",
+			rangeMismatchLibrary,
+			"does not match its reflected TypeInfo");
 	}
 
 	void TestRegistrationInstantiationAndCleanup(
@@ -765,6 +843,11 @@ namespace
 		Require(editorDefaults.IsDefined() &&
 			editorDefaults["defaultValues"]["moveSpeed"].as<float>() == 5.0f,
 			"combined editor metadata should expose workspace component defaults");
+		const YAML::Node editorFixtureType =
+			FindMetadataEntry(editorTypes["engineTypes"], FixtureTypeName);
+		Require(editorFixtureType["propertyRanges"]["moveSpeed"]["min"].as<double>() == 0.0 &&
+			editorFixtureType["propertyRanges"]["moveSpeed"]["max"].as<double>() == 10.0,
+			"combined editor metadata should preserve workspace property ranges");
 		Require(CountEnumEntries(editorTypes["enums"], "enum Sailor::EMobilityType") == 1,
 			"combined editor metadata should deduplicate referenced engine enum definitions");
 		TestEditorMetadataMergeRollback(engineTypesBefore, YAML::Load(manager.GetMetadata()));
@@ -811,7 +894,7 @@ namespace
 			const YAML::Node roundTrippedYaml = roundTrippedComponent->GetReflectedData().Serialize();
 			Require(roundTrippedYaml["typename"].as<std::string>() == FixtureTypeName &&
 				roundTrippedYaml["overrideProperties"]["moveSpeed"].as<float>() == 12.5f,
-				"workspace component round trip should preserve type identity and scalar values");
+				"range annotations must not clamp workspace component values at runtime");
 			roundTrippedComponent.ForcelyDestroyObject();
 		}
 		Require(Reflection::GetCDO(FixtureTypeName).GetProperties()["moveSpeed"].as<float>() == 5.0f,
@@ -863,7 +946,7 @@ namespace
 
 int main(int argc, char** argv)
 {
-	if (argc != 19)
+	if (argc != 20)
 	{
 		std::cerr << "Usage: WorkspaceModuleRuntimeTests <fixture> <incompatible-fixture> "
 			"<missing-entry-fixture> <property-mismatch-fixture> <duplicate-cdo-fixture> "
@@ -872,7 +955,7 @@ int main(int argc, char** argv)
 			"<missing-cdo-fixture> <oversized-structured-default-fixture> "
 			"<shadowed-property-fixture> <missing-empty-property-schema-fixture> "
 			"<alias-expansion-fixture> <invalid-read-only-properties-fixture> "
-			"<missing-enum-definition-fixture> <config>" << std::endl;
+			"<missing-enum-definition-fixture> <range-mismatch-fixture> <config>" << std::endl;
 		return 1;
 	}
 
@@ -893,7 +976,8 @@ int main(int argc, char** argv)
 	const std::filesystem::path aliasExpansionLibrary = std::filesystem::absolute(argv[15]);
 	const std::filesystem::path invalidReadOnlyPropertiesLibrary = std::filesystem::absolute(argv[16]);
 	const std::filesystem::path missingEnumDefinitionLibrary = std::filesystem::absolute(argv[17]);
-	const std::string config = argv[18];
+	const std::filesystem::path rangeMismatchLibrary = std::filesystem::absolute(argv[18]);
+	const std::string config = argv[19];
 	const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
 	const std::filesystem::path tempRoot = std::filesystem::temp_directory_path() /
 		("sailor-workspace-module-runtime-" + std::to_string(uniqueSuffix));
@@ -925,6 +1009,7 @@ int main(int argc, char** argv)
 			aliasExpansionLibrary,
 			invalidReadOnlyPropertiesLibrary,
 			missingEnumDefinitionLibrary,
+			rangeMismatchLibrary,
 			config);
 		TestRegistrationInstantiationAndCleanup(tempRoot, fixtureLibrary, config);
 		std::filesystem::remove_all(tempRoot);

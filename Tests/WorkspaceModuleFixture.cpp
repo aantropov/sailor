@@ -54,7 +54,7 @@ namespace WorkspaceFixture
 
 REFL_AUTO(
 	type(WorkspaceFixture::FixtureComponent, bases<Sailor::Component>),
-	func(GetMoveSpeed, property("moveSpeed")),
+	func(GetMoveSpeed, property("moveSpeed"), Sailor::Attributes::Range(0.0, 10.0)),
 	func(SetMoveSpeed, property("moveSpeed")),
 	func(GetRegistryLookupSucceeded, property("registryLookupSucceeded")),
 	func(SetRegistryLookupSucceeded, property("registryLookupSucceeded")),

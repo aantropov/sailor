@@ -1,4 +1,5 @@
 #include "Components/Component.h"
+#include "Components/CameraComponent.h"
 #include "Core/Reflection.h"
 #include "Memory/ObjectAllocator.hpp"
 #include "Workspace/WorkspaceModuleApi.h"
@@ -20,6 +21,30 @@
 
 using namespace Sailor;
 using namespace Sailor::Workspace;
+
+namespace RangeAnnotationFixture
+{
+	class NumericProperties
+	{
+	public:
+		int32_t GetSignedValue() const { return m_signedValue; }
+		void SetSignedValue(int32_t value) { m_signedValue = value; }
+		uint32_t GetUnsignedValue() const { return m_unsignedValue; }
+		void SetUnsignedValue(uint32_t value) { m_unsignedValue = value; }
+
+	private:
+		int32_t m_signedValue = 0;
+		uint32_t m_unsignedValue = 0;
+	};
+}
+
+REFL_AUTO(
+	type(RangeAnnotationFixture::NumericProperties),
+	func(GetSignedValue, property("signedValue"), Sailor::Attributes::Range(-10.0, 10.0)),
+	func(SetSignedValue, property("signedValue")),
+	func(GetUnsignedValue, property("unsignedValue"), Sailor::Attributes::Range(0.0, 20.0)),
+	func(SetUnsignedValue, property("unsignedValue"))
+)
 
 namespace
 {
@@ -176,6 +201,12 @@ namespace
 		Require(
 			type["properties"]["moveSpeed"].as<std::string>() == "float",
 			"workspace component metadata should preserve reflected float properties");
+		Require(type["propertyRanges"].IsMap(),
+			"workspace component metadata should provide a propertyRanges map");
+		Require(
+			type["propertyRanges"]["moveSpeed"]["min"].as<double>() == 0.0 &&
+			type["propertyRanges"]["moveSpeed"]["max"].as<double>() == 10.0,
+			"workspace component metadata should preserve reflected numeric ranges");
 		Require(
 			type["properties"]["registryLookupSucceeded"].as<std::string>() == "bool",
 			"workspace component metadata should preserve reflected bool properties");
@@ -445,6 +476,36 @@ namespace
 		Require(TypeInfo::GetReflectedPropertyTypeName<uint32_t>() == "uint32",
 			"workspace metadata should use a platform-independent uint32 property name");
 	}
+
+	void TestEngineRangeAnnotation()
+	{
+		const TypeInfo& cameraType = TypeInfo::Get<CameraComponent>();
+		const auto fovRange = cameraType.PropertyRanges().Find("fov");
+		Require(fovRange != cameraType.PropertyRanges().end(),
+			"CameraComponent fov should expose its editor range through TypeInfo");
+		Require(fovRange.Value().m_min == 1.0 && fovRange.Value().m_max == 179.0,
+			"CameraComponent fov should preserve its declared range bounds");
+
+		const YAML::Node metadata = cameraType.Serialize();
+		Require(metadata["propertyRanges"].IsMap() &&
+			metadata["propertyRanges"]["fov"]["min"].as<double>() == 1.0 &&
+			metadata["propertyRanges"]["fov"]["max"].as<double>() == 179.0,
+			"engine TypeInfo serialization should export propertyRanges metadata");
+
+		YAML::Node legacyMetadata = YAML::Clone(metadata);
+		legacyMetadata.remove("propertyRanges");
+		TypeInfo legacyType = cameraType;
+		legacyType.Deserialize(legacyMetadata);
+		Require(legacyType.PropertyRanges().Num() == 0,
+			"TypeInfo deserialization should treat an absent legacy propertyRanges field as empty");
+
+		const TypeInfo& numericType = TypeInfo::Get<RangeAnnotationFixture::NumericProperties>();
+		Require(numericType.PropertyRanges()["signedValue"].m_min == -10.0 &&
+			numericType.PropertyRanges()["signedValue"].m_max == 10.0 &&
+			numericType.PropertyRanges()["unsignedValue"].m_min == 0.0 &&
+			numericType.PropertyRanges()["unsignedValue"].m_max == 20.0,
+			"TypeInfo should export representable int32 and uint32 property ranges");
+	}
 }
 
 int main()
@@ -456,6 +517,7 @@ int main()
 		{ "FactoryInvocationLease", TestFactoryInvocationLease },
 		{ "EngineRegistryRemainsEngineOnly", TestEngineRegistryRemainsEngineOnly },
 		{ "StablePropertyNames", TestStablePropertyNames },
+		{ "EngineRangeAnnotation", TestEngineRangeAnnotation },
 	};
 
 	for (const auto& test : tests)

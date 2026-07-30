@@ -22,6 +22,7 @@ namespace SailorEngine
     public class PropertyBase : INotifyPropertyChanged
     {
         public string Typename { get; set; }
+        public NumericPropertyRange Range { get; set; }
 
 #pragma warning disable CS0067
         public event PropertyChangedEventHandler PropertyChanged;
@@ -338,6 +339,12 @@ namespace SailorEngine
                     };
 
                     ApplyScalarDefault(newProperty, defaultValue, component.Typename, property.Key);
+                    if (component.PropertyRanges.TryGetValue(property.Key, out var propertyRange))
+                    {
+                        newProperty.Range = new NumericPropertyRange(
+                            propertyRange.Min!.Value,
+                            propertyRange.Max!.Value);
+                    }
                     newComponent.Properties.Add(property.Key, newProperty);
                 }
 

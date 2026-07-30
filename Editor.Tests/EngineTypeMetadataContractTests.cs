@@ -23,7 +23,9 @@ assetTypes: []
         Assert.Null(document.MetadataVersion);
         Assert.Null(document.ModuleName);
         Assert.Equal(42, document.TimeStamp);
-        Assert.Equal("Sailor::Component", Assert.Single(document.EngineTypes).Typename);
+        var type = Assert.Single(document.EngineTypes);
+        Assert.Equal("Sailor::Component", type.Typename);
+        Assert.Empty(type.PropertyRanges);
     }
 
     [Fact]
@@ -38,6 +40,10 @@ engineTypes:
     base: Sailor::Component
     properties:
       moveSpeed: float
+    propertyRanges:
+      moveSpeed:
+        min: 0
+        max: 20
 cdos:
   - typename: SandboxLogic::SampleComponent
     defaultValues:
@@ -50,6 +56,10 @@ assetTypes: []
         Assert.Equal("SandboxLogic", document.ModuleName);
         var type = Assert.Single(document.EngineTypes);
         Assert.Equal("float", type.Properties["moveSpeed"]);
+        var range = Assert.Single(type.PropertyRanges);
+        Assert.Equal("moveSpeed", range.Key);
+        Assert.Equal(0, range.Value.Min);
+        Assert.Equal(20, range.Value.Max);
         var defaults = Assert.Single(document.Cdos);
         Assert.True(defaults.DefaultValues.ContainsKey("moveSpeed"));
     }

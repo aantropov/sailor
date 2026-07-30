@@ -15,6 +15,10 @@ public sealed class EditorTypeCatalogContractTests
         Assert.True(snapshot.TryGetType("SandboxLogic::SampleComponent", out var customType));
         Assert.Equal("Sailor::Component", customType.Base);
         Assert.Equal("float", customType.Properties["moveSpeed"]);
+        var range = Assert.Single(customType.PropertyRanges);
+        Assert.Equal("moveSpeed", range.Key);
+        Assert.Equal(0, range.Value.Min);
+        Assert.Equal(20, range.Value.Max);
         Assert.Equal("enum SandboxLogic::ESampleMode", customType.Properties["mode"]);
         Assert.True(snapshot.IsKnownReadOnlyProperty(
             "SandboxLogic::SampleComponent",
@@ -259,6 +263,141 @@ assetTypes: []
     }
 
     [Fact]
+    public void Parse_AcceptsRangesForSupportedNumericProperties()
+    {
+        const string yaml = """
+engineTypes:
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+    properties:
+      opacity: float
+      priority: int32
+      samples: uint32
+    propertyRanges:
+      opacity: { min: 0, max: 1 }
+      priority: { min: -10, max: 10 }
+      samples: { min: 1, max: 64 }
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var type = Assert.Single(EditorTypeCatalogSnapshot.Parse(yaml).Document.EngineTypes);
+
+        Assert.Equal(3, type.PropertyRanges.Count);
+        Assert.Equal(-10, type.PropertyRanges["priority"].Min);
+        Assert.Equal(64, type.PropertyRanges["samples"].Max);
+    }
+
+    [Fact]
+    public void Parse_RejectsExplicitNullPropertyRanges()
+    {
+        const string yaml = """
+engineTypes:
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+    properties:
+      opacity: float
+    propertyRanges: null
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var error = Assert.Throws<InvalidDataException>(() => EditorTypeCatalogSnapshot.Parse(yaml));
+
+        Assert.Contains("must declare propertyRanges as a map", error.Message);
+    }
+
+    [Fact]
+    public void Parse_RejectsUnknownPropertyRangeFields()
+    {
+        const string yaml = """
+engineTypes:
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+    properties:
+      opacity: float
+    propertyRanges:
+      opacity: { min: 0, max: 1, step: 0.1 }
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var error = Assert.Throws<InvalidDataException>(() => EditorTypeCatalogSnapshot.Parse(yaml));
+
+        Assert.Contains("must contain exactly scalar min and max fields", error.Message);
+    }
+
+    [Theory]
+    [InlineData(
+        "missing",
+        "float",
+        "known: { min: 0, max: 1 }",
+        "does not reference a reflected writable property")]
+    [InlineData(
+        "known",
+        "bool",
+        "known: { min: 0, max: 1 }",
+        "cannot be applied to 'bool'")]
+    [InlineData(
+        "known",
+        "float",
+        "known: { min: 1, max: 1 }",
+        "min less than max")]
+    [InlineData(
+        "known",
+        "int32",
+        "known: { min: 0.5, max: 10 }",
+        "representable integral int32 bounds")]
+    [InlineData(
+        "known",
+        "uint32",
+        "known: { min: -1, max: 10 }",
+        "representable integral uint32 bounds")]
+    public void Parse_RejectsInvalidPropertyRanges(
+        string propertyName,
+        string propertyType,
+        string rangeYaml,
+        string expectedError)
+    {
+        var yaml = $$"""
+engineTypes:
+  - typename: Sailor::Component
+    base: Sailor::IReflectable
+    properties:
+      {{propertyName}}: {{propertyType}}
+    propertyRanges:
+      {{rangeYaml}}
+cdos: []
+enums: []
+assetTypes: []
+""";
+
+        var error = Assert.Throws<InvalidDataException>(() => EditorTypeCatalogSnapshot.Parse(yaml));
+
+        Assert.Contains(expectedError, error.Message);
+    }
+
+    [Fact]
+    public void NumericPropertyRange_ClampsOnlyWhenAnExplicitEditUsesIt()
+    {
+        var range = new NumericPropertyRange(0, 10);
+        var loadedValue = 25.0f;
+
+        var sliderDisplayValue = range.Clamp(loadedValue);
+
+        Assert.Equal(10, sliderDisplayValue);
+        Assert.Equal(25.0f, loadedValue);
+        Assert.Equal(0.0f, range.Clamp(-5.0f));
+        Assert.Equal(10, range.Clamp(15));
+        Assert.Equal(0u, range.Clamp(0u));
+        Assert.Equal(4, range.SnapInt32(3.6));
+        Assert.Equal(4u, range.SnapUInt32(3.6));
+    }
+
+    [Fact]
     public void MetadataValueCodec_RejectsMalformedSequence()
     {
         Assert.Throws<InvalidDataException>(() =>
@@ -323,6 +462,8 @@ engineTypes:
       moveSpeed: float
       orientation: struct glm::qua<float,0>
       mode: enum SandboxLogic::ESampleMode
+    propertyRanges:
+      moveSpeed: { min: 0, max: 20 }
     readOnlyProperties: [readOnlyValue, skippedReadOnlyValue]
 cdos:
   - typename: SandboxLogic::SampleComponent

@@ -38,6 +38,8 @@
 #define SAILOR_TEST_FIXTURE_NAMESPACE InvalidReadOnlyPropertiesWorkspaceFixture
 #elif SAILOR_TEST_METADATA_MODE == 14
 #define SAILOR_TEST_FIXTURE_NAMESPACE MissingEnumDefinitionWorkspaceFixture
+#elif SAILOR_TEST_METADATA_MODE == 15
+#define SAILOR_TEST_FIXTURE_NAMESPACE RangeMismatchWorkspaceFixture
 #else
 #error Unsupported SAILOR_TEST_METADATA_MODE
 #endif
@@ -128,9 +130,17 @@ namespace SAILOR_TEST_FIXTURE_NAMESPACE
 	using WorkspaceTypes = Sailor::Workspace::TWorkspaceTypeList<FixtureComponent>;
 }
 
+#if SAILOR_TEST_METADATA_MODE == 15
+#define SAILOR_TEST_MOVE_SPEED_GETTER \
+	func(GetMoveSpeed, property("moveSpeed"), Sailor::Attributes::Range(0.0, 10.0))
+#else
+#define SAILOR_TEST_MOVE_SPEED_GETTER \
+	func(GetMoveSpeed, property("moveSpeed"))
+#endif
+
 REFL_AUTO(
 	type(SAILOR_TEST_FIXTURE_NAMESPACE::FixtureComponent, bases<Sailor::Component>),
-	func(GetMoveSpeed, property("moveSpeed")),
+	SAILOR_TEST_MOVE_SPEED_GETTER,
 	func(SetMoveSpeed, property("moveSpeed")),
 	func(GetMode, property("mode")),
 	func(SetMode, property("mode")),
@@ -171,6 +181,8 @@ namespace
 	constexpr char WorkspaceModuleName[] = "InvalidReadOnlyPropertiesFixture";
 #elif SAILOR_TEST_METADATA_MODE == 14
 	constexpr char WorkspaceModuleName[] = "MissingEnumDefinitionFixture";
+#elif SAILOR_TEST_METADATA_MODE == 15
+	constexpr char WorkspaceModuleName[] = "RangeMismatchFixture";
 #else
 #error Unsupported SAILOR_TEST_METADATA_MODE
 #endif
@@ -210,6 +222,8 @@ namespace
 #elif SAILOR_TEST_METADATA_MODE == 14
 		metadata["engineTypes"][0]["properties"]["mode"] =
 			"enum MissingEnumDefinitionWorkspaceFixture::MissingMode";
+#elif SAILOR_TEST_METADATA_MODE == 15
+		metadata["engineTypes"][0]["propertyRanges"]["moveSpeed"]["max"] = 11.0;
 #endif
 
 		YAML::Emitter emitter;
@@ -327,3 +341,4 @@ extern "C" SAILOR_WORKSPACE_MODULE_EXPORT const Sailor::Workspace::WorkspaceModu
 }
 
 #undef SAILOR_TEST_FIXTURE_NAMESPACE
+#undef SAILOR_TEST_MOVE_SPEED_GETTER

@@ -124,6 +124,8 @@ add_workspace_malformed_metadata_fixture(
     WorkspaceModuleInvalidReadOnlyPropertiesFixture InvalidReadOnlyPropertiesFixture 13)
 add_workspace_malformed_metadata_fixture(
     WorkspaceModuleMissingEnumDefinitionFixture MissingEnumDefinitionFixture 14)
+add_workspace_malformed_metadata_fixture(
+    WorkspaceModuleRangeMismatchFixture RangeMismatchFixture 15)
 
 add_executable(WorkspaceModuleContractTests
     WorkspaceModuleContractTests.cpp
@@ -263,6 +265,7 @@ add_dependencies(WorkspaceModuleRuntimeTests
     WorkspaceModuleAliasExpansionFixture
     WorkspaceModuleInvalidReadOnlyPropertiesFixture
     WorkspaceModuleMissingEnumDefinitionFixture
+    WorkspaceModuleRangeMismatchFixture
 )
 set_target_properties(WorkspaceModuleFixture PROPERTIES OUTPUT_NAME WorkspaceFixture)
 set_target_properties(WorkspaceModuleIncompatibleFixture PROPERTIES OUTPUT_NAME IncompatibleFixture)
@@ -528,6 +531,7 @@ add_test(
         $<TARGET_FILE:WorkspaceModuleAliasExpansionFixture>
         $<TARGET_FILE:WorkspaceModuleInvalidReadOnlyPropertiesFixture>
         $<TARGET_FILE:WorkspaceModuleMissingEnumDefinitionFixture>
+        $<TARGET_FILE:WorkspaceModuleRangeMismatchFixture>
         $<CONFIG>
 )
 set_tests_properties(
