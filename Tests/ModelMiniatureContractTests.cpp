@@ -152,6 +152,138 @@ namespace
 		Require(
 			std::string(ModelMiniature::Extension) == ".png",
 			"model miniature extension must remain .png");
+		Require(
+			std::string(ModelMiniature::FingerprintExtension) == ".revision",
+			"model miniature fingerprint extension must remain .revision");
+	}
+
+	FileRevision MakeRevision(
+		int64_t modificationTime,
+		uint64_t fileSize,
+		uint64_t contentHash)
+	{
+		return FileRevision{
+			modificationTime,
+			fileSize,
+			contentHash,
+			true
+		};
+	}
+
+	void TestMiniatureFingerprintTracksSourceMetadataAndResolution()
+	{
+		TempDirectory temporaryDirectory("model-miniature-fingerprint");
+		const FileId fileId = MakeFileId(
+			"{14A75BF9-09AC-49EE-A0DF-2945F4B452A6}");
+		const FileRevision sourceRevision = MakeRevision(10, 20, 30);
+		const FileRevision metadataRevision = MakeRevision(40, 50, 60);
+		const std::filesystem::path miniaturePath =
+			ModelMiniature::GetCachePath(
+				temporaryDirectory.Path("Cache"),
+				fileId);
+		std::error_code createError;
+		std::filesystem::create_directories(
+			miniaturePath.parent_path(),
+			createError);
+		Require(!createError, "miniature cache directory must be creatable");
+		TVector<u8vec4> pixels(
+			static_cast<size_t>(ModelMiniature::Resolution) *
+			ModelMiniature::Resolution);
+		for (u8vec4& pixel : pixels)
+		{
+			pixel = u8vec4(64u, 128u, 192u, 255u);
+		}
+		TVector<uint8_t> png;
+		Require(
+			Raytracing::PathTracer::EncodePng(
+				pixels,
+				glm::uvec2(
+					ModelMiniature::Resolution,
+					ModelMiniature::Resolution),
+				png),
+			"miniature fingerprint fixture must encode a valid PNG");
+		std::ofstream miniature(miniaturePath, std::ios::binary);
+		miniature.write(
+			reinterpret_cast<const char*>(png.GetData()),
+			static_cast<std::streamsize>(png.Num()));
+		miniature.close();
+		Require(
+			static_cast<bool>(miniature),
+			"miniature fixture must be writable");
+
+		std::string diagnostic;
+		Require(
+			ModelMiniature::SaveFingerprint(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision,
+				diagnostic),
+			"valid miniature fingerprint must be saved: " + diagnostic);
+		Require(
+			ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision),
+			"matching source and metadata revisions must keep the miniature current");
+		Require(
+			!ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				MakeRevision(10, 20, 31),
+				metadataRevision),
+			"a source content change must invalidate the miniature");
+		Require(
+			!ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				MakeRevision(40, 50, 61)),
+			"a metadata content change must invalidate the miniature");
+
+		std::ofstream changedMiniature(
+			miniaturePath,
+			std::ios::binary | std::ios::app);
+		changedMiniature.put('\0');
+		changedMiniature.close();
+		Require(
+			!ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision),
+			"a changed PNG must invalidate its fingerprint");
+		Require(
+			ModelMiniature::SaveFingerprint(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision,
+				diagnostic),
+			"the changed PNG fixture must receive a refreshed fingerprint");
+		Require(
+			ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision),
+			"a refreshed PNG fingerprint must become current");
+
+		std::ofstream corruptFingerprint(
+			ModelMiniature::GetFingerprintPath(
+				temporaryDirectory.Path("Cache"),
+				fileId));
+		corruptFingerprint
+			<< "1 " << (ModelMiniature::Resolution + 1) << '\n';
+		corruptFingerprint.close();
+		Require(
+			!ModelMiniature::IsCurrent(
+				temporaryDirectory.Path("Cache"),
+				fileId,
+				sourceRevision,
+				metadataRevision),
+			"a fingerprint for another render resolution must be stale");
 	}
 
 	void TestEncodePngProduces256SquareRgbaImage()
@@ -309,6 +441,7 @@ int main()
 		{ "CachePathUsesModelsFolderAndUidFilename", TestCachePathUsesModelsFolderAndUidFilename },
 		{ "CachePathRejectsUnsafeOrNonGuidFileIds", TestCachePathRejectsUnsafeOrNonGuidFileIds },
 		{ "MiniatureConstants", TestMiniatureConstants },
+		{ "MiniatureFingerprintTracksSourceMetadataAndResolution", TestMiniatureFingerprintTracksSourceMetadataAndResolution },
 		{ "EncodePngProduces256SquareRgbaImage", TestEncodePngProduces256SquareRgbaImage },
 		{ "EncodePngRejectsInvalidExtent", TestEncodePngRejectsInvalidExtent },
 		{ "EncodePngRejectsInsufficientPixelData", TestEncodePngRejectsInsufficientPixelData },

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AssetRegistry/FileId.h"
+#include "Core/FileRevision.h"
 
 #include <cctype>
 #include <filesystem>
@@ -14,6 +15,7 @@ namespace Sailor
 		static constexpr uint32_t TextureResolution = 512;
 		static constexpr const char* CacheFolder = "Models";
 		static constexpr const char* Extension = ".png";
+		static constexpr const char* FingerprintExtension = ".revision";
 
 		static bool IsValidFileIdFilename(std::string_view value)
 		{
@@ -57,5 +59,33 @@ namespace Sailor
 
 			return cacheRoot / CacheFolder / (fileIdString + Extension);
 		}
+
+		static std::filesystem::path GetFingerprintPath(
+			const std::filesystem::path& cacheRoot,
+			const FileId& fileId)
+		{
+			const std::string& fileIdString = fileId.ToString();
+			if (!IsValidFileIdFilename(fileIdString))
+			{
+				return {};
+			}
+
+			return cacheRoot /
+				CacheFolder /
+				(fileIdString + FingerprintExtension);
+		}
+
+		SAILOR_API static bool IsCurrent(
+			const std::filesystem::path& cacheRoot,
+			const FileId& fileId,
+			const FileRevision& sourceRevision,
+			const FileRevision& metadataRevision);
+
+		SAILOR_API static bool SaveFingerprint(
+			const std::filesystem::path& cacheRoot,
+			const FileId& fileId,
+			const FileRevision& sourceRevision,
+			const FileRevision& metadataRevision,
+			std::string& outDiagnostic);
 	};
 }

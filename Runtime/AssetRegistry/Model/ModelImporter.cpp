@@ -21,6 +21,7 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "Tasks/Scheduler.h"
 #include "Workspace/WorkspaceCacheContract.h"
+#include "YamlExceptionBoundary.h"
 
 #ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
@@ -32,6 +33,79 @@ using namespace Sailor;
 namespace
 {
 	constexpr float BasisLengthEpsilon = 1e-12f;
+
+	bool TryCaptureSavedAssetInfoRevision(
+		AssetInfoPtr assetInfo,
+		FileRevision& outRevision,
+		std::string& outDiagnostic)
+	{
+		outRevision = {};
+		outDiagnostic.clear();
+		if (assetInfo == nullptr)
+		{
+			outDiagnostic = "The asset info is null.";
+			return false;
+		}
+
+		FileRevision revisionBeforeRead;
+		if (!Utils::TryGetFileRevision(
+				assetInfo->GetMetaFilepath(),
+				revisionBeforeRead))
+		{
+			outDiagnostic =
+				"Cannot capture the saved metadata revision.";
+			return false;
+		}
+
+		std::string savedMetadata;
+		if (!AssetRegistry::ReadAllTextFile(
+				assetInfo->GetMetaFilepath(),
+				savedMetadata))
+		{
+			outDiagnostic = "Cannot read the saved metadata.";
+			return false;
+		}
+
+		YAML::Node savedNode;
+		if (!External::TryLoadYaml(
+				savedMetadata,
+				savedNode,
+				outDiagnostic))
+		{
+			return false;
+		}
+
+		YAML::Node expectedNode;
+		if (!External::GuardYamlExceptions(
+				[assetInfo, &expectedNode]()
+				{
+					expectedNode = assetInfo->Serialize();
+				},
+				outDiagnostic))
+		{
+			return false;
+		}
+
+		FileRevision revisionAfterRead;
+		if (!Utils::TryGetFileRevision(
+				assetInfo->GetMetaFilepath(),
+				revisionAfterRead) ||
+			revisionAfterRead != revisionBeforeRead)
+		{
+			outDiagnostic =
+				"The metadata changed while validating the saved state.";
+			return false;
+		}
+		if (!Utils::AreYamlNodesEqual(savedNode, expectedNode))
+		{
+			outDiagnostic =
+				"The saved metadata does not match the live asset info.";
+			return false;
+		}
+
+		outRevision = revisionAfterRead;
+		return true;
+	}
 
 	bool IsFiniteVector(const vec3& value)
 	{
@@ -249,88 +323,190 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
+		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+		if (assetRegistry == nullptr)
+		{
+			return;
+		}
+
 		FileRevision sourceRevision;
 		if (!Utils::TryGetFileRevision(
 				modelAssetInfo->GetAssetFilepath(),
 				sourceRevision))
 		{
-			if (AssetRegistry* assetRegistry =
-					App::GetSubmodule<AssetRegistry>())
-			{
-				const AssetRegistry::AssetProcessingToken processingToken =
-					assetRegistry->BeginAssetProcessing(modelAssetInfo);
-				assetRegistry->CompleteAssetProcessing(
-					processingToken,
-					false);
-			}
+			const AssetRegistry::AssetProcessingToken processingToken =
+				assetRegistry->BeginAssetProcessing(modelAssetInfo);
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
 			SAILOR_LOG_ERROR(
 				"Cannot capture model revision before generating dependent assets: %s",
 				modelAssetInfo->GetAssetFilepath().c_str());
 			return;
 		}
 
+		FileRevision metadataRevision;
+		if (!Utils::TryGetFileRevision(
+				modelAssetInfo->GetMetaFilepath(),
+				metadataRevision))
+		{
+			const AssetRegistry::AssetProcessingToken processingToken =
+				assetRegistry->BeginAssetProcessing(modelAssetInfo);
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
+			SAILOR_LOG_ERROR(
+				"Cannot capture model metadata revision before generating its miniature: %s",
+				modelAssetInfo->GetMetaFilepath().c_str());
+			return;
+		}
+
 		const bool bShouldPrepareGeneratedAssets =
 			bWasExpired || modelAssetInfo->IsImportPending();
-		bool bMetadataChanged = false;
-		bool bGeneratedAssetsReady = true;
-
-		if (modelAssetInfo->IsWritable() &&
+		const bool bShouldGenerateMaterials =
+			modelAssetInfo->IsWritable() &&
 			bShouldPrepareGeneratedAssets &&
 			modelAssetInfo->ShouldGenerateMaterials() &&
-			modelAssetInfo->GetDefaultMaterials().Num() == 0)
+			modelAssetInfo->GetDefaultMaterials().Num() == 0;
+		const bool bShouldGenerateAnimations =
+			modelAssetInfo->IsWritable() &&
+			bShouldPrepareGeneratedAssets &&
+			modelAssetInfo->GetAnimations().Num() == 0;
+		const std::filesystem::path cacheRoot =
+			AssetRegistry::GetCacheFolder();
+		const bool bMiniatureIsCurrent = ModelMiniature::IsCurrent(
+			cacheRoot,
+			modelAssetInfo->GetFileId(),
+			sourceRevision,
+			metadataRevision);
+
+		if (!bShouldGenerateMaterials &&
+			!bShouldGenerateAnimations &&
+			bMiniatureIsCurrent)
 		{
-			bGeneratedAssetsReady = GenerateMaterialAssets(modelAssetInfo);
-			bMetadataChanged = bGeneratedAssetsReady;
+			return;
 		}
-		if (!bGeneratedAssetsReady)
+
+		if (!bShouldGenerateMaterials &&
+			!bShouldGenerateAnimations)
 		{
-			if (AssetRegistry* assetRegistry =
-					App::GetSubmodule<AssetRegistry>())
+			ScheduleModelMiniature(
+				modelAssetInfo,
+				sourceRevision,
+				metadataRevision);
+			return;
+		}
+
+		const AssetRegistry::AssetProcessingToken processingToken =
+			assetRegistry->BeginAssetProcessing(modelAssetInfo);
+		if (!processingToken)
+		{
+			return;
+		}
+		if (processingToken.m_sourceRevision != sourceRevision)
+		{
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
+			SAILOR_LOG_ERROR(
+				"Model source changed before generating dependent assets; retrying on the next scan: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
+			return;
+		}
+
+		const TVector<FileId> previousMaterials =
+			modelAssetInfo->GetDefaultMaterials();
+		const TVector<FileId> previousAnimations =
+			modelAssetInfo->GetAnimations();
+		auto restoreGeneratedAssetReferences = [&]()
 			{
-				const AssetRegistry::AssetProcessingToken processingToken =
-					assetRegistry->BeginAssetProcessing(modelAssetInfo);
-				assetRegistry->CompleteAssetProcessing(
-					processingToken,
-					false);
-			}
+				modelAssetInfo->GetDefaultMaterials() = previousMaterials;
+				modelAssetInfo->GetAnimations() = previousAnimations;
+			};
+
+		if (bShouldGenerateMaterials &&
+			!GenerateMaterialAssets(modelAssetInfo))
+		{
+			restoreGeneratedAssetReferences();
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
 			SAILOR_LOG_ERROR(
 				"Cannot schedule a model miniature until generated material assets are ready: %s",
 				modelAssetInfo->GetAssetFilepath().c_str());
 			return;
 		}
 
-		if (modelAssetInfo->IsWritable() &&
-			bShouldPrepareGeneratedAssets &&
-			modelAssetInfo->GetAnimations().Num() == 0)
+		if (bShouldGenerateAnimations &&
+			!GenerateAnimationAssets(modelAssetInfo))
 		{
-			GenerateAnimationAssets(modelAssetInfo);
-			bMetadataChanged = true;
-		}
-
-		if (bMetadataChanged)
-		{
-			assetInfo->SaveMetaFile();
-		}
-
-		const std::filesystem::path miniaturePath = ModelMiniature::GetCachePath(
-			AssetRegistry::GetCacheFolder(),
-			modelAssetInfo->GetFileId());
-		if (miniaturePath.empty())
-		{
+			restoreGeneratedAssetReferences();
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
 			SAILOR_LOG_ERROR(
-				"Cannot resolve a safe miniature cache path for model FileId: %s",
-				modelAssetInfo->GetFileId().ToString().c_str());
+				"Cannot schedule a model miniature until generated animation assets are ready: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
 			return;
 		}
-		std::error_code existsError;
-		const bool bMiniatureExists = std::filesystem::is_regular_file(
-			miniaturePath,
-			existsError);
-		if (bWasExpired || !bMiniatureExists || existsError)
+
+		FileRevision generatedAssetsSourceRevision;
+		FileRevision generatedAssetsMetadataRevision;
+		if (!Utils::TryGetFileRevision(
+				modelAssetInfo->GetAssetFilepath(),
+				generatedAssetsSourceRevision) ||
+			generatedAssetsSourceRevision != sourceRevision ||
+			!Utils::TryGetFileRevision(
+				modelAssetInfo->GetMetaFilepath(),
+				generatedAssetsMetadataRevision) ||
+			generatedAssetsMetadataRevision != metadataRevision)
 		{
-			ScheduleModelMiniature(
+			restoreGeneratedAssetReferences();
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
+			SAILOR_LOG_ERROR(
+				"Model source or metadata changed while generating dependent assets; retrying on the next scan: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
+			return;
+		}
+
+		modelAssetInfo->SaveMetaFile();
+		std::string metadataDiagnostic;
+		if (!TryCaptureSavedAssetInfoRevision(
 				modelAssetInfo,
-				sourceRevision);
+				metadataRevision,
+				metadataDiagnostic))
+		{
+			restoreGeneratedAssetReferences();
+			assetRegistry->CompleteAssetProcessing(
+				processingToken,
+				false);
+			SAILOR_LOG_ERROR(
+				"Cannot validate generated model metadata '%s': %s",
+				modelAssetInfo->GetMetaFilepath().c_str(),
+				metadataDiagnostic.c_str());
+			return;
+		}
+
+		if (!Utils::TryGetFileRevision(
+				modelAssetInfo->GetAssetFilepath(),
+				generatedAssetsSourceRevision) ||
+			generatedAssetsSourceRevision != sourceRevision)
+		{
+			restoreGeneratedAssetReferences();
+			FileRevision currentMetadataRevision;
+			if (Utils::TryGetFileRevision(
+					modelAssetInfo->GetMetaFilepath(),
+					currentMetadataRevision) &&
+				currentMetadataRevision == metadataRevision)
+			{
+				modelAssetInfo->SaveMetaFile();
+			}
+			assetRegistry->CompleteAssetProcessing(
+				processingToken,
+				false);
+			SAILOR_LOG_ERROR(
+				"Model source changed while publishing dependent asset metadata; retrying on the next scan: %s",
+				modelAssetInfo->GetAssetFilepath().c_str());
+			return;
+		}
+
+		if (!ScheduleModelMiniature(
+				modelAssetInfo,
+				sourceRevision,
+				metadataRevision,
+				processingToken))
+		{
+			assetRegistry->CompleteAssetProcessing(processingToken, false);
 		}
 	}
 }
@@ -341,7 +517,9 @@ void ModelImporter::OnImportAsset(AssetInfoPtr)
 
 Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 	ModelAssetInfoPtr assetInfo,
-	const FileRevision& sourceRevision)
+	const FileRevision& sourceRevision,
+	const FileRevision& metadataRevision,
+	const AssetRegistry::AssetProcessingToken& providedProcessingToken)
 {
 	if (assetInfo == nullptr || !assetInfo->GetFileId())
 	{
@@ -354,18 +532,31 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 		return {};
 	}
 
-	FileRevision metadataRevision;
-	if (!Utils::TryGetFileRevision(assetInfo->GetMetaFilepath(), metadataRevision))
+	FileRevision currentMetadataRevision;
+	if (!Utils::TryGetFileRevision(
+			assetInfo->GetMetaFilepath(),
+			currentMetadataRevision) ||
+		currentMetadataRevision != metadataRevision)
 	{
+		AssetRegistry::AssetProcessingToken processingToken =
+			providedProcessingToken;
+		if (!processingToken)
+		{
+			processingToken =
+				assetRegistry->BeginAssetProcessing(assetInfo);
+		}
+		assetRegistry->CompleteAssetProcessing(processingToken, false);
 		SAILOR_LOG_ERROR(
-			"Cannot capture model metadata revision for miniature generation: %s",
+			"Model metadata changed before miniature generation: %s",
 			assetInfo->GetMetaFilepath().c_str());
 		return {};
 	}
 
 	const FileId fileId = assetInfo->GetFileId();
+	const std::filesystem::path cacheRoot =
+		AssetRegistry::GetCacheFolder();
 	const std::filesystem::path outputPath = ModelMiniature::GetCachePath(
-		AssetRegistry::GetCacheFolder(),
+		cacheRoot,
 		fileId);
 	if (outputPath.empty())
 	{
@@ -380,22 +571,22 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 	{
 		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
 		ModelMiniatureTaskState* existingState = nullptr;
-		if (m_miniatureTasks.Find(fileId, existingState) &&
+		if (!providedProcessingToken &&
+			m_miniatureTasks.Find(fileId, existingState) &&
 			existingState != nullptr &&
 			existingState->m_sourceRevision == sourceRevision &&
 			existingState->m_metadataRevision == metadataRevision &&
 			existingState->m_task)
 		{
-			std::error_code existsError;
-			const bool bOutputExists = std::filesystem::is_regular_file(
-				outputPath,
-				existsError);
 			const bool bTaskFinished =
 				existingState->m_task->IsFinished();
 			if (!bTaskFinished ||
 				(existingState->m_task->GetResult() &&
-					bOutputExists &&
-					!existsError))
+					ModelMiniature::IsCurrent(
+						cacheRoot,
+						fileId,
+						sourceRevision,
+						metadataRevision)))
 			{
 				miniatureTask = existingState->m_task;
 				bMiniatureTaskNeedsRun =
@@ -407,8 +598,13 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 
 		if (!miniatureTask)
 		{
-			const AssetRegistry::AssetProcessingToken processingToken =
-				assetRegistry->BeginAssetProcessing(assetInfo);
+			AssetRegistry::AssetProcessingToken processingToken =
+				providedProcessingToken;
+			if (!processingToken)
+			{
+				processingToken =
+					assetRegistry->BeginAssetProcessing(assetInfo);
+			}
 			if (!processingToken)
 			{
 				return {};
@@ -424,6 +620,7 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 				return {};
 			}
 			const std::string assetFilepath = assetInfo->GetAssetFilepath();
+			const std::string metadataFilepath = assetInfo->GetMetaFilepath();
 			const float unitScale = assetInfo->GetUnitScale();
 			const bool bShouldBatchByMaterial = assetInfo->ShouldBatchByMaterial();
 			const TVector<FileId> defaultMaterials = assetInfo->GetDefaultMaterials();
@@ -434,20 +631,28 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 					this,
 					fileId,
 					assetFilepath,
+					metadataFilepath,
 					unitScale,
 					bShouldBatchByMaterial,
 					defaultMaterials,
 					outputPath,
+					cacheRoot,
+					sourceRevision,
+					metadataRevision,
 					processingToken
 				]()
 				{
 					const bool bSucceeded = GenerateModelMiniature(
 						fileId,
 						assetFilepath,
+						metadataFilepath,
 						unitScale,
 						bShouldBatchByMaterial,
 						defaultMaterials,
-						outputPath);
+						outputPath,
+						cacheRoot,
+						sourceRevision,
+						metadataRevision);
 					if (AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>())
 					{
 						currentRegistry->CompleteAssetProcessing(
@@ -484,13 +689,38 @@ Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
 bool ModelImporter::GenerateModelMiniature(
 	const FileId& fileId,
 	const std::string& assetFilepath,
+	const std::string& metadataFilepath,
 	float unitScale,
 	bool bShouldBatchByMaterial,
 	const TVector<FileId>& defaultMaterials,
-	const std::filesystem::path& outputPath)
+	const std::filesystem::path& outputPath,
+	const std::filesystem::path& cacheRoot,
+	const FileRevision& sourceRevision,
+	const FileRevision& metadataRevision)
 {
 	Utils::Timer timer;
 	timer.Start();
+
+	auto revisionsAreCurrent = [&]()
+		{
+			FileRevision currentSourceRevision;
+			FileRevision currentMetadataRevision;
+			return Utils::TryGetFileRevision(
+					assetFilepath,
+					currentSourceRevision) &&
+				Utils::TryGetFileRevision(
+					metadataFilepath,
+					currentMetadataRevision) &&
+				currentSourceRevision == sourceRevision &&
+				currentMetadataRevision == metadataRevision;
+		};
+	if (!revisionsAreCurrent())
+	{
+		SAILOR_LOG_ERROR(
+			"Model source or metadata changed before miniature rendering: %s",
+			assetFilepath.c_str());
+		return false;
+	}
 
 	TVector<MeshContext> parsedMeshes;
 	TVector<glm::mat4> inverseBind;
@@ -656,6 +886,14 @@ bool ModelImporter::GenerateModelMiniature(
 		return false;
 	}
 
+	if (!revisionsAreCurrent())
+	{
+		SAILOR_LOG_ERROR(
+			"Model source or metadata changed while rendering its miniature: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
 	std::string writeDiagnostic;
 	if (!Workspace::AtomicReplaceWorkspaceCacheBinary(
 			outputPath,
@@ -667,6 +905,28 @@ bool ModelImporter::GenerateModelMiniature(
 			"Cannot publish model miniature '%s': %s",
 			outputPath.string().c_str(),
 			writeDiagnostic.c_str());
+		return false;
+	}
+
+	if (!ModelMiniature::SaveFingerprint(
+			cacheRoot,
+			fileId,
+			sourceRevision,
+			metadataRevision,
+			writeDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot publish model miniature fingerprint '%s': %s",
+			outputPath.string().c_str(),
+			writeDiagnostic.c_str());
+		return false;
+	}
+
+	if (!revisionsAreCurrent())
+	{
+		SAILOR_LOG_ERROR(
+			"Model source or metadata changed while publishing its miniature: %s",
+			assetFilepath.c_str());
 		return false;
 	}
 
@@ -734,7 +994,6 @@ FileId CreateTextureAsset(const std::string& filepath,
 				filepath.c_str());
 			return FileId::Invalid;
 		}
-		return fileId;
 	}
 	else
 	{
@@ -778,10 +1037,61 @@ FileId CreateAnimationAsset(const std::string& filepath,
 	uint32_t animationIndex,
 	uint32_t skinIndex)
 {
-	FileId newFileId = FileId::CreateNewFileId();
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return FileId::Invalid;
+	}
+
+	FileId fileId;
+	std::error_code existsError;
+	const std::filesystem::file_status metadataStatus =
+		std::filesystem::symlink_status(filepath, existsError);
+	if (existsError == std::errc::no_such_file_or_directory ||
+		existsError == std::errc::not_a_directory)
+	{
+		existsError.clear();
+	}
+	if (existsError)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot inspect generated animation metadata path: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+
+	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
+	if (bMetadataExists &&
+		!std::filesystem::is_regular_file(metadataStatus))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated animation metadata path is not a regular file: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+	if (bMetadataExists)
+	{
+		fileId =
+			assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath);
+		AnimationAssetInfoPtr existingAnimationInfo =
+			assetRegistry->GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
+		if (!fileId ||
+			existingAnimationInfo == nullptr ||
+			existingAnimationInfo->GetAssetFilename() != glbFilename)
+		{
+			SAILOR_LOG_ERROR(
+				"Existing generated animation metadata is incompatible: %s",
+				filepath.c_str());
+			return FileId::Invalid;
+		}
+	}
+	else
+	{
+		fileId = FileId::CreateNewFileId();
+	}
 
 	YAML::Node newAnimation = GeneratedModelAssetMetadata::CreateAnimation(
-		newFileId,
+		fileId,
 		glbFilename,
 		animationIndex,
 		skinIndex);
@@ -789,11 +1099,26 @@ FileId CreateAnimationAsset(const std::string& filepath,
 	std::ofstream assetFile(filepath);
 	assetFile << newAnimation;
 	assetFile.close();
+	if (!assetFile)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot write generated animation metadata: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
 
-	return newFileId;
+	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot register generated animation metadata for immediate model processing: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+
+	return fileId;
 }
 
-void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
+bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -808,7 +1133,7 @@ void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 
 	if (!bGltfParsed || gltfModel.animations.empty())
 	{
-		return;
+		return bGltfParsed;
 	}
 
 	const std::string animationsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
@@ -823,12 +1148,17 @@ void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 				outputPath))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated animation output for %s.", assetInfo->GetAssetFilepath().c_str());
-			continue;
+			return false;
 		}
 		FileId id = CreateAnimationAsset(outputPath.string(),
 			assetInfo->GetAssetFilename(), (uint32_t)i, 0);
+		if (!id)
+		{
+			return false;
+		}
 		assetInfo->GetAnimations().Add(id);
 	}
+	return true;
 }
 
 bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)

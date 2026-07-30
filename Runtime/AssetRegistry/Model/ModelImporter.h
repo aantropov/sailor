@@ -10,6 +10,7 @@
 #include "Engine/Types.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetFactory.h"
+#include "AssetRegistry/AssetRegistry.h"
 #include "ModelAssetInfo.h"
 #include "Tasks/Scheduler.h"
 #include "ModelAssetInfo.h"
@@ -120,7 +121,7 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 		static bool ImportModel(
 			const std::string& assetFilepath,
@@ -133,14 +134,20 @@ namespace Sailor
 
 		Tasks::TaskPtr<bool> ScheduleModelMiniature(
 			ModelAssetInfoPtr assetInfo,
-			const FileRevision& sourceRevision);
+			const FileRevision& sourceRevision,
+			const FileRevision& metadataRevision,
+			const AssetRegistry::AssetProcessingToken& processingToken = {});
 		bool GenerateModelMiniature(
 			const FileId& fileId,
 			const std::string& assetFilepath,
+			const std::string& metadataFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
 			const TVector<FileId>& defaultMaterials,
-			const std::filesystem::path& outputPath);
+			const std::filesystem::path& outputPath,
+			const std::filesystem::path& cacheRoot,
+			const FileRevision& sourceRevision,
+			const FileRevision& metadataRevision);
 
 		struct ModelMiniatureTaskState final
 		{
