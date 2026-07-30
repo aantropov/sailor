@@ -634,6 +634,86 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void ComponentDragGesture_IsScopedToTheNameAndDoesNotCapturePropertyEditors()
+    {
+        var componentTemplateSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "ComponentTemplate.cs");
+
+        Assert.Contains(
+            "nameLabel.GestureRecognizers.Add(dragGesture);",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "props.GestureRecognizers.Add(dragGesture);",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "header.GestureRecognizers.Add(dragGesture);",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "dragArgs.Data.Properties[EditorDragDrop.DragItemKey] = component;",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RangedNumericEditors_PreviewSliderValuesWithoutApplyingEntrySetters()
+    {
+        var templatesSource = ReadRepositoryFile(
+            "Editor",
+            "Utility",
+            "Templates.cs");
+
+        var rangedEditors = new[]
+        {
+            Slice(
+                templatesSource,
+                "public static View RangedFloatEditor<TBindingContext>(",
+                "public static View IntEditor<TBindingContext>("),
+            Slice(
+                templatesSource,
+                "public static View RangedIntEditor<TBindingContext>(",
+                "public static View UIntEditor<TBindingContext>("),
+            Slice(
+                templatesSource,
+                "public static View RangedUIntEditor<TBindingContext>(",
+                "static Slider CreateRangeSlider<TBindingContext, TValue>(")
+        };
+
+        foreach (var rangedEditor in rangedEditors)
+        {
+            AssertInOrder(
+                rangedEditor,
+                "var isSynchronizingPreview = false;",
+                "var exactValueEditor = Create",
+                "if (!isSynchronizingPreview)",
+                "previewValue =>",
+                "isSynchronizingPreview = true;",
+                "exactValueEditor.Text = NumericRangeEntryInteraction.Format(previewValue);",
+                "finally",
+                "isSynchronizingPreview = false;");
+        }
+
+        var rangeSlider = Slice(
+            templatesSource,
+            "static Slider CreateRangeSlider<TBindingContext, TValue>(",
+            "static Grid CreateRangedNumericEditor(Slider slider, View exactValueEditor)");
+        AssertInOrder(
+            rangeSlider,
+            "if (decision.ShouldPreview)",
+            "previewValueChanged(convertSliderValue(decision.Value));",
+            "if (decision.ShouldApply",
+            "setter(bindingContext, convertSliderValue(decision.Value));",
+            "var actualValue = getValue(bindingContext);",
+            "previewValueChanged(actualValue);",
+            "current.SynchronizeFromModel(");
+    }
+
+    [Fact]
     public void WorldProjectionRefresh_DropsStaleSelectionBeforePublishing()
     {
         var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");

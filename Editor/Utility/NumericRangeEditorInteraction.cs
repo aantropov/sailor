@@ -5,11 +5,16 @@ using SailorEngine;
 
 namespace SailorEditor.Utility;
 
-public readonly record struct NumericRangeSliderDecision(bool ShouldApply, double Value)
+public readonly record struct NumericRangeSliderDecision(
+    bool ShouldPreview,
+    bool ShouldApply,
+    double Value)
 {
-    public static NumericRangeSliderDecision None { get; } = new(false, 0);
+    public static NumericRangeSliderDecision None { get; } = new(false, false, 0);
 
-    public static NumericRangeSliderDecision Apply(double value) => new(true, value);
+    public static NumericRangeSliderDecision Preview(double value) => new(true, false, value);
+
+    public static NumericRangeSliderDecision Apply(double value) => new(true, true, value);
 }
 
 public sealed class NumericRangeSliderInteraction
@@ -27,7 +32,11 @@ public sealed class NumericRangeSliderInteraction
     public double BeginModelSynchronization(double modelValue)
     {
         modelSynchronizationDepth++;
-        return range.Clamp(modelValue);
+        var displayedValue = range.Clamp(modelValue);
+        if (isDragging)
+            pendingDragValue = displayedValue;
+
+        return displayedValue;
     }
 
     public void EndModelSynchronization()
@@ -53,7 +62,7 @@ public sealed class NumericRangeSliderInteraction
         if (isDragging)
         {
             pendingDragValue = clampedValue;
-            return NumericRangeSliderDecision.None;
+            return NumericRangeSliderDecision.Preview(clampedValue);
         }
 
         return NumericRangeSliderDecision.Apply(clampedValue);

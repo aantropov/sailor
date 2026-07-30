@@ -18,6 +18,7 @@ public sealed class NumericRangeEditorInteractionTests
         interaction.EndModelSynchronization();
 
         Assert.Equal(10, displayedValue);
+        Assert.False(decision.ShouldPreview);
         Assert.False(decision.ShouldApply);
         Assert.Equal(25, loadedModelValue);
     }
@@ -33,11 +34,72 @@ public sealed class NumericRangeEditorInteractionTests
         var secondChange = interaction.HandleValueChanged(8);
         var completed = interaction.EndDrag();
 
+        Assert.True(firstChange.ShouldPreview);
         Assert.False(firstChange.ShouldApply);
+        Assert.Equal(4, firstChange.Value);
+        Assert.True(secondChange.ShouldPreview);
         Assert.False(secondChange.ShouldApply);
+        Assert.Equal(8, secondChange.Value);
+        Assert.True(completed.ShouldPreview);
         Assert.True(completed.ShouldApply);
         Assert.Equal(8, completed.Value);
-        Assert.False(interaction.EndDrag().ShouldApply);
+        var duplicateCompletion = interaction.EndDrag();
+        Assert.False(duplicateCompletion.ShouldPreview);
+        Assert.False(duplicateCompletion.ShouldApply);
+    }
+
+    [Fact]
+    public void Drag_PreviewsEveryDisplayedValueWithoutWritingTheModelUntilCompletion()
+    {
+        var interaction = new NumericRangeSliderInteraction(
+            new NumericPropertyRange(0, 10));
+        var previewValues = new List<double>();
+        var modelWrites = new List<double>();
+
+        void Dispatch(NumericRangeSliderDecision decision)
+        {
+            if (decision.ShouldPreview)
+                previewValues.Add(decision.Value);
+
+            if (decision.ShouldApply)
+                modelWrites.Add(decision.Value);
+        }
+
+        interaction.BeginDrag(2);
+        Dispatch(interaction.HandleValueChanged(4));
+        Dispatch(interaction.HandleValueChanged(8));
+
+        Assert.Equal([4, 8], previewValues);
+        Assert.Empty(modelWrites);
+
+        Dispatch(interaction.EndDrag());
+
+        Assert.Equal([4, 8, 8], previewValues);
+        Assert.Equal([8], modelWrites);
+    }
+
+    [Fact]
+    public void ExternalModelSynchronizationDuringDrag_ReplacesThePendingValue()
+    {
+        var interaction = new NumericRangeSliderInteraction(
+            new NumericPropertyRange(0, 10));
+
+        interaction.BeginDrag(2);
+        var preview = interaction.HandleValueChanged(8);
+
+        var displayedValue = interaction.BeginModelSynchronization(4);
+        var synchronizationDecision = interaction.HandleValueChanged(displayedValue);
+        interaction.EndModelSynchronization();
+        var completed = interaction.EndDrag();
+
+        Assert.True(preview.ShouldPreview);
+        Assert.False(preview.ShouldApply);
+        Assert.Equal(4, displayedValue);
+        Assert.False(synchronizationDecision.ShouldPreview);
+        Assert.False(synchronizationDecision.ShouldApply);
+        Assert.True(completed.ShouldPreview);
+        Assert.True(completed.ShouldApply);
+        Assert.Equal(4, completed.Value);
     }
 
     [Fact]
@@ -48,6 +110,7 @@ public sealed class NumericRangeEditorInteractionTests
 
         var decision = interaction.HandleValueChanged(7);
 
+        Assert.True(decision.ShouldPreview);
         Assert.True(decision.ShouldApply);
         Assert.Equal(7, decision.Value);
     }
@@ -59,6 +122,7 @@ public sealed class NumericRangeEditorInteractionTests
             new NumericPropertyRange(0, 10));
 
         var decision = interaction.HandleValueChanged(9.4);
+        Assert.True(decision.ShouldPreview);
         Assert.True(decision.ShouldApply);
 
         var unchangedModelValue = 9;
@@ -67,6 +131,7 @@ public sealed class NumericRangeEditorInteractionTests
         interaction.EndModelSynchronization();
 
         Assert.Equal(9, displayedValue);
+        Assert.False(synchronizationDecision.ShouldPreview);
         Assert.False(synchronizationDecision.ShouldApply);
     }
 
