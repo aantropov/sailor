@@ -44,12 +44,6 @@ public class ComponentTemplate : DataTemplate
                 props.RowDefinitions.Clear();
 
                 props.GestureRecognizers.Clear();
-                var dragGesture = new DragGestureRecognizer();
-                dragGesture.DragStarting += (dragSender, dragArgs) =>
-                {
-                    dragArgs.Data.Properties[EditorDragDrop.DragItemKey] = component;
-                };
-                props.GestureRecognizers.Add(dragGesture);
 
                 var header = new Grid
                 {
@@ -79,6 +73,13 @@ public class ComponentTemplate : DataTemplate
                 var nameLabel = new Label { Text = "DisplayName", VerticalOptions = LayoutOptions.Center, HorizontalTextAlignment = TextAlignment.Start, FontAttributes = FontAttributes.Bold };
                 nameLabel.Behaviors.Add(new DisplayNameBehavior());
                 nameLabel.Text = FormatComponentTypeName(component.Typename.Name);
+
+                var dragGesture = new DragGestureRecognizer();
+                dragGesture.DragStarting += (dragSender, dragArgs) =>
+                {
+                    dragArgs.Data.Properties[EditorDragDrop.DragItemKey] = component;
+                };
+                nameLabel.GestureRecognizers.Add(dragGesture);
 
                 var worldService = MauiProgram.GetService<WorldService>();
                 var contextMenuService = MauiProgram.GetService<EditorContextMenuService>();

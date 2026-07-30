@@ -467,16 +467,35 @@ static class Templates
         NumericPropertyRange range)
         where TBindingContext : class
     {
+        var isSynchronizingPreview = false;
+        var exactValueEditor = CreateFloatEditor(
+            getter,
+            (bindingContext, value) =>
+            {
+                if (!isSynchronizingPreview)
+                    setter(bindingContext, range.Clamp(value));
+            },
+            normalizeOnUnfocus: true);
+
         return CreateRangedNumericEditor(
             CreateRangeSlider(
                 getter,
                 setter,
                 range,
-                value => (float)value),
-            CreateFloatEditor(
-                getter,
-                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
-                normalizeOnUnfocus: true));
+                value => (float)value,
+                previewValue =>
+                {
+                    isSynchronizingPreview = true;
+                    try
+                    {
+                        exactValueEditor.Text = NumericRangeEntryInteraction.Format(previewValue);
+                    }
+                    finally
+                    {
+                        isSynchronizingPreview = false;
+                    }
+                }),
+            exactValueEditor);
     }
 
     public static View IntEditor<TBindingContext>(Expression<Func<TBindingContext, int>> getter, Action<TBindingContext, int> setter)
@@ -519,16 +538,35 @@ static class Templates
         NumericPropertyRange range)
         where TBindingContext : class
     {
+        var isSynchronizingPreview = false;
+        var exactValueEditor = CreateIntEditor(
+            getter,
+            (bindingContext, value) =>
+            {
+                if (!isSynchronizingPreview)
+                    setter(bindingContext, range.Clamp(value));
+            },
+            normalizeOnUnfocus: true);
+
         return CreateRangedNumericEditor(
             CreateRangeSlider(
                 getter,
                 setter,
                 range,
-                range.SnapInt32),
-            CreateIntEditor(
-                getter,
-                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
-                normalizeOnUnfocus: true));
+                range.SnapInt32,
+                previewValue =>
+                {
+                    isSynchronizingPreview = true;
+                    try
+                    {
+                        exactValueEditor.Text = NumericRangeEntryInteraction.Format(previewValue);
+                    }
+                    finally
+                    {
+                        isSynchronizingPreview = false;
+                    }
+                }),
+            exactValueEditor);
     }
 
     public static View UIntEditor<TBindingContext>(Expression<Func<TBindingContext, uint>> getter, Action<TBindingContext, uint> setter)
@@ -571,23 +609,43 @@ static class Templates
         NumericPropertyRange range)
         where TBindingContext : class
     {
+        var isSynchronizingPreview = false;
+        var exactValueEditor = CreateUIntEditor(
+            getter,
+            (bindingContext, value) =>
+            {
+                if (!isSynchronizingPreview)
+                    setter(bindingContext, range.Clamp(value));
+            },
+            normalizeOnUnfocus: true);
+
         return CreateRangedNumericEditor(
             CreateRangeSlider(
                 getter,
                 setter,
                 range,
-                range.SnapUInt32),
-            CreateUIntEditor(
-                getter,
-                (bindingContext, value) => setter(bindingContext, range.Clamp(value)),
-                normalizeOnUnfocus: true));
+                range.SnapUInt32,
+                previewValue =>
+                {
+                    isSynchronizingPreview = true;
+                    try
+                    {
+                        exactValueEditor.Text = NumericRangeEntryInteraction.Format(previewValue);
+                    }
+                    finally
+                    {
+                        isSynchronizingPreview = false;
+                    }
+                }),
+            exactValueEditor);
     }
 
     static Slider CreateRangeSlider<TBindingContext, TValue>(
         Expression<Func<TBindingContext, TValue>> getter,
         Action<TBindingContext, TValue> setter,
         NumericPropertyRange range,
-        Func<double, TValue> convertSliderValue)
+        Func<double, TValue> convertSliderValue,
+        Action<TValue> previewValueChanged)
         where TBindingContext : class
     {
         var slider = new NumericRangeSlider(range);
@@ -595,13 +653,18 @@ static class Templates
 
         void ApplyDecision(NumericRangeSlider current, NumericRangeSliderDecision decision)
         {
+            if (decision.ShouldPreview)
+                previewValueChanged(convertSliderValue(decision.Value));
+
             if (decision.ShouldApply &&
                 current.BindingContext is TBindingContext bindingContext)
             {
                 setter(bindingContext, convertSliderValue(decision.Value));
+                var actualValue = getValue(bindingContext);
+                previewValueChanged(actualValue);
                 current.SynchronizeFromModel(
                     System.Convert.ToDouble(
-                        getValue(bindingContext),
+                        actualValue,
                         System.Globalization.CultureInfo.InvariantCulture));
             }
         }
