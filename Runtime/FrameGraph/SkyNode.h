@@ -72,7 +72,7 @@ namespace Sailor::Framegraph
 			mat4 m_starsModelView{};
 		};
 
-		void ConsumePendingSkyParams();
+		SAILOR_API void ConsumePendingSkyParams();
 
 		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};
