@@ -52,31 +52,31 @@
                    VerticalOptions="Center">
                 <Image.Triggers>
                     <DataTrigger TargetType="Image"
-                                 Binding="{Binding HasMiniature}"
+                                 Binding="{Binding HasFingerprint}"
                                  Value="True">
                         <Setter Property="IsVisible" Value="False" />
                     </DataTrigger>
                 </Image.Triggers>
             </Image>
-            <Label Text="Preview unavailable"
+            <Label Text="Fingerprint unavailable"
                    HorizontalOptions="Center"
                    VerticalOptions="End"
                    Margin="0,0,0,32">
                 <Label.Triggers>
                     <DataTrigger TargetType="Label"
-                                 Binding="{Binding HasMiniature}"
+                                 Binding="{Binding HasFingerprint}"
                                  Value="True">
                         <Setter Property="IsVisible" Value="False" />
                     </DataTrigger>
                 </Label.Triggers>
             </Label>
-            <Image Source="{Binding Miniature}"
+            <Image Source="{Binding Fingerprint}"
                    WidthRequest="256"
                    HeightRequest="256"
                    Aspect="AspectFit"
                    HorizontalOptions="Start"
                    VerticalOptions="Start"
-                   IsVisible="{Binding HasMiniature}" />
+                   IsVisible="{Binding HasFingerprint}" />
         </Grid>
 
         <!-- Properties Label -->
@@ -128,8 +128,10 @@
             <Button Text="Clear" Width ="40" Command="{Binding ClearAnimationsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Animations}">
-            <CollectionView.ItemTemplate>
+        <VerticalStackLayout Grid.Row="13"
+                             Grid.ColumnSpan="2"
+                             BindableLayout.ItemsSource="{Binding Animations}">
+            <BindableLayout.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveAnimationCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
@@ -142,7 +144,7 @@
                         </Label>
                     </HorizontalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
     </Grid>
 </DataTemplate>

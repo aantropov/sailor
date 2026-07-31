@@ -2,6 +2,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -10,18 +11,14 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
-#include "AssetRegistry/Model/ModelMiniature.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
-#include "Raytracing/PathTracer.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
+#include "Raytracing/PathTracer.h"
 #include "Memory/ObjectAllocator.hpp"
-#include "Tasks/Scheduler.h"
-#include "Workspace/WorkspaceCacheContract.h"
-#include "YamlExceptionBoundary.h"
 
 #ifndef TINYGLTF_IMPLEMENTATION
 #define TINYGLTF_IMPLEMENTATION
@@ -32,130 +29,35 @@ using namespace Sailor;
 
 namespace
 {
-	constexpr float BasisLengthEpsilon = 1e-12f;
-
-	bool TryCaptureSavedAssetInfoRevision(
-		AssetInfoPtr assetInfo,
-		FileRevision& outRevision,
-		std::string& outDiagnostic)
-	{
-		outRevision = {};
-		outDiagnostic.clear();
-		if (assetInfo == nullptr)
-		{
-			outDiagnostic = "The asset info is null.";
-			return false;
-		}
-
-		FileRevision revisionBeforeRead;
-		if (!Utils::TryGetFileRevision(
-				assetInfo->GetMetaFilepath(),
-				revisionBeforeRead))
-		{
-			outDiagnostic =
-				"Cannot capture the saved metadata revision.";
-			return false;
-		}
-
-		std::string savedMetadata;
-		if (!AssetRegistry::ReadAllTextFile(
-				assetInfo->GetMetaFilepath(),
-				savedMetadata))
-		{
-			outDiagnostic = "Cannot read the saved metadata.";
-			return false;
-		}
-
-		YAML::Node savedNode;
-		if (!External::TryLoadYaml(
-				savedMetadata,
-				savedNode,
-				outDiagnostic))
-		{
-			return false;
-		}
-
-		YAML::Node expectedNode;
-		if (!External::GuardYamlExceptions(
-				[assetInfo, &expectedNode]()
-				{
-					expectedNode = assetInfo->Serialize();
-				},
-				outDiagnostic))
-		{
-			return false;
-		}
-
-		FileRevision revisionAfterRead;
-		if (!Utils::TryGetFileRevision(
-				assetInfo->GetMetaFilepath(),
-				revisionAfterRead) ||
-			revisionAfterRead != revisionBeforeRead)
-		{
-			outDiagnostic =
-				"The metadata changed while validating the saved state.";
-			return false;
-		}
-		if (!Utils::AreYamlNodesEqual(savedNode, expectedNode))
-		{
-			outDiagnostic =
-				"The saved metadata does not match the live asset info.";
-			return false;
-		}
-
-		outRevision = revisionAfterRead;
-		return true;
-	}
-
-	bool IsFiniteVector(const vec3& value)
+	bool IsUsableDirection(const glm::vec3& value)
 	{
 		return std::isfinite(value.x) &&
 			std::isfinite(value.y) &&
-			std::isfinite(value.z);
+			std::isfinite(value.z) &&
+			glm::dot(value, value) > 1e-8f;
 	}
 
-	vec3 NormalizeOrFallback(const vec3& value, const vec3& fallback)
+	void SanitizeFingerprintVertex(
+		Sailor::RHI::VertexP3N3T3B3UV2C4I4W4& vertex)
 	{
-		if (IsFiniteVector(value) && glm::dot(value, value) > BasisLengthEpsilon)
+		const glm::vec3 normal = IsUsableDirection(vertex.m_normal) ?
+			glm::normalize(vertex.m_normal) :
+			glm::vec3(0.0f, 1.0f, 0.0f);
+
+		glm::vec3 tangent =
+			vertex.m_tangent - normal * glm::dot(vertex.m_tangent, normal);
+		if (!IsUsableDirection(tangent))
 		{
-			return glm::normalize(value);
+			const glm::vec3 axis = std::abs(normal.y) < 0.999f ?
+				glm::vec3(0.0f, 1.0f, 0.0f) :
+				glm::vec3(1.0f, 0.0f, 0.0f);
+			tangent = glm::cross(axis, normal);
 		}
 
-		if (IsFiniteVector(fallback) &&
-			glm::dot(fallback, fallback) > BasisLengthEpsilon)
-		{
-			return glm::normalize(fallback);
-		}
-
-		return vec3(0.0f, 1.0f, 0.0f);
-	}
-
-	void BuildSafeBasis(
-		const vec3& normalCandidate,
-		const vec3& tangentCandidate,
-		const vec3& bitangentCandidate,
-		const vec3& geometricNormal,
-		vec3& outNormal,
-		vec3& outTangent,
-		vec3& outBitangent)
-	{
-		outNormal = NormalizeOrFallback(normalCandidate, geometricNormal);
-		const vec3 tangentFallback = glm::cross(
-			glm::abs(outNormal.y) < 0.999f
-				? vec3(0.0f, 1.0f, 0.0f)
-				: vec3(1.0f, 0.0f, 0.0f),
-			outNormal);
-		const vec3 orthogonalTangent =
-			tangentCandidate - outNormal * glm::dot(tangentCandidate, outNormal);
-		outTangent = NormalizeOrFallback(orthogonalTangent, tangentFallback);
-
-		const vec3 orthogonalBitangent =
-			bitangentCandidate -
-			outNormal * glm::dot(bitangentCandidate, outNormal) -
-			outTangent * glm::dot(bitangentCandidate, outTangent);
-		outBitangent = NormalizeOrFallback(
-			orthogonalBitangent,
-			glm::cross(outNormal, outTangent));
+		vertex.m_normal = normal;
+		vertex.m_tangent = glm::normalize(tangent);
+		vertex.m_bitangent =
+			glm::normalize(glm::cross(normal, vertex.m_tangent));
 	}
 }
 
@@ -231,33 +133,17 @@ bool Model::BuildBLAS()
 			tri.m_vertices[1] = v1.m_position;
 			tri.m_vertices[2] = v2.m_position;
 
-			const vec3 geometricNormal = glm::cross(
-				tri.m_vertices[1] - tri.m_vertices[0],
-				tri.m_vertices[2] - tri.m_vertices[0]);
-			BuildSafeBasis(
-				v0.m_normal,
-				v0.m_tangent,
-				v0.m_bitangent,
-				geometricNormal,
-				tri.m_normals[0],
-				tri.m_tangent[0],
-				tri.m_bitangent[0]);
-			BuildSafeBasis(
-				v1.m_normal,
-				v1.m_tangent,
-				v1.m_bitangent,
-				geometricNormal,
-				tri.m_normals[1],
-				tri.m_tangent[1],
-				tri.m_bitangent[1]);
-			BuildSafeBasis(
-				v2.m_normal,
-				v2.m_tangent,
-				v2.m_bitangent,
-				geometricNormal,
-				tri.m_normals[2],
-				tri.m_tangent[2],
-				tri.m_bitangent[2]);
+			tri.m_normals[0] = glm::normalize(v0.m_normal);
+			tri.m_normals[1] = glm::normalize(v1.m_normal);
+			tri.m_normals[2] = glm::normalize(v2.m_normal);
+
+			tri.m_tangent[0] = glm::normalize(v0.m_tangent);
+			tri.m_tangent[1] = glm::normalize(v1.m_tangent);
+			tri.m_tangent[2] = glm::normalize(v2.m_tangent);
+
+			tri.m_bitangent[0] = glm::normalize(v0.m_bitangent);
+			tri.m_bitangent[1] = glm::normalize(v1.m_bitangent);
+			tri.m_bitangent[2] = glm::normalize(v2.m_bitangent);
 
 			tri.m_uvs[0] = v0.m_texcoord;
 			tri.m_uvs[1] = v1.m_texcoord;
@@ -323,409 +209,112 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-		if (assetRegistry == nullptr)
+		if (modelAssetInfo->IsWritable())
 		{
-			return;
-		}
-
-		FileRevision sourceRevision;
-		if (!Utils::TryGetFileRevision(
-				modelAssetInfo->GetAssetFilepath(),
-				sourceRevision))
-		{
-			const AssetRegistry::AssetProcessingToken processingToken =
-				assetRegistry->BeginAssetProcessing(modelAssetInfo);
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Cannot capture model revision before generating dependent assets: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
-		}
-
-		FileRevision metadataRevision;
-		if (!Utils::TryGetFileRevision(
-				modelAssetInfo->GetMetaFilepath(),
-				metadataRevision))
-		{
-			const AssetRegistry::AssetProcessingToken processingToken =
-				assetRegistry->BeginAssetProcessing(modelAssetInfo);
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Cannot capture model metadata revision before generating its miniature: %s",
-				modelAssetInfo->GetMetaFilepath().c_str());
-			return;
-		}
-
-		const bool bShouldPrepareGeneratedAssets =
-			bWasExpired || modelAssetInfo->IsImportPending();
-		const bool bShouldGenerateMaterials =
-			modelAssetInfo->IsWritable() &&
-			bShouldPrepareGeneratedAssets &&
-			modelAssetInfo->ShouldGenerateMaterials() &&
-			modelAssetInfo->GetDefaultMaterials().Num() == 0;
-		const bool bShouldGenerateAnimations =
-			modelAssetInfo->IsWritable() &&
-			bShouldPrepareGeneratedAssets &&
-			modelAssetInfo->GetAnimations().Num() == 0;
-		const std::filesystem::path cacheRoot =
-			AssetRegistry::GetCacheFolder();
-		const bool bMiniatureIsCurrent = ModelMiniature::IsCurrent(
-			cacheRoot,
-			modelAssetInfo->GetFileId(),
-			sourceRevision,
-			metadataRevision);
-
-		if (!bShouldGenerateMaterials &&
-			!bShouldGenerateAnimations &&
-			bMiniatureIsCurrent)
-		{
-			return;
-		}
-
-		if (!bShouldGenerateMaterials &&
-			!bShouldGenerateAnimations)
-		{
-			ScheduleModelMiniature(
-				modelAssetInfo,
-				sourceRevision,
-				metadataRevision);
-			return;
-		}
-
-		const AssetRegistry::AssetProcessingToken processingToken =
-			assetRegistry->BeginAssetProcessing(modelAssetInfo);
-		if (!processingToken)
-		{
-			return;
-		}
-		if (processingToken.m_sourceRevision != sourceRevision)
-		{
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Model source changed before generating dependent assets; retrying on the next scan: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
-		}
-
-		const TVector<FileId> previousMaterials =
-			modelAssetInfo->GetDefaultMaterials();
-		const TVector<FileId> previousAnimations =
-			modelAssetInfo->GetAnimations();
-		auto restoreGeneratedAssetReferences = [&]()
+			if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
 			{
-				modelAssetInfo->GetDefaultMaterials() = previousMaterials;
-				modelAssetInfo->GetAnimations() = previousAnimations;
-			};
-
-		if (bShouldGenerateMaterials &&
-			!GenerateMaterialAssets(modelAssetInfo))
-		{
-			restoreGeneratedAssetReferences();
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Cannot schedule a model miniature until generated material assets are ready: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
-		}
-
-		if (bShouldGenerateAnimations &&
-			!GenerateAnimationAssets(modelAssetInfo))
-		{
-			restoreGeneratedAssetReferences();
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Cannot schedule a model miniature until generated animation assets are ready: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
-		}
-
-		FileRevision generatedAssetsSourceRevision;
-		FileRevision generatedAssetsMetadataRevision;
-		if (!Utils::TryGetFileRevision(
-				modelAssetInfo->GetAssetFilepath(),
-				generatedAssetsSourceRevision) ||
-			generatedAssetsSourceRevision != sourceRevision ||
-			!Utils::TryGetFileRevision(
-				modelAssetInfo->GetMetaFilepath(),
-				generatedAssetsMetadataRevision) ||
-			generatedAssetsMetadataRevision != metadataRevision)
-		{
-			restoreGeneratedAssetReferences();
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
-			SAILOR_LOG_ERROR(
-				"Model source or metadata changed while generating dependent assets; retrying on the next scan: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
-		}
-
-		modelAssetInfo->SaveMetaFile();
-		std::string metadataDiagnostic;
-		if (!TryCaptureSavedAssetInfoRevision(
-				modelAssetInfo,
-				metadataRevision,
-				metadataDiagnostic))
-		{
-			restoreGeneratedAssetReferences();
-			assetRegistry->CompleteAssetProcessing(
-				processingToken,
-				false);
-			SAILOR_LOG_ERROR(
-				"Cannot validate generated model metadata '%s': %s",
-				modelAssetInfo->GetMetaFilepath().c_str(),
-				metadataDiagnostic.c_str());
-			return;
-		}
-
-		if (!Utils::TryGetFileRevision(
-				modelAssetInfo->GetAssetFilepath(),
-				generatedAssetsSourceRevision) ||
-			generatedAssetsSourceRevision != sourceRevision)
-		{
-			restoreGeneratedAssetReferences();
-			FileRevision currentMetadataRevision;
-			if (Utils::TryGetFileRevision(
-					modelAssetInfo->GetMetaFilepath(),
-					currentMetadataRevision) &&
-				currentMetadataRevision == metadataRevision)
-			{
-				modelAssetInfo->SaveMetaFile();
+				GenerateMaterialAssets(modelAssetInfo);
+				assetInfo->SaveMetaFile();
 			}
-			assetRegistry->CompleteAssetProcessing(
-				processingToken,
-				false);
-			SAILOR_LOG_ERROR(
-				"Model source changed while publishing dependent asset metadata; retrying on the next scan: %s",
-				modelAssetInfo->GetAssetFilepath().c_str());
-			return;
+
+			if (bWasExpired && modelAssetInfo->GetAnimations().Num() == 0)
+			{
+				GenerateAnimationAssets(modelAssetInfo);
+				assetInfo->SaveMetaFile();
+			}
 		}
 
-		if (!ScheduleModelMiniature(
-				modelAssetInfo,
-				sourceRevision,
-				metadataRevision,
-				processingToken))
+		if (bWasExpired)
 		{
-			assetRegistry->CompleteAssetProcessing(processingToken, false);
+			GenerateFingerprintAsync(modelAssetInfo);
 		}
 	}
 }
 
-void ModelImporter::OnImportAsset(AssetInfoPtr)
+void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
+	ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo);
+	if (!modelAssetInfo)
+	{
+		return;
+	}
+
+	if (modelAssetInfo->IsWritable())
+	{
+		if (modelAssetInfo->ShouldGenerateMaterials() &&
+			modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		{
+			GenerateMaterialAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
+		}
+
+		if (modelAssetInfo->GetAnimations().Num() == 0)
+		{
+			GenerateAnimationAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
+		}
+	}
+
+	GenerateFingerprintAsync(modelAssetInfo);
 }
 
-Tasks::TaskPtr<bool> ModelImporter::ScheduleModelMiniature(
-	ModelAssetInfoPtr assetInfo,
-	const FileRevision& sourceRevision,
-	const FileRevision& metadataRevision,
-	const AssetRegistry::AssetProcessingToken& providedProcessingToken)
+void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 {
-	if (assetInfo == nullptr || !assetInfo->GetFileId())
+	if (!modelAssetInfo || !modelAssetInfo->GetFileId())
 	{
-		return {};
+		return;
 	}
 
-	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	if (assetRegistry == nullptr)
-	{
-		return {};
-	}
-
-	FileRevision currentMetadataRevision;
-	if (!Utils::TryGetFileRevision(
-			assetInfo->GetMetaFilepath(),
-			currentMetadataRevision) ||
-		currentMetadataRevision != metadataRevision)
-	{
-		AssetRegistry::AssetProcessingToken processingToken =
-			providedProcessingToken;
-		if (!processingToken)
-		{
-			processingToken =
-				assetRegistry->BeginAssetProcessing(assetInfo);
-		}
-		assetRegistry->CompleteAssetProcessing(processingToken, false);
-		SAILOR_LOG_ERROR(
-			"Model metadata changed before miniature generation: %s",
-			assetInfo->GetMetaFilepath().c_str());
-		return {};
-	}
-
-	const FileId fileId = assetInfo->GetFileId();
-	const std::filesystem::path cacheRoot =
-		AssetRegistry::GetCacheFolder();
-	const std::filesystem::path outputPath = ModelMiniature::GetCachePath(
-		cacheRoot,
-		fileId);
-	if (outputPath.empty())
+	const FileId fileId = modelAssetInfo->GetFileId();
+	const std::filesystem::path filename = fileId.ToString() + ".png";
+	if (filename != filename.filename())
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot resolve a safe miniature cache path for model FileId: %s",
+			"Cannot generate fingerprint for invalid FileId: %s",
 			fileId.ToString().c_str());
-		return {};
-	}
-	Tasks::TaskPtr<bool> miniatureTask;
-	bool bMiniatureTaskNeedsRun = false;
-
-	{
-		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
-		ModelMiniatureTaskState* existingState = nullptr;
-		if (!providedProcessingToken &&
-			m_miniatureTasks.Find(fileId, existingState) &&
-			existingState != nullptr &&
-			existingState->m_sourceRevision == sourceRevision &&
-			existingState->m_metadataRevision == metadataRevision &&
-			existingState->m_task)
-		{
-			const bool bTaskFinished =
-				existingState->m_task->IsFinished();
-			if (!bTaskFinished ||
-				(existingState->m_task->GetResult() &&
-					ModelMiniature::IsCurrent(
-						cacheRoot,
-						fileId,
-						sourceRevision,
-						metadataRevision)))
-			{
-				miniatureTask = existingState->m_task;
-				bMiniatureTaskNeedsRun =
-					!miniatureTask->IsStarted() &&
-					!miniatureTask->IsFinished() &&
-					!miniatureTask->IsInQueue();
-			}
-		}
-
-		if (!miniatureTask)
-		{
-			AssetRegistry::AssetProcessingToken processingToken =
-				providedProcessingToken;
-			if (!processingToken)
-			{
-				processingToken =
-					assetRegistry->BeginAssetProcessing(assetInfo);
-			}
-			if (!processingToken)
-			{
-				return {};
-			}
-			if (processingToken.m_sourceRevision != sourceRevision)
-			{
-				assetRegistry->CompleteAssetProcessing(
-					processingToken,
-					false);
-				SAILOR_LOG_ERROR(
-					"Model source changed while generating dependent assets; retrying on the next scan: %s",
-					assetInfo->GetAssetFilepath().c_str());
-				return {};
-			}
-			const std::string assetFilepath = assetInfo->GetAssetFilepath();
-			const std::string metadataFilepath = assetInfo->GetMetaFilepath();
-			const float unitScale = assetInfo->GetUnitScale();
-			const bool bShouldBatchByMaterial = assetInfo->ShouldBatchByMaterial();
-			const TVector<FileId> defaultMaterials = assetInfo->GetDefaultMaterials();
-
-			miniatureTask = Tasks::CreateTaskWithResult<bool>(
-				"Generate model miniature",
-				[
-					this,
-					fileId,
-					assetFilepath,
-					metadataFilepath,
-					unitScale,
-					bShouldBatchByMaterial,
-					defaultMaterials,
-					outputPath,
-					cacheRoot,
-					sourceRevision,
-					metadataRevision,
-					processingToken
-				]()
-				{
-					const bool bSucceeded = GenerateModelMiniature(
-						fileId,
-						assetFilepath,
-						metadataFilepath,
-						unitScale,
-						bShouldBatchByMaterial,
-						defaultMaterials,
-						outputPath,
-						cacheRoot,
-						sourceRevision,
-						metadataRevision);
-					if (AssetRegistry* currentRegistry = App::GetSubmodule<AssetRegistry>())
-					{
-						currentRegistry->CompleteAssetProcessing(
-							processingToken,
-							bSucceeded);
-					}
-					return bSucceeded;
-				},
-				EThreadType::Worker);
-
-			if (m_lastMiniatureTask && !m_lastMiniatureTask->IsFinished())
-			{
-				miniatureTask->Join(m_lastMiniatureTask);
-			}
-
-			m_lastMiniatureTask = miniatureTask;
-			m_miniatureTasks[fileId] = ModelMiniatureTaskState{
-				processingToken
-					? processingToken.m_sourceRevision
-					: sourceRevision,
-				metadataRevision,
-				miniatureTask
-			};
-			bMiniatureTaskNeedsRun = true;
-		}
+		return;
 	}
 
-	assetRegistry->TrackScanProcessingTask(
-		miniatureTask,
-		bMiniatureTaskNeedsRun);
-	return miniatureTask;
+	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
+	const float unitScale = modelAssetInfo->GetUnitScale();
+	const bool bShouldBatchByMaterial = modelAssetInfo->ShouldBatchByMaterial();
+	const std::string outputPath =
+		(std::filesystem::path(AssetRegistry::GetCacheFolder()) /
+			"Fingerprints" /
+			filename).string();
+
+	Tasks::CreateTask(
+		"Generate model fingerprint",
+		[
+			fileId,
+			assetFilepath,
+			unitScale,
+			bShouldBatchByMaterial,
+			outputPath
+		]()
+		{
+			GenerateFingerprint(
+				fileId,
+				assetFilepath,
+				unitScale,
+				bShouldBatchByMaterial,
+				outputPath);
+		},
+		EThreadType::Worker)->Run();
 }
 
-bool ModelImporter::GenerateModelMiniature(
+bool ModelImporter::GenerateFingerprint(
 	const FileId& fileId,
 	const std::string& assetFilepath,
-	const std::string& metadataFilepath,
 	float unitScale,
 	bool bShouldBatchByMaterial,
-	const TVector<FileId>& defaultMaterials,
-	const std::filesystem::path& outputPath,
-	const std::filesystem::path& cacheRoot,
-	const FileRevision& sourceRevision,
-	const FileRevision& metadataRevision)
+	const std::string& outputPath)
 {
-	Utils::Timer timer;
-	timer.Start();
-
-	auto revisionsAreCurrent = [&]()
-		{
-			FileRevision currentSourceRevision;
-			FileRevision currentMetadataRevision;
-			return Utils::TryGetFileRevision(
-					assetFilepath,
-					currentSourceRevision) &&
-				Utils::TryGetFileRevision(
-					metadataFilepath,
-					currentMetadataRevision) &&
-				currentSourceRevision == sourceRevision &&
-				currentMetadataRevision == metadataRevision;
-		};
-	if (!revisionsAreCurrent())
-	{
-		SAILOR_LOG_ERROR(
-			"Model source or metadata changed before miniature rendering: %s",
-			assetFilepath.c_str());
-		return false;
-	}
-
 	TVector<MeshContext> parsedMeshes;
 	TVector<glm::mat4> inverseBind;
 	Math::AABB boundsAabb;
 	Math::Sphere boundsSphere;
+	tinygltf::Model gltfModel;
 	if (!ImportModel(
 			assetFilepath,
 			unitScale,
@@ -733,114 +322,234 @@ bool ModelImporter::GenerateModelMiniature(
 			parsedMeshes,
 			boundsAabb,
 			boundsSphere,
-			inverseBind) ||
+			inverseBind,
+			&gltfModel) ||
 		parsedMeshes.Num() == 0 ||
 		!boundsAabb.IsValid())
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot prepare model geometry for miniature: %s",
+			"Cannot prepare model fingerprint: %s",
 			assetFilepath.c_str());
 		return false;
 	}
 
-	ObjectAllocatorPtr previewAllocator =
+	ObjectAllocatorPtr allocator =
 		ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
-	ModelPtr previewModel = ModelPtr::Make(previewAllocator, fileId);
-	previewModel->m_boundsAabb = boundsAabb;
-	previewModel->m_boundsSphere = boundsSphere;
-	previewModel->m_inverseBind = std::move(inverseBind);
-	previewModel->m_cpuMeshes.Reserve(parsedMeshes.Num());
+	TVector<MaterialPtr> previewMaterials(gltfModel.materials.size());
+	TMap<int32_t, TexturePtr> previewTextures;
+
+	auto loadPreviewTexture = [&](int32_t textureIndex) -> TexturePtr
+		{
+			TexturePtr* cachedTexture = nullptr;
+			if (previewTextures.Find(textureIndex, cachedTexture) &&
+				cachedTexture != nullptr)
+			{
+				return *cachedTexture;
+			}
+
+			if (textureIndex < 0 ||
+				static_cast<size_t>(textureIndex) >= gltfModel.textures.size())
+			{
+				return TexturePtr();
+			}
+
+			const tinygltf::Texture& sourceTexture =
+				gltfModel.textures[textureIndex];
+			if (sourceTexture.source < 0 ||
+				static_cast<size_t>(sourceTexture.source) >=
+					gltfModel.images.size())
+			{
+				return TexturePtr();
+			}
+
+			const tinygltf::Image& image =
+				gltfModel.images[sourceTexture.source];
+			if (image.width <= 0 ||
+				image.height <= 0 ||
+				image.component <= 0 ||
+				(image.bits != 8 && image.bits != 16))
+			{
+				return TexturePtr();
+			}
+
+			const size_t pixelCount =
+				static_cast<size_t>(image.width) *
+				static_cast<size_t>(image.height);
+			const size_t bytesPerChannel =
+				static_cast<size_t>(image.bits / 8);
+			const size_t requiredBytes =
+				pixelCount *
+				static_cast<size_t>(image.component) *
+				bytesPerChannel;
+			if (requiredBytes > image.image.size())
+			{
+				return TexturePtr();
+			}
+
+			TexturePtr texture = TexturePtr::Make(
+				allocator,
+				FileId::CreateNewFileId());
+			texture->m_decodedData.Resize(
+				pixelCount * sizeof(u8vec4));
+			texture->m_width = image.width;
+			texture->m_height = image.height;
+			texture->m_mipLevels = 1;
+
+			auto readChannel = [&](size_t pixel, int32_t channel) -> uint8_t
+				{
+					const size_t offset =
+						(pixel * static_cast<size_t>(image.component) +
+							static_cast<size_t>(channel)) *
+						bytesPerChannel;
+					if (image.bits == 8)
+					{
+						return image.image[offset];
+					}
+
+					uint16_t value = 0;
+					std::memcpy(
+						&value,
+						image.image.data() + offset,
+						sizeof(value));
+					return static_cast<uint8_t>(value / 257u);
+				};
+
+			u8vec4* pixels = reinterpret_cast<u8vec4*>(
+				texture->m_decodedData.GetData());
+			for (size_t i = 0; i < pixelCount; i++)
+			{
+				const uint8_t r = readChannel(i, 0);
+				const uint8_t g = image.component >= 3 ?
+					readChannel(i, 1) :
+					r;
+				const uint8_t b = image.component >= 3 ?
+					readChannel(i, 2) :
+					r;
+				const uint8_t a = image.component == 2 ?
+					readChannel(i, 1) :
+					(image.component >= 4 ?
+						readChannel(i, 3) :
+						255u);
+				pixels[i] = u8vec4(r, g, b, a);
+			}
+
+			previewTextures[textureIndex] = texture;
+			return texture;
+		};
+
+	for (size_t i = 0; i < gltfModel.materials.size(); i++)
+	{
+		const tinygltf::Material& sourceMaterial =
+			gltfModel.materials[i];
+		const bool bIsTransparent =
+			sourceMaterial.alphaMode == "BLEND";
+		const bool bIsMasked =
+			sourceMaterial.alphaMode == "MASK";
+		const std::string renderQueue = bIsTransparent ?
+			"Transparent" :
+			(bIsMasked ? "Masked" : "Opaque");
+
+		MaterialPtr material = MaterialPtr::Make(
+			allocator,
+			FileId::CreateNewFileId());
+		material->SetRenderState(RHI::RenderState(
+			true,
+			!bIsTransparent,
+			0.0f,
+			bIsMasked,
+			sourceMaterial.doubleSided ?
+				RHI::ECullMode::None :
+				RHI::ECullMode::Back,
+			RHI::EBlendMode::None,
+			RHI::EFillMode::Fill,
+			GetHash(renderQueue)));
+
+		const auto& pbr = sourceMaterial.pbrMetallicRoughness;
+		material->SetUniform(
+			"material.baseColorFactor",
+			vec4(
+				pbr.baseColorFactor[0],
+				pbr.baseColorFactor[1],
+				pbr.baseColorFactor[2],
+				pbr.baseColorFactor[3]));
+		material->SetUniform(
+			"material.emissiveFactor",
+			vec4(
+				sourceMaterial.emissiveFactor[0],
+				sourceMaterial.emissiveFactor[1],
+				sourceMaterial.emissiveFactor[2],
+				0.0f));
+		material->SetUniform(
+			"material.roughnessFactor",
+			static_cast<float>(pbr.roughnessFactor));
+		material->SetUniform(
+			"material.metallicFactor",
+			static_cast<float>(pbr.metallicFactor));
+		material->SetUniform(
+			"material.alphaCutoff",
+			static_cast<float>(sourceMaterial.alphaCutoff));
+
+		auto bindTexture = [&](
+			const char* samplerName,
+			int32_t textureIndex)
+			{
+				if (TexturePtr texture =
+					loadPreviewTexture(textureIndex))
+				{
+					material->SetSampler(
+						samplerName,
+						texture);
+				}
+			};
+		bindTexture(
+			"baseColorSampler",
+			pbr.baseColorTexture.index);
+		bindTexture(
+			"normalSampler",
+			sourceMaterial.normalTexture.index);
+		bindTexture(
+			"ormSampler",
+			pbr.metallicRoughnessTexture.index);
+		bindTexture(
+			"emissiveSampler",
+			sourceMaterial.emissiveTexture.index);
+		bindTexture(
+			"occlusionSampler",
+			sourceMaterial.occlusionTexture.index);
+		previewMaterials[i] = std::move(material);
+	}
+
+	ModelPtr model = ModelPtr::Make(allocator, fileId);
+	model->m_boundsAabb = boundsAabb;
+	model->m_boundsSphere = boundsSphere;
+	model->m_inverseBind = std::move(inverseBind);
+	model->m_cpuMeshes.Reserve(parsedMeshes.Num());
 
 	for (MeshContext& mesh : parsedMeshes)
 	{
 		Model::MeshCpuData cpuMesh{};
 		cpuMesh.m_vertices = std::move(mesh.outVertices);
+		for (auto& vertex : cpuMesh.m_vertices)
+		{
+			SanitizeFingerprintVertex(vertex);
+		}
 		cpuMesh.m_indices = std::move(mesh.outIndices);
 		cpuMesh.m_bounds = mesh.bounds;
 		cpuMesh.m_materialIndex = mesh.materialIndex;
-		previewModel->m_cpuMeshes.Add(std::move(cpuMesh));
+		model->m_cpuMeshes.Add(std::move(cpuMesh));
 	}
 
-	if (!previewModel->BuildBLAS())
+	if (!model->BuildBLAS())
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot build model BLAS for miniature: %s",
+			"Cannot build model fingerprint BLAS: %s",
 			assetFilepath.c_str());
 		return false;
 	}
 
-	TVector<MaterialPtr> previewMaterials(defaultMaterials.Num());
-	TMap<FileId, TexturePtr> previewTextures;
-	MaterialImporter* materialImporter = App::GetSubmodule<MaterialImporter>();
-	TextureImporter* textureImporter = App::GetSubmodule<TextureImporter>();
-	if (materialImporter != nullptr && textureImporter != nullptr)
-	{
-		for (size_t i = 0; i < defaultMaterials.Num(); ++i)
-		{
-			const FileId materialFileId = defaultMaterials[i];
-			const TSharedPtr<MaterialAsset> materialAsset =
-				materialImporter->LoadMaterialAsset(materialFileId);
-			if (!materialAsset)
-			{
-				SAILOR_LOG_ERROR(
-					"Cannot load material %s for model miniature: %s",
-					materialFileId.ToString().c_str(),
-					assetFilepath.c_str());
-				return false;
-			}
-
-			MaterialPtr material = MaterialPtr::Make(
-				previewAllocator,
-				materialFileId);
-			material->SetRenderState(materialAsset->GetRenderState());
-			for (const auto& uniform : materialAsset->GetUniformsVec4())
-			{
-				material->SetUniform(uniform.m_first, *uniform.m_second);
-			}
-			for (const auto& uniform : materialAsset->GetUniformsFloat())
-			{
-				material->SetUniform(uniform.m_first, *uniform.m_second);
-			}
-			for (const auto& sampler : materialAsset->GetSamplers())
-			{
-				TexturePtr texture;
-				TexturePtr* cachedTexture = nullptr;
-				if (previewTextures.Find(*sampler.m_second, cachedTexture) &&
-					cachedTexture != nullptr)
-				{
-					texture = *cachedTexture;
-				}
-				else if (textureImporter->LoadTextureCpu_Immediate(
-					*sampler.m_second,
-					texture,
-					ModelMiniature::TextureResolution))
-				{
-					previewTextures[*sampler.m_second] = texture;
-				}
-
-				if (!texture)
-				{
-					SAILOR_LOG_ERROR(
-						"Cannot load texture %s for model miniature: %s",
-						sampler.m_second->ToString().c_str(),
-						assetFilepath.c_str());
-					return false;
-				}
-				else
-				{
-					material->SetSampler(sampler.m_first, texture);
-				}
-			}
-			previewMaterials[i] = std::move(material);
-		}
-	}
-
 	Raytracing::PathTracer::TLASInstance instance{};
-	instance.m_model = previewModel;
+	instance.m_model = model;
 	instance.m_worldBounds = boundsAabb;
-	instance.m_worldMatrix = glm::mat4(1.0f);
-	instance.m_inverseWorldMatrix = glm::mat4(1.0f);
-	instance.m_materialBaseOffset = 0;
 
 	Raytracing::PathTracer pathTracer;
 	if (!pathTracer.InitializeScene(
@@ -849,92 +558,43 @@ bool ModelImporter::GenerateModelMiniature(
 			{}))
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot initialize path tracer for model miniature: %s",
+			"Cannot initialize model fingerprint scene: %s",
 			assetFilepath.c_str());
 		return false;
 	}
 
+	const float radius = (std::max)(boundsSphere.m_radius, 0.1f);
 	Raytracing::PathTracer::Params params{};
-	params.m_width = ModelMiniature::Resolution;
-	params.m_height = ModelMiniature::Resolution;
+	params.m_output = outputPath;
+	params.m_height = 256;
 	params.m_numSamples = 1;
 	params.m_numAmbientSamples = 1;
 	params.m_maxBounces = 1;
-	params.m_msaa = 4;
+	params.m_msaa = 1;
 	params.m_ambient = vec3(0.08f);
 	params.m_rayBiasScale = 3e-4f;
+	params.m_bUseRuntimeCamera = true;
+	params.m_runtimeCameraPos =
+		boundsSphere.m_center + vec3(0.0f, radius * 0.6f, radius * 2.5f);
+	params.m_runtimeCameraForward =
+		glm::normalize(boundsSphere.m_center - params.m_runtimeCameraPos);
+	params.m_runtimeAspectRatio = 1.0f;
 	params.m_bRunTasksInline = true;
-	if (!pathTracer.RenderPreparedScene(params) ||
-		pathTracer.GetLastRenderedExtent() !=
-			glm::uvec2(ModelMiniature::Resolution, ModelMiniature::Resolution))
+
+	std::error_code error;
+	std::filesystem::create_directories(
+		std::filesystem::path(outputPath).parent_path(),
+		error);
+	if (error || !pathTracer.RenderPreparedScene(params))
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot render model miniature: %s",
-			assetFilepath.c_str());
+			"Cannot save model fingerprint '%s': %s",
+			outputPath.c_str(),
+			error.message().c_str());
 		return false;
 	}
 
-	TVector<uint8_t> png;
-	if (!Raytracing::PathTracer::EncodePng(
-			pathTracer.GetLastRenderedImage(),
-			pathTracer.GetLastRenderedExtent(),
-			png))
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot encode model miniature: %s",
-			assetFilepath.c_str());
-		return false;
-	}
-
-	if (!revisionsAreCurrent())
-	{
-		SAILOR_LOG_ERROR(
-			"Model source or metadata changed while rendering its miniature: %s",
-			assetFilepath.c_str());
-		return false;
-	}
-
-	std::string writeDiagnostic;
-	if (!Workspace::AtomicReplaceWorkspaceCacheBinary(
-			outputPath,
-			png.GetData(),
-			static_cast<uint64_t>(png.Num()),
-			writeDiagnostic))
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot publish model miniature '%s': %s",
-			outputPath.string().c_str(),
-			writeDiagnostic.c_str());
-		return false;
-	}
-
-	if (!ModelMiniature::SaveFingerprint(
-			cacheRoot,
-			fileId,
-			sourceRevision,
-			metadataRevision,
-			writeDiagnostic))
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot publish model miniature fingerprint '%s': %s",
-			outputPath.string().c_str(),
-			writeDiagnostic.c_str());
-		return false;
-	}
-
-	if (!revisionsAreCurrent())
-	{
-		SAILOR_LOG_ERROR(
-			"Model source or metadata changed while publishing its miniature: %s",
-			assetFilepath.c_str());
-		return false;
-	}
-
-	timer.Stop();
-	SAILOR_LOG(
-		"Generated model miniature '%s' in %.2f ms.",
-		outputPath.string().c_str(),
-		static_cast<double>(timer.ResultAccumulatedMs()));
+	SAILOR_LOG("Generated model fingerprint: %s", outputPath.c_str());
 	return true;
 }
 
@@ -947,61 +607,10 @@ FileId CreateTextureAsset(const std::string& filepath,
 	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
 	bool bShouldKeepCpuBuffers = false)
 {
-	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	if (assetRegistry == nullptr)
-	{
-		return FileId::Invalid;
-	}
-
-	FileId fileId;
-	std::error_code existsError;
-	const std::filesystem::file_status metadataStatus =
-		std::filesystem::symlink_status(
-		filepath,
-		existsError);
-	if (existsError == std::errc::no_such_file_or_directory ||
-		existsError == std::errc::not_a_directory)
-	{
-		existsError.clear();
-	}
-	if (existsError)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot inspect generated texture metadata path: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
-	if (bMetadataExists &&
-		!std::filesystem::is_regular_file(metadataStatus))
-	{
-		SAILOR_LOG_ERROR(
-			"Generated texture metadata path is not a regular file: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-	if (bMetadataExists)
-	{
-		fileId = assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath);
-		TextureAssetInfoPtr existingTextureInfo =
-			assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId);
-		if (!fileId ||
-			existingTextureInfo == nullptr ||
-			existingTextureInfo->GetAssetFilename() != glbFilename)
-		{
-			SAILOR_LOG_ERROR(
-				"Existing generated texture metadata is incompatible: %s",
-				filepath.c_str());
-			return FileId::Invalid;
-		}
-	}
-	else
-	{
-		fileId = FileId::CreateNewFileId();
-	}
+	FileId newFileId = FileId::CreateNewFileId();
 
 	YAML::Node newTexture = GeneratedModelAssetMetadata::CreateTexture(
-		fileId,
+		newFileId,
 		glbFilename,
 		glbTextureIndex,
 		bShouldGenerateMips,
@@ -1013,23 +622,8 @@ FileId CreateTextureAsset(const std::string& filepath,
 	std::ofstream assetFile(filepath);
 	assetFile << newTexture;
 	assetFile.close();
-	if (!assetFile)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot write generated texture metadata: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
 
-	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot register generated texture metadata for immediate model processing: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-
-	return fileId;
+	return newFileId;
 }
 
 FileId CreateAnimationAsset(const std::string& filepath,
@@ -1037,61 +631,10 @@ FileId CreateAnimationAsset(const std::string& filepath,
 	uint32_t animationIndex,
 	uint32_t skinIndex)
 {
-	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
-	if (assetRegistry == nullptr)
-	{
-		return FileId::Invalid;
-	}
-
-	FileId fileId;
-	std::error_code existsError;
-	const std::filesystem::file_status metadataStatus =
-		std::filesystem::symlink_status(filepath, existsError);
-	if (existsError == std::errc::no_such_file_or_directory ||
-		existsError == std::errc::not_a_directory)
-	{
-		existsError.clear();
-	}
-	if (existsError)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot inspect generated animation metadata path: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-
-	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
-	if (bMetadataExists &&
-		!std::filesystem::is_regular_file(metadataStatus))
-	{
-		SAILOR_LOG_ERROR(
-			"Generated animation metadata path is not a regular file: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-	if (bMetadataExists)
-	{
-		fileId =
-			assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath);
-		AnimationAssetInfoPtr existingAnimationInfo =
-			assetRegistry->GetAssetInfoPtr<AnimationAssetInfoPtr>(fileId);
-		if (!fileId ||
-			existingAnimationInfo == nullptr ||
-			existingAnimationInfo->GetAssetFilename() != glbFilename)
-		{
-			SAILOR_LOG_ERROR(
-				"Existing generated animation metadata is incompatible: %s",
-				filepath.c_str());
-			return FileId::Invalid;
-		}
-	}
-	else
-	{
-		fileId = FileId::CreateNewFileId();
-	}
+	FileId newFileId = FileId::CreateNewFileId();
 
 	YAML::Node newAnimation = GeneratedModelAssetMetadata::CreateAnimation(
-		fileId,
+		newFileId,
 		glbFilename,
 		animationIndex,
 		skinIndex);
@@ -1099,26 +642,11 @@ FileId CreateAnimationAsset(const std::string& filepath,
 	std::ofstream assetFile(filepath);
 	assetFile << newAnimation;
 	assetFile.close();
-	if (!assetFile)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot write generated animation metadata: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
 
-	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot register generated animation metadata for immediate model processing: %s",
-			filepath.c_str());
-		return FileId::Invalid;
-	}
-
-	return fileId;
+	return newFileId;
 }
 
-bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
+void ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -1133,7 +661,7 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 
 	if (!bGltfParsed || gltfModel.animations.empty())
 	{
-		return bGltfParsed;
+		return;
 	}
 
 	const std::string animationsFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
@@ -1148,20 +676,15 @@ bool ModelImporter::GenerateAnimationAssets(ModelAssetInfoPtr assetInfo)
 				outputPath))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated animation output for %s.", assetInfo->GetAssetFilepath().c_str());
-			return false;
+			continue;
 		}
 		FileId id = CreateAnimationAsset(outputPath.string(),
 			assetInfo->GetAssetFilename(), (uint32_t)i, 0);
-		if (!id)
-		{
-			return false;
-		}
 		assetInfo->GetAnimations().Add(id);
 	}
-	return true;
 }
 
-bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
+void ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -1187,32 +710,19 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 	if (!bGltfParsed)
 	{
-		return false;
+		return;
 	}
 
 	const std::string texturesFolder = Utils::GetFileFolder(assetInfo->GetRelativeAssetFilepath());
 
 	TVector<MaterialAsset::Data> materials(gltfModel.materials.size());
-	TSet<std::string> materialNames;
-	bool bGeneratedTexturesReady = true;
 
 	for (size_t i = 0; i < gltfModel.materials.size(); ++i)
 	{
 		const auto& material = gltfModel.materials[i];
 
 		MaterialAsset::Data& data = materials[i];
-		const std::string materialBaseName =
-			!material.name.empty()
-				? material.name
-				: ("material" + std::to_string(i));
-		data.m_name = materialBaseName;
-		for (size_t suffix = 1; !materialNames.Insert(data.m_name); ++suffix)
-		{
-			data.m_name =
-				materialBaseName +
-				"_" +
-				std::to_string(suffix);
-		}
+		data.m_name = !material.name.empty() ? material.name : ("material" + std::to_string(i));
 
 		std::filesystem::path materialNamePath;
 		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
@@ -1220,77 +730,38 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				materialNamePath))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated material output for %s.", assetInfo->GetAssetFilepath().c_str());
-			return false;
+			continue;
 		}
 		const std::string materialName = materialNamePath.string();
-		auto addTexture = [&](
-			const std::string& sampler,
-			const std::string& metadataPath,
-			int32_t textureIndex,
-			RHI::ETextureFormat format)
-			{
-				const FileId textureFileId = CreateTextureAsset(
-					metadataPath,
-					assetInfo->GetAssetFilename(),
-					static_cast<uint32_t>(textureIndex),
-					true,
-					format,
-					RHI::ETextureClamping::Repeat,
-					RHI::ETextureFiltration::Linear,
-					assetInfo->ShouldKeepCpuBuffers());
-				if (textureFileId)
-				{
-					data.m_samplers.Add(sampler, textureFileId);
-				}
-				else
-				{
-					bGeneratedTexturesReady = false;
-				}
-			};
 
 		if (material.pbrMetallicRoughness.baseColorTexture.index != -1)
 		{
-			addTexture(
-				"baseColorSampler",
-				materialName + "_baseColorTexture.png.asset",
-				material.pbrMetallicRoughness.baseColorTexture.index,
-				RHI::ETextureFormat::R8G8B8A8_SRGB);
+			data.m_samplers.Add("baseColorSampler",
+				CreateTextureAsset(materialName + "_baseColorTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.baseColorTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.normalTexture.index != -1)
 		{
-			addTexture(
-				"normalSampler",
-				materialName + "_normalTexture.png.asset",
-				material.normalTexture.index,
-				RHI::ETextureFormat::R8G8B8A8_UNORM);
+			data.m_samplers.Add("normalSampler",
+				CreateTextureAsset(materialName + "_normalTexture.png.asset", assetInfo->GetAssetFilename(), material.normalTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.emissiveTexture.index != -1)
 		{
-			addTexture(
-				"emissiveSampler",
-				materialName + "_emissionTexture.png.asset",
-				material.emissiveTexture.index,
-				RHI::ETextureFormat::R8G8B8A8_SRGB);
+			data.m_samplers.Add("emissiveSampler",
+				CreateTextureAsset(materialName + "_emissionTexture.png.asset", assetInfo->GetAssetFilename(), material.emissiveTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
 		{
-			addTexture(
-				"ormSampler",
-				materialName + "_ormTexture.png.asset",
-				material.pbrMetallicRoughness.metallicRoughnessTexture.index,
-				RHI::ETextureFormat::R8G8B8A8_SRGB);
+			data.m_samplers.Add("ormSampler",
+				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.occlusionTexture.index != -1)
 		{
-			addTexture(
-				"occlusionSampler",
-				materialName + "_occlusionTexture.png.asset",
-				material.occlusionTexture.index,
-				RHI::ETextureFormat::R8G8B8A8_SRGB);
+			data.m_samplers.Add("occlusionSampler",
+				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		auto ccIt = material.extensions.find("KHR_materials_clearcoat");
@@ -1317,11 +788,8 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						addTexture(
-							"clearcoatSampler",
-							materialName + "_clearcoatTexture.png.asset",
-							idx,
-							RHI::ETextureFormat::R8G8B8A8_SRGB);
+						data.m_samplers.Add("clearcoatSampler",
+							CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -1334,11 +802,8 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						addTexture(
-							"clearcoatRoughnessSampler",
-							materialName + "_clearcoatRoughnessTexture.png.asset",
-							idx,
-							RHI::ETextureFormat::R8G8B8A8_SRGB);
+						data.m_samplers.Add("clearcoatRoughnessSampler",
+							CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -1355,11 +820,8 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						addTexture(
-							"clearcoatNormalSampler",
-							materialName + "_clearcoatNormalTexture.png.asset",
-							idx,
-							RHI::ETextureFormat::R8G8B8A8_UNORM);
+						data.m_samplers.Add("clearcoatNormalSampler",
+							CreateTextureAsset(materialName + "_clearcoatNormalTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 				data.m_uniformsFloat.Add("material.clearcoatNormalScale", (float)scale);
@@ -1397,11 +859,8 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						addTexture(
-							"sheenColorSampler",
-							materialName + "_sheenColorTexture.png.asset",
-							idx,
-							RHI::ETextureFormat::R8G8B8A8_SRGB);
+						data.m_samplers.Add("sheenColorSampler",
+							CreateTextureAsset(materialName + "_sheenColorTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -1414,11 +873,8 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 					int idx = tex.Get("index").Get<int>();
 					if (idx != -1)
 					{
-						addTexture(
-							"sheenRoughnessSampler",
-							materialName + "_sheenRoughnessTexture.png.asset",
-							idx,
-							RHI::ETextureFormat::R8G8B8A8_SRGB);
+						data.m_samplers.Add("sheenRoughnessSampler",
+							CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), idx, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 					}
 				}
 			}
@@ -1462,10 +918,6 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
 	}
-	if (!bGeneratedTexturesReady)
-	{
-		return false;
-	}
 
 	TVector<FileId> materialFiles;
 
@@ -1477,17 +929,13 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				materialsFolder))
 		{
 			SAILOR_LOG_ERROR("Cannot resolve generated materials folder for %s.", assetInfo->GetAssetFilepath().c_str());
-			return false;
+			continue;
 		}
 		std::filesystem::create_directories(materialsFolder);
 
 		FileId materialFileId = App::GetSubmodule<MaterialImporter>()->CreateMaterialAsset(
 			(materialsFolder / (material.m_name + ".mat")).string(),
 			material);
-		if (!materialFileId)
-		{
-			return false;
-		}
 		materialFiles.Add(materialFileId);
 	}
 
@@ -1508,7 +956,6 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			}
 		}
 	}
-	return true;
 }
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
@@ -1636,9 +1083,6 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 
 void CalculateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3* vert, const vec2* uv)
 {
-	outTangent = vec3(0.0f);
-	outBitangent = vec3(0.0f);
-
 	vec3 edge1 = vert[1] - vert[0];
 	vec3 edge2 = vert[2] - vert[0];
 
@@ -1648,16 +1092,6 @@ void CalculateTangentBitangent(vec3& outTangent, vec3& outBitangent, const vec3*
 	float denominator = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
 	if (abs(denominator) < 1e-6f)
 	{
-		const vec3 normal = glm::cross(edge1, edge2);
-		const vec3 tangentFallback = glm::cross(
-			glm::abs(normal.y) < 0.999f
-				? vec3(0.0f, 1.0f, 0.0f)
-				: vec3(1.0f, 0.0f, 0.0f),
-			normal);
-		outTangent = NormalizeOrFallback(tangentFallback, vec3(1.0f, 0.0f, 0.0f));
-		outBitangent = NormalizeOrFallback(
-			glm::cross(normal, outTangent),
-			vec3(0.0f, 0.0f, 1.0f));
 		return;
 	}
 
@@ -1734,16 +1168,8 @@ static void GenerateTangents(ModelImporter::MeshContext& meshContext,
 
 	for (uint32_t i = 0; i < vertexCount; ++i)
 	{
-		auto& vertex = meshContext.outVertices[vertexOffset + i];
-		vec3 safeNormal;
-		BuildSafeBasis(
-			vertex.m_normal,
-			tangents[i],
-			bitangents[i],
-			vertex.m_normal,
-			safeNormal,
-			vertex.m_tangent,
-			vertex.m_bitangent);
+		meshContext.outVertices[vertexOffset + i].m_tangent = glm::normalize(tangents[i]);
+		meshContext.outVertices[vertexOffset + i].m_bitangent = glm::normalize(bitangents[i]);
 	}
 }
 
@@ -1794,19 +1220,15 @@ static void GenerateNormals(ModelImporter::MeshContext& meshContext,
 
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind)
 {
-	if (assetInfo == nullptr)
-	{
-		return false;
-	}
-
-	return ImportModel(
-		assetInfo->GetAssetFilepath(),
-		assetInfo->GetUnitScale(),
-		assetInfo->ShouldBatchByMaterial(),
-		outParsedMeshes,
-		outBoundsAabb,
-		outBoundsSphere,
-		outInverseBind);
+	return assetInfo &&
+		ImportModel(
+			assetInfo->GetAssetFilepath(),
+			assetInfo->GetUnitScale(),
+			assetInfo->ShouldBatchByMaterial(),
+			outParsedMeshes,
+			outBoundsAabb,
+			outBoundsSphere,
+			outInverseBind);
 }
 
 bool ModelImporter::ImportModel(
@@ -1816,7 +1238,8 @@ bool ModelImporter::ImportModel(
 	TVector<MeshContext>& outParsedMeshes,
 	Math::AABB& outBoundsAabb,
 	Math::Sphere& outBoundsSphere,
-	TVector<glm::mat4>& outInverseBind)
+	TVector<glm::mat4>& outInverseBind,
+	tinygltf::Model* outGltfModel)
 {
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
@@ -2143,6 +1566,11 @@ bool ModelImporter::ImportModel(
 	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
 	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
 
+	if (outGltfModel != nullptr)
+	{
+		*outGltfModel = std::move(gltfModel);
+	}
+
 	return true;
 }
 
@@ -2219,26 +1647,5 @@ void ModelImporter::CollectGarbage()
 	for (auto& uid : uidsToRemove)
 	{
 		m_promises.Remove(uid);
-	}
-
-	{
-		std::lock_guard<std::mutex> lock(m_miniatureTasksMutex);
-		TVector<FileId> finishedMiniatures;
-		for (const auto& miniature : m_miniatureTasks)
-		{
-			if (miniature.m_second->m_task &&
-				miniature.m_second->m_task->IsFinished())
-			{
-				finishedMiniatures.Add(miniature.m_first);
-			}
-		}
-		for (const FileId& fileId : finishedMiniatures)
-		{
-			m_miniatureTasks.Remove(fileId);
-		}
-		if (m_lastMiniatureTask && m_lastMiniatureTask->IsFinished())
-		{
-			m_lastMiniatureTask.Clear();
-		}
 	}
 }

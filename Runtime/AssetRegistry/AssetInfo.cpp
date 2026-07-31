@@ -31,52 +31,6 @@ namespace
 		return !file.bad();
 	}
 
-	bool TryCaptureEquivalentMetadataRevision(
-		const std::filesystem::path& filepath,
-		const YAML::Node& expectedMetadata,
-		FileRevision& outRevision)
-	{
-		outRevision = {};
-		FileRevision revisionBeforeRead;
-		if (!Utils::TryGetFileRevision(
-				filepath.string(),
-				revisionBeforeRead))
-		{
-			return false;
-		}
-
-		std::string currentContents;
-		if (!ReadFileExactly(filepath, currentContents))
-		{
-			return false;
-		}
-
-		YAML::Node currentMetadata;
-		std::string yamlDiagnostic;
-		if (!External::TryLoadYaml(
-				currentContents,
-				currentMetadata,
-				yamlDiagnostic))
-		{
-			return false;
-		}
-
-		FileRevision revisionAfterRead;
-		if (!Utils::TryGetFileRevision(
-				filepath.string(),
-				revisionAfterRead) ||
-			revisionAfterRead != revisionBeforeRead ||
-			!Utils::AreYamlNodesEqual(
-				currentMetadata,
-				expectedMetadata))
-		{
-			return false;
-		}
-
-		outRevision = revisionAfterRead;
-		return true;
-	}
-
 	bool RemoveFileIfContentsMatch(
 		const std::filesystem::path& filepath,
 		const std::string& expectedContents)
@@ -156,28 +110,11 @@ void AssetInfo::SaveMetaFile()
 		return;
 	}
 
-	YAML::Node node = Serialize();
-	FileRevision equivalentRevision;
-	if (TryCaptureEquivalentMetadataRevision(
-			GetMetaFilepath(),
-			node,
-			equivalentRevision))
-	{
-		m_metaLoadTime = GetMetaLastModificationTime();
-		m_metadataRevision = equivalentRevision;
-		return;
-	}
-
 	std::ofstream assetFile{ GetMetaFilepath() };
+
+	YAML::Node node = Serialize();
 	assetFile << node;
 	assetFile.close();
-	if (!assetFile)
-	{
-		SAILOR_LOG_ERROR(
-			"Cannot write asset metadata: %s",
-			GetMetaFilepath().c_str());
-		return;
-	}
 
 	m_metaLoadTime = GetMetaLastModificationTime();
 	Utils::TryGetFileRevision(GetMetaFilepath(), m_metadataRevision);

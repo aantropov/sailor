@@ -33,7 +33,6 @@ namespace Sailor::Raytracing
 			std::filesystem::path m_pathToModel;
 			std::filesystem::path m_output;
 			std::string m_camera;
-			uint32_t m_width = 0;
 			uint32_t m_height;
 			uint32_t m_numSamples;
 			uint32_t m_numAmbientSamples;
@@ -62,10 +61,6 @@ namespace Sailor::Raytracing
 		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
 		bool RenderPreparedScene(const Params& params);
-		SAILOR_API static bool EncodePng(
-			const TVector<u8vec4>& image,
-			const glm::uvec2& extent,
-			TVector<uint8_t>& outPng);
 		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
 		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
 		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }

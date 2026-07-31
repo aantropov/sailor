@@ -166,8 +166,6 @@ namespace Sailor
 
 		SAILOR_API bool ScanContentFolder();
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
-		SAILOR_API FileId RegisterGeneratedSecondaryAssetInfo(
-			const std::filesystem::path& metadataPath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
 		TAssetInfoPtr GetAssetInfoPtr(FileId uid) const
@@ -206,8 +204,7 @@ namespace Sailor
 			const AssetProcessingToken& token,
 			bool bSucceeded);
 		SAILOR_API void TrackScanProcessingTask(
-			const Tasks::TaskPtr<bool>& processingTask,
-			bool bDeferRunUntilNotificationsComplete = false);
+			const Tasks::TaskPtr<bool>& processingTask);
 		SAILOR_API bool CompleteScanProcessing();
 
 		template<typename T>
@@ -258,7 +255,6 @@ namespace Sailor
 		std::mutex m_assetProcessingMutex;
 		TMap<FileId, AssetProcessingState> m_assetProcessingStates;
 		TVector<Tasks::TaskPtr<bool>> m_scanProcessingTasks;
-		TVector<Tasks::TaskPtr<bool>> m_deferredScanProcessingTasks;
 		bool m_bCollectScanProcessingTasks = false;
 		bool m_bScanProcessingActive = false;
 		bool m_bScanProcessingFailed = false;

@@ -7,8 +7,6 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
-#include <cmath>
-#include <cstring>
 #include <iostream>
 #include "Tasks/Scheduler.h"
 #include "RHI/Texture.h"
@@ -24,97 +22,85 @@
 #include <stb_image.h>
 #endif
 
-#ifndef STB_IMAGE_RESIZE_IMPLEMENTATION
-#define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb_image_resize2.h>
-#endif
-
 using namespace Sailor;
 
-namespace
+bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sailor::TextureImporter::ByteCode& outTexture)
 {
-	bool CopyEncodedImage(
-		tinygltf::Image* image,
-		int,
-		std::string* error,
-		std::string*,
-		int,
-		int,
-		const unsigned char* bytes,
-		int size,
-		void*)
+	struct GLBHeader
 	{
-		if (image == nullptr || bytes == nullptr || size <= 0)
-		{
-			if (error != nullptr)
-			{
-				*error += "Image payload is empty.\n";
-			}
-			return false;
-		}
+		uint32_t magic;
+		uint32_t version;
+		uint32_t length;
+	};
 
-		image->image.assign(bytes, bytes + size);
-		return true;
-	}
-}
-
-bool TextureImporter::ExtractTextureFromModelSource(
-	const std::string& filePath,
-	int32_t textureIndex,
-	ByteCode& outTexture)
-{
-	outTexture.Clear();
-
-	tinygltf::Model model;
-	tinygltf::TinyGLTF loader;
-	loader.SetImageLoader(CopyEncodedImage, nullptr);
-	std::string error;
-	std::string warning;
-	const bool bIsGlb = Utils::GetFileExtension(filePath.c_str()) == "glb";
-	const bool bLoaded = bIsGlb
-		? loader.LoadBinaryFromFile(&model, &error, &warning, filePath)
-		: loader.LoadASCIIFromFile(&model, &error, &warning, filePath);
-	if (!warning.empty())
+	struct GLBChunkHeader
 	{
-		SAILOR_LOG(
-			"Parsing model texture source %s warning: %s",
-			filePath.c_str(),
-			warning.c_str());
-	}
-	if (!bLoaded)
+		uint32_t chunkLength;
+		uint32_t chunkType;
+	};
+
+	std::ifstream file(filePath, std::ios::binary);
+	if (!file.is_open())
 	{
-		SAILOR_LOG_ERROR(
-			"Cannot parse model texture source %s: %s",
-			filePath.c_str(),
-			error.c_str());
+		SAILOR_LOG_ERROR("Failed to open file");
 		return false;
 	}
 
-	if (textureIndex < 0 ||
-		static_cast<size_t>(textureIndex) >= model.textures.size())
+	GLBHeader header;
+	file.read(reinterpret_cast<char*>(&header), sizeof(GLBHeader));
+	if (header.magic != 0x46546C67)
 	{
-		SAILOR_LOG_ERROR(
-			"Model texture index %d is invalid for %s.",
-			textureIndex,
-			filePath.c_str());
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid GLB magic");
 		return false;
 	}
 
-	const int32_t imageIndex = model.textures[textureIndex].source;
-	if (imageIndex < 0 ||
-		static_cast<size_t>(imageIndex) >= model.images.size() ||
-		model.images[imageIndex].image.empty())
+	GLBChunkHeader jsonChunkHeader;
+	file.read(reinterpret_cast<char*>(&jsonChunkHeader), sizeof(GLBChunkHeader));
+	if (jsonChunkHeader.chunkType != 0x4E4F534A)
 	{
-		SAILOR_LOG_ERROR(
-			"Model texture %d does not resolve to encoded image data in %s.",
-			textureIndex,
-			filePath.c_str());
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid JSON chunk");
 		return false;
 	}
 
-	const auto& image = model.images[imageIndex].image;
-	outTexture.Resize(image.size());
-	std::memcpy(outTexture.GetData(), image.data(), image.size());
+	TVector<char> jsonChunk(jsonChunkHeader.chunkLength);
+	file.read(jsonChunk.GetData(), jsonChunkHeader.chunkLength);
+	nlohmann::json gltfJson = nlohmann::json::parse(
+		jsonChunk.GetData(),
+		jsonChunk.GetData() + jsonChunk.Num());
+
+	if (textureIndex < 0 || textureIndex >= gltfJson["textures"].size())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid texture index");
+		return false;
+	}
+
+	int32_t imageIndex = gltfJson["textures"][textureIndex]["source"];
+	int32_t bufferViewIndex = gltfJson["images"][imageIndex]["bufferView"];
+	const auto& bufferView = gltfJson["bufferViews"][bufferViewIndex];
+	//int32_t bufferIndex = bufferView["buffer"];
+	int32_t byteOffset = bufferView["byteOffset"];
+	int32_t byteLength = bufferView["byteLength"];
+
+	file.seekg(sizeof(GLBHeader) + sizeof(GLBChunkHeader) + jsonChunkHeader.chunkLength, std::ios::beg);
+
+	GLBChunkHeader binChunkHeader;
+	file.read(reinterpret_cast<char*>(&binChunkHeader), sizeof(GLBChunkHeader));
+	if (binChunkHeader.chunkType != 0x004E4942)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid BIN chunk");
+		return false;
+	}
+
+	if (byteOffset + byteLength > (int32_t)binChunkHeader.chunkLength)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view");
+		return false;
+	}
+
+	file.seekg(byteOffset, std::ios::cur);
+	outTexture.Resize(byteLength);
+	file.read(reinterpret_cast<char*>(&outTexture[0]), byteLength);
+
 	return true;
 }
 
@@ -244,16 +230,15 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 
 		if (assetInfo->StoredInGlb())
 		{
-			if (assetInfo->GetGlbTextureIndex() == -1)
+			const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
+
+			if (!bIsGlb || (assetInfo->GetGlbTextureIndex() == -1))
 			{
 				return false;
 			}
 
 			ByteCode rawBuffer;
-			const bool bExtracted = ExtractTextureFromModelSource(
-				assetInfo->GetAssetFilepath(),
-				assetInfo->GetGlbTextureIndex(),
-				rawBuffer);
+			const bool bExtracted = ExtractTextureFromGLB(assetInfo->GetAssetFilepath().c_str(), assetInfo->GetGlbTextureIndex(), rawBuffer);
 
 			if (bExtracted)
 			{
@@ -286,9 +271,7 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 			}
 			else
 			{
-				const auto msg =
-					"Cannot extract texture from model source! " +
-					uid.ToString();
+				const auto msg = "Cannot extract texture from glb! " + uid.ToString();
 				SAILOR_LOG_ERROR("%s", msg.c_str());
 			}
 
@@ -333,92 +316,6 @@ bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 	auto task = LoadTexture(uid, outTexture);
 	task->Wait();
 	return task->GetResult().IsValid();
-}
-
-bool TextureImporter::LoadTextureCpu_Immediate(
-	FileId uid,
-	TexturePtr& outTexture,
-	uint32_t maxDimension)
-{
-	ByteCode decodedData;
-	int32_t width = 0;
-	int32_t height = 0;
-	uint32_t mipLevels = 1;
-
-	if (!ImportTexture(uid, decodedData, width, height, mipLevels) ||
-		decodedData.Num() == 0 ||
-		width <= 0 ||
-		height <= 0)
-	{
-		outTexture = nullptr;
-		return false;
-	}
-
-	if (maxDimension > 0 &&
-		static_cast<uint32_t>(std::max(width, height)) > maxDimension)
-	{
-		const float resizeScale =
-			static_cast<float>(maxDimension) /
-			static_cast<float>(std::max(width, height));
-		const int32_t resizedWidth = std::max(
-			1,
-			static_cast<int32_t>(std::lround(width * resizeScale)));
-		const int32_t resizedHeight = std::max(
-			1,
-			static_cast<int32_t>(std::lround(height * resizeScale)));
-		TextureAssetInfoPtr textureAssetInfo =
-			App::GetSubmodule<AssetRegistry>()
-				->GetAssetInfoPtr<TextureAssetInfoPtr>(uid);
-		const bool bFloatTexture =
-			textureAssetInfo != nullptr &&
-			RHI::IsFloatFormat(textureAssetInfo->GetFormat());
-		const size_t bytesPerPixel = bFloatTexture
-			? sizeof(float) * 4u
-			: sizeof(uint8_t) * 4u;
-		ByteCode resizedData(
-			static_cast<size_t>(resizedWidth) *
-			static_cast<size_t>(resizedHeight) *
-			bytesPerPixel);
-		const bool bResized = bFloatTexture
-			? stbir_resize_float_linear(
-				reinterpret_cast<const float*>(decodedData.GetData()),
-				width,
-				height,
-				0,
-				reinterpret_cast<float*>(resizedData.GetData()),
-				resizedWidth,
-				resizedHeight,
-				0,
-				STBIR_RGBA) != nullptr
-			: stbir_resize_uint8_linear(
-				decodedData.GetData(),
-				width,
-				height,
-				0,
-				resizedData.GetData(),
-				resizedWidth,
-				resizedHeight,
-				0,
-				STBIR_RGBA) != nullptr;
-		if (!bResized)
-		{
-			outTexture = nullptr;
-			return false;
-		}
-
-		decodedData = std::move(resizedData);
-		width = resizedWidth;
-		height = resizedHeight;
-		mipLevels = 1;
-	}
-
-	TexturePtr texture = TexturePtr::Make(m_allocator, uid);
-	texture->m_decodedData = std::move(decodedData);
-	texture->m_width = width;
-	texture->m_height = height;
-	texture->m_mipLevels = mipLevels;
-	outTexture = std::move(texture);
-	return true;
 }
 
 Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& outTexture)

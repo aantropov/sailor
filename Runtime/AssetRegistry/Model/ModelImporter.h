@@ -10,7 +10,6 @@
 #include "Engine/Types.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetFactory.h"
-#include "AssetRegistry/AssetRegistry.h"
 #include "ModelAssetInfo.h"
 #include "Tasks/Scheduler.h"
 #include "ModelAssetInfo.h"
@@ -22,11 +21,14 @@
 #include "RHI/VertexDescription.h"
 #include "Math/Bounds.h"
 #include "Raytracing/BVH.h"
-#include <filesystem>
 #include <glm/mat4x4.hpp>
-#include <mutex>
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
+
+namespace tinygltf
+{
+	class Model;
+}
 
 namespace Sailor
 {
@@ -120,8 +122,8 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 		static bool ImportModel(
 			const std::string& assetFilepath,
@@ -130,37 +132,18 @@ namespace Sailor
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
 			Math::Sphere& outBoundsSphere,
-			TVector<glm::mat4>& outInverseBind);
-
-		Tasks::TaskPtr<bool> ScheduleModelMiniature(
-			ModelAssetInfoPtr assetInfo,
-			const FileRevision& sourceRevision,
-			const FileRevision& metadataRevision,
-			const AssetRegistry::AssetProcessingToken& processingToken = {});
-		bool GenerateModelMiniature(
+			TVector<glm::mat4>& outInverseBind,
+			tinygltf::Model* outGltfModel = nullptr);
+		static bool GenerateFingerprint(
 			const FileId& fileId,
 			const std::string& assetFilepath,
-			const std::string& metadataFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
-			const TVector<FileId>& defaultMaterials,
-			const std::filesystem::path& outputPath,
-			const std::filesystem::path& cacheRoot,
-			const FileRevision& sourceRevision,
-			const FileRevision& metadataRevision);
-
-		struct ModelMiniatureTaskState final
-		{
-			FileRevision m_sourceRevision{};
-			FileRevision m_metadataRevision{};
-			Tasks::TaskPtr<bool> m_task{};
-		};
+			const std::string& outputPath);
+		static void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
-		TMap<FileId, ModelMiniatureTaskState> m_miniatureTasks;
-		Tasks::TaskPtr<bool> m_lastMiniatureTask;
-		std::mutex m_miniatureTasksMutex;
 
 		ObjectAllocatorPtr m_allocator;
 	};

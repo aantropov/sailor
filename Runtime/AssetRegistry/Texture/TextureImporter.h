@@ -42,6 +42,7 @@ namespace Sailor
 		int32_t m_height = 0;
 		uint32_t m_mipLevels = 1;
 
+		friend class ModelImporter;
 		friend class TextureImporter;
 	};
 
@@ -70,14 +71,6 @@ namespace Sailor
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
-		SAILOR_API bool LoadTextureCpu_Immediate(
-			FileId uid,
-			TexturePtr& outTexture,
-			uint32_t maxDimension = 0);
-		SAILOR_API static bool ExtractTextureFromModelSource(
-			const std::string& filePath,
-			int32_t textureIndex,
-			ByteCode& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
 		SAILOR_API TexturePtr GetLoadedTexture(FileId uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(FileId uid);

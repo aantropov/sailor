@@ -39,7 +39,6 @@
     <Compile Include="ProjectContentMutationReloadPolicyTests.cs" />
     <Compile Include="RepositoryAssetSidecarContractTests.cs" />
     <Compile Include="AssetInfoSerializationSourceContractTests.cs" />
-    <Compile Include="ModelMiniatureTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceGeneratedProjectStateTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
@@ -53,6 +52,7 @@
     <Compile Include="EditorTypeCatalogContractTests.cs" />
     <Compile Include="NumericRangeEditorInteractionTests.cs" />
     <Compile Include="NumericValueConverterTests.cs" />
+    <Compile Include="ModelFingerprintTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
@@ -146,7 +146,6 @@
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
-    <Compile Include="..\Editor\Services\ModelMiniaturePath.cs" Link="Services\ModelMiniaturePath.cs" />
     <Compile Include="..\Editor\Services\SceneDocumentContract.cs" Link="Services\SceneDocumentContract.cs" />
     <Compile Include="..\Editor\Services\WorldAssetRebindPolicy.cs" Link="Services\WorldAssetRebindPolicy.cs" />
     <Compile Include="..\Editor\Services\WorldSnapshotPublicationGate.cs" Link="Services\WorldSnapshotPublicationGate.cs" />
