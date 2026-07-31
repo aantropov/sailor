@@ -477,4 +477,3 @@ void TextureImporter::CollectGarbage()
 		m_promises.Remove(uid);
 	}
 }
-

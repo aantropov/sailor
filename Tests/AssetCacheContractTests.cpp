@@ -33,6 +33,8 @@ namespace
 		using CacheEntry = AssetCacheData::Entry;
 		using AssetCache::SerializeAssetCachePayload;
 		using AssetCache::Prune;
+		using AssetCache::Remove;
+		using AssetCache::Contains;
 		using AssetCache::ShouldResetCacheFile;
 		using AssetCache::ShouldWriteCacheFile;
 		using AssetCache::TryDeserializeAssetCachePayload;
@@ -173,6 +175,9 @@ namespace
 			std::filesystem::path sourcePath(metaFilepath);
 			sourcePath.replace_extension();
 			info->Configure(MakeTestFileId(), sourcePath, metadataPath);
+			info->SetProcessingTimes(
+				info->GetAssetLastModificationTime(),
+				info->GetMetaLastModificationTime());
 			info->SetPendingUpdate(true);
 			return info;
 		}
@@ -308,6 +313,66 @@ namespace
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream stream(path, std::ios::binary);
 		stream << content;
+	}
+
+	Workspace::WorkspaceContext CreateWorkspaceContext(
+		const TempDirectory& directory)
+	{
+		const std::filesystem::path workspaceRoot =
+			directory.Path("Workspace");
+		std::filesystem::create_directories(
+			directory.Path("Engine/Content"));
+		std::filesystem::create_directories(
+			workspaceRoot / "Content");
+		WriteFile(
+			workspaceRoot / "workspace.sailor",
+			"manifestVersion: 1\n"
+			"workspaceId: 00000000-0000-0000-0000-000000000131\n"
+			"name: Asset Cache Contract\n"
+			"enginePath: ../Engine\n"
+			"engineReferenceKind: source\n"
+			"contentPath: Content\n"
+			"sourcePath: Source\n"
+			"generatedProjectPath: Generated\n"
+			"cachePath: Cache\n"
+			"buildPath: Cache/Build\n"
+			"logicOutputPath: Binaries\n"
+			"logicModuleName: AssetCacheContract\n");
+		const Workspace::WorkspaceContextResolveResult result =
+			Workspace::ResolveWorkspaceContext(
+				workspaceRoot,
+				workspaceRoot / "workspace.sailor");
+		Require(
+			result.IsSuccess(),
+			"asset cache contract workspace should resolve: " +
+				result.m_message);
+		return result.m_context;
+	}
+
+	void WriteScanAssetFixture(
+		const Workspace::WorkspaceContext& workspaceContext,
+		const std::string& source = "source-v1")
+	{
+		WriteFile(
+			workspaceContext.GetContent() / "Retry.raw",
+			source);
+		WriteFile(
+			workspaceContext.GetContent() / "Retry.raw.asset",
+			"fileId: '{ASSET-CACHE-IMPORT-CONTRACT}'\n"
+			"filename: Retry.raw\n"
+			"testValue: 7\n"
+			"lateValue: 1\n");
+	}
+
+	void RegisterRawHandler(
+		AssetRegistry& registry,
+		TestAssetInfoHandler& handler)
+	{
+		TVector<std::string> extensions;
+		extensions.Add("raw");
+		Require(
+			registry.RegisterAssetInfoHandler(extensions, &handler),
+			"the scan fixture handler should register for raw assets");
 	}
 
 	void TestPayloadRoundTrip()
@@ -874,6 +939,298 @@ namespace
 			"runtime metadata validity must remain independent from persisted source import state");
 	}
 
+	void TestRemovingFailedProcessingWatermarkForcesRetry()
+	{
+		TestAssetCache cache;
+		const FileId fileId = MakeFileId("{ASSET-CACHE-FAILED-PROCESSING}");
+		TempDirectory directory("failed-processing-retry");
+		const std::filesystem::path sourcePath =
+			directory.Path("Content/Retry.glb");
+		const std::filesystem::path metadataPath =
+			directory.Path("Content/Retry.glb.asset");
+		WriteFile(sourcePath, "model-source");
+		WriteFile(metadataPath, "metadata");
+
+		FileRevision sourceRevision;
+		Require(
+			Utils::TryGetFileRevision(
+				sourcePath.string(),
+				sourceRevision),
+			"failed-processing source revision fixture must be readable");
+		Require(
+			cache.Update(
+				fileId,
+				123,
+				sourcePath.string(),
+				sourceRevision),
+			"a successful processing watermark must initially populate the cache");
+
+		TestAssetInfo info;
+		info.Configure(fileId, sourcePath, metadataPath);
+		info.SetProcessingTimes(0, 0);
+		Require(
+			cache.RestoreAssetImportTime(&info, sourceRevision),
+			"the previous successful processing watermark must restore before failure");
+
+		cache.Remove(fileId);
+		Require(
+			!cache.Contains(fileId),
+			"a failed processing attempt must invalidate the persisted source watermark");
+		Require(
+			!cache.RestoreAssetImportTime(&info, sourceRevision),
+			"an invalidated watermark must not suppress processing after restart");
+		Require(
+			cache.IsExpired(&info),
+			"the unchanged source must remain expired until processing succeeds again");
+	}
+
+	void TestInvalidatedProcessingWatermarkPersistsAcrossCacheInstances()
+	{
+		TempDirectory directory("persisted-failed-processing-retry");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		const FileId fileId =
+			MakeFileId("{ASSET-CACHE-PERSISTED-FAILED-PROCESSING}");
+		const std::filesystem::path sourcePath =
+			workspaceContext.GetContent() / "Retry.glb";
+		const std::filesystem::path metadataPath =
+			workspaceContext.GetContent() / "Retry.glb.asset";
+		WriteFile(sourcePath, "model-source");
+		WriteFile(metadataPath, "metadata");
+
+		TestAssetInfo info;
+		info.Configure(fileId, sourcePath, metadataPath);
+		info.SetProcessingTimes(
+			info.GetAssetLastModificationTime(),
+			info.GetMetaLastModificationTime());
+
+		AssetCache seededCache;
+		seededCache.Initialize(workspaceContext);
+		Require(
+			seededCache.Update(&info),
+			"the successful source watermark should populate the configured cache");
+		Require(
+			seededCache.SaveCache(),
+			"the successful source watermark should persist");
+
+		AssetCache loadedCache;
+		loadedCache.Initialize(workspaceContext);
+		Require(
+			loadedCache.Contains(fileId),
+			"a second cache instance should load the successful source watermark");
+
+		AssetRegistry registry(workspaceContext);
+		const AssetRegistry::AssetProcessingToken token =
+			registry.BeginAssetProcessing(&info);
+		Require(
+			static_cast<bool>(token),
+			"the persisted source should begin retry-safe processing");
+		registry.CompleteAssetProcessing(token, false);
+
+		AssetCache restartedCache;
+		restartedCache.Initialize(workspaceContext);
+		Require(
+			!restartedCache.Contains(fileId),
+			"a cache instance created after invalidation must not restore the source watermark");
+		Require(
+			restartedCache.IsExpired(&info),
+			"the unchanged source should require retry after persisted invalidation");
+	}
+
+	void TestAssetProcessingSuccessAndStaleCompletionContract()
+	{
+		TempDirectory directory("asset-processing-completion");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		const FileId fileId =
+			MakeFileId("{ASSET-PROCESSING-COMPLETION}");
+		const std::filesystem::path sourcePath =
+			workspaceContext.GetContent() / "Completion.raw";
+		const std::filesystem::path metadataPath =
+			workspaceContext.GetContent() / "Completion.raw.asset";
+		WriteFile(sourcePath, "source");
+		WriteFile(metadataPath, "metadata");
+
+		TestAssetInfo info;
+		info.Configure(fileId, sourcePath, metadataPath);
+		AssetRegistry registry(workspaceContext);
+
+		const AssetRegistry::AssetProcessingToken first =
+			registry.BeginAssetProcessing(&info);
+		Require(
+			static_cast<bool>(first),
+			"a readable source should begin processing");
+		registry.CompleteAssetProcessing(first, true);
+		Require(
+			!registry.IsAssetExpired(&info),
+			"a successful completion should acknowledge its exact source revision");
+
+		const AssetRegistry::AssetProcessingToken stale =
+			registry.BeginAssetProcessing(&info);
+		const AssetRegistry::AssetProcessingToken current =
+			registry.BeginAssetProcessing(&info);
+		Require(
+			static_cast<bool>(stale) && static_cast<bool>(current) &&
+				stale.m_generation != current.m_generation,
+			"consecutive processing attempts should receive distinct generations");
+		registry.CompleteAssetProcessing(stale, true);
+		Require(
+			registry.IsAssetExpired(&info),
+			"a stale completion must not acknowledge the current processing attempt");
+		registry.CompleteAssetProcessing(current, true);
+		Require(
+			!registry.IsAssetExpired(&info),
+			"the current successful completion should acknowledge its source revision");
+	}
+
+	void TestRejectedBeginFailsScanAndResetsOnNextScan()
+	{
+		TempDirectory directory("rejected-begin-scan");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+
+		AssetRegistry registry(workspaceContext);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		RecordingAssetListener listener;
+		uint32_t scanIndex = 0;
+		listener.m_onExpiredUpdate =
+			[&](AssetInfoPtr info)
+			{
+				if (scanIndex == 0)
+				{
+					std::error_code removeError;
+					std::filesystem::remove(
+						info->GetAssetFilepath(),
+						removeError);
+					Require(
+						!removeError,
+						"the rejected Begin fixture source should be removable");
+					Require(
+						!registry.BeginAssetProcessing(info),
+						"processing should reject a source removed before revision capture");
+					return;
+				}
+
+				const AssetRegistry::AssetProcessingToken token =
+					registry.BeginAssetProcessing(info);
+				Require(
+					static_cast<bool>(token),
+					"the restored source should begin processing");
+				registry.CompleteAssetProcessing(token, true);
+			};
+		handler.Subscribe(&listener);
+
+		Require(
+			registry.ScanContentFolder(),
+			"the registry generation should commit before the processing callback is rejected");
+		Require(
+			!registry.CompleteScanProcessing(),
+			"a rejected BeginAssetProcessing during scan must fail scan processing");
+
+		WriteFile(
+			workspaceContext.GetContent() / "Retry.raw",
+			"source-restored");
+		++scanIndex;
+		Require(
+			registry.ScanContentFolder(),
+			"the next scan should accept the restored source");
+		Require(
+			registry.CompleteScanProcessing(),
+			"scan processing failure state must reset for the next successful scan");
+	}
+
+	void TestSynchronousFailedCompletionFailsScan()
+	{
+		TempDirectory directory("failed-completion-scan");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+
+		AssetRegistry registry(workspaceContext);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		RecordingAssetListener listener;
+		bool bSucceed = false;
+		listener.m_onExpiredUpdate =
+			[&](AssetInfoPtr info)
+			{
+				const AssetRegistry::AssetProcessingToken token =
+					registry.BeginAssetProcessing(info);
+				Require(
+					static_cast<bool>(token),
+					"the scan fixture should begin processing");
+				registry.CompleteAssetProcessing(token, bSucceed);
+			};
+		handler.Subscribe(&listener);
+
+		Require(
+			registry.ScanContentFolder(),
+			"the registry generation should commit before synchronous processing fails");
+		Require(
+			!registry.CompleteScanProcessing(),
+			"a synchronous failed completion must fail scan processing");
+		Require(
+			registry.CompleteScanProcessing(),
+			"the failed scan processing outcome should be consumed exactly once");
+
+		bSucceed = true;
+		Require(
+			registry.ScanContentFolder(),
+			"the retry scan should commit");
+		Require(
+			registry.CompleteScanProcessing(),
+			"a successful retry should clear the previous scan failure outcome");
+	}
+
+	void TestSourceMutationRejectsCompletionAndFailsScan()
+	{
+		TempDirectory directory("source-mutation-scan");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+
+		AssetRegistry registry(workspaceContext);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		RecordingAssetListener listener;
+		AssetInfoPtr processedInfo = nullptr;
+		listener.m_onExpiredUpdate =
+			[&](AssetInfoPtr info)
+			{
+				processedInfo = info;
+				const AssetRegistry::AssetProcessingToken token =
+					registry.BeginAssetProcessing(info);
+				Require(
+					static_cast<bool>(token),
+					"the source mutation fixture should begin processing");
+				WriteFile(
+					info->GetAssetFilepath(),
+					"source-mutated-after-begin");
+				registry.CompleteAssetProcessing(token, true);
+			};
+		handler.Subscribe(&listener);
+
+		Require(
+			registry.ScanContentFolder(),
+			"the registry generation should commit before source mutation is detected");
+		Require(
+			!registry.CompleteScanProcessing(),
+			"a completion for a changed source revision must fail scan processing");
+		Require(
+			processedInfo != nullptr &&
+				registry.IsAssetExpired(processedInfo),
+			"a changed source completion must leave its watermark invalid for retry");
+
+		AssetCache restartedCache;
+		restartedCache.Initialize(workspaceContext);
+		Require(
+			!restartedCache.Contains(
+				MakeFileId("{ASSET-CACHE-IMPORT-CONTRACT}")),
+			"the rejected changed-source completion must remain invalid after cache reload");
+	}
+
 	void TestRuntimeMetadataFieldsAreRejectedTransactionally()
 	{
 		const FileId retainedId = MakeFileId("{ASSET-CACHE-STRICT-RETAINED}");
@@ -994,6 +1351,12 @@ int main()
 		TestUpdateTracksAssetImportStateAndPreservesDirtyState();
 		TestPruneRemovesOnlyEntriesOutsideTheCommittedGeneration();
 		TestRestoreChangesOnlyAssetImportTime();
+		TestRemovingFailedProcessingWatermarkForcesRetry();
+		TestInvalidatedProcessingWatermarkPersistsAcrossCacheInstances();
+		TestAssetProcessingSuccessAndStaleCompletionContract();
+		TestRejectedBeginFailsScanAndResetsOnNextScan();
+		TestSynchronousFailedCompletionFailsScan();
+		TestSourceMutationRejectsCompletionAndFailsScan();
 		TestAssetImportCacheAndRuntimeMetadataExpiration();
 		TestRuntimeMetadataFieldsAreRejectedTransactionally();
 		TestIoFailurePreservesTheExistingCacheFile();

@@ -25,6 +25,11 @@
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
 
+namespace tinygltf
+{
+	class Model;
+}
+
 namespace Sailor
 {
 	using ModelPtr = TObjectPtr<class Model>;
@@ -120,6 +125,22 @@ namespace Sailor
 		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
 		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
+		static bool ImportModel(
+			const std::string& assetFilepath,
+			float unitScale,
+			bool bShouldBatchByMaterial,
+			TVector<MeshContext>& outParsedMeshes,
+			Math::AABB& outBoundsAabb,
+			Math::Sphere& outBoundsSphere,
+			TVector<glm::mat4>& outInverseBind,
+			tinygltf::Model* outGltfModel = nullptr);
+		static bool GenerateFingerprint(
+			const FileId& fileId,
+			const std::string& assetFilepath,
+			float unitScale,
+			bool bShouldBatchByMaterial,
+			const std::string& outputPath);
+		static void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;

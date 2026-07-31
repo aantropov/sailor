@@ -1,6 +1,8 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
+#include <cstring>
 #include <iostream>
 #include <string>
 
@@ -9,11 +11,13 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Model/GeneratedModelAssetMetadata.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/Types.h"
 #include "RHI/Renderer.h"
+#include "Raytracing/PathTracer.h"
 #include "Memory/ObjectAllocator.hpp"
 
 #ifndef TINYGLTF_IMPLEMENTATION
@@ -22,6 +26,40 @@
 #endif
 
 using namespace Sailor;
+
+namespace
+{
+	bool IsUsableDirection(const glm::vec3& value)
+	{
+		return std::isfinite(value.x) &&
+			std::isfinite(value.y) &&
+			std::isfinite(value.z) &&
+			glm::dot(value, value) > 1e-8f;
+	}
+
+	void SanitizeFingerprintVertex(
+		Sailor::RHI::VertexP3N3T3B3UV2C4I4W4& vertex)
+	{
+		const glm::vec3 normal = IsUsableDirection(vertex.m_normal) ?
+			glm::normalize(vertex.m_normal) :
+			glm::vec3(0.0f, 1.0f, 0.0f);
+
+		glm::vec3 tangent =
+			vertex.m_tangent - normal * glm::dot(vertex.m_tangent, normal);
+		if (!IsUsableDirection(tangent))
+		{
+			const glm::vec3 axis = std::abs(normal.y) < 0.999f ?
+				glm::vec3(0.0f, 1.0f, 0.0f) :
+				glm::vec3(1.0f, 0.0f, 0.0f);
+			tangent = glm::cross(axis, normal);
+		}
+
+		vertex.m_normal = normal;
+		vertex.m_tangent = glm::normalize(tangent);
+		vertex.m_bitangent =
+			glm::normalize(glm::cross(normal, vertex.m_tangent));
+	}
+}
 
 YAML::Node Model::Serialize() const
 {
@@ -171,28 +209,393 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 
 	if (ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo))
 	{
-		if (!modelAssetInfo->IsWritable())
+		if (modelAssetInfo->IsWritable())
 		{
-			return;
+			if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
+			{
+				GenerateMaterialAssets(modelAssetInfo);
+				assetInfo->SaveMetaFile();
+			}
+
+			if (bWasExpired && modelAssetInfo->GetAnimations().Num() == 0)
+			{
+				GenerateAnimationAssets(modelAssetInfo);
+				assetInfo->SaveMetaFile();
+			}
 		}
 
-		if (bWasExpired && modelAssetInfo->ShouldGenerateMaterials() && modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		if (bWasExpired)
 		{
-			GenerateMaterialAssets(modelAssetInfo);
-			assetInfo->SaveMetaFile();
-		}
-
-		if (bWasExpired && modelAssetInfo->GetAnimations().Num() == 0)
-		{
-			GenerateAnimationAssets(modelAssetInfo);
-			assetInfo->SaveMetaFile();
+			GenerateFingerprintAsync(modelAssetInfo);
 		}
 	}
 }
 
 void ModelImporter::OnImportAsset(AssetInfoPtr assetInfo)
 {
-	OnUpdateAssetInfo(assetInfo, true);
+	ModelAssetInfoPtr modelAssetInfo = dynamic_cast<ModelAssetInfoPtr>(assetInfo);
+	if (!modelAssetInfo)
+	{
+		return;
+	}
+
+	if (modelAssetInfo->IsWritable())
+	{
+		if (modelAssetInfo->ShouldGenerateMaterials() &&
+			modelAssetInfo->GetDefaultMaterials().Num() == 0)
+		{
+			GenerateMaterialAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
+		}
+
+		if (modelAssetInfo->GetAnimations().Num() == 0)
+		{
+			GenerateAnimationAssets(modelAssetInfo);
+			assetInfo->SaveMetaFile();
+		}
+	}
+
+	GenerateFingerprintAsync(modelAssetInfo);
+}
+
+void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
+{
+	if (!modelAssetInfo || !modelAssetInfo->GetFileId())
+	{
+		return;
+	}
+
+	const FileId fileId = modelAssetInfo->GetFileId();
+	const std::filesystem::path filename = fileId.ToString() + ".png";
+	if (filename != filename.filename())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot generate fingerprint for invalid FileId: %s",
+			fileId.ToString().c_str());
+		return;
+	}
+
+	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
+	const float unitScale = modelAssetInfo->GetUnitScale();
+	const bool bShouldBatchByMaterial = modelAssetInfo->ShouldBatchByMaterial();
+	const std::string outputPath =
+		(std::filesystem::path(AssetRegistry::GetCacheFolder()) /
+			"Fingerprints" /
+			filename).string();
+
+	Tasks::CreateTask(
+		"Generate model fingerprint",
+		[
+			fileId,
+			assetFilepath,
+			unitScale,
+			bShouldBatchByMaterial,
+			outputPath
+		]()
+		{
+			GenerateFingerprint(
+				fileId,
+				assetFilepath,
+				unitScale,
+				bShouldBatchByMaterial,
+				outputPath);
+		},
+		EThreadType::Worker)->Run();
+}
+
+bool ModelImporter::GenerateFingerprint(
+	const FileId& fileId,
+	const std::string& assetFilepath,
+	float unitScale,
+	bool bShouldBatchByMaterial,
+	const std::string& outputPath)
+{
+	TVector<MeshContext> parsedMeshes;
+	TVector<glm::mat4> inverseBind;
+	Math::AABB boundsAabb;
+	Math::Sphere boundsSphere;
+	tinygltf::Model gltfModel;
+	if (!ImportModel(
+			assetFilepath,
+			unitScale,
+			bShouldBatchByMaterial,
+			parsedMeshes,
+			boundsAabb,
+			boundsSphere,
+			inverseBind,
+			&gltfModel) ||
+		parsedMeshes.Num() == 0 ||
+		!boundsAabb.IsValid())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot prepare model fingerprint: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	ObjectAllocatorPtr allocator =
+		ObjectAllocatorPtr::Make(EAllocationPolicy::SharedMemory_MultiThreaded);
+	TVector<MaterialPtr> previewMaterials(gltfModel.materials.size());
+	TMap<int32_t, TexturePtr> previewTextures;
+
+	auto loadPreviewTexture = [&](int32_t textureIndex) -> TexturePtr
+		{
+			TexturePtr* cachedTexture = nullptr;
+			if (previewTextures.Find(textureIndex, cachedTexture) &&
+				cachedTexture != nullptr)
+			{
+				return *cachedTexture;
+			}
+
+			if (textureIndex < 0 ||
+				static_cast<size_t>(textureIndex) >= gltfModel.textures.size())
+			{
+				return TexturePtr();
+			}
+
+			const tinygltf::Texture& sourceTexture =
+				gltfModel.textures[textureIndex];
+			if (sourceTexture.source < 0 ||
+				static_cast<size_t>(sourceTexture.source) >=
+					gltfModel.images.size())
+			{
+				return TexturePtr();
+			}
+
+			const tinygltf::Image& image =
+				gltfModel.images[sourceTexture.source];
+			if (image.width <= 0 ||
+				image.height <= 0 ||
+				image.component <= 0 ||
+				(image.bits != 8 && image.bits != 16))
+			{
+				return TexturePtr();
+			}
+
+			const size_t pixelCount =
+				static_cast<size_t>(image.width) *
+				static_cast<size_t>(image.height);
+			const size_t bytesPerChannel =
+				static_cast<size_t>(image.bits / 8);
+			const size_t requiredBytes =
+				pixelCount *
+				static_cast<size_t>(image.component) *
+				bytesPerChannel;
+			if (requiredBytes > image.image.size())
+			{
+				return TexturePtr();
+			}
+
+			TexturePtr texture = TexturePtr::Make(
+				allocator,
+				FileId::CreateNewFileId());
+			texture->m_decodedData.Resize(
+				pixelCount * sizeof(u8vec4));
+			texture->m_width = image.width;
+			texture->m_height = image.height;
+			texture->m_mipLevels = 1;
+
+			auto readChannel = [&](size_t pixel, int32_t channel) -> uint8_t
+				{
+					const size_t offset =
+						(pixel * static_cast<size_t>(image.component) +
+							static_cast<size_t>(channel)) *
+						bytesPerChannel;
+					if (image.bits == 8)
+					{
+						return image.image[offset];
+					}
+
+					uint16_t value = 0;
+					std::memcpy(
+						&value,
+						image.image.data() + offset,
+						sizeof(value));
+					return static_cast<uint8_t>(value / 257u);
+				};
+
+			u8vec4* pixels = reinterpret_cast<u8vec4*>(
+				texture->m_decodedData.GetData());
+			for (size_t i = 0; i < pixelCount; i++)
+			{
+				const uint8_t r = readChannel(i, 0);
+				const uint8_t g = image.component >= 3 ?
+					readChannel(i, 1) :
+					r;
+				const uint8_t b = image.component >= 3 ?
+					readChannel(i, 2) :
+					r;
+				const uint8_t a = image.component == 2 ?
+					readChannel(i, 1) :
+					(image.component >= 4 ?
+						readChannel(i, 3) :
+						255u);
+				pixels[i] = u8vec4(r, g, b, a);
+			}
+
+			previewTextures[textureIndex] = texture;
+			return texture;
+		};
+
+	for (size_t i = 0; i < gltfModel.materials.size(); i++)
+	{
+		const tinygltf::Material& sourceMaterial =
+			gltfModel.materials[i];
+		const bool bIsTransparent =
+			sourceMaterial.alphaMode == "BLEND";
+		const bool bIsMasked =
+			sourceMaterial.alphaMode == "MASK";
+		const std::string renderQueue = bIsTransparent ?
+			"Transparent" :
+			(bIsMasked ? "Masked" : "Opaque");
+
+		MaterialPtr material = MaterialPtr::Make(
+			allocator,
+			FileId::CreateNewFileId());
+		material->SetRenderState(RHI::RenderState(
+			true,
+			!bIsTransparent,
+			0.0f,
+			bIsMasked,
+			sourceMaterial.doubleSided ?
+				RHI::ECullMode::None :
+				RHI::ECullMode::Back,
+			RHI::EBlendMode::None,
+			RHI::EFillMode::Fill,
+			GetHash(renderQueue)));
+
+		const auto& pbr = sourceMaterial.pbrMetallicRoughness;
+		material->SetUniform(
+			"material.baseColorFactor",
+			vec4(
+				pbr.baseColorFactor[0],
+				pbr.baseColorFactor[1],
+				pbr.baseColorFactor[2],
+				pbr.baseColorFactor[3]));
+		material->SetUniform(
+			"material.emissiveFactor",
+			vec4(
+				sourceMaterial.emissiveFactor[0],
+				sourceMaterial.emissiveFactor[1],
+				sourceMaterial.emissiveFactor[2],
+				0.0f));
+		material->SetUniform(
+			"material.roughnessFactor",
+			static_cast<float>(pbr.roughnessFactor));
+		material->SetUniform(
+			"material.metallicFactor",
+			static_cast<float>(pbr.metallicFactor));
+		material->SetUniform(
+			"material.alphaCutoff",
+			static_cast<float>(sourceMaterial.alphaCutoff));
+
+		auto bindTexture = [&](
+			const char* samplerName,
+			int32_t textureIndex)
+			{
+				if (TexturePtr texture =
+					loadPreviewTexture(textureIndex))
+				{
+					material->SetSampler(
+						samplerName,
+						texture);
+				}
+			};
+		bindTexture(
+			"baseColorSampler",
+			pbr.baseColorTexture.index);
+		bindTexture(
+			"normalSampler",
+			sourceMaterial.normalTexture.index);
+		bindTexture(
+			"ormSampler",
+			pbr.metallicRoughnessTexture.index);
+		bindTexture(
+			"emissiveSampler",
+			sourceMaterial.emissiveTexture.index);
+		bindTexture(
+			"occlusionSampler",
+			sourceMaterial.occlusionTexture.index);
+		previewMaterials[i] = std::move(material);
+	}
+
+	ModelPtr model = ModelPtr::Make(allocator, fileId);
+	model->m_boundsAabb = boundsAabb;
+	model->m_boundsSphere = boundsSphere;
+	model->m_inverseBind = std::move(inverseBind);
+	model->m_cpuMeshes.Reserve(parsedMeshes.Num());
+
+	for (MeshContext& mesh : parsedMeshes)
+	{
+		Model::MeshCpuData cpuMesh{};
+		cpuMesh.m_vertices = std::move(mesh.outVertices);
+		for (auto& vertex : cpuMesh.m_vertices)
+		{
+			SanitizeFingerprintVertex(vertex);
+		}
+		cpuMesh.m_indices = std::move(mesh.outIndices);
+		cpuMesh.m_bounds = mesh.bounds;
+		cpuMesh.m_materialIndex = mesh.materialIndex;
+		model->m_cpuMeshes.Add(std::move(cpuMesh));
+	}
+
+	if (!model->BuildBLAS())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot build model fingerprint BLAS: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	Raytracing::PathTracer::TLASInstance instance{};
+	instance.m_model = model;
+	instance.m_worldBounds = boundsAabb;
+
+	Raytracing::PathTracer pathTracer;
+	if (!pathTracer.InitializeScene(
+			TVector<Raytracing::PathTracer::TLASInstance>{ instance },
+			previewMaterials,
+			{}))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot initialize model fingerprint scene: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+
+	const float radius = (std::max)(boundsSphere.m_radius, 0.1f);
+	Raytracing::PathTracer::Params params{};
+	params.m_output = outputPath;
+	params.m_height = 256;
+	params.m_numSamples = 1;
+	params.m_numAmbientSamples = 1;
+	params.m_maxBounces = 1;
+	params.m_msaa = 1;
+	params.m_ambient = vec3(0.08f);
+	params.m_rayBiasScale = 3e-4f;
+	params.m_bUseRuntimeCamera = true;
+	params.m_runtimeCameraPos =
+		boundsSphere.m_center + vec3(0.0f, radius * 0.6f, radius * 2.5f);
+	params.m_runtimeCameraForward =
+		glm::normalize(boundsSphere.m_center - params.m_runtimeCameraPos);
+	params.m_runtimeAspectRatio = 1.0f;
+	params.m_bRunTasksInline = true;
+
+	std::error_code error;
+	std::filesystem::create_directories(
+		std::filesystem::path(outputPath).parent_path(),
+		error);
+	if (error || !pathTracer.RenderPreparedScene(params))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot save model fingerprint '%s': %s",
+			outputPath.c_str(),
+			error.message().c_str());
+		return false;
+	}
+
+	SAILOR_LOG("Generated model fingerprint: %s", outputPath.c_str());
+	return true;
 }
 
 FileId CreateTextureAsset(const std::string& filepath,
@@ -817,23 +1220,44 @@ static void GenerateNormals(ModelImporter::MeshContext& meshContext,
 
 bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind)
 {
+	return assetInfo &&
+		ImportModel(
+			assetInfo->GetAssetFilepath(),
+			assetInfo->GetUnitScale(),
+			assetInfo->ShouldBatchByMaterial(),
+			outParsedMeshes,
+			outBoundsAabb,
+			outBoundsSphere,
+			outInverseBind);
+}
+
+bool ModelImporter::ImportModel(
+	const std::string& assetFilepath,
+	float unitScale,
+	bool bShouldBatchByMaterial,
+	TVector<MeshContext>& outParsedMeshes,
+	Math::AABB& outBoundsAabb,
+	Math::Sphere& outBoundsSphere,
+	TVector<glm::mat4>& outInverseBind,
+	tinygltf::Model* outGltfModel)
+{
 	tinygltf::Model gltfModel;
 	tinygltf::TinyGLTF loader;
 	std::string err;
 	std::string warn;
 
-	const bool bGltfParsed = (Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb") ?
-		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str())
-		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetInfo->GetAssetFilepath().c_str());
+	const bool bGltfParsed = (Utils::GetFileExtension(assetFilepath.c_str()) == "glb") ?
+		loader.LoadBinaryFromFile(&gltfModel, &err, &warn, assetFilepath.c_str())
+		: loader.LoadASCIIFromFile(&gltfModel, &err, &warn, assetFilepath.c_str());
 
 	if (!err.empty())
 	{
-		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetInfo->GetAssetFilepath().c_str(), err.c_str());
+		SAILOR_LOG_ERROR("Parsing gltf %s error: %s", assetFilepath.c_str(), err.c_str());
 	}
 
 	if (!warn.empty())
 	{
-		SAILOR_LOG("Parsing gltf %s warning: %s", assetInfo->GetAssetFilepath().c_str(), warn.c_str());
+		SAILOR_LOG("Parsing gltf %s warning: %s", assetFilepath.c_str(), warn.c_str());
 	}
 
 	if (!bGltfParsed)
@@ -841,9 +1265,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		return false;
 	}
 
-	const float unitScale = assetInfo->GetUnitScale();
-
-	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::min());
+	outBoundsAabb.m_max = glm::vec3(std::numeric_limits<float>::lowest());
 	outBoundsAabb.m_min = glm::vec3(std::numeric_limits<float>::max());
 
 	outInverseBind.Clear();
@@ -880,7 +1302,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			uint32_t startIndex = 0;
 			uint32_t indicesStart = 0;
 
-			if (assetInfo->ShouldBatchByMaterial())
+			if (bShouldBatchByMaterial)
 			{
 				pMeshContext = &batchedMeshContexts[std::max(primitive.material, 0)];
 				startIndex = (uint32_t)pMeshContext->outVertices.Num();
@@ -1133,7 +1555,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 		}
 	}
 
-	if (assetInfo->ShouldBatchByMaterial())
+	if (bShouldBatchByMaterial)
 	{
 		for (auto& meshContext : batchedMeshContexts)
 		{
@@ -1143,6 +1565,11 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 
 	outBoundsSphere.m_center = 0.5f * (outBoundsAabb.m_min + outBoundsAabb.m_max);
 	outBoundsSphere.m_radius = glm::distance(outBoundsAabb.m_max, outBoundsSphere.m_center);
+
+	if (outGltfModel != nullptr)
+	{
+		*outGltfModel = std::move(gltfModel);
+	}
 
 	return true;
 }

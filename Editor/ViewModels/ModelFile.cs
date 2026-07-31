@@ -37,6 +37,14 @@ public partial class ModelFile : AssetFile
     [ObservableProperty]
     ObservableList<Observable<FileId>> animations = [];
 
+    [property: YamlIgnore]
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFingerprint))]
+    ImageSource fingerprint;
+
+    [YamlIgnore]
+    public bool HasFingerprint => Fingerprint != null;
+
     public ModelFile()
     {
         AddMaterialCommand = new AsyncRelayCommand(OnAddMaterial);
@@ -87,9 +95,43 @@ public partial class ModelFile : AssetFile
     private void OnRemoveAnimation(Observable<FileId> animation) => Animations.Remove(animation);
     private void OnClearAnimations() => Animations.Clear();
 
+    public override Task<bool> LoadDependentResources()
+    {
+        LoadRuntimeDataWithoutDirtyTracking(() =>
+        {
+            var cacheDirectory =
+                MauiProgram.GetService<EngineService>()
+                    ?.GetLaunchContext()
+                    .CacheDirectory;
+            var fileId = FileId?.Value;
+            var fingerprintFilename =
+                string.IsNullOrWhiteSpace(fileId)
+                    ? null
+                    : fileId + ".png";
+            var path =
+                !string.IsNullOrWhiteSpace(cacheDirectory) &&
+                fingerprintFilename is not null &&
+                Path.GetFileName(fingerprintFilename) ==
+                    fingerprintFilename
+                    ? Path.Combine(
+                        cacheDirectory,
+                        "Fingerprints",
+                        fingerprintFilename)
+                    : null;
+
+            Fingerprint =
+                path is not null && File.Exists(path)
+                    ? ImageSource.FromFile(path)
+                    : null;
+            IsLoaded = true;
+        });
+
+        return Task.FromResult(true);
+    }
+
     public override Task Save() => Save(new ModelFileYamlConverter());
 
-    public override Task Revert()
+    public override async Task Revert()
     {
         try
         {
@@ -121,6 +163,7 @@ public partial class ModelFile : AssetFile
                 Animations.CollectionChanged += (a, e) => MarkDirty(nameof(Animations));
                 Animations.ItemChanged += (a, e) => MarkDirty(nameof(Animations));
 
+                Fingerprint = null;
                 IsLoaded = false;
             });
         }
@@ -130,7 +173,7 @@ public partial class ModelFile : AssetFile
         }
 
         ResetDirtyState();
-        return Task.CompletedTask;
+        await LoadDependentResources();
     }
 }
 

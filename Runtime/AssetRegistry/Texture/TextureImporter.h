@@ -42,6 +42,7 @@ namespace Sailor
 		int32_t m_height = 0;
 		uint32_t m_mipLevels = 1;
 
+		friend class ModelImporter;
 		friend class TextureImporter;
 	};
 

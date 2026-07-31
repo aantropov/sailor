@@ -625,7 +625,19 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 			continue;
 		}
 
-		m_tlasOctree.Update(instance.m_worldBounds.GetCenter(), instance.m_worldBounds.GetExtents(), i);
+		const glm::ivec3 integerMin =
+			glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
+		const glm::ivec3 integerMax =
+			glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
+		const glm::ivec3 integerCenter =
+			(integerMin + integerMax) / 2;
+		const glm::ivec3 integerExtents = glm::max(
+			integerCenter - integerMin,
+			integerMax - integerCenter);
+		m_tlasOctree.Update(
+			integerCenter,
+			glm::max(integerExtents, glm::ivec3(1)),
+			i);
 	}
 
 	const size_t materialsSignature = ComputeMaterialsSignature(materials);
@@ -913,7 +925,8 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 						finishedTasks++;
 					}, EThreadType::Worker);
 
-				if (((x + y) / DefaultGroupSize) % 32 == 0)
+				if (params.m_bRunTasksInline ||
+					((x + y) / DefaultGroupSize) % 32 == 0)
 				{
 					tasksThisThread.Emplace(task);
 				}
@@ -1619,12 +1632,28 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				vec3 direction = vec3(0);
 				bool bSample = false;
 
-				while (!bSample || (bThickVolume && !bHasTransmissionRay && i == (numExtraSamples - 1)))
+				constexpr uint32_t MaxSamplingAttempts = 64;
+				for (uint32_t attempt = 0;
+					attempt < MaxSamplingAttempts &&
+					(!bSample || (bThickVolume && !bHasTransmissionRay && i == (numExtraSamples - 1)));
+					attempt++)
 				{
 					direction = vec3(0);
 					const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
 					bSample = LightingModel::Sample(sample, worldNormal, viewDirection, environmentIor, toIor, term, pdf, bTransmissionRay, direction, randomSample);
 					bHasTransmissionRay |= bTransmissionRay;
+				}
+
+				const bool bMissingRequiredTransmissionRay =
+					bThickVolume &&
+					!bHasTransmissionRay &&
+					i == (numExtraSamples - 1);
+				if (!bSample || bMissingRequiredTransmissionRay)
+				{
+					term = vec3(0.0f);
+					pdf = 1.0f;
+					bTransmissionRay = false;
+					direction = worldNormal;
 				}
 
 				float newEnvironmentIor = environmentIor;
@@ -1959,6 +1988,3 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	return res;
 }
-
-
-

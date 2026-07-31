@@ -788,6 +788,10 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				assetRegistry != nullptr
 				? assetRegistry->BeginAssetProcessing(assetInfo)
 				: AssetRegistry::AssetProcessingToken{};
+			if (!processingToken)
+			{
+				return;
+			}
 			TrackAssetProcessing(
 				processingToken,
 				ReloadShader(dynamic_cast<ShaderAssetInfoPtr>(assetInfo)));
@@ -799,6 +803,10 @@ void ShaderCompiler::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				assetRegistry != nullptr
 				? assetRegistry->BeginAssetProcessing(assetInfo)
 				: AssetRegistry::AssetProcessingToken{};
+			if (!processingToken)
+			{
+				return;
+			}
 			TrackAssetProcessing(
 				processingToken,
 				ReloadShadersDependingOn(assetInfo));
@@ -1217,6 +1225,10 @@ void ShaderCompiler::OnImportAsset(AssetInfoPtr assetInfo)
 		assetRegistry != nullptr
 		? assetRegistry->BeginAssetProcessing(assetInfo)
 		: AssetRegistry::AssetProcessingToken{};
+	if (!processingToken)
+	{
+		return;
+	}
 	const std::string extension = NormalizeShaderExtension(assetInfo->GetAssetFilepath());
 	Tasks::TaskPtr<bool> processingTask;
 	if (extension == "shader")

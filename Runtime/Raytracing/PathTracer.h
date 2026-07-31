@@ -48,6 +48,7 @@ namespace Sailor::Raytracing
 			vec3 m_runtimeCameraUp = vec3(0.0f, 1.0f, 0.0f);
 			float m_runtimeAspectRatio = 0.0f;
 			float m_runtimeHFov = 0.0f;
+			bool m_bRunTasksInline = false;
 		};
 
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
