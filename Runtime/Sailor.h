@@ -58,6 +58,7 @@ namespace Sailor
 		SAILOR_API static void Shutdown();
 		SAILOR_API static bool IsEngineMainThreadReady();
 		SAILOR_API static bool RequestAssetReload();
+		SAILOR_API static bool UpdateAsset(const char* strFileId);
 		SAILOR_API static bool GetAssetReloadState(
 			uint64_t& outRequestGeneration,
 			uint64_t& outCompletedGeneration,

@@ -13,12 +13,10 @@
 #endif
 
 #include <algorithm> 
-#include <array>
 #include <functional> 
 #include <cctype>
 
 #include <filesystem>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <format>
@@ -651,58 +649,17 @@ bool Utils::TryGetFileRevision(
 		return false;
 	}
 
-	const auto modificationTimeBefore = std::filesystem::last_write_time(path, error);
+	const auto modificationTime = std::filesystem::last_write_time(path, error);
 	if (error)
 	{
 		return false;
 	}
-	const uint64_t fileSizeBefore = std::filesystem::file_size(path, error);
-	if (error)
-	{
-		return false;
-	}
-
-	std::ifstream stream(path, std::ios::binary);
-	if (!stream.is_open())
-	{
-		return false;
-	}
-
-	// FNV-1a is deterministic across platforms and sufficient for change detection.
-	constexpr uint64_t OffsetBasis = 14695981039346656037ull;
-	constexpr uint64_t Prime = 1099511628211ull;
-	uint64_t contentHash = OffsetBasis;
-	std::array<char, 64 * 1024> buffer{};
-	while (stream)
-	{
-		stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-		const std::streamsize bytesRead = stream.gcount();
-		for (std::streamsize i = 0; i < bytesRead; ++i)
-		{
-			contentHash ^= static_cast<unsigned char>(buffer[static_cast<size_t>(i)]);
-			contentHash *= Prime;
-		}
-	}
-	if (stream.bad())
-	{
-		return false;
-	}
-
-	const auto modificationTimeAfter = std::filesystem::last_write_time(path, error);
-	if (error)
-	{
-		return false;
-	}
-	const uint64_t fileSizeAfter = std::filesystem::file_size(path, error);
-	if (error || modificationTimeBefore != modificationTimeAfter || fileSizeBefore != fileSizeAfter)
-	{
-		return false;
-	}
-
 	outRevision.m_modificationTimeNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
-		modificationTimeAfter.time_since_epoch()).count();
-	outRevision.m_fileSize = fileSizeAfter;
-	outRevision.m_contentHash = contentHash;
+		modificationTime.time_since_epoch()).count();
+	outRevision.m_fileSize = 0;
+	// Content hashing made every registry scan read all source assets in full.
+	// The filesystem timestamp is sufficient for runtime change detection.
+	outRevision.m_contentHash = 0;
 	outRevision.m_bIsValid = true;
 	return true;
 }

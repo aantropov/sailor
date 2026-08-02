@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Math/Math.h"
@@ -836,17 +837,22 @@ namespace Sailor::RHI
 
 		void AddDependency(TRefPtr<RHIResource> dependency)
 		{
+			m_dependenciesLock.Lock();
 			m_dependencies.Add(std::move(dependency));
+			m_dependenciesLock.Unlock();
 		}
 
 		void ClearDependencies()
 		{
+			m_dependenciesLock.Lock();
 			m_dependencies.Clear();
+			m_dependenciesLock.Unlock();
 		}
 
 		virtual ~IDependent() = default;
 
 	protected:
+		mutable SpinLock m_dependenciesLock;
 		TVector<TRefPtr<RHIResource>> m_dependencies;
 	};
 

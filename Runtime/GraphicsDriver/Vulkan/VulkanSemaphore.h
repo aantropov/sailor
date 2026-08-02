@@ -11,7 +11,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 	public:
 
-		SAILOR_API VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, void* pNextCreateInfo = nullptr);
+		SAILOR_API VulkanSemaphore(VulkanDevicePtr device, VkPipelineStageFlags pipelineStageFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, void* pNextCreateInfo = nullptr);
 
 		SAILOR_API operator VkSemaphore() const { return m_semaphore; }
 
@@ -23,7 +23,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual ~VulkanSemaphore();
 
 		VkSemaphore m_semaphore;
-		VkPipelineStageFlags m_pipelineStageFlags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+		VkPipelineStageFlags m_pipelineStageFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 
 		VulkanDevicePtr m_device;
 	};

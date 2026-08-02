@@ -48,15 +48,17 @@ void Raytracing::GenerateTangentBitangent(
 
 	float f = 1.0f / denominator;
 
-	outTangent = vec3(
+	outTangent = SafeNormalize(vec3(
 		f * (deltaUV2.y * edge1.x - deltaUV1.y * edge2.x),
 		f * (deltaUV2.y * edge1.y - deltaUV1.y * edge2.y),
 		f * (deltaUV2.y * edge1.z - deltaUV1.y * edge2.z)
-	);
+	));
 
-	vec3 normal = cross(edge1, edge2);
-	outBitangent = normalize(cross(normal, outTangent));
-	outTangent = normalize(outTangent);
+	outBitangent = SafeNormalize(vec3(
+		f * (-deltaUV2.x * edge1.x + deltaUV1.x * edge2.x),
+		f * (-deltaUV2.x * edge1.y + deltaUV1.x * edge2.y),
+		f * (-deltaUV2.x * edge1.z + deltaUV1.x * edge2.z)
+	));
 }
 //
 //void Raytracing::ProcessMesh_Assimp(aiMesh* mesh, TVector<Triangle>& outScene, const aiScene* scene, const glm::mat4& matrix)

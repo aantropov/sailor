@@ -29,6 +29,27 @@ public sealed class EditorEngineProtocolTests
     }
 
     [Fact]
+    public void UpdateAssetRoundTrip_PreservesFileId()
+    {
+        var request = new ProtocolRequest
+        {
+            ProtocolVersion = 1,
+            RequestId = 57,
+            UpdateAsset = new FileIdRequest
+            {
+                FileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}"
+            }
+        };
+
+        var parsed = ProtocolRequest.Parser.ParseFrom(request.ToByteArray());
+
+        Assert.Equal(ProtocolRequest.CommandOneofCase.UpdateAsset, parsed.CommandCase);
+        Assert.Equal(
+            "{01234567-89AB-CDEF-0123-456789ABCDEF}",
+            parsed.UpdateAsset.FileId);
+    }
+
+    [Fact]
     public void ResponseRoundTrip_PreservesTypedViewportEvent()
     {
         var response = new ProtocolResponse
@@ -96,6 +117,7 @@ public sealed class EditorEngineProtocolTests
             47,
             ProtocolRequest.IsEngineMainThreadReadyFieldNumber);
         Assert.Equal(48, ProtocolRequest.IsEngineRunningFieldNumber);
+        Assert.Equal(57, ProtocolRequest.UpdateAssetFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
     }

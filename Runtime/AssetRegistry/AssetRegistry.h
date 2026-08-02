@@ -165,6 +165,7 @@ namespace Sailor
 		}
 
 		SAILOR_API bool ScanContentFolder();
+		SAILOR_API bool UpdateAsset(const FileId& fileId);
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>

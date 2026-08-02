@@ -379,20 +379,51 @@ void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 	m_bShouldUpdateMeshThisFrame = false;
 }
 
+DebugContext::DrawSnapshot DebugContext::GetDrawSnapshot() const
+{
+	DrawSnapshot snapshot;
+	if (m_numRenderedVertices == 0 ||
+		!m_cachedMesh ||
+		!m_cachedMesh->IsReady() ||
+		!m_cachedMesh->m_vertexBuffer ||
+		!m_cachedMesh->m_indexBuffer ||
+		!m_material)
+	{
+		return snapshot;
+	}
+
+	snapshot.m_vertexBuffer = m_cachedMesh->m_vertexBuffer;
+	snapshot.m_indexBuffer = m_cachedMesh->m_indexBuffer;
+	snapshot.m_material = m_material;
+	snapshot.m_numVertices = m_numRenderedVertices;
+	return snapshot;
+}
+
 void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
 {
-	if (m_numRenderedVertices == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
+	DrawDebugMesh(secondaryDrawCmdList, viewProjection, GetDrawSnapshot());
+}
+
+void DebugContext::DrawDebugMesh(
+	RHI::RHICommandListPtr secondaryDrawCmdList,
+	const glm::mat4x4& viewProjection,
+	const DrawSnapshot& snapshot) const
+{
+	if (!snapshot.m_vertexBuffer ||
+		!snapshot.m_indexBuffer ||
+		!snapshot.m_material ||
+		snapshot.m_numVertices == 0)
 	{
 		return;
 	}
 
 	auto commands = RHI::Renderer::GetDriverCommands();
 
-	commands->BindMaterial(secondaryDrawCmdList, m_material);
+	commands->BindMaterial(secondaryDrawCmdList, snapshot.m_material);
 	commands->SetDefaultViewport(secondaryDrawCmdList);
-	commands->BindVertexBuffer(secondaryDrawCmdList, m_cachedMesh->m_vertexBuffer, m_cachedMesh->m_vertexBuffer->GetOffset());
-	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, m_cachedMesh->m_indexBuffer->GetOffset());
-	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
+	commands->BindVertexBuffer(secondaryDrawCmdList, snapshot.m_vertexBuffer, snapshot.m_vertexBuffer->GetOffset());
+	commands->BindIndexBuffer(secondaryDrawCmdList, snapshot.m_indexBuffer, snapshot.m_indexBuffer->GetOffset());
+	commands->PushConstants(secondaryDrawCmdList, snapshot.m_material, sizeof(viewProjection), &viewProjection);
 	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	commands->DrawIndexed(secondaryDrawCmdList, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);
+	commands->DrawIndexed(secondaryDrawCmdList, snapshot.m_numVertices, 1, 0, 0, 0);
 }

@@ -149,7 +149,7 @@ namespace Sailor::RHI
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader) = 0;
 		SAILOR_API virtual RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) = 0;
 
-		SAILOR_API virtual void SubmitCommandList(RHICommandListPtr commandList, RHIFencePtr fence = nullptr, RHISemaphorePtr signalSemaphore = nullptr, RHISemaphorePtr waitSemaphore = nullptr) = 0;
+		SAILOR_API virtual bool SubmitCommandList(RHICommandListPtr commandList, RHIFencePtr fence = nullptr, RHISemaphorePtr signalSemaphore = nullptr, RHISemaphorePtr waitSemaphore = nullptr) = 0;
 
 		// Shader binding set
 		SAILOR_API virtual RHIShaderBindingSetPtr CreateShaderBindings() = 0;

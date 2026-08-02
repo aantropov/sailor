@@ -11,6 +11,9 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+#include <limits>
+#include <mutex>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::Framegraph;
@@ -18,6 +21,28 @@ using namespace Sailor::Framegraph;
 #ifndef _SAILOR_IMPORT_
 const char* RenderSceneNode::m_name = "RenderScene";
 #endif
+
+bool Details::CanReuseRenderSceneTextureBindings(
+	uint64_t cachedSourceRevision,
+	uint64_t currentSourceRevision,
+	bool bHasCachedBindings,
+	const TVector<uint64_t>* cachedSlotRevisions,
+	const TVector<uint64_t>* currentSlotRevisions)
+{
+	if (!bHasCachedBindings)
+	{
+		return false;
+	}
+
+	if (cachedSourceRevision == currentSourceRevision)
+	{
+		return true;
+	}
+
+	return cachedSlotRevisions &&
+		currentSlotRevisions &&
+		*cachedSlotRevisions == *currentSlotRevisions;
+}
 
 uint32_t RenderSceneNode::CalculatePlannedTextureSlotCount(const TVector<uint32_t>& requestedTextures)
 {
@@ -56,6 +81,10 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 #if defined(__APPLE__)
 	TextureBindingCacheKey key;
 	key.m_requestedTextures = requestedTextures.ToVector();
+	key.m_requestedTextures.RemoveAll([](uint32_t textureIndex)
+		{
+			return textureIndex >= TextureImporter::MaxTexturesInScene;
+		});
 
 	if (key.m_requestedTextures.IsEmpty())
 	{
@@ -68,35 +97,56 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 	}
 
 	key.m_requestedTextures.Sort();
+	const uint64_t currentSourceDescriptorRevision = globalTextureSet ? globalTextureSet->GetDescriptorRevision() : 0;
+	TextureBindingCacheEntry* cachedEntry = nullptr;
+	m_textureBindingCache.Find(key, cachedEntry);
 
-	if (m_textureBindingCache.ContainsKey(key))
+	if (cachedEntry && Details::CanReuseRenderSceneTextureBindings(
+		cachedEntry->m_sourceDescriptorRevision,
+		currentSourceDescriptorRevision,
+		cachedEntry->m_textureBindings.IsValid()))
 	{
-		auto& entry = m_textureBindingCache[key];
-		entry.m_lastUsedFrame = frame;
+		cachedEntry->m_lastUsedFrame = frame;
 #ifdef _DEBUG
-		if (entry.m_textureBindings)
+		if (cachedEntry->m_textureBindings)
 		{
-			const auto shaderBinding = entry.m_textureBindings->GetOrAddShaderBinding("textureSamplers");
+			const auto shaderBinding = cachedEntry->m_textureBindings->GetOrAddShaderBinding("textureSamplers");
 			const uint32_t actualTextureCount = static_cast<uint32_t>(shaderBinding->GetTextureBindings().Num());
 			const uint32_t actualLayoutCount = shaderBinding->GetLayout().m_arrayCount;
-			check(actualTextureCount == entry.m_textureSetSize);
-			check(actualLayoutCount == entry.m_textureSetSize);
+			check(actualTextureCount == cachedEntry->m_textureSetSize);
+			check(actualLayoutCount == cachedEntry->m_textureSetSize);
 		}
 #endif
-		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, entry.m_textureSetSize));
-		return entry.m_textureBindings;
+		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		return cachedEntry->m_textureBindings;
 	}
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	RHIShaderBindingSetPtr localTextureSet = driver->CreateShaderBindings();
-	TVector<RHITexturePtr> localTextures;
+	const auto sourceSnapshot = textureImporter->GetTextureSamplersSnapshot(key.m_requestedTextures);
+	TVector<uint64_t> currentSlotRevisions;
+	currentSlotRevisions.Reserve(sourceSnapshot.m_slots.Num());
+	for (const auto& slot : sourceSnapshot.m_slots)
+	{
+		currentSlotRevisions.Emplace(slot.m_contentRevision);
+	}
 
+	if (cachedEntry && Details::CanReuseRenderSceneTextureBindings(
+		cachedEntry->m_sourceDescriptorRevision,
+		sourceSnapshot.m_descriptorRevision,
+		cachedEntry->m_textureBindings.IsValid(),
+		&cachedEntry->m_sourceSlotRevisions,
+		&currentSlotRevisions))
+	{
+		cachedEntry->m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
+		cachedEntry->m_lastUsedFrame = frame;
+		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		return cachedEntry->m_textureBindings;
+	}
+
+	TVector<RHITexturePtr> localTextures;
 	const uint32_t plannedTextureSlots = CalculatePlannedTextureSlotCount(key.m_requestedTextures);
 	localTextures.AddDefault(plannedTextureSlots);
 
-	auto sourceBinding = globalTextureSet ? globalTextureSet->GetOrAddShaderBinding("textureSamplers") : nullptr;
-	TVector<RHITexturePtr> emptyTextures;
-	const auto& sourceTextures = sourceBinding ? sourceBinding->GetTextureBindings() : emptyTextures;
 	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
 
 	for (uint32_t textureIndex = 0; textureIndex < localTextures.Num(); textureIndex++)
@@ -104,16 +154,33 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 		localTextures[textureIndex] = defaultTexture;
 	}
 
-	for (const uint32_t globalTextureIndex : key.m_requestedTextures)
+	for (const auto& slot : sourceSnapshot.m_slots)
 	{
-		if (globalTextureIndex < localTextures.Num() && globalTextureIndex < sourceTextures.Num() && sourceTextures[globalTextureIndex].IsValid())
+		if (slot.m_index < localTextures.Num() && slot.m_texture.IsValid())
 		{
-			localTextures[globalTextureIndex] = sourceTextures[globalTextureIndex];
+			localTextures[slot.m_index] = slot.m_texture;
 		}
 	}
 
+	RHIShaderBindingSetPtr localTextureSet = driver->CreateShaderBindings();
+
 	driver->AddSamplerToShaderBindings(localTextureSet, "textureSamplers", localTextures, 0, true, plannedTextureSlots);
 	localTextureSet->RecalculateCompatibility();
+
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	if (!localTextureSet->m_vulkan.m_descriptorSet || !localTextureSet->m_vulkan.m_descriptorSet->IsCompiled())
+	{
+		if (cachedEntry)
+		{
+			cachedEntry->m_lastUsedFrame = frame;
+			outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+			return cachedEntry->m_textureBindings;
+		}
+
+		outSupportedMeshesPerBatch = 1u;
+		return nullptr;
+	}
+#endif
 
 #ifdef _DEBUG
 	if (const auto localBinding = localTextureSet->GetOrAddShaderBinding("textureSamplers"))
@@ -129,6 +196,8 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 	entry.m_textureBindings = localTextureSet;
 	entry.m_textureSetSize = plannedTextureSlots;
 	entry.m_lastUsedFrame = frame;
+	entry.m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
+	entry.m_sourceSlotRevisions = std::move(currentSlotRevisions);
 
 	outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, entry.m_textureSetSize));
 	return entry.m_textureBindings;
@@ -423,6 +492,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			};
 
 		commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+		std::mutex transferCommandListMutex;
 
 		for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
 		{
@@ -458,7 +528,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							scissor,
 							glm::vec2(0.0f, 1.0f),
 							cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
-							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings });
+							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings },
+							&transferCommandListMutex);
 					}
 					else
 					{
@@ -471,7 +542,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							storageIndex,
 							m_indirectBuffers[i + 1],
 							viewport,
-							scissor);
+							scissor,
+							glm::vec2(0.0f, 1.0f),
+							&transferCommandListMutex);
 					}
 
 					commands->EndCommandList(cmdList);
@@ -485,6 +558,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		if (gpuMatricesData.Num() > 0)
 		{
 			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
+			std::lock_guard<std::mutex> transferCommandListLock(transferCommandListMutex);
 			commands->UpdateShaderBinding(transferCommandList, storageBinding,
 				gpuMatricesData.GetData(),
 				sizeof(PerInstanceData) * gpuMatricesData.Num(),
@@ -529,7 +603,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					scissor,
 					glm::vec2(0.0f, 1.0f),
 					cullingComputeShader, m_cullingIndirectBufferBinding[0],
-					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
+					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings },
+					&transferCommandListMutex);
 			}
 			else
 			{
@@ -542,7 +617,9 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					storageIndex,
 					m_indirectBuffers[0],
 					viewport,
-					scissor);
+					scissor,
+					glm::vec2(0.0f, 1.0f),
+					&transferCommandListMutex);
 			}
 
 			commands->EndRenderPass(commandList);

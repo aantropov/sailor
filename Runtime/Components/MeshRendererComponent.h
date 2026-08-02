@@ -24,6 +24,8 @@ namespace Sailor
 		SAILOR_API const ModelPtr& GetModel() const { return GetData().GetModel(); }
 		SAILOR_API void SetModel(const ModelPtr& model);
 		SAILOR_API bool LoadModel(const std::string& path);
+		SAILOR_API const TVector<FileId>& GetOverrideMaterials() const { return m_overrideMaterials; }
+		SAILOR_API void SetOverrideMaterials(const TVector<FileId>& overrideMaterials);
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
@@ -32,7 +34,10 @@ namespace Sailor
 
 	protected:
 
+		void RebuildMaterials();
+
 		size_t m_handle = (size_t)(-1);
+		TVector<FileId> m_overrideMaterials;
 	};
 }
 
@@ -42,5 +47,8 @@ REFL_AUTO(
 	type(Sailor::MeshRendererComponent, bases<Sailor::Component>),
 
 	func(GetModel, property("model"), SkipCDO()),
-	func(SetModel, property("model"), SkipCDO())
+	func(SetModel, property("model"), SkipCDO()),
+
+	func(GetOverrideMaterials, property("overrideMaterials")),
+	func(SetOverrideMaterials, property("overrideMaterials"))
 )

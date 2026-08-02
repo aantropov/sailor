@@ -144,6 +144,29 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task UpdateAssetAsync_SendsExactFileId()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+        const string fileId = "{01234567-89AB-CDEF-0123-456789ABCDEF}";
+
+        Assert.True(await client.UpdateAssetAsync(fileId));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.UpdateAsset,
+            capturedRequest.CommandCase);
+        Assert.Equal(fileId, capturedRequest.UpdateAsset.FileId);
+    }
+
+    [Fact]
     public async Task InvokeAsync_RejectsMalformedTransportResponse()
     {
         var client = CreateRawClient(_ => [0xFF]);

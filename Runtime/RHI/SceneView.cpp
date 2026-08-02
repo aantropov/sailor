@@ -17,6 +17,7 @@ using namespace Sailor::RHI;
 void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
+	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
 
 	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
@@ -29,7 +30,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
+				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix, debugDrawSnapshot);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
@@ -114,7 +115,9 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 
 					for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 					{
-						size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
+						const size_t materialIndex =
+							viewProxy.m_meshes[i]->ResolveMaterialIndex(
+								i, ecsData.GetMaterials().Num());
 
 						auto& material = ecsData.GetMaterials()[materialIndex];
 						if (material && material->IsReady() && !bSkipMaterials)

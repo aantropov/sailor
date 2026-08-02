@@ -14,6 +14,7 @@
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "Platform/Win32/Window.h"
 #include "Containers/ConcurrentMap.h"
+#include <mutex>
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 
@@ -39,8 +40,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool AcquireNextImage() override;
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const override;
 		SAILOR_API virtual bool SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
-		SAILOR_API VkSemaphore GetLastSubmittedRenderFinishedSemaphoreHandle() const;
-		SAILOR_API VkSemaphore GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
 
@@ -107,7 +106,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) override;
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer) override;
 
-		SAILOR_API virtual void SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr) override;
+		SAILOR_API virtual bool SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr) override;
 
 		// Shader binding set
 		SAILOR_API virtual RHI::RHIShaderBindingSetPtr CreateShaderBindings() override;
@@ -272,6 +271,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 			RHI::RHIShaderBindingSetPtr m_binding{};
 			size_t m_initialCompatibility = 0;
+			uint64_t m_initialDescriptorRevision = 0;
 
 		public:
 
@@ -288,7 +288,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 			size_t GetHash() const;
 		};
 
-		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
+		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API void RefreshSwapchainTargets();
 
 		// The resources that are used as default
@@ -308,6 +308,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
+		mutable std::recursive_mutex m_descriptorUpdateMutex;
 
 			GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};
 			bool m_bIsInitialized = false;

@@ -7,12 +7,21 @@
 #include "Mesh.h"
 #include "VertexDescription.h"
 #include "Tasks/Scheduler.h"
+#include "Core/LogMacros.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
 
 void IGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer)
 {
+	if (!mesh || pVertices == nullptr || vertexBuffer == 0 ||
+		pIndices == nullptr || indexBuffer == 0)
+	{
+		SAILOR_LOG_ERROR(
+			"IGraphicsDriver::UpdateMesh: refusing an empty mesh upload.");
+		return;
+	}
+
 	const VkDeviceSize bufferSize = vertexBuffer;
 	const VkDeviceSize indexBufferSize = indexBuffer;
 
@@ -83,11 +92,11 @@ void IGraphicsDriver::TrackDelayedInitialization(IDelayedInitialization* pResour
 {
 	auto resource = dynamic_cast<RHIResource*>(pResource);
 
+	// Publish the dependency before the fence can visit the resource.
+	pResource->AddDependency(handle);
+
 	// Fence should notify res, when cmd list is finished
 	handle->AddObservable(resource);
-
-	// Res should hold fences to track dependencies
-	pResource->AddDependency(handle);
 }
 
 void IGraphicsDriver::TrackPendingCommandList_ThreadSafe(RHIFencePtr handle)
@@ -105,8 +114,14 @@ void IGraphicsDriver::SubmitCommandList_Immediate(RHICommandListPtr commandList)
 	RHIFencePtr fence = RHIFencePtr::Make();
 	RHI::Renderer::GetDriver()->SetDebugName(fence, "SubmitCommandList_Immediate");
 
-	SubmitCommandList(commandList, fence);
-	fence->Wait();
+	if (SubmitCommandList(commandList, fence))
+	{
+		fence->Wait();
+	}
+	else
+	{
+		SAILOR_LOG_ERROR("IGraphicsDriver::SubmitCommandList_Immediate: command list submission failed.");
+	}
 }
 
 RHIVertexDescriptionPtr& IGraphicsDriver::GetOrAddVertexDescription(VertexAttributeBits bits)

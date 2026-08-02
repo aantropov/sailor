@@ -64,22 +64,93 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 
 	TVector<char> jsonChunk(jsonChunkHeader.chunkLength);
 	file.read(jsonChunk.GetData(), jsonChunkHeader.chunkLength);
-	nlohmann::json gltfJson = nlohmann::json::parse(
+	const nlohmann::json gltfJson = nlohmann::json::parse(
 		jsonChunk.GetData(),
-		jsonChunk.GetData() + jsonChunk.Num());
+		jsonChunk.GetData() + jsonChunk.Num(),
+		nullptr,
+		false);
 
-	if (textureIndex < 0 || textureIndex >= gltfJson["textures"].size())
+	if (gltfJson.is_discarded() || !gltfJson.is_object())
 	{
-		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid texture index");
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid JSON: %s", filePath.c_str());
 		return false;
 	}
 
-	int32_t imageIndex = gltfJson["textures"][textureIndex]["source"];
-	int32_t bufferViewIndex = gltfJson["images"][imageIndex]["bufferView"];
-	const auto& bufferView = gltfJson["bufferViews"][bufferViewIndex];
-	//int32_t bufferIndex = bufferView["buffer"];
-	int32_t byteOffset = bufferView["byteOffset"];
-	int32_t byteLength = bufferView["byteLength"];
+	auto tryGetNonNegativeInteger = [](const nlohmann::json& value, uint64_t& outValue)
+		{
+			if (value.is_number_unsigned())
+			{
+				outValue = value.get<uint64_t>();
+				return true;
+			}
+
+			if (value.is_number_integer())
+			{
+				const int64_t signedValue = value.get<int64_t>();
+				if (signedValue >= 0)
+				{
+					outValue = static_cast<uint64_t>(signedValue);
+					return true;
+				}
+			}
+
+			return false;
+		};
+
+	const auto texturesIt = gltfJson.find("textures");
+	const auto imagesIt = gltfJson.find("images");
+	const auto bufferViewsIt = gltfJson.find("bufferViews");
+	if (texturesIt == gltfJson.end() || !texturesIt->is_array() ||
+		imagesIt == gltfJson.end() || !imagesIt->is_array() ||
+		bufferViewsIt == gltfJson.end() || !bufferViewsIt->is_array() ||
+		textureIndex < 0 || static_cast<size_t>(textureIndex) >= texturesIt->size())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid texture index %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
+
+	const auto& texture = (*texturesIt)[static_cast<size_t>(textureIndex)];
+	const auto sourceIt = texture.is_object() ? texture.find("source") : texture.end();
+	uint64_t imageIndex = 0;
+	if (!texture.is_object() || sourceIt == texture.end() ||
+		!tryGetNonNegativeInteger(*sourceIt, imageIndex) || imageIndex >= imagesIt->size())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid image source for texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
+
+	const auto& image = (*imagesIt)[static_cast<size_t>(imageIndex)];
+	const auto bufferViewIt = image.is_object() ? image.find("bufferView") : image.end();
+	uint64_t bufferViewIndex = 0;
+	if (!image.is_object() || bufferViewIt == image.end() ||
+		!tryGetNonNegativeInteger(*bufferViewIt, bufferViewIndex) || bufferViewIndex >= bufferViewsIt->size())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid image buffer view for texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
+
+	const auto& bufferView = (*bufferViewsIt)[static_cast<size_t>(bufferViewIndex)];
+	if (!bufferView.is_object())
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view for texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
+
+	uint64_t byteOffset = 0;
+	const auto byteOffsetIt = bufferView.find("byteOffset");
+	if (byteOffsetIt != bufferView.end() && !tryGetNonNegativeInteger(*byteOffsetIt, byteOffset))
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid byte offset for texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
+
+	uint64_t byteLength = 0;
+	const auto byteLengthIt = bufferView.find("byteLength");
+	if (byteLengthIt == bufferView.end() || !tryGetNonNegativeInteger(*byteLengthIt, byteLength) || byteLength == 0)
+	{
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid byte length for texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
 
 	file.seekg(sizeof(GLBHeader) + sizeof(GLBChunkHeader) + jsonChunkHeader.chunkLength, std::ios::beg);
 
@@ -91,15 +162,21 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 		return false;
 	}
 
-	if (byteOffset + byteLength > (int32_t)binChunkHeader.chunkLength)
+	if (byteOffset > binChunkHeader.chunkLength || byteLength > binChunkHeader.chunkLength - byteOffset)
 	{
-		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view");
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Invalid buffer view range for texture %d: %s", textureIndex, filePath.c_str());
 		return false;
 	}
 
-	file.seekg(byteOffset, std::ios::cur);
-	outTexture.Resize(byteLength);
-	file.read(reinterpret_cast<char*>(&outTexture[0]), byteLength);
+	file.seekg(static_cast<std::streamoff>(byteOffset), std::ios::cur);
+	outTexture.Resize(static_cast<size_t>(byteLength));
+	file.read(reinterpret_cast<char*>(&outTexture[0]), static_cast<std::streamsize>(byteLength));
+	if (!file)
+	{
+		outTexture.Clear();
+		SAILOR_LOG_ERROR("Failed to extract texture from GLB, Cannot read texture %d: %s", textureIndex, filePath.c_str());
+		return false;
+	}
 
 	return true;
 }
@@ -126,6 +203,9 @@ TextureImporter::TextureImporter(TextureAssetInfoHandler* infoHandler)
 
 	auto textures = driver->AddSamplerToShaderBindings(m_textureSamplersBindings, "textureSamplers", defaultTextures, 0, true, static_cast<uint32_t>(MaxTexturesInScene));
 	m_textureSamplersBindings->RecalculateCompatibility();
+
+	m_textureSamplerSlotRevisions.Resize(1);
+	m_textureSamplerSlotRevisions[0] = m_textureSamplersBindings->GetDescriptorRevision();
 }
 
 TextureImporter::~TextureImporter()
@@ -156,6 +236,103 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 	}
 
 	return Tasks::TaskPtr<TexturePtr>();
+}
+
+TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const
+{
+	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
+	TextureSamplersSnapshot snapshot;
+	snapshot.m_slots.Reserve(requestedIndices.Num());
+
+	if (!m_textureSamplersBindings)
+	{
+		return snapshot;
+	}
+
+	const auto& shaderBindings = m_textureSamplersBindings->GetShaderBindings();
+	const auto textureSamplers = shaderBindings.Find("textureSamplers");
+	const TVector<RHI::RHITexturePtr>* textures = nullptr;
+	if (textureSamplers != shaderBindings.end() && textureSamplers->m_second)
+	{
+		textures = &textureSamplers->m_second->GetTextureBindings();
+	}
+
+	for (const uint32_t requestedIndex : requestedIndices)
+	{
+		TextureSamplerSlotSnapshot slot;
+		slot.m_index = requestedIndex;
+		if (requestedIndex < m_textureSamplerSlotRevisions.Num())
+		{
+			slot.m_contentRevision = m_textureSamplerSlotRevisions[requestedIndex];
+		}
+
+		if (textures && requestedIndex < textures->Num())
+		{
+			slot.m_texture = (*textures)[requestedIndex];
+		}
+
+		snapshot.m_slots.Emplace(std::move(slot));
+	}
+
+	snapshot.m_descriptorRevision = m_textureSamplersBindings->GetDescriptorRevision();
+	return snapshot;
+}
+
+bool TextureImporter::RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, size_t& outIndex)
+{
+	outIndex = 0;
+	if (!texture)
+	{
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
+	const size_t nextIndex = m_textureSamplersCurrentIndex.load(std::memory_order_relaxed);
+	if (!IsUserTextureSamplerIndexValid(nextIndex))
+	{
+		return false;
+	}
+
+	outIndex = nextIndex;
+	if (!UpdateTextureSamplerBindingLocked(texture, static_cast<uint32_t>(nextIndex)))
+	{
+		return false;
+	}
+
+	// Publish the next free slot only after the native descriptor write and slot
+	// revision have both succeeded. A failed write can therefore be retried.
+	m_textureSamplersCurrentIndex.store(nextIndex + 1, std::memory_order_release);
+	return true;
+}
+
+bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, uint32_t index)
+{
+	if (!IsUserTextureSamplerIndexValid(index) || !texture)
+	{
+		return false;
+	}
+
+	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
+	return UpdateTextureSamplerBindingLocked(std::move(texture), index);
+}
+
+bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index)
+{
+	const uint64_t previousRevision = m_textureSamplersBindings->GetDescriptorRevision();
+	RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", texture, index);
+	const uint64_t currentRevision = m_textureSamplersBindings->GetDescriptorRevision();
+
+	if (currentRevision == previousRevision)
+	{
+		return false;
+	}
+
+	if (m_textureSamplerSlotRevisions.Num() <= index)
+	{
+		m_textureSamplerSlotRevisions.Resize(index + 1);
+	}
+	m_textureSamplerSlotRevisions[index] = currentRevision;
+	return true;
 }
 
 void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpired)
@@ -200,8 +377,7 @@ void TextureImporter::OnUpdateAssetInfo(AssetInfoPtr inAssetInfo, bool bWasExpir
 						size_t index = m_textureSamplersIndices.At_Lock(assetInfo->GetFileId());
 						m_textureSamplersIndices.Unlock(assetInfo->GetFileId());
 
-						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
-						return true;
+						return UpdateTextureSamplerBinding(pTexture->m_rhiTexture, static_cast<uint32_t>(index));
 					}
 					return false;
 				}, EThreadType::RHI)->Run();
@@ -399,12 +575,24 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(FileId uid, TexturePtr& 
 
 						RHI::Renderer::GetDriver()->SetDebugName(pTexture->m_rhiTexture, pAssetInfo->GetAssetFilepath());
 
-						size_t index = m_textureSamplersCurrentIndex++;
-
-						m_textureSamplersIndices.At_Lock(pAssetInfo->GetFileId()) = index;
-						m_textureSamplersIndices.Unlock(pAssetInfo->GetFileId());
-
-						RHI::Renderer::GetDriver()->UpdateShaderBinding(m_textureSamplersBindings, "textureSamplers", pTexture->m_rhiTexture, (uint32_t)index);
+						size_t index = 0;
+						if (RegisterTextureSamplerBinding(pTexture->m_rhiTexture, index))
+						{
+							m_textureSamplersIndices.At_Lock(pAssetInfo->GetFileId()) = index;
+							m_textureSamplersIndices.Unlock(pAssetInfo->GetFileId());
+						}
+						else if (index == 0)
+						{
+							SAILOR_LOG_ERROR("Cannot register texture sampler '%s': the scene texture capacity of %zu user textures is exhausted.",
+								pAssetInfo->GetAssetFilepath().c_str(),
+								MaxUserTexturesInScene);
+						}
+						else
+						{
+							SAILOR_LOG_ERROR("Cannot register texture sampler '%s' at index %zu: descriptor update failed.",
+								pAssetInfo->GetAssetFilepath().c_str(),
+								index);
+						}
 					}
 
 					return pTexture;

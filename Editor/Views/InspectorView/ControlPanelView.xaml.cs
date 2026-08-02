@@ -24,13 +24,11 @@ public partial class ControlPanelView : ContentView
     {
         if (sender is Button { BindingContext: AssetFile assetFile })
         {
-            await Task.Yield();
-            await assetFile.Save();
-            var engineService = MauiProgram.GetService<EngineService>();
-            if (!await engineService.RequestAssetReloadAsync())
+            var assetsService = MauiProgram.GetService<AssetsService>();
+            if (!await assetsService.SaveAssetAsync(assetFile))
             {
-                engineService.PushConsoleMessage(
-                    $"Asset was saved, but native reload did not commit: {assetFile.AssetInfo.FullName}");
+                MauiProgram.GetService<EngineService>().PushConsoleMessage(
+                    $"Asset was saved, but its targeted native update did not commit: {assetFile.AssetInfo.FullName}");
             }
         }
     }

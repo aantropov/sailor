@@ -17,8 +17,6 @@ namespace Sailor
 		bool operator==(const FileRevision& rhs) const noexcept
 		{
 			return m_modificationTimeNanoseconds == rhs.m_modificationTimeNanoseconds &&
-				m_fileSize == rhs.m_fileSize &&
-				m_contentHash == rhs.m_contentHash &&
 				m_bIsValid == rhs.m_bIsValid;
 		}
 

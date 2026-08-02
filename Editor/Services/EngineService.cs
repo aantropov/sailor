@@ -2233,6 +2233,16 @@ namespace SailorEditor.Services
                 cancellationToken);
         }
 
+        public Task<bool> UpdateAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = fileId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.UpdateAssetAsync(stringId, token),
+                cancellationToken: cancellationToken);
+        }
+
         public async Task<bool> RequestAssetReloadAsync(CancellationToken cancellationToken = default)
         {
             var generation = Volatile.Read(ref engineGeneration);

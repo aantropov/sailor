@@ -887,6 +887,91 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void ExistingAssetSave_UsesTargetedUpdateWithoutScanningContent()
+    {
+        var controlPanelSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "ControlPanelView.xaml.cs");
+        var assetsSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetsService.cs");
+        var worldSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "WorldService.cs");
+        var engineServiceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var protocolClientSource = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var protocolDispatcherSource = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
+        var nativeSource = ReadRepositoryFile("Runtime", "Sailor.cpp");
+
+        Assert.Contains(
+            "assetsService.SaveAssetAsync(assetFile)",
+            controlPanelSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "RequestAssetReloadAsync",
+            controlPanelSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "public async Task<bool> SaveExistingAssetAsync(",
+            assetsSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return await _engineService.UpdateAssetAsync(",
+            assetsSource,
+            StringComparison.Ordinal);
+        var existingWorldSaveStart = worldSource.IndexOf(
+            "async Task<SceneSaveResult> SaveExistingWorldAsync(",
+            StringComparison.Ordinal);
+        var existingWorldSaveEnd = worldSource.IndexOf(
+            "async Task<SceneSaveResult> SaveCurrentWorldAsAsync(",
+            existingWorldSaveStart,
+            StringComparison.Ordinal);
+        Assert.True(existingWorldSaveStart >= 0);
+        Assert.True(existingWorldSaveEnd > existingWorldSaveStart);
+        Assert.Contains(
+            "assetsService.SaveExistingAssetAsync(",
+            worldSource[existingWorldSaveStart..existingWorldSaveEnd],
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "protocolClient.UpdateAssetAsync(stringId, token)",
+            engineServiceSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "UpdateAsset = new FileIdRequest",
+            protocolClientSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kUpdateAsset:",
+            protocolDispatcherSource,
+            StringComparison.Ordinal);
+
+        var updateAssetStart = nativeSource.IndexOf(
+            "bool App::UpdateAsset(",
+            StringComparison.Ordinal);
+        var updateAssetEnd = nativeSource.IndexOf(
+            "\nbool App::",
+            updateAssetStart + 1,
+            StringComparison.Ordinal);
+        Assert.True(updateAssetStart >= 0);
+        Assert.True(updateAssetEnd > updateAssetStart);
+        var updateAssetBody = nativeSource[updateAssetStart..updateAssetEnd];
+        Assert.DoesNotContain("ScanContentFolder", updateAssetBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("WaitIdle", updateAssetBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AssetProjection_TreatsGlslAsShaderLibraryDespiteSharedNativeAssetInfoType()
     {
         var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");

@@ -215,6 +215,11 @@ public class ComponentTemplate : DataTemplate
                                 Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                                 Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
                                 Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
+                                ObservableFileIdList fileIds => Templates.FileIdListEditor(
+                                    fileIds,
+                                    ResolveFileIdListSupportedType(
+                                        component,
+                                        property.Key)),
                                 Observable<InstanceId> observableInstanceId => Templates.InstanceIdEditor(component.OverrideProperties[property.Key], nameof(Observable<InstanceId>.Value), (Observable<InstanceId> vm) => vm.Value, (vm, value) => vm.Value = value),
                                 _ => new Label { Text = "Unsupported property type" }
                             };
@@ -234,6 +239,16 @@ public class ComponentTemplate : DataTemplate
         return !string.IsNullOrWhiteSpace(typeName) && typeName.StartsWith(prefix, StringComparison.Ordinal)
             ? typeName[prefix.Length..]
             : typeName;
+    }
+
+    static Type ResolveFileIdListSupportedType(
+        Component component,
+        string propertyName)
+    {
+        return component.Typename.Name == "Sailor::MeshRendererComponent" &&
+            propertyName == "overrideMaterials"
+            ? typeof(MaterialFile)
+            : null;
     }
 
     static Command CreateContextMenuCommand(

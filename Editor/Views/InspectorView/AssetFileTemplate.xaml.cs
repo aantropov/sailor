@@ -126,7 +126,7 @@ public partial class AssetFileTemplate : DataTemplate
 
         if ((property is Property<List<FileId>> || value is ObservableFileIdList) && value is ObservableFileIdList fileIds)
         {
-            return CreateFileIdListEditor(fileIds);
+            return Templates.FileIdListEditor(fileIds);
         }
 
         if (value is Observable<string> observableString)
@@ -176,47 +176,4 @@ public partial class AssetFileTemplate : DataTemplate
         return editor;
     }
 
-    static View CreateFileIdListEditor(ObservableFileIdList fileIds)
-    {
-        var listEditor = new CollectionView
-        {
-            ItemsSource = fileIds.Values,
-            ItemTemplate = new DataTemplate(() =>
-            {
-                var row = new HorizontalStackLayout { Spacing = 4 };
-                row.BindingContextChanged += (sender, args) =>
-                {
-                    row.Children.Clear();
-                    if (row.BindingContext is not Observable<FileId> fileId)
-                    {
-                        return;
-                    }
-
-                    var removeButton = new Button { Text = "-" };
-                    removeButton.Clicked += (buttonSender, clickArgs) => fileIds.Values.Remove(fileId);
-                    row.Children.Add(removeButton);
-                    row.Children.Add(Templates.FileIdEditor(fileId, nameof(Observable<FileId>.Value),
-                        static (Observable<FileId> vm) => vm.Value,
-                        static (vm, value) => vm.Value = value));
-                };
-
-                return row;
-            })
-        };
-
-        var addButton = new Button { Text = "+" };
-        addButton.Clicked += (sender, args) => fileIds.Values.Add(new Observable<FileId>(FileId.NullFileId));
-
-        var clearButton = new Button { Text = "Clear" };
-        clearButton.Clicked += (sender, args) => fileIds.Values.Clear();
-
-        return new VerticalStackLayout
-        {
-            Children =
-            {
-                new HorizontalStackLayout { Children = { addButton, clearButton } },
-                listEditor
-            }
-        };
-    }
 }

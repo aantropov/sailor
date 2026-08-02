@@ -25,6 +25,13 @@ namespace Sailor::RHI
 	class DebugContext
 	{
 	public:
+		struct DrawSnapshot
+		{
+			RHIBufferPtr m_vertexBuffer{};
+			RHIBufferPtr m_indexBuffer{};
+			RHIMaterialPtr m_material{};
+			uint32_t m_numVertices = 0;
+		};
 
 		static constexpr glm::vec4 Color_Inactive = glm::vec4(0.66f, 0.66f, 0.66f, 0.66f);
 		static constexpr glm::vec4 Color_CmdTransfer = glm::vec4(0.85f, 0.85f, 1.0f, 0.85f);
@@ -43,7 +50,9 @@ namespace Sailor::RHI
 		SAILOR_API void DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorldTransform, float aspect, float fovY, float zNear, float zFar, float duration = 0.0f);
 		SAILOR_API void DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);
+		SAILOR_API DrawSnapshot GetDrawSnapshot() const;
 		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const;
+		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection, const DrawSnapshot& snapshot) const;
 
 	protected:
 

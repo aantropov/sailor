@@ -91,8 +91,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanShaderStagePtr m_stage;
 		VulkanPipelineLayoutPtr m_layout;
 
-		void Compile();
+		bool Compile();
 		void Release();
+		bool IsCompiled() const { return m_pipeline != VK_NULL_HANDLE; }
 
 		operator VkPipeline() const { return m_pipeline; }
 

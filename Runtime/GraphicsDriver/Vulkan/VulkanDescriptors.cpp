@@ -83,7 +83,8 @@ VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout()
 
 bool VulkanDescriptorSetLayout::operator==(const VulkanDescriptorSetLayout& rhs) const
 {
-	return this->m_descriptorSetLayoutBindings == rhs.m_descriptorSetLayoutBindings;
+	return m_variableDescriptorBinding == rhs.m_variableDescriptorBinding &&
+		m_descriptorSetLayoutBindings == rhs.m_descriptorSetLayoutBindings;
 }
 
 size_t VulkanDescriptorSetLayout::GetHash() const
@@ -164,31 +165,125 @@ void VulkanDescriptorSetLayout::Release()
 	}
 }
 
+VulkanDescriptorPoolPage::VulkanDescriptorPoolPage(VulkanDevicePtr pDevice, VkDescriptorPool descriptorPool) :
+	m_device(pDevice),
+	m_descriptorPool(descriptorPool)
+{
+}
+
+VulkanDescriptorPoolPage::~VulkanDescriptorPoolPage()
+{
+	if (m_descriptorPool)
+	{
+		vkDestroyDescriptorPool(*m_device, m_descriptorPool, nullptr);
+		m_descriptorPool = VK_NULL_HANDLE;
+	}
+}
+
 VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets,
 	const TVector<VkDescriptorPoolSize>& descriptorPoolSizes) :
-	m_device(pDevice)
+	m_device(pDevice),
+	m_maxSets(maxSets),
+	m_descriptorPoolSizes(descriptorPoolSizes)
 {
+	VK_CHECK(CreatePool());
+}
+
+VkResult VulkanDescriptorPool::CreatePool(const TVector<VkDescriptorPoolSize>* descriptorRequirements)
+{
+	if (descriptorRequirements != nullptr)
+	{
+		for (const VkDescriptorPoolSize& requirement : *descriptorRequirements)
+		{
+			const uint32_t blockCapacity = std::max(requirement.descriptorCount, m_maxSets);
+			const size_t index = m_descriptorPoolSizes.FindIf(
+				[&requirement](const VkDescriptorPoolSize& poolSize)
+				{
+					return poolSize.type == requirement.type;
+				});
+
+			if (index == static_cast<size_t>(-1))
+			{
+				m_descriptorPoolSizes.Add(VkDescriptorPoolSize{
+					requirement.type,
+					blockCapacity });
+			}
+			else
+			{
+				m_descriptorPoolSizes[index].descriptorCount = std::max(
+					m_descriptorPoolSizes[index].descriptorCount,
+					blockCapacity);
+			}
+		}
+	}
+
+	const TVector<VkDescriptorPoolSize> descriptorPoolSizes = m_descriptorPoolSizes;
+
 	VkDescriptorPoolCreateInfo poolInfo = {};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(descriptorPoolSizes.Num());
 	poolInfo.pPoolSizes = descriptorPoolSizes.GetData();
-	poolInfo.maxSets = maxSets;
-	poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+	poolInfo.maxSets = m_maxSets;
+	poolInfo.flags = 0;
 	if (m_device->IsDescriptorUpdateAfterBindSupported())
 	{
 		poolInfo.flags |= VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
 	}
 	poolInfo.pNext = nullptr;
 
-	VK_CHECK(vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &m_descriptorPool));
+	VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
+	const VkResult result = vkCreateDescriptorPool(*m_device, &poolInfo, nullptr, &descriptorPool);
+	if (result == VK_SUCCESS)
+	{
+		m_currentPage = VulkanDescriptorPoolPagePtr::Make(m_device, descriptorPool);
+	}
+
+	return result;
+}
+
+VkResult VulkanDescriptorPool::AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo,
+	const TVector<VkDescriptorPoolSize>& descriptorRequirements,
+	VkDescriptorSet& outDescriptorSet,
+	VulkanDescriptorPoolPagePtr& outPoolPage)
+{
+	m_lock.Lock();
+
+	outDescriptorSet = VK_NULL_HANDLE;
+	outPoolPage.Clear();
+	VkResult result = m_currentPage ? VK_SUCCESS : CreatePool();
+	if (result == VK_SUCCESS)
+	{
+		allocateInfo.descriptorPool = *m_currentPage;
+		result = vkAllocateDescriptorSets(*m_device, &allocateInfo, &outDescriptorSet);
+		if (result == VK_SUCCESS)
+		{
+			outPoolPage = m_currentPage;
+		}
+	}
+
+	if (result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL)
+	{
+		outDescriptorSet = VK_NULL_HANDLE;
+		outPoolPage.Clear();
+		result = CreatePool(&descriptorRequirements);
+		if (result == VK_SUCCESS)
+		{
+			allocateInfo.descriptorPool = *m_currentPage;
+			result = vkAllocateDescriptorSets(*m_device, &allocateInfo, &outDescriptorSet);
+			if (result == VK_SUCCESS)
+			{
+				outPoolPage = m_currentPage;
+			}
+		}
+	}
+
+	m_lock.Unlock();
+	return result;
 }
 
 VulkanDescriptorPool::~VulkanDescriptorPool()
 {
-	if (m_descriptorPool)
-	{
-		vkDestroyDescriptorPool(*m_device, m_descriptorPool, nullptr);
-	}
+	m_currentPage.Clear();
 }
 
 VulkanDescriptorSet::VulkanDescriptorSet(VulkanDevicePtr pDevice,
@@ -211,6 +306,29 @@ bool VulkanDescriptorSet::LikelyContains(VkDescriptorSetLayoutBinding layout) co
 	return (m_compatibilityHashCode & hashCode) == hashCode;
 }
 
+bool VulkanDescriptorSet::ReferencesImageView(uint32_t binding, uint32_t arrayElement, const VulkanImageViewPtr& imageView) const
+{
+	for (const VulkanDescriptorPtr& descriptor : m_descriptors)
+	{
+		if (descriptor->GetBinding() != binding || descriptor->GetArrayElement() != arrayElement)
+		{
+			continue;
+		}
+
+		if (const auto* combinedImage = dynamic_cast<const VulkanDescriptorCombinedImage*>(descriptor.GetRawPtr()))
+		{
+			return combinedImage->GetImageView() == imageView;
+		}
+
+		if (const auto* storageImage = dynamic_cast<const VulkanDescriptorStorageImage*>(descriptor.GetRawPtr()))
+		{
+			return storageImage->GetImageView() == imageView;
+		}
+	}
+
+	return false;
+}
+
 void VulkanDescriptorSet::RecalculateCompatibility()
 {
 	m_compatibilityHashCode = 0;
@@ -223,54 +341,81 @@ void VulkanDescriptorSet::RecalculateCompatibility()
 	}
 }
 
-void VulkanDescriptorSet::UpdateDescriptor(uint32_t index)
+bool VulkanDescriptorSet::UpdateDescriptor(VulkanDescriptorPtr descriptor)
 {
-	VkWriteDescriptorSet descriptorWrite{};
-
-	m_descriptors[index]->Apply(descriptorWrite);
-	descriptorWrite.dstSet = m_descriptorSet;
-
-#ifdef _DEBUG
-	const auto* variableLayoutBinding = m_descriptorSetLayout->HasVariableDescriptorBinding() ?
-		FindLayoutBinding(m_descriptorSetLayout, static_cast<uint32_t>(m_descriptorSetLayout->GetVariableDescriptorBinding()), descriptorWrite.descriptorType) :
-		nullptr;
-	const uint32_t variableDescriptorCount = variableLayoutBinding ?
-		(std::min)(variableLayoutBinding->descriptorCount, (std::max)(1u, m_variableDescriptorCount)) :
-		(std::max)(1u, m_variableDescriptorCount);
-
-	bool bValid = true;
-	switch (descriptorWrite.descriptorType)
+	if (!m_descriptorSet || !descriptor)
 	{
-	case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-		bValid = (descriptorWrite.pImageInfo != nullptr) && (descriptorWrite.pImageInfo->imageView != VK_NULL_HANDLE) && (descriptorWrite.pImageInfo->sampler != VK_NULL_HANDLE);
-		break;
-	case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
-	case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-	case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
-		bValid = (descriptorWrite.pImageInfo != nullptr) && (descriptorWrite.pImageInfo->imageView != VK_NULL_HANDLE);
-		break;
-	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
-	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-	case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-	case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
-		bValid = (descriptorWrite.pBufferInfo != nullptr) && (descriptorWrite.pBufferInfo->buffer != VK_NULL_HANDLE);
-		break;
-	case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-	case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
-		bValid = (descriptorWrite.pTexelBufferView != nullptr) && (*descriptorWrite.pTexelBufferView != VK_NULL_HANDLE);
-		break;
-	default:
-		break;
+		return false;
 	}
 
-	bValid = bValid && ValidateDescriptorWrite(m_descriptorSetLayout, descriptorWrite, variableDescriptorCount, "VulkanDescriptorSet::UpdateDescriptor");
-	check(bValid);
-#endif
+	VkWriteDescriptorSet descriptorWrite{};
+	descriptor->Apply(descriptorWrite);
+	descriptorWrite.dstSet = m_descriptorSet;
+
+	if (!ValidateDescriptorWrite(
+		m_descriptorSetLayout,
+		descriptorWrite,
+		(std::max)(1u, m_variableDescriptorCount),
+		"VulkanDescriptorSet::UpdateDescriptor"))
+	{
+		return false;
+	}
+
+	size_t descriptorIndex = static_cast<size_t>(-1);
+	if (descriptor->GetArrayElement() < m_descriptors.Num())
+	{
+		const VulkanDescriptorPtr& candidate = m_descriptors[descriptor->GetArrayElement()];
+		if (candidate &&
+			candidate->GetBinding() == descriptor->GetBinding() &&
+			candidate->GetArrayElement() == descriptor->GetArrayElement() &&
+			candidate->GetType() == descriptor->GetType())
+		{
+			descriptorIndex = descriptor->GetArrayElement();
+		}
+	}
+
+	if (descriptorIndex == static_cast<size_t>(-1) &&
+		!m_descriptors.IsEmpty() &&
+		descriptor->GetArrayElement() == m_descriptors.Num() &&
+		m_descriptors[m_descriptors.Num() - 1]->GetBinding() == descriptor->GetBinding() &&
+		m_descriptors[m_descriptors.Num() - 1]->GetArrayElement() + 1 == descriptor->GetArrayElement() &&
+		m_descriptors[m_descriptors.Num() - 1]->GetType() == descriptor->GetType())
+	{
+		descriptorIndex = m_descriptors.Num();
+	}
+
+	if (descriptorIndex == static_cast<size_t>(-1))
+	{
+		descriptorIndex = m_descriptors.FindIf(
+			[&descriptor](const VulkanDescriptorPtr& candidate)
+			{
+				return candidate &&
+					candidate->GetBinding() == descriptor->GetBinding() &&
+					candidate->GetArrayElement() == descriptor->GetArrayElement() &&
+					candidate->GetType() == descriptor->GetType();
+			});
+	}
+
+	// UPDATE_UNUSED_WHILE_PENDING only permits changing a slot that pending
+	// command buffers do not use. Replacing an existing descriptor requires an
+	// immutable replacement set (handled by the caller's fallback path).
+	if (descriptorIndex != static_cast<size_t>(-1) && descriptorIndex != m_descriptors.Num())
+	{
+		return false;
+	}
 
 	vkUpdateDescriptorSets(*m_device, 1, &descriptorWrite, 0, nullptr);
+	m_descriptors.Emplace(std::move(descriptor));
+
+	return true;
 }
 
 void VulkanDescriptorSet::Compile()
+{
+	TryCompile();
+}
+
+bool VulkanDescriptorSet::TryCompile()
 {
 	uint32_t variableDescriptorCount = std::max(1u, m_variableDescriptorCount);
 
@@ -279,6 +424,12 @@ void VulkanDescriptorSet::Compile()
 		m_descriptorSetLayout->Compile();
 
 		VkDescriptorSetLayout vkdescriptorSetLayout = *m_descriptorSetLayout;
+		if (!vkdescriptorSetLayout || !m_descriptorPool || !m_device)
+		{
+			SAILOR_LOG_ERROR("VulkanDescriptorSet::TryCompile: descriptor layout, pool, or device is unavailable.");
+			return false;
+		}
+
 		VkDescriptorSetVariableDescriptorCountAllocateInfo variableDescriptorCountInfo{};
 		if (m_descriptorSetLayout->HasVariableDescriptorBinding())
 		{
@@ -306,9 +457,34 @@ void VulkanDescriptorSet::Compile()
 			}
 		}
 
+		TVector<VkDescriptorPoolSize> descriptorRequirements;
+		for (const VkDescriptorSetLayoutBinding& layoutBinding : m_descriptorSetLayout->m_descriptorSetLayoutBindings)
+		{
+			const uint32_t descriptorCount = GetEffectiveDescriptorCount(
+				m_descriptorSetLayout,
+				layoutBinding,
+				variableDescriptorCount);
+			const size_t requirementIndex = descriptorRequirements.FindIf(
+				[&layoutBinding](const VkDescriptorPoolSize& requirement)
+				{
+					return requirement.type == layoutBinding.descriptorType;
+				});
+
+			if (requirementIndex == static_cast<size_t>(-1))
+			{
+				descriptorRequirements.Add(VkDescriptorPoolSize{
+					layoutBinding.descriptorType,
+					descriptorCount });
+			}
+			else
+			{
+				descriptorRequirements[requirementIndex].descriptorCount += descriptorCount;
+			}
+		}
+
 		VkDescriptorSetAllocateInfo descriptSetAllocateInfo = {};
 		descriptSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		descriptSetAllocateInfo.descriptorPool = *m_descriptorPool;
+		descriptSetAllocateInfo.descriptorPool = VK_NULL_HANDLE;
 		descriptSetAllocateInfo.descriptorSetCount = 1;
 		descriptSetAllocateInfo.pSetLayouts = &vkdescriptorSetLayout;
 		descriptSetAllocateInfo.pNext = nullptr;
@@ -321,9 +497,26 @@ void VulkanDescriptorSet::Compile()
 			descriptSetAllocateInfo.pNext = &variableDescriptorCountInfo;
 		}
 
-		VK_CHECK(vkAllocateDescriptorSets(*m_device, &descriptSetAllocateInfo, &m_descriptorSet));
+		VulkanDescriptorPoolPagePtr descriptorPoolPage;
+		const VkResult allocationResult = m_descriptorPool->AllocateDescriptorSet(
+			descriptSetAllocateInfo,
+			descriptorRequirements,
+			m_descriptorSet,
+			descriptorPoolPage);
+		if (allocationResult != VK_SUCCESS || !m_descriptorSet)
+		{
+			SAILOR_LOG_ERROR("VulkanDescriptorSet::TryCompile: vkAllocateDescriptorSets failed. result=%d, descriptors=%zu, variableCount=%u",
+				static_cast<int32_t>(allocationResult),
+				m_descriptors.Num(),
+				variableDescriptorCount);
+			m_descriptorSet = VK_NULL_HANDLE;
+			return false;
+		}
 
-		m_currentThreadId = GetCurrentThreadId();
+		// Keep the exact pool page alive for as long as this descriptor set can be
+		// referenced by a recorded or submitted command buffer.
+		m_descriptorPoolPage = std::move(descriptorPoolPage);
+		m_descriptorPool.Clear();
 	}
 
 	TVector<VkWriteDescriptorSet> descriptorsWrite(m_descriptors.Num());
@@ -386,37 +579,15 @@ void VulkanDescriptorSet::Compile()
 	{
 		vkUpdateDescriptorSets(*m_device, static_cast<uint32_t>(validWrites.Num()), validWrites.GetData(), 0, nullptr);
 	}
+
+	return true;
 }
 
 void VulkanDescriptorSet::Release()
 {
-	DWORD currentThreadId = GetCurrentThreadId();
-
-	auto scheduler = App::GetSubmodule<Tasks::Scheduler>();
-	if (m_currentThreadId == currentThreadId || !scheduler || !scheduler->HasThread(m_currentThreadId))
-	{
-		vkFreeDescriptorSets(*m_device, *m_descriptorPool, 1, &m_descriptorSet);
-	}
-	else
-	{
-		check(m_descriptorPool.IsValid());
-		check(m_device.IsValid());
-
-		auto pReleaseResource = Tasks::CreateTask("Release descriptor set",
-			[
-				duplicatedPool = std::move(m_descriptorPool),
-					duplicatedSet = std::move(m_descriptorSet),
-					duplicatedDevice = std::move(m_device)
-			]() mutable
-			{
-				if (duplicatedSet && duplicatedDevice && duplicatedPool)
-				{
-					vkFreeDescriptorSets(*duplicatedDevice, *duplicatedPool, 1, &duplicatedSet);
-				}
-			});
-
-				scheduler->Run(pReleaseResource, m_currentThreadId);
-	}
+	m_descriptorSet = VK_NULL_HANDLE;
+	m_descriptors.Clear();
+	m_descriptorPoolPage.Clear();
 }
 
 VulkanDescriptorSet::~VulkanDescriptorSet()

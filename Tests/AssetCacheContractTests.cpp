@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetCache.h"
+#include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
@@ -10,6 +11,7 @@
 #include "AssetRegistry/Shader/ShaderAssetInfo.h"
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
+#include "Tasks/Scheduler.h"
 
 #include <chrono>
 #include <ctime>
@@ -179,8 +181,16 @@ namespace
 				info->GetAssetLastModificationTime(),
 				info->GetMetaLastModificationTime());
 			info->SetPendingUpdate(true);
+			std::function<void()> onLoad;
+			onLoad.swap(m_onLoad);
+			if (onLoad)
+			{
+				onLoad();
+			}
 			return info;
 		}
+
+		mutable std::function<void()> m_onLoad;
 
 	protected:
 		AssetInfoPtr CreateAssetInfo() const override
@@ -195,6 +205,114 @@ namespace
 			result.Deserialize(YAML::Node("{ASSET-CACHE-IMPORT-CONTRACT}"));
 			return result;
 		}
+	};
+
+	class TargetedUpdateAssetInfo final : public AssetInfo
+	{
+	public:
+		explicit TargetedUpdateAssetInfo(IAssetInfoHandler* handler) :
+			m_handler(handler)
+		{
+		}
+
+		YAML::Node Serialize() const override
+		{
+			YAML::Node result(YAML::NodeType::Map);
+			result["fileId"] = m_fileId;
+			result["filename"] = m_assetFilename;
+			result["testValue"] = m_testValue;
+			return result;
+		}
+
+		void Deserialize(const YAML::Node& inData) override
+		{
+			m_fileId = inData["fileId"].as<FileId>();
+			m_assetFilename = inData["filename"].as<std::string>();
+			m_testValue = inData["testValue"].as<int32_t>();
+		}
+
+		IAssetInfoHandler* GetHandler() override
+		{
+			return m_handler;
+		}
+
+		int32_t GetTestValue() const noexcept
+		{
+			return m_testValue;
+		}
+
+	private:
+		IAssetInfoHandler* m_handler = nullptr;
+		int32_t m_testValue = 0;
+	};
+
+	class TargetedUpdateAssetInfoHandler final : public IAssetInfoHandler
+	{
+	public:
+		void GetDefaultMeta(YAML::Node& outDefaultYaml) const override
+		{
+			outDefaultYaml = YAML::Node(YAML::NodeType::Map);
+		}
+
+	protected:
+		AssetInfoPtr CreateAssetInfo() const override
+		{
+			return new TargetedUpdateAssetInfo(
+				const_cast<TargetedUpdateAssetInfoHandler*>(this));
+		}
+	};
+
+	class RecordingTargetedUpdateListener final : public IAssetInfoHandlerListener
+	{
+	public:
+		void OnUpdateAssetInfo(
+			AssetInfoPtr assetInfo,
+			bool bWasExpired) override
+		{
+			m_updatedFileIds.emplace_back(assetInfo->GetFileId());
+			m_expirationFlags.emplace_back(bWasExpired);
+			if (m_onUpdate)
+			{
+				m_onUpdate(assetInfo, bWasExpired);
+			}
+		}
+
+		void OnImportAsset(AssetInfoPtr) override
+		{
+		}
+
+		void Clear()
+		{
+			m_updatedFileIds.clear();
+			m_expirationFlags.clear();
+		}
+
+		std::vector<FileId> m_updatedFileIds;
+		std::vector<bool> m_expirationFlags;
+		std::function<void(AssetInfoPtr, bool)> m_onUpdate;
+	};
+
+	class TestMainThreadTask final : public Tasks::ITask
+	{
+	public:
+		explicit TestMainThreadTask(std::function<void()> callback) :
+			ITask("Asset cache pre-commit metadata mutation", EThreadType::Main),
+			m_callback(std::move(callback))
+		{
+		}
+
+		void Execute() override
+		{
+			m_state |= StateMask::IsStartedBit;
+			if (m_callback)
+			{
+				m_callback();
+			}
+			m_state |= StateMask::IsFinishedBit;
+		}
+
+	private:
+		std::function<void()> m_callback;
 	};
 
 	void Require(bool condition, const std::string& message)
@@ -315,6 +433,23 @@ namespace
 		stream << content;
 	}
 
+	void RewriteFileWithNewRevision(
+		const std::filesystem::path& path,
+		const std::string& content)
+	{
+		const std::filesystem::file_time_type previousWriteTime =
+			std::filesystem::last_write_time(path);
+		WriteFile(path, content);
+		std::error_code timestampError;
+		std::filesystem::last_write_time(
+			path,
+			previousWriteTime + std::chrono::seconds(2),
+			timestampError);
+		Require(
+			!timestampError,
+			"the targeted update fixture must advance the file revision");
+	}
+
 	Workspace::WorkspaceContext CreateWorkspaceContext(
 		const TempDirectory& directory)
 	{
@@ -364,6 +499,24 @@ namespace
 			"lateValue: 1\n");
 	}
 
+	void WriteTargetedUpdateFixture(
+		const Workspace::WorkspaceContext& workspaceContext)
+	{
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw",
+			"shared-source-v1");
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: 1\n");
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw2.asset",
+			"fileId: '{TARGETED-UPDATE-SECONDARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: 2\n");
+	}
+
 	void RegisterRawHandler(
 		AssetRegistry& registry,
 		TestAssetInfoHandler& handler)
@@ -373,6 +526,18 @@ namespace
 		Require(
 			registry.RegisterAssetInfoHandler(extensions, &handler),
 			"the scan fixture handler should register for raw assets");
+	}
+
+	void RegisterTargetedUpdateHandler(
+		AssetRegistry& registry,
+		TargetedUpdateAssetInfoHandler& handler)
+	{
+		TVector<std::string> extensions;
+		extensions.Add("raw");
+		extensions.Add("raw2");
+		Require(
+			registry.RegisterAssetInfoHandler(extensions, &handler),
+			"the targeted update handler should register for raw assets");
 	}
 
 	void TestPayloadRoundTrip()
@@ -403,8 +568,14 @@ namespace
 		Require(entry.m_fileId == fileId, "round-tripped entry identity should match its map key");
 		Require(entry.m_assetImportTime == 40, "round-tripped asset import time should be preserved");
 		Require(!entry.m_sourcePath.empty(), "round-tripped source path should be normalized");
-		Require(entry.m_sourceRevision == MakeRevision(),
-			"round-tripped exact source revision should be preserved");
+		const FileRevision expectedRevision = MakeRevision();
+		Require(
+			entry.m_sourceRevision.m_modificationTimeNanoseconds ==
+				expectedRevision.m_modificationTimeNanoseconds &&
+			entry.m_sourceRevision.m_fileSize == expectedRevision.m_fileSize &&
+			entry.m_sourceRevision.m_contentHash == expectedRevision.m_contentHash &&
+			entry.m_sourceRevision.m_bIsValid == expectedRevision.m_bIsValid,
+			"round-tripped serialized source revision fields should be preserved");
 	}
 
 	void TestEmptyPayloadRoundTrip()
@@ -678,9 +849,11 @@ namespace
 			info.GetAssetLastModificationTime(),
 			info.GetMetaLastModificationTime());
 		WriteFile(sourcePath, "source-v2");
-		std::filesystem::last_write_time(sourcePath, initialSourceTime);
+		std::filesystem::last_write_time(
+			sourcePath,
+			initialSourceTime + std::chrono::seconds(2));
 		Require(info.IsAssetExpired(),
-			"a same-timestamp raw content change should expire by runtime revision");
+			"a newer raw source timestamp should expire the runtime revision");
 
 		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
@@ -729,9 +902,11 @@ namespace
 			"fileId: '{ASSET-CACHE-META-EXPIRED}'\n"
 			"testValue: 9\n"
 			"lateValue: 1\n");
-		std::filesystem::last_write_time(metadataPath, initialMetadataTime);
+		std::filesystem::last_write_time(
+			metadataPath,
+			initialMetadataTime + std::chrono::seconds(2));
 		Require(info.IsMetaExpired(),
-			"same-timestamp metadata content changes should expire by runtime revision");
+			"a newer metadata timestamp should expire the runtime revision");
 
 		TestAssetInfoHandler handler;
 		RecordingAssetListener listener;
@@ -802,9 +977,11 @@ namespace
 		Require(cache.IsDirty(), "a no-op update must not clear an already dirty cache");
 		Require(cache.Update(fileId, 91, sourcePath, sourceRevision),
 			"a later successful asset import should change the source watermark");
-		Require(cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 64, 42)),
-			"a changed content hash should change the exact source revision");
-		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456789, 64, 42)),
+		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 64, 42)),
+			"content hash changes must not affect timestamp-based source revisions");
+		Require(!cache.Update(fileId, 91, sourcePath, MakeRevision(123456789, 128, 42)),
+			"file size changes must not affect timestamp-based source revisions");
+		Require(cache.Update(fileId, 91, sourcePath + ".moved", MakeRevision(123456789, 128, 42)),
 			"a source path change should change the cache");
 	}
 
@@ -905,15 +1082,10 @@ namespace
 
 		WriteFile(sourcePath, "source-v4");
 		std::filesystem::last_write_time(sourcePath, backdatedTime);
-		Require(cache.IsExpired(&info),
-			"a same-timestamp same-size content change must expire by content hash");
-		info.SetProcessingTimes(
-			info.GetAssetLastModificationTime(),
-			info.GetMetaLastModificationTime());
-		Require(cache.Update(&info),
-			"the same-timestamp content revision should be acknowledgeable");
 		Require(!cache.IsExpired(&info),
-			"the processed same-timestamp revision should become current");
+			"a same-timestamp same-size edit remains current without content hashing");
+		Require(!cache.Update(&info),
+			"a same-timestamp source revision should remain unchanged");
 		const std::time_t importedSourceTime = info.GetAssetImportTime();
 
 		std::filesystem::last_write_time(metadataPath, initialTime + std::chrono::seconds(4));
@@ -1083,6 +1255,273 @@ namespace
 			"the current successful completion should acknowledge its source revision");
 	}
 
+	void TestTargetedAssetUpdateScopeAndFailureContract()
+	{
+		TempDirectory directory("targeted-asset-update");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(workspaceContext);
+
+		AssetRegistry registry(workspaceContext);
+		TargetedUpdateAssetInfoHandler handler;
+		RecordingTargetedUpdateListener listener;
+		handler.Subscribe(&listener);
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(
+			registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
+			"the targeted update fixture should load");
+
+		const FileId primaryId =
+			MakeFileId("{TARGETED-UPDATE-PRIMARY}");
+		const FileId secondaryId =
+			MakeFileId("{TARGETED-UPDATE-SECONDARY}");
+		auto* primaryInfo = registry.GetAssetInfoPtr<
+			TargetedUpdateAssetInfo*>(primaryId);
+		auto* secondaryInfo = registry.GetAssetInfoPtr<
+			TargetedUpdateAssetInfo*>(secondaryId);
+		Require(
+			primaryInfo != nullptr && secondaryInfo != nullptr,
+			"both AssetInfos sharing one source should be registered");
+
+		listener.Clear();
+		RewriteFileWithNewRevision(
+			workspaceContext.GetContent() / "Shared.raw.asset",
+			"fileId: '{TARGETED-UPDATE-PRIMARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: 11\n");
+		Require(
+			registry.UpdateAsset(primaryId),
+			"a valid metadata-only targeted update should succeed");
+		Require(
+			listener.m_updatedFileIds ==
+				std::vector<FileId>{ primaryId } &&
+				listener.m_expirationFlags ==
+					std::vector<bool>{ true },
+			"metadata-only updates must notify exactly the requested AssetInfo");
+		Require(
+			primaryInfo->GetTestValue() == 11 &&
+				secondaryInfo->GetTestValue() == 2,
+			"metadata-only updates must not mutate a sibling AssetInfo");
+
+		listener.Clear();
+		Require(
+			registry.UpdateAsset(primaryId) &&
+				listener.m_updatedFileIds.empty(),
+			"an already-current targeted asset should be a successful no-op");
+
+		RewriteFileWithNewRevision(
+			workspaceContext.GetContent() / "Shared.raw",
+			"shared-source-v2");
+		Require(
+			registry.UpdateAsset(primaryId),
+			"a shared source update should succeed for its whole AssetInfo family");
+		Require(
+			listener.m_updatedFileIds ==
+				std::vector<FileId>{ primaryId, secondaryId } &&
+				listener.m_expirationFlags ==
+					std::vector<bool>{ true, true },
+			"a changed source must notify every AssetInfo that references it");
+		Require(
+			!primaryInfo->IsAssetExpired() &&
+				!secondaryInfo->IsAssetExpired() &&
+				!registry.IsAssetExpired(primaryInfo) &&
+				!registry.IsAssetExpired(secondaryInfo),
+			"the shared source family should commit one current revision");
+
+		listener.Clear();
+		RewriteFileWithNewRevision(
+			workspaceContext.GetContent() / "Shared.raw2.asset",
+			"fileId: '{TARGETED-UPDATE-SECONDARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: invalid\n");
+		Require(
+			!registry.UpdateAsset(secondaryId),
+			"an invalid targeted metadata reload must report failure");
+		Require(
+			secondaryInfo->GetTestValue() == 2 &&
+				listener.m_updatedFileIds.empty(),
+			"a rejected targeted reload must preserve the live AssetInfo");
+		Require(
+			!registry.UpdateAsset(
+				MakeFileId("{TARGETED-UPDATE-UNKNOWN}")),
+			"an unregistered FileId must report targeted update failure");
+	}
+
+	void TestTargetedAssetUpdateCoalescesCurrentProcessing()
+	{
+		TempDirectory directory("targeted-processing-coalescing");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteTargetedUpdateFixture(workspaceContext);
+
+		AssetRegistry registry(workspaceContext);
+		TargetedUpdateAssetInfoHandler handler;
+		RecordingTargetedUpdateListener listener;
+		handler.Subscribe(&listener);
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(
+			registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
+			"the targeted processing fixture should load");
+
+		const FileId primaryId =
+			MakeFileId("{TARGETED-UPDATE-PRIMARY}");
+		AssetInfoPtr primaryInfo = registry.GetAssetInfoPtr(primaryId);
+		Require(
+			primaryInfo != nullptr,
+			"the targeted processing fixture should expose its primary AssetInfo");
+		listener.Clear();
+
+		const AssetRegistry::AssetProcessingToken activeToken =
+			registry.BeginAssetProcessing(primaryInfo);
+		Require(
+			static_cast<bool>(activeToken),
+			"the targeted asset should begin asynchronous processing");
+		Require(
+			registry.UpdateAsset(primaryId) &&
+				listener.m_updatedFileIds.empty(),
+			"a duplicate targeted request must coalesce with current processing");
+
+		registry.CompleteAssetProcessing(activeToken, false);
+		AssetRegistry::AssetProcessingToken retryToken;
+		listener.m_onUpdate =
+			[&](AssetInfoPtr assetInfo, bool bWasExpired)
+			{
+				Require(
+					bWasExpired,
+					"a rejected processing attempt must remain expired for retry");
+				retryToken = registry.BeginAssetProcessing(assetInfo);
+				Require(
+					static_cast<bool>(retryToken),
+					"the rejected processing attempt should start a new generation");
+				registry.CompleteAssetProcessing(retryToken, true);
+			};
+		Require(
+			registry.UpdateAsset(primaryId),
+			"a rejected processing attempt should be retried by a targeted update");
+		Require(
+			retryToken &&
+				retryToken.m_generation != activeToken.m_generation &&
+				listener.m_updatedFileIds ==
+					std::vector<FileId>{ primaryId },
+			"the retry must publish one new processing generation");
+	}
+
+	void TestScanSourceRevisionCacheIsPhysicalAndPerScan()
+	{
+		TempDirectory directory("scan-source-revision-cache");
+		const std::filesystem::path engineSource =
+			directory.Path("Engine/Content/Shared.glb");
+		const std::filesystem::path workspaceSource =
+			directory.Path("Workspace/Content/Shared.glb");
+		const std::filesystem::path missingSource =
+			directory.Path("Workspace/Content/Missing.glb");
+		WriteFile(engineSource, "engine-source");
+		WriteFile(workspaceSource, "workspace-source-v1");
+
+		AssetScanSourceRevisionCache scanSnapshot;
+		FileRevision engineRevision;
+		FileRevision workspaceRevision;
+		FileRevision memoizedWorkspaceRevision;
+		FileRevision missingRevision;
+		Require(
+			scanSnapshot.TryGet(engineSource.generic_string(), engineRevision) &&
+				scanSnapshot.TryGet(workspaceSource.generic_string(), workspaceRevision),
+			"one scan should capture both physical mount sources");
+		Require(
+			engineRevision != workspaceRevision,
+			"equal virtual paths in different mounts must keep independent physical revisions");
+		Require(
+			!scanSnapshot.TryGet(missingSource.generic_string(), missingRevision),
+			"a missing source should be memoized as a failed scan observation");
+
+		WriteFile(workspaceSource, "workspace-source-v2-with-another-size");
+		WriteFile(missingSource, "appeared-during-scan");
+		const std::filesystem::path equivalentWorkspacePath =
+			workspaceSource.parent_path() / "." / workspaceSource.filename();
+		Require(
+			scanSnapshot.TryGet(
+				equivalentWorkspacePath.generic_string(),
+				memoizedWorkspaceRevision) &&
+				memoizedWorkspaceRevision == workspaceRevision,
+			"one scan should reuse its first source revision for equivalent physical paths");
+		Require(
+			!scanSnapshot.TryGet(missingSource.generic_string(), missingRevision),
+			"a source that appears mid-scan should remain absent from that scan snapshot");
+		std::string changedPath;
+		Require(
+			!scanSnapshot.ValidateAll(changedPath) &&
+				!changedPath.empty(),
+			"commit validation must reject a source snapshot changed during staging");
+
+		AssetScanSourceRevisionCache nextScanSnapshot;
+		FileRevision nextWorkspaceRevision;
+		Require(
+			nextScanSnapshot.TryGet(
+				workspaceSource.generic_string(),
+				nextWorkspaceRevision) &&
+				nextWorkspaceRevision != workspaceRevision,
+			"a new scan must observe a changed physical source revision");
+		Require(
+			nextScanSnapshot.TryGet(missingSource.generic_string(), missingRevision),
+			"a new scan must retry a source that was missing from the previous snapshot");
+	}
+
+	void TestPostCallbackSourceMismatchInvalidatesPriorWatermark()
+	{
+		TempDirectory directory("post-callback-source-mismatch");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+		const FileId fileId =
+			MakeFileId("{ASSET-CACHE-IMPORT-CONTRACT}");
+		const std::filesystem::path sourcePath =
+			workspaceContext.GetContent() / "Retry.raw";
+
+		{
+			AssetRegistry registry(workspaceContext);
+			TestAssetInfoHandler handler;
+			RegisterRawHandler(registry, handler);
+			Require(
+				registry.ScanContentFolder(),
+				"the initial source watermark should commit");
+		}
+
+		AssetCache initialCache;
+		initialCache.Initialize(workspaceContext);
+		Require(
+			initialCache.Contains(fileId),
+			"the initial scan should persist its source watermark");
+
+		WriteFile(sourcePath, "source-v2-with-another-size");
+		{
+			AssetRegistry registry(workspaceContext);
+			TestAssetInfoHandler handler;
+			RecordingAssetListener listener;
+			listener.m_onExpiredUpdate =
+				[&](AssetInfoPtr)
+				{
+					WriteFile(sourcePath, "source-mutated-by-listener");
+				};
+			handler.Subscribe(&listener);
+			RegisterRawHandler(registry, handler);
+			Require(
+				registry.ScanContentFolder(),
+				"the registry generation should commit before the listener mutation is acknowledged");
+			Require(
+				!listener.m_events.empty() &&
+					listener.m_events[0] == "update:true",
+				"the changed source should dispatch an expired update");
+		}
+
+		AssetCache restartedCache;
+		restartedCache.Initialize(workspaceContext);
+		Require(
+			!restartedCache.Contains(fileId),
+			"a post-callback source mismatch must remove the prior cache watermark");
+	}
+
 	void TestRejectedBeginFailsScanAndResetsOnNextScan()
 	{
 		TempDirectory directory("rejected-begin-scan");
@@ -1139,6 +1578,134 @@ namespace
 		Require(
 			registry.CompleteScanProcessing(),
 			"scan processing failure state must reset for the next successful scan");
+	}
+
+	void TestSourceMutationDuringStagingPreservesPreviousGeneration()
+	{
+		TempDirectory directory("source-mutation-during-staging");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+		const std::filesystem::path sourcePath =
+			workspaceContext.GetContent() / "Retry.raw";
+
+		AssetRegistry registry(workspaceContext);
+		TestAssetInfoHandler handler;
+		RegisterRawHandler(registry, handler);
+		Require(
+			registry.ScanContentFolder(),
+			"the initial registry generation should commit");
+		AssetInfoPtr previousInfo = registry.GetAssetInfoPtr(sourcePath.string());
+		Require(previousInfo != nullptr,
+			"the initial registry generation should expose the fixture asset");
+
+		handler.m_onLoad = [&]()
+			{
+				WriteFile(sourcePath, "source-mutated-during-staging");
+			};
+		Require(
+			!registry.ScanContentFolder(),
+			"a source mutation during staging must reject the new generation");
+		Require(
+			registry.GetAssetInfoPtr(sourcePath.string()) == previousInfo,
+			"a rejected staged generation must preserve the previous asset info");
+
+		Require(
+			registry.ScanContentFolder(),
+			"the next stable scan should accept the changed source");
+		Require(
+			registry.GetAssetInfoPtr(sourcePath.string()) != nullptr,
+			"the stable retry must publish the asset again");
+	}
+
+	void TestMetadataMutationDuringPreCommitWaitPreservesPreviousGeneration()
+	{
+		TempDirectory directory("metadata-mutation-during-pre-commit-wait");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+		const std::filesystem::path sourcePath =
+			workspaceContext.GetContent() / "Retry.raw";
+		const std::filesystem::path metadataPath =
+			workspaceContext.GetContent() / "Retry.raw.asset";
+
+		Require(App::GetInstance() == nullptr,
+			"the deterministic pre-commit test requires an isolated App instance");
+		const std::string missingWorkspace =
+			directory.Path("MissingWorkspace").generic_string();
+		const char* appArgs[] = {
+			"AssetCacheContractTests",
+			"--noconsole",
+			"--workspace",
+			missingWorkspace.c_str()
+		};
+		App::Initialize(appArgs, static_cast<int32_t>(std::size(appArgs)));
+
+		try
+		{
+			Require(App::GetInstance() != nullptr,
+				"the isolated App instance should be available to register a scheduler");
+			Require(App::GetSubmodule<Tasks::Scheduler>() == nullptr,
+				"the intentionally invalid workspace must stop App initialization before scheduler startup");
+			Tasks::Scheduler* scheduler = App::AddSubmodule(
+				TSubmodule<Tasks::Scheduler>::Make());
+			scheduler->AttachCurrentThreadAsMainThread();
+
+			{
+				AssetRegistry registry(workspaceContext);
+				TestAssetInfoHandler handler;
+				RegisterRawHandler(registry, handler);
+				Require(
+					registry.ScanContentFolder(),
+					"the initial registry generation should commit");
+				AssetInfoPtr previousInfo = registry.GetAssetInfoPtr(sourcePath.string());
+				Require(previousInfo != nullptr,
+					"the initial registry generation should expose the fixture asset");
+
+				bool bMetadataMutatedDuringWait = false;
+				handler.m_onLoad = [&]()
+					{
+						Tasks::ITaskPtr mutationTask =
+							TSharedPtr<TestMainThreadTask>::Make(
+								[&]()
+								{
+									bMetadataMutatedDuringWait = true;
+									WriteFile(
+										metadataPath,
+										"fileId: '{ASSET-CACHE-IMPORT-CONTRACT}'\n"
+										"filename: Retry.raw\n"
+										"testValue: 8\n"
+										"lateValue: 1\n");
+								});
+						scheduler->Run(mutationTask);
+						Require(!bMetadataMutatedDuringWait,
+							"the metadata mutation must remain queued until the pre-commit wait");
+					};
+
+				Require(
+					!registry.ScanContentFolder(),
+					"a metadata mutation during the pre-commit wait must reject the new generation");
+				Require(bMetadataMutatedDuringWait,
+					"the metadata mutation must execute inside the pre-commit wait");
+				Require(
+					registry.GetAssetInfoPtr(sourcePath.string()) == previousInfo,
+					"a rejected staged generation must preserve the previous asset info");
+
+				Require(
+					registry.ScanContentFolder(),
+					"the next stable scan should accept the changed metadata");
+				Require(
+					registry.GetAssetInfoPtr(sourcePath.string()) != nullptr,
+					"the stable retry must publish the asset again");
+			}
+
+			App::Shutdown();
+		}
+		catch (...)
+		{
+			App::Shutdown();
+			throw;
+		}
 	}
 
 	void TestSynchronousFailedCompletionFailsScan()
@@ -1354,6 +1921,12 @@ int main()
 		TestRemovingFailedProcessingWatermarkForcesRetry();
 		TestInvalidatedProcessingWatermarkPersistsAcrossCacheInstances();
 		TestAssetProcessingSuccessAndStaleCompletionContract();
+		TestTargetedAssetUpdateScopeAndFailureContract();
+		TestTargetedAssetUpdateCoalescesCurrentProcessing();
+		TestScanSourceRevisionCacheIsPhysicalAndPerScan();
+		TestPostCallbackSourceMismatchInvalidatesPriorWatermark();
+		TestSourceMutationDuringStagingPreservesPreviousGeneration();
+		TestMetadataMutationDuringPreCommitWaitPreservesPreviousGeneration();
 		TestRejectedBeginFailsScanAndResetsOnNextScan();
 		TestSynchronousFailedCompletionFailsScan();
 		TestSourceMutationRejectsCompletionAndFailsScan();

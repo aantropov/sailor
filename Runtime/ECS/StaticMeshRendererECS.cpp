@@ -226,6 +226,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						RHI::RHISceneViewProxy proxy;
 						proxy.m_staticMeshEcs = index;
 						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+						proxy.m_frame = ownerTransform.GetFrameLastChange();
 						if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
 						{
 							data.m_skeletonOffset = animator->GetSkeletonOffset();
@@ -248,7 +249,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 #endif
 						for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 						{
-							size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
+							const size_t materialIndex =
+								proxy.m_meshes[i]->ResolveMaterialIndex(
+									i, data.GetMaterials().Num());
 							auto& material = data.GetMaterials()[materialIndex];
 							proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 #if defined(__APPLE__)

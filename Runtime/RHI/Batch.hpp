@@ -8,6 +8,7 @@
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
 #include <limits>
+#include <mutex>
 
 using namespace GraphicsDriver::Vulkan;
 
@@ -71,7 +72,8 @@ namespace Sailor::RHI
 		glm::vec2 depthRange,
 		RHIShaderPtr computeCullingShader,
 		RHIShaderBindingSetPtr& indirectCommandBufferBinding,
-		const TVector<RHIShaderBindingSetPtr>& cullingDistpatchBindings)
+		const TVector<RHIShaderBindingSetPtr>& cullingDistpatchBindings,
+		std::mutex* transferCommandListMutex = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
 
@@ -163,7 +165,15 @@ namespace Sailor::RHI
 				}
 
 				const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+				if (transferCommandListMutex)
+				{
+					std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+					commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+				}
+				else
+				{
+					commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+				}
 				commands->DrawIndexedIndirect(graphicsCmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 				indirectBufferOffset += bufferSize;
 				drawIndirect.Clear();
@@ -210,13 +220,24 @@ namespace Sailor::RHI
 		constants.m_numInstances = totalNumInstances;
 		constants.m_firstInstanceIndex = firstInstanceIndex;
 
-		commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
+		auto recordCullingDispatch = [&]()
+			{
+				commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
+				const uint32_t maxWorkItems = (std::max)(constants.m_numBatches, constants.m_numInstances);
+				const uint32_t dispatchGroupsX = (std::max)(1u, (maxWorkItems + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
+				commands->Dispatch(transferCmdList, computeCullingShader, dispatchGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+				commands->EndDebugRegion(transferCmdList);
+			};
+
+		if (transferCommandListMutex)
 		{
-			const uint32_t maxWorkItems = (std::max)(constants.m_numBatches, constants.m_numInstances);
-			const uint32_t dispatchGroupsX = (std::max)(1u, (maxWorkItems + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
-			commands->Dispatch(transferCmdList, computeCullingShader, dispatchGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+			std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+			recordCullingDispatch();
 		}
-		commands->EndDebugRegion(transferCmdList);
+		else
+		{
+			recordCullingDispatch();
+		}
 	}
 
 	template<typename TPerInstanceData>
@@ -231,7 +252,8 @@ namespace Sailor::RHI
 		RHIBufferPtr& indirectCommandBuffer,
 		glm::ivec4 viewport,
 		glm::uvec4 scissors,
-		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
+		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f),
+		std::mutex* transferCommandListMutex = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
 
@@ -314,7 +336,15 @@ namespace Sailor::RHI
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-			commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			if (transferCommandListMutex)
+			{
+				std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			}
+			else
+			{
+				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+			}
 			commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
 
 			indirectBufferOffset += bufferSize;

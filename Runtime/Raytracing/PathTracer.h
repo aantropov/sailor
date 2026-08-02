@@ -86,6 +86,10 @@ namespace Sailor::Raytracing
 			uint32_t ignoreInstance = (uint32_t)-1, uint32_t ignoreTriangle = (uint32_t)-1) const;
 		const Math::Triangle& GetTriangle(const TLASHit& hit) const;
 		void GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const;
+		static bool OrientShadingBasisAgainstRay(
+			const vec3& rayDirection,
+			vec3& inOutNormal,
+			vec3& inOutBitangent);
 		uint32_t ResolveMaterialIndex(const TLASHit& hit) const;
 
 		vec3 TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor,

@@ -76,7 +76,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCommandList, blurDataBinding, &blurData, sizeof(glm::vec4) * 3);
 	}
 
-	RHIShaderBindingPtr blurDataBinding = driver->AddBufferToShaderBindings(m_pBlurShaderBindings, "data", sizeof(glm::vec4) * 3, 0, RHI::EShaderBindingType::UniformBuffer);
+	RHIShaderBindingPtr blurDataBinding = m_pBlurShaderBindings->GetOrAddShaderBinding("data");
 
 	if (!m_lightMatrices)
 	{

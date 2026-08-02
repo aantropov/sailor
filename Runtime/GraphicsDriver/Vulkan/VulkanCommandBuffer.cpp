@@ -698,6 +698,12 @@ void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 
 void VulkanCommandBuffer::BindPipeline(VulkanComputePipelinePtr pipeline)
 {
+	if (!pipeline || !pipeline->IsCompiled())
+	{
+		SAILOR_LOG_ERROR("VulkanCommandBuffer::BindPipeline: compute pipeline is unavailable.");
+		return;
+	}
+
 	m_rhiDependecies.Insert(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
 

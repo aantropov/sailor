@@ -1,5 +1,6 @@
 #pragma once
 #include "VulkanApi.h"
+#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "VulkanDevice.h"
 #include "RHI/Types.h"
@@ -8,6 +9,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 {
 	class VulkanSampler;
 	class VulkanImageView;
+	class VulkanDescriptorPoolPage;
+
+	using VulkanDescriptorPoolPagePtr = TRefPtr<VulkanDescriptorPoolPage>;
 
 	class VulkanDescriptorSetLayout : public RHI::RHIResource, public RHI::IExplicitInitialization
 	{
@@ -39,18 +43,40 @@ namespace Sailor::GraphicsDriver::Vulkan
 		int32_t m_variableDescriptorBinding = -1;
 	};
 
+	class VulkanDescriptorPoolPage final : public RHI::RHIResource
+	{
+	public:
+		SAILOR_API VulkanDescriptorPoolPage(VulkanDevicePtr pDevice, VkDescriptorPool descriptorPool);
+
+		SAILOR_API operator VkDescriptorPool() const { return m_descriptorPool; }
+
+	protected:
+		SAILOR_API virtual ~VulkanDescriptorPoolPage() override;
+
+		VulkanDevicePtr m_device;
+		VkDescriptorPool m_descriptorPool{ VK_NULL_HANDLE };
+	};
+
 	class VulkanDescriptorPool : public RHI::RHIResource
 	{
 	public:
 		SAILOR_API VulkanDescriptorPool(VulkanDevicePtr pDevice, uint32_t maxSets, const TVector<VkDescriptorPoolSize>& descriptorPoolSizes);
 
-		SAILOR_API operator VkDescriptorPool() const { return m_descriptorPool; }
+		SAILOR_API operator VkDescriptorPool() const { return m_currentPage ? static_cast<VkDescriptorPool>(*m_currentPage) : VK_NULL_HANDLE; }
+		SAILOR_API VkResult AllocateDescriptorSet(VkDescriptorSetAllocateInfo allocateInfo,
+			const TVector<VkDescriptorPoolSize>& descriptorRequirements,
+			VkDescriptorSet& outDescriptorSet,
+			VulkanDescriptorPoolPagePtr& outPoolPage);
 
 	protected:
 		SAILOR_API virtual ~VulkanDescriptorPool();
+		SAILOR_API VkResult CreatePool(const TVector<VkDescriptorPoolSize>* descriptorRequirements = nullptr);
 
-		VkDescriptorPool m_descriptorPool;
+		VulkanDescriptorPoolPagePtr m_currentPage;
 		VulkanDevicePtr m_device;
+		uint32_t m_maxSets = 0;
+		TVector<VkDescriptorPoolSize> m_descriptorPoolSizes;
+		SpinLock m_lock;
 	};
 
 	class VulkanDescriptor : public RHI::RHIResource, public RHI::IStateModifier<VkWriteDescriptorSet>
@@ -102,6 +128,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void SetImageView(VulkanImageViewPtr imageView);
 
 		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+		SAILOR_API VulkanImageViewPtr GetImageView() const { return m_imageView; }
 
 	protected:
 
@@ -122,6 +149,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void SetImageView(VulkanImageViewPtr imageView);
 
 		SAILOR_API virtual void Apply(VkWriteDescriptorSet& writeDescriptorSet) const override;
+		SAILOR_API VulkanImageViewPtr GetImageView() const { return m_imageView; }
 
 	protected:
 
@@ -145,15 +173,18 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanDescriptorSetLayoutPtr m_setLayout;
 		TVector<VulkanDescriptorPtr> m_descriptors;
 
-		SAILOR_API void UpdateDescriptor(uint32_t index);
-
+		SAILOR_API bool UpdateDescriptor(VulkanDescriptorPtr descriptor);
+		SAILOR_API bool TryCompile();
 		SAILOR_API virtual void Compile() override;
 		SAILOR_API virtual void Release() override;
 
 		SAILOR_API VkDescriptorSet* GetHandle() { return &m_descriptorSet; }
 		SAILOR_API operator VkDescriptorSet() const { return m_descriptorSet; }
+		SAILOR_API bool IsCompiled() const { return m_descriptorSet != VK_NULL_HANDLE; }
+		SAILOR_API uint32_t GetVariableDescriptorCount() const { return m_variableDescriptorCount; }
+		SAILOR_API bool ReferencesImageView(uint32_t binding, uint32_t arrayElement, const VulkanImageViewPtr& imageView) const;
 
-		SAILOR_API VulkanDescriptorSetLayoutPtr GetDescriptorSetLayout() { return m_descriptorSetLayout; }
+		SAILOR_API const VulkanDescriptorSetLayoutPtr& GetDescriptorSetLayout() const { return m_descriptorSetLayout; }
 		SAILOR_API bool LikelyContains(VkDescriptorSetLayoutBinding layout) const;
 
 	protected:
@@ -166,13 +197,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API void RecalculateCompatibility();
 
 		VulkanDevicePtr m_device{};
-		VkDescriptorSet m_descriptorSet{};
+		VkDescriptorSet m_descriptorSet{ VK_NULL_HANDLE };
 		VulkanDescriptorPoolPtr m_descriptorPool{};
+		VulkanDescriptorPoolPagePtr m_descriptorPoolPage{};
 		VulkanDescriptorSetLayoutPtr m_descriptorSetLayout{};
 
 		size_t m_compatibilityHashCode = 0;
 		uint32_t m_variableDescriptorCount = 0;
-
-		DWORD m_currentThreadId = 0;
 	};
 }

@@ -104,6 +104,11 @@ namespace Sailor
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};
 			int32_t materialIndex = -1;
+
+			bool HasGeometry() const
+			{
+				return !outVertices.IsEmpty() && !outIndices.IsEmpty();
+			}
 		};
 
 		SAILOR_API ModelImporter(ModelAssetInfoHandler* infoHandler);
@@ -122,8 +127,8 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API void GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
-		SAILOR_API void GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 		static bool ImportModel(
 			const std::string& assetFilepath,

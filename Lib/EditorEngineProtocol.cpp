@@ -910,6 +910,12 @@ namespace
 			SetBoolResult(response, Sailor::App::RequestAssetReload());
 			break;
 
+		case ProtocolRequest::kUpdateAsset:
+			SetBoolResult(
+				response,
+				Sailor::App::UpdateAsset(request.update_asset().file_id().c_str()));
+			break;
+
 		case ProtocolRequest::kGetAssetReloadState:
 		{
 			uint64_t requestGeneration = 0;

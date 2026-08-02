@@ -57,8 +57,6 @@ namespace Sailor
 			appendString(file.m_winnerIdentity);
 			appendUint64(file.m_mountKind);
 			appendUint64(static_cast<uint64_t>(file.m_revision.m_modificationTimeNanoseconds));
-			appendUint64(file.m_revision.m_fileSize);
-			appendUint64(file.m_revision.m_contentHash);
 		}
 
 		return hash == 0 ? 1 : hash;

@@ -611,6 +611,54 @@ namespace
 		Require(data.GetMaterials().IsEmpty(), "clearing a model should clear its stale material overrides");
 	}
 
+	void TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string rendererEcsSource = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const size_t staticUpdateBegin = rendererEcsSource.find(
+			"StaticMeshRendererECS:Update Static Objects");
+		const size_t copySceneViewBegin = rendererEcsSource.find(
+			"void StaticMeshRendererECS::CopySceneView", staticUpdateBegin);
+		Require(staticUpdateBegin != std::string::npos &&
+			copySceneViewBegin > staticUpdateBegin,
+			"static mesh renderer must expose a bounded static-proxy update path");
+
+		const std::string staticUpdateBody = rendererEcsSource.substr(
+			staticUpdateBegin, copySceneViewBegin - staticUpdateBegin);
+		Require(staticUpdateBody.find(
+			"proxy.m_frame = ownerTransform.GetFrameLastChange();") !=
+			std::string::npos,
+			"static mesh proxies must publish transform revisions so moving shadow casters invalidate cached CSM passes");
+	}
+
+	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string lightingEcsSource = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const size_t prepareCsmBegin = lightingEcsSource.find(
+			"LightingECS::PrepareCSMPasses");
+		const size_t fillLightingBegin = lightingEcsSource.find(
+			"void LightingECS::FillLightingData", prepareCsmBegin);
+		Require(prepareCsmBegin != std::string::npos &&
+			fillLightingBegin > prepareCsmBegin,
+			"lighting ECS must expose a bounded CSM preparation path");
+
+		const std::string prepareCsmBody = lightingEcsSource.substr(
+			prepareCsmBegin, fillLightingBegin - prepareCsmBegin);
+		const size_t traceScene = prepareCsmBody.find(
+			"cascade.m_meshList = sceneView->TraceScene");
+		const size_t captureCaster = prepareCsmBody.find(
+			"snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });");
+		const size_t filterDependency = prepareCsmBody.find(
+			"cascade.m_meshList.RemoveAll");
+		Require(traceScene != std::string::npos &&
+			captureCaster > traceScene &&
+			filterDependency > captureCaster,
+			"CSM invalidation snapshots must capture the complete traced caster list before dependency draw-call filtering");
+	}
+
 	void TestAnimationGpuBoneLayoutContract()
 	{
 		const uint32_t invalidOffset = AnimatorComponentData::InvalidGpuOffset;
@@ -975,6 +1023,111 @@ namespace
 		FileId fileId;
 		fileId.Deserialize(YAML::Node(value));
 		return fileId;
+	}
+
+	void TestMeshRendererMaterialOverridesAreReflectedAndPersisted()
+	{
+		auto areOverridesEquivalent = [](const TVector<FileId>& lhs, const TVector<FileId>& rhs)
+			{
+				if (lhs.Num() != rhs.Num())
+				{
+					return false;
+				}
+
+				for (size_t materialIndex = 0; materialIndex < lhs.Num(); ++materialIndex)
+				{
+					if (static_cast<bool>(lhs[materialIndex]) != static_cast<bool>(rhs[materialIndex]) ||
+						(lhs[materialIndex] && lhs[materialIndex] != rhs[materialIndex]))
+					{
+						return false;
+					}
+				}
+
+				return true;
+			};
+
+		const auto& properties = MeshRendererComponent::GetStaticTypeInfo().Properties();
+		Require(properties.ContainsKey("overrideMaterials") &&
+			properties["overrideMaterials"] == "List<FileId>",
+			"mesh renderer material overrides must be exported as an editable FileId list");
+
+		PrefabTestWorld world;
+		auto root = world.Instantiate("MaterialOverrides");
+		auto meshRenderer = root->AddComponent<MeshRendererComponent>();
+		Require(meshRenderer->GetOverrideMaterials().IsEmpty(),
+			"a mesh renderer must not copy model defaults into its authored material overrides");
+		const ReflectedData defaultReflection = meshRenderer->GetReflectedData();
+		const bool bHasDefaultOverrides =
+			defaultReflection.GetProperties().ContainsKey("overrideMaterials");
+		const YAML::Node defaultOverrides = bHasDefaultOverrides
+			? defaultReflection.GetProperties()["overrideMaterials"]
+			: YAML::Node();
+		Require(!bHasDefaultOverrides || defaultOverrides.IsNull() ||
+			(defaultOverrides.IsSequence() && defaultOverrides.size() == 0),
+			"a mesh renderer must omit or serialize its default material override list as empty: " +
+			YAML::Dump(defaultOverrides));
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string componentSource = ReadText(
+			sourceRoot / "Runtime/Components/MeshRendererComponent.cpp");
+		const size_t rebuildBegin = componentSource.find(
+			"void MeshRendererComponent::RebuildMaterials()");
+		const size_t rebuildEnd = componentSource.find(
+			"bool MeshRendererComponent::LoadModel", rebuildBegin);
+		Require(rebuildBegin != std::string::npos && rebuildEnd != std::string::npos,
+			"mesh renderer must expose its material rebuild path");
+		const std::string rebuildBody = componentSource.substr(
+			rebuildBegin, rebuildEnd - rebuildBegin);
+		Require(rebuildBody.find("LoadDefaultMaterials(model->GetFileId(), materials)") != std::string::npos,
+			"an empty override list must continue resolving the model's default runtime materials");
+		Require(rebuildBody.find("m_overrideMaterials = modelInfo->GetDefaultMaterials()") == std::string::npos,
+			"model defaults must not become serialized component overrides");
+
+		const FileId firstMaterial =
+			DeserializeFileId("{11111111-AAAA-BBBB-CCCC-111111111111}");
+		const FileId secondMaterial =
+			DeserializeFileId("{22222222-AAAA-BBBB-CCCC-222222222222}");
+		TVector<FileId> overrides{ firstMaterial, FileId::Invalid, secondMaterial };
+
+		meshRenderer->SetOverrideMaterials(overrides);
+		Require(meshRenderer->GetOverrideMaterials() == overrides,
+			"assigning material overrides must preserve their slot order and inherited gaps");
+		Require(meshRenderer->GetData().IsDirty(),
+			"assigning material overrides must invalidate the renderer ECS data");
+
+		const ReflectedData reflection = meshRenderer->GetReflectedData();
+		Require(reflection.GetProperties().ContainsKey("overrideMaterials"),
+			"mesh renderer reflection must contain material overrides");
+		const YAML::Node& reflectedOverrides =
+			reflection.GetProperties()["overrideMaterials"];
+		Require(reflectedOverrides.IsSequence(),
+			"mesh renderer reflection must serialize material overrides as a sequence: " +
+			YAML::Dump(reflectedOverrides));
+		Require(areOverridesEquivalent(
+				reflectedOverrides.as<TVector<FileId>>(), overrides),
+			"mesh renderer reflection must serialize every override material slot: " +
+			YAML::Dump(reflectedOverrides));
+
+		PrefabPtr captured = PrefabDocumentTestAsset::Capture(world, root);
+		const YAML::Node serializedPrefab = captured->Serialize();
+		world.DestroyImmediate(root);
+
+		PrefabPtr restoredPrefab = DeserializePrefab(world, serializedPrefab);
+		auto restoredRoot = world.Instantiate(restoredPrefab, true);
+		Require(static_cast<bool>(restoredRoot),
+			"a prefab containing material overrides must survive a YAML round trip");
+		auto restoredRenderer = restoredRoot->GetComponent<MeshRendererComponent>();
+		Require(restoredRenderer && areOverridesEquivalent(
+			restoredRenderer->GetOverrideMaterials(), overrides),
+			"prefab instantiation must restore component-owned material overrides");
+
+		restoredRenderer->SetModel(ModelPtr());
+		Require(areOverridesEquivalent(
+			restoredRenderer->GetOverrideMaterials(), overrides),
+			"an unresolved or null model must not discard serialized material overrides");
+		Require(restoredRenderer->GetMaterials().IsEmpty(),
+			"a null model must clear resolved runtime materials while preserving override IDs");
+		world.Clear();
 	}
 
 	InstanceId DeserializeInstanceId(const char* value)
@@ -3143,6 +3296,9 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
+		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
+		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },
 		{ "EmptyEditorWorldBootstrapContract", TestEmptyEditorWorldBootstrapContract },

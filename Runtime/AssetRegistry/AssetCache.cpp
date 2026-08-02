@@ -242,7 +242,8 @@ YAML::Node AssetCache::AssetCacheData::Serialize() const
 	YAML::Node assets(YAML::NodeType::Map);
 	for (const auto& entry : m_data)
 	{
-		assets[entry.m_first] = entry.m_second;
+		// FileIds are unique in m_data, so avoid YAML's linear key lookup for every entry.
+		assets.force_insert(entry.m_first.ToString(), entry.m_second.Serialize());
 	}
 	result["assets"] = assets;
 	return result;

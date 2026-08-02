@@ -1381,6 +1381,18 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 	}
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
+	const VulkanDescriptorSetLayoutPtr& descriptorSetLayout = descriptorSet->GetDescriptorSetLayout();
+
+	// A descriptor set with a variable-count binding (textureSamplers[] here) is
+	// allocated against its complete layout up front. When that layout is
+	// structurally compatible with the pipeline, populated texture slots do not
+	// participate in compatibility and must not be scanned.
+	if (layout->HasVariableDescriptorBinding() &&
+		descriptorSetLayout &&
+		*layout == *descriptorSetLayout)
+	{
+		return true;
+	}
 
 	for (const VulkanDescriptorPtr& descriptor : descriptorSet->m_descriptors)
 	{

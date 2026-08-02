@@ -353,6 +353,73 @@ static class Templates
         return grid;
     }
 
+    public static View FileIdListEditor(
+        ObservableFileIdList fileIds,
+        Type supportedType = null)
+    {
+        var listEditor = new CollectionView
+        {
+            ItemsSource = fileIds.Values,
+            HorizontalOptions = LayoutOptions.Fill,
+            ItemTemplate = new DataTemplate(() =>
+            {
+                var row = new Grid
+                {
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition { Width = GridLength.Auto },
+                        new ColumnDefinition { Width = GridLength.Star }
+                    },
+                    ColumnSpacing = InspectorFieldSpacing,
+                    HorizontalOptions = LayoutOptions.Fill
+                };
+
+                row.BindingContextChanged += (sender, args) =>
+                {
+                    row.Children.Clear();
+                    if (row.BindingContext is not Observable<FileId> fileId)
+                    {
+                        return;
+                    }
+
+                    var removeButton = new Button { Text = "-" };
+                    removeButton.Clicked += (buttonSender, clickArgs) =>
+                        fileIds.Values.Remove(fileId);
+
+                    row.Add(removeButton, 0, 0);
+                    row.Add(
+                        FileIdEditor(
+                            fileId,
+                            nameof(Observable<FileId>.Value),
+                            static (Observable<FileId> vm) => vm.Value,
+                            static (vm, value) => vm.Value = value,
+                            supportedType),
+                        1,
+                        0);
+                };
+
+                return row;
+            })
+        };
+
+        var addButton = new Button { Text = "+" };
+        addButton.Clicked += (sender, args) =>
+            fileIds.Values.Add(new Observable<FileId>(new FileId()));
+
+        var clearButton = new Button { Text = "Clear" };
+        clearButton.Clicked += (sender, args) => fileIds.Values.Clear();
+
+        return new VerticalStackLayout
+        {
+            HorizontalOptions = LayoutOptions.Fill,
+            Children =
+            {
+                new HorizontalStackLayout { Children = { addButton, clearButton } },
+                listEditor
+            }
+        };
+    }
+
     public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
         where TBindingContext : class
     {

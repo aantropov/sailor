@@ -6,6 +6,7 @@
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -13,8 +14,6 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "RHI/Texture.h"
 #include <glm/gtc/random.hpp>
-#include <glm/gtx/matrix_transform_2d.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <algorithm>
 #include <functional>
 #include <thread>
@@ -101,53 +100,6 @@ namespace
 		float m_hFov = DefaultHfov;
 	};
 
-	glm::mat4 ComposeNodeMatrix(const tinygltf::Node& node)
-	{
-		if (node.matrix.size() == 16)
-		{
-			glm::mat4 m(1.0f);
-			for (int32_t col = 0; col < 4; col++)
-			{
-				for (int32_t row = 0; row < 4; row++)
-				{
-					m[col][row] = static_cast<float>(node.matrix[col * 4 + row]);
-				}
-			}
-			return m;
-		}
-
-		glm::vec3 translation(0.0f);
-		glm::vec3 scale(1.0f);
-		glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
-
-		if (node.translation.size() == 3)
-		{
-			translation = glm::vec3(
-				static_cast<float>(node.translation[0]),
-				static_cast<float>(node.translation[1]),
-				static_cast<float>(node.translation[2]));
-		}
-
-		if (node.scale.size() == 3)
-		{
-			scale = glm::vec3(
-				static_cast<float>(node.scale[0]),
-				static_cast<float>(node.scale[1]),
-				static_cast<float>(node.scale[2]));
-		}
-
-		if (node.rotation.size() == 4)
-		{
-			rotation = glm::quat(
-				static_cast<float>(node.rotation[3]),
-				static_cast<float>(node.rotation[0]),
-				static_cast<float>(node.rotation[1]),
-				static_cast<float>(node.rotation[2]));
-		}
-
-		return glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation) * glm::scale(glm::mat4(1.0f), scale);
-	}
-
 	void ResolveViewAndDirectionalLights(const tinygltf::Model& gltfModel, const PathTracer::Params& params, const Math::Sphere& sceneBounds, PathTracerView& outView, TVector<DirectionalLight>& outLights)
 	{
 		const vec3 sceneCenter = sceneBounds.m_center;
@@ -177,7 +129,14 @@ namespace
 			}
 
 			const tinygltf::Node& node = gltfModel.nodes[nodeIndex];
-			const glm::mat4 world = parentMatrix * ComposeNodeMatrix(node);
+			glm::mat4 localTransform(1.0f);
+			if (!GltfImporterUtils::TryComposeNodeMatrix(
+					node,
+					localTransform))
+			{
+				return;
+			}
+			const glm::mat4 world = parentMatrix * localTransform;
 
 			if (node.camera >= 0 && node.camera < (int32_t)gltfModel.cameras.size())
 			{
@@ -1427,10 +1386,48 @@ void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outT
 		hit.m_hit.m_barycentricCoordinate.z * tri.m_bitangent[2];
 
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const glm::mat3 linearMatrix = glm::mat3(instance.m_worldMatrix);
 	const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
-	outNormal = glm::normalize(normalMatrix * localNormal);
-	outTangent = glm::normalize(normalMatrix * localTangent);
-	outBitangent = glm::normalize(normalMatrix * localBitangent);
+	outNormal = Math::SafeNormalize(
+		normalMatrix * localNormal,
+		Math::vec3_Up);
+
+	const vec3 transformedTangent = linearMatrix * localTangent;
+	outTangent = Math::SafeNormalize(
+		transformedTangent - outNormal * glm::dot(outNormal, transformedTangent));
+	if (outTangent == Math::vec3_Zero)
+	{
+		const vec3 fallbackAxis = std::abs(outNormal.y) < 0.999f ?
+			Math::vec3_Up : Math::vec3_Right;
+		outTangent = Math::SafeNormalize(
+			glm::cross(fallbackAxis, outNormal),
+			Math::vec3_Right);
+	}
+
+	const vec3 transformedBitangent = linearMatrix * localBitangent;
+	const vec3 canonicalBitangent = Math::SafeNormalize(
+		glm::cross(outNormal, outTangent),
+		Math::vec3_Forward);
+	const float handedness =
+		glm::dot(canonicalBitangent, transformedBitangent) < 0.0f ?
+		-1.0f : 1.0f;
+	outBitangent = canonicalBitangent * handedness;
+}
+
+bool PathTracer::OrientShadingBasisAgainstRay(
+	const vec3& rayDirection,
+	vec3& inOutNormal,
+	vec3& inOutBitangent)
+{
+	const bool bIsOppositeRay =
+		glm::dot(inOutNormal, rayDirection) < 0.0f;
+	if (!bIsOppositeRay)
+	{
+		inOutNormal *= -1.0f;
+		inOutBitangent *= -1.0f;
+	}
+
+	return bIsOppositeRay;
 }
 
 uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
@@ -1511,11 +1508,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 		vec3 faceNormal{}, tangent{}, bitangent{};
 		GetShadingBasis(hit, faceNormal, tangent, bitangent);
 
-		const bool bIsOppositeRay = dot(faceNormal, ray.GetDirection()) < 0.0f;
-		if (!bIsOppositeRay)
-		{
-			faceNormal *= -1.0f;
-		}
+		const bool bIsOppositeRay = OrientShadingBasisAgainstRay(
+			ray.GetDirection(),
+			faceNormal,
+			bitangent);
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 

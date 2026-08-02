@@ -63,8 +63,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API VulkanImageViewPtr GetBackBuffer() const;
 		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;
-		SAILOR_API VulkanSemaphorePtr GetLastSubmittedRenderFinishedSemaphore() const { return m_lastSubmittedRenderFinishedSemaphore; }
-		SAILOR_API VulkanSemaphorePtr GetLastSubmittedSceneViewMainResolvedSemaphore() const { return m_lastSubmittedSceneViewMainResolvedSemaphore; }
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 		SAILOR_API bool SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
@@ -201,9 +199,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Frame sync
 		TVector<VulkanSemaphorePtr> m_imageAvailableSemaphores;
 		TVector<VulkanSemaphorePtr> m_renderFinishedSemaphores;
-		TVector<VulkanSemaphorePtr> m_sceneViewMainResolvedSemaphores;
-		VulkanSemaphorePtr m_lastSubmittedRenderFinishedSemaphore;
-		VulkanSemaphorePtr m_lastSubmittedSceneViewMainResolvedSemaphore;
 		TVector<VulkanFencePtr> m_syncFences;
 		TVector<VulkanFencePtr> m_syncImages;
 		size_t m_currentFrame = 0;

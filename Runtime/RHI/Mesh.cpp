@@ -13,7 +13,7 @@ bool RHIMesh::IsReady() const
 {
 	return m_vertexBuffer && m_indexBuffer && 
 		m_vertexBuffer->GetSize() > 0 && m_indexBuffer->GetSize() > 0 
-		&& m_dependencies.Num() == 0;
+		&& IDelayedInitialization::IsReady();
 }
 
 uint32_t RHIMesh::GetIndexCount() const
@@ -29,4 +29,18 @@ uint32_t RHIMesh::GetFirstIndex() const
 uint32_t RHIMesh::GetVertexOffset() const
 {
 	return m_vertexBuffer->GetOffset() / (uint32_t)m_vertexDescription->GetVertexStride();
+}
+
+size_t RHIMesh::ResolveMaterialIndex(
+	size_t meshIndex,
+	size_t numMaterials) const
+{
+	if (numMaterials == 0)
+	{
+		return (std::numeric_limits<size_t>::max)();
+	}
+
+	return m_materialIndex < numMaterials ?
+		static_cast<size_t>(m_materialIndex) :
+		(std::min)(meshIndex, numMaterials - 1);
 }

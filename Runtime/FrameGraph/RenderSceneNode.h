@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/RenderSceneTextureCache.h"
 #include "RHI/Batch.hpp"
 
 namespace Sailor::Framegraph
@@ -66,6 +67,8 @@ namespace Sailor::Framegraph
 			RHI::RHIShaderBindingSetPtr m_textureBindings;
 			uint32_t m_textureSetSize = 1;
 			uint64_t m_lastUsedFrame = 0;
+			uint64_t m_sourceDescriptorRevision = 0;
+			TVector<uint64_t> m_sourceSlotRevisions;
 		};
 
 		RHI::RHIShaderBindingSetPtr GetTextureBindingSet(const TSet<uint32_t>& requestedTextures, uint64_t frame, uint32_t& outSupportedMeshesPerBatch);

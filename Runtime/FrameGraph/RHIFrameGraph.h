@@ -48,7 +48,7 @@ namespace Sailor::RHI
 
 		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView,
+		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr inSignalSemaphore,

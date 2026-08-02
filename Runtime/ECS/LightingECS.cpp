@@ -284,6 +284,21 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			// For EVSM only 1st cascade is EVSM
 			cascade.m_shadowType = k > 0 ? RHI::EShadowType::PCF : directionalLight.m_shadowType;
 
+			// Track every caster that affects this cascade before removing draw-call
+			// duplicates. Casters removed below are still rendered into this shadow map
+			// through m_internalCommandsList, so they must participate in invalidation.
+			CSMLightState snapshot{};
+			snapshot.m_componentIndex = directionalLight.m_index;
+			snapshot.m_cameraTransform = cameraTransform;
+			snapshot.m_lightTransform = directionalLight.m_lightTransform;
+			snapshot.m_lightMatrix = lightMatrix;
+			snapshot.m_snapshot.Reserve(cascade.m_meshList.Num());
+
+			for (const auto& m : cascade.m_meshList)
+			{
+				snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });
+			}
+
 			if (k > 0)
 			{
 				int32_t shift = -1;
@@ -311,19 +326,6 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + shift);
 					}
 				}
-			}
-
-			// Track changes
-			CSMLightState snapshot{};
-			snapshot.m_componentIndex = directionalLight.m_index;
-			snapshot.m_cameraTransform = cameraTransform;
-			snapshot.m_lightTransform = directionalLight.m_lightTransform;
-			snapshot.m_lightMatrix = lightMatrix;
-			snapshot.m_snapshot.Reserve(cascade.m_meshList.Num());
-
-			for (const auto& m : cascade.m_meshList)
-			{
-				snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });
 			}
 
 			if (snapshotIndex < m_csmSnapshots.Num())
