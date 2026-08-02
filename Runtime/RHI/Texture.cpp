@@ -5,6 +5,8 @@
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 
+#include <algorithm>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -17,7 +19,14 @@ glm::ivec2 RHITexture::GetExtent() const
 	}
 
 	const uint32_t baseMipLevel = m_vulkan.m_imageView->m_subresourceRange.baseMipLevel;
-	return glm::vec2(m_vulkan.m_image->m_extent.width, m_vulkan.m_image->m_extent.height) / powf(2, static_cast<float>(baseMipLevel));
+	auto getMipDimension = [baseMipLevel](uint32_t baseDimension)
+		{
+			return baseMipLevel < 32u ? (std::max)(1u, baseDimension >> baseMipLevel) : 1u;
+		};
+
+	return glm::ivec2(
+		getMipDimension(m_vulkan.m_image->m_extent.width),
+		getMipDimension(m_vulkan.m_image->m_extent.height));
 }
 
 EFormat RHITexture::GetFormat() const

@@ -802,9 +802,24 @@ namespace Sailor::RHI
 		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
 	};
 
+	struct DrawCallStats
+	{
+		uint32_t m_numBatches = 0u;
+		uint32_t m_numInstances = 0u;
+
+		DrawCallStats& operator+=(const DrawCallStats& rhs)
+		{
+			m_numBatches += rhs.m_numBatches;
+			m_numInstances += rhs.m_numInstances;
+			return *this;
+		}
+	};
+
 	struct Stats
 	{
-		uint32_t m_gpuFps;
+		std::atomic<uint32_t> m_gpuFps = 0u;
+		std::atomic<uint32_t> m_numBatches = 0u;
+		std::atomic<uint32_t> m_numInstances = 0u;
 		size_t m_gpuHeapBudget;
 		size_t m_gpuHeapUsage;
 		uint32_t m_numSubmittedCommandBuffers;

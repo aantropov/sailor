@@ -47,6 +47,7 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -251,7 +252,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				if (passes[index].Num() > 0)
 				{
-					RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, transferCommandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
+					m_drawCallStats += RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, transferCommandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
 						glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
 						glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 						glm::vec2(0.0f, 1.0f));
@@ -263,7 +264,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 					if (numBatches > 0)
 					{
-						RHIDrawCall(0, numBatches, passes[dependencyPass], commandList, shaderBindingsByMaterial,
+						m_drawCallStats += RHIDrawCall(0, numBatches, passes[dependencyPass], commandList, shaderBindingsByMaterial,
 							drawCalls[dependencyPass], m_indirectBuffers[dependencyPass],
 							glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
 							glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
@@ -317,6 +318,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							0, 1.0f);
 
 						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+						m_drawCallStats.m_numBatches++;
+						m_drawCallStats.m_numInstances++;
 						commands->EndRenderPass(commandList);
 
 						commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ColorAttachmentOptimal);
@@ -351,6 +354,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							0, 1.0f);
 
 						commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+						m_drawCallStats.m_numBatches++;
+						m_drawCallStats.m_numInstances++;
 						commands->EndRenderPass(commandList);
 					}
 					commands->EndDebugRegion(commandList);

@@ -128,17 +128,38 @@ glslVertex: |
   
   void main() 
   {
-    vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+    vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
-    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+    gl_Position = frame.projection * (frame.view * vertexPosition);
+
+    mat3 linearMatrix = mat3(modelMatrix);
+    mat3 normalMatrix = transpose(inverse(linearMatrix));
+    vec3 normal = normalize(normalMatrix * inNormal);
+
+    vec3 tangent = linearMatrix * inTangent;
+    tangent -= normal * dot(normal, tangent);
+    float tangentLengthSquared = dot(tangent, tangent);
+    if(tangentLengthSquared > 1e-8)
+    {
+      tangent *= inversesqrt(tangentLengthSquared);
+    }
+    else
+    {
+      vec3 fallbackAxis = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+      tangent = normalize(cross(fallbackAxis, normal));
+    }
+
+    vec3 transformedBitangent = linearMatrix * inBitangent;
+    float handedness = dot(cross(normal, tangent), transformedBitangent) < 0.0 ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(normal, tangent)) * handedness;
 
     vout.color = inColor;
-    vout.normal = normalize(worldNormal.xyz);
+    vout.normal = normal;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[gl_InstanceIndex].materialInstance;
-    vout.tangentBasis = mat3(data.instance[gl_InstanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
+    vout.tangentBasis = mat3(tangent, bitangent, normal);
   }
 
 glslFragment: |

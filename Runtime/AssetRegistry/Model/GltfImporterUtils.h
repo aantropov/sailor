@@ -4,6 +4,7 @@
 #include "Core/Defines.h"
 
 #include <glm/mat4x4.hpp>
+#include <glm/mat3x3.hpp>
 
 #include <cstdint>
 #include <string>
@@ -23,6 +24,16 @@ namespace Sailor::GltfImporterUtils
 		int32_t m_skinIndex = -1;
 		glm::mat4 m_worldTransform{ 1.0f };
 	};
+
+	struct MeshInstanceTransforms
+	{
+		glm::mat4 m_geometryTransform{ 1.0f };
+		glm::mat3 m_directionTransform{ 1.0f };
+	};
+
+	SAILOR_SHARED_API MeshInstanceTransforms ResolveMeshInstanceTransforms(
+		const MeshInstance& instance,
+		float unitScale);
 
 	SAILOR_SHARED_API bool LoadModel(
 		const std::string& assetFilepath,

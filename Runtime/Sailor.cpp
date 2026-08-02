@@ -793,7 +793,7 @@ void App::Start()
 
 			char Buff[256];
 			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
-				stats.m_gpuFps,
+				stats.m_gpuFps.load(std::memory_order_relaxed),
 				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
 				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f),

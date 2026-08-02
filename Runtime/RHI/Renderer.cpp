@@ -406,6 +406,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 				{
 					RHISemaphorePtr chainSemaphore{};
 					bool bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
+					DrawCallStats drawCallStats;
 
 					if (bFrameSubmitsSucceeded && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 					{
@@ -429,6 +430,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						else
 						{
 							chainSemaphore = frameGraphChainSemaphore;
+							drawCallStats = rhiFrameGraph->GetDrawCallStats();
 						}
 					}
 
@@ -471,14 +473,24 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						}
 					}
 
-					if (bFrameSubmitsSucceeded && bHasSwapchainImage && m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
+					bool bFrameCompleted = false;
+					if (bFrameSubmitsSucceeded)
 					{
+						bFrameCompleted = bHasSwapchainImage
+							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate)
+							: App::HasEditor() && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate);
+					}
+
+					if (bFrameCompleted)
+					{
+						m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
+						m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
 						totalFramesCount++;
 						timer.Stop();
 
 						if (timer.ResultAccumulatedMs() > 1000)
 						{
-							m_stats.m_gpuFps = totalFramesCount;
+							m_stats.m_gpuFps.store(totalFramesCount, std::memory_order_relaxed);
 							totalFramesCount = 0;
 							timer.Clear();
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -495,11 +507,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 					else
 					{
-						if (!bFrameSubmitsSucceeded ||
-							!(App::HasEditor() && !bHasSwapchainImage && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate)))
-						{
-							m_stats.m_gpuFps = 0;
-						}
+						m_stats.m_gpuFps.store(0u, std::memory_order_relaxed);
+						m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
+						m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
 					}
 				}
 				else

@@ -15,6 +15,8 @@ glslCompute: |
     uint numBatches;
     uint numInstances;
     uint firstInstanceIndex;
+    uint phase;
+    uint enableOcclusion;
   } PushConstants;
   
   struct PerInstanceData
@@ -61,6 +63,26 @@ glslCompute: |
   
   shared ViewFrustum frustum;
 
+  float ConservativeSphereScale(mat4 model)
+  {
+    vec3 column0 = abs(model[0].xyz);
+    vec3 column1 = abs(model[1].xyz);
+    vec3 column2 = abs(model[2].xyz);
+
+    float matrixOneNorm = max(max(
+      column0.x + column0.y + column0.z,
+      column1.x + column1.y + column1.z),
+      column2.x + column2.y + column2.z);
+    float matrixInfinityNorm = max(max(
+      column0.x + column1.x + column2.x,
+      column0.y + column1.y + column2.y),
+      column0.z + column1.z + column2.z);
+
+    // The spectral norm is bounded by sqrt(||M||1 * ||M||inf). Unlike using
+    // only model[0], this remains conservative for non-uniform scale and shear.
+    return sqrt(matrixOneNorm * matrixInfinityNorm);
+  }
+
   bool OcclusionCulling(uint instanceIndex)
   {
     ivec2 depthHighZSize = textureSize(depthHighZ, 0);
@@ -70,25 +92,47 @@ glslCompute: |
     center.xyz /= center.w;
     center.z *= -1.0f;
     
-    float lossyScale = length(data.instance[instanceIndex].model[0].xyz);
-    float radius = sphereBounds.w * lossyScale;
+    float radius = sphereBounds.w * ConservativeSphereScale(data.instance[instanceIndex].model);
     
     vec4 aabb;
     if (ProjectSphere(center.xyz, radius, frame.cameraZNearZFar.x, frame.projection[0][0], frame.projection[1][1], aabb))
     {   
-      float width = (aabb.z - aabb.x) * depthHighZSize.x;
-      float height = (aabb.w - aabb.y) * depthHighZSize.y;
+      vec4 clippedAabb = clamp(aabb, vec4(0.0), vec4(1.0));
+      float width = max((clippedAabb.z - clippedAabb.x) * depthHighZSize.x, 1.0);
+      float height = max((clippedAabb.w - clippedAabb.y) * depthHighZSize.y, 1.0);
     
-      //find the mipmap level that will match the screen size of the sphere
-      float level = floor(log2(max(width, height)));
+      // Pick a mip whose texel covers the whole projected sphere and clamp it
+      // to the actual pyramid. A lower mip can miss an occluder discontinuity.
+      float maxLevel = float(max(textureQueryLevels(depthHighZ) - 1, 0));
+      float level = clamp(ceil(log2(max(width, height))), 0.0, maxLevel);
     
-      //sample the depth pyramid at that specific level
-      vec2 uv = (aabb.xy + aabb.zw) * 0.5;
-      float depth = textureLod(depthHighZ, uv, level).x;
+      // The projected rectangle can cross a mip texel boundary even when its
+      // dimensions fit one texel. Reduce every touched texel so a single center
+      // sample cannot reject geometry at an occluder edge.
+      int mipLevel = int(level);
+      ivec2 mipSize = textureSize(depthHighZ, mipLevel);
+      ivec2 texelBegin = clamp(
+        ivec2(floor(clippedAabb.xy * vec2(mipSize))),
+        ivec2(0),
+        mipSize - ivec2(1));
+      ivec2 texelEnd = clamp(
+        ivec2(ceil(clippedAabb.zw * vec2(mipSize))) - ivec2(1),
+        texelBegin,
+        mipSize - ivec2(1));
+
+      float depth = texelFetch(depthHighZ, texelBegin, mipLevel).x;
+      for (int y = texelBegin.y; y <= texelEnd.y; ++y)
+      {
+        for (int x = texelBegin.x; x <= texelEnd.x; ++x)
+        {
+          depth = min(depth, texelFetch(depthHighZ, ivec2(x, y), mipLevel).x);
+        }
+      }
     
       float depthSphere = frame.cameraZNearZFar.x / (center.z - radius);
     
-      //if the depth of the sphere is in front of the depth pyramid value, then the object is visible
+      // Reverse-Z: the sphere is occluded only when its nearest depth is still
+      // behind the farthest occluder depth stored for the selected footprint.
       return depthSphere < depth;
     }
     
@@ -103,8 +147,7 @@ glslCompute: |
     center.xyz /= center.w;
     center.z *= -1.0f;
 
-    float lossyScale = length(data.instance[instanceIndex].model[0].xyz);
-    float radius = sphereBounds.w * lossyScale;
+    float radius = sphereBounds.w * ConservativeSphereScale(data.instance[instanceIndex].model);
 
     bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
   
@@ -113,53 +156,41 @@ glslCompute: |
   
   layout(local_size_x = GPU_CULLING_GROUP_SIZE) in;
   void main()
-  { 
-    // Step 1: Calculate View Frustum
-    if (gl_LocalInvocationIndex == 0)
-    {
-        frustum = CreateViewFrustum(frame.viewportSize, frame.invProjection);
-    }
-    
-    barrier();
-   
-    // Step 2: Perform culling (split instances by threads)
+  {
     uint globalIndex = gl_GlobalInvocationID.x;
-    uint threadCount = gl_NumWorkGroups.x * GPU_CULLING_GROUP_SIZE;
-    uint instancePerThread = (PushConstants.numInstances + threadCount - 1) / threadCount;
-    uint instanceEnd = PushConstants.firstInstanceIndex + PushConstants.numInstances;
-        
-    for (uint i = 0; i < instancePerThread; i++)
+
+    if (PushConstants.phase == 0)
     {
-        uint instanceId = PushConstants.firstInstanceIndex + i + globalIndex * instancePerThread;
-        
-        if(instanceId >= instanceEnd)
-        {
-            break;
-        }
-        
+      // Step 1: Calculate View Frustum
+      if (gl_LocalInvocationIndex == 0)
+      {
+        frustum = CreateViewFrustum(frame.viewportSize, frame.invProjection);
+      }
+
+      barrier();
+
+      // Step 2: Perform culling. Compaction is a separate dispatch because a
+      // GLSL workgroup barrier cannot synchronize multiple workgroups.
+      if (globalIndex < PushConstants.numInstances)
+      {
+        uint instanceId = PushConstants.firstInstanceIndex + globalIndex;
+
+        bool bIsCulled = FrustumCulling(instanceId);
         #ifdef OCCLUSION_CULLING
-          bool bIsCulled = FrustumCulling(instanceId) || OcclusionCulling(instanceId);
-        #else
-          bool bIsCulled = FrustumCulling(instanceId);
+          if (!bIsCulled && PushConstants.enableOcclusion != 0u)
+          {
+            bIsCulled = OcclusionCulling(instanceId);
+          }
         #endif
         
-        data.instance[instanceId].isCulled = bIsCulled ? 1 : 0;
+        data.instance[instanceId].isCulled = bIsCulled ? 1u : 0u;
+      }
     }
-
-    barrier();
-    
-    // Step3: Remove empty draw calls (split batches per threads)
-    uint batchPerThread = (PushConstants.numBatches + threadCount - 1) / threadCount;
-    
-    for (uint j = 0; j < batchPerThread; j++)
+    else if (globalIndex < PushConstants.numBatches)
     {
-        uint batchId = j + globalIndex * batchPerThread;
-        
-        if(batchId >= PushConstants.numBatches)
-        {
-            break;
-        }
-        
+        // Step 3: Compact visible instances and update the matching indirect
+        // command after the host-side shader-write barrier.
+        uint batchId = globalIndex;
         uint readIndex = drawIndexedIndirect.batches[batchId].firstInstance;
         uint writeIndex = readIndex;
         
@@ -177,5 +208,5 @@ glslCompute: |
         }
 
         drawIndexedIndirect.batches[batchId].instanceCount = writeIndex - drawIndexedIndirect.batches[batchId].firstInstance;
-    }    
+    }
   }

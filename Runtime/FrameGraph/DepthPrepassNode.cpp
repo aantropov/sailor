@@ -137,6 +137,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 	m_syncSharedResources.Lock();
 
 	const std::string QueueTag = GetString("Tag");
@@ -284,7 +285,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 #ifdef _DEBUG
 		cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
 #endif
-		RHIRecordDrawCallGPUCulling(0,
+		m_drawCallStats = RHIRecordDrawCallGPUCulling(0,
 			(uint32_t)vecBatches.Num(), vecBatches,
 			commandList, transferCommandList,
 			shaderBindingsByMaterial,
@@ -298,7 +299,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 	else
 	{
-		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, transferCommandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
+		m_drawCallStats = RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, transferCommandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
 			glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
 			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
 	}

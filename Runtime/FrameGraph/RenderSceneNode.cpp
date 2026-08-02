@@ -321,6 +321,7 @@ https://developer.nvidia.com/vulkan-shader-resource-binding
 void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 	m_syncSharedResources.Lock();
 
 	std::string temp;
@@ -432,6 +433,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
+		TVector<RHI::DrawCallStats> secondaryDrawCallStats(secondaryCommandLists.Num());
 		TVector<Tasks::ITaskPtr> tasks;
 
 		auto vecBatches = m_batches.ToVector();
@@ -491,6 +493,15 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				return sets;
 			};
 
+		if (gpuMatricesData.Num() > 0)
+		{
+			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
+			commands->UpdateShaderBinding(transferCommandList, storageBinding,
+				gpuMatricesData.GetData(),
+				sizeof(PerInstanceData) * gpuMatricesData.Num(),
+				0);
+		}
+
 		commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
 		std::mutex transferCommandListMutex;
 
@@ -516,7 +527,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 					if (bCanDispatchCulling)
 					{
-						RHIRecordDrawCallGPUCulling(start,
+						secondaryDrawCallStats[i] = RHIRecordDrawCallGPUCulling(start,
 							end,
 							vecBatches,
 							cmdList, transferCommandList,
@@ -533,7 +544,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					}
 					else
 					{
-						RHIRecordDrawCall(start,
+						secondaryDrawCallStats[i] = RHIRecordDrawCall(start,
 							end,
 							vecBatches,
 							cmdList, transferCommandList,
@@ -553,16 +564,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 			task->Run();
 			tasks.Add(task);
-		}
-
-		if (gpuMatricesData.Num() > 0)
-		{
-			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
-			std::lock_guard<std::mutex> transferCommandListLock(transferCommandListMutex);
-			commands->UpdateShaderBinding(transferCommandList, storageBinding,
-				gpuMatricesData.GetData(),
-				sizeof(PerInstanceData) * gpuMatricesData.Num(),
-				0);
 		}
 
 		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), EImageLayout::ColorAttachmentOptimal);
@@ -591,7 +592,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 			if (bCanDispatchCulling)
 			{
-				RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				m_drawCallStats += RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 					(uint32_t)vecBatches.Num(),
 					vecBatches,
 					commandList, transferCommandList,
@@ -608,7 +609,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			}
 			else
 			{
-				RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				m_drawCallStats += RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 					(uint32_t)vecBatches.Num(),
 					vecBatches,
 					commandList, transferCommandList,
@@ -630,6 +631,11 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			for (auto& task : tasks)
 			{
 				task->Wait();
+			}
+
+			for (const RHI::DrawCallStats& drawCallStats : secondaryDrawCallStats)
+			{
+				m_drawCallStats += drawCallStats;
 			}
 		}
 

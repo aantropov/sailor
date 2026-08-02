@@ -261,6 +261,7 @@ void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
 
 void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
+	ResetDrawCallStats();
 	ConsumePendingSkyParams();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
@@ -621,6 +622,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			0, 1.0f);
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
 		commands->EndRenderPass(commandList);
 	}
 	commands->EndDebugRegion(commandList);
@@ -657,6 +659,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->PushConstants(commandList, m_pCloudsMaterial, sizeof(uint32_t), &m_ditherPatternIndex);
 
 			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
 			commands->EndRenderPass(commandList);
 
 			commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
@@ -697,6 +700,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->BindShaderBindings(commandList, m_pSunMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, m_pCloudsTexture, m_pCloudsTexture->GetDefaultLayout());
@@ -734,6 +738,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->BindShaderBindings(commandList, m_pComposeMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 
 		commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+		RecordDrawCallStats(1);
 		commands->EndRenderPass(commandList);
 
 		commands->ImageMemoryBarrier(commandList, m_pSkyTexture, m_pSkyTexture->GetDefaultLayout());
@@ -781,6 +786,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->SetDefaultViewport(commandList);
 
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
+		RecordDrawCallStats(1);
 
 		commands->BeginDebugRegion(commandList, "Blit Clouds", DebugContext::Color_CmdPostProcess);
 		{
@@ -790,6 +796,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->BindMaterial(commandList, m_pBlitCloudsMaterial);
 			commands->BindShaderBindings(commandList, m_pBlitCloudsMaterial, { sceneView.m_frameBindings, m_pBlitCloudsBindings });
 			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
 		}
 		commands->EndDebugRegion(commandList);
 
@@ -798,6 +805,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->BindMaterial(commandList, m_pSunShaftsMaterial);
 			commands->BindShaderBindings(commandList, m_pSunShaftsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 			commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+			RecordDrawCallStats(1);
 		}
 		commands->EndDebugRegion(commandList);
 
@@ -856,6 +864,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 					0, 1.0f);
 
 				commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+				RecordDrawCallStats(1);
 				commands->EndRenderPass(commandList);
 			}
 			else

@@ -205,7 +205,6 @@ TVector<bool> VulkanGraphicsDriver::IsCompatible(VulkanPipelineLayoutPtr layout,
 
 TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(const TVector<VulkanShaderStagePtr>& shaders, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const
 {
-	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 	TVector<uint32_t> res;
 
 	for (const auto& shader : shaders)
@@ -231,22 +230,54 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 						continue;
 					}
 
-					const auto& layoutBindings = shaderBindingSet->GetLayoutBindings();
-					const size_t index = layoutBindings.FindIf([&](const auto& layout)
+					// Layout metadata can contain reflection entries for descriptor sets
+					// owned elsewhere. Query the bindings actually owned by this set so a
+					// material set cannot shadow the global texture-sampler set.
+					const auto& runtimeBindings = shaderBindingSet->GetShaderBindings();
+					const auto runtimeBindingIt = runtimeBindings.Find(reflectedBinding.m_name);
+					if (runtimeBindingIt == runtimeBindings.end() || !runtimeBindingIt->m_second)
 					{
-						return layout.m_binding == reflectedBinding.m_binding &&
-							layout.m_type == reflectedBinding.m_type &&
-							layout.m_bVariableDescriptorCount;
-					});
+						continue;
+					}
 
-					if (index != size_t(-1))
+					const auto& runtimeLayout = runtimeBindingIt->m_second->GetLayout();
+					if (runtimeLayout.m_binding == reflectedBinding.m_binding &&
+						runtimeLayout.m_type == reflectedBinding.m_type &&
+						runtimeLayout.m_bVariableDescriptorCount)
 					{
-						res[reflectedBinding.m_set] = std::max(1u, layoutBindings[index].m_arrayCount);
-						break;
+						res[reflectedBinding.m_set] = std::max(
+							res[reflectedBinding.m_set],
+							std::max(1u, runtimeLayout.m_arrayCount));
 					}
 				}
 			}
 		}
+	}
+
+	return res;
+}
+
+TVector<uint32_t> VulkanGraphicsDriver::CollectPublishedVariableDescriptorCounts(const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const
+{
+	TVector<uint32_t> res;
+	for (uint32_t set = 0; set < shaderBindingSets.Num(); set++)
+	{
+		if (!shaderBindingSets[set])
+		{
+			continue;
+		}
+
+		const uint32_t count = shaderBindingSets[set]->GetVariableDescriptorCount();
+		if (count == 0)
+		{
+			continue;
+		}
+
+		if (res.Num() <= set)
+		{
+			res.Resize(set + 1);
+		}
+		res[set] = count;
 	}
 
 	return res;
@@ -1223,6 +1254,7 @@ bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 	}
 
 	bindings->m_vulkan.m_descriptorSet = descriptorSet;
+	bindings->SetVariableDescriptorCount(descriptorSet->GetVariableDescriptorCount());
 	bindings->AdvanceDescriptorRevision();
 
 #ifndef _SHIPPING
@@ -1719,6 +1751,40 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
+	const uint32_t publishedVariableDescriptorCount = pShaderBindings->GetVariableDescriptorCount();
+	if (publishedVariableDescriptorCount > 0)
+	{
+		const auto& existingLayouts = pShaderBindings->GetLayoutBindings();
+		const size_t variableLayoutIndex = existingLayouts.FindIf(
+			[](const RHI::ShaderLayoutBinding& candidate)
+			{
+				return candidate.m_bVariableDescriptorCount;
+			});
+		const bool bUpdatesPublishedVariableBinding =
+			variableLayoutIndex != static_cast<size_t>(-1) &&
+			existingLayouts[variableLayoutIndex].m_name == name;
+
+		if ((bVariableDescriptorCount && !bUpdatesPublishedVariableBinding) ||
+			(!bVariableDescriptorCount && bUpdatesPublishedVariableBinding) ||
+			(bUpdatesPublishedVariableBinding && array.Num() > publishedVariableDescriptorCount))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot change a published variable descriptor layout '%s'. allocated=%u, requested=%zu, variable=%d",
+				name.c_str(),
+				publishedVariableDescriptorCount,
+				array.Num(),
+				bVariableDescriptorCount ? 1 : 0);
+			return nullptr;
+		}
+
+		// Variable descriptor capacities are immutable after the first native set
+		// is published. This keeps the lock-free count snapshot coherent with the
+		// descriptor set used by concurrent dispatches.
+		if (bUpdatesPublishedVariableBinding)
+		{
+			variableDescriptorUpperBound = publishedVariableDescriptorCount;
+		}
+	}
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -1807,6 +1873,16 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		}
 
 		const auto& layout = layoutBindings[index];
+		if (layout.m_bVariableDescriptorCount && dstArrayElement >= layout.m_arrayCount)
+		{
+			SAILOR_LOG_ERROR(
+				"Variable descriptor array '%s' is out of capacity. index=%u, capacity=%u",
+				parameter.c_str(),
+				dstArrayElement,
+				layout.m_arrayCount);
+			return;
+		}
+
 		auto descriptorSet = bindings->m_vulkan.m_descriptorSet;
 		const bool bIsUnusedDescriptorSlot = dstArrayElement >= currentTextures.Num();
 		if (bIsUnusedDescriptorSlot &&
@@ -1862,16 +1938,24 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 			fallbackLayout.m_arrayCount = static_cast<uint32_t>(textures.Num());
 		}
 		textureBinding->SetTextureBindings(textures);
-		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(fallbackLayout.m_binding, (VkDescriptorType)fallbackLayout.m_type,
-			fallbackLayout.m_bVariableDescriptorCount ? glm::max(1u, fallbackLayout.m_arrayCount) : fallbackLayout.m_arrayCount);
-		textureBinding->SetLayout(fallbackLayout);
-		bindings->UpdateLayoutShaderBinding(fallbackLayout);
+		if (!fallbackLayout.m_bVariableDescriptorCount)
+		{
+			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(
+				fallbackLayout.m_binding,
+				(VkDescriptorType)fallbackLayout.m_type,
+				fallbackLayout.m_arrayCount);
+			textureBinding->SetLayout(fallbackLayout);
+			bindings->UpdateLayoutShaderBinding(fallbackLayout);
+		}
 		if (!UpdateDescriptorSet(bindings))
 		{
 			textureBinding->SetTextureBindings(previousTextures);
-			textureBinding->m_vulkan.m_descriptorSetLayout = previousDescriptorLayout;
-			textureBinding->SetLayout(previousLayout);
-			bindings->SetLayoutShaderBindings(previousLayoutBindings);
+			if (!fallbackLayout.m_bVariableDescriptorCount)
+			{
+				textureBinding->m_vulkan.m_descriptorSetLayout = previousDescriptorLayout;
+				textureBinding->SetLayout(previousLayout);
+				bindings->SetLayoutShaderBindings(previousLayoutBindings);
+			}
 		}
 
 		return;
@@ -1881,7 +1965,8 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData,
 	const TVector<uint32_t>* optionalVariableDescriptorCount)
 {
-	auto& computePipeline = m_cachedComputePipelines.At_Lock(computeShader);
+	const ComputePipelineCacheKey cacheKey(computeShader, sizePushConstantsData, optionalVariableDescriptorCount);
+	auto& computePipeline = m_cachedComputePipelines.At_Lock(cacheKey);
 
 	if (!computePipeline || !computePipeline->IsCompiled())
 	{
@@ -1924,7 +2009,7 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 	// Copy the cached reference while its bucket is still locked. A concurrent
 	// cache clear must not invalidate the map value before the return copy.
 	VulkanComputePipelinePtr result = computePipeline;
-	m_cachedComputePipelines.Unlock(computeShader);
+	m_cachedComputePipelines.Unlock(cacheKey);
 
 	return result;
 }
@@ -2687,9 +2772,9 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 		return;
 	}
 
-	TVector<VulkanShaderStagePtr> vulkanShaders{ computeShader->m_vulkan.m_shader };
-	const TVector<uint32_t> optionalVariableDescriptorCount = this->CollectOptionalVariableDescriptorCount(vulkanShaders, bindings);
-	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData, &optionalVariableDescriptorCount);
+	const TVector<uint32_t> optionalVariableDescriptorCount = CollectPublishedVariableDescriptorCounts(bindings);
+	const TVector<uint32_t>* variableDescriptorCounts = optionalVariableDescriptorCount.IsEmpty() ? nullptr : &optionalVariableDescriptorCount;
+	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData, variableDescriptorCounts);
 	if (!computePipeline || !computePipeline->IsCompiled())
 	{
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver::Dispatch: compute pipeline is unavailable.");
@@ -3082,6 +3167,7 @@ void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::
 void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+	cmd->RecordDrawCallStats(instanceCount);
 }
 
 bool VulkanGraphicsDriver::FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)

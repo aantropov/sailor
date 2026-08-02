@@ -27,6 +27,7 @@ namespace
 	{
 	public:
 		using DescriptorCacheKey = CachedDescriptorSet;
+		using ComputeCacheKey = ComputePipelineCacheKey;
 	};
 
 	class VulkanDescriptorSetOwnershipProbe final : public VulkanDescriptorSet
@@ -217,6 +218,53 @@ namespace
 			"all global texture sampler writers must use the synchronized update path");
 	}
 
+	void TestVariableDescriptorCountCollectionUsesPublishedSnapshots()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string driverSource = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanGraphicsDriver.cpp");
+		const std::string collectBody = ExtractFunctionBody(
+			driverSource,
+			"TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(");
+		const std::string publishedCollectBody = ExtractFunctionBody(
+			driverSource,
+			"TVector<uint32_t> VulkanGraphicsDriver::CollectPublishedVariableDescriptorCounts(");
+		const std::string dispatchBody = ExtractFunctionBody(
+			driverSource,
+			"void VulkanGraphicsDriver::Dispatch(");
+		const std::string pipelineBody = ExtractFunctionBody(
+			driverSource,
+			"VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(");
+
+		Require(collectBody.find("m_descriptorUpdateMutex") == std::string::npos &&
+			collectBody.find("GetLayoutBindings()") == std::string::npos &&
+			collectBody.find("GetShaderBindings()") != std::string::npos &&
+			collectBody.find("reflectedBinding.m_name") != std::string::npos,
+			"variable descriptor counts must use immutable owned bindings without the global descriptor mutex");
+		Require(publishedCollectBody.find("m_descriptorUpdateMutex") == std::string::npos &&
+			publishedCollectBody.find("GetVariableDescriptorCount()") != std::string::npos &&
+			publishedCollectBody.find("GetLayoutBindings()") == std::string::npos &&
+			publishedCollectBody.find("GetShaderBindings()") == std::string::npos,
+			"dispatch must read only the published per-set descriptor capacities");
+		Require(dispatchBody.find("CollectPublishedVariableDescriptorCounts(bindings)") != std::string::npos &&
+			pipelineBody.find("CollectOptionalVariableDescriptorCount(") == std::string::npos &&
+			pipelineBody.find("ComputePipelineCacheKey") != std::string::npos,
+			"dispatch must use lock-free per-set counts and include them in the compute-pipeline cache key");
+
+		using ComputeCacheKey = VulkanGraphicsDriverProbe::ComputeCacheKey;
+		RHI::RHIShaderPtr shader = RHI::RHIShaderPtr::Make(RHI::EShaderStage::Compute);
+		const TVector<uint32_t> counts{ 0u, 8192u };
+		const TVector<uint32_t> otherCounts{ 0u, 1024u };
+		const ComputeCacheKey eightBytePushConstants(shader, 8u, &counts);
+		const ComputeCacheKey sixteenBytePushConstants(shader, 16u, &counts);
+		const ComputeCacheKey differentDescriptorCount(shader, 8u, &otherCounts);
+		Require(eightBytePushConstants == sixteenBytePushConstants &&
+			eightBytePushConstants.GetHash() == sixteenBytePushConstants.GetHash(),
+			"equivalent 256-byte Vulkan push-constant ranges must share one compute pipeline");
+		Require(!(eightBytePushConstants == differentDescriptorCount),
+			"different variable descriptor capacities must use different compute pipelines");
+	}
+
 	void TestRenderSceneTextureCacheTracksRequestedSlotRevisions()
 	{
 		const TVector<uint64_t> cachedSlotRevisions{ 11u, 29u, 47u };
@@ -292,6 +340,9 @@ namespace
 		const std::string updateDescriptorBody = ExtractFunctionBody(
 			descriptorsSource,
 			"bool VulkanDescriptorSet::UpdateDescriptor(");
+		const std::string referencesImageViewBody = ExtractFunctionBody(
+			descriptorsSource,
+			"bool VulkanDescriptorSet::ReferencesImageView(");
 		const std::string normalizedUpdateSetBody = RemoveWhitespace(updateSetBody);
 		const std::string normalizedUpdateDescriptorBody = RemoveWhitespace(updateDescriptorBody);
 
@@ -311,6 +362,8 @@ namespace
 			updateBindingBody.find("const auto previousTextures = currentTextures") != std::string::npos &&
 			updateBindingBody.find("SetTextureBindings(previousTextures)") != std::string::npos,
 			"unused variable sampler slots must use update-after-bind and advance the source revision");
+		Require(updateBindingBody.find("dstArrayElement >= layout.m_arrayCount") != std::string::npos,
+			"variable descriptor writes past the immutable allocation must be rejected before CPU state changes");
 		Require(updateDescriptorBody.find("descriptor->Apply(") != std::string::npos &&
 			normalizedUpdateDescriptorBody.find("vkUpdateDescriptorSets(*m_device,1,") != std::string::npos &&
 			updateDescriptorBody.find("UPDATE_UNUSED_WHILE_PENDING") != std::string::npos &&
@@ -318,6 +371,15 @@ namespace
 			updateBindingBody.find("RecalculateCompatibility()") == std::string::npos &&
 			descriptorsHeader.find("m_retiredDescriptors") == std::string::npos,
 			"an in-place texture update must write exactly one unused slot without rescanning compatibility or retaining replaced resources");
+
+		const size_t directDescriptorLookup = referencesImageViewBody.find(
+			"arrayElement < m_descriptors.Num()");
+		const size_t linearDescriptorFallback = referencesImageViewBody.find(
+			"for (const VulkanDescriptorPtr& descriptor : m_descriptors)");
+		Require(directDescriptorLookup != std::string::npos &&
+			linearDescriptorFallback != std::string::npos &&
+			directDescriptorLookup < linearDescriptorFallback,
+			"bindless image-view lookup must use its array element before the general linear fallback");
 	}
 
 	void TestVariableDescriptorCompatibilityUsesItsFixedLayout()
@@ -395,6 +457,8 @@ int main()
 			TestDescriptorCacheKeyTracksDescriptorRevision },
 		{ "TextureSamplerUpdatesUseSynchronizedSnapshot",
 			TestTextureSamplerUpdatesUseSynchronizedSnapshot },
+		{ "VariableDescriptorCountCollectionUsesPublishedSnapshots",
+			TestVariableDescriptorCountCollectionUsesPublishedSnapshots },
 		{ "RenderSceneTextureCacheTracksRequestedSlotRevisions",
 			TestRenderSceneTextureCacheTracksRequestedSlotRevisions },
 		{ "TextureSamplerCapacityReservesDefaultSlot",

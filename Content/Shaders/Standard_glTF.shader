@@ -184,13 +184,29 @@ glslVertex: |
 
     gl_Position = frame.projection * (frame.view * vertexPosition);
 
-    vec3 normal = (modelMatrix * vec4(inNormal, 0.0)).xyz;
-    vec3 tangent = (modelMatrix * vec4(inTangent, 0.0)).xyz;
-    vec3 bitangent = (modelMatrix * vec4(inBitangent, 0.0)).xyz;
+    mat3 linearMatrix = mat3(modelMatrix);
+    mat3 normalMatrix = transpose(inverse(linearMatrix));
+    vec3 normal = normalize(normalMatrix * inNormal);
 
-    mat3 normalMatrix = transpose(inverse(mat3(modelMatrix)));
-    vout.normal = normalize(normalMatrix * normal);
-    vout.tangentBasis = normalMatrix * mat3(tangent, bitangent, normal);
+    vec3 tangent = linearMatrix * inTangent;
+    tangent -= normal * dot(normal, tangent);
+    float tangentLengthSquared = dot(tangent, tangent);
+    if(tangentLengthSquared > 1e-8)
+    {
+      tangent *= inversesqrt(tangentLengthSquared);
+    }
+    else
+    {
+      vec3 fallbackAxis = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+      tangent = normalize(cross(fallbackAxis, normal));
+    }
+
+    vec3 transformedBitangent = linearMatrix * inBitangent;
+    float handedness = dot(cross(normal, tangent), transformedBitangent) < 0.0 ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(normal, tangent)) * handedness;
+
+    vout.normal = normal;
+    vout.tangentBasis = mat3(tangent, bitangent, normal);
 
     vout.color = inColor;
     vout.texcoord = inTexcoord;
@@ -595,7 +611,8 @@ glslFragment: |
     vec3 normal;
     if(material.normalSampler != 0)
     {
-      normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0) * material.normalScale;
+      normal = 2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0;
+      normal.xy *= material.normalScale;
       normal = normalize(vin.tangentBasis * normal);
     }
     else
@@ -607,7 +624,8 @@ glslFragment: |
     vec3 clearcoatNormal = normal;
     if(material.clearcoatNormalSampler != 0)
     {
-      clearcoatNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.clearcoatNormalSampler)], vin.texcoord).rgb - 1.0) * material.clearcoatNormalScale;
+      clearcoatNormal = 2.0 * texture(textureSamplers[nonuniformEXT(material.clearcoatNormalSampler)], vin.texcoord).rgb - 1.0;
+      clearcoatNormal.xy *= material.clearcoatNormalScale;
       clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));

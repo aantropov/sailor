@@ -58,7 +58,7 @@ namespace Sailor::RHI
 	using TDrawCalls = TMap<RHIBatch, TMap<RHI::RHIMeshPtr, TVector<TPerInstanceData>>>;
 
 	template<typename TPerInstanceData>
-	void RHIRecordDrawCallGPUCulling(uint32_t start,
+	DrawCallStats RHIRecordDrawCallGPUCulling(uint32_t start,
 		uint32_t end,
 		const TVector<RHIBatch>& vecBatches,
 		RHI::RHICommandListPtr graphicsCmdList,
@@ -76,6 +76,11 @@ namespace Sailor::RHI
 		std::mutex* transferCommandListMutex = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
+		DrawCallStats stats;
+		if (start >= end || end > vecBatches.Num() || end > storageIndex.Num())
+		{
+			return stats;
+		}
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -93,7 +98,16 @@ namespace Sailor::RHI
 			indirectCommandBuffer.Clear();
 			indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
 
-			auto binding = Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(indirectCommandBufferBinding,
+			Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(indirectCommandBufferBinding,
+				indirectCommandBuffer,
+				"drawIndexedIndirect",
+				0);
+		}
+		else if (!indirectCommandBufferBinding->HasBinding("drawIndexedIndirect"))
+		{
+			// The buffer can have been allocated by the non-culling path. In that case
+			// its storage-buffer descriptor still has to be created before dispatch.
+			Sailor::RHI::Renderer::GetDriver()->AddBufferToShaderBindings(indirectCommandBufferBinding,
 				indirectCommandBuffer,
 				"drawIndexedIndirect",
 				0);
@@ -103,7 +117,7 @@ namespace Sailor::RHI
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
-		uint32_t firstInstanceIndex = storageIndex[0];
+		uint32_t firstInstanceIndex = storageIndex[start];
 		uint32_t totalNumInstances = 0;
 		uint32_t totalNumBatches = 0;
 
@@ -175,6 +189,7 @@ namespace Sailor::RHI
 					commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
 				}
 				commands->DrawIndexedIndirect(graphicsCmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
+				stats.m_numBatches++;
 				indirectBufferOffset += bufferSize;
 				drawIndirect.Clear();
 				meshesInCurrentBatch = 0;
@@ -213,19 +228,41 @@ namespace Sailor::RHI
 			uint32_t m_numBatches = 0;
 			uint32_t m_numInstances = 0;
 			uint32_t m_firstInstanceIndex = 0;
+			uint32_t m_phase = 0;
+			uint32_t m_bEnableOcclusion = 0;
 		};
 
 		PushConstants constants{};
 		constants.m_numBatches = totalNumBatches;
 		constants.m_numInstances = totalNumInstances;
 		constants.m_firstInstanceIndex = firstInstanceIndex;
+		// The Hi-Z texture belongs to the previous frame, while the frame and
+		// instance transforms are current. Occlusion is not conservative until
+		// matching camera/object history is supplied; frustum culling remains on.
+		constants.m_bEnableOcclusion = 0;
+		stats.m_numInstances = totalNumInstances;
 
 		auto recordCullingDispatch = [&]()
 			{
 				commands->BeginDebugRegion(transferCmdList, "GPU Culling", DebugContext::Color_CmdCompute);
-				const uint32_t maxWorkItems = (std::max)(constants.m_numBatches, constants.m_numInstances);
-				const uint32_t dispatchGroupsX = (std::max)(1u, (maxWorkItems + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
-				commands->Dispatch(transferCmdList, computeCullingShader, dispatchGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+
+				const EAccessFlags uploadWrites = static_cast<EAccessFlags>(EAccessBit::TransferWrite_Bit) |
+					static_cast<EAccessFlags>(EAccessBit::HostWrite_Bit);
+				const EAccessFlags shaderReadWrite = static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit) |
+					static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit);
+				commands->MemoryBarrier(transferCmdList, uploadWrites, shaderReadWrite);
+
+				constants.m_phase = 0;
+				const uint32_t cullingGroupsX = (std::max)(1u, (constants.m_numInstances + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
+				commands->Dispatch(transferCmdList, computeCullingShader, cullingGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
+
+				commands->MemoryBarrier(transferCmdList,
+					static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
+					shaderReadWrite);
+
+				constants.m_phase = 1;
+				const uint32_t compactionGroupsX = (std::max)(1u, (constants.m_numBatches + RHI::Renderer::GPUCullingGroupSize - 1u) / RHI::Renderer::GPUCullingGroupSize);
+				commands->Dispatch(transferCmdList, computeCullingShader, compactionGroupsX, 1, 1, cullingDistpatchBindings, &constants, sizeof(constants));
 				commands->EndDebugRegion(transferCmdList);
 			};
 
@@ -238,10 +275,12 @@ namespace Sailor::RHI
 		{
 			recordCullingDispatch();
 		}
+
+		return stats;
 	}
 
 	template<typename TPerInstanceData>
-	void RHIRecordDrawCall(uint32_t start,
+	DrawCallStats RHIRecordDrawCall(uint32_t start,
 		uint32_t end,
 		const TVector<RHIBatch>& vecBatches,
 		RHI::RHICommandListPtr cmdList,
@@ -256,6 +295,7 @@ namespace Sailor::RHI
 		std::mutex* transferCommandListMutex = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
+		DrawCallStats stats;
 
 		auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -333,6 +373,7 @@ namespace Sailor::RHI
 				drawIndirect.Emplace(std::move(data));
 
 				ssboOffset += (uint32_t)matrices.Num();
+				stats.m_numInstances += (uint32_t)matrices.Num();
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
@@ -346,13 +387,16 @@ namespace Sailor::RHI
 				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
 			}
 			commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawIndirect.Num(), sizeof(RHI::DrawIndexedIndirectData));
+			stats.m_numBatches++;
 
 			indirectBufferOffset += bufferSize;
 		}
+
+		return stats;
 	}
 
 	template<typename TPerInstanceData>
-	void RHIDrawCall(uint32_t start,
+	DrawCallStats RHIDrawCall(uint32_t start,
 		uint32_t end,
 		const TVector<RHIBatch>& vecBatches,
 		RHI::RHICommandListPtr cmdList,
@@ -364,6 +408,7 @@ namespace Sailor::RHI
 		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f))
 	{
 		SAILOR_PROFILE_FUNCTION();
+		DrawCallStats stats;
 
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
@@ -377,6 +422,10 @@ namespace Sailor::RHI
 			auto& material = vecBatches[j].m_material;
 			auto& mesh = vecBatches[j].m_mesh;
 			auto& drawCall = drawCalls[vecBatches[j]];
+			for (const auto& instancedDrawCall : drawCall)
+			{
+				stats.m_numInstances += (uint32_t)instancedDrawCall.Second()->Num();
+			}
 
 			if (prevMaterial != material)
 			{
@@ -409,8 +458,11 @@ namespace Sailor::RHI
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawCall.Num();
 			commands->DrawIndexedIndirect(cmdList, indirectCommandBuffer, indirectBufferOffset, (uint32_t)drawCall.Num(), sizeof(RHI::DrawIndexedIndirectData));
+			stats.m_numBatches++;
 
 			indirectBufferOffset += bufferSize;
 		}
+
+		return stats;
 	}
 };

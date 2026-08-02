@@ -9,7 +9,7 @@ glslCompute: |
   // Inspired by https://vkguide.dev/docs/gpudriven/compute_culling/
 
   layout(set = 0, binding = 0) uniform sampler2D inputDepth;
-  layout(set = 0, binding = 1, rgba16f) uniform writeonly image2D outputDepth;
+  layout(set = 0, binding = 1, r32f) uniform writeonly image2D outputDepth;
   
   layout(std430, push_constant) uniform Constants
   {
@@ -21,9 +21,29 @@ glslCompute: |
   layout(local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE) in;
   void main()
   {
-    uvec2 pos = gl_GlobalInvocationID.xy;
-    
-    // Sampler is set up to do min reduction, so this computes the minimum depth of a 2x2 texel quad
-    float depth = texture(inputDepth, (vec2(pos) + vec2(0.5)) / PushConstants.outputSize).x;
-    imageStore(outputDepth, ivec2(pos), vec4(depth));
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 outputSize = min(ivec2(PushConstants.outputSize), imageSize(outputDepth));
+
+    if (any(greaterThanEqual(pos, outputSize)))
+    {
+      return;
+    }
+
+    ivec2 inputSize = textureSize(inputDepth, 0);
+    ivec2 sourceBegin = (pos * inputSize) / outputSize;
+    ivec2 sourceEnd = (((pos + ivec2(1)) * inputSize) + outputSize - ivec2(1)) / outputSize;
+    sourceEnd = min(sourceEnd, inputSize);
+
+    // Explicitly reduce the complete source footprint. This keeps odd-sized
+    // mips conservative instead of dropping the last source row or column.
+    float depth = texelFetch(inputDepth, sourceBegin, 0).x;
+    for (int y = sourceBegin.y; y < sourceEnd.y; ++y)
+    {
+      for (int x = sourceBegin.x; x < sourceEnd.x; ++x)
+      {
+        depth = min(depth, texelFetch(inputDepth, ivec2(x, y), 0).x);
+      }
+    }
+
+    imageStore(outputDepth, pos, vec4(depth));
   }

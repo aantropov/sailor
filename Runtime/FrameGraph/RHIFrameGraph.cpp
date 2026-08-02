@@ -101,6 +101,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	RHISemaphorePtr& outWaitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
@@ -255,6 +256,7 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		for (auto& node : m_graph)
 		{
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
+			m_drawCallStats += node->GetDrawCallStats();
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();

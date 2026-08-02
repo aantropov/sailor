@@ -22,6 +22,7 @@ const char* EyeAdaptationNode::m_name = "EyeAdaptation";
 void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -215,6 +216,7 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_shaderBindings });
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+	RecordDrawCallStats(1);
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

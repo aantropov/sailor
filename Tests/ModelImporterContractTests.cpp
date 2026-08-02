@@ -532,6 +532,41 @@ namespace
 			"node matrix must take precedence over TRS properties");
 	}
 
+	void TestUnitScaleDoesNotShrinkImportedDirections()
+	{
+		GltfImporterUtils::MeshInstance instance;
+		glm::mat4 quarterTurn(1.0f);
+		quarterTurn[0] = glm::vec4(0.0f, 1.0f, 0.0f, 0.0f);
+		quarterTurn[1] = glm::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+		instance.m_worldTransform =
+			quarterTurn *
+			glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 1.0f, 0.5f));
+
+		const auto transforms =
+			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, 10000.0f);
+		RequireVec3Near(
+			glm::vec3(transforms.m_geometryTransform * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)),
+			glm::vec3(0.0f, 20000.0f, 0.0f),
+			"unit scale must still affect imported positions");
+
+		const glm::mat3 normalTransform =
+			glm::transpose(glm::inverse(transforms.m_directionTransform));
+		const glm::vec3 importedNormal = normalTransform * glm::vec3(0.0f, 0.0f, 1.0f);
+		Require(
+			glm::length(importedNormal) > 1.0f,
+			"large unit scale must not shrink imported normals below the sanitizer threshold");
+		RequireVec3Near(
+			glm::normalize(importedNormal),
+			glm::vec3(0.0f, 0.0f, 1.0f),
+			"node transforms must still be applied to imported normals");
+
+		const auto mirroredTransforms =
+			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, -10000.0f);
+		Require(
+			glm::determinant(mirroredTransforms.m_directionTransform) < 0.0f,
+			"negative unit scale must retain mirrored winding without scaling directions");
+	}
+
 	void TestCollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes()
 	{
 		tinygltf::Model cyclicModel;
@@ -606,6 +641,7 @@ int main()
 		{ "BuildBlasSanitizesExtremeVertexFrames", TestBuildBlasSanitizesExtremeVertexFrames },
 		{ "BuildBlasHandlesExtremeCentroidRange", TestBuildBlasHandlesExtremeCentroidRange },
 		{ "CollectMeshInstancesUsesActiveSceneHierarchy", TestCollectMeshInstancesUsesActiveSceneHierarchy },
+		{ "UnitScaleDoesNotShrinkImportedDirections", TestUnitScaleDoesNotShrinkImportedDirections },
 		{ "CollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes", TestCollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes },
 		{ "CollectMeshInstancesHandlesDeepHierarchyIteratively", TestCollectMeshInstancesHandlesDeepHierarchyIteratively }
 	};

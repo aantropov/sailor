@@ -22,6 +22,7 @@ const char* LinearizeDepthNode::m_name = "LinearizeDepth";
 void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -103,6 +104,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 	const uint32_t vertexOffset = (uint32_t)mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+	RecordDrawCallStats(1);
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

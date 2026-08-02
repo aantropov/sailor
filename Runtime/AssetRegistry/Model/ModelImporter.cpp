@@ -1847,6 +1847,22 @@ namespace
 	}
 }
 
+GltfImporterUtils::MeshInstanceTransforms GltfImporterUtils::ResolveMeshInstanceTransforms(
+	const MeshInstance& instance,
+	float unitScale)
+{
+	const glm::mat4 sourceTransform = instance.m_skinIndex >= 0 ?
+		glm::mat4(1.0f) : instance.m_worldTransform;
+	const float directionScale = unitScale < 0.0f ? -1.0f : 1.0f;
+
+	MeshInstanceTransforms result;
+	result.m_geometryTransform =
+		glm::scale(glm::mat4(1.0f), glm::vec3(unitScale)) * sourceTransform;
+	result.m_directionTransform = glm::mat3(
+		glm::scale(glm::mat4(1.0f), glm::vec3(directionScale)) * sourceTransform);
+	return result;
+}
+
 bool GltfImporterUtils::TryComposeNodeMatrix(
 	const tinygltf::Node& node,
 	glm::mat4& outMatrix)
@@ -4061,11 +4077,10 @@ bool ModelImporter::ImportModel(
 		// glTF explicitly ignores the mesh-node transform for skinned meshes.
 		// Static mesh instances are flattened into Model geometry because Sailor
 		// has one world transform for the complete Model.
-		const glm::mat4 geometryTransform =
-			glm::scale(glm::mat4(1.0f), glm::vec3(unitScale)) *
-			(instance.m_skinIndex >= 0 ?
-				glm::mat4(1.0f) : instance.m_worldTransform);
-		const glm::mat3 directionTransform(geometryTransform);
+		const GltfImporterUtils::MeshInstanceTransforms transforms =
+			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, unitScale);
+		const glm::mat4& geometryTransform = transforms.m_geometryTransform;
+		const glm::mat3& directionTransform = transforms.m_directionTransform;
 		const float transformDeterminant =
 			glm::determinant(directionTransform);
 		if (!std::isfinite(transformDeterminant))

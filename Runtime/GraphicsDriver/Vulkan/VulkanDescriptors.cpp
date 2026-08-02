@@ -308,22 +308,42 @@ bool VulkanDescriptorSet::LikelyContains(VkDescriptorSetLayoutBinding layout) co
 
 bool VulkanDescriptorSet::ReferencesImageView(uint32_t binding, uint32_t arrayElement, const VulkanImageViewPtr& imageView) const
 {
+	auto referencesImageView = [&imageView](const VulkanDescriptorPtr& descriptor)
+		{
+			if (const auto* combinedImage = dynamic_cast<const VulkanDescriptorCombinedImage*>(descriptor.GetRawPtr()))
+			{
+				return combinedImage->GetImageView() == imageView;
+			}
+
+			if (const auto* storageImage = dynamic_cast<const VulkanDescriptorStorageImage*>(descriptor.GetRawPtr()))
+			{
+				return storageImage->GetImageView() == imageView;
+			}
+
+			return false;
+		};
+
+	if (arrayElement < m_descriptors.Num())
+	{
+		const VulkanDescriptorPtr& candidate = m_descriptors[arrayElement];
+		if (candidate &&
+			candidate->GetBinding() == binding &&
+			candidate->GetArrayElement() == arrayElement)
+		{
+			return referencesImageView(candidate);
+		}
+	}
+
 	for (const VulkanDescriptorPtr& descriptor : m_descriptors)
 	{
-		if (descriptor->GetBinding() != binding || descriptor->GetArrayElement() != arrayElement)
+		if (!descriptor ||
+			descriptor->GetBinding() != binding ||
+			descriptor->GetArrayElement() != arrayElement)
 		{
 			continue;
 		}
 
-		if (const auto* combinedImage = dynamic_cast<const VulkanDescriptorCombinedImage*>(descriptor.GetRawPtr()))
-		{
-			return combinedImage->GetImageView() == imageView;
-		}
-
-		if (const auto* storageImage = dynamic_cast<const VulkanDescriptorStorageImage*>(descriptor.GetRawPtr()))
-		{
-			return storageImage->GetImageView() == imageView;
-		}
+		return referencesImageView(descriptor);
 	}
 
 	return false;
@@ -517,6 +537,13 @@ bool VulkanDescriptorSet::TryCompile()
 		// referenced by a recorded or submitted command buffer.
 		m_descriptorPoolPage = std::move(descriptorPoolPage);
 		m_descriptorPool.Clear();
+
+		if (m_descriptorSetLayout->HasVariableDescriptorBinding())
+		{
+			// Store the count actually used by vkAllocateDescriptorSets. The
+			// requested count may have been clamped to the layout's upper bound.
+			m_variableDescriptorCount = variableDescriptorCount;
+		}
 	}
 
 	TVector<VkWriteDescriptorSet> descriptorsWrite(m_descriptors.Num());
