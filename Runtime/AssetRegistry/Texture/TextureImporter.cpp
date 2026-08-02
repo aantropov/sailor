@@ -240,41 +240,41 @@ Tasks::TaskPtr<TexturePtr> TextureImporter::GetLoadPromise(FileId uid)
 
 TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const
 {
-	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
 	TextureSamplersSnapshot snapshot;
 	snapshot.m_slots.Reserve(requestedIndices.Num());
+	m_textureSamplersLock.Lock();
 
-	if (!m_textureSamplersBindings)
+	if (m_textureSamplersBindings)
 	{
-		return snapshot;
-	}
-
-	const auto& shaderBindings = m_textureSamplersBindings->GetShaderBindings();
-	const auto textureSamplers = shaderBindings.Find("textureSamplers");
-	const TVector<RHI::RHITexturePtr>* textures = nullptr;
-	if (textureSamplers != shaderBindings.end() && textureSamplers->m_second)
-	{
-		textures = &textureSamplers->m_second->GetTextureBindings();
-	}
-
-	for (const uint32_t requestedIndex : requestedIndices)
-	{
-		TextureSamplerSlotSnapshot slot;
-		slot.m_index = requestedIndex;
-		if (requestedIndex < m_textureSamplerSlotRevisions.Num())
+		const auto& shaderBindings = m_textureSamplersBindings->GetShaderBindings();
+		const auto textureSamplers = shaderBindings.Find("textureSamplers");
+		const TVector<RHI::RHITexturePtr>* textures = nullptr;
+		if (textureSamplers != shaderBindings.end() && textureSamplers->m_second)
 		{
-			slot.m_contentRevision = m_textureSamplerSlotRevisions[requestedIndex];
+			textures = &textureSamplers->m_second->GetTextureBindings();
 		}
 
-		if (textures && requestedIndex < textures->Num())
+		for (const uint32_t requestedIndex : requestedIndices)
 		{
-			slot.m_texture = (*textures)[requestedIndex];
+			TextureSamplerSlotSnapshot slot;
+			slot.m_index = requestedIndex;
+			if (requestedIndex < m_textureSamplerSlotRevisions.Num())
+			{
+				slot.m_contentRevision = m_textureSamplerSlotRevisions[requestedIndex];
+			}
+
+			if (textures && requestedIndex < textures->Num())
+			{
+				slot.m_texture = (*textures)[requestedIndex];
+			}
+
+			snapshot.m_slots.Emplace(std::move(slot));
 		}
 
-		snapshot.m_slots.Emplace(std::move(slot));
+		snapshot.m_descriptorRevision = m_textureSamplersBindings->GetDescriptorRevision();
 	}
 
-	snapshot.m_descriptorRevision = m_textureSamplersBindings->GetDescriptorRevision();
+	m_textureSamplersLock.Unlock();
 	return snapshot;
 }
 
@@ -286,23 +286,26 @@ bool TextureImporter::RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, 
 		return false;
 	}
 
-	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
+	m_textureSamplersLock.Lock();
 	const size_t nextIndex = m_textureSamplersCurrentIndex.load(std::memory_order_relaxed);
-	if (!IsUserTextureSamplerIndexValid(nextIndex))
+	const bool bCanRegister = IsUserTextureSamplerIndexValid(nextIndex);
+	bool bRegistered = false;
+	if (bCanRegister)
 	{
-		return false;
+		outIndex = nextIndex;
+		bRegistered = UpdateTextureSamplerBindingLocked(
+			texture,
+			static_cast<uint32_t>(nextIndex));
+		if (bRegistered)
+		{
+			// Publish the next free slot only after the native descriptor write and slot
+			// revision have both succeeded. A failed write can therefore be retried.
+			m_textureSamplersCurrentIndex.store(nextIndex + 1, std::memory_order_release);
+		}
 	}
 
-	outIndex = nextIndex;
-	if (!UpdateTextureSamplerBindingLocked(texture, static_cast<uint32_t>(nextIndex)))
-	{
-		return false;
-	}
-
-	// Publish the next free slot only after the native descriptor write and slot
-	// revision have both succeeded. A failed write can therefore be retried.
-	m_textureSamplersCurrentIndex.store(nextIndex + 1, std::memory_order_release);
-	return true;
+	m_textureSamplersLock.Unlock();
+	return bRegistered;
 }
 
 bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, uint32_t index)
@@ -312,8 +315,10 @@ bool TextureImporter::UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, ui
 		return false;
 	}
 
-	std::lock_guard<std::mutex> lock(m_textureSamplersMutex);
-	return UpdateTextureSamplerBindingLocked(std::move(texture), index);
+	m_textureSamplersLock.Lock();
+	const bool bUpdated = UpdateTextureSamplerBindingLocked(std::move(texture), index);
+	m_textureSamplersLock.Unlock();
+	return bUpdated;
 }
 
 bool TextureImporter::UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index)

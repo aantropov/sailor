@@ -207,11 +207,11 @@ namespace
 			"Tasks::TaskPtr<TexturePtr> TextureImporter::LoadTexture(");
 
 		Require(importerHeader.find("TextureSamplersSnapshot") != std::string::npos &&
-			importerHeader.find("mutable std::mutex m_textureSamplersMutex") != std::string::npos,
-			"texture sampler contents and descriptor revision must be captured under one importer lock");
-		Require(snapshotBody.find("m_textureSamplersMutex") != std::string::npos &&
-			updateBody.find("m_textureSamplersMutex") != std::string::npos,
-			"texture sampler reads and writes must share the importer lock");
+			importerHeader.find("mutable SpinLock m_textureSamplersLock") != std::string::npos,
+			"texture sampler contents and descriptor revision must be captured under one importer spin lock");
+		Require(snapshotBody.find("m_textureSamplersLock") != std::string::npos &&
+			updateBody.find("m_textureSamplersLock") != std::string::npos,
+			"texture sampler reads and writes must share the importer spin lock");
 		Require(hotReloadBody.find("UpdateTextureSamplerBinding(") != std::string::npos &&
 			loadBody.find("RegisterTextureSamplerBinding(") != std::string::npos,
 			"all global texture sampler writers must use the synchronized update path");

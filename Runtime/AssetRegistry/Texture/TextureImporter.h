@@ -1,9 +1,9 @@
 #pragma once
 #include "Core/Defines.h"
-#include <mutex>
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
+#include "Core/SpinLock.h"
 #include "Core/Submodule.h"
 #include "Engine/Types.h"
 #include "Memory/SharedPtr.hpp"
@@ -108,7 +108,7 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_textureSamplersBindings{};
 		TConcurrentMap<FileId, size_t> m_textureSamplersIndices{};
 		TVector<uint64_t> m_textureSamplerSlotRevisions{};
-		mutable std::mutex m_textureSamplersMutex;
+		mutable SpinLock m_textureSamplersLock;
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<TexturePtr>> m_promises{};
 		TConcurrentMap<FileId, TexturePtr> m_loadedTextures{};
