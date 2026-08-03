@@ -290,7 +290,7 @@ Scheduler::~Scheduler()
 		worker->Join();
 	}
 
-	App::GetSubmodule<Tasks::Scheduler>()->ProcessTasksOnMainThread();
+	ProcessTasksOnMainThread();
 
 	for (auto worker : m_workerThreads)
 	{

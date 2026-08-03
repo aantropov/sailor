@@ -1645,45 +1645,25 @@ namespace
 		const std::filesystem::path metadataPath =
 			workspaceContext.GetContent() / "Retry.raw.asset";
 
-		Require(App::GetInstance() == nullptr,
-			"the deterministic pre-commit test requires an isolated App instance");
-		const std::string missingWorkspace =
-			directory.Path("MissingWorkspace").generic_string();
-		const char* appArgs[] = {
-			"AssetCacheContractTests",
-			"--noconsole",
-			"--workspace",
-			missingWorkspace.c_str()
-		};
-		App::Initialize(appArgs, static_cast<int32_t>(std::size(appArgs)));
-
-		try
+		bool bMetadataMutatedDuringWait = false;
+		Tasks::Scheduler scheduler;
+		scheduler.AttachCurrentThreadAsMainThread();
 		{
-			Require(App::GetInstance() != nullptr,
-				"the isolated App instance should be available to register a scheduler");
-			Require(App::GetSubmodule<Tasks::Scheduler>() == nullptr,
-				"the intentionally invalid workspace must stop App initialization before scheduler startup");
-			Tasks::Scheduler* scheduler = App::AddSubmodule(
-				TSubmodule<Tasks::Scheduler>::Make());
-			scheduler->AttachCurrentThreadAsMainThread();
+			AssetRegistry registry(workspaceContext, &scheduler);
+			TestAssetInfoHandler handler;
+			RegisterRawHandler(registry, handler);
+			Require(
+				registry.ScanContentFolder(),
+				"the initial registry generation should commit");
+			AssetInfoPtr previousInfo = registry.GetAssetInfoPtr(sourcePath.string());
+			Require(previousInfo != nullptr,
+				"the initial registry generation should expose the fixture asset");
 
-			{
-				AssetRegistry registry(workspaceContext);
-				TestAssetInfoHandler handler;
-				RegisterRawHandler(registry, handler);
-				Require(
-					registry.ScanContentFolder(),
-					"the initial registry generation should commit");
-				AssetInfoPtr previousInfo = registry.GetAssetInfoPtr(sourcePath.string());
-				Require(previousInfo != nullptr,
-					"the initial registry generation should expose the fixture asset");
-
-				bool bMetadataMutatedDuringWait = false;
-				handler.m_onLoad = [&]()
-					{
-						Tasks::ITaskPtr mutationTask =
-							TSharedPtr<TestMainThreadTask>::Make(
-								[&]()
+			handler.m_onLoad = [&]()
+				{
+					Tasks::ITaskPtr mutationTask =
+						TSharedPtr<TestMainThreadTask>::Make(
+							[&]()
 								{
 									bMetadataMutatedDuringWait = true;
 									RewriteFileWithNewRevision(
@@ -1693,34 +1673,26 @@ namespace
 										"testValue: 8\n"
 										"lateValue: 1\n");
 								});
-						scheduler->Run(mutationTask);
-						Require(!bMetadataMutatedDuringWait,
-							"the metadata mutation must remain queued until the pre-commit wait");
-					};
+					scheduler.Run(mutationTask);
+					Require(!bMetadataMutatedDuringWait,
+						"the metadata mutation must remain queued until the pre-commit wait");
+				};
 
-				Require(
-					!registry.ScanContentFolder(),
-					"a metadata mutation during the pre-commit wait must reject the new generation");
-				Require(bMetadataMutatedDuringWait,
-					"the metadata mutation must execute inside the pre-commit wait");
-				Require(
-					registry.GetAssetInfoPtr(sourcePath.string()) == previousInfo,
-					"a rejected staged generation must preserve the previous asset info");
+			Require(
+				!registry.ScanContentFolder(),
+				"a metadata mutation during the pre-commit wait must reject the new generation");
+			Require(bMetadataMutatedDuringWait,
+				"the metadata mutation must execute inside the pre-commit wait");
+			Require(
+				registry.GetAssetInfoPtr(sourcePath.string()) == previousInfo,
+				"a rejected staged generation must preserve the previous asset info");
 
-				Require(
-					registry.ScanContentFolder(),
-					"the next stable scan should accept the changed metadata");
-				Require(
-					registry.GetAssetInfoPtr(sourcePath.string()) != nullptr,
-					"the stable retry must publish the asset again");
-			}
-
-			App::Shutdown();
-		}
-		catch (...)
-		{
-			App::Shutdown();
-			throw;
+			Require(
+				registry.ScanContentFolder(),
+				"the next stable scan should accept the changed metadata");
+			Require(
+				registry.GetAssetInfoPtr(sourcePath.string()) != nullptr,
+				"the stable retry must publish the asset again");
 		}
 	}
 

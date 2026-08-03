@@ -291,13 +291,25 @@ std::string AssetRegistry::GetCacheFolder()
 }
 
 AssetRegistry::AssetRegistry() :
-	AssetRegistry(App::GetWorkspaceContext())
+	AssetRegistry(
+		App::GetWorkspaceContext(),
+		App::GetSubmodule<Tasks::Scheduler>())
 {
 }
 
 AssetRegistry::AssetRegistry(
 	const Workspace::WorkspaceContext& workspaceContext) :
-	m_workspaceContext(workspaceContext)
+	AssetRegistry(
+		workspaceContext,
+		App::GetSubmodule<Tasks::Scheduler>())
+{
+}
+
+AssetRegistry::AssetRegistry(
+	const Workspace::WorkspaceContext& workspaceContext,
+	Tasks::Scheduler* scheduler) :
+	m_workspaceContext(workspaceContext),
+	m_scheduler(scheduler)
 {
 	m_contentMounts =
 	{
@@ -1188,7 +1200,7 @@ bool AssetRegistry::ScanContentFolder()
 		}
 	}
 
-	if (Tasks::Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+	if (Tasks::Scheduler* scheduler = m_scheduler)
 	{
 		if (!scheduler->IsMainThread())
 		{
