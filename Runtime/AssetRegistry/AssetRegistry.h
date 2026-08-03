@@ -266,6 +266,12 @@ namespace Sailor
 
 		AssetCache m_assetCache;
 
+	private:
+
+		FileId RegisterGeneratedSecondaryAssetInfo(
+			const std::filesystem::path& metadataPath);
+
 		friend class IAssetInfoHandler;
+		friend class ModelImporter;
 	};
 }

@@ -25,6 +25,8 @@
 #include "Core/YamlSerializable.h"
 #include "Core/Reflection.h"
 
+#include <limits>
+
 namespace tinygltf
 {
 	class Model;
@@ -104,6 +106,8 @@ namespace Sailor
 			TVector<uint32_t> outIndices;
 			Math::AABB bounds{};
 			int32_t materialIndex = -1;
+			uint32_t materialSlot = (std::numeric_limits<uint32_t>::max)();
+			glm::vec3 bakedVolumeScale{ 1.0f };
 
 			bool HasGeometry() const
 			{
@@ -136,6 +140,15 @@ namespace Sailor
 		bool UpdateGeneratedMaterialPropertiesOnDemand(
 			ModelAssetInfoPtr assetInfo,
 			const tinygltf::Model& gltfModel);
+		static FileId CreateTextureAsset(
+			const std::string& filepath,
+			const std::string& sourceFilename,
+			uint32_t sourceTextureIndex,
+			bool bShouldGenerateMips = true,
+			RHI::EFormat format = RHI::EFormat::R8G8B8A8_SRGB,
+			RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
+			RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
+			bool bShouldKeepCpuBuffers = false);
 		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 		static bool ImportModel(
@@ -158,6 +171,7 @@ namespace Sailor
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
 		TConcurrentMap<FileId, bool> m_generatedMaterialMigrationComplete;
+		TConcurrentMap<FileId, Tasks::ITaskPtr> m_generatedMaterialMigrationTasks;
 
 		ObjectAllocatorPtr m_allocator;
 	};

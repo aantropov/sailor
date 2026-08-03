@@ -20,6 +20,14 @@ using namespace Sailor::Tasks;
 
 void EditorComponent::EditorTick(float deltaTime)
 {
+	auto& transform = GetOwner()->GetTransformComponent();
+	auto syncViewAngles = [&]()
+	{
+		const vec3 forward = transform.GetTransform().GetForward();
+		m_yaw = glm::degrees(glm::atan(forward.x, -forward.z));
+		m_pitch = glm::degrees(glm::asin(glm::clamp(forward.y, -1.0f, 1.0f)));
+	};
+
 	if (!m_bInited)
 	{
 		auto& debugContext = GetWorld()->GetDebugContext();
@@ -48,18 +56,22 @@ void EditorComponent::EditorTick(float deltaTime)
 		}
 
 		debugContext->DrawOrigin(glm::vec4(0, 0, 0, 1), glm::mat4(1), 1000.0f, maxDuration);
+		syncViewAngles();
+		m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 		m_bInited = true;
 		return;
 	}
 
-	auto& transform = GetOwner()->GetTransformComponent();
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
 	const float sensitivity = 1500;
 
 	const bool bNavigatingViewport = GetWorld()->GetInput().IsKeyDown(VK_RBUTTON);
-	const bool bStartedNavigatingViewport = bNavigatingViewport && !m_bWasNavigatingViewport;
 	const glm::ivec2 cursorPos = GetWorld()->GetInput().GetCursorPos();
+	if (!bNavigatingViewport)
+	{
+		syncViewAngles();
+	}
 	if (bNavigatingViewport)
 	{
 		glm::vec3 delta = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -92,17 +104,10 @@ void EditorComponent::EditorTick(float deltaTime)
 			transform.SetPosition(transform.GetPosition() + shift);
 		}
 
-		if (bStartedNavigatingViewport)
-		{
-			const vec3 forward = transform.GetTransform().GetForward();
-			m_yaw = glm::degrees(glm::atan(forward.x, -forward.z));
-			m_pitch = glm::degrees(glm::asin(glm::clamp(forward.y, -1.0f, 1.0f)));
-			m_lastCursorPos = cursorPos;
-		}
-		else
+		const vec2 deltaCursorPos = cursorPos - m_lastCursorPos;
+		if (deltaCursorPos != vec2(0.0f))
 		{
 			constexpr float rotationDegreesPerPixel = 0.2f;
-			const vec2 deltaCursorPos = cursorPos - m_lastCursorPos;
 			const vec2 rotationDelta = deltaCursorPos * rotationDegreesPerPixel;
 
 			m_yaw += rotationDelta.x;
@@ -115,7 +120,6 @@ void EditorComponent::EditorTick(float deltaTime)
 		}
 	}
 
-	m_bWasNavigatingViewport = bNavigatingViewport;
 	m_lastCursorPos = cursorPos;
 
 }

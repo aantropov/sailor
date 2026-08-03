@@ -57,6 +57,7 @@ namespace Sailor::GltfImporterUtils
 	{
 		glm::mat4 m_geometryTransform{ 1.0f };
 		glm::mat3 m_directionTransform{ 1.0f };
+		glm::vec3 m_bakedVolumeScale{ 1.0f };
 	};
 
 	SAILOR_SHARED_API MeshInstanceTransforms ResolveMeshInstanceTransforms(

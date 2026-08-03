@@ -537,7 +537,11 @@ namespace
 		size_t hash = 1469598103934665603ull;
 		for (const auto& material : materials)
 		{
-			const size_t value = material ? material.GetHash() : 0;
+			size_t value = material ? material.GetHash() : 0;
+			if (material)
+			{
+				HashCombine(value, material->GetContentRevision());
+			}
 			hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
 		}
 		return hash;
@@ -1540,15 +1544,7 @@ bool PathTracer::IsThickVolumeAtHit(
 		return false;
 	}
 
-	float thickness = material.m_thicknessFactor;
-	if (material.HasThicknessTexture())
-	{
-		thickness *=
-			m_textures[material.m_thicknessIndex]->Sample<vec3>(
-				uvTransformed).g;
-	}
-
-	return thickness > 0.0f;
+	return material.m_thicknessFactor > 0.0f;
 }
 
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
@@ -1642,7 +1638,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 
 		const bool bFullMetallic = sample.m_orm.z == 1.0f;
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
-		const bool bThickVolume = bHasTransmission && sample.m_thicknessFactor > 0.0f;
+		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
 
 		if (!bIsOppositeRay && bThickVolume)
 		{

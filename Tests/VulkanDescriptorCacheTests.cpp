@@ -218,6 +218,35 @@ namespace
 			"all global texture sampler writers must use the synchronized update path");
 	}
 
+	void TestGeneratedGltfTexturesReuseTheirExistingAssetIds()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string importerSource = ReadText(
+			sourceRoot / "Runtime/AssetRegistry/Texture/TextureImporter.cpp");
+		const std::string extractBody = ExtractFunctionBody(
+			importerSource,
+			"bool ExtractTextureFromGltf(");
+		const std::string importBody = ExtractFunctionBody(
+			importerSource,
+			"bool TextureImporter::ImportTexture(");
+
+		Require(extractBody.find("loader.SetImagesAsIs(true)") != std::string::npos &&
+			extractBody.find("loader.LoadASCIIFromFile(") != std::string::npos &&
+			extractBody.find("gltfModel.textures") != std::string::npos &&
+			extractBody.find("ResolveGltfTextureImageIndex(") != std::string::npos &&
+			extractBody.find("gltfModel.images") != std::string::npos &&
+			extractBody.find("image.image") != std::string::npos,
+			"generated glTF textures must extract encoded data URI, bufferView, or external image bytes through tinygltf");
+		Require(importBody.find("const bool bIsGltf = extension == \"gltf\"") != std::string::npos &&
+			importBody.find("ExtractTextureFromGltf(") != std::string::npos &&
+			importBody.find("ExtractTextureFromGLB(") != std::string::npos,
+			"texture import must support generated textures from glTF while retaining the established GLB path");
+		Require(extractBody.find("FileId") == std::string::npos &&
+			extractBody.find("CreateTextureAsset") == std::string::npos &&
+			extractBody.find("AssetRegistry") == std::string::npos,
+			"extracting an existing secondary texture must not allocate or replace its asset identity");
+	}
+
 	void TestVariableDescriptorCountCollectionUsesPublishedSnapshots()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -507,6 +536,8 @@ int main()
 			TestDescriptorCacheKeyTracksDescriptorRevision },
 		{ "TextureSamplerUpdatesUseSynchronizedSnapshot",
 			TestTextureSamplerUpdatesUseSynchronizedSnapshot },
+		{ "GeneratedGltfTexturesReuseTheirExistingAssetIds",
+			TestGeneratedGltfTexturesReuseTheirExistingAssetIds },
 		{ "VariableDescriptorCountCollectionUsesPublishedSnapshots",
 			TestVariableDescriptorCountCollectionUsesPublishedSnapshots },
 		{ "RenderSceneTextureCacheTracksRequestedSlotRevisions",

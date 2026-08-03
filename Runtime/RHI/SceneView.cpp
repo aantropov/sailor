@@ -98,6 +98,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
 					viewProxy.m_skeletonOffset = ecsData.GetSkeletonOffset();
 					viewProxy.m_overrideMaterials.Clear();
+					viewProxy.m_renderQueueTags.Clear();
 #if defined(__APPLE__)
 					viewProxy.m_materialTextureSamplers.Clear();
 #endif
@@ -107,6 +108,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
 					viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
+					viewProxy.m_renderQueueTags.Reserve(viewProxy.m_meshes.Num());
 #if defined(__APPLE__)
 					viewProxy.m_materialTextureSamplers.Reserve(viewProxy.m_meshes.Num());
 					auto textureImporter = App::GetSubmodule<TextureImporter>();
@@ -120,6 +122,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 								i, ecsData.GetMaterials().Num());
 
 						auto& material = ecsData.GetMaterials()[materialIndex];
+						viewProxy.m_renderQueueTags.Add(material ? material->GetRenderState().GetTag() : 0u);
 						if (material && material->IsReady() && !bSkipMaterials)
 						{
 							viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));

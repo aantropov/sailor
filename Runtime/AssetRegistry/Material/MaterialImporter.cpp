@@ -57,6 +57,9 @@ Tasks::ITaskPtr Material::OnHotReload()
 
 	auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=, this]
 		{
+			// Dependency hot reload tasks are joined before this task executes, so
+			// publish the revision only after their material-visible data is ready.
+			AdvanceContentRevision();
 			UpdateRHIResource();
 			ForcelyUpdateUniforms();
 		}, EThreadType::Render);
@@ -68,12 +71,14 @@ void Material::ClearSamplers()
 {
 	SAILOR_PROFILE_FUNCTION();
 	m_samplers.Clear();
+	AdvanceContentRevision();
 }
 
 void Material::ClearUniforms()
 {
 	m_uniformsVec4.Clear();
 	m_uniformsFloat.Clear();
+	AdvanceContentRevision();
 }
 
 void Material::SetSampler(const std::string& name, TexturePtr value)
@@ -86,6 +91,7 @@ void Material::SetSampler(const std::string& name, TexturePtr value)
 		m_samplers.Unlock(name);
 
 		m_bIsDirty = true;
+		AdvanceContentRevision();
 	}
 }
 
@@ -97,6 +103,7 @@ void Material::SetUniform(const std::string& name, float value)
 	m_uniformsFloat.Unlock(name);
 
 	m_bIsDirty = true;
+	AdvanceContentRevision();
 }
 
 void Material::SetUniform(const std::string& name, glm::vec4 value)
@@ -107,6 +114,7 @@ void Material::SetUniform(const std::string& name, glm::vec4 value)
 	m_uniformsVec4.Unlock(name);
 
 	m_bIsDirty = true;
+	AdvanceContentRevision();
 }
 
 RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription)

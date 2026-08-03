@@ -50,6 +50,7 @@ namespace Sailor::RHI
 
 		TVector<RHIMeshPtr> m_meshes;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
+		TVector<size_t> m_renderQueueTags;
 #if defined(__APPLE__)
 		TVector<TSet<uint32_t>> m_materialTextureSamplers;
 #endif

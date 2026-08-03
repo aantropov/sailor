@@ -24,6 +24,7 @@ namespace Sailor::RHI
 		RHIVertexDescriptionPtr m_vertexDescription{};
 		Math::AABB m_bounds{};
 		uint32_t m_materialIndex = (std::numeric_limits<uint32_t>::max)();
+		glm::vec3 m_bakedVolumeScale{ 1.0f };
 
 		SAILOR_API virtual bool IsReady() const override;
 

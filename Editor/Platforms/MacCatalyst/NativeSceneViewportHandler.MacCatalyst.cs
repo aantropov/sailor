@@ -525,16 +525,12 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
                 case UIGestureRecognizerState.Changed:
                     if ((activeMouseModifiers & modifier) == 0 ||
-                        !HasPointerMoved(point))
+                        !HasPointerMoved(point) ||
+                        !PrepareUIKitPointerMotion(point))
                     {
                         return;
                     }
 
-                    // A physical mouse can report only the gesture begin via
-                    // UIKit and continue with GCMouse deltas. Claim UIKit only
-                    // after the local gesture delivers actual movement.
-                    pointerMotionSource = PointerMotionSource.UIKit;
-                    activeGameControllerInput = null;
                     PublishPointer(
                         NativeSceneViewportInputKind.PointerMove,
                         point,
@@ -567,14 +563,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             if (TryGetTouchPoint(touches, out var point))
             {
                 if (activeLocalPointerModifier != NativeSceneViewportInputModifier.None &&
-                    !HasPointerMoved(point))
+                    (!HasPointerMoved(point) ||
+                        !PrepareUIKitPointerMotion(point)))
                 {
                     return;
-                }
-                if (activeLocalPointerModifier != NativeSceneViewportInputModifier.None)
-                {
-                    pointerMotionSource = PointerMotionSource.UIKit;
-                    activeGameControllerInput = null;
                 }
                 RecordPointerSample(point);
                 PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
@@ -1093,6 +1085,22 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 pointerMotionSource = source;
             }
             return pointerMotionSource == source;
+        }
+
+        bool PrepareUIKitPointerMotion(CGPoint point)
+        {
+            var switchedFromGameController =
+                pointerMotionSource == PointerMotionSource.GameController;
+            pointerMotionSource = PointerMotionSource.UIKit;
+            activeGameControllerInput = null;
+            if (switchedFromGameController)
+            {
+                // UIKit reports an absolute point while GCMouse reports
+                // deltas. Rebase once when UIKit takes over so the two
+                // coordinate streams cannot create a false first movement.
+                RecordPointerSample(point);
+            }
+            return !switchedFromGameController;
         }
 
         void ClearActivePointerState()

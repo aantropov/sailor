@@ -484,7 +484,8 @@ uniformsFloat:
 			"std::filesystem::equivalent",
 			"GetAllAssetInfos<TextureAssetInfo>",
 			"TMap<int32_t, FileId> textureIdsByGltfIndex",
-			"transmission remains active.",
+			"ModelImporter::CreateTextureAsset(",
+			"generatedTextureVirtualPath",
 			"m_generatedMaterialMigrationComplete.At_Lock",
 			"assetRegistry->UpdateAsset(materialId)",
 			"AtomicReplaceWorkspaceCacheText" })
@@ -493,6 +494,29 @@ uniformsFloat:
 				"generated material migration lost its ownership/reload contract: " +
 					contract);
 		}
+
+		const size_t textureHelperBegin = importer.find(
+			"FileId ModelImporter::CreateTextureAsset(");
+		const size_t textureHelperEnd = importer.find(
+			"FileId CreateAnimationAsset(",
+			textureHelperBegin);
+		Require(textureHelperBegin != std::string::npos &&
+			textureHelperEnd != std::string::npos,
+			"generated texture identity helper must remain present");
+		const std::string textureHelper = importer.substr(
+			textureHelperBegin,
+			textureHelperEnd - textureHelperBegin);
+		Require(textureHelper.find(
+				"assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath)") !=
+				std::string::npos &&
+			textureHelper.find("FileId::CreateNewFileId()") !=
+				std::string::npos &&
+			textureHelper.find("existingTextureInfo->GetGlbTextureIndex()") !=
+				std::string::npos &&
+			textureHelper.find("AtomicReplaceWorkspaceCacheText") !=
+				std::string::npos,
+			"generated texture updates must reuse a compatible existing FileId "
+			"and allocate only a genuinely new secondary asset");
 
 		const size_t customSkipBegin = migration.find(
 			"if (!findOwnedMaterial(");
@@ -521,12 +545,15 @@ uniformsFloat:
 		const std::string loadModel = importer.substr(
 			loadModelBegin,
 			loadModelEnd - loadModelBegin);
-		Require(loadModel.find("&gltfModel") != std::string::npos &&
+		Require(loadModel.find("&pData->m_gltfModel") != std::string::npos &&
 			loadModel.find(
 				"UpdateGeneratedMaterialPropertiesOnDemand") !=
-				std::string::npos,
+				std::string::npos &&
+			loadModel.find("EThreadType::Main") != std::string::npos &&
+			loadModel.find(
+				"m_generatedMaterialMigrationTasks") != std::string::npos,
 			"unchanged legacy materials must migrate on demand from the "
-			"already parsed model without a startup GLB scan");
+			"already parsed model on the main thread without blocking RHI upload");
 	}
 
 	void TestGltfMaterialTextureColorSpaces()
@@ -951,6 +978,10 @@ uniformsFloat:
 		const auto transforms =
 			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, 10000.0f);
 		RequireVec3Near(
+			transforms.m_bakedVolumeScale,
+			glm::vec3(2.0f, 1.0f, 0.5f),
+			"baked glTF node scale must survive vertex flattening without inheriting unit scale");
+		RequireVec3Near(
 			glm::vec3(transforms.m_geometryTransform * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)),
 			glm::vec3(0.0f, 20000.0f, 0.0f),
 			"unit scale must still affect imported positions");
@@ -971,6 +1002,18 @@ uniformsFloat:
 		Require(
 			glm::determinant(mirroredTransforms.m_directionTransform) < 0.0f,
 			"negative unit scale must retain mirrored winding without scaling directions");
+		RequireVec3Near(
+			mirroredTransforms.m_bakedVolumeScale,
+			transforms.m_bakedVolumeScale,
+			"model unit-scale sign must not be applied twice to volume thickness");
+
+		instance.m_skinIndex = 0;
+		const auto skinnedTransforms =
+			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, 10000.0f);
+		RequireVec3Near(
+			skinnedTransforms.m_bakedVolumeScale,
+			glm::vec3(1.0f),
+			"skinned meshes must not retain a node transform that is not baked into their vertices");
 	}
 
 	void TestCollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes()

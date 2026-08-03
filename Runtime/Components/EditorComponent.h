@@ -25,7 +25,6 @@ namespace Sailor
 	protected:
 
 		bool m_bInited = false;
-		bool m_bWasNavigatingViewport = false;
 		float m_yaw = 0.0f;
 		float m_pitch = 0.0f;
 

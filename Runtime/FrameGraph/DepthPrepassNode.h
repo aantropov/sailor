@@ -22,6 +22,7 @@ namespace Sailor
 			uint32_t skeletonOffset = 0;
 			uint32_t bIsCulled = 0;
 			uint32_t padding = 0;
+			vec4 bakedVolumeScale = vec4(1.0f);
 
 			bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
 

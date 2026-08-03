@@ -29,6 +29,12 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
 	RHI::RHITexturePtr target = GetResolvedAttachment("color");
+	RHI::RHITexturePtr colorTarget = target;
+	if (RHI::RHIRenderTargetPtr renderTarget = target.DynamicCast<RHI::RHIRenderTarget>();
+		renderTarget && renderTarget->GetMipLevels() > 0)
+	{
+		colorTarget = renderTarget->GetMipLayer(0);
+	}
 
 	if (!m_pComputeHistogramShader)
 	{
@@ -112,7 +118,7 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	if (!m_pToneMappingShader || !m_pToneMappingShader->IsReady() ||
 		!m_pComputeHistogramShader || !m_pComputeHistogramShader->IsReady() ||
 		!m_pComputeAverageShader || !m_pComputeAverageShader->IsReady() ||
-		!target)
+		!colorTarget)
 	{
 		return;
 	}
@@ -182,7 +188,7 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			{ m_computeAverageShaderBindings },
 			&pushConstantsAverage, sizeof(float) * 4);
 		commands->ImageMemoryBarrier(commandList, m_averageLuminance, EImageLayout::ShaderReadOnlyOptimal);
-		commands->ImageMemoryBarrier(commandList, target, EImageLayout::ColorAttachmentOptimal);
+		commands->ImageMemoryBarrier(commandList, colorTarget, EImageLayout::ColorAttachmentOptimal);
 	}
 
 	auto fullResolutionBinding = m_shaderBindings->GetOrAddShaderBinding("colorSampler")->GetTextureBinding();
@@ -191,9 +197,9 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	auto mesh = frameGraph->GetFullscreenNdcQuad();
 
 	commands->BeginRenderPass(commandList,
-		TVector<RHI::RHITexturePtr>{target},
+		TVector<RHI::RHITexturePtr>{colorTarget},
 		nullptr,
-		glm::vec4(0, 0, target->GetExtent().x, target->GetExtent().y),
+		glm::vec4(0, 0, colorTarget->GetExtent().x, colorTarget->GetExtent().y),
 		glm::ivec2(0, 0),
 		false,
 		glm::vec4(0.0f),
@@ -206,9 +212,9 @@ void EyeAdaptationNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	commands->BindMaterial(commandList, m_postEffectMaterial);
 	commands->SetViewport(commandList,
 		0, 0,
-		(float)target->GetExtent().x, (float)target->GetExtent().y,
+		(float)colorTarget->GetExtent().x, (float)colorTarget->GetExtent().y,
 		glm::vec2(0, 0),
-		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		glm::vec2(colorTarget->GetExtent().x, colorTarget->GetExtent().y),
 		0, 1.0f);
 
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);

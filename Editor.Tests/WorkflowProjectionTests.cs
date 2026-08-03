@@ -706,6 +706,15 @@ public sealed class WorkflowProjectionTests
             componentTemplateSource,
             StringComparison.Ordinal);
         Assert.Contains(
+            "foreach (var property in EnumerateInspectorProperties(component))",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            componentTemplateSource,
+            "TryGetValue(\"model\"",
+            "TryGetValue(\"overrideMaterials\"",
+            "if (property.Key is \"model\" or \"overrideMaterials\")");
+        Assert.Contains(
             "propertyName == \"overrideMaterials\"",
             componentTemplateSource,
             StringComparison.Ordinal);
@@ -725,6 +734,22 @@ public sealed class WorkflowProjectionTests
         Assert.Contains(
             "public static View FileIdListEditor(",
             templatesSource,
+            StringComparison.Ordinal);
+        var fileIdListEditorSource = Slice(
+            templatesSource,
+            "public static View FileIdListEditor(",
+            "public static View InstanceIdEditor<");
+        Assert.Contains(
+            "var listEditor = new VerticalStackLayout",
+            fileIdListEditorSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BindableLayout.SetItemsSource(listEditor, fileIds.Values);",
+            fileIdListEditorSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CollectionView",
+            fileIdListEditorSource,
             StringComparison.Ordinal);
         Assert.Contains(
             "fileIds.Values.Add(new Observable<FileId>(new FileId()))",

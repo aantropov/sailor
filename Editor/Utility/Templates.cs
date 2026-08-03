@@ -357,11 +357,15 @@ static class Templates
         ObservableFileIdList fileIds,
         Type supportedType = null)
     {
-        var listEditor = new CollectionView
+        var listEditor = new VerticalStackLayout
         {
-            ItemsSource = fileIds.Values,
             HorizontalOptions = LayoutOptions.Fill,
-            ItemTemplate = new DataTemplate(() =>
+            Spacing = InspectorFieldSpacing
+        };
+        BindableLayout.SetItemsSource(listEditor, fileIds.Values);
+        BindableLayout.SetItemTemplate(
+            listEditor,
+            new DataTemplate(() =>
             {
                 var row = new Grid
                 {
@@ -399,8 +403,7 @@ static class Templates
                 };
 
                 return row;
-            })
-        };
+            }));
 
         var addButton = new Button { Text = "+" };
         addButton.Clicked += (sender, args) =>

@@ -285,6 +285,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 						data.bIsCulled = 0;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
 
 						RHI::RHIBatch batch(material, mesh);
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();

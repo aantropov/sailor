@@ -242,6 +242,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						proxy.m_bCastShadows = data.ShouldCastShadow();
 
 						proxy.m_overrideMaterials.Clear();
+						proxy.m_renderQueueTags.Clear();
+						proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
 #if defined(__APPLE__)
 						proxy.m_materialTextureSamplers.Clear();
 						proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
@@ -253,6 +255,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 								proxy.m_meshes[i]->ResolveMaterialIndex(
 									i, data.GetMaterials().Num());
 							auto& material = data.GetMaterials()[materialIndex];
+							proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
 							proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 #if defined(__APPLE__)
 							TSet<uint32_t> requestedTextures;

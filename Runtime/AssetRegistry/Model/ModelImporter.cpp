@@ -1862,6 +1862,11 @@ GltfImporterUtils::MeshInstanceTransforms GltfImporterUtils::ResolveMeshInstance
 		glm::scale(glm::mat4(1.0f), glm::vec3(unitScale)) * sourceTransform;
 	result.m_directionTransform = glm::mat3(
 		glm::scale(glm::mat4(1.0f), glm::vec3(directionScale)) * sourceTransform);
+	const glm::mat3 sourceLinear(sourceTransform);
+	result.m_bakedVolumeScale = glm::vec3(
+		glm::length(sourceLinear[0]),
+		glm::length(sourceLinear[1]),
+		glm::length(sourceLinear[2]));
 	return result;
 }
 
@@ -3385,7 +3390,7 @@ bool ModelImporter::GenerateFingerprint(
 	params.m_height = FingerprintImageDimension;
 	params.m_numSamples = 1;
 	params.m_numAmbientSamples = 1;
-	params.m_maxBounces = 1;
+	params.m_maxBounces = 4;
 	params.m_msaa = 1;
 	params.m_ambient = vec3(0.08f);
 	params.m_rayBiasScale = 3e-4f;
@@ -3532,21 +3537,87 @@ static bool TryLoadYamlFile(
 	return External::TryLoadYaml(payload, outDocument, outDiagnostic);
 }
 
-FileId CreateTextureAsset(const std::string& filepath,
-	const std::string& glbFilename,
-	uint32_t glbTextureIndex,
-	bool bShouldGenerateMips = true,
-	RHI::EFormat format = RHI::EFormat::R8G8B8A8_SRGB,
-	RHI::ETextureClamping clamping = RHI::ETextureClamping::Repeat,
-	RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear,
-	bool bShouldKeepCpuBuffers = false)
+FileId ModelImporter::CreateTextureAsset(const std::string& filepath,
+	const std::string& sourceFilename,
+	uint32_t sourceTextureIndex,
+	bool bShouldGenerateMips,
+	RHI::EFormat format,
+	RHI::ETextureClamping clamping,
+	RHI::ETextureFiltration filtration,
+	bool bShouldKeepCpuBuffers)
 {
-	FileId newFileId = FileId::CreateNewFileId();
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return FileId::Invalid;
+	}
+
+	std::error_code statusError;
+	const std::filesystem::file_status metadataStatus =
+		std::filesystem::symlink_status(filepath, statusError);
+	if (statusError == std::errc::no_such_file_or_directory ||
+		statusError == std::errc::not_a_directory)
+	{
+		statusError.clear();
+	}
+	if (statusError)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot inspect generated texture metadata path '%s': %s",
+			filepath.c_str(),
+			statusError.message().c_str());
+		return FileId::Invalid;
+	}
+
+	const bool bMetadataExists = std::filesystem::exists(metadataStatus);
+	if (bMetadataExists &&
+		!std::filesystem::is_regular_file(metadataStatus))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated texture metadata path is not a regular file: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+
+	FileId fileId = bMetadataExists ?
+		assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) :
+		FileId::CreateNewFileId();
+	if (!fileId)
+	{
+		return FileId::Invalid;
+	}
+
+	if (bMetadataExists)
+	{
+		TextureAssetInfoPtr existingTextureInfo =
+			assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(fileId);
+		if (existingTextureInfo == nullptr ||
+			existingTextureInfo->GetAssetFilename() != sourceFilename ||
+			existingTextureInfo->GetGlbTextureIndex() !=
+				static_cast<int32_t>(sourceTextureIndex))
+		{
+			SAILOR_LOG_ERROR(
+				"Existing generated texture metadata is incompatible: %s",
+				filepath.c_str());
+			return FileId::Invalid;
+		}
+
+		if (existingTextureInfo->ShouldGenerateMips() ==
+				bShouldGenerateMips &&
+			existingTextureInfo->GetFormat() == format &&
+			existingTextureInfo->GetClamping() == clamping &&
+			existingTextureInfo->GetFiltration() == filtration &&
+			existingTextureInfo->ShouldKeepCpuBuffers() ==
+				bShouldKeepCpuBuffers)
+		{
+			return fileId;
+		}
+	}
 
 	YAML::Node newTexture = GeneratedModelAssetMetadata::CreateTexture(
-		newFileId,
-		glbFilename,
-		glbTextureIndex,
+		fileId,
+		sourceFilename,
+		sourceTextureIndex,
 		bShouldGenerateMips,
 		format,
 		clamping,
@@ -3576,7 +3647,15 @@ FileId CreateTextureAsset(const std::string& filepath,
 		return {};
 	}
 
-	return newFileId;
+	if (assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath) != fileId)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot register generated texture metadata for immediate model processing: %s",
+			filepath.c_str());
+		return FileId::Invalid;
+	}
+
+	return fileId;
 }
 
 FileId CreateAnimationAsset(const std::string& filepath,
@@ -4418,9 +4497,14 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 					1.0f);
 
 			auto addGeneratedSampler = [assetInfo,
+				assetRegistry,
+				materialIndex,
+				&relativeFolder,
 				&generatedProperties,
-				&textureIdsByGltfIndex](
+				&textureIdsByGltfIndex,
+				&bSucceeded](
 					const char* samplerName,
+					const char* assetSuffix,
 					int32_t textureIndex)
 				{
 					if (textureIndex < 0)
@@ -4429,7 +4513,7 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 					}
 
 					const FileId* registeredTextureId = nullptr;
-					const FileId textureFileId =
+					FileId textureFileId =
 						textureIdsByGltfIndex.Find(
 							textureIndex,
 							registeredTextureId) &&
@@ -4438,14 +4522,45 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 
 					if (!textureFileId)
 					{
-						SAILOR_LOG(
-							"Cannot migrate generated glTF %s for %s: no registered "
-							"same-source texture for glTF index %d; scalar "
-							"transmission remains active.",
-							samplerName,
-							assetInfo->GetAssetFilepath().c_str(),
-							textureIndex);
-						return;
+						std::filesystem::path generatedTexturePath;
+						const std::string generatedTextureVirtualPath =
+							relativeFolder + assetInfo->GetAssetFilename() +
+							"_material_" + std::to_string(materialIndex) + "_" +
+							assetSuffix + ".png.asset";
+						if (!assetRegistry->ResolveWorkspaceContentPathForWrite(
+								generatedTextureVirtualPath,
+								generatedTexturePath))
+						{
+							SAILOR_LOG_ERROR(
+								"Cannot resolve generated glTF %s for %s.",
+								samplerName,
+								assetInfo->GetAssetFilepath().c_str());
+							bSucceeded = false;
+							return;
+						}
+
+						textureFileId = ModelImporter::CreateTextureAsset(
+							generatedTexturePath.string(),
+							assetInfo->GetAssetFilename(),
+							static_cast<uint32_t>(textureIndex),
+							true,
+							RHI::ETextureFormat::R8G8B8A8_UNORM,
+							RHI::ETextureClamping::Repeat,
+							RHI::ETextureFiltration::Linear,
+							assetInfo->ShouldKeepCpuBuffers());
+						if (!textureFileId)
+						{
+							SAILOR_LOG_ERROR(
+								"Cannot create generated glTF %s for %s.",
+								samplerName,
+								assetInfo->GetAssetFilepath().c_str());
+							bSucceeded = false;
+							return;
+						}
+
+						textureIdsByGltfIndex.Insert(
+							textureIndex,
+							textureFileId);
 					}
 
 					generatedProperties["samplers"][samplerName] =
@@ -4454,9 +4569,11 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 
 			addGeneratedSampler(
 				"transmissionSampler",
+				"transmissionTexture",
 				transmission.m_textureIndex);
 			addGeneratedSampler(
 				"thicknessSampler",
+				"thicknessTexture",
 				transmission.m_thicknessTextureIndex);
 		}
 
@@ -4585,18 +4702,18 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		{
 			TVector<MeshContext> m_parsedMeshes;
 			TVector<glm::mat4> m_inverseBind;
+			tinygltf::Model m_gltfModel;
 			bool m_bIsImported = false;
 			bool m_bShouldKeepCpuBuffers = false;
 			bool m_bShouldGenerateBLAS = false;
 		};
 
-		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
+		auto loadDataTask = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
 			[this, pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
 				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
-				tinygltf::Model gltfModel;
 				pData->m_bIsImported = ImportModel(
 					pAssetInfo->GetAssetFilepath(),
 					pAssetInfo->GetUnitScale(),
@@ -4605,15 +4722,27 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					boundsAabb,
 					boundsSphere,
 					pData->m_inverseBind,
-					&gltfModel);
-				if (pData->m_bIsImported)
-				{
-					UpdateGeneratedMaterialPropertiesOnDemand(
-						pAssetInfo,
-						gltfModel);
-				}
+					&pData->m_gltfModel);
 				return pData;
-			})->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
+			});
+		auto migrationTask = loadDataTask->Then(
+				[this, pAssetInfo, uid](TSharedPtr<Data> pData)
+				{
+					if (pData->m_bIsImported)
+					{
+						UpdateGeneratedMaterialPropertiesOnDemand(
+							pAssetInfo,
+							pData->m_gltfModel);
+					}
+					pData->m_gltfModel = tinygltf::Model();
+					m_generatedMaterialMigrationTasks.Remove(uid);
+				},
+				"Migrate generated model materials",
+				EThreadType::Main);
+		m_generatedMaterialMigrationTasks.At_Lock(uid, nullptr) = migrationTask;
+		m_generatedMaterialMigrationTasks.Unlock(uid);
+
+		promise = loadDataTask->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
 				{
 					if (pData->m_bIsImported)
 					{
@@ -4638,7 +4767,11 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 							RHI::RHIMeshPtr pMesh = RHI::Renderer::GetDriver()->CreateMesh();
 							pMesh->m_vertexDescription = RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>();
 							pMesh->m_bounds = mesh.bounds;
-							pMesh->m_materialIndex = static_cast<uint32_t>(meshIndex);
+							pMesh->m_materialIndex = mesh.materialSlot !=
+								(std::numeric_limits<uint32_t>::max)() ?
+									mesh.materialSlot :
+									static_cast<uint32_t>(meshIndex);
+							pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
 							RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
 								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
 								mesh.outIndices.GetData(), sizeof(uint32_t) * mesh.outIndices.Num());
@@ -4938,9 +5071,20 @@ bool ModelImporter::ImportModel(
 		(std::max)(static_cast<size_t>(1), gltfModel.materials.size());
 	TVector<MeshContext> batchedMeshContexts;
 	TVector<uint32_t> meshPrimitiveOffsets;
+	size_t initialPrimitiveContextCount = 0;
 	if (bShouldBatchByMaterial)
 	{
 		batchedMeshContexts.Resize(materialBatchCount);
+		for (size_t materialIndex = 0;
+			materialIndex < materialBatchCount;
+			++materialIndex)
+		{
+			batchedMeshContexts[materialIndex].materialIndex =
+				materialIndex < gltfModel.materials.size() ?
+					static_cast<int32_t>(materialIndex) : -1;
+			batchedMeshContexts[materialIndex].materialSlot =
+				static_cast<uint32_t>(materialIndex);
+		}
 	}
 	else
 	{
@@ -4961,7 +5105,8 @@ bool ModelImporter::ImportModel(
 				static_cast<uint32_t>(mesh.primitives.size());
 		}
 
-		outParsedMeshes.Resize(primitiveCount);
+		initialPrimitiveContextCount = primitiveCount;
+		outParsedMeshes.Resize(initialPrimitiveContextCount);
 		for (size_t meshIndex = 0;
 			meshIndex < gltfModel.meshes.size();
 			++meshIndex)
@@ -4973,14 +5118,67 @@ bool ModelImporter::ImportModel(
 			{
 				const int32_t materialIndex =
 					mesh.primitives[primitiveIndex].material;
-				outParsedMeshes[
-					meshPrimitiveOffsets[meshIndex] + primitiveIndex]
-					.materialIndex = materialIndex >= 0 &&
+				const uint32_t materialSlot =
+					meshPrimitiveOffsets[meshIndex] +
+					static_cast<uint32_t>(primitiveIndex);
+				outParsedMeshes[materialSlot].materialIndex = materialIndex >= 0 &&
 					static_cast<size_t>(materialIndex) <
 						gltfModel.materials.size() ? materialIndex : -1;
+				outParsedMeshes[materialSlot].materialSlot = materialSlot;
 			}
 		}
 	}
+
+	auto areVolumeScalesEquivalent = [](const glm::vec3& lhs,
+		const glm::vec3& rhs)
+		{
+			const glm::vec3 tolerance = glm::max(
+				glm::max(glm::abs(lhs), glm::abs(rhs)) * 1e-5f,
+				glm::vec3(1e-6f));
+			return glm::all(glm::lessThanEqual(glm::abs(lhs - rhs), tolerance));
+		};
+	auto resolveMeshContext = [&areVolumeScalesEquivalent](
+		TVector<MeshContext>& contexts,
+		size_t baseIndex,
+		size_t initialContextCount,
+		int32_t materialIndex,
+		uint32_t materialSlot,
+		const glm::vec3& bakedVolumeScale) -> MeshContext*
+		{
+			MeshContext* context = &contexts[baseIndex];
+			if (!context->HasGeometry() ||
+				areVolumeScalesEquivalent(
+					context->bakedVolumeScale,
+					bakedVolumeScale))
+			{
+				context->materialIndex = materialIndex;
+				context->materialSlot = materialSlot;
+				context->bakedVolumeScale = bakedVolumeScale;
+				return context;
+			}
+
+			for (size_t contextIndex = initialContextCount;
+				contextIndex < contexts.Num();
+				++contextIndex)
+			{
+				MeshContext& candidate = contexts[contextIndex];
+				if (candidate.materialSlot == materialSlot &&
+					candidate.materialIndex == materialIndex &&
+					areVolumeScalesEquivalent(
+						candidate.bakedVolumeScale,
+						bakedVolumeScale))
+				{
+					return &candidate;
+				}
+			}
+
+			MeshContext splitContext;
+			splitContext.materialIndex = materialIndex;
+			splitContext.materialSlot = materialSlot;
+			splitContext.bakedVolumeScale = bakedVolumeScale;
+			contexts.Emplace(std::move(splitContext));
+			return &*contexts.Last();
+		};
 
 	for (const GltfImporterUtils::MeshInstance& instance : meshInstances)
 	{
@@ -5002,6 +5200,7 @@ bool ModelImporter::ImportModel(
 			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, unitScale);
 		const glm::mat4& geometryTransform = transforms.m_geometryTransform;
 		const glm::mat3& directionTransform = transforms.m_directionTransform;
+		const glm::vec3& bakedVolumeScale = transforms.m_bakedVolumeScale;
 		const float transformDeterminant =
 			glm::determinant(directionTransform);
 		if (!std::isfinite(transformDeterminant))
@@ -5033,13 +5232,6 @@ bool ModelImporter::ImportModel(
 			const int32_t materialIndex = primitive.material >= 0 &&
 				static_cast<size_t>(primitive.material) < gltfModel.materials.size() ?
 				primitive.material : -1;
-			MeshContext* pPrimitiveMeshContext = nullptr;
-			if (!bShouldBatchByMaterial)
-			{
-				pPrimitiveMeshContext = &outParsedMeshes[
-					meshPrimitiveOffsets[meshIndex] + primitiveIndex];
-			}
-
 			if (primitive.mode != TINYGLTF_MODE_TRIANGLES)
 			{
 				SAILOR_LOG(
@@ -5321,12 +5513,30 @@ bool ModelImporter::ImportModel(
 				continue;
 			}
 
-			MeshContext* pMeshContext = pPrimitiveMeshContext;
+			MeshContext* pMeshContext = nullptr;
 			if (bShouldBatchByMaterial)
 			{
 				const size_t batchIndex = materialIndex >= 0 ?
 					static_cast<size_t>(materialIndex) : 0;
-				pMeshContext = &batchedMeshContexts[batchIndex];
+				pMeshContext = resolveMeshContext(
+					batchedMeshContexts,
+					batchIndex,
+					materialBatchCount,
+					materialIndex,
+					static_cast<uint32_t>(batchIndex),
+					bakedVolumeScale);
+			}
+			else
+			{
+				const size_t primitiveContextIndex =
+					meshPrimitiveOffsets[meshIndex] + primitiveIndex;
+				pMeshContext = resolveMeshContext(
+					outParsedMeshes,
+					primitiveContextIndex,
+					initialPrimitiveContextCount,
+					materialIndex,
+					static_cast<uint32_t>(primitiveContextIndex),
+					bakedVolumeScale);
 			}
 
 			const size_t existingVertices = pMeshContext != nullptr ?
@@ -5348,8 +5558,6 @@ bool ModelImporter::ImportModel(
 				static_cast<uint32_t>(pMeshContext->outVertices.Num());
 			const uint32_t indicesStart =
 				static_cast<uint32_t>(pMeshContext->outIndices.Num());
-			pMeshContext->materialIndex = materialIndex;
-
 			for (const auto& vertex : localVertices)
 			{
 				pMeshContext->outVertices.Add(vertex);

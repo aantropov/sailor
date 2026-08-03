@@ -104,6 +104,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					data.skeletonOffset = proxy.m_skeletonOffset;
 					data.bIsCulled = 0;
 					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+					data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
 
 					if (bRequiredCustomDepth)
 					{

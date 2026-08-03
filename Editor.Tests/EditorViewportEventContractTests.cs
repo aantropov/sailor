@@ -508,6 +508,10 @@ public sealed class EditorViewportEventContractTests
             secondaryDrag,
             "case UIGestureRecognizerState.Changed:",
             "case UIGestureRecognizerState.Ended:");
+        var uiKitMotion = Slice(
+            source,
+            "bool PrepareUIKitPointerMotion(CGPoint point)",
+            "void ClearActivePointerState()");
         var mouseAttachment = Slice(
             source,
             "void AttachMouseInput()",
@@ -581,14 +585,13 @@ public sealed class EditorViewportEventContractTests
             "TryUsePointerMotionSource(PointerMotionSource.UIKit)",
             secondaryDragBegan,
             StringComparison.Ordinal);
-        Assert.Contains(
+        Assert.Contains("PrepareUIKitPointerMotion(point)", secondaryDragChanged, StringComparison.Ordinal);
+        AssertInOrder(
+            uiKitMotion,
+            "pointerMotionSource == PointerMotionSource.GameController",
             "pointerMotionSource = PointerMotionSource.UIKit;",
-            secondaryDragChanged,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "TryUsePointerMotionSource(PointerMotionSource.UIKit)",
-            secondaryDragChanged,
-            StringComparison.Ordinal);
+            "RecordPointerSample(point);",
+            "return !switchedFromGameController;");
         Assert.Contains("queuedPointerActivityRevision", buttonHandler, StringComparison.Ordinal);
         Assert.Contains("if (!isAttachedToWindow || isDisposed)", source, StringComparison.Ordinal);
         Assert.Contains("protected override void Dispose(bool disposing)", source, StringComparison.Ordinal);

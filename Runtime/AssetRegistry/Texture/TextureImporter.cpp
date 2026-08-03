@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 #include "Tasks/Scheduler.h"
 #include "RHI/Texture.h"
@@ -179,6 +180,107 @@ bool ExtractTextureFromGLB(const std::string& filePath, int32_t textureIndex, Sa
 	}
 
 	return true;
+}
+
+namespace
+{
+	int32_t ResolveGltfTextureImageIndex(const tinygltf::Texture& texture)
+	{
+		if (texture.source >= 0)
+		{
+			return texture.source;
+		}
+
+		// Some texture formats keep their image source in an extension instead of
+		// the core texture.source field. Extraction remains format-agnostic here;
+		// stb_image decides below whether the encoded bytes can be decoded.
+		constexpr const char* ImageSourceExtensions[] = {
+			"KHR_texture_basisu",
+			"EXT_texture_webp",
+			"MSFT_texture_dds"
+		};
+		for (const char* extensionName : ImageSourceExtensions)
+		{
+			const auto extensionIt = texture.extensions.find(extensionName);
+			if (extensionIt == texture.extensions.end() ||
+				!extensionIt->second.IsObject() ||
+				!extensionIt->second.Has("source"))
+			{
+				continue;
+			}
+
+			const tinygltf::Value& source = extensionIt->second.Get("source");
+			if (source.IsInt())
+			{
+				return source.GetNumberAsInt();
+			}
+		}
+
+		return -1;
+	}
+
+	bool ExtractTextureFromGltf(
+		const std::string& filePath,
+		int32_t textureIndex,
+		Sailor::TextureImporter::ByteCode& outTexture,
+		std::string& outDiagnostic)
+	{
+		outTexture.Clear();
+		outDiagnostic.clear();
+
+		tinygltf::TinyGLTF loader;
+		loader.SetImagesAsIs(true);
+
+		tinygltf::Model gltfModel;
+		std::string error;
+		std::string warning;
+		if (!loader.LoadASCIIFromFile(
+				&gltfModel,
+				&error,
+				&warning,
+				filePath.c_str()))
+		{
+			outDiagnostic = !error.empty() ? error : warning;
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = "tinygltf could not load the source document";
+			}
+			return false;
+		}
+
+		if (textureIndex < 0 ||
+			static_cast<size_t>(textureIndex) >= gltfModel.textures.size())
+		{
+			outDiagnostic = "texture index is outside the glTF textures array";
+			return false;
+		}
+
+		const int32_t imageIndex = ResolveGltfTextureImageIndex(
+			gltfModel.textures[static_cast<size_t>(textureIndex)]);
+		if (imageIndex < 0 ||
+			static_cast<size_t>(imageIndex) >= gltfModel.images.size())
+		{
+			outDiagnostic = "texture does not reference a valid glTF image";
+			return false;
+		}
+
+		const tinygltf::Image& image =
+			gltfModel.images[static_cast<size_t>(imageIndex)];
+		if (image.image.empty())
+		{
+			outDiagnostic = warning.empty() ?
+				"referenced glTF image contains no encoded bytes" :
+				warning;
+			return false;
+		}
+
+		outTexture.Resize(image.image.size());
+		memcpy(
+			outTexture.GetData(),
+			image.image.data(),
+			image.image.size());
+		return true;
+	}
 }
 
 bool Texture::IsReady() const
@@ -411,15 +513,35 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 
 		if (assetInfo->StoredInGlb())
 		{
-			const bool bIsGlb = Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str()) == "glb";
+			const std::string extension =
+				Utils::GetFileExtension(assetInfo->GetAssetFilepath().c_str());
+			const bool bIsGlb = extension == "glb";
+			const bool bIsGltf = extension == "gltf";
 
-			if (!bIsGlb || (assetInfo->GetGlbTextureIndex() == -1))
+			if ((!bIsGlb && !bIsGltf) ||
+				assetInfo->GetGlbTextureIndex() == -1)
 			{
 				return false;
 			}
 
 			ByteCode rawBuffer;
-			const bool bExtracted = ExtractTextureFromGLB(assetInfo->GetAssetFilepath().c_str(), assetInfo->GetGlbTextureIndex(), rawBuffer);
+			std::string extractionDiagnostic;
+			const bool bExtracted = bIsGlb ?
+				ExtractTextureFromGLB(
+					assetInfo->GetAssetFilepath().c_str(),
+					assetInfo->GetGlbTextureIndex(),
+					rawBuffer) :
+				ExtractTextureFromGltf(
+					assetInfo->GetAssetFilepath(),
+					assetInfo->GetGlbTextureIndex(),
+					rawBuffer,
+					extractionDiagnostic);
+			if (!bExtracted && extractionDiagnostic.empty())
+			{
+				extractionDiagnostic = bIsGlb ?
+					"GLB extraction failed" :
+					"glTF extraction failed";
+			}
 
 			if (bExtracted)
 			{
@@ -452,8 +574,12 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 			}
 			else
 			{
-				const auto msg = "Cannot extract texture from glb! " + uid.ToString();
-				SAILOR_LOG_ERROR("%s", msg.c_str());
+				SAILOR_LOG_ERROR(
+					"Cannot extract texture %d from model source '%s' for asset %s: %s",
+					assetInfo->GetGlbTextureIndex(),
+					assetInfo->GetAssetFilepath().c_str(),
+					uid.ToString().c_str(),
+					extractionDiagnostic.c_str());
 			}
 
 			return false;

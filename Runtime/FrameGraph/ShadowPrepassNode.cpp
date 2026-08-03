@@ -98,6 +98,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		TVector<TSet<RHIBatch>> batches(NumShadowPasses);
 
 		uint32_t numMeshes = 0;
+		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
+		const size_t maskedQueueTag = GetHash(std::string("Masked"));
 
 		SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
@@ -106,9 +108,20 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
 			for (auto& proxy : shadowPass.m_meshList)
 			{
+				if (!proxy.m_bCastShadows)
+				{
+					continue;
+				}
+
 				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 				{
-					if (!proxy.m_bCastShadows)
+					if (proxy.m_renderQueueTags.Num() <= i)
+					{
+						continue;
+					}
+
+					const size_t renderQueueTag = proxy.m_renderQueueTags[i];
+					if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 					{
 						continue;
 					}

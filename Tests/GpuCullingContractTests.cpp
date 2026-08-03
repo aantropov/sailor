@@ -1,9 +1,14 @@
 #include "GraphicsDriver/Vulkan/VulkanImage.h"
 #include "GraphicsDriver/Vulkan/VulkanImageView.h"
 #include "GraphicsDriver/Vulkan/VulkanCommandBuffer.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
+#include "FrameGraph/DepthPrepassNode.h"
+#include "FrameGraph/RenderSceneNode.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Texture.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -137,6 +142,99 @@ namespace
 			highZShader.find("sourceEnd") != std::string::npos &&
 			highZShader.find("texelFetch") != std::string::npos,
 			"odd-sized Hi-Z mips must explicitly reduce their complete source footprint");
+	}
+
+	void TestForwardPlusTileSynchronizationContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string cullingShader = ReadText(
+			sourceRoot / "Content/Shaders/ComputeLightCulling.shader");
+		Require(cullingShader.find(
+				"const uint offset = tileIndex * LIGHTS_PER_TILE") !=
+				std::string::npos,
+			"each Forward+ tile must own a deterministic light-list range");
+		Require(cullingShader.find("culledLights.indices[0]") ==
+				std::string::npos &&
+			cullingShader.find("atomicAdd(culledLights") ==
+				std::string::npos,
+			"Forward+ light-list allocation must not race across workgroups");
+		Require(cullingShader.find("const bool isInsideViewport") !=
+				std::string::npos &&
+			cullingShader.find("if (isInsideViewport)") !=
+				std::string::npos,
+			"partial Forward+ tiles must not sample outside the viewport");
+
+		const std::string lightCullingSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/LightCullingNode.cpp");
+		const std::string processBody = ExtractFunctionBody(
+			lightCullingSource,
+			"void LightCullingNode::Process(");
+		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
+		const size_t barrierOffset = processBody.find(
+			"commands->MemoryBarrier(",
+			dispatchOffset);
+		Require(dispatchOffset != std::string::npos &&
+			barrierOffset != std::string::npos &&
+			processBody.find("EAccessBit::ShaderWrite_Bit", barrierOffset) !=
+				std::string::npos &&
+			processBody.find("EAccessBit::ShaderRead_Bit", barrierOffset) !=
+				std::string::npos,
+			"fragment lighting must wait for Forward+ compute shader writes");
+		Require(processBody.find("m_boundLightsData != sceneView.m_rhiLightsData") !=
+				std::string::npos &&
+			processBody.find("m_boundDepthAttachment != depthAttachment") !=
+				std::string::npos &&
+			processBody.find("m_bindingsViewportSize != pushConstants.m_viewportSize") !=
+				std::string::npos,
+			"Forward+ buffers must be recreated when their resource identity or extent changes");
+
+		const std::string lightingLibrary = ReadText(
+			sourceRoot / "Content/Shaders/Lighting.glsl");
+		Require(lightingLibrary.find("uint GetLightTileIndex(") !=
+				std::string::npos &&
+			lightingLibrary.find("const ivec2 tileId = clamp(") !=
+				std::string::npos,
+			"Forward+ consumers must clamp screen coordinates to the tile grid");
+		Require(lightingLibrary.find(
+				"max(roughness * roughness, 0.001)") !=
+				std::string::npos &&
+			lightingLibrary.find(
+				"max(PI * denom * denom, 1e-7)") !=
+				std::string::npos,
+			"zero-roughness GGX must remain finite");
+
+		for (const std::filesystem::path shaderPath : {
+			sourceRoot / "Content/Shaders/Standard.shader",
+			sourceRoot / "Content/Shaders/Standard_glTF.shader",
+			sourceRoot / "Content/Shaders/Debug.shader" })
+		{
+			const std::string shader = ReadText(shaderPath);
+			Require(shader.find(
+					"GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize)") !=
+					std::string::npos &&
+				shader.find(
+					"min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE))") !=
+					std::string::npos &&
+				shader.find("lightsGrid.instance.length()") !=
+					std::string::npos &&
+				shader.find("culledLights.indices.length()") !=
+					std::string::npos,
+				"Forward+ shader must use the shared bounded tile lookup: " +
+					shaderPath.generic_string());
+		}
+
+		for (const std::filesystem::path shaderPath : {
+			sourceRoot / "Content/Shaders/Standard.shader",
+			sourceRoot / "Content/Shaders/Standard_glTF.shader" })
+		{
+			const std::string shader = ReadText(shaderPath);
+			Require(shader.find("light.instance.length()") !=
+					std::string::npos &&
+				shader.find("light.instance[index].type == INVALID_LIGHT_TYPE") !=
+					std::string::npos,
+				"Forward+ lighting must reject invalid light indices: " +
+					shaderPath.generic_string());
+		}
 	}
 
 	void TestVulkanMemoryBarrierRecordsPipelineBarrier()
@@ -369,6 +467,167 @@ namespace
 			"RenderScene must bind the exact transmission attachment that it samples");
 	}
 
+	void TestBakedVolumeScalePerInstanceLayoutContract()
+	{
+		Framegraph::RenderSceneNode::PerInstanceData renderInstance{};
+		DepthPrepassNode::PerInstanceData depthInstance{};
+		const size_t renderScaleOffset = static_cast<size_t>(
+			reinterpret_cast<const uint8_t*>(&renderInstance.bakedVolumeScale) -
+			reinterpret_cast<const uint8_t*>(&renderInstance));
+		const size_t depthScaleOffset = static_cast<size_t>(
+			reinterpret_cast<const uint8_t*>(&depthInstance.bakedVolumeScale) -
+			reinterpret_cast<const uint8_t*>(&depthInstance));
+
+		Require(sizeof(renderInstance) == sizeof(depthInstance) &&
+			renderScaleOffset == depthScaleOffset &&
+			renderScaleOffset == 96u &&
+			sizeof(renderInstance) == 112u &&
+			renderScaleOffset + sizeof(vec4) == sizeof(renderInstance),
+			"render, depth, and compute passes must share the 112-byte std430 per-instance stride");
+
+		RHI::RHIMesh mesh;
+		Require(mesh.m_bakedVolumeScale == glm::vec3(1.0f) &&
+			renderInstance.bakedVolumeScale == glm::vec4(1.0f) &&
+			depthInstance.bakedVolumeScale == glm::vec4(1.0f),
+			"procedural and legacy meshes must default to an identity baked volume scale");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::pair<std::filesystem::path, size_t> sharedShaders[] = {
+			{ sourceRoot / "Content/Shaders/ComputeMeshCulling.shader", 1u },
+			{ sourceRoot / "Content/Shaders/DepthOnly.shader", 1u },
+			{ sourceRoot / "Content/Shaders/Simple.shader", 1u },
+			{ sourceRoot / "Content/Shaders/Standard.shader", 2u },
+			{ sourceRoot / "Content/Shaders/Standard_glTF.shader", 2u },
+			{ sourceRoot / "Content/Shaders/Unlit.shader", 2u }
+		};
+		for (const auto& [shaderPath, expectedLayoutCount] : sharedShaders)
+		{
+			const std::string shader = ReadText(shaderPath);
+			size_t layoutCount = 0;
+			size_t searchOffset = 0;
+			while ((searchOffset = shader.find(
+				"struct PerInstanceData",
+				searchOffset)) != std::string::npos)
+			{
+				const size_t layoutEnd = shader.find("};", searchOffset);
+				Require(layoutEnd != std::string::npos,
+					"shared per-instance shader layout must remain balanced: " +
+						shaderPath.generic_string());
+				const std::string layout = shader.substr(
+					searchOffset,
+					layoutEnd - searchOffset);
+				size_t memberOffset = 0;
+				for (const char* member : {
+					"mat4 model;",
+					"vec4 sphereBounds;",
+					"uint materialInstance;",
+					"uint skeletonOffset;",
+					"uint isCulled;",
+					"uint padding;",
+					"vec4 bakedVolumeScale;" })
+				{
+					memberOffset = layout.find(member, memberOffset);
+					Require(memberOffset != std::string::npos,
+						"shared per-instance shader layouts must preserve the 112-byte std430 member order: " +
+							shaderPath.generic_string());
+					memberOffset += std::char_traits<char>::length(member);
+				}
+
+				++layoutCount;
+				searchOffset = layoutEnd + 2u;
+			}
+			Require(layoutCount == expectedLayoutCount,
+				"every shared per-instance shader stage must use the common std430 layout: " +
+					shaderPath.generic_string());
+		}
+
+		const std::string gltfShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		Require(gltfShader.find(
+				"data.instance[gl_InstanceIndex].bakedVolumeScale.xyz") !=
+				std::string::npos,
+			"glTF transmission must combine runtime and baked node scale");
+
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string depthPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
+		Require(renderSceneSource.find(
+				"vec4(mesh->m_bakedVolumeScale, 1.0f)") !=
+				std::string::npos &&
+			depthPrepassSource.find(
+				"vec4(mesh->m_bakedVolumeScale, 1.0f)") !=
+				std::string::npos,
+			"render and depth passes must upload each RHIMesh baked volume scale");
+	}
+
+	void TestPostProcessPingPongMipIsolationContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string motionBlur = ReadText(
+			sourceRoot / "Content/Shaders/MotionBlur.shader");
+		const size_t firstBaseMipSample = motionBlur.find(
+			"textureLod(colorSampler");
+		const size_t secondBaseMipSample = motionBlur.find(
+			"textureLod(colorSampler",
+			firstBaseMipSample == std::string::npos ? 0u : firstBaseMipSample + 1u);
+		Require(firstBaseMipSample != std::string::npos &&
+			secondBaseMipSample != std::string::npos &&
+			motionBlur.find("texture(colorSampler") == std::string::npos,
+			"motion blur must sample only the tone-mapped base mip after Secondary was used as an HDR transmission snapshot");
+
+		const std::string eyeAdaptationSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/EyeAdaptationNode.cpp");
+		const std::string eyeAdaptationBody = ExtractFunctionBody(
+			eyeAdaptationSource,
+			"void EyeAdaptationNode::Process(");
+		Require(eyeAdaptationBody.find("GetMipLayer(0)") !=
+				std::string::npos &&
+			eyeAdaptationBody.find(
+				"TVector<RHI::RHITexturePtr>{colorTarget}") !=
+				std::string::npos,
+			"eye adaptation must overwrite Secondary through its base-mip attachment view");
+
+		for (const std::filesystem::path rendererPath : {
+			sourceRoot / "Content/DefaultRenderer.renderer",
+			sourceRoot / "Content/EditorRenderer.renderer" })
+		{
+			const std::string renderer = ReadText(rendererPath);
+			const size_t motionBlurOffset = renderer.find(
+				"- shader: Shaders/MotionBlur.shader");
+			const size_t debugDrawOffset = renderer.find(
+				"- name: DebugDraw",
+				motionBlurOffset);
+			const size_t outputBlitOffset = renderer.find(
+				"- name: Blit",
+				debugDrawOffset);
+			const size_t renderImGuiOffset = renderer.find(
+				"- name: RenderImGui",
+				outputBlitOffset);
+			Require(motionBlurOffset != std::string::npos &&
+				debugDrawOffset != std::string::npos &&
+				outputBlitOffset != std::string::npos &&
+				renderImGuiOffset != std::string::npos,
+				"the post-process, debug overlay, and final output sequence must be explicit");
+
+			const std::string debugDraw = renderer.substr(
+				debugDrawOffset,
+				outputBlitOffset - debugDrawOffset);
+			Require(debugDraw.find("- color: Main") !=
+					std::string::npos,
+				"DebugDraw must use the HDR-compatible Main surface after MotionBlur");
+
+			const std::string outputBlit = renderer.substr(
+				outputBlitOffset,
+				renderImGuiOffset - outputBlitOffset);
+			Require(outputBlit.find("- src: Main") !=
+					std::string::npos &&
+				outputBlit.find("- dst: EditorOutput") !=
+					std::string::npos,
+				"the final blit must preserve the post-MotionBlur debug overlay");
+		}
+	}
+
 	void TestTransparentBackToFrontOrderingContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -459,6 +718,44 @@ namespace
 			"the configured sorting order must select the ordered rendering path");
 	}
 
+	void TestShadowCasterRenderQueueContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string shadowSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string processBody = ExtractFunctionBody(
+			shadowSource,
+			"void ShadowPrepassNode::Process(");
+
+		Require(processBody.find("GetHash(std::string(\"Opaque\"))") !=
+				std::string::npos &&
+			processBody.find("GetHash(std::string(\"Masked\"))") !=
+				std::string::npos &&
+			processBody.find("renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag") !=
+				std::string::npos,
+			"the shadow pass must accept only Opaque and Masked render queues");
+		Require(processBody.find("proxy.m_renderQueueTags[i]") !=
+				std::string::npos,
+			"shadow filtering must use lightweight queue metadata instead of material bindings");
+
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const std::string traceSceneBody = ExtractFunctionBody(
+			sceneViewSource,
+			"TVector<RHISceneViewProxy> RHISceneView::TraceScene(");
+		Require(traceSceneBody.find("m_renderQueueTags.Add") !=
+				std::string::npos &&
+			traceSceneBody.find("material->GetRenderState().GetTag()") !=
+				std::string::npos,
+			"shadow traces that skip RHI materials must still publish per-mesh render queues");
+
+		const std::string staticMeshSource = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		Require(staticMeshSource.find("proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag())") !=
+				std::string::npos,
+			"cached static proxies must publish the same per-mesh render queues");
+	}
+
 	void TestPathTracerThicknessSamplerContract()
 	{
 		Raytracing::Material material{};
@@ -503,11 +800,13 @@ namespace
 		const std::string raytraceBody = ExtractFunctionBody(
 			pathTracerSource,
 			"vec3 PathTracer::Raytrace(");
-		Require(raytraceBody.find("sample.m_thicknessFactor > 0.0f") !=
+		Require(raytraceBody.find("material.m_thicknessFactor > 0.0f") !=
+				std::string::npos &&
+			raytraceBody.find("sample.m_thicknessFactor > 0.0f") ==
 				std::string::npos &&
 			raytraceBody.find("IsThickVolumeAtHit") !=
 				std::string::npos,
-			"primary and ambient thick-volume decisions must use texture-modulated thickness");
+			"thick-volume classification must use the scalar factor while sampled thickness remains available for attenuation");
 
 		const std::string traceSkyBody = ExtractFunctionBody(
 			pathTracerSource,
@@ -526,16 +825,68 @@ namespace
 				std::string::npos &&
 			thickVolumeBody.find("Sample<vec3>") != std::string::npos &&
 			thickVolumeBody.find(".r") != std::string::npos &&
-			thickVolumeBody.find("HasThicknessTexture()") !=
+			thickVolumeBody.find("HasThicknessTexture()") ==
 				std::string::npos &&
-			thickVolumeBody.find(".g") != std::string::npos &&
+			thickVolumeBody.find(".g") == std::string::npos &&
+			thickVolumeBody.find("material.m_thicknessFactor > 0.0f") !=
+				std::string::npos &&
 			thickVolumeBody.find("GetMaterialData") == std::string::npos,
-			"the hit predicate must sample only transmission red and thickness green");
-		Require(pathTracerSource.find("material.m_thicknessFactor > 0.0f") ==
-				std::string::npos &&
-			pathTracerSource.find("hitMaterial.m_thicknessFactor > 0.0f") ==
+			"the hit predicate must let transmission texture gate the ray without letting thickness texture change the volume type");
+	}
+
+	void TestPathTracerMaterialContentRevisionContract()
+	{
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		MaterialPtr material = MaterialPtr::Make(allocator, FileId::Invalid);
+		TexturePtr texture = TexturePtr::Make(allocator, FileId::Invalid);
+
+		uint64_t revision = material->GetContentRevision();
+		material->SetUniform("material.transmissionFactor", 1.0f);
+		Require(material->GetContentRevision() > revision,
+			"changing a scalar uniform must advance the material content revision");
+
+		revision = material->GetContentRevision();
+		material->SetUniform("material.attenuationColor", glm::vec4(0.9f, 0.6f, 0.1f, 1.0f));
+		Require(material->GetContentRevision() > revision,
+			"changing a vector uniform must advance the material content revision");
+
+		revision = material->GetContentRevision();
+		material->SetSampler("thicknessSampler", texture);
+		Require(material->GetContentRevision() > revision,
+			"changing a sampler must advance the material content revision");
+
+		revision = material->GetContentRevision();
+		material->SetRenderState(RHI::RenderState(
+			true,
+			true,
+			0.0f,
+			false,
+			RHI::ECullMode::Back,
+			RHI::EBlendMode::None,
+			RHI::EFillMode::Fill,
+			GetHash(std::string("Transparent"))));
+		Require(material->GetContentRevision() > revision,
+			"changing render state must advance the material content revision");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string pathTracerSource = ReadText(
+			sourceRoot / "Runtime/Raytracing/PathTracer.cpp");
+		const std::string signatureBody = ExtractFunctionBody(
+			pathTracerSource,
+			"size_t ComputeMaterialsSignature(");
+		Require(signatureBody.find("GetContentRevision()") !=
 				std::string::npos,
-			"no thick-volume decision may bypass texture-modulated thickness");
+			"the path-tracing cache signature must include same-pointer material mutations");
+
+		const std::string materialSource = ReadText(
+			sourceRoot / "Runtime/AssetRegistry/Material/MaterialImporter.cpp");
+		const std::string hotReloadBody = ExtractFunctionBody(
+			materialSource,
+			"Tasks::ITaskPtr Material::OnHotReload(");
+		Require(hotReloadBody.find("AdvanceContentRevision()") !=
+				std::string::npos,
+			"dependency hot reloads must invalidate the cached CPU material and texture snapshot");
 	}
 }
 
@@ -545,13 +896,18 @@ int main()
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "GpuCullingRangeAndSynchronizationContract", TestGpuCullingRangeAndSynchronizationContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
+		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
 		{ "CommandListImageTrackingPreservesPublishedContents", TestCommandListImageTrackingPreservesPublishedContents },
 		{ "TransmissionFramebufferMipContract", TestTransmissionFramebufferMipContract },
 		{ "TransmissionFramebufferBindingUsesNodeAttachment", TestTransmissionFramebufferBindingUsesNodeAttachment },
+		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
+		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
+		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },
 		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },
+		{ "PathTracerMaterialContentRevisionContract", TestPathTracerMaterialContentRevisionContract },
 	};
 
 	for (const auto& test : tests)
