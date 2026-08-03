@@ -310,16 +310,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 		public:
 
 			CachedDescriptorSet() = default;
-			CachedDescriptorSet& operator=(const CachedDescriptorSet& rhs);
-			CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& bindings) noexcept;
+			SAILOR_SHARED_API CachedDescriptorSet& operator=(const CachedDescriptorSet& rhs);
+			SAILOR_SHARED_API CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& bindings) noexcept;
 
-			bool operator==(const CachedDescriptorSet& rhs) const;
+			SAILOR_SHARED_API bool operator==(const CachedDescriptorSet& rhs) const;
 
 			VulkanPipelineLayoutPtr& GetLayout() { return m_layout; }
 			RHI::RHIShaderBindingSetPtr& GetBinding() { return m_binding; }
 
-			bool IsExpired() const;
-			size_t GetHash() const;
+			SAILOR_SHARED_API bool IsExpired() const;
+			SAILOR_SHARED_API size_t GetHash() const;
 		};
 
 		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);

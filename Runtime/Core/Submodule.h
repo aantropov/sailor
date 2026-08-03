@@ -5,7 +5,7 @@
 namespace Sailor
 {
 	// Used to generate typeId
-	class SAILOR_API SubmoduleBase
+	class SAILOR_SHARED_API SubmoduleBase
 	{
 	public:
 		static constexpr int32_t InvalidSubmoduleTypeId = -1;

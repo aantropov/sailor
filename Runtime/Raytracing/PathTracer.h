@@ -85,8 +85,8 @@ namespace Sailor::Raytracing
 		bool IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, float maxRayLength = FLT_MAX,
 			uint32_t ignoreInstance = (uint32_t)-1, uint32_t ignoreTriangle = (uint32_t)-1) const;
 		const Math::Triangle& GetTriangle(const TLASHit& hit) const;
-		void GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const;
-		static bool OrientShadingBasisAgainstRay(
+		SAILOR_SHARED_API void GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const;
+		SAILOR_SHARED_API static bool OrientShadingBasisAgainstRay(
 			const vec3& rayDirection,
 			vec3& inOutNormal,
 			vec3& inOutBitangent);
