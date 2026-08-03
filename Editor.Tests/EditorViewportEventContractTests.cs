@@ -487,12 +487,35 @@ public sealed class EditorViewportEventContractTests
             "Platforms",
             "MacCatalyst",
             "NativeSceneViewportHandler.MacCatalyst.cs");
+        var infoPlist = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "MacCatalyst",
+            "Info.plist");
+        var project = ReadRepositoryFile("Editor", "SailorEditor.csproj");
         var buttonHandler = Slice(source, "void HandleMouseButtonChanged", "void RecordPointerSample");
         var windowLifecycle = Slice(source, "public override void WillMoveToWindow", "protected override void Dispose");
         var touches = Slice(source, "public override void TouchesBegan", "public override void PressesBegan");
+        var secondaryDrag = Slice(
+            source,
+            "void HandleViewportSecondaryPointerDrag(",
+            "void PublishTouchMove(");
+        var secondaryDragBegan = Slice(
+            secondaryDrag,
+            "case UIGestureRecognizerState.Began:",
+            "case UIGestureRecognizerState.Changed:");
+        var secondaryDragChanged = Slice(
+            secondaryDrag,
+            "case UIGestureRecognizerState.Changed:",
+            "case UIGestureRecognizerState.Ended:");
+        var mouseAttachment = Slice(
+            source,
+            "void AttachMouseInput()",
+            "void ReleaseMouseInput()");
 
         AssertInOrder(
             buttonHandler,
+            "TryRecordSystemPointerSample();",
             "SceneViewportPointerRouting.ShouldAcceptMouseButton(",
             "QueueFocusReleaseIfPointerRemainsOutside();",
             "if (!IsFirstResponder)",
@@ -509,12 +532,63 @@ public sealed class EditorViewportEventContractTests
             "ReleaseInputObservers();");
         Assert.Contains("ReferenceEquals(mouseInputOwner, this)", source, StringComparison.Ordinal);
         Assert.Contains("releaseInput = releasedOwner.DetachMouseInputForReplacement();", source, StringComparison.Ordinal);
-        Assert.Contains("activeMouseModifiers != NativeSceneViewportInputModifier.None", touches, StringComparison.Ordinal);
+        Assert.Contains("activeLocalPointerModifier = ResolvePointerModifier(evt);", touches, StringComparison.Ordinal);
+        Assert.DoesNotContain("activeMouseModifiers != NativeSceneViewportInputModifier.None", touches, StringComparison.Ordinal);
+        Assert.Contains("TryUsePointerMotionSource(PointerMotionSource.UIKit)", source, StringComparison.Ordinal);
+        Assert.Contains("TryUsePointerMotionSource(PointerMotionSource.GameController)", source, StringComparison.Ordinal);
+        Assert.Contains("HasPointerMoved(point)", source, StringComparison.Ordinal);
+        Assert.Contains("deltaX == 0.0f && deltaY == 0.0f", source, StringComparison.Ordinal);
+        Assert.Contains("SecondaryPointerDragGestureRecognizer", source, StringComparison.Ordinal);
+        Assert.Contains("public override bool ShouldReceive(UIEvent evt)", source, StringComparison.Ordinal);
+        Assert.Contains("public override void TouchesBegan(NSSet touches, UIEvent evt)", source, StringComparison.Ordinal);
+        Assert.Contains("public override void TouchesMoved(NSSet touches, UIEvent evt)", source, StringComparison.Ordinal);
+        Assert.Contains("public override void TouchesEnded(NSSet touches, UIEvent evt)", source, StringComparison.Ordinal);
+        Assert.Contains("public override void TouchesCancelled(NSSet touches, UIEvent evt)", source, StringComparison.Ordinal);
+        Assert.Contains("(evt.ButtonMask & UIEventButtonMask.Secondary) != 0", source, StringComparison.Ordinal);
+        Assert.Contains("HandleViewportSecondaryPointerDrag", source, StringComparison.Ordinal);
+        Assert.Contains("<key>UIApplicationSupportsIndirectInputEvents</key>", infoPlist, StringComparison.Ordinal);
+        Assert.Contains("<true/>", infoPlist, StringComparison.Ordinal);
+        Assert.Contains("<ApplicationManifest Condition=", project, StringComparison.Ordinal);
+        Assert.Contains("Platforms\\MacCatalyst\\Info.plist</ApplicationManifest>", project, StringComparison.Ordinal);
+        Assert.Contains("PublishLocalPointerButton(point, modifier, true)", source, StringComparison.Ordinal);
+        Assert.Contains("PublishLocalPointerButton(point, modifier, false)", source, StringComparison.Ordinal);
         Assert.Contains("PublishTouchButton(touches, activeLocalPointerModifier, false);", touches, StringComparison.Ordinal);
         Assert.Contains("Trackpads can provide GCMouse motion without", touches, StringComparison.Ordinal);
-        Assert.Contains("mouseInput.MouseMovedHandler = HandleMouseMoved;", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ObserveDidBecomeCurrent", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("ObserveDidStopBeingCurrent", source, StringComparison.Ordinal);
+        Assert.Contains("foreach (var mouse in GCMouse.Mice)", mouseAttachment, StringComparison.Ordinal);
+        Assert.Contains("input.MouseMovedHandler = HandleMouseMoved;", source, StringComparison.Ordinal);
+        Assert.Contains("mouse.HandlerQueue = DispatchQueue.MainQueue;", mouseAttachment, StringComparison.Ordinal);
+        AssertInOrder(
+            mouseAttachment,
+            "releasedOwner.Publish(captureInput);",
+            "SynchronizePressedMouseButtons(attachedInput);");
+        Assert.Contains("input.LeftButton.IsPressed", mouseAttachment, StringComparison.Ordinal);
+        Assert.Contains("input.RightButton.IsPressed", mouseAttachment, StringComparison.Ordinal);
+        Assert.Contains("input.MiddleButton?.IsPressed == true", mouseAttachment, StringComparison.Ordinal);
+        Assert.Contains("new CGEvent((CGEventSource?)null)", source, StringComparison.Ordinal);
+        Assert.Contains("window.ConvertPointFromCoordinateSpace(", source, StringComparison.Ordinal);
+        Assert.Contains("window.HitTest(windowPoint, null)", source, StringComparison.Ordinal);
+        Assert.Contains("ConvertPointFromView(windowPoint, window)", source, StringComparison.Ordinal);
+        Assert.Contains("RecordPointerSample(localPoint);", source, StringComparison.Ordinal);
         Assert.Contains("(deltaX * sensitivity) / scale", source, StringComparison.Ordinal);
         Assert.Contains("(deltaY * sensitivity) / scale", source, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "pointerMotionSource = PointerMotionSource.UIKit;",
+            secondaryDragBegan,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TryUsePointerMotionSource(PointerMotionSource.UIKit)",
+            secondaryDragBegan,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "pointerMotionSource = PointerMotionSource.UIKit;",
+            secondaryDragChanged,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "TryUsePointerMotionSource(PointerMotionSource.UIKit)",
+            secondaryDragChanged,
+            StringComparison.Ordinal);
         Assert.Contains("queuedPointerActivityRevision", buttonHandler, StringComparison.Ordinal);
         Assert.Contains("if (!isAttachedToWindow || isDisposed)", source, StringComparison.Ordinal);
         Assert.Contains("protected override void Dispose(bool disposing)", source, StringComparison.Ordinal);
