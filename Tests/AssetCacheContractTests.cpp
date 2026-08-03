@@ -1419,6 +1419,14 @@ namespace
 			directory.Path("Workspace/Content/Missing.glb");
 		WriteFile(engineSource, "engine-source");
 		WriteFile(workspaceSource, "workspace-source-v1");
+		std::error_code timestampError;
+		std::filesystem::last_write_time(
+			workspaceSource,
+			std::filesystem::last_write_time(engineSource) + std::chrono::seconds(2),
+			timestampError);
+		Require(
+			!timestampError,
+			"the physical source fixture must use distinct file revisions");
 
 		AssetScanSourceRevisionCache scanSnapshot;
 		FileRevision engineRevision;
@@ -1436,7 +1444,9 @@ namespace
 			!scanSnapshot.TryGet(missingSource.generic_string(), missingRevision),
 			"a missing source should be memoized as a failed scan observation");
 
-		WriteFile(workspaceSource, "workspace-source-v2-with-another-size");
+		RewriteFileWithNewRevision(
+			workspaceSource,
+			"workspace-source-v2-with-another-size");
 		WriteFile(missingSource, "appeared-during-scan");
 		const std::filesystem::path equivalentWorkspacePath =
 			workspaceSource.parent_path() / "." / workspaceSource.filename();
