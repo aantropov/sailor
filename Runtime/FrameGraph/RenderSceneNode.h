@@ -42,6 +42,15 @@ namespace Sailor::Framegraph
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
 
 	protected:
+		struct OrderedDrawItem
+		{
+			RHI::RHIBatch m_batch;
+			RHI::RHIMeshPtr m_mesh;
+			PerInstanceData m_instanceData;
+			float m_cameraDepth = 0.0f;
+			size_t m_staticMeshEcs = 0;
+			size_t m_meshIndex = 0;
+		};
 
 		// macOS/MoltenVK has a much tighter practical limit on bound texture descriptors.
 		// We cache texture binding sets and split batches so they fit those limits.
@@ -72,6 +81,12 @@ namespace Sailor::Framegraph
 		};
 
 		RHI::RHIShaderBindingSetPtr GetTextureBindingSet(const TSet<uint32_t>& requestedTextures, uint64_t frame, uint32_t& outSupportedMeshesPerBatch);
+		void ProcessBackToFront(RHI::RHIFrameGraphPtr frameGraph,
+			RHI::RHICommandListPtr transferCommandList,
+			RHI::RHICommandListPtr commandList,
+			const RHI::RHISceneViewSnapshot& sceneView,
+			const RHI::RHIShaderBindingPtr& storageBinding,
+			const std::string& queueTag);
 		void EvictTextureBindingCache(uint64_t frame);
 		static uint32_t CalculatePlannedTextureSlotCount(const TVector<uint32_t>& requestedTextures);
 
@@ -81,6 +96,7 @@ namespace Sailor::Framegraph
 		SpinLock m_syncSharedResources;
 		RHI::TDrawCalls<PerInstanceData> m_drawCalls;
 		TSet<RHI::RHIBatch> m_batches;
+		TVector<OrderedDrawItem> m_orderedDrawItems;
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;

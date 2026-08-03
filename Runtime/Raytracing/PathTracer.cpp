@@ -15,6 +15,7 @@
 #include "RHI/Texture.h"
 #include <glm/gtc/random.hpp>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <thread>
 
@@ -89,6 +90,45 @@ namespace
 	{
 		const vec3 bias = ComputeRayOriginBias(worldPoint, geometricNormal, biasBase, biasScale);
 		return worldPoint + (glm::dot(rayDirection, geometricNormal) >= 0.0f ? bias : -bias);
+	}
+
+	__forceinline vec2 ResolveHitTextureCoordinates(
+		const Math::Triangle& triangle,
+		const Math::RaycastHit& hit)
+	{
+		return hit.m_barycentricCoordinate.x * triangle.m_uvs[0] +
+			hit.m_barycentricCoordinate.y * triangle.m_uvs[1] +
+			hit.m_barycentricCoordinate.z * triangle.m_uvs[2];
+	}
+
+	__forceinline vec3 CalculateVolumeAttenuation(
+		const vec3& attenuationColor,
+		float attenuationDistance,
+		float transmissionDistance)
+	{
+		if (transmissionDistance <= 0.0f ||
+			attenuationDistance <= 0.0f ||
+			!std::isfinite(attenuationDistance) ||
+			attenuationDistance >= (std::numeric_limits<float>::max)())
+		{
+			return vec3(1.0f);
+		}
+
+		const float exponent = transmissionDistance /
+			(std::max)(attenuationDistance, std::numeric_limits<float>::epsilon());
+		vec3 result(1.0f);
+		for (uint32_t component = 0; component < 3; ++component)
+		{
+			const float sourceColor = attenuationColor[component];
+			const float color = std::isfinite(sourceColor) ?
+				glm::clamp(sourceColor, 0.0f, 1.0f) :
+				1.0f;
+			result[component] = color <= 0.0f ?
+				0.0f :
+				std::pow(color, exponent);
+		}
+
+		return result;
 	}
 
 	struct PathTracerView
@@ -371,37 +411,66 @@ namespace
 
 			glm::vec4 baseColorFactor(1.0f);
 			glm::vec4 emissiveFactor(0.0f);
+			glm::vec4 attenuationColor(1.0f);
 			float roughness = 1.0f;
 			float metallic = 1.0f;
 			float alphaCutoff = 0.5f;
 			float normalScale = 1.0f;
+			float transmission = 0.0f;
+			float thickness = 0.0f;
+			float attenuationDistance = (std::numeric_limits<float>::max)();
+			float indexOfRefraction = 1.5f;
 
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.albedo", baseColorFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.transmissionFactor", transmission);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.thicknessFactor", thickness);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
 
 			outMaterial.m_baseColorFactor = baseColorFactor;
 			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
 			outMaterial.m_roughnessFactor = roughness;
 			outMaterial.m_metallicFactor = metallic;
 			outMaterial.m_alphaCutoff = alphaCutoff;
+			outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
+				glm::clamp(transmission, 0.0f, 1.0f) :
+				0.0f;
+			outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
+				(std::max)(0.0f, thickness) :
+				0.0f;
+			outMaterial.m_attenuationDistance =
+				std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
+				attenuationDistance :
+				(std::numeric_limits<float>::max)();
+			for (uint32_t component = 0; component < 3; ++component)
+			{
+				const float value = attenuationColor[component];
+				outMaterial.m_attenuationColor[component] =
+					std::isfinite(value) ?
+					glm::clamp(value, 0.0f, 1.0f) :
+					1.0f;
+			}
+			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) ?
+				(std::max)(1.0f, indexOfRefraction) :
+				1.5f;
 
-			const size_t renderQueueTag = pMaterial->GetRenderState().GetTag();
-			const size_t transparentTag = GetHash(std::string("Transparent"));
-			const size_t maskedTag = GetHash(std::string("Masked"));
-			if (renderQueueTag == transparentTag)
+			const RHI::RenderState& renderState = pMaterial->GetRenderState();
+			if (renderState.GetBlendMode() != RHI::EBlendMode::None)
 			{
 				outMaterial.m_blendMode = BlendMode::Blend;
 			}
-			else if (renderQueueTag == maskedTag)
+			else if (renderState.IsRequiredCustomDepthShader())
 			{
 				outMaterial.m_blendMode = BlendMode::Mask;
 			}
@@ -450,6 +519,10 @@ namespace
 				else if (samplerName == "transmissionSampler")
 				{
 					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_transmissionIndex);
+				}
+				else if (samplerName == "thicknessSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_thicknessIndex);
 				}
 			}
 
@@ -1443,6 +1516,41 @@ uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
 }
 
+bool PathTracer::IsThickVolumeAtHit(
+	const TLASHit& hit,
+	uint32_t materialIndex) const
+{
+	const auto& material = m_materials[materialIndex];
+	const vec2 uv = ResolveHitTextureCoordinates(
+		GetTriangle(hit),
+		hit.m_hit);
+	const vec2 uvTransformed =
+		material.m_uvTransform * vec3(uv, 1.0f);
+
+	float transmission = material.m_transmissionFactor;
+	if (material.HasTransmissionTexture())
+	{
+		transmission *=
+			m_textures[material.m_transmissionIndex]->Sample<vec3>(
+				uvTransformed).r;
+	}
+
+	if (transmission <= 0.0f)
+	{
+		return false;
+	}
+
+	float thickness = material.m_thicknessFactor;
+	if (material.HasThicknessTexture())
+	{
+		thickness *=
+			m_textures[material.m_thicknessIndex]->Sample<vec3>(
+				uvTransformed).g;
+	}
+
+	return thickness > 0.0f;
+}
+
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
 {
 	vec3 att = vec3(1, 1, 1);
@@ -1463,7 +1571,8 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Param
 		GetShadingBasis(hitLight, shadingNormal, shadingTangent, shadingBitangent);
 
 		const bool bHitOpposite = dot(toLight, shadingNormal) < 0.0f;
-		const bool bHitThickVolume = material.m_transmissionFactor > 0.0f && material.m_thicknessFactor > 0.0f;
+		const bool bHitThickVolume =
+			IsThickVolumeAtHit(hitLight, materialIndex);
 
 		if (!bHitThickVolume)
 		{
@@ -1480,8 +1589,10 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Param
 
 		if (!bHitOpposite)
 		{
-			const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
-			att *= glm::exp(-c * distance);
+			att *= CalculateVolumeAttenuation(
+				material.m_attenuationColor,
+				material.m_attenuationDistance,
+				distance);
 		}
 
 		startPoint = hitLight.m_hit.m_point;
@@ -1515,9 +1626,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
-		const vec2 uv = hit.m_hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
-			hit.m_hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-			hit.m_hit.m_barycentricCoordinate.z * tri.m_uvs[2];
+		const vec2 uv = ResolveHitTextureCoordinates(tri, hit.m_hit);
 
 		const uint32_t materialIndex = ResolveMaterialIndex(hit);
 		const auto material = m_materials[materialIndex];
@@ -1533,7 +1642,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 
 		const bool bFullMetallic = sample.m_orm.z == 1.0f;
 		const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
-		const bool bThickVolume = bHasTransmission && material.m_thicknessFactor > 0.0f;
+		const bool bThickVolume = bHasTransmission && sample.m_thicknessFactor > 0.0f;
 
 		if (!bIsOppositeRay && bThickVolume)
 		{
@@ -1689,9 +1798,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					if (bIsOppositeRay && bTransmissionRay && bThickVolume)
 					{
 						const float distance = glm::length(hitLight.m_hit.m_point - hit.m_hit.m_point);
-						const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
-
-						lightAttenuation = glm::exp(-c * distance);
+						lightAttenuation = CalculateVolumeAttenuation(
+							material.m_attenuationColor,
+							material.m_attenuationDistance,
+							distance);
 					}
 
 					vec3 raytraced = vec3(0, 0, 0);
@@ -1707,15 +1817,21 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					indirect += value;
 
 					// Ambient 2, Sky is reachable
-					const auto& hitMaterial = m_materials[ResolveMaterialIndex(hitLight)];
-					if (!bThickVolume && hitMaterial.m_transmissionFactor > 0.0f && hitMaterial.m_thicknessFactor > 0.0f)
+					if (!bThickVolume)
 					{
-						vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
-
-						if (att != vec3(0, 0, 0))
+						const uint32_t hitMaterialIndex =
+							ResolveMaterialIndex(hitLight);
+						if (IsThickVolumeAtHit(
+							hitLight,
+							hitMaterialIndex))
 						{
-							ambient2 += value * att;
-							avgPdfLambert += pdf;
+							vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
+
+							if (att != vec3(0, 0, 0))
+							{
+								ambient2 += value * att;
+								avgPdfLambert += pdf;
+							}
 						}
 					}
 				}
@@ -1825,6 +1941,11 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 	if (material.HasTransmissionTexture())
 	{
 		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
+	}
+
+	if (material.HasThicknessTexture())
+	{
+		res.m_thicknessFactor *= m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
 	}
 
 	if (material.m_blendMode == BlendMode::Mask)

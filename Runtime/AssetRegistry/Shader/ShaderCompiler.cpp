@@ -173,6 +173,8 @@ std::string GenerateConstantsLibrary(uint32_t version)
 	stream << "#define DefaultColorBinding " << RHI::RHIVertexDescription::DefaultColorBinding << "\n";
 	stream << "#define DefaultTangentBinding " << RHI::RHIVertexDescription::DefaultTangentBinding << "\n";
 	stream << "#define DefaultBitangentBinding " << RHI::RHIVertexDescription::DefaultBitangentBinding << "\n";
+	stream << "#define DefaultBoneIdsBinding " << RHI::RHIVertexDescription::DefaultBoneIdsBinding << "\n";
+	stream << "#define DefaultBoneWeightsBinding " << RHI::RHIVertexDescription::DefaultBoneWeightsBinding << "\n";
 
 	stream << "\n" << "// Tile Lighting" << "\n";
 	stream << "#define LIGHTS_CULLING_TILE_SIZE " << LightCullingNode::TileSize << "\n";

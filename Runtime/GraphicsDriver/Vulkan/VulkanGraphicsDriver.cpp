@@ -74,7 +74,11 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
-	m_defaultTexture = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
+	m_defaultTexture = RHI::RHITexturePtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Repeat,
+		false,
+		RHI::EImageLayout::ShaderReadOnlyOptimal);
 
 	m_vkDefaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
 	m_vkDefaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
@@ -320,6 +324,9 @@ void VulkanGraphicsDriver::RefreshSwapchainTargets()
 
 	m_depthStencilBuffer->m_vulkan.m_imageView = depthBufferView;
 	m_depthStencilBuffer->m_vulkan.m_image = depthBufferView->m_image;
+	m_depthStencilBuffer->ForceSetDefaultLayout(
+		static_cast<RHI::EImageLayout>(
+			depthBufferView->GetImage()->m_defaultLayout));
 	m_depthStencilBuffer->m_depthAspect.Clear();
 	m_depthStencilBuffer->m_stencilAspect.Clear();
 
@@ -841,6 +848,13 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 			(VkImageLayout)layout,
 			flags,
 			arrayLayers);
+
+		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(
+			cmdList,
+			outTexture,
+			format,
+			RHI::EImageLayout::Undefined,
+			layout);
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
@@ -2023,16 +2037,24 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 	}
 
 	auto device = m_vkInstance->GetMainDevice();
+	const bool bIsDepthFormat = RHI::IsDepthFormat(textureFormat);
+	const RHI::EImageLayout defaultLayout = bIsDepthFormat ?
+		(RHI::IsDepthStencilFormat(textureFormat) ?
+			RHI::EImageLayout::DepthStencilAttachmentOptimal :
+			RHI::EImageLayout::DepthAttachmentOptimal) :
+		RHI::EImageLayout::ColorAttachmentOptimal;
 
-	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, false);
+	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Clamp,
+		false,
+		defaultLayout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
 	vkExtent.depth = 1;
 
-	const bool bIsDepthFormat = textureFormat == RHI::EFormat::D16_UNORM || textureFormat == RHI::EFormat::D32_SFLOAT || textureFormat == RHI::EFormat::X8_D24_UNORM_PACK32 ||
-		textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT;
 	const auto usage = (uint32_t)(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		(!bIsDepthFormat ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
 
@@ -2044,10 +2066,29 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 		VK_IMAGE_TILING_OPTIMAL,
 		usage,
 		(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		device->GetCurrentMsaaSamples());
+		device->GetCurrentMsaaSamples(),
+		static_cast<VkImageLayout>(defaultLayout));
 
 	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 	target->m_vulkan.m_imageView->Compile();
+
+	RHI::RHICommandListPtr cmdList = CreateCommandList(
+		false,
+		RHI::ECommandListQueue::Graphics);
+	SetDebugName(cmdList, "Initialize cached MSAA render target");
+	BeginCommandList(cmdList, true);
+	ImageMemoryBarrier(
+		cmdList,
+		target,
+		textureFormat,
+		RHI::EImageLayout::Undefined,
+		defaultLayout);
+	EndCommandList(cmdList);
+
+	RHI::RHIFencePtr initializationFence = RHI::RHIFencePtr::Make();
+	SetDebugName(initializationFence, "Initialize cached MSAA render target");
+	TrackDelayedInitialization(target.GetRawPtr(), initializationFence);
+	SubmitCommandList(cmdList, initializationFence);
 
 	m_cachedMsaaRenderTargets.At_Lock(hash) = target;
 	m_cachedMsaaRenderTargets.Unlock(hash);
@@ -2072,12 +2113,8 @@ void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHIT
 
 	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
 
-	if (bShouldOptimizeBarriers)
-	{
-		// Hack to fit the internal layout
-		cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] = TPair(target, (RHI::EImageLayout)target->m_vulkan.m_image->m_defaultLayout);
-		//ImageMemoryBarrier(cmd, target, target->GetDefaultLayout());
-	}
+	cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] =
+		TPair(target, RHI::EImageLayout::ShaderReadOnlyOptimal);
 }
 
 void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap)
@@ -2158,7 +2195,9 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	VkImage vkHandle = *image->m_vulkan.m_image;
 	if (!imageBarriers.ContainsKey(vkHandle))
 	{
-		imageBarriers[vkHandle] = TPair(image, (RHI::EImageLayout)image->m_vulkan.m_image->m_initialLayout);
+		// Engine-owned images are initialized before publication and every
+		// command list restores them to their current default layout.
+		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
 	}
 
 	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();

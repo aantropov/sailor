@@ -11,6 +11,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+#include <cmath>
 #include <limits>
 #include <mutex>
 
@@ -57,9 +58,9 @@ uint32_t RenderSceneNode::CalculatePlannedTextureSlotCount(const TVector<uint32_
 
 RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 {
-	const std::string& sortOrder = GetString("Sorting");
+	std::string sortOrder;
 
-	if (!sortOrder.empty())
+	if (TryGetString("Sorting", sortOrder))
 	{
 		return magic_enum::enum_cast<RHI::ESortingOrder>(sortOrder).value_or(RHI::ESortingOrder::FrontToBack);
 	}
@@ -231,6 +232,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
+	const bool bBackToFront = GetSortingOrder() == RHI::ESortingOrder::BackToFront;
 
 	auto res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
 		[=, this, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
@@ -240,6 +242,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			m_numMeshes = 0;
 			m_drawCalls.Clear();
 			m_batches.Clear();
+			m_orderedDrawItems.Clear();
 			EvictTextureBindingCache(sceneViewSnapshot.m_frame);
 
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
@@ -301,18 +304,250 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 #endif
 						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 
-						m_drawCalls[batch][mesh].Add(data);
-						m_batches.Insert(batch);
+						if (bBackToFront)
+						{
+							const glm::vec4 worldCenter = proxy.m_worldMatrix *
+								glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
+							const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
+								worldCenter;
+
+							OrderedDrawItem item;
+							item.m_batch = std::move(batch);
+							item.m_mesh = mesh;
+							item.m_instanceData = data;
+							item.m_cameraDepth = std::isfinite(viewCenter.z) ?
+								-viewCenter.z :
+								-(std::numeric_limits<float>::max)();
+							item.m_staticMeshEcs = proxy.m_staticMeshEcs;
+							item.m_meshIndex = i;
+							m_orderedDrawItems.Emplace(std::move(item));
+						}
+						else
+						{
+							m_drawCalls[batch][mesh].Add(data);
+							m_batches.Insert(batch);
+						}
 
 						m_numMeshes++;
 					}
 				}
 			}
 
+			if (bBackToFront)
+			{
+				m_orderedDrawItems.Sort([](const OrderedDrawItem& lhs, const OrderedDrawItem& rhs)
+					{
+						if (lhs.m_cameraDepth != rhs.m_cameraDepth)
+						{
+							return lhs.m_cameraDepth > rhs.m_cameraDepth;
+						}
+
+						if (lhs.m_staticMeshEcs != rhs.m_staticMeshEcs)
+						{
+							return lhs.m_staticMeshEcs < rhs.m_staticMeshEcs;
+						}
+
+						return lhs.m_meshIndex < rhs.m_meshIndex;
+					});
+			}
+
 			syncSharedResources.Unlock();
 		}, EThreadType::RHI);
 
 	return res;
+}
+
+void RenderSceneNode::ProcessBackToFront(RHIFrameGraphPtr frameGraph,
+	RHI::RHICommandListPtr transferCommandList,
+	RHI::RHICommandListPtr commandList,
+	const RHI::RHISceneViewSnapshot& sceneView,
+	const RHI::RHIShaderBindingPtr& storageBinding,
+	const std::string& queueTag)
+{
+	if (m_orderedDrawItems.IsEmpty())
+	{
+		return;
+	}
+
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
+	RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+	if (!depthAttachment)
+	{
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	}
+
+	if (!colorAttachment || !depthAttachment)
+	{
+		return;
+	}
+
+	TVector<PerInstanceData> gpuMatricesData;
+	gpuMatricesData.Reserve(m_orderedDrawItems.Num());
+
+	TVector<RHI::DrawIndexedIndirectData> indirectCommands;
+	indirectCommands.Reserve(m_orderedDrawItems.Num());
+
+	const uint32_t firstStorageInstance = storageBinding->GetStorageInstanceIndex();
+	for (uint32_t i = 0; i < m_orderedDrawItems.Num(); i++)
+	{
+		const OrderedDrawItem& item = m_orderedDrawItems[i];
+		gpuMatricesData.Add(item.m_instanceData);
+
+		RHI::DrawIndexedIndirectData command{};
+		command.m_indexCount = item.m_mesh->GetIndexCount();
+		command.m_instanceCount = 1u;
+		command.m_firstIndex = item.m_mesh->GetFirstIndex();
+		command.m_vertexOffset = item.m_mesh->GetVertexOffset();
+		command.m_firstInstance = firstStorageInstance + i;
+		indirectCommands.Emplace(std::move(command));
+	}
+
+	commands->UpdateShaderBinding(transferCommandList,
+		storageBinding,
+		gpuMatricesData.GetData(),
+		sizeof(PerInstanceData) * gpuMatricesData.Num(),
+		0);
+
+	if (m_indirectBuffers.IsEmpty())
+	{
+		m_indirectBuffers.Resize(1);
+	}
+
+	const size_t indirectBufferSize =
+		sizeof(RHI::DrawIndexedIndirectData) * indirectCommands.Num();
+	if (!m_indirectBuffers[0].IsValid() ||
+		m_indirectBuffers[0]->GetSize() < indirectBufferSize)
+	{
+		constexpr size_t IndirectBufferSlack = 256;
+		m_indirectBuffers[0] = driver->CreateIndirectBuffer(
+			indirectBufferSize + IndirectBufferSlack);
+	}
+
+	commands->UpdateBuffer(transferCommandList,
+		m_indirectBuffers[0],
+		indirectCommands.GetData(),
+		indirectBufferSize,
+		0);
+
+	const auto viewport = glm::ivec4(0,
+		colorAttachment->GetTarget()->GetExtent().y,
+		colorAttachment->GetTarget()->GetExtent().x,
+		-colorAttachment->GetTarget()->GetExtent().y);
+	const auto scissor = glm::uvec4(0,
+		0,
+		colorAttachment->GetTarget()->GetExtent().x,
+		colorAttachment->GetTarget()->GetExtent().y);
+
+	commands->BeginDebugRegion(commandList,
+		std::string(GetName()) + " QueueTag:" + queueTag + " BackToFront",
+		DebugContext::Color_CmdGraphics);
+	commands->ImageMemoryBarrier(commandList,
+		colorAttachment->GetTarget(),
+		EImageLayout::ColorAttachmentOptimal);
+
+	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ?
+		EImageLayout::DepthStencilAttachmentOptimal :
+		EImageLayout::DepthAttachmentOptimal;
+	commands->ImageMemoryBarrier(commandList,
+		depthAttachment,
+		depthAttachmentLayout);
+
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHISurfacePtr>{ colorAttachment },
+		depthAttachment,
+		glm::vec4(0,
+			0,
+			colorAttachment->GetTarget()->GetExtent().x,
+			colorAttachment->GetTarget()->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		0.0f,
+		true);
+
+#if defined(_WIN32)
+	constexpr uint32_t MaxMeshesPerIndirectBatch = 16384u;
+#else
+	constexpr uint32_t MaxMeshesPerIndirectBatch = 128u;
+#endif
+
+	uint32_t runBegin = 0;
+	while (runBegin < m_orderedDrawItems.Num())
+	{
+		const OrderedDrawItem& firstItem = m_orderedDrawItems[runBegin];
+		uint32_t runLimit = (std::max)(1u,
+			(std::min)(MaxMeshesPerIndirectBatch,
+				firstItem.m_batch.m_supportedMeshesPerBatch));
+		uint32_t runEnd = runBegin + 1u;
+		while (runEnd < m_orderedDrawItems.Num())
+		{
+			const OrderedDrawItem& nextItem = m_orderedDrawItems[runEnd];
+			if (!(firstItem.m_batch == nextItem.m_batch))
+			{
+				break;
+			}
+
+			const uint32_t nextLimit = (std::max)(1u,
+				(std::min)(MaxMeshesPerIndirectBatch,
+					nextItem.m_batch.m_supportedMeshesPerBatch));
+			runLimit = (std::min)(runLimit, nextLimit);
+			if (runEnd - runBegin >= runLimit)
+			{
+				break;
+			}
+
+			runEnd++;
+		}
+
+		const RHIBatch& batch = firstItem.m_batch;
+		TVector<RHIShaderBindingSetPtr> shaderBindings({
+			sceneView.m_frameBindings,
+			sceneView.m_rhiLightsData,
+			m_perInstanceData,
+			batch.m_material->GetBindings(),
+			batch.m_textureBindings });
+		if (sceneView.m_boneMatrices)
+		{
+			shaderBindings.Add(sceneView.m_boneMatrices);
+		}
+
+		commands->BindMaterial(commandList, batch.m_material);
+		commands->SetViewport(commandList,
+			(float)viewport.x,
+			(float)viewport.y,
+			(float)viewport.z,
+			(float)viewport.w,
+			glm::vec2(scissor.x, scissor.y),
+			glm::vec2(scissor.z, scissor.w),
+			0.0f,
+			1.0f);
+		commands->BindShaderBindings(commandList,
+			batch.m_material,
+			shaderBindings);
+		commands->BindVertexBuffer(commandList,
+			batch.m_mesh->m_vertexBuffer,
+			0);
+		commands->BindIndexBuffer(commandList,
+			batch.m_mesh->m_indexBuffer,
+			0);
+
+		const uint32_t runSize = runEnd - runBegin;
+		commands->DrawIndexedIndirect(commandList,
+			m_indirectBuffers[0],
+			sizeof(RHI::DrawIndexedIndirectData) * runBegin,
+			runSize,
+			sizeof(RHI::DrawIndexedIndirectData));
+		m_drawCallStats.m_numBatches++;
+		m_drawCallStats.m_numInstances += runSize;
+
+		runBegin = runEnd;
+	}
+
+	commands->EndRenderPass(commandList);
+	commands->EndDebugRegion(commandList);
 }
 
 /*
@@ -361,10 +596,40 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 	}
 
+	RHI::RHITexturePtr transmissionFramebuffer =
+		GetResolvedAttachment("transmissionFramebuffer");
+	if (transmissionFramebuffer)
+	{
+		auto rhiLightsData = sceneView.m_rhiLightsData;
+		constexpr const char* transmissionSamplerName =
+			"g_transmissionFramebufferSampler";
+		RHI::RHIShaderBindingPtr& transmissionBinding =
+			rhiLightsData->GetOrAddShaderBinding(
+				transmissionSamplerName);
+		if (transmissionBinding->GetTextureBinding() !=
+			transmissionFramebuffer)
+		{
+			driver->AddSamplerToShaderBindings(
+				rhiLightsData,
+				transmissionSamplerName,
+				transmissionFramebuffer,
+				10);
+			rhiLightsData->RecalculateCompatibility();
+		}
+	}
+
 	if (m_numMeshes == 0)
 	{
 		m_syncSharedResources.Unlock();
 		return;
+	}
+
+	if (transmissionFramebuffer)
+	{
+		commands->ImageMemoryBarrier(
+			commandList,
+			transmissionFramebuffer,
+			RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
 
 	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(RenderSceneNode::PerInstanceData) * m_numMeshes)
@@ -377,6 +642,17 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	}
 
 	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
+	if (GetSortingOrder() == RHI::ESortingOrder::BackToFront)
+	{
+		ProcessBackToFront(frameGraph,
+			transferCommandList,
+			commandList,
+			sceneView,
+			storageBinding,
+			QueueTag);
+		m_syncSharedResources.Unlock();
+		return;
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Prepare command list");
@@ -661,6 +937,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 void RenderSceneNode::Clear()
 {
+	m_orderedDrawItems.Clear();
 	m_indirectBuffers.Clear();
 	m_perInstanceData.Clear();
 #if defined(__APPLE__)

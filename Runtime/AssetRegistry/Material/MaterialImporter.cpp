@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <algorithm>
+#include <cstring>
 #include <iostream>
 
 #include "RHI/Renderer.h"
@@ -217,52 +218,95 @@ void Material::UpdateRHIResource()
 
 void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 {
-	// TODO: Remove boilerplate
+	TMap<std::string, TVector<uint8_t>> bindingData;
+
+	auto writeParameter = [this, &bindingData](
+		const std::string& parameterName,
+		const void* value,
+		size_t valueSize)
+		{
+			if (!m_commonShaderBindings->HasParameter(parameterName))
+			{
+				return;
+			}
+
+			std::string bindingName;
+			std::string variableName;
+			RHI::RHIShaderBindingSet::ParseParameter(
+				parameterName,
+				bindingName,
+				variableName);
+
+			RHI::RHIShaderBindingPtr& binding =
+				m_commonShaderBindings->GetOrAddShaderBinding(bindingName);
+			RHI::ShaderLayoutBindingMember memberLayout;
+			if (!binding->FindVariableInUniformBuffer(
+				variableName,
+				memberLayout))
+			{
+				return;
+			}
+
+			const size_t bindingSize = (std::max)(
+				static_cast<size_t>(binding->GetLayout().m_size),
+				static_cast<size_t>(binding->GetLayout().m_paddedSize));
+			if (bindingSize == 0 ||
+				value == nullptr ||
+				valueSize > memberLayout.m_size ||
+				memberLayout.m_absoluteOffset > bindingSize ||
+				valueSize > bindingSize - memberLayout.m_absoluteOffset)
+			{
+				ensure(false,
+					"Cannot pack material parameter %s",
+					parameterName.c_str());
+				return;
+			}
+
+			TVector<uint8_t>& data = bindingData[bindingName];
+			if (data.IsEmpty())
+			{
+				// Value-initialize the complete reflected block. Optional material
+				// fields which are absent from the asset must remain deterministic
+				// zeros instead of retaining data from a recycled SSBO allocation.
+				data.Resize(bindingSize);
+			}
+
+			std::memcpy(
+				data.GetData() + memberLayout.m_absoluteOffset,
+				value,
+				valueSize);
+		};
+
 	for (auto& uniform : m_uniformsVec4)
 	{
-		if (m_commonShaderBindings->HasParameter(uniform.m_first))
-		{
-			std::string outBinding;
-			std::string outVariable;
-
-			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
-
-			const glm::vec4 value = uniform.m_second;
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-		}
+		const glm::vec4 value = uniform.m_second;
+		writeParameter(uniform.m_first, &value, sizeof(value));
 	}
 
 	for (auto& uniform : m_uniformsFloat)
 	{
-		if (m_commonShaderBindings->HasParameter(uniform.m_first))
-		{
-			std::string outBinding;
-			std::string outVariable;
-
-			RHI::RHIShaderBindingSet::ParseParameter(uniform.m_first, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
-
-			const float value = uniform.m_second;
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-		}
+		const float value = uniform.m_second;
+		writeParameter(uniform.m_first, &value, sizeof(value));
 	}
 
 	for (auto& sampler : m_samplers)
 	{
 		const std::string parameterName = "material." + sampler.m_first;
+		const uint32_t value = static_cast<uint32_t>(
+			App::GetSubmodule<TextureImporter>()->GetTextureIndex(
+				sampler.m_second->GetFileId()));
+		writeParameter(parameterName, &value, sizeof(value));
+	}
 
-		if (m_commonShaderBindings->HasParameter(parameterName))
-		{
-			std::string outBinding;
-			std::string outVariable;
-
-			RHI::RHIShaderBindingSet::ParseParameter(parameterName, outBinding, outVariable);
-			RHI::RHIShaderBindingPtr& binding = m_commonShaderBindings->GetOrAddShaderBinding(outBinding);
-
-			const uint32_t value = (uint32_t)App::GetSubmodule<TextureImporter>()->GetTextureIndex(sampler.m_second->GetFileId());
-			RHI::Renderer::GetDriverCommands()->UpdateShaderBindingVariable(cmdList, binding, outVariable, &value, sizeof(value));
-		}
+	for (const auto& data : bindingData)
+	{
+		RHI::RHIShaderBindingPtr& binding =
+			m_commonShaderBindings->GetOrAddShaderBinding(data.m_first);
+		RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(
+			cmdList,
+			binding,
+			data.m_second->GetData(),
+			data.m_second->Num());
 	}
 }
 
@@ -348,6 +392,7 @@ void MaterialAsset::Deserialize(const YAML::Node& outData)
 	::Deserialize(outData, "shaderUid", m_pData->m_shader);
 	::Deserialize(outData, "renderQueue", renderQueue);
 
+	m_pData->m_renderQueue = renderQueue;
 	const size_t tag = GetHash(renderQueue);
 	m_pData->m_renderState = RHI::RenderState(bEnableDepthTest, bEnableZWrite, depthBias, bCustomDepthShader, cullMode, blendMode, fillMode, tag, bSupportMultisampling);
 }

@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <mutex>
 #include <sstream>
@@ -24,6 +25,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "ModelAssetInfo.h"
 #include "Core/Utils.h"
+#include "YamlExceptionBoundary.h"
 #include "Math/Math.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/Types.h"
@@ -1863,6 +1865,378 @@ GltfImporterUtils::MeshInstanceTransforms GltfImporterUtils::ResolveMeshInstance
 	return result;
 }
 
+GltfImporterUtils::MaterialAlphaModeSettings GltfImporterUtils::ResolveMaterialAlphaMode(
+	const std::string& alphaMode,
+	bool bHasTransmission)
+{
+	if (bHasTransmission)
+	{
+		return {
+			"Transparent",
+			false,
+			alphaMode == "MASK",
+			alphaMode == "BLEND" ?
+				RHI::EBlendMode::AlphaBlending :
+				RHI::EBlendMode::None
+		};
+	}
+
+	if (alphaMode == "BLEND")
+	{
+		return {
+			"Transparent",
+			false,
+			false,
+			RHI::EBlendMode::AlphaBlending
+		};
+	}
+
+	if (alphaMode == "MASK")
+	{
+		return {
+			"Masked",
+			true,
+			true,
+			RHI::EBlendMode::None
+		};
+	}
+
+	return {};
+}
+
+GltfImporterUtils::MaterialTransmissionSettings GltfImporterUtils::ResolveMaterialTransmission(
+	const tinygltf::Material& material,
+	size_t numTextures,
+	float unitScale)
+{
+	MaterialTransmissionSettings result;
+	auto tryReadFiniteNumber = [](
+		const tinygltf::Value& object,
+		const char* property,
+		double& outValue)
+		{
+			if (!object.IsObject() || !object.Has(property))
+			{
+				return false;
+			}
+
+			const tinygltf::Value& value = object.Get(property);
+			if (!value.IsNumber())
+			{
+				return false;
+			}
+
+			const double parsedValue = value.GetNumberAsDouble();
+			if (!std::isfinite(parsedValue) ||
+				parsedValue > std::numeric_limits<float>::max() ||
+				parsedValue < -std::numeric_limits<float>::max())
+			{
+				return false;
+			}
+
+			outValue = parsedValue;
+			return true;
+		};
+
+	auto tryReadTextureIndex = [numTextures](
+		const tinygltf::Value& object,
+		const char* property,
+		int32_t& outIndex)
+		{
+			if (!object.IsObject() || !object.Has(property))
+			{
+				return false;
+			}
+
+			const tinygltf::Value& textureInfo = object.Get(property);
+			if (!textureInfo.IsObject() || !textureInfo.Has("index"))
+			{
+				return false;
+			}
+
+			const tinygltf::Value& indexValue = textureInfo.Get("index");
+			if (!indexValue.IsInt())
+			{
+				return false;
+			}
+
+			const int32_t index = indexValue.GetNumberAsInt();
+			if (index < 0 || static_cast<size_t>(index) >= numTextures)
+			{
+				return false;
+			}
+
+			outIndex = index;
+			return true;
+		};
+
+	const auto extensionIt = material.extensions.find(
+		"KHR_materials_transmission");
+	if (extensionIt == material.extensions.end() ||
+		!extensionIt->second.IsObject())
+	{
+		return result;
+	}
+
+	const tinygltf::Value& extension = extensionIt->second;
+	double parsedValue = 0.0;
+	if (tryReadFiniteNumber(
+			extension,
+			"transmissionFactor",
+			parsedValue))
+	{
+		result.m_factor = static_cast<float>(std::clamp(
+			parsedValue,
+			0.0,
+			1.0));
+	}
+
+	tryReadTextureIndex(
+		extension,
+		"transmissionTexture",
+		result.m_textureIndex);
+
+	const auto volumeIt = material.extensions.find(
+		"KHR_materials_volume");
+	if (volumeIt != material.extensions.end() &&
+		volumeIt->second.IsObject())
+	{
+		const tinygltf::Value& volume = volumeIt->second;
+		if (tryReadFiniteNumber(
+				volume,
+				"thicknessFactor",
+				parsedValue))
+		{
+			result.m_thicknessFactor = static_cast<float>(
+				(std::max)(0.0, parsedValue));
+		}
+
+		tryReadTextureIndex(
+			volume,
+			"thicknessTexture",
+			result.m_thicknessTextureIndex);
+
+		if (tryReadFiniteNumber(
+				volume,
+				"attenuationDistance",
+				parsedValue) &&
+			parsedValue > 0.0)
+		{
+			result.m_attenuationDistance = static_cast<float>(
+				parsedValue);
+		}
+
+		if (volume.Has("attenuationColor"))
+		{
+			const tinygltf::Value& color = volume.Get(
+				"attenuationColor");
+			if (color.IsArray() && color.ArrayLen() >= 3)
+			{
+				glm::vec3 parsedColor(1.0f);
+				bool bValidColor = true;
+				for (size_t component = 0; component < 3; ++component)
+				{
+					const tinygltf::Value& value = color.Get(component);
+					if (!value.IsNumber() ||
+						!std::isfinite(value.GetNumberAsDouble()))
+					{
+						bValidColor = false;
+						break;
+					}
+
+					parsedColor[static_cast<int32_t>(component)] =
+						static_cast<float>(std::clamp(
+							value.GetNumberAsDouble(),
+							0.0,
+							1.0));
+				}
+
+				if (bValidColor)
+				{
+					result.m_attenuationColor = parsedColor;
+				}
+			}
+		}
+	}
+
+	const auto iorIt = material.extensions.find("KHR_materials_ior");
+	if (iorIt != material.extensions.end() &&
+		tryReadFiniteNumber(iorIt->second, "ior", parsedValue))
+	{
+		result.m_indexOfRefraction = static_cast<float>(
+			(std::max)(1.0, parsedValue));
+	}
+
+	const double lengthScale = std::isfinite(unitScale) ?
+		std::abs(static_cast<double>(unitScale)) :
+		1.0;
+	auto scaleLength = [lengthScale](float value)
+		{
+			return static_cast<float>((std::min)(
+				static_cast<double>((std::numeric_limits<float>::max)()),
+				static_cast<double>(value) * lengthScale));
+		};
+
+	result.m_thicknessFactor = scaleLength(result.m_thicknessFactor);
+	if (result.m_attenuationDistance <
+		(std::numeric_limits<float>::max)())
+	{
+		result.m_attenuationDistance = scaleLength(
+			result.m_attenuationDistance);
+	}
+
+	return result;
+}
+
+bool GltfImporterUtils::MergeGeneratedMaterialProperties(
+	YAML::Node& inOutMaterial,
+	const YAML::Node& generatedProperties)
+{
+	if (!inOutMaterial.IsMap() || !generatedProperties.IsMap())
+	{
+		return false;
+	}
+
+	YAML::Node merged = YAML::Clone(inOutMaterial);
+	for (const char* property : {
+		"renderQueue",
+		"bEnableZWrite",
+		"bCustomDepthShader",
+		"blendMode" })
+	{
+		if (!generatedProperties[property] ||
+			!generatedProperties[property].IsScalar())
+		{
+			return false;
+		}
+		merged[property] = YAML::Clone(generatedProperties[property]);
+	}
+
+	auto isManagedDefine = [](const std::string& define)
+		{
+			return define == "TRANSMISSION" || define == "ALPHA_CUTOUT";
+		};
+
+	YAML::Node mergedDefines(YAML::NodeType::Sequence);
+	const YAML::Node existingDefines = merged["defines"];
+	if (existingDefines && !existingDefines.IsNull())
+	{
+		if (!existingDefines.IsSequence())
+		{
+			return false;
+		}
+
+		for (const YAML::Node& defineNode : existingDefines)
+		{
+			if (!defineNode.IsScalar())
+			{
+				return false;
+			}
+
+			const std::string define = defineNode.as<std::string>();
+			if (!isManagedDefine(define))
+			{
+				mergedDefines.push_back(define);
+			}
+		}
+	}
+
+	const YAML::Node generatedDefines = generatedProperties["defines"];
+	if (generatedDefines && !generatedDefines.IsNull())
+	{
+		if (!generatedDefines.IsSequence())
+		{
+			return false;
+		}
+
+		bool bHasTransmission = false;
+		bool bHasAlphaCutout = false;
+		for (const YAML::Node& defineNode : generatedDefines)
+		{
+			if (!defineNode.IsScalar())
+			{
+				return false;
+			}
+
+			const std::string define = defineNode.as<std::string>();
+			if (define == "TRANSMISSION" && !bHasTransmission)
+			{
+				mergedDefines.push_back(define);
+				bHasTransmission = true;
+			}
+			else if (define == "ALPHA_CUTOUT" && !bHasAlphaCutout)
+			{
+				mergedDefines.push_back(define);
+				bHasAlphaCutout = true;
+			}
+		}
+	}
+	merged["defines"] = mergedDefines.size() > 0 ?
+		mergedDefines : YAML::Node();
+
+	struct ManagedPropertyGroup final
+	{
+		const char* m_group;
+		const char* const* m_properties;
+		size_t m_numProperties;
+	};
+
+	static const char* FloatProperties[] = {
+		"material.alphaCutoff",
+		"material.transmissionFactor",
+		"material.thicknessFactor",
+		"material.attenuationDistance",
+		"material.indexOfRefraction"
+	};
+	static const char* Vec4Properties[] = {
+		"material.attenuationColor"
+	};
+	static const char* SamplerProperties[] = {
+		"transmissionSampler",
+		"thicknessSampler"
+	};
+	const ManagedPropertyGroup groups[] = {
+		{ "uniformsFloat", FloatProperties, std::size(FloatProperties) },
+		{ "uniformsVec4", Vec4Properties, std::size(Vec4Properties) },
+		{ "samplers", SamplerProperties, std::size(SamplerProperties) }
+	};
+
+	for (const ManagedPropertyGroup& group : groups)
+	{
+		YAML::Node targetGroup = merged[group.m_group];
+		const YAML::Node generatedGroup = generatedProperties[group.m_group];
+		if ((targetGroup && !targetGroup.IsNull() && !targetGroup.IsMap()) ||
+			(generatedGroup && !generatedGroup.IsNull() &&
+				!generatedGroup.IsMap()))
+		{
+			return false;
+		}
+
+		if (!targetGroup || targetGroup.IsNull())
+		{
+			targetGroup = YAML::Node(YAML::NodeType::Map);
+			merged[group.m_group] = targetGroup;
+		}
+
+		for (size_t index = 0; index < group.m_numProperties; ++index)
+		{
+			const char* property = group.m_properties[index];
+			if (generatedGroup && generatedGroup[property])
+			{
+				targetGroup[property] = YAML::Clone(
+					generatedGroup[property]);
+			}
+			else
+			{
+				targetGroup.remove(property);
+			}
+		}
+	}
+
+	inOutMaterial = std::move(merged);
+	return true;
+}
+
 bool GltfImporterUtils::TryComposeNodeMatrix(
 	const tinygltf::Node& node,
 	glm::mat4& outMatrix)
@@ -2473,12 +2847,21 @@ void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 				!areGeneratedAssetsValid(
 					materials,
 					modelAssetInfo->ShouldBatchByMaterial());
-			if (modelAssetInfo->ShouldGenerateMaterials() &&
+			const bool bShouldRegenerateMaterials =
+				modelAssetInfo->ShouldGenerateMaterials() &&
 				((bWasExpired && materials.Num() == 0) ||
-					bMaterialsNeedRepair) &&
+					bMaterialsNeedRepair);
+			if (bShouldRegenerateMaterials &&
 				GenerateMaterialAssets(modelAssetInfo))
 			{
 				assetInfo->SaveMetaFile();
+			}
+			else if (modelAssetInfo->ShouldGenerateMaterials() &&
+				bWasExpired &&
+				materials.Num() > 0 &&
+				!bMaterialsNeedRepair)
+			{
+				UpdateGeneratedMaterialProperties(modelAssetInfo);
 			}
 
 			const TVector<FileId>& animations =
@@ -2843,28 +3226,30 @@ bool ModelImporter::GenerateFingerprint(
 	{
 		const tinygltf::Material& sourceMaterial =
 			gltfModel.materials[i];
-		const bool bIsTransparent =
-			sourceMaterial.alphaMode == "BLEND";
-		const bool bIsMasked =
-			sourceMaterial.alphaMode == "MASK";
-		const std::string renderQueue = bIsTransparent ?
-			"Transparent" :
-			(bIsMasked ? "Masked" : "Opaque");
+		const auto transmissionSettings =
+			GltfImporterUtils::ResolveMaterialTransmission(
+				sourceMaterial,
+				gltfModel.textures.size(),
+				unitScale);
+		const auto alphaModeSettings =
+			GltfImporterUtils::ResolveMaterialAlphaMode(
+				sourceMaterial.alphaMode,
+				transmissionSettings.IsEnabled());
 
 		MaterialPtr material = MaterialPtr::Make(
 			allocator,
 			FileId::CreateNewFileId());
 		material->SetRenderState(RHI::RenderState(
 			true,
-			!bIsTransparent,
+			alphaModeSettings.m_bEnableZWrite,
 			0.0f,
-			bIsMasked,
+			alphaModeSettings.m_bAlphaCutout,
 			sourceMaterial.doubleSided ?
 				RHI::ECullMode::None :
 				RHI::ECullMode::Back,
-			RHI::EBlendMode::None,
+			alphaModeSettings.m_blendMode,
 			RHI::EFillMode::Fill,
-			GetHash(renderQueue)));
+			GetHash(alphaModeSettings.m_renderQueue)));
 
 		const auto& pbr = sourceMaterial.pbrMetallicRoughness;
 		material->SetUniform(
@@ -2890,6 +3275,26 @@ bool ModelImporter::GenerateFingerprint(
 		material->SetUniform(
 			"material.alphaCutoff",
 			static_cast<float>(sourceMaterial.alphaCutoff));
+		if (transmissionSettings.IsEnabled())
+		{
+			material->SetUniform(
+				"material.transmissionFactor",
+				transmissionSettings.m_factor);
+			material->SetUniform(
+				"material.thicknessFactor",
+				transmissionSettings.m_thicknessFactor);
+			material->SetUniform(
+				"material.attenuationDistance",
+				transmissionSettings.m_attenuationDistance);
+			material->SetUniform(
+				"material.indexOfRefraction",
+				transmissionSettings.m_indexOfRefraction);
+			material->SetUniform(
+				"material.attenuationColor",
+				glm::vec4(
+					transmissionSettings.m_attenuationColor,
+					1.0f));
+		}
 
 		auto bindTexture = [&](
 			const char* samplerName,
@@ -2918,6 +3323,15 @@ bool ModelImporter::GenerateFingerprint(
 		bindTexture(
 			"occlusionSampler",
 			sourceMaterial.occlusionTexture.index);
+		if (transmissionSettings.IsEnabled())
+		{
+			bindTexture(
+				"transmissionSampler",
+				transmissionSettings.m_textureIndex);
+			bindTexture(
+				"thicknessSampler",
+				transmissionSettings.m_thicknessTextureIndex);
+		}
 		previewMaterials[i] = std::move(material);
 	}
 	gltfModel = tinygltf::Model();
@@ -3101,6 +3515,21 @@ bool ModelImporter::GenerateFingerprint(
 
 	SAILOR_LOG("Generated model fingerprint: %s", outputPath.c_str());
 	return true;
+}
+
+static bool TryLoadYamlFile(
+	const std::filesystem::path& filepath,
+	YAML::Node& outDocument,
+	std::string& outDiagnostic)
+{
+	std::string payload;
+	if (!AssetRegistry::ReadAllTextFile(filepath.string(), payload))
+	{
+		outDiagnostic = "cannot read the file";
+		return false;
+	}
+
+	return External::TryLoadYaml(payload, outDocument, outDiagnostic);
 }
 
 FileId CreateTextureAsset(const std::string& filepath,
@@ -3314,13 +3743,13 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		if (material.pbrMetallicRoughness.metallicRoughnessTexture.index != -1)
 		{
 			data.m_samplers.Add("ormSampler",
-				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+				CreateTextureAsset(materialName + "_ormTexture.png.asset", assetInfo->GetAssetFilename(), material.pbrMetallicRoughness.metallicRoughnessTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		if (material.occlusionTexture.index != -1)
 		{
 			data.m_samplers.Add("occlusionSampler",
-				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+				CreateTextureAsset(materialName + "_occlusionTexture.png.asset", assetInfo->GetAssetFilename(), material.occlusionTexture.index, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 		}
 
 		auto tryReadNumberProperty = [](
@@ -3424,6 +3853,43 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				return true;
 			};
 
+		const auto transmissionSettings =
+			GltfImporterUtils::ResolveMaterialTransmission(
+				material,
+				gltfModel.textures.size(),
+				assetInfo->GetUnitScale());
+		if (transmissionSettings.IsEnabled())
+		{
+			data.m_uniformsFloat.Add(
+				"material.transmissionFactor",
+				transmissionSettings.m_factor);
+			data.m_uniformsFloat.Add(
+				"material.thicknessFactor",
+				transmissionSettings.m_thicknessFactor);
+			data.m_uniformsFloat.Add(
+				"material.attenuationDistance",
+				transmissionSettings.m_attenuationDistance);
+			data.m_uniformsFloat.Add(
+				"material.indexOfRefraction",
+				transmissionSettings.m_indexOfRefraction);
+			data.m_uniformsVec4.Add(
+				"material.attenuationColor",
+				glm::vec4(
+					transmissionSettings.m_attenuationColor,
+					1.0f));
+			if (transmissionSettings.m_textureIndex >= 0)
+			{
+				data.m_samplers.Add("transmissionSampler",
+					CreateTextureAsset(materialName + "_transmissionTexture.png.asset", assetInfo->GetAssetFilename(), transmissionSettings.m_textureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			}
+			if (transmissionSettings.m_thicknessTextureIndex >= 0)
+			{
+				data.m_samplers.Add("thicknessSampler",
+					CreateTextureAsset(materialName + "_thicknessTexture.png.asset", assetInfo->GetAssetFilename(), transmissionSettings.m_thicknessTextureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+			}
+			data.m_shaderDefines.Add("TRANSMISSION");
+		}
+
 		int32_t textureIndex = -1;
 		auto ccIt = material.extensions.find("KHR_materials_clearcoat");
 		if (ccIt != material.extensions.end() && ccIt->second.IsObject())
@@ -3446,7 +3912,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 			if (tryReadTextureIndex(cc, "clearcoatTexture", textureIndex))
 			{
 				data.m_samplers.Add("clearcoatSampler",
-					CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+					CreateTextureAsset(materialName + "_clearcoatTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 			}
 
 			textureIndex = -1;
@@ -3456,7 +3922,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				textureIndex))
 			{
 				data.m_samplers.Add("clearcoatRoughnessSampler",
-					CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+					CreateTextureAsset(materialName + "_clearcoatRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 			}
 
 			if (cc.Has("clearcoatNormalTexture") &&
@@ -3516,7 +3982,7 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 				textureIndex))
 			{
 				data.m_samplers.Add("sheenRoughnessSampler",
-					CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_SRGB, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
+					CreateTextureAsset(materialName + "_sheenRoughnessTexture.png.asset", assetInfo->GetAssetFilename(), textureIndex, true, RHI::ETextureFormat::R8G8B8A8_UNORM, RHI::ETextureClamping::Repeat, RHI::ETextureFiltration::Linear, assetInfo->ShouldKeepCpuBuffers()));
 			}
 
 			data.m_shaderDefines.Add("SHEEN");
@@ -3538,23 +4004,25 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 		data.m_uniformsFloat.Add("material.alphaCutoff", (float)material.alphaCutoff);
 		data.m_uniformsFloat.Add("material.occlusionStrength", (float)material.occlusionTexture.strength);
 
-		const bool bIsTransparent = material.alphaMode == "BLEND";
-		const bool bIsMasked = material.alphaMode == "MASK";
+		const auto alphaModeSettings =
+			GltfImporterUtils::ResolveMaterialAlphaMode(
+				material.alphaMode,
+				transmissionSettings.IsEnabled());
+		data.m_renderQueue = alphaModeSettings.m_renderQueue;
 
-		data.m_renderQueue = bIsTransparent ? "Transparent" : "Opaque";
-
-		if (bIsMasked)
+		if (alphaModeSettings.m_bAlphaCutout)
 		{
-			data.m_renderQueue = "Masked";
 			data.m_shaderDefines.Add("ALPHA_CUTOUT");
 		}
 
 		data.m_renderState = RHI::RenderState(true,
-			!bIsTransparent,
-			0.0f, bIsMasked,
+			alphaModeSettings.m_bEnableZWrite,
+			0.0f,
+			alphaModeSettings.m_bAlphaCutout,
 			material.doubleSided ? RHI::ECullMode::None : RHI::ECullMode::Back,
-			RHI::EBlendMode::None,
-			RHI::EFillMode::Fill);
+			alphaModeSettings.m_blendMode,
+			RHI::EFillMode::Fill,
+			GetHash(data.m_renderQueue));
 
 		data.m_shader = App::GetSubmodule<AssetRegistry>()->GetOrLoadFile("Shaders/Standard_glTF.shader");
 		for (const auto& sampler : data.m_samplers)
@@ -3630,7 +4098,445 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 	}
 
 	assetInfo->GetDefaultMaterials() = std::move(generatedMaterials);
+	bool& bMigrationComplete =
+		m_generatedMaterialMigrationComplete.At_Lock(
+			assetInfo->GetFileId(),
+			false);
+	bMigrationComplete = true;
+	m_generatedMaterialMigrationComplete.Unlock(assetInfo->GetFileId());
 	return true;
+}
+
+bool ModelImporter::UpdateGeneratedMaterialProperties(
+	ModelAssetInfoPtr assetInfo)
+{
+	SAILOR_PROFILE_FUNCTION();
+	if (assetInfo == nullptr || !assetInfo->IsWritable())
+	{
+		return false;
+	}
+
+	tinygltf::Model gltfModel;
+	std::string error;
+	std::string warning;
+	if (!GltfImporterUtils::LoadModel(
+			assetInfo->GetAssetFilepath(),
+			true,
+			gltfModel,
+			error,
+			warning))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot update generated materials for %s: %s",
+			assetInfo->GetAssetFilepath().c_str(),
+			error.c_str());
+		return false;
+	}
+
+	if (!warning.empty())
+	{
+		SAILOR_LOG(
+			"Parsing gltf %s warning: %s",
+			assetInfo->GetAssetFilepath().c_str(),
+			warning.c_str());
+	}
+
+	const FileId modelId = assetInfo->GetFileId();
+	bool& bMigrationComplete = m_generatedMaterialMigrationComplete.At_Lock(
+		modelId,
+		false);
+	const bool bUpdated = UpdateGeneratedMaterialProperties(
+		assetInfo,
+		gltfModel);
+	bMigrationComplete = bUpdated;
+	m_generatedMaterialMigrationComplete.Unlock(modelId);
+	return bUpdated;
+}
+
+bool ModelImporter::UpdateGeneratedMaterialPropertiesOnDemand(
+	ModelAssetInfoPtr assetInfo,
+	const tinygltf::Model& gltfModel)
+{
+	if (assetInfo == nullptr ||
+		!assetInfo->IsWritable() ||
+		!assetInfo->ShouldGenerateMaterials() ||
+		assetInfo->GetDefaultMaterials().IsEmpty())
+	{
+		return true;
+	}
+
+	const FileId modelId = assetInfo->GetFileId();
+	bool& bMigrationComplete = m_generatedMaterialMigrationComplete.At_Lock(
+		modelId,
+		false);
+	if (bMigrationComplete)
+	{
+		m_generatedMaterialMigrationComplete.Unlock(modelId);
+		return true;
+	}
+
+	const bool bUpdated = UpdateGeneratedMaterialProperties(
+		assetInfo,
+		gltfModel);
+	bMigrationComplete = bUpdated;
+	m_generatedMaterialMigrationComplete.Unlock(modelId);
+	return bUpdated;
+}
+
+bool ModelImporter::UpdateGeneratedMaterialProperties(
+	ModelAssetInfoPtr assetInfo,
+	const tinygltf::Model& gltfModel)
+{
+	SAILOR_PROFILE_FUNCTION();
+	if (assetInfo == nullptr || !assetInfo->IsWritable())
+	{
+		return false;
+	}
+
+	AssetRegistry* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	if (assetRegistry == nullptr)
+	{
+		return false;
+	}
+
+	const std::string relativeFolder = Utils::GetFileFolder(
+		assetInfo->GetRelativeAssetFilepath());
+	std::filesystem::path materialsFolder;
+	if (!assetRegistry->ResolveWorkspaceContentPathForWrite(
+			relativeFolder + "materials",
+			materialsFolder))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot resolve generated materials folder for %s.",
+			assetInfo->GetAssetFilepath().c_str());
+		return false;
+	}
+
+	auto sanitizeLegacyMaterialStem = [](const std::string& materialName,
+		size_t materialIndex)
+		{
+			std::string result = materialName.empty() ?
+				("material" + std::to_string(materialIndex)) :
+				materialName;
+			constexpr const char* InvalidFilenameCharacters =
+				"<>:\"/\\|?*";
+			for (char& character : result)
+			{
+				if (static_cast<unsigned char>(character) < 32 ||
+					std::strchr(InvalidFilenameCharacters, character) !=
+						nullptr)
+				{
+					character = '_';
+				}
+			}
+			while (!result.empty() &&
+				(result.back() == '.' || result.back() == ' '))
+			{
+				result.back() = '_';
+			}
+			return result.empty() ?
+				("material" + std::to_string(materialIndex)) :
+				result;
+		};
+
+	auto findOwnedMaterial = [assetInfo, assetRegistry](
+		size_t materialIndex,
+		const std::filesystem::path& indexedPath,
+		const std::filesystem::path& legacyPath,
+		MaterialAssetInfoPtr& outMaterialInfo)
+		{
+			auto tryMatch = [assetRegistry,
+				&indexedPath,
+				&legacyPath,
+				&outMaterialInfo](const FileId& materialId)
+			{
+				MaterialAssetInfoPtr materialInfo =
+					assetRegistry->GetAssetInfoPtr<MaterialAssetInfoPtr>(
+						materialId);
+				if (materialInfo == nullptr ||
+					!materialInfo->IsWritable())
+				{
+					return false;
+				}
+
+				for (const std::filesystem::path& candidate : {
+					indexedPath,
+					legacyPath })
+				{
+					std::error_code equivalentError;
+					if (std::filesystem::equivalent(
+							candidate,
+							materialInfo->GetAssetFilepath(),
+							equivalentError) &&
+						!equivalentError)
+					{
+						outMaterialInfo = materialInfo;
+						return true;
+					}
+				}
+				return false;
+			};
+
+			const TVector<FileId>& defaultMaterials =
+				assetInfo->GetDefaultMaterials();
+			if (assetInfo->ShouldBatchByMaterial())
+			{
+				// Batched models retain the direct glTF material ordering. Requiring
+				// both the position and a known generated path avoids claiming a
+				// separately authored replacement material.
+				return materialIndex < defaultMaterials.Num() &&
+					tryMatch(defaultMaterials[materialIndex]);
+			}
+
+			for (const FileId& materialId : defaultMaterials)
+			{
+				if (tryMatch(materialId))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		};
+
+	TVector<FileId> registeredTextureIds;
+	assetRegistry->GetAllAssetInfos<TextureAssetInfo>(registeredTextureIds);
+	TMap<int32_t, FileId> textureIdsByGltfIndex;
+	for (const FileId& registeredTextureId : registeredTextureIds)
+	{
+		TextureAssetInfoPtr textureInfo =
+			assetRegistry->GetAssetInfoPtr<TextureAssetInfoPtr>(
+				registeredTextureId);
+		if (textureInfo == nullptr ||
+			textureInfo->GetGlbTextureIndex() < 0 ||
+			textureInfo->GetFormat() !=
+				RHI::ETextureFormat::R8G8B8A8_UNORM ||
+			textureInfo->GetClamping() !=
+				RHI::ETextureClamping::Repeat ||
+			textureInfo->GetFiltration() !=
+				RHI::ETextureFiltration::Linear ||
+			!textureInfo->ShouldGenerateMips())
+		{
+			continue;
+		}
+
+		std::error_code sourceError;
+		if (std::filesystem::equivalent(
+				textureInfo->GetAssetFilepath(),
+				assetInfo->GetAssetFilepath(),
+				sourceError) &&
+			!sourceError)
+		{
+			textureIdsByGltfIndex.Insert(
+				textureInfo->GetGlbTextureIndex(),
+				registeredTextureId);
+		}
+	}
+	TSet<FileId> updatedMaterialIds;
+	bool bSucceeded = true;
+	for (size_t materialIndex = 0;
+		materialIndex < gltfModel.materials.size();
+		++materialIndex)
+	{
+		const std::string generatedStem =
+			assetInfo->GetAssetFilename() + "_material_" +
+			std::to_string(materialIndex);
+		const std::filesystem::path indexedMaterialPath =
+			materialsFolder / (generatedStem + ".mat");
+		const std::string legacyMaterialStem =
+			sanitizeLegacyMaterialStem(
+				gltfModel.materials[materialIndex].name,
+				materialIndex);
+		const std::filesystem::path legacyMaterialPath =
+			materialsFolder / (legacyMaterialStem + ".mat");
+		MaterialAssetInfoPtr materialInfo = nullptr;
+		if (!findOwnedMaterial(
+				materialIndex,
+				indexedMaterialPath,
+				legacyMaterialPath,
+				materialInfo))
+		{
+			// A default material may be replaced with a separately authored asset.
+			// Do not infer ownership from its position in the model's material list.
+			SAILOR_LOG(
+				"Skipped non-generated material while updating %s: %s",
+				assetInfo->GetAssetFilepath().c_str(),
+				indexedMaterialPath.string().c_str());
+			continue;
+		}
+
+		const tinygltf::Material& sourceMaterial =
+			gltfModel.materials[materialIndex];
+		const auto transmission =
+			GltfImporterUtils::ResolveMaterialTransmission(
+				sourceMaterial,
+				gltfModel.textures.size(),
+				assetInfo->GetUnitScale());
+		const auto alphaMode = GltfImporterUtils::ResolveMaterialAlphaMode(
+			sourceMaterial.alphaMode,
+			transmission.IsEnabled());
+		YAML::Node generatedProperties(YAML::NodeType::Map);
+		generatedProperties["renderQueue"] = alphaMode.m_renderQueue;
+		generatedProperties["bEnableZWrite"] =
+			alphaMode.m_bEnableZWrite;
+		generatedProperties["bCustomDepthShader"] =
+			alphaMode.m_bAlphaCutout;
+		::Serialize(
+			generatedProperties,
+			"blendMode",
+			alphaMode.m_blendMode);
+
+		YAML::Node generatedDefines(YAML::NodeType::Sequence);
+		if (transmission.IsEnabled())
+		{
+			generatedDefines.push_back("TRANSMISSION");
+		}
+		if (alphaMode.m_bAlphaCutout)
+		{
+			generatedDefines.push_back("ALPHA_CUTOUT");
+		}
+		generatedProperties["defines"] = generatedDefines;
+		generatedProperties["uniformsFloat"]["material.alphaCutoff"] =
+			static_cast<float>(sourceMaterial.alphaCutoff);
+
+		if (transmission.IsEnabled())
+		{
+			generatedProperties["uniformsFloat"]
+				["material.transmissionFactor"] = transmission.m_factor;
+			generatedProperties["uniformsFloat"]
+				["material.thicknessFactor"] =
+					transmission.m_thicknessFactor;
+			generatedProperties["uniformsFloat"]
+				["material.attenuationDistance"] =
+					transmission.m_attenuationDistance;
+			generatedProperties["uniformsFloat"]
+				["material.indexOfRefraction"] =
+					transmission.m_indexOfRefraction;
+			generatedProperties["uniformsVec4"]
+				["material.attenuationColor"] = glm::vec4(
+					transmission.m_attenuationColor,
+					1.0f);
+
+			auto addGeneratedSampler = [assetInfo,
+				&generatedProperties,
+				&textureIdsByGltfIndex](
+					const char* samplerName,
+					int32_t textureIndex)
+				{
+					if (textureIndex < 0)
+					{
+						return;
+					}
+
+					const FileId* registeredTextureId = nullptr;
+					const FileId textureFileId =
+						textureIdsByGltfIndex.Find(
+							textureIndex,
+							registeredTextureId) &&
+						registeredTextureId != nullptr ?
+							*registeredTextureId : FileId();
+
+					if (!textureFileId)
+					{
+						SAILOR_LOG(
+							"Cannot migrate generated glTF %s for %s: no registered "
+							"same-source texture for glTF index %d; scalar "
+							"transmission remains active.",
+							samplerName,
+							assetInfo->GetAssetFilepath().c_str(),
+							textureIndex);
+						return;
+					}
+
+					generatedProperties["samplers"][samplerName] =
+						textureFileId;
+				};
+
+			addGeneratedSampler(
+				"transmissionSampler",
+				transmission.m_textureIndex);
+			addGeneratedSampler(
+				"thicknessSampler",
+				transmission.m_thicknessTextureIndex);
+		}
+
+		YAML::Node materialDocument;
+		std::string diagnostic;
+		if (!TryLoadYamlFile(
+				materialInfo->GetAssetFilepath(),
+				materialDocument,
+				diagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot read generated material '%s': %s",
+				materialInfo->GetAssetFilepath().c_str(),
+				diagnostic.c_str());
+			bSucceeded = false;
+			continue;
+		}
+
+		const YAML::Node previousDocument = YAML::Clone(materialDocument);
+		bool bMerged = false;
+		const bool bYamlHandled = External::GuardYamlExceptions(
+			[&materialDocument, &generatedProperties, &bMerged]()
+			{
+				bMerged = GltfImporterUtils::MergeGeneratedMaterialProperties(
+					materialDocument,
+					generatedProperties);
+			},
+			diagnostic);
+		if (!bYamlHandled || !bMerged)
+		{
+			if (diagnostic.empty())
+			{
+				diagnostic = "material YAML has an incompatible structure";
+			}
+			SAILOR_LOG_ERROR(
+				"Cannot migrate generated material '%s': %s",
+				materialInfo->GetAssetFilepath().c_str(),
+				diagnostic.c_str());
+			bSucceeded = false;
+			continue;
+		}
+
+		if (Utils::AreYamlNodesEqual(previousDocument, materialDocument))
+		{
+			continue;
+		}
+
+		std::string serializedMaterial;
+		if (!External::TryDumpYaml(
+				materialDocument,
+				serializedMaterial,
+				diagnostic) ||
+			!Workspace::AtomicReplaceWorkspaceCacheText(
+				materialInfo->GetAssetFilepath(),
+				serializedMaterial,
+				diagnostic))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot save migrated material '%s': %s",
+				materialInfo->GetAssetFilepath().c_str(),
+				diagnostic.c_str());
+			bSucceeded = false;
+			continue;
+		}
+
+		updatedMaterialIds.Insert(materialInfo->GetFileId());
+	}
+
+	for (const FileId& materialId : updatedMaterialIds)
+	{
+		if (!assetRegistry->UpdateAsset(materialId))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot reload migrated generated material: %s",
+				materialId.ToString().c_str());
+			bSucceeded = false;
+		}
+	}
+
+	return bSucceeded;
 }
 
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
@@ -3685,12 +4591,27 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		};
 
 		promise = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
-			[pAssetInfo, &boundsAabb, &boundsSphere]()
+			[this, pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
 				pData->m_bShouldGenerateBLAS = pAssetInfo->ShouldGenerateBLAS();
-				pData->m_bIsImported = ImportModel(pAssetInfo, pData->m_parsedMeshes, boundsAabb, boundsSphere, pData->m_inverseBind);
+				tinygltf::Model gltfModel;
+				pData->m_bIsImported = ImportModel(
+					pAssetInfo->GetAssetFilepath(),
+					pAssetInfo->GetUnitScale(),
+					pAssetInfo->ShouldBatchByMaterial(),
+					pData->m_parsedMeshes,
+					boundsAabb,
+					boundsSphere,
+					pData->m_inverseBind,
+					&gltfModel);
+				if (pData->m_bIsImported)
+				{
+					UpdateGeneratedMaterialPropertiesOnDemand(
+						pAssetInfo,
+						gltfModel);
+				}
 				return pData;
 			})->Then<ModelPtr>([pModel](TSharedPtr<Data> pData) mutable
 				{

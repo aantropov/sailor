@@ -91,6 +91,9 @@ namespace Sailor::Raytracing
 			vec3& inOutNormal,
 			vec3& inOutBitangent);
 		uint32_t ResolveMaterialIndex(const TLASHit& hit) const;
+		bool IsThickVolumeAtHit(
+			const TLASHit& hit,
+			uint32_t materialIndex) const;
 
 		vec3 TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor,
 			uint32_t ignoreInstance, uint32_t ignoreTriangle) const;

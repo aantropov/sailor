@@ -822,6 +822,13 @@ void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLa
 
 void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 {
+	constexpr VkImageLayout finalLayout =
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	constexpr VkAccessFlags finalAccess = VK_ACCESS_SHADER_READ_BIT;
+	constexpr VkPipelineStageFlags finalStage =
+		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
 	if (!image->GetDevice()->IsMipsSupported(image->m_format))
 	{
 		SAILOR_LOG("Blit is not supported");
@@ -877,12 +884,12 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 			VK_FILTER_LINEAR);
 
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		barrier.newLayout = image->m_defaultLayout;
+		barrier.newLayout = finalLayout;
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = finalAccess;
 
 		vkCmdPipelineBarrier(m_commandBuffer,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, finalStage, 0,
 			0, nullptr,
 			0, nullptr,
 			1, &barrier);
@@ -905,12 +912,12 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 
 	barrier.subresourceRange.baseMipLevel = image->m_mipLevels - 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	barrier.newLayout = image->m_defaultLayout;
+	barrier.newLayout = finalLayout;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	barrier.dstAccessMask = finalAccess;
 
 	vkCmdPipelineBarrier(m_commandBuffer,
-		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, finalStage, 0,
 		0, nullptr,
 		0, nullptr,
 		1, &barrier);
@@ -933,6 +940,8 @@ VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
 		return 0;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		return VK_ACCESS_SHADER_READ_BIT;
 	default:
 		return 0;
 	}
@@ -952,6 +961,8 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 		return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 	default:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}

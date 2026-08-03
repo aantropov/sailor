@@ -168,6 +168,38 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 	}
 
+	bool bHasTransmissionFramebuffer = false;
+	for (const auto& node : m_graph)
+	{
+		if (node && node->GetResolvedAttachment("transmissionFramebuffer"))
+		{
+			bHasTransmissionFramebuffer = true;
+			break;
+		}
+	}
+
+	constexpr const char* transmissionSamplerName =
+		"g_transmissionFramebufferSampler";
+	if (!bHasTransmissionFramebuffer &&
+		rhiSceneView->m_rhiLightsData->HasBinding(transmissionSamplerName))
+	{
+		RHI::RHITexturePtr defaultTexture =
+			renderer->GetDriver()->GetDefaultTexture();
+		RHI::RHIShaderBindingPtr& transmissionBinding =
+			rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding(
+				transmissionSamplerName);
+		if (defaultTexture &&
+			transmissionBinding->GetTextureBinding() != defaultTexture)
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(
+				rhiSceneView->m_rhiLightsData,
+				transmissionSamplerName,
+				defaultTexture,
+				10);
+			bShouldRecalculateCompatibility = true;
+		}
+	}
+
 	if (bShouldRecalculateCompatibility)
 	{
 		rhiSceneView->m_rhiLightsData->RecalculateCompatibility();

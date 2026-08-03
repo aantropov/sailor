@@ -413,6 +413,56 @@ namespace
 			"a fixed variable descriptor layout must be compatible without scanning populated texture slots");
 	}
 
+	void TestShaderReflectionUsesDeclaredMemberOffsets()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string shaderModuleSource = ReadText(
+			sourceRoot /
+			"Runtime/GraphicsDriver/Vulkan/VulkanShaderModule.cpp");
+		const std::string reflectionBody = RemoveWhitespace(
+			ExtractFunctionBody(
+				shaderModuleSource,
+				"void VulkanShaderStage::ReflectDescriptorSetBindings("));
+
+		Require(reflectionBody.find(
+			"member.m_absoluteOffset=blockContent[i].offset;") !=
+			std::string::npos,
+			"named uniform writes must use SPIR-V member offsets instead of repacking aligned fields");
+		Require(reflectionBody.find(
+			"member.m_absoluteOffset=membersSize") ==
+			std::string::npos,
+			"shader reflection must not infer offsets by summing member sizes");
+	}
+
+	void TestMaterialUniformUploadInitializesCompleteReflectedBlocks()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string materialSource = ReadText(
+			sourceRoot /
+			"Runtime/AssetRegistry/Material/MaterialImporter.cpp");
+		const std::string updateBody = RemoveWhitespace(
+			ExtractFunctionBody(
+				materialSource,
+				"void Material::UpdateUniforms("));
+
+		const size_t initializeBlock = updateBody.find(
+			"data.Resize(bindingSize);");
+		const size_t writeMember = updateBody.find(
+			"std::memcpy(data.GetData()+memberLayout.m_absoluteOffset,");
+		const size_t uploadBlock = updateBody.find(
+			"UpdateShaderBinding(cmdList,binding,data.m_second->GetData(),data.m_second->Num())");
+
+		Require(initializeBlock != std::string::npos &&
+			writeMember != std::string::npos &&
+			uploadBlock != std::string::npos &&
+			initializeBlock < writeMember &&
+			writeMember < uploadBlock,
+			"material uploads must zero complete reflected blocks before packing present values into one upload");
+		Require(updateBody.find("UpdateShaderBindingVariable(") ==
+			std::string::npos,
+			"material fields must not be uploaded separately after the zero initialization");
+	}
+
 	void TestDescriptorPoolsUseSmartOwnership()
 	{
 		Require((std::is_same_v<decltype(ThreadContext::m_descriptorPool), VulkanDescriptorPoolPtr>),
@@ -467,6 +517,10 @@ int main()
 			TestGlobalTextureSamplerUsesFixedCapacityInPlaceUpdates },
 		{ "VariableDescriptorCompatibilityUsesItsFixedLayout",
 			TestVariableDescriptorCompatibilityUsesItsFixedLayout },
+		{ "ShaderReflectionUsesDeclaredMemberOffsets",
+			TestShaderReflectionUsesDeclaredMemberOffsets },
+		{ "MaterialUniformUploadInitializesCompleteReflectedBlocks",
+			TestMaterialUniformUploadInitializesCompleteReflectedBlocks },
 		{ "DescriptorPoolsUseSmartOwnership",
 			TestDescriptorPoolsUseSmartOwnership },
 	};

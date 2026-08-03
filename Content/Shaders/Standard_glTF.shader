@@ -9,6 +9,7 @@ defines:
  - SKINNING
  - CLEAR_COAT
  - SHEEN
+ - TRANSMISSION
 
 glslCommon: |
   #version 460
@@ -37,6 +38,9 @@ glslVertex: |
     vec3 normal;
     vec4 color;
     mat3 tangentBasis;
+  #ifdef TRANSMISSION
+    flat vec3 modelScale;
+  #endif
   } vout;
   
   struct PerInstanceData
@@ -78,6 +82,16 @@ glslVertex: |
     uint clearcoatNormalSampler;
     uint sheenColorSampler;
     uint sheenRoughnessSampler;
+
+  #ifdef TRANSMISSION
+    float transmissionFactor;
+    uint transmissionSampler;
+    float thicknessFactor;
+    float attenuationDistance;
+    float indexOfRefraction;
+    uint thicknessSampler;
+    vec4 attenuationColor;
+  #endif
   };
 
   struct BoneData
@@ -165,6 +179,13 @@ glslVertex: |
   void main()
   {
     mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+  #ifdef TRANSMISSION
+    mat3 instanceLinearMatrix = mat3(modelMatrix);
+    vout.modelScale = vec3(
+      length(instanceLinearMatrix[0]),
+      length(instanceLinearMatrix[1]),
+      length(instanceLinearMatrix[2]));
+  #endif
   #ifdef SKINNING
     uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
 
@@ -224,6 +245,9 @@ glslFragment: |
     vec3 normal;
     vec4 color;
     mat3 tangentBasis;
+  #ifdef TRANSMISSION
+    flat vec3 modelScale;
+  #endif
   } vin;
   
   layout(location=0) out vec4 outColor;
@@ -265,6 +289,16 @@ glslFragment: |
     uint clearcoatNormalSampler;
     uint sheenColorSampler;
     uint sheenRoughnessSampler;
+
+  #ifdef TRANSMISSION
+    float transmissionFactor;
+    uint transmissionSampler;
+    float thicknessFactor;
+    float attenuationDistance;
+    float indexOfRefraction;
+    uint thicknessSampler;
+    vec4 attenuationColor;
+  #endif
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -322,6 +356,9 @@ glslFragment: |
   
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
   layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  #ifdef TRANSMISSION
+  layout(set=1, binding=10) uniform sampler2D g_transmissionFramebufferSampler;
+  #endif
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -340,30 +377,94 @@ glslFragment: |
   
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
   
-  #ifdef SKINNING
-  layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
-  {
-      BoneData instance[];
-  } bones;
-  #endif 
-  
   MaterialData GetMaterialData()
   {
       return material.instance[materialInstance];
   }
   
   const float Epsilon = 0.00001;
+
+  #ifdef TRANSMISSION
+  float ApplyIorToRoughness(float roughness, float ior)
+  {
+    return roughness * clamp(ior * 2.0 - 2.0, 0.0, 1.0);
+  }
+
+  float NdfGGXAlpha(float cosLh, float alphaRoughness)
+  {
+    float alphaSq = alphaRoughness * alphaRoughness;
+    float denominator = cosLh * cosLh * (alphaSq - 1.0) + 1.0;
+    return alphaSq / max(PI * denominator * denominator, Epsilon);
+  }
+
+  float VisibilityGGXAlpha(float cosLi, float cosLo, float alphaRoughness)
+  {
+    float alphaSq = alphaRoughness * alphaRoughness;
+    float ggxV = cosLi * sqrt(cosLo * cosLo * (1.0 - alphaSq) + alphaSq);
+    float ggxL = cosLo * sqrt(cosLi * cosLi * (1.0 - alphaSq) + alphaSq);
+    float ggx = ggxV + ggxL;
+    return ggx > Epsilon ? 0.5 / ggx : 0.0;
+  }
+
+  vec3 GetRefractionDirection(
+    vec3 normal,
+    vec3 view,
+    float ior)
+  {
+    vec3 refractedDirection = refract(-view, normalize(normal), 1.0 / ior);
+    float refractedLengthSquared = dot(refractedDirection, refractedDirection);
+    if(refractedLengthSquared <= Epsilon)
+    {
+      return vec3(0.0);
+    }
+
+    return refractedDirection * inversesqrt(refractedLengthSquared);
+  }
+
+  vec3 GetVolumeTransmissionRay(
+    vec3 refractedDirection,
+    float thickness,
+    vec3 modelScale)
+  {
+    return refractedDirection * thickness * modelScale;
+  }
+
+  vec3 GetVolumeAttenuation(
+    float transmissionDistance,
+    vec3 attenuationColor,
+    float attenuationDistance)
+  {
+    if(transmissionDistance <= Epsilon ||
+      attenuationDistance >= 3.402823466e+38)
+    {
+      return vec3(1.0);
+    }
+
+    float attenuationExponent = transmissionDistance /
+      max(attenuationDistance, Epsilon);
+    bvec3 fullyAbsorbed = lessThanEqual(attenuationColor, vec3(0.0));
+    vec3 attenuation = pow(
+      max(attenuationColor, vec3(Epsilon)),
+      vec3(attenuationExponent));
+    return mix(attenuation, vec3(0.0), fullyAbsorbed);
+  }
+  #endif
+
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
-    float attenuation = 1.0;
     float shadow = 1.0f;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     
     // Directional light
     if(light.type == 0)
     {
-        attenuation = 1.0;
-      
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
         
         // EVSM only for the first cascade
@@ -382,7 +483,7 @@ glslFragment: |
     else if(light.type == 1)
     {
       // Attenuation
-      const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(pointToLight);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
       falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
     }
@@ -390,12 +491,12 @@ glslFragment: |
     else if(light.type == 2)
     {
       // Attenuation
-      vec3 lightDir = normalize(light.worldPosition - worldPos);
+      vec3 lightDir = Li;
       float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
-      const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(pointToLight);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);      
+      falloff         = attenuation * clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
       
       if(theta < light.cutOff.y)
       {
@@ -403,11 +504,14 @@ glslFragment: |
       }
     }
     
-    vec3 Li = -light.direction;
     vec3 Lradiance = light.intensity;
 
     // Half-vector between Li and Lo.
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
 
     // Calculate angles between surface normal and various light vectors.
     float cosLi = max(0.0, dot(normal, Li));
@@ -424,6 +528,9 @@ glslFragment: |
     // Metals on the other hand either reflect or absorb energy, so diffuse contribution is always zero.
     // To be energy conserving we must scale diffuse BRDF contribution based on Fresnel factor & metalness.
     vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
+  #ifdef TRANSMISSION
+    kd *= 1.0 - material.transmissionFactor;
+  #endif
 
     // Lambert diffuse BRDF.
     // We don't scale by 1/PI for lighting & material units to be more convenient.
@@ -433,8 +540,127 @@ glslFragment: |
     // Cook-Torrance specular microfacet BRDF.
     vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
 
+    vec3 directLighting =
+      (diffuseBRDF + specularBRDF) * Lradiance * cosLi * falloff;
+
+  #ifdef TRANSMISSION
+    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionDirection = GetRefractionDirection(
+      refractionNormal,
+      Lo,
+      material.indexOfRefraction);
+    vec3 transmissionRay = GetVolumeTransmissionRay(
+      refractionDirection,
+      material.thicknessFactor,
+      vin.modelScale);
+    float transmissionRayLength = length(transmissionRay);
+    float canTransmit = step(Epsilon, dot(
+      refractionDirection,
+      refractionDirection));
+    float dielectricTransmission = material.transmissionFactor *
+      (1.0 - clamp(material.metallicFactor, 0.0, 1.0));
+
+    if(canTransmit > 0.0 &&
+      dielectricTransmission > Epsilon)
+    {
+      vec3 exitPointToLight = light.type == 0 ?
+        -light.direction :
+        light.worldPosition - (worldPos + transmissionRay);
+      float exitPointToLightLength = length(exitPointToLight);
+      if(exitPointToLightLength > Epsilon)
+      {
+        vec3 transmissionLi = exitPointToLight / exitPointToLightLength;
+        vec3 mirroredLiVector =
+          transmissionLi +
+          2.0 * refractionNormal *
+            dot(-transmissionLi, refractionNormal);
+        float mirroredLiLengthSquared = dot(
+          mirroredLiVector,
+          mirroredLiVector);
+        if(mirroredLiLengthSquared > Epsilon)
+        {
+          vec3 mirroredLi = mirroredLiVector *
+            inversesqrt(mirroredLiLengthSquared);
+          vec3 transmissionHalfVector = mirroredLi + Lo;
+          float transmissionHalfLengthSquared = dot(
+            transmissionHalfVector,
+            transmissionHalfVector);
+          if(transmissionHalfLengthSquared > Epsilon)
+          {
+            vec3 transmissionH = transmissionHalfVector *
+              inversesqrt(transmissionHalfLengthSquared);
+            float alphaRoughness = ApplyIorToRoughness(
+              material.roughnessFactor * material.roughnessFactor,
+              material.indexOfRefraction);
+            float transmissionDistribution = NdfGGXAlpha(
+              clamp(dot(refractionNormal, transmissionH), 0.0, 1.0),
+              max(alphaRoughness, Epsilon));
+            float transmissionCosLi = clamp(
+              dot(refractionNormal, mirroredLi),
+              0.0,
+              1.0);
+            float transmissionCosLo = clamp(
+              dot(refractionNormal, Lo),
+              0.0,
+              1.0);
+            float transmissionVisibility = VisibilityGGXAlpha(
+              transmissionCosLi,
+              transmissionCosLo,
+              max(alphaRoughness, Epsilon));
+            float dielectricFresnel =
+              (material.indexOfRefraction - 1.0) /
+              (material.indexOfRefraction + 1.0);
+            vec3 transmissionFresnel = FresnelSchlick(
+              vec3(dielectricFresnel * dielectricFresnel),
+              clamp(abs(dot(Lo, transmissionH)), 0.0, 1.0));
+
+            float transmissionFalloff = falloff;
+            if(light.type == 1)
+            {
+              float attenuation = 1.0 /
+                (light.attenuation.x +
+                  light.attenuation.y * exitPointToLightLength +
+                  light.attenuation.z *
+                    exitPointToLightLength * exitPointToLightLength);
+              transmissionFalloff = attenuation *
+                (1.0 - pow(clamp(
+                  exitPointToLightLength / light.bounds.x,
+                  0.0,
+                  1.0), 2.0));
+            }
+            else if(light.type == 2)
+            {
+              float attenuation = 1.0 /
+                (light.attenuation.x +
+                  light.attenuation.y * exitPointToLightLength +
+                  light.attenuation.z *
+                    exitPointToLightLength * exitPointToLightLength);
+              float coneRange = light.cutOff.x - light.cutOff.y;
+              float coneCos = dot(
+                transmissionLi,
+                normalize(-light.direction));
+              transmissionFalloff = attenuation * clamp(
+                (coneCos - light.cutOff.y) / max(coneRange, Epsilon),
+                0.0,
+                1.0);
+            }
+
+            vec3 volumeAttenuation = GetVolumeAttenuation(
+              transmissionRayLength,
+              material.attenuationColor.rgb,
+              material.attenuationDistance);
+            directLighting += material.baseColorFactor.rgb *
+              transmissionDistribution * transmissionVisibility *
+              volumeAttenuation * (vec3(1.0) - transmissionFresnel) *
+              dielectricTransmission * Lradiance * transmissionFalloff;
+          }
+        }
+      }
+    }
+  #endif
+
     // Total contribution for this light.
-    return shadow * ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
+    return shadow * directLighting;
   }
   
   vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
@@ -450,6 +676,9 @@ glslFragment: |
     
     // Get diffuse contribution factor (as with direct lighting).
     vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
+  #ifdef TRANSMISSION
+    kd *= 1.0 - material.transmissionFactor;
+  #endif
     
     // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
     vec3 diffuseIBL = kd * material.baseColorFactor.xyz * irradiance;
@@ -486,10 +715,20 @@ glslFragment: |
         falloff = attenuation;
     }
 
-    vec3 Li = -light.direction;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     vec3 Lradiance = light.intensity;
 
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
     float cosLi = max(0.0, dot(normal, Li));
     float cosLh = max(0.0, dot(normal, Lh));
 
@@ -527,10 +766,20 @@ glslFragment: |
         falloff = attenuation;
     }
 
-    vec3 Li = -light.direction;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     vec3 Lradiance = light.intensity;
 
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
     float cosLi = max(0.0, dot(normal, Li));
     float cosLh = max(0.0, dot(normal, Lh));
 
@@ -607,6 +856,21 @@ glslFragment: |
       material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.sheenRoughnessSampler)], vin.texcoord).g;
     }
   #endif
+  #ifdef TRANSMISSION
+    material.transmissionFactor = clamp(material.transmissionFactor, 0.0, 1.0);
+    if(material.transmissionSampler != 0)
+    {
+      material.transmissionFactor *= texture(textureSamplers[nonuniformEXT(material.transmissionSampler)], vin.texcoord).r;
+    }
+    material.thicknessFactor = max(material.thicknessFactor, 0.0);
+    if(material.thicknessSampler != 0)
+    {
+      material.thicknessFactor *= texture(textureSamplers[nonuniformEXT(material.thicknessSampler)], vin.texcoord).g;
+    }
+    material.indexOfRefraction = max(material.indexOfRefraction, 1.0);
+    material.attenuationDistance = max(material.attenuationDistance, Epsilon);
+    material.attenuationColor = clamp(material.attenuationColor, vec4(0.0), vec4(1.0));
+  #endif
 
     vec3 normal;
     if(material.normalSampler != 0)
@@ -642,7 +906,12 @@ glslFragment: |
     vec3 Lr = 2.0 * cosLo * normal + viewDirection;
     
     // Fresnel reflectance at normal incidence (for metals use albedo color).
+  #ifdef TRANSMISSION
+    float iorFresnel = (material.indexOfRefraction - 1.0) / (material.indexOfRefraction + 1.0);
+    vec3 F0 = mix(vec3(iorFresnel * iorFresnel), material.baseColorFactor.xyz, material.metallicFactor);
+  #else
     vec3 F0 = mix(Fdielectric, material.baseColorFactor.xyz, material.metallicFactor);
+  #endif
     
   #ifdef ALPHA_CUTOUT
     if(material.baseColorFactor.a < material.alphaCutoff)
@@ -690,6 +959,91 @@ glslFragment: |
         outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
   #endif
     }
+
+  #ifdef TRANSMISSION
+    float dielectricFresnel =
+      (material.indexOfRefraction - 1.0) /
+      (material.indexOfRefraction + 1.0);
+    vec3 dielectricF0 = vec3(dielectricFresnel * dielectricFresnel);
+    vec2 transmissionBrdf = texture(
+      g_brdfSampler,
+      clamp(vec2(cosLo, material.roughnessFactor), vec2(0.0), vec2(1.0))).rg;
+    vec3 transmissionFresnel = clamp(
+      dielectricF0 * transmissionBrdf.x + transmissionBrdf.y,
+      vec3(0.0),
+      vec3(1.0));
+    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionDirection = GetRefractionDirection(
+      refractionNormal,
+      -viewDirection,
+      material.indexOfRefraction);
+    vec3 transmissionRay = GetVolumeTransmissionRay(
+      refractionDirection,
+      material.thicknessFactor,
+      vin.modelScale);
+    float canTransmit = step(Epsilon, dot(
+      refractionDirection,
+      refractionDirection));
+    vec4 exitClip = frame.projection * frame.view * vec4(vin.worldPosition + transmissionRay, 1.0);
+    vec2 transmissionUv = viewportUv;
+    float transmissionUvWeight = 0.0;
+    if(exitClip.w > Epsilon)
+    {
+      vec2 exitNdc = exitClip.xy / exitClip.w;
+      vec2 exitUv = vec2(
+        exitNdc.x * 0.5 + 0.5,
+        0.5 - exitNdc.y * 0.5);
+      float exitEdgeDistance = min(
+        min(exitUv.x, 1.0 - exitUv.x),
+        min(exitUv.y, 1.0 - exitUv.y));
+      transmissionUvWeight = smoothstep(0.0, 0.025, exitEdgeDistance);
+      transmissionUv = clamp(exitUv, vec2(0.0), vec2(1.0));
+    }
+
+    float transmissionDistance = length(transmissionRay);
+    vec3 volumeAttenuation = GetVolumeAttenuation(
+      transmissionDistance,
+      material.attenuationColor.rgb,
+      material.attenuationDistance);
+
+    float transmissionRoughness = ApplyIorToRoughness(
+      material.roughnessFactor,
+      material.indexOfRefraction);
+    int transmissionMipCount = textureQueryLevels(g_transmissionFramebufferSampler);
+    float transmissionFramebufferWidth = float(max(
+      textureSize(g_transmissionFramebufferSampler, 0).x,
+      1));
+    float transmissionLod = clamp(
+      log2(transmissionFramebufferWidth) * transmissionRoughness,
+      0.0,
+      float(max(transmissionMipCount - 1, 0)));
+    vec3 framebufferRadiance = textureLod(
+      g_transmissionFramebufferSampler,
+      transmissionUv,
+      transmissionLod).rgb;
+    int transmissionEnvMipCount = textureQueryLevels(g_envCubemap);
+    float transmissionEnvLod = transmissionRoughness *
+      float(max(transmissionEnvMipCount - 1, 0));
+    vec3 environmentDirection = mix(
+      -viewDirection,
+      refractionDirection,
+      canTransmit);
+    vec3 environmentRadiance = textureLod(
+      g_envCubemap,
+      environmentDirection,
+      transmissionEnvLod).rgb;
+    vec3 transmittedColor = mix(
+      environmentRadiance,
+      framebufferRadiance,
+      transmissionUvWeight);
+    transmittedColor *= material.baseColorFactor.rgb * volumeAttenuation;
+    float dielectricTransmission = material.transmissionFactor *
+      (1.0 - clamp(material.metallicFactor, 0.0, 1.0)) *
+      canTransmit;
+    outColor.xyz += transmittedColor *
+      (vec3(1.0) - transmissionFresnel) *
+      dielectricTransmission;
+  #endif
 
     outColor.a = material.baseColorFactor.a;    
   }

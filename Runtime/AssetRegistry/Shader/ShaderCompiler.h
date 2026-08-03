@@ -116,7 +116,7 @@ namespace Sailor
 
 	public:
 		// Bump whenever generated shader source or compiled artifact semantics change.
-		static constexpr uint32_t CacheProducerVersion = 5;
+		static constexpr uint32_t CacheProducerVersion = 6;
 
 		SAILOR_API ShaderCompiler(ShaderAssetInfoHandler* infoHandler);
 

@@ -164,6 +164,7 @@ namespace Sailor::Raytracing
 		bool HasSpecularTexture() const { return m_specularColorIndex != u8(-1); }
 		bool HasOcclusionTexture() const { return m_occlusionIndex != u8(-1); }
 		bool HasTransmissionTexture() const { return m_transmissionIndex != u8(-1); }
+		bool HasThicknessTexture() const { return m_thicknessIndex != u8(-1); }
 
 		u8 m_baseColorIndex = u8(-1);
 		u8 m_ambientIndex = u8(-1);
@@ -175,6 +176,7 @@ namespace Sailor::Raytracing
 		u8 m_metallicIndex = u8(-1);
 		u8 m_occlusionIndex = u8(-1);
 		u8 m_transmissionIndex = u8(-1);
+		u8 m_thicknessIndex = u8(-1);
 		u8 m_specularColorIndex = u8(-1);
 
 		BlendMode m_blendMode = BlendMode::Opaque;

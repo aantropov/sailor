@@ -128,6 +128,14 @@ namespace Sailor
 	protected:
 
 		SAILOR_API bool GenerateMaterialAssets(ModelAssetInfoPtr assetInfo);
+		bool UpdateGeneratedMaterialProperties(
+			ModelAssetInfoPtr assetInfo);
+		bool UpdateGeneratedMaterialProperties(
+			ModelAssetInfoPtr assetInfo,
+			const tinygltf::Model& gltfModel);
+		bool UpdateGeneratedMaterialPropertiesOnDemand(
+			ModelAssetInfoPtr assetInfo,
+			const tinygltf::Model& gltfModel);
 		SAILOR_API bool GenerateAnimationAssets(ModelAssetInfoPtr assetInfo);
 		static bool ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext>& outParsedMeshes, Math::AABB& outBoundsAabb, Math::Sphere& outBoundsSphere, TVector<glm::mat4>& outInverseBind);
 		static bool ImportModel(
@@ -149,6 +157,7 @@ namespace Sailor
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<ModelPtr>> m_promises;
 		TConcurrentMap<FileId, ModelPtr> m_loadedModels;
+		TConcurrentMap<FileId, bool> m_generatedMaterialMigrationComplete;
 
 		ObjectAllocatorPtr m_allocator;
 	};
