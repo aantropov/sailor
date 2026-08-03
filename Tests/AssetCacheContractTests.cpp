@@ -1504,7 +1504,9 @@ namespace
 			initialCache.Contains(fileId),
 			"the initial scan should persist its source watermark");
 
-		WriteFile(sourcePath, "source-v2-with-another-size");
+		RewriteFileWithNewRevision(
+			sourcePath,
+			"source-v2-with-another-size");
 		{
 			AssetRegistry registry(workspaceContext);
 			TestAssetInfoHandler handler;
@@ -1512,7 +1514,9 @@ namespace
 			listener.m_onExpiredUpdate =
 				[&](AssetInfoPtr)
 				{
-					WriteFile(sourcePath, "source-mutated-by-listener");
+					RewriteFileWithNewRevision(
+						sourcePath,
+						"source-mutated-by-listener");
 				};
 			handler.Subscribe(&listener);
 			RegisterRawHandler(registry, handler);
@@ -1611,7 +1615,9 @@ namespace
 
 		handler.m_onLoad = [&]()
 			{
-				WriteFile(sourcePath, "source-mutated-during-staging");
+				RewriteFileWithNewRevision(
+					sourcePath,
+					"source-mutated-during-staging");
 			};
 		Require(
 			!registry.ScanContentFolder(),
@@ -1680,7 +1686,7 @@ namespace
 								[&]()
 								{
 									bMetadataMutatedDuringWait = true;
-									WriteFile(
+									RewriteFileWithNewRevision(
 										metadataPath,
 										"fileId: '{ASSET-CACHE-IMPORT-CONTRACT}'\n"
 										"filename: Retry.raw\n"
@@ -1782,7 +1788,7 @@ namespace
 				Require(
 					static_cast<bool>(token),
 					"the source mutation fixture should begin processing");
-				WriteFile(
+				RewriteFileWithNewRevision(
 					info->GetAssetFilepath(),
 					"source-mutated-after-begin");
 				registry.CompleteAssetProcessing(token, true);
