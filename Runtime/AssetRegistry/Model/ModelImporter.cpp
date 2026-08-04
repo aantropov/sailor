@@ -4709,7 +4709,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		};
 
 		auto loadDataTask = Tasks::CreateTaskWithResult<TSharedPtr<Data>>("Load model",
-			[this, pAssetInfo, &boundsAabb, &boundsSphere]()
+			[pAssetInfo, &boundsAabb, &boundsSphere]()
 			{
 				TSharedPtr<Data> pData = TSharedPtr<Data>::Make();
 				pData->m_bShouldKeepCpuBuffers = pAssetInfo->ShouldKeepCpuBuffers();
