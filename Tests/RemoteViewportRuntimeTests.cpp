@@ -983,8 +983,9 @@ namespace
 			macInputSource.find("TryUsePointerMotionSource(PointerMotionSource.GameController)") != std::string::npos &&
 			macInputSource.find("HasPointerMoved(point)") != std::string::npos &&
 			macInputSource.find("deltaX == 0.0f && deltaY == 0.0f") != std::string::npos &&
-			macInputSource.find("ObserveDidBecomeCurrent") != std::string::npos &&
-			macInputSource.find("ObserveDidStopBeingCurrent") != std::string::npos &&
+			macInputSource.find("ObserveDidBecomeCurrent") == std::string::npos &&
+			macInputSource.find("ObserveDidStopBeingCurrent") == std::string::npos &&
+			macInputSource.find("foreach (var mouse in GCMouse.Mice)") != std::string::npos &&
 			macInputSource.find("(deltaX * sensitivity) / scale") != std::string::npos &&
 			macInputSource.find("PublishTouchButton(touches, activeLocalPointerModifier, false);") != std::string::npos &&
 			macInputSource.find("activeMouseModifiers | activeKeyboardModifiers") != std::string::npos,
