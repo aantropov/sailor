@@ -27,6 +27,13 @@ namespace
 			std::abs(lhs.z - rhs.z) <= epsilon;
 	}
 
+	float ProjectDepth(const glm::mat4& projectionView, const glm::vec3& point)
+	{
+		const glm::vec4 clip = projectionView * glm::vec4(point, 1.0f);
+		Require(std::abs(clip.w) > 0.000001f, "projected point must have a valid homogeneous coordinate");
+		return clip.z / clip.w;
+	}
+
 	void TestValidityRejectsSentinelAndInvertedBounds()
 	{
 		const Math::AABB defaultBounds;
@@ -72,6 +79,39 @@ namespace
 		Require(IsNear(bounds.m_max, glm::vec3(-8.0f, -18.0f, -28.0f)),
 			"transformed all-negative maximum must include every corner");
 	}
+
+	void TestReversedShadowProjectionUsesZeroToOneDepth()
+	{
+		Math::Frustum cameraSlice;
+		const glm::mat4 cameraWorld = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 100.0f));
+		cameraSlice.ExtractFrustumPlanes(cameraWorld, 16.0f / 9.0f, 60.0f, 1.0f, 10.0f);
+
+		const glm::mat4 shadowProjection = cameraSlice.CalculateOrthoMatrixByView(glm::mat4(1.0f), 10.0f);
+		for (const glm::vec3& corner : cameraSlice.GetCorners())
+		{
+			const float depth = ProjectDepth(shadowProjection, corner);
+			Require(std::isfinite(depth) && depth >= -0.0001f && depth <= 1.0001f,
+				"every fitted shadow-cascade corner must remain inside Vulkan's zero-to-one depth range");
+		}
+	}
+
+	void TestReverseZFrustumCornersUseZeroToOneDepth()
+	{
+		const glm::mat4 projection = glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 100.0f, 1.0f);
+		const Math::Frustum frustum(projection);
+
+		for (uint32_t i = 0; i < 4; i++)
+		{
+			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i])) <= 0.0001f,
+				"reverse-Z far corners must be reconstructed from the Vulkan depth-zero plane");
+		}
+
+		for (uint32_t i = 4; i < 8; i++)
+		{
+			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i]) - 1.0f) <= 0.0001f,
+				"reverse-Z near corners must be reconstructed from the Vulkan depth-one plane");
+		}
+	}
 }
 
 int main()
@@ -80,6 +120,8 @@ int main()
 		{ "ValidityRejectsSentinelAndInvertedBounds", TestValidityRejectsSentinelAndInvertedBounds },
 		{ "ValidityRejectsNonFiniteBounds", TestValidityRejectsNonFiniteBounds },
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
+		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
+		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
 	};
 
 	for (const auto& test : tests)

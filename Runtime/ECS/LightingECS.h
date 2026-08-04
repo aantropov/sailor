@@ -36,9 +36,8 @@ namespace Sailor
 	struct CSMLightState
 	{
 		uint32_t m_componentIndex = 0;
+		RHI::EShadowType m_shadowType = RHI::EShadowType::None;
 		glm::mat4 m_lightMatrix{};
-		Math::Transform m_cameraTransform{};
-		Math::Transform m_lightTransform{};
 
 		// <Mesh ECS Index, LastFrameChanged>
 		TVector<TPair<size_t, size_t>> m_snapshot{};
@@ -68,7 +67,7 @@ namespace Sailor
 		// EVSM is based on https://www.cg.tuwien.ac.at/research/publications/2013/ADORJAN-2013-ASE/ADORJAN-2013-ASE-thesis.pdf
 		// Also handy paper: https://dl.acm.org/doi/pdf/10.5555/1375714.1375739
 		static constexpr uint32_t NumCascades = 4;
-		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 20.0f, 1.0f / 10.0f, 1.0f / 3.0f, 1.0f / 2.0f };
+		static constexpr float ShadowCascadeLevels[NumCascades] = { 1.0f / 20.0f, 1.0f / 10.0f, 1.0f / 3.0f, 1.0f };
 		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {4096,4096}, {4096,4096}, {4096,4096} };
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 5), glm::vec2(1, 4), glm::vec2(1, 3), glm::vec2(1, 2) };
 

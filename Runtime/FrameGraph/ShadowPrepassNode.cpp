@@ -79,13 +79,21 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 	RHIShaderBindingPtr blurDataBinding = m_pBlurShaderBindings->GetOrAddShaderBinding("data");
 
-	if (!m_lightMatrices)
+	if (sceneView.m_shadowMapsToUpdate.Num() == 0)
 	{
-		auto shaderBindingSet = sceneView.m_rhiLightsData;
-		m_lightMatrices = shaderBindingSet->GetOrAddShaderBinding("lightsMatrices");
+		return;
 	}
 
-	if (sceneView.m_shadowMapsToUpdate.Num() == 0)
+	auto shaderBindingSet = sceneView.m_rhiLightsData;
+	if (!shaderBindingSet || !shaderBindingSet->HasBinding("lightsMatrices"))
+	{
+		return;
+	}
+
+	// A scene/world switch replaces the lighting binding set. Always resolve the
+	// target from the current snapshot instead of retaining the previous world.
+	m_lightMatrices = shaderBindingSet->GetOrAddShaderBinding("lightsMatrices");
+	if (!m_lightMatrices || !m_lightMatrices->IsBind())
 	{
 		return;
 	}
@@ -151,62 +159,58 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			}
 		}
 
-		if (numMeshes == 0)
-		{
-			return;
-		}
-
-		if (!m_perInstanceData || m_sizePerInstanceData < sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes)
-		{
-			SAILOR_PROFILE_SCOPE("Create storage for matrices");
-			m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
-			Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(ShadowPrepassNode::PerInstanceData), numMeshes, 0);
-			m_sizePerInstanceData = sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes;
-		}
-
-		RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
-
 		TVector<ShadowPrepassNode::PerInstanceData> gpuMatricesData(numMeshes);
 		TVector<TVector<RHIBatch>> passes(NumShadowPasses);
 		TVector<TVector<uint32_t>> passIndices(NumShadowPasses);
+		RHI::RHIShaderBindingPtr storageBinding;
 
+		if (numMeshes > 0)
 		{
-			SAILOR_PROFILE_SCOPE("Calculate SSBO offsets");
-			size_t ssboIndex = 0;
-			for (uint32_t i = 0; i < NumShadowPasses; i++)
+			if (!m_perInstanceData || m_sizePerInstanceData < sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes)
 			{
-				auto vecBatches = batches[i].ToVector();
-				if (vecBatches.Num() == 0)
-				{
-					continue;
-				}
-
-				TVector<uint32_t> storageIndex(vecBatches.Num());
-				for (uint32_t j = 0; j < vecBatches.Num(); j++)
-				{
-					bool bIsInited = false;
-					for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
-					{
-						auto& matrices = *instancedDrawCall.Second();
-
-						memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
-
-						if (!bIsInited)
-						{
-							storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
-							bIsInited = true;
-						}
-						ssboIndex += matrices.Num();
-					}
-				}
-
-				passIndices[i] = std::move(storageIndex);
-				passes[i] = std::move(vecBatches);
+				SAILOR_PROFILE_SCOPE("Create storage for matrices");
+				m_perInstanceData = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
+				Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_perInstanceData, "data", sizeof(ShadowPrepassNode::PerInstanceData), numMeshes, 0);
+				m_sizePerInstanceData = sizeof(ShadowPrepassNode::PerInstanceData) * numMeshes;
 			}
-		}
 
-		if (gpuMatricesData.Num() > 0)
-		{
+			storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
+
+			{
+				SAILOR_PROFILE_SCOPE("Calculate SSBO offsets");
+				size_t ssboIndex = 0;
+				for (uint32_t i = 0; i < NumShadowPasses; i++)
+				{
+					auto vecBatches = batches[i].ToVector();
+					if (vecBatches.Num() == 0)
+					{
+						continue;
+					}
+
+					TVector<uint32_t> storageIndex(vecBatches.Num());
+					for (uint32_t j = 0; j < vecBatches.Num(); j++)
+					{
+						bool bIsInited = false;
+						for (const auto& instancedDrawCall : drawCalls[i][vecBatches[j]])
+						{
+							auto& matrices = *instancedDrawCall.Second();
+
+							memcpy(&gpuMatricesData[ssboIndex], matrices.GetData(), sizeof(ShadowPrepassNode::PerInstanceData) * matrices.Num());
+
+							if (!bIsInited)
+							{
+								storageIndex[j] = storageBinding->GetStorageInstanceIndex() + (uint32_t)ssboIndex;
+								bIsInited = true;
+							}
+							ssboIndex += matrices.Num();
+						}
+					}
+
+					passIndices[i] = std::move(storageIndex);
+					passes[i] = std::move(vecBatches);
+				}
+			}
+
 			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
 			commands->UpdateShaderBinding(transferCommandList, storageBinding,
 				gpuMatricesData.GetData(),
@@ -248,22 +252,47 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ColorAttachmentOptimal);
 				commands->ImageMemoryBarrier(commandList, depthAttachment, depthAttachmentLayout);
 
+				// The shadow target stores either raw PCF depth or EVSM moments. With
+				// reverse Z, an empty texel represents depth zero. EVSM must encode
+				// that value instead of clearing all four moments to zero.
+				const glm::vec4 shadowClearValue = shadowPass.m_shadowType == EShadowType::EVSM ?
+					glm::vec4(1.0f, 1.0f, -1.0f, 1.0f) :
+					glm::vec4(0.0f);
+
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{ shadowPass.m_shadowMap },
 					depthAttachment,
 					glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
 					glm::ivec2(0, 0),
 					true,
-					glm::vec4(0.0f),
+					shadowClearValue,
 					0.0f,
 					false,
 					true);
 
-				auto& defaultDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4>();
-
-				commands->PushConstants(commandList, GetOrAddShadowMaterial(defaultDescription, shadowPass.m_shadowType), 64, &sceneView.m_shadowMapsToUpdate[index].m_lightMatrix);
-
+				RHI::RHIMaterialPtr pushConstantsMaterial;
 				if (passes[index].Num() > 0)
+				{
+					pushConstantsMaterial = passes[index][0].m_material;
+				}
+				else
+				{
+					for (uint32_t dependencyPass : shadowPass.m_internalCommandsList)
+					{
+						if (passes[dependencyPass].Num() > 0)
+						{
+							pushConstantsMaterial = passes[dependencyPass][0].m_material;
+							break;
+						}
+					}
+				}
+
+				if (pushConstantsMaterial)
+				{
+					commands->PushConstants(commandList, pushConstantsMaterial, 64, &shadowPass.m_lightMatrix);
+				}
+
+				if (pushConstantsMaterial && passes[index].Num() > 0)
 				{
 					m_drawCallStats += RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, transferCommandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
 						glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
@@ -275,7 +304,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				{
 					const uint32_t numBatches = (uint32_t)passes[dependencyPass].Num();
 
-					if (numBatches > 0)
+					if (pushConstantsMaterial && numBatches > 0)
 					{
 						m_drawCallStats += RHIDrawCall(0, numBatches, passes[dependencyPass], commandList, shaderBindingsByMaterial,
 							drawCalls[dependencyPass], m_indirectBuffers[dependencyPass],
@@ -375,6 +404,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 					driver->ReleaseTemporaryRenderTarget(blurAttachment);
 				}
+
+				// Lighting samples every completed shadow map later in the same
+				// graphics command list. Publish the color writes explicitly for both
+				// the direct PCF path and the final EVSM blur pass.
+				commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
 
 				driver->ReleaseTemporaryRenderTarget(depthAttachment);
 

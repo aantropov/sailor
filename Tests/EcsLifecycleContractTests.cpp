@@ -695,6 +695,31 @@ namespace
 			"CSM invalidation snapshots must capture the complete traced caster list before dependency draw-call filtering");
 	}
 
+	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
+	{
+		Require(std::abs(LightingECS::ShadowCascadeLevels[LightingECS::NumCascades - 1] - 1.0f) <= 0.0001f,
+			"the last shadow cascade must reach the camera far plane");
+
+		const glm::mat4 cachedLightMatrix(1.0f);
+		glm::mat4 movedLightMatrix = cachedLightMatrix;
+		movedLightMatrix[3].x = 0.01f;
+
+		CSMLightState cachedState{};
+		cachedState.m_componentIndex = 7u;
+		cachedState.m_shadowType = RHI::EShadowType::PCF;
+		cachedState.m_lightMatrix = cachedLightMatrix;
+		cachedState.m_snapshot.Add({ 11u, 19u });
+
+		CSMLightState movedState{};
+		movedState.m_componentIndex = cachedState.m_componentIndex;
+		movedState.m_shadowType = cachedState.m_shadowType;
+		movedState.m_lightMatrix = movedLightMatrix;
+		movedState.m_snapshot.Add({ 11u, 19u });
+
+		Require(!movedState.Equals(cachedState),
+			"a changed cascade projection must invalidate the cached shadow map even for camera motion below the old threshold");
+	}
+
 	void TestAnimationGpuBoneLayoutContract()
 	{
 		const uint32_t invalidOffset = AnimatorComponentData::InvalidGpuOffset;
@@ -3335,6 +3360,7 @@ int main()
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
+		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },

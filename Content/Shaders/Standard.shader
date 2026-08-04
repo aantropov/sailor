@@ -321,18 +321,13 @@ glslFragment: |
         attenuation = 1.0;
       
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        
-        // EVSM only for the first cascade
-        if(light.shadowType == 2 && cascadeLayer == 0)
-        {
-          const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
-          shadow = ShadowCalculation_Evsm(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);
-        }
-        else
-        {
-          const float bias = max(0.000075 * (1.0 - dot(normal, light.direction)), 0.000005);   
-          shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);    
-        }
+        shadow = CalculateDirectionalShadow(
+          light.shadowType,
+          shadowMaps[cascadeLayer],
+          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+          normal,
+          -light.direction,
+          cascadeLayer);
     }
     // Point light
     else if(light.type == 1)

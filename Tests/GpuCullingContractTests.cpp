@@ -896,6 +896,83 @@ namespace
 			"cached static proxies must publish the same per-mesh render queues");
 	}
 
+	void TestShadowDepthRangeContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string lightingSource = ReadText(
+			sourceRoot / "Content/Shaders/Lighting.glsl");
+
+		Require(lightingSource.find("projCoords.xy = projCoords.xy * 0.5 + 0.5;") !=
+				std::string::npos,
+			"shadow sampling must remap only XY from clip space to texture coordinates");
+		Require(lightingSource.find("projCoords = projCoords * 0.5 + 0.5;") ==
+				std::string::npos,
+			"Vulkan zero-to-one shadow depth must not be remapped as OpenGL depth");
+		Require(lightingSource.find("float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;") !=
+				std::string::npos &&
+			lightingSource.find("texture(shadowMap, projCoords.xy + offset).r * 0.5 + 0.5") ==
+				std::string::npos,
+			"PCF must compare raw reverse-Z Vulkan depth values");
+		Require(lightingSource.find("projCoords.z < 0.0f || projCoords.z > 1.0f") !=
+				std::string::npos,
+			"shadow sampling must reject coordinates outside Vulkan's zero-to-one depth range");
+		Require(lightingSource.find("shadowType == SHADOW_TYPE_NONE") !=
+				std::string::npos &&
+			lightingSource.find("dot(surfaceNormal, surfaceToLightDirection)") !=
+				std::string::npos,
+			"directional shadow sampling must skip disabled shadows and derive slope bias from the direction toward the light");
+		Require(lightingSource.find("max(slope, EVSM_MIN_SLOPE_BIAS)") !=
+				std::string::npos &&
+			lightingSource.find("const float biasedDepth =") !=
+				std::string::npos &&
+			lightingSource.find("exp(EVSM_C1 * biasedDepth)") !=
+				std::string::npos &&
+			lightingSource.find("-exp(-EVSM_C2 * biasedDepth)") !=
+				std::string::npos,
+			"both EVSM warps must use the same non-zero receiver depth bias to avoid self-shadowing bands");
+
+		const std::string boundsSource = ReadText(
+			sourceRoot / "Runtime/Math/Bounds.cpp");
+		const std::string projectionBody = ExtractFunctionBody(
+			boundsSource,
+			"glm::mat4 Frustum::CalculateOrthoMatrixByView(");
+		Require(projectionBody.find("glm::orthoRH_ZO") != std::string::npos &&
+			projectionBody.find("glm::orthoRH_NO") == std::string::npos,
+			"shadow cascade projection and shader sampling must use the same Vulkan depth range");
+
+		const std::string shadowPassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string processBody = ExtractFunctionBody(
+			shadowPassSource,
+			"void ShadowPrepassNode::Process(");
+		Require(processBody.find("shadowPass.m_shadowType == EShadowType::EVSM") !=
+				std::string::npos &&
+			processBody.find("glm::vec4(1.0f, 1.0f, -1.0f, 1.0f)") !=
+				std::string::npos,
+			"empty reverse-Z EVSM texels must be cleared to the moments encoded for depth zero");
+		const std::string finalShadowBarrier =
+			"commands->ImageMemoryBarrier(commandList, shadowPass.m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);";
+		const size_t finalShadowBarrierOffset = processBody.rfind(finalShadowBarrier);
+		const size_t blurReleaseOffset = processBody.find("driver->ReleaseTemporaryRenderTarget(blurAttachment);");
+		const size_t depthReleaseOffset = processBody.find("driver->ReleaseTemporaryRenderTarget(depthAttachment);");
+		Require(finalShadowBarrierOffset != std::string::npos &&
+			blurReleaseOffset != std::string::npos &&
+			depthReleaseOffset != std::string::npos &&
+			blurReleaseOffset < finalShadowBarrierOffset &&
+			finalShadowBarrierOffset < depthReleaseOffset,
+			"completed PCF and EVSM shadow targets must be published for shader reads in the same graphics command list");
+
+		const std::string standardSource = ReadText(
+			sourceRoot / "Content/Shaders/Standard.shader");
+		const std::string gltfSource = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		Require(standardSource.find("CalculateDirectionalShadow(") != std::string::npos &&
+			gltfSource.find("CalculateDirectionalShadow(") != std::string::npos &&
+			standardSource.find("dot(normal, light.direction)") == std::string::npos &&
+			gltfSource.find("dot(normal, light.direction)") == std::string::npos,
+			"all lit material paths must use the shared reverse-Z shadow and slope-bias calculation");
+	}
+
 	void TestPathTracerThicknessSamplerContract()
 	{
 		Raytracing::Material material{};
@@ -1048,6 +1125,7 @@ int main()
 		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
 		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },
+		{ "ShadowDepthRangeContract", TestShadowDepthRangeContract },
 		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },
 		{ "PathTracerMaterialContentRevisionContract", TestPathTracerMaterialContentRevisionContract },
 	};

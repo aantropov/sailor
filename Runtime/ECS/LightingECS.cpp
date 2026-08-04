@@ -11,17 +11,31 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+namespace
+{
+	bool AreMatricesExactlyEqual(const glm::mat4& lhs, const glm::mat4& rhs)
+	{
+		for (glm::length_t column = 0; column < lhs.length(); ++column)
+		{
+			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
+			{
+				if (lhs[column][row] != rhs[column][row])
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+}
+
 bool CSMLightState::Equals(const CSMLightState& rhs) const
 {
-	const float CameraPosDelta = 15.0f;
-	const float CameraRotationDelta = 0.9995f;
-
 	if (m_componentIndex != rhs.m_componentIndex ||
+		m_shadowType != rhs.m_shadowType ||
 		m_snapshot.Num() != rhs.m_snapshot.Num() ||
-		glm::distance(m_cameraTransform.m_position, rhs.m_cameraTransform.m_position) > CameraPosDelta ||
-		glm::dot(m_cameraTransform.GetForward(), rhs.m_cameraTransform.GetForward()) < CameraRotationDelta ||
-		m_lightTransform.m_position != rhs.m_lightTransform.m_position ||
-		m_lightTransform.m_rotation != rhs.m_lightTransform.m_rotation)
+		!AreMatricesExactlyEqual(m_lightMatrix, rhs.m_lightMatrix))
 	{
 		return false;
 	}
@@ -289,8 +303,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			// through m_internalCommandsList, so they must participate in invalidation.
 			CSMLightState snapshot{};
 			snapshot.m_componentIndex = directionalLight.m_index;
-			snapshot.m_cameraTransform = cameraTransform;
-			snapshot.m_lightTransform = directionalLight.m_lightTransform;
+			snapshot.m_shadowType = cascade.m_shadowType;
 			snapshot.m_lightMatrix = lightMatrix;
 			snapshot.m_snapshot.Reserve(cascade.m_meshList.Num());
 
