@@ -926,6 +926,16 @@ namespace
 		system.GetComponentData(survivingAnimator).m_gpuOffset = allocatedOffset;
 		system.GetComponentData(survivingAnimator).SetBonesCount(10);
 
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto sameSkeleton = AnimationPtr::Make(allocator, FileId{});
+		sameSkeleton->m_numBones = 10;
+		system.SetAnimation(replacedAnimator, sameSkeleton);
+		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == 0 &&
+			system.GetComponentData(survivingAnimator).m_gpuOffset == 10 &&
+			system.GetNextBoneOffsetForTest() == 20,
+			"switching animation data without changing the skeleton size must preserve every GPU bone range");
+
 		system.SetAnimation(replacedAnimator, TObjectPtr<Animation>());
 		Require(system.GetComponentData(replacedAnimator).m_gpuOffset == invalidOffset &&
 			system.GetComponentData(survivingAnimator).m_gpuOffset == invalidOffset,
@@ -955,6 +965,8 @@ namespace
 		Require(!AnimationECS::TryAllocateBoneRange(1, nextOffset, allocatedOffset) &&
 			nextOffset == AnimationECS::BonesMaxNum + 1 && allocatedOffset == invalidOffset,
 			"an out-of-range cursor should be rejected without unsigned-capacity underflow");
+
+		sameSkeleton.DestroyObject(allocator);
 
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string shaderSource = ReadText(sourceRoot / "Content/Shaders/Standard_glTF.shader");

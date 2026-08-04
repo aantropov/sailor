@@ -191,6 +191,12 @@ namespace SailorEngine
                 "class Sailor::Material" => typeof(MaterialFile),
                 "Sailor::Shader" => typeof(ShaderFile),
                 "class Sailor::Shader" => typeof(ShaderFile),
+                "Sailor::Animation" => typeof(AnimationFile),
+                "class Sailor::Animation" => typeof(AnimationFile),
+                "Sailor::AnimationController" => typeof(AnimationControllerFile),
+                "class Sailor::AnimationController" => typeof(AnimationControllerFile),
+                "Sailor::AnimationSet" => typeof(AnimationSetFile),
+                "class Sailor::AnimationSet" => typeof(AnimationSetFile),
                 _ => null
             };
 

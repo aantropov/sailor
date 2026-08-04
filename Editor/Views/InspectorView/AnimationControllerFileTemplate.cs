@@ -34,6 +34,8 @@ sealed class AnimationControllerEditorPanel : VerticalStackLayout
     ContentView? stateEditorHost;
     IDispatcherTimer? previewTimer;
     AnimationControllerState? selectedState;
+    string? previewAnimatorInstanceId;
+    int previewGeneration;
     bool rebuilding;
 
     public AnimationControllerEditorPanel()
@@ -46,6 +48,10 @@ sealed class AnimationControllerEditorPanel : VerticalStackLayout
 
     void Bind(AnimationControllerFile? value)
     {
+        if (!ReferenceEquals(controller, value))
+        {
+            previewAnimatorInstanceId = null;
+        }
         if (controller is not null)
         {
             controller.DocumentReplaced -= OnDocumentReplaced;
@@ -81,6 +87,7 @@ sealed class AnimationControllerEditorPanel : VerticalStackLayout
             stateEditorHost = null;
             previewTimer?.Stop();
             previewTimer = null;
+            ++previewGeneration;
             Children.Clear();
             if (controller is null)
             {
@@ -215,96 +222,218 @@ sealed class AnimationControllerEditorPanel : VerticalStackLayout
     View BuildPreview()
     {
         var panel = Card();
-        panel.Children.Add(SectionLabel("Preview"));
-        var models = MauiProgram.GetService<AssetsService>().Files.OfType<ModelFile>().ToArray();
-        var modelPicker = new Picker
+        var header = new HorizontalStackLayout { Spacing = 8 };
+        header.Children.Add(SectionLabel("Live Preview"));
+        header.Children.Add(Button("Refresh Targets", Build));
+        panel.Children.Add(header);
+        var targets = FindPreviewTargets();
+        var targetPicker = new Picker
         {
-            Title = "Preview model",
-            ItemsSource = models,
-            ItemDisplayBinding = new Binding(nameof(ModelFile.DisplayName))
+            Title = "Animator in the current scene",
+            ItemsSource = targets,
+            ItemDisplayBinding = new Binding(nameof(AnimationControllerPreviewTarget.DisplayName))
         };
-        var fingerprint = new Image
-        {
-            HeightRequest = 180,
-            WidthRequest = 260,
-            Aspect = Aspect.AspectFit,
-            HorizontalOptions = LayoutOptions.Start
-        };
-        modelPicker.SelectedIndexChanged += async (_, _) =>
-        {
-            if (modelPicker.SelectedItem is ModelFile model)
-            {
-                await model.LoadDependentResources();
-                fingerprint.Source = model.Fingerprint;
-            }
-            else
-            {
-                fingerprint.Source = null;
-            }
-        };
-        panel.Children.Add(modelPicker);
-        panel.Children.Add(fingerprint);
+        targetPicker.SelectedItem = targets.FirstOrDefault(target =>
+                string.Equals(
+                    target.Animator.InstanceId?.Value,
+                    previewAnimatorInstanceId,
+                    StringComparison.Ordinal)) ??
+            targets.FirstOrDefault();
+        panel.Children.Add(targetPicker);
 
-        var statePicker = new Picker
+        var stateLabel = new Label
         {
-            Title = "State",
-            ItemsSource = controller!.States,
-            ItemDisplayBinding = new Binding(nameof(AnimationControllerState.Name)),
-            SelectedItem = selectedState ?? controller.States.FirstOrDefault()
+            Text = targets.Count == 0
+                ? "Assign this controller and an Animation Set to an AnimatorComponent in the current scene."
+                : "Waiting for runtime state...",
+            FontSize = 11,
+            TextColor = Color.FromArgb("#AAB2BE")
         };
-        var time = new Slider { Minimum = 0.0, Maximum = 1.0, Value = 0.0 };
-        var timeLabel = new Label { Text = "Normalized time 0.000", FontSize = 11 };
-        var timer = Dispatcher.CreateTimer();
-        previewTimer = timer;
-        timer.Interval = TimeSpan.FromMilliseconds(16);
-        timer.Tick += (_, _) =>
-        {
-            time.Value = (time.Value + 0.016) % 1.0;
-        };
-        var play = new Button { Text = "Play" };
-        play.Clicked += (_, _) =>
-        {
-            if (timer.IsRunning)
-            {
-                timer.Stop();
-                play.Text = "Play";
-            }
-            else
-            {
-                timer.Start();
-                play.Text = "Pause";
-            }
-        };
-        statePicker.SelectedIndexChanged += (_, _) =>
-        {
-            if (statePicker.SelectedItem is AnimationControllerState state)
-            {
-                selectedState = state;
-                if (graph is not null)
-                {
-                    graph.PreviewActiveStateId = state.Id;
-                    graph.Invalidate();
-                }
-            }
-        };
-        time.ValueChanged += (_, args) =>
-        {
-            timeLabel.Text = $"Normalized time {args.NewValue:F3}";
-        };
-        panel.Children.Add(statePicker);
-        panel.Children.Add(new HorizontalStackLayout
-        {
-            Spacing = 8,
-            Children = { play, timeLabel }
-        });
-        panel.Children.Add(time);
+        panel.Children.Add(stateLabel);
+
+        var runtimeParameters = new ContentView();
+        panel.Children.Add(runtimeParameters);
         panel.Children.Add(new Label
         {
-            Text = "Preview uses the selected model fingerprint; runtime state and parameters are evaluated independently per Animator.",
+            Text = "The selected Animator is evaluated by the Engine and rendered in Scene View. Runtime controls do not change authored parameter defaults.",
             FontSize = 11,
             TextColor = Color.FromArgb("#929AA5")
         });
+
+        var timer = Dispatcher.CreateTimer();
+        previewTimer = timer;
+        timer.Interval = TimeSpan.FromMilliseconds(100);
+        var generation = previewGeneration;
+        var requestPending = false;
+
+        async Task RefreshRuntimeStateAsync()
+        {
+            if (requestPending ||
+                generation != previewGeneration ||
+                targetPicker.SelectedItem is not AnimationControllerPreviewTarget target ||
+                target.Animator.InstanceId is null ||
+                target.Animator.InstanceId.IsEmpty())
+            {
+                return;
+            }
+            requestPending = true;
+            try
+            {
+                var state = await MauiProgram.GetService<EngineService>()
+                    .GetAnimatorStateAsync(target.Animator.InstanceId);
+                if (generation != previewGeneration ||
+                    !ReferenceEquals(targetPicker.SelectedItem, target))
+                {
+                    return;
+                }
+                if (state is null)
+                {
+                    stateLabel.Text = "Engine is not running.";
+                    SetPreviewState(0);
+                }
+                else if (!state.Value.HasController)
+                {
+                    stateLabel.Text = "The runtime Animator has no valid controller/set.";
+                    SetPreviewState(0);
+                }
+                else
+                {
+                    stateLabel.Text = state.Value.IsTransitioning
+                        ? $"{state.Value.ActiveStateName} → {state.Value.DestinationStateName}  {state.Value.TransitionAlpha:P0}"
+                        : $"{state.Value.ActiveStateName}  {state.Value.ActiveStateTime:F2}s";
+                    SetPreviewState(state.Value.ActiveStateId);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (generation == previewGeneration)
+                {
+                    stateLabel.Text = exception.Message;
+                    SetPreviewState(0);
+                }
+            }
+            finally
+            {
+                requestPending = false;
+            }
+        }
+
+        void BindTarget()
+        {
+            if (targetPicker.SelectedItem is AnimationControllerPreviewTarget target)
+            {
+                previewAnimatorInstanceId = target.Animator.InstanceId?.Value;
+                runtimeParameters.Content = BuildRuntimeParameterControls(target, stateLabel);
+                stateLabel.Text = target.HasAnimationSet
+                    ? "Waiting for runtime state..."
+                    : "The selected Animator has no Animation Set.";
+            }
+            else
+            {
+                previewAnimatorInstanceId = null;
+                runtimeParameters.Content = null;
+                stateLabel.Text = "Assign this controller and an Animation Set to an AnimatorComponent in the current scene.";
+            }
+            SetPreviewState(0);
+            _ = RefreshRuntimeStateAsync();
+        }
+
+        targetPicker.SelectedIndexChanged += (_, _) => BindTarget();
+        timer.Tick += (_, _) => _ = RefreshRuntimeStateAsync();
+        panel.Loaded += (_, _) =>
+        {
+            if (ReferenceEquals(previewTimer, timer))
+            {
+                timer.Start();
+                _ = RefreshRuntimeStateAsync();
+            }
+        };
+        panel.Unloaded += (_, _) => timer.Stop();
+        BindTarget();
         return panel;
+    }
+
+    List<AnimationControllerPreviewTarget> FindPreviewTargets()
+    {
+        var result = new List<AnimationControllerPreviewTarget>();
+        if (controller?.FileId is null || controller.FileId.IsEmpty())
+        {
+            return result;
+        }
+
+        var worldService = MauiProgram.GetService<WorldService>();
+        foreach (var prefab in worldService.Current.Prefabs)
+        {
+            foreach (var gameObject in prefab.GameObjects)
+            {
+                foreach (var component in worldService.GetComponents(gameObject))
+                {
+                    if (!string.Equals(
+                            component.Typename?.Name,
+                            "Sailor::AnimatorComponent",
+                            StringComparison.Ordinal) ||
+                        !AnimatorRuntimeControls.ReferencesAsset(
+                            component,
+                            "controller",
+                            controller.FileId))
+                    {
+                        continue;
+                    }
+
+                    result.Add(new AnimationControllerPreviewTarget(
+                        gameObject,
+                        component,
+                        AnimatorRuntimeControls.HasAssignedAsset(
+                            component,
+                            "animationSet")));
+                }
+            }
+        }
+        return result;
+    }
+
+    View BuildRuntimeParameterControls(
+        AnimationControllerPreviewTarget target,
+        Label statusLabel)
+    {
+        var parameters = new VerticalStackLayout { Spacing = 4 };
+        if (!target.HasAnimationSet)
+        {
+            return parameters;
+        }
+
+        foreach (var parameter in controller!.Parameters)
+        {
+            var editor = AnimatorRuntimeControls.CreateParameterEditor(
+                target.Animator,
+                parameter,
+                message => statusLabel.Text = message);
+            parameters.Children.Add(Labeled(parameter.Name, editor));
+        }
+        return parameters;
+    }
+
+    void SetPreviewState(ulong stateId)
+    {
+        if (graph is null || graph.PreviewActiveStateId == stateId)
+        {
+            return;
+        }
+        graph.PreviewActiveStateId = stateId;
+        graph.Invalidate();
+    }
+
+    sealed class AnimationControllerPreviewTarget(
+        GameObject gameObject,
+        Component animator,
+        bool hasAnimationSet)
+    {
+        public GameObject GameObject { get; } = gameObject;
+        public Component Animator { get; } = animator;
+        public bool HasAnimationSet { get; } = hasAnimationSet;
+        public string DisplayName { get; } = hasAnimationSet
+            ? gameObject.Name
+            : $"{gameObject.Name} (missing Animation Set)";
     }
 
     string GetUniqueStateName(string baseName)

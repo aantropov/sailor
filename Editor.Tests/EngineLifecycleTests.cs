@@ -658,6 +658,25 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AnimatorAssetPointers_AreMappedToTypedEditorAssets()
+    {
+        var source = ReadRepositoryFile("Editor", "Utility", "EngineTypes.cs");
+
+        Assert.Contains(
+            "\"Sailor::Animation\" => typeof(AnimationFile)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Sailor::AnimationController\" => typeof(AnimationControllerFile)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Sailor::AnimationSet\" => typeof(AnimationSetFile)",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CreateEditorWorld_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

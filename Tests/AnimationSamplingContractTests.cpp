@@ -343,8 +343,37 @@ namespace
 		Require(first.GetActiveStateIndex() == 0 && !first.IsTransitioning(),
 			"a trigger must be consumed only by the transition that selected it");
 
+		AnimationStateDefinition alternateJump;
+		alternateJump.m_id = 400;
+		alternateJump.m_name = "Alternate Jump";
+		alternateJump.m_clipSlot = "AlternateJump";
+		asset.GetStates().Add(alternateJump);
+		AnimationTransitionDefinition authoredLater;
+		authoredLater.m_id = 1003;
+		authoredLater.m_fromStateId = 100;
+		authoredLater.m_toStateId = 400;
+		authoredLater.m_priority = 10;
+		authoredLater.m_conditions = {
+			AnimationTransitionCondition{
+				.m_parameterId = 4,
+				.m_operation = EAnimationConditionOperation::IsSet
+			}
+		};
+		asset.GetTransitions().Add(std::move(authoredLater));
+		Require(controller->Initialize(asset),
+			"equal-priority transition fixture must compile");
+		AnimationControllerInstance authoredOrder;
+		Require(authoredOrder.SetController(controller) &&
+			authoredOrder.SetTrigger("Jump"),
+			"equal-priority transition fixture must accept its trigger");
+		authoredOrder.Tick(0.0f, 1.0f);
+		Require(authoredOrder.IsTransitioning() &&
+			controller->GetStates()[authoredOrder.GetDestinationStateIndex()].m_id == 300,
+			"equal-priority transitions must select the first authored transition deterministically");
+
 		first = AnimationControllerInstance{};
 		second = AnimationControllerInstance{};
+		authoredOrder = AnimationControllerInstance{};
 		controller.DestroyObject(allocator);
 	}
 

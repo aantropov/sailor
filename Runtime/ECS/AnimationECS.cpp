@@ -177,13 +177,35 @@ void AnimationECS::RefreshController(size_t componentIndex, bool bResetInstance)
 			const FileId* animationId = data.m_animationSet->FindAnimation(
 				states[stateIndex].m_clipSlot);
 			AnimationPtr animation;
-			if (animationImporter && animationId && *animationId)
+			if (!animationId || !*animationId)
 			{
-				animationImporter->LoadAnimation_Immediate(*animationId, animation);
+				SAILOR_LOG_ERROR(
+					"Animation controller '%s' state '%s' has no clip for slot '%s'.",
+					data.m_controller->GetFileId().ToString().c_str(),
+					states[stateIndex].m_name.c_str(),
+					states[stateIndex].m_clipSlot.c_str());
 			}
-			if (animation && animation->m_numBones > 0 &&
-				animation->m_parentBoneIndices.Num() == animation->m_numBones &&
-				animation->m_restPose.Num() == animation->m_numBones)
+			else if (!animationImporter ||
+				!animationImporter->LoadAnimation_Immediate(*animationId, animation))
+			{
+				SAILOR_LOG_ERROR(
+					"Animation controller '%s' state '%s' cannot load clip '%s'.",
+					data.m_controller->GetFileId().ToString().c_str(),
+					states[stateIndex].m_name.c_str(),
+					animationId->ToString().c_str());
+			}
+			if (animation &&
+				(animation->m_numBones == 0 ||
+				 animation->m_parentBoneIndices.Num() != animation->m_numBones ||
+				 animation->m_restPose.Num() != animation->m_numBones))
+			{
+				SAILOR_LOG_ERROR(
+					"Animation controller '%s' state '%s' has invalid skeleton data.",
+					data.m_controller->GetFileId().ToString().c_str(),
+					states[stateIndex].m_name.c_str());
+				animation.Clear();
+			}
+			if (animation)
 			{
 				if (controllerBonesCount == 0)
 				{

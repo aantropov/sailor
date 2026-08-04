@@ -268,23 +268,14 @@ public class ComponentTemplate : DataTemplate
         Templates.AddGridRow(props, stateLabel, GridLength.Auto);
         Grid.SetColumnSpan(stateLabel, props.ColumnDefinitions.Count);
 
-        var controllerFile = ResolveAnimationController(component);
+        var controllerFile = AnimatorRuntimeControls.ResolveController(component);
         if (controllerFile is not null)
         {
             foreach (var parameter in controllerFile.Parameters)
             {
-                View editor = parameter.Type switch
-                {
-                    AnimationControllerParameterType.Float =>
-                        CreateRuntimeFloatEditor(component, parameter),
-                    AnimationControllerParameterType.Int =>
-                        CreateRuntimeIntEditor(component, parameter),
-                    AnimationControllerParameterType.Bool =>
-                        CreateRuntimeBoolEditor(component, parameter),
-                    AnimationControllerParameterType.Trigger =>
-                        CreateRuntimeTriggerEditor(component, parameter),
-                    _ => new Label { Text = "Unsupported parameter" }
-                };
+                var editor = AnimatorRuntimeControls.CreateParameterEditor(
+                    component,
+                    parameter);
                 Templates.AddGridRowWithLabel(
                     props,
                     parameter.Name,
@@ -326,94 +317,6 @@ public class ComponentTemplate : DataTemplate
             }
         };
         return timer;
-    }
-
-    static AnimationControllerFile ResolveAnimationController(Component component)
-    {
-        if (!component.OverrideProperties.TryGetValue("controller", out var value) ||
-            value is not ObjectPtr controller || controller.FileId is null ||
-            controller.FileId.IsEmpty())
-        {
-            return null;
-        }
-        return MauiProgram.GetService<AssetsService>().Assets
-            .TryGetValue(controller.FileId, out var asset)
-            ? asset as AnimationControllerFile
-            : null;
-    }
-
-    static View CreateRuntimeFloatEditor(
-        Component component,
-        AnimationControllerParameter parameter)
-    {
-        var entry = new Entry
-        {
-            Text = parameter.DefaultFloat.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Keyboard = Keyboard.Numeric,
-            ReturnType = ReturnType.Done
-        };
-        entry.Completed += (_, _) => entry.Unfocus();
-        entry.Unfocused += (_, _) =>
-        {
-            if (float.TryParse(
-                    entry.Text,
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out var value))
-            {
-                _ = MauiProgram.GetService<EngineService>()
-                    .SetAnimatorFloatAsync(component.InstanceId, parameter.Name, value);
-            }
-        };
-        return entry;
-    }
-
-    static View CreateRuntimeIntEditor(
-        Component component,
-        AnimationControllerParameter parameter)
-    {
-        var entry = new Entry
-        {
-            Text = parameter.DefaultInt.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            Keyboard = Keyboard.Numeric,
-            ReturnType = ReturnType.Done
-        };
-        entry.Completed += (_, _) => entry.Unfocus();
-        entry.Unfocused += (_, _) =>
-        {
-            if (int.TryParse(entry.Text, out var value))
-            {
-                _ = MauiProgram.GetService<EngineService>()
-                    .SetAnimatorIntAsync(component.InstanceId, parameter.Name, value);
-            }
-        };
-        return entry;
-    }
-
-    static View CreateRuntimeBoolEditor(
-        Component component,
-        AnimationControllerParameter parameter)
-    {
-        var check = new CheckBox { IsChecked = parameter.DefaultBool };
-        check.CheckedChanged += (_, args) =>
-        {
-            _ = MauiProgram.GetService<EngineService>()
-                .SetAnimatorBoolAsync(component.InstanceId, parameter.Name, args.Value);
-        };
-        return check;
-    }
-
-    static View CreateRuntimeTriggerEditor(
-        Component component,
-        AnimationControllerParameter parameter)
-    {
-        var fire = new Button { Text = "Fire", HeightRequest = 30 };
-        fire.Clicked += (_, _) =>
-        {
-            _ = MauiProgram.GetService<EngineService>()
-                .SetAnimatorTriggerAsync(component.InstanceId, parameter.Name);
-        };
-        return fire;
     }
 
     static string FormatComponentTypeName(string typeName)
