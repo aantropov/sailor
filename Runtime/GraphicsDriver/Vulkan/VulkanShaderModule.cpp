@@ -157,7 +157,6 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			rhiBinding.m_textureType = (RHI::ETextureType)reflBinding.image.dim;
 
 			uint32_t membersSize = 0;
-			uint32_t maxMemberSize = 0;
 
 			// We handle UBO as POD
 			SpvReflectBlockVariable* blockContent = reflBinding.block.members;
@@ -186,8 +185,6 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 				membersSize = std::max(
 					membersSize,
 					blockContent[i].offset + blockContent[i].size);
-				maxMemberSize = std::max(maxMemberSize, blockContent[i].padded_size);
-
 				if (member.m_type == RHI::EShaderBindingMemberType::Array && blockContent[i].type_description)
 				{
 					const auto& typeFlags = blockContent[i].type_description->type_flags;
@@ -221,14 +218,10 @@ void VulkanShaderStage::ReflectDescriptorSetBindings(const RHI::ShaderByteCode& 
 			{
 				//We store 1 instance size in binding
 				rhiBinding.m_size = membersSize;
-				rhiBinding.m_paddedSize = reflBinding.block.members[0].padded_size;
-
-				if (maxMemberSize > 0)
-				{
-					// std430 array allignment
-					uint32_t allignment = 16 - reflBinding.block.members[0].padded_size % 16;
-					rhiBinding.m_paddedSize += allignment != maxMemberSize ? allignment : 0;
-				}
+				const SpvReflectBlockVariable& reflectedArray =
+					reflBinding.block.members[0];
+				rhiBinding.m_paddedSize =
+					SsboLayout::ResolveSsboArrayStride(reflectedArray);
 			}
 		}
 	}

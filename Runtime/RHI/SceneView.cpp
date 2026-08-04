@@ -107,10 +107,10 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
-					viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
+					viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num());
 					viewProxy.m_renderQueueTags.Reserve(viewProxy.m_meshes.Num());
 #if defined(__APPLE__)
-					viewProxy.m_materialTextureSamplers.Reserve(viewProxy.m_meshes.Num());
+					viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num());
 					auto textureImporter = App::GetSubmodule<TextureImporter>();
 #endif
 					// TODO: Should we check AABB for each mesh in model?
@@ -123,13 +123,14 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 
 						auto& material = ecsData.GetMaterials()[materialIndex];
 						viewProxy.m_renderQueueTags.Add(material ? material->GetRenderState().GetTag() : 0u);
+#if defined(__APPLE__)
+						auto& requestedTextures = viewProxy.m_materialTextureSamplers[i];
+						requestedTextures.Insert(0u);
+#endif
 						if (material && material->IsReady() && !bSkipMaterials)
 						{
-							viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+							viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription);
 #if defined(__APPLE__)
-							TSet<uint32_t> requestedTextures;
-							requestedTextures.Insert(0u);
-
 							if (textureImporter)
 							{
 								for (const auto& sampler : material->GetSamplers())
@@ -138,8 +139,6 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 									requestedTextures.Insert(textureIndex);
 								}
 							}
-
-							viewProxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
 #endif
 						}
 					}

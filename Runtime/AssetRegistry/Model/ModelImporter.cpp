@@ -5648,22 +5648,25 @@ Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(FileId uid, TVector<Mat
 	if (ModelAssetInfoPtr modelInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr<ModelAssetInfoPtr>(uid))
 	{
 		Tasks::TaskPtr<bool> loadingFinished = Tasks::CreateTaskWithResult<bool>("Load Default Materials", []() { return true; });
+		const TVector<FileId>& defaultMaterials = modelInfo->GetDefaultMaterials();
+		outMaterials.Resize(defaultMaterials.Num());
 
-		for (auto& assetInfo : modelInfo->GetDefaultMaterials())
+		for (size_t materialIndex = 0; materialIndex < defaultMaterials.Num(); ++materialIndex)
 		{
 			MaterialPtr material;
 			Tasks::ITaskPtr loadMaterial;
-			if (assetInfo && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(assetInfo, material)))
+			const FileId& materialFileId = defaultMaterials[materialIndex];
+			if (materialFileId && (loadMaterial = App::GetSubmodule<MaterialImporter>()->LoadMaterial(materialFileId, material)))
 			{
 				if (material)
 				{
-					outMaterials.Add(material);
+					// Preserve the glTF material slot even if an adjacent generated
+					// material is temporarily unavailable. RHIMesh::m_materialIndex
+					// refers to this original slot and must never address a compacted
+					// list.
+					outMaterials[materialIndex] = material;
 					//TODO: Add hot reloading dependency
 					loadingFinished->Join(loadMaterial);
-				}
-				else
-				{
-					//TODO: push missing material
 				}
 			}
 		}

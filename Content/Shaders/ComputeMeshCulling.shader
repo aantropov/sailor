@@ -27,6 +27,7 @@ glslCompute: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct DrawIndexedIndirectData

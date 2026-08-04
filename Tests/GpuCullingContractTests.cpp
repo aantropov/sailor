@@ -6,6 +6,9 @@
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
 #include "Raytracing/MaterialUtils.h"
+#include "RHI/Buffer.h"
+#include "RHI/Material.h"
+#include "RHI/Mesh.h"
 #include "RHI/Texture.h"
 
 #include <cmath>
@@ -23,6 +26,12 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 
 namespace
 {
+	class RenderSceneNodeProbe : public Framegraph::RenderSceneNode
+	{
+	public:
+		using TextureBindingCacheKeyProbe = TextureBindingCacheKey;
+	};
+
 	void Require(bool condition, const std::string& message)
 	{
 		if (!condition)
@@ -112,6 +121,137 @@ namespace
 			"the compaction dispatch must wait for culling shader writes");
 		Require(cullingBody.find("m_bEnableOcclusion = 0") != std::string::npos,
 			"previous-frame Hi-Z must not cull current-frame transforms");
+
+		const std::string fallbackBody = ExtractFunctionBody(
+			batchHeader,
+			"DrawCallStats RHIRecordDrawCall(");
+		Require(fallbackBody.find(
+			"driver->AddBufferToShaderBindings(") != std::string::npos &&
+			fallbackBody.find(
+				"*indirectCommandBufferBinding") != std::string::npos,
+			"the fallback draw path must update the GPU-culling descriptor when its shared indirect buffer grows");
+	}
+
+	void TestBatchTextureBindingIdentityContract()
+	{
+		using TextureBindingCacheKey = RenderSceneNodeProbe::TextureBindingCacheKeyProbe;
+
+		TextureBindingCacheKey firstTextureSet;
+		firstTextureSet.m_requestedTextures = { 0u, 4u, 8u };
+		TextureBindingCacheKey secondTextureSet;
+		secondTextureSet.m_requestedTextures = { 0u, 5u, 8u };
+
+		TMap<TextureBindingCacheKey, uint32_t> textureBindingCache;
+		Require(textureBindingCache.Insert(firstTextureSet, 1u),
+			"the first texture binding cache key should be inserted");
+		Require(textureBindingCache.Insert(secondTextureSet, 2u),
+			"a different equal-sized texture binding cache key must not collapse into the first");
+		Require(textureBindingCache.Num() == 2,
+			"texture sets with the same count and layout capacity must retain distinct cache identities");
+
+		const auto materialBindings = RHI::RHIShaderBindingSetPtr::Make();
+		auto material = RHI::RHIMaterialPtr::Make(
+			RHI::RenderState{},
+			RHI::RHIShaderPtr{},
+			RHI::RHIShaderPtr{});
+		material->SetBindings(materialBindings);
+
+		const RHI::EBufferUsageFlags bufferUsage =
+			RHI::EBufferUsageBit::VertexBuffer_Bit |
+			RHI::EBufferUsageBit::IndexBuffer_Bit;
+		const auto meshBuffer = RHI::RHIBufferPtr::Make(
+			bufferUsage,
+			RHI::EMemoryPropertyBit::DeviceLocal);
+		auto mesh = RHI::RHIMeshPtr::Make();
+		mesh->m_vertexBuffer = meshBuffer;
+		mesh->m_indexBuffer = meshBuffer;
+
+		RHI::RHIBatch firstBatch(material, mesh);
+		RHI::RHIBatch secondBatch(material, mesh);
+		firstBatch.m_textureBindings = RHI::RHIShaderBindingSetPtr::Make();
+		secondBatch.m_textureBindings = RHI::RHIShaderBindingSetPtr::Make();
+		firstBatch.m_textureBindings->SetVariableDescriptorCount(8u);
+		secondBatch.m_textureBindings->SetVariableDescriptorCount(8u);
+
+		TSet<RHI::RHIBatch> batches;
+		Require(batches.Insert(firstBatch),
+			"the first texture-binding batch should be inserted");
+		Require(batches.Insert(secondBatch),
+			"a different equal-sized texture-binding batch must not collapse into the first");
+		Require(batches.Num() == 2,
+			"batch identity must include the texture binding set handle, not its descriptor count");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string batchHeader = ReadText(sourceRoot / "Runtime/RHI/Batch.hpp");
+		Require(batchHeader.find("m_textureBindings == rhs.m_textureBindings") != std::string::npos &&
+			batchHeader.find("HashCombine(hash, m_textureBindings)") != std::string::npos,
+			"render batches must include the texture binding set in equality and hashing");
+
+		const char* drawFunctions[] = {
+			"DrawCallStats RHIRecordDrawCallGPUCulling(",
+			"DrawCallStats RHIRecordDrawCall(",
+			"DrawCallStats RHIDrawCall("
+		};
+
+		for (const char* drawFunction : drawFunctions)
+		{
+			const std::string drawBody = ExtractFunctionBody(batchHeader, drawFunction);
+			Require(drawBody.find("prevTextureBindings != vecBatches[j].m_textureBindings") != std::string::npos,
+				std::string(drawFunction) +
+				" must detect a texture descriptor set change independently of the material pointer");
+
+			const std::string rebindBody = ExtractFunctionBody(
+				drawBody,
+				"if (bMaterialChanged || bTextureBindingsChanged)");
+			Require(rebindBody.find("commands->BindShaderBindings") != std::string::npos &&
+				rebindBody.find("prevTextureBindings = vecBatches[j].m_textureBindings") != std::string::npos,
+				std::string(drawFunction) +
+				" must rebind and remember a different texture descriptor set");
+		}
+	}
+
+	void TestSceneViewProxyMaterialAlignmentContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewSource = ReadText(sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const std::string traceBody = ExtractFunctionBody(
+			sceneViewSource,
+			"TVector<RHISceneViewProxy> RHISceneView::TraceScene(");
+
+		const size_t materialSlotsOffset = traceBody.find(
+			"viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num())");
+		const size_t textureSlotsOffset = traceBody.find(
+			"viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num())");
+		const size_t readyMaterialOffset = traceBody.find(
+			"if (material && material->IsReady() && !bSkipMaterials)");
+		Require(materialSlotsOffset != std::string::npos &&
+			textureSlotsOffset != std::string::npos &&
+			readyMaterialOffset != std::string::npos &&
+			materialSlotsOffset < readyMaterialOffset &&
+			textureSlotsOffset < readyMaterialOffset,
+			"stationary scene proxies must allocate one material and texture slot per mesh before testing asynchronous readiness");
+
+		const std::string readyMaterialBody = ExtractFunctionBody(
+			traceBody,
+			"if (material && material->IsReady() && !bSkipMaterials)");
+		Require(readyMaterialBody.find(
+			"viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI") != std::string::npos,
+			"a ready stationary material must fill its original mesh slot");
+		Require(traceBody.find(
+			"auto& requestedTextures = viewProxy.m_materialTextureSamplers[i]") != std::string::npos,
+			"stationary texture indices must be written into the original mesh slot");
+
+		const std::string depthSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
+		const std::string depthPrepareBody = ExtractFunctionBody(
+			depthSource,
+			"Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(");
+		const std::string pendingMaterialBody = ExtractFunctionBody(
+			depthPrepareBody,
+			"if (proxy.GetMaterials()[i] == nullptr)");
+		Require(pendingMaterialBody.find("continue;") != std::string::npos &&
+			pendingMaterialBody.find("break;") == std::string::npos,
+			"a pending material slot must not discard later ready meshes from the depth pass");
 	}
 
 	void TestGpuCullingShaderSafetyContract()
@@ -895,6 +1035,8 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "GpuCullingRangeAndSynchronizationContract", TestGpuCullingRangeAndSynchronizationContract },
+		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
+		{ "SceneViewProxyMaterialAlignmentContract", TestSceneViewProxyMaterialAlignmentContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
 		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },

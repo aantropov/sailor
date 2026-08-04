@@ -1,6 +1,7 @@
 #include "GraphicsDriver/Vulkan/VulkanGraphicsDriver.h"
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
+#include "GraphicsDriver/Vulkan/VulkanShaderModule.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Material.h"
@@ -115,6 +116,42 @@ namespace
 
 		textureBinding->SetTextureBindings(textures);
 		bindings->RecalculateCompatibility();
+	}
+
+	void TestSsboElementAlignmentPreservesStd430Stride()
+	{
+		Require(SsboLayout::AlignSsboElementSize(112u) == 112u,
+			"an already aligned PerInstanceData stride must not gain a phantom 16-byte gap");
+		Require(SsboLayout::AlignSsboElementSize(96u) == 96u,
+			"legacy aligned std430 strides must remain unchanged");
+		Require(SsboLayout::AlignSsboElementSize(100u) == 112u,
+			"an unaligned SSBO element size must round up to the next 16-byte boundary");
+
+		SpvReflectTypeDescription reflectedType{};
+		SpvReflectBlockVariable reflectedArray{};
+		reflectedArray.type_description = &reflectedType;
+
+		reflectedArray.array.stride = 112u;
+		reflectedType.traits.array.stride = 144u;
+		reflectedArray.padded_size = 132u;
+		Require(SsboLayout::ResolveSsboArrayStride(reflectedArray) == 112u,
+			"SPIR-V runtime-array stride must remain the authoritative SSBO instance stride");
+
+		reflectedArray.array.stride = 0u;
+		reflectedType.traits.array.stride = 112u;
+		reflectedArray.padded_size = 112u;
+		Require(SsboLayout::ResolveSsboArrayStride(reflectedArray) == 112u,
+			"PerInstanceData must use its reflected type-array stride");
+
+		reflectedType.traits.array.stride = 144u;
+		reflectedArray.padded_size = 132u;
+		Require(SsboLayout::ResolveSsboArrayStride(reflectedArray) == 144u,
+			"MaterialData must use its reflected type-array stride instead of its unpadded member size");
+
+		reflectedType.traits.array.stride = 0u;
+		reflectedArray.padded_size = 112u;
+		Require(SsboLayout::ResolveSsboArrayStride(reflectedArray) == 112u,
+			"non-array storage blocks must fall back to their reflected padded size");
 	}
 
 	void TestDescriptorCacheKeyKeepsItsCompatibilitySnapshot()
@@ -321,6 +358,92 @@ namespace
 			"both requested-slot snapshots are required for revision revalidation");
 	}
 
+	void TestRenderSceneTextureBindingsUseDenseLocalIndices()
+	{
+		const TVector<uint32_t> globalTextureIndices{
+			0u,
+			7u,
+			42u,
+			383u,
+			42u };
+		const TVector<uint32_t> remap =
+			Framegraph::Details::BuildDenseTextureRemap(
+				globalTextureIndices);
+
+		Require(remap.Num() == 384u,
+			"the remap must address the largest global texture index");
+		Require(remap[0] == 0u &&
+			remap[7] == 1u &&
+			remap[42] == 2u &&
+			remap[383] == 3u,
+			"requested global texture indices must map to deterministic dense slots");
+		Require(remap[1] == 0u && remap[382] == 0u,
+			"unrequested global texture slots must resolve to the default local texture");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string depthPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
+		const std::string gltfShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		const std::string shaderCompilerSource = ReadText(
+			sourceRoot /
+			"Runtime/AssetRegistry/Shader/ShaderCompiler.cpp");
+		const std::string vulkanDriverSource = ReadText(
+			sourceRoot /
+			"Runtime/GraphicsDriver/Vulkan/VulkanGraphicsDriver.cpp");
+		const std::string compatibleDescriptorSetsBody = ExtractFunctionBody(
+			vulkanDriverSource,
+			"TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(");
+
+		Require(renderSceneSource.find(
+			"BuildDenseTextureRemap(key.m_requestedTextures)") !=
+			std::string::npos &&
+			renderSceneSource.find(
+				"\"textureSamplerRemap\",") !=
+				std::string::npos,
+			"render batches must bind a dense global-to-local texture remap");
+		Require(depthPrepassSource.find(
+			"batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(") !=
+			std::string::npos &&
+			depthPrepassSource.find(
+				"material->GetBindings(), batch.m_textureBindings") !=
+				std::string::npos &&
+			depthPrepassSource.find(
+				"material->GetBindings(), textureSamplers") ==
+				std::string::npos,
+			"custom depth batches must use their dense texture bindings instead of the legacy global set");
+		Require(gltfShader.find(
+			"ResolveTextureSamplerIndex(material.baseColorSampler)") !=
+			std::string::npos &&
+			gltfShader.find(
+				"layout(set=4, binding=1) uniform sampler2D textureSamplers[];") !=
+				std::string::npos,
+			"glTF shaders must resolve global sampler ids before indexing the dense descriptor array");
+		Require(shaderCompilerSource.find(
+			"vertexDefines.Add(\"SAILOR_TEXTURE_REMAP\")") !=
+			std::string::npos &&
+			shaderCompilerSource.find(
+				"fragmentDefines.Add(\"SAILOR_TEXTURE_REMAP\")") !=
+				std::string::npos,
+			"Apple shader permutations must use the dense texture-remap ABI");
+		Require(vulkanDriverSource.find(
+			"return binding.m_set != MaterialDescriptorSet;") !=
+			std::string::npos &&
+			vulkanDriverSource.find(
+				"constexpr uint32_t MaterialDescriptorSet = 3u;") !=
+				std::string::npos,
+			"material bindings must exclude the pass-local texture remap buffer from descriptor set 4");
+		Require(renderSceneSource.find(
+			"localTextures.Resize(MaxTextureSlotsPerBatch)") ==
+				std::string::npos &&
+			compatibleDescriptorSetsBody.find(
+				"emittedTextureSlots = matchedLayoutBinding.descriptorCount;") !=
+				std::string::npos,
+			"Apple batch sets must write only dense textures while allocating the complete Metal argument-buffer array");
+	}
+
 	void TestTextureSamplerCapacityReservesDefaultSlot()
 	{
 		Require(TextureImporter::MaxTexturesInScene == 8192,
@@ -442,6 +565,53 @@ namespace
 			"a fixed variable descriptor layout must be compatible without scanning populated texture slots");
 	}
 
+	void TestVariableDescriptorCompatibilityRejectsDifferentLayoutCapacity()
+	{
+		constexpr uint32_t LocalTextureCapacity = 4u;
+		const VkDescriptorSetLayoutBinding localTextureLayout =
+			VulkanApi::CreateDescriptorSetLayoutBinding(
+				0,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				LocalTextureCapacity);
+		const VkDescriptorSetLayoutBinding pipelineTextureLayout =
+			VulkanApi::CreateDescriptorSetLayoutBinding(
+				0,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				static_cast<uint32_t>(TextureImporter::MaxTexturesInScene));
+
+		VulkanDescriptorSetLayoutPtr descriptorLayout =
+			VulkanDescriptorSetLayoutPtr::Make(
+				VulkanDevicePtr{},
+				TVector<VkDescriptorSetLayoutBinding>{ localTextureLayout },
+				0);
+		VulkanDescriptorSetLayoutPtr pipelineDescriptorLayout =
+			VulkanDescriptorSetLayoutPtr::Make(
+				VulkanDevicePtr{},
+				TVector<VkDescriptorSetLayoutBinding>{ pipelineTextureLayout },
+				0);
+
+		TVector<VulkanDescriptorPtr> localDescriptors;
+		for (uint32_t index = 0; index < LocalTextureCapacity; ++index)
+		{
+			localDescriptors.Add(VulkanDescriptorPtr::Make(
+				0,
+				index,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER));
+		}
+
+		VulkanDescriptorSetPtr descriptorSet = VulkanDescriptorSetPtr::Make(
+			VulkanDevicePtr{},
+			VulkanDescriptorPoolPtr{},
+			descriptorLayout,
+			std::move(localDescriptors),
+			LocalTextureCapacity);
+		VulkanPipelineLayoutPtr pipelineLayout = VulkanPipelineLayoutPtr::Make();
+		pipelineLayout->m_descriptionSetLayouts.Add(pipelineDescriptorLayout);
+
+		Require(!VulkanApi::IsCompatible(pipelineLayout, descriptorSet, 0),
+			"a populated variable descriptor set must not bind against a pipeline layout with a different descriptorCount");
+	}
+
 	void TestShaderReflectionUsesDeclaredMemberOffsets()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -461,6 +631,10 @@ namespace
 			"member.m_absoluteOffset=membersSize") ==
 			std::string::npos,
 			"shader reflection must not infer offsets by summing member sizes");
+		Require(reflectionBody.find(
+			"SsboLayout::ResolveSsboArrayStride(reflectedArray)") !=
+			std::string::npos,
+			"SSBO reflection must use the SPIR-V runtime-array stride without adding phantom padding");
 	}
 
 	void TestMaterialUniformUploadInitializesCompleteReflectedBlocks()
@@ -490,6 +664,66 @@ namespace
 		Require(updateBody.find("UpdateShaderBindingVariable(") ==
 			std::string::npos,
 			"material fields must not be uploaded separately after the zero initialization");
+	}
+
+	void TestMaterialLoadPromiseCoversRhiInitialization()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string materialSource = ReadText(
+			sourceRoot /
+			"Runtime/AssetRegistry/Material/MaterialImporter.cpp");
+		const std::string loadBody = RemoveWhitespace(
+			ExtractFunctionBody(
+				materialSource,
+				"Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial("));
+
+		const size_t createPromise = loadBody.find(
+			"promise=Tasks::CreateTaskWithResult<MaterialPtr>(");
+		const size_t updateRhi = loadBody.find(
+			"pMaterial->UpdateRHIResource();",
+			createPromise);
+		const size_t updateUniforms = loadBody.find(
+			"pMaterial->ForcelyUpdateUniforms();",
+			updateRhi);
+		const size_t returnMaterial = loadBody.find(
+			"returnpMaterial;",
+			updateUniforms);
+		const size_t rhiThread = loadBody.find(
+			"},EThreadType::RHI);",
+			returnMaterial);
+		const size_t loadTexture = loadBody.find(
+			"LoadTexture(",
+			rhiThread);
+		const size_t joinSampler = loadBody.find(
+			"promise->Join(updateSampler);",
+			loadTexture);
+		const size_t joinShader = loadBody.find(
+			"promise->Join(pLoadShader);",
+			joinSampler);
+		const size_t runPromise = loadBody.find(
+			"promise->Run();",
+			joinShader);
+
+		Require(createPromise != std::string::npos &&
+			updateRhi != std::string::npos &&
+			updateUniforms != std::string::npos &&
+			returnMaterial != std::string::npos &&
+			rhiThread != std::string::npos &&
+			createPromise < updateRhi &&
+			updateRhi < updateUniforms &&
+			updateUniforms < returnMaterial &&
+			returnMaterial < rhiThread,
+			"the returned material promise must own the final RHI initialization");
+		Require(loadTexture != std::string::npos &&
+			joinSampler != std::string::npos &&
+			joinShader != std::string::npos &&
+			runPromise != std::string::npos &&
+			loadTexture < joinSampler &&
+			joinSampler < joinShader &&
+			joinShader < runPromise,
+			"the material promise must wait for texture and shader dependencies before it runs");
+		Require(loadBody.find("updateRHI->Run()") == std::string::npos,
+			"material loading must not return before a nested RHI task completes");
 	}
 
 	void TestDescriptorPoolsUseSmartOwnership()
@@ -530,6 +764,8 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "SsboElementAlignmentPreservesStd430Stride",
+			TestSsboElementAlignmentPreservesStd430Stride },
 		{ "DescriptorCacheKeyKeepsItsCompatibilitySnapshot",
 			TestDescriptorCacheKeyKeepsItsCompatibilitySnapshot },
 		{ "DescriptorCacheKeyTracksDescriptorRevision",
@@ -542,16 +778,22 @@ int main()
 			TestVariableDescriptorCountCollectionUsesPublishedSnapshots },
 		{ "RenderSceneTextureCacheTracksRequestedSlotRevisions",
 			TestRenderSceneTextureCacheTracksRequestedSlotRevisions },
+		{ "RenderSceneTextureBindingsUseDenseLocalIndices",
+			TestRenderSceneTextureBindingsUseDenseLocalIndices },
 		{ "TextureSamplerCapacityReservesDefaultSlot",
 			TestTextureSamplerCapacityReservesDefaultSlot },
 		{ "GlobalTextureSamplerUsesFixedCapacityInPlaceUpdates",
 			TestGlobalTextureSamplerUsesFixedCapacityInPlaceUpdates },
 		{ "VariableDescriptorCompatibilityUsesItsFixedLayout",
 			TestVariableDescriptorCompatibilityUsesItsFixedLayout },
+		{ "VariableDescriptorCompatibilityRejectsDifferentLayoutCapacity",
+			TestVariableDescriptorCompatibilityRejectsDifferentLayoutCapacity },
 		{ "ShaderReflectionUsesDeclaredMemberOffsets",
 			TestShaderReflectionUsesDeclaredMemberOffsets },
 		{ "MaterialUniformUploadInitializesCompleteReflectedBlocks",
 			TestMaterialUniformUploadInitializesCompleteReflectedBlocks },
+		{ "MaterialLoadPromiseCoversRhiInitialization",
+			TestMaterialLoadPromiseCoversRhiInitialization },
 		{ "DescriptorPoolsUseSmartOwnership",
 			TestDescriptorPoolsUseSmartOwnership },
 	};

@@ -632,6 +632,42 @@ namespace
 			"static mesh proxies must publish transform revisions so moving shadow casters invalidate cached CSM passes");
 	}
 
+	void TestStaticMeshProxyTracksMaterialContentRevisions()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string rendererEcsHeader = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.h");
+		Require(rendererEcsHeader.find("TVector<uint64_t> m_materialContentRevisions;") !=
+			std::string::npos,
+			"static mesh renderer data must retain the material revisions represented by its cached proxy");
+
+		const std::string rendererEcsSource = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const size_t staticUpdateBegin = rendererEcsSource.find(
+			"StaticMeshRendererECS:Update Static Objects");
+		const size_t copySceneViewBegin = rendererEcsSource.find(
+			"void StaticMeshRendererECS::CopySceneView", staticUpdateBegin);
+		Require(staticUpdateBegin != std::string::npos &&
+			copySceneViewBegin > staticUpdateBegin,
+			"static mesh renderer must expose a bounded static-proxy update path");
+
+		const std::string staticUpdateBody = rendererEcsSource.substr(
+			staticUpdateBegin, copySceneViewBegin - staticUpdateBegin);
+		const size_t captureCurrentRevision = staticUpdateBody.find(
+			"material->GetContentRevision()");
+		const size_t compareCachedRevisions = staticUpdateBody.find(
+			"data.m_materialContentRevisions[materialIndex] != materialContentRevision");
+		const size_t rebuildForChangedMaterial = staticUpdateBody.find(
+			"data.m_bIsDirty || bMaterialsChanged ||");
+		const size_t cacheRebuiltRevisions = staticUpdateBody.find(
+			"data.m_materialContentRevisions[i] = data.GetMaterials()[i]->GetContentRevision();");
+		Require(captureCurrentRevision != std::string::npos &&
+			compareCachedRevisions > captureCurrentRevision &&
+			rebuildForChangedMaterial > compareCachedRevisions &&
+			cacheRebuiltRevisions > rebuildForChangedMaterial,
+			"a same-pointer material mutation must rebuild the static proxy before caching its new content revision");
+	}
+
 	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -3297,6 +3333,7 @@ int main()
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
+		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },

@@ -114,6 +114,7 @@ namespace Sailor::RHI
 		}
 
 		RHIMaterialPtr prevMaterial = nullptr;
+		RHIShaderBindingSetPtr prevTextureBindings = nullptr;
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
@@ -134,10 +135,10 @@ namespace Sailor::RHI
 			auto& mesh = vecBatches[j].m_mesh;
 			auto& drawCall = drawCalls[vecBatches[j]];
 
-			if (prevMaterial != material)
+			const bool bMaterialChanged = prevMaterial != material;
+			const bool bTextureBindingsChanged = prevTextureBindings != vecBatches[j].m_textureBindings;
+			if (bMaterialChanged)
 			{
-				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
-
 				commands->BindMaterial(graphicsCmdList, material);
 				commands->SetViewport(graphicsCmdList, (float)viewport.x, (float)viewport.y,
 					(float)viewport.z,
@@ -146,9 +147,13 @@ namespace Sailor::RHI
 					glm::vec2(scissors.z, scissors.w),
 					depthRange.x,
 					depthRange.y);
-
-				commands->BindShaderBindings(graphicsCmdList, material, sets);
 				prevMaterial = material;
+			}
+			if (bMaterialChanged || bTextureBindingsChanged)
+			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
+				commands->BindShaderBindings(graphicsCmdList, material, sets);
+				prevTextureBindings = vecBatches[j].m_textureBindings;
 			}
 
 			if (prevVertexBuffer != mesh->m_vertexBuffer)
@@ -292,6 +297,7 @@ namespace Sailor::RHI
 		glm::ivec4 viewport,
 		glm::uvec4 scissors,
 		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f),
+		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr,
 		std::mutex* transferCommandListMutex = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
@@ -312,9 +318,22 @@ namespace Sailor::RHI
 
 			indirectCommandBuffer.Clear();
 			indirectCommandBuffer = driver->CreateIndirectBuffer(indirectBufferSize + slack);
+
+			// The same indirect buffer is used by the optional GPU-culling path.
+			// Keep its storage descriptor synchronized when streaming adds enough
+			// draw calls to grow the buffer while culling is temporarily unavailable.
+			if (indirectCommandBufferBinding && *indirectCommandBufferBinding)
+			{
+				driver->AddBufferToShaderBindings(
+					*indirectCommandBufferBinding,
+					indirectCommandBuffer,
+					"drawIndexedIndirect",
+					0);
+			}
 		}
 
 		RHIMaterialPtr prevMaterial = nullptr;
+		RHIShaderBindingSetPtr prevTextureBindings = nullptr;
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
@@ -325,10 +344,10 @@ namespace Sailor::RHI
 			auto& mesh = vecBatches[j].m_mesh;
 			auto& drawCall = drawCalls[vecBatches[j]];
 
-			if (prevMaterial != material)
+			const bool bMaterialChanged = prevMaterial != material;
+			const bool bTextureBindingsChanged = prevTextureBindings != vecBatches[j].m_textureBindings;
+			if (bMaterialChanged)
 			{
-				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
-
 				commands->BindMaterial(cmdList, material);
 				commands->SetViewport(cmdList, (float)viewport.x, (float)viewport.y,
 					(float)viewport.z,
@@ -337,9 +356,13 @@ namespace Sailor::RHI
 					glm::vec2(scissors.z, scissors.w),
 					depthRange.x,
 					depthRange.y);
-
-				commands->BindShaderBindings(cmdList, material, sets);
 				prevMaterial = material;
+			}
+			if (bMaterialChanged || bTextureBindingsChanged)
+			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
+				commands->BindShaderBindings(cmdList, material, sets);
+				prevTextureBindings = vecBatches[j].m_textureBindings;
 			}
 
 			if (prevVertexBuffer != mesh->m_vertexBuffer)
@@ -413,6 +436,7 @@ namespace Sailor::RHI
 		auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
 		RHIMaterialPtr prevMaterial = nullptr;
+		RHIShaderBindingSetPtr prevTextureBindings = nullptr;
 		RHIBufferPtr prevVertexBuffer = nullptr;
 		RHIBufferPtr prevIndexBuffer = nullptr;
 
@@ -427,10 +451,10 @@ namespace Sailor::RHI
 				stats.m_numInstances += (uint32_t)instancedDrawCall.Second()->Num();
 			}
 
-			if (prevMaterial != material)
+			const bool bMaterialChanged = prevMaterial != material;
+			const bool bTextureBindingsChanged = prevTextureBindings != vecBatches[j].m_textureBindings;
+			if (bMaterialChanged)
 			{
-				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
-
 				commands->BindMaterial(cmdList, material);
 				commands->SetViewport(cmdList, (float)viewport.x, (float)viewport.y,
 					(float)viewport.z,
@@ -439,9 +463,13 @@ namespace Sailor::RHI
 					glm::vec2(scissors.z, scissors.w),
 					depthRange.x,
 					depthRange.y);
-
-				commands->BindShaderBindings(cmdList, material, sets);
 				prevMaterial = material;
+			}
+			if (bMaterialChanged || bTextureBindingsChanged)
+			{
+				TVector<RHIShaderBindingSetPtr> sets = shaderBindings(vecBatches[j]);
+				commands->BindShaderBindings(cmdList, material, sets);
+				prevTextureBindings = vecBatches[j].m_textureBindings;
 			}
 
 			if (prevVertexBuffer != mesh->m_vertexBuffer)

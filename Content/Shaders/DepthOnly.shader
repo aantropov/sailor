@@ -41,6 +41,7 @@ glslVertex: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   layout(std430, set = 1, binding = 0) readonly buffer PerInstanceDataSSBO

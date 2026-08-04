@@ -6,6 +6,7 @@
 #include "RHI/Batch.hpp"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/RenderSceneTextureCache.h"
 
 namespace Sailor
 {
@@ -58,6 +59,7 @@ namespace Sailor
 		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 		ShaderSetPtr m_pComputeMeshCullingShader{};
 		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
+		Framegraph::TextureBindingCache m_textureBindingCache;
 
 		static const char* m_name;
 	};

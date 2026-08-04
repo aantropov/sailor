@@ -121,17 +121,15 @@ glslFragment: |
   #elif defined(LIGHT_TILES)
     outColor = vec4(texture(linearDepthSampler, fragTexcoord).r / 50000);
   
-    vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
-    vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-    ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
-    
-    ivec2 mod = ivec2(frame.viewportSize.x % LIGHTS_CULLING_TILE_SIZE, frame.viewportSize.y % LIGHTS_CULLING_TILE_SIZE);
-    ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
-    
-    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
-  
-    const uint offset = lightsGrid.instance[tileIndex].offset;
-    const uint numLights = lightsGrid.instance[tileIndex].num;
+    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
+    const uint gridLength = uint(lightsGrid.instance.length());
+    const bool hasLightTile = tileIndex < gridLength;
+    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
+    const uint listLength = uint(culledLights.indices.length());
+    const uint availableLights = offset < listLength ? listLength - offset : 0;
+    const uint numLights = hasLightTile ? min(
+        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
+        availableLights) : 0;
     
     for(int i = 0; i < numLights; i++)
     {

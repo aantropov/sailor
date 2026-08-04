@@ -23,6 +23,22 @@ struct LightsGrid
   uint num;
 }; 
 
+uint GetLightTileIndex(vec2 fragmentPosition, ivec2 viewportSize)
+{
+  const ivec2 safeViewportSize = max(viewportSize, ivec2(1));
+  const ivec2 numTiles =
+    (safeViewportSize + ivec2(LIGHTS_CULLING_TILE_SIZE - 1)) /
+    LIGHTS_CULLING_TILE_SIZE;
+  const vec2 screenPosition = vec2(
+    fragmentPosition.x,
+    float(safeViewportSize.y) - fragmentPosition.y);
+  const ivec2 tileId = clamp(
+    ivec2(screenPosition) / LIGHTS_CULLING_TILE_SIZE,
+    ivec2(0),
+    numTiles - ivec2(1));
+  return uint(tileId.y * numTiles.x + tileId.x);
+}
+
 // Importance sample GGX normal distribution function for a fixed roughness value.
 // This returns normalized half-vector between Li & Lo.
 // For derivation see: http://blog.tobias-franke.eu/2014/03/30/notes_on_importance_sampling.html
@@ -42,11 +58,11 @@ vec3 SampleGGX(float u1, float u2, float roughness)
 // Uses Disney's reparametrization of alpha = roughness^2.
 float NdfGGX(float cosLh, float roughness)
 {
-  float alpha   = roughness * roughness;
+  float alpha   = max(roughness * roughness, 0.001);
   float alphaSq = alpha * alpha;
 
   float denom = (cosLh * cosLh) * (alphaSq - 1.0) + 1.0;
-  return alphaSq / (PI * denom * denom);
+  return alphaSq / max(PI * denom * denom, 1e-7);
 }
 
 // Single term for separable Schlick-GGX below.

@@ -215,14 +215,31 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
 					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 					bool bMaterialsReady = !data.GetMaterials().IsEmpty();
+					bool bMaterialsChanged =
+						data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
+					size_t materialIndex = 0;
 					for (const auto& material : data.GetMaterials())
 					{
 						bMaterialsReady &= material && material->IsReady();
+						const uint64_t materialContentRevision =
+							material ? material->GetContentRevision() : 0ull;
+						if (!bMaterialsChanged &&
+							data.m_materialContentRevisions[materialIndex] != materialContentRevision)
+						{
+							bMaterialsChanged = true;
+						}
+						++materialIndex;
 					}
 
-					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
+					if ((data.m_bIsDirty || bMaterialsChanged || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
 						adjustedBounds.IsValid() && bMaterialsReady)
 					{
+						data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
+						for (size_t i = 0; i < data.GetMaterials().Num(); ++i)
+						{
+							data.m_materialContentRevisions[i] = data.GetMaterials()[i]->GetContentRevision();
+						}
+
 						RHI::RHISceneViewProxy proxy;
 						proxy.m_staticMeshEcs = index;
 						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();

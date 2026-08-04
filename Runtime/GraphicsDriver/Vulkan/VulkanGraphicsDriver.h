@@ -20,6 +20,19 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	namespace SsboLayout
+	{
+		constexpr size_t SsboElementAlignment = 16u;
+
+		constexpr size_t AlignSsboElementSize(size_t elementSize) noexcept
+		{
+			const size_t remainder = elementSize % SsboElementAlignment;
+			return remainder == 0u ?
+				elementSize :
+				elementSize + SsboElementAlignment - remainder;
+		}
+	}
+
 	class VulkanGraphicsDriver : public RHI::IGraphicsDriver, public RHI::IGraphicsDriverCommands
 	{
 	public:

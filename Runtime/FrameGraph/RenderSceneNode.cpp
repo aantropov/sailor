@@ -8,6 +8,7 @@
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
+#include "RHI/Buffer.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
@@ -45,15 +46,32 @@ bool Details::CanReuseRenderSceneTextureBindings(
 		*cachedSlotRevisions == *currentSlotRevisions;
 }
 
-uint32_t RenderSceneNode::CalculatePlannedTextureSlotCount(const TVector<uint32_t>& requestedTextures)
+TVector<uint32_t> Details::BuildDenseTextureRemap(
+	const TVector<uint32_t>& globalTextureIndices)
 {
-	if (requestedTextures.IsEmpty())
+	uint32_t maxTextureIndex = 0u;
+	for (const uint32_t textureIndex : globalTextureIndices)
 	{
-		return 1u;
+		maxTextureIndex = (std::max)(maxTextureIndex, textureIndex);
 	}
 
-	const uint32_t maxTextureIndex = *std::max_element(requestedTextures.begin(), requestedTextures.end());
-	return (std::max)(1u, maxTextureIndex + 1u);
+	TVector<uint32_t> globalToLocal;
+	globalToLocal.AddDefault(static_cast<size_t>(maxTextureIndex) + 1u);
+
+	uint32_t nextLocalIndex = 1u;
+	for (const uint32_t textureIndex : globalTextureIndices)
+	{
+		if (textureIndex == 0u ||
+			textureIndex >= globalToLocal.Num() ||
+			globalToLocal[textureIndex] != 0u)
+		{
+			continue;
+		}
+
+		globalToLocal[textureIndex] = nextLocalIndex++;
+	}
+
+	return globalToLocal;
 }
 
 RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
@@ -68,7 +86,11 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t>& requestedTextures, uint64_t frame, uint32_t& outSupportedMeshesPerBatch)
+RHIShaderBindingSetPtr Details::GetTextureBindingSet(
+	TextureBindingCache& textureBindingCache,
+	const TSet<uint32_t>& requestedTextures,
+	uint64_t frame,
+	uint32_t& outSupportedMeshesPerBatch)
 {
 	auto textureImporter = App::GetSubmodule<TextureImporter>();
 	if (!textureImporter)
@@ -100,7 +122,7 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 	key.m_requestedTextures.Sort();
 	const uint64_t currentSourceDescriptorRevision = globalTextureSet ? globalTextureSet->GetDescriptorRevision() : 0;
 	TextureBindingCacheEntry* cachedEntry = nullptr;
-	m_textureBindingCache.Find(key, cachedEntry);
+	textureBindingCache.Find(key, cachedEntry);
 
 	if (cachedEntry && Details::CanReuseRenderSceneTextureBindings(
 		cachedEntry->m_sourceDescriptorRevision,
@@ -144,28 +166,51 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 		return cachedEntry->m_textureBindings;
 	}
 
-	TVector<RHITexturePtr> localTextures;
-	const uint32_t plannedTextureSlots = CalculatePlannedTextureSlotCount(key.m_requestedTextures);
-	localTextures.AddDefault(plannedTextureSlots);
-
 	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
-
-	for (uint32_t textureIndex = 0; textureIndex < localTextures.Num(); textureIndex++)
-	{
-		localTextures[textureIndex] = defaultTexture;
-	}
+	TVector<RHITexturePtr> localTextures{ defaultTexture };
+	TVector<uint32_t> globalToLocal =
+		Details::BuildDenseTextureRemap(key.m_requestedTextures);
+	globalToLocal.Resize(TextureImporter::MaxTexturesInScene);
 
 	for (const auto& slot : sourceSnapshot.m_slots)
 	{
-		if (slot.m_index < localTextures.Num() && slot.m_texture.IsValid())
+		if (slot.m_index != 0u)
 		{
-			localTextures[slot.m_index] = slot.m_texture;
+			localTextures.Add(slot.m_texture.IsValid() ?
+				slot.m_texture :
+				defaultTexture);
 		}
 	}
+	const uint32_t denseTextureCount =
+		static_cast<uint32_t>(localTextures.Num());
 
 	RHIShaderBindingSetPtr localTextureSet = driver->CreateShaderBindings();
+	const size_t remapBufferSize =
+		globalToLocal.Num() * sizeof(uint32_t);
+	RHI::RHIBufferPtr remapBuffer = driver->CreateBuffer(
+		remapBufferSize,
+		RHI::EBufferUsageBit::StorageBuffer_Bit,
+		RHI::EMemoryPropertyBit::HostVisible |
+			RHI::EMemoryPropertyBit::HostCoherent);
+	if (!remapBuffer || !remapBuffer->GetPointer())
+	{
+		outSupportedMeshesPerBatch = 1u;
+		return cachedEntry ? cachedEntry->m_textureBindings : nullptr;
+	}
+	memcpy(remapBuffer->GetPointer(), globalToLocal.GetData(), remapBufferSize);
 
-	driver->AddSamplerToShaderBindings(localTextureSet, "textureSamplers", localTextures, 0, true, plannedTextureSlots);
+	driver->AddBufferToShaderBindings(
+		localTextureSet,
+		remapBuffer,
+		"textureSamplerRemap",
+		0);
+	driver->AddSamplerToShaderBindings(
+		localTextureSet,
+		"textureSamplers",
+		localTextures,
+		1,
+		true,
+		denseTextureCount);
 	localTextureSet->RecalculateCompatibility();
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -188,14 +233,15 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 	{
 		const uint32_t actualTextureCount = static_cast<uint32_t>(localBinding->GetTextureBindings().Num());
 		const uint32_t actualLayoutCount = localBinding->GetLayout().m_arrayCount;
-		check(actualTextureCount == plannedTextureSlots);
-		check(actualLayoutCount == plannedTextureSlots);
+		check(actualTextureCount == denseTextureCount);
+		check(actualLayoutCount == denseTextureCount);
 	}
 #endif
 
-	auto& entry = m_textureBindingCache[key];
+	auto& entry = textureBindingCache[key];
 	entry.m_textureBindings = localTextureSet;
-	entry.m_textureSetSize = plannedTextureSlots;
+	entry.m_textureRemapBuffer = remapBuffer;
+	entry.m_textureSetSize = denseTextureCount;
 	entry.m_lastUsedFrame = frame;
 	entry.m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
 	entry.m_sourceSlotRevisions = std::move(currentSlotRevisions);
@@ -208,11 +254,13 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 #endif
 }
 
-void RenderSceneNode::EvictTextureBindingCache(uint64_t frame)
+void Details::EvictTextureBindingCache(
+	TextureBindingCache& textureBindingCache,
+	uint64_t frame)
 {
 	TVector<TextureBindingCacheKey> expiredEntries;
 
-	for (const auto& entry : m_textureBindingCache)
+	for (const auto& entry : textureBindingCache)
 	{
 		if (frame > entry.Second()->m_lastUsedFrame && frame - entry.Second()->m_lastUsedFrame > MaxTextureBindingCacheUnusedFrames)
 		{
@@ -222,7 +270,7 @@ void RenderSceneNode::EvictTextureBindingCache(uint64_t frame)
 
 	for (const auto& key : expiredEntries)
 	{
-		m_textureBindingCache.Remove(key);
+		textureBindingCache.Remove(key);
 	}
 }
 
@@ -243,7 +291,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			m_drawCalls.Clear();
 			m_batches.Clear();
 			m_orderedDrawItems.Clear();
-			EvictTextureBindingCache(sceneViewSnapshot.m_frame);
+			Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
 
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
@@ -299,7 +347,11 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						{
 							requestedTextures.Insert(0u);
 						}
-						batch.m_textureBindings = GetTextureBindingSet(requestedTextures, sceneViewSnapshot.m_frame, supportedMeshesPerBatch);
+						batch.m_textureBindings = Details::GetTextureBindingSet(
+							m_textureBindingCache,
+							requestedTextures,
+							sceneViewSnapshot.m_frame,
+							supportedMeshesPerBatch);
 #else
 						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
@@ -832,6 +884,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							viewport,
 							scissor,
 							glm::vec2(0.0f, 1.0f),
+							&m_cullingIndirectBufferBinding[i + 1],
 							&transferCommandListMutex);
 					}
 
@@ -897,6 +950,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					viewport,
 					scissor,
 					glm::vec2(0.0f, 1.0f),
+					&m_cullingIndirectBufferBinding[0],
 					&transferCommandListMutex);
 			}
 

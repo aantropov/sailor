@@ -227,6 +227,9 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 					res.Resize(reflectedBinding.m_set + 1);
 				}
 
+#if defined(__APPLE__)
+				bool bFoundRuntimeCapacity = false;
+#endif
 				for (const auto& shaderBindingSet : shaderBindingSets)
 				{
 					if (!shaderBindingSet)
@@ -249,11 +252,40 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 						runtimeLayout.m_type == reflectedBinding.m_type &&
 						runtimeLayout.m_bVariableDescriptorCount)
 					{
+#if defined(__APPLE__)
+						bFoundRuntimeCapacity = true;
+#endif
+						uint32_t runtimeDescriptorCount =
+							(std::max)(1u, runtimeLayout.m_arrayCount);
+#if defined(__APPLE__)
+						// Metal argument buffers have a substantially smaller practical
+						// sampled-image limit than Vulkan's global texture registry. Render
+						// batches provide compatible local descriptor sets, so the pipeline
+						// layout only needs the largest supported batch-local array.
+						if (runtimeLayout.m_type == RHI::EShaderBindingType::CombinedImageSampler)
+						{
+							runtimeDescriptorCount = (std::min)(runtimeDescriptorCount, 1024u);
+						}
+#endif
 						res[reflectedBinding.m_set] = std::max(
 							res[reflectedBinding.m_set],
-							std::max(1u, runtimeLayout.m_arrayCount));
+							runtimeDescriptorCount);
 					}
 				}
+#if defined(__APPLE__)
+				if (!bFoundRuntimeCapacity &&
+					reflectedBinding.m_type ==
+						RHI::EShaderBindingType::CombinedImageSampler &&
+					reflectedBinding.m_name == "textureSamplers")
+				{
+					// Apple render passes bind dense material-local texture arrays. The
+					// global registry intentionally keeps its legacy binding for other
+					// shaders, so it cannot provide the remapped binding's capacity here.
+					res[reflectedBinding.m_set] = (std::max)(
+						res[reflectedBinding.m_set],
+						1024u);
+				}
+#endif
 			}
 		}
 	}
@@ -1300,6 +1332,15 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
+	// Material-owned parameters live exclusively in descriptor set 3. Keep
+	// frame, per-instance and pass-local bindings out of the material set even
+	// when they use the same descriptor type and binding number.
+	constexpr uint32_t MaterialDescriptorSet = 3u;
+	bindings.RemoveAll([=](const auto& binding)
+		{
+			return binding.m_set != MaterialDescriptorSet;
+		});
+
 	auto shaderBindings = CreateShaderBindings();
 
 	{
@@ -1309,12 +1350,6 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		for (uint32_t i = 0; i < bindings.Num(); i++)
 		{
 			auto& layoutBinding = bindings[i];
-			if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1 || layoutBinding.m_set == 2)
-			{
-				// We skip 0 layout, it is frameData and would be binded in a different way
-				// Also we skip 1 layout, that is per instance data and would be binded in a different way
-				continue;
-			}
 			const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
 
 			auto it = layoutBindings.FindIf([&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
@@ -1649,8 +1684,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetGeneralSsboAllocator();
 
-	const size_t p = 16 - elementSize % 16;
-	const size_t paddedSize = elementSize + p;
+	const size_t paddedSize = SsboLayout::AlignSsboElementSize(elementSize);
 
 	size_t alignment = paddedSize;
 
@@ -1708,8 +1742,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	// TODO: rewrite strictly according to std430
-	const size_t p = 16 - size % 16;
-	const size_t paddedSize = size + p;
+	const size_t paddedSize = SsboLayout::AlignSsboElementSize(size);
 
 	if (bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
@@ -3009,7 +3042,15 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 								check(false);
 							}
 #endif
-							const uint32_t emittedTextureSlots = (std::min)(matchedLayoutBinding.descriptorCount, actualTextureSlots);
+							uint32_t emittedTextureSlots = (std::min)(matchedLayoutBinding.descriptorCount, actualTextureSlots);
+#if defined(__APPLE__)
+							// MoltenVK lowers a runtime sampler array to a fixed-size Metal
+							// argument-buffer array using the pipeline layout's upper bound.
+							// Allocating a smaller variable descriptor count leaves that Metal
+							// array undersized even though Vulkan considers the set valid.
+							// Keep unused slots partially bound, but allocate the complete array.
+							emittedTextureSlots = matchedLayoutBinding.descriptorCount;
+#endif
 							variableDescriptorCount = std::max(variableDescriptorCount, (std::max)(1u, emittedTextureSlots));
 						}
 

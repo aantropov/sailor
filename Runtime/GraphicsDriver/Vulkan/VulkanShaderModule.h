@@ -9,6 +9,35 @@
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	namespace SsboLayout
+	{
+		constexpr uint32_t ResolveSsboArrayStride(
+			uint32_t reflectedBlockArrayStride,
+			uint32_t reflectedTypeArrayStride,
+			uint32_t reflectedPaddedSize) noexcept
+		{
+			return reflectedBlockArrayStride != 0u ?
+				reflectedBlockArrayStride :
+				(reflectedTypeArrayStride != 0u ?
+					reflectedTypeArrayStride :
+					reflectedPaddedSize);
+		}
+
+		inline uint32_t ResolveSsboArrayStride(
+			const SpvReflectBlockVariable& reflectedArray) noexcept
+		{
+			const uint32_t reflectedTypeArrayStride =
+				reflectedArray.type_description ?
+				reflectedArray.type_description->traits.array.stride :
+				0u;
+
+			return ResolveSsboArrayStride(
+				reflectedArray.array.stride,
+				reflectedTypeArrayStride,
+				reflectedArray.padded_size);
+		}
+	}
+
 	class VulkanShaderModule;
 
 	class VulkanShaderStage : public RHI::RHIResource, public RHI::IExplicitInitialization, public RHI::IStateModifier<VkPipelineShaderStageCreateInfo>

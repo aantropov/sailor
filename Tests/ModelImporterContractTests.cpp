@@ -613,6 +613,39 @@ uniformsFloat:
 			"material resolution without materials must remain invalid");
 	}
 
+	void TestDefaultMaterialLoadingPreservesSourceSlots()
+	{
+		const std::filesystem::path sourceRoot =
+			std::filesystem::path(__FILE__).parent_path().parent_path();
+		const std::string importer = ReadText(
+			sourceRoot /
+			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
+		const size_t functionOffset = importer.find(
+			"Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(");
+		Require(functionOffset != std::string::npos,
+			"default material loading implementation must remain present");
+		const size_t functionEnd = importer.find(
+			"\nbool ModelImporter::LoadAsset(",
+			functionOffset);
+		Require(functionEnd != std::string::npos,
+			"default material loading implementation must remain bounded");
+		const std::string function = importer.substr(
+			functionOffset,
+			functionEnd - functionOffset);
+
+		Require(function.find(
+				"outMaterials.Resize(defaultMaterials.Num())") !=
+				std::string::npos,
+			"default material loading must reserve every original glTF material slot");
+		Require(function.find(
+				"outMaterials[materialIndex] = material") !=
+				std::string::npos,
+			"successfully loaded materials must be assigned to their original glTF slots");
+		Require(function.find("outMaterials.Add(material)") ==
+				std::string::npos,
+			"missing default materials must not compact and shift later material slots");
+	}
+
 	void TestGeneratedTangentsPreserveMirroredUvHandedness()
 	{
 		const glm::vec3 vertices[] = {
@@ -1087,6 +1120,7 @@ int main()
 		{ "GeneratedMaterialMigrationRecognizesLegacyOwnership", TestGeneratedMaterialMigrationRecognizesLegacyOwnership },
 		{ "GltfMaterialTextureColorSpaces", TestGltfMaterialTextureColorSpaces },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },
+		{ "DefaultMaterialLoadingPreservesSourceSlots", TestDefaultMaterialLoadingPreservesSourceSlots },
 		{ "GeneratedTangentsPreserveMirroredUvHandedness", TestGeneratedTangentsPreserveMirroredUvHandedness },
 		{ "PathTracerTransformsShadingBasisCorrectly", TestPathTracerTransformsShadingBasisCorrectly },
 		{ "BuildBlasRejectsOutOfRangeIndicesAtomically", TestBuildBlasRejectsOutOfRangeIndicesAtomically },

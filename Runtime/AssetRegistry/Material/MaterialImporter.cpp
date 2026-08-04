@@ -653,63 +653,57 @@ Tasks::TaskPtr<MaterialPtr> MaterialImporter::LoadMaterial(FileId uid, MaterialP
 		const FileId uid = pMaterial->GetFileId();
 		const string assetFilename = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(uid)->GetAssetFilepath();
 
-		promise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material",
-			[pLoadShader, pMaterial, pMaterialAsset, assetFilename = assetFilename]() mutable
+		promise = Tasks::CreateTaskWithResult<MaterialPtr>("Load material RHI resource",
+			[pMaterial, assetFilename]() mutable
 			{
-				// We're updating rhi on worker thread during load since we have no deps
-				auto updateRHI = Tasks::CreateTask("Update material RHI resource", [=]() mutable
-					{
-						if (pMaterial->GetShader()->IsReady())
-						{
-							pMaterial->UpdateRHIResource();
-							pMaterial->ForcelyUpdateUniforms();
-
-							// TODO: Optimize
-							auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
-							for (const auto& rhi : rhiMaterials)
-							{
-								RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
-							}
-						}
-
-					}, EThreadType::RHI);
-
-				// Preload textures
-				for (const auto& sampler : pMaterialAsset->GetSamplers())
+				if (pMaterial->GetShader()->IsReady())
 				{
-					TexturePtr pTexture;
+					pMaterial->UpdateRHIResource();
+					pMaterial->ForcelyUpdateUniforms();
 
-					if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, pTexture))
+					// TODO: Optimize
+					auto rhiMaterials = pMaterial->GetRHIMaterials().GetValues();
+					for (const auto& rhi : rhiMaterials)
 					{
-						auto updateSampler = loadTextureTask->Then(
-							[=](TexturePtr texture) mutable
-							{
-								if (texture)
-								{
-									pMaterial->SetSampler(sampler.m_first, texture);
-									texture->AddHotReloadDependentObject(pMaterial);
-								}
-							}, "Set material texture binding", EThreadType::Render);
-
-						updateRHI->Join(updateSampler);
+						RHI::Renderer::GetDriver()->SetDebugName(rhi, assetFilename);
 					}
 				}
 
-				for (const auto& uniform : pMaterialAsset->GetUniformsVec4())
-				{
-					pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-				}
-
-				for (const auto& uniform : pMaterialAsset->GetUniformsFloat())
-				{
-					pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
-				}
-
-				updateRHI->Join(pLoadShader);
-				updateRHI->Run();
-
 				return pMaterial;
-			});
+			}, EThreadType::RHI);
+
+		// Preload textures
+		for (const auto& sampler : pMaterialAsset->GetSamplers())
+		{
+			TexturePtr pTexture;
+
+			if (auto loadTextureTask = App::GetSubmodule<TextureImporter>()->LoadTexture(*sampler.m_second, pTexture))
+			{
+				auto updateSampler = loadTextureTask->Then(
+					[=](TexturePtr texture) mutable
+					{
+						if (texture)
+						{
+							pMaterial->SetSampler(sampler.m_first, texture);
+							texture->AddHotReloadDependentObject(pMaterial);
+						}
+					}, "Set material texture binding", EThreadType::Render);
+
+				promise->Join(updateSampler);
+			}
+		}
+
+		for (const auto& uniform : pMaterialAsset->GetUniformsVec4())
+		{
+			pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
+		}
+
+		for (const auto& uniform : pMaterialAsset->GetUniformsFloat())
+		{
+			pMaterial->SetUniform(uniform.m_first, *uniform.m_second);
+		}
+
+		promise->Join(pLoadShader);
 
 		outMaterial = loadedMaterial = pMaterial;
 

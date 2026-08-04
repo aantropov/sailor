@@ -81,7 +81,7 @@ glslFragment: |
       velocity.x = min(1, velocity.x) * data.intensity;
       velocity.y = min(1, velocity.y) * data.intensity;
       
-      vec3 color = texture(colorSampler, fragTexcoord).xyz;
+      vec3 color = textureLod(colorSampler, fragTexcoord, 0.0).xyz;
       vec2 texCoord = fragTexcoord;
       
       if(length(velocity) <= 0.0001)
@@ -93,7 +93,7 @@ glslFragment: |
       for(int i = 1; i < int(data.samples); ++i) 
       {
           texCoord = clamp(texCoord + velocity, 0.0, 1.0);
-          vec3 currentColor = texture(colorSampler, texCoord).xyz;
+          vec3 currentColor = textureLod(colorSampler, texCoord, 0.0).xyz;
           color += currentColor;
       }
       

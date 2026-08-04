@@ -5,6 +5,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
 #include "Engine/GameObject.h"
 #include "Components/MeshRendererComponent.h"
@@ -15,6 +16,7 @@
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
+#include "RHI/Texture.h"
 
 #include <imgui.h>
 #include <cstdio>
@@ -210,6 +212,25 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	}
 
 	auto& task = currentInputState.GetDrawImGuiTask();
+	RHI::EFormat imguiColorFormat = renderer ?
+		renderer->GetColorFormat() :
+		RHI::EFormat::B8G8R8A8_SRGB;
+	if (renderer)
+	{
+		if (auto frameGraph = renderer->GetFrameGraph())
+		{
+			if (auto rhiFrameGraph = frameGraph->GetRHI())
+			{
+				if (const auto renderImGuiNode = rhiFrameGraph->GetGraphNode("RenderImGui"))
+				{
+					if (const auto colorAttachment = renderImGuiNode->GetResolvedAttachment("color"))
+					{
+						imguiColorFormat = colorAttachment->GetFormat();
+					}
+				}
+			}
+		}
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Record ImGui Update Command List");
@@ -226,8 +247,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		{
 			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
-			// Default swapchain format
-			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);
+			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, imguiColorFormat);
 			App::GetSubmodule<ImGuiApi>()->RenderFrame(cmdList);
 			RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 

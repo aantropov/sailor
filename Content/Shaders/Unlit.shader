@@ -39,6 +39,7 @@ glslVertex: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -88,7 +89,7 @@ glslVertex: |
   
   layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
   {
-      uint indices[];
+      uint indices[MAX_TEXTURES_IN_SCENE];
   } culledLights;
   
   layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
@@ -123,7 +124,15 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[MAX_TEXTURES_IN_SCENE];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
   
   void main() 
   {
@@ -172,6 +181,7 @@ glslFragment: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -256,7 +266,15 @@ glslFragment: |
       MaterialData instance[];
   } material;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
   
   MaterialData GetMaterialData()
   {

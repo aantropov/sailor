@@ -51,6 +51,7 @@ glslVertex: |
     uint skeletonOffset;
     uint isCulled;
     uint padding;
+    vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -132,7 +133,7 @@ glslVertex: |
   
   layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
   {
-      uint indices[];
+      uint indices[MAX_TEXTURES_IN_SCENE];
   } culledLights;
   
   layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
@@ -167,7 +168,15 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[MAX_TEXTURES_IN_SCENE];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
 
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
@@ -184,7 +193,8 @@ glslVertex: |
     vout.modelScale = vec3(
       length(instanceLinearMatrix[0]),
       length(instanceLinearMatrix[1]),
-      length(instanceLinearMatrix[2]));
+      length(instanceLinearMatrix[2])) *
+      data.instance[gl_InstanceIndex].bakedVolumeScale.xyz;
   #endif
   #ifdef SKINNING
     uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
@@ -257,7 +267,10 @@ glslFragment: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -375,7 +388,28 @@ glslFragment: |
   //layout(set=3, binding=3) uniform sampler2D normalSampler;
   //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
+
+  uint ResolveTextureSamplerIndex(uint globalTextureIndex)
+  {
+  #if defined(SAILOR_TEXTURE_REMAP)
+      if(globalTextureIndex >= MAX_TEXTURES_IN_SCENE)
+      {
+        return 0;
+      }
+      return textureSamplerRemap.indices[globalTextureIndex];
+  #else
+      return globalTextureIndex;
+  #endif
+  }
   
   MaterialData GetMaterialData()
   {
@@ -811,13 +845,13 @@ glslFragment: |
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
     {
-      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[nonuniformEXT(material.baseColorSampler)], vin.texcoord);
+      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.baseColorSampler))], vin.texcoord);
     }
     material.baseColorFactor *= vin.color;
 
     if(material.ormSampler != 0)
     {
-      vec4 orm = texture(textureSamplers[nonuniformEXT(material.ormSampler)], vin.texcoord);
+      vec4 orm = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.ormSampler))], vin.texcoord);
       material.metallicFactor = material.metallicFactor * orm.b;
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
@@ -825,7 +859,7 @@ glslFragment: |
     float occlusion = texture(g_aoSampler, viewportUv).r;
     if(material.occlusionSampler != 0)
     {
-      float occlusionTex = texture(textureSamplers[nonuniformEXT(material.occlusionSampler)], vin.texcoord).r;
+      float occlusionTex = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.occlusionSampler))], vin.texcoord).r;
       float mixed = mix(1.0, occlusionTex, material.occlusionStrength);
       occlusion = min(occlusion, mixed);
     }
@@ -833,39 +867,39 @@ glslFragment: |
 
     if(material.emissiveSampler != 0)
     {
-      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[nonuniformEXT(material.emissiveSampler)], vin.texcoord);
+      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.emissiveSampler))], vin.texcoord);
     }
 
   #ifdef CLEAR_COAT
     if(material.clearcoatSampler != 0)
     {
-      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatSampler)], vin.texcoord).r;
+      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatSampler))], vin.texcoord).r;
     }
     if(material.clearcoatRoughnessSampler != 0)
     {
-      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatRoughnessSampler)], vin.texcoord).g;
+      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatRoughnessSampler))], vin.texcoord).g;
     }
   #endif
   #ifdef SHEEN
     if(material.sheenColorSampler != 0)
     {
-      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[nonuniformEXT(material.sheenColorSampler)], vin.texcoord).rgb;
+      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenColorSampler))], vin.texcoord).rgb;
     }
     if(material.sheenRoughnessSampler != 0)
     {
-      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.sheenRoughnessSampler)], vin.texcoord).g;
+      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenRoughnessSampler))], vin.texcoord).g;
     }
   #endif
   #ifdef TRANSMISSION
     material.transmissionFactor = clamp(material.transmissionFactor, 0.0, 1.0);
     if(material.transmissionSampler != 0)
     {
-      material.transmissionFactor *= texture(textureSamplers[nonuniformEXT(material.transmissionSampler)], vin.texcoord).r;
+      material.transmissionFactor *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.transmissionSampler))], vin.texcoord).r;
     }
     material.thicknessFactor = max(material.thicknessFactor, 0.0);
     if(material.thicknessSampler != 0)
     {
-      material.thicknessFactor *= texture(textureSamplers[nonuniformEXT(material.thicknessSampler)], vin.texcoord).g;
+      material.thicknessFactor *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.thicknessSampler))], vin.texcoord).g;
     }
     material.indexOfRefraction = max(material.indexOfRefraction, 1.0);
     material.attenuationDistance = max(material.attenuationDistance, Epsilon);
@@ -875,7 +909,7 @@ glslFragment: |
     vec3 normal;
     if(material.normalSampler != 0)
     {
-      normal = 2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0;
+      normal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0;
       normal.xy *= material.normalScale;
       normal = normalize(vin.tangentBasis * normal);
     }
@@ -888,7 +922,7 @@ glslFragment: |
     vec3 clearcoatNormal = normal;
     if(material.clearcoatNormalSampler != 0)
     {
-      clearcoatNormal = 2.0 * texture(textureSamplers[nonuniformEXT(material.clearcoatNormalSampler)], vin.texcoord).rgb - 1.0;
+      clearcoatNormal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatNormalSampler))], vin.texcoord).rgb - 1.0;
       clearcoatNormal.xy *= material.clearcoatNormalScale;
       clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
     }
@@ -923,17 +957,15 @@ glslFragment: |
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
     //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
   
-    vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
-    vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-    ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
-    
-    ivec2 mod = ivec2(frame.viewportSize.x % LIGHTS_CULLING_TILE_SIZE, frame.viewportSize.y % LIGHTS_CULLING_TILE_SIZE);
-    ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
-    
-    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
-  
-    const uint offset = lightsGrid.instance[tileIndex].offset;
-    const uint numLights = lightsGrid.instance[tileIndex].num;
+    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
+    const uint gridLength = uint(lightsGrid.instance.length());
+    const bool hasLightTile = tileIndex < gridLength;
+    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
+    const uint listLength = uint(culledLights.indices.length());
+    const uint availableLights = offset < listLength ? listLength - offset : 0;
+    const uint numLights = hasLightTile ? min(
+        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
+        availableLights) : 0;
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
   #ifdef CLEAR_COAT
@@ -946,9 +978,11 @@ glslFragment: |
     for(int i = 0; i < numLights; i++)
     {
         uint index = culledLights.indices[offset + i];
-        if(index == uint(-1))
+        if(index == uint(-1) ||
+            index >= uint(light.instance.length()) ||
+            light.instance[index].type == INVALID_LIGHT_TYPE)
         {
-            break;
+            continue;
         }
     
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);

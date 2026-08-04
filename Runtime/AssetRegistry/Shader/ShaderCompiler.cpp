@@ -368,6 +368,10 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	vertexDefines.Add("VERTEX");
 	fragmentDefines.Add("FRAGMENT");
 	computeDefines.Add("COMPUTE");
+#if defined(__APPLE__)
+	vertexDefines.Add("SAILOR_TEXTURE_REMAP");
+	fragmentDefines.Add("SAILOR_TEXTURE_REMAP");
+#endif
 
 	if (pShader->ContainsVertex())
 	{
