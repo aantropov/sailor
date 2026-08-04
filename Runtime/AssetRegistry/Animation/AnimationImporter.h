@@ -21,10 +21,14 @@ namespace Sailor
 		SAILOR_API Animation(FileId uid) : Object(uid) {}
 
 		TVector<Math::Transform> m_frames;
+		TVector<Math::Transform> m_restPose;
+		TVector<int32_t> m_parentBoneIndices;
 		uint32_t m_numFrames = 0;
 		uint32_t m_numBones = 0;
 		float m_fps = 30.0f;
 		float m_duration = 0.0f;
+		uint64_t m_skeletonSignature = 0;
+		uint64_t m_revision = 0;
 	};
 
 	using AnimationPtr = TObjectPtr<Animation>;
@@ -36,7 +40,7 @@ namespace Sailor
 		SAILOR_API virtual ~AnimationImporter() override;
 
 		SAILOR_API virtual void OnImportAsset(AssetInfoPtr assetInfo) override {}
-		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override {}
+		SAILOR_API virtual void OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired) override;
 
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API Tasks::TaskPtr<AnimationPtr> LoadAnimation(FileId uid, AnimationPtr& outAnimation);

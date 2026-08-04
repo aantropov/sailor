@@ -389,6 +389,8 @@ public partial class AssetFile : ObservableObject, ICloneable
         var inferredType = this switch
         {
             AnimationFile => "Sailor::AnimationAssetInfo",
+            AnimationControllerFile => "Sailor::AnimationControllerAssetInfo",
+            AnimationSetFile => "Sailor::AnimationSetAssetInfo",
             FrameGraphFile => "Sailor::FrameGraphAssetInfo",
             MaterialFile => "Sailor::MaterialAssetInfo",
             ModelFile => "Sailor::ModelAssetInfo",

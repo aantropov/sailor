@@ -913,6 +913,96 @@ namespace
 			Sailor::App::SetEditorSelection(serializedSelection.c_str()));
 	}
 
+	void DispatchAnimatorParameter(
+		const sailor::editor::v1::AnimatorParameterRequest& request,
+		ProtocolResponse& response)
+	{
+		uint32_t valueKind = 0;
+		float floatValue = 0.0f;
+		int32_t intValue = 0;
+		bool boolValue = false;
+		switch (request.value_case())
+		{
+		case sailor::editor::v1::AnimatorParameterRequest::kFloatValue:
+			valueKind = 1;
+			floatValue = request.float_value();
+			break;
+		case sailor::editor::v1::AnimatorParameterRequest::kIntValue:
+			valueKind = 2;
+			intValue = request.int_value();
+			break;
+		case sailor::editor::v1::AnimatorParameterRequest::kBoolValue:
+			valueKind = 3;
+			boolValue = request.bool_value();
+			break;
+		case sailor::editor::v1::AnimatorParameterRequest::kTrigger:
+			valueKind = 4;
+			break;
+		case sailor::editor::v1::AnimatorParameterRequest::kResetTrigger:
+			valueKind = 5;
+			break;
+		case sailor::editor::v1::AnimatorParameterRequest::VALUE_NOT_SET:
+			SetError(response, "Animator parameter value is not set.");
+			return;
+		}
+
+		SetBoolResult(
+			response,
+			Sailor::App::SetEditorAnimatorParameter(
+				request.instance_id().c_str(),
+				request.name().c_str(),
+				valueKind,
+				floatValue,
+				intValue,
+				boolValue));
+	}
+
+	void DispatchAnimatorState(
+		const sailor::editor::v1::InstanceIdRequest& request,
+		ProtocolResponse& response)
+	{
+		bool bHasController = false;
+		uint64_t controllerRevision = 0;
+		uint64_t activeStateId = 0;
+		float activeStateTime = 0.0f;
+		bool bTransitioning = false;
+		uint64_t destinationStateId = 0;
+		float destinationStateTime = 0.0f;
+		float transitionAlpha = 0.0f;
+		TInteropString activeStateName;
+		TInteropString destinationStateName;
+		if (!Sailor::App::GetEditorAnimatorState(
+				request.instance_id().c_str(),
+				bHasController,
+				controllerRevision,
+				activeStateId,
+				activeStateName.GetOutput(),
+				activeStateTime,
+				bTransitioning,
+				destinationStateId,
+				destinationStateName.GetOutput(),
+				destinationStateTime,
+				transitionAlpha))
+		{
+			SetError(response, "Animator component was not found.");
+			return;
+		}
+
+		SetSuccess(response);
+		auto* result = response.mutable_animator_state_result();
+		result->set_has_controller(bHasController);
+		result->set_controller_revision(controllerRevision);
+		result->set_active_state_id(activeStateId);
+		result->set_active_state_name(activeStateName.GetValue() ? activeStateName.GetValue() : "");
+		result->set_active_state_time(activeStateTime);
+		result->set_transitioning(bTransitioning);
+		result->set_destination_state_id(destinationStateId);
+		result->set_destination_state_name(
+			destinationStateName.GetValue() ? destinationStateName.GetValue() : "");
+		result->set_destination_state_time(destinationStateTime);
+		result->set_transition_alpha(transitionAlpha);
+	}
+
 	void DispatchRequest(
 		const ProtocolRequest& request,
 		ProtocolResponse& response,
@@ -952,6 +1042,14 @@ namespace
 			DispatchCreateModelInstance(
 				request.create_model_instance(),
 				response);
+			break;
+
+		case ProtocolRequest::kSetAnimatorParameter:
+			DispatchAnimatorParameter(request.set_animator_parameter(), response);
+			break;
+
+		case ProtocolRequest::kGetAnimatorState:
+			DispatchAnimatorState(request.get_animator_state(), response);
 			break;
 
 		case ProtocolRequest::kGetAssetReloadState:

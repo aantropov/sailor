@@ -51,6 +51,7 @@ namespace
 	constexpr uint32_t c_uint64ResultField = 14;
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
 	constexpr uint32_t c_viewportToolStateResultField = 21;
+	constexpr uint32_t c_animatorStateResultField = 22;
 	constexpr uint32_t c_emptyResultField = 10;
 	constexpr uint32_t c_initializeCommandField = 10;
 	constexpr uint32_t c_startCommandField = 11;
@@ -64,6 +65,7 @@ namespace
 	constexpr uint32_t c_isEngineRunningCommandField = 48;
 	constexpr uint32_t c_instantiatePrefabFromYamlCommandField = 42;
 	constexpr uint32_t c_createModelInstanceCommandField = 58;
+	constexpr uint32_t c_setAnimatorParameterCommandField = 59;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -267,7 +269,7 @@ namespace
 					static_cast<size_t>(length));
 			}
 			else if (fieldNumber >= 10u &&
-				fieldNumber <= c_viewportToolStateResultField)
+				fieldNumber <= c_animatorStateResultField)
 			{
 				response.m_resultField = fieldNumber;
 				response.m_resultPayload.assign(
@@ -931,6 +933,37 @@ namespace
 				response.m_resultField == 0,
 				"missing command must return a correlated protocol error");
 		}
+	}
+
+	void TestAnimatorParameterRequiresTypedValue()
+	{
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"animator protocol fixture lifecycle must initialize");
+		gate.CompleteInitialization(true);
+
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+		std::string parameterRequest;
+		AppendMessageField(parameterRequest, 1u, "Animator-1");
+		AppendMessageField(parameterRequest, 2u, "Speed");
+
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				27,
+				c_setAnimatorParameterCommandField,
+				parameterRequest),
+			buffer,
+			dependencies);
+		Require(
+			!response.m_success &&
+				response.m_error.find("value is not set") != std::string::npos &&
+				response.m_resultField == 0,
+			"animator parameter mutations must carry exactly one typed value");
 	}
 
 	void TestStrictInstanceIdProtocolGate()
@@ -2006,6 +2039,7 @@ int main()
 		TestOversizedAndMalformedPayloads();
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();
+		TestAnimatorParameterRequiresTypedValue();
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
 		TestEmbeddedNullIsRejected();

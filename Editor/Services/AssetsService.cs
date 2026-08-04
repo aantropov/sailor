@@ -189,6 +189,169 @@ namespace SailorEditor.Services
             return Path.Combine(CurrentProjectRootPath, Path.Combine(parts.ToArray()));
         }
 
+        public async Task<AssetFile?> CreateAnimationAssetAsync(
+            AssetFolder? targetFolder,
+            bool createSet,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TryGetWritableDestinationDirectory(
+                    targetFolder,
+                    out var destinationDirectory))
+            {
+                return null;
+            }
+
+            var extension = createSet ? ".animset" : ".animcontroller";
+            var baseName = createSet ? "New Animation Set" : "New Animation Controller";
+            var filename = GetUniqueAssetName(
+                destinationDirectory,
+                baseName,
+                extension);
+            var sourcePath = Path.Combine(destinationDirectory, filename);
+            var temporaryPath = Path.Combine(
+                destinationDirectory,
+                $".{filename}.{Guid.NewGuid():N}.tmp");
+
+            await _assetSaveLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
+                lock (_watcherLock)
+                {
+                    watcherStates = _contentWatchers
+                        .Select(watcher =>
+                            (watcher, watcher.EnableRaisingEvents))
+                        .ToArray();
+                    foreach (var watcherState in watcherStates)
+                    {
+                        watcherState.Watcher.EnableRaisingEvents = false;
+                    }
+                }
+
+                try
+                {
+                    var source = createSet
+                        ? CreateAnimationSetSource()
+                        : CreateAnimationControllerSource();
+                    await File.WriteAllTextAsync(
+                            temporaryPath,
+                            source,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    File.Move(temporaryPath, sourcePath);
+
+                    if (!await _engineService.RequestAssetReloadAsync(cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        File.Delete(sourcePath);
+                        return null;
+                    }
+                }
+                finally
+                {
+                    lock (_watcherLock)
+                    {
+                        foreach (var watcherState in watcherStates)
+                        {
+                            if (_contentWatchers.Contains(watcherState.Watcher))
+                            {
+                                watcherState.Watcher.EnableRaisingEvents =
+                                    watcherState.Enabled;
+                            }
+                        }
+                    }
+                }
+
+                return await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    var created = FindAssetBySourcePath(sourcePath);
+                    if (created is null)
+                    {
+                        Refresh();
+                        created = FindAssetBySourcePath(sourcePath);
+                    }
+                    return created;
+                });
+            }
+            catch
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+                throw;
+            }
+            finally
+            {
+                _assetSaveLock.Release();
+            }
+        }
+
+        AssetFile? FindAssetBySourcePath(string sourcePath) =>
+            Files.FirstOrDefault(asset =>
+                asset.Asset is not null &&
+                ProjectContentPathPolicy.IsSamePath(
+                    asset.Asset.FullName,
+                    sourcePath));
+
+        static string CreateAnimationControllerSource()
+        {
+            var stateId = BitConverter.ToUInt64(
+                System.Security.Cryptography.RandomNumberGenerator.GetBytes(
+                    sizeof(ulong)));
+            if (stateId == 0)
+            {
+                stateId = 1;
+            }
+            var root = new YamlMappingNode
+            {
+                { "version", "1" },
+                { "defaultState", stateId.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                { "parameters", new YamlSequenceNode() },
+                {
+                    "states",
+                    new YamlSequenceNode
+                    {
+                        new YamlMappingNode
+                        {
+                            { "id", stateId.ToString(System.Globalization.CultureInfo.InvariantCulture) },
+                            { "name", "State" },
+                            { "clip", "Animation" },
+                            { "speed", "1" },
+                            { "loop", "true" },
+                            {
+                                "editor",
+                                new YamlMappingNode
+                                {
+                                    { "x", "32" },
+                                    { "y", "32" }
+                                }
+                            }
+                        }
+                    }
+                },
+                { "transitions", new YamlSequenceNode() }
+            };
+            return SaveYaml(root);
+        }
+
+        static string CreateAnimationSetSource() => SaveYaml(
+            new YamlMappingNode
+            {
+                { "version", "1" },
+                { "clips", new YamlSequenceNode() }
+            });
+
+        static string SaveYaml(YamlMappingNode root)
+        {
+            var yaml = new YamlStream(new YamlDocument(root));
+            using var writer = new StringWriter(
+                System.Globalization.CultureInfo.InvariantCulture);
+            yaml.Save(writer, false);
+            return writer.ToString();
+        }
+
         public PrefabFile? CreatePrefabAsset(
             AssetFolder? targetFolder,
             GameObject root,
@@ -1352,6 +1515,8 @@ namespace SailorEditor.Services
                 "Sailor::TextureAssetInfo" => new TextureFile(),
                 "Sailor::ModelAssetInfo" => new ModelFile(),
                 "Sailor::AnimationAssetInfo" => new AnimationFile(),
+                "Sailor::AnimationControllerAssetInfo" => new AnimationControllerFile(),
+                "Sailor::AnimationSetAssetInfo" => new AnimationSetFile(),
                 "Sailor::PrefabAssetInfo" => new PrefabFile(),
                 "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
                 "Sailor::ShaderAssetInfo" when string.Equals(
@@ -1408,6 +1573,8 @@ namespace SailorEditor.Services
             ".png" or ".jpg" or ".tga" or ".bmp" or ".dds" or ".hdr" => new TextureFile(),
             ".obj" or ".gltf" or ".glb" => new ModelFile(),
             ".anim" => new AnimationFile(),
+            ".animcontroller" => new AnimationControllerFile(),
+            ".animset" => new AnimationSetFile(),
             ".prefab" => new PrefabFile(),
             ".world" => new WorldFile(),
             ".shader" => new ShaderFile(),

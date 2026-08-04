@@ -10,6 +10,8 @@ public class InspectorTemplateSelector : DataTemplateSelector
     public DataTemplate ShaderLibraryFileTemplate { get; set; }
     public DataTemplate MaterialFileTemplate { get; set; }
     public DataTemplate FrameGraphFileTemplate { get; set; }
+    public DataTemplate AnimationControllerFileTemplate { get; set; }
+    public DataTemplate AnimationSetFileTemplate { get; set; }
     public DataTemplate GameObjectTemplate { get; set; }
 
     protected override DataTemplate OnSelectTemplate(object item, BindableObject container)
@@ -22,6 +24,8 @@ public class InspectorTemplateSelector : DataTemplateSelector
             ModelFile => ModelFileTemplate,
             MaterialFile => MaterialFileTemplate,
             FrameGraphFile => FrameGraphFileTemplate,
+            AnimationControllerFile => AnimationControllerFileTemplate,
+            AnimationSetFile => AnimationSetFileTemplate,
             AnimationFile => AssetFileTemplate,
             PrefabFile => AssetFileTemplate,
             WorldFile => AssetFileTemplate,

@@ -60,13 +60,15 @@ message ProtocolRequest {
 		ViewportIdRequest get_viewport_tool_state = 56;
 		FileIdRequest update_asset = 57;
 		CreateModelInstanceRequest create_model_instance = 58;
+		AnimatorParameterRequest set_animator_parameter = 59;
+		InstanceIdRequest get_animator_state = 60;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 59 to 99;
+	reserved 61 to 99;
 }
 
 message ProtocolResponse {
@@ -89,10 +91,11 @@ message ProtocolResponse {
 		ViewportEventBatchResult viewport_event_batch_result = 19;
 		Vector4Result vector4_result = 20;
 		ViewportToolStateResult viewport_tool_state_result = 21;
+		AnimatorStateResult animator_state_result = 22;
 	}
 
 	reserved 6 to 9;
-	reserved 22 to 99;
+	reserved 23 to 99;
 }
 
 message InitializeRequest {
@@ -195,6 +198,19 @@ message AddComponentRequest {
 	string preferred_instance_id = 3;
 }
 
+message AnimatorParameterRequest {
+	string instance_id = 1;
+	string name = 2;
+
+	oneof value {
+		float float_value = 3;
+		sint32 int_value = 4;
+		bool bool_value = 5;
+		Empty trigger = 6;
+		Empty reset_trigger = 7;
+	}
+}
+
 message InstantiatePrefabRequest {
 	string file_id = 1;
 	string parent_instance_id = 2;
@@ -295,6 +311,19 @@ message Vector4Result {
 message ViewportToolStateResult {
 	ViewportTransformOperation operation = 1;
 	ViewportTransformSpace space = 2;
+}
+
+message AnimatorStateResult {
+	bool has_controller = 1;
+	uint64 controller_revision = 2;
+	uint64 active_state_id = 3;
+	string active_state_name = 4;
+	float active_state_time = 5;
+	bool transitioning = 6;
+	uint64 destination_state_id = 7;
+	string destination_state_name = 8;
+	float destination_state_time = 9;
+	float transition_alpha = 10;
 }
 
 enum ViewportTransformOperation {

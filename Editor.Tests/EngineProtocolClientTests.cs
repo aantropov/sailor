@@ -167,6 +167,73 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task AnimatorParameters_UseTypedProtocolValues()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetAnimatorFloatAsync("component", "Speed", 1.5f));
+        Assert.True(await client.SetAnimatorIntAsync("component", "Mode", 2));
+        Assert.True(await client.SetAnimatorBoolAsync("component", "Grounded", true));
+        Assert.True(await client.SetAnimatorTriggerAsync("component", "Jump", false));
+        Assert.True(await client.SetAnimatorTriggerAsync("component", "Jump", true));
+
+        Assert.All(requests, request => Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetAnimatorParameter,
+            request.CommandCase));
+        Assert.Equal(
+            [
+                AnimatorParameterRequest.ValueOneofCase.FloatValue,
+                AnimatorParameterRequest.ValueOneofCase.IntValue,
+                AnimatorParameterRequest.ValueOneofCase.BoolValue,
+                AnimatorParameterRequest.ValueOneofCase.Trigger,
+                AnimatorParameterRequest.ValueOneofCase.ResetTrigger
+            ],
+            requests.Select(request => request.SetAnimatorParameter.ValueCase));
+        Assert.Equal(1.5f, requests[0].SetAnimatorParameter.FloatValue);
+        Assert.Equal(2, requests[1].SetAnimatorParameter.IntValue);
+        Assert.True(requests[2].SetAnimatorParameter.BoolValue);
+    }
+
+    [Fact]
+    public async Task GetAnimatorStateAsync_ReadsTransitionState()
+    {
+        var client = CreateClient(request => Success(
+            request,
+            response => response.AnimatorStateResult = new AnimatorStateResult
+            {
+                HasController = true,
+                ControllerRevision = 7,
+                ActiveStateId = 11,
+                ActiveStateName = "Idle",
+                ActiveStateTime = 0.5f,
+                Transitioning = true,
+                DestinationStateId = 12,
+                DestinationStateName = "Run",
+                DestinationStateTime = 0.1f,
+                TransitionAlpha = 0.25f
+            }));
+
+        var state = await client.GetAnimatorStateAsync("component");
+
+        Assert.True(state.HasController);
+        Assert.Equal(7ul, state.ControllerRevision);
+        Assert.Equal(11ul, state.ActiveStateId);
+        Assert.Equal("Idle", state.ActiveStateName);
+        Assert.True(state.IsTransitioning);
+        Assert.Equal(12ul, state.DestinationStateId);
+        Assert.Equal("Run", state.DestinationStateName);
+        Assert.Equal(0.25f, state.TransitionAlpha);
+    }
+
+    [Fact]
     public async Task CreateModelInstanceAsync_SendsAtomicCreationRequest()
     {
         ProtocolRequest? capturedRequest = null;

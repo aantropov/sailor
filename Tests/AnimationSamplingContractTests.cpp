@@ -1,4 +1,7 @@
 #include "AssetRegistry/Animation/AnimationClipSampler.h"
+#include "AssetRegistry/Animation/AnimationController.h"
+#include "AssetRegistry/Animation/AnimationPose.h"
+#include "Memory/ObjectAllocator.hpp"
 
 #include <cmath>
 #include <functional>
@@ -144,6 +147,313 @@ namespace
 			NearlyEqual(glm::length(sampled), 1.0f),
 			"CUBICSPLINE quaternion output must be normalized after Hermite interpolation");
 	}
+
+	AnimationControllerAsset MakeControllerAsset()
+	{
+		AnimationControllerAsset asset;
+		asset.SetDefaultStateId(100);
+		asset.GetParameters() = {
+			AnimationParameterDefinition{
+				.m_id = 1,
+				.m_name = "Speed",
+				.m_type = EAnimationParameterType::Float
+			},
+			AnimationParameterDefinition{
+				.m_id = 2,
+				.m_name = "Grounded",
+				.m_type = EAnimationParameterType::Bool,
+				.m_defaultBool = true
+			},
+			AnimationParameterDefinition{
+				.m_id = 3,
+				.m_name = "Mode",
+				.m_type = EAnimationParameterType::Int
+			},
+			AnimationParameterDefinition{
+				.m_id = 4,
+				.m_name = "Jump",
+				.m_type = EAnimationParameterType::Trigger
+			}
+		};
+		asset.GetStates() = {
+			AnimationStateDefinition{
+				.m_id = 100,
+				.m_name = "Idle",
+				.m_clipSlot = "Idle",
+				.m_editorX = 10.0f,
+				.m_editorY = 20.0f
+			},
+			AnimationStateDefinition{
+				.m_id = 200,
+				.m_name = "Walk",
+				.m_clipSlot = "Walk"
+			},
+			AnimationStateDefinition{
+				.m_id = 300,
+				.m_name = "Jump",
+				.m_clipSlot = "Jump",
+				.m_bLoop = false
+			}
+		};
+
+		AnimationTransitionDefinition walk;
+		walk.m_id = 1000;
+		walk.m_fromStateId = 100;
+		walk.m_toStateId = 200;
+		walk.m_priority = 1;
+		walk.m_duration = 0.2f;
+		walk.m_conditions = {
+			AnimationTransitionCondition{
+				.m_parameterId = 1,
+				.m_operation = EAnimationConditionOperation::Greater,
+				.m_floatValue = 0.5f
+			},
+			AnimationTransitionCondition{
+				.m_parameterId = 2,
+				.m_operation = EAnimationConditionOperation::Equal,
+				.m_boolValue = true
+			},
+			AnimationTransitionCondition{
+				.m_parameterId = 3,
+				.m_operation = EAnimationConditionOperation::Equal,
+				.m_intValue = 2
+			}
+		};
+
+		AnimationTransitionDefinition jump;
+		jump.m_id = 1001;
+		jump.m_fromStateId = 100;
+		jump.m_toStateId = 300;
+		jump.m_priority = 10;
+		jump.m_duration = 0.2f;
+		jump.m_conditions = {
+			AnimationTransitionCondition{
+				.m_parameterId = 4,
+				.m_operation = EAnimationConditionOperation::IsSet
+			}
+		};
+
+		AnimationTransitionDefinition returnToIdle;
+		returnToIdle.m_id = 1002;
+		returnToIdle.m_fromStateId = 300;
+		returnToIdle.m_toStateId = 100;
+		returnToIdle.m_priority = 0;
+		returnToIdle.m_duration = 0.0f;
+		returnToIdle.m_bHasExitTime = true;
+		returnToIdle.m_exitTime = 0.5f;
+
+		asset.GetTransitions() = {
+			std::move(walk),
+			std::move(jump),
+			std::move(returnToIdle)
+		};
+		return asset;
+	}
+
+	void TestAnimationControllerSerializationAndValidation()
+	{
+		AnimationControllerAsset source = MakeControllerAsset();
+		AnimationControllerAsset roundTrip;
+		roundTrip.Deserialize(source.Serialize());
+
+		Require(roundTrip.GetDefaultStateId() == 100 &&
+			roundTrip.GetParameters().Num() == 4 &&
+			roundTrip.GetStates().Num() == 3 &&
+			roundTrip.GetTransitions().Num() == 3,
+			"animation controller YAML must retain graph structure and stable ids");
+		Require(NearlyEqual(roundTrip.GetStates()[0].m_editorX, 10.0f) &&
+			NearlyEqual(roundTrip.GetStates()[0].m_editorY, 20.0f),
+			"animation controller YAML must retain source-controlled editor layout");
+
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
+		TVector<std::string> errors;
+		Require(controller->Initialize(roundTrip, &errors) && errors.IsEmpty(),
+			"a valid controller graph must compile without diagnostics");
+
+		roundTrip.GetStates()[1].m_id = 100;
+		Require(!controller->Initialize(roundTrip, &errors) && !errors.IsEmpty(),
+			"duplicate state ids must produce validation diagnostics");
+
+		AnimationSetAsset setSource;
+		setSource.GetEntries().Add({ "Idle", FileId::CreateNewFileId() });
+		AnimationSetAsset setRoundTrip;
+		setRoundTrip.Deserialize(setSource.Serialize());
+		Require(setRoundTrip.GetEntries().Num() == 1 &&
+			setRoundTrip.GetEntries()[0].m_slot == "Idle" &&
+			setRoundTrip.GetEntries()[0].m_animation ==
+				setSource.GetEntries()[0].m_animation,
+			"animation set YAML must retain logical slots and clip FileIds");
+		auto animationSet = AnimationSetPtr::Make(allocator, FileId{});
+		Require(animationSet->Initialize(setRoundTrip, &errors),
+			"a valid animation set must compile without diagnostics");
+		setRoundTrip.GetEntries().Add(setRoundTrip.GetEntries()[0]);
+		Require(!animationSet->Initialize(setRoundTrip, &errors) && !errors.IsEmpty(),
+			"duplicate animation set slots must produce validation diagnostics");
+		animationSet.DestroyObject(allocator);
+		controller.DestroyObject(allocator);
+	}
+
+	void TestAnimationControllerTransitionsAndIndependentInstances()
+	{
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
+		AnimationControllerAsset asset = MakeControllerAsset();
+		Require(controller->Initialize(asset),
+			"controller fixture must compile");
+
+		AnimationControllerInstance first;
+		AnimationControllerInstance second;
+		Require(first.SetController(controller) && second.SetController(controller),
+			"each Animator must create an independent controller instance");
+		Require(first.SetFloat("Speed", 1.0f) &&
+			first.SetBool("Grounded", true) &&
+			first.SetInt("Mode", 2) &&
+			first.SetTrigger("Jump"),
+			"typed controller parameters must accept matching values");
+		Require(!first.SetFloat("Mode", 1.0f) &&
+			!first.SetTrigger("Missing"),
+			"typed controller parameters must reject mismatched or missing fields");
+
+		first.Tick(0.0f, 1.0f);
+		Require(first.IsTransitioning() &&
+			first.GetDestinationStateIndex() == 2,
+			"the highest-priority eligible transition must win deterministically");
+		Require(!second.IsTransitioning() && second.GetActiveStateIndex() == 0,
+			"shared controller assets must not share mutable state or parameters");
+
+		first.Tick(0.1f, 1.0f);
+		Require(NearlyEqual(first.GetTransitionAlpha(), 0.5f),
+			"crossfade progress must advance independently from state clocks");
+		first.Tick(0.1f, 1.0f);
+		Require(!first.IsTransitioning() && first.GetActiveStateIndex() == 2,
+			"crossfade completion must promote the destination state");
+
+		first.Tick(0.29f, 1.0f);
+		Require(first.GetActiveStateIndex() == 2,
+			"normalized exit-time transitions must not fire early");
+		first.Tick(0.01f, 1.0f);
+		Require(first.GetActiveStateIndex() == 0 && !first.IsTransitioning(),
+			"zero-duration transitions must complete at the normalized exit time");
+
+		first.SetFloat("Speed", 0.0f);
+		first.Tick(0.0f, 1.0f);
+		Require(first.GetActiveStateIndex() == 0 && !first.IsTransitioning(),
+			"a trigger must be consumed only by the transition that selected it");
+
+		first = AnimationControllerInstance{};
+		second = AnimationControllerInstance{};
+		controller.DestroyObject(allocator);
+	}
+
+	void TestAnimationControllerHotReloadPreservesStableState()
+	{
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
+		AnimationControllerAsset asset = MakeControllerAsset();
+		asset.GetTransitions()[0].m_duration = 0.0f;
+		Require(controller->Initialize(asset),
+			"controller fixture must compile before hot reload");
+
+		AnimationControllerInstance instance;
+		Require(instance.SetController(controller) &&
+			instance.SetFloat("Speed", 1.0f) &&
+			instance.SetBool("Grounded", true) &&
+			instance.SetInt("Mode", 2),
+			"controller instance must accept initial typed values");
+		instance.Tick(0.0f, 1.0f);
+		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
+			"fixture must enter the stable Walk state before reload");
+
+		std::swap(asset.GetStates()[0], asset.GetStates()[1]);
+		std::swap(asset.GetParameters()[0], asset.GetParameters()[3]);
+		const uint64_t previousRevision = controller->GetRevision();
+		Require(controller->Initialize(asset) &&
+			controller->GetRevision() == previousRevision + 1,
+			"a valid hot reload must publish one new controller revision");
+		instance.Tick(0.0f, 1.0f);
+		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
+			"hot reload must preserve the active state by stable id rather than array index");
+		Require(instance.SetFloat("Speed", 0.25f) && instance.SetTrigger("Jump"),
+			"hot reload must rebind typed parameters after source order changes");
+
+		asset.GetStates()[1].m_id = asset.GetStates()[0].m_id;
+		TVector<std::string> errors;
+		Require(!controller->Initialize(asset, &errors) &&
+			controller->GetRevision() == previousRevision + 1 &&
+			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
+			"an invalid hot reload must retain the last valid immutable runtime graph");
+
+		instance = AnimationControllerInstance{};
+		controller.DestroyObject(allocator);
+	}
+
+	void TestLocalPoseSamplingAndComposition()
+	{
+		auto allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		auto animation = AnimationPtr::Make(allocator, FileId{});
+		animation->m_numFrames = 2;
+		animation->m_numBones = 2;
+		animation->m_fps = 1.0f;
+		animation->m_duration = 1.0f;
+		animation->m_parentBoneIndices = { -1, 0 };
+		animation->m_frames = {
+			Math::Transform(glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)),
+			Math::Transform(glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)),
+			Math::Transform(glm::vec4(2.0f, 0.0f, 0.0f, 1.0f)),
+			Math::Transform(glm::vec4(1.0f, 0.0f, 0.0f, 1.0f))
+		};
+
+		TVector<Math::Transform> localPose;
+		uint32_t frameIndex = 0;
+		float lerp = 0.0f;
+		Require(AnimationPose::Sample(
+			animation,
+			0.5f,
+			false,
+			localPose,
+			frameIndex,
+			lerp) &&
+			frameIndex == 0 && NearlyEqual(lerp, 0.5f),
+			"pose sampling must interpolate baked local-space frames by clip time");
+
+		TVector<glm::mat4> globalMatrices;
+		TVector<uint8_t> composeState;
+		Require(AnimationPose::ComposeLocalPose(
+			localPose,
+			animation->m_parentBoneIndices,
+			globalMatrices,
+			composeState),
+			"a valid local bone hierarchy must compose successfully");
+		Require(NearlyEqual(globalMatrices[0][3].x, 1.0f) &&
+			NearlyEqual(globalMatrices[1][3].x, 2.0f),
+			"child matrices must inherit their sampled parent transform exactly once");
+
+		TVector<Math::Transform> destinationPose = localPose;
+		destinationPose[0].m_position.x = 3.0f;
+		TVector<Math::Transform> blendedPose;
+		Require(AnimationPose::BlendLocalPoses(
+			localPose,
+			destinationPose,
+			0.5f,
+			blendedPose) &&
+			NearlyEqual(blendedPose[0].m_position.x, 2.0f),
+			"crossfades must blend sampled local TRS poses before hierarchy composition");
+
+		animation->m_parentBoneIndices = { 1, 0 };
+		Require(!AnimationPose::ComposeLocalPose(
+			localPose,
+			animation->m_parentBoneIndices,
+			globalMatrices,
+			composeState),
+			"cyclic skeletons must be diagnosed without unbounded recursion");
+
+		animation.DestroyObject(allocator);
+	}
 }
 
 int main()
@@ -152,7 +462,11 @@ int main()
 		{ "TimestampValidationAndNonUniformSpan", TestTimestampValidationAndNonUniformSpan },
 		{ "LinearAndStepVectorSampling", TestLinearAndStepVectorSampling },
 		{ "CubicSplineSamplingScalesTangentsByInterval", TestCubicSplineSamplingScalesTangentsByInterval },
-		{ "RotationSamplingProducesNormalizedShortestPath", TestRotationSamplingProducesNormalizedShortestPath }
+		{ "RotationSamplingProducesNormalizedShortestPath", TestRotationSamplingProducesNormalizedShortestPath },
+		{ "AnimationControllerSerializationAndValidation", TestAnimationControllerSerializationAndValidation },
+		{ "AnimationControllerTransitionsAndIndependentInstances", TestAnimationControllerTransitionsAndIndependentInstances },
+		{ "AnimationControllerHotReloadPreservesStableState", TestAnimationControllerHotReloadPreservesStableState },
+		{ "LocalPoseSamplingAndComposition", TestLocalPoseSamplingAndComposition }
 	};
 
 	for (const auto& test : tests)

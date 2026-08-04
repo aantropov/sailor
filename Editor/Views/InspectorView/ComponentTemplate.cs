@@ -30,9 +30,14 @@ public class ComponentTemplate : DataTemplate
                 HorizontalOptions = LayoutOptions.Fill,
                 MinimumWidthRequest = 0
             };
+            IDispatcherTimer? animatorRuntimeTimer = null;
+            props.Loaded += (_, _) => animatorRuntimeTimer?.Start();
+            props.Unloaded += (_, _) => animatorRuntimeTimer?.Stop();
 
             props.BindingContextChanged += (sender, args) =>
             {
+                animatorRuntimeTimer?.Stop();
+                animatorRuntimeTimer = null;
                 if (((Grid)sender).BindingContext is not Component component)
                 {
                     props.Children.Clear();
@@ -228,10 +233,187 @@ public class ComponentTemplate : DataTemplate
 
                     Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
                 }
+
+                if (component.Typename.Name == "Sailor::AnimatorComponent")
+                {
+                    animatorRuntimeTimer = AddAnimatorRuntimeControls(props, component);
+                    if (props.IsLoaded)
+                    {
+                        animatorRuntimeTimer.Start();
+                    }
+                }
             };
 
             return props;
         };
+    }
+
+    static IDispatcherTimer AddAnimatorRuntimeControls(Grid props, Component component)
+    {
+        var heading = new Label
+        {
+            Text = "Runtime Controller",
+            FontAttributes = FontAttributes.Bold,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        Templates.AddGridRow(props, heading, GridLength.Auto);
+        Grid.SetColumnSpan(heading, props.ColumnDefinitions.Count);
+
+        var stateLabel = new Label
+        {
+            Text = "No controller",
+            TextColor = Color.FromArgb("#929AA5"),
+            FontSize = 11
+        };
+        Templates.AddGridRow(props, stateLabel, GridLength.Auto);
+        Grid.SetColumnSpan(stateLabel, props.ColumnDefinitions.Count);
+
+        var controllerFile = ResolveAnimationController(component);
+        if (controllerFile is not null)
+        {
+            foreach (var parameter in controllerFile.Parameters)
+            {
+                View editor = parameter.Type switch
+                {
+                    AnimationControllerParameterType.Float =>
+                        CreateRuntimeFloatEditor(component, parameter),
+                    AnimationControllerParameterType.Int =>
+                        CreateRuntimeIntEditor(component, parameter),
+                    AnimationControllerParameterType.Bool =>
+                        CreateRuntimeBoolEditor(component, parameter),
+                    AnimationControllerParameterType.Trigger =>
+                        CreateRuntimeTriggerEditor(component, parameter),
+                    _ => new Label { Text = "Unsupported parameter" }
+                };
+                Templates.AddGridRowWithLabel(
+                    props,
+                    parameter.Name,
+                    editor,
+                    GridLength.Auto);
+            }
+        }
+
+        var timer = props.Dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(100);
+        var stateRequestPending = false;
+        timer.Tick += async (_, _) =>
+        {
+            if (stateRequestPending || component.InstanceId is null || component.InstanceId.IsEmpty())
+            {
+                return;
+            }
+            stateRequestPending = true;
+            try
+            {
+                var state = await MauiProgram.GetService<EngineService>()
+                    .GetAnimatorStateAsync(component.InstanceId);
+                if (state is null || !state.Value.HasController)
+                {
+                    stateLabel.Text = "No controller";
+                    return;
+                }
+                stateLabel.Text = state.Value.IsTransitioning
+                    ? $"{state.Value.ActiveStateName} → {state.Value.DestinationStateName}  {state.Value.TransitionAlpha:P0}"
+                    : $"{state.Value.ActiveStateName}  {state.Value.ActiveStateTime:F2}s";
+            }
+            catch (Exception exception)
+            {
+                stateLabel.Text = exception.Message;
+            }
+            finally
+            {
+                stateRequestPending = false;
+            }
+        };
+        return timer;
+    }
+
+    static AnimationControllerFile ResolveAnimationController(Component component)
+    {
+        if (!component.OverrideProperties.TryGetValue("controller", out var value) ||
+            value is not ObjectPtr controller || controller.FileId is null ||
+            controller.FileId.IsEmpty())
+        {
+            return null;
+        }
+        return MauiProgram.GetService<AssetsService>().Assets
+            .TryGetValue(controller.FileId, out var asset)
+            ? asset as AnimationControllerFile
+            : null;
+    }
+
+    static View CreateRuntimeFloatEditor(
+        Component component,
+        AnimationControllerParameter parameter)
+    {
+        var entry = new Entry
+        {
+            Text = parameter.DefaultFloat.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Keyboard = Keyboard.Numeric,
+            ReturnType = ReturnType.Done
+        };
+        entry.Completed += (_, _) => entry.Unfocus();
+        entry.Unfocused += (_, _) =>
+        {
+            if (float.TryParse(
+                    entry.Text,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var value))
+            {
+                _ = MauiProgram.GetService<EngineService>()
+                    .SetAnimatorFloatAsync(component.InstanceId, parameter.Name, value);
+            }
+        };
+        return entry;
+    }
+
+    static View CreateRuntimeIntEditor(
+        Component component,
+        AnimationControllerParameter parameter)
+    {
+        var entry = new Entry
+        {
+            Text = parameter.DefaultInt.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Keyboard = Keyboard.Numeric,
+            ReturnType = ReturnType.Done
+        };
+        entry.Completed += (_, _) => entry.Unfocus();
+        entry.Unfocused += (_, _) =>
+        {
+            if (int.TryParse(entry.Text, out var value))
+            {
+                _ = MauiProgram.GetService<EngineService>()
+                    .SetAnimatorIntAsync(component.InstanceId, parameter.Name, value);
+            }
+        };
+        return entry;
+    }
+
+    static View CreateRuntimeBoolEditor(
+        Component component,
+        AnimationControllerParameter parameter)
+    {
+        var check = new CheckBox { IsChecked = parameter.DefaultBool };
+        check.CheckedChanged += (_, args) =>
+        {
+            _ = MauiProgram.GetService<EngineService>()
+                .SetAnimatorBoolAsync(component.InstanceId, parameter.Name, args.Value);
+        };
+        return check;
+    }
+
+    static View CreateRuntimeTriggerEditor(
+        Component component,
+        AnimationControllerParameter parameter)
+    {
+        var fire = new Button { Text = "Fire", HeightRequest = 30 };
+        fire.Clicked += (_, _) =>
+        {
+            _ = MauiProgram.GetService<EngineService>()
+                .SetAnimatorTriggerAsync(component.InstanceId, parameter.Name);
+        };
+        return fire;
     }
 
     static string FormatComponentTypeName(string typeName)

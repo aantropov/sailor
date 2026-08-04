@@ -59,6 +59,12 @@ namespace v1 {
 class AddComponentRequest;
 struct AddComponentRequestDefaultTypeInternal;
 extern AddComponentRequestDefaultTypeInternal _AddComponentRequest_default_instance_;
+class AnimatorParameterRequest;
+struct AnimatorParameterRequestDefaultTypeInternal;
+extern AnimatorParameterRequestDefaultTypeInternal _AnimatorParameterRequest_default_instance_;
+class AnimatorStateResult;
+struct AnimatorStateResultDefaultTypeInternal;
+extern AnimatorStateResultDefaultTypeInternal _AnimatorStateResult_default_instance_;
 class AssetReloadStateResult;
 struct AssetReloadStateResultDefaultTypeInternal;
 extern AssetReloadStateResultDefaultTypeInternal _AssetReloadStateResult_default_instance_;
@@ -340,7 +346,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateResult*>(
         &_ViewportToolStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 38;
+  static constexpr int kIndexInFileMessages = 39;
   friend void swap(ViewportToolStateResult& a, ViewportToolStateResult& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateResult* other) {
     if (other == this) return;
@@ -542,7 +548,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateRequest*>(
         &_ViewportToolStateRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 25;
+  static constexpr int kIndexInFileMessages = 26;
   friend void swap(ViewportToolStateRequest& a, ViewportToolStateRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateRequest* other) {
     if (other == this) return;
@@ -756,7 +762,7 @@ class ViewportToolShortcutEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolShortcutEvent*>(
         &_ViewportToolShortcutEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 43;
+  static constexpr int kIndexInFileMessages = 45;
   friend void swap(ViewportToolShortcutEvent& a, ViewportToolShortcutEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportToolShortcutEvent* other) {
     if (other == this) return;
@@ -946,7 +952,7 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportSelectionEvent*>(
         &_ViewportSelectionEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 40;
+  static constexpr int kIndexInFileMessages = 42;
   friend void swap(ViewportSelectionEvent& a, ViewportSelectionEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportSelectionEvent* other) {
     if (other == this) return;
@@ -1368,7 +1374,7 @@ class ViewportRayRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportRayRequest*>(
         &_ViewportRayRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 21;
+  static constexpr int kIndexInFileMessages = 22;
   friend void swap(ViewportRayRequest& a, ViewportRayRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportRayRequest* other) {
     if (other == this) return;
@@ -1582,7 +1588,7 @@ class ViewportObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportObjectRequest*>(
         &_ViewportObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 23;
+  static constexpr int kIndexInFileMessages = 24;
   friend void swap(ViewportObjectRequest& a, ViewportObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportObjectRequest* other) {
     if (other == this) return;
@@ -1980,7 +1986,7 @@ class ViewportAssetDropEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportAssetDropEvent*>(
         &_ViewportAssetDropEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 42;
+  static constexpr int kIndexInFileMessages = 44;
   friend void swap(ViewportAssetDropEvent& a, ViewportAssetDropEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportAssetDropEvent* other) {
     if (other == this) return;
@@ -2200,7 +2206,7 @@ class Vector4 final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4*>(
         &_Vector4_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 39;
+  static constexpr int kIndexInFileMessages = 41;
   friend void swap(Vector4& a, Vector4& b) { a.Swap(&b); }
   inline void Swap(Vector4* other) {
     if (other == this) return;
@@ -2640,7 +2646,7 @@ class UInt64Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt64Result*>(
         &_UInt64Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 32;
+  static constexpr int kIndexInFileMessages = 33;
   friend void swap(UInt64Result& a, UInt64Result& b) { a.Swap(&b); }
   inline void Swap(UInt64Result* other) {
     if (other == this) return;
@@ -2830,7 +2836,7 @@ class UInt32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt32Result*>(
         &_UInt32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 31;
+  static constexpr int kIndexInFileMessages = 32;
   friend void swap(UInt32Result& a, UInt32Result& b) { a.Swap(&b); }
   inline void Swap(UInt32Result* other) {
     if (other == this) return;
@@ -3020,7 +3026,7 @@ class StringResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringResult*>(
         &_StringResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 33;
+  static constexpr int kIndexInFileMessages = 34;
   friend void swap(StringResult& a, StringResult& b) { a.Swap(&b); }
   inline void Swap(StringResult* other) {
     if (other == this) return;
@@ -3228,7 +3234,7 @@ class StringListResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringListResult*>(
         &_StringListResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 34;
+  static constexpr int kIndexInFileMessages = 35;
   friend void swap(StringListResult& a, StringListResult& b) { a.Swap(&b); }
   inline void Swap(StringListResult* other) {
     if (other == this) return;
@@ -3632,7 +3638,7 @@ class ShowMainWindowRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ShowMainWindowRequest*>(
         &_ShowMainWindowRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 27;
+  static constexpr int kIndexInFileMessages = 28;
   friend void swap(ShowMainWindowRequest& a, ShowMainWindowRequest& b) { a.Swap(&b); }
   inline void Swap(ShowMainWindowRequest* other) {
     if (other == this) return;
@@ -3822,7 +3828,7 @@ class SelectionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const SelectionRequest*>(
         &_SelectionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 26;
+  static constexpr int kIndexInFileMessages = 27;
   friend void swap(SelectionRequest& a, SelectionRequest& b) { a.Swap(&b); }
   inline void Swap(SelectionRequest* other) {
     if (other == this) return;
@@ -4250,7 +4256,7 @@ class RenderPathTracedImageRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RenderPathTracedImageRequest*>(
         &_RenderPathTracedImageRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 28;
+  static constexpr int kIndexInFileMessages = 29;
   friend void swap(RenderPathTracedImageRequest& a, RenderPathTracedImageRequest& b) { a.Swap(&b); }
   inline void Swap(RenderPathTracedImageRequest* other) {
     if (other == this) return;
@@ -5298,7 +5304,7 @@ class PrefabLinkRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const PrefabLinkRequest*>(
         &_PrefabLinkRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 24;
+  static constexpr int kIndexInFileMessages = 25;
   friend void swap(PrefabLinkRequest& a, PrefabLinkRequest& b) { a.Swap(&b); }
   inline void Swap(PrefabLinkRequest* other) {
     if (other == this) return;
@@ -5720,7 +5726,7 @@ class Int32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Int32Result*>(
         &_Int32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 30;
+  static constexpr int kIndexInFileMessages = 31;
   friend void swap(Int32Result& a, Int32Result& b) { a.Swap(&b); }
   inline void Swap(Int32Result* other) {
     if (other == this) return;
@@ -5910,7 +5916,7 @@ class InstantiatePrefabRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const InstantiatePrefabRequest*>(
         &_InstantiatePrefabRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 19;
+  static constexpr int kIndexInFileMessages = 20;
   friend void swap(InstantiatePrefabRequest& a, InstantiatePrefabRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabRequest* other) {
     if (other == this) return;
@@ -6124,7 +6130,7 @@ class InstantiatePrefabFromYamlRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabFromYamlRequest*>(
         &_InstantiatePrefabFromYamlRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 20;
+  static constexpr int kIndexInFileMessages = 21;
   friend void swap(InstantiatePrefabFromYamlRequest& a, InstantiatePrefabFromYamlRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabFromYamlRequest* other) {
     if (other == this) return;
@@ -6350,7 +6356,7 @@ class InstanceIdResult final : public ::google::protobuf::Message
     return reinterpret_cast<const InstanceIdResult*>(
         &_InstanceIdResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 36;
+  static constexpr int kIndexInFileMessages = 37;
   friend void swap(InstanceIdResult& a, InstanceIdResult& b) { a.Swap(&b); }
   inline void Swap(InstanceIdResult* other) {
     if (other == this) return;
@@ -7701,7 +7707,7 @@ class BoolResult final : public ::google::protobuf::Message
     return reinterpret_cast<const BoolResult*>(
         &_BoolResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 29;
+  static constexpr int kIndexInFileMessages = 30;
   friend void swap(BoolResult& a, BoolResult& b) { a.Swap(&b); }
   inline void Swap(BoolResult* other) {
     if (other == this) return;
@@ -7891,7 +7897,7 @@ class AssetReloadStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AssetReloadStateResult*>(
         &_AssetReloadStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 35;
+  static constexpr int kIndexInFileMessages = 36;
   friend void swap(AssetReloadStateResult& a, AssetReloadStateResult& b) { a.Swap(&b); }
   inline void Swap(AssetReloadStateResult* other) {
     if (other == this) return;
@@ -8050,6 +8056,316 @@ class AssetReloadStateResult final : public ::google::protobuf::Message
     ::uint64_t completed_generation_;
     ::uint64_t successful_generation_;
     bool available_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
+class AnimatorStateResult final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.AnimatorStateResult) */ {
+ public:
+  inline AnimatorStateResult() : AnimatorStateResult(nullptr) {}
+  ~AnimatorStateResult() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(AnimatorStateResult* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(AnimatorStateResult));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR AnimatorStateResult(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline AnimatorStateResult(const AnimatorStateResult& from) : AnimatorStateResult(nullptr, from) {}
+  inline AnimatorStateResult(AnimatorStateResult&& from) noexcept
+      : AnimatorStateResult(nullptr, std::move(from)) {}
+  inline AnimatorStateResult& operator=(const AnimatorStateResult& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline AnimatorStateResult& operator=(AnimatorStateResult&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const AnimatorStateResult& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const AnimatorStateResult* internal_default_instance() {
+    return reinterpret_cast<const AnimatorStateResult*>(
+        &_AnimatorStateResult_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 40;
+  friend void swap(AnimatorStateResult& a, AnimatorStateResult& b) { a.Swap(&b); }
+  inline void Swap(AnimatorStateResult* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(AnimatorStateResult* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  AnimatorStateResult* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<AnimatorStateResult>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const AnimatorStateResult& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const AnimatorStateResult& from) { AnimatorStateResult::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(AnimatorStateResult* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.AnimatorStateResult"; }
+
+ protected:
+  explicit AnimatorStateResult(::google::protobuf::Arena* arena);
+  AnimatorStateResult(::google::protobuf::Arena* arena, const AnimatorStateResult& from);
+  AnimatorStateResult(::google::protobuf::Arena* arena, AnimatorStateResult&& from) noexcept
+      : AnimatorStateResult(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kActiveStateNameFieldNumber = 4,
+    kDestinationStateNameFieldNumber = 8,
+    kControllerRevisionFieldNumber = 2,
+    kActiveStateIdFieldNumber = 3,
+    kHasControllerFieldNumber = 1,
+    kTransitioningFieldNumber = 6,
+    kActiveStateTimeFieldNumber = 5,
+    kDestinationStateIdFieldNumber = 7,
+    kDestinationStateTimeFieldNumber = 9,
+    kTransitionAlphaFieldNumber = 10,
+  };
+  // string active_state_name = 4;
+  void clear_active_state_name() ;
+  const std::string& active_state_name() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_active_state_name(Arg_&& arg, Args_... args);
+  std::string* mutable_active_state_name();
+  PROTOBUF_NODISCARD std::string* release_active_state_name();
+  void set_allocated_active_state_name(std::string* value);
+
+  private:
+  const std::string& _internal_active_state_name() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_active_state_name(
+      const std::string& value);
+  std::string* _internal_mutable_active_state_name();
+
+  public:
+  // string destination_state_name = 8;
+  void clear_destination_state_name() ;
+  const std::string& destination_state_name() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_destination_state_name(Arg_&& arg, Args_... args);
+  std::string* mutable_destination_state_name();
+  PROTOBUF_NODISCARD std::string* release_destination_state_name();
+  void set_allocated_destination_state_name(std::string* value);
+
+  private:
+  const std::string& _internal_destination_state_name() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_destination_state_name(
+      const std::string& value);
+  std::string* _internal_mutable_destination_state_name();
+
+  public:
+  // uint64 controller_revision = 2;
+  void clear_controller_revision() ;
+  ::uint64_t controller_revision() const;
+  void set_controller_revision(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_controller_revision() const;
+  void _internal_set_controller_revision(::uint64_t value);
+
+  public:
+  // uint64 active_state_id = 3;
+  void clear_active_state_id() ;
+  ::uint64_t active_state_id() const;
+  void set_active_state_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_active_state_id() const;
+  void _internal_set_active_state_id(::uint64_t value);
+
+  public:
+  // bool has_controller = 1;
+  void clear_has_controller() ;
+  bool has_controller() const;
+  void set_has_controller(bool value);
+
+  private:
+  bool _internal_has_controller() const;
+  void _internal_set_has_controller(bool value);
+
+  public:
+  // bool transitioning = 6;
+  void clear_transitioning() ;
+  bool transitioning() const;
+  void set_transitioning(bool value);
+
+  private:
+  bool _internal_transitioning() const;
+  void _internal_set_transitioning(bool value);
+
+  public:
+  // float active_state_time = 5;
+  void clear_active_state_time() ;
+  float active_state_time() const;
+  void set_active_state_time(float value);
+
+  private:
+  float _internal_active_state_time() const;
+  void _internal_set_active_state_time(float value);
+
+  public:
+  // uint64 destination_state_id = 7;
+  void clear_destination_state_id() ;
+  ::uint64_t destination_state_id() const;
+  void set_destination_state_id(::uint64_t value);
+
+  private:
+  ::uint64_t _internal_destination_state_id() const;
+  void _internal_set_destination_state_id(::uint64_t value);
+
+  public:
+  // float destination_state_time = 9;
+  void clear_destination_state_time() ;
+  float destination_state_time() const;
+  void set_destination_state_time(float value);
+
+  private:
+  float _internal_destination_state_time() const;
+  void _internal_set_destination_state_time(float value);
+
+  public:
+  // float transition_alpha = 10;
+  void clear_transition_alpha() ;
+  float transition_alpha() const;
+  void set_transition_alpha(float value);
+
+  private:
+  float _internal_transition_alpha() const;
+  void _internal_set_transition_alpha(float value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.AnimatorStateResult)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      4, 10, 0,
+      92, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const AnimatorStateResult& from_msg);
+    ::google::protobuf::internal::ArenaStringPtr active_state_name_;
+    ::google::protobuf::internal::ArenaStringPtr destination_state_name_;
+    ::uint64_t controller_revision_;
+    ::uint64_t active_state_id_;
+    bool has_controller_;
+    bool transitioning_;
+    float active_state_time_;
+    ::uint64_t destination_state_id_;
+    float destination_state_time_;
+    float transition_alpha_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -8349,7 +8665,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportTransformEvent*>(
         &_ViewportTransformEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 41;
+  static constexpr int kIndexInFileMessages = 43;
   friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportTransformEvent* other) {
     if (other == this) return;
@@ -8672,7 +8988,7 @@ class Vector4Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4Result*>(
         &_Vector4Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 37;
+  static constexpr int kIndexInFileMessages = 38;
   friend void swap(Vector4Result& a, Vector4Result& b) { a.Swap(&b); }
   inline void Swap(Vector4Result* other) {
     if (other == this) return;
@@ -8868,7 +9184,7 @@ class InstantiatePrefabInstanceRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabInstanceRequest*>(
         &_InstantiatePrefabInstanceRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 22;
+  static constexpr int kIndexInFileMessages = 23;
   friend void swap(InstantiatePrefabInstanceRequest& a, InstantiatePrefabInstanceRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabInstanceRequest* other) {
     if (other == this) return;
@@ -9345,6 +9661,323 @@ class CreateModelInstanceRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
+class AnimatorParameterRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.AnimatorParameterRequest) */ {
+ public:
+  inline AnimatorParameterRequest() : AnimatorParameterRequest(nullptr) {}
+  ~AnimatorParameterRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(AnimatorParameterRequest* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(AnimatorParameterRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR AnimatorParameterRequest(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline AnimatorParameterRequest(const AnimatorParameterRequest& from) : AnimatorParameterRequest(nullptr, from) {}
+  inline AnimatorParameterRequest(AnimatorParameterRequest&& from) noexcept
+      : AnimatorParameterRequest(nullptr, std::move(from)) {}
+  inline AnimatorParameterRequest& operator=(const AnimatorParameterRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline AnimatorParameterRequest& operator=(AnimatorParameterRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const AnimatorParameterRequest& default_instance() {
+    return *internal_default_instance();
+  }
+  enum ValueCase {
+    kFloatValue = 3,
+    kIntValue = 4,
+    kBoolValue = 5,
+    kTrigger = 6,
+    kResetTrigger = 7,
+    VALUE_NOT_SET = 0,
+  };
+  static inline const AnimatorParameterRequest* internal_default_instance() {
+    return reinterpret_cast<const AnimatorParameterRequest*>(
+        &_AnimatorParameterRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 19;
+  friend void swap(AnimatorParameterRequest& a, AnimatorParameterRequest& b) { a.Swap(&b); }
+  inline void Swap(AnimatorParameterRequest* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(AnimatorParameterRequest* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  AnimatorParameterRequest* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<AnimatorParameterRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const AnimatorParameterRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const AnimatorParameterRequest& from) { AnimatorParameterRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(AnimatorParameterRequest* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.AnimatorParameterRequest"; }
+
+ protected:
+  explicit AnimatorParameterRequest(::google::protobuf::Arena* arena);
+  AnimatorParameterRequest(::google::protobuf::Arena* arena, const AnimatorParameterRequest& from);
+  AnimatorParameterRequest(::google::protobuf::Arena* arena, AnimatorParameterRequest&& from) noexcept
+      : AnimatorParameterRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kInstanceIdFieldNumber = 1,
+    kNameFieldNumber = 2,
+    kFloatValueFieldNumber = 3,
+    kIntValueFieldNumber = 4,
+    kBoolValueFieldNumber = 5,
+    kTriggerFieldNumber = 6,
+    kResetTriggerFieldNumber = 7,
+  };
+  // string instance_id = 1;
+  void clear_instance_id() ;
+  const std::string& instance_id() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_instance_id(Arg_&& arg, Args_... args);
+  std::string* mutable_instance_id();
+  PROTOBUF_NODISCARD std::string* release_instance_id();
+  void set_allocated_instance_id(std::string* value);
+
+  private:
+  const std::string& _internal_instance_id() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_instance_id(
+      const std::string& value);
+  std::string* _internal_mutable_instance_id();
+
+  public:
+  // string name = 2;
+  void clear_name() ;
+  const std::string& name() const;
+  template <typename Arg_ = const std::string&, typename... Args_>
+  void set_name(Arg_&& arg, Args_... args);
+  std::string* mutable_name();
+  PROTOBUF_NODISCARD std::string* release_name();
+  void set_allocated_name(std::string* value);
+
+  private:
+  const std::string& _internal_name() const;
+  inline PROTOBUF_ALWAYS_INLINE void _internal_set_name(
+      const std::string& value);
+  std::string* _internal_mutable_name();
+
+  public:
+  // float float_value = 3;
+  bool has_float_value() const;
+  void clear_float_value() ;
+  float float_value() const;
+  void set_float_value(float value);
+
+  private:
+  float _internal_float_value() const;
+  void _internal_set_float_value(float value);
+
+  public:
+  // sint32 int_value = 4;
+  bool has_int_value() const;
+  void clear_int_value() ;
+  ::int32_t int_value() const;
+  void set_int_value(::int32_t value);
+
+  private:
+  ::int32_t _internal_int_value() const;
+  void _internal_set_int_value(::int32_t value);
+
+  public:
+  // bool bool_value = 5;
+  bool has_bool_value() const;
+  void clear_bool_value() ;
+  bool bool_value() const;
+  void set_bool_value(bool value);
+
+  private:
+  bool _internal_bool_value() const;
+  void _internal_set_bool_value(bool value);
+
+  public:
+  // .sailor.editor.v1.Empty trigger = 6;
+  bool has_trigger() const;
+  private:
+  bool _internal_has_trigger() const;
+
+  public:
+  void clear_trigger() ;
+  const ::sailor::editor::v1::Empty& trigger() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::Empty* release_trigger();
+  ::sailor::editor::v1::Empty* mutable_trigger();
+  void set_allocated_trigger(::sailor::editor::v1::Empty* value);
+  void unsafe_arena_set_allocated_trigger(::sailor::editor::v1::Empty* value);
+  ::sailor::editor::v1::Empty* unsafe_arena_release_trigger();
+
+  private:
+  const ::sailor::editor::v1::Empty& _internal_trigger() const;
+  ::sailor::editor::v1::Empty* _internal_mutable_trigger();
+
+  public:
+  // .sailor.editor.v1.Empty reset_trigger = 7;
+  bool has_reset_trigger() const;
+  private:
+  bool _internal_has_reset_trigger() const;
+
+  public:
+  void clear_reset_trigger() ;
+  const ::sailor::editor::v1::Empty& reset_trigger() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::Empty* release_reset_trigger();
+  ::sailor::editor::v1::Empty* mutable_reset_trigger();
+  void set_allocated_reset_trigger(::sailor::editor::v1::Empty* value);
+  void unsafe_arena_set_allocated_reset_trigger(::sailor::editor::v1::Empty* value);
+  ::sailor::editor::v1::Empty* unsafe_arena_release_reset_trigger();
+
+  private:
+  const ::sailor::editor::v1::Empty& _internal_reset_trigger() const;
+  ::sailor::editor::v1::Empty* _internal_mutable_reset_trigger();
+
+  public:
+  void clear_value();
+  ValueCase value_case() const;
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.AnimatorParameterRequest)
+ private:
+  class _Internal;
+  void set_has_float_value();
+  void set_has_int_value();
+  void set_has_bool_value();
+  void set_has_trigger();
+  void set_has_reset_trigger();
+  inline bool has_value() const;
+  inline void clear_has_value();
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      1, 7, 2,
+      65, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const AnimatorParameterRequest& from_msg);
+    ::google::protobuf::internal::ArenaStringPtr instance_id_;
+    ::google::protobuf::internal::ArenaStringPtr name_;
+    union ValueUnion {
+      constexpr ValueUnion() : _constinit_{} {}
+      ::google::protobuf::internal::ConstantInitialized _constinit_;
+      float float_value_;
+      ::int32_t int_value_;
+      bool bool_value_;
+      ::sailor::editor::v1::Empty* trigger_;
+      ::sailor::editor::v1::Empty* reset_trigger_;
+    } value_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::uint32_t _oneof_case_[1];
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
 class ViewportEvent final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.ViewportEvent) */ {
  public:
@@ -9411,7 +10044,7 @@ class ViewportEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEvent*>(
         &_ViewportEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 44;
+  static constexpr int kIndexInFileMessages = 46;
   friend void swap(ViewportEvent& a, ViewportEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportEvent* other) {
     if (other == this) return;
@@ -9755,6 +10388,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetViewportToolState = 56,
     kUpdateAsset = 57,
     kCreateModelInstance = 58,
+    kSetAnimatorParameter = 59,
+    kGetAnimatorState = 60,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -9898,6 +10533,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetViewportToolStateFieldNumber = 56,
     kUpdateAssetFieldNumber = 57,
     kCreateModelInstanceFieldNumber = 58,
+    kSetAnimatorParameterFieldNumber = 59,
+    kGetAnimatorStateFieldNumber = 60,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -10831,6 +11468,44 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::CreateModelInstanceRequest* _internal_mutable_create_model_instance();
 
   public:
+  // .sailor.editor.v1.AnimatorParameterRequest set_animator_parameter = 59;
+  bool has_set_animator_parameter() const;
+  private:
+  bool _internal_has_set_animator_parameter() const;
+
+  public:
+  void clear_set_animator_parameter() ;
+  const ::sailor::editor::v1::AnimatorParameterRequest& set_animator_parameter() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::AnimatorParameterRequest* release_set_animator_parameter();
+  ::sailor::editor::v1::AnimatorParameterRequest* mutable_set_animator_parameter();
+  void set_allocated_set_animator_parameter(::sailor::editor::v1::AnimatorParameterRequest* value);
+  void unsafe_arena_set_allocated_set_animator_parameter(::sailor::editor::v1::AnimatorParameterRequest* value);
+  ::sailor::editor::v1::AnimatorParameterRequest* unsafe_arena_release_set_animator_parameter();
+
+  private:
+  const ::sailor::editor::v1::AnimatorParameterRequest& _internal_set_animator_parameter() const;
+  ::sailor::editor::v1::AnimatorParameterRequest* _internal_mutable_set_animator_parameter();
+
+  public:
+  // .sailor.editor.v1.InstanceIdRequest get_animator_state = 60;
+  bool has_get_animator_state() const;
+  private:
+  bool _internal_has_get_animator_state() const;
+
+  public:
+  void clear_get_animator_state() ;
+  const ::sailor::editor::v1::InstanceIdRequest& get_animator_state() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::InstanceIdRequest* release_get_animator_state();
+  ::sailor::editor::v1::InstanceIdRequest* mutable_get_animator_state();
+  void set_allocated_get_animator_state(::sailor::editor::v1::InstanceIdRequest* value);
+  void unsafe_arena_set_allocated_get_animator_state(::sailor::editor::v1::InstanceIdRequest* value);
+  ::sailor::editor::v1::InstanceIdRequest* unsafe_arena_release_get_animator_state();
+
+  private:
+  const ::sailor::editor::v1::InstanceIdRequest& _internal_get_animator_state() const;
+  ::sailor::editor::v1::InstanceIdRequest* _internal_mutable_get_animator_state();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -10884,11 +11559,13 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_get_viewport_tool_state();
   void set_has_update_asset();
   void set_has_create_model_instance();
+  void set_has_set_animator_parameter();
+  void set_has_get_animator_state();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 50, 48,
+      1, 52, 50,
       0, 9>
       _table_;
 
@@ -10959,6 +11636,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::ViewportIdRequest* get_viewport_tool_state_;
       ::sailor::editor::v1::FileIdRequest* update_asset_;
       ::sailor::editor::v1::CreateModelInstanceRequest* create_model_instance_;
+      ::sailor::editor::v1::AnimatorParameterRequest* set_animator_parameter_;
+      ::sailor::editor::v1::InstanceIdRequest* get_animator_state_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -11028,7 +11707,7 @@ class ViewportEventBatchResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEventBatchResult*>(
         &_ViewportEventBatchResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 45;
+  static constexpr int kIndexInFileMessages = 47;
   friend void swap(ViewportEventBatchResult& a, ViewportEventBatchResult& b) { a.Swap(&b); }
   inline void Swap(ViewportEventBatchResult* other) {
     if (other == this) return;
@@ -11234,6 +11913,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kViewportEventBatchResult = 19,
     kVector4Result = 20,
     kViewportToolStateResult = 21,
+    kAnimatorStateResult = 22,
     RESULT_NOT_SET = 0,
   };
   static inline const ProtocolResponse* internal_default_instance() {
@@ -11344,6 +12024,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kViewportEventBatchResultFieldNumber = 19,
     kVector4ResultFieldNumber = 20,
     kViewportToolStateResultFieldNumber = 21,
+    kAnimatorStateResultFieldNumber = 22,
   };
   // string error = 4;
   void clear_error() ;
@@ -11629,6 +12310,25 @@ class ProtocolResponse final : public ::google::protobuf::Message
   ::sailor::editor::v1::ViewportToolStateResult* _internal_mutable_viewport_tool_state_result();
 
   public:
+  // .sailor.editor.v1.AnimatorStateResult animator_state_result = 22;
+  bool has_animator_state_result() const;
+  private:
+  bool _internal_has_animator_state_result() const;
+
+  public:
+  void clear_animator_state_result() ;
+  const ::sailor::editor::v1::AnimatorStateResult& animator_state_result() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::AnimatorStateResult* release_animator_state_result();
+  ::sailor::editor::v1::AnimatorStateResult* mutable_animator_state_result();
+  void set_allocated_animator_state_result(::sailor::editor::v1::AnimatorStateResult* value);
+  void unsafe_arena_set_allocated_animator_state_result(::sailor::editor::v1::AnimatorStateResult* value);
+  ::sailor::editor::v1::AnimatorStateResult* unsafe_arena_release_animator_state_result();
+
+  private:
+  const ::sailor::editor::v1::AnimatorStateResult& _internal_animator_state_result() const;
+  ::sailor::editor::v1::AnimatorStateResult* _internal_mutable_animator_state_result();
+
+  public:
   void clear_result();
   ResultCase result_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolResponse)
@@ -11646,11 +12346,12 @@ class ProtocolResponse final : public ::google::protobuf::Message
   void set_has_viewport_event_batch_result();
   void set_has_vector4_result();
   void set_has_viewport_tool_state_result();
+  void set_has_animator_state_result();
   inline bool has_result() const;
   inline void clear_has_result();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      3, 17, 12,
+      3, 18, 13,
       63, 2>
       _table_;
 
@@ -11688,6 +12389,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
       ::sailor::editor::v1::ViewportEventBatchResult* viewport_event_batch_result_;
       ::sailor::editor::v1::Vector4Result* vector4_result_;
       ::sailor::editor::v1::ViewportToolStateResult* viewport_tool_state_result_;
+      ::sailor::editor::v1::AnimatorStateResult* animator_state_result_;
     } result_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -15553,6 +16255,164 @@ inline ::sailor::editor::v1::CreateModelInstanceRequest* ProtocolRequest::mutabl
   return _msg;
 }
 
+// .sailor.editor.v1.AnimatorParameterRequest set_animator_parameter = 59;
+inline bool ProtocolRequest::has_set_animator_parameter() const {
+  return command_case() == kSetAnimatorParameter;
+}
+inline bool ProtocolRequest::_internal_has_set_animator_parameter() const {
+  return command_case() == kSetAnimatorParameter;
+}
+inline void ProtocolRequest::set_has_set_animator_parameter() {
+  _impl_._oneof_case_[0] = kSetAnimatorParameter;
+}
+inline void ProtocolRequest::clear_set_animator_parameter() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kSetAnimatorParameter) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.set_animator_parameter_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.set_animator_parameter_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::AnimatorParameterRequest* ProtocolRequest::release_set_animator_parameter() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.set_animator_parameter)
+  if (command_case() == kSetAnimatorParameter) {
+    clear_has_command();
+    auto* temp = _impl_.command_.set_animator_parameter_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.set_animator_parameter_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::AnimatorParameterRequest& ProtocolRequest::_internal_set_animator_parameter() const {
+  return command_case() == kSetAnimatorParameter ? *_impl_.command_.set_animator_parameter_ : reinterpret_cast<::sailor::editor::v1::AnimatorParameterRequest&>(::sailor::editor::v1::_AnimatorParameterRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::AnimatorParameterRequest& ProtocolRequest::set_animator_parameter() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.set_animator_parameter)
+  return _internal_set_animator_parameter();
+}
+inline ::sailor::editor::v1::AnimatorParameterRequest* ProtocolRequest::unsafe_arena_release_set_animator_parameter() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.set_animator_parameter)
+  if (command_case() == kSetAnimatorParameter) {
+    clear_has_command();
+    auto* temp = _impl_.command_.set_animator_parameter_;
+    _impl_.command_.set_animator_parameter_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_set_animator_parameter(::sailor::editor::v1::AnimatorParameterRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_set_animator_parameter();
+    _impl_.command_.set_animator_parameter_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.set_animator_parameter)
+}
+inline ::sailor::editor::v1::AnimatorParameterRequest* ProtocolRequest::_internal_mutable_set_animator_parameter() {
+  if (command_case() != kSetAnimatorParameter) {
+    clear_command();
+    set_has_set_animator_parameter();
+    _impl_.command_.set_animator_parameter_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::AnimatorParameterRequest>(GetArena());
+  }
+  return _impl_.command_.set_animator_parameter_;
+}
+inline ::sailor::editor::v1::AnimatorParameterRequest* ProtocolRequest::mutable_set_animator_parameter() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::AnimatorParameterRequest* _msg = _internal_mutable_set_animator_parameter();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.set_animator_parameter)
+  return _msg;
+}
+
+// .sailor.editor.v1.InstanceIdRequest get_animator_state = 60;
+inline bool ProtocolRequest::has_get_animator_state() const {
+  return command_case() == kGetAnimatorState;
+}
+inline bool ProtocolRequest::_internal_has_get_animator_state() const {
+  return command_case() == kGetAnimatorState;
+}
+inline void ProtocolRequest::set_has_get_animator_state() {
+  _impl_._oneof_case_[0] = kGetAnimatorState;
+}
+inline void ProtocolRequest::clear_get_animator_state() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kGetAnimatorState) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.get_animator_state_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.get_animator_state_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::InstanceIdRequest* ProtocolRequest::release_get_animator_state() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.get_animator_state)
+  if (command_case() == kGetAnimatorState) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_animator_state_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.get_animator_state_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::InstanceIdRequest& ProtocolRequest::_internal_get_animator_state() const {
+  return command_case() == kGetAnimatorState ? *_impl_.command_.get_animator_state_ : reinterpret_cast<::sailor::editor::v1::InstanceIdRequest&>(::sailor::editor::v1::_InstanceIdRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::InstanceIdRequest& ProtocolRequest::get_animator_state() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.get_animator_state)
+  return _internal_get_animator_state();
+}
+inline ::sailor::editor::v1::InstanceIdRequest* ProtocolRequest::unsafe_arena_release_get_animator_state() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.get_animator_state)
+  if (command_case() == kGetAnimatorState) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_animator_state_;
+    _impl_.command_.get_animator_state_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_get_animator_state(::sailor::editor::v1::InstanceIdRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_get_animator_state();
+    _impl_.command_.get_animator_state_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.get_animator_state)
+}
+inline ::sailor::editor::v1::InstanceIdRequest* ProtocolRequest::_internal_mutable_get_animator_state() {
+  if (command_case() != kGetAnimatorState) {
+    clear_command();
+    set_has_get_animator_state();
+    _impl_.command_.get_animator_state_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::InstanceIdRequest>(GetArena());
+  }
+  return _impl_.command_.get_animator_state_;
+}
+inline ::sailor::editor::v1::InstanceIdRequest* ProtocolRequest::mutable_get_animator_state() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::InstanceIdRequest* _msg = _internal_mutable_get_animator_state();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.get_animator_state)
+  return _msg;
+}
+
 inline bool ProtocolRequest::has_command() const {
   return command_case() != COMMAND_NOT_SET;
 }
@@ -16647,6 +17507,85 @@ inline ::sailor::editor::v1::ViewportToolStateResult* ProtocolResponse::_interna
 inline ::sailor::editor::v1::ViewportToolStateResult* ProtocolResponse::mutable_viewport_tool_state_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::ViewportToolStateResult* _msg = _internal_mutable_viewport_tool_state_result();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.viewport_tool_state_result)
+  return _msg;
+}
+
+// .sailor.editor.v1.AnimatorStateResult animator_state_result = 22;
+inline bool ProtocolResponse::has_animator_state_result() const {
+  return result_case() == kAnimatorStateResult;
+}
+inline bool ProtocolResponse::_internal_has_animator_state_result() const {
+  return result_case() == kAnimatorStateResult;
+}
+inline void ProtocolResponse::set_has_animator_state_result() {
+  _impl_._oneof_case_[0] = kAnimatorStateResult;
+}
+inline void ProtocolResponse::clear_animator_state_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (result_case() == kAnimatorStateResult) {
+    if (GetArena() == nullptr) {
+      delete _impl_.result_.animator_state_result_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.result_.animator_state_result_);
+    }
+    clear_has_result();
+  }
+}
+inline ::sailor::editor::v1::AnimatorStateResult* ProtocolResponse::release_animator_state_result() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolResponse.animator_state_result)
+  if (result_case() == kAnimatorStateResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.animator_state_result_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.result_.animator_state_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::AnimatorStateResult& ProtocolResponse::_internal_animator_state_result() const {
+  return result_case() == kAnimatorStateResult ? *_impl_.result_.animator_state_result_ : reinterpret_cast<::sailor::editor::v1::AnimatorStateResult&>(::sailor::editor::v1::_AnimatorStateResult_default_instance_);
+}
+inline const ::sailor::editor::v1::AnimatorStateResult& ProtocolResponse::animator_state_result() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolResponse.animator_state_result)
+  return _internal_animator_state_result();
+}
+inline ::sailor::editor::v1::AnimatorStateResult* ProtocolResponse::unsafe_arena_release_animator_state_result() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolResponse.animator_state_result)
+  if (result_case() == kAnimatorStateResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.animator_state_result_;
+    _impl_.result_.animator_state_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolResponse::unsafe_arena_set_allocated_animator_state_result(::sailor::editor::v1::AnimatorStateResult* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_result();
+  if (value) {
+    set_has_animator_state_result();
+    _impl_.result_.animator_state_result_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolResponse.animator_state_result)
+}
+inline ::sailor::editor::v1::AnimatorStateResult* ProtocolResponse::_internal_mutable_animator_state_result() {
+  if (result_case() != kAnimatorStateResult) {
+    clear_result();
+    set_has_animator_state_result();
+    _impl_.result_.animator_state_result_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::AnimatorStateResult>(GetArena());
+  }
+  return _impl_.result_.animator_state_result_;
+}
+inline ::sailor::editor::v1::AnimatorStateResult* ProtocolResponse::mutable_animator_state_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::AnimatorStateResult* _msg = _internal_mutable_animator_state_result();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.animator_state_result)
   return _msg;
 }
 
@@ -18401,6 +19340,372 @@ inline void AddComponentRequest::set_allocated_preferred_instance_id(std::string
 
 // -------------------------------------------------------------------
 
+// AnimatorParameterRequest
+
+// string instance_id = 1;
+inline void AnimatorParameterRequest::clear_instance_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.instance_id_.ClearToEmpty();
+}
+inline const std::string& AnimatorParameterRequest::instance_id() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.instance_id)
+  return _internal_instance_id();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void AnimatorParameterRequest::set_instance_id(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.instance_id_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorParameterRequest.instance_id)
+}
+inline std::string* AnimatorParameterRequest::mutable_instance_id() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_instance_id();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorParameterRequest.instance_id)
+  return _s;
+}
+inline const std::string& AnimatorParameterRequest::_internal_instance_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.instance_id_.Get();
+}
+inline void AnimatorParameterRequest::_internal_set_instance_id(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.instance_id_.Set(value, GetArena());
+}
+inline std::string* AnimatorParameterRequest::_internal_mutable_instance_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.instance_id_.Mutable( GetArena());
+}
+inline std::string* AnimatorParameterRequest::release_instance_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorParameterRequest.instance_id)
+  return _impl_.instance_id_.Release();
+}
+inline void AnimatorParameterRequest::set_allocated_instance_id(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.instance_id_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.instance_id_.IsDefault()) {
+    _impl_.instance_id_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.AnimatorParameterRequest.instance_id)
+}
+
+// string name = 2;
+inline void AnimatorParameterRequest::clear_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.name_.ClearToEmpty();
+}
+inline const std::string& AnimatorParameterRequest::name() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.name)
+  return _internal_name();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void AnimatorParameterRequest::set_name(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorParameterRequest.name)
+}
+inline std::string* AnimatorParameterRequest::mutable_name() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_name();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorParameterRequest.name)
+  return _s;
+}
+inline const std::string& AnimatorParameterRequest::_internal_name() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.name_.Get();
+}
+inline void AnimatorParameterRequest::_internal_set_name(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.name_.Set(value, GetArena());
+}
+inline std::string* AnimatorParameterRequest::_internal_mutable_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.name_.Mutable( GetArena());
+}
+inline std::string* AnimatorParameterRequest::release_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorParameterRequest.name)
+  return _impl_.name_.Release();
+}
+inline void AnimatorParameterRequest::set_allocated_name(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.name_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.name_.IsDefault()) {
+    _impl_.name_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.AnimatorParameterRequest.name)
+}
+
+// float float_value = 3;
+inline bool AnimatorParameterRequest::has_float_value() const {
+  return value_case() == kFloatValue;
+}
+inline void AnimatorParameterRequest::set_has_float_value() {
+  _impl_._oneof_case_[0] = kFloatValue;
+}
+inline void AnimatorParameterRequest::clear_float_value() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value_case() == kFloatValue) {
+    _impl_.value_.float_value_ = 0;
+    clear_has_value();
+  }
+}
+inline float AnimatorParameterRequest::float_value() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.float_value)
+  return _internal_float_value();
+}
+inline void AnimatorParameterRequest::set_float_value(float value) {
+  if (value_case() != kFloatValue) {
+    clear_value();
+    set_has_float_value();
+  }
+  _impl_.value_.float_value_ = value;
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorParameterRequest.float_value)
+}
+inline float AnimatorParameterRequest::_internal_float_value() const {
+  if (value_case() == kFloatValue) {
+    return _impl_.value_.float_value_;
+  }
+  return 0;
+}
+
+// sint32 int_value = 4;
+inline bool AnimatorParameterRequest::has_int_value() const {
+  return value_case() == kIntValue;
+}
+inline void AnimatorParameterRequest::set_has_int_value() {
+  _impl_._oneof_case_[0] = kIntValue;
+}
+inline void AnimatorParameterRequest::clear_int_value() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value_case() == kIntValue) {
+    _impl_.value_.int_value_ = 0;
+    clear_has_value();
+  }
+}
+inline ::int32_t AnimatorParameterRequest::int_value() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.int_value)
+  return _internal_int_value();
+}
+inline void AnimatorParameterRequest::set_int_value(::int32_t value) {
+  if (value_case() != kIntValue) {
+    clear_value();
+    set_has_int_value();
+  }
+  _impl_.value_.int_value_ = value;
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorParameterRequest.int_value)
+}
+inline ::int32_t AnimatorParameterRequest::_internal_int_value() const {
+  if (value_case() == kIntValue) {
+    return _impl_.value_.int_value_;
+  }
+  return 0;
+}
+
+// bool bool_value = 5;
+inline bool AnimatorParameterRequest::has_bool_value() const {
+  return value_case() == kBoolValue;
+}
+inline void AnimatorParameterRequest::set_has_bool_value() {
+  _impl_._oneof_case_[0] = kBoolValue;
+}
+inline void AnimatorParameterRequest::clear_bool_value() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value_case() == kBoolValue) {
+    _impl_.value_.bool_value_ = false;
+    clear_has_value();
+  }
+}
+inline bool AnimatorParameterRequest::bool_value() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.bool_value)
+  return _internal_bool_value();
+}
+inline void AnimatorParameterRequest::set_bool_value(bool value) {
+  if (value_case() != kBoolValue) {
+    clear_value();
+    set_has_bool_value();
+  }
+  _impl_.value_.bool_value_ = value;
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorParameterRequest.bool_value)
+}
+inline bool AnimatorParameterRequest::_internal_bool_value() const {
+  if (value_case() == kBoolValue) {
+    return _impl_.value_.bool_value_;
+  }
+  return false;
+}
+
+// .sailor.editor.v1.Empty trigger = 6;
+inline bool AnimatorParameterRequest::has_trigger() const {
+  return value_case() == kTrigger;
+}
+inline bool AnimatorParameterRequest::_internal_has_trigger() const {
+  return value_case() == kTrigger;
+}
+inline void AnimatorParameterRequest::set_has_trigger() {
+  _impl_._oneof_case_[0] = kTrigger;
+}
+inline void AnimatorParameterRequest::clear_trigger() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value_case() == kTrigger) {
+    if (GetArena() == nullptr) {
+      delete _impl_.value_.trigger_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.value_.trigger_);
+    }
+    clear_has_value();
+  }
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::release_trigger() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorParameterRequest.trigger)
+  if (value_case() == kTrigger) {
+    clear_has_value();
+    auto* temp = _impl_.value_.trigger_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.value_.trigger_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::Empty& AnimatorParameterRequest::_internal_trigger() const {
+  return value_case() == kTrigger ? *_impl_.value_.trigger_ : reinterpret_cast<::sailor::editor::v1::Empty&>(::sailor::editor::v1::_Empty_default_instance_);
+}
+inline const ::sailor::editor::v1::Empty& AnimatorParameterRequest::trigger() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.trigger)
+  return _internal_trigger();
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::unsafe_arena_release_trigger() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.AnimatorParameterRequest.trigger)
+  if (value_case() == kTrigger) {
+    clear_has_value();
+    auto* temp = _impl_.value_.trigger_;
+    _impl_.value_.trigger_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void AnimatorParameterRequest::unsafe_arena_set_allocated_trigger(::sailor::editor::v1::Empty* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_value();
+  if (value) {
+    set_has_trigger();
+    _impl_.value_.trigger_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.AnimatorParameterRequest.trigger)
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::_internal_mutable_trigger() {
+  if (value_case() != kTrigger) {
+    clear_value();
+    set_has_trigger();
+    _impl_.value_.trigger_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Empty>(GetArena());
+  }
+  return _impl_.value_.trigger_;
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::mutable_trigger() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::Empty* _msg = _internal_mutable_trigger();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorParameterRequest.trigger)
+  return _msg;
+}
+
+// .sailor.editor.v1.Empty reset_trigger = 7;
+inline bool AnimatorParameterRequest::has_reset_trigger() const {
+  return value_case() == kResetTrigger;
+}
+inline bool AnimatorParameterRequest::_internal_has_reset_trigger() const {
+  return value_case() == kResetTrigger;
+}
+inline void AnimatorParameterRequest::set_has_reset_trigger() {
+  _impl_._oneof_case_[0] = kResetTrigger;
+}
+inline void AnimatorParameterRequest::clear_reset_trigger() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value_case() == kResetTrigger) {
+    if (GetArena() == nullptr) {
+      delete _impl_.value_.reset_trigger_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.value_.reset_trigger_);
+    }
+    clear_has_value();
+  }
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::release_reset_trigger() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorParameterRequest.reset_trigger)
+  if (value_case() == kResetTrigger) {
+    clear_has_value();
+    auto* temp = _impl_.value_.reset_trigger_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.value_.reset_trigger_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::Empty& AnimatorParameterRequest::_internal_reset_trigger() const {
+  return value_case() == kResetTrigger ? *_impl_.value_.reset_trigger_ : reinterpret_cast<::sailor::editor::v1::Empty&>(::sailor::editor::v1::_Empty_default_instance_);
+}
+inline const ::sailor::editor::v1::Empty& AnimatorParameterRequest::reset_trigger() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorParameterRequest.reset_trigger)
+  return _internal_reset_trigger();
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::unsafe_arena_release_reset_trigger() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.AnimatorParameterRequest.reset_trigger)
+  if (value_case() == kResetTrigger) {
+    clear_has_value();
+    auto* temp = _impl_.value_.reset_trigger_;
+    _impl_.value_.reset_trigger_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void AnimatorParameterRequest::unsafe_arena_set_allocated_reset_trigger(::sailor::editor::v1::Empty* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_value();
+  if (value) {
+    set_has_reset_trigger();
+    _impl_.value_.reset_trigger_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.AnimatorParameterRequest.reset_trigger)
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::_internal_mutable_reset_trigger() {
+  if (value_case() != kResetTrigger) {
+    clear_value();
+    set_has_reset_trigger();
+    _impl_.value_.reset_trigger_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Empty>(GetArena());
+  }
+  return _impl_.value_.reset_trigger_;
+}
+inline ::sailor::editor::v1::Empty* AnimatorParameterRequest::mutable_reset_trigger() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::Empty* _msg = _internal_mutable_reset_trigger();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorParameterRequest.reset_trigger)
+  return _msg;
+}
+
+inline bool AnimatorParameterRequest::has_value() const {
+  return value_case() != VALUE_NOT_SET;
+}
+inline void AnimatorParameterRequest::clear_has_value() {
+  _impl_._oneof_case_[0] = VALUE_NOT_SET;
+}
+inline AnimatorParameterRequest::ValueCase AnimatorParameterRequest::value_case() const {
+  return AnimatorParameterRequest::ValueCase(_impl_._oneof_case_[0]);
+}
+// -------------------------------------------------------------------
+
 // InstantiatePrefabRequest
 
 // string file_id = 1;
@@ -19971,6 +21276,282 @@ inline ::sailor::editor::v1::ViewportTransformSpace ViewportToolStateResult::_in
 inline void ViewportToolStateResult::_internal_set_space(::sailor::editor::v1::ViewportTransformSpace value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.space_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// AnimatorStateResult
+
+// bool has_controller = 1;
+inline void AnimatorStateResult::clear_has_controller() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.has_controller_ = false;
+}
+inline bool AnimatorStateResult::has_controller() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.has_controller)
+  return _internal_has_controller();
+}
+inline void AnimatorStateResult::set_has_controller(bool value) {
+  _internal_set_has_controller(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.has_controller)
+}
+inline bool AnimatorStateResult::_internal_has_controller() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.has_controller_;
+}
+inline void AnimatorStateResult::_internal_set_has_controller(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.has_controller_ = value;
+}
+
+// uint64 controller_revision = 2;
+inline void AnimatorStateResult::clear_controller_revision() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.controller_revision_ = ::uint64_t{0u};
+}
+inline ::uint64_t AnimatorStateResult::controller_revision() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.controller_revision)
+  return _internal_controller_revision();
+}
+inline void AnimatorStateResult::set_controller_revision(::uint64_t value) {
+  _internal_set_controller_revision(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.controller_revision)
+}
+inline ::uint64_t AnimatorStateResult::_internal_controller_revision() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.controller_revision_;
+}
+inline void AnimatorStateResult::_internal_set_controller_revision(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.controller_revision_ = value;
+}
+
+// uint64 active_state_id = 3;
+inline void AnimatorStateResult::clear_active_state_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_id_ = ::uint64_t{0u};
+}
+inline ::uint64_t AnimatorStateResult::active_state_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.active_state_id)
+  return _internal_active_state_id();
+}
+inline void AnimatorStateResult::set_active_state_id(::uint64_t value) {
+  _internal_set_active_state_id(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.active_state_id)
+}
+inline ::uint64_t AnimatorStateResult::_internal_active_state_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.active_state_id_;
+}
+inline void AnimatorStateResult::_internal_set_active_state_id(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_id_ = value;
+}
+
+// string active_state_name = 4;
+inline void AnimatorStateResult::clear_active_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_name_.ClearToEmpty();
+}
+inline const std::string& AnimatorStateResult::active_state_name() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.active_state_name)
+  return _internal_active_state_name();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void AnimatorStateResult::set_active_state_name(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.active_state_name)
+}
+inline std::string* AnimatorStateResult::mutable_active_state_name() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_active_state_name();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorStateResult.active_state_name)
+  return _s;
+}
+inline const std::string& AnimatorStateResult::_internal_active_state_name() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.active_state_name_.Get();
+}
+inline void AnimatorStateResult::_internal_set_active_state_name(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_name_.Set(value, GetArena());
+}
+inline std::string* AnimatorStateResult::_internal_mutable_active_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.active_state_name_.Mutable( GetArena());
+}
+inline std::string* AnimatorStateResult::release_active_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorStateResult.active_state_name)
+  return _impl_.active_state_name_.Release();
+}
+inline void AnimatorStateResult::set_allocated_active_state_name(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_name_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.active_state_name_.IsDefault()) {
+    _impl_.active_state_name_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.AnimatorStateResult.active_state_name)
+}
+
+// float active_state_time = 5;
+inline void AnimatorStateResult::clear_active_state_time() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_time_ = 0;
+}
+inline float AnimatorStateResult::active_state_time() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.active_state_time)
+  return _internal_active_state_time();
+}
+inline void AnimatorStateResult::set_active_state_time(float value) {
+  _internal_set_active_state_time(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.active_state_time)
+}
+inline float AnimatorStateResult::_internal_active_state_time() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.active_state_time_;
+}
+inline void AnimatorStateResult::_internal_set_active_state_time(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.active_state_time_ = value;
+}
+
+// bool transitioning = 6;
+inline void AnimatorStateResult::clear_transitioning() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.transitioning_ = false;
+}
+inline bool AnimatorStateResult::transitioning() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.transitioning)
+  return _internal_transitioning();
+}
+inline void AnimatorStateResult::set_transitioning(bool value) {
+  _internal_set_transitioning(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.transitioning)
+}
+inline bool AnimatorStateResult::_internal_transitioning() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.transitioning_;
+}
+inline void AnimatorStateResult::_internal_set_transitioning(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.transitioning_ = value;
+}
+
+// uint64 destination_state_id = 7;
+inline void AnimatorStateResult::clear_destination_state_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_id_ = ::uint64_t{0u};
+}
+inline ::uint64_t AnimatorStateResult::destination_state_id() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.destination_state_id)
+  return _internal_destination_state_id();
+}
+inline void AnimatorStateResult::set_destination_state_id(::uint64_t value) {
+  _internal_set_destination_state_id(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.destination_state_id)
+}
+inline ::uint64_t AnimatorStateResult::_internal_destination_state_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.destination_state_id_;
+}
+inline void AnimatorStateResult::_internal_set_destination_state_id(::uint64_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_id_ = value;
+}
+
+// string destination_state_name = 8;
+inline void AnimatorStateResult::clear_destination_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_name_.ClearToEmpty();
+}
+inline const std::string& AnimatorStateResult::destination_state_name() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.destination_state_name)
+  return _internal_destination_state_name();
+}
+template <typename Arg_, typename... Args_>
+inline PROTOBUF_ALWAYS_INLINE void AnimatorStateResult::set_destination_state_name(Arg_&& arg,
+                                                     Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_name_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.destination_state_name)
+}
+inline std::string* AnimatorStateResult::mutable_destination_state_name() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  std::string* _s = _internal_mutable_destination_state_name();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.AnimatorStateResult.destination_state_name)
+  return _s;
+}
+inline const std::string& AnimatorStateResult::_internal_destination_state_name() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.destination_state_name_.Get();
+}
+inline void AnimatorStateResult::_internal_set_destination_state_name(const std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_name_.Set(value, GetArena());
+}
+inline std::string* AnimatorStateResult::_internal_mutable_destination_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  return _impl_.destination_state_name_.Mutable( GetArena());
+}
+inline std::string* AnimatorStateResult::release_destination_state_name() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.AnimatorStateResult.destination_state_name)
+  return _impl_.destination_state_name_.Release();
+}
+inline void AnimatorStateResult::set_allocated_destination_state_name(std::string* value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_name_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.destination_state_name_.IsDefault()) {
+    _impl_.destination_state_name_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.AnimatorStateResult.destination_state_name)
+}
+
+// float destination_state_time = 9;
+inline void AnimatorStateResult::clear_destination_state_time() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_time_ = 0;
+}
+inline float AnimatorStateResult::destination_state_time() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.destination_state_time)
+  return _internal_destination_state_time();
+}
+inline void AnimatorStateResult::set_destination_state_time(float value) {
+  _internal_set_destination_state_time(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.destination_state_time)
+}
+inline float AnimatorStateResult::_internal_destination_state_time() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.destination_state_time_;
+}
+inline void AnimatorStateResult::_internal_set_destination_state_time(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.destination_state_time_ = value;
+}
+
+// float transition_alpha = 10;
+inline void AnimatorStateResult::clear_transition_alpha() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.transition_alpha_ = 0;
+}
+inline float AnimatorStateResult::transition_alpha() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.AnimatorStateResult.transition_alpha)
+  return _internal_transition_alpha();
+}
+inline void AnimatorStateResult::set_transition_alpha(float value) {
+  _internal_set_transition_alpha(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.AnimatorStateResult.transition_alpha)
+}
+inline float AnimatorStateResult::_internal_transition_alpha() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.transition_alpha_;
+}
+inline void AnimatorStateResult::_internal_set_transition_alpha(float value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.transition_alpha_ = value;
 }
 
 // -------------------------------------------------------------------

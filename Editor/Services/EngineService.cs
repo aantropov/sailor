@@ -2243,6 +2243,72 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
         }
 
+        public Task<bool> SetAnimatorFloatAsync(
+            InstanceId instanceId,
+            string name,
+            float value,
+            CancellationToken cancellationToken = default) =>
+            InvokeRunningInteropAsync(
+                token => protocolClient.SetAnimatorFloatAsync(
+                    instanceId?.Value ?? string.Empty,
+                    name,
+                    value,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetAnimatorIntAsync(
+            InstanceId instanceId,
+            string name,
+            int value,
+            CancellationToken cancellationToken = default) =>
+            InvokeRunningInteropAsync(
+                token => protocolClient.SetAnimatorIntAsync(
+                    instanceId?.Value ?? string.Empty,
+                    name,
+                    value,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetAnimatorBoolAsync(
+            InstanceId instanceId,
+            string name,
+            bool value,
+            CancellationToken cancellationToken = default) =>
+            InvokeRunningInteropAsync(
+                token => protocolClient.SetAnimatorBoolAsync(
+                    instanceId?.Value ?? string.Empty,
+                    name,
+                    value,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public Task<bool> SetAnimatorTriggerAsync(
+            InstanceId instanceId,
+            string name,
+            bool reset = false,
+            CancellationToken cancellationToken = default) =>
+            InvokeRunningInteropAsync(
+                token => protocolClient.SetAnimatorTriggerAsync(
+                    instanceId?.Value ?? string.Empty,
+                    name,
+                    reset,
+                    token),
+                cancellationToken: cancellationToken);
+
+        public async Task<EngineProtocolAnimatorState?> GetAnimatorStateAsync(
+            InstanceId instanceId,
+            CancellationToken cancellationToken = default)
+        {
+            if (!IsInteropRunning() || instanceId is null || instanceId.IsEmpty())
+            {
+                return null;
+            }
+            return await protocolClient.GetAnimatorStateAsync(
+                    instanceId.Value,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         public async Task<bool> RequestAssetReloadAsync(CancellationToken cancellationToken = default)
         {
             var generation = Volatile.Read(ref engineGeneration);

@@ -6,6 +6,8 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Animation/AnimationImporter.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationControllerImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
@@ -485,6 +487,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto shaderInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ShaderAssetInfoHandler>::Make(assetRegistry));
 	auto modelInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ModelAssetInfoHandler>::Make(assetRegistry));
 	auto animationInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationAssetInfoHandler>::Make(assetRegistry));
+	auto animationControllerInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
+	auto animationSetInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
@@ -494,6 +498,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<ShaderCompiler>::Make(shaderInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
@@ -1084,6 +1089,7 @@ void App::Shutdown()
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<AnimationImporter>();
+	RemoveSubmodule<AnimationControllerImporter>();
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
 	RemoveSubmodule<PrefabImporter>();

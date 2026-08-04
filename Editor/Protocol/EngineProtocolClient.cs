@@ -36,6 +36,18 @@ internal readonly record struct EngineProtocolViewportToolState(
     ViewportTransformOperation Operation,
     ViewportTransformSpace Space);
 
+internal readonly record struct EngineProtocolAnimatorState(
+    bool HasController,
+    ulong ControllerRevision,
+    ulong ActiveStateId,
+    string ActiveStateName,
+    float ActiveStateTime,
+    bool IsTransitioning,
+    ulong DestinationStateId,
+    string DestinationStateName,
+    float DestinationStateTime,
+    float TransitionAlpha);
+
 internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
 {
     internal const uint ProtocolVersion = 1;
@@ -176,6 +188,115 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.UpdateAsset));
+
+    public Task<bool> SetAnimatorFloatAsync(
+        string instanceId,
+        string name,
+        float value,
+        CancellationToken cancellationToken = default)
+    {
+        if (!float.IsFinite(value))
+        {
+            throw new ArgumentOutOfRangeException(nameof(value));
+        }
+        return SetAnimatorParameterAsync(
+            new AnimatorParameterRequest
+            {
+                InstanceId = ValidateString(instanceId, nameof(instanceId)),
+                Name = ValidateString(name, nameof(name)),
+                FloatValue = value
+            },
+            cancellationToken);
+    }
+
+    public Task<bool> SetAnimatorIntAsync(
+        string instanceId,
+        string name,
+        int value,
+        CancellationToken cancellationToken = default) =>
+        SetAnimatorParameterAsync(
+            new AnimatorParameterRequest
+            {
+                InstanceId = ValidateString(instanceId, nameof(instanceId)),
+                Name = ValidateString(name, nameof(name)),
+                IntValue = value
+            },
+            cancellationToken);
+
+    public Task<bool> SetAnimatorBoolAsync(
+        string instanceId,
+        string name,
+        bool value,
+        CancellationToken cancellationToken = default) =>
+        SetAnimatorParameterAsync(
+            new AnimatorParameterRequest
+            {
+                InstanceId = ValidateString(instanceId, nameof(instanceId)),
+                Name = ValidateString(name, nameof(name)),
+                BoolValue = value
+            },
+            cancellationToken);
+
+    public Task<bool> SetAnimatorTriggerAsync(
+        string instanceId,
+        string name,
+        bool reset,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new AnimatorParameterRequest
+        {
+            InstanceId = ValidateString(instanceId, nameof(instanceId)),
+            Name = ValidateString(name, nameof(name))
+        };
+        if (reset)
+        {
+            request.ResetTrigger = new Empty();
+        }
+        else
+        {
+            request.Trigger = new Empty();
+        }
+        return SetAnimatorParameterAsync(request, cancellationToken);
+    }
+
+    async Task<bool> SetAnimatorParameterAsync(
+        AnimatorParameterRequest request,
+        CancellationToken cancellationToken) =>
+        ReadBool(
+            await SendAsync(
+                    new ProtocolRequest { SetAnimatorParameter = request },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetAnimatorParameter));
+
+    public async Task<EngineProtocolAnimatorState> GetAnimatorStateAsync(
+        string instanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var result = RequireResult<AnimatorStateResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetAnimatorState = new InstanceIdRequest
+                        {
+                            InstanceId = ValidateString(instanceId, nameof(instanceId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).AnimatorStateResult,
+            nameof(ProtocolRequest.GetAnimatorState));
+        return new EngineProtocolAnimatorState(
+            result.HasController,
+            result.ControllerRevision,
+            result.ActiveStateId,
+            result.ActiveStateName,
+            result.ActiveStateTime,
+            result.Transitioning,
+            result.DestinationStateId,
+            result.DestinationStateName,
+            result.DestinationStateTime,
+            result.TransitionAlpha);
+    }
 
     public async Task<EngineProtocolAssetReloadState> GetAssetReloadStateAsync(
         CancellationToken cancellationToken = default)

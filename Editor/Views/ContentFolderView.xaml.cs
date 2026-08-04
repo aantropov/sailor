@@ -446,6 +446,33 @@ namespace SailorEditor.Views
             }
         }
 
+        async Task CreateAnimationAsset(
+            AssetFolder? parentFolder,
+            bool createSet)
+        {
+            var result = await dispatcher.DispatchAsync(
+                new CreateAnimationAssetCommand(parentFolder, createSet),
+                contextProvider.GetCurrentContext(
+                    new CommandOrigin(
+                        CommandOriginKind.Panel,
+                        nameof(CreateAnimationAsset))));
+            if (!result.Succeeded)
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Create animation asset failed",
+                    result.Message ?? "Unable to create the animation asset.",
+                    "OK");
+                return;
+            }
+
+            if (result.Value is FileId fileId &&
+                service.Assets.TryGetValue(fileId, out var asset))
+            {
+                MauiProgram.GetService<SelectionService>()
+                    .SelectObject(asset, force: true);
+            }
+        }
+
         async Task DeleteFolder(AssetFolder folder)
         {
             var confirmed = await Application.Current.MainPage.DisplayAlert(
@@ -851,6 +878,20 @@ namespace SailorEditor.Views
                         Command = CreateContentContextMenuCommand(
                             () => CreateFolder(folder),
                             "Create folder")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Animation Controller",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateAnimationAsset(folder, false),
+                            "Create animation controller")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Animation Set",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateAnimationAsset(folder, true),
+                            "Create animation set")
                     }
                 };
                 if (service.CanModifyFolder(folder))
@@ -876,13 +917,28 @@ namespace SailorEditor.Views
             else if (model is ProjectContentFolderItem { IsRoot: true, IsReadOnly: false } &&
                 service.CanCreateFolder(null))
             {
-                contextMenu.Show(new EditorContextMenuItem
-                {
-                    Text = "Create Folder",
-                    Command = CreateContentContextMenuCommand(
-                        () => CreateFolder(null),
-                        "Create folder")
-                });
+                contextMenu.Show(
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Folder",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateFolder(null),
+                            "Create folder")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Animation Controller",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateAnimationAsset(null, false),
+                            "Create animation controller")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Create Animation Set",
+                        Command = CreateContentContextMenuCommand(
+                            () => CreateAnimationAsset(null, true),
+                            "Create animation set")
+                    });
             }
         }
 

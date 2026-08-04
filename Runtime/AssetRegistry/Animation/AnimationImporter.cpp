@@ -380,6 +380,33 @@ namespace
 			std::isfinite(transform.m_rotation.z) &&
 			std::isfinite(transform.m_rotation.w);
 	}
+
+	bool IsMatrixFinite(const glm::mat4& matrix)
+	{
+		for (glm::length_t column = 0; column < 4; ++column)
+		{
+			if (!Math::AllFinite(matrix[column]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void AddSkeletonHashByte(uint64_t& hash, uint8_t value)
+	{
+		constexpr uint64_t FnvPrime = 1099511628211ull;
+		hash ^= value;
+		hash *= FnvPrime;
+	}
+
+	void AddSkeletonHashUint32(uint64_t& hash, uint32_t value)
+	{
+		for (uint32_t shift = 0; shift < 32; shift += 8)
+		{
+			AddSkeletonHashByte(hash, static_cast<uint8_t>((value >> shift) & 0xff));
+		}
+	}
 }
 
 AnimationImporter::AnimationImporter(AnimationAssetInfoHandler* infoHandler)
@@ -394,6 +421,27 @@ AnimationImporter::~AnimationImporter()
 	for (auto& anim : m_loadedAnimations)
 	{
 		anim.m_second.DestroyObject(m_allocator);
+	}
+}
+
+void AnimationImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (!bWasExpired || !assetInfo)
+	{
+		return;
+	}
+
+	const FileId uid = assetInfo->GetFileId();
+	if (auto animationIt = m_loadedAnimations.Find(uid);
+		animationIt != m_loadedAnimations.end())
+	{
+		AnimationPtr animation = (*animationIt).m_second;
+		if (animation && ImportAnimation(uid, animation))
+		{
+#ifdef SAILOR_EDITOR
+			animation->TraceHotReload(nullptr);
+#endif
+		}
 	}
 }
 
@@ -549,6 +597,53 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
+			TVector<int32_t> boneIndexByNode;
+			boneIndexByNode.Resize(numNodes);
+			for (size_t nodeIndex = 0; nodeIndex < numNodes; ++nodeIndex)
+			{
+				boneIndexByNode[nodeIndex] = -1;
+			}
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				boneIndexByNode[static_cast<size_t>(gltfSkin.joints[boneIndex])] =
+					static_cast<int32_t>(boneIndex);
+			}
+
+			TVector<int32_t> parentBoneIndices;
+			parentBoneIndices.Resize(numBones);
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				int32_t parentNode = parents[static_cast<size_t>(gltfSkin.joints[boneIndex])];
+				int32_t parentBone = -1;
+				for (size_t depth = 0; parentNode >= 0 && depth < numNodes; ++depth)
+				{
+					parentBone = boneIndexByNode[static_cast<size_t>(parentNode)];
+					if (parentBone >= 0)
+					{
+						break;
+					}
+					parentNode = parents[static_cast<size_t>(parentNode)];
+				}
+				parentBoneIndices[boneIndex] = parentBone;
+			}
+
+			constexpr uint64_t FnvOffsetBasis = 14695981039346656037ull;
+			uint64_t skeletonSignature = FnvOffsetBasis;
+			AddSkeletonHashUint32(skeletonSignature, static_cast<uint32_t>(numBones));
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				AddSkeletonHashUint32(
+					skeletonSignature,
+					static_cast<uint32_t>(parentBoneIndices[boneIndex] + 1));
+				const auto& jointNode = gltfModel.nodes[
+					static_cast<size_t>(gltfSkin.joints[boneIndex])];
+				for (char character : jointNode.name)
+				{
+					AddSkeletonHashByte(skeletonSignature, static_cast<uint8_t>(character));
+				}
+				AddSkeletonHashByte(skeletonSignature, 0);
+			}
+
 			TVector<Math::Transform> base(numNodes);
 			for (size_t i = 0; i < numNodes; ++i)
 			{
@@ -594,6 +689,77 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					}
 				}
 			}
+
+			auto composeGlobalTransforms = [numNodes, &parents](
+				const TVector<Math::Transform>& local,
+				TVector<Math::Transform>& global)
+			{
+				global.Resize(numNodes);
+				TVector<uint8_t> composeState(numNodes);
+				auto compose = [&](auto&& self, size_t nodeIndex) -> bool
+				{
+					if (composeState[nodeIndex] == 2)
+					{
+						return IsTransformFinite(global[nodeIndex]);
+					}
+					if (composeState[nodeIndex] == 1)
+					{
+						global[nodeIndex] = local[nodeIndex];
+						composeState[nodeIndex] = 2;
+						return false;
+					}
+
+					composeState[nodeIndex] = 1;
+					Math::Transform composed = local[nodeIndex];
+					const int32_t parentIndex = parents[nodeIndex];
+					if (parentIndex >= 0 && self(self, static_cast<size_t>(parentIndex)))
+					{
+						const Math::Transform& parent = global[static_cast<size_t>(parentIndex)];
+						composed.m_position = parent.TransformPosition(composed.m_position);
+						composed.m_rotation = parent.m_rotation * composed.m_rotation;
+						composed.m_scale.x *= parent.m_scale.x;
+						composed.m_scale.y *= parent.m_scale.y;
+						composed.m_scale.z *= parent.m_scale.z;
+					}
+
+					global[nodeIndex] = IsTransformFinite(composed) ? composed : local[nodeIndex];
+					composeState[nodeIndex] = 2;
+					return IsTransformFinite(global[nodeIndex]);
+				};
+
+				for (size_t nodeIndex = 0; nodeIndex < numNodes; ++nodeIndex)
+				{
+					compose(compose, nodeIndex);
+				}
+			};
+
+			auto buildLocalBonePose = [&gltfSkin, &parentBoneIndices](
+				const TVector<Math::Transform>& global,
+				TVector<Math::Transform>& outPose,
+				size_t poseOffset)
+			{
+				for (size_t boneIndex = 0; boneIndex < parentBoneIndices.Num(); ++boneIndex)
+				{
+					const size_t nodeIndex = static_cast<size_t>(gltfSkin.joints[boneIndex]);
+					glm::mat4 localMatrix = global[nodeIndex].Matrix();
+					const int32_t parentBoneIndex = parentBoneIndices[boneIndex];
+					if (parentBoneIndex >= 0)
+					{
+						const size_t parentNodeIndex = static_cast<size_t>(
+							gltfSkin.joints[static_cast<size_t>(parentBoneIndex)]);
+						localMatrix = glm::inverse(global[parentNodeIndex].Matrix()) * localMatrix;
+					}
+					Math::Transform localTransform = IsMatrixFinite(localMatrix) ?
+						Math::Transform::FromMatrix(localMatrix) : Math::Transform::Identity;
+					outPose[poseOffset + boneIndex] = IsTransformFinite(localTransform) ?
+						localTransform : Math::Transform::Identity;
+				}
+			};
+
+			TVector<Math::Transform> baseGlobal;
+			composeGlobalTransforms(base, baseGlobal);
+			TVector<Math::Transform> restPose(numBones);
+			buildLocalBonePose(baseGlobal, restPose, 0);
 
 			TVector<PreparedAnimationChannel> preparedChannels;
 			preparedChannels.Reserve(gltfAnim.channels.size());
@@ -797,55 +963,9 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					}
 				}
 
-				TVector<Math::Transform> global(numNodes);
-				TVector<uint8_t> composeState(numNodes);
-				auto compose = [&](auto&& self, size_t nodeIndex) -> bool
-				{
-					if (composeState[nodeIndex] == 2)
-					{
-						return IsTransformFinite(global[nodeIndex]);
-					}
-					if (composeState[nodeIndex] == 1)
-					{
-						global[nodeIndex] = local[nodeIndex];
-						composeState[nodeIndex] = 2;
-						return false;
-					}
-
-					composeState[nodeIndex] = 1;
-					Math::Transform composed = local[nodeIndex];
-					const int32_t parentIndex = parents[nodeIndex];
-					if (parentIndex >= 0 &&
-						self(self, static_cast<size_t>(parentIndex)))
-					{
-						const Math::Transform& parent =
-							global[static_cast<size_t>(parentIndex)];
-						composed.m_position =
-							parent.TransformPosition(composed.m_position);
-						composed.m_rotation =
-							parent.m_rotation * composed.m_rotation;
-						composed.m_scale.x *= parent.m_scale.x;
-						composed.m_scale.y *= parent.m_scale.y;
-						composed.m_scale.z *= parent.m_scale.z;
-					}
-
-					global[nodeIndex] = IsTransformFinite(composed) ?
-						composed : local[nodeIndex];
-					composeState[nodeIndex] = 2;
-					return IsTransformFinite(global[nodeIndex]);
-				};
-
-				for (size_t i = 0; i < numNodes; ++i)
-				{
-					compose(compose, i);
-				}
-
-				for (size_t j = 0; j < numBones; ++j)
-				{
-					const size_t nodeIndex =
-						static_cast<size_t>(gltfSkin.joints[j]);
-					framesData[f * numBones + j] = global[nodeIndex];
-				}
+				TVector<Math::Transform> global;
+				composeGlobalTransforms(local, global);
+				buildLocalBonePose(global, framesData, f * numBones);
 			}
 
 			anim->m_numBones = static_cast<uint32_t>(numBones);
@@ -853,9 +973,13 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 			anim->m_fps = samplingFps;
 			anim->m_duration = animationDuration;
 			anim->m_frames = std::move(framesData);
+			anim->m_restPose = std::move(restPose);
+			anim->m_parentBoneIndices = std::move(parentBoneIndices);
+			anim->m_skeletonSignature = skeletonSignature;
 		}
 	}
 
+	++anim->m_revision;
 	outAnimation = anim;
 	return true;
 }
