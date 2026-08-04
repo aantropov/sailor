@@ -11,10 +11,10 @@
 #include "RHI/Buffer.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/SpinLock.h"
 
 #include <cmath>
 #include <limits>
-#include <mutex>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -832,7 +832,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
-		std::mutex transferCommandListMutex;
+		SpinLock transferCommandListLock;
 
 		for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
 		{
@@ -869,7 +869,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							glm::vec2(0.0f, 1.0f),
 							cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
 							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings },
-							&transferCommandListMutex);
+							&transferCommandListLock);
 					}
 					else
 					{
@@ -885,7 +885,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							scissor,
 							glm::vec2(0.0f, 1.0f),
 							&m_cullingIndirectBufferBinding[i + 1],
-							&transferCommandListMutex);
+							&transferCommandListLock);
 					}
 
 					commands->EndCommandList(cmdList);
@@ -935,7 +935,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					glm::vec2(0.0f, 1.0f),
 					cullingComputeShader, m_cullingIndirectBufferBinding[0],
 					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings },
-					&transferCommandListMutex);
+					&transferCommandListLock);
 			}
 			else
 			{
@@ -951,7 +951,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					scissor,
 					glm::vec2(0.0f, 1.0f),
 					&m_cullingIndirectBufferBinding[0],
-					&transferCommandListMutex);
+					&transferCommandListLock);
 			}
 
 			commands->EndRenderPass(commandList);

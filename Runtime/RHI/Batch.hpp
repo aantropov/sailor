@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/SpinLock.h"
 #include "Containers/Map.h"
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
@@ -8,7 +9,6 @@
 #include "RHI/Texture.h"
 #include "RHI/RenderTarget.h"
 #include <limits>
-#include <mutex>
 
 using namespace GraphicsDriver::Vulkan;
 
@@ -73,7 +73,7 @@ namespace Sailor::RHI
 		RHIShaderPtr computeCullingShader,
 		RHIShaderBindingSetPtr& indirectCommandBufferBinding,
 		const TVector<RHIShaderBindingSetPtr>& cullingDistpatchBindings,
-		std::mutex* transferCommandListMutex = nullptr)
+		SpinLock* transferCommandListLock = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		DrawCallStats stats;
@@ -184,10 +184,11 @@ namespace Sailor::RHI
 				}
 
 				const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-				if (transferCommandListMutex)
+				if (transferCommandListLock)
 				{
-					std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+					transferCommandListLock->Lock();
 					commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+					transferCommandListLock->Unlock();
 				}
 				else
 				{
@@ -271,10 +272,11 @@ namespace Sailor::RHI
 				commands->EndDebugRegion(transferCmdList);
 			};
 
-		if (transferCommandListMutex)
+		if (transferCommandListLock)
 		{
-			std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+			transferCommandListLock->Lock();
 			recordCullingDispatch();
+			transferCommandListLock->Unlock();
 		}
 		else
 		{
@@ -298,7 +300,7 @@ namespace Sailor::RHI
 		glm::uvec4 scissors,
 		glm::vec2 depthRange = glm::vec2(0.0f, 1.0f),
 		RHIShaderBindingSetPtr* indirectCommandBufferBinding = nullptr,
-		std::mutex* transferCommandListMutex = nullptr)
+		SpinLock* transferCommandListLock = nullptr)
 	{
 		SAILOR_PROFILE_FUNCTION();
 		DrawCallStats stats;
@@ -400,10 +402,11 @@ namespace Sailor::RHI
 			}
 
 			const size_t bufferSize = sizeof(RHI::DrawIndexedIndirectData) * drawIndirect.Num();
-			if (transferCommandListMutex)
+			if (transferCommandListLock)
 			{
-				std::lock_guard<std::mutex> transferCommandListLock(*transferCommandListMutex);
+				transferCommandListLock->Lock();
 				commands->UpdateBuffer(transferCmdList, indirectCommandBuffer, drawIndirect.GetData(), bufferSize, indirectBufferOffset);
+				transferCommandListLock->Unlock();
 			}
 			else
 			{
