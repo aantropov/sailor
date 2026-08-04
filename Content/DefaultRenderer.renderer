@@ -375,13 +375,6 @@ frame:
 #  - src: Secondary
 #  - dst: BackBuffer
 
-############################
-- name: Blit
-############################
-  renderTargets:
-  - src: Main
-  - dst: EditorOutput
-
 #############################
 #- name: PostProcess
 #############################
@@ -399,8 +392,15 @@ frame:
 - name: DebugDraw
 ############################
   renderTargets:
-  - color: EditorOutput
+  - color: Main
   - depthStencil: DepthBuffer
+
+############################
+- name: Blit
+############################
+  renderTargets:
+  - src: Main
+  - dst: EditorOutput
 
 #############################
 - name: RenderImGui
