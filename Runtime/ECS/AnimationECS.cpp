@@ -4,6 +4,7 @@
 #include "RHI/Shader.h"
 #include "AssetRegistry/Animation/AnimationImporter.h"
 #include "Components/MeshRendererComponent.h"
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include "Math/Transform.h"
@@ -140,6 +141,7 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 
 		const auto& anim = *data.GetAnimation();
 		data.SetBonesCount(anim.m_numBones);
+		const float lastFrame = static_cast<float>(anim.m_numFrames - 1);
 
 		if (data.m_bIsPlaying)
 		{
@@ -148,21 +150,37 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 
 			if (data.m_playMode == EAnimationPlayMode::Repeat)
 			{
-				data.m_currentFrame = std::fmod(std::max(data.m_currentFrame, 0.0f), (float)anim.m_numFrames);
+				if (lastFrame > 0.0f)
+				{
+					data.m_currentFrame = std::fmod(data.m_currentFrame, lastFrame);
+					if (data.m_currentFrame < 0.0f)
+					{
+						data.m_currentFrame += lastFrame;
+					}
+				}
+				else
+				{
+					data.m_currentFrame = 0.0f;
+				}
 			}
 			else if (data.m_playMode == EAnimationPlayMode::Once)
 			{
-				if (data.m_currentFrame >= anim.m_numFrames - 1)
+				if (data.m_currentFrame >= lastFrame)
 				{
-					data.m_currentFrame = (float)(anim.m_numFrames - 1);
+					data.m_currentFrame = lastFrame;
+					data.m_bIsPlaying = false;
+				}
+				else if (data.m_currentFrame <= 0.0f && frameAdvance < 0.0f)
+				{
+					data.m_currentFrame = 0.0f;
 					data.m_bIsPlaying = false;
 				}
 			}
 			else if (data.m_playMode == EAnimationPlayMode::PingPong)
 			{
-				if (data.m_bForward && data.m_currentFrame >= anim.m_numFrames - 1)
+				if (data.m_bForward && data.m_currentFrame >= lastFrame)
 				{
-					data.m_currentFrame = (float)(anim.m_numFrames - 1);
+					data.m_currentFrame = lastFrame;
 					data.m_bForward = false;
 				}
 				else if (!data.m_bForward && data.m_currentFrame <= 0.0f)
@@ -173,7 +191,9 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			}
 		}
 
-		data.m_frameIndex = (uint32_t)floor(data.m_currentFrame) % anim.m_numFrames;
+		data.m_frameIndex = (std::min)(
+			static_cast<uint32_t>(floor(data.m_currentFrame)),
+			anim.m_numFrames - 1);
 		data.m_lerp = data.m_currentFrame - floor(data.m_currentFrame);
 
 		if (data.m_gpuOffset == AnimatorComponentData::InvalidGpuOffset)
@@ -191,7 +211,7 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			data.m_currentSkeleton.Resize(anim.m_numBones);
 		}
 
-		uint32_t nextFrame = (data.m_frameIndex + 1) % anim.m_numFrames;
+		uint32_t nextFrame = (std::min)(data.m_frameIndex + 1, anim.m_numFrames - 1);
 		for (uint32_t i = 0; i < anim.m_numBones; i++)
 		{
 			const Math::Transform& a = anim.m_frames[data.m_frameIndex * anim.m_numBones + i];

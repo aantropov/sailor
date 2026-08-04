@@ -24,6 +24,7 @@ namespace Sailor
 		uint32_t m_numFrames = 0;
 		uint32_t m_numBones = 0;
 		float m_fps = 30.0f;
+		float m_duration = 0.0f;
 	};
 
 	using AnimationPtr = TObjectPtr<Animation>;

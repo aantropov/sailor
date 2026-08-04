@@ -1,4 +1,5 @@
 #include "AnimationImporter.h"
+#include "AnimationClipSampler.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include <tiny_gltf.h>
@@ -363,11 +364,11 @@ namespace
 
 	struct PreparedAnimationChannel
 	{
-		GltfFloatAccessorView m_output;
+		TVector<float> m_timestamps;
+		TVector<glm::vec4> m_values;
 		size_t m_targetNode = 0;
-		size_t m_sampleCount = 0;
 		EAnimationTarget m_target = EAnimationTarget::Translation;
-		bool m_bCubicSpline = false;
+		EAnimationInterpolation m_interpolation = EAnimationInterpolation::Linear;
 	};
 
 	bool IsTransformFinite(const Math::Transform& transform)
@@ -526,31 +527,6 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
-			size_t numFrames = 0;
-			for (const auto& sampler : gltfAnim.samplers)
-			{
-				GltfFloatAccessorView inputView;
-				if (TryGetFloatAccessorView(
-					gltfModel,
-					sampler.input,
-					TINYGLTF_TYPE_SCALAR,
-					1,
-					inputView) &&
-					inputView.m_accessor->count <= MaxVectorElements)
-				{
-					numFrames = inputView.m_accessor->count;
-					break;
-				}
-			}
-
-			if (numFrames == 0 || numFrames > MaxVectorElements / numBones)
-			{
-				return false;
-			}
-
-			TVector<Math::Transform> framesData;
-			framesData.Resize(numFrames * numBones);
-
 			TVector<int32_t> parents;
 			parents.Resize(numNodes);
 			for (size_t i = 0; i < numNodes; ++i)
@@ -621,6 +597,8 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 
 			TVector<PreparedAnimationChannel> preparedChannels;
 			preparedChannels.Reserve(gltfAnim.channels.size());
+			float animationDuration = 0.0f;
+			size_t maxSourceSampleCount = 0;
 			for (const auto& channel : gltfAnim.channels)
 			{
 				if (channel.sampler < 0 ||
@@ -646,6 +624,21 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				const size_t sampleCount = inputView.m_accessor->count;
 
 				PreparedAnimationChannel prepared;
+				prepared.m_timestamps.Resize(sampleCount);
+				bool bValid = true;
+				for (size_t sample = 0; sample < sampleCount; ++sample)
+				{
+					bValid &= TryReadAccessorFloat(
+						inputView,
+						sample,
+						0,
+						prepared.m_timestamps[sample]);
+				}
+				if (!bValid || !AnimationClipSampler::ValidateTimestamps(prepared.m_timestamps))
+				{
+					continue;
+				}
+
 				int32_t outputType = TINYGLTF_TYPE_VEC3;
 				if (channel.target_path == "translation")
 				{
@@ -665,89 +658,141 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					continue;
 				}
 
-				prepared.m_bCubicSpline = sampler.interpolation == "CUBICSPLINE";
-				if (!prepared.m_bCubicSpline &&
-					!sampler.interpolation.empty() &&
-					sampler.interpolation != "LINEAR" &&
-					sampler.interpolation != "STEP")
+				if (sampler.interpolation.empty() || sampler.interpolation == "LINEAR")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::Linear;
+				}
+				else if (sampler.interpolation == "STEP")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::Step;
+				}
+				else if (sampler.interpolation == "CUBICSPLINE")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::CubicSpline;
+				}
+				else
 				{
 					continue;
 				}
 
-				if (prepared.m_bCubicSpline &&
+				const bool bCubicSpline =
+					prepared.m_interpolation == EAnimationInterpolation::CubicSpline;
+				if (bCubicSpline &&
 					sampleCount > std::numeric_limits<size_t>::max() / 3)
 				{
 					continue;
 				}
 
-				const size_t outputCount = prepared.m_bCubicSpline ?
+				const size_t outputCount = bCubicSpline ?
 					sampleCount * 3 : sampleCount;
+				GltfFloatAccessorView outputView;
 				if (!TryGetFloatAccessorView(
 					gltfModel,
 					sampler.output,
 					outputType,
 					outputCount,
-					prepared.m_output) ||
-					prepared.m_output.m_accessor->count != outputCount)
+					outputView) ||
+					outputView.m_accessor->count != outputCount)
+				{
+					continue;
+				}
+
+				prepared.m_values.Resize(outputCount);
+				const size_t componentCount =
+					prepared.m_target == EAnimationTarget::Rotation ? 4 : 3;
+				bValid = true;
+				for (size_t element = 0; element < outputCount; ++element)
+				{
+					glm::vec4 value(0.0f);
+					for (size_t component = 0; component < componentCount; ++component)
+					{
+						bValid &= TryReadAccessorFloat(
+							outputView,
+							element,
+							component,
+							value[static_cast<glm::length_t>(component)]);
+					}
+					prepared.m_values[element] = value;
+				}
+				if (!bValid)
 				{
 					continue;
 				}
 
 				prepared.m_targetNode =
 					static_cast<size_t>(channel.target_node);
-				prepared.m_sampleCount = sampleCount;
+				animationDuration = (std::max)(
+					animationDuration,
+					prepared.m_timestamps[prepared.m_timestamps.Num() - 1]);
+				maxSourceSampleCount = (std::max)(maxSourceSampleCount, sampleCount);
 				preparedChannels.Add(prepared);
 			}
 
+			if (preparedChannels.IsEmpty() || !std::isfinite(animationDuration))
+			{
+				return false;
+			}
+
+			constexpr float TargetSamplingFps = 30.0f;
+			const double targetIntervals = std::ceil(
+				static_cast<double>(animationDuration) * TargetSamplingFps);
+			if (!std::isfinite(targetIntervals) ||
+				targetIntervals > static_cast<double>(MaxVectorElements - 1))
+			{
+				return false;
+			}
+
+			const size_t numIntervals = (std::max)(
+				static_cast<size_t>(targetIntervals),
+				maxSourceSampleCount - 1);
+			const size_t numFrames = numIntervals + 1;
+			if (numFrames > MaxVectorElements / numBones)
+			{
+				return false;
+			}
+
+			TVector<Math::Transform> framesData;
+			framesData.Resize(numFrames * numBones);
+			const float samplingFps = animationDuration > 0.0f ?
+				static_cast<float>(numIntervals) / animationDuration : TargetSamplingFps;
+
 			for (size_t f = 0; f < numFrames; ++f)
 			{
+				const float sampleTime = (std::min)(
+					static_cast<float>(f) / samplingFps,
+					animationDuration);
 				TVector<Math::Transform> local(base);
 				for (const auto& channel : preparedChannels)
 				{
-					const size_t sample =
-						(std::min)(f, channel.m_sampleCount - 1);
-					const size_t outputElement = channel.m_bCubicSpline ?
-						sample * 3 + 1 : sample;
-					const size_t componentCount =
-						channel.m_target == EAnimationTarget::Rotation ? 4 : 3;
-					float values[4]{};
-					bool bValid = true;
-					for (size_t component = 0;
-						component < componentCount;
-						++component)
-					{
-						bValid &= TryReadAccessorFloat(
-							channel.m_output,
-							outputElement,
-							component,
-							values[component]);
-					}
-
-					if (!bValid)
-					{
-						continue;
-					}
-
 					Math::Transform& target = local[channel.m_targetNode];
-					if (channel.m_target == EAnimationTarget::Translation)
+					if (channel.m_target == EAnimationTarget::Rotation)
 					{
-						target.m_position = glm::vec4(
-							values[0], values[1], values[2], 1.0f);
-					}
-					else if (channel.m_target == EAnimationTarget::Scale)
-					{
-						target.m_scale = glm::vec4(
-							values[0], values[1], values[2], 1.0f);
+						AnimationClipSampler::SampleRotation(
+							channel.m_timestamps,
+							channel.m_values,
+							channel.m_interpolation,
+							sampleTime,
+							target.m_rotation);
 					}
 					else
 					{
-						glm::quat rotation(
-							values[3], values[0], values[1], values[2]);
-						const float lengthSquared = glm::dot(rotation, rotation);
-						if (std::isfinite(lengthSquared) &&
-							lengthSquared > std::numeric_limits<float>::epsilon())
+						glm::vec4 value;
+						if (AnimationClipSampler::SampleVector(
+							channel.m_timestamps,
+							channel.m_values,
+							channel.m_interpolation,
+							sampleTime,
+							value))
 						{
-							target.m_rotation = glm::normalize(rotation);
+							value.w = 1.0f;
+							if (channel.m_target == EAnimationTarget::Translation)
+							{
+								target.m_position = value;
+							}
+							else
+							{
+								target.m_scale = value;
+							}
 						}
 					}
 				}
@@ -805,7 +850,8 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 
 			anim->m_numBones = static_cast<uint32_t>(numBones);
 			anim->m_numFrames = static_cast<uint32_t>(numFrames);
-			anim->m_fps = 30.0f;
+			anim->m_fps = samplingFps;
+			anim->m_duration = animationDuration;
 			anim->m_frames = std::move(framesData);
 		}
 	}
