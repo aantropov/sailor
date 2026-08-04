@@ -418,19 +418,20 @@ namespace SailorEditor.Services
                 if (string.IsNullOrWhiteSpace(serializedWorld))
                     return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The native world could not be serialized.");
 
-                await File.WriteAllTextAsync(
-                    worldAsset.Asset.FullName,
-                    serializedWorld,
-                    cancellationToken);
-                worldAsset.IsDirty = false;
-                if (!await engineService.RequestAssetReloadAsync(
+                if (!await assetsService.SaveExistingAssetAsync(
+                        worldAsset.FileId,
+                        () => File.WriteAllTextAsync(
+                            worldAsset.Asset.FullName,
+                            serializedWorld,
+                            cancellationToken),
                         cancellationToken))
                 {
                     return new SceneSaveResult(
                         SceneSaveOutcome.Failed,
                         worldAsset.Asset.FullName,
-                        "The scene was saved, but the native registry rejected the reload.");
+                        "The scene was saved, but the native registry rejected its targeted update.");
                 }
+                worldAsset.IsDirty = false;
                 assetsService.Refresh();
                 CurrentWorldAsset = assetsService.Assets.TryGetValue(worldAsset.FileId, out var refreshed)
                     ? refreshed as WorldFile ?? worldAsset

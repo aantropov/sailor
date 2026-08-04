@@ -43,18 +43,37 @@ void VulkanBuffer::Compile()
 
 	const auto& queues = m_device->GetQueueFamilies();
 
-	uint32_t queueFamily[] = { queues.m_graphicsFamily.value() };
-	uint32_t queueFamilies[] = { queues.m_graphicsFamily.value(), queues.m_transferFamily.value() };
+	uint32_t queueFamilies[] = {
+		queues.m_graphicsFamily.value(),
+		queues.m_transferFamily.value(),
+		queues.m_computeFamily.value()
+	};
+	uint32_t numQueueFamilies = 1;
 
-	if (m_sharingMode == VK_SHARING_MODE_CONCURRENT)
+	for (uint32_t i = 1; i < NUM_ELEMENTS(queueFamilies); ++i)
 	{
-		bufferInfo.queueFamilyIndexCount = 2;
+		bool bAlreadyIncluded = false;
+		for (uint32_t j = 0; j < numQueueFamilies; ++j)
+		{
+			bAlreadyIncluded |= queueFamilies[j] == queueFamilies[i];
+		}
+
+		if (!bAlreadyIncluded)
+		{
+			queueFamilies[numQueueFamilies++] = queueFamilies[i];
+		}
+	}
+
+	if (m_sharingMode == VK_SHARING_MODE_CONCURRENT && numQueueFamilies > 1)
+	{
+		bufferInfo.queueFamilyIndexCount = numQueueFamilies;
 		bufferInfo.pQueueFamilyIndices = queueFamilies;
 	}
 	else
 	{
-		bufferInfo.queueFamilyIndexCount = 1;
-		bufferInfo.pQueueFamilyIndices = queueFamily;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferInfo.queueFamilyIndexCount = 0;
+		bufferInfo.pQueueFamilyIndices = nullptr;
 	}
 
 	VK_CHECK(vkCreateBuffer(*m_device, &bufferInfo, nullptr, &m_buffer));

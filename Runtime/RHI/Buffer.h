@@ -10,7 +10,7 @@ namespace Sailor::RHI
 	public:
 
 		RHIBuffer(EBufferUsageFlags usage, EMemoryPropertyFlags memoryProperty) : m_usage(usage), m_memoryProperty(memoryProperty) {}
-		virtual ~RHIBuffer();
+		SAILOR_API virtual ~RHIBuffer();
 
 #if defined(SAILOR_BUILD_WITH_VULKAN)
 		using VulkanBufferAllocator = TBlockAllocator<Sailor::Memory::GlobalVulkanBufferAllocator, VulkanBufferMemoryPtr>;

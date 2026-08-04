@@ -3,6 +3,7 @@
 #include <string>
 #include "Containers/Vector.h"
 #include "Containers/ConcurrentMap.h"
+#include "Core/SpinLock.h"
 #include "Core/Submodule.h"
 #include "Engine/Types.h"
 #include "Memory/SharedPtr.hpp"
@@ -51,10 +52,29 @@ namespace Sailor
 	class TextureImporter final : public TSubmodule<TextureImporter>, public IAssetInfoHandlerListener, public IAssetFactory
 	{
 	public:
+		struct TextureSamplerSlotSnapshot
+		{
+			uint32_t m_index = 0;
+			uint64_t m_contentRevision = 0;
+			RHI::RHITexturePtr m_texture;
+		};
+
+		struct TextureSamplersSnapshot
+		{
+			uint64_t m_descriptorRevision = 0;
+			TVector<TextureSamplerSlotSnapshot> m_slots;
+		};
 
 		// Keep this in sync with runtime descriptor allocation on macOS/MoltenVK.
 		// 262144 overflows Metal argument-buffer validation in current path.
-		static const size_t MaxTexturesInScene = 8192;
+		// Slot zero is reserved for the default texture.
+		static constexpr size_t MaxTexturesInScene = 8192;
+		static constexpr size_t MaxUserTexturesInScene = MaxTexturesInScene - 1;
+
+		static constexpr bool IsUserTextureSamplerIndexValid(size_t index) noexcept
+		{
+			return index > 0 && index < MaxTexturesInScene;
+		}
 
 		using ByteCode = TVector<uint8_t>;
 
@@ -77,6 +97,7 @@ namespace Sailor
 		SAILOR_API virtual void CollectGarbage() override;
 
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetTextureSamplersBindingSet() { return m_textureSamplersBindings; }
+		SAILOR_API TextureSamplersSnapshot GetTextureSamplersSnapshot(const TVector<uint32_t>& requestedIndices) const;
 		SAILOR_API size_t GetTextureIndex(FileId uid);
 		SAILOR_API size_t GetTextureSamplersCount() const { return m_textureSamplersCurrentIndex.load(); }
 
@@ -86,12 +107,17 @@ namespace Sailor
 		std::atomic<size_t> m_textureSamplersCurrentIndex = 0;
 		RHI::RHIShaderBindingSetPtr m_textureSamplersBindings{};
 		TConcurrentMap<FileId, size_t> m_textureSamplersIndices{};
+		TVector<uint64_t> m_textureSamplerSlotRevisions{};
+		mutable SpinLock m_textureSamplersLock;
 
 		TConcurrentMap<FileId, Tasks::TaskPtr<TexturePtr>> m_promises{};
 		TConcurrentMap<FileId, TexturePtr> m_loadedTextures{};
 
 		Memory::ObjectAllocatorPtr m_allocator;
 
+		bool RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, size_t& outIndex);
+		bool UpdateTextureSamplerBinding(RHI::RHITexturePtr texture, uint32_t index);
+		bool UpdateTextureSamplerBindingLocked(RHI::RHITexturePtr texture, uint32_t index);
 		SAILOR_API bool IsTextureLoaded(FileId uid) const;
 		SAILOR_API static bool ImportTexture(FileId uid, ByteCode& decodedData, int32_t& width, int32_t& height, uint32_t& mipLevels);
 	};

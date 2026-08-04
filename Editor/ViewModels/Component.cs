@@ -218,6 +218,10 @@ public class ComponentYamlConverter : IYamlTypeConverter
                 Vec3Property => DeserializeBuffered<Vec3>(property.Value, serializer, deserializer),
                 Vec2Property => DeserializeBuffered<Vec2>(property.Value, serializer, deserializer),
                 FileIdProperty => new Observable<FileId>(scalar),
+                Property<List<FileId>> => DeserializeFileIdList(
+                    property.Value,
+                    serializer,
+                    deserializer),
                 InstanceIdProperty => new Observable<InstanceId>(scalar),
                 FloatProperty => new Observable<float>((float)EditorComponentScalarCodec.Parse(
                     EditorComponentScalarKind.Float,
@@ -287,6 +291,21 @@ public class ComponentYamlConverter : IYamlTypeConverter
     static T DeserializeBuffered<T>(object value, ISerializer serializer, IDeserializer deserializer)
         => deserializer.Deserialize<T>(serializer.Serialize(value));
 
+    static ObservableFileIdList DeserializeFileIdList(
+        object? value,
+        ISerializer serializer,
+        IDeserializer deserializer)
+    {
+        if (value is null)
+            return new ObservableFileIdList();
+
+        return new ObservableFileIdList(
+            DeserializeBuffered<List<FileId>>(
+                value,
+                serializer,
+                deserializer) ?? []);
+    }
+
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
         var serializer = SerializationUtils.CreateSerializerBuilder()            
@@ -335,6 +354,17 @@ public class ComponentYamlConverter : IYamlTypeConverter
                     break;
                 case Observable<FileId> assetId:
                     fileIdConverter.WriteYaml(emitter, assetId.Value, typeof(FileId));
+                    break;
+                case ObservableFileIdList assetIds:
+                    emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+                    foreach (var assetId in assetIds.Values)
+                    {
+                        fileIdConverter.WriteYaml(
+                            emitter,
+                            assetId.Value ?? new FileId(),
+                            typeof(FileId));
+                    }
+                    emitter.Emit(new SequenceEnd());
                     break;
                 case Observable<InstanceId> id:
                     instanceIdConverter.WriteYaml(emitter, id.Value, typeof(InstanceId));

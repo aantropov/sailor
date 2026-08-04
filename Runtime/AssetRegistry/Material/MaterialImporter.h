@@ -33,6 +33,7 @@ namespace Sailor
 
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
+		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
 
 		SAILOR_API virtual Tasks::ITaskPtr OnHotReload() override;
 
@@ -58,17 +59,27 @@ namespace Sailor
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
 		SAILOR_API void SetUniform(const std::string& name, float value);
-		SAILOR_API void SetShader(ShaderSetPtr shader) { m_shader = shader; }
-		SAILOR_API void SetRenderState(const RHI::RenderState& renderState) { m_renderState = renderState; }
+		SAILOR_API void SetShader(ShaderSetPtr shader)
+		{
+			m_shader = shader;
+			AdvanceContentRevision();
+		}
+		SAILOR_API void SetRenderState(const RHI::RenderState& renderState)
+		{
+			m_renderState = renderState;
+			AdvanceContentRevision();
+		}
 
 		SAILOR_API ShaderSetPtr GetShader() const { return m_shader; }
 
 	protected:
 
+		void AdvanceContentRevision() { m_contentRevision.fetch_add(1, std::memory_order_release); }
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
 		std::atomic<bool> m_bIsDirty{};
+		std::atomic<uint64_t> m_contentRevision{};
 
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_commonShaderBindings{};

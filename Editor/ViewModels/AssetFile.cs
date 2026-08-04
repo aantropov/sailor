@@ -647,6 +647,15 @@ public partial class ObservableFileIdList : ObservableObject
         Values.ItemChanged += ValuesItemChanged;
     }
 
+    public ObservableFileIdList(IEnumerable<FileId> values) : this()
+    {
+        foreach (var value in values)
+        {
+            Values.Add(new Observable<FileId>(
+                value ?? new FileId()));
+        }
+    }
+
     public ObservableList<Observable<FileId>> Values { get; } = [];
 
     void ValuesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)

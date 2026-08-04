@@ -58,6 +58,13 @@ then a point 1000 units forward. A request fails only when the viewport,
 coordinates, active camera, or resulting ray is invalid; an empty scene is not
 a trace failure.
 
+`update_asset` revalidates one registered `FileId` against its metadata,
+source-file, and cache revisions. A metadata-only edit reloads that exact
+AssetInfo; a changed source reloads every registered AssetInfo backed by the
+same source (for example, the assets generated from one glTF file). It does not
+scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
+change Content topology still use `request_asset_reload`.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

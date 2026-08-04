@@ -215,17 +215,35 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
 					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
 					bool bMaterialsReady = !data.GetMaterials().IsEmpty();
+					bool bMaterialsChanged =
+						data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
+					size_t materialIndex = 0;
 					for (const auto& material : data.GetMaterials())
 					{
 						bMaterialsReady &= material && material->IsReady();
+						const uint64_t materialContentRevision =
+							material ? material->GetContentRevision() : 0ull;
+						if (!bMaterialsChanged &&
+							data.m_materialContentRevisions[materialIndex] != materialContentRevision)
+						{
+							bMaterialsChanged = true;
+						}
+						++materialIndex;
 					}
 
-					if ((data.m_bIsDirty || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
+					if ((data.m_bIsDirty || bMaterialsChanged || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
 						adjustedBounds.IsValid() && bMaterialsReady)
 					{
+						data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
+						for (size_t i = 0; i < data.GetMaterials().Num(); ++i)
+						{
+							data.m_materialContentRevisions[i] = data.GetMaterials()[i]->GetContentRevision();
+						}
+
 						RHI::RHISceneViewProxy proxy;
 						proxy.m_staticMeshEcs = index;
 						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
+						proxy.m_frame = ownerTransform.GetFrameLastChange();
 						if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
 						{
 							data.m_skeletonOffset = animator->GetSkeletonOffset();
@@ -241,6 +259,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 						proxy.m_bCastShadows = data.ShouldCastShadow();
 
 						proxy.m_overrideMaterials.Clear();
+						proxy.m_renderQueueTags.Clear();
+						proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
 #if defined(__APPLE__)
 						proxy.m_materialTextureSamplers.Clear();
 						proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
@@ -248,8 +268,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 #endif
 						for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 						{
-							size_t materialIndex = (std::min)(i, data.GetMaterials().Num() - 1);
+							const size_t materialIndex =
+								proxy.m_meshes[i]->ResolveMaterialIndex(
+									i, data.GetMaterials().Num());
 							auto& material = data.GetMaterials()[materialIndex];
+							proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
 							proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
 #if defined(__APPLE__)
 							TSet<uint32_t> requestedTextures;

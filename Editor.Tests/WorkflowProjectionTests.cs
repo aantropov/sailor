@@ -661,6 +661,111 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void ComponentFileIdLists_RoundTripAndUseAReusableInspectorEditor()
+    {
+        var componentSource = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "Component.cs");
+        var componentTemplateSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "ComponentTemplate.cs");
+        var assetTemplateSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "AssetFileTemplate.xaml.cs");
+        var templatesSource = ReadRepositoryFile(
+            "Editor",
+            "Utility",
+            "Templates.cs");
+        var assetFileSource = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "AssetFile.cs");
+
+        Assert.Contains(
+            "Property<List<FileId>> => DeserializeFileIdList(",
+            componentSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ObservableFileIdList assetIds:",
+            componentSource,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            componentSource,
+            "case ObservableFileIdList assetIds:",
+            "new SequenceStart",
+            "fileIdConverter.WriteYaml(",
+            "new SequenceEnd");
+
+        Assert.Contains(
+            "ObservableFileIdList fileIds => Templates.FileIdListEditor(",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "foreach (var property in EnumerateInspectorProperties(component))",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            componentTemplateSource,
+            "TryGetValue(\"model\"",
+            "TryGetValue(\"overrideMaterials\"",
+            "if (property.Key is \"model\" or \"overrideMaterials\")");
+        Assert.Contains(
+            "propertyName == \"overrideMaterials\"",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "typeof(MaterialFile)",
+            componentTemplateSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return Templates.FileIdListEditor(fileIds);",
+            assetTemplateSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "static View CreateFileIdListEditor(",
+            assetTemplateSource,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "public static View FileIdListEditor(",
+            templatesSource,
+            StringComparison.Ordinal);
+        var fileIdListEditorSource = Slice(
+            templatesSource,
+            "public static View FileIdListEditor(",
+            "public static View InstanceIdEditor<");
+        Assert.Contains(
+            "var listEditor = new VerticalStackLayout",
+            fileIdListEditorSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "BindableLayout.SetItemsSource(listEditor, fileIds.Values);",
+            fileIdListEditorSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CollectionView",
+            fileIdListEditorSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "fileIds.Values.Add(new Observable<FileId>(new FileId()))",
+            templatesSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Values.CollectionChanged += ValuesCollectionChanged;",
+            assetFileSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Values.ItemChanged += ValuesItemChanged;",
+            assetFileSource,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RangedNumericEditors_PreviewSliderValuesWithoutApplyingEntrySetters()
     {
         var templatesSource = ReadRepositoryFile(

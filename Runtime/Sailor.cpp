@@ -7,6 +7,7 @@
 #include "AssetRegistry/Animation/AnimationImporter.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
@@ -792,7 +793,7 @@ void App::Start()
 
 			char Buff[256];
 			SAILOR_SNPRINTF(Buff, sizeof(Buff), "Sailor FPS: %u, GPU FPS: %u, CPU FPS: %u, VRAM Usage: %.2f/%.2fmb, CmdLists: %u", frameCounter,
-				stats.m_gpuFps,
+				stats.m_gpuFps.load(std::memory_order_relaxed),
 				(uint32_t)pEngineLoop->GetCpuFps(),
 				(float)stats.m_gpuHeapUsage / (1024.0f * 1024.0f),
 				(float)stats.m_gpuHeapBudget / (1024.0f * 1024.0f),
@@ -869,6 +870,49 @@ bool App::RequestAssetReload()
 
 	QueueAssetReloadTaskLocked(scheduler);
 	return true;
+}
+
+bool App::UpdateAsset(const char* strFileId)
+{
+	if (strFileId == nullptr || strFileId[0] == '\0')
+	{
+		return false;
+	}
+
+	const std::string fileIdValue = strFileId;
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+		{
+			AssetRegistry* assetRegistry = GetSubmodule<AssetRegistry>();
+			if (assetRegistry == nullptr)
+			{
+				return false;
+			}
+
+			FileId fileId;
+			fileId.Deserialize(YAML::Node(fileIdValue));
+			if (!fileId)
+			{
+				return false;
+			}
+
+			FrameGraphAssetInfoPtr frameGraphAssetInfo =
+				assetRegistry->GetAssetInfoPtr<FrameGraphAssetInfoPtr>(fileId);
+			const bool bRefreshFrameGraph =
+				frameGraphAssetInfo != nullptr &&
+				(frameGraphAssetInfo->IsMetaExpired() ||
+					frameGraphAssetInfo->IsAssetExpired() ||
+					assetRegistry->IsAssetExpired(frameGraphAssetInfo));
+			const bool bUpdated = assetRegistry->UpdateAsset(fileId);
+			if (bUpdated && bRefreshFrameGraph)
+			{
+				if (Renderer* renderer = GetSubmodule<Renderer>())
+				{
+					renderer->RefreshFrameGraph();
+				}
+			}
+
+			return bUpdated;
+		});
 }
 
 bool App::GetAssetReloadState(

@@ -33,17 +33,25 @@ namespace Sailor::Framegraph
 		SAILOR_API virtual Sailor::Tasks::TaskPtr<void, void> Prepare(RHI::RHIFrameGraphPtr frameGraph, const RHI::RHISceneViewSnapshot& sceneView) { return Sailor::Tasks::TaskPtr<void, void>(); }
 		SAILOR_API virtual void Process(RHI::RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView) = 0;
 		SAILOR_API virtual void Clear() = 0;
+		SAILOR_API virtual RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
 
 		SAILOR_API const std::string& GetTag() const { return m_tag; }
 		SAILOR_API void SetTag(const std::string& tag) { m_tag = tag; }
 
 	protected:
+		void ResetDrawCallStats() { m_drawCallStats = {}; }
+		void RecordDrawCallStats(uint32_t numInstances)
+		{
+			m_drawCallStats.m_numBatches++;
+			m_drawCallStats.m_numInstances += numInstances;
+		}
 
 		TMap<std::string, std::string> m_stringParams;
 		TMap<std::string, glm::vec4> m_vectorParams;
 		TMap<std::string, float> m_floatParams;
 		TMap<std::string, RHI::RHIResourcePtr> m_resourceParams;
 		TMap<std::string, std::string> m_unresolvedResourceParams;
+		RHI::DrawCallStats m_drawCallStats{};
 
 		std::string m_tag{};
 	};

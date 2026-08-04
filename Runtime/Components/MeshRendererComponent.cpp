@@ -1,6 +1,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Engine/GameObject.h"
 #include "ECS/StaticMeshRendererECS.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -39,12 +40,66 @@ void MeshRendererComponent::EndPlay()
 void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);
-	GetData().MarkDirty();
+	RebuildMaterials();
+}
 
-	if (model && model->GetFileId())
+void MeshRendererComponent::SetOverrideMaterials(const TVector<FileId>& overrideMaterials)
+{
+	m_overrideMaterials = overrideMaterials;
+	RebuildMaterials();
+}
+
+void MeshRendererComponent::RebuildMaterials()
+{
+	auto& materials = GetMaterials();
+	materials.Clear();
+
+	const ModelPtr& model = GetModel();
+	if (!model || !model->GetFileId())
 	{
-		App::GetSubmodule<ModelImporter>()->LoadDefaultMaterials(model->GetFileId(), GetMaterials());
+		GetData().MarkDirty();
+		return;
 	}
+
+	if (auto* modelImporter = App::GetSubmodule<ModelImporter>())
+	{
+		modelImporter->LoadDefaultMaterials(model->GetFileId(), materials);
+	}
+
+	if (auto* materialImporter = App::GetSubmodule<MaterialImporter>())
+	{
+		for (size_t materialIndex = 0; materialIndex < m_overrideMaterials.Num(); ++materialIndex)
+		{
+			const FileId& materialFileId = m_overrideMaterials[materialIndex];
+			if (!materialFileId)
+			{
+				continue;
+			}
+
+			MaterialPtr overrideMaterial;
+			if (!materialImporter->LoadMaterial(materialFileId, overrideMaterial) || !overrideMaterial)
+			{
+				continue;
+			}
+
+			if (materialIndex >= materials.Num())
+			{
+				const size_t firstNewSlot = materials.Num();
+				const MaterialPtr fallbackMaterial = materials.IsEmpty()
+					? overrideMaterial
+					: *materials.Last();
+				materials.Resize(materialIndex + 1);
+				for (size_t slot = firstNewSlot; slot <= materialIndex; ++slot)
+				{
+					materials[slot] = fallbackMaterial;
+				}
+			}
+
+			materials[materialIndex] = overrideMaterial;
+		}
+	}
+
+	GetData().MarkDirty();
 }
 
 bool MeshRendererComponent::LoadModel(const std::string& path)

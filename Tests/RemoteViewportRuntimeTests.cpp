@@ -979,10 +979,17 @@ namespace
 			"Mac modifier keys must reach ImGui selection suppression");
 		Require(macInputSource.find("SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers)") != std::string::npos &&
 			macInputSource.find("SceneViewportPointerRouting.ShouldPublishCapturedMove(") != std::string::npos &&
+			macInputSource.find("TryUsePointerMotionSource(PointerMotionSource.UIKit)") != std::string::npos &&
+			macInputSource.find("TryUsePointerMotionSource(PointerMotionSource.GameController)") != std::string::npos &&
+			macInputSource.find("HasPointerMoved(point)") != std::string::npos &&
+			macInputSource.find("deltaX == 0.0f && deltaY == 0.0f") != std::string::npos &&
+			macInputSource.find("ObserveDidBecomeCurrent") == std::string::npos &&
+			macInputSource.find("ObserveDidStopBeingCurrent") == std::string::npos &&
+			macInputSource.find("foreach (var mouse in GCMouse.Mice)") != std::string::npos &&
 			macInputSource.find("(deltaX * sensitivity) / scale") != std::string::npos &&
 			macInputSource.find("PublishTouchButton(touches, activeLocalPointerModifier, false);") != std::string::npos &&
 			macInputSource.find("activeMouseModifiers | activeKeyboardModifiers") != std::string::npos,
-			"Mac pointer input must arbitrate hover and captured motion, normalize Retina deltas, release local trackpad presses, and preserve keyboard modifiers");
+			"Mac pointer input must arbitrate hover, GameController, and UIKit fallback motion, normalize Retina deltas, release local presses, and preserve keyboard modifiers");
 	}
 
 }

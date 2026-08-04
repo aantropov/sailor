@@ -95,15 +95,18 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		maxZ = std::max(maxZ, trf.z);
 	}
 
-	// TODO: Redo
-	minZ = minZ < 0 ? minZ * zMult : minZ / zMult;
-	maxZ = maxZ < 0 ? maxZ / zMult : maxZ * zMult;
+	// Extend the fitted depth interval relative to its own center. Scaling the
+	// absolute coordinates made the cascade depend on which side of the light's
+	// origin the camera happened to be on.
+	const float zPadding = 0.5f * (maxZ - minZ) * (zMult - 1.0f);
+	minZ -= zPadding;
+	maxZ += zPadding;
 
 	const float zFar = -minZ;
 	const float zNear = -maxZ;
 
 	// Viewport settings, we want to handle all shadows with the reversed Z
-	const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zFar, zNear);
+	const glm::mat4 lightProjection = glm::orthoRH_ZO(minX, maxX, minY, maxY, zFar, zNear);
 
 	return lightProjection;
 }
@@ -112,30 +115,31 @@ void Frustum::CalculateCorners(const glm::mat4& matrix, bool bReverseZ)
 {
 	const auto inv = glm::inverse(matrix);
 
-	const float reverseZ = bReverseZ ? -1.0f : 1.0f;
+	const float farDepth = bReverseZ ? 0.0f : 1.0f;
+	const float nearDepth = bReverseZ ? 1.0f : 0.0f;
 
-	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, reverseZ * 1.0f, 1.0f);
+	glm::vec4 pt = inv * glm::vec4(1.0f, 1.0f, farDepth, 1.0f);
 	m_corners[0] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, reverseZ * 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, farDepth, 1.0f);
 	m_corners[1] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, reverseZ * 1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, farDepth, 1.0f);
 	m_corners[2] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, reverseZ * 1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, farDepth, 1.0f);
 	m_corners[3] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, 1.0f, reverseZ * -1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, 1.0f, nearDepth, 1.0f);
 	m_corners[4] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, 1.0f, reverseZ * -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, 1.0f, nearDepth, 1.0f);
 	m_corners[5] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(-1.0f, -1.0f, reverseZ * -1.0f, 1.0f);
+	pt = inv * glm::vec4(-1.0f, -1.0f, nearDepth, 1.0f);
 	m_corners[6] = vec3(pt / pt.w);
 
-	pt = inv * glm::vec4(1.0f, -1.0f, reverseZ * -1.0f, 1.0f);
+	pt = inv * glm::vec4(1.0f, -1.0f, nearDepth, 1.0f);
 	m_corners[7] = vec3(pt / pt.w);
 }
 

@@ -26,6 +26,7 @@ namespace SailorEditor.Services
         readonly ProjectContentFileOperations _fileOperations = new();
         readonly object _watcherLock = new();
         readonly List<FileSystemWatcher> _contentWatchers = [];
+        readonly SemaphoreSlim _assetSaveLock = new(1, 1);
         EngineLaunchContext? _activeLaunchContext;
         CancellationTokenSource? _pendingFilesystemReload;
         ProjectContentFolderIdAllocator _folderIdAllocator = new();
@@ -83,6 +84,77 @@ namespace SailorEditor.Services
             {
                 Console.WriteLine(
                     $"[AssetsService] Failed to refresh after asset reload generation {completion.Generation}: {exception.Message}");
+            }
+        }
+
+        public Task<bool> SaveAssetAsync(
+            AssetFile assetFile,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(assetFile);
+            return SaveExistingAssetAsync(
+                assetFile.FileId,
+                assetFile.Save,
+                cancellationToken);
+        }
+
+        public async Task<bool> SaveExistingAssetAsync(
+            FileId fileId,
+            Func<Task> saveAsync,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(fileId);
+            ArgumentNullException.ThrowIfNull(saveAsync);
+            if (fileId.IsEmpty())
+            {
+                return false;
+            }
+
+            await _assetSaveLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
+                lock (_watcherLock)
+                {
+                    watcherStates = _contentWatchers
+                        .Select(watcher =>
+                            (watcher, watcher.EnableRaisingEvents))
+                        .ToArray();
+                    foreach (var watcherState in watcherStates)
+                    {
+                        watcherState.Watcher.EnableRaisingEvents = false;
+                    }
+                }
+
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await saveAsync().ConfigureAwait(false);
+                }
+                finally
+                {
+                    lock (_watcherLock)
+                    {
+                        foreach (var watcherState in watcherStates)
+                        {
+                            if (_contentWatchers.Contains(watcherState.Watcher))
+                            {
+                                watcherState.Watcher.EnableRaisingEvents =
+                                    watcherState.Enabled;
+                            }
+                        }
+                    }
+                }
+
+                return await _engineService.UpdateAssetAsync(
+                        fileId,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                _assetSaveLock.Release();
             }
         }
 

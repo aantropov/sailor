@@ -33,6 +33,7 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
+		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
 
 		template<typename T>
 		void SetValue(const std::string& name, T value)
@@ -48,7 +49,7 @@ namespace Sailor::RHI
 
 		SAILOR_API TVector<Sailor::Tasks::TaskPtr<void, void>> Prepare(RHI::RHISceneViewPtr rhiSceneView);
 
-		SAILOR_API void Process(RHI::RHISceneViewPtr rhiSceneView,
+		SAILOR_API bool Process(RHI::RHISceneViewPtr rhiSceneView,
 			TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 			TVector<RHI::RHICommandListPtr>& outSecondaryCommandLists,
 			RHISemaphorePtr inSignalSemaphore,
@@ -73,6 +74,7 @@ namespace Sailor::RHI
 		RHI::UboFrameData m_prevFrameData{};
 
 		GpuStats m_lastFrameGpuStats{};
+		RHI::DrawCallStats m_drawCallStats{};
 	};
 
 	using RHIFrameGraphPtr = TRefPtr<RHIFrameGraph>;

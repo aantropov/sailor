@@ -22,6 +22,7 @@ const char* PostProcessNode::m_name = "PostProcess";
 void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -216,6 +217,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		0, 1.0f);
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+	RecordDrawCallStats(1);
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

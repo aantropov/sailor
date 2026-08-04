@@ -40,6 +40,7 @@ glslVertex: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -89,7 +90,7 @@ glslVertex: |
   
   layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
   {
-      uint indices[];
+      uint indices[MAX_TEXTURES_IN_SCENE];
   } culledLights;
   
   layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
@@ -124,21 +125,50 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[MAX_TEXTURES_IN_SCENE];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
   
   void main() 
   {
-    vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+    vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
-    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+    gl_Position = frame.projection * (frame.view * vertexPosition);
+
+    mat3 linearMatrix = mat3(modelMatrix);
+    mat3 normalMatrix = transpose(inverse(linearMatrix));
+    vec3 normal = normalize(normalMatrix * inNormal);
+
+    vec3 tangent = linearMatrix * inTangent;
+    tangent -= normal * dot(normal, tangent);
+    float tangentLengthSquared = dot(tangent, tangent);
+    if(tangentLengthSquared > 1e-8)
+    {
+      tangent *= inversesqrt(tangentLengthSquared);
+    }
+    else
+    {
+      vec3 fallbackAxis = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+      tangent = normalize(cross(fallbackAxis, normal));
+    }
+
+    vec3 transformedBitangent = linearMatrix * inBitangent;
+    float handedness = dot(cross(normal, tangent), transformedBitangent) < 0.0 ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(normal, tangent)) * handedness;
 
     vout.color = inColor;
-    vout.normal = normalize(worldNormal.xyz);
+    vout.normal = normal;
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[gl_InstanceIndex].materialInstance;
-    vout.tangentBasis = mat3(data.instance[gl_InstanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
+    vout.tangentBasis = mat3(tangent, bitangent, normal);
   }
 
 glslFragment: |
@@ -164,6 +194,7 @@ glslFragment: |
       uint skeletonOffset;
       uint isCulled;
       uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -253,7 +284,24 @@ glslFragment: |
   //layout(set=3, binding=3) uniform sampler2D normalSampler;
   //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
+
+  uint ResolveTextureSamplerIndex(uint globalTextureIndex)
+  {
+  #if defined(SAILOR_TEXTURE_REMAP)
+      return textureSamplerRemap.indices[globalTextureIndex];
+  #else
+      return globalTextureIndex;
+  #endif
+  }
   
   MaterialData GetMaterialData()
   {
@@ -273,18 +321,13 @@ glslFragment: |
         attenuation = 1.0;
       
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        
-        // EVSM only for the first cascade
-        if(light.shadowType == 2 && cascadeLayer == 0)
-        {
-          const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
-          shadow = ShadowCalculation_Evsm(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);
-        }
-        else
-        {
-          const float bias = max(0.000075 * (1.0 - dot(normal, light.direction)), 0.000005);   
-          shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);    
-        }
+        shadow = CalculateDirectionalShadow(
+          light.shadowType,
+          shadowMaps[cascadeLayer],
+          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+          normal,
+          -light.direction,
+          cascadeLayer);
     }
     // Point light
     else if(light.type == 1)
@@ -386,12 +429,12 @@ glslFragment: |
     const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(material.albedoSampler)], vin.texcoord) * vin.color;
-    material.metallic = material.metallic * texture(textureSamplers[nonuniformEXT(material.metalnessSampler)], vin.texcoord).r;
-    material.roughness = material.roughness * texture(textureSamplers[nonuniformEXT(material.roughnessSampler)], vin.texcoord).r;
+    material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord) * vin.color;
+    material.metallic = material.metallic * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
+    material.roughness = material.roughness * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.roughnessSampler))], vin.texcoord).r;
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    vec3 normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0);    
+    vec3 normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
     normal = normalize(vin.tangentBasis * normal);
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
@@ -416,26 +459,26 @@ glslFragment: |
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
     //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
   
-    vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
-    vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-    ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
-    
-    ivec2 mod = ivec2(frame.viewportSize.x % LIGHTS_CULLING_TILE_SIZE, frame.viewportSize.y % LIGHTS_CULLING_TILE_SIZE);
-    ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
-    
-    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
-  
-    const uint offset = lightsGrid.instance[tileIndex].offset;
-    const uint numLights = lightsGrid.instance[tileIndex].num;
+    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
+    const uint gridLength = uint(lightsGrid.instance.length());
+    const bool hasLightTile = tileIndex < gridLength;
+    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
+    const uint listLength = uint(culledLights.indices.length());
+    const uint availableLights = offset < listLength ? listLength - offset : 0;
+    const uint numLights = hasLightTile ? min(
+        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
+        availableLights) : 0;
     
     outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
     
     for(int i = 0; i < numLights; i++)
     {
         uint index = culledLights.indices[offset + i];
-        if(index == uint(-1))
+        if(index == uint(-1) ||
+            index >= uint(light.instance.length()) ||
+            light.instance[index].type == INVALID_LIGHT_TYPE)
         {
-            break;
+            continue;
         }
     
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);

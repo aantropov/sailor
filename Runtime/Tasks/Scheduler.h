@@ -37,7 +37,11 @@ namespace Sailor
 
 		// Serialized Editor protocol work. This is a dedicated worker,
 		// not part of the general-purpose Worker pool.
-		Editor = 4
+		Editor = 4,
+
+		// Best-effort work that must not delay explicit WaitIdle sets.
+		// A single dedicated worker processes this queue serially.
+		Background = 5
 	};
 
 	namespace Tasks

@@ -9,6 +9,8 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Tasks/Tasks.h"
 
+#include <atomic>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 
@@ -92,17 +94,19 @@ TVector<Sailor::Tasks::TaskPtr<void, void>> RHIFrameGraph::Prepare(RHI::RHIScene
 	return res;
 }
 
-void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
+bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 	TVector<RHI::RHICommandListPtr>& outTransferCommandLists,
 	TVector<RHI::RHICommandListPtr>& outCommandLists,
 	RHISemaphorePtr inSignalSemaphore,
 	RHISemaphorePtr& outWaitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 
 	auto renderer = App::GetSubmodule<RHI::Renderer>();
 	auto& driver = RHI::Renderer::GetDriver();
 	auto driverCommands = renderer->GetDriverCommands();
+	RHISemaphorePtr frameGraphChainSemaphore = inSignalSemaphore;
 
 	if (!m_postEffectPlane)
 	{
@@ -164,6 +168,38 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 	}
 
+	bool bHasTransmissionFramebuffer = false;
+	for (const auto& node : m_graph)
+	{
+		if (node && node->GetResolvedAttachment("transmissionFramebuffer"))
+		{
+			bHasTransmissionFramebuffer = true;
+			break;
+		}
+	}
+
+	constexpr const char* transmissionSamplerName =
+		"g_transmissionFramebufferSampler";
+	if (!bHasTransmissionFramebuffer &&
+		rhiSceneView->m_rhiLightsData->HasBinding(transmissionSamplerName))
+	{
+		RHI::RHITexturePtr defaultTexture =
+			renderer->GetDriver()->GetDefaultTexture();
+		RHI::RHIShaderBindingPtr& transmissionBinding =
+			rhiSceneView->m_rhiLightsData->GetOrAddShaderBinding(
+				transmissionSamplerName);
+		if (defaultTexture &&
+			transmissionBinding->GetTextureBinding() != defaultTexture)
+		{
+			renderer->GetDriver()->AddSamplerToShaderBindings(
+				rhiSceneView->m_rhiLightsData,
+				transmissionSamplerName,
+				defaultTexture,
+				10);
+			bShouldRecalculateCompatibility = true;
+		}
+	}
+
 	if (bShouldRecalculateCompatibility)
 	{
 		rhiSceneView->m_rhiLightsData->RecalculateCompatibility();
@@ -191,7 +227,8 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 		driverCommands->EndDebugRegion(transferCmdList);
 
-		RHI::RHISemaphorePtr chainSemaphore = inSignalSemaphore;
+		RHI::RHISemaphorePtr chainSemaphore = frameGraphChainSemaphore;
+		auto submitsSucceeded = TSharedPtr<std::atomic_bool>::Make(true);
 
 		TVector<Tasks::ITaskPtr> tasks;
 		tasks.Reserve(2);
@@ -251,6 +288,7 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		for (auto& node : m_graph)
 		{
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
+			m_drawCallStats += node->GetDrawCallStats();
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
@@ -275,9 +313,18 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					auto submitCmdList1 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
+							if (!submitsSucceeded->load(std::memory_order_acquire))
+							{
+								return;
+							}
+
 							auto fence = RHIFencePtr::Make();
 							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
-							RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, fence, newChainSemaphore, chainSemaphore);
+							if (!RHI::Renderer::GetDriver()->SubmitCommandList(transferCmdList, fence, newChainSemaphore, chainSemaphore))
+							{
+								SAILOR_LOG_ERROR("RHIFrameGraph::Process: failed to submit a chained transfer command buffer.");
+								submitsSucceeded->store(false, std::memory_order_release);
+							}
 						}, EThreadType::RHI);
 
 					if (tasks.Num() > 0)
@@ -293,9 +340,18 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					auto submitCmdList2 = Tasks::CreateTask("Submit chaining cmd lists",
 						[=]()
 						{
+							if (!submitsSucceeded->load(std::memory_order_acquire))
+							{
+								return;
+							}
+
 							auto fence = RHIFencePtr::Make();
 							RHI::Renderer::GetDriver()->SetDebugName(fence, std::format("Submit chaining cmd lists"));
-							RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence, chainSemaphore, newChainSemaphore);
+							if (!RHI::Renderer::GetDriver()->SubmitCommandList(cmdList, fence, chainSemaphore, newChainSemaphore))
+							{
+								SAILOR_LOG_ERROR("RHIFrameGraph::Process: failed to submit a chained graphics command buffer.");
+								submitsSucceeded->store(false, std::memory_order_release);
+							}
 						}, EThreadType::RHI);
 
 					submitCmdList2->Join(submitCmdList1);
@@ -338,12 +394,22 @@ void RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			}
 		}
 
+		if (!submitsSucceeded->load(std::memory_order_acquire))
+		{
+			m_lastFrameGpuStats = driver->FinishGpuTracking();
+			outWaitSemaphore.Clear();
+			return false;
+		}
+
 		m_lastFrameGpuStats = driver->FinishGpuTracking();
 
-		outWaitSemaphore = chainSemaphore;
+		frameGraphChainSemaphore = chainSemaphore;
 		outCommandLists.Emplace(std::move(cmdList));
 		outTransferCommandLists.Emplace(transferCmdList);
 	}
+
+	outWaitSemaphore = frameGraphChainSemaphore;
+	return true;
 }
 
 RHI::RHITexturePtr RHIFrameGraph::GetSampler(const std::string& name)

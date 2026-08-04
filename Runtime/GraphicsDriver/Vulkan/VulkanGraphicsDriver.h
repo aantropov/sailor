@@ -14,11 +14,25 @@
 #include "GraphicsDriver/Vulkan/VulkanDevice.h"
 #include "Platform/Win32/Window.h"
 #include "Containers/ConcurrentMap.h"
+#include <mutex>
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 
 namespace Sailor::GraphicsDriver::Vulkan
 {
+	namespace SsboLayout
+	{
+		constexpr size_t SsboElementAlignment = 16u;
+
+		constexpr size_t AlignSsboElementSize(size_t elementSize) noexcept
+		{
+			const size_t remainder = elementSize % SsboElementAlignment;
+			return remainder == 0u ?
+				elementSize :
+				elementSize + SsboElementAlignment - remainder;
+		}
+	}
+
 	class VulkanGraphicsDriver : public RHI::IGraphicsDriver, public RHI::IGraphicsDriverCommands
 	{
 	public:
@@ -39,8 +53,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual bool AcquireNextImage() override;
 		SAILOR_API virtual bool PresentFrame(const class FrameState& state, const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const override;
 		SAILOR_API virtual bool SubmitFrameWithoutPresent(const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers, const TVector<RHI::RHISemaphorePtr>& waitSemaphores) override;
-		SAILOR_API VkSemaphore GetLastSubmittedRenderFinishedSemaphoreHandle() const;
-		SAILOR_API VkSemaphore GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const;
 
 		SAILOR_API virtual void SetDebugName(RHI::RHIResourcePtr resource, const std::string& name) override;
 
@@ -107,7 +119,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API virtual RHI::RHIMaterialPtr CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader, const RHI::RHIShaderBindingSetPtr& shaderBindigs) override;
 		SAILOR_API virtual void UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer) override;
 
-		SAILOR_API virtual void SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr) override;
+		SAILOR_API virtual bool SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence = nullptr, RHI::RHISemaphorePtr signalSemaphore = nullptr, RHI::RHISemaphorePtr waitSemaphore = nullptr) override;
 
 		// Shader binding set
 		SAILOR_API virtual RHI::RHIShaderBindingSetPtr CreateShaderBindings() override;
@@ -264,6 +276,40 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
 
 	protected:
+		TVector<uint32_t> CollectPublishedVariableDescriptorCounts(const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const;
+
+		class ComputePipelineCacheKey
+		{
+			RHI::RHIShaderPtr m_shader{};
+			uint32_t m_pushConstantsSize = 0;
+			TVector<uint32_t> m_variableDescriptorCounts;
+
+		public:
+			ComputePipelineCacheKey() = default;
+			ComputePipelineCacheKey(const RHI::RHIShaderPtr& shader, uint32_t pushConstantsSize, const TVector<uint32_t>* variableDescriptorCounts) :
+				m_shader(shader),
+				m_pushConstantsSize(pushConstantsSize > 4 ? 256u : 0u),
+				m_variableDescriptorCounts(variableDescriptorCounts ? *variableDescriptorCounts : TVector<uint32_t>{})
+			{}
+
+			bool operator==(const ComputePipelineCacheKey& rhs) const
+			{
+				return m_shader == rhs.m_shader &&
+					m_pushConstantsSize == rhs.m_pushConstantsSize &&
+					m_variableDescriptorCounts == rhs.m_variableDescriptorCounts;
+			}
+
+			size_t GetHash() const
+			{
+				size_t hash = 0;
+				HashCombine(hash, m_shader, m_pushConstantsSize);
+				for (const uint32_t count : m_variableDescriptorCounts)
+				{
+					HashCombine(hash, count);
+				}
+				return hash;
+			}
+		};
 
 		const uint32_t CachedDescriptorSetLifeTimeInFrames = 3;
 		class CachedDescriptorSet
@@ -272,23 +318,24 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 			RHI::RHIShaderBindingSetPtr m_binding{};
 			size_t m_initialCompatibility = 0;
+			uint64_t m_initialDescriptorRevision = 0;
 
 		public:
 
 			CachedDescriptorSet() = default;
-			CachedDescriptorSet& operator=(const CachedDescriptorSet& rhs);
-			CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& bindings) noexcept;
+			SAILOR_SHARED_API CachedDescriptorSet& operator=(const CachedDescriptorSet& rhs);
+			SAILOR_SHARED_API CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& bindings) noexcept;
 
-			bool operator==(const CachedDescriptorSet& rhs) const;
+			SAILOR_SHARED_API bool operator==(const CachedDescriptorSet& rhs) const;
 
 			VulkanPipelineLayoutPtr& GetLayout() { return m_layout; }
 			RHI::RHIShaderBindingSetPtr& GetBinding() { return m_binding; }
 
-			bool IsExpired() const;
-			size_t GetHash() const;
+			SAILOR_SHARED_API bool IsExpired() const;
+			SAILOR_SHARED_API size_t GetHash() const;
 		};
 
-		SAILOR_API void UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
+		SAILOR_API bool UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings);
 		SAILOR_API void RefreshSwapchainTargets();
 
 		// The resources that are used as default
@@ -306,8 +353,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		// Cached MSAA render targets to support MSAA for rendering to framebuffer
 		TConcurrentMap<size_t, RHI::RHITexturePtr> m_cachedMsaaRenderTargets{};
 
-		TConcurrentMap<RHI::RHIShaderPtr, VulkanComputePipelinePtr> m_cachedComputePipelines{};
+		TConcurrentMap<ComputePipelineCacheKey, VulkanComputePipelinePtr> m_cachedComputePipelines{};
 		TConcurrentMap<CachedDescriptorSet, TPair<VulkanDescriptorSetPtr, uint32_t>> m_cachedDescriptorSets{ 24 };
+		mutable std::recursive_mutex m_descriptorUpdateMutex;
 
 			GraphicsDriver::Vulkan::VulkanApi* m_vkInstance{};
 			bool m_bIsInitialized = false;

@@ -173,6 +173,8 @@ std::string GenerateConstantsLibrary(uint32_t version)
 	stream << "#define DefaultColorBinding " << RHI::RHIVertexDescription::DefaultColorBinding << "\n";
 	stream << "#define DefaultTangentBinding " << RHI::RHIVertexDescription::DefaultTangentBinding << "\n";
 	stream << "#define DefaultBitangentBinding " << RHI::RHIVertexDescription::DefaultBitangentBinding << "\n";
+	stream << "#define DefaultBoneIdsBinding " << RHI::RHIVertexDescription::DefaultBoneIdsBinding << "\n";
+	stream << "#define DefaultBoneWeightsBinding " << RHI::RHIVertexDescription::DefaultBoneWeightsBinding << "\n";
 
 	stream << "\n" << "// Tile Lighting" << "\n";
 	stream << "#define LIGHTS_CULLING_TILE_SIZE " << LightCullingNode::TileSize << "\n";
@@ -187,7 +189,6 @@ std::string GenerateConstantsLibrary(uint32_t version)
 	stream << "#define MAX_SHADOWS_IN_VIEW " << LightingECS::MaxShadowsInView << "\n";
 	stream << "#define MAX_TEXTURES_IN_SCENE " << TextureImporter::MaxTexturesInScene << "\n";
 	stream << "#define NUM_CSM_CASCADES " << LightingECS::NumCascades << "\n";
-
 	stream << "const float ShadowCascadeLevels[" << LightingECS::NumCascades << "] = { ";
 
 	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
@@ -367,6 +368,10 @@ bool ShaderCompiler::ForceCompilePermutation(ShaderAssetInfoPtr assetInfo, uint3
 	vertexDefines.Add("VERTEX");
 	fragmentDefines.Add("FRAGMENT");
 	computeDefines.Add("COMPUTE");
+#if defined(__APPLE__)
+	vertexDefines.Add("SAILOR_TEXTURE_REMAP");
+	fragmentDefines.Add("SAILOR_TEXTURE_REMAP");
+#endif
 
 	if (pShader->ContainsVertex())
 	{

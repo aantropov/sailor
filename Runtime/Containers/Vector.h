@@ -737,7 +737,7 @@ namespace Sailor
 			}
 		}
 
-		__forceinline void ConstructElements(size_t index, const TElementType& firstElement, size_t count = 1) requires IsCopyConstructible<TElementType>
+		__forceinline void ConstructElements(size_t index, const TElementType& firstElement, size_t count) requires IsCopyConstructible<TElementType>
 		{
 			for (size_t i = 0; i < count; i++)
 			{

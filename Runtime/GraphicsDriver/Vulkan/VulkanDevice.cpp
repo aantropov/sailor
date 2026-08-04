@@ -231,7 +231,6 @@ void VulkanDevice::BeginConditionalDestroy()
 	}
 
 	m_renderFinishedSemaphores.Clear();
-	m_sceneViewMainResolvedSemaphores.Clear();
 	m_imageAvailableSemaphores.Clear();
 	m_syncImages.Clear();
 	m_syncFences.Clear();
@@ -475,16 +474,10 @@ TUniquePtr<ThreadContext> VulkanDevice::CreateThreadContext()
 
 	auto descriptorSizes = TVector
 	{
-#if defined(__APPLE__)
-		// MoltenVK is strict about descriptor pool capacities; keep generous headroom on macOS.
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8192),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4096),
 		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1024)
-#else
-		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 32),
-		VulkanApi::CreateDescriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64)
-#endif
 	};
 
 	context->m_descriptorPool = VulkanDescriptorPoolPtr::Make(VulkanDevicePtr(this), 8192, descriptorSizes);
@@ -505,7 +498,6 @@ void VulkanDevice::CreateFrameSyncSemaphores()
 	{
 		m_imageAvailableSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_renderFinishedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
-		m_sceneViewMainResolvedSemaphores.Add(VulkanSemaphorePtr::Make(VulkanDevicePtr(this)));
 		m_syncFences.Add(VulkanFencePtr::Make(VulkanDevicePtr(this), VK_FENCE_CREATE_SIGNALED_BIT));
 	}
 }
@@ -601,7 +593,8 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 	TVector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	TSet<uint32_t> uniqueQueueFamilies = { m_queueFamilies.m_graphicsFamily.value(),
 		m_queueFamilies.m_presentFamily.value(),
-		m_queueFamilies.m_transferFamily.value() };
+		m_queueFamilies.m_transferFamily.value(),
+		m_queueFamilies.m_computeFamily.value() };
 
 	float queuePriority = 1.0f;
 
@@ -807,22 +800,38 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		SAILOR_LOG_ERROR("Failed to load Vulkan dynamic rendering end function pointers.");
 	}
 
-	// Create queues
-	VkQueue presentQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_presentFamily.value(), 0, &presentQueue);
-	m_presentQueue = VulkanQueuePtr::Make(presentQueue, m_queueFamilies.m_presentFamily.value(), 0);
+	// A VkQueue requires external synchronization. Queue families commonly alias
+	// the same family/index on MoltenVK, so all aliases must share one wrapper and
+	// therefore one submission lock.
+	auto getOrCreateQueue = [this](uint32_t queueFamilyIndex) -> VulkanQueuePtr
+		{
+			constexpr uint32_t queueIndex = 0;
+			const VulkanQueuePtr queues[] = {
+				m_graphicsQueue,
+				m_computeQueue,
+				m_transferQueue,
+				m_presentQueue
+			};
 
-	VkQueue graphicsQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_graphicsFamily.value(), 0, &graphicsQueue);
-	m_graphicsQueue = VulkanQueuePtr::Make(graphicsQueue, m_queueFamilies.m_graphicsFamily.value(), 0);
+			for (const VulkanQueuePtr& queue : queues)
+			{
+				if (queue.IsValid() &&
+					queue->QueueFamilyIndex() == queueFamilyIndex &&
+					queue->QueueIndex() == queueIndex)
+				{
+					return queue;
+				}
+			}
 
-	VkQueue transferQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_transferFamily.value(), 0, &transferQueue);
-	m_transferQueue = VulkanQueuePtr::Make(transferQueue, m_queueFamilies.m_transferFamily.value(), 0);
+			VkQueue queue = VK_NULL_HANDLE;
+			vkGetDeviceQueue(m_device, queueFamilyIndex, queueIndex, &queue);
+			return VulkanQueuePtr::Make(queue, queueFamilyIndex, queueIndex);
+		};
 
-	VkQueue computeQueue;
-	vkGetDeviceQueue(m_device, m_queueFamilies.m_computeFamily.value(), 0, &computeQueue);
-	m_computeQueue = VulkanQueuePtr::Make(computeQueue, m_queueFamilies.m_computeFamily.value(), 0);
+	m_graphicsQueue = getOrCreateQueue(m_queueFamilies.m_graphicsFamily.value());
+	m_computeQueue = getOrCreateQueue(m_queueFamilies.m_computeFamily.value());
+	m_transferQueue = getOrCreateQueue(m_queueFamilies.m_transferFamily.value());
+	m_presentQueue = getOrCreateQueue(m_queueFamilies.m_presentFamily.value());
 }
 
 void VulkanDevice::CreateWin32Surface(const Platform::Window* viewport)
@@ -1052,63 +1061,49 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	waitSemaphores.Add(*m_imageAvailableSemaphores[m_currentFrame]);
 
 	///////////////////////////////////////////////////
-	VkResult presentResult = VK_SUCCESS;
-	VkResult submitResult = VK_SUCCESS;
-	if (commandBuffers.Num() > 0)
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
+	submitInfo.pWaitSemaphores = &waitSemaphores[0];
+
+	VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
+
+	for (uint32_t i = 0; i < semaphoresToWait.Num(); i++)
 	{
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		waitStages[i] = semaphoresToWait[i]->PipelineStageFlags();
+	}
+	waitStages[waitSemaphores.Num() - 1] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 
-		submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
-		submitInfo.pWaitSemaphores = &waitSemaphores[0];
+	submitInfo.pWaitDstStageMask = waitStages;
 
-		VkPipelineStageFlags* waitStages = reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags)));
+	// A zero-command submit is intentional: it still consumes the acquired-image
+	// and frame-chain semaphores before they are reused.
+	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
+	submitInfo.pCommandBuffers = commandBuffers.Num() > 0 ? &commandBuffers[0] : nullptr;
 
-		for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
-		{
-			waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-		}
+	VkSemaphore signalSemaphores[] = { *m_renderFinishedSemaphores[m_currentFrame] };
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = signalSemaphores;
 
-		submitInfo.pWaitDstStageMask = waitStages;
+	m_syncFences[m_currentFrame]->Reset();
 
-		submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
-		submitInfo.pCommandBuffers = &commandBuffers[0];
+	//TODO: Transfer queue for transfer family command lists
+	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
 
-		m_lastSubmittedRenderFinishedSemaphore = m_renderFinishedSemaphores[m_currentFrame];
-		m_lastSubmittedSceneViewMainResolvedSemaphore = m_sceneViewMainResolvedSemaphores[m_currentFrame];
-		VkSemaphore signalSemaphores[] = { *m_lastSubmittedRenderFinishedSemaphore, *m_lastSubmittedSceneViewMainResolvedSemaphore };
-		submitInfo.signalSemaphoreCount = 2;
-		submitInfo.pSignalSemaphores = signalSemaphores;
+	m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 
-		m_syncFences[m_currentFrame]->Reset();
+	_freea(waitStages);
 
-		//TODO: Transfer queue for transfer family command lists
-		submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
-
-		m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
-
-		_freea(waitStages);
-
+	VkResult presentResult = VK_SUCCESS;
+	if (submitResult == VK_SUCCESS)
+	{
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = signalSemaphores;
 
-		VkSwapchainKHR swapChains[] = { *m_swapchain };
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = swapChains;
-		presentInfo.pImageIndices = &m_currentSwapchainImageIndex;
-		presentInfo.pResults = nullptr; // Optional
-
-		presentResult = m_presentQueue->Present(presentInfo);
-	}
-	else
-	{
-		VkPresentInfoKHR presentInfo{};
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
-		presentInfo.waitSemaphoreCount = 0;
 		VkSwapchainKHR swapChains[] = { *m_swapchain };
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = swapChains;
@@ -1143,6 +1138,19 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	// AcquireNextImage normally waits this fence before a frame slot is reused.
+	// When there is no swapchain image, preserve the same invariant before
+	// releasing the slot dependencies or resetting its fence.
+	const VkResult previousFrameResult = m_syncFences[m_currentFrame]->Wait();
+	if (previousFrameResult != VK_SUCCESS)
+	{
+		if (previousFrameResult == VK_ERROR_DEVICE_LOST)
+		{
+			m_bIsDeviceLost = true;
+		}
+		return false;
+	}
+
 	m_frameDeps[m_currentFrame].Clear();
 
 	TVector<VkCommandBuffer> commandBuffers;
@@ -1166,14 +1174,6 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 		}
 	}
 
-	if (commandBuffers.Num() == 0)
-	{
-		m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;
-		m_numSubmittedCommandBuffers = m_numSubmittedCommandBuffersAcc;
-		m_numSubmittedCommandBuffersAcc = 0;
-		return true;
-	}
-
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.Num());
@@ -1183,12 +1183,12 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 		reinterpret_cast<VkPipelineStageFlags*>(_malloca(waitSemaphores.Num() * sizeof(VkPipelineStageFlags))) : nullptr;
 	for (uint32_t i = 0; i < waitSemaphores.Num(); i++)
 	{
-		waitStages[i] = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		waitStages[i] = semaphoresToWait[i]->PipelineStageFlags();
 	}
 
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.Num());
-	submitInfo.pCommandBuffers = &commandBuffers[0];
+	submitInfo.pCommandBuffers = commandBuffers.Num() > 0 ? &commandBuffers[0] : nullptr;
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = nullptr;
 

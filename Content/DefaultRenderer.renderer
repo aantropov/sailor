@@ -35,6 +35,7 @@ renderTargets:
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
+  bGenerateMips: true
 
 - name: EditorOutput
   format: B8G8R8A8_UNORM
@@ -304,11 +305,27 @@ frame:
   - depthHighZ: DepthHighZ
 
 ############################
-- name: DebugDraw
+- name: Blit
 ############################
+  string:
+  - GenerateMips: true
+  renderTargets:
+  - src: Main
+  - dst: Secondary
+
+############################
+- name: RenderScene
+############################
+  string:
+  - Tag: Transparent
+  - Sorting: BackToFront
+  - GPUCulling: false
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
+  - depthHighZ: DepthHighZ
+  - transmissionFramebuffer: Secondary
+
   
 ##############################
 - name: Bloom
@@ -350,20 +367,13 @@ frame:
   - color: Main
   - depthSampler: DepthBuffer
   - colorSampler: Secondary
-  
+
 #############################
 #- name: Blit
 #############################
 #  renderTargets:
 #  - src: Secondary
 #  - dst: BackBuffer
-
-############################
-- name: Blit
-############################
-  renderTargets:
-  - src: Main
-  - dst: EditorOutput
 
 #############################
 #- name: PostProcess
@@ -377,6 +387,20 @@ frame:
 #  - color: BackBuffer
 #  - depthStencil: DepthBuffer
 #  - colorSampler: Secondary
+
+############################
+- name: DebugDraw
+############################
+  renderTargets:
+  - color: Main
+  - depthStencil: DepthBuffer
+
+############################
+- name: Blit
+############################
+  renderTargets:
+  - src: Main
+  - dst: EditorOutput
 
 #############################
 - name: RenderImGui

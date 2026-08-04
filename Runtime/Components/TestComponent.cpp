@@ -169,7 +169,7 @@ void TestComponent::Tick(float deltaTime)
 
 	ImGui::Begin("Performance");
 	ImGui::Text("CPU: %.1f fps (%.2f ms)", cpuFps, cpuFrameMs);
-	ImGui::Text("GPU: %u fps", rendererStats.m_gpuFps);
+	ImGui::Text("GPU: %u fps", rendererStats.m_gpuFps.load(std::memory_order_relaxed));
 	ImGui::Text("GPU memory: %zu / %zu MB", gpuHeapUsageMb, gpuHeapBudgetMb);
 	ImGui::Text("Submitted cmd buffers: %u", rendererStats.m_numSubmittedCommandBuffers);
 	ImGui::End();

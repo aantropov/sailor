@@ -897,7 +897,7 @@ namespace
 		return dependency;
 	}
 
-	void TestShaderDependencyFingerprintTracksExactRevisionAndWinner()
+	void TestShaderDependencyFingerprintTracksTimestampAndWinner()
 	{
 		TVector<ShaderDependencyFile> baselineDependencies;
 		baselineDependencies.Add(Dependency(
@@ -921,9 +921,10 @@ namespace
 			"identical shader dependency snapshots should have a stable non-zero fingerprint");
 
 		TVector<ShaderDependencyFile> sameTimestampEdit = baselineDependencies;
+		sameTimestampEdit[1].m_revision.m_fileSize = 256;
 		sameTimestampEdit[1].m_revision.m_contentHash = 0x3333333333333333ull;
-		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) != baseline,
-			"same-timestamp, same-size GLSL edits should invalidate the shader fingerprint");
+		Require(CalculateShaderDependencyFingerprint(sameTimestampEdit) == baseline,
+			"file size and content hash must not affect timestamp-based shader fingerprints");
 
 		TVector<ShaderDependencyFile> backdatedEdit = baselineDependencies;
 		backdatedEdit[1].m_revision.m_modificationTimeNanoseconds = 1000000000ll;
@@ -1117,7 +1118,7 @@ int main()
 		TestIoFailureQuarantineIsReadOnlyAndSessionOnly();
 		TestRuntimeArtifactIoFailureEntersReadOnlyQuarantine();
 		TestShaderCompilerFailureLifecycle();
-		TestShaderDependencyFingerprintTracksExactRevisionAndWinner();
+		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestShaderSourceNormalization();
 		TestShaderSourceRewritePreservesFileIdentity();

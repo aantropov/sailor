@@ -56,18 +56,26 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		pushConstants.m_numTiles.x = (depthAttachment->GetExtent().x - 1) / (int32_t)TileSize + 1;
 		pushConstants.m_numTiles.y = (depthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;
 
-		if (!m_culledLights)
+		const bool bBindingsOutdated = !m_culledLights ||
+			m_boundLightsData != sceneView.m_rhiLightsData ||
+			m_boundDepthAttachment != depthAttachment ||
+			m_bindingsViewportSize != pushConstants.m_viewportSize;
+		if (bBindingsOutdated)
 		{
 			const size_t numTiles = pushConstants.m_numTiles.x * pushConstants.m_numTiles.y;
 
 			m_culledLights = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 			RHI::RHIShaderBindingPtr culledLightsSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(uint32_t) * numTiles * LightsPerTile, 1, 0, true);
-			RHI::RHIShaderBindingPtr lightsGridSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "lightsGrid", sizeof(uint32_t) * (numTiles * 2 + 1), 1, 1, true);
+			RHI::RHIShaderBindingPtr lightsGridSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "lightsGrid", sizeof(uint32_t) * numTiles * 2, 1, 1, true);
 			RHI::RHIShaderBindingPtr depthSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", depthAttachment, 2);
 
 			auto shaderBindingSet = sceneView.m_rhiLightsData;
 			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, culledLightsSSBO, "culledLights", 1);
 			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, lightsGridSSBO, "lightsGrid", 2);
+
+			m_boundLightsData = sceneView.m_rhiLightsData;
+			m_boundDepthAttachment = depthAttachment;
+			m_bindingsViewportSize = pushConstants.m_viewportSize;
 		}
 
 		commands->ImageMemoryBarrier(commandList, depthAttachment, RHI::EImageLayout::ShaderReadOnlyOptimal);
@@ -75,6 +83,9 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ sceneView.m_rhiLightsData, m_culledLights, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
+		commands->MemoryBarrier(commandList,
+			static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
+			static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
 	}
 
 	commands->EndDebugRegion(commandList);
@@ -84,4 +95,7 @@ void LightCullingNode::Clear()
 {
 	m_pComputeShader.Clear();
 	m_culledLights.Clear();
+	m_boundLightsData.Clear();
+	m_boundDepthAttachment.Clear();
+	m_bindingsViewportSize = {};
 }

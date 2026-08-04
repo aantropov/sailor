@@ -74,7 +74,11 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 		VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT,
 		6);
 
-	m_defaultTexture = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
+	m_defaultTexture = RHI::RHITexturePtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Repeat,
+		false,
+		RHI::EImageLayout::ShaderReadOnlyOptimal);
 
 	m_vkDefaultTexture = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultImage, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
 	m_vkDefaultCubemap = VulkanApi::CreateImageView(m_vkInstance->GetMainDevice(), defaultCubemap, VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT);
@@ -150,28 +154,6 @@ uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
 	return m_vkInstance->GetMainDevice()->GetNumSubmittedCommandBufers();
 }
 
-VkSemaphore VulkanGraphicsDriver::GetLastSubmittedRenderFinishedSemaphoreHandle() const
-{
-	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
-	{
-		return VK_NULL_HANDLE;
-	}
-
-	const auto semaphore = m_vkInstance->GetMainDevice()->GetLastSubmittedRenderFinishedSemaphore();
-	return semaphore ? static_cast<VkSemaphore>(*semaphore) : VK_NULL_HANDLE;
-}
-
-VkSemaphore VulkanGraphicsDriver::GetLastSubmittedSceneViewMainResolvedSemaphoreHandle() const
-{
-	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
-	{
-		return VK_NULL_HANDLE;
-	}
-
-	const auto semaphore = m_vkInstance->GetMainDevice()->GetLastSubmittedSceneViewMainResolvedSemaphore();
-	return semaphore ? static_cast<VkSemaphore>(*semaphore) : VK_NULL_HANDLE;
-}
-
 bool VulkanGraphicsDriver::ShouldFixLostDevice(const Win32::Window* pViewport)
 {
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
@@ -245,6 +227,9 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 					res.Resize(reflectedBinding.m_set + 1);
 				}
 
+#if defined(__APPLE__)
+				bool bFoundRuntimeCapacity = false;
+#endif
 				for (const auto& shaderBindingSet : shaderBindingSets)
 				{
 					if (!shaderBindingSet)
@@ -252,22 +237,83 @@ TVector<uint32_t> VulkanGraphicsDriver::CollectOptionalVariableDescriptorCount(c
 						continue;
 					}
 
-					const auto& layoutBindings = shaderBindingSet->GetLayoutBindings();
-					const size_t index = layoutBindings.FindIf([&](const auto& layout)
+					// Layout metadata can contain reflection entries for descriptor sets
+					// owned elsewhere. Query the bindings actually owned by this set so a
+					// material set cannot shadow the global texture-sampler set.
+					const auto& runtimeBindings = shaderBindingSet->GetShaderBindings();
+					const auto runtimeBindingIt = runtimeBindings.Find(reflectedBinding.m_name);
+					if (runtimeBindingIt == runtimeBindings.end() || !runtimeBindingIt->m_second)
 					{
-						return layout.m_binding == reflectedBinding.m_binding &&
-							layout.m_type == reflectedBinding.m_type &&
-							layout.m_bVariableDescriptorCount;
-					});
+						continue;
+					}
 
-					if (index != size_t(-1))
+					const auto& runtimeLayout = runtimeBindingIt->m_second->GetLayout();
+					if (runtimeLayout.m_binding == reflectedBinding.m_binding &&
+						runtimeLayout.m_type == reflectedBinding.m_type &&
+						runtimeLayout.m_bVariableDescriptorCount)
 					{
-						res[reflectedBinding.m_set] = std::max(1u, layoutBindings[index].m_arrayCount);
-						break;
+#if defined(__APPLE__)
+						bFoundRuntimeCapacity = true;
+#endif
+						uint32_t runtimeDescriptorCount =
+							(std::max)(1u, runtimeLayout.m_arrayCount);
+#if defined(__APPLE__)
+						// Metal argument buffers have a substantially smaller practical
+						// sampled-image limit than Vulkan's global texture registry. Render
+						// batches provide compatible local descriptor sets, so the pipeline
+						// layout only needs the largest supported batch-local array.
+						if (runtimeLayout.m_type == RHI::EShaderBindingType::CombinedImageSampler)
+						{
+							runtimeDescriptorCount = (std::min)(runtimeDescriptorCount, 1024u);
+						}
+#endif
+						res[reflectedBinding.m_set] = std::max(
+							res[reflectedBinding.m_set],
+							runtimeDescriptorCount);
 					}
 				}
+#if defined(__APPLE__)
+				if (!bFoundRuntimeCapacity &&
+					reflectedBinding.m_type ==
+						RHI::EShaderBindingType::CombinedImageSampler &&
+					reflectedBinding.m_name == "textureSamplers")
+				{
+					// Apple render passes bind dense material-local texture arrays. The
+					// global registry intentionally keeps its legacy binding for other
+					// shaders, so it cannot provide the remapped binding's capacity here.
+					res[reflectedBinding.m_set] = (std::max)(
+						res[reflectedBinding.m_set],
+						1024u);
+				}
+#endif
 			}
 		}
+	}
+
+	return res;
+}
+
+TVector<uint32_t> VulkanGraphicsDriver::CollectPublishedVariableDescriptorCounts(const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindingSets) const
+{
+	TVector<uint32_t> res;
+	for (uint32_t set = 0; set < shaderBindingSets.Num(); set++)
+	{
+		if (!shaderBindingSets[set])
+		{
+			continue;
+		}
+
+		const uint32_t count = shaderBindingSets[set]->GetVariableDescriptorCount();
+		if (count == 0)
+		{
+			continue;
+		}
+
+		if (res.Num() <= set)
+		{
+			res.Resize(set + 1);
+		}
+		res[set] = count;
 	}
 
 	return res;
@@ -310,6 +356,9 @@ void VulkanGraphicsDriver::RefreshSwapchainTargets()
 
 	m_depthStencilBuffer->m_vulkan.m_imageView = depthBufferView;
 	m_depthStencilBuffer->m_vulkan.m_image = depthBufferView->m_image;
+	m_depthStencilBuffer->ForceSetDefaultLayout(
+		static_cast<RHI::EImageLayout>(
+			depthBufferView->GetImage()->m_defaultLayout));
 	m_depthStencilBuffer->m_depthAspect.Clear();
 	m_depthStencilBuffer->m_stencilAspect.Clear();
 
@@ -386,9 +435,17 @@ void VulkanGraphicsDriver::WaitIdle()
 	m_vkInstance->WaitIdle();
 }
 
-void VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence, RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore)
+bool VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList, RHI::RHIFencePtr fence, RHI::RHISemaphorePtr signalSemaphore, RHI::RHISemaphorePtr waitSemaphore)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (!commandList ||
+		!commandList->m_vulkan.m_commandBuffer ||
+		!m_vkInstance ||
+		!m_vkInstance->GetMainDevice())
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: command list or Vulkan device is unavailable.");
+		return false;
+	}
 
 	//if we have fence and that is null we should create device resource
 	if (fence && !fence->m_vulkan.m_fence)
@@ -416,7 +473,16 @@ void VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 		}
 	}
 
-	m_vkInstance->GetMainDevice()->SubmitCommandBuffer(commandList->m_vulkan.m_commandBuffer, fence ? fence->m_vulkan.m_fence : nullptr, signal, wait);
+	const bool bSubmitted = m_vkInstance->GetMainDevice()->SubmitCommandBuffer(
+		commandList->m_vulkan.m_commandBuffer,
+		fence ? fence->m_vulkan.m_fence : nullptr,
+		signal,
+		wait);
+	if (!bSubmitted)
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::SubmitCommandList: vkQueueSubmit failed.");
+		return false;
+	}
 
 	if (fence)
 	{
@@ -428,6 +494,8 @@ void VulkanGraphicsDriver::SubmitCommandList(RHI::RHICommandListPtr commandList,
 		// We should remove fence after execution
 		TrackPendingCommandList_ThreadSafe(fence);
 	}
+
+	return true;
 }
 
 RHI::RHISemaphorePtr VulkanGraphicsDriver::CreateWaitSemaphore()
@@ -812,6 +880,13 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateTexture(
 			(VkImageLayout)layout,
 			flags,
 			arrayLayers);
+
+		RHI::Renderer::GetDriverCommands()->ImageMemoryBarrier(
+			cmdList,
+			outTexture,
+			format,
+			RHI::EImageLayout::Undefined,
+			layout);
 	}
 
 	RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
@@ -1131,9 +1206,10 @@ RHI::RHISurfacePtr VulkanGraphicsDriver::CreateSurface(
 	return  RHI::RHISurfacePtr::Make(target, resolved, bNeedsResolved);
 }
 
-void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings)
+bool VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindings)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 	TVector<VulkanDescriptorPtr> descriptors;
@@ -1176,14 +1252,17 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 				{
 					variableDescriptorBinding = static_cast<int32_t>(binding.m_second->m_vulkan.m_descriptorSetLayout.binding);
 					const uint32_t plannedTextureSlots = (std::max)(1u, binding.m_second->GetLayout().m_arrayCount);
-					const uint32_t actualTextureSlots = static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num());
 #ifdef _DEBUG
+					const uint32_t actualTextureSlots = static_cast<uint32_t>(binding.m_second->GetTextureBindings().Num());
 					if (actualTextureSlots > plannedTextureSlots)
 					{
 						check(false);
 					}
 #endif
-					variableDescriptorCount = std::max(variableDescriptorCount, (std::min)(plannedTextureSlots, actualTextureSlots));
+					// Allocate the complete bindless array once. Subsequent streaming updates
+					// write a single descriptor slot instead of recreating progressively larger
+					// immutable sets.
+					variableDescriptorCount = std::max(variableDescriptorCount, plannedTextureSlots);
 				}
 
 				descriptionSetLayouts.Add(binding.m_second->m_vulkan.m_descriptorSetLayout);
@@ -1208,19 +1287,29 @@ void VulkanGraphicsDriver::UpdateDescriptorSet(RHI::RHIShaderBindingSetPtr bindi
 
 	// Should we just update descriptor set instead of recreation?
 	// VK_KHR_descriptor_update_template
-	bindings->m_vulkan.m_descriptorSet = VulkanDescriptorSetPtr::Make(device,
+	auto descriptorSet = VulkanDescriptorSetPtr::Make(device,
 		device->GetCurrentThreadContext().m_descriptorPool,
 		VulkanDescriptorSetLayoutPtr::Make(device, descriptionSetLayouts, variableDescriptorBinding),
 		descriptors,
 		variableDescriptorCount);
 
-	bindings->m_vulkan.m_descriptorSet->Compile();
+	if (!descriptorSet->TryCompile())
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::UpdateDescriptorSet: cannot compile descriptor set.");
+		return false;
+	}
+
+	bindings->m_vulkan.m_descriptorSet = descriptorSet;
+	bindings->SetVariableDescriptorCount(descriptorSet->GetVariableDescriptorCount());
+	bindings->AdvanceDescriptorRevision();
 
 #ifndef _SHIPPING
-	VkDescriptorSet handleSet = *bindings->m_vulkan.m_descriptorSet;
+	VkDescriptorSet handleSet = *descriptorSet;
 	static uint32_t s_debugIterator = 0;
 	m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, std::format("ShaderBinding's Descriptor Set {}", s_debugIterator++));
 #endif 
+
+	return true;
 }
 
 RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDescriptionPtr& vertexDescription, RHI::EPrimitiveTopology topology, const RHI::RenderState& renderState, const Sailor::ShaderSetPtr& shader)
@@ -1243,6 +1332,15 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 	VulkanApi::CreateDescriptorSetLayouts(device, { shader->GetDebugVertexShaderRHI()->m_vulkan.m_shader, shader->GetDebugFragmentShaderRHI()->m_vulkan.m_shader },
 		descriptorSetLayouts, bindings);
 
+	// Material-owned parameters live exclusively in descriptor set 3. Keep
+	// frame, per-instance and pass-local bindings out of the material set even
+	// when they use the same descriptor type and binding number.
+	constexpr uint32_t MaterialDescriptorSet = 3u;
+	bindings.RemoveAll([=](const auto& binding)
+		{
+			return binding.m_set != MaterialDescriptorSet;
+		});
+
 	auto shaderBindings = CreateShaderBindings();
 
 	{
@@ -1252,12 +1350,6 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		for (uint32_t i = 0; i < bindings.Num(); i++)
 		{
 			auto& layoutBinding = bindings[i];
-			if (layoutBinding.m_set == 0 || layoutBinding.m_set == 1 || layoutBinding.m_set == 2)
-			{
-				// We skip 0 layout, it is frameData and would be binded in a different way
-				// Also we skip 1 layout, that is per instance data and would be binded in a different way
-				continue;
-			}
 			const auto& layoutBindings = descriptorSetLayouts[layoutBinding.m_set]->m_descriptorSetLayoutBindings;
 
 			auto it = layoutBindings.FindIf([&layoutBinding](const auto& bind) { return bind.binding == layoutBinding.m_binding; });
@@ -1518,6 +1610,7 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding)
 {
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 	auto& pBinding = pShaderBindings->GetOrAddShaderBinding(name);
 
 	pBinding->m_vulkan = binding->m_vulkan;
@@ -1539,6 +1632,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBi
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, RHI::RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -1582,6 +1676,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -1589,8 +1684,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 
 	TSharedPtr<VulkanBufferAllocator> allocator = GetGeneralSsboAllocator();
 
-	const size_t p = 16 - elementSize % 16;
-	const size_t paddedSize = elementSize + p;
+	const size_t paddedSize = SsboLayout::AlignSsboElementSize(elementSize);
 
 	size_t alignment = paddedSize;
 
@@ -1640,6 +1734,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSsboToShaderBindings(RHI::RHIS
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -1647,8 +1742,7 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 	TSharedPtr<VulkanBufferAllocator> allocator;
 
 	// TODO: rewrite strictly according to std430
-	const size_t p = 16 - size % 16;
-	const size_t paddedSize = size + p;
+	const size_t paddedSize = SsboLayout::AlignSsboElementSize(size);
 
 	if (bufferType == RHI::EShaderBindingType::StorageBuffer)
 	{
@@ -1693,15 +1787,51 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddBufferToShaderBindings(RHI::RH
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding, bool bVariableDescriptorCount, uint32_t variableDescriptorUpperBound)
 {
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 	return AddSamplerToShaderBindings(pShaderBindings, name, TVector<RHI::RHITexturePtr>{ texture }, shaderBinding, bVariableDescriptorCount, variableDescriptorUpperBound);
 }
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding, bool bVariableDescriptorCount, uint32_t variableDescriptorUpperBound)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
+	const uint32_t publishedVariableDescriptorCount = pShaderBindings->GetVariableDescriptorCount();
+	if (publishedVariableDescriptorCount > 0)
+	{
+		const auto& existingLayouts = pShaderBindings->GetLayoutBindings();
+		const size_t variableLayoutIndex = existingLayouts.FindIf(
+			[](const RHI::ShaderLayoutBinding& candidate)
+			{
+				return candidate.m_bVariableDescriptorCount;
+			});
+		const bool bUpdatesPublishedVariableBinding =
+			variableLayoutIndex != static_cast<size_t>(-1) &&
+			existingLayouts[variableLayoutIndex].m_name == name;
+
+		if ((bVariableDescriptorCount && !bUpdatesPublishedVariableBinding) ||
+			(!bVariableDescriptorCount && bUpdatesPublishedVariableBinding) ||
+			(bUpdatesPublishedVariableBinding && array.Num() > publishedVariableDescriptorCount))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot change a published variable descriptor layout '%s'. allocated=%u, requested=%zu, variable=%d",
+				name.c_str(),
+				publishedVariableDescriptorCount,
+				array.Num(),
+				bVariableDescriptorCount ? 1 : 0);
+			return nullptr;
+		}
+
+		// Variable descriptor capacities are immutable after the first native set
+		// is published. This keeps the lock-free count snapshot coherent with the
+		// descriptor set used by concurrent dispatches.
+		if (bUpdatesPublishedVariableBinding)
+		{
+			variableDescriptorUpperBound = publishedVariableDescriptorCount;
+		}
+	}
 
 	RHI::ShaderLayoutBinding layout;
 	layout.m_binding = shaderBinding;
@@ -1723,12 +1853,14 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddSamplerToShaderBindings(RHI::R
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, RHI::RHITexturePtr texture, uint32_t shaderBinding)
 {
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 	return AddStorageImageToShaderBindings(pShaderBindings, name, TVector<RHI::RHITexturePtr>{ texture }, shaderBinding);
 }
 
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(RHI::RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, const TVector<RHI::RHITexturePtr>& array, uint32_t shaderBinding)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	auto device = m_vkInstance->GetMainDevice();
 	RHI::RHIShaderBindingPtr binding = pShaderBindings->GetOrAddShaderBinding(name);
@@ -1752,8 +1884,9 @@ RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddStorageImageToShaderBindings(R
 void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindings, const std::string& parameter, RHI::RHITexturePtr value, uint32_t dstArrayElement)
 {
 	SAILOR_PROFILE_FUNCTION();
-
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 	auto device = m_vkInstance->GetMainDevice();
+
 	const auto& layoutBindings = bindings->GetLayoutBindings();
 
 	auto index = layoutBindings.FindIf([&parameter](const RHI::ShaderLayoutBinding& shaderLayoutBinding)
@@ -1773,52 +1906,65 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		}
 
 		auto textureBinding = bindings->GetOrAddShaderBinding(parameter);
-
-		if (bindings->m_vulkan.m_descriptorSet != nullptr)
+		const auto& currentTextures = textureBinding->GetTextureBindings();
+		if (dstArrayElement < currentTextures.Num() &&
+			currentTextures[dstArrayElement] == value &&
+			bindings->m_vulkan.m_descriptorSet &&
+			bindings->m_vulkan.m_descriptorSet->IsCompiled() &&
+			bindings->m_vulkan.m_descriptorSet->ReferencesImageView(
+				textureBinding->GetLayout().m_binding,
+				dstArrayElement,
+				value->m_vulkan.m_imageView))
 		{
-			auto cmpFunc = [=](const VulkanDescriptorPtr& descriptor)
-				{
-					return descriptor->GetBinding() == layoutBindings[index].m_binding && descriptor->GetArrayElement() == dstArrayElement;
-				};
+			return;
+		}
 
-			auto& descriptors = bindings->m_vulkan.m_descriptorSet->m_descriptors;
+		const auto& layout = layoutBindings[index];
+		if (layout.m_bVariableDescriptorCount && dstArrayElement >= layout.m_arrayCount)
+		{
+			SAILOR_LOG_ERROR(
+				"Variable descriptor array '%s' is out of capacity. index=%u, capacity=%u",
+				parameter.c_str(),
+				dstArrayElement,
+				layout.m_arrayCount);
+			return;
+		}
 
-			uint32_t arrayIndex = dstArrayElement;
-			bool bFound = false;
+		auto descriptorSet = bindings->m_vulkan.m_descriptorSet;
+		const bool bIsUnusedDescriptorSlot = dstArrayElement >= currentTextures.Num();
+		if (bIsUnusedDescriptorSlot &&
+			layout.m_bVariableDescriptorCount &&
+			device->IsDescriptorUpdateAfterBindSupported() &&
+			descriptorSet &&
+			descriptorSet->IsCompiled() &&
+			dstArrayElement < descriptorSet->GetVariableDescriptorCount())
+		{
+			auto descriptor = VulkanDescriptorCombinedImagePtr::Make(
+				layout.m_binding,
+				dstArrayElement,
+				device->GetSamplers()->GetSampler(
+					value->GetFiltration(),
+					value->GetClamping(),
+					value->HasMipMaps(),
+					value->GetSamplerReduction()),
+				value->m_vulkan.m_imageView);
 
-			// Firstly we fast check by index, 95% that we hit
-			if (dstArrayElement < descriptors.Num() && cmpFunc(descriptors[dstArrayElement]))
+			if (descriptorSet->UpdateDescriptor(descriptor))
 			{
-				bFound = true;
-			}
-			else
-			{
-				auto descrIt = std::find_if(descriptors.begin(), descriptors.end(), cmpFunc);
-				if (descrIt != descriptors.end())
-				{
-					arrayIndex = (uint32_t)(descrIt - descriptors.begin());
-					bFound = true;
-				}
-			}
-
-			if (bFound)
-			{
-				// Should we fully recreate descriptorSet to avoid race condition?
 				textureBinding->SetTextureBinding(dstArrayElement, value);
-
-				descriptors[arrayIndex] = VulkanDescriptorCombinedImagePtr::Make(layoutBindings[index].m_binding,
-					dstArrayElement,
-					device->GetSamplers()->GetSampler(value->GetFiltration(), value->GetClamping(), value->HasMipMaps(), value->GetSamplerReduction()),
-					value->m_vulkan.m_imageView);
-
-				bindings->m_vulkan.m_descriptorSet->UpdateDescriptor(arrayIndex);
-				bindings->RecalculateCompatibility();
+				bindings->AdvanceDescriptorRevision();
 				return;
 			}
 		}
 
-		// Add or grow texture binding array and recreate descriptor set.
-		auto textures = textureBinding->GetTextureBindings();
+		// Descriptor sets may already be referenced by recorded or submitted command
+		// buffers. Keep them immutable and allocate a new set for every texture update;
+		// the command buffer dependency keeps the previous set and its resources alive.
+		const auto previousTextures = currentTextures;
+		auto textures = previousTextures;
+		const auto previousDescriptorLayout = textureBinding->m_vulkan.m_descriptorSetLayout;
+		const auto previousLayout = textureBinding->GetLayout();
+		const auto previousLayoutBindings = bindings->GetLayoutBindings();
 		const uint32_t newSize = std::max<uint32_t>(dstArrayElement + 1, static_cast<uint32_t>(textures.Num()));
 		if (textures.Num() != newSize)
 		{
@@ -1833,17 +1979,31 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 		}
 		textures[dstArrayElement] = value;
 
-		auto layout = layoutBindings[index];
-		if (!layout.m_bVariableDescriptorCount)
+		auto fallbackLayout = layout;
+		if (!fallbackLayout.m_bVariableDescriptorCount)
 		{
-			layout.m_arrayCount = static_cast<uint32_t>(textures.Num());
+			fallbackLayout.m_arrayCount = static_cast<uint32_t>(textures.Num());
 		}
 		textureBinding->SetTextureBindings(textures);
-		textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(layout.m_binding, (VkDescriptorType)layout.m_type,
-			layout.m_bVariableDescriptorCount ? glm::max(1u, layout.m_arrayCount) : layout.m_arrayCount);
-		textureBinding->SetLayout(layout);
-		bindings->UpdateLayoutShaderBinding(layout);
-		UpdateDescriptorSet(bindings);
+		if (!fallbackLayout.m_bVariableDescriptorCount)
+		{
+			textureBinding->m_vulkan.m_descriptorSetLayout = VulkanApi::CreateDescriptorSetLayoutBinding(
+				fallbackLayout.m_binding,
+				(VkDescriptorType)fallbackLayout.m_type,
+				fallbackLayout.m_arrayCount);
+			textureBinding->SetLayout(fallbackLayout);
+			bindings->UpdateLayoutShaderBinding(fallbackLayout);
+		}
+		if (!UpdateDescriptorSet(bindings))
+		{
+			textureBinding->SetTextureBindings(previousTextures);
+			if (!fallbackLayout.m_bVariableDescriptorCount)
+			{
+				textureBinding->m_vulkan.m_descriptorSetLayout = previousDescriptorLayout;
+				textureBinding->SetLayout(previousLayout);
+				bindings->SetLayoutShaderBindings(previousLayoutBindings);
+			}
+		}
 
 		return;
 	}
@@ -1852,9 +2012,10 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHIShaderBindingSetPtr bindi
 VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIShaderPtr computeShader, uint32_t sizePushConstantsData,
 	const TVector<uint32_t>* optionalVariableDescriptorCount)
 {
-	auto& computePipeline = m_cachedComputePipelines.At_Lock(computeShader);
+	const ComputePipelineCacheKey cacheKey(computeShader, sizePushConstantsData, optionalVariableDescriptorCount);
+	auto& computePipeline = m_cachedComputePipelines.At_Lock(cacheKey);
 
-	if (!computePipeline)
+	if (!computePipeline || !computePipeline->IsCompiled())
 	{
 		auto device = m_vkInstance->GetMainDevice();
 
@@ -1881,13 +2042,23 @@ VulkanComputePipelinePtr VulkanGraphicsDriver::GetOrAddComputePipeline(RHI::RHIS
 		}
 
 		auto pipelineLayout = VulkanPipelineLayoutPtr::Make(device, descriptorSetLayouts, bindings, pushConstants, 0);
-		computePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
-		computePipeline->Compile();
+		auto newComputePipeline = VulkanComputePipelinePtr::Make(device, pipelineLayout, computeShader->m_vulkan.m_shader);
+		if (newComputePipeline->Compile())
+		{
+			computePipeline = std::move(newComputePipeline);
+		}
+		else
+		{
+			computePipeline.Clear();
+		}
 	}
 
-	m_cachedComputePipelines.Unlock(computeShader);
+	// Copy the cached reference while its bucket is still locked. A concurrent
+	// cache clear must not invalidate the map value before the return copy.
+	VulkanComputePipelinePtr result = computePipeline;
+	m_cachedComputePipelines.Unlock(cacheKey);
 
-	return computePipeline;
+	return result;
 }
 
 RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI::EFormat textureFormat, glm::ivec2 extent)
@@ -1899,16 +2070,24 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 	}
 
 	auto device = m_vkInstance->GetMainDevice();
+	const bool bIsDepthFormat = RHI::IsDepthFormat(textureFormat);
+	const RHI::EImageLayout defaultLayout = bIsDepthFormat ?
+		(RHI::IsDepthStencilFormat(textureFormat) ?
+			RHI::EImageLayout::DepthStencilAttachmentOptimal :
+			RHI::EImageLayout::DepthAttachmentOptimal) :
+		RHI::EImageLayout::ColorAttachmentOptimal;
 
-	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, false);
+	RHI::RHITexturePtr target = RHI::RHITexturePtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Clamp,
+		false,
+		defaultLayout);
 
 	VkExtent3D vkExtent;
 	vkExtent.width = extent.x;
 	vkExtent.height = extent.y;
 	vkExtent.depth = 1;
 
-	const bool bIsDepthFormat = textureFormat == RHI::EFormat::D16_UNORM || textureFormat == RHI::EFormat::D32_SFLOAT || textureFormat == RHI::EFormat::X8_D24_UNORM_PACK32 ||
-		textureFormat == RHI::EFormat::D32_SFLOAT_S8_UINT;
 	const auto usage = (uint32_t)(VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 		(!bIsDepthFormat ? VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT : VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
 
@@ -1920,10 +2099,29 @@ RHI::RHITexturePtr VulkanGraphicsDriver::GetOrAddMsaaFramebufferRenderTarget(RHI
 		VK_IMAGE_TILING_OPTIMAL,
 		usage,
 		(VkSharingMode)VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-		device->GetCurrentMsaaSamples());
+		device->GetCurrentMsaaSamples(),
+		static_cast<VkImageLayout>(defaultLayout));
 
 	target->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, target->m_vulkan.m_image);
 	target->m_vulkan.m_imageView->Compile();
+
+	RHI::RHICommandListPtr cmdList = CreateCommandList(
+		false,
+		RHI::ECommandListQueue::Graphics);
+	SetDebugName(cmdList, "Initialize cached MSAA render target");
+	BeginCommandList(cmdList, true);
+	ImageMemoryBarrier(
+		cmdList,
+		target,
+		textureFormat,
+		RHI::EImageLayout::Undefined,
+		defaultLayout);
+	EndCommandList(cmdList);
+
+	RHI::RHIFencePtr initializationFence = RHI::RHIFencePtr::Make();
+	SetDebugName(initializationFence, "Initialize cached MSAA render target");
+	TrackDelayedInitialization(target.GetRawPtr(), initializationFence);
+	SubmitCommandList(cmdList, initializationFence);
 
 	m_cachedMsaaRenderTargets.At_Lock(hash) = target;
 	m_cachedMsaaRenderTargets.Unlock(hash);
@@ -1948,12 +2146,8 @@ void VulkanGraphicsDriver::GenerateMipMaps(RHI::RHICommandListPtr cmd, RHI::RHIT
 
 	cmd->m_vulkan.m_commandBuffer->GenerateMipMaps(target->m_vulkan.m_image);
 
-	if (bShouldOptimizeBarriers)
-	{
-		// Hack to fit the internal layout
-		cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] = TPair(target, (RHI::EImageLayout)target->m_vulkan.m_image->m_defaultLayout);
-		//ImageMemoryBarrier(cmd, target, target->GetDefaultLayout());
-	}
+	cmd->m_vulkan.m_commandBuffer->GetImageBarriers()[vkHandle] =
+		TPair(target, RHI::EImageLayout::ShaderReadOnlyOptimal);
 }
 
 void VulkanGraphicsDriver::ConvertEquirect2Cubemap(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr equirect, RHI::RHICubemapPtr cubemap)
@@ -2034,7 +2228,9 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	VkImage vkHandle = *image->m_vulkan.m_image;
 	if (!imageBarriers.ContainsKey(vkHandle))
 	{
-		imageBarriers[vkHandle] = TPair(image, (RHI::EImageLayout)image->m_vulkan.m_image->m_initialLayout);
+		// Engine-owned images are initialized before publication and every
+		// command list restores them to their current default layout.
+		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
 	}
 
 	RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
@@ -2427,6 +2623,16 @@ void VulkanGraphicsDriver::UpdateShaderBinding(RHI::RHICommandListPtr cmd, RHI::
 void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBufferPtr buffer, const void* pData, size_t size, size_t offset)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (size == 0)
+	{
+		return;
+	}
+	if (!buffer || pData == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"VulkanGraphicsDriver::UpdateBuffer: invalid buffer upload.");
+		return;
+	}
 
 	if (buffer->GetUsage() & RHI::EBufferUsageBit::IndirectBuffer_Bit)
 	{
@@ -2443,6 +2649,17 @@ void VulkanGraphicsDriver::UpdateBuffer(RHI::RHICommandListPtr cmd, RHI::RHIBuff
 void VulkanGraphicsDriver::Update(RHI::RHICommandListPtr cmd, VulkanBufferMemoryPtr bufferPtr, const void* data, size_t size, size_t offset)
 {
 	SAILOR_PROFILE_FUNCTION();
+	if (size == 0)
+	{
+		return;
+	}
+	if (!cmd || !bufferPtr.m_buffer || data == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"VulkanGraphicsDriver::Update: invalid buffer upload.");
+		return;
+	}
+
 	auto dstBuffer = bufferPtr.m_buffer;
 	auto device = m_vkInstance->GetMainDevice();
 
@@ -2543,6 +2760,14 @@ void VulkanGraphicsDriver::UpdateShaderBindingVariable(RHI::RHICommandListPtr cm
 
 void VulkanGraphicsDriver::UpdateMesh(RHI::RHIMeshPtr mesh, const void* pVertices, size_t vertexBuffer, const void* pIndices, size_t indexBuffer)
 {
+	if (!mesh || pVertices == nullptr || vertexBuffer == 0 ||
+		pIndices == nullptr || indexBuffer == 0)
+	{
+		SAILOR_LOG_ERROR(
+			"VulkanGraphicsDriver::UpdateMesh: refusing an empty mesh upload.");
+		return;
+	}
+
 	auto device = m_vkInstance->GetMainDevice();
 
 	const VkDeviceSize bufferSize = vertexBuffer;
@@ -2606,17 +2831,35 @@ void VulkanGraphicsDriver::Dispatch(RHI::RHICommandListPtr cmd,
 	const void* pPushConstantsData,
 	uint32_t sizePushConstantsData)
 {
-	check(computeShader->GetStage() == RHI::EShaderStage::Compute);
+	if (!cmd || !cmd->m_vulkan.m_commandBuffer ||
+		!computeShader || !computeShader->m_vulkan.m_shader)
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::Dispatch: command list or compute shader is unavailable.");
+		return;
+	}
 
+	check(computeShader->GetStage() == RHI::EShaderStage::Compute);
 	if (computeShader->GetStage() != RHI::EShaderStage::Compute)
 	{
 		return;
 	}
 
-	TVector<VulkanShaderStagePtr> vulkanShaders{ computeShader->m_vulkan.m_shader };
-	const TVector<uint32_t> optionalVariableDescriptorCount = this->CollectOptionalVariableDescriptorCount(vulkanShaders, bindings);
-	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData, &optionalVariableDescriptorCount);
+	const TVector<uint32_t> optionalVariableDescriptorCount = CollectPublishedVariableDescriptorCounts(bindings);
+	const TVector<uint32_t>* variableDescriptorCounts = optionalVariableDescriptorCount.IsEmpty() ? nullptr : &optionalVariableDescriptorCount;
+	VulkanComputePipelinePtr computePipeline = GetOrAddComputePipeline(computeShader, sizePushConstantsData, variableDescriptorCounts);
+	if (!computePipeline || !computePipeline->IsCompiled())
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::Dispatch: compute pipeline is unavailable.");
+		return;
+	}
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(computePipeline->m_layout, bindings);
+	if (sets.Num() != computePipeline->m_layout->m_descriptionSetLayouts.Num())
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::Dispatch: cannot bind the complete descriptor set list. expected=%zu, actual=%zu",
+			computePipeline->m_layout->m_descriptionSetLayouts.Num(),
+			sets.Num());
+		return;
+	}
 
 	if (pPushConstantsData && sizePushConstantsData > 0)
 	{
@@ -2688,6 +2931,7 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSets(VulkanPipelineLayoutPtr layout, const TVector<RHI::RHIShaderBindingSetPtr>& shaderBindings)
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	TVector<VulkanDescriptorSetPtr> descriptorSets;
 	descriptorSets.Reserve(shaderBindings.Num());
@@ -2706,19 +2950,25 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 		if (bIsCompatible[i])
 		{
-			descriptorSets.Add(shaderBindings[i]->m_vulkan.m_descriptorSet);
+			const auto& compatibleDescriptorSet = shaderBindings[i]->m_vulkan.m_descriptorSet;
+			if (!compatibleDescriptorSet || !compatibleDescriptorSet->IsCompiled())
+			{
+				SAILOR_LOG_ERROR("VulkanGraphicsDriver::GetCompatibleDescriptorSets: compatible descriptor set is unavailable. set=%u", i);
+				return {};
+			}
+
+			descriptorSets.Add(compatibleDescriptorSet);
 			continue;
 		}
 
 		CachedDescriptorSet cache = CachedDescriptorSet(layout, shaderBindings[i]);
 
-		// Flush lifetime
-		auto& cachedDS = m_cachedDescriptorSets.At_Lock(cache);
-		cachedDS.m_second = 0;
-		VulkanDescriptorSetPtr& cachedDescriptorSet = cachedDS.m_first;
+		auto& cached = m_cachedDescriptorSets.At_Lock(cache);
+		VulkanDescriptorSetPtr& cachedDescriptorSet = cached.m_first;
 
-		if (cachedDescriptorSet.IsValid())
+		if (cachedDescriptorSet.IsValid() && cachedDescriptorSet->IsCompiled())
 		{
+			cached.m_second = 0;
 			descriptorSets.Add(cachedDescriptorSet);
 			m_cachedDescriptorSets.Unlock(cache);
 			continue;
@@ -2792,7 +3042,15 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 								check(false);
 							}
 #endif
-							const uint32_t emittedTextureSlots = (std::min)(matchedLayoutBinding.descriptorCount, actualTextureSlots);
+							uint32_t emittedTextureSlots = (std::min)(matchedLayoutBinding.descriptorCount, actualTextureSlots);
+#if defined(__APPLE__)
+							// MoltenVK lowers a runtime sampler array to a fixed-size Metal
+							// argument-buffer array using the pipeline layout's upper bound.
+							// Allocating a smaller variable descriptor count leaves that Metal
+							// array undersized even though Vulkan considers the set valid.
+							// Keep unused slots partially bound, but allocate the complete array.
+							emittedTextureSlots = matchedLayoutBinding.descriptorCount;
+#endif
 							variableDescriptorCount = std::max(variableDescriptorCount, (std::max)(1u, emittedTextureSlots));
 						}
 
@@ -2881,21 +3139,26 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 				descriptors,
 				variableDescriptorCount);
 		}
+		{
+			SAILOR_PROFILE_SCOPE("Compile new descriptor sets");
+			if (!descriptorSet->TryCompile())
+			{
+				m_cachedDescriptorSets.Unlock(cache);
+				return {};
+			}
+
+			descriptorSets.Add(descriptorSet);
+
+			cachedDescriptorSet = descriptorSets[i];
+			m_cachedDescriptorSets.Unlock(cache);
+		}
+
 #ifndef _SHIPPING
 		if (VkDescriptorSet handleSet = *descriptorSet)
 		{
 			m_vkInstance->GetMainDevice()->SetDebugName(VkObjectType::VK_OBJECT_TYPE_DESCRIPTOR_SET, (uint64_t)handleSet, "Compatible Cache Descriptor Set");
 		}
 #endif
-
-		{
-			SAILOR_PROFILE_SCOPE("Compile new descriptor sets");
-			descriptorSet->Compile();
-			descriptorSets.Add(descriptorSet);
-
-			cachedDescriptorSet = descriptorSets[i];
-			m_cachedDescriptorSets.Unlock(cache);
-		}
 	}
 
 	return descriptorSets;
@@ -2903,7 +3166,10 @@ TVector<VulkanDescriptorSetPtr> VulkanGraphicsDriver::GetCompatibleDescriptorSet
 
 bool VulkanGraphicsDriver::CachedDescriptorSet::IsExpired() const
 {
-	return !m_layout.IsShared() || !m_binding.IsShared() || m_initialCompatibility != m_binding->GetCompatibilityHashCode();
+	return !m_layout.IsShared() ||
+		!m_binding.IsShared() ||
+		m_initialCompatibility != m_binding->GetCompatibilityHashCode() ||
+		m_initialDescriptorRevision != m_binding->GetDescriptorRevision();
 }
 
 VulkanGraphicsDriver::CachedDescriptorSet& VulkanGraphicsDriver::CachedDescriptorSet::operator=(const CachedDescriptorSet& rhs)
@@ -2911,19 +3177,25 @@ VulkanGraphicsDriver::CachedDescriptorSet& VulkanGraphicsDriver::CachedDescripto
 	m_layout = rhs.m_layout;
 	m_binding = rhs.m_binding;
 
-	m_initialCompatibility = m_binding->GetCompatibilityHashCode();
+	m_initialCompatibility = rhs.m_initialCompatibility;
+	m_initialDescriptorRevision = rhs.m_initialDescriptorRevision;
 
 	return *this;
 }
 
 bool VulkanGraphicsDriver::CachedDescriptorSet::operator==(const CachedDescriptorSet& rhs) const
 {
-	return m_layout == rhs.m_layout && m_binding == rhs.m_binding && m_initialCompatibility == m_binding->GetCompatibilityHashCode();
+	return m_layout == rhs.m_layout &&
+		m_binding == rhs.m_binding &&
+		m_initialCompatibility == rhs.m_initialCompatibility &&
+		m_initialDescriptorRevision == rhs.m_initialDescriptorRevision;
 }
 
 size_t VulkanGraphicsDriver::CachedDescriptorSet::GetHash() const
 {
-	return m_initialCompatibility;
+	size_t hash = 0;
+	HashCombine(hash, m_layout, m_binding, m_initialCompatibility, m_initialDescriptorRevision);
+	return hash;
 }
 
 VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipelineLayoutPtr& material, const RHI::RHIShaderBindingSetPtr& binding) noexcept :
@@ -2931,6 +3203,7 @@ VulkanGraphicsDriver::CachedDescriptorSet::CachedDescriptorSet(const VulkanPipel
 	m_binding(binding)
 {
 	m_initialCompatibility = m_binding->GetCompatibilityHashCode();
+	m_initialDescriptorRevision = m_binding->GetDescriptorRevision();
 }
 
 void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::RHIMaterialPtr material, const TVector<RHI::RHIShaderBindingSetPtr>& bindings)
@@ -2938,6 +3211,14 @@ void VulkanGraphicsDriver::BindShaderBindings(RHI::RHICommandListPtr cmd, RHI::R
 	SAILOR_PROFILE_FUNCTION();
 
 	const TVector<VulkanDescriptorSetPtr>& sets = GetCompatibleDescriptorSets(material->m_vulkan.m_pipelines[0]->m_layout, bindings);
+	if (sets.Num() != material->m_vulkan.m_pipelines[0]->m_layout->m_descriptionSetLayouts.Num())
+	{
+		SAILOR_LOG_ERROR("VulkanGraphicsDriver::BindShaderBindings: cannot bind the complete descriptor set list. expected=%zu, actual=%zu",
+			material->m_vulkan.m_pipelines[0]->m_layout->m_descriptionSetLayouts.Num(),
+			sets.Num());
+		return;
+	}
+
 	cmd->m_vulkan.m_commandBuffer->BindDescriptorSet(material->m_vulkan.m_pipelines[0]->m_layout, sets, VK_PIPELINE_BIND_POINT_GRAPHICS);
 
 	// Need to handle ShaderBindingSet, since it auto destructs all bindings and buffers
@@ -2966,6 +3247,7 @@ void VulkanGraphicsDriver::DrawIndexedIndirect(RHI::RHICommandListPtr cmd, RHI::
 void VulkanGraphicsDriver::DrawIndexed(RHI::RHICommandListPtr cmd, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
 	cmd->m_vulkan.m_commandBuffer->DrawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
+	cmd->RecordDrawCallStats(instanceCount);
 }
 
 bool VulkanGraphicsDriver::FitsViewport(RHI::RHICommandListPtr cmd, float x, float y, float width, float height, glm::vec2 scissorOffset, glm::vec2 scissorExtent, float minDepth, float maxDepth)
@@ -2989,22 +3271,26 @@ bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::RHICommandListPtr cmd)
 void VulkanGraphicsDriver::CollectGarbage_RenderThread()
 {
 	SAILOR_PROFILE_FUNCTION();
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
 
 	m_cachedDescriptorSets.LockAll();
 	TSet<CachedDescriptorSet> toRemove;
 
 	for (auto& batch : m_cachedDescriptorSets)
 	{
-		if (!batch.m_second.m_first || batch.m_first.IsExpired() || ++batch.m_second.m_second > CachedDescriptorSetLifeTimeInFrames)
+		if (!batch.m_second.m_first ||
+			batch.m_first.IsExpired() ||
+			++batch.m_second.m_second > CachedDescriptorSetLifeTimeInFrames)
 		{
 			toRemove.Insert(batch.m_first);
 		}
 	}
 
-	for (const auto& remove : toRemove)
+	for (const CachedDescriptorSet& remove : toRemove)
 	{
 		m_cachedDescriptorSets.ForcelyRemove(remove);
 	}
+
 	m_cachedDescriptorSets.UnlockAll();
 }
 

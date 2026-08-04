@@ -138,6 +138,7 @@ public sealed class ProtocolAsyncContractTests
             "Stop",
             "Shutdown",
             "RequestAssetReload",
+            "UpdateAsset",
             "GetAssetReloadState",
             "GetExitCode",
             "IsEngineMainThreadReady",

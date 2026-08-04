@@ -4,6 +4,7 @@
 #include "Containers/Map.h"
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
+#include <atomic>
 
 namespace Sailor::RHI
 {
@@ -36,6 +37,10 @@ namespace Sailor::RHI
 
 		SAILOR_API size_t GetCompatibilityHashCode() const { return m_compatibilityHashCode; }
 		SAILOR_API void RecalculateCompatibility();
+		SAILOR_API uint64_t GetDescriptorRevision() const { return m_descriptorRevision.load(std::memory_order_acquire); }
+		SAILOR_API void AdvanceDescriptorRevision() { m_descriptorRevision.fetch_add(1, std::memory_order_release); }
+		SAILOR_API uint32_t GetVariableDescriptorCount() const { return m_variableDescriptorCount.load(std::memory_order_acquire); }
+		SAILOR_API void SetVariableDescriptorCount(uint32_t count) { m_variableDescriptorCount.store(count, std::memory_order_release); }
 
 	protected:
 
@@ -45,6 +50,8 @@ namespace Sailor::RHI
 		TConcurrentMap<std::string, RHI::RHIShaderBindingPtr> m_shaderBindings;
 		bool m_bNeedsStorageBuffer = false;
 		size_t m_compatibilityHashCode = 0;
+		std::atomic<uint64_t> m_descriptorRevision{ 0 };
+		std::atomic<uint32_t> m_variableDescriptorCount{ 0 };
 	};
 
 	class RHIMaterial : public RHIResource

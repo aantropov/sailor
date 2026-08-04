@@ -58,13 +58,14 @@ message ProtocolRequest {
 		InstanceIdRequest break_prefab_link = 54;
 		ViewportToolStateRequest set_viewport_tool_state = 55;
 		ViewportIdRequest get_viewport_tool_state = 56;
+		FileIdRequest update_asset = 57;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 57 to 99;
+	reserved 58 to 99;
 }
 
 message ProtocolResponse {

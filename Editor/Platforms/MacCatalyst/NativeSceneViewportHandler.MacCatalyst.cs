@@ -1,6 +1,7 @@
 #if MACCATALYST
 #nullable enable
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using CoreAnimation;
 using CoreGraphics;
@@ -169,18 +170,98 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
     sealed class NativeSceneViewportPlatformView : UIView
     {
+        enum PointerMotionSource
+        {
+            None,
+            UIKit,
+            GameController
+        }
+
+        sealed class SecondaryPointerDragGestureRecognizer : UIGestureRecognizer
+        {
+            readonly Action<UIGestureRecognizerState, CGPoint> publish;
+            CGPoint lastPoint;
+
+            public SecondaryPointerDragGestureRecognizer(
+                Action<UIGestureRecognizerState, CGPoint> publish)
+            {
+                this.publish = publish;
+            }
+
+            public override bool ShouldReceive(UIEvent evt)
+            {
+                var accepted =
+                    (evt.ButtonMask & UIEventButtonMask.Secondary) != 0;
+                return accepted;
+            }
+
+            public override void TouchesBegan(NSSet touches, UIEvent evt)
+            {
+                if (!TryGetPoint(touches, out lastPoint))
+                {
+                    State = UIGestureRecognizerState.Failed;
+                    return;
+                }
+
+                State = UIGestureRecognizerState.Began;
+                publish(UIGestureRecognizerState.Began, lastPoint);
+            }
+
+            public override void TouchesMoved(NSSet touches, UIEvent evt)
+            {
+                if (TryGetPoint(touches, out var point))
+                {
+                    lastPoint = point;
+                }
+
+                State = UIGestureRecognizerState.Changed;
+                publish(UIGestureRecognizerState.Changed, lastPoint);
+            }
+
+            public override void TouchesEnded(NSSet touches, UIEvent evt)
+            {
+                if (TryGetPoint(touches, out var point))
+                {
+                    lastPoint = point;
+                }
+
+                publish(UIGestureRecognizerState.Ended, lastPoint);
+                State = UIGestureRecognizerState.Ended;
+            }
+
+            public override void TouchesCancelled(NSSet touches, UIEvent evt)
+            {
+                publish(UIGestureRecognizerState.Cancelled, lastPoint);
+                State = UIGestureRecognizerState.Cancelled;
+            }
+
+            bool TryGetPoint(NSSet touches, out CGPoint point)
+            {
+                if (touches.AnyObject is UITouch touch)
+                {
+                    point = touch.LocationInView(View);
+                    return true;
+                }
+
+                point = lastPoint;
+                return false;
+            }
+        }
+
         static readonly object inputOwnershipGate = new();
         static NativeSceneViewportPlatformView? mouseInputOwner;
         static NativeSceneViewportPlatformView? keyboardInputOwner;
 
         readonly WeakReference<NativeSceneViewportHandler> owner;
         GCKeyboardInput? keyboardInput;
-        GCMouseInput? mouseInput;
+        readonly Dictionary<nint, GCMouseInput> mouseInputs = new();
         NSObject? keyboardDidConnectToken;
         NSObject? keyboardDidDisconnectToken;
         NSObject? mouseDidConnectToken;
         NSObject? mouseDidDisconnectToken;
         readonly UIHoverGestureRecognizer hoverGesture;
+        readonly SecondaryPointerDragGestureRecognizer secondaryPointerDragGesture;
+        GCMouseInput? activeGameControllerInput;
         NativeSceneViewportInputModifier activeMouseModifiers = NativeSceneViewportInputModifier.None;
         NativeSceneViewportInputModifier activeKeyboardModifiers = NativeSceneViewportInputModifier.None;
         NativeSceneViewportInputModifier activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
@@ -189,8 +270,11 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         bool isAttachedToWindow;
         bool isDisposed;
         bool isInputFocused;
+        PointerMotionSource pointerMotionSource;
         long pointerActivityRevision;
         CGPoint lastPointerSample;
+
+        bool HasMouseInputs => mouseInputs.Count != 0;
 
         public NativeSceneViewportPlatformView(NativeSceneViewportHandler handler)
         {
@@ -200,6 +284,15 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
             hoverGesture = new UIHoverGestureRecognizer(this, new Selector("handleViewportHover:"));
             AddGestureRecognizer(hoverGesture);
+
+            secondaryPointerDragGesture = new SecondaryPointerDragGestureRecognizer(
+                HandleViewportSecondaryPointerDrag)
+            {
+                CancelsTouchesInView = false,
+                DelaysTouchesBegan = false,
+                DelaysTouchesEnded = false
+            };
+            AddGestureRecognizer(secondaryPointerDragGesture);
         }
 
         public override bool CanBecomeFirstResponder => true;
@@ -234,21 +327,20 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         public override void TouchesBegan(NSSet touches, UIEvent? evt)
         {
-            if (mouseInput != null &&
-                activeMouseModifiers != NativeSceneViewportInputModifier.None)
-            {
-                base.TouchesBegan(touches, evt);
-                return;
-            }
-
             activeLocalPointerModifier = ResolvePointerModifier(evt);
+            if (activeLocalPointerModifier != NativeSceneViewportInputModifier.None &&
+                (activeMouseModifiers & activeLocalPointerModifier) == 0)
+            {
+                pointerMotionSource = PointerMotionSource.None;
+            }
             PublishTouchButton(touches, activeLocalPointerModifier, true);
             base.TouchesBegan(touches, evt);
         }
 
         public override void TouchesMoved(NSSet touches, UIEvent? evt)
         {
-            if (mouseInput != null)
+            if (activeLocalPointerModifier == NativeSceneViewportInputModifier.None &&
+                HasMouseInputs)
             {
                 base.TouchesMoved(touches, evt);
                 return;
@@ -260,7 +352,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         public override void TouchesEnded(NSSet touches, UIEvent? evt)
         {
-            if (mouseInput != null)
+            if (HasMouseInputs)
             {
                 // The same UIKit sequence that recovered a press must also
                 // release it. Trackpads can provide GCMouse motion without
@@ -278,7 +370,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         public override void TouchesCancelled(NSSet touches, UIEvent? evt)
         {
-            if (mouseInput != null)
+            if (HasMouseInputs)
             {
                 activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
                 ReleaseActivePointerState();
@@ -363,6 +455,8 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 DisconnectInput();
                 RemoveGestureRecognizer(hoverGesture);
                 hoverGesture.Dispose();
+                RemoveGestureRecognizer(secondaryPointerDragGesture);
+                secondaryPointerDragGesture.Dispose();
             }
 
             base.Dispose(disposing);
@@ -376,6 +470,10 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 UIGestureRecognizerState.Failed)
             {
                 hasActiveHover = false;
+                if (pointerMotionSource == PointerMotionSource.UIKit)
+                {
+                    pointerMotionSource = PointerMotionSource.None;
+                }
                 if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
                 {
                     ResetPointerSample();
@@ -389,20 +487,87 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             hasActiveHover = true;
-            if (!SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers))
+            var point = gesture.LocationInView(this);
+            if (SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers))
+            {
+                pointerMotionSource = PointerMotionSource.None;
+            }
+            else if (!HasPointerMoved(point) ||
+                !TryUsePointerMotionSource(PointerMotionSource.UIKit))
             {
                 return;
             }
 
-            var point = gesture.LocationInView(this);
             RecordPointerSample(point);
             PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
+        }
+
+        void HandleViewportSecondaryPointerDrag(
+            UIGestureRecognizerState state,
+            CGPoint point)
+        {
+            const NativeSceneViewportInputModifier modifier =
+                NativeSceneViewportInputModifier.MouseRight;
+            switch (state)
+            {
+                case UIGestureRecognizerState.Began:
+                    activeLocalPointerModifier = modifier;
+                    if ((activeMouseModifiers & modifier) == 0 &&
+                        !PublishLocalPointerButton(point, modifier, true))
+                    {
+                        activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+                        pointerMotionSource = PointerMotionSource.None;
+                        return;
+                    }
+
+                    RecordPointerSample(point);
+                    break;
+
+                case UIGestureRecognizerState.Changed:
+                    if ((activeMouseModifiers & modifier) == 0 ||
+                        !HasPointerMoved(point) ||
+                        !PrepareUIKitPointerMotion(point))
+                    {
+                        return;
+                    }
+
+                    PublishPointer(
+                        NativeSceneViewportInputKind.PointerMove,
+                        point,
+                        0,
+                        false);
+                    break;
+
+                case UIGestureRecognizerState.Ended:
+                case UIGestureRecognizerState.Cancelled:
+                case UIGestureRecognizerState.Failed:
+                    if (activeLocalPointerModifier == modifier &&
+                        (activeMouseModifiers & modifier) != 0)
+                    {
+                        PublishLocalPointerButton(point, modifier, false);
+                    }
+                    if (activeLocalPointerModifier == modifier)
+                    {
+                        activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+                    }
+                    if (pointerMotionSource == PointerMotionSource.UIKit)
+                    {
+                        pointerMotionSource = PointerMotionSource.None;
+                    }
+                    break;
+            }
         }
 
         void PublishTouchMove(NSSet touches)
         {
             if (TryGetTouchPoint(touches, out var point))
             {
+                if (activeLocalPointerModifier != NativeSceneViewportInputModifier.None &&
+                    (!HasPointerMoved(point) ||
+                        !PrepareUIKitPointerMotion(point)))
+                {
+                    return;
+                }
                 RecordPointerSample(point);
                 PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
             }
@@ -419,6 +584,19 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return;
             }
 
+            PublishLocalPointerButton(point, modifier, pressed);
+        }
+
+        bool PublishLocalPointerButton(
+            CGPoint point,
+            NativeSceneViewportInputModifier modifier,
+            bool pressed)
+        {
+            if (modifier == NativeSceneViewportInputModifier.None)
+            {
+                return false;
+            }
+
             RecordPointerSample(point);
             if (!SceneViewportPointerRouting.ShouldAcceptMouseButton(
                 pressed,
@@ -427,7 +605,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 activeMouseModifiers,
                 modifier))
             {
-                return;
+                return false;
             }
 
             if (pressed)
@@ -435,13 +613,18 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 FocusInput();
                 if (!IsFirstResponder)
                 {
-                    return;
+                    return false;
                 }
                 activeMouseModifiers |= modifier;
             }
             else
             {
                 activeMouseModifiers &= ~modifier;
+                if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    pointerMotionSource = PointerMotionSource.None;
+                    activeGameControllerInput = null;
+                }
             }
 
             PublishPointer(
@@ -456,6 +639,7 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             {
                 ResetPointerSample();
             }
+            return true;
         }
 
         bool TryGetTouchPoint(NSSet touches, out CGPoint point)
@@ -498,8 +682,19 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 return;
             }
 
+            var availableInputs = new Dictionary<nint, GCMouseInput>();
+            foreach (var mouse in GCMouse.Mice)
+            {
+                mouse.HandlerQueue = DispatchQueue.MainQueue;
+                if (mouse.MouseInput is { } input)
+                {
+                    availableInputs[(nint)input.Handle] = input;
+                }
+            }
+
             NativeSceneViewportPlatformView? releasedOwner = null;
             NativeSceneViewportInputEvent? releaseInput = null;
+            var attachedInputs = new List<GCMouseInput>();
             lock (inputOwnershipGate)
             {
                 if (!isAttachedToWindow || isDisposed)
@@ -507,51 +702,155 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     return;
                 }
 
-                var input = GCMouse.Current?.MouseInput;
-                if (ReferenceEquals(input, mouseInput) &&
-                    ReferenceEquals(mouseInputOwner, this))
+                if (availableInputs.Count != 0 &&
+                    mouseInputOwner != null &&
+                    !ReferenceEquals(mouseInputOwner, this))
                 {
-                    return;
+                    releasedOwner = mouseInputOwner;
+                    releaseInput = releasedOwner.DetachMouseInputForReplacement();
+                    mouseInputOwner = null;
+                }
+
+                if (availableInputs.Count != 0 && mouseInputOwner == null)
+                {
+                    mouseInputOwner = this;
                 }
 
                 if (ReferenceEquals(mouseInputOwner, this))
                 {
-                    releasedOwner = this;
-                    releaseInput = DetachMouseInputForReplacement();
-                    mouseInputOwner = null;
-                }
-                else
-                {
-                    mouseInput = null;
-                    activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
-                    ResetPointerSample();
-                }
-
-                if (input != null)
-                {
-                    if (mouseInputOwner != null &&
-                        !ReferenceEquals(mouseInputOwner, this))
+                    var removedInputs = new List<nint>();
+                    var lostActiveInput = false;
+                    foreach (var pair in mouseInputs)
                     {
-                        releasedOwner = mouseInputOwner;
-                        releaseInput = releasedOwner.DetachMouseInputForReplacement();
+                        if (availableInputs.ContainsKey(pair.Key))
+                        {
+                            continue;
+                        }
+
+                        lostActiveInput |= ReferenceEquals(
+                            activeGameControllerInput,
+                            pair.Value);
+                        UnbindMouseInput(pair.Value);
+                        removedInputs.Add(pair.Key);
                     }
 
-                    mouseInputOwner = this;
-                    mouseInput = input;
-                    mouseInput.LeftButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(0, NativeSceneViewportInputModifier.MouseLeft, pressed);
-                    mouseInput.RightButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(1, NativeSceneViewportInputModifier.MouseRight, pressed);
-                    if (mouseInput.MiddleButton != null)
+                    foreach (var inputId in removedInputs)
                     {
-                        mouseInput.MiddleButton.PressedChangedHandler = (_, _, pressed) => HandleMouseButtonChanged(2, NativeSceneViewportInputModifier.MouseMiddle, pressed);
+                        mouseInputs.Remove(inputId);
                     }
-                    mouseInput.MouseMovedHandler = HandleMouseMoved;
-                    mouseInput.Scroll.ValueChangedHandler = HandleMouseScroll;
+
+                    if (lostActiveInput)
+                    {
+                        releasedOwner = this;
+                        releaseInput = CreatePointerCaptureReleaseInput();
+                        ClearActivePointerState();
+                    }
+
+                    foreach (var pair in availableInputs)
+                    {
+                        if (mouseInputs.ContainsKey(pair.Key))
+                        {
+                            continue;
+                        }
+
+                        BindMouseInput(pair.Value);
+                        mouseInputs.Add(pair.Key, pair.Value);
+                        attachedInputs.Add(pair.Value);
+                    }
+
+                    if (mouseInputs.Count == 0)
+                    {
+                        mouseInputOwner = null;
+                    }
                 }
             }
 
             if (releasedOwner != null && releaseInput is { } captureInput)
             {
                 releasedOwner.Publish(captureInput);
+            }
+            foreach (var attachedInput in attachedInputs)
+            {
+                SynchronizePressedMouseButtons(attachedInput);
+            }
+        }
+
+        void BindMouseInput(GCMouseInput input)
+        {
+            input.LeftButton.PressedChangedHandler = (_, _, pressed) =>
+                HandleMouseButtonChanged(
+                    input,
+                    0,
+                    NativeSceneViewportInputModifier.MouseLeft,
+                    pressed);
+            input.RightButton.PressedChangedHandler = (_, _, pressed) =>
+                HandleMouseButtonChanged(
+                    input,
+                    1,
+                    NativeSceneViewportInputModifier.MouseRight,
+                    pressed);
+            if (input.MiddleButton != null)
+            {
+                input.MiddleButton.PressedChangedHandler = (_, _, pressed) =>
+                    HandleMouseButtonChanged(
+                        input,
+                        2,
+                        NativeSceneViewportInputModifier.MouseMiddle,
+                        pressed);
+            }
+            input.MouseMovedHandler = HandleMouseMoved;
+            input.Scroll.ValueChangedHandler = HandleMouseScroll;
+        }
+
+        static void UnbindMouseInput(GCMouseInput input)
+        {
+            input.LeftButton.PressedChangedHandler = null;
+            input.RightButton.PressedChangedHandler = null;
+            if (input.MiddleButton != null)
+            {
+                input.MiddleButton.PressedChangedHandler = null;
+            }
+            input.MouseMovedHandler = null;
+            input.Scroll.ValueChangedHandler = null;
+        }
+
+        void SynchronizePressedMouseButtons(GCMouseInput input)
+        {
+            lock (inputOwnershipGate)
+            {
+                if (!isAttachedToWindow ||
+                    isDisposed ||
+                    !ReferenceEquals(mouseInputOwner, this) ||
+                    !mouseInputs.TryGetValue((nint)input.Handle, out var attachedInput) ||
+                    !ReferenceEquals(attachedInput, input))
+                {
+                    return;
+                }
+            }
+
+            if (input.LeftButton.IsPressed)
+            {
+                HandleMouseButtonChanged(
+                    input,
+                    0,
+                    NativeSceneViewportInputModifier.MouseLeft,
+                    true);
+            }
+            if (input.RightButton.IsPressed)
+            {
+                HandleMouseButtonChanged(
+                    input,
+                    1,
+                    NativeSceneViewportInputModifier.MouseRight,
+                    true);
+            }
+            if (input.MiddleButton?.IsPressed == true)
+            {
+                HandleMouseButtonChanged(
+                    input,
+                    2,
+                    NativeSceneViewportInputModifier.MouseMiddle,
+                    true);
             }
         }
 
@@ -567,9 +866,8 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                 }
                 else
                 {
-                    mouseInput = null;
-                    activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
-                    ResetPointerSample();
+                    mouseInputs.Clear();
+                    ClearActivePointerState();
                 }
             }
 
@@ -582,34 +880,30 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         NativeSceneViewportInputEvent? DetachMouseInputForReplacement()
         {
             var releaseInput = CreatePointerCaptureReleaseInput();
-            activeMouseModifiers = NativeSceneViewportInputModifier.None;
-            if (mouseInput != null)
+            foreach (var input in mouseInputs.Values)
             {
-                mouseInput.LeftButton.PressedChangedHandler = null;
-                mouseInput.RightButton.PressedChangedHandler = null;
-                if (mouseInput.MiddleButton != null)
-                {
-                    mouseInput.MiddleButton.PressedChangedHandler = null;
-                }
-                mouseInput.MouseMovedHandler = null;
-                mouseInput.Scroll.ValueChangedHandler = null;
+                UnbindMouseInput(input);
             }
 
-            mouseInput = null;
-            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
-            ResetPointerSample();
+            mouseInputs.Clear();
+            ClearActivePointerState();
             return releaseInput;
         }
 
-        void HandleMouseMoved(GCMouseInput _, float deltaX, float deltaY)
+        void HandleMouseMoved(GCMouseInput input, float deltaX, float deltaY)
         {
             if (!SceneViewportPointerRouting.ShouldPublishCapturedMove(
                 hasPointerSample,
-                activeMouseModifiers))
+                activeMouseModifiers) ||
+                (deltaX == 0.0f && deltaY == 0.0f) ||
+                (activeGameControllerInput != null &&
+                    !ReferenceEquals(activeGameControllerInput, input)) ||
+                !TryUsePointerMotionSource(PointerMotionSource.GameController))
             {
                 return;
             }
 
+            activeGameControllerInput ??= input;
             var sensitivity = 1.0;
             if ((activeMouseModifiers & NativeSceneViewportInputModifier.MouseRight) != 0 &&
                 owner.TryGetTarget(out var handler))
@@ -628,17 +922,35 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             PublishPointer(NativeSceneViewportInputKind.PointerMove, point, 0, false);
         }
 
-        void HandleMouseButtonChanged(uint button, NativeSceneViewportInputModifier modifier, bool pressed)
+        void HandleMouseButtonChanged(
+            GCMouseInput input,
+            uint button,
+            NativeSceneViewportInputModifier modifier,
+            bool pressed)
         {
+            if (!pressed &&
+                activeGameControllerInput != null &&
+                !ReferenceEquals(activeGameControllerInput, input))
+            {
+                return;
+            }
+
+            var hasLocalHit = hasActiveHover;
+            if (pressed &&
+                activeMouseModifiers == NativeSceneViewportInputModifier.None &&
+                (!hasLocalHit || !hasPointerSample))
+            {
+                hasLocalHit = TryRecordSystemPointerSample();
+            }
             if (!SceneViewportPointerRouting.ShouldAcceptMouseButton(
                 pressed,
-                hasLocalHit: hasActiveHover,
+                hasLocalHit,
                 hasPointerSample,
                 activeMouseModifiers,
                 modifier))
             {
                 if (pressed &&
-                    !hasActiveHover &&
+                    !hasLocalHit &&
                     activeMouseModifiers == NativeSceneViewportInputModifier.None)
                 {
                     QueueFocusReleaseIfPointerRemainsOutside();
@@ -657,6 +969,11 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     }
                 }
 
+                if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    pointerMotionSource = PointerMotionSource.None;
+                    activeGameControllerInput = input;
+                }
                 activeMouseModifiers |= modifier;
                 PublishPointer(NativeSceneViewportInputKind.PointerButton, lastPointerSample, button, true, activeMouseModifiers);
             }
@@ -664,11 +981,46 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             {
                 activeMouseModifiers &= ~modifier;
                 PublishPointer(NativeSceneViewportInputKind.PointerButton, lastPointerSample, button, false, activeMouseModifiers);
+                if (activeMouseModifiers == NativeSceneViewportInputModifier.None)
+                {
+                    pointerMotionSource = PointerMotionSource.None;
+                    activeGameControllerInput = null;
+                }
                 if (!hasActiveHover && activeMouseModifiers == NativeSceneViewportInputModifier.None)
                 {
                     ResetPointerSample();
                 }
             }
+        }
+
+        bool TryRecordSystemPointerSample()
+        {
+            var window = Window;
+            if (window == null)
+            {
+                return false;
+            }
+
+            using var currentEvent = new CGEvent((CGEventSource?)null);
+            var screen = window.Screen ?? UIScreen.MainScreen;
+            var windowPoint = window.ConvertPointFromCoordinateSpace(
+                currentEvent.Location,
+                screen.CoordinateSpace);
+            var hitView = window.HitTest(windowPoint, null);
+            if (!ReferenceEquals(hitView, this) &&
+                !(hitView?.IsDescendantOfView(this) ?? false))
+            {
+                return false;
+            }
+
+            var localPoint = ConvertPointFromView(windowPoint, window);
+            if (!Bounds.Contains(localPoint))
+            {
+                return false;
+            }
+
+            RecordPointerSample(localPoint);
+            return true;
         }
 
         void QueueFocusReleaseIfPointerRemainsOutside()
@@ -721,11 +1073,52 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             lastPointerSample = CGPoint.Empty;
         }
 
+        bool HasPointerMoved(CGPoint point) =>
+            !hasPointerSample ||
+            Math.Abs((double)(point.X - lastPointerSample.X)) > 0.0001 ||
+            Math.Abs((double)(point.Y - lastPointerSample.Y)) > 0.0001;
+
+        bool TryUsePointerMotionSource(PointerMotionSource source)
+        {
+            if (pointerMotionSource == PointerMotionSource.None)
+            {
+                pointerMotionSource = source;
+            }
+            return pointerMotionSource == source;
+        }
+
+        bool PrepareUIKitPointerMotion(CGPoint point)
+        {
+            var switchedFromGameController =
+                pointerMotionSource == PointerMotionSource.GameController;
+            pointerMotionSource = PointerMotionSource.UIKit;
+            activeGameControllerInput = null;
+            if (switchedFromGameController)
+            {
+                // UIKit reports an absolute point while GCMouse reports
+                // deltas. Rebase once when UIKit takes over so the two
+                // coordinate streams cannot create a false first movement.
+                RecordPointerSample(point);
+            }
+            return !switchedFromGameController;
+        }
+
+        void ClearActivePointerState()
+        {
+            activeMouseModifiers = NativeSceneViewportInputModifier.None;
+            activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+            activeGameControllerInput = null;
+            pointerMotionSource = PointerMotionSource.None;
+            ResetPointerSample();
+        }
+
         void ReleaseActivePointerState()
         {
             var releaseInput = CreatePointerCaptureReleaseInput();
             activeMouseModifiers = NativeSceneViewportInputModifier.None;
             activeLocalPointerModifier = NativeSceneViewportInputModifier.None;
+            activeGameControllerInput = null;
+            pointerMotionSource = PointerMotionSource.None;
             if (releaseInput is not { } captureInput)
             {
                 return;

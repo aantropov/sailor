@@ -24,7 +24,12 @@ glslVertex: |
   struct PerInstanceData
   {
   	mat4 model;
+    vec4 sphereBounds;
   	uint materialInstance;
+    uint skeletonOffset;
+    uint isCulled;
+    uint padding;
+    vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -61,7 +66,7 @@ glslVertex: |
   	LightData instance[];
   } light;
   
-  layout(std140, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
+  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
   	PerInstanceData instance[];
   } data;

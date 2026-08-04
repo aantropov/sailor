@@ -9,6 +9,7 @@ defines:
  - SKINNING
  - CLEAR_COAT
  - SHEEN
+ - TRANSMISSION
 
 glslCommon: |
   #version 460
@@ -37,6 +38,9 @@ glslVertex: |
     vec3 normal;
     vec4 color;
     mat3 tangentBasis;
+  #ifdef TRANSMISSION
+    flat vec3 modelScale;
+  #endif
   } vout;
   
   struct PerInstanceData
@@ -47,6 +51,7 @@ glslVertex: |
     uint skeletonOffset;
     uint isCulled;
     uint padding;
+    vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -78,6 +83,16 @@ glslVertex: |
     uint clearcoatNormalSampler;
     uint sheenColorSampler;
     uint sheenRoughnessSampler;
+
+  #ifdef TRANSMISSION
+    float transmissionFactor;
+    uint transmissionSampler;
+    float thicknessFactor;
+    float attenuationDistance;
+    float indexOfRefraction;
+    uint thicknessSampler;
+    vec4 attenuationColor;
+  #endif
   };
 
   struct BoneData
@@ -118,7 +133,7 @@ glslVertex: |
   
   layout(std430, set = 1, binding = 1) readonly buffer CulledLightsSSBO
   {
-      uint indices[];
+      uint indices[MAX_TEXTURES_IN_SCENE];
   } culledLights;
   
   layout(std430, set = 1, binding = 2) readonly buffer LightsGridSSBO
@@ -153,7 +168,15 @@ glslVertex: |
       MaterialData instance[];
   } material;
   
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
+  {
+      uint indices[MAX_TEXTURES_IN_SCENE];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
   layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
 
   #ifdef SKINNING
   layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
@@ -165,6 +188,14 @@ glslVertex: |
   void main()
   {
     mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+  #ifdef TRANSMISSION
+    mat3 instanceLinearMatrix = mat3(modelMatrix);
+    vout.modelScale = vec3(
+      length(instanceLinearMatrix[0]),
+      length(instanceLinearMatrix[1]),
+      length(instanceLinearMatrix[2])) *
+      data.instance[gl_InstanceIndex].bakedVolumeScale.xyz;
+  #endif
   #ifdef SKINNING
     uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
 
@@ -184,13 +215,29 @@ glslVertex: |
 
     gl_Position = frame.projection * (frame.view * vertexPosition);
 
-    vec3 normal = (modelMatrix * vec4(inNormal, 0.0)).xyz;
-    vec3 tangent = (modelMatrix * vec4(inTangent, 0.0)).xyz;
-    vec3 bitangent = (modelMatrix * vec4(inBitangent, 0.0)).xyz;
+    mat3 linearMatrix = mat3(modelMatrix);
+    mat3 normalMatrix = transpose(inverse(linearMatrix));
+    vec3 normal = normalize(normalMatrix * inNormal);
 
-    mat3 normalMatrix = transpose(inverse(mat3(modelMatrix)));
-    vout.normal = normalize(normalMatrix * normal);
-    vout.tangentBasis = normalMatrix * mat3(tangent, bitangent, normal);
+    vec3 tangent = linearMatrix * inTangent;
+    tangent -= normal * dot(normal, tangent);
+    float tangentLengthSquared = dot(tangent, tangent);
+    if(tangentLengthSquared > 1e-8)
+    {
+      tangent *= inversesqrt(tangentLengthSquared);
+    }
+    else
+    {
+      vec3 fallbackAxis = abs(normal.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+      tangent = normalize(cross(fallbackAxis, normal));
+    }
+
+    vec3 transformedBitangent = linearMatrix * inBitangent;
+    float handedness = dot(cross(normal, tangent), transformedBitangent) < 0.0 ? -1.0 : 1.0;
+    vec3 bitangent = normalize(cross(normal, tangent)) * handedness;
+
+    vout.normal = normal;
+    vout.tangentBasis = mat3(tangent, bitangent, normal);
 
     vout.color = inColor;
     vout.texcoord = inTexcoord;
@@ -208,6 +255,9 @@ glslFragment: |
     vec3 normal;
     vec4 color;
     mat3 tangentBasis;
+  #ifdef TRANSMISSION
+    flat vec3 modelScale;
+  #endif
   } vin;
   
   layout(location=0) out vec4 outColor;
@@ -217,7 +267,10 @@ glslFragment: |
       mat4 model;
       vec4 sphereBounds;
       uint materialInstance;
+      uint skeletonOffset;
       uint isCulled;
+      uint padding;
+      vec4 bakedVolumeScale;
   };
   
   struct MaterialData
@@ -249,6 +302,16 @@ glslFragment: |
     uint clearcoatNormalSampler;
     uint sheenColorSampler;
     uint sheenRoughnessSampler;
+
+  #ifdef TRANSMISSION
+    float transmissionFactor;
+    uint transmissionSampler;
+    float thicknessFactor;
+    float attenuationDistance;
+    float indexOfRefraction;
+    uint thicknessSampler;
+    vec4 attenuationColor;
+  #endif
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -306,6 +369,9 @@ glslFragment: |
   
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
   layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  #ifdef TRANSMISSION
+  layout(set=1, binding=10) uniform sampler2D g_transmissionFramebufferSampler;
+  #endif
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -322,14 +388,28 @@ glslFragment: |
   //layout(set=3, binding=3) uniform sampler2D normalSampler;
   //layout(set=3, binding=4) uniform sampler2D roughnessSampler;
   
-  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
-  
-  #ifdef SKINNING
-  layout(std430, set = 5, binding = 0) readonly buffer BoneMatricesSSBO
+  #if defined(SAILOR_TEXTURE_REMAP)
+  layout(std430, set=4, binding=0) readonly buffer TextureSamplerRemapSSBO
   {
-      BoneData instance[];
-  } bones;
-  #endif 
+      uint indices[];
+  } textureSamplerRemap;
+  layout(set=4, binding=1) uniform sampler2D textureSamplers[];
+  #else
+  layout(set=4, binding=0) uniform sampler2D textureSamplers[];
+  #endif
+
+  uint ResolveTextureSamplerIndex(uint globalTextureIndex)
+  {
+  #if defined(SAILOR_TEXTURE_REMAP)
+      if(globalTextureIndex >= MAX_TEXTURES_IN_SCENE)
+      {
+        return 0;
+      }
+      return textureSamplerRemap.indices[globalTextureIndex];
+  #else
+      return globalTextureIndex;
+  #endif
+  }
   
   MaterialData GetMaterialData()
   {
@@ -337,36 +417,102 @@ glslFragment: |
   }
   
   const float Epsilon = 0.00001;
+
+  #ifdef TRANSMISSION
+  float ApplyIorToRoughness(float roughness, float ior)
+  {
+    return roughness * clamp(ior * 2.0 - 2.0, 0.0, 1.0);
+  }
+
+  float NdfGGXAlpha(float cosLh, float alphaRoughness)
+  {
+    float alphaSq = alphaRoughness * alphaRoughness;
+    float denominator = cosLh * cosLh * (alphaSq - 1.0) + 1.0;
+    return alphaSq / max(PI * denominator * denominator, Epsilon);
+  }
+
+  float VisibilityGGXAlpha(float cosLi, float cosLo, float alphaRoughness)
+  {
+    float alphaSq = alphaRoughness * alphaRoughness;
+    float ggxV = cosLi * sqrt(cosLo * cosLo * (1.0 - alphaSq) + alphaSq);
+    float ggxL = cosLo * sqrt(cosLi * cosLi * (1.0 - alphaSq) + alphaSq);
+    float ggx = ggxV + ggxL;
+    return ggx > Epsilon ? 0.5 / ggx : 0.0;
+  }
+
+  vec3 GetRefractionDirection(
+    vec3 normal,
+    vec3 view,
+    float ior)
+  {
+    vec3 refractedDirection = refract(-view, normalize(normal), 1.0 / ior);
+    float refractedLengthSquared = dot(refractedDirection, refractedDirection);
+    if(refractedLengthSquared <= Epsilon)
+    {
+      return vec3(0.0);
+    }
+
+    return refractedDirection * inversesqrt(refractedLengthSquared);
+  }
+
+  vec3 GetVolumeTransmissionRay(
+    vec3 refractedDirection,
+    float thickness,
+    vec3 modelScale)
+  {
+    return refractedDirection * thickness * modelScale;
+  }
+
+  vec3 GetVolumeAttenuation(
+    float transmissionDistance,
+    vec3 attenuationColor,
+    float attenuationDistance)
+  {
+    if(transmissionDistance <= Epsilon ||
+      attenuationDistance >= 3.402823466e+38)
+    {
+      return vec3(1.0);
+    }
+
+    float attenuationExponent = transmissionDistance /
+      max(attenuationDistance, Epsilon);
+    bvec3 fullyAbsorbed = lessThanEqual(attenuationColor, vec3(0.0));
+    vec3 attenuation = pow(
+      max(attenuationColor, vec3(Epsilon)),
+      vec3(attenuationExponent));
+    return mix(attenuation, vec3(0.0), fullyAbsorbed);
+  }
+  #endif
+
   vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
-    float attenuation = 1.0;
     float shadow = 1.0f;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     
     // Directional light
     if(light.type == 0)
     {
-        attenuation = 1.0;
-      
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        
-        // EVSM only for the first cascade
-        if(light.shadowType == 2 && cascadeLayer == 0)
-        {
-          const float bias = (1.0 - dot(normal, light.direction)) * (1 + cascadeLayer);
-          shadow = ShadowCalculation_Evsm(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);
-        }
-        else
-        {
-          const float bias = max(0.000075 * (1.0 - dot(normal, light.direction)), 0.000005);   
-          shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), bias, cascadeLayer);    
-        }
+        shadow = CalculateDirectionalShadow(
+          light.shadowType,
+          shadowMaps[cascadeLayer],
+          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+          normal,
+          Li,
+          cascadeLayer);
     }
     // Point light
     else if(light.type == 1)
     {
       // Attenuation
-      const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(pointToLight);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
       falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
     }
@@ -374,12 +520,12 @@ glslFragment: |
     else if(light.type == 2)
     {
       // Attenuation
-      vec3 lightDir = normalize(light.worldPosition - worldPos);
+      vec3 lightDir = Li;
       float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
-      const float distance    = length(light.worldPosition - worldPos);
+      const float distance    = length(pointToLight);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);      
+      falloff         = attenuation * clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
       
       if(theta < light.cutOff.y)
       {
@@ -387,11 +533,14 @@ glslFragment: |
       }
     }
     
-    vec3 Li = -light.direction;
     vec3 Lradiance = light.intensity;
 
     // Half-vector between Li and Lo.
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
 
     // Calculate angles between surface normal and various light vectors.
     float cosLi = max(0.0, dot(normal, Li));
@@ -408,6 +557,9 @@ glslFragment: |
     // Metals on the other hand either reflect or absorb energy, so diffuse contribution is always zero.
     // To be energy conserving we must scale diffuse BRDF contribution based on Fresnel factor & metalness.
     vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
+  #ifdef TRANSMISSION
+    kd *= 1.0 - material.transmissionFactor;
+  #endif
 
     // Lambert diffuse BRDF.
     // We don't scale by 1/PI for lighting & material units to be more convenient.
@@ -417,8 +569,127 @@ glslFragment: |
     // Cook-Torrance specular microfacet BRDF.
     vec3 specularBRDF = (F * D * G) / max(Epsilon, 4.0 * cosLi * cosLo);
 
+    vec3 directLighting =
+      (diffuseBRDF + specularBRDF) * Lradiance * cosLi * falloff;
+
+  #ifdef TRANSMISSION
+    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionDirection = GetRefractionDirection(
+      refractionNormal,
+      Lo,
+      material.indexOfRefraction);
+    vec3 transmissionRay = GetVolumeTransmissionRay(
+      refractionDirection,
+      material.thicknessFactor,
+      vin.modelScale);
+    float transmissionRayLength = length(transmissionRay);
+    float canTransmit = step(Epsilon, dot(
+      refractionDirection,
+      refractionDirection));
+    float dielectricTransmission = material.transmissionFactor *
+      (1.0 - clamp(material.metallicFactor, 0.0, 1.0));
+
+    if(canTransmit > 0.0 &&
+      dielectricTransmission > Epsilon)
+    {
+      vec3 exitPointToLight = light.type == 0 ?
+        -light.direction :
+        light.worldPosition - (worldPos + transmissionRay);
+      float exitPointToLightLength = length(exitPointToLight);
+      if(exitPointToLightLength > Epsilon)
+      {
+        vec3 transmissionLi = exitPointToLight / exitPointToLightLength;
+        vec3 mirroredLiVector =
+          transmissionLi +
+          2.0 * refractionNormal *
+            dot(-transmissionLi, refractionNormal);
+        float mirroredLiLengthSquared = dot(
+          mirroredLiVector,
+          mirroredLiVector);
+        if(mirroredLiLengthSquared > Epsilon)
+        {
+          vec3 mirroredLi = mirroredLiVector *
+            inversesqrt(mirroredLiLengthSquared);
+          vec3 transmissionHalfVector = mirroredLi + Lo;
+          float transmissionHalfLengthSquared = dot(
+            transmissionHalfVector,
+            transmissionHalfVector);
+          if(transmissionHalfLengthSquared > Epsilon)
+          {
+            vec3 transmissionH = transmissionHalfVector *
+              inversesqrt(transmissionHalfLengthSquared);
+            float alphaRoughness = ApplyIorToRoughness(
+              material.roughnessFactor * material.roughnessFactor,
+              material.indexOfRefraction);
+            float transmissionDistribution = NdfGGXAlpha(
+              clamp(dot(refractionNormal, transmissionH), 0.0, 1.0),
+              max(alphaRoughness, Epsilon));
+            float transmissionCosLi = clamp(
+              dot(refractionNormal, mirroredLi),
+              0.0,
+              1.0);
+            float transmissionCosLo = clamp(
+              dot(refractionNormal, Lo),
+              0.0,
+              1.0);
+            float transmissionVisibility = VisibilityGGXAlpha(
+              transmissionCosLi,
+              transmissionCosLo,
+              max(alphaRoughness, Epsilon));
+            float dielectricFresnel =
+              (material.indexOfRefraction - 1.0) /
+              (material.indexOfRefraction + 1.0);
+            vec3 transmissionFresnel = FresnelSchlick(
+              vec3(dielectricFresnel * dielectricFresnel),
+              clamp(abs(dot(Lo, transmissionH)), 0.0, 1.0));
+
+            float transmissionFalloff = falloff;
+            if(light.type == 1)
+            {
+              float attenuation = 1.0 /
+                (light.attenuation.x +
+                  light.attenuation.y * exitPointToLightLength +
+                  light.attenuation.z *
+                    exitPointToLightLength * exitPointToLightLength);
+              transmissionFalloff = attenuation *
+                (1.0 - pow(clamp(
+                  exitPointToLightLength / light.bounds.x,
+                  0.0,
+                  1.0), 2.0));
+            }
+            else if(light.type == 2)
+            {
+              float attenuation = 1.0 /
+                (light.attenuation.x +
+                  light.attenuation.y * exitPointToLightLength +
+                  light.attenuation.z *
+                    exitPointToLightLength * exitPointToLightLength);
+              float coneRange = light.cutOff.x - light.cutOff.y;
+              float coneCos = dot(
+                transmissionLi,
+                normalize(-light.direction));
+              transmissionFalloff = attenuation * clamp(
+                (coneCos - light.cutOff.y) / max(coneRange, Epsilon),
+                0.0,
+                1.0);
+            }
+
+            vec3 volumeAttenuation = GetVolumeAttenuation(
+              transmissionRayLength,
+              material.attenuationColor.rgb,
+              material.attenuationDistance);
+            directLighting += material.baseColorFactor.rgb *
+              transmissionDistribution * transmissionVisibility *
+              volumeAttenuation * (vec3(1.0) - transmissionFresnel) *
+              dielectricTransmission * Lradiance * transmissionFalloff;
+          }
+        }
+      }
+    }
+  #endif
+
     // Total contribution for this light.
-    return shadow * ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
+    return shadow * directLighting;
   }
   
   vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
@@ -434,6 +705,9 @@ glslFragment: |
     
     // Get diffuse contribution factor (as with direct lighting).
     vec3 kd = mix(vec3(1.0) - F, vec3(0.0), material.metallicFactor);
+  #ifdef TRANSMISSION
+    kd *= 1.0 - material.transmissionFactor;
+  #endif
     
     // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
     vec3 diffuseIBL = kd * material.baseColorFactor.xyz * irradiance;
@@ -461,7 +735,13 @@ glslFragment: |
     if(light.type == 0)
     {
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), 0.000075, cascadeLayer);
+        shadow = CalculateDirectionalShadow(
+          light.shadowType,
+          shadowMaps[cascadeLayer],
+          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+          normal,
+          -light.direction,
+          cascadeLayer);
     }
     else if(light.type == 1 || light.type == 2)
     {
@@ -470,10 +750,20 @@ glslFragment: |
         falloff = attenuation;
     }
 
-    vec3 Li = -light.direction;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     vec3 Lradiance = light.intensity;
 
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
     float cosLi = max(0.0, dot(normal, Li));
     float cosLh = max(0.0, dot(normal, Lh));
 
@@ -502,7 +792,13 @@ glslFragment: |
     if(light.type == 0)
     {
         const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        shadow = ShadowCalculation_Pcf(shadowMaps[cascadeLayer], lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f), 0.000075, cascadeLayer);
+        shadow = CalculateDirectionalShadow(
+          light.shadowType,
+          shadowMaps[cascadeLayer],
+          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+          normal,
+          -light.direction,
+          cascadeLayer);
     }
     else if(light.type == 1 || light.type == 2)
     {
@@ -511,10 +807,20 @@ glslFragment: |
         falloff = attenuation;
     }
 
-    vec3 Li = -light.direction;
+    vec3 pointToLight = light.type == 0 ?
+      -light.direction :
+      light.worldPosition - worldPos;
+    float pointToLightLengthSquared = dot(pointToLight, pointToLight);
+    vec3 Li = pointToLightLengthSquared > Epsilon ?
+      pointToLight * inversesqrt(pointToLightLengthSquared) :
+      vec3(0.0);
     vec3 Lradiance = light.intensity;
 
-    vec3 Lh = normalize(Li + Lo);
+    vec3 halfVector = Li + Lo;
+    float halfVectorLengthSquared = dot(halfVector, halfVector);
+    vec3 Lh = halfVectorLengthSquared > Epsilon ?
+      halfVector * inversesqrt(halfVectorLengthSquared) :
+      normal;
     float cosLi = max(0.0, dot(normal, Li));
     float cosLh = max(0.0, dot(normal, Lh));
 
@@ -546,13 +852,13 @@ glslFragment: |
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
     {
-      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[nonuniformEXT(material.baseColorSampler)], vin.texcoord);
+      material.baseColorFactor = material.baseColorFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.baseColorSampler))], vin.texcoord);
     }
     material.baseColorFactor *= vin.color;
 
     if(material.ormSampler != 0)
     {
-      vec4 orm = texture(textureSamplers[nonuniformEXT(material.ormSampler)], vin.texcoord);
+      vec4 orm = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.ormSampler))], vin.texcoord);
       material.metallicFactor = material.metallicFactor * orm.b;
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
@@ -560,7 +866,7 @@ glslFragment: |
     float occlusion = texture(g_aoSampler, viewportUv).r;
     if(material.occlusionSampler != 0)
     {
-      float occlusionTex = texture(textureSamplers[nonuniformEXT(material.occlusionSampler)], vin.texcoord).r;
+      float occlusionTex = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.occlusionSampler))], vin.texcoord).r;
       float mixed = mix(1.0, occlusionTex, material.occlusionStrength);
       occlusion = min(occlusion, mixed);
     }
@@ -568,34 +874,50 @@ glslFragment: |
 
     if(material.emissiveSampler != 0)
     {
-      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[nonuniformEXT(material.emissiveSampler)], vin.texcoord);
+      material.emissiveFactor = material.emissiveFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.emissiveSampler))], vin.texcoord);
     }
 
   #ifdef CLEAR_COAT
     if(material.clearcoatSampler != 0)
     {
-      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatSampler)], vin.texcoord).r;
+      material.clearcoatFactor = material.clearcoatFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatSampler))], vin.texcoord).r;
     }
     if(material.clearcoatRoughnessSampler != 0)
     {
-      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.clearcoatRoughnessSampler)], vin.texcoord).g;
+      material.clearcoatRoughnessFactor = material.clearcoatRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatRoughnessSampler))], vin.texcoord).g;
     }
   #endif
   #ifdef SHEEN
     if(material.sheenColorSampler != 0)
     {
-      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[nonuniformEXT(material.sheenColorSampler)], vin.texcoord).rgb;
+      material.sheenColorFactor.rgb = material.sheenColorFactor.rgb * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenColorSampler))], vin.texcoord).rgb;
     }
     if(material.sheenRoughnessSampler != 0)
     {
-      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(material.sheenRoughnessSampler)], vin.texcoord).g;
+      material.sheenRoughnessFactor = material.sheenRoughnessFactor * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.sheenRoughnessSampler))], vin.texcoord).g;
     }
+  #endif
+  #ifdef TRANSMISSION
+    material.transmissionFactor = clamp(material.transmissionFactor, 0.0, 1.0);
+    if(material.transmissionSampler != 0)
+    {
+      material.transmissionFactor *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.transmissionSampler))], vin.texcoord).r;
+    }
+    material.thicknessFactor = max(material.thicknessFactor, 0.0);
+    if(material.thicknessSampler != 0)
+    {
+      material.thicknessFactor *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.thicknessSampler))], vin.texcoord).g;
+    }
+    material.indexOfRefraction = max(material.indexOfRefraction, 1.0);
+    material.attenuationDistance = max(material.attenuationDistance, Epsilon);
+    material.attenuationColor = clamp(material.attenuationColor, vec4(0.0), vec4(1.0));
   #endif
 
     vec3 normal;
     if(material.normalSampler != 0)
     {
-      normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.normalSampler)], vin.texcoord).rgb - 1.0) * material.normalScale;
+      normal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0;
+      normal.xy *= material.normalScale;
       normal = normalize(vin.tangentBasis * normal);
     }
     else
@@ -607,7 +929,8 @@ glslFragment: |
     vec3 clearcoatNormal = normal;
     if(material.clearcoatNormalSampler != 0)
     {
-      clearcoatNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(material.clearcoatNormalSampler)], vin.texcoord).rgb - 1.0) * material.clearcoatNormalScale;
+      clearcoatNormal = 2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.clearcoatNormalSampler))], vin.texcoord).rgb - 1.0;
+      clearcoatNormal.xy *= material.clearcoatNormalScale;
       clearcoatNormal = normalize(vin.tangentBasis * clearcoatNormal);
     }
     float cosLoCC = max(0.0, dot(clearcoatNormal, -viewDirection));
@@ -624,7 +947,12 @@ glslFragment: |
     vec3 Lr = 2.0 * cosLo * normal + viewDirection;
     
     // Fresnel reflectance at normal incidence (for metals use albedo color).
+  #ifdef TRANSMISSION
+    float iorFresnel = (material.indexOfRefraction - 1.0) / (material.indexOfRefraction + 1.0);
+    vec3 F0 = mix(vec3(iorFresnel * iorFresnel), material.baseColorFactor.xyz, material.metallicFactor);
+  #else
     vec3 F0 = mix(Fdielectric, material.baseColorFactor.xyz, material.metallicFactor);
+  #endif
     
   #ifdef ALPHA_CUTOUT
     if(material.baseColorFactor.a < material.alphaCutoff)
@@ -636,17 +964,15 @@ glslFragment: |
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
     //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
   
-    vec2 numTiles = floor(frame.viewportSize / LIGHTS_CULLING_TILE_SIZE);
-    vec2 screenUv = vec2(gl_FragCoord.x, frame.viewportSize.y - gl_FragCoord.y);
-    ivec2 tileId = ivec2(screenUv) / LIGHTS_CULLING_TILE_SIZE;
-    
-    ivec2 mod = ivec2(frame.viewportSize.x % LIGHTS_CULLING_TILE_SIZE, frame.viewportSize.y % LIGHTS_CULLING_TILE_SIZE);
-    ivec2 padding = ivec2(min(1, mod.x), min(1, mod.y));
-    
-    uint tileIndex = uint(tileId.y * (numTiles.x + padding.x) + tileId.x);
-  
-    const uint offset = lightsGrid.instance[tileIndex].offset;
-    const uint numLights = lightsGrid.instance[tileIndex].num;
+    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
+    const uint gridLength = uint(lightsGrid.instance.length());
+    const bool hasLightTile = tileIndex < gridLength;
+    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
+    const uint listLength = uint(culledLights.indices.length());
+    const uint availableLights = offset < listLength ? listLength - offset : 0;
+    const uint numLights = hasLightTile ? min(
+        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
+        availableLights) : 0;
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
   #ifdef CLEAR_COAT
@@ -659,9 +985,11 @@ glslFragment: |
     for(int i = 0; i < numLights; i++)
     {
         uint index = culledLights.indices[offset + i];
-        if(index == uint(-1))
+        if(index == uint(-1) ||
+            index >= uint(light.instance.length()) ||
+            light.instance[index].type == INVALID_LIGHT_TYPE)
         {
-            break;
+            continue;
         }
     
         outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
@@ -672,6 +1000,91 @@ glslFragment: |
         outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
   #endif
     }
+
+  #ifdef TRANSMISSION
+    float dielectricFresnel =
+      (material.indexOfRefraction - 1.0) /
+      (material.indexOfRefraction + 1.0);
+    vec3 dielectricF0 = vec3(dielectricFresnel * dielectricFresnel);
+    vec2 transmissionBrdf = texture(
+      g_brdfSampler,
+      clamp(vec2(cosLo, material.roughnessFactor), vec2(0.0), vec2(1.0))).rg;
+    vec3 transmissionFresnel = clamp(
+      dielectricF0 * transmissionBrdf.x + transmissionBrdf.y,
+      vec3(0.0),
+      vec3(1.0));
+    vec3 refractionNormal = gl_FrontFacing ? normal : -normal;
+    vec3 refractionDirection = GetRefractionDirection(
+      refractionNormal,
+      -viewDirection,
+      material.indexOfRefraction);
+    vec3 transmissionRay = GetVolumeTransmissionRay(
+      refractionDirection,
+      material.thicknessFactor,
+      vin.modelScale);
+    float canTransmit = step(Epsilon, dot(
+      refractionDirection,
+      refractionDirection));
+    vec4 exitClip = frame.projection * frame.view * vec4(vin.worldPosition + transmissionRay, 1.0);
+    vec2 transmissionUv = viewportUv;
+    float transmissionUvWeight = 0.0;
+    if(exitClip.w > Epsilon)
+    {
+      vec2 exitNdc = exitClip.xy / exitClip.w;
+      vec2 exitUv = vec2(
+        exitNdc.x * 0.5 + 0.5,
+        0.5 - exitNdc.y * 0.5);
+      float exitEdgeDistance = min(
+        min(exitUv.x, 1.0 - exitUv.x),
+        min(exitUv.y, 1.0 - exitUv.y));
+      transmissionUvWeight = smoothstep(0.0, 0.025, exitEdgeDistance);
+      transmissionUv = clamp(exitUv, vec2(0.0), vec2(1.0));
+    }
+
+    float transmissionDistance = length(transmissionRay);
+    vec3 volumeAttenuation = GetVolumeAttenuation(
+      transmissionDistance,
+      material.attenuationColor.rgb,
+      material.attenuationDistance);
+
+    float transmissionRoughness = ApplyIorToRoughness(
+      material.roughnessFactor,
+      material.indexOfRefraction);
+    int transmissionMipCount = textureQueryLevels(g_transmissionFramebufferSampler);
+    float transmissionFramebufferWidth = float(max(
+      textureSize(g_transmissionFramebufferSampler, 0).x,
+      1));
+    float transmissionLod = clamp(
+      log2(transmissionFramebufferWidth) * transmissionRoughness,
+      0.0,
+      float(max(transmissionMipCount - 1, 0)));
+    vec3 framebufferRadiance = textureLod(
+      g_transmissionFramebufferSampler,
+      transmissionUv,
+      transmissionLod).rgb;
+    int transmissionEnvMipCount = textureQueryLevels(g_envCubemap);
+    float transmissionEnvLod = transmissionRoughness *
+      float(max(transmissionEnvMipCount - 1, 0));
+    vec3 environmentDirection = mix(
+      -viewDirection,
+      refractionDirection,
+      canTransmit);
+    vec3 environmentRadiance = textureLod(
+      g_envCubemap,
+      environmentDirection,
+      transmissionEnvLod).rgb;
+    vec3 transmittedColor = mix(
+      environmentRadiance,
+      framebufferRadiance,
+      transmissionUvWeight);
+    transmittedColor *= material.baseColorFactor.rgb * volumeAttenuation;
+    float dielectricTransmission = material.transmissionFactor *
+      (1.0 - clamp(material.metallicFactor, 0.0, 1.0)) *
+      canTransmit;
+    outColor.xyz += transmittedColor *
+      (vec3(1.0) - transmissionFresnel) *
+      dielectricTransmission;
+  #endif
 
     outColor.a = material.baseColorFactor.a;    
   }

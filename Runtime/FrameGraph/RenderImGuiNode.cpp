@@ -21,6 +21,7 @@ const char* RenderImGuiNode::m_name = "RenderImGui";
 void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdDebug);
@@ -45,8 +46,16 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		while (!sceneView.m_drawImGui->IsFinished());
 	}
 
+	auto imguiCommandList = sceneView.m_drawImGui->GetResult();
+	if (!imguiCommandList)
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
+	m_drawCallStats += imguiCommandList->GetRecordedDrawCallStats();
 	commands->RenderSecondaryCommandBuffers(commandList,
-		{ sceneView.m_drawImGui->GetResult() },
+		{ imguiCommandList },
 		TVector<RHI::RHITexturePtr>{ colorAttachment },
 		depthAttachment,
 		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),

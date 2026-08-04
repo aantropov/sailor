@@ -160,26 +160,22 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
 {	
 	TVector<Math::Frustum> cascades;
-	Math::Frustum cameraFrustum{};
-
-	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar * LightingECS::ShadowCascadeLevels[0]);
-	cascades.Add(cameraFrustum);
-
-	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
-		zFar * LightingECS::ShadowCascadeLevels[0],
-		zFar * LightingECS::ShadowCascadeLevels[1]);
-	cascades.Add(cameraFrustum);
-
-	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY,
-		zFar * LightingECS::ShadowCascadeLevels[1],
-		zFar * LightingECS::ShadowCascadeLevels[2]);
-	cascades.Add(cameraFrustum);
+	cascades.Reserve(LightingECS::NumCascades);
+	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
+	{
+		Math::Frustum cameraFrustum{};
+		const float cascadeNear = i == 0 ? zNear : zFar * LightingECS::ShadowCascadeLevels[i - 1];
+		const float cascadeFar = zFar * LightingECS::ShadowCascadeLevels[i];
+		cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, cascadeNear, cascadeFar);
+		cascades.Emplace(std::move(cameraFrustum));
+	}
 
 	constexpr float zMult = 10.0f;
 
 	TVector<glm::vec4> colors{ glm::vec4(1.0f, 0.0f, 0.5f, 1.0f),
 		glm::vec4(0.7f, 0.6f, 0.5f, 1.0f),
-		glm::vec4(1.0f, 0.10f, 0.25f, 1.0f) };
+		glm::vec4(1.0f, 0.10f, 0.25f, 1.0f),
+		glm::vec4(0.25f, 0.55f, 1.0f, 1.0f) };
 
 	for (uint32_t i = 0; i < cascades.Num(); i++)
 	{
@@ -187,35 +183,7 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 
 		DrawFrustum(cascadeFrustum, glm::vec4(0, 1, 0, 1), duration);
 
-		const TVector<glm::vec3> corners = cascadeFrustum.GetCorners();
-
-		float minX = std::numeric_limits<float>::max();
-		float maxX = std::numeric_limits<float>::lowest();
-		float minY = std::numeric_limits<float>::max();
-		float maxY = std::numeric_limits<float>::lowest();
-		float minZ = std::numeric_limits<float>::max();
-		float maxZ = std::numeric_limits<float>::lowest();
-
-		for (const auto& v : corners)
-		{
-			const auto trf = lightView * glm::vec4(v, 1);
-			minX = std::min(minX, trf.x);
-			maxX = std::max(maxX, trf.x);
-			minY = std::min(minY, trf.y);
-			maxY = std::max(maxY, trf.y);
-			minZ = std::min(minZ, trf.z);
-			maxZ = std::max(maxZ, trf.z);
-		}
-
-		// TODO: Redo
-		minZ = minZ < 0 ? minZ * zMult : minZ / zMult;
-		maxZ = maxZ < 0 ? maxZ / zMult : maxZ * zMult;
-
-		const float zFar = -minZ;
-		const float zNear = -maxZ;
-
-		// Viewport settings, we want to handle all shadows with the reversed Z
-		const glm::mat4 lightProjection = glm::orthoRH_NO(minX, maxX, minY, maxY, zFar, zNear);
+		const glm::mat4 lightProjection = cascadeFrustum.CalculateOrthoMatrixByView(lightView, zMult);
 
 		// Create matrix and get all extents
 		const glm::mat4 lightViewProjection = lightProjection * lightView;
@@ -223,10 +191,10 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 
 		TVector<glm::vec3> orthoCorners;
 
-		orthoCorners.Add(invLightViewProjection * glm::vec4(-1,  1, -1, 1));
-		orthoCorners.Add(invLightViewProjection * glm::vec4( 1,  1, -1, 1));
-		orthoCorners.Add(invLightViewProjection * glm::vec4(1, -1, -1, 1));
-		orthoCorners.Add(invLightViewProjection * glm::vec4(-1, -1, -1, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1,  1, 0, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4( 1,  1, 0, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(1, -1, 0, 1));
+		orthoCorners.Add(invLightViewProjection * glm::vec4(-1, -1, 0, 1));
 
 		orthoCorners.Add(invLightViewProjection * glm::vec4(-1,  1, 1, 1));
 		orthoCorners.Add(invLightViewProjection * glm::vec4( 1,  1, 1, 1));		
@@ -379,20 +347,51 @@ void DebugContext::UpdateDebugMesh(RHI::RHICommandListPtr transferCmdList)
 	m_bShouldUpdateMeshThisFrame = false;
 }
 
+DebugContext::DrawSnapshot DebugContext::GetDrawSnapshot() const
+{
+	DrawSnapshot snapshot;
+	if (m_numRenderedVertices == 0 ||
+		!m_cachedMesh ||
+		!m_cachedMesh->IsReady() ||
+		!m_cachedMesh->m_vertexBuffer ||
+		!m_cachedMesh->m_indexBuffer ||
+		!m_material)
+	{
+		return snapshot;
+	}
+
+	snapshot.m_vertexBuffer = m_cachedMesh->m_vertexBuffer;
+	snapshot.m_indexBuffer = m_cachedMesh->m_indexBuffer;
+	snapshot.m_material = m_material;
+	snapshot.m_numVertices = m_numRenderedVertices;
+	return snapshot;
+}
+
 void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
 {
-	if (m_numRenderedVertices == 0 || !m_cachedMesh || !m_cachedMesh->IsReady())
+	DrawDebugMesh(secondaryDrawCmdList, viewProjection, GetDrawSnapshot());
+}
+
+void DebugContext::DrawDebugMesh(
+	RHI::RHICommandListPtr secondaryDrawCmdList,
+	const glm::mat4x4& viewProjection,
+	const DrawSnapshot& snapshot) const
+{
+	if (!snapshot.m_vertexBuffer ||
+		!snapshot.m_indexBuffer ||
+		!snapshot.m_material ||
+		snapshot.m_numVertices == 0)
 	{
 		return;
 	}
 
 	auto commands = RHI::Renderer::GetDriverCommands();
 
-	commands->BindMaterial(secondaryDrawCmdList, m_material);
+	commands->BindMaterial(secondaryDrawCmdList, snapshot.m_material);
 	commands->SetDefaultViewport(secondaryDrawCmdList);
-	commands->BindVertexBuffer(secondaryDrawCmdList, m_cachedMesh->m_vertexBuffer, m_cachedMesh->m_vertexBuffer->GetOffset());
-	commands->BindIndexBuffer(secondaryDrawCmdList, m_cachedMesh->m_indexBuffer, m_cachedMesh->m_indexBuffer->GetOffset());
-	commands->PushConstants(secondaryDrawCmdList, m_material, sizeof(viewProjection), &viewProjection);
+	commands->BindVertexBuffer(secondaryDrawCmdList, snapshot.m_vertexBuffer, snapshot.m_vertexBuffer->GetOffset());
+	commands->BindIndexBuffer(secondaryDrawCmdList, snapshot.m_indexBuffer, snapshot.m_indexBuffer->GetOffset());
+	commands->PushConstants(secondaryDrawCmdList, snapshot.m_material, sizeof(viewProjection), &viewProjection);
 	//commands->BindShaderBindings(secondaryDrawCmdList, m_material, { frameBindings /*m_material->GetBindings()*/ });
-	commands->DrawIndexed(secondaryDrawCmdList, (uint32_t)m_numRenderedVertices, 1, 0, 0, 0);
+	commands->DrawIndexed(secondaryDrawCmdList, snapshot.m_numVertices, 1, 0, 0, 0);
 }

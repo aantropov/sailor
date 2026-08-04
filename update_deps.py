@@ -75,11 +75,13 @@ def main() -> int:
     else:
         triplet = 'x64-linux'
     packages = [
+        'draco',
         'glm',
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',
         'imguizmo',
         'ixwebsocket[core]',
         'magic-enum',
+        'meshoptimizer',
         'nlohmann-json',
         'protobuf',
         'refl-cpp',

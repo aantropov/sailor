@@ -1,5 +1,10 @@
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
+const float EVSM_MIN_SLOPE_BIAS = 0.05f;
+const float EVSM_DEPTH_BIAS_SCALE = 0.003f;
+const uint SHADOW_TYPE_NONE = 0u;
+const uint SHADOW_TYPE_PCF = 1u;
+const uint SHADOW_TYPE_EVSM = 2u;
 
 layout(std430)
 struct LightData
@@ -23,6 +28,22 @@ struct LightsGrid
   uint num;
 }; 
 
+uint GetLightTileIndex(vec2 fragmentPosition, ivec2 viewportSize)
+{
+  const ivec2 safeViewportSize = max(viewportSize, ivec2(1));
+  const ivec2 numTiles =
+    (safeViewportSize + ivec2(LIGHTS_CULLING_TILE_SIZE - 1)) /
+    LIGHTS_CULLING_TILE_SIZE;
+  const vec2 screenPosition = vec2(
+    fragmentPosition.x,
+    float(safeViewportSize.y) - fragmentPosition.y);
+  const ivec2 tileId = clamp(
+    ivec2(screenPosition) / LIGHTS_CULLING_TILE_SIZE,
+    ivec2(0),
+    numTiles - ivec2(1));
+  return uint(tileId.y * numTiles.x + tileId.x);
+}
+
 // Importance sample GGX normal distribution function for a fixed roughness value.
 // This returns normalized half-vector between Li & Lo.
 // For derivation see: http://blog.tobias-franke.eu/2014/03/30/notes_on_importance_sampling.html
@@ -42,11 +63,11 @@ vec3 SampleGGX(float u1, float u2, float roughness)
 // Uses Disney's reparametrization of alpha = roughness^2.
 float NdfGGX(float cosLh, float roughness)
 {
-  float alpha   = roughness * roughness;
+  float alpha   = max(roughness * roughness, 0.001);
   float alphaSq = alpha * alpha;
 
   float denom = (cosLh * cosLh) * (alphaSq - 1.0) + 1.0;
-  return alphaSq / (PI * denom * denom);
+  return alphaSq / max(PI * denom * denom, 1e-7);
 }
 
 // Single term for separable Schlick-GGX below.
@@ -205,7 +226,7 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
    for(int i = 0; i < samples; ++i)
    {
        vec2 offset = poissonDisk[i] * radius * texelSize;
-       float pcfDepth = texture(shadowMap, projCoords.xy + offset).r * 0.5 + 0.5; 
+       float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
        shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;
    }
 
@@ -260,17 +281,16 @@ float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linst
 float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
 {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-  projCoords = projCoords * 0.5 + 0.5;
+  projCoords.xy = projCoords.xy * 0.5 + 0.5;
   projCoords.y = 1.0f - projCoords.y;
   
   if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
      projCoords.x < 0.0f || projCoords.y < 0.0f ||
-     projCoords.z < 0.5f)
+     projCoords.z < 0.0f || projCoords.z > 1.0f)
   {
     return 1.0f;
   }
   
-  const float closestDepth = texture(shadowMap, projCoords.xy).r * 0.5 + 0.5;
   const float currentDepth = projCoords.z;
   
   //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
@@ -286,17 +306,46 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
   
   if(projCoords.x > 1.0f || projCoords.y > 1.0f ||
      projCoords.x < 0.0f || projCoords.y < 0.0f ||
-     projCoords.z < 0.0f)
+     projCoords.z < 0.0f || projCoords.z > 1.0f)
   {
     return 1.0f;
   }
   
   vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
-  const float currentDepth = exp(EVSM_C1 * (projCoords.z + 0.003 * bias * pow(0.5, cascadeLayer)));
-  const float negCurrentDepth = -exp(-EVSM_C2 * (projCoords.z + 0.0001 * bias));
+  const float biasedDepth =
+    projCoords.z + EVSM_DEPTH_BIAS_SCALE * bias * pow(0.5f, cascadeLayer);
+  const float currentDepth = exp(EVSM_C1 * biasedDepth);
+  const float negCurrentDepth = -exp(-EVSM_C2 * biasedDepth);
   
   float posValue = Chebyshev(shadow.xy, currentDepth, 0.01, 0);
   float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0, 0) * (cascadeLayer > 2 ? 0 : 1);
   
   return clamp(1 - max(posValue, negValue), 0, 1);
+}
+
+float CalculateDirectionalShadow(
+  uint shadowType,
+  sampler2D shadowMap,
+  vec4 fragPosLightSpace,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection,
+  int cascadeLayer)
+{
+  if (shadowType == SHADOW_TYPE_NONE)
+  {
+    return 1.0f;
+  }
+
+  const float slope = 1.0f - clamp(dot(surfaceNormal, surfaceToLightDirection), 0.0f, 1.0f);
+  if (shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0)
+  {
+    return ShadowCalculation_Evsm(
+      shadowMap,
+      fragPosLightSpace,
+      max(slope, EVSM_MIN_SLOPE_BIAS) * (1.0f + cascadeLayer),
+      cascadeLayer);
+  }
+
+  const float bias = max(0.000075f * slope, 0.000005f);
+  return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, bias, cascadeLayer);
 }

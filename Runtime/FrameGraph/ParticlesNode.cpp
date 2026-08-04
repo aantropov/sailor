@@ -26,6 +26,7 @@ const char* ParticlesNode::m_name = "ExperimentalParticles";
 void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -96,7 +97,20 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 			App::GetSubmodule<MaterialImporter>()->LoadMaterial(materialFileId->GetFileId(), shadowCasterMaterial);
 		}
 
-		m_mesh = model->IsReady() ? *model->GetMeshes().First() : nullptr;
+		if (!model || !model->IsReady())
+		{
+			return;
+		}
+
+		const auto& meshes = model->GetMeshes();
+		if (meshes.IsEmpty() || !meshes[0] ||
+			materials.IsEmpty() || !materials[0] ||
+			!shadowCasterMaterial)
+		{
+			return;
+		}
+
+		m_mesh = meshes[0];
 
 		m_material = materials[0]->GetOrAddRHI(m_mesh->m_vertexDescription);
 		m_shadowMaterial = shadowCasterMaterial->GetOrAddRHI(m_mesh->m_vertexDescription);
@@ -221,6 +235,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
 		commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
 		commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+		RecordDrawCallStats(m_numInstances);
 
 		commands->EndRenderPass(commandList);
 		commands->ImageMemoryBarrier(commandList, m_shadowMap, EImageLayout::ShaderReadOnlyOptimal);
@@ -252,6 +267,7 @@ void ParticlesNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 	commands->BindVertexBuffer(commandList, m_mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, m_mesh->m_indexBuffer, 0);
 	commands->DrawIndexed(commandList, m_mesh->GetIndexCount(), m_numInstances, m_mesh->GetFirstIndex(), m_mesh->GetVertexOffset(), 0);
+	RecordDrawCallStats(m_numInstances);
 	commands->EndRenderPass(commandList);
 
 	commands->EndDebugRegion(commandList);

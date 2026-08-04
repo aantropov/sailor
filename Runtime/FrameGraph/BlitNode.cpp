@@ -21,6 +21,7 @@ const char* BlitNode::m_name = "Blit";
 void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
@@ -36,12 +37,7 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 		}
 	}
 
-	if (!m_pShader || !m_pShader->IsReady())
-	{
-		return;
-	}
-
-	if (!m_blitToMsaaTargetMaterial)
+	if (m_pShader && m_pShader->IsReady() && !m_blitToMsaaTargetMaterial)
 	{
 		m_shaderBindings = driver->CreateShaderBindings();
 		RHI::RHIVertexDescriptionPtr vertexDescription = driver->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -85,13 +81,21 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
 	commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
 
-	commands->BlitImage(commandList, src, dst, srcRegion, dstRegion, bIsDepthFormat ? ETextureFiltration::Nearest : ETextureFiltration::Linear);
+	const bool bResolvedBlitSuccessful = commands->BlitImage(
+		commandList,
+		src,
+		dst,
+		srcRegion,
+		dstRegion,
+		bIsDepthFormat ?
+			ETextureFiltration::Nearest :
+			ETextureFiltration::Linear);
 
 	// Blit to MSAA targets
 	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
 	if (dstSurface && dstSurface->NeedsResolve())
 	{
-		bool bBlitIsSuccesful = false;
+		bool bMsaaBlitSuccessful = false;
 
 		// First try to blit MSAA src to MSAA dst
 		if (RHISurfacePtr srcSurface = GetRHIResource("src").DynamicCast<RHISurface>())
@@ -104,12 +108,12 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 				commands->ImageMemoryBarrier(commandList, src2, RHI::EImageLayout::TransferSrcOptimal);
 				commands->ImageMemoryBarrier(commandList, dst2, RHI::EImageLayout::TransferDstOptimal);
 
-				bBlitIsSuccesful = commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
+				bMsaaBlitSuccessful = commands->BlitImage(commandList, src2, dst2, srcRegion, dstRegion);
 			}
 		}
 
 		// If no success blit texture src to MSAA dst
-		if (!bBlitIsSuccesful)
+		if (!bMsaaBlitSuccessful && m_blitToMsaaTargetMaterial)
 		{
 			auto target = dstSurface->GetTarget();
 
@@ -120,6 +124,16 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 			BlitRaw(commandList, frameGraph, sceneView, src, dstSurface->GetTarget());
 		}
 	}
+
+	std::string generateMips;
+	if (bResolvedBlitSuccessful &&
+		dst->HasMipMaps() &&
+		TryGetString("GenerateMips", generateMips) &&
+		generateMips == "true")
+	{
+		commands->GenerateMipMaps(commandList, dst);
+	}
+
 	commands->EndDebugRegion(commandList);
 }
 
@@ -166,6 +180,7 @@ void BlitNode::BlitRaw(RHI::RHICommandListPtr commandList,
 		0, 1.0f);
 
 	commands->DrawIndexed(commandList, 6, 1, firstIndex, vertexOffset, 0);
+	RecordDrawCallStats(1);
 	commands->EndRenderPass(commandList);
 }
 

@@ -17,6 +17,7 @@ using namespace Sailor::RHI;
 void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
+	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
 
 	// TODO: Check the sync between CPUFrame and Recording
 	for (const auto& camera : m_cameras)
@@ -29,7 +30,7 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix);
+				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix, debugDrawSnapshot);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
@@ -97,6 +98,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
 					viewProxy.m_skeletonOffset = ecsData.GetSkeletonOffset();
 					viewProxy.m_overrideMaterials.Clear();
+					viewProxy.m_renderQueueTags.Clear();
 #if defined(__APPLE__)
 					viewProxy.m_materialTextureSamplers.Clear();
 #endif
@@ -105,25 +107,30 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
-					viewProxy.m_overrideMaterials.Reserve(viewProxy.m_meshes.Num());
+					viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num());
+					viewProxy.m_renderQueueTags.Reserve(viewProxy.m_meshes.Num());
 #if defined(__APPLE__)
-					viewProxy.m_materialTextureSamplers.Reserve(viewProxy.m_meshes.Num());
+					viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num());
 					auto textureImporter = App::GetSubmodule<TextureImporter>();
 #endif
 					// TODO: Should we check AABB for each mesh in model?
 
 					for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 					{
-						size_t materialIndex = (std::min)(i, ecsData.GetMaterials().Num() - 1);
+						const size_t materialIndex =
+							viewProxy.m_meshes[i]->ResolveMaterialIndex(
+								i, ecsData.GetMaterials().Num());
 
 						auto& material = ecsData.GetMaterials()[materialIndex];
+						viewProxy.m_renderQueueTags.Add(material ? material->GetRenderState().GetTag() : 0u);
+#if defined(__APPLE__)
+						auto& requestedTextures = viewProxy.m_materialTextureSamplers[i];
+						requestedTextures.Insert(0u);
+#endif
 						if (material && material->IsReady() && !bSkipMaterials)
 						{
-							viewProxy.m_overrideMaterials.Add(material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription));
+							viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription);
 #if defined(__APPLE__)
-							TSet<uint32_t> requestedTextures;
-							requestedTextures.Insert(0u);
-
 							if (textureImporter)
 							{
 								for (const auto& sampler : material->GetSamplers())
@@ -132,8 +139,6 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 									requestedTextures.Insert(textureIndex);
 								}
 							}
-
-							viewProxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
 #endif
 						}
 					}

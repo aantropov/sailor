@@ -1,5 +1,6 @@
 #pragma once
 #include "Core/Defines.h"
+#include "Core/SpinLock.h"
 #include "Memory/RefPtr.hpp"
 #include "Memory/SharedPtr.hpp"
 #include "Math/Math.h"
@@ -801,9 +802,24 @@ namespace Sailor::RHI
 		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
 	};
 
+	struct DrawCallStats
+	{
+		uint32_t m_numBatches = 0u;
+		uint32_t m_numInstances = 0u;
+
+		DrawCallStats& operator+=(const DrawCallStats& rhs)
+		{
+			m_numBatches += rhs.m_numBatches;
+			m_numInstances += rhs.m_numInstances;
+			return *this;
+		}
+	};
+
 	struct Stats
 	{
-		uint32_t m_gpuFps;
+		std::atomic<uint32_t> m_gpuFps = 0u;
+		std::atomic<uint32_t> m_numBatches = 0u;
+		std::atomic<uint32_t> m_numInstances = 0u;
 		size_t m_gpuHeapBudget;
 		size_t m_gpuHeapUsage;
 		uint32_t m_numSubmittedCommandBuffers;
@@ -836,17 +852,22 @@ namespace Sailor::RHI
 
 		void AddDependency(TRefPtr<RHIResource> dependency)
 		{
+			m_dependenciesLock.Lock();
 			m_dependencies.Add(std::move(dependency));
+			m_dependenciesLock.Unlock();
 		}
 
 		void ClearDependencies()
 		{
+			m_dependenciesLock.Lock();
 			m_dependencies.Clear();
+			m_dependenciesLock.Unlock();
 		}
 
 		virtual ~IDependent() = default;
 
 	protected:
+		mutable SpinLock m_dependenciesLock;
 		TVector<TRefPtr<RHIResource>> m_dependencies;
 	};
 

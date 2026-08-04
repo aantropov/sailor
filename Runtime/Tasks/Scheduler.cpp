@@ -200,7 +200,7 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;
-	const unsigned numReservedThreads = 3u + numRHIThreads;
+	const unsigned numReservedThreads = 4u + numRHIThreads;
 	const unsigned numThreads = coresCount > numReservedThreads
 		? coresCount - numReservedThreads
 		: 1u;
@@ -252,6 +252,16 @@ void Scheduler::Initialize()
 	m_threadTypes[m_editorThreadId] = EThreadType::Editor;
 	m_workerThreads.Emplace(newEditorThread);
 
+	WorkerThread* newBackgroundThread = new WorkerThread(
+		"Background Thread",
+		EThreadType::Background,
+		m_refreshCondVar[(uint32_t)EThreadType::Background],
+		m_queueMutex[(uint32_t)EThreadType::Background],
+		m_pSharedTaskQueue[(uint32_t)EThreadType::Background]);
+
+	m_threadTypes[newBackgroundThread->GetThreadId()] = EThreadType::Background;
+	m_workerThreads.Emplace(newBackgroundThread);
+
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
@@ -273,13 +283,14 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::Render, true);
 	NotifyWorkerThread(EThreadType::RHI, true);
 	NotifyWorkerThread(EThreadType::Editor, true);
+	NotifyWorkerThread(EThreadType::Background, true);
 
 	for (auto& worker : m_workerThreads)
 	{
 		worker->Join();
 	}
 
-	App::GetSubmodule<Tasks::Scheduler>()->ProcessTasksOnMainThread();
+	ProcessTasksOnMainThread();
 
 	for (auto worker : m_workerThreads)
 	{

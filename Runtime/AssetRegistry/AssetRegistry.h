@@ -79,6 +79,9 @@ namespace Sailor
 		SAILOR_API AssetRegistry();
 		SAILOR_API explicit AssetRegistry(
 			const Workspace::WorkspaceContext& workspaceContext);
+		SAILOR_API AssetRegistry(
+			const Workspace::WorkspaceContext& workspaceContext,
+			Tasks::Scheduler* scheduler);
 		SAILOR_API virtual ~AssetRegistry() override;
 
 		template<typename TBinaryType, typename TFilepath>
@@ -165,6 +168,7 @@ namespace Sailor
 		}
 
 		SAILOR_API bool ScanContentFolder();
+		SAILOR_API bool UpdateAsset(const FileId& fileId);
 		SAILOR_API const FileId& GetOrLoadFile(const std::string& filepath);
 
 		template<typename TAssetInfoPtr = AssetInfoPtr>
@@ -258,9 +262,16 @@ namespace Sailor
 		bool m_bCollectScanProcessingTasks = false;
 		bool m_bScanProcessingActive = false;
 		bool m_bScanProcessingFailed = false;
+		Tasks::Scheduler* m_scheduler = nullptr;
 
 		AssetCache m_assetCache;
 
+	private:
+
+		FileId RegisterGeneratedSecondaryAssetInfo(
+			const std::filesystem::path& metadataPath);
+
 		friend class IAssetInfoHandler;
+		friend class ModelImporter;
 	};
 }

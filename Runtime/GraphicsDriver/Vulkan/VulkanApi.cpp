@@ -1381,6 +1381,21 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 	}
 
 	const VulkanDescriptorSetLayoutPtr& layout = pipelineLayout->m_descriptionSetLayouts[binding];
+	const VulkanDescriptorSetLayoutPtr& descriptorSetLayout = descriptorSet->GetDescriptorSetLayout();
+
+	// vkCmdBindDescriptorSets requires the native descriptor set layout to be
+	// identical to the corresponding pipeline layout. A variable descriptor
+	// allocation may contain fewer descriptors than its layout upper bound, but
+	// the layout's descriptorCount itself must still match.
+	if (!descriptorSetLayout || !(*layout == *descriptorSetLayout))
+	{
+		return false;
+	}
+
+	if (layout->HasVariableDescriptorBinding())
+	{
+		return true;
+	}
 
 	for (const VulkanDescriptorPtr& descriptor : descriptorSet->m_descriptors)
 	{
@@ -1419,26 +1434,12 @@ bool VulkanApi::IsCompatible(const VulkanPipelineLayoutPtr& pipelineLayout, cons
 			}
 		}
 
-		const bool bIsVariableDescriptorBinding = layout->HasVariableDescriptorBinding() &&
-			layout->GetVariableDescriptorBinding() == (int32_t)layoutBinding.binding;
-
-		if (bIsVariableDescriptorBinding)
-		{
-			if (matchedDescriptors == 0 || matchedDescriptors > layoutBinding.descriptorCount)
-			{
-				return false;
-			}
-
-			expectedDescriptorsCount += matchedDescriptors;
-		}
-		else if (matchedDescriptors != layoutBinding.descriptorCount)
+		if (matchedDescriptors != layoutBinding.descriptorCount)
 		{
 			return false;
 		}
-		else
-		{
-			expectedDescriptorsCount += layoutBinding.descriptorCount;
-		}
+
+		expectedDescriptorsCount += layoutBinding.descriptorCount;
 	}
 
 	return descriptorSet->m_descriptors.Num() == expectedDescriptorsCount;

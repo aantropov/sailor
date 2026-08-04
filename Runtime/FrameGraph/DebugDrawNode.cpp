@@ -1,5 +1,6 @@
 #include "DebugDrawNode.h"
 #include "RHI/SceneView.h"
+#include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
@@ -19,6 +20,7 @@ const char* DebugDrawNode::m_name = "DebugDraw";
 void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	ResetDrawCallStats();
 
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 
@@ -55,6 +57,8 @@ void DebugDrawNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr 
 		commands->EndDebugRegion(commandList);
 		return;
 	}
+
+	m_drawCallStats += debugDrawCommandList->GetRecordedDrawCallStats();
 
 	if (colorAttachmentSurface)
 	{

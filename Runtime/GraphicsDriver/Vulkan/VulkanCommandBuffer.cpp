@@ -698,6 +698,12 @@ void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 
 void VulkanCommandBuffer::BindPipeline(VulkanComputePipelinePtr pipeline)
 {
+	if (!pipeline || !pipeline->IsCompiled())
+	{
+		SAILOR_LOG_ERROR("VulkanCommandBuffer::BindPipeline: compute pipeline is unavailable.");
+		return;
+	}
+
 	m_rhiDependecies.Insert(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, *pipeline);
 
@@ -816,6 +822,13 @@ void VulkanCommandBuffer::Blit(VulkanImagePtr srcImage, VkImageLayout srcImageLa
 
 void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 {
+	constexpr VkImageLayout finalLayout =
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	constexpr VkAccessFlags finalAccess = VK_ACCESS_SHADER_READ_BIT;
+	constexpr VkPipelineStageFlags finalStage =
+		VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT |
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
 	if (!image->GetDevice()->IsMipsSupported(image->m_format))
 	{
 		SAILOR_LOG("Blit is not supported");
@@ -871,12 +884,12 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 			VK_FILTER_LINEAR);
 
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-		barrier.newLayout = image->m_defaultLayout;
+		barrier.newLayout = finalLayout;
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier.dstAccessMask = finalAccess;
 
 		vkCmdPipelineBarrier(m_commandBuffer,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, finalStage, 0,
 			0, nullptr,
 			0, nullptr,
 			1, &barrier);
@@ -899,12 +912,12 @@ void VulkanCommandBuffer::GenerateMipMaps(VulkanImagePtr image)
 
 	barrier.subresourceRange.baseMipLevel = image->m_mipLevels - 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	barrier.newLayout = image->m_defaultLayout;
+	barrier.newLayout = finalLayout;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	barrier.dstAccessMask = finalAccess;
 
 	vkCmdPipelineBarrier(m_commandBuffer,
-		VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,
+		VK_PIPELINE_STAGE_TRANSFER_BIT, finalStage, 0,
 		0, nullptr,
 		0, nullptr,
 		1, &barrier);
@@ -927,6 +940,8 @@ VkAccessFlags VulkanCommandBuffer::GetAccessFlags(VkImageLayout layout)
 		return 0;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 		return VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		return VK_ACCESS_SHADER_READ_BIT;
 	default:
 		return 0;
 	}
@@ -946,6 +961,8 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 		return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
 	default:
 		return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
@@ -953,7 +970,81 @@ VkPipelineStageFlags VulkanCommandBuffer::GetPipelineStage(VkImageLayout layout)
 
 void VulkanCommandBuffer::MemoryBarrier(VkAccessFlags srcAccess, VkAccessFlags dstAccess)
 {
-	//TODO:
+	const uint32_t queueFamilyIndex = m_commandPool->GetQueueFamilyIndex();
+	const auto& queueFamilies = m_device->GetQueueFamilies();
+	const bool bSupportsGraphics = queueFamilies.m_graphicsFamily.has_value() &&
+		queueFamilyIndex == queueFamilies.m_graphicsFamily.value();
+	const bool bSupportsCompute = queueFamilies.m_computeFamily.has_value() &&
+		queueFamilyIndex == queueFamilies.m_computeFamily.value();
+
+	const VkPipelineStageFlags shaderStages =
+		(bSupportsGraphics ? VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT : 0) |
+		(bSupportsCompute ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : 0);
+
+	auto resolvePipelineStages = [shaderStages](VkAccessFlags access, bool bSource)
+		{
+			VkPipelineStageFlags stages = 0;
+
+			if (access & VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
+			{
+				stages |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+			}
+			if (access & (VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+			}
+			if (access & (VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT))
+			{
+				stages |= shaderStages;
+			}
+			if (access & VK_ACCESS_INPUT_ATTACHMENT_READ_BIT)
+			{
+				stages |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			}
+			if (access & (VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			}
+			if (access & (VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+			}
+			if (access & (VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+			}
+			if (access & (VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_HOST_BIT;
+			}
+			if (access & (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT))
+			{
+				stages |= VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+			}
+
+			if (stages == 0)
+			{
+				stages = bSource ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+			}
+
+			return stages;
+		};
+
+	VkMemoryBarrier barrier{};
+	barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+	barrier.srcAccessMask = srcAccess;
+	barrier.dstAccessMask = dstAccess;
+
+	vkCmdPipelineBarrier(m_commandBuffer,
+		resolvePipelineStages(srcAccess, true),
+		resolvePipelineStages(dstAccess, false),
+		0,
+		1, &barrier,
+		0, nullptr,
+		0, nullptr);
+
+	m_numRecordedCommands++;
+	m_gpuCost += 1;
 }
 
 void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,

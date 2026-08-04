@@ -38,6 +38,7 @@ namespace Sailor
 
 		ModelPtr m_model;
 		TVector<MaterialPtr> m_materials;
+		TVector<uint64_t> m_materialContentRevisions;
 		uint32_t m_skeletonOffset = InvalidSkeletonOffset;
 
 		friend class StaticMeshRendererECS;

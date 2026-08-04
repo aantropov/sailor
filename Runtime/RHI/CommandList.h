@@ -23,9 +23,16 @@ namespace Sailor::RHI
 		RHI::ECommandListQueue GetQueue() const { return m_queue; }
 		SAILOR_API uint32_t GetGPUCost() const;
 		SAILOR_API uint32_t GetNumRecordedCommands() const;
+		SAILOR_API DrawCallStats GetRecordedDrawCallStats() const { return m_recordedDrawCallStats; }
+		SAILOR_API void RecordDrawCallStats(uint32_t numInstances)
+		{
+			m_recordedDrawCallStats.m_numBatches++;
+			m_recordedDrawCallStats.m_numInstances += numInstances;
+		}
 
 	protected:
 
 		RHI::ECommandListQueue m_queue = RHI::ECommandListQueue::Graphics;
+		DrawCallStats m_recordedDrawCallStats{};
 	};
 };

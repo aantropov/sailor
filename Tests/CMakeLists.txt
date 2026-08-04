@@ -63,6 +63,18 @@ add_executable(BoundsContractTests
     BoundsContractTests.cpp
 )
 
+add_executable(GpuCullingContractTests
+    GpuCullingContractTests.cpp
+)
+
+add_executable(ModelImporterContractTests
+    ModelImporterContractTests.cpp
+)
+
+add_executable(VulkanDescriptorCacheTests
+    VulkanDescriptorCacheTests.cpp
+)
+
 add_executable(EditorViewportControllerContractTests
     EditorViewportControllerContractTests.cpp
 )
@@ -196,6 +208,15 @@ target_compile_features(SmartPointerTests PRIVATE cxx_std_20)
 target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
+target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
+target_compile_definitions(GpuCullingContractTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
+target_compile_features(ModelImporterContractTests PRIVATE cxx_std_20)
+target_compile_features(VulkanDescriptorCacheTests PRIVATE cxx_std_20)
+target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_definitions(SkyComponentContractTests PRIVATE
@@ -245,6 +266,9 @@ target_link_libraries(SmartPointerTests PRIVATE Sailor::Runtime)
 target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(GpuCullingContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(ModelImporterContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(VulkanDescriptorCacheTests PRIVATE Sailor::Runtime)
 target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
@@ -288,6 +312,9 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(ShaderCacheArtifactTests)
     sailor_stage_workspace_test_runtime(EcsLifecycleContractTests)
     sailor_stage_workspace_test_runtime(BoundsContractTests)
+    sailor_stage_workspace_test_runtime(GpuCullingContractTests)
+    sailor_stage_workspace_test_runtime(ModelImporterContractTests)
+    sailor_stage_workspace_test_runtime(VulkanDescriptorCacheTests)
     sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
@@ -335,6 +362,15 @@ target_include_directories(EcsLifecycleContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(BoundsContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GpuCullingContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(ModelImporterContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(VulkanDescriptorCacheTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(EditorViewportControllerContractTests PRIVATE
@@ -461,6 +497,21 @@ add_test(
 )
 
 add_test(
+    NAME GpuCullingContractTests
+    COMMAND GpuCullingContractTests
+)
+
+add_test(
+    NAME ModelImporterContractTests
+    COMMAND ModelImporterContractTests
+)
+
+add_test(
+    NAME VulkanDescriptorCacheTests
+    COMMAND VulkanDescriptorCacheTests
+)
+
+add_test(
     NAME EditorViewportControllerContractTests
     COMMAND EditorViewportControllerContractTests
 )
@@ -564,6 +615,9 @@ set_tests_properties(
     InstanceIdContractTests
     EcsLifecycleContractTests
     BoundsContractTests
+    GpuCullingContractTests
+    ModelImporterContractTests
+    VulkanDescriptorCacheTests
     EditorViewportControllerContractTests
     SkyComponentContractTests
     EditorEngineProtocolTests

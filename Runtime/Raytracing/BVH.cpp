@@ -7,6 +7,10 @@
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 using namespace Sailor;
 using namespace Sailor::Math;
 using namespace Sailor::Raytracing;
@@ -19,11 +23,11 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 
 	const uint32_t NumBins = 8;
 
-	float bestCost = std::numeric_limits<float>::max();
+	float bestCost = std::numeric_limits<float>::infinity();
 	for (uint32_t a = 0; a < 3; a++)
 	{
 		float boundsMin = std::numeric_limits<float>::max();
-		float boundsMax = -30000000.0f;
+		float boundsMax = std::numeric_limits<float>::lowest();
 
 		for (uint32_t i = 0; i < node.m_triCount; i++)
 		{
@@ -32,18 +36,30 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 			boundsMax = std::max(boundsMax, triangle.m_centroid[a]);
 		}
 
-		if (boundsMin == boundsMax)
+		const double boundsExtent =
+			static_cast<double>(boundsMax) - static_cast<double>(boundsMin);
+		if (!std::isfinite(boundsExtent) || boundsExtent <= 0.0)
 		{
 			continue;
 		}
 
 		Bin bin[NumBins];
-		float scale = NumBins / (boundsMax - boundsMin);
+		const double binScale = static_cast<double>(NumBins) / boundsExtent;
 		for (uint i = 0; i < node.m_triCount; i++)
 		{
 			const Math::Triangle& triangle = tris[m_triIdx[node.m_leftFirst + i]];
-			int32_t binIdx = std::min((int32_t)NumBins - 1,
-				(int32_t)((triangle.m_centroid[a] - boundsMin) * scale));
+			const double scaledCentroid =
+				(static_cast<double>(triangle.m_centroid[a]) -
+				 static_cast<double>(boundsMin)) * binScale;
+			if (!std::isfinite(scaledCentroid))
+			{
+				continue;
+			}
+
+			const int32_t binIdx = static_cast<int32_t>(std::clamp(
+				scaledCentroid,
+				0.0,
+				static_cast<double>(NumBins - 1)));
 			bin[binIdx].m_triCount++;
 			bin[binIdx].m_bounds.Extend(triangle.m_vertices[0]);
 			bin[binIdx].m_bounds.Extend(triangle.m_vertices[1]);
@@ -71,14 +87,16 @@ float BVH::FindBestSplitPlane(const BVHNode& node, const TVector<Math::Triangle>
 			rightArea[NumBins - 2 - i] = rightBox.Area();
 		}
 
-		scale = (boundsMax - boundsMin) / NumBins;
 		for (int32_t i = 0; i < NumBins - 1; i++)
 		{
 			float planeCost = leftCount[i] * leftArea[i] + rightCount[i] * rightArea[i];
-			if (planeCost < bestCost)
+			if (std::isfinite(planeCost) && planeCost < bestCost)
 			{
 				outAxis = a;
-				outSplitPos = boundsMin + scale * (i + 1);
+				outSplitPos = static_cast<float>(
+					static_cast<double>(boundsMin) +
+					boundsExtent / static_cast<double>(NumBins) *
+					static_cast<double>(i + 1));
 				bestCost = planeCost;
 			}
 		}
@@ -228,7 +246,7 @@ void BVH::Subdivide(uint32_t nodeIdx, const TVector<Math::Triangle>& tris)
 	float splitCost = FindBestSplitPlane(node, tris, axis, splitPos);
 
 	float nosplitCost = node.CalculateCost();
-	if (splitCost >= nosplitCost)
+	if (!std::isfinite(splitCost) || splitCost >= nosplitCost)
 	{
 		return;
 	}

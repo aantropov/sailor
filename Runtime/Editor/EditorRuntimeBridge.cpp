@@ -131,7 +131,11 @@ namespace
 		commands->EndCommandList(cmd);
 
 		auto fence = RHI::RHIFencePtr::Make();
-		driver->SubmitCommandList(cmd, fence);
+		if (!driver->SubmitCommandList(cmd, fence))
+		{
+			SAILOR_LOG_ERROR("EditorRuntimeBridge: viewport readback submission failed.");
+			return nullptr;
+		}
 		fence->Wait();
 		fence->ClearDependencies();
 		fence->ClearObservables();

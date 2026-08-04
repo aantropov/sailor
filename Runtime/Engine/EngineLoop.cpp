@@ -5,6 +5,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
 
 #include "Engine/GameObject.h"
 #include "Components/MeshRendererComponent.h"
@@ -15,7 +16,10 @@
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
+#include "RHI/Texture.h"
 
+#include <imgui.h>
+#include <cstdio>
 #include <thread>
 #include <chrono>
 
@@ -23,6 +27,26 @@ using namespace Sailor;
 
 namespace
 {
+	void DrawViewportStatsOverlay(uint32_t cpuFps, uint32_t gpuFps, uint32_t numBatches, uint32_t numInstances)
+	{
+		const ImGuiIO& io = ImGui::GetIO();
+		if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
+		{
+			return;
+		}
+
+		char text[128];
+		std::snprintf(text, sizeof(text), "CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u", cpuFps, gpuFps, numBatches, numInstances);
+
+		constexpr float Margin = 10.0f;
+		const ImVec2 textSize = ImGui::CalcTextSize(text);
+		const ImVec2 position(
+			std::max(Margin, io.DisplaySize.x - textSize.x - Margin),
+			Margin);
+
+		ImGui::GetForegroundDrawList()->AddText(position, IM_COL32(160, 160, 160, 255), text);
+	}
+
 	void EnsureEditorWorldInfrastructure(const TSharedPtr<World>& world)
 	{
 		GameObjectPtr firstCamera;
@@ -176,7 +200,37 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		world->Tick(currentInputState);
 	}
 
+	const auto renderer = App::GetSubmodule<RHI::Renderer>();
+	if (renderer)
+	{
+		const auto& stats = renderer->GetStats();
+		DrawViewportStatsOverlay(
+			m_cpuFps,
+			stats.m_gpuFps.load(std::memory_order_relaxed),
+			stats.m_numBatches.load(std::memory_order_relaxed),
+			stats.m_numInstances.load(std::memory_order_relaxed));
+	}
+
 	auto& task = currentInputState.GetDrawImGuiTask();
+	RHI::EFormat imguiColorFormat = renderer ?
+		renderer->GetColorFormat() :
+		RHI::EFormat::B8G8R8A8_SRGB;
+	if (renderer)
+	{
+		if (auto frameGraph = renderer->GetFrameGraph())
+		{
+			if (auto rhiFrameGraph = frameGraph->GetRHI())
+			{
+				if (const auto renderImGuiNode = rhiFrameGraph->GetGraphNode("RenderImGui"))
+				{
+					if (const auto colorAttachment = renderImGuiNode->GetResolvedAttachment("color"))
+					{
+						imguiColorFormat = colorAttachment->GetFormat();
+					}
+				}
+			}
+		}
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Record ImGui Update Command List");
@@ -193,8 +247,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		{
 			auto cmdList = RHI::Renderer::GetDriver()->CreateCommandList(true, RHI::ECommandListQueue::Graphics);
 			RHI::Renderer::GetDriver()->SetDebugName(cmdList, "Record ImGui Draw Command List");
-			// Default swapchain format
-			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, RHI::EFormat::B8G8R8A8_SRGB);
+			RHI::Renderer::GetDriverCommands()->BeginSecondaryCommandList(cmdList, false, false, imguiColorFormat);
 			App::GetSubmodule<ImGuiApi>()->RenderFrame(cmdList);
 			RHI::Renderer::GetDriverCommands()->EndCommandList(cmdList);
 

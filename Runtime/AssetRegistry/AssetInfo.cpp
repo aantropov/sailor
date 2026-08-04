@@ -1,5 +1,6 @@
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include <filesystem>
 #include <fstream>
 #include "Core/Utils.h"
@@ -85,6 +86,17 @@ namespace
 		RemoveFileIfContentsMatch(filepath, outContents.substr(0, written));
 		return false;
 	}
+
+	bool TryGetSourceRevision(
+		const std::string& filepath,
+		FileRevision& outRevision)
+	{
+		AssetScanSourceRevisionCache* sourceRevisionCache =
+			GetActiveAssetScanSourceRevisionCache();
+		return sourceRevisionCache != nullptr ?
+			sourceRevisionCache->TryGet(filepath, outRevision)
+			: Utils::TryGetFileRevision(filepath, outRevision);
+	}
 }
 
 std::string AssetInfo::GetAssetInfoType() const
@@ -129,7 +141,7 @@ AssetInfo::AssetInfo()
 bool AssetInfo::IsAssetExpired() const
 {
 	FileRevision currentRevision;
-	if (!Utils::TryGetFileRevision(GetAssetFilepath(), currentRevision))
+	if (!TryGetSourceRevision(GetAssetFilepath(), currentRevision))
 	{
 		return true;
 	}
@@ -480,7 +492,7 @@ bool IAssetInfoHandler::ReloadAssetInfo(
 	}
 	FileRevision sourceRevision;
 	const std::string sourceFilepath = assetInfo->GetAssetFilepath();
-	if (!Utils::TryGetFileRevision(sourceFilepath, sourceRevision))
+	if (!TryGetSourceRevision(sourceFilepath, sourceRevision))
 	{
 		if (bHadLoadedIdentity)
 		{

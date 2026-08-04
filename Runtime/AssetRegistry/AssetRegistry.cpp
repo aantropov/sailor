@@ -1,4 +1,5 @@
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
@@ -34,6 +35,7 @@ using namespace Sailor;
 namespace
 {
 	std::atomic<uint64_t> g_nextAssetProcessingGeneration = 0;
+	thread_local AssetScanSourceRevisionCache* g_activeSourceRevisionCache = nullptr;
 
 	struct StagedAssetRecord final
 	{
@@ -289,13 +291,25 @@ std::string AssetRegistry::GetCacheFolder()
 }
 
 AssetRegistry::AssetRegistry() :
-	AssetRegistry(App::GetWorkspaceContext())
+	AssetRegistry(
+		App::GetWorkspaceContext(),
+		App::GetSubmodule<Tasks::Scheduler>())
 {
 }
 
 AssetRegistry::AssetRegistry(
 	const Workspace::WorkspaceContext& workspaceContext) :
-	m_workspaceContext(workspaceContext)
+	AssetRegistry(
+		workspaceContext,
+		App::GetSubmodule<Tasks::Scheduler>())
+{
+}
+
+AssetRegistry::AssetRegistry(
+	const Workspace::WorkspaceContext& workspaceContext,
+	Tasks::Scheduler* scheduler) :
+	m_workspaceContext(workspaceContext),
+	m_scheduler(scheduler)
 {
 	m_contentMounts =
 	{
@@ -303,6 +317,83 @@ AssetRegistry::AssetRegistry(
 		AssetMountDescriptor{ m_workspaceContext.GetContent(), EAssetMountKind::Workspace, 100, true }
 	};
 	m_assetCache.Initialize(m_workspaceContext);
+}
+
+bool AssetScanSourceRevisionCache::TryGet(
+	const std::string& physicalSourcePath,
+	FileRevision& outRevision)
+{
+	const std::string key = PathKey(physicalSourcePath);
+	std::lock_guard<std::mutex> lock(m_mutex);
+	Entry* cached = nullptr;
+	if (m_entries.Find(key, cached) && cached != nullptr)
+	{
+		outRevision = cached->m_revision;
+		return cached->m_bSucceeded;
+	}
+
+	Entry entry;
+	entry.m_physicalPath = physicalSourcePath;
+	entry.m_bSucceeded = Utils::TryGetFileRevision(
+		physicalSourcePath,
+		entry.m_revision);
+	outRevision = entry.m_revision;
+	m_entries[key] = entry;
+	return entry.m_bSucceeded;
+}
+
+bool AssetScanSourceRevisionCache::ValidateAll(
+	std::string& outChangedPhysicalPath) const
+{
+	outChangedPhysicalPath.clear();
+	TVector<Entry> entries;
+	{
+		std::lock_guard<std::mutex> lock(m_mutex);
+		entries.Reserve(m_entries.Num());
+		for (const auto& cached : m_entries)
+		{
+			entries.Emplace(*cached.m_second);
+		}
+	}
+
+	for (const Entry& entry : entries)
+	{
+		FileRevision currentRevision;
+		const bool bSucceeded = Utils::TryGetFileRevision(
+			entry.m_physicalPath,
+			currentRevision);
+		if (bSucceeded != entry.m_bSucceeded ||
+			(bSucceeded && currentRevision != entry.m_revision))
+		{
+			outChangedPhysicalPath = entry.m_physicalPath;
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void AssetScanSourceRevisionCache::Reset()
+{
+	std::lock_guard<std::mutex> lock(m_mutex);
+	m_entries.Clear();
+}
+
+AssetScanSourceRevisionScope::AssetScanSourceRevisionScope(
+	AssetScanSourceRevisionCache& cache) noexcept :
+	m_previous(g_activeSourceRevisionCache)
+{
+	g_activeSourceRevisionCache = &cache;
+}
+
+AssetScanSourceRevisionScope::~AssetScanSourceRevisionScope() noexcept
+{
+	g_activeSourceRevisionCache = m_previous;
+}
+
+AssetScanSourceRevisionCache* Sailor::GetActiveAssetScanSourceRevisionCache() noexcept
+{
+	return g_activeSourceRevisionCache;
 }
 
 bool AssetRegistry::RestoreAssetImportTime(
@@ -336,7 +427,31 @@ void AssetRegistry::CacheAsset(const AssetInfoPtr info)
 	}
 	// Keep the gate locked through Update so BeginAssetProcessing cannot publish
 	// a pending revision between the state check and the cache acknowledgement.
-	m_assetCache.Update(info);
+	AssetScanSourceRevisionCache* sourceRevisionCache =
+		GetActiveAssetScanSourceRevisionCache();
+	if (sourceRevisionCache == nullptr)
+	{
+		m_assetCache.Update(info);
+		return;
+	}
+
+	FileRevision sourceRevision;
+	if (!sourceRevisionCache->TryGet(info->GetAssetFilepath(), sourceRevision))
+	{
+		m_assetCache.Remove(info->GetFileId());
+		return;
+	}
+	if (!info->m_importedSourceRevision.m_bIsValid ||
+		info->m_importedSourceRevision != sourceRevision)
+	{
+		m_assetCache.Remove(info->GetFileId());
+		return;
+	}
+	m_assetCache.Update(
+		info->GetFileId(),
+		info->GetAssetImportTime(),
+		info->GetAssetFilepath(),
+		sourceRevision);
 }
 
 AssetRegistry::AssetProcessingToken AssetRegistry::BeginAssetProcessing(AssetInfoPtr info)
@@ -632,6 +747,8 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(
 bool AssetRegistry::ScanContentFolder()
 {
 	SAILOR_PROFILE_FUNCTION();
+	AssetScanSourceRevisionCache sourceRevisionCache;
+	AssetScanSourceRevisionScope sourceRevisionScope(sourceRevisionCache);
 	{
 		std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
 		m_scanProcessingTasks.Clear();
@@ -837,7 +954,7 @@ bool AssetRegistry::ScanContentFolder()
 			record.m_candidate.m_mount.m_kind,
 			record.m_candidate.m_mount.m_bWritable
 		};
-		if (!Utils::TryGetFileRevision(
+		if (!sourceRevisionCache.TryGet(
 				location.m_physicalPath.generic_string(),
 				location.m_revision))
 		{
@@ -1048,7 +1165,9 @@ bool AssetRegistry::ScanContentFolder()
 	for (const auto& stagedAsset : stagedAssetInfos)
 	{
 		AssetInfoPtr assetInfo = *stagedAsset.m_second;
-		if (assetInfo == nullptr || assetInfo->IsAssetExpired() || assetInfo->IsMetaExpired())
+		if (assetInfo == nullptr ||
+			assetInfo->IsAssetExpired() ||
+			assetInfo->IsMetaExpired())
 		{
 			const std::string changedPath = assetInfo == nullptr
 				? std::string("<null asset info>")
@@ -1081,7 +1200,7 @@ bool AssetRegistry::ScanContentFolder()
 		}
 	}
 
-	if (Tasks::Scheduler* scheduler = App::GetSubmodule<Tasks::Scheduler>())
+	if (Tasks::Scheduler* scheduler = m_scheduler)
 	{
 		if (!scheduler->IsMainThread())
 		{
@@ -1098,6 +1217,32 @@ bool AssetRegistry::ScanContentFolder()
 		});
 	}
 
+	for (const auto& stagedAsset : stagedAssetInfos)
+	{
+		AssetInfoPtr assetInfo = *stagedAsset.m_second;
+		if (assetInfo == nullptr || assetInfo->IsMetaExpired())
+		{
+			const std::string changedMetadataPath = assetInfo == nullptr
+				? std::string("<null asset info>")
+				: assetInfo->GetMetaFilepath();
+			rollbackStaging();
+			SAILOR_LOG_ERROR(
+				"Asset metadata changed during the pre-commit wait; preserving the previous registry generation: %s",
+				changedMetadataPath.c_str());
+			return false;
+		}
+	}
+
+	std::string changedSourcePath;
+	if (!sourceRevisionCache.ValidateAll(changedSourcePath))
+	{
+		rollbackStaging();
+		SAILOR_LOG_ERROR(
+			"Asset source changed during staged load; preserving the previous registry generation: %s",
+			changedSourcePath.c_str());
+		return false;
+	}
+
 	TMap<FileId, AssetInfoPtr> previousAssetInfos = std::move(m_loadedAssetInfo);
 	m_loadedAssetInfo = std::move(stagedAssetInfos);
 	m_fileIds = std::move(stagedFileIds);
@@ -1110,6 +1255,10 @@ bool AssetRegistry::ScanContentFolder()
 		m_bCollectScanProcessingTasks = true;
 		m_bScanProcessingActive = true;
 	}
+	// Listener callbacks can change a source. Start a fresh commit snapshot so
+	// cache acknowledgements still inspect each shared source once and only record
+	// the post-callback revision when it matches the imported revision.
+	sourceRevisionCache.Reset();
 
 	for (const PendingAssetNotification& pending : pendingNotifications)
 	{
@@ -1170,6 +1319,377 @@ bool AssetRegistry::ScanContentFolder()
 	m_assetCache.Prune(liveAssetIds);
 	m_assetCache.SaveCache();
 	return true;
+}
+
+bool AssetRegistry::UpdateAsset(const FileId& fileId)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	AssetInfoPtr targetAssetInfo = GetAssetInfoPtr_Internal(fileId);
+	if (targetAssetInfo == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot update an unregistered asset: %s",
+			fileId.ToString().c_str());
+		return false;
+	}
+
+	auto isCurrentProcessingPending = [this](AssetInfoPtr assetInfo)
+		{
+			if (assetInfo == nullptr)
+			{
+				return false;
+			}
+
+			FileRevision currentSourceRevision;
+			if (!Utils::TryGetFileRevision(
+					assetInfo->GetAssetFilepath(),
+					currentSourceRevision))
+			{
+				return false;
+			}
+
+			std::lock_guard<std::mutex> lock(m_assetProcessingMutex);
+			auto processingState = m_assetProcessingStates.Find(
+				assetInfo->GetFileId());
+			if (processingState == m_assetProcessingStates.end() ||
+				processingState.Value().m_bRejected)
+			{
+				return false;
+			}
+
+			const AssetProcessingToken& token =
+				processingState.Value().m_token;
+			return token &&
+				token.m_fileId == assetInfo->GetFileId() &&
+				PathKey(token.m_sourcePath) ==
+					PathKey(assetInfo->GetAssetFilepath()) &&
+				token.m_sourceRevision == currentSourceRevision &&
+				assetInfo->m_importedSourceRevision ==
+					currentSourceRevision;
+		};
+
+	struct AssetExpirationState final
+	{
+		bool m_bMetadataExpired = false;
+		bool m_bSourceExpired = false;
+		bool m_bCacheExpired = false;
+
+		explicit operator bool() const noexcept
+		{
+			return m_bMetadataExpired ||
+				m_bSourceExpired ||
+				m_bCacheExpired;
+		}
+	};
+
+	auto getExpirationState = [this](AssetInfoPtr assetInfo)
+		{
+			AssetExpirationState result;
+			if (assetInfo != nullptr)
+			{
+				result.m_bMetadataExpired = assetInfo->IsMetaExpired();
+				result.m_bSourceExpired = assetInfo->IsAssetExpired();
+				result.m_bCacheExpired = IsAssetExpired(assetInfo);
+			}
+			return result;
+		};
+
+	const std::string sharedSourcePath =
+		PathKey(targetAssetInfo->GetAssetFilepath());
+	const FileRevision initialTargetSourceRevision =
+		targetAssetInfo->m_importedSourceRevision;
+	TVector<AssetInfoPtr> assetsToUpdate;
+	assetsToUpdate.Add(targetAssetInfo);
+	bool bSharedSourceFamilyAdded = false;
+	auto addSharedSourceFamily = [&]()
+		{
+			if (bSharedSourceFamilyAdded)
+			{
+				return;
+			}
+
+			bSharedSourceFamilyAdded = true;
+			for (const auto& loadedAsset : m_loadedAssetInfo)
+			{
+				AssetInfoPtr assetInfo = *loadedAsset.m_second;
+				if (assetInfo != nullptr &&
+					assetInfo != targetAssetInfo &&
+					PathKey(assetInfo->GetAssetFilepath()) ==
+						sharedSourcePath)
+				{
+					assetsToUpdate.Add(assetInfo);
+				}
+			}
+		};
+
+	bool bReloadedAny = false;
+	bool bSucceeded = true;
+	for (size_t index = 0; index < assetsToUpdate.Num(); ++index)
+	{
+		AssetInfoPtr assetInfo = assetsToUpdate[index];
+		const AssetExpirationState expiration =
+			getExpirationState(assetInfo);
+		if (!expiration)
+		{
+			continue;
+		}
+
+		if (assetInfo == targetAssetInfo &&
+			expiration.m_bSourceExpired)
+		{
+			addSharedSourceFamily();
+		}
+
+		if (!expiration.m_bMetadataExpired &&
+			!expiration.m_bSourceExpired &&
+			expiration.m_bCacheExpired &&
+			isCurrentProcessingPending(assetInfo))
+		{
+			continue;
+		}
+
+		IAssetInfoHandler* handler = assetInfo->GetHandler();
+		if (handler == nullptr ||
+			!handler->ReloadAssetInfo(assetInfo, true, false))
+		{
+			SAILOR_LOG_ERROR(
+				"Asset update failed; preserving the previous live asset where possible: %s",
+				assetInfo->GetMetaFilepath().c_str());
+			bSucceeded = false;
+			break;
+		}
+
+		CacheAsset(assetInfo);
+		bReloadedAny = true;
+		if (assetInfo == targetAssetInfo &&
+			assetInfo->m_importedSourceRevision !=
+				initialTargetSourceRevision)
+		{
+			addSharedSourceFamily();
+		}
+	}
+
+	for (AssetInfoPtr assetInfo : assetsToUpdate)
+	{
+		if (!bSucceeded)
+		{
+			break;
+		}
+
+		const AssetExpirationState expiration =
+			getExpirationState(assetInfo);
+		if (expiration.m_bMetadataExpired ||
+			expiration.m_bSourceExpired ||
+			(expiration.m_bCacheExpired &&
+				!isCurrentProcessingPending(assetInfo)))
+		{
+			SAILOR_LOG_ERROR(
+				"Asset changed while its targeted update was being committed: %s",
+				assetInfo->GetAssetFilepath().c_str());
+			bSucceeded = false;
+		}
+	}
+
+	const bool bCacheSaved = !bReloadedAny || m_assetCache.SaveCache();
+	return bSucceeded && bCacheSaved;
+}
+
+FileId AssetRegistry::RegisterGeneratedSecondaryAssetInfo(
+	const std::filesystem::path& metadataPath)
+{
+	if (m_scheduler != nullptr && !m_scheduler->IsMainThread())
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata may only be registered from the main thread: %s",
+			metadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	std::error_code pathError;
+	const std::filesystem::path canonicalMetadataPath =
+		std::filesystem::weakly_canonical(metadataPath, pathError);
+	if (pathError ||
+		!std::filesystem::is_regular_file(canonicalMetadataPath, pathError) ||
+		pathError)
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata is not a regular file: %s",
+			metadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	const AssetMountDescriptor* metadataMount = nullptr;
+	for (const AssetMountDescriptor& mount : m_contentMounts)
+	{
+		if (mount.m_kind == EAssetMountKind::Workspace &&
+			mount.m_bWritable &&
+			IsInside(mount.m_root, canonicalMetadataPath))
+		{
+			metadataMount = &mount;
+			break;
+		}
+	}
+	if (metadataMount == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata must be inside the writable workspace Content mount: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	std::string fileIdString;
+	std::string filename;
+	std::string assetInfoType;
+	std::string metadataError;
+	if (!ReadMetadataIdentity(
+			canonicalMetadataPath,
+			fileIdString,
+			filename,
+			assetInfoType,
+			metadataError))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot register generated secondary asset metadata '%s': %s.",
+			canonicalMetadataPath.generic_string().c_str(),
+			metadataError.c_str());
+		return FileId::Invalid;
+	}
+
+	pathError.clear();
+	const std::filesystem::path canonicalSourcePath =
+		std::filesystem::weakly_canonical(
+			canonicalMetadataPath.parent_path() / filename,
+			pathError);
+	if (pathError ||
+		!std::filesystem::is_regular_file(canonicalSourcePath, pathError) ||
+		pathError ||
+		!IsInside(metadataMount->m_root, canonicalSourcePath))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata '%s' references an invalid source '%s'.",
+			canonicalMetadataPath.generic_string().c_str(),
+			filename.c_str());
+		return FileId::Invalid;
+	}
+
+	const FileId expectedFileId = ParseFileId(fileIdString);
+	if (!expectedFileId)
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata contains an invalid FileId: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	auto existingAssetInfo = m_loadedAssetInfo.Find(expectedFileId);
+	if (existingAssetInfo != m_loadedAssetInfo.end())
+	{
+		if (existingAssetInfo.Value() != nullptr &&
+			PathKey(existingAssetInfo.Value()->GetMetaFilepath()) ==
+				PathKey(canonicalMetadataPath))
+		{
+			AssetInfoPtr existingInfo = existingAssetInfo.Value();
+			// A caller may have atomically replaced the metadata within the same
+			// filesystem timestamp tick. Always reload this explicit registration.
+			IAssetInfoHandler* existingHandler = existingInfo->GetHandler();
+			const bool bHadPendingUpdate =
+				existingInfo->m_bPendingUpdateNotification;
+			const bool bHadPendingWasExpired =
+				existingInfo->m_bPendingWasExpired;
+			const bool bHadPendingImport =
+				existingInfo->m_bPendingImportNotification;
+			if (existingHandler == nullptr ||
+				!existingHandler->ReloadAssetInfo(
+					existingInfo,
+					false,
+					false))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot refresh generated secondary asset metadata: %s",
+					canonicalMetadataPath.generic_string().c_str());
+				return FileId::Invalid;
+			}
+			existingInfo->m_bPendingUpdateNotification =
+				bHadPendingUpdate;
+			existingInfo->m_bPendingWasExpired =
+				bHadPendingWasExpired;
+			existingInfo->m_bPendingImportNotification =
+				bHadPendingImport;
+			return expectedFileId;
+		}
+
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata '%s' collides with an active FileId.",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	for (const auto& loadedAsset : m_loadedAssetInfo)
+	{
+		if (loadedAsset.m_second != nullptr &&
+			*loadedAsset.m_second != nullptr &&
+			PathKey((*loadedAsset.m_second)->GetMetaFilepath()) ==
+				PathKey(canonicalMetadataPath))
+		{
+			SAILOR_LOG_ERROR(
+				"Generated secondary asset metadata path is already registered with another FileId: %s",
+				canonicalMetadataPath.generic_string().c_str());
+			return FileId::Invalid;
+		}
+	}
+
+	const std::string virtualMetadataPath = canonicalMetadataPath
+		.lexically_relative(metadataMount->m_root)
+		.generic_string();
+	if (!IsSafeVirtualPath(virtualMetadataPath))
+	{
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata has an unsafe virtual path: %s",
+			virtualMetadataPath.c_str());
+		return FileId::Invalid;
+	}
+
+	const std::string handlerPath = std::filesystem::path(virtualMetadataPath)
+		.replace_extension()
+		.generic_string();
+	IAssetInfoHandler* handler = GetAssetInfoHandler(
+		Extension(handlerPath),
+		assetInfoType,
+		false);
+	if (handler == nullptr)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot find an asset info handler for generated metadata: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	AssetInfoPtr assetInfo = handler->LoadAssetInfo(
+		canonicalMetadataPath.string(),
+		virtualMetadataPath,
+		metadataMount->m_kind,
+		metadataMount->m_bWritable,
+		false,
+		false);
+	if (assetInfo == nullptr ||
+		assetInfo->GetFileId() != expectedFileId ||
+		PathKey(assetInfo->GetMetaFilepath()) !=
+			PathKey(canonicalMetadataPath) ||
+		PathKey(assetInfo->GetAssetFilepath()) != PathKey(canonicalSourcePath))
+	{
+		delete assetInfo;
+		SAILOR_LOG_ERROR(
+			"Generated secondary asset metadata failed identity or path validation: %s",
+			canonicalMetadataPath.generic_string().c_str());
+		return FileId::Invalid;
+	}
+
+	assetInfo->m_bPendingUpdateNotification = false;
+	assetInfo->m_bPendingWasExpired = false;
+	assetInfo->m_bPendingImportNotification = false;
+	m_loadedAssetInfo[expectedFileId] = assetInfo;
+	return expectedFileId;
 }
 
 bool AssetRegistry::RegisterAssetInfoHandler(

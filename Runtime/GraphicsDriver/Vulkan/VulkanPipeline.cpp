@@ -180,13 +180,18 @@ void VulkanComputePipeline::Release()
 	}
 }
 
-void VulkanComputePipeline::Compile()
+bool VulkanComputePipeline::Compile()
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_pipeline)
 	{
-		return;
+		return true;
+	}
+	if (!m_layout || !m_stage)
+	{
+		SAILOR_LOG_ERROR("VulkanComputePipeline::Compile: pipeline layout or shader stage is unavailable.");
+		return false;
 	}
 
 	m_layout->Compile();
@@ -207,5 +212,13 @@ void VulkanComputePipeline::Compile()
 
 	pipelineInfo.stage = shaderStageCreateInfo;
 
-	VK_CHECK(vkCreateComputePipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline));
+	const VkResult result = vkCreateComputePipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline);
+	if (result != VK_SUCCESS || m_pipeline == VK_NULL_HANDLE)
+	{
+		m_pipeline = VK_NULL_HANDLE;
+		SAILOR_LOG_ERROR("VulkanComputePipeline::Compile: vkCreateComputePipelines failed with VkResult %d.", static_cast<int32_t>(result));
+		return false;
+	}
+
+	return true;
 }

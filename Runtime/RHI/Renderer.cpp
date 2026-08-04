@@ -33,6 +33,7 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 	{
 		if (fence->IsFinished())
 		{
+			m_dependenciesLock.Lock();
 			auto it = std::find_if(m_dependencies.begin(), m_dependencies.end(),
 				[&fence](const auto& lhs)
 				{
@@ -45,13 +46,17 @@ void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool
 				m_dependencies.RemoveLast();
 				bShouldRemoveFromList = true;
 			}
+			m_dependenciesLock.Unlock();
 		}
 	}
 }
 
 bool IDelayedInitialization::IsReady() const
 {
-	return m_dependencies.Num() == 0;
+	m_dependenciesLock.Lock();
+	const bool bIsReady = m_dependencies.IsEmpty();
+	m_dependenciesLock.Unlock();
+	return bIsReady;
 }
 
 Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
@@ -368,34 +373,42 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 				TVector<RHI::RHICommandListPtr> primaryCommandLists;
 				TVector<RHI::RHICommandListPtr> transferCommandLists;
-				TVector<RHISemaphorePtr> waitFrameUpdate;
 
 				static uint32_t totalFramesCount = 0U;
 
-				auto updateFrameRHI = [&frameInstance = frameInstance, &waitFrameUpdate = waitFrameUpdate]()
+				auto updateFrameRHI = [&frameInstance = frameInstance](RHISemaphorePtr& inOutChainSemaphore)
 					{
 						SAILOR_PROFILE_SCOPE("Submit & Wait frame command lists");
 						for (uint32_t i = 0; i < frameInstance.NumCommandLists; i++)
 						{
 							if (auto pCommandList = frameInstance.GetCommandBuffer(i))
 							{
-								auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
-								GetDriver()->SetDebugName(newWaitSemaphore, std::format("frameInstance CommandBuffer {}", i));
+								auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+								auto fence = RHIFencePtr::Make();
+								GetDriver()->SetDebugName(signalSemaphore, std::format("frameInstance CommandBuffer {}", i));
+								GetDriver()->SetDebugName(fence, std::format("frameInstance CommandBuffer {}", i));
 
-								waitFrameUpdate.Add(newWaitSemaphore);
-								GetDriver()->SubmitCommandList(pCommandList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1));
+								if (!GetDriver()->SubmitCommandList(pCommandList, fence, signalSemaphore, inOutChainSemaphore))
+								{
+									SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit frame command buffer %u.", i);
+									return false;
+								}
+
+								inOutChainSemaphore = signalSemaphore;
 							}
 						}
+
+						return true;
 					};
 
 				const bool bHasSwapchainImage = m_driverInstance->AcquireNextImage();
 				if (bHasSwapchainImage || App::HasEditor())
 				{
 					RHISemaphorePtr chainSemaphore{};
+					bool bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
+					DrawCallStats drawCallStats;
 
-					updateFrameRHI();
-
-					if (!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+					if (bFrameSubmitsSucceeded && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 					{
 						if (!App::HasEditor())
 						{
@@ -403,38 +416,81 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 							rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
 						}
 
-						RHISemaphorePtr signalSemaphore{};
-
-						if (waitFrameUpdate.Num() > 0)
+						RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
+						if (!rhiFrameGraph->Process(
+							rhiSceneView,
+							transferCommandLists,
+							primaryCommandLists,
+							chainSemaphore,
+							frameGraphChainSemaphore))
 						{
-							signalSemaphore = *(waitFrameUpdate.end() - 1);
-							waitFrameUpdate.RemoveLast();
+							SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
+							bFrameSubmitsSucceeded = false;
 						}
-						rhiFrameGraph->Process(rhiSceneView, transferCommandLists, primaryCommandLists, signalSemaphore, chainSemaphore);
+						else
+						{
+							chainSemaphore = frameGraphChainSemaphore;
+							drawCallStats = rhiFrameGraph->GetDrawCallStats();
+						}
 					}
 
+					if (bFrameSubmitsSucceeded)
 					{
 						SAILOR_PROFILE_SCOPE("Submit transfer command lists");
-
 						uint32_t i = 0;
 						for (auto& cmdList : transferCommandLists)
 						{
-							auto newWaitSemaphore = GetDriver()->CreateWaitSemaphore();
-							GetDriver()->SetDebugName(newWaitSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i++));
+							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+							auto fence = RHIFencePtr::Make();
+							GetDriver()->SetDebugName(signalSemaphore, std::format("rhiFrameGraph TransferCommandList {}", i));
+							GetDriver()->SetDebugName(fence, std::format("rhiFrameGraph TransferCommandList {}", i));
 
-							waitFrameUpdate.AddUnique(newWaitSemaphore);
-							GetDriver()->SubmitCommandList(cmdList, RHIFencePtr::Make(), *(waitFrameUpdate.end() - 1), chainSemaphore);
+							if (!GetDriver()->SubmitCommandList(cmdList, fence, signalSemaphore, chainSemaphore))
+							{
+								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit FrameGraph transfer command buffer %u.", i);
+								bFrameSubmitsSucceeded = false;
+								break;
+							}
+
+							chainSemaphore = signalSemaphore;
+							i++;
 						}
 					}
 
-					if (bHasSwapchainImage && m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate))
+					TVector<RHISemaphorePtr> waitFrameUpdate;
+					if (bFrameSubmitsSucceeded && chainSemaphore)
 					{
+						waitFrameUpdate.Add(chainSemaphore);
+					}
+
+					if (!bFrameSubmitsSucceeded && bHasSwapchainImage)
+					{
+						TVector<RHICommandListPtr> noCommandLists;
+						TVector<RHISemaphorePtr> noWaitSemaphores;
+						if (!m_driverInstance->PresentFrame(frame, noCommandLists, noWaitSemaphores))
+						{
+							SAILOR_LOG_ERROR("Renderer::PushFrame: failed to release an acquired swapchain image after a submit failure.");
+						}
+					}
+
+					bool bFrameCompleted = false;
+					if (bFrameSubmitsSucceeded)
+					{
+						bFrameCompleted = bHasSwapchainImage
+							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate)
+							: App::HasEditor() && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate);
+					}
+
+					if (bFrameCompleted)
+					{
+						m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
+						m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
 						totalFramesCount++;
 						timer.Stop();
 
 						if (timer.ResultAccumulatedMs() > 1000)
 						{
-							m_stats.m_gpuFps = totalFramesCount;
+							m_stats.m_gpuFps.store(totalFramesCount, std::memory_order_relaxed);
 							totalFramesCount = 0;
 							timer.Clear();
 #if defined(SAILOR_BUILD_WITH_VULKAN)
@@ -451,15 +507,15 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 					else
 					{
-						if (!(App::HasEditor() && !bHasSwapchainImage && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate)))
-						{
-							m_stats.m_gpuFps = 0;
-						}
+						m_stats.m_gpuFps.store(0u, std::memory_order_relaxed);
+						m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
+						m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
 					}
 				}
 				else
 				{
-					updateFrameRHI();
+					RHISemaphorePtr chainSemaphore;
+					updateFrameRHI(chainSemaphore);
 				}
 
 				{

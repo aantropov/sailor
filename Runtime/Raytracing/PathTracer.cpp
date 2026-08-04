@@ -6,6 +6,7 @@
 #include "Math/Bounds.h"
 #include "Core/StringHash.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Model/GltfImporterUtils.h"
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -13,9 +14,8 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "RHI/Texture.h"
 #include <glm/gtc/random.hpp>
-#include <glm/gtx/matrix_transform_2d.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <algorithm>
+#include <cmath>
 #include <functional>
 #include <thread>
 
@@ -92,6 +92,45 @@ namespace
 		return worldPoint + (glm::dot(rayDirection, geometricNormal) >= 0.0f ? bias : -bias);
 	}
 
+	__forceinline vec2 ResolveHitTextureCoordinates(
+		const Math::Triangle& triangle,
+		const Math::RaycastHit& hit)
+	{
+		return hit.m_barycentricCoordinate.x * triangle.m_uvs[0] +
+			hit.m_barycentricCoordinate.y * triangle.m_uvs[1] +
+			hit.m_barycentricCoordinate.z * triangle.m_uvs[2];
+	}
+
+	__forceinline vec3 CalculateVolumeAttenuation(
+		const vec3& attenuationColor,
+		float attenuationDistance,
+		float transmissionDistance)
+	{
+		if (transmissionDistance <= 0.0f ||
+			attenuationDistance <= 0.0f ||
+			!std::isfinite(attenuationDistance) ||
+			attenuationDistance >= (std::numeric_limits<float>::max)())
+		{
+			return vec3(1.0f);
+		}
+
+		const float exponent = transmissionDistance /
+			(std::max)(attenuationDistance, std::numeric_limits<float>::epsilon());
+		vec3 result(1.0f);
+		for (uint32_t component = 0; component < 3; ++component)
+		{
+			const float sourceColor = attenuationColor[component];
+			const float color = std::isfinite(sourceColor) ?
+				glm::clamp(sourceColor, 0.0f, 1.0f) :
+				1.0f;
+			result[component] = color <= 0.0f ?
+				0.0f :
+				std::pow(color, exponent);
+		}
+
+		return result;
+	}
+
 	struct PathTracerView
 	{
 		vec3 m_cameraPos = vec3(0, 0.75f, 5.0f);
@@ -100,53 +139,6 @@ namespace
 		float m_aspectRatio = DefaultAspectRatio;
 		float m_hFov = DefaultHfov;
 	};
-
-	glm::mat4 ComposeNodeMatrix(const tinygltf::Node& node)
-	{
-		if (node.matrix.size() == 16)
-		{
-			glm::mat4 m(1.0f);
-			for (int32_t col = 0; col < 4; col++)
-			{
-				for (int32_t row = 0; row < 4; row++)
-				{
-					m[col][row] = static_cast<float>(node.matrix[col * 4 + row]);
-				}
-			}
-			return m;
-		}
-
-		glm::vec3 translation(0.0f);
-		glm::vec3 scale(1.0f);
-		glm::quat rotation(1.0f, 0.0f, 0.0f, 0.0f);
-
-		if (node.translation.size() == 3)
-		{
-			translation = glm::vec3(
-				static_cast<float>(node.translation[0]),
-				static_cast<float>(node.translation[1]),
-				static_cast<float>(node.translation[2]));
-		}
-
-		if (node.scale.size() == 3)
-		{
-			scale = glm::vec3(
-				static_cast<float>(node.scale[0]),
-				static_cast<float>(node.scale[1]),
-				static_cast<float>(node.scale[2]));
-		}
-
-		if (node.rotation.size() == 4)
-		{
-			rotation = glm::quat(
-				static_cast<float>(node.rotation[3]),
-				static_cast<float>(node.rotation[0]),
-				static_cast<float>(node.rotation[1]),
-				static_cast<float>(node.rotation[2]));
-		}
-
-		return glm::translate(glm::mat4(1.0f), translation) * glm::mat4_cast(rotation) * glm::scale(glm::mat4(1.0f), scale);
-	}
 
 	void ResolveViewAndDirectionalLights(const tinygltf::Model& gltfModel, const PathTracer::Params& params, const Math::Sphere& sceneBounds, PathTracerView& outView, TVector<DirectionalLight>& outLights)
 	{
@@ -177,7 +169,14 @@ namespace
 			}
 
 			const tinygltf::Node& node = gltfModel.nodes[nodeIndex];
-			const glm::mat4 world = parentMatrix * ComposeNodeMatrix(node);
+			glm::mat4 localTransform(1.0f);
+			if (!GltfImporterUtils::TryComposeNodeMatrix(
+					node,
+					localTransform))
+			{
+				return;
+			}
+			const glm::mat4 world = parentMatrix * localTransform;
 
 			if (node.camera >= 0 && node.camera < (int32_t)gltfModel.cameras.size())
 			{
@@ -412,37 +411,66 @@ namespace
 
 			glm::vec4 baseColorFactor(1.0f);
 			glm::vec4 emissiveFactor(0.0f);
+			glm::vec4 attenuationColor(1.0f);
 			float roughness = 1.0f;
 			float metallic = 1.0f;
 			float alphaCutoff = 0.5f;
 			float normalScale = 1.0f;
+			float transmission = 0.0f;
+			float thickness = 0.0f;
+			float attenuationDistance = (std::numeric_limits<float>::max)();
+			float indexOfRefraction = 1.5f;
 
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.baseColorFactor", baseColorFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.albedo", baseColorFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissiveFactor", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallic", metallic);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.alphaCutoff", alphaCutoff);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.normalScale", normalScale);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.transmissionFactor", transmission);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.thicknessFactor", thickness);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.attenuationDistance", attenuationDistance);
+			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.indexOfRefraction", indexOfRefraction);
 
 			outMaterial.m_baseColorFactor = baseColorFactor;
 			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
 			outMaterial.m_roughnessFactor = roughness;
 			outMaterial.m_metallicFactor = metallic;
 			outMaterial.m_alphaCutoff = alphaCutoff;
+			outMaterial.m_transmissionFactor = std::isfinite(transmission) ?
+				glm::clamp(transmission, 0.0f, 1.0f) :
+				0.0f;
+			outMaterial.m_thicknessFactor = std::isfinite(thickness) ?
+				(std::max)(0.0f, thickness) :
+				0.0f;
+			outMaterial.m_attenuationDistance =
+				std::isfinite(attenuationDistance) && attenuationDistance > 0.0f ?
+				attenuationDistance :
+				(std::numeric_limits<float>::max)();
+			for (uint32_t component = 0; component < 3; ++component)
+			{
+				const float value = attenuationColor[component];
+				outMaterial.m_attenuationColor[component] =
+					std::isfinite(value) ?
+					glm::clamp(value, 0.0f, 1.0f) :
+					1.0f;
+			}
+			outMaterial.m_indexOfRefraction = std::isfinite(indexOfRefraction) ?
+				(std::max)(1.0f, indexOfRefraction) :
+				1.5f;
 
-			const size_t renderQueueTag = pMaterial->GetRenderState().GetTag();
-			const size_t transparentTag = GetHash(std::string("Transparent"));
-			const size_t maskedTag = GetHash(std::string("Masked"));
-			if (renderQueueTag == transparentTag)
+			const RHI::RenderState& renderState = pMaterial->GetRenderState();
+			if (renderState.GetBlendMode() != RHI::EBlendMode::None)
 			{
 				outMaterial.m_blendMode = BlendMode::Blend;
 			}
-			else if (renderQueueTag == maskedTag)
+			else if (renderState.IsRequiredCustomDepthShader())
 			{
 				outMaterial.m_blendMode = BlendMode::Mask;
 			}
@@ -492,6 +520,10 @@ namespace
 				{
 					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_transmissionIndex);
 				}
+				else if (samplerName == "thicknessSampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_thicknessIndex);
+				}
 			}
 
 			outMaterials[i] = outMaterial;
@@ -505,7 +537,11 @@ namespace
 		size_t hash = 1469598103934665603ull;
 		for (const auto& material : materials)
 		{
-			const size_t value = material ? material.GetHash() : 0;
+			size_t value = material ? material.GetHash() : 0;
+			if (material)
+			{
+				HashCombine(value, material->GetContentRevision());
+			}
 			hash ^= value + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
 		}
 		return hash;
@@ -1427,10 +1463,48 @@ void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outT
 		hit.m_hit.m_barycentricCoordinate.z * tri.m_bitangent[2];
 
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
+	const glm::mat3 linearMatrix = glm::mat3(instance.m_worldMatrix);
 	const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
-	outNormal = glm::normalize(normalMatrix * localNormal);
-	outTangent = glm::normalize(normalMatrix * localTangent);
-	outBitangent = glm::normalize(normalMatrix * localBitangent);
+	outNormal = Math::SafeNormalize(
+		normalMatrix * localNormal,
+		Math::vec3_Up);
+
+	const vec3 transformedTangent = linearMatrix * localTangent;
+	outTangent = Math::SafeNormalize(
+		transformedTangent - outNormal * glm::dot(outNormal, transformedTangent));
+	if (outTangent == Math::vec3_Zero)
+	{
+		const vec3 fallbackAxis = std::abs(outNormal.y) < 0.999f ?
+			Math::vec3_Up : Math::vec3_Right;
+		outTangent = Math::SafeNormalize(
+			glm::cross(fallbackAxis, outNormal),
+			Math::vec3_Right);
+	}
+
+	const vec3 transformedBitangent = linearMatrix * localBitangent;
+	const vec3 canonicalBitangent = Math::SafeNormalize(
+		glm::cross(outNormal, outTangent),
+		Math::vec3_Forward);
+	const float handedness =
+		glm::dot(canonicalBitangent, transformedBitangent) < 0.0f ?
+		-1.0f : 1.0f;
+	outBitangent = canonicalBitangent * handedness;
+}
+
+bool PathTracer::OrientShadingBasisAgainstRay(
+	const vec3& rayDirection,
+	vec3& inOutNormal,
+	vec3& inOutBitangent)
+{
+	const bool bIsOppositeRay =
+		glm::dot(inOutNormal, rayDirection) < 0.0f;
+	if (!bIsOppositeRay)
+	{
+		inOutNormal *= -1.0f;
+		inOutBitangent *= -1.0f;
+	}
+
+	return bIsOppositeRay;
 }
 
 uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
@@ -1444,6 +1518,33 @@ uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 	const auto& tri = instance.m_model->GetBLASTriangles()[hit.m_triangleIndex];
 	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
 	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
+}
+
+bool PathTracer::IsThickVolumeAtHit(
+	const TLASHit& hit,
+	uint32_t materialIndex) const
+{
+	const auto& material = m_materials[materialIndex];
+	const vec2 uv = ResolveHitTextureCoordinates(
+		GetTriangle(hit),
+		hit.m_hit);
+	const vec2 uvTransformed =
+		material.m_uvTransform * vec3(uv, 1.0f);
+
+	float transmission = material.m_transmissionFactor;
+	if (material.HasTransmissionTexture())
+	{
+		transmission *=
+			m_textures[material.m_transmissionIndex]->Sample<vec3>(
+				uvTransformed).r;
+	}
+
+	if (transmission <= 0.0f)
+	{
+		return false;
+	}
+
+	return material.m_thicknessFactor > 0.0f;
 }
 
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
@@ -1466,7 +1567,8 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Param
 		GetShadingBasis(hitLight, shadingNormal, shadingTangent, shadingBitangent);
 
 		const bool bHitOpposite = dot(toLight, shadingNormal) < 0.0f;
-		const bool bHitThickVolume = material.m_transmissionFactor > 0.0f && material.m_thicknessFactor > 0.0f;
+		const bool bHitThickVolume =
+			IsThickVolumeAtHit(hitLight, materialIndex);
 
 		if (!bHitThickVolume)
 		{
@@ -1483,8 +1585,10 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Param
 
 		if (!bHitOpposite)
 		{
-			const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
-			att *= glm::exp(-c * distance);
+			att *= CalculateVolumeAttenuation(
+				material.m_attenuationColor,
+				material.m_attenuationDistance,
+				distance);
 		}
 
 		startPoint = hitLight.m_hit.m_point;
@@ -1511,17 +1615,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 		vec3 faceNormal{}, tangent{}, bitangent{};
 		GetShadingBasis(hit, faceNormal, tangent, bitangent);
 
-		const bool bIsOppositeRay = dot(faceNormal, ray.GetDirection()) < 0.0f;
-		if (!bIsOppositeRay)
-		{
-			faceNormal *= -1.0f;
-		}
+		const bool bIsOppositeRay = OrientShadingBasisAgainstRay(
+			ray.GetDirection(),
+			faceNormal,
+			bitangent);
 
 		const mat3 tbn(tangent, bitangent, faceNormal);
 
-		const vec2 uv = hit.m_hit.m_barycentricCoordinate.x * tri.m_uvs[0] +
-			hit.m_hit.m_barycentricCoordinate.y * tri.m_uvs[1] +
-			hit.m_hit.m_barycentricCoordinate.z * tri.m_uvs[2];
+		const vec2 uv = ResolveHitTextureCoordinates(tri, hit.m_hit);
 
 		const uint32_t materialIndex = ResolveMaterialIndex(hit);
 		const auto material = m_materials[materialIndex];
@@ -1693,9 +1794,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					if (bIsOppositeRay && bTransmissionRay && bThickVolume)
 					{
 						const float distance = glm::length(hitLight.m_hit.m_point - hit.m_hit.m_point);
-						const vec3 c = -log(material.m_attenuationColor) / material.m_attenuationDistance;
-
-						lightAttenuation = glm::exp(-c * distance);
+						lightAttenuation = CalculateVolumeAttenuation(
+							material.m_attenuationColor,
+							material.m_attenuationDistance,
+							distance);
 					}
 
 					vec3 raytraced = vec3(0, 0, 0);
@@ -1711,15 +1813,21 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					indirect += value;
 
 					// Ambient 2, Sky is reachable
-					const auto& hitMaterial = m_materials[ResolveMaterialIndex(hitLight)];
-					if (!bThickVolume && hitMaterial.m_transmissionFactor > 0.0f && hitMaterial.m_thicknessFactor > 0.0f)
+					if (!bThickVolume)
 					{
-						vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
-
-						if (att != vec3(0, 0, 0))
+						const uint32_t hitMaterialIndex =
+							ResolveMaterialIndex(hitLight);
+						if (IsThickVolumeAtHit(
+							hitLight,
+							hitMaterialIndex))
 						{
-							ambient2 += value * att;
-							avgPdfLambert += pdf;
+							vec3 att = TraceSky(rayToLight.GetOrigin(), rayToLight.GetDirection(), params, environmentIor, hitLight.m_instanceIndex, hitLight.m_triangleIndex);
+
+							if (att != vec3(0, 0, 0))
+							{
+								ambient2 += value * att;
+								avgPdfLambert += pdf;
+							}
 						}
 					}
 				}
@@ -1829,6 +1937,11 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 	if (material.HasTransmissionTexture())
 	{
 		res.m_transmission *= m_textures[material.m_transmissionIndex]->Sample<vec3>(uv).r;
+	}
+
+	if (material.HasThicknessTexture())
+	{
+		res.m_thicknessFactor *= m_textures[material.m_thicknessIndex]->Sample<vec3>(uv).g;
 	}
 
 	if (material.m_blendMode == BlendMode::Mask)

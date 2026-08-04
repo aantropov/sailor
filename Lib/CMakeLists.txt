@@ -19,6 +19,12 @@ set(SAILOR_MISSING_DEPS "")
 set(SAILOR_CONFIGURED_WITH_DEPENDENCY_STUBS OFF)
 
 # External dependencies
+find_package(draco CONFIG QUIET)
+if(NOT draco_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "draco")
+	sailor_create_stub_target(draco::draco)
+endif()
+
 find_package(yaml-cpp CONFIG QUIET)
 if(NOT yaml-cpp_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "yaml-cpp")
@@ -69,6 +75,12 @@ find_package(magic_enum CONFIG QUIET)
 if(NOT magic_enum_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "magic_enum")
 	sailor_create_stub_target(magic_enum::magic_enum)
+endif()
+
+find_package(meshoptimizer CONFIG QUIET)
+if(NOT meshoptimizer_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "meshoptimizer")
+	sailor_create_stub_target(meshoptimizer::meshoptimizer)
 endif()
 
 find_package(glm CONFIG QUIET)
@@ -220,10 +232,12 @@ target_link_libraries(SailorLib PUBLIC
   unofficial::spirv-reflect
 )
 target_link_libraries(SailorLib PRIVATE
-  imguizmo::imguizmo
-  ixwebsocket::ixwebsocket
-  protobuf::libprotobuf
-  ${CMAKE_DL_LIBS}
+	draco::draco
+	imguizmo::imguizmo
+	ixwebsocket::ixwebsocket
+	meshoptimizer::meshoptimizer
+	protobuf::libprotobuf
+	${CMAKE_DL_LIBS}
 )
 
 find_path(REFL_CPP_INCLUDE_DIRS "refl.hpp")
@@ -267,6 +281,12 @@ target_compile_definitions(SailorLib PUBLIC NOMINMAX)
 target_compile_definitions(SailorLib PUBLIC $<$<CONFIG:Release>:_SHIPPING>)
 target_compile_definitions(SailorLib PRIVATE SAILOR_BUILD_CONFIG="$<CONFIG>")
 target_compile_definitions(SailorLib PRIVATE SAILOR_ENGINE_VERSION="${PROJECT_VERSION}")
+if(draco_FOUND)
+	target_compile_definitions(SailorLib PRIVATE SAILOR_HAS_DRACO)
+endif()
+if(meshoptimizer_FOUND)
+	target_compile_definitions(SailorLib PRIVATE SAILOR_HAS_MESHOPT)
+endif()
 
 if(SAILOR_BUILD_TESTS)
   target_compile_definitions(SailorLib PUBLIC $<BUILD_INTERFACE:SAILOR_SHADER_CACHE_TEST_HOOKS>)

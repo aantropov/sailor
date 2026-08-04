@@ -145,5 +145,3 @@ void PathTracerECS::CopySceneView(RHI::RHISceneViewPtr& outSceneView)
 	outSceneView->m_pathTracerMaterials = m_pathTracerMaterialsCache;
 	outSceneView->m_pathTracerLights = m_pathTracerLightsCache;
 }
-
-

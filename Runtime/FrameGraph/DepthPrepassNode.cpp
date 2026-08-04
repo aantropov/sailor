@@ -9,6 +9,8 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
 
+#include <limits>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 
@@ -63,15 +65,20 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			m_numMeshes = 0;
 			m_drawCalls.Clear();
 			m_batches.Clear();
+			Framegraph::Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
 
 			for (auto& proxy : sceneViewSnapshot.m_proxies)
 			{
 				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
 				{
 					const bool bHasMaterial = proxy.GetMaterials().Num() > i;
-					if (!bHasMaterial || proxy.GetMaterials()[i] == nullptr)
+					if (!bHasMaterial)
 					{
 						break;
+					}
+					if (proxy.GetMaterials()[i] == nullptr)
+					{
+						continue;
 					}
 
 					if (proxy.GetMaterials()[i]->GetRenderState().GetTag() != QueueTagHash)
@@ -104,6 +111,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					data.skeletonOffset = proxy.m_skeletonOffset;
 					data.bIsCulled = 0;
 					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+					data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
 
 					if (bRequiredCustomDepth)
 					{
@@ -120,6 +128,33 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					}
 
 					RHIBatch batch(depthMaterial, mesh);
+					if (bRequiredCustomDepth)
+					{
+						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+#if defined(__APPLE__)
+						TSet<uint32_t> requestedTextures;
+						if (proxy.m_materialTextureSamplers.Num() > i)
+						{
+							requestedTextures = proxy.m_materialTextureSamplers[i];
+						}
+						else
+						{
+							requestedTextures.Insert(0u);
+						}
+						batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(
+							m_textureBindingCache,
+							requestedTextures,
+							sceneViewSnapshot.m_frame,
+							supportedMeshesPerBatch);
+#else
+						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+#endif
+						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+						if (!batch.m_textureBindings)
+						{
+							continue;
+						}
+					}
 
 					m_drawCalls[batch][mesh].Add(data);
 					m_batches.Insert(batch);
@@ -137,6 +172,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 	m_syncSharedResources.Lock();
 
 	const std::string QueueTag = GetString("Tag");
@@ -243,7 +279,6 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		}
 	}
 
-	auto textureSamplers = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 	auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 		{
 			auto material = batch.m_material;
@@ -251,7 +286,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 
 			if (material->GetRenderState().IsRequiredCustomDepthShader())
 			{
-				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData , material->GetBindings(), textureSamplers });
+				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), batch.m_textureBindings });
 			}
 
 			if (sceneView.m_boneMatrices)
@@ -284,7 +319,7 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 #ifdef _DEBUG
 		cullingComputeShader = m_pComputeMeshCullingShader->GetDebugComputeShaderRHI();
 #endif
-		RHIRecordDrawCallGPUCulling(0,
+		m_drawCallStats = RHIRecordDrawCallGPUCulling(0,
 			(uint32_t)vecBatches.Num(), vecBatches,
 			commandList, transferCommandList,
 			shaderBindingsByMaterial,
@@ -298,9 +333,11 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 	else
 	{
-		RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, transferCommandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
+		m_drawCallStats = RHIRecordDrawCall(0, (uint32_t)vecBatches.Num(), vecBatches, commandList, transferCommandList, shaderBindingsByMaterial, m_drawCalls, storageIndex, m_indirectBuffers[0],
 			glm::ivec4(0, depthAttachment->GetExtent().y, depthAttachment->GetExtent().x, -depthAttachment->GetExtent().y),
-			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y));
+			glm::uvec4(0, 0, depthAttachment->GetExtent().x, depthAttachment->GetExtent().y),
+			glm::vec2(0.0f, 1.0f),
+			&m_cullingIndirectBufferBinding[0]);
 	}
 	commands->EndRenderPass(commandList);
 
@@ -312,4 +349,5 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 void DepthPrepassNode::Clear()
 {
 	m_perInstanceData.Clear();
+	m_textureBindingCache.Clear();
 }

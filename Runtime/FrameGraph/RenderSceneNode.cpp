@@ -8,8 +8,13 @@
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/CommandList.h"
+#include "RHI/Buffer.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "Core/SpinLock.h"
+
+#include <cmath>
+#include <limits>
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -19,22 +24,61 @@ using namespace Sailor::Framegraph;
 const char* RenderSceneNode::m_name = "RenderScene";
 #endif
 
-uint32_t RenderSceneNode::CalculatePlannedTextureSlotCount(const TVector<uint32_t>& requestedTextures)
+bool Details::CanReuseRenderSceneTextureBindings(
+	uint64_t cachedSourceRevision,
+	uint64_t currentSourceRevision,
+	bool bHasCachedBindings,
+	const TVector<uint64_t>* cachedSlotRevisions,
+	const TVector<uint64_t>* currentSlotRevisions)
 {
-	if (requestedTextures.IsEmpty())
+	if (!bHasCachedBindings)
 	{
-		return 1u;
+		return false;
 	}
 
-	const uint32_t maxTextureIndex = *std::max_element(requestedTextures.begin(), requestedTextures.end());
-	return (std::max)(1u, maxTextureIndex + 1u);
+	if (cachedSourceRevision == currentSourceRevision)
+	{
+		return true;
+	}
+
+	return cachedSlotRevisions &&
+		currentSlotRevisions &&
+		*cachedSlotRevisions == *currentSlotRevisions;
+}
+
+TVector<uint32_t> Details::BuildDenseTextureRemap(
+	const TVector<uint32_t>& globalTextureIndices)
+{
+	uint32_t maxTextureIndex = 0u;
+	for (const uint32_t textureIndex : globalTextureIndices)
+	{
+		maxTextureIndex = (std::max)(maxTextureIndex, textureIndex);
+	}
+
+	TVector<uint32_t> globalToLocal;
+	globalToLocal.AddDefault(static_cast<size_t>(maxTextureIndex) + 1u);
+
+	uint32_t nextLocalIndex = 1u;
+	for (const uint32_t textureIndex : globalTextureIndices)
+	{
+		if (textureIndex == 0u ||
+			textureIndex >= globalToLocal.Num() ||
+			globalToLocal[textureIndex] != 0u)
+		{
+			continue;
+		}
+
+		globalToLocal[textureIndex] = nextLocalIndex++;
+	}
+
+	return globalToLocal;
 }
 
 RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 {
-	const std::string& sortOrder = GetString("Sorting");
+	std::string sortOrder;
 
-	if (!sortOrder.empty())
+	if (TryGetString("Sorting", sortOrder))
 	{
 		return magic_enum::enum_cast<RHI::ESortingOrder>(sortOrder).value_or(RHI::ESortingOrder::FrontToBack);
 	}
@@ -42,7 +86,11 @@ RHI::ESortingOrder RenderSceneNode::GetSortingOrder() const
 	return RHI::ESortingOrder::FrontToBack;
 }
 
-RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t>& requestedTextures, uint64_t frame, uint32_t& outSupportedMeshesPerBatch)
+RHIShaderBindingSetPtr Details::GetTextureBindingSet(
+	TextureBindingCache& textureBindingCache,
+	const TSet<uint32_t>& requestedTextures,
+	uint64_t frame,
+	uint32_t& outSupportedMeshesPerBatch)
 {
 	auto textureImporter = App::GetSubmodule<TextureImporter>();
 	if (!textureImporter)
@@ -56,6 +104,10 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 #if defined(__APPLE__)
 	TextureBindingCacheKey key;
 	key.m_requestedTextures = requestedTextures.ToVector();
+	key.m_requestedTextures.RemoveAll([](uint32_t textureIndex)
+		{
+			return textureIndex >= TextureImporter::MaxTexturesInScene;
+		});
 
 	if (key.m_requestedTextures.IsEmpty())
 	{
@@ -68,67 +120,131 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 	}
 
 	key.m_requestedTextures.Sort();
+	const uint64_t currentSourceDescriptorRevision = globalTextureSet ? globalTextureSet->GetDescriptorRevision() : 0;
+	TextureBindingCacheEntry* cachedEntry = nullptr;
+	textureBindingCache.Find(key, cachedEntry);
 
-	if (m_textureBindingCache.ContainsKey(key))
+	if (cachedEntry && Details::CanReuseRenderSceneTextureBindings(
+		cachedEntry->m_sourceDescriptorRevision,
+		currentSourceDescriptorRevision,
+		cachedEntry->m_textureBindings.IsValid()))
 	{
-		auto& entry = m_textureBindingCache[key];
-		entry.m_lastUsedFrame = frame;
+		cachedEntry->m_lastUsedFrame = frame;
 #ifdef _DEBUG
-		if (entry.m_textureBindings)
+		if (cachedEntry->m_textureBindings)
 		{
-			const auto shaderBinding = entry.m_textureBindings->GetOrAddShaderBinding("textureSamplers");
+			const auto shaderBinding = cachedEntry->m_textureBindings->GetOrAddShaderBinding("textureSamplers");
 			const uint32_t actualTextureCount = static_cast<uint32_t>(shaderBinding->GetTextureBindings().Num());
 			const uint32_t actualLayoutCount = shaderBinding->GetLayout().m_arrayCount;
-			check(actualTextureCount == entry.m_textureSetSize);
-			check(actualLayoutCount == entry.m_textureSetSize);
+			check(actualTextureCount == cachedEntry->m_textureSetSize);
+			check(actualLayoutCount == cachedEntry->m_textureSetSize);
 		}
 #endif
-		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, entry.m_textureSetSize));
-		return entry.m_textureBindings;
+		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		return cachedEntry->m_textureBindings;
 	}
 
 	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
-	RHIShaderBindingSetPtr localTextureSet = driver->CreateShaderBindings();
-	TVector<RHITexturePtr> localTextures;
-
-	const uint32_t plannedTextureSlots = CalculatePlannedTextureSlotCount(key.m_requestedTextures);
-	localTextures.AddDefault(plannedTextureSlots);
-
-	auto sourceBinding = globalTextureSet ? globalTextureSet->GetOrAddShaderBinding("textureSamplers") : nullptr;
-	TVector<RHITexturePtr> emptyTextures;
-	const auto& sourceTextures = sourceBinding ? sourceBinding->GetTextureBindings() : emptyTextures;
-	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
-
-	for (uint32_t textureIndex = 0; textureIndex < localTextures.Num(); textureIndex++)
+	const auto sourceSnapshot = textureImporter->GetTextureSamplersSnapshot(key.m_requestedTextures);
+	TVector<uint64_t> currentSlotRevisions;
+	currentSlotRevisions.Reserve(sourceSnapshot.m_slots.Num());
+	for (const auto& slot : sourceSnapshot.m_slots)
 	{
-		localTextures[textureIndex] = defaultTexture;
+		currentSlotRevisions.Emplace(slot.m_contentRevision);
 	}
 
-	for (const uint32_t globalTextureIndex : key.m_requestedTextures)
+	if (cachedEntry && Details::CanReuseRenderSceneTextureBindings(
+		cachedEntry->m_sourceDescriptorRevision,
+		sourceSnapshot.m_descriptorRevision,
+		cachedEntry->m_textureBindings.IsValid(),
+		&cachedEntry->m_sourceSlotRevisions,
+		&currentSlotRevisions))
 	{
-		if (globalTextureIndex < localTextures.Num() && globalTextureIndex < sourceTextures.Num() && sourceTextures[globalTextureIndex].IsValid())
+		cachedEntry->m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
+		cachedEntry->m_lastUsedFrame = frame;
+		outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+		return cachedEntry->m_textureBindings;
+	}
+
+	RHITexturePtr defaultTexture = driver->GetDefaultTexture();
+	TVector<RHITexturePtr> localTextures{ defaultTexture };
+	TVector<uint32_t> globalToLocal =
+		Details::BuildDenseTextureRemap(key.m_requestedTextures);
+	globalToLocal.Resize(TextureImporter::MaxTexturesInScene);
+
+	for (const auto& slot : sourceSnapshot.m_slots)
+	{
+		if (slot.m_index != 0u)
 		{
-			localTextures[globalTextureIndex] = sourceTextures[globalTextureIndex];
+			localTextures.Add(slot.m_texture.IsValid() ?
+				slot.m_texture :
+				defaultTexture);
 		}
 	}
+	const uint32_t denseTextureCount =
+		static_cast<uint32_t>(localTextures.Num());
 
-	driver->AddSamplerToShaderBindings(localTextureSet, "textureSamplers", localTextures, 0, true, plannedTextureSlots);
+	RHIShaderBindingSetPtr localTextureSet = driver->CreateShaderBindings();
+	const size_t remapBufferSize =
+		globalToLocal.Num() * sizeof(uint32_t);
+	RHI::RHIBufferPtr remapBuffer = driver->CreateBuffer(
+		remapBufferSize,
+		RHI::EBufferUsageBit::StorageBuffer_Bit,
+		RHI::EMemoryPropertyBit::HostVisible |
+			RHI::EMemoryPropertyBit::HostCoherent);
+	if (!remapBuffer || !remapBuffer->GetPointer())
+	{
+		outSupportedMeshesPerBatch = 1u;
+		return cachedEntry ? cachedEntry->m_textureBindings : nullptr;
+	}
+	memcpy(remapBuffer->GetPointer(), globalToLocal.GetData(), remapBufferSize);
+
+	driver->AddBufferToShaderBindings(
+		localTextureSet,
+		remapBuffer,
+		"textureSamplerRemap",
+		0);
+	driver->AddSamplerToShaderBindings(
+		localTextureSet,
+		"textureSamplers",
+		localTextures,
+		1,
+		true,
+		denseTextureCount);
 	localTextureSet->RecalculateCompatibility();
+
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	if (!localTextureSet->m_vulkan.m_descriptorSet || !localTextureSet->m_vulkan.m_descriptorSet->IsCompiled())
+	{
+		if (cachedEntry)
+		{
+			cachedEntry->m_lastUsedFrame = frame;
+			outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, cachedEntry->m_textureSetSize));
+			return cachedEntry->m_textureBindings;
+		}
+
+		outSupportedMeshesPerBatch = 1u;
+		return nullptr;
+	}
+#endif
 
 #ifdef _DEBUG
 	if (const auto localBinding = localTextureSet->GetOrAddShaderBinding("textureSamplers"))
 	{
 		const uint32_t actualTextureCount = static_cast<uint32_t>(localBinding->GetTextureBindings().Num());
 		const uint32_t actualLayoutCount = localBinding->GetLayout().m_arrayCount;
-		check(actualTextureCount == plannedTextureSlots);
-		check(actualLayoutCount == plannedTextureSlots);
+		check(actualTextureCount == denseTextureCount);
+		check(actualLayoutCount == denseTextureCount);
 	}
 #endif
 
-	auto& entry = m_textureBindingCache[key];
+	auto& entry = textureBindingCache[key];
 	entry.m_textureBindings = localTextureSet;
-	entry.m_textureSetSize = plannedTextureSlots;
+	entry.m_textureRemapBuffer = remapBuffer;
+	entry.m_textureSetSize = denseTextureCount;
 	entry.m_lastUsedFrame = frame;
+	entry.m_sourceDescriptorRevision = sourceSnapshot.m_descriptorRevision;
+	entry.m_sourceSlotRevisions = std::move(currentSlotRevisions);
 
 	outSupportedMeshesPerBatch = (std::max)(1u, MaxTextureSlotsPerBatch / (std::max)(1u, entry.m_textureSetSize));
 	return entry.m_textureBindings;
@@ -138,11 +254,13 @@ RHIShaderBindingSetPtr RenderSceneNode::GetTextureBindingSet(const TSet<uint32_t
 #endif
 }
 
-void RenderSceneNode::EvictTextureBindingCache(uint64_t frame)
+void Details::EvictTextureBindingCache(
+	TextureBindingCache& textureBindingCache,
+	uint64_t frame)
 {
 	TVector<TextureBindingCacheKey> expiredEntries;
 
-	for (const auto& entry : m_textureBindingCache)
+	for (const auto& entry : textureBindingCache)
 	{
 		if (frame > entry.Second()->m_lastUsedFrame && frame - entry.Second()->m_lastUsedFrame > MaxTextureBindingCacheUnusedFrames)
 		{
@@ -152,7 +270,7 @@ void RenderSceneNode::EvictTextureBindingCache(uint64_t frame)
 
 	for (const auto& key : expiredEntries)
 	{
-		m_textureBindingCache.Remove(key);
+		textureBindingCache.Remove(key);
 	}
 }
 
@@ -162,6 +280,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
+	const bool bBackToFront = GetSortingOrder() == RHI::ESortingOrder::BackToFront;
 
 	auto res = Tasks::CreateTask("Prepare RenderSceneNode  " + std::to_string(sceneView.m_frame),
 		[=, this, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
@@ -171,7 +290,8 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 			m_numMeshes = 0;
 			m_drawCalls.Clear();
 			m_batches.Clear();
-			EvictTextureBindingCache(sceneViewSnapshot.m_frame);
+			m_orderedDrawItems.Clear();
+			Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
 
 			SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
@@ -213,6 +333,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 						data.bIsCulled = 0;
 						data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+						data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
 
 						RHI::RHIBatch batch(material, mesh);
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
@@ -226,18 +347,61 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 						{
 							requestedTextures.Insert(0u);
 						}
-						batch.m_textureBindings = GetTextureBindingSet(requestedTextures, sceneViewSnapshot.m_frame, supportedMeshesPerBatch);
+						batch.m_textureBindings = Details::GetTextureBindingSet(
+							m_textureBindingCache,
+							requestedTextures,
+							sceneViewSnapshot.m_frame,
+							supportedMeshesPerBatch);
 #else
 						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
 #endif
 						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
 
-						m_drawCalls[batch][mesh].Add(data);
-						m_batches.Insert(batch);
+						if (bBackToFront)
+						{
+							const glm::vec4 worldCenter = proxy.m_worldMatrix *
+								glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
+							const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
+								worldCenter;
+
+							OrderedDrawItem item;
+							item.m_batch = std::move(batch);
+							item.m_mesh = mesh;
+							item.m_instanceData = data;
+							item.m_cameraDepth = std::isfinite(viewCenter.z) ?
+								-viewCenter.z :
+								-(std::numeric_limits<float>::max)();
+							item.m_staticMeshEcs = proxy.m_staticMeshEcs;
+							item.m_meshIndex = i;
+							m_orderedDrawItems.Emplace(std::move(item));
+						}
+						else
+						{
+							m_drawCalls[batch][mesh].Add(data);
+							m_batches.Insert(batch);
+						}
 
 						m_numMeshes++;
 					}
 				}
+			}
+
+			if (bBackToFront)
+			{
+				m_orderedDrawItems.Sort([](const OrderedDrawItem& lhs, const OrderedDrawItem& rhs)
+					{
+						if (lhs.m_cameraDepth != rhs.m_cameraDepth)
+						{
+							return lhs.m_cameraDepth > rhs.m_cameraDepth;
+						}
+
+						if (lhs.m_staticMeshEcs != rhs.m_staticMeshEcs)
+						{
+							return lhs.m_staticMeshEcs < rhs.m_staticMeshEcs;
+						}
+
+						return lhs.m_meshIndex < rhs.m_meshIndex;
+					});
 			}
 
 			syncSharedResources.Unlock();
@@ -246,12 +410,206 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 	return res;
 }
 
+void RenderSceneNode::ProcessBackToFront(RHIFrameGraphPtr frameGraph,
+	RHI::RHICommandListPtr transferCommandList,
+	RHI::RHICommandListPtr commandList,
+	const RHI::RHISceneViewSnapshot& sceneView,
+	const RHI::RHIShaderBindingPtr& storageBinding,
+	const std::string& queueTag)
+{
+	if (m_orderedDrawItems.IsEmpty())
+	{
+		return;
+	}
+
+	auto& driver = App::GetSubmodule<RHI::Renderer>()->GetDriver();
+	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
+
+	RHI::RHISurfacePtr colorAttachment = GetRHIResource("color").DynamicCast<RHI::RHISurface>();
+	RHI::RHITexturePtr depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+	if (!depthAttachment)
+	{
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	}
+
+	if (!colorAttachment || !depthAttachment)
+	{
+		return;
+	}
+
+	TVector<PerInstanceData> gpuMatricesData;
+	gpuMatricesData.Reserve(m_orderedDrawItems.Num());
+
+	TVector<RHI::DrawIndexedIndirectData> indirectCommands;
+	indirectCommands.Reserve(m_orderedDrawItems.Num());
+
+	const uint32_t firstStorageInstance = storageBinding->GetStorageInstanceIndex();
+	for (uint32_t i = 0; i < m_orderedDrawItems.Num(); i++)
+	{
+		const OrderedDrawItem& item = m_orderedDrawItems[i];
+		gpuMatricesData.Add(item.m_instanceData);
+
+		RHI::DrawIndexedIndirectData command{};
+		command.m_indexCount = item.m_mesh->GetIndexCount();
+		command.m_instanceCount = 1u;
+		command.m_firstIndex = item.m_mesh->GetFirstIndex();
+		command.m_vertexOffset = item.m_mesh->GetVertexOffset();
+		command.m_firstInstance = firstStorageInstance + i;
+		indirectCommands.Emplace(std::move(command));
+	}
+
+	commands->UpdateShaderBinding(transferCommandList,
+		storageBinding,
+		gpuMatricesData.GetData(),
+		sizeof(PerInstanceData) * gpuMatricesData.Num(),
+		0);
+
+	if (m_indirectBuffers.IsEmpty())
+	{
+		m_indirectBuffers.Resize(1);
+	}
+
+	const size_t indirectBufferSize =
+		sizeof(RHI::DrawIndexedIndirectData) * indirectCommands.Num();
+	if (!m_indirectBuffers[0].IsValid() ||
+		m_indirectBuffers[0]->GetSize() < indirectBufferSize)
+	{
+		constexpr size_t IndirectBufferSlack = 256;
+		m_indirectBuffers[0] = driver->CreateIndirectBuffer(
+			indirectBufferSize + IndirectBufferSlack);
+	}
+
+	commands->UpdateBuffer(transferCommandList,
+		m_indirectBuffers[0],
+		indirectCommands.GetData(),
+		indirectBufferSize,
+		0);
+
+	const auto viewport = glm::ivec4(0,
+		colorAttachment->GetTarget()->GetExtent().y,
+		colorAttachment->GetTarget()->GetExtent().x,
+		-colorAttachment->GetTarget()->GetExtent().y);
+	const auto scissor = glm::uvec4(0,
+		0,
+		colorAttachment->GetTarget()->GetExtent().x,
+		colorAttachment->GetTarget()->GetExtent().y);
+
+	commands->BeginDebugRegion(commandList,
+		std::string(GetName()) + " QueueTag:" + queueTag + " BackToFront",
+		DebugContext::Color_CmdGraphics);
+	commands->ImageMemoryBarrier(commandList,
+		colorAttachment->GetTarget(),
+		EImageLayout::ColorAttachmentOptimal);
+
+	const auto depthAttachmentLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ?
+		EImageLayout::DepthStencilAttachmentOptimal :
+		EImageLayout::DepthAttachmentOptimal;
+	commands->ImageMemoryBarrier(commandList,
+		depthAttachment,
+		depthAttachmentLayout);
+
+	commands->BeginRenderPass(commandList,
+		TVector<RHI::RHISurfacePtr>{ colorAttachment },
+		depthAttachment,
+		glm::vec4(0,
+			0,
+			colorAttachment->GetTarget()->GetExtent().x,
+			colorAttachment->GetTarget()->GetExtent().y),
+		glm::ivec2(0, 0),
+		false,
+		glm::vec4(0.0f),
+		0.0f,
+		true);
+
+#if defined(_WIN32)
+	constexpr uint32_t MaxMeshesPerIndirectBatch = 16384u;
+#else
+	constexpr uint32_t MaxMeshesPerIndirectBatch = 128u;
+#endif
+
+	uint32_t runBegin = 0;
+	while (runBegin < m_orderedDrawItems.Num())
+	{
+		const OrderedDrawItem& firstItem = m_orderedDrawItems[runBegin];
+		uint32_t runLimit = (std::max)(1u,
+			(std::min)(MaxMeshesPerIndirectBatch,
+				firstItem.m_batch.m_supportedMeshesPerBatch));
+		uint32_t runEnd = runBegin + 1u;
+		while (runEnd < m_orderedDrawItems.Num())
+		{
+			const OrderedDrawItem& nextItem = m_orderedDrawItems[runEnd];
+			if (!(firstItem.m_batch == nextItem.m_batch))
+			{
+				break;
+			}
+
+			const uint32_t nextLimit = (std::max)(1u,
+				(std::min)(MaxMeshesPerIndirectBatch,
+					nextItem.m_batch.m_supportedMeshesPerBatch));
+			runLimit = (std::min)(runLimit, nextLimit);
+			if (runEnd - runBegin >= runLimit)
+			{
+				break;
+			}
+
+			runEnd++;
+		}
+
+		const RHIBatch& batch = firstItem.m_batch;
+		TVector<RHIShaderBindingSetPtr> shaderBindings({
+			sceneView.m_frameBindings,
+			sceneView.m_rhiLightsData,
+			m_perInstanceData,
+			batch.m_material->GetBindings(),
+			batch.m_textureBindings });
+		if (sceneView.m_boneMatrices)
+		{
+			shaderBindings.Add(sceneView.m_boneMatrices);
+		}
+
+		commands->BindMaterial(commandList, batch.m_material);
+		commands->SetViewport(commandList,
+			(float)viewport.x,
+			(float)viewport.y,
+			(float)viewport.z,
+			(float)viewport.w,
+			glm::vec2(scissor.x, scissor.y),
+			glm::vec2(scissor.z, scissor.w),
+			0.0f,
+			1.0f);
+		commands->BindShaderBindings(commandList,
+			batch.m_material,
+			shaderBindings);
+		commands->BindVertexBuffer(commandList,
+			batch.m_mesh->m_vertexBuffer,
+			0);
+		commands->BindIndexBuffer(commandList,
+			batch.m_mesh->m_indexBuffer,
+			0);
+
+		const uint32_t runSize = runEnd - runBegin;
+		commands->DrawIndexedIndirect(commandList,
+			m_indirectBuffers[0],
+			sizeof(RHI::DrawIndexedIndirectData) * runBegin,
+			runSize,
+			sizeof(RHI::DrawIndexedIndirectData));
+		m_drawCallStats.m_numBatches++;
+		m_drawCallStats.m_numInstances += runSize;
+
+		runBegin = runEnd;
+	}
+
+	commands->EndRenderPass(commandList);
+	commands->EndDebugRegion(commandList);
+}
+
 /*
 https://developer.nvidia.com/vulkan-shader-resource-binding
 */
 void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_drawCallStats = {};
 	m_syncSharedResources.Lock();
 
 	std::string temp;
@@ -291,10 +649,40 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 	}
 
+	RHI::RHITexturePtr transmissionFramebuffer =
+		GetResolvedAttachment("transmissionFramebuffer");
+	if (transmissionFramebuffer)
+	{
+		auto rhiLightsData = sceneView.m_rhiLightsData;
+		constexpr const char* transmissionSamplerName =
+			"g_transmissionFramebufferSampler";
+		RHI::RHIShaderBindingPtr& transmissionBinding =
+			rhiLightsData->GetOrAddShaderBinding(
+				transmissionSamplerName);
+		if (transmissionBinding->GetTextureBinding() !=
+			transmissionFramebuffer)
+		{
+			driver->AddSamplerToShaderBindings(
+				rhiLightsData,
+				transmissionSamplerName,
+				transmissionFramebuffer,
+				10);
+			rhiLightsData->RecalculateCompatibility();
+		}
+	}
+
 	if (m_numMeshes == 0)
 	{
 		m_syncSharedResources.Unlock();
 		return;
+	}
+
+	if (transmissionFramebuffer)
+	{
+		commands->ImageMemoryBarrier(
+			commandList,
+			transmissionFramebuffer,
+			RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
 
 	if (!m_perInstanceData || m_sizePerInstanceData < sizeof(RenderSceneNode::PerInstanceData) * m_numMeshes)
@@ -307,6 +695,17 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	}
 
 	RHI::RHIShaderBindingPtr storageBinding = m_perInstanceData->GetOrAddShaderBinding("data");
+	if (GetSortingOrder() == RHI::ESortingOrder::BackToFront)
+	{
+		ProcessBackToFront(frameGraph,
+			transferCommandList,
+			commandList,
+			sceneView,
+			storageBinding,
+			QueueTag);
+		m_syncSharedResources.Unlock();
+		return;
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Prepare command list");
@@ -363,6 +762,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 
 		TVector<RHICommandListPtr> secondaryCommandLists(m_batches.Num() > numThreads ? (numThreads - 1) : 0);
+		TVector<RHI::DrawCallStats> secondaryDrawCallStats(secondaryCommandLists.Num());
 		TVector<Tasks::ITaskPtr> tasks;
 
 		auto vecBatches = m_batches.ToVector();
@@ -422,7 +822,17 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				return sets;
 			};
 
+		if (gpuMatricesData.Num() > 0)
+		{
+			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
+			commands->UpdateShaderBinding(transferCommandList, storageBinding,
+				gpuMatricesData.GetData(),
+				sizeof(PerInstanceData) * gpuMatricesData.Num(),
+				0);
+		}
+
 		commands->BeginDebugRegion(commandList, std::string(GetName()) + " QueueTag:" + QueueTag, DebugContext::Color_CmdGraphics);
+		SpinLock transferCommandListLock;
 
 		for (uint32_t i = 0; i < secondaryCommandLists.Num(); i++)
 		{
@@ -446,7 +856,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 					if (bCanDispatchCulling)
 					{
-						RHIRecordDrawCallGPUCulling(start,
+						secondaryDrawCallStats[i] = RHIRecordDrawCallGPUCulling(start,
 							end,
 							vecBatches,
 							cmdList, transferCommandList,
@@ -458,11 +868,12 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							scissor,
 							glm::vec2(0.0f, 1.0f),
 							cullingComputeShader, m_cullingIndirectBufferBinding[i + 1],
-							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings });
+							{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[i + 1], sceneView.m_frameBindings },
+							&transferCommandListLock);
 					}
 					else
 					{
-						RHIRecordDrawCall(start,
+						secondaryDrawCallStats[i] = RHIRecordDrawCall(start,
 							end,
 							vecBatches,
 							cmdList, transferCommandList,
@@ -471,7 +882,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 							storageIndex,
 							m_indirectBuffers[i + 1],
 							viewport,
-							scissor);
+							scissor,
+							glm::vec2(0.0f, 1.0f),
+							&m_cullingIndirectBufferBinding[i + 1],
+							&transferCommandListLock);
 					}
 
 					commands->EndCommandList(cmdList);
@@ -480,15 +894,6 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 			task->Run();
 			tasks.Add(task);
-		}
-
-		if (gpuMatricesData.Num() > 0)
-		{
-			SAILOR_PROFILE_SCOPE("Fill transfer command list with matrices data");
-			commands->UpdateShaderBinding(transferCommandList, storageBinding,
-				gpuMatricesData.GetData(),
-				sizeof(PerInstanceData) * gpuMatricesData.Num(),
-				0);
 		}
 
 		commands->ImageMemoryBarrier(commandList, colorAttachment->GetTarget(), EImageLayout::ColorAttachmentOptimal);
@@ -517,7 +922,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 			if (bCanDispatchCulling)
 			{
-				RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				m_drawCallStats += RHIRecordDrawCallGPUCulling((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 					(uint32_t)vecBatches.Num(),
 					vecBatches,
 					commandList, transferCommandList,
@@ -529,11 +934,12 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					scissor,
 					glm::vec2(0.0f, 1.0f),
 					cullingComputeShader, m_cullingIndirectBufferBinding[0],
-					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings });
+					{ m_computeMeshCullingBindings , m_perInstanceData, m_cullingIndirectBufferBinding[0], sceneView.m_frameBindings },
+					&transferCommandListLock);
 			}
 			else
 			{
-				RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
+				m_drawCallStats += RHIRecordDrawCall((uint32_t)secondaryCommandLists.Num() * (uint32_t)materialsPerThread,
 					(uint32_t)vecBatches.Num(),
 					vecBatches,
 					commandList, transferCommandList,
@@ -542,7 +948,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 					storageIndex,
 					m_indirectBuffers[0],
 					viewport,
-					scissor);
+					scissor,
+					glm::vec2(0.0f, 1.0f),
+					&m_cullingIndirectBufferBinding[0],
+					&transferCommandListLock);
 			}
 
 			commands->EndRenderPass(commandList);
@@ -553,6 +962,11 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			for (auto& task : tasks)
 			{
 				task->Wait();
+			}
+
+			for (const RHI::DrawCallStats& drawCallStats : secondaryDrawCallStats)
+			{
+				m_drawCallStats += drawCallStats;
 			}
 		}
 
@@ -578,6 +992,7 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 void RenderSceneNode::Clear()
 {
+	m_orderedDrawItems.Clear();
 	m_indirectBuffers.Clear();
 	m_perInstanceData.Clear();
 #if defined(__APPLE__)
