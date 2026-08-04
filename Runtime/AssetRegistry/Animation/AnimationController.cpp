@@ -546,6 +546,7 @@ bool AnimationControllerInstance::SetController(const AnimationControllerPtr& co
 	m_controller = controller;
 	m_parameterValues.Clear();
 	m_parameterIds.Clear();
+	m_parameterTypes.Clear();
 	m_activeStateIndex = InvalidIndex;
 	m_destinationStateIndex = InvalidIndex;
 	m_activeStateTime = 0.0f;
@@ -563,11 +564,13 @@ bool AnimationControllerInstance::SetController(const AnimationControllerPtr& co
 
 	m_parameterValues.Resize(m_controller->GetParameters().Num());
 	m_parameterIds.Resize(m_controller->GetParameters().Num());
+	m_parameterTypes.Resize(m_controller->GetParameters().Num());
 	for (size_t i = 0; i < m_controller->GetParameters().Num(); ++i)
 	{
 		const auto& definition = m_controller->GetParameters()[i];
 		auto& value = m_parameterValues[i];
 		m_parameterIds[i] = definition.m_id;
+		m_parameterTypes[i] = definition.m_type;
 		value.m_floatValue = definition.m_defaultFloat;
 		value.m_intValue = definition.m_defaultInt;
 		value.m_boolValue = definition.m_type == EAnimationParameterType::Trigger ?
@@ -826,10 +829,13 @@ bool AnimationControllerInstance::SynchronizeController()
 
 	TVector<AnimationParameterValue> previousValues = m_parameterValues;
 	TVector<AnimationControllerNodeId> previousIds = m_parameterIds;
+	TVector<EAnimationParameterType> previousTypes = m_parameterTypes;
 	m_parameterValues.Clear();
 	m_parameterIds.Clear();
+	m_parameterTypes.Clear();
 	m_parameterValues.Resize(m_controller->GetParameters().Num());
 	m_parameterIds.Resize(m_controller->GetParameters().Num());
+	m_parameterTypes.Resize(m_controller->GetParameters().Num());
 	for (size_t i = 0; i < m_controller->GetParameters().Num(); ++i)
 	{
 		const auto& definition = m_controller->GetParameters()[i];
@@ -839,9 +845,12 @@ bool AnimationControllerInstance::SynchronizeController()
 		value.m_boolValue = definition.m_type == EAnimationParameterType::Trigger ?
 			false : definition.m_defaultBool;
 		m_parameterIds[i] = definition.m_id;
+		m_parameterTypes[i] = definition.m_type;
 		for (size_t previousIndex = 0; previousIndex < previousIds.Num(); ++previousIndex)
 		{
-			if (previousIds[previousIndex] == definition.m_id)
+			if (previousIds[previousIndex] == definition.m_id &&
+				previousIndex < previousTypes.Num() &&
+				previousTypes[previousIndex] == definition.m_type)
 			{
 				value = previousValues[previousIndex];
 				break;

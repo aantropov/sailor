@@ -409,11 +409,44 @@ namespace
 		Require(instance.SetFloat("Speed", 0.25f) && instance.SetTrigger("Jump"),
 			"hot reload must rebind typed parameters after source order changes");
 
+		for (auto& parameter : asset.GetParameters())
+		{
+			if (parameter.m_id == 1)
+			{
+				parameter.m_type = EAnimationParameterType::Bool;
+				parameter.m_defaultBool = true;
+				break;
+			}
+		}
+		asset.GetTransitions()[0].m_conditions[0].m_operation =
+			EAnimationConditionOperation::Equal;
+		asset.GetTransitions()[0].m_conditions[0].m_boolValue = true;
+		AnimationTransitionDefinition resetChangedType;
+		resetChangedType.m_id = 2000;
+		resetChangedType.m_fromStateId = 200;
+		resetChangedType.m_toStateId = 100;
+		resetChangedType.m_duration = 0.0f;
+		resetChangedType.m_conditions = {
+			AnimationTransitionCondition{
+				.m_parameterId = 1,
+				.m_operation = EAnimationConditionOperation::Equal,
+				.m_boolValue = true
+			}
+		};
+		asset.GetTransitions().Add(std::move(resetChangedType));
+		Require(controller->Initialize(asset),
+			"a compatible graph with a changed parameter type must hot reload");
+		instance.Tick(0.0f, 1.0f);
+		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100 &&
+			!instance.SetFloat("Speed", 0.5f) && instance.SetBool("Speed", false),
+			"hot reload must reset a stable parameter id to its new typed default");
+
+		const uint64_t lastValidRevision = controller->GetRevision();
 		asset.GetStates()[1].m_id = asset.GetStates()[0].m_id;
 		TVector<std::string> errors;
 		Require(!controller->Initialize(asset, &errors) &&
-			controller->GetRevision() == previousRevision + 1 &&
-			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 200,
+			controller->GetRevision() == lastValidRevision &&
+			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100,
 			"an invalid hot reload must retain the last valid immutable runtime graph");
 
 		instance = AnimationControllerInstance{};

@@ -216,6 +216,7 @@ namespace Sailor
 		AnimationControllerPtr m_controller;
 		TVector<AnimationParameterValue> m_parameterValues;
 		TVector<AnimationControllerNodeId> m_parameterIds;
+		TVector<EAnimationParameterType> m_parameterTypes;
 		uint32_t m_activeStateIndex = InvalidIndex;
 		uint32_t m_destinationStateIndex = InvalidIndex;
 		AnimationControllerNodeId m_activeStateId = InvalidAnimationControllerNodeId;
