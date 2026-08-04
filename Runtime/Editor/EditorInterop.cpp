@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
@@ -574,6 +575,93 @@ bool App::CreateEditorGameObject(
 
 			InstanceId createdInstanceId;
 			if (!editor->CreateGameObject(parentInstanceId, preferredInstanceId, createdInstanceId))
+			{
+				return false;
+			}
+
+			SetInteropString(createdInstanceId.ToString(), outInstanceId);
+			return true;
+		});
+}
+
+bool App::CreateEditorModelInstance(
+	const char* strModelFileId,
+	const char* strName,
+	const char* strParentInstanceId,
+	bool bCreateHierarchy,
+	bool bHasWorldPosition,
+	float worldX,
+	float worldY,
+	float worldZ,
+	const char* strPreferredInstanceId,
+	char** outInstanceId)
+{
+	if (!strModelFileId || !strName || !outInstanceId)
+	{
+		return false;
+	}
+
+	outInstanceId[0] = nullptr;
+	FileId modelFileId;
+	modelFileId.Deserialize(YAML::Node(strModelFileId));
+	auto modelImporter = GetSubmodule<ModelImporter>();
+	ModelPtr model;
+	if (!modelFileId ||
+		!modelImporter ||
+		!modelImporter->LoadModel_Immediate(modelFileId, model) ||
+		!model ||
+		!model->IsStructurallyReady())
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot create editor model instance '%s': model '%s' could not be loaded.",
+			strName,
+			strModelFileId);
+		return false;
+	}
+
+	const std::string name = strName;
+	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
+	const std::string preferredInstanceIdValue = strPreferredInstanceId ? strPreferredInstanceId : "";
+	return ExecuteOnEngineMainThread<bool>(false, [
+		model,
+		name,
+		parentInstanceIdValue,
+		preferredInstanceIdValue,
+		bCreateHierarchy,
+		bHasWorldPosition,
+		worldX,
+		worldY,
+		worldZ,
+		outInstanceId]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			InstanceId parentInstanceId;
+			if (!TryParseOptionalParent(parentInstanceIdValue, parentInstanceId))
+			{
+				return false;
+			}
+
+			InstanceId preferredInstanceId;
+			if (!TryParseOptionalGameObjectId(preferredInstanceIdValue, preferredInstanceId))
+			{
+				return false;
+			}
+
+			const glm::vec3 worldPosition(worldX, worldY, worldZ);
+			InstanceId createdInstanceId;
+			if (!editor->CreateModelInstance(
+					model,
+					name,
+					parentInstanceId,
+					bCreateHierarchy,
+					bHasWorldPosition ? &worldPosition : nullptr,
+					preferredInstanceId,
+					createdInstanceId))
 			{
 				return false;
 			}

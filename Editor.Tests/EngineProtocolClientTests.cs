@@ -167,6 +167,111 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task CreateModelInstanceAsync_SendsAtomicCreationRequest()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.InstanceIdResult =
+                    new InstanceIdResult
+                    {
+                        Succeeded = true,
+                        InstanceId = "ROOT-ID"
+                    });
+        });
+        var worldPosition = new EngineProtocolVector4(
+            1.0f,
+            2.0f,
+            3.0f,
+            1.0f);
+
+        var result = await client.CreateModelInstanceAsync(
+            "MODEL-ID",
+            "Bistro",
+            "PARENT-ID",
+            createHierarchy: true,
+            worldPosition,
+            "ROOT-ID");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("ROOT-ID", result.InstanceId);
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.CreateModelInstance,
+            capturedRequest.CommandCase);
+        var request = capturedRequest.CreateModelInstance;
+        Assert.Equal("MODEL-ID", request.ModelFileId);
+        Assert.Equal("Bistro", request.Name);
+        Assert.Equal("PARENT-ID", request.ParentInstanceId);
+        Assert.True(request.CreateHierarchy);
+        Assert.True(request.ApplyWorldPosition);
+        Assert.Equal(1.0f, request.WorldPosition.X);
+        Assert.Equal(2.0f, request.WorldPosition.Y);
+        Assert.Equal(3.0f, request.WorldPosition.Z);
+        Assert.Equal(1.0f, request.WorldPosition.W);
+        Assert.Equal("ROOT-ID", request.PreferredInstanceId);
+    }
+
+    [Fact]
+    public async Task CreateModelInstanceAsync_FlatModeOmitsWorldPosition()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.InstanceIdResult =
+                    new InstanceIdResult());
+        });
+
+        await client.CreateModelInstanceAsync(
+            "MODEL-ID",
+            "Bistro",
+            string.Empty,
+            createHierarchy: false,
+            worldPosition: null,
+            "ROOT-ID");
+
+        Assert.NotNull(capturedRequest);
+        var request = capturedRequest.CreateModelInstance;
+        Assert.False(request.CreateHierarchy);
+        Assert.False(request.ApplyWorldPosition);
+        Assert.Null(request.WorldPosition);
+    }
+
+    [Fact]
+    public async Task CreateModelInstanceAsync_RejectsInvalidWorldPosition()
+    {
+        var invokeCount = 0;
+        var client = CreateClient(request =>
+        {
+            invokeCount++;
+            return Success(
+                request,
+                response => response.EmptyResult = new Empty());
+        });
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.CreateModelInstanceAsync(
+                "MODEL-ID",
+                "Bistro",
+                string.Empty,
+                createHierarchy: true,
+                new EngineProtocolVector4(
+                    float.NaN,
+                    0.0f,
+                    0.0f,
+                    1.0f),
+                "ROOT-ID"));
+
+        Assert.Equal(0, invokeCount);
+    }
+
+    [Fact]
     public async Task InvokeAsync_RejectsMalformedTransportResponse()
     {
         var client = CreateRawClient(_ => [0xFF]);
@@ -925,6 +1030,34 @@ public sealed class EngineProtocolClientTests
                 "preferred"),
             () => client.CreateGameObjectAsync(
                 "parent",
+                "preferred\0id"),
+            () => client.CreateModelInstanceAsync(
+                "model\0id",
+                "Bistro",
+                "parent",
+                true,
+                null,
+                "preferred"),
+            () => client.CreateModelInstanceAsync(
+                "model",
+                "Bis\0tro",
+                "parent",
+                true,
+                null,
+                "preferred"),
+            () => client.CreateModelInstanceAsync(
+                "model",
+                "Bistro",
+                "parent\0id",
+                true,
+                null,
+                "preferred"),
+            () => client.CreateModelInstanceAsync(
+                "model",
+                "Bistro",
+                "parent",
+                true,
+                null,
                 "preferred\0id"),
             () => client.DestroyObjectAsync("object\0id"),
             () => client.ResetComponentToDefaultsAsync(

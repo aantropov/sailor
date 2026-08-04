@@ -261,8 +261,15 @@ static class Templates
             if (fileOpen != null)
             {
                 var AssetService = MauiProgram.GetService<AssetsService>();
-                var asset = AssetService.Files.Find((el) => el.Asset.FullName == fileOpen.FullPath);
-                setter((TBindingContext)(sender as Button).BindingContext, asset.FileId is FileId id ? id : default);
+                var asset = AssetService.Assets.Values.FirstOrDefault(el =>
+                    el.Asset is not null &&
+                    string.Equals(
+                        el.Asset.FullName,
+                        fileOpen.FullPath,
+                        StringComparison.Ordinal));
+                setter(
+                    (TBindingContext)(sender as Button).BindingContext,
+                    asset?.FileId is FileId id ? id : default);
             }
         };
 

@@ -279,6 +279,23 @@ public sealed class WorkflowProjectionTests
             populate,
             StringComparison.Ordinal);
 
+        AssertInOrder(
+            populate,
+            "foreach (var component in prefab.Components)",
+            "component.Initialize();",
+            "foreach (var go in prefab.GameObjects)");
+        Assert.Equal(1, CountOccurrences(populate, "component.Initialize();"));
+
+        var worldConverter = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "World.cs");
+        var readYaml = Slice(
+            worldConverter,
+            "public object ReadYaml(",
+            "public void WriteYaml(");
+        Assert.DoesNotContain(".Initialize();", readYaml, StringComparison.Ordinal);
+
         Assert.Contains(
             "FileId = FileId is null",
             prefabSource,
@@ -1375,21 +1392,24 @@ public sealed class WorkflowProjectionTests
             StringComparison.Ordinal);
         AssertInOrder(
             modelCommand,
-            "CreateGameObjectAsync(",
-            "AddComponentAsync(",
-            "CommitChangesAsync(",
-            "CommitChangesAsync(",
-            "RefreshCurrentWorldAuthoritativelyAsync(");
+            "RefreshAndCheckRootAbsentAsync(",
+            "RequestCreateModelInstanceAsync(",
+            "RefreshCurrentWorldAuthoritativelyAsync(",
+            "MatchesRootProjection(");
         Assert.Contains(
-            "\"Sailor::MeshRendererComponent\"",
+            "bool recreateHierarchy = true",
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
-            "new ObjectPtr",
+            "_recreateHierarchy,",
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
-            "new FileId(_modelFileId.Value)",
+            "_worldPosition,",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_ownedGameObjectId,",
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
@@ -1401,28 +1421,6 @@ public sealed class WorkflowProjectionTests
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
-            "RandomNumberGenerator.GetBytes(8)",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "initialParentId,\n" +
-            "                _ownedGameObjectId,",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "MeshRendererComponentTypeName,\n" +
-            "                ownedComponentId,",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "RefreshAndCheckRootAbsentAsync(",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "MatchesFinalProjection(",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
             "TryResolveWorldPosition(",
             modelCommand,
             StringComparison.Ordinal);
@@ -1431,26 +1429,127 @@ public sealed class WorkflowProjectionTests
             modelCommand,
             StringComparison.Ordinal);
         Assert.Contains(
-            "model.FileId.Value,\n" +
-            "                _modelFileId.Value",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "rollback could not confirm owned GameObject",
-            modelCommand,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "projectedComponents.Count != 1",
+            "_lastCreationFailureDiagnostic",
             modelCommand,
             StringComparison.Ordinal);
         Assert.DoesNotContain(
-            "CreateModelGameObjectAsync(",
+            "RequestCreateGameObjectAsync(",
             modelCommand,
             StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "RequestAddComponentAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "CommitChangesAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "GetModelHierarchyAsync(",
+            modelCommand,
+            StringComparison.Ordinal);
+
         Assert.Contains(
             "public ValueTask<CommandResult> UndoAsync(",
             prefabCommand,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ModelInstanceProtocol_CreatesHierarchyAtomicallyInsideEngine()
+    {
+        var protocol = ReadRepositoryFile(
+            "Protocol",
+            "editor_engine.proto");
+        var client = ReadRepositoryFile(
+            "Editor",
+            "Protocol",
+            "EngineProtocolClient.cs");
+        var service = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var protocolAdapter = ReadRepositoryFile(
+            "Lib",
+            "EditorEngineProtocol.cpp");
+        var interop = ReadRepositoryFile(
+            "Runtime",
+            "Editor",
+            "EditorInterop.cpp");
+        var runtimeEditor = ReadRepositoryFile(
+            "Runtime",
+            "Submodules",
+            "Editor.cpp");
+        var createRuntime = Slice(
+            runtimeEditor,
+            "bool Editor::CreateModelInstance(",
+            "bool Editor::DestroyObject(");
+        var createInterop = Slice(
+            interop,
+            "bool App::CreateEditorModelInstance(",
+            "bool App::DestroyEditorObject(");
+
+        Assert.Contains(
+            "CreateModelInstanceRequest create_model_instance = 58;",
+            protocol,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "bool create_hierarchy = 4;",
+            protocol,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CreateModelInstance = request",
+            client,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "RequestCreateModelInstanceAsync(",
+            service,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "case ProtocolRequest::kCreateModelInstance:",
+            protocolAdapter,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            createInterop,
+            "LoadModel_Immediate(modelFileId, model)",
+            "ExecuteOnEngineMainThread<bool>(",
+            "editor->CreateModelInstance(");
+        AssertInOrder(
+            createRuntime,
+            "LoadDefaultMaterials(",
+            "m_world->Instantiate(name",
+            "root->SetParent(parentGameObject)",
+            "TrySetWorldPosition(root, *worldPosition)",
+            "bCreateHierarchy && IsEditableModelHierarchyValid(*model)");
+        Assert.Contains(
+            "Model::AllMeshes,",
+            createRuntime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "rendererData.GetMaterials() = defaultMaterials;",
+            runtimeEditor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "modelNode.m_parentIndex >= 0",
+            createRuntime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "modelNode.m_meshIndex,",
+            createRuntime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "transform.SetPosition(",
+            createRuntime,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "rollback();",
+            createRuntime,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            createRuntime,
+            "outInstanceId = root->GetInstanceId();",
+            "NotifyManagedObjectMutation(outInstanceId);",
+            "return true;");
     }
 
     [Fact]

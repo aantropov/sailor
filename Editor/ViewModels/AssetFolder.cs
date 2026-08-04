@@ -8,4 +8,6 @@ public class AssetFolder
     public int ProjectRootId { get; set; }
     public string FullPath { get; set; } = string.Empty;
     public bool IsReadOnly { get; set; }
+    public bool IsLoaded { get; set; }
+    public bool HasChildren { get; set; }
 }

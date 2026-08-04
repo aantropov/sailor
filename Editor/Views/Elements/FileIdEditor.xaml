@@ -31,7 +31,11 @@
         VerticalOptions="Center"
         HorizontalOptions="Start"
         Margin="10,0,0,0"
-        Grid.Column="3"/>
+        Grid.Column="3">
+            <Label.Behaviors>
+                <controls:FileIdSelectBehavior BoundProperty="{Binding FileId}"/>
+            </Label.Behaviors>
+        </Label>
     </Grid>
     
 </ContentView>

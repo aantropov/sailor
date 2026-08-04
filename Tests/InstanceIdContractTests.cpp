@@ -119,6 +119,8 @@ namespace
 				const InstanceId component(componentPart, parent);
 				Require(!component.IsGameObjectId(), "a component ID must not be classified as a direct game-object ID");
 				Require(component.ComponentId() == componentPart, "component IDs must preserve legacy 16- or 32-character prefixes");
+				Require(component.ComponentId().IsGameObjectId() == componentPart.IsGameObjectId(),
+					"extracted component prefixes must preserve their standalone classification");
 				Require(component.GameObjectId() == parent, "component IDs must resolve their legacy or canonical parent suffix");
 			}
 		}

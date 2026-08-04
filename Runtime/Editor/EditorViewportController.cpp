@@ -447,12 +447,13 @@ bool EditorViewport::ResolveGameObjectBounds(
 	{
 		auto meshRenderer = component.DynamicCast<MeshRendererComponent>();
 		const ModelPtr model = meshRenderer ? meshRenderer->GetModel() : ModelPtr{};
-		if (!model || !model->IsReady() || !model->GetBoundsAABB().IsValid())
+		if (!model || !model->IsReady())
 		{
 			continue;
 		}
 
-		Math::AABB meshBounds = model->GetBoundsAABB();
+		Math::AABB meshBounds =
+			model->GetBoundsAABB(meshRenderer->GetMeshIndex());
 		meshBounds.Apply(worldMatrix);
 		if (!meshBounds.IsValid())
 		{

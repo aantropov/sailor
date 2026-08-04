@@ -49,6 +49,7 @@ namespace Sailor::RHI
 		size_t m_frame{};
 
 		TVector<RHIMeshPtr> m_meshes;
+		TVector<glm::mat4> m_meshModelMatrices;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		TVector<size_t> m_renderQueueTags;
 #if defined(__APPLE__)

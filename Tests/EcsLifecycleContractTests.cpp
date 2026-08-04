@@ -195,6 +195,47 @@ namespace
 		}
 	};
 
+	class EditorModelInstanceTestModel final : public Model
+	{
+	public:
+
+		EditorModelInstanceTestModel() : Model(FileId::Invalid) {}
+
+		void SetHierarchy(TVector<Node> nodes, bool bSupportsEditableHierarchy)
+		{
+			m_nodes = std::move(nodes);
+			for (const auto& node : m_nodes)
+			{
+				if (node.m_meshIndex >= 0 &&
+					static_cast<uint32_t>(node.m_meshIndex) >=
+						m_sourceMeshes.Num())
+				{
+					m_sourceMeshes.Resize(
+						static_cast<uint32_t>(node.m_meshIndex) + 1);
+				}
+
+				if (node.m_meshIndex >= 0)
+				{
+					auto& sourceMesh = m_sourceMeshes[
+						static_cast<uint32_t>(node.m_meshIndex)];
+					if (sourceMesh.m_renderMeshIndices.IsEmpty())
+					{
+						sourceMesh.m_renderMeshIndices.Add(0);
+					}
+				}
+			}
+			m_bSupportsEditableHierarchy = bSupportsEditableHierarchy;
+			m_bIsReady.store(true, std::memory_order_release);
+		}
+
+		bool IsReady() const override
+		{
+			return m_bSimulatePendingGpuUpload ? false : Model::IsReady();
+		}
+
+		bool m_bSimulatePendingGpuUpload = false;
+	};
+
 	class PrefabDocumentTestAsset final : public Prefab
 	{
 	public:
@@ -400,6 +441,142 @@ namespace
 
 		const size_t second = system.RegisterComponent();
 		Require(second != reused, "a duplicate free-list entry must not hand out an active slot twice");
+	}
+
+	void TestEditorModelInstanceCreatesHierarchyOrFlatRenderer()
+	{
+		PrefabTestWorld world;
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+
+		auto model = TObjectPtr<EditorModelInstanceTestModel>::Make(
+			world.GetAllocator());
+		TVector<Model::Node> nodes;
+		Model::Node pivot;
+		pivot.m_name = "Pivot";
+		pivot.m_sourceNodeIndex = 3;
+		pivot.m_parentIndex = -1;
+		pivot.m_localTransform.m_position = glm::vec4(1.0f, 2.0f, 3.0f, 1.0f);
+		nodes.Add(pivot);
+
+		Model::Node firstMesh;
+		firstMesh.m_name = "FirstMesh";
+		firstMesh.m_sourceNodeIndex = 4;
+		firstMesh.m_parentIndex = 0;
+		firstMesh.m_meshIndex = 7;
+		firstMesh.m_localTransform.m_position = glm::vec4(4.0f, 5.0f, 6.0f, 1.0f);
+		nodes.Add(firstMesh);
+
+		Model::Node repeatedMesh = firstMesh;
+		repeatedMesh.m_name = "RepeatedMesh";
+		repeatedMesh.m_sourceNodeIndex = 5;
+		repeatedMesh.m_localTransform.m_position = glm::vec4(-4.0f, -5.0f, -6.0f, 1.0f);
+		nodes.Add(repeatedMesh);
+		model->SetHierarchy(std::move(nodes), true);
+		model->m_bSimulatePendingGpuUpload = true;
+
+		const InstanceId hierarchyRootId = InstanceId::GenerateNewInstanceId();
+		InstanceId createdRootId;
+		Require(
+			editor.CreateModelInstance(
+				model,
+				"HierarchyModel",
+				InstanceId::Invalid,
+				true,
+				nullptr,
+				hierarchyRootId,
+				createdRootId) &&
+			createdRootId == hierarchyRootId,
+			"hierarchy model creation must accept pending GPU uploads and preserve the preferred root id");
+
+		auto hierarchyRoot = world
+			.GetObjectByInstanceId(hierarchyRootId)
+			.DynamicCast<GameObject>();
+		Require(
+			hierarchyRoot &&
+			hierarchyRoot->GetName() == "HierarchyModel" &&
+			!hierarchyRoot->GetComponent<MeshRendererComponent>() &&
+			hierarchyRoot->GetChildren().Num() == 1,
+			"editable model creation must use an asset root without a mesh renderer");
+		auto pivotObject = hierarchyRoot->GetChildren()[0];
+		Require(
+			pivotObject->GetName() == "Pivot" &&
+			pivotObject->GetChildren().Num() == 2 &&
+			pivotObject->GetTransformComponent().GetPosition().x == 1.0f,
+			"editable model creation must preserve the node parent and local transform");
+		for (const auto& meshObject : pivotObject->GetChildren())
+		{
+			auto meshRenderer = meshObject->GetComponent<MeshRendererComponent>();
+			Require(
+				meshRenderer &&
+				meshRenderer->GetModel() == model &&
+				meshRenderer->GetMeshIndex() == 7,
+				"repeated source-mesh references must create independent renderers with the same source mesh index");
+		}
+
+		const InstanceId flatRootId = InstanceId::GenerateNewInstanceId();
+		Require(
+			editor.CreateModelInstance(
+				model,
+				"FlatModel",
+				InstanceId::Invalid,
+				false,
+				nullptr,
+				flatRootId,
+				createdRootId) &&
+			createdRootId == flatRootId,
+			"flat model creation must preserve the preferred root id");
+		auto flatRoot = world
+			.GetObjectByInstanceId(flatRootId)
+			.DynamicCast<GameObject>();
+		auto flatRenderer = flatRoot
+			? flatRoot->GetComponent<MeshRendererComponent>()
+			: MeshRendererComponentPtr{};
+		Require(
+			flatRoot &&
+			flatRoot->GetChildren().IsEmpty() &&
+			flatRenderer &&
+			flatRenderer->GetModel() == model &&
+			flatRenderer->GetMeshIndex() == Model::AllMeshes,
+			"flat model creation must attach the complete model at meshIndex -1");
+
+		auto largeModel = TObjectPtr<EditorModelInstanceTestModel>::Make(
+			world.GetAllocator());
+		TVector<Model::Node> largeNodes;
+		constexpr uint32_t c_numLargeNodes = 1696;
+		constexpr uint32_t c_numLargeMeshNodes = 1532;
+		largeNodes.Reserve(c_numLargeNodes);
+		for (uint32_t nodeIndex = 0; nodeIndex < c_numLargeNodes; ++nodeIndex)
+		{
+			Model::Node node;
+			node.m_name = "LargeNode_" + std::to_string(nodeIndex);
+			node.m_sourceNodeIndex = nodeIndex;
+			node.m_parentIndex = -1;
+			node.m_meshIndex = nodeIndex < c_numLargeMeshNodes ? 0 : Model::AllMeshes;
+			largeNodes.Add(std::move(node));
+		}
+		largeModel->SetHierarchy(std::move(largeNodes), true);
+
+		const InstanceId largeRootId = InstanceId::GenerateNewInstanceId();
+		Require(
+			editor.CreateModelInstance(
+				largeModel,
+				"LargeHierarchyModel",
+				InstanceId::Invalid,
+				true,
+				nullptr,
+				largeRootId,
+				createdRootId) &&
+			createdRootId == largeRootId,
+			"Bistro-scale hierarchy creation must preserve the preferred root id");
+		auto largeRoot = world
+			.GetObjectByInstanceId(largeRootId)
+			.DynamicCast<GameObject>();
+		Require(
+			largeRoot && largeRoot->GetChildren().Num() == c_numLargeNodes,
+			"Bistro-scale hierarchy creation must keep every source node");
+
+		world.Clear();
 	}
 
 	void TestPreferredEditorInstanceIdsArePreserved()
@@ -3349,6 +3526,7 @@ int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ComponentSlotsAreResetAndFreedOnce", TestComponentSlotsAreResetAndFreedOnce },
+		{ "EditorModelInstanceCreatesHierarchyOrFlatRenderer", TestEditorModelInstanceCreatesHierarchyOrFlatRenderer },
 		{ "PreferredEditorInstanceIdsArePreserved", TestPreferredEditorInstanceIdsArePreserved },
 		{ "TransformParentCleanupPreservesPendingReparent", TestTransformParentCleanupPreservesPendingReparent },
 		{ "EditorKeepWorldReparentUsesCurrentTransforms", TestEditorKeepWorldReparentUsesCurrentTransforms },

@@ -2,6 +2,7 @@
 
 #include "Containers/Vector.h"
 #include "Core/Defines.h"
+#include "Math/Transform.h"
 #include "RHI/Types.h"
 
 #include <glm/mat4x4.hpp>
@@ -60,6 +61,19 @@ namespace Sailor::GltfImporterUtils
 		glm::vec3 m_bakedVolumeScale{ 1.0f };
 	};
 
+	struct SceneNode
+	{
+		std::string m_name;
+		int32_t m_sourceNodeIndex = -1;
+		int32_t m_parentIndex = -1;
+		int32_t m_meshIndex = -1;
+		int32_t m_skinIndex = -1;
+		Math::Transform m_localTransform{};
+		glm::mat4 m_localMatrix{ 1.0f };
+		glm::mat4 m_worldMatrix{ 1.0f };
+		bool m_bTransformDecomposable = true;
+	};
+
 	SAILOR_SHARED_API MeshInstanceTransforms ResolveMeshInstanceTransforms(
 		const MeshInstance& instance,
 		float unitScale);
@@ -93,4 +107,9 @@ namespace Sailor::GltfImporterUtils
 	SAILOR_SHARED_API bool CollectMeshInstances(
 		const tinygltf::Model& model,
 		TVector<MeshInstance>& outInstances);
+
+	SAILOR_SHARED_API bool CollectSceneNodes(
+		const tinygltf::Model& model,
+		float unitScale,
+		TVector<SceneNode>& outNodes);
 }

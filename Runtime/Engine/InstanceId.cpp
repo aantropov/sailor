@@ -72,7 +72,7 @@ InstanceId::InstanceId(const InstanceId& inComponentId, const InstanceId& inGame
 	if (inGameObjectId)
 	{
 		std::string combinedId = inComponentId.ToString() + "_" + inGameObjectId.ToString();
-		m_instanceId = StringHash::Runtime(combinedId);
+		Assign(combinedId);
 	}
 	else
 	{
@@ -82,7 +82,7 @@ InstanceId::InstanceId(const InstanceId& inComponentId, const InstanceId& inGame
 
 void InstanceId::Deserialize(const YAML::Node& inData)
 {
-	m_instanceId = StringHash::Runtime(inData.as<std::string>());
+	Assign(inData.as<std::string>());
 }
 
 const std::string& InstanceId::ToString() const
@@ -111,7 +111,7 @@ InstanceId InstanceId::GenerateNewInstanceId()
 		<< std::setw(16) << randomNumber
 		<< std::setw(4) << randomSuffix;
 
-	newInstanceId.m_instanceId = StringHash::Runtime(ss.str());
+	newInstanceId.Assign(ss.str());
 
 	return newInstanceId;
 }
@@ -134,12 +134,12 @@ InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)
 	std::snprintf(buffer, sizeof(buffer), "%016llX", static_cast<unsigned long long>(randomNumber));
 #endif
 
-	newComponentInstanceId.m_instanceId = StringHash::Runtime(buffer);
+	newComponentInstanceId.Assign(buffer);
 
 	if (gameObjectId)
 	{
 		std::string combinedId = newComponentInstanceId.ToString() + "_" + gameObjectId.ToString();
-		newComponentInstanceId.m_instanceId = StringHash::Runtime(combinedId);
+		newComponentInstanceId.Assign(combinedId);
 	}
 
 	return newComponentInstanceId;
@@ -147,23 +147,23 @@ InstanceId InstanceId::GenerateNewComponentId(const InstanceId& gameObjectId)
 
 bool InstanceId::IsGameObjectId() const
 {
-	return IsHexGameObjectId(m_instanceId.ToString());
+	return m_kind == EKind::GameObject;
 }
 
 InstanceId InstanceId::GameObjectId() const
 {
-	const std::string& idString = m_instanceId.ToString();
-	std::string_view componentIdString;
-	std::string_view gameObjectIdString;
-	if (SplitComponentInstanceId(idString, componentIdString, gameObjectIdString))
-	{
-		InstanceId id{};
-		id.m_instanceId = StringHash::Runtime(std::string(gameObjectIdString));
-		return id;
-	}
-	else if (idString.find('_') == std::string::npos && IsGameObjectId())
+	if (m_kind == EKind::GameObject)
 	{
 		return *this;
+	}
+
+	if (m_kind == EKind::Component)
+	{
+		InstanceId result;
+		result.m_instanceId = m_gameObjectId;
+		result.m_gameObjectId = m_gameObjectId;
+		result.m_kind = EKind::GameObject;
+		return result;
 	}
 
 	return InstanceId::Invalid;
@@ -171,15 +171,42 @@ InstanceId InstanceId::GameObjectId() const
 
 InstanceId InstanceId::ComponentId() const
 {
-	const std::string& idString = m_instanceId.ToString();
-	std::string_view componentIdString;
-	std::string_view gameObjectIdString;
-	if (SplitComponentInstanceId(idString, componentIdString, gameObjectIdString))
+	if (m_kind == EKind::Component)
 	{
-		InstanceId id{};
-		id.m_instanceId = StringHash::Runtime(std::string(componentIdString));
-		return id;
+		InstanceId result;
+		result.m_instanceId = m_componentId;
+		if (m_bStandaloneComponentIsGameObjectId)
+		{
+			result.m_gameObjectId = m_componentId;
+			result.m_kind = EKind::GameObject;
+		}
+		return result;
 	}
 
 	return InstanceId::Invalid;
+}
+
+void InstanceId::Assign(std::string_view value)
+{
+	m_instanceId = StringHash::Runtime(value);
+	m_gameObjectId = {};
+	m_componentId = {};
+	m_kind = EKind::Invalid;
+	m_bStandaloneComponentIsGameObjectId = false;
+
+	std::string_view componentId;
+	std::string_view gameObjectId;
+	if (SplitComponentInstanceId(value, componentId, gameObjectId))
+	{
+		m_componentId = StringHash::Runtime(componentId);
+		m_gameObjectId = StringHash::Runtime(gameObjectId);
+		m_kind = EKind::Component;
+		m_bStandaloneComponentIsGameObjectId = IsHexGameObjectId(componentId);
+	}
+	else if (value.find('_') == std::string_view::npos &&
+		IsHexGameObjectId(value))
+	{
+		m_gameObjectId = m_instanceId;
+		m_kind = EKind::GameObject;
+	}
 }

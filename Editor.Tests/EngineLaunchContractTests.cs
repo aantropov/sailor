@@ -31,6 +31,7 @@ public class EngineLaunchContractTests
             Path.GetRelativePath(contentDirectory, Path.Combine(cacheDirectory, "Temp.world")),
             context.TempWorldRuntimePath);
         Assert.Equal(Path.Combine(cacheDirectory, "EditorTypes.yaml"), context.EditorTypesCacheFilePath);
+        Assert.Equal(Path.Combine(cacheDirectory, "AssetCache.yaml"), context.AssetCacheFilePath);
     }
 
     [Theory]
@@ -54,6 +55,7 @@ public class EngineLaunchContractTests
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Content"), context.ContentDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache"), context.CacheDirectory);
         Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache", "EditorTypes.yaml"), context.EditorTypesCacheFilePath);
+        Assert.Equal(Path.Combine(Path.GetFullPath(fallbackRoot), "Cache", "AssetCache.yaml"), context.AssetCacheFilePath);
         Assert.StartsWith("legacy-root:", context.WorkspaceIdentity, StringComparison.Ordinal);
     }
 

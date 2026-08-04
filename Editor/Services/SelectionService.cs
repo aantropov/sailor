@@ -101,6 +101,11 @@ namespace SailorEditor.Services
             {
                 if (obj is AssetFile selectedAssetFile)
                 {
+                    await selectedAssetFile.EnsureMetadataLoadedAsync(requestCancellation.Token);
+                    if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
+                    {
+                        return;
+                    }
                     await selectedAssetFile.PrepareInspectorResources().WaitAsync(requestCancellation.Token);
                     if (!IsCurrentRequest(requestVersion, requestEpoch, requestCancellation.Token))
                     {

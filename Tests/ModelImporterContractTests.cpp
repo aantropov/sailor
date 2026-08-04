@@ -4,6 +4,7 @@
 #include "Core/Utils.h"
 #include "Raytracing/MaterialUtils.h"
 #include "Raytracing/PathTracer.h"
+#include "Components/MeshRendererComponent.h"
 
 #include <cmath>
 #include <filesystem>
@@ -23,11 +24,14 @@ using namespace Sailor;
 
 namespace
 {
+	Model::MeshCpuData MakeTriangleMesh(uint32_t thirdIndex);
+
 	class ControllableMesh final : public RHI::RHIMesh
 	{
 	public:
 		bool IsReady() const override
 		{
+			++m_numIsReadyCalls;
 			return m_bReady;
 		}
 
@@ -36,8 +40,95 @@ namespace
 			m_bReady = bReady;
 		}
 
+		uint32_t GetNumIsReadyCalls() const
+		{
+			return m_numIsReadyCalls;
+		}
+
 	private:
 		bool m_bReady = false;
+		mutable uint32_t m_numIsReadyCalls = 0;
+	};
+
+	class HierarchyModelProbe final : public Model
+	{
+	public:
+		HierarchyModelProbe() : Model(FileId{})
+		{
+		}
+
+		void Configure()
+		{
+			auto firstRenderMesh = RHI::RHIMeshPtr::Make();
+			firstRenderMesh->m_bounds = Math::AABB(
+				glm::vec3(0.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+			firstRenderMesh->m_materialIndex = 3;
+			auto secondRenderMesh = RHI::RHIMeshPtr::Make();
+			secondRenderMesh->m_bounds = Math::AABB(
+				glm::vec3(10.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+			secondRenderMesh->m_materialIndex = 7;
+			m_meshes = {
+				std::move(firstRenderMesh),
+				std::move(secondRenderMesh)
+			};
+
+			m_cpuMeshes = {
+				MakeTriangleMesh(2),
+				MakeTriangleMesh(2)
+			};
+			for (auto& vertex : m_cpuMeshes[1].m_vertices)
+			{
+				vertex.m_position.x += 10.0f;
+			}
+
+			m_sourceMeshes.Resize(2);
+			m_sourceMeshes[0].m_renderMeshIndices = { 0 };
+			m_sourceMeshes[0].m_bounds = Math::AABB(
+				glm::vec3(0.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+			m_sourceMeshes[1].m_renderMeshIndices = { 1 };
+			m_sourceMeshes[1].m_bounds = Math::AABB(
+				glm::vec3(10.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+
+			RenderInstance first{};
+			first.m_renderMeshIndex = 0;
+			first.m_modelMatrix = glm::translate(
+				glm::mat4(1.0f),
+				glm::vec3(2.0f, 0.0f, 0.0f));
+			m_renderInstances.Add(first);
+			RenderInstance repeated = first;
+			repeated.m_modelMatrix = glm::translate(
+				glm::mat4(1.0f),
+				glm::vec3(4.0f, 0.0f, 0.0f));
+			m_renderInstances.Add(repeated);
+			RenderInstance second{};
+			second.m_renderMeshIndex = 1;
+			m_renderInstances.Add(second);
+		}
+
+		void ConfigureSparseSourceMeshes()
+		{
+			auto renderMesh = RHI::RHIMeshPtr::Make();
+			renderMesh->m_bounds = Math::AABB(
+				glm::vec3(0.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+			renderMesh->m_materialIndex = 5;
+			m_meshes = { std::move(renderMesh) };
+
+			m_cpuMeshes = { MakeTriangleMesh(2) };
+			m_sourceMeshes.Resize(3);
+			m_sourceMeshes[2].m_renderMeshIndices = { 0 };
+			m_sourceMeshes[2].m_bounds = Math::AABB(
+				glm::vec3(0.5f, 0.5f, 0.0f),
+				glm::vec3(0.5f, 0.5f, 0.0f));
+
+			RenderInstance instance{};
+			instance.m_renderMeshIndex = 0;
+			m_renderInstances = { std::move(instance) };
+		}
 	};
 
 	class PathTracerBasisProbe final : public Raytracing::PathTracer
@@ -152,6 +243,22 @@ namespace
 		secondMesh->SetReady(true);
 		Require(model.IsReady(),
 			"the model must become ready without another Flush once all uploads finish");
+		const uint32_t firstMeshReadyChecks = firstMesh->GetNumIsReadyCalls();
+		const uint32_t secondMeshReadyChecks = secondMesh->GetNumIsReadyCalls();
+		Require(model.IsReady(),
+			"a completed model must remain ready");
+		Require(
+			firstMesh->GetNumIsReadyCalls() == firstMeshReadyChecks &&
+				secondMesh->GetNumIsReadyCalls() == secondMeshReadyChecks,
+			"a completed model must not rescan every GPU mesh");
+
+		model.Flush();
+		Require(model.IsReady(),
+			"a flushed model with completed uploads must become ready again");
+		Require(
+			firstMesh->GetNumIsReadyCalls() > firstMeshReadyChecks &&
+				secondMesh->GetNumIsReadyCalls() > secondMeshReadyChecks,
+			"Flush must invalidate the cached GPU readiness");
 
 		Model emptyModel(FileId{});
 		emptyModel.Flush();
@@ -482,7 +589,7 @@ uniformsFloat:
 			"legacyMaterialPath",
 			"defaultMaterials[materialIndex]",
 			"std::filesystem::equivalent",
-			"GetAllAssetInfos<TextureAssetInfo>",
+			"GetAssetInfoIdsByTypeAndSource",
 			"TMap<int32_t, FileId> textureIdsByGltfIndex",
 			"ModelImporter::CreateTextureAsset(",
 			"generatedTextureVirtualPath",
@@ -611,6 +718,32 @@ uniformsFloat:
 		Require(mesh.ResolveMaterialIndex(0, 0) ==
 			(std::numeric_limits<size_t>::max)(),
 			"material resolution without materials must remain invalid");
+
+		const std::filesystem::path sourceRoot =
+			std::filesystem::path(__FILE__).parent_path().parent_path();
+		const std::string importer = ReadText(
+			sourceRoot /
+			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
+		const size_t sourceMeshContextOffset = importer.find(
+			"context.materialSlot = bShouldBatchByMaterial ?");
+		Require(sourceMeshContextOffset != std::string::npos,
+			"source mesh contexts must distinguish batched material indices from primitive slots");
+		const size_t sourceMeshContextEnd = importer.find(
+			"context.sourceMeshIndex =",
+			sourceMeshContextOffset);
+		Require(sourceMeshContextEnd != std::string::npos,
+			"source mesh material-slot assignment must remain bounded");
+		const std::string materialSlotAssignment = importer.substr(
+			sourceMeshContextOffset,
+			sourceMeshContextEnd - sourceMeshContextOffset);
+		Require(materialSlotAssignment.find(
+				"static_cast<uint32_t>(materialIndex)") !=
+				std::string::npos,
+			"material-batched source meshes must retain glTF material indices");
+		Require(materialSlotAssignment.find(
+				"static_cast<uint32_t>(outParsedMeshes.Num())") !=
+				std::string::npos,
+			"unbatched source meshes must retain global primitive material slots");
 	}
 
 	void TestDefaultMaterialLoadingPreservesSourceSlots()
@@ -920,6 +1053,128 @@ uniformsFloat:
 			"all extreme-range triangles must be retained");
 	}
 
+	void TestBuildBlasRetainsSourceMeshSubsets()
+	{
+		HierarchyModelProbe model;
+		model.Configure();
+		Require(model.BuildBLAS(),
+			"hierarchical model geometry must build a complete BLAS");
+		Require(model.GetBLASTriangles().Num() == 3,
+			"complete BLAS must retain repeated scene-node instances");
+		Require(model.HasBLAS(0) && model.HasBLAS(1),
+			"each source mesh must have an independently addressable BLAS");
+		Require(!model.HasBLAS(2) && !model.HasBLAS(Model::AllMeshes - 1),
+			"invalid source mesh selections must not resolve a BLAS");
+		Require(model.GetBLASTriangles(0).Num() == 1 &&
+			model.GetBLASTriangles(1).Num() == 1,
+			"source BLAS data must contain geometry once, independent of scene instances");
+		RequireVec3Near(
+			model.GetBLASTriangles(0)[0].m_vertices[0],
+			glm::vec3(0.0f),
+			"source mesh BLAS must remain in node-local space");
+		RequireVec3Near(
+			model.GetBLASTriangles()[0].m_vertices[0],
+			glm::vec3(2.0f, 0.0f, 0.0f),
+			"complete model BLAS must apply the first node transform");
+		RequireVec3Near(
+			model.GetBLASTriangles()[1].m_vertices[0],
+			glm::vec3(4.0f, 0.0f, 0.0f),
+			"complete model BLAS must apply repeated-node transforms independently");
+	}
+
+	void TestCollectRenderDataSelectsSourceMeshByGltfIndex()
+	{
+		HierarchyModelProbe model;
+		model.Configure();
+		TVector<RHI::RHIMeshPtr> meshes;
+		TVector<glm::mat4> matrices;
+		Math::AABB bounds;
+
+		Require(model.CollectRenderData(
+				Model::AllMeshes,
+				meshes,
+				matrices,
+				bounds),
+			"full-model selection must resolve active scene instances");
+		Require(meshes.Num() == 3 && matrices.Num() == 3,
+			"full-model selection must preserve repeated source-mesh nodes");
+		Require(meshes[0] == meshes[1] && meshes[0] != meshes[2],
+			"repeated nodes must reference one uploaded source mesh");
+		Require(meshes[0]->m_materialIndex == 3 &&
+			meshes[2]->m_materialIndex == 7,
+			"source material slots must remain attached to render meshes");
+		RequireVec3Near(glm::vec3(matrices[0][3]),
+			glm::vec3(2.0f, 0.0f, 0.0f),
+			"first full-model instance must retain its node transform");
+		RequireVec3Near(glm::vec3(matrices[1][3]),
+			glm::vec3(4.0f, 0.0f, 0.0f),
+			"repeated full-model instance must retain its own node transform");
+		RequireVec3Near(bounds.m_min,
+			glm::vec3(2.0f, 0.0f, 0.0f),
+			"full-model bounds must include the first transformed instance");
+		RequireVec3Near(bounds.m_max,
+			glm::vec3(11.0f, 1.0f, 0.0f),
+			"full-model bounds must include every transformed instance");
+
+		Require(model.CollectRenderData(0, meshes, matrices, bounds),
+			"source mesh zero must be selectable by glTF mesh index");
+		Require(meshes.Num() == 1 && matrices.Num() == 1 &&
+			meshes[0]->m_materialIndex == 3,
+			"one source selection must return only its render parts");
+		RequireVec3Near(glm::vec3(matrices[0][3]), glm::vec3(0.0f),
+			"source selection must stay local to its owning GameObject");
+		RequireVec3Near(bounds.m_min, glm::vec3(0.0f),
+			"source selection must use local source bounds");
+		RequireVec3Near(model.GetBoundsAABB(0).m_min,
+			glm::vec3(0.0f),
+			"source mesh zero must expose only its own local bounds");
+		RequireVec3Near(model.GetBoundsAABB(1).m_min,
+			glm::vec3(10.0f, 0.0f, 0.0f),
+			"source mesh one must expose independently addressable local bounds");
+		Require(!model.GetBoundsAABB(2).IsValid(),
+			"invalid source mesh selections must not fall back to full-model bounds");
+		Require(!model.CollectRenderData(2, meshes, matrices, bounds) &&
+			meshes.IsEmpty() && matrices.IsEmpty(),
+			"out-of-range glTF mesh indices must fail closed");
+	}
+
+	void TestEmptySourceMeshesDoNotCompactGltfIndices()
+	{
+		HierarchyModelProbe model;
+		model.ConfigureSparseSourceMeshes();
+		Require(!model.IsSourceMeshIndexValid(0) &&
+			!model.IsSourceMeshIndexValid(1) &&
+			model.IsSourceMeshIndexValid(2),
+			"empty source meshes must retain their glTF index slots");
+
+		TVector<RHI::RHIMeshPtr> meshes;
+		TVector<glm::mat4> matrices;
+		Math::AABB bounds;
+		Require(model.CollectRenderData(2, meshes, matrices, bounds) &&
+			meshes.Num() == 1 && matrices.Num() == 1 &&
+			meshes[0]->m_materialIndex == 5,
+			"a later non-empty glTF mesh must remain selectable by its source index");
+		Require(!model.CollectRenderData(1, meshes, matrices, bounds) &&
+			meshes.IsEmpty() && matrices.IsEmpty(),
+			"selecting an empty source mesh must render nothing without aliasing a later mesh");
+
+		Require(model.BuildBLAS() &&
+			!model.HasBLAS(0) &&
+			!model.HasBLAS(1) &&
+			model.HasBLAS(2),
+			"path-tracer source BLAS slots must preserve the same sparse glTF indices");
+	}
+
+	void TestMeshRendererMeshIndexDefaultsWithoutEcsOwner()
+	{
+		MeshRendererComponent component;
+		Require(component.GetMeshIndex() == Model::AllMeshes,
+			"MeshRenderer meshIndex CDO value must select the complete model");
+		component.SetMeshIndex(7);
+		Require(component.GetMeshIndex() == 7,
+			"MeshRenderer must retain meshIndex before ECS initialization");
+	}
+
 	void TestCollectMeshInstancesUsesActiveSceneHierarchy()
 	{
 		tinygltf::Model model;
@@ -996,6 +1251,107 @@ uniformsFloat:
 				glm::vec4(0.0f, 0.0f, 0.0f, 1.0f)),
 			glm::vec3(-8.0f, 0.0f, 0.0f),
 			"node matrix must take precedence over TRS properties");
+	}
+
+	void TestCollectSceneNodesPreservesEditableHierarchy()
+	{
+		tinygltf::Model model;
+		model.meshes.resize(1);
+		model.meshes[0].name = "SharedMesh";
+		model.nodes.resize(3);
+		model.nodes[0].name = "Root";
+		model.nodes[0].translation = { 10.0, 0.0, 0.0 };
+		model.nodes[0].children = { 1 };
+		model.nodes[1].name = "Child";
+		model.nodes[1].mesh = 0;
+		model.nodes[1].translation = { 0.0, 2.0, 0.0 };
+		model.nodes[1].scale = { 2.0, 1.0, 1.0 };
+		model.nodes[2].mesh = 0;
+		model.nodes[2].translation = { -3.0, 0.0, 0.0 };
+		model.nodes[2].scale = { -1.0, 2.0, 0.5 };
+		tinygltf::Scene scene;
+		scene.nodes = { 0, 2 };
+		model.scenes.push_back(std::move(scene));
+		model.defaultScene = 0;
+
+		TVector<GltfImporterUtils::SceneNode> nodes;
+		Require(GltfImporterUtils::CollectSceneNodes(model, 2.0f, nodes),
+			"active glTF scene must expose an editable node hierarchy");
+		Require(nodes.Num() == 3,
+			"all active scene nodes, including empty transform nodes, must be retained");
+		Require(nodes[0].m_sourceNodeIndex == 0 &&
+			nodes[0].m_parentIndex == -1 &&
+			nodes[0].m_meshIndex == -1 &&
+			nodes[0].m_name == "Root",
+			"root node identity and empty-mesh state must be preserved");
+		Require(nodes[1].m_sourceNodeIndex == 1 &&
+			nodes[1].m_parentIndex == 0 &&
+			nodes[1].m_meshIndex == 0 &&
+			nodes[1].m_name == "Child",
+			"child parent and source mesh indices must remain stable");
+		Require(nodes[2].m_parentIndex == -1 &&
+			nodes[2].m_meshIndex == 0,
+			"multiple roots may reference the same source mesh independently");
+		RequireVec3Near(
+			glm::vec3(nodes[0].m_localTransform.m_position),
+			glm::vec3(20.0f, 0.0f, 0.0f),
+			"model unit scale must apply to root local translation");
+		RequireVec3Near(
+			glm::vec3(nodes[1].m_localTransform.m_position),
+			glm::vec3(0.0f, 4.0f, 0.0f),
+			"model unit scale must apply once to child local translation");
+		RequireVec3Near(
+			glm::vec3(nodes[1].m_worldMatrix[3]),
+			glm::vec3(20.0f, 4.0f, 0.0f),
+			"scaled local transforms must compose into the original scene layout");
+		Require(nodes[0].m_bTransformDecomposable &&
+			nodes[1].m_bTransformDecomposable &&
+			nodes[2].m_bTransformDecomposable,
+			"ordinary TRS nodes must be safe to expose as editable GameObjects");
+		Require(
+			nodes[2].m_localTransform.m_scale.x *
+				nodes[2].m_localTransform.m_scale.y *
+				nodes[2].m_localTransform.m_scale.z < 0.0f,
+			"mirrored node transforms must retain one negative scale axis");
+		RequireVec3Near(
+			glm::vec3(nodes[2].m_localTransform.Matrix() *
+				glm::vec4(1.0f)),
+			glm::vec3(nodes[2].m_localMatrix * glm::vec4(1.0f)),
+			"mirrored non-uniform TRS must round-trip through editable hierarchy data");
+
+		tinygltf::Model shearedModel;
+		shearedModel.meshes.resize(1);
+		shearedModel.nodes.resize(1);
+		shearedModel.nodes[0].mesh = 0;
+		shearedModel.nodes[0].matrix = {
+			1.0, 0.0, 0.0, 0.0,
+			0.5, 1.0, 0.0, 0.0,
+			0.0, 0.0, 1.0, 0.0,
+			0.0, 0.0, 0.0, 1.0
+		};
+		tinygltf::Scene shearedScene;
+		shearedScene.nodes = { 0 };
+		shearedModel.scenes.push_back(std::move(shearedScene));
+		shearedModel.defaultScene = 0;
+		Require(GltfImporterUtils::CollectSceneNodes(
+				shearedModel,
+				1.0f,
+				nodes) &&
+			!nodes[0].m_bTransformDecomposable,
+			"sheared matrices must force the full-model fallback instead of losing transform data");
+
+		tinygltf::Model legacyModel;
+		legacyModel.meshes.resize(2);
+		legacyModel.meshes[1].name = "NamedMesh";
+		Require(GltfImporterUtils::CollectSceneNodes(
+				legacyModel,
+				3.0f,
+				nodes) &&
+			nodes.Num() == 2 &&
+			nodes[0].m_name == "Mesh_0" &&
+			nodes[1].m_name == "NamedMesh" &&
+			nodes[0].m_sourceNodeIndex == -1,
+			"mesh-only assets must receive stable synthetic hierarchy nodes");
 	}
 
 	void TestUnitScaleDoesNotShrinkImportedDirections()
@@ -1129,7 +1485,12 @@ int main()
 		{ "BuildBlasRejectsIncompleteAndNonFiniteGeometry", TestBuildBlasRejectsIncompleteAndNonFiniteGeometry },
 		{ "BuildBlasSanitizesExtremeVertexFrames", TestBuildBlasSanitizesExtremeVertexFrames },
 		{ "BuildBlasHandlesExtremeCentroidRange", TestBuildBlasHandlesExtremeCentroidRange },
+		{ "BuildBlasRetainsSourceMeshSubsets", TestBuildBlasRetainsSourceMeshSubsets },
+		{ "CollectRenderDataSelectsSourceMeshByGltfIndex", TestCollectRenderDataSelectsSourceMeshByGltfIndex },
+		{ "EmptySourceMeshesDoNotCompactGltfIndices", TestEmptySourceMeshesDoNotCompactGltfIndices },
+		{ "MeshRendererMeshIndexDefaultsWithoutEcsOwner", TestMeshRendererMeshIndexDefaultsWithoutEcsOwner },
 		{ "CollectMeshInstancesUsesActiveSceneHierarchy", TestCollectMeshInstancesUsesActiveSceneHierarchy },
+		{ "CollectSceneNodesPreservesEditableHierarchy", TestCollectSceneNodesPreservesEditableHierarchy },
 		{ "UnitScaleDoesNotShrinkImportedDirections", TestUnitScaleDoesNotShrinkImportedDirections },
 		{ "CollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes", TestCollectMeshInstancesRejectsCyclesAndPreservesLegacyMeshes },
 		{ "CollectMeshInstancesHandlesDeepHierarchyIteratively", TestCollectMeshInstancesHandlesDeepHierarchyIteratively }

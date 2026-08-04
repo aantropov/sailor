@@ -596,6 +596,48 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.CreateGameObject));
 
+    public async Task<EngineProtocolCreationResult> CreateModelInstanceAsync(
+        string modelFileId,
+        string name,
+        string parentInstanceId,
+        bool createHierarchy,
+        EngineProtocolVector4? worldPosition,
+        string preferredInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new CreateModelInstanceRequest
+        {
+            ModelFileId = ValidateString(
+                modelFileId,
+                nameof(modelFileId)),
+            Name = ValidateString(name, nameof(name)),
+            ParentInstanceId = ValidateString(
+                parentInstanceId,
+                nameof(parentInstanceId)),
+            CreateHierarchy = createHierarchy,
+            ApplyWorldPosition = worldPosition.HasValue,
+            PreferredInstanceId = ValidateString(
+                preferredInstanceId,
+                nameof(preferredInstanceId))
+        };
+        if (worldPosition is { } position)
+        {
+            request.WorldPosition = CreateVector4(
+                position,
+                nameof(worldPosition));
+        }
+
+        return ReadCreation(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CreateModelInstance = request
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CreateModelInstance));
+    }
+
     public async Task<bool> DestroyObjectAsync(
         string instanceId,
         CancellationToken cancellationToken = default)

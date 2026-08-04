@@ -19,6 +19,7 @@ namespace Sailor
 {
 	class AssetInfo;
 	using AssetInfoPtr = AssetInfo*;
+	SAILOR_API extern bool g_bUseLazyAssetInfoLoading;
 
 	enum class EAssetType;
 
@@ -187,12 +188,30 @@ namespace Sailor
 		void GetAllAssetInfos(TVector<FileId>& outAssetInfos) const
 		{
 			outAssetInfos.Clear();
+			TSet<FileId> resultIds;
 			for (const auto& assetInfo : m_loadedAssetInfo)
 			{
 				if (dynamic_cast<TAssetInfo*>(*assetInfo.m_second))
 				{
-					outAssetInfos.Add(assetInfo.m_first);
+					resultIds.Insert(assetInfo.m_first);
 				}
+			}
+
+			if (g_bUseLazyAssetInfoLoading)
+			{
+				TAssetInfo assetInfoTypeProbe;
+				TVector<FileId> lazyIds;
+				GetLazyAssetInfoIds(assetInfoTypeProbe.GetAssetInfoType(), lazyIds);
+				for (const FileId& lazyId : lazyIds)
+				{
+					resultIds.Insert(lazyId);
+				}
+			}
+
+			outAssetInfos.Reserve(resultIds.Num());
+			for (const FileId& fileId : resultIds)
+			{
+				outAssetInfos.Add(fileId);
 			}
 		}
 
@@ -231,6 +250,15 @@ namespace Sailor
 
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(FileId uid) const;
 		SAILOR_API AssetInfoPtr GetAssetInfoPtr_Internal(const std::string& assetFilepath) const;
+		bool ScanContentFolderLazy();
+		AssetInfoPtr MaterializeLazyAssetInfo(FileId uid) const;
+		void GetLazyAssetInfoIds(
+			const std::string& assetInfoType,
+			TVector<FileId>& outIds) const;
+		void GetAssetInfoIdsByTypeAndSource(
+			const std::string& assetInfoType,
+			const std::string& sourcePath,
+			TVector<FileId>& outIds) const;
 		bool RestoreAssetImportTime(
 			AssetInfoPtr info,
 			const FileRevision& sourceRevision);
@@ -251,9 +279,21 @@ namespace Sailor
 		TVector<AssetMountDescriptor> m_contentMounts;
 		TMap<std::string, AssetReadLocation> m_contentFileWinners;
 		TVector<IAssetRegistryContentListener*> m_contentListeners;
+		struct LazyAssetInfoRecord final
+		{
+			std::string m_sourcePath;
+			FileRevision m_sourceRevision{};
+			std::string m_metadataFilename;
+			FileRevision m_metadataRevision{};
+			std::string m_assetInfoType;
+		};
+		mutable std::recursive_mutex m_lazyAssetInfoMutex;
+		mutable TMap<FileId, LazyAssetInfoRecord> m_lazyAssetInfos;
 		struct AssetProcessingState final
 		{
 			AssetProcessingToken m_token;
+			std::string m_metadataFilename;
+			std::string m_assetInfoType;
 			bool m_bRejected = false;
 		};
 		std::mutex m_assetProcessingMutex;

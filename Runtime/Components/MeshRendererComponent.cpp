@@ -12,6 +12,7 @@ void MeshRendererComponent::Initialize()
 	m_handle = ecs->RegisterComponent();
 
 	GetData().SetOwner(GetOwner());
+	GetData().SetMeshIndex(m_meshIndex);
 }
 
 void MeshRendererComponent::BeginPlay()
@@ -41,6 +42,15 @@ void MeshRendererComponent::SetModel(const ModelPtr& model)
 {
 	GetData().SetModel(model);
 	RebuildMaterials();
+}
+
+void MeshRendererComponent::SetMeshIndex(int32_t meshIndex)
+{
+	m_meshIndex = meshIndex;
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetMeshIndex(meshIndex);
+	}
 }
 
 void MeshRendererComponent::SetOverrideMaterials(const TVector<FileId>& overrideMaterials)

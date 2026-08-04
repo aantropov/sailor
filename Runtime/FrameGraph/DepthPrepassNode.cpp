@@ -106,8 +106,12 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						continue;
 					}
 
+					const glm::mat4& meshWorldMatrix =
+						proxy.m_meshModelMatrices.Num() > i ?
+							proxy.m_meshModelMatrices[i] :
+							proxy.m_worldMatrix;
 					DepthPrepassNode::PerInstanceData data;
-					data.model = proxy.m_worldMatrix;
+					data.model = meshWorldMatrix;
 					data.skeletonOffset = proxy.m_skeletonOffset;
 					data.bIsCulled = 0;
 					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();

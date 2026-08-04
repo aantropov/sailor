@@ -94,6 +94,17 @@ namespace Sailor
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool ReparentEditorObject(const char* strInstanceId, const char* strParentInstanceId, bool bKeepWorldTransform);
 		SAILOR_API static bool CreateEditorGameObject(const char* strParentInstanceId, const char* strPreferredInstanceId, char** outInstanceId);
+		SAILOR_API static bool CreateEditorModelInstance(
+			const char* strModelFileId,
+			const char* strName,
+			const char* strParentInstanceId,
+			bool bCreateHierarchy,
+			bool bHasWorldPosition,
+			float worldX,
+			float worldY,
+			float worldZ,
+			const char* strPreferredInstanceId,
+			char** outInstanceId);
 		SAILOR_API static bool DestroyEditorObject(const char* strInstanceId);
 		SAILOR_API static bool ResetEditorComponentToDefaults(const char* strInstanceId);
 		SAILOR_API static bool AddEditorComponent(const char* strInstanceId, const char* strComponentTypeName, const char* strPreferredInstanceId, char** outInstanceId);

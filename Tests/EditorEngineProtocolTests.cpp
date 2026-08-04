@@ -1,5 +1,6 @@
 #include "EditorEngineProtocolInternal.h"
 #include "EditorEngineProtocolLifecycle.h"
+#include "Protocol/Generated/editor_engine.pb.h"
 
 #include <chrono>
 #include <cmath>
@@ -62,6 +63,7 @@ namespace
 	constexpr uint32_t c_renderPathTracedImageCommandField = 45;
 	constexpr uint32_t c_isEngineRunningCommandField = 48;
 	constexpr uint32_t c_instantiatePrefabFromYamlCommandField = 42;
+	constexpr uint32_t c_createModelInstanceCommandField = 58;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -1008,6 +1010,26 @@ namespace
 				response.m_supportsStrictInstanceIds,
 				"a capability-compatible host must dispatch a version-gated strict restore request");
 		}
+	}
+
+	void TestModelInstanceWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kCreateModelInstanceFieldNumber ==
+			c_createModelInstanceCommandField);
+		static_assert(
+			sailor::editor::v1::CreateModelInstanceRequest::
+				kModelFileIdFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::CreateModelInstanceRequest::
+				kCreateHierarchyFieldNumber == 4);
+		static_assert(
+			sailor::editor::v1::CreateModelInstanceRequest::
+				kWorldPositionFieldNumber == 6);
+		static_assert(
+			sailor::editor::v1::CreateModelInstanceRequest::
+				kPreferredInstanceIdFieldNumber == 7);
 	}
 
 	void TestEmbeddedNullIsRejected()
@@ -1985,6 +2007,7 @@ int main()
 		TestCommandExceptionIsContainedByTransportBoundary();
 		TestEnvelopeValidation();
 		TestStrictInstanceIdProtocolGate();
+		TestModelInstanceWireContract();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();

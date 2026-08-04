@@ -20,8 +20,8 @@ using namespace Sailor;
 namespace
 {
 	constexpr const char* AssetCacheKind = "asset-cache";
-	constexpr const char* AssetCacheProducer = "asset-cache-v2";
-	constexpr uint32_t AssetCachePayloadVersion = 2;
+	constexpr const char* AssetCacheProducer = "asset-cache-v1";
+	constexpr uint32_t AssetCachePayloadVersion = 1;
 
 	std::string NormalizeSourcePath(const std::string& sourcePath)
 	{
@@ -175,20 +175,35 @@ YAML::Node AssetCache::AssetCacheData::Entry::Serialize() const
 	sourceRevision["fileSize"] = m_sourceRevision.m_fileSize;
 	sourceRevision["contentHash"] = m_sourceRevision.m_contentHash;
 	result["sourceRevision"] = sourceRevision;
+	result["metadataFilename"] = m_metadataFilename;
+	YAML::Node metadataRevision(YAML::NodeType::Map);
+	metadataRevision["modificationTimeNanoseconds"] = m_metadataRevision.m_modificationTimeNanoseconds;
+	metadataRevision["fileSize"] = m_metadataRevision.m_fileSize;
+	metadataRevision["contentHash"] = m_metadataRevision.m_contentHash;
+	result["metadataRevision"] = metadataRevision;
+	result["assetInfoType"] = m_assetInfoType;
 	return result;
 }
 
 void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = FileId();
-	m_assetImportTime = 0;
-	m_sourcePath.clear();
-	m_sourceRevision = {};
+	auto reset = [&]()
+	{
+		m_fileId = FileId();
+		m_assetImportTime = 0;
+		m_sourcePath.clear();
+		m_sourceRevision = {};
+		m_metadataFilename.clear();
+		m_metadataRevision = {};
+		m_assetInfoType.clear();
+	};
+	reset();
+	bool bValid = false;
 	std::string yamlDiagnostic;
-	if (!Sailor::External::GuardYamlExceptions(
+	const bool bDeserialized = Sailor::External::GuardYamlExceptions(
 		[&]()
 		{
-			if (!inData.IsMap() || inData.size() != 4)
+			if (!inData.IsMap() || inData.size() != 7)
 			{
 				return;
 			}
@@ -219,20 +234,41 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			m_sourceRevision.m_fileSize = fileSize.as<uint64_t>();
 			m_sourceRevision.m_contentHash = contentHash.as<uint64_t>();
 			m_sourceRevision.m_bIsValid = true;
-			if (m_sourcePath.empty() || !m_fileId || m_assetImportTime <= 0)
+			const YAML::Node metadataFilename = inData["metadataFilename"];
+			const YAML::Node metadataRevision = inData["metadataRevision"];
+			const YAML::Node assetInfoType = inData["assetInfoType"];
+			if (!metadataFilename.IsScalar() || !metadataRevision.IsMap() ||
+				metadataRevision.size() != 3 || !assetInfoType.IsScalar())
 			{
-				m_fileId = FileId();
-				m_assetImportTime = 0;
-				m_sourcePath.clear();
-				m_sourceRevision = {};
+				return;
 			}
+			const YAML::Node metadataModificationTime = metadataRevision["modificationTimeNanoseconds"];
+			const YAML::Node metadataFileSize = metadataRevision["fileSize"];
+			const YAML::Node metadataContentHash = metadataRevision["contentHash"];
+			if (!metadataModificationTime.IsScalar() || !metadataFileSize.IsScalar() ||
+				!metadataContentHash.IsScalar())
+			{
+				return;
+			}
+			m_metadataFilename = metadataFilename.as<std::string>();
+			m_metadataRevision.m_modificationTimeNanoseconds = metadataModificationTime.as<int64_t>();
+			m_metadataRevision.m_fileSize = metadataFileSize.as<uint64_t>();
+			m_metadataRevision.m_contentHash = metadataContentHash.as<uint64_t>();
+			m_metadataRevision.m_bIsValid = true;
+			m_assetInfoType = assetInfoType.as<std::string>();
+			if (m_sourcePath.empty() || m_metadataFilename.empty() ||
+				std::filesystem::path(m_metadataFilename).filename() != m_metadataFilename ||
+				m_assetInfoType.empty() ||
+				!m_fileId || m_assetImportTime <= 0)
+			{
+				return;
+			}
+			bValid = true;
 		},
-		yamlDiagnostic))
+		yamlDiagnostic);
+	if (!bDeserialized || !bValid)
 	{
-		m_fileId = FileId();
-		m_assetImportTime = 0;
-		m_sourcePath.clear();
-		m_sourceRevision = {};
+		reset();
 	}
 }
 
@@ -311,10 +347,10 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		}
 
 		const YAML::Node entryNode = serializedEntry.second;
-		if (!entryNode.IsMap() || entryNode.size() != 4)
+		if (!entryNode.IsMap() || entryNode.size() != 7)
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId +
-				"' must contain exactly fileId, assetImportTime, sourcePath, and sourceRevision.";
+				"' must contain exactly the asset watermark and lazy metadata index fields.";
 			return false;
 		}
 
@@ -370,6 +406,42 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 			return false;
 		}
 		entry.m_sourcePath = NormalizeSourcePath(serializedSourcePath);
+		YAML::Node metadataFilename;
+		YAML::Node metadataRevision;
+		YAML::Node assetInfoType;
+		if (!ReadRequiredField(entryNode, "metadataFilename", metadataFilename, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "metadataRevision", metadataRevision, outDiagnostic) ||
+			!ReadRequiredField(entryNode, "assetInfoType", assetInfoType, outDiagnostic) ||
+			!metadataFilename.IsScalar() || !metadataRevision.IsMap() ||
+			metadataRevision.size() != 3 || !assetInfoType.IsScalar())
+		{
+			return false;
+		}
+		YAML::Node metadataModificationTime;
+		YAML::Node metadataFileSize;
+		YAML::Node metadataContentHash;
+		if (!ReadRequiredField(metadataRevision, "modificationTimeNanoseconds", metadataModificationTime, outDiagnostic) ||
+			!ReadRequiredField(metadataRevision, "fileSize", metadataFileSize, outDiagnostic) ||
+			!ReadRequiredField(metadataRevision, "contentHash", metadataContentHash, outDiagnostic) ||
+			!metadataModificationTime.IsScalar() || !metadataFileSize.IsScalar() ||
+			!metadataContentHash.IsScalar())
+		{
+			return false;
+		}
+		entry.m_metadataFilename = metadataFilename.as<std::string>();
+		entry.m_metadataRevision.m_modificationTimeNanoseconds = metadataModificationTime.as<int64_t>();
+		entry.m_metadataRevision.m_fileSize = metadataFileSize.as<uint64_t>();
+		entry.m_metadataRevision.m_contentHash = metadataContentHash.as<uint64_t>();
+		entry.m_metadataRevision.m_bIsValid = true;
+		entry.m_assetInfoType = assetInfoType.as<std::string>();
+		if (entry.m_metadataFilename.empty() ||
+			std::filesystem::path(entry.m_metadataFilename).filename() != entry.m_metadataFilename ||
+			entry.m_assetInfoType.empty())
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId +
+				"' contains an incomplete lazy metadata index.";
+			return false;
+		}
 		if (!entry.m_fileId || entry.m_fileId != fileId)
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has a mismatched fileId field.";
@@ -675,17 +747,27 @@ bool AssetCache::Update(const AssetInfo* info)
 		info->GetFileId(),
 		info->GetAssetImportTime(),
 		sourcePath,
-		info->m_importedSourceRevision);
+		info->m_importedSourceRevision,
+		std::filesystem::path(info->GetMetaFilepath()).filename().string(),
+		info->m_metadataRevision,
+		info->GetAssetInfoType());
 }
 
 bool AssetCache::Update(
 	const FileId& id,
 	std::time_t assetImportTime,
 	const std::string& sourcePath,
-	const FileRevision& sourceRevision)
+	const FileRevision& sourceRevision,
+	const std::string& metadataFilename,
+	const FileRevision& metadataRevision,
+	const std::string& assetInfoType)
 {
 	std::string normalizedSourcePath = NormalizeSourcePath(sourcePath);
-	if (!id || assetImportTime <= 0 || normalizedSourcePath.empty() || !sourceRevision.m_bIsValid)
+	const bool bValidMetadataFilename = !metadataFilename.empty() &&
+		std::filesystem::path(metadataFilename).filename() == metadataFilename;
+	if (!id || assetImportTime <= 0 || normalizedSourcePath.empty() ||
+		!sourceRevision.m_bIsValid || !bValidMetadataFilename ||
+		!metadataRevision.m_bIsValid || assetInfoType.empty())
 	{
 		Remove(id);
 		return false;
@@ -707,12 +789,18 @@ bool AssetCache::Update(
 	const bool bChanged = entry.m_fileId != id ||
 		entry.m_assetImportTime != assetImportTime ||
 		entry.m_sourcePath != normalizedSourcePath ||
-		entry.m_sourceRevision != sourceRevision;
+		entry.m_sourceRevision != sourceRevision ||
+		entry.m_metadataFilename != metadataFilename ||
+		entry.m_metadataRevision != metadataRevision ||
+		entry.m_assetInfoType != assetInfoType;
 	m_bIsDirty |= bChanged;
 	entry.m_fileId = id;
 	entry.m_assetImportTime = assetImportTime;
 	entry.m_sourcePath = std::move(normalizedSourcePath);
 	entry.m_sourceRevision = sourceRevision;
+	entry.m_metadataFilename = metadataFilename;
+	entry.m_metadataRevision = metadataRevision;
+	entry.m_assetInfoType = assetInfoType;
 	return bChanged;
 }
 

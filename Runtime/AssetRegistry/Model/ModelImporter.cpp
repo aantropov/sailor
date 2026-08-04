@@ -2332,11 +2332,17 @@ bool GltfImporterUtils::TryComposeNodeMatrix(
 	return IsFiniteGltfMatrix(outMatrix);
 }
 
-bool GltfImporterUtils::CollectMeshInstances(
+bool GltfImporterUtils::CollectSceneNodes(
 	const tinygltf::Model& model,
-	TVector<MeshInstance>& outInstances)
+	float unitScale,
+	TVector<SceneNode>& outNodes)
 {
-	outInstances.Clear();
+	outNodes.Clear();
+	if (!std::isfinite(unitScale))
+	{
+		return false;
+	}
+
 	if (model.meshes.size() >
 		static_cast<size_t>(std::numeric_limits<int32_t>::max()) ||
 		model.nodes.size() >
@@ -2347,12 +2353,15 @@ bool GltfImporterUtils::CollectMeshInstances(
 
 	if (model.nodes.empty())
 	{
-		outInstances.Reserve(model.meshes.size());
+		outNodes.Reserve(model.meshes.size());
 		for (size_t meshIndex = 0; meshIndex < model.meshes.size(); ++meshIndex)
 		{
-			MeshInstance instance{};
-			instance.m_meshIndex = static_cast<int32_t>(meshIndex);
-			outInstances.Add(std::move(instance));
+			SceneNode node{};
+			node.m_name = model.meshes[meshIndex].name.empty() ?
+				"Mesh_" + std::to_string(meshIndex) :
+				model.meshes[meshIndex].name;
+			node.m_meshIndex = static_cast<int32_t>(meshIndex);
+			outNodes.Add(std::move(node));
 		}
 		return true;
 	}
@@ -2361,13 +2370,14 @@ bool GltfImporterUtils::CollectMeshInstances(
 	struct PendingNode
 	{
 		int32_t m_nodeIndex = -1;
-		glm::mat4 m_parentTransform{ 1.0f };
+		int32_t m_parentIndex = -1;
+		glm::mat4 m_parentWorldMatrix{ 1.0f };
 		bool m_bExit = false;
 	};
 	auto traverseRoot = [&](int32_t rootNode) -> bool
 		{
 			TVector<PendingNode> pendingNodes;
-			pendingNodes.Add({ rootNode, glm::mat4(1.0f), false });
+			pendingNodes.Add({ rootNode, -1, glm::mat4(1.0f), false });
 			while (!pendingNodes.IsEmpty())
 			{
 				PendingNode pending = std::move(*pendingNodes.Last());
@@ -2392,7 +2402,7 @@ bool GltfImporterUtils::CollectMeshInstances(
 				}
 				if (state == 2)
 				{
-					continue;
+					return false;
 				}
 
 				state = 1;
@@ -2404,9 +2414,14 @@ bool GltfImporterUtils::CollectMeshInstances(
 					return false;
 				}
 
-				const glm::mat4 worldTransform =
-					pending.m_parentTransform * localTransform;
-				if (!IsFiniteGltfMatrix(worldTransform))
+				glm::mat4 scaledLocalMatrix = localTransform;
+				scaledLocalMatrix[3].x *= unitScale;
+				scaledLocalMatrix[3].y *= unitScale;
+				scaledLocalMatrix[3].z *= unitScale;
+				const glm::mat4 worldMatrix =
+					pending.m_parentWorldMatrix * scaledLocalMatrix;
+				if (!IsFiniteGltfMatrix(scaledLocalMatrix) ||
+					!IsFiniteGltfMatrix(worldMatrix))
 				{
 					return false;
 				}
@@ -2421,18 +2436,47 @@ bool GltfImporterUtils::CollectMeshInstances(
 					return false;
 				}
 
-				if (node.mesh >= 0)
+				SceneNode sceneNode{};
+				sceneNode.m_name = node.name.empty() ?
+					"Node_" + std::to_string(pending.m_nodeIndex) :
+					node.name;
+				sceneNode.m_sourceNodeIndex = pending.m_nodeIndex;
+				sceneNode.m_parentIndex = pending.m_parentIndex;
+				sceneNode.m_meshIndex = node.mesh;
+				sceneNode.m_skinIndex = node.skin;
+				sceneNode.m_localMatrix = scaledLocalMatrix;
+				sceneNode.m_worldMatrix = worldMatrix;
+				sceneNode.m_localTransform =
+					Math::Transform::FromMatrix(scaledLocalMatrix);
+
+				const glm::mat4 reconstructed =
+					sceneNode.m_localTransform.Matrix();
+				float maxDifference = 0.0f;
+				float maxMagnitude = 1.0f;
+				for (int32_t column = 0; column < 4; ++column)
 				{
-					MeshInstance instance{};
-					instance.m_nodeIndex = pending.m_nodeIndex;
-					instance.m_meshIndex = node.mesh;
-					instance.m_skinIndex = node.skin;
-					instance.m_worldTransform = worldTransform;
-					outInstances.Add(std::move(instance));
+					for (int32_t row = 0; row < 4; ++row)
+					{
+						maxDifference = (std::max)(
+							maxDifference,
+							std::abs(
+								reconstructed[column][row] -
+								scaledLocalMatrix[column][row]));
+						maxMagnitude = (std::max)(
+							maxMagnitude,
+							std::abs(scaledLocalMatrix[column][row]));
+					}
 				}
+				sceneNode.m_bTransformDecomposable =
+					maxDifference <= maxMagnitude * 1e-4f;
+
+				const int32_t outputNodeIndex =
+					static_cast<int32_t>(outNodes.Num());
+				outNodes.Add(std::move(sceneNode));
 
 				pendingNodes.Add({
 					pending.m_nodeIndex,
+					pending.m_parentIndex,
 					glm::mat4(1.0f),
 					true
 				});
@@ -2440,7 +2484,8 @@ bool GltfImporterUtils::CollectMeshInstances(
 				{
 					pendingNodes.Add({
 						node.children[child - 1],
-						worldTransform,
+						outputNodeIndex,
+						worldMatrix,
 						false
 					});
 				}
@@ -2466,7 +2511,7 @@ bool GltfImporterUtils::CollectMeshInstances(
 		{
 			if (!traverseRoot(rootNode))
 			{
-				outInstances.Clear();
+				outNodes.Clear();
 				return false;
 			}
 		}
@@ -2495,7 +2540,7 @@ bool GltfImporterUtils::CollectMeshInstances(
 				bTraversedRoot = true;
 				if (!traverseRoot(static_cast<int32_t>(nodeIndex)))
 				{
-					outInstances.Clear();
+					outNodes.Clear();
 					return false;
 				}
 			}
@@ -2504,8 +2549,38 @@ bool GltfImporterUtils::CollectMeshInstances(
 
 	if (!bTraversedRoot)
 	{
-		outInstances.Clear();
+		outNodes.Clear();
 		return false;
+	}
+
+	return true;
+}
+
+bool GltfImporterUtils::CollectMeshInstances(
+	const tinygltf::Model& model,
+	TVector<MeshInstance>& outInstances)
+{
+	outInstances.Clear();
+	TVector<SceneNode> nodes;
+	if (!CollectSceneNodes(model, 1.0f, nodes))
+	{
+		return false;
+	}
+
+	outInstances.Reserve(nodes.Num());
+	for (const SceneNode& node : nodes)
+	{
+		if (node.m_meshIndex < 0)
+		{
+			continue;
+		}
+
+		MeshInstance instance{};
+		instance.m_nodeIndex = node.m_sourceNodeIndex;
+		instance.m_meshIndex = node.m_meshIndex;
+		instance.m_skinIndex = node.m_skinIndex;
+		instance.m_worldTransform = node.m_worldMatrix;
+		outInstances.Add(std::move(instance));
 	}
 
 	return true;
@@ -2597,8 +2672,127 @@ void Model::Deserialize(const YAML::Node& inData)
 	DESERIALIZE_PROPERTY(inData, m_fileId);
 }
 
+bool Model::IsSourceMeshIndexValid(int32_t meshIndex) const
+{
+	return meshIndex >= 0 &&
+		static_cast<size_t>(meshIndex) < m_sourceMeshes.Num() &&
+		!m_sourceMeshes[static_cast<size_t>(meshIndex)].m_renderMeshIndices.IsEmpty();
+}
+
+const Math::AABB& Model::GetBoundsAABB(int32_t meshIndex) const
+{
+	if (meshIndex == AllMeshes)
+	{
+		return m_boundsAabb;
+	}
+
+	static const Math::AABB emptyBounds{};
+	return IsSourceMeshIndexValid(meshIndex) ?
+		m_sourceMeshes[static_cast<size_t>(meshIndex)].m_bounds :
+		emptyBounds;
+}
+
+bool Model::HasBLAS(int32_t meshIndex) const
+{
+	if (meshIndex == AllMeshes)
+	{
+		return HasBLAS();
+	}
+
+	return meshIndex >= 0 &&
+		static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num() &&
+		m_sourceMeshBlases[static_cast<size_t>(meshIndex)].IsValid();
+}
+
+const TSharedPtr<Raytracing::BVH>& Model::GetBLAS(int32_t meshIndex) const
+{
+	if (meshIndex == AllMeshes)
+	{
+		return m_blas;
+	}
+
+	static const TSharedPtr<Raytracing::BVH> emptyBlas{};
+	return meshIndex >= 0 &&
+		static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num() ?
+		m_sourceMeshBlases[static_cast<size_t>(meshIndex)].m_blas :
+		emptyBlas;
+}
+
+const TVector<Math::Triangle>& Model::GetBLASTriangles(
+	int32_t meshIndex) const
+{
+	if (meshIndex == AllMeshes)
+	{
+		return m_blasTriangles;
+	}
+
+	static const TVector<Math::Triangle> emptyTriangles{};
+	return meshIndex >= 0 &&
+		static_cast<size_t>(meshIndex) < m_sourceMeshBlases.Num() ?
+		m_sourceMeshBlases[static_cast<size_t>(meshIndex)].m_triangles :
+		emptyTriangles;
+}
+
+bool Model::CollectRenderData(
+	int32_t meshIndex,
+	TVector<RHI::RHIMeshPtr>& outMeshes,
+	TVector<glm::mat4>& outModelMatrices,
+	Math::AABB& outBounds) const
+{
+	outMeshes.Clear();
+	outModelMatrices.Clear();
+	outBounds = Math::AABB();
+
+	if (meshIndex == AllMeshes)
+	{
+		outMeshes.Reserve(m_renderInstances.Num());
+		outModelMatrices.Reserve(m_renderInstances.Num());
+		for (const RenderInstance& instance : m_renderInstances)
+		{
+			if (instance.m_renderMeshIndex >= m_meshes.Num() ||
+				!m_meshes[instance.m_renderMeshIndex])
+			{
+				continue;
+			}
+
+			const RHI::RHIMeshPtr& mesh =
+				m_meshes[instance.m_renderMeshIndex];
+			outMeshes.Add(mesh);
+			outModelMatrices.Add(instance.m_modelMatrix);
+			Math::AABB instanceBounds = mesh->m_bounds;
+			instanceBounds.Apply(instance.m_modelMatrix);
+			outBounds.Extend(instanceBounds);
+		}
+	}
+	else if (IsSourceMeshIndexValid(meshIndex))
+	{
+		const SourceMesh& sourceMesh =
+			m_sourceMeshes[static_cast<size_t>(meshIndex)];
+		outMeshes.Reserve(sourceMesh.m_renderMeshIndices.Num());
+		outModelMatrices.Reserve(sourceMesh.m_renderMeshIndices.Num());
+		for (uint32_t renderMeshIndex : sourceMesh.m_renderMeshIndices)
+		{
+			if (renderMeshIndex >= m_meshes.Num() ||
+				!m_meshes[renderMeshIndex])
+			{
+				continue;
+			}
+
+			outMeshes.Add(m_meshes[renderMeshIndex]);
+			outModelMatrices.Add(glm::mat4(1.0f));
+		}
+		outBounds = sourceMesh.m_bounds;
+	}
+
+	return !outMeshes.IsEmpty() &&
+		outMeshes.Num() == outModelMatrices.Num() &&
+		outBounds.IsValid();
+}
+
 void Model::Flush()
 {
+	m_bGpuReady.store(false, std::memory_order_release);
+
 	if (m_meshes.Num() == 0)
 	{
 		m_bIsReady.store(false, std::memory_order_release);
@@ -2619,12 +2813,13 @@ void Model::Flush()
 	m_bIsReady.store(true, std::memory_order_release);
 }
 
-bool Model::BuildBLAS()
+bool Model::BuildBLASData(
+	const TVector<RenderInstance>& blasInstances,
+	BLASData& outData) const
 {
-	m_blas.Clear();
-	m_blasTriangles.Clear();
+	outData = BLASData{};
 
-	if (m_cpuMeshes.Num() == 0)
+	if (m_cpuMeshes.Num() == 0 || blasInstances.IsEmpty())
 	{
 		return false;
 	}
@@ -2632,8 +2827,13 @@ bool Model::BuildBLAS()
 	size_t expectedNumTriangles = 0;
 	constexpr size_t maxNumTriangles =
 		(static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + 1) / 2;
-	for (const auto& mesh : m_cpuMeshes)
+	for (const RenderInstance& instance : blasInstances)
 	{
+		if (instance.m_renderMeshIndex >= m_cpuMeshes.Num())
+		{
+			return false;
+		}
+		const MeshCpuData& mesh = m_cpuMeshes[instance.m_renderMeshIndex];
 		if (mesh.m_indices.Num() % 3 != 0)
 		{
 			return false;
@@ -2653,10 +2853,24 @@ bool Model::BuildBLAS()
 		return false;
 	}
 
-	m_blasTriangles.Reserve(expectedNumTriangles);
+	outData.m_triangles.Reserve(expectedNumTriangles);
 
-	for (const auto& mesh : m_cpuMeshes)
+	for (const RenderInstance& instance : blasInstances)
 	{
+		const MeshCpuData& mesh = m_cpuMeshes[instance.m_renderMeshIndex];
+		const glm::mat3 linearMatrix(instance.m_modelMatrix);
+		glm::mat3 normalMatrix = linearMatrix;
+		const float determinant = glm::determinant(linearMatrix);
+		if (std::isfinite(determinant) && determinant != 0.0f)
+		{
+			const glm::mat3 inverseTranspose =
+				glm::transpose(glm::inverse(linearMatrix));
+			if (IsFiniteGltfMatrix(inverseTranspose))
+			{
+				normalMatrix = inverseTranspose;
+			}
+		}
+
 		for (size_t i = 0; i + 2 < mesh.m_indices.Num(); i += 3)
 		{
 			const uint32_t i0 = mesh.m_indices[i + 0];
@@ -2666,18 +2880,30 @@ bool Model::BuildBLAS()
 				i1 >= mesh.m_vertices.Num() ||
 				i2 >= mesh.m_vertices.Num())
 			{
-				m_blasTriangles.Clear();
+				outData.m_triangles.Clear();
 				return false;
 			}
 
 			auto v0 = mesh.m_vertices[i0];
 			auto v1 = mesh.m_vertices[i1];
 			auto v2 = mesh.m_vertices[i2];
+			auto applyInstanceTransform = [&](auto& vertex)
+				{
+					vertex.m_position = glm::vec3(
+						instance.m_modelMatrix *
+						glm::vec4(vertex.m_position, 1.0f));
+					vertex.m_normal = normalMatrix * vertex.m_normal;
+					vertex.m_tangent = linearMatrix * vertex.m_tangent;
+					vertex.m_bitangent = linearMatrix * vertex.m_bitangent;
+				};
+			applyInstanceTransform(v0);
+			applyInstanceTransform(v1);
+			applyInstanceTransform(v2);
 			if (!Math::AllFinite(v0.m_position) ||
 				!Math::AllFinite(v1.m_position) ||
 				!Math::AllFinite(v2.m_position))
 			{
-				m_blasTriangles.Clear();
+				outData.m_triangles.Clear();
 				return false;
 			}
 
@@ -2689,7 +2915,7 @@ bool Model::BuildBLAS()
 				!Math::AllFinite(triangleNormal) ||
 				!std::isfinite(glm::dot(triangleNormal, triangleNormal)))
 			{
-				m_blasTriangles.Clear();
+				outData.m_triangles.Clear();
 				return false;
 			}
 
@@ -2706,7 +2932,7 @@ bool Model::BuildBLAS()
 				!Math::AllFinite(v1.m_bitangent) ||
 				!Math::AllFinite(v2.m_bitangent))
 			{
-				m_blasTriangles.Clear();
+				outData.m_triangles.Clear();
 				return false;
 			}
 
@@ -2743,21 +2969,71 @@ bool Model::BuildBLAS()
 				tri.m_vertices[2] / 3.0f;
 			if (!Math::AllFinite(tri.m_centroid))
 			{
-				m_blasTriangles.Clear();
+				outData.m_triangles.Clear();
 				return false;
 			}
 
-			m_blasTriangles.Add(tri);
+			outData.m_triangles.Add(tri);
 		}
 	}
 
-	if (m_blasTriangles.Num() == 0)
+	if (outData.m_triangles.Num() == 0)
 	{
 		return false;
 	}
 
-	m_blas = TSharedPtr<Raytracing::BVH>::Make((uint32_t)m_blasTriangles.Num());
-	m_blas->BuildBVH(m_blasTriangles);
+	outData.m_blas = TSharedPtr<Raytracing::BVH>::Make(
+		static_cast<uint32_t>(outData.m_triangles.Num()));
+	outData.m_blas->BuildBVH(outData.m_triangles);
+	return true;
+}
+
+bool Model::BuildBLAS()
+{
+	m_blas.Clear();
+	m_blasTriangles.Clear();
+	m_sourceMeshBlases.Clear();
+
+	TVector<RenderInstance> fullInstances = m_renderInstances;
+	if (fullInstances.IsEmpty())
+	{
+		fullInstances.Reserve(m_cpuMeshes.Num());
+		for (size_t meshIndex = 0; meshIndex < m_cpuMeshes.Num(); ++meshIndex)
+		{
+			RenderInstance instance{};
+			instance.m_renderMeshIndex = static_cast<uint32_t>(meshIndex);
+			fullInstances.Add(std::move(instance));
+		}
+	}
+
+	BLASData fullBlas;
+	if (!BuildBLASData(fullInstances, fullBlas))
+	{
+		return false;
+	}
+
+	m_blas = std::move(fullBlas.m_blas);
+	m_blasTriangles = std::move(fullBlas.m_triangles);
+	m_sourceMeshBlases.Resize(m_sourceMeshes.Num());
+	for (size_t sourceMeshIndex = 0;
+		sourceMeshIndex < m_sourceMeshes.Num();
+		++sourceMeshIndex)
+	{
+		TVector<RenderInstance> sourceInstances;
+		const SourceMesh& sourceMesh = m_sourceMeshes[sourceMeshIndex];
+		sourceInstances.Reserve(sourceMesh.m_renderMeshIndices.Num());
+		for (uint32_t renderMeshIndex : sourceMesh.m_renderMeshIndices)
+		{
+			RenderInstance instance{};
+			instance.m_renderMeshIndex = renderMeshIndex;
+			sourceInstances.Add(std::move(instance));
+		}
+
+		BuildBLASData(
+			sourceInstances,
+			m_sourceMeshBlases[sourceMeshIndex]);
+	}
+
 	return true;
 }
 
@@ -2771,6 +3047,7 @@ void Model::ProceedCpuMeshes(bool bShouldGenerateBLAS, bool bShouldKeepCpuBuffer
 	{
 		m_blas.Clear();
 		m_blasTriangles.Clear();
+		m_sourceMeshBlases.Clear();
 	}
 
 	if (!bShouldKeepCpuBuffers)
@@ -2781,9 +3058,17 @@ void Model::ProceedCpuMeshes(bool bShouldGenerateBLAS, bool bShouldKeepCpuBuffer
 
 bool Model::IsReady() const
 {
-	if (!m_bIsReady.load(std::memory_order_acquire))
+	if (!IsStructurallyReady())
 	{
 		return false;
+	}
+
+	// GPU upload completion is monotonic until the next Flush(). Large editable
+	// model hierarchies can reference one Model from thousands of renderers, so
+	// rescanning every RHIMesh for every component would be O(N^2) per frame.
+	if (m_bGpuReady.load(std::memory_order_acquire))
+	{
+		return true;
 	}
 
 	for (const auto& mesh : m_meshes)
@@ -2794,7 +3079,13 @@ bool Model::IsReady() const
 		}
 	}
 
+	m_bGpuReady.store(true, std::memory_order_release);
 	return true;
+}
+
+bool Model::IsStructurallyReady() const
+{
+	return m_bIsReady.load(std::memory_order_acquire);
 }
 
 ModelImporter::ModelImporter(ModelAssetInfoHandler* infoHandler)
@@ -3047,6 +3338,17 @@ bool ModelImporter::GenerateFingerprint(
 	{
 		SAILOR_LOG_ERROR(
 			"Cannot prepare model fingerprint: %s",
+			assetFilepath.c_str());
+		return false;
+	}
+	TVector<GltfImporterUtils::SceneNode> sceneNodes;
+	if (!GltfImporterUtils::CollectSceneNodes(
+			gltfModel,
+			unitScale,
+			sceneNodes))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot resolve model fingerprint hierarchy: %s",
 			assetFilepath.c_str());
 		return false;
 	}
@@ -3339,16 +3641,20 @@ bool ModelImporter::GenerateFingerprint(
 		}
 		previewMaterials[i] = std::move(material);
 	}
-	gltfModel = tinygltf::Model();
-
 	ModelPtr model = ModelPtr::Make(allocator, fileId);
 	model->m_boundsAabb = boundsAabb;
 	model->m_boundsSphere = boundsSphere;
 	model->m_inverseBind = std::move(inverseBind);
 	model->m_cpuMeshes.Reserve(parsedMeshes.Num());
+	model->m_sourceMeshes.Resize(gltfModel.meshes.size());
 
 	for (MeshContext& mesh : parsedMeshes)
 	{
+		if (!mesh.HasGeometry())
+		{
+			continue;
+		}
+
 		Model::MeshCpuData cpuMesh{};
 		cpuMesh.m_vertices = std::move(mesh.outVertices);
 		for (auto& vertex : cpuMesh.m_vertices)
@@ -3358,8 +3664,22 @@ bool ModelImporter::GenerateFingerprint(
 		cpuMesh.m_indices = std::move(mesh.outIndices);
 		cpuMesh.m_bounds = mesh.bounds;
 		cpuMesh.m_materialIndex = mesh.materialIndex;
+		const uint32_t renderMeshIndex =
+			static_cast<uint32_t>(model->m_cpuMeshes.Num());
 		model->m_cpuMeshes.Add(std::move(cpuMesh));
+		if (mesh.sourceMeshIndex >= 0 &&
+			static_cast<size_t>(mesh.sourceMeshIndex) <
+				model->m_sourceMeshes.Num())
+		{
+			auto& sourceMesh = model->m_sourceMeshes[
+				static_cast<size_t>(mesh.sourceMeshIndex)];
+			sourceMesh.m_renderMeshIndices.Add(renderMeshIndex);
+			sourceMesh.m_bounds.Extend(mesh.bounds);
+		}
 	}
+
+	PopulateModelSceneHierarchy(*model, sceneNodes);
+	gltfModel = tinygltf::Model();
 
 	if (!model->BuildBLAS())
 	{
@@ -4379,7 +4699,10 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 		};
 
 	TVector<FileId> registeredTextureIds;
-	assetRegistry->GetAllAssetInfos<TextureAssetInfo>(registeredTextureIds);
+	assetRegistry->GetAssetInfoIdsByTypeAndSource(
+		"Sailor::TextureAssetInfo",
+		assetInfo->GetAssetFilepath(),
+		registeredTextureIds);
 	TMap<int32_t, FileId> textureIdsByGltfIndex;
 	for (const FileId& registeredTextureId : registeredTextureIds)
 	{
@@ -4656,6 +4979,54 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 	return bSucceeded;
 }
 
+void ModelImporter::PopulateModelSceneHierarchy(
+	Model& model,
+	TVector<GltfImporterUtils::SceneNode>& sourceNodes)
+{
+	model.m_nodes.Clear();
+	model.m_renderInstances.Clear();
+	model.m_bSupportsEditableHierarchy = true;
+	model.m_nodes.Reserve(sourceNodes.Num());
+	for (auto& sourceNode : sourceNodes)
+	{
+		Model::Node node{};
+		node.m_name = std::move(sourceNode.m_name);
+		node.m_sourceNodeIndex = sourceNode.m_sourceNodeIndex;
+		node.m_parentIndex = sourceNode.m_parentIndex;
+		node.m_meshIndex = sourceNode.m_meshIndex;
+		node.m_skinIndex = sourceNode.m_skinIndex;
+		node.m_localTransform = sourceNode.m_localTransform;
+		node.m_localMatrix = sourceNode.m_localMatrix;
+		node.m_worldMatrix = sourceNode.m_worldMatrix;
+		node.m_bTransformDecomposable =
+			sourceNode.m_bTransformDecomposable;
+		model.m_bSupportsEditableHierarchy &=
+			node.m_bTransformDecomposable && node.m_skinIndex < 0;
+		model.m_nodes.Add(std::move(node));
+	}
+
+	for (size_t nodeIndex = 0; nodeIndex < model.m_nodes.Num(); ++nodeIndex)
+	{
+		const Model::Node& node = model.m_nodes[nodeIndex];
+		if (!model.IsSourceMeshIndexValid(node.m_meshIndex))
+		{
+			continue;
+		}
+
+		const Model::SourceMesh& sourceMesh = model.m_sourceMeshes[
+			static_cast<size_t>(node.m_meshIndex)];
+		for (uint32_t renderMeshIndex : sourceMesh.m_renderMeshIndices)
+		{
+			Model::RenderInstance instance{};
+			instance.m_renderMeshIndex = renderMeshIndex;
+			instance.m_nodeIndex = static_cast<int32_t>(nodeIndex);
+			instance.m_modelMatrix = node.m_skinIndex >= 0 ?
+				glm::mat4(1.0f) : node.m_worldMatrix;
+			model.m_renderInstances.Add(std::move(instance));
+		}
+	}
+}
+
 Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -4702,6 +5073,8 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 		{
 			TVector<MeshContext> m_parsedMeshes;
 			TVector<glm::mat4> m_inverseBind;
+			TVector<GltfImporterUtils::SceneNode> m_sceneNodes;
+			TVector<std::string> m_sourceMeshNames;
 			tinygltf::Model m_gltfModel;
 			bool m_bIsImported = false;
 			bool m_bShouldKeepCpuBuffers = false;
@@ -4723,6 +5096,30 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					boundsSphere,
 					pData->m_inverseBind,
 					&pData->m_gltfModel);
+				if (pData->m_bIsImported)
+				{
+					pData->m_bIsImported =
+						GltfImporterUtils::CollectSceneNodes(
+							pData->m_gltfModel,
+							pAssetInfo->GetUnitScale(),
+							pData->m_sceneNodes);
+				}
+				if (pData->m_bIsImported)
+				{
+					pData->m_sourceMeshNames.Reserve(
+						pData->m_gltfModel.meshes.size());
+					for (size_t meshIndex = 0;
+						meshIndex < pData->m_gltfModel.meshes.size();
+						++meshIndex)
+					{
+						const std::string& sourceName =
+							pData->m_gltfModel.meshes[meshIndex].name;
+						pData->m_sourceMeshNames.Add(
+							sourceName.empty() ?
+								"Mesh_" + std::to_string(meshIndex) :
+								sourceName);
+					}
+				}
 				return pData;
 			});
 		auto migrationTask = loadDataTask->Then(
@@ -4748,7 +5145,20 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					{
 						pModel->m_meshes.Clear();
 						pModel->m_cpuMeshes.Clear();
+						pModel->m_nodes.Clear();
+						pModel->m_sourceMeshes.Clear();
+						pModel->m_renderInstances.Clear();
+						pModel->m_bSupportsEditableHierarchy = true;
 						pModel->m_meshes.Reserve(pData->m_parsedMeshes.Num());
+						pModel->m_sourceMeshes.Resize(
+							pData->m_sourceMeshNames.Num());
+						for (size_t sourceMeshIndex = 0;
+							sourceMeshIndex < pData->m_sourceMeshNames.Num();
+							++sourceMeshIndex)
+						{
+							pModel->m_sourceMeshes[sourceMeshIndex].m_name =
+								std::move(pData->m_sourceMeshNames[sourceMeshIndex]);
+						}
 						if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
 						{
 							pModel->m_cpuMeshes.Reserve(pData->m_parsedMeshes.Num());
@@ -4776,7 +5186,20 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
 								mesh.outIndices.GetData(), sizeof(uint32_t) * mesh.outIndices.Num());
 
+							const uint32_t renderMeshIndex =
+								static_cast<uint32_t>(pModel->m_meshes.Num());
 							pModel->m_meshes.Emplace(pMesh);
+							if (mesh.sourceMeshIndex >= 0 &&
+								static_cast<size_t>(mesh.sourceMeshIndex) <
+									pModel->m_sourceMeshes.Num())
+							{
+								Model::SourceMesh& sourceMesh =
+									pModel->m_sourceMeshes[
+										static_cast<size_t>(mesh.sourceMeshIndex)];
+								sourceMesh.m_renderMeshIndices.Add(
+									renderMeshIndex);
+								sourceMesh.m_bounds.Extend(mesh.bounds);
+							}
 
 							if (pData->m_bShouldKeepCpuBuffers || pData->m_bShouldGenerateBLAS)
 							{
@@ -4788,6 +5211,10 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 								pModel->m_cpuMeshes.Add(std::move(cpuMesh));
 							}
 						}
+
+						ModelImporter::PopulateModelSceneHierarchy(
+							*pModel,
+							pData->m_sceneNodes);
 
 						pModel->m_inverseBind = std::move(pData->m_inverseBind);
 						pModel->ProceedCpuMeshes(pData->m_bShouldGenerateBLAS, pData->m_bShouldKeepCpuBuffers);
@@ -4817,6 +5244,12 @@ bool ModelImporter::LoadModel_Immediate(FileId uid, ModelPtr& outModel)
 	SAILOR_PROFILE_FUNCTION();
 
 	auto task = LoadModel(uid, outModel);
+	if (!task)
+	{
+		outModel = nullptr;
+		return false;
+	}
+
 	task->Wait();
 	return task->GetResult().IsValid();
 }
@@ -5056,151 +5489,97 @@ bool ModelImporter::ImportModel(
 
 	const bool bHasMeshQuantization =
 		HasGltfExtension(gltfModel, "KHR_mesh_quantization");
-	TVector<GltfImporterUtils::MeshInstance> meshInstances;
-	if (!GltfImporterUtils::CollectMeshInstances(
+	TVector<GltfImporterUtils::SceneNode> sceneNodes;
+	if (!GltfImporterUtils::CollectSceneNodes(
 			gltfModel,
-			meshInstances))
+			unitScale,
+			sceneNodes))
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot resolve glTF mesh instances: %s",
+			"Cannot resolve glTF scene hierarchy: %s",
 			assetFilepath.c_str());
 		return false;
 	}
-
-	const size_t materialBatchCount =
-		(std::max)(static_cast<size_t>(1), gltfModel.materials.size());
-	TVector<MeshContext> batchedMeshContexts;
-	TVector<uint32_t> meshPrimitiveOffsets;
-	size_t initialPrimitiveContextCount = 0;
-	if (bShouldBatchByMaterial)
+	for (const GltfImporterUtils::SceneNode& node : sceneNodes)
 	{
-		batchedMeshContexts.Resize(materialBatchCount);
-		for (size_t materialIndex = 0;
-			materialIndex < materialBatchCount;
-			++materialIndex)
-		{
-			batchedMeshContexts[materialIndex].materialIndex =
-				materialIndex < gltfModel.materials.size() ?
-					static_cast<int32_t>(materialIndex) : -1;
-			batchedMeshContexts[materialIndex].materialSlot =
-				static_cast<uint32_t>(materialIndex);
-		}
-	}
-	else
-	{
-		meshPrimitiveOffsets.Resize(gltfModel.meshes.size());
-		uint32_t primitiveCount = 0;
-		for (size_t meshIndex = 0;
-			meshIndex < gltfModel.meshes.size();
-			++meshIndex)
-		{
-			const tinygltf::Mesh& mesh = gltfModel.meshes[meshIndex];
-			meshPrimitiveOffsets[meshIndex] = primitiveCount;
-			if (mesh.primitives.size() >
-				std::numeric_limits<uint32_t>::max() - primitiveCount)
-			{
-				return false;
-			}
-			primitiveCount +=
-				static_cast<uint32_t>(mesh.primitives.size());
-		}
-
-		initialPrimitiveContextCount = primitiveCount;
-		outParsedMeshes.Resize(initialPrimitiveContextCount);
-		for (size_t meshIndex = 0;
-			meshIndex < gltfModel.meshes.size();
-			++meshIndex)
-		{
-			const tinygltf::Mesh& mesh = gltfModel.meshes[meshIndex];
-			for (size_t primitiveIndex = 0;
-				primitiveIndex < mesh.primitives.size();
-				++primitiveIndex)
-			{
-				const int32_t materialIndex =
-					mesh.primitives[primitiveIndex].material;
-				const uint32_t materialSlot =
-					meshPrimitiveOffsets[meshIndex] +
-					static_cast<uint32_t>(primitiveIndex);
-				outParsedMeshes[materialSlot].materialIndex = materialIndex >= 0 &&
-					static_cast<size_t>(materialIndex) <
-						gltfModel.materials.size() ? materialIndex : -1;
-				outParsedMeshes[materialSlot].materialSlot = materialSlot;
-			}
-		}
-	}
-
-	auto areVolumeScalesEquivalent = [](const glm::vec3& lhs,
-		const glm::vec3& rhs)
-		{
-			const glm::vec3 tolerance = glm::max(
-				glm::max(glm::abs(lhs), glm::abs(rhs)) * 1e-5f,
-				glm::vec3(1e-6f));
-			return glm::all(glm::lessThanEqual(glm::abs(lhs - rhs), tolerance));
-		};
-	auto resolveMeshContext = [&areVolumeScalesEquivalent](
-		TVector<MeshContext>& contexts,
-		size_t baseIndex,
-		size_t initialContextCount,
-		int32_t materialIndex,
-		uint32_t materialSlot,
-		const glm::vec3& bakedVolumeScale) -> MeshContext*
-		{
-			MeshContext* context = &contexts[baseIndex];
-			if (!context->HasGeometry() ||
-				areVolumeScalesEquivalent(
-					context->bakedVolumeScale,
-					bakedVolumeScale))
-			{
-				context->materialIndex = materialIndex;
-				context->materialSlot = materialSlot;
-				context->bakedVolumeScale = bakedVolumeScale;
-				return context;
-			}
-
-			for (size_t contextIndex = initialContextCount;
-				contextIndex < contexts.Num();
-				++contextIndex)
-			{
-				MeshContext& candidate = contexts[contextIndex];
-				if (candidate.materialSlot == materialSlot &&
-					candidate.materialIndex == materialIndex &&
-					areVolumeScalesEquivalent(
-						candidate.bakedVolumeScale,
-						bakedVolumeScale))
-				{
-					return &candidate;
-				}
-			}
-
-			MeshContext splitContext;
-			splitContext.materialIndex = materialIndex;
-			splitContext.materialSlot = materialSlot;
-			splitContext.bakedVolumeScale = bakedVolumeScale;
-			contexts.Emplace(std::move(splitContext));
-			return &*contexts.Last();
-		};
-
-	for (const GltfImporterUtils::MeshInstance& instance : meshInstances)
-	{
-		if (instance.m_skinIndex > 0)
+		if (node.m_skinIndex > 0)
 		{
 			SAILOR_LOG_ERROR(
 				"Cannot import unsupported active glTF skin index %d; only skin 0 is supported: %s",
-				instance.m_skinIndex,
+				node.m_skinIndex,
 				assetFilepath.c_str());
 			return false;
 		}
+	}
 
-		const size_t meshIndex = static_cast<size_t>(instance.m_meshIndex);
+	TVector<size_t> meshContextOffsets(gltfModel.meshes.size());
+	TVector<size_t> meshContextCounts(gltfModel.meshes.size());
+	for (size_t meshIndex = 0;
+		meshIndex < gltfModel.meshes.size();
+		++meshIndex)
+	{
 		const tinygltf::Mesh& mesh = gltfModel.meshes[meshIndex];
-		// glTF explicitly ignores the mesh-node transform for skinned meshes.
-		// Static mesh instances are flattened into Model geometry because Sailor
-		// has one world transform for the complete Model.
-		const GltfImporterUtils::MeshInstanceTransforms transforms =
-			GltfImporterUtils::ResolveMeshInstanceTransforms(instance, unitScale);
-		const glm::mat4& geometryTransform = transforms.m_geometryTransform;
-		const glm::mat3& directionTransform = transforms.m_directionTransform;
-		const glm::vec3& bakedVolumeScale = transforms.m_bakedVolumeScale;
+		meshContextOffsets[meshIndex] = outParsedMeshes.Num();
+		for (size_t primitiveIndex = 0;
+			primitiveIndex < mesh.primitives.size();
+			++primitiveIndex)
+		{
+			const int32_t materialIndex =
+				mesh.primitives[primitiveIndex].material >= 0 &&
+				static_cast<size_t>(mesh.primitives[primitiveIndex].material) <
+					gltfModel.materials.size() ?
+					mesh.primitives[primitiveIndex].material : -1;
+			bool bHasContext = false;
+			if (bShouldBatchByMaterial)
+			{
+				for (size_t contextIndex = meshContextOffsets[meshIndex];
+					contextIndex < outParsedMeshes.Num();
+					++contextIndex)
+				{
+					if (outParsedMeshes[contextIndex].materialIndex ==
+						materialIndex)
+					{
+						bHasContext = true;
+						break;
+					}
+				}
+			}
+
+			if (!bHasContext)
+			{
+				if (outParsedMeshes.Num() >
+					static_cast<size_t>(
+						std::numeric_limits<uint32_t>::max()))
+				{
+					return false;
+				}
+
+				MeshContext context{};
+				context.materialIndex = materialIndex;
+				context.materialSlot = bShouldBatchByMaterial ?
+					(materialIndex >= 0 ?
+						static_cast<uint32_t>(materialIndex) : 0u) :
+					static_cast<uint32_t>(outParsedMeshes.Num());
+				context.sourceMeshIndex = static_cast<int32_t>(meshIndex);
+				outParsedMeshes.Add(std::move(context));
+			}
+		}
+
+		meshContextCounts[meshIndex] =
+			outParsedMeshes.Num() - meshContextOffsets[meshIndex];
+	}
+
+	for (size_t meshIndex = 0;
+		meshIndex < gltfModel.meshes.size();
+		++meshIndex)
+	{
+		const tinygltf::Mesh& mesh = gltfModel.meshes[meshIndex];
+		const glm::mat4 geometryTransform =
+			glm::scale(glm::mat4(1.0f), glm::vec3(unitScale));
+		const glm::mat3 directionTransform = glm::mat3(
+			glm::scale(
+				glm::mat4(1.0f),
+				glm::vec3(unitScale < 0.0f ? -1.0f : 1.0f)));
 		const float transformDeterminant =
 			glm::determinant(directionTransform);
 		if (!std::isfinite(transformDeterminant))
@@ -5516,27 +5895,36 @@ bool ModelImporter::ImportModel(
 			MeshContext* pMeshContext = nullptr;
 			if (bShouldBatchByMaterial)
 			{
-				const size_t batchIndex = materialIndex >= 0 ?
-					static_cast<size_t>(materialIndex) : 0;
-				pMeshContext = resolveMeshContext(
-					batchedMeshContexts,
-					batchIndex,
-					materialBatchCount,
-					materialIndex,
-					static_cast<uint32_t>(batchIndex),
-					bakedVolumeScale);
+				const size_t contextEnd = meshContextOffsets[meshIndex] +
+					meshContextCounts[meshIndex];
+				for (size_t contextIndex = meshContextOffsets[meshIndex];
+					contextIndex < contextEnd;
+					++contextIndex)
+				{
+					if (outParsedMeshes[contextIndex].materialIndex ==
+						materialIndex)
+					{
+						pMeshContext = &outParsedMeshes[contextIndex];
+						break;
+					}
+				}
 			}
 			else
 			{
-				const size_t primitiveContextIndex =
-					meshPrimitiveOffsets[meshIndex] + primitiveIndex;
-				pMeshContext = resolveMeshContext(
-					outParsedMeshes,
-					primitiveContextIndex,
-					initialPrimitiveContextCount,
-					materialIndex,
-					static_cast<uint32_t>(primitiveContextIndex),
-					bakedVolumeScale);
+				const size_t contextIndex =
+					meshContextOffsets[meshIndex] + primitiveIndex;
+				if (contextIndex < outParsedMeshes.Num())
+				{
+					pMeshContext = &outParsedMeshes[contextIndex];
+				}
+			}
+
+			if (pMeshContext == nullptr)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot resolve glTF source mesh context: %s",
+					assetFilepath.c_str());
+				return false;
 			}
 
 			const size_t existingVertices = pMeshContext != nullptr ?
@@ -5561,7 +5949,6 @@ bool ModelImporter::ImportModel(
 			for (const auto& vertex : localVertices)
 			{
 				pMeshContext->outVertices.Add(vertex);
-				outBoundsAabb.Extend(vertex.m_position);
 				pMeshContext->bounds.Extend(vertex.m_position);
 			}
 
@@ -5600,12 +5987,40 @@ bool ModelImporter::ImportModel(
 		}
 	}
 
-	if (bShouldBatchByMaterial)
+	TVector<Math::AABB> sourceMeshBounds(gltfModel.meshes.size());
+	for (const MeshContext& meshContext : outParsedMeshes)
 	{
-		for (auto& meshContext : batchedMeshContexts)
+		if (meshContext.HasGeometry() &&
+			meshContext.sourceMeshIndex >= 0 &&
+			static_cast<size_t>(meshContext.sourceMeshIndex) <
+				sourceMeshBounds.Num())
 		{
-			outParsedMeshes.Emplace(std::move(meshContext));
+			sourceMeshBounds[
+				static_cast<size_t>(meshContext.sourceMeshIndex)]
+				.Extend(meshContext.bounds);
 		}
+	}
+
+	for (const GltfImporterUtils::SceneNode& node : sceneNodes)
+	{
+		if (node.m_meshIndex < 0 ||
+			static_cast<size_t>(node.m_meshIndex) >=
+				sourceMeshBounds.Num())
+		{
+			continue;
+		}
+
+		Math::AABB instanceBounds =
+			sourceMeshBounds[static_cast<size_t>(node.m_meshIndex)];
+		if (!instanceBounds.IsValid())
+		{
+			continue;
+		}
+		if (node.m_skinIndex < 0)
+		{
+			instanceBounds.Apply(node.m_worldMatrix);
+		}
+		outBoundsAabb.Extend(instanceBounds);
 	}
 
 	bool bImported =

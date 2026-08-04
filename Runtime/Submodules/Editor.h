@@ -22,6 +22,7 @@ namespace Sailor
 	class TObjectPtr;
 	class InstanceId;
 	class Prefab;
+	class Model;
 	struct EditorManagedMutationState;
 	namespace EditorViewport
 	{
@@ -71,6 +72,14 @@ namespace Sailor
 		SAILOR_SHARED_API bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
 		SAILOR_API bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
 		bool CreateGameObject(const class InstanceId& parentInstanceId, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
+		bool CreateModelInstance(
+			const TObjectPtr<Model>& model,
+			const std::string& name,
+			const class InstanceId& parentInstanceId,
+			bool bCreateHierarchy,
+			const glm::vec3* worldPosition,
+			const class InstanceId& preferredInstanceId,
+			class InstanceId& outInstanceId);
 		SAILOR_SHARED_API bool DestroyObject(const class InstanceId& instanceId);
 		bool ResetComponentToDefaults(const class InstanceId& instanceId);
 		bool AddComponent(const class InstanceId& instanceId, const std::string& componentTypeName, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);

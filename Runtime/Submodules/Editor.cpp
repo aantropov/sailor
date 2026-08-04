@@ -7,12 +7,14 @@
 #include "ECS/PathTracerECS.h"
 #include "Components/PathTracerProxyComponent.h"
 #include "Components/EditorComponent.h"
+#include "Components/MeshRendererComponent.h"
 #include "Raytracing/PathTracer.h"
 #include "Editor.h"
 #include "Containers/Map.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 #include "Core/Reflection.h"
 #include "Math/Math.h"
 #include "Math/Transform.h"
@@ -204,6 +206,63 @@ namespace
 		}
 
 		gameObject->GetTransformComponent().SetPosition(localPosition);
+		return true;
+	}
+
+	bool IsEditableModelHierarchyValid(const Model& model)
+	{
+		if (!model.SupportsEditableHierarchy() || model.GetNodes().IsEmpty())
+		{
+			return false;
+		}
+
+		const auto& nodes = model.GetNodes();
+		for (uint32_t nodeIndex = 0; nodeIndex < nodes.Num(); ++nodeIndex)
+		{
+			const auto& node = nodes[nodeIndex];
+			const auto& transform = node.m_localTransform;
+			const glm::vec4 rotation(
+				transform.m_rotation.x,
+				transform.m_rotation.y,
+				transform.m_rotation.z,
+				transform.m_rotation.w);
+			if (node.m_parentIndex < -1 ||
+				node.m_parentIndex >= static_cast<int32_t>(nodeIndex) ||
+				node.m_meshIndex < Model::AllMeshes ||
+				(node.m_meshIndex >= 0 &&
+					!model.IsSourceMeshIndexValid(node.m_meshIndex)) ||
+				node.m_skinIndex >= 0 ||
+				!Math::AllFinite(transform.m_position) ||
+				!Math::AllFinite(rotation) ||
+				!Math::AllFinite(transform.m_scale) ||
+				glm::dot(rotation, rotation) <= 0.000001f)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool AttachModelRenderer(
+		GameObjectPtr gameObject,
+		const ModelPtr& model,
+		int32_t meshIndex,
+		const TVector<MaterialPtr>& defaultMaterials)
+	{
+		auto meshRenderer = gameObject
+			? gameObject->AddComponent<MeshRendererComponent>()
+			: MeshRendererComponentPtr{};
+		if (!meshRenderer)
+		{
+			return false;
+		}
+
+		meshRenderer->SetMeshIndex(meshIndex);
+		auto& rendererData = meshRenderer->GetData();
+		rendererData.SetModel(model);
+		rendererData.GetMaterials() = defaultMaterials;
+		rendererData.MarkDirty();
 		return true;
 	}
 }
@@ -563,6 +622,175 @@ bool Editor::CreateGameObject(const InstanceId& parentInstanceId, const Instance
 	}
 
 	outInstanceId = gameObject->GetInstanceId();
+	NotifyManagedObjectMutation(outInstanceId);
+	return true;
+}
+
+bool Editor::CreateModelInstance(
+	const ModelPtr& model,
+	const std::string& name,
+	const InstanceId& parentInstanceId,
+	bool bCreateHierarchy,
+	const glm::vec3* worldPosition,
+	const InstanceId& preferredInstanceId,
+	InstanceId& outInstanceId)
+{
+	SAILOR_PROFILE_FUNCTION();
+	outInstanceId = InstanceId::Invalid;
+
+	if (!m_world || !model || !model->IsStructurallyReady() || name.empty())
+	{
+		SAILOR_LOG_ERROR("Cannot create model instance '%s': invalid world, model, or name.", name.c_str());
+		return false;
+	}
+
+	GameObjectPtr parentGameObject;
+	if (!ResolveParent(m_world, parentInstanceId, parentGameObject))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot create model instance '%s': parent '%s' is invalid.",
+			name.c_str(),
+			parentInstanceId.ToString().c_str());
+		return false;
+	}
+
+	// Bulk hierarchy creation must not rebuild the same model material table for
+	// every mesh node. Bistro-scale models can otherwise create hundreds of
+	// thousands of duplicate material-load task joins in one engine update.
+	TVector<MaterialPtr> defaultMaterials;
+	if (model->GetFileId())
+	{
+		if (auto* modelImporter = App::GetSubmodule<ModelImporter>())
+		{
+			modelImporter->LoadDefaultMaterials(
+				model->GetFileId(),
+				defaultMaterials);
+		}
+	}
+
+	auto root = preferredInstanceId
+		? m_world->Instantiate(name, preferredInstanceId)
+		: m_world->Instantiate(name);
+	if (!root)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot create model instance '%s': root '%s' could not be instantiated.",
+			name.c_str(),
+			preferredInstanceId.ToString().c_str());
+		return false;
+	}
+
+	const auto rollback = [this, &root]()
+		{
+			m_world->DestroyImmediate(root);
+		};
+
+	if (parentGameObject)
+	{
+		root->SetParent(parentGameObject);
+		if (root->GetParent() != parentGameObject)
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot create model instance '%s': root could not be parented to '%s'.",
+				name.c_str(),
+				parentInstanceId.ToString().c_str());
+			rollback();
+			return false;
+		}
+	}
+
+	if (worldPosition && !TrySetWorldPosition(root, *worldPosition))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot create model instance '%s': world position could not be resolved.",
+			name.c_str());
+		rollback();
+		return false;
+	}
+
+	const bool bCreateEditableHierarchy =
+		bCreateHierarchy && IsEditableModelHierarchyValid(*model);
+	if (!bCreateEditableHierarchy)
+	{
+		if (!AttachModelRenderer(
+				root,
+				model,
+				Model::AllMeshes,
+				defaultMaterials))
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot create model instance '%s': root MeshRendererComponent could not be created.",
+				name.c_str());
+			rollback();
+			return false;
+		}
+	}
+	else
+	{
+		const auto& modelNodes = model->GetNodes();
+		TVector<GameObjectPtr> createdNodes;
+		createdNodes.Reserve(modelNodes.Num());
+		for (uint32_t nodeIndex = 0; nodeIndex < modelNodes.Num(); ++nodeIndex)
+		{
+			const auto& modelNode = modelNodes[nodeIndex];
+			const std::string nodeName = modelNode.m_name.empty()
+				? "Node_" + std::to_string(modelNode.m_sourceNodeIndex)
+				: modelNode.m_name;
+			auto node = m_world->Instantiate(nodeName);
+			if (!node)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot create model instance '%s': node %u ('%s') could not be instantiated.",
+					name.c_str(),
+					nodeIndex,
+					nodeName.c_str());
+				rollback();
+				return false;
+			}
+
+			const GameObjectPtr& nodeParent = modelNode.m_parentIndex >= 0
+				? createdNodes[static_cast<uint32_t>(modelNode.m_parentIndex)]
+				: root;
+			node->SetParent(nodeParent);
+			if (node->GetParent() != nodeParent)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot create model instance '%s': node %u ('%s') could not be parented to source parent %d.",
+					name.c_str(),
+					nodeIndex,
+					nodeName.c_str(),
+					modelNode.m_parentIndex);
+				m_world->DestroyImmediate(node);
+				rollback();
+				return false;
+			}
+
+			auto& transform = node->GetTransformComponent();
+			transform.SetPosition(glm::vec3(modelNode.m_localTransform.m_position));
+			transform.SetRotation(modelNode.m_localTransform.m_rotation);
+			transform.SetScale(modelNode.m_localTransform.m_scale);
+			if (modelNode.m_meshIndex >= 0 &&
+				!AttachModelRenderer(
+					node,
+					model,
+					modelNode.m_meshIndex,
+					defaultMaterials))
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot create model instance '%s': node %u ('%s') MeshRendererComponent for source mesh %d could not be created.",
+					name.c_str(),
+					nodeIndex,
+					nodeName.c_str(),
+					modelNode.m_meshIndex);
+				rollback();
+				return false;
+			}
+
+			createdNodes.Add(std::move(node));
+		}
+	}
+
+	outInstanceId = root->GetInstanceId();
 	NotifyManagedObjectMutation(outInstanceId);
 	return true;
 }

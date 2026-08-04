@@ -39,6 +39,7 @@
     <Compile Include="ProjectContentMutationReloadPolicyTests.cs" />
     <Compile Include="RepositoryAssetSidecarContractTests.cs" />
     <Compile Include="AssetInfoSerializationSourceContractTests.cs" />
+    <Compile Include="AssetCacheIndexStoreTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceGeneratedProjectStateTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
@@ -152,6 +153,7 @@
     <Compile Include="..\Editor\Services\LatestSceneViewportState.cs" Link="Services\LatestSceneViewportState.cs" />
     <Compile Include="..\Editor\Services\LatestQueuedCommand.cs" Link="Services\LatestQueuedCommand.cs" />
     <Compile Include="..\Editor\Services\EditorTypeCacheStore.cs" Link="Services\EditorTypeCacheStore.cs" />
+    <Compile Include="..\Editor\Services\AssetCacheIndexStore.cs" Link="Services\AssetCacheIndexStore.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
   </ItemGroup>
 </Project>

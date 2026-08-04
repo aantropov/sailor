@@ -746,42 +746,75 @@ namespace SailorEditor.Services
         public IEnumerable<GameObject> EnumerateSubHierarchy(GameObject root)
         {
             var prefab = Current.Prefabs[root.PrefabIndex];
-            yield return root;
-
             var rootIndex = prefab.GameObjects.IndexOf(root);
-            foreach (var child in prefab.GameObjects.Where(go => go.ParentIndex == rootIndex))
+            if (rootIndex < 0)
             {
-                foreach (var descendant in EnumerateSubHierarchy(child))
-                {
-                    yield return descendant;
-                }
+                yield break;
+            }
+
+            var childrenByParent = new List<int>[prefab.GameObjects.Count];
+            for (int i = 0; i < prefab.GameObjects.Count; i++)
+            {
+                var parentIndex = prefab.GameObjects[i].ParentIndex;
+                if (parentIndex >= (uint)prefab.GameObjects.Count)
+                    continue;
+
+                childrenByParent[(int)parentIndex] ??= [];
+                childrenByParent[(int)parentIndex].Add(i);
+            }
+
+            var pending = new Stack<int>();
+            var visited = new HashSet<int>();
+            pending.Push(rootIndex);
+            while (pending.TryPop(out var index))
+            {
+                if (!visited.Add(index))
+                    continue;
+
+                yield return prefab.GameObjects[index];
+
+                var children = childrenByParent[index];
+                if (children is null)
+                    continue;
+
+                for (int i = children.Count - 1; i >= 0; i--)
+                    pending.Push(children[i]);
             }
         }
 
         public Prefab CreatePrefabFromSubHierarchy(GameObject root, out List<InstanceId> externalSceneRefs)
         {
             var sourcePrefab = Current.Prefabs[root.PrefabIndex];
+            var sourceObjectIndicesByObject = sourcePrefab.GameObjects
+                .Select((gameObject, index) => new { gameObject, index })
+                .ToDictionary(entry => entry.gameObject, entry => entry.index);
             var sourceObjects = EnumerateSubHierarchy(root).ToList();
-            var sourceObjectIndices = sourceObjects.Select(go => sourcePrefab.GameObjects.IndexOf(go)).ToHashSet();
-            var sourceComponents = sourceObjects
+            var sourceObjectIndices = sourceObjects
+                .Select(gameObject => sourceObjectIndicesByObject[gameObject])
+                .ToHashSet();
+            var sourceComponentIndices = sourceObjects
                 .SelectMany(go => go.ComponentIndices)
                 .Distinct()
                 .OrderBy(index => index)
-                .Select(index => sourcePrefab.Components[index])
                 .ToList();
 
-            var componentIndexMap = sourceComponents
-                .Select((component, index) => new { component, index })
-                .ToDictionary(x => sourcePrefab.Components.IndexOf(x.component), x => x.index);
+            var componentIndexMap = sourceComponentIndices
+                .Select((sourceIndex, index) => new { sourceIndex, index })
+                .ToDictionary(entry => entry.sourceIndex, entry => entry.index);
 
             var sourceObjectIndexMap = sourceObjects
-                .Select((go, index) => new { sourceIndex = sourcePrefab.GameObjects.IndexOf(go), index })
-                .ToDictionary(x => x.sourceIndex, x => x.index);
+                .Select((gameObject, index) => new
+                {
+                    sourceIndex = sourceObjectIndicesByObject[gameObject],
+                    index
+                })
+                .ToDictionary(entry => entry.sourceIndex, entry => entry.index);
 
             var prefab = new Prefab();
-            foreach (var component in sourceComponents)
+            foreach (var componentIndex in sourceComponentIndices)
             {
-                prefab.Components.Add(CloneComponent(component));
+                prefab.Components.Add(CloneComponent(
+                    sourcePrefab.Components[componentIndex]));
             }
 
             foreach (var go in sourceObjects)
@@ -845,6 +878,14 @@ namespace SailorEditor.Services
                 var newPrefab = (Prefab)prefab.Clone();
                 newPrefab.GameObjects.Clear();
                 newPrefab.Components.Clear();
+
+                foreach (var component in prefab.Components)
+                {
+                    component.Initialize();
+                    componentsDict[component.InstanceId] = component;
+                    newPrefab.Components.Add(component);
+                }
+
                 foreach (var go in prefab.GameObjects)
                 {
                     var gameObject = go;
@@ -855,12 +896,8 @@ namespace SailorEditor.Services
                     foreach (var i in go.ComponentIndices ?? [])
                     {
                         var component = prefab.Components[i];
-                        component.Initialize();
-                        componentsDict[component.InstanceId] = component;
                         componentOwnersDict[component.InstanceId] = gameObject;
                         component.DisplayName = $"{go.DisplayName} ({component.Typename.Name})";
-
-                        newPrefab.Components.Add(component);
                     }
 
                     newPrefab.GameObjects.Add(gameObject);
@@ -1086,15 +1123,65 @@ namespace SailorEditor.Services
 
         static Component CloneComponent(Component component)
         {
-            var yaml = SerializationUtils.CreateSerializerBuilder()
-                .WithTypeConverter(new ComponentYamlConverter())
-                .Build()
-                .Serialize(component);
+            var clone = new Component
+            {
+                DisplayName = component.DisplayName,
+                Typename = component.Typename
+            };
 
-            return SerializationUtils.CreateDeserializerBuilder()
-                .WithTypeConverter(new ComponentYamlConverter())
-                .Build()
-                .Deserialize<Component>(yaml);
+            foreach (var property in component.OverrideProperties)
+            {
+                clone.OverrideProperties[property.Key] =
+                    CloneComponentProperty(property.Value);
+            }
+
+            foreach (var property in component.PreservedReadOnlyProperties)
+            {
+                clone.PreservedReadOnlyProperties[property.Key] =
+                    property.Value;
+            }
+
+            return clone;
+        }
+
+        static ObservableObject CloneComponentProperty(
+            ObservableObject property)
+        {
+            if (property is Observable<FileId> fileId)
+            {
+                return new Observable<FileId>(
+                    (FileId)fileId.Value.Clone());
+            }
+
+            if (property is Observable<InstanceId> instanceId)
+            {
+                return new Observable<InstanceId>(
+                    (InstanceId)instanceId.Value.Clone());
+            }
+
+            if (property is ObservableFileIdList fileIds)
+            {
+                return new ObservableFileIdList(fileIds.Values.Select(
+                    fileId => (FileId)fileId.Value.Clone()));
+            }
+
+            if (property is ObjectPtr objectPtr)
+            {
+                return new ObjectPtr
+                {
+                    FileId = (FileId)objectPtr.FileId.Clone(),
+                    InstanceId = (InstanceId)objectPtr.InstanceId.Clone()
+                };
+            }
+
+            if (property is ICloneable cloneable &&
+                cloneable.Clone() is ObservableObject clone)
+            {
+                return clone;
+            }
+
+            throw new InvalidOperationException(
+                $"Cannot clone component property '{property.GetType().Name}'.");
         }
 
         static GameObject DeserializeGameObject(string yaml)

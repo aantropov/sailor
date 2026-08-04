@@ -2418,6 +2418,7 @@ namespace SailorEditor.Services
 
         async Task<InstanceId?> InvokeCreationInteropAsync(
             Func<CancellationToken, Task<EngineProtocolCreationResult>> interop,
+            bool refreshWorld,
             CancellationToken cancellationToken)
         {
             var creationResult = default(EngineProtocolCreationResult);
@@ -2439,8 +2440,11 @@ namespace SailorEditor.Services
 
             var createdInstanceId =
                 new InstanceId(creationResult.InstanceId);
-            await RefreshCurrentWorldAsync(
-                cancellationToken).ConfigureAwait(false);
+            if (refreshWorld)
+            {
+                await RefreshCurrentWorldAsync(
+                    cancellationToken).ConfigureAwait(false);
+            }
             return createdInstanceId;
         }
 
@@ -2481,8 +2485,47 @@ namespace SailorEditor.Services
                     stringParentId,
                     stringPreferredInstanceId,
                     token),
+                refreshWorld: true,
                 cancellationToken);
         }
+
+        internal Task<InstanceId?> RequestCreateGameObjectAsync(
+            InstanceId? parentId,
+            InstanceId preferredInstanceId,
+            CancellationToken cancellationToken = default)
+            => InvokeCreationInteropAsync(
+                token => protocolClient.CreateGameObjectAsync(
+                    parentId?.Value ?? string.Empty,
+                    preferredInstanceId?.Value ?? string.Empty,
+                    token),
+                refreshWorld: false,
+                cancellationToken);
+
+        internal Task<InstanceId?> RequestCreateModelInstanceAsync(
+            FileId modelFileId,
+            string name,
+            InstanceId? parentId,
+            bool createHierarchy,
+            Vec4? worldPosition,
+            InstanceId preferredInstanceId,
+            CancellationToken cancellationToken = default)
+            => InvokeCreationInteropAsync(
+                token => protocolClient.CreateModelInstanceAsync(
+                    modelFileId.Value,
+                    name,
+                    parentId?.Value ?? string.Empty,
+                    createHierarchy,
+                    worldPosition is null
+                        ? null
+                        : new EngineProtocolVector4(
+                            worldPosition.X,
+                            worldPosition.Y,
+                            worldPosition.Z,
+                            worldPosition.W),
+                    preferredInstanceId.Value,
+                    token),
+                refreshWorld: false,
+                cancellationToken);
 
         public async Task<Vec4?> TraceViewportRayAsync(
             double normalizedX,
@@ -2585,8 +2628,23 @@ namespace SailorEditor.Services
                     componentTypeName ?? string.Empty,
                     stringPreferredInstanceId,
                     token),
+                refreshWorld: true,
                 cancellationToken);
         }
+
+        internal Task<InstanceId?> RequestAddComponentAsync(
+            InstanceId instanceId,
+            string componentTypeName,
+            InstanceId preferredInstanceId,
+            CancellationToken cancellationToken = default)
+            => InvokeCreationInteropAsync(
+                token => protocolClient.AddComponentAsync(
+                    instanceId?.Value ?? string.Empty,
+                    componentTypeName ?? string.Empty,
+                    preferredInstanceId?.Value ?? string.Empty,
+                    token),
+                refreshWorld: false,
+                cancellationToken);
 
         public async Task<bool> RemoveComponentAsync(
             InstanceId instanceId,
@@ -2650,6 +2708,7 @@ namespace SailorEditor.Services
                     parentId?.Value ?? string.Empty,
                     position,
                     token),
+                refreshWorld: true,
                 cancellationToken);
         }
 

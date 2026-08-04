@@ -254,6 +254,94 @@ namespace
 			"a pending material slot must not discard later ready meshes from the depth pass");
 	}
 
+	void TestModelHierarchyRenderPropagationContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const std::string traceBody = ExtractFunctionBody(
+			sceneViewSource,
+			"TVector<RHISceneViewProxy> RHISceneView::TraceScene(");
+		Require(traceBody.find("CollectRenderData(") != std::string::npos &&
+			traceBody.find("meshProxy.m_worldMatrix * modelMatrix") !=
+				std::string::npos &&
+			traceBody.find("viewProxy.m_meshModelMatrices.Add(") !=
+				std::string::npos,
+			"stationary proxies must expand model hierarchy instances into aligned world matrices");
+
+		const std::string staticMeshSource = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const std::string collectBody = ExtractFunctionBody(
+			staticMeshSource,
+			"bool CollectComponentRenderData(");
+		Require(collectBody.find("data.GetMeshIndex()") != std::string::npos &&
+			collectBody.find("ownerWorldMatrix * modelMatrix") !=
+				std::string::npos,
+			"static proxies must resolve the selected source mesh and compose its owner transform");
+		Require(staticMeshSource.find(
+			"proxy.m_meshModelMatrices = std::move(selectedMatrices)") !=
+				std::string::npos,
+			"cached static proxies must retain one world matrix per selected render part");
+
+		const struct
+		{
+			const char* m_path;
+			const char* m_signature;
+			const char* m_label;
+		} frameGraphPasses[] = {
+			{
+				"Runtime/FrameGraph/RenderSceneNode.cpp",
+				"Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(",
+				"raster"
+			},
+			{
+				"Runtime/FrameGraph/DepthPrepassNode.cpp",
+				"Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(",
+				"depth"
+			},
+			{
+				"Runtime/FrameGraph/ShadowPrepassNode.cpp",
+				"void ShadowPrepassNode::Process(",
+				"shadow"
+			}
+		};
+		for (const auto& pass : frameGraphPasses)
+		{
+			const std::string source = ReadText(sourceRoot / pass.m_path);
+			const std::string body = ExtractFunctionBody(
+				source,
+				pass.m_signature);
+			Require(body.find("proxy.m_meshModelMatrices[i]") !=
+					std::string::npos &&
+				body.find("data.model = meshWorldMatrix") !=
+					std::string::npos,
+				std::string(pass.m_label) +
+					" pass must consume the selected render part world matrix");
+		}
+
+		const std::string pathTracerEcsSource = ReadText(
+			sourceRoot / "Runtime/ECS/PathTracerECS.cpp");
+		const std::string pathTracerTick = ExtractFunctionBody(
+			pathTracerEcsSource,
+			"Tasks::ITaskPtr PathTracerECS::Tick(");
+		Require(pathTracerTick.find("pMeshRenderer->GetMeshIndex()") !=
+				std::string::npos &&
+			pathTracerTick.find("pModel->HasBLAS(meshIndex)") !=
+				std::string::npos &&
+			pathTracerTick.find("instance.m_meshIndex = meshIndex") !=
+				std::string::npos,
+			"path-tracer ECS must publish the selected source mesh and its matching BLAS");
+
+		const std::string pathTracerSource = ReadText(
+			sourceRoot / "Runtime/Raytracing/PathTracer.cpp");
+		Require(pathTracerSource.find(
+			"GetBLAS(instance.m_meshIndex)") != std::string::npos &&
+			pathTracerSource.find(
+				"GetBLASTriangles(instance.m_meshIndex)") !=
+				std::string::npos,
+			"path tracing must intersect and shade the same selected source-mesh geometry");
+	}
+
 	void TestGpuCullingShaderSafetyContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1114,6 +1202,7 @@ int main()
 		{ "GpuCullingRangeAndSynchronizationContract", TestGpuCullingRangeAndSynchronizationContract },
 		{ "BatchTextureBindingIdentityContract", TestBatchTextureBindingIdentityContract },
 		{ "SceneViewProxyMaterialAlignmentContract", TestSceneViewProxyMaterialAlignmentContract },
+		{ "ModelHierarchyRenderPropagationContract", TestModelHierarchyRenderPropagationContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
 		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },

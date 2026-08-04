@@ -978,9 +978,11 @@ public sealed class EngineLifecycleTests
         var reflectionSource = ReadRepositoryFile("Runtime", "Core", "Reflection.cpp");
 
         Assert.Contains(
-            "\"Sailor::ShaderAssetInfo\" when string.Equals(extension, \".glsl\", StringComparison.OrdinalIgnoreCase) => new ShaderLibraryFile()",
+            "\"Sailor::ShaderAssetInfo\" when string.Equals(",
             assetsSource,
             StringComparison.Ordinal);
+        Assert.Contains("\".glsl\"", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("=> new ShaderLibraryFile()", assetsSource, StringComparison.Ordinal);
         Assert.Contains(
             "\"Sailor::ShaderAssetInfo\" => new ShaderFile()",
             assetsSource,
@@ -1000,6 +1002,44 @@ public sealed class EngineLifecycleTests
             "ProjectContentInternalPathPolicy.IsTransactionDirectory(directory)",
             assetsSource,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AssetProjection_LoadsFoldersAndMetadataLazilyOffTheUiThread()
+    {
+        var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");
+        var assetFileSource = ReadRepositoryFile("Editor", "ViewModels", "AssetFile.cs");
+        var selectionSource = ReadRepositoryFile("Editor", "Services", "SelectionService.cs");
+        var contentViewSource = ReadRepositoryFile("Editor", "Views", "ContentFolderView.xaml.cs");
+        var cacheIndexSource = ReadRepositoryFile("Editor", "Services", "AssetCacheIndexStore.cs");
+
+        var addRootStart = assetsSource.IndexOf(
+            "public void AddProjectRoot(EngineLaunchContext launchContext)",
+            StringComparison.Ordinal);
+        var watcherStart = assetsSource.IndexOf(
+            "void ConfigureContentWatchers",
+            addRootStart,
+            StringComparison.Ordinal);
+        Assert.True(addRootStart >= 0 && watcherStart > addRootStart);
+        var addRootBody = assetsSource[addRootStart..watcherStart];
+        Assert.Contains("AddContentRootFolder(", addRootBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReadDirectory(", addRootBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReadAssetFile(", addRootBody, StringComparison.Ordinal);
+
+        Assert.Contains("public async Task EnsureFolderLoadedAsync(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("() => ReadDirectoryLevel(folder)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await Task.Run(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("IsLoaded = false", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await service.EnsureFolderLoadedAsync(folderId)", contentViewSource, StringComparison.Ordinal);
+        Assert.Contains("public async Task EnsureMetadataLoadedAsync(", assetFileSource, StringComparison.Ordinal);
+        Assert.Contains("await Task.Run(Revert, cancellationToken)", assetFileSource, StringComparison.Ordinal);
+        Assert.Contains("await selectedAssetFile.EnsureMetadataLoadedAsync(", selectionSource, StringComparison.Ordinal);
+        Assert.Contains("QueueAssetCacheIndexLoad(launchContext, contentGeneration)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("MergeAssetCacheIndex(result.Entries!)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("Files.Add(file)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("Assets[file.FileId] = file", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("producerIdentity", cacheIndexSource, StringComparison.Ordinal);
+        Assert.Contains("asset-cache-v1", cacheIndexSource, StringComparison.Ordinal);
     }
 
     [Fact]

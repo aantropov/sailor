@@ -77,21 +77,7 @@ public class WorldYamlConverter : IYamlTypeConverter
                 }))
             .Build();
 
-        var world = deserializer.Deserialize<World>(parser);
-
-        foreach (var prefab in world.Prefabs)
-        {
-            foreach (var gameObject in prefab.GameObjects)
-            {
-                gameObject.Initialize();
-                foreach (var component in prefab.Components)
-                {
-                    component.Initialize();
-                }
-            }
-        }
-
-        return world;
+        return deserializer.Deserialize<World>(parser);
     }
 
     public void WriteYaml(IEmitter emitter, object value, Type type)

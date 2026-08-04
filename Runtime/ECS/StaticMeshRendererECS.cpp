@@ -11,6 +11,51 @@
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
+namespace
+{
+	bool HasRenderableSelection(const StaticMeshRendererData& data)
+	{
+		const ModelPtr& model = data.GetModel();
+		return model && model->IsReady() &&
+			model->GetBoundsAABB(data.GetMeshIndex()).IsValid();
+	}
+
+	bool CollectComponentRenderData(
+		const StaticMeshRendererData& data,
+		const glm::mat4& ownerWorldMatrix,
+		TVector<RHI::RHIMeshPtr>& outMeshes,
+		TVector<glm::mat4>& outWorldMatrices,
+		Math::AABB& outWorldBounds)
+	{
+		if (!HasRenderableSelection(data))
+		{
+			return false;
+		}
+
+		TVector<glm::mat4> modelMatrices;
+		Math::AABB modelBounds;
+		if (!data.GetModel()->CollectRenderData(
+				data.GetMeshIndex(),
+				outMeshes,
+				modelMatrices,
+				modelBounds))
+		{
+			return false;
+		}
+
+		outWorldMatrices.Clear();
+		outWorldMatrices.Reserve(modelMatrices.Num());
+		for (const glm::mat4& modelMatrix : modelMatrices)
+		{
+			outWorldMatrices.Add(ownerWorldMatrix * modelMatrix);
+		}
+
+		outWorldBounds = modelBounds;
+		outWorldBounds.Apply(ownerWorldMatrix);
+		return outWorldBounds.IsValid();
+	}
+}
+
 void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
@@ -50,7 +95,23 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		auto& data = m_components[index];
 		GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-		const bool bHasRenderableModel = data.GetModel() && data.GetModel()->IsReady() && data.GetModel()->GetBoundsAABB().IsValid();
+		const ModelPtr& model = data.GetModel();
+		const bool bInvalidMeshIndex = model && model->IsReady() &&
+			data.GetMeshIndex() != Model::AllMeshes &&
+			!model->IsSourceMeshIndexValid(data.GetMeshIndex());
+		if (bInvalidMeshIndex && !data.m_bInvalidMeshIndexReported)
+		{
+			SAILOR_LOG(
+				"MeshRenderer ignored invalid glTF mesh index %d for model %s.",
+				data.GetMeshIndex(),
+				model->GetFileId().ToString().c_str());
+			data.m_bInvalidMeshIndexReported = true;
+		}
+		else if (!bInvalidMeshIndex)
+		{
+			data.m_bInvalidMeshIndexReported = false;
+		}
+		const bool bHasRenderableModel = HasRenderableSelection(data);
 		const bool bShouldBeStationary = data.m_bIsActive && ownerGameObject && bHasRenderableModel &&
 			ownerGameObject->GetMobilityType() == EMobilityType::Stationary;
 
@@ -72,7 +133,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			{
 				auto& data = m_components[index];
 				GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-				const bool bHasRenderableModel = data.GetModel() && data.GetModel()->IsReady() && data.GetModel()->GetBoundsAABB().IsValid();
+				const bool bHasRenderableModel = HasRenderableSelection(data);
 				bool bHasRenderableMaterials = !data.GetMaterials().IsEmpty();
 				for (const auto& material : data.GetMaterials())
 				{
@@ -127,13 +188,22 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 					EMobilityType mobilityType = ownerGameObject->GetMobilityType();
 
-					if (mobilityType == EMobilityType::Stationary && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+					if (mobilityType == EMobilityType::Stationary &&
+						data.m_bIsActive && HasRenderableSelection(data))
 					{
 						const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-						Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+						Math::AABB adjustedBounds;
+						TVector<RHI::RHIMeshPtr> selectedMeshes;
+						TVector<glm::mat4> selectedMatrices;
 
 						// Should we update only when transform changed?
-						if ((data.m_bIsDirty || data.m_frameLastChange == 0 || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) && adjustedBounds.IsValid())
+						if ((data.m_bIsDirty || data.m_frameLastChange == 0 || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
+							CollectComponentRenderData(
+								data,
+								ownerTransform.GetCachedWorldMatrix(),
+								selectedMeshes,
+								selectedMatrices,
+								adjustedBounds))
 						{
 							RHI::RHIMeshProxy proxy;
 							proxy.m_staticMeshEcs = GetComponentIndex(&data);
@@ -146,8 +216,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 							{
 								data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
 							}
-
-							adjustedBounds.Apply(proxy.m_worldMatrix);
 
 							temp.Emplace(TPair(std::move(proxy), std::move(adjustedBounds)));
 
@@ -210,10 +278,13 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 				EMobilityType mobilityType = ownerGameObject->GetMobilityType();
 
-				if (mobilityType == EMobilityType::Static && data.m_bIsActive && data.GetModel() && data.GetModel()->IsReady())
+				if (mobilityType == EMobilityType::Static &&
+					data.m_bIsActive && HasRenderableSelection(data))
 				{
 					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-					Math::AABB adjustedBounds = data.GetModel()->GetBoundsAABB();
+					Math::AABB adjustedBounds;
+					TVector<RHI::RHIMeshPtr> selectedMeshes;
+					TVector<glm::mat4> selectedMatrices;
 					bool bMaterialsReady = !data.GetMaterials().IsEmpty();
 					bool bMaterialsChanged =
 						data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
@@ -232,7 +303,13 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					}
 
 					if ((data.m_bIsDirty || bMaterialsChanged || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
-						adjustedBounds.IsValid() && bMaterialsReady)
+						bMaterialsReady &&
+						CollectComponentRenderData(
+							data,
+							ownerTransform.GetCachedWorldMatrix(),
+							selectedMeshes,
+							selectedMatrices,
+							adjustedBounds))
 					{
 						data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
 						for (size_t i = 0; i < data.GetMaterials().Num(); ++i)
@@ -253,9 +330,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 							data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
 						}
 						proxy.m_skeletonOffset = data.m_skeletonOffset;
-						proxy.m_meshes = data.GetModel()->GetMeshes();
-						proxy.m_worldAabb = data.GetModel()->GetBoundsAABB();
-						proxy.m_worldAabb.Apply(proxy.m_worldMatrix);
+						proxy.m_meshes = std::move(selectedMeshes);
+						proxy.m_meshModelMatrices = std::move(selectedMatrices);
+						proxy.m_worldAabb = adjustedBounds;
 						proxy.m_bCastShadows = data.ShouldCastShadow();
 
 						proxy.m_overrideMaterials.Clear();
@@ -291,7 +368,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 #endif
 						}
 
-						adjustedBounds.Apply(proxy.m_worldMatrix);
 						m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
 
 						data.m_frameLastChange = ownerTransform.GetFrameLastChange();
