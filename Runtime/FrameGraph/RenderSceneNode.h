@@ -60,7 +60,7 @@ namespace Sailor::Framegraph
 			const RHI::RHIShaderBindingPtr& storageBinding,
 			const std::string& queueTag);
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 
 		uint32_t m_numMeshes = 0;
 		SpinLock m_syncSharedResources;

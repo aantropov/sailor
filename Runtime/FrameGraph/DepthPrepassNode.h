@@ -61,7 +61,7 @@ namespace Sailor
 		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 		Framegraph::TextureBindingCache m_textureBindingCache;
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	namespace Framegraph

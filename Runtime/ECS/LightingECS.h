@@ -42,7 +42,7 @@ namespace Sailor
 		// <Mesh ECS Index, LastFrameChanged>
 		TVector<TPair<size_t, size_t>> m_snapshot{};
 
-		bool Equals(const CSMLightState& rhs) const;
+		SAILOR_API bool Equals(const CSMLightState& rhs) const;
 	};
 
 	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
