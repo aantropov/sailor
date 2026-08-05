@@ -327,6 +327,14 @@ namespace SailorEditor.Services
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (await engineService.GetEditorSimulationStateAsync(
+                    cancellationToken))
+            {
+                return new SceneSaveResult(
+                    SceneSaveOutcome.Failed,
+                    Error: "Stop simulation before saving the scene.");
+            }
+
             var page = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
             if (page is null)
                 return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The editor window is unavailable.");

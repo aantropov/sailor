@@ -200,7 +200,7 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;
-	const unsigned numReservedThreads = 4u + numRHIThreads;
+	const unsigned numReservedThreads = 5u + numRHIThreads;
 	const unsigned numThreads = coresCount > numReservedThreads
 		? coresCount - numReservedThreads
 		: 1u;
@@ -262,6 +262,17 @@ void Scheduler::Initialize()
 	m_threadTypes[newBackgroundThread->GetThreadId()] = EThreadType::Background;
 	m_workerThreads.Emplace(newBackgroundThread);
 
+	WorkerThread* newPhysicsThread = new WorkerThread(
+		"Physics Thread",
+		EThreadType::Physics,
+		m_refreshCondVar[(uint32_t)EThreadType::Physics],
+		m_queueMutex[(uint32_t)EThreadType::Physics],
+		m_pSharedTaskQueue[(uint32_t)EThreadType::Physics]);
+
+	m_physicsThreadId = newPhysicsThread->GetThreadId();
+	m_threadTypes[m_physicsThreadId] = EThreadType::Physics;
+	m_workerThreads.Emplace(newPhysicsThread);
+
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
@@ -284,6 +295,7 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::RHI, true);
 	NotifyWorkerThread(EThreadType::Editor, true);
 	NotifyWorkerThread(EThreadType::Background, true);
+	NotifyWorkerThread(EThreadType::Physics, true);
 
 	for (auto& worker : m_workerThreads)
 	{
@@ -302,7 +314,17 @@ Scheduler::~Scheduler()
 
 uint32_t Scheduler::GetNumWorkerThreads() const
 {
-	return static_cast<uint32_t>(m_workerThreads.Num());
+	return GetNumThreads(EThreadType::Worker);
+}
+
+uint32_t Scheduler::GetNumThreads(EThreadType type) const
+{
+	uint32_t result = 0;
+	for (const WorkerThread* worker : m_workerThreads)
+	{
+		result += worker->GetThreadType() == type ? 1u : 0u;
+	}
+	return result;
 }
 
 void Scheduler::ProcessTasksOnMainThread()
@@ -609,6 +631,11 @@ bool Scheduler::IsRendererThread() const
 bool Scheduler::IsEditorThread() const
 {
 	return m_editorThreadId == GetCurrentThreadId();
+}
+
+bool Scheduler::IsPhysicsThread() const
+{
+	return m_physicsThreadId == GetCurrentThreadId();
 }
 
 bool Scheduler::HasThread(DWORD threadId) const

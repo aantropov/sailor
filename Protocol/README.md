@@ -83,6 +83,17 @@ renderer using `meshIndex = -1` for the complete model. World mutation is
 marshalled from the Editor worker to the Engine main thread; any failure rolls
 back the owned root recursively before the command reports failure.
 
+`set_editor_simulation` starts or stops physics preview for the current Editor
+world. Start first serializes the authored native world into an in-memory
+snapshot and only then enables fixed-step physics. Stop instantiates that
+snapshot as a replacement Editor world, destroys the simulated world, and the
+managed Editor refreshes its hierarchy and inspector from the restored native
+state. Scene save and Play/Debug are rejected while simulation is active so
+transient physics poses cannot be persisted. `get_editor_simulation_state`
+queries the native authority; toolbar state is never inferred solely from a
+previous button click. Both commands use the regular Editor worker and marshal
+world mutations to the Engine main thread.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

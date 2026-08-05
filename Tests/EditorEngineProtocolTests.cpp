@@ -66,6 +66,8 @@ namespace
 	constexpr uint32_t c_instantiatePrefabFromYamlCommandField = 42;
 	constexpr uint32_t c_createModelInstanceCommandField = 58;
 	constexpr uint32_t c_setAnimatorParameterCommandField = 59;
+	constexpr uint32_t c_setEditorSimulationCommandField = 61;
+	constexpr uint32_t c_getEditorSimulationStateCommandField = 62;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -1065,6 +1067,21 @@ namespace
 				kPreferredInstanceIdFieldNumber == 7);
 	}
 
+	void TestEditorSimulationWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetEditorSimulationFieldNumber ==
+			c_setEditorSimulationCommandField);
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kGetEditorSimulationStateFieldNumber ==
+			c_getEditorSimulationStateCommandField);
+		static_assert(
+			sailor::editor::v1::EditorSimulationRequest::
+				kEnabledFieldNumber == 1);
+	}
+
 	void TestEmbeddedNullIsRejected()
 	{
 		std::string fileIdRequest;
@@ -2042,6 +2059,7 @@ int main()
 		TestAnimatorParameterRequiresTypedValue();
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
+		TestEditorSimulationWireContract();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();

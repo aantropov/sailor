@@ -118,6 +118,8 @@ public sealed class EditorEngineProtocolTests
             ProtocolRequest.IsEngineMainThreadReadyFieldNumber);
         Assert.Equal(48, ProtocolRequest.IsEngineRunningFieldNumber);
         Assert.Equal(57, ProtocolRequest.UpdateAssetFieldNumber);
+        Assert.Equal(61, ProtocolRequest.SetEditorSimulationFieldNumber);
+        Assert.Equal(62, ProtocolRequest.GetEditorSimulationStateFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
     }

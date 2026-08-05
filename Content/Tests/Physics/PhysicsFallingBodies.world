@@ -1,0 +1,336 @@
+name: PhysicsFallingBodies
+prefabs:
+  - gameObjects:
+      - name: Camera
+        position:
+          - 0
+          - 7
+          - 18
+          - 1
+        rotation:
+          - 0.17364818
+          - 0
+          - 0
+          - 0.98480775
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000001
+        components:
+          - 0
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 0.1
+          zFar: 1000
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000001_14100000000000000001
+  - gameObjects:
+      - name: Sun
+        position:
+          - 0
+          - 10
+          - 5
+          - 1
+        rotation:
+          - 0.183012709
+          - 0.683012724
+          - 0.183012709
+          - 0.683012724
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000002
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 8
+            - 8
+            - 8
+          lightType: Directional
+          shadowType: PCF
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000002_14100000000000000002
+  - gameObjects:
+      - name: StaticGround
+        position:
+          - 0
+          - -0.5
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 12
+          - 1
+          - 12
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000003
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000003_14100000000000000003
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          friction: 0.8
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000004_14100000000000000003
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000005_14100000000000000003
+  - gameObjects:
+      - name: DynamicBox
+        position:
+          - -2
+          - 5
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000004
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000006_14100000000000000004
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          mass: 1
+          restitution: 0.15
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000007_14100000000000000004
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000008_14100000000000000004
+  - gameObjects:
+      - name: DynamicSphere
+        position:
+          - 0
+          - 8
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000005
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000009_14100000000000000005
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          mass: 1
+          restitution: 0.6
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000A_14100000000000000005
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000B_14100000000000000005
+  - gameObjects:
+      - name: DynamicCapsule
+        position:
+          - 2
+          - 11
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 2
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000006
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000C_14100000000000000006
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          mass: 1
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000D_14100000000000000006
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 1
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000E_14100000000000000006
+  - gameObjects:
+      - name: SensorPlatform
+        position:
+          - 5
+          - 3
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 3
+          - 0.25
+          - 3
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000007
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 1410000000000000000000000000000F_14100000000000000007
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          sensor: true
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000010_14100000000000000007
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000011_14100000000000000007
+  - gameObjects:
+      - name: SensorProbe
+        position:
+          - 5
+          - 8
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 14100000000000000008
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000012_14100000000000000008
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          mass: 1
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000013_14100000000000000008
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: 14100000000000000000000000000014_14100000000000000008

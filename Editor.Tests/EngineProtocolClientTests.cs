@@ -167,6 +167,36 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task EditorSimulation_UsesTypedSetAndStateCommands()
+    {
+        var requests = new List<ProtocolRequest>();
+        var client = CreateClient(request =>
+        {
+            requests.Add(request);
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult
+                    {
+                        Value = request.CommandCase ==
+                            ProtocolRequest.CommandOneofCase.GetEditorSimulationState
+                    });
+        });
+
+        Assert.False(await client.SetEditorSimulationAsync(true));
+        Assert.True(await client.GetEditorSimulationStateAsync());
+
+        Assert.Equal(2, requests.Count);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetEditorSimulation,
+            requests[0].CommandCase);
+        Assert.True(requests[0].SetEditorSimulation.Enabled);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.GetEditorSimulationState,
+            requests[1].CommandCase);
+    }
+
+    [Fact]
     public async Task AnimatorParameters_UseTypedProtocolValues()
     {
         var requests = new List<ProtocolRequest>();

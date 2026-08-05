@@ -78,7 +78,9 @@ World::World(
 	m_currentFrame(1),
 	m_name(std::move(name)),
 	m_frameInput(),
-	m_bIsBeginPlayCalled(false)
+	m_bIsBeginPlayCalled(false),
+	m_bPhysicsSimulationEnabled(
+		(mask & (uint8_t)EWorldBehaviourBit::Tickable) != 0)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(EAllocationPolicy::LocalMemory_SingleThread);
 

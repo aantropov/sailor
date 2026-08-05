@@ -91,6 +91,8 @@ namespace Sailor
 		SAILOR_API static uint32_t SerializeWorkspaceCacheIdentity(char** yamlNode);
 		SAILOR_API static bool LoadEditorWorld(const char* strFileId);
 		SAILOR_API static bool CreateEditorWorld();
+		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
+		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,

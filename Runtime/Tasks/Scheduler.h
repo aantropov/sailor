@@ -41,7 +41,11 @@ namespace Sailor
 
 		// Best-effort work that must not delay explicit WaitIdle sets.
 		// A single dedicated worker processes this queue serially.
-		Background = 5
+		Background = 5,
+
+		// The outer physics step may wait for Jolt jobs running on Worker threads.
+		// Keep it on a dedicated thread so it cannot exhaust the Worker pool.
+		Physics = 6
 	};
 
 	namespace Tasks
@@ -135,6 +139,7 @@ namespace Sailor
 			SAILOR_API void WaitIdle(const TSet<EThreadType>& threads);
 
 			SAILOR_API uint32_t GetNumWorkerThreads() const;
+			SAILOR_API uint32_t GetNumThreads(EThreadType type) const;
 			SAILOR_API uint32_t GetNumTasks(EThreadType thread) const;
 			SAILOR_API uint32_t GetNumRHIThreads() const { return RHIThreadsNum; }
 
@@ -149,11 +154,13 @@ namespace Sailor
 			SAILOR_API bool IsMainThread() const;
 			SAILOR_API bool IsRendererThread() const;
 			SAILOR_API bool IsEditorThread() const;
+			SAILOR_API bool IsPhysicsThread() const;
 			SAILOR_API bool HasThread(DWORD threadId) const;
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId.load(std::memory_order_acquire); }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
 			SAILOR_API DWORD GetEditorThreadId() const { return m_editorThreadId; }
+			SAILOR_API DWORD GetPhysicsThreadId() const { return m_physicsThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler();
@@ -185,6 +192,7 @@ namespace Sailor
 			std::atomic<DWORD> m_mainThreadId{ static_cast<DWORD>(-1) };
 			DWORD m_renderingThreadId = -1;
 			DWORD m_editorThreadId = -1;
+			DWORD m_physicsThreadId = -1;
 
 			// Task Synchronization primitives pool
 			concurrency::concurrent_queue<uint16_t> m_freeList{};

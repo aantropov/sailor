@@ -87,6 +87,10 @@ add_executable(SkyComponentContractTests
     SkyComponentContractTests.cpp
 )
 
+add_executable(PhysicsRuntimeTests
+    PhysicsRuntimeTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -224,6 +228,7 @@ target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
 )
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
+target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
 target_compile_definitions(SkyComponentContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
@@ -277,6 +282,7 @@ target_link_libraries(AnimationSamplingContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(VulkanDescriptorCacheTests PRIVATE Sailor::Runtime)
 target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -323,6 +329,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(VulkanDescriptorCacheTests)
     sailor_stage_workspace_test_runtime(EditorViewportControllerContractTests)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
+    sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
@@ -386,6 +393,9 @@ target_include_directories(EditorViewportControllerContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(SkyComponentContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(PhysicsRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -536,6 +546,11 @@ add_test(
 )
 
 add_test(
+    NAME PhysicsRuntimeTests
+    COMMAND PhysicsRuntimeTests
+)
+
+add_test(
     NAME WorkspaceModuleContractTests
     COMMAND WorkspaceModuleContractTests
 )
@@ -635,6 +650,7 @@ set_tests_properties(
     VulkanDescriptorCacheTests
     EditorViewportControllerContractTests
     SkyComponentContractTests
+    PhysicsRuntimeTests
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
     EditorEngineWebSocketLateStopTests

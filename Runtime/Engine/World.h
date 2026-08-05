@@ -79,6 +79,8 @@ namespace Sailor
 		SAILOR_API void Clear();
 		SAILOR_API size_t GetCurrentFrame() const { return m_currentFrame; }
 		SAILOR_API float GetSmoothDeltaTime() const { return m_smoothDeltaTime; }
+		SAILOR_API void SetPhysicsSimulationEnabled(bool value) { m_bPhysicsSimulationEnabled = value; }
+		SAILOR_API bool IsPhysicsSimulationEnabled() const { return m_bPhysicsSimulationEnabled; }
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
 
@@ -160,6 +162,7 @@ namespace Sailor
 
 		Memory::ObjectAllocatorPtr m_allocator;
 		bool m_bIsBeginPlayCalled;
+		bool m_bPhysicsSimulationEnabled = false;
 
 		TList<GameObjectPtr, Memory::TInlineAllocator<sizeof(GameObjectPtr) * 32>> m_pendingDestroyObjects;
 

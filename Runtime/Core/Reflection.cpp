@@ -17,6 +17,7 @@
 #include "AssetRegistry/Texture/TextureAssetInfo.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "RHI/SceneView.h"
+#include "Physics/PhysicsTypes.h"
 #include <algorithm>
 #include <condition_variable>
 #include <iterator>
@@ -694,6 +695,8 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Add(ReflectEnumValues<EMobilityType>());
 	nodes.Add(ReflectEnumValues<ELightType>());
 	nodes.Add(ReflectEnumValues<EAnimationPlayMode>());
+	nodes.Add(ReflectEnumValues<Physics::ERigidBodyMotionType>());
+	nodes.Add(ReflectEnumValues<Physics::ECollisionShapeType>());
 	nodes.Add(ReflectEnumValues<RHI::EFormat>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureFiltration>());
 	nodes.Add(ReflectEnumValues<RHI::ETextureClamping>());

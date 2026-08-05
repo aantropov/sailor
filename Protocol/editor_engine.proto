@@ -62,13 +62,15 @@ message ProtocolRequest {
 		CreateModelInstanceRequest create_model_instance = 58;
 		AnimatorParameterRequest set_animator_parameter = 59;
 		InstanceIdRequest get_animator_state = 60;
+		EditorSimulationRequest set_editor_simulation = 61;
+		Empty get_editor_simulation_state = 62;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 61 to 99;
+	reserved 63 to 99;
 }
 
 message ProtocolResponse {
@@ -138,6 +140,10 @@ message ViewportRectRequest {
 message SizeRequest {
 	uint32 width = 1;
 	uint32 height = 2;
+}
+
+message EditorSimulationRequest {
+	bool enabled = 1;
 }
 
 message RemoteViewportRequest {

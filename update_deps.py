@@ -80,6 +80,7 @@ def main() -> int:
         'imgui[win32-binding]' if system == 'Windows' else 'imgui',
         'imguizmo',
         'ixwebsocket[core]',
+        'joltphysics',
         'magic-enum',
         'meshoptimizer',
         'nlohmann-json',

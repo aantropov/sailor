@@ -8,10 +8,38 @@ using ViewModelGameObject = SailorEditor.ViewModels.GameObject;
 
 namespace SailorEditor.Services
 {
-    public sealed class EditorToolbarActions
+    internal sealed class EditorToolbarActions
     {
+        readonly EngineService engineService;
+        readonly SemaphoreSlim simulationGate = new(1, 1);
+        int isSimulating;
+
+        public EditorToolbarActions(EngineService engineService)
+        {
+            this.engineService = engineService ??
+                throw new ArgumentNullException(nameof(engineService));
+            engineService.OnEditorSimulationStateChanged +=
+                SetSimulationState;
+            engineService.OnLifecycleStateChanged += state =>
+            {
+                if (state != EngineLifecycleState.Running)
+                    SetSimulationState(false);
+            };
+        }
+
+        public bool IsSimulating => Volatile.Read(ref isSimulating) != 0;
+        public event Action<bool> SimulationStateChanged = delegate { };
+
         public async Task SaveAsync()
         {
+            if (await engineService.GetEditorSimulationStateAsync())
+            {
+                await DisplayStatus(
+                    "Save Scene",
+                    "Stop simulation before saving the scene.");
+                return;
+            }
+
             var selectionService = MauiProgram.GetService<SelectionService>();
             var selected = selectionService.SelectedItem;
 
@@ -75,7 +103,14 @@ namespace SailorEditor.Services
             bool debug,
             CancellationToken cancellationToken = default)
         {
-            var engineService = MauiProgram.GetService<EngineService>();
+            if (await engineService.GetEditorSimulationStateAsync(
+                    cancellationToken))
+            {
+                await DisplayStatus(
+                    debug ? "Debug" : "Play",
+                    "Stop simulation before launching the world.");
+                return;
+            }
 
             var launchContext = engineService.GetLaunchContext();
             var world =
@@ -92,6 +127,66 @@ namespace SailorEditor.Services
                 launchContext.TempWorldRuntimePath,
                 debug,
                 launchContext);
+        }
+
+        public async Task ToggleSimulationAsync(
+            CancellationToken cancellationToken = default)
+        {
+            await simulationGate.WaitAsync(cancellationToken);
+            try
+            {
+                var nativeState = await engineService
+                    .GetEditorSimulationStateAsync(cancellationToken);
+                var enable = !nativeState;
+                if (enable)
+                {
+                    var selected = MauiProgram
+                        .GetService<SelectionService>()
+                        .SelectedItem;
+                    if (selected is IInspectorEditable editable &&
+                        editable.HasPendingInspectorChanges &&
+                        !await editable.CommitInspectorChangesAsync())
+                    {
+                        await DisplayStatus(
+                            "Simulate",
+                            "Inspector changes could not be committed.");
+                        return;
+                    }
+                }
+
+                if (!await engineService.SetEditorSimulationAsync(
+                        enable,
+                        cancellationToken))
+                {
+                    await DisplayStatus(
+                        enable ? "Simulate" : "Stop Simulation",
+                        enable
+                            ? "Unable to snapshot the current world and start physics simulation."
+                            : "Unable to restore the world snapshot.");
+                    return;
+                }
+
+                SetSimulationState(enable);
+                if (!enable &&
+                    !await engineService.RefreshCurrentWorldAuthoritativelyAsync(
+                        cancellationToken))
+                {
+                    await DisplayStatus(
+                        "Stop Simulation",
+                        "The world was restored, but the Editor projection could not be refreshed.");
+                    return;
+                }
+
+                await DisplayStatus(
+                    enable ? "Simulate" : "Stop Simulation",
+                    enable
+                        ? "Physics simulation started. Scene changes will be restored on Stop."
+                        : "Physics simulation stopped and the scene snapshot was restored.");
+            }
+            finally
+            {
+                simulationGate.Release();
+            }
         }
 
         public async Task ExportPathTracedImageAsync(bool selectedOnly)
@@ -155,6 +250,19 @@ namespace SailorEditor.Services
         {
             MauiProgram.GetService<EditorShellHost>().SetStatus(message);
             return Task.CompletedTask;
+        }
+
+        void SetSimulationState(bool value)
+        {
+            var next = value ? 1 : 0;
+            if (Interlocked.Exchange(ref isSimulating, next) == next)
+                return;
+
+            void Publish() => SimulationStateChanged(value);
+            if (MainThread.IsMainThread)
+                Publish();
+            else
+                MainThread.BeginInvokeOnMainThread(Publish);
         }
     }
 }
