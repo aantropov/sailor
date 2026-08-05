@@ -8,7 +8,9 @@
 #include "Core/Reflection.h"
 #include "Engine/EngineLoop.h"
 #include "Engine/World.h"
+#include "Engine/GameObject.h"
 #include "Engine/InstanceId.h"
+#include "Components/AnimatorComponent.h"
 #include "Editor/EditorViewportController.h"
 #include "Submodules/Editor.h"
 #include "Workspace/WorkspaceModuleManager.h"
@@ -136,6 +138,35 @@ namespace
 		case EditorViewport::ETransformSpace::Local: return 2;
 		default: return 0;
 		}
+	}
+
+	AnimatorComponent* FindEditorAnimator(
+		Editor* editor,
+		const InstanceId& componentInstanceId)
+	{
+		if (!editor || !editor->GetWorld() ||
+			componentInstanceId.ComponentId() == InstanceId::Invalid)
+		{
+			return nullptr;
+		}
+
+		auto gameObject = editor->GetWorld()
+			->GetObjectByInstanceId(componentInstanceId.GameObjectId())
+			.DynamicCast<GameObject>();
+		if (!gameObject)
+		{
+			return nullptr;
+		}
+
+		for (auto component : gameObject->GetComponents())
+		{
+			if (component &&
+				component->GetInstanceId() == componentInstanceId)
+			{
+				return component.DynamicCast<AnimatorComponent>().GetRawPtr();
+			}
+		}
+		return nullptr;
 	}
 }
 
@@ -508,6 +539,136 @@ bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 			InstanceId instanceId;
 			instanceId.Deserialize(YAML::Node(instanceIdValue));
 			return editor->UpdateObject(instanceId, yamlValue);
+		});
+}
+
+bool App::SetEditorAnimatorParameter(
+	const char* strInstanceId,
+	const char* strName,
+	uint32_t valueKind,
+	float floatValue,
+	int32_t intValue,
+	bool boolValue)
+{
+	if (!strInstanceId || !strName || strName[0] == '\0')
+	{
+		return false;
+	}
+
+	const std::string instanceIdValue = strInstanceId;
+	const std::string name = strName;
+	return ExecuteOnEngineMainThread<bool>(false,
+		[instanceIdValue, name, valueKind, floatValue, intValue, boolValue]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			auto* animator = FindEditorAnimator(editor, instanceId);
+			if (!animator)
+			{
+				return false;
+			}
+
+			switch (valueKind)
+			{
+			case 1: return animator->SetFloat(name, floatValue);
+			case 2: return animator->SetInt(name, intValue);
+			case 3: return animator->SetBool(name, boolValue);
+			case 4: return animator->SetTrigger(name);
+			case 5: return animator->ResetTrigger(name);
+			default: return false;
+			}
+		});
+}
+
+bool App::GetEditorAnimatorState(
+	const char* strInstanceId,
+	bool& outHasController,
+	uint64_t& outControllerRevision,
+	uint64_t& outActiveStateId,
+	char** outActiveStateName,
+	float& outActiveStateTime,
+	bool& outTransitioning,
+	uint64_t& outDestinationStateId,
+	char** outDestinationStateName,
+	float& outDestinationStateTime,
+	float& outTransitionAlpha)
+{
+	outHasController = false;
+	outControllerRevision = 0;
+	outActiveStateId = InvalidAnimationControllerNodeId;
+	outActiveStateTime = 0.0f;
+	outTransitioning = false;
+	outDestinationStateId = InvalidAnimationControllerNodeId;
+	outDestinationStateTime = 0.0f;
+	outTransitionAlpha = 0.0f;
+	if (!strInstanceId || !outActiveStateName || !outDestinationStateName)
+	{
+		return false;
+	}
+	outActiveStateName[0] = nullptr;
+	outDestinationStateName[0] = nullptr;
+
+	const std::string instanceIdValue = strInstanceId;
+	return ExecuteOnEngineMainThread<bool>(false,
+		[instanceIdValue,
+			&outHasController,
+			&outControllerRevision,
+			&outActiveStateId,
+			outActiveStateName,
+			&outActiveStateTime,
+			&outTransitioning,
+			&outDestinationStateId,
+			outDestinationStateName,
+			&outDestinationStateTime,
+			&outTransitionAlpha]()
+		{
+			auto editor = GetSubmodule<Editor>();
+			InstanceId instanceId;
+			instanceId.Deserialize(YAML::Node(instanceIdValue));
+			auto* animator = FindEditorAnimator(editor, instanceId);
+			if (!animator)
+			{
+				return false;
+			}
+
+			const auto& instance = animator->GetData().GetControllerInstance();
+			const auto& controller = instance.GetController();
+			outHasController = controller && instance.IsValid();
+			if (!outHasController)
+			{
+				SetInteropString({}, outActiveStateName);
+				SetInteropString({}, outDestinationStateName);
+				return true;
+			}
+
+			outControllerRevision = controller->GetRevision();
+			const auto& states = controller->GetStates();
+			const uint32_t activeStateIndex = instance.GetActiveStateIndex();
+			if (activeStateIndex < states.Num())
+			{
+				outActiveStateId = states[activeStateIndex].m_id;
+				SetInteropString(states[activeStateIndex].m_name, outActiveStateName);
+			}
+			else
+			{
+				SetInteropString({}, outActiveStateName);
+			}
+			outActiveStateTime = instance.GetActiveStateTime();
+			outTransitioning = instance.IsTransitioning();
+			const uint32_t destinationStateIndex = instance.GetDestinationStateIndex();
+			if (outTransitioning && destinationStateIndex < states.Num())
+			{
+				outDestinationStateId = states[destinationStateIndex].m_id;
+				SetInteropString(states[destinationStateIndex].m_name, outDestinationStateName);
+				outDestinationStateTime = instance.GetDestinationStateTime();
+				outTransitionAlpha = instance.GetTransitionAlpha();
+			}
+			else
+			{
+				SetInteropString({}, outDestinationStateName);
+			}
+			return true;
 		});
 }
 

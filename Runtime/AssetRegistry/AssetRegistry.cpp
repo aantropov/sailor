@@ -3,6 +3,7 @@
 #include "Containers/Containers.h"
 
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
@@ -758,6 +759,14 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(
 	if (assetInfoType == "Sailor::AnimationAssetInfo")
 	{
 		return App::GetSubmodule<AnimationAssetInfoHandler>();
+	}
+	if (assetInfoType == "Sailor::AnimationControllerAssetInfo")
+	{
+		return App::GetSubmodule<AnimationControllerAssetInfoHandler>();
+	}
+	if (assetInfoType == "Sailor::AnimationSetAssetInfo")
+	{
+		return App::GetSubmodule<AnimationSetAssetInfoHandler>();
 	}
 	if (assetInfoType == "Sailor::FrameGraphAssetInfo")
 	{

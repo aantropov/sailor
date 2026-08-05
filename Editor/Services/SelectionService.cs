@@ -26,7 +26,9 @@ namespace SailorEditor.Services
             _selectionStore.Changed += snapshot =>
             {
                 var selectedId = InstanceId.NullInstanceId;
-                if (!string.IsNullOrWhiteSpace(snapshot.SelectedId))
+                if ((snapshot.Kind is SelectionTargetKind.GameObject or
+                        SelectionTargetKind.Component) &&
+                    !string.IsNullOrWhiteSpace(snapshot.SelectedId))
                 {
                     selectedId = new InstanceId(snapshot.SelectedId);
                 }
@@ -73,6 +75,11 @@ namespace SailorEditor.Services
         }
 
         public async void SelectObject(ObservableObject obj, bool force = false)
+            => await SelectObjectAsync(obj, force);
+
+        public async Task SelectObjectAsync(
+            ObservableObject obj,
+            bool force = false)
         {
             if (IsWorkspaceChangeInProgress)
                 return;
@@ -270,6 +277,7 @@ namespace SailorEditor.Services
         {
             GameObject gameObject => gameObject.InstanceId?.Value,
             Component component => component.InstanceId?.Value,
+            AssetFile assetFile => assetFile.FileId?.Value,
             _ => null,
         };
 

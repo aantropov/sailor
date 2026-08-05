@@ -18,16 +18,22 @@ using namespace Sailor::RHI;
 const char* DepthPrepassNode::m_name = "DepthPrepass";
 #endif
 
-RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertexDescription)
+RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, bool bSkinned)
 {
-	auto& material = m_depthOnlyMaterials[vertexDescription->GetVertexAttributeBits()];
+	auto& materials = bSkinned ? m_skinnedDepthOnlyMaterials : m_depthOnlyMaterials;
+	auto& material = materials[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
 	{
 		auto shaderFileId = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/DepthOnly.shader");
 		ShaderSetPtr pShader;
+		TVector<std::string> defines;
+		if (bSkinned)
+		{
+			defines.Add("SKINNING");
+		}
 
-		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader) && pShader->IsReady())
+		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines) && pShader->IsReady())
 		{
 			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
@@ -88,7 +94,11 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 					const auto& mesh = proxy.m_meshes[i];
 
-					auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription);
+					const bool bSkinned =
+						proxy.m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
+						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
+						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
+					auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription, bSkinned);
 
 					const bool bRequiredCustomDepth = proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
 					if (bRequiredCustomDepth)
@@ -112,7 +122,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 							proxy.m_worldMatrix;
 					DepthPrepassNode::PerInstanceData data;
 					data.model = meshWorldMatrix;
-					data.skeletonOffset = proxy.m_skeletonOffset;
+					data.skeletonOffset = bSkinned ? proxy.m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
 					data.bIsCulled = 0;
 					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
 					data.bakedVolumeScale = vec4(mesh->m_bakedVolumeScale, 1.0f);
@@ -293,7 +303,10 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), batch.m_textureBindings });
 			}
 
-			if (sceneView.m_boneMatrices)
+			const bool bSkinned =
+				batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
+				batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
+			if (bSkinned && sceneView.m_boneMatrices)
 			{
 				sets.Add(sceneView.m_boneMatrices);
 			}

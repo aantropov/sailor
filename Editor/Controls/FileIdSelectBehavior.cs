@@ -63,18 +63,29 @@ public class FileIdSelectBehavior : Behavior<Label>
         _associatedLabel = null;
     }
 
-    private void OnLabelTapped(object sender, EventArgs e)
+    private async void OnLabelTapped(object sender, EventArgs e)
     {
-        if (BoundProperty != null)
+        var fileId = BoundProperty as FileId ??
+            (BoundProperty as Observable<FileId>)?.Value;
+        if (fileId is null || fileId.IsEmpty())
         {
-            if (BoundProperty is FileId fileId)
+            return;
+        }
+
+        try
+        {
+            var asset = await MauiProgram.GetService<AssetsService>()
+                .ResolveAssetAsync(fileId);
+            if (asset is not null)
             {
-                var assets = MauiProgram.GetService<AssetsService>().Assets;
-                if (assets.TryGetValue(fileId, out var asset))
-                {
-                    MauiProgram.GetService<SelectionService>().SelectObject(asset);
-                }
+                await MauiProgram.GetService<SelectionService>()
+                    .SelectObjectAsync(asset);
             }
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[FileIdSelectBehavior] Failed to select asset '{fileId}': {exception.Message}");
         }
     }
 

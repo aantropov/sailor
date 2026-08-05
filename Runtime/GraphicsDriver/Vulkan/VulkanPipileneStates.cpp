@@ -265,7 +265,29 @@ const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline
 
 	// We don't expect collisions in the dictionary
 	size_t hashCode = 0;
-	Sailor::HashCombine(hashCode, renderState, topology, depthStencilFormat);
+	Sailor::HashCombine(hashCode,
+		renderState,
+		topology,
+		depthStencilFormat,
+		vertexDescription->GetVertexStride());
+
+	for (const auto& attribute : vertexDescription->GetAttributeDescriptions())
+	{
+		Sailor::HashCombine(hashCode,
+			attribute.m_location,
+			attribute.m_binding,
+			attribute.m_format,
+			attribute.m_offset);
+	}
+
+	TVector<uint32_t> orderedVertexAttributeBindings =
+		vertexAttributeBindings.ToVector();
+	orderedVertexAttributeBindings.Sort();
+	Sailor::HashCombine(hashCode, orderedVertexAttributeBindings.Num());
+	for (const uint32_t binding : orderedVertexAttributeBindings)
+	{
+		Sailor::HashCombine(hashCode, binding);
+	}
 
 	for (const auto& colorAttachmentFormat : colorAttachmentFormats)
 	{

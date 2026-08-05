@@ -62,6 +62,7 @@ namespace Sailor::RHI
 		{
 			GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment);
 			TVector<GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr> m_pipelines{};
+			SpinLock m_pipelinesLock;
 
 		} m_vulkan{};
 #endif

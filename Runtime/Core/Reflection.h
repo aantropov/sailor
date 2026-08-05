@@ -10,6 +10,7 @@
 #include "RHI/Types.h"
 #include "YamlSerializable.h"
 #include <limits>
+#include <string_view>
 #include <vector>
 
 using refl::reflect;
@@ -253,17 +254,8 @@ namespace Sailor
 			}
 			else if constexpr (IsObjectPtr<PropertyType>)
 			{
-				using ElementType = TemplateParameter_t<PropertyType>;
-				if constexpr (requires { ElementType::GetStaticTypeInfo(); })
-				{
-					return "TObjectPtr<" +
-						ElementType::GetStaticTypeInfo().Name() +
-						">";
-				}
-				else
-				{
-					return typeid(PropertyType).name();
-				}
+				using ElementType = std::remove_cv_t<TemplateParameter_t<PropertyType>>;
+				return "TObjectPtr<" + GetCanonicalCppTypeName<ElementType>() + ">";
 			}
 			else
 			{
@@ -272,6 +264,45 @@ namespace Sailor
 		}
 
 	private:
+		template<typename T>
+		static std::string GetCanonicalCppTypeName()
+		{
+#if defined(_MSC_VER)
+			const std::string_view signature = __FUNCSIG__;
+			constexpr std::string_view marker = "GetCanonicalCppTypeName<";
+			const size_t begin = signature.find(marker);
+			const size_t end = signature.rfind(">(void)");
+			if (begin == std::string_view::npos || end == std::string_view::npos)
+			{
+				return {};
+			}
+			std::string_view typeName = signature.substr(begin + marker.size(), end - begin - marker.size());
+#elif defined(__clang__) || defined(__GNUC__)
+			const std::string_view signature = __PRETTY_FUNCTION__;
+			constexpr std::string_view marker = "T = ";
+			const size_t begin = signature.find(marker);
+			const size_t end = signature.find_first_of(";]", begin + marker.size());
+			if (begin == std::string_view::npos || end == std::string_view::npos)
+			{
+				return {};
+			}
+			std::string_view typeName = signature.substr(begin + marker.size(), end - begin - marker.size());
+#else
+#error Unsupported compiler for stable reflected C++ type names
+#endif
+
+			constexpr std::string_view prefixes[] = { "class ", "struct ", "enum " };
+			for (const std::string_view prefix : prefixes)
+			{
+				if (typeName.starts_with(prefix))
+				{
+					typeName.remove_prefix(prefix.size());
+					break;
+				}
+			}
+
+			return std::string(typeName);
+		}
 
 		std::string m_name;
 		std::string m_base;

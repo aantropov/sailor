@@ -87,6 +87,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 
 	m_numRecordedCommands = 0;
 	m_gpuCost = 0;
+	m_bGraphicsPipelineBound = false;
 
 	ClearDependencies();
 }
@@ -94,6 +95,7 @@ void VulkanCommandBuffer::BeginCommandList(VkCommandBufferUsageFlags flags)
 void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment, VkCommandBufferUsageFlags flags, VkRenderingFlags inheritanceFlags, bool bSupportMultisampling)
 {
 	ClearDependencies();
+	m_bGraphicsPipelineBound = false;
 
 	//TODO: Pass inheritanceFlags
 	const bool bHasStencil = depthStencilAttachment != VkFormat::VK_FORMAT_UNDEFINED && (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT);
@@ -128,6 +130,7 @@ void VulkanCommandBuffer::BeginSecondaryCommandList(const TVector<VkFormat>& col
 void VulkanCommandBuffer::BeginSecondaryCommandList(VulkanRenderPassPtr renderPass, uint32_t subpassIndex, VkCommandBufferUsageFlags flags)
 {
 	ClearDependencies();
+	m_bGraphicsPipelineBound = false;
 
 	// We can omit framebuffer for now
 	VkCommandBufferInheritanceInfo inheritanceInfo{};
@@ -689,8 +692,16 @@ void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, 
 
 void VulkanCommandBuffer::BindPipeline(VulkanGraphicsPipelinePtr pipeline)
 {
+	if (!pipeline || !pipeline->IsCompiled())
+	{
+		m_bGraphicsPipelineBound = false;
+		SAILOR_LOG_ERROR("VulkanCommandBuffer::BindPipeline: graphics pipeline is unavailable.");
+		return;
+	}
+
 	m_rhiDependecies.Insert(pipeline);
 	vkCmdBindPipeline(m_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+	m_bGraphicsPipelineBound = true;
 
 	m_numRecordedCommands++;
 	m_gpuCost += 1;
@@ -721,6 +732,11 @@ void VulkanCommandBuffer::Dispatch(uint32_t groupX, uint32_t groupY, uint32_t gr
 
 void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDeviceSize offset, uint32_t drawCount, uint32_t stride)
 {
+	if (!m_bGraphicsPipelineBound)
+	{
+		return;
+	}
+
 	m_rhiDependecies.Insert(buffer.m_buffer);
 	vkCmdDrawIndexedIndirect(m_commandBuffer, *buffer.m_buffer, buffer.m_offset + offset, drawCount, stride);
 
@@ -730,6 +746,11 @@ void VulkanCommandBuffer::DrawIndexedIndirect(VulkanBufferMemoryPtr buffer, VkDe
 
 void VulkanCommandBuffer::DrawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance)
 {
+	if (!m_bGraphicsPipelineBound)
+	{
+		return;
+	}
+
 	vkCmdDrawIndexed(m_commandBuffer, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
 
 	m_numRecordedCommands++;

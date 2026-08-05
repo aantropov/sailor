@@ -164,7 +164,7 @@ void EngineLoop::ProcessPendingWorldExits()
 
 		if (renderer && renderer->IsInitialized())
 		{
-			renderer->GetDriver()->WaitIdle();
+			renderer->WaitIdle();
 			renderer->RemoveSceneView(world);
 		}
 

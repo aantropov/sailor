@@ -1,4 +1,5 @@
 #include "AnimationImporter.h"
+#include "AnimationClipSampler.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Model/GltfImporterUtils.h"
 #include <tiny_gltf.h>
@@ -363,11 +364,11 @@ namespace
 
 	struct PreparedAnimationChannel
 	{
-		GltfFloatAccessorView m_output;
+		TVector<float> m_timestamps;
+		TVector<glm::vec4> m_values;
 		size_t m_targetNode = 0;
-		size_t m_sampleCount = 0;
 		EAnimationTarget m_target = EAnimationTarget::Translation;
-		bool m_bCubicSpline = false;
+		EAnimationInterpolation m_interpolation = EAnimationInterpolation::Linear;
 	};
 
 	bool IsTransformFinite(const Math::Transform& transform)
@@ -378,6 +379,33 @@ namespace
 			std::isfinite(transform.m_rotation.y) &&
 			std::isfinite(transform.m_rotation.z) &&
 			std::isfinite(transform.m_rotation.w);
+	}
+
+	bool IsMatrixFinite(const glm::mat4& matrix)
+	{
+		for (glm::length_t column = 0; column < 4; ++column)
+		{
+			if (!Math::AllFinite(matrix[column]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void AddSkeletonHashByte(uint64_t& hash, uint8_t value)
+	{
+		constexpr uint64_t FnvPrime = 1099511628211ull;
+		hash ^= value;
+		hash *= FnvPrime;
+	}
+
+	void AddSkeletonHashUint32(uint64_t& hash, uint32_t value)
+	{
+		for (uint32_t shift = 0; shift < 32; shift += 8)
+		{
+			AddSkeletonHashByte(hash, static_cast<uint8_t>((value >> shift) & 0xff));
+		}
 	}
 }
 
@@ -393,6 +421,27 @@ AnimationImporter::~AnimationImporter()
 	for (auto& anim : m_loadedAnimations)
 	{
 		anim.m_second.DestroyObject(m_allocator);
+	}
+}
+
+void AnimationImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
+{
+	if (!bWasExpired || !assetInfo)
+	{
+		return;
+	}
+
+	const FileId uid = assetInfo->GetFileId();
+	if (auto animationIt = m_loadedAnimations.Find(uid);
+		animationIt != m_loadedAnimations.end())
+	{
+		AnimationPtr animation = (*animationIt).m_second;
+		if (animation && ImportAnimation(uid, animation))
+		{
+#ifdef SAILOR_EDITOR
+			animation->TraceHotReload(nullptr);
+#endif
+		}
 	}
 }
 
@@ -526,31 +575,6 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
-			size_t numFrames = 0;
-			for (const auto& sampler : gltfAnim.samplers)
-			{
-				GltfFloatAccessorView inputView;
-				if (TryGetFloatAccessorView(
-					gltfModel,
-					sampler.input,
-					TINYGLTF_TYPE_SCALAR,
-					1,
-					inputView) &&
-					inputView.m_accessor->count <= MaxVectorElements)
-				{
-					numFrames = inputView.m_accessor->count;
-					break;
-				}
-			}
-
-			if (numFrames == 0 || numFrames > MaxVectorElements / numBones)
-			{
-				return false;
-			}
-
-			TVector<Math::Transform> framesData;
-			framesData.Resize(numFrames * numBones);
-
 			TVector<int32_t> parents;
 			parents.Resize(numNodes);
 			for (size_t i = 0; i < numNodes; ++i)
@@ -571,6 +595,53 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 						parents[child] = static_cast<int32_t>(i);
 					}
 				}
+			}
+
+			TVector<int32_t> boneIndexByNode;
+			boneIndexByNode.Resize(numNodes);
+			for (size_t nodeIndex = 0; nodeIndex < numNodes; ++nodeIndex)
+			{
+				boneIndexByNode[nodeIndex] = -1;
+			}
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				boneIndexByNode[static_cast<size_t>(gltfSkin.joints[boneIndex])] =
+					static_cast<int32_t>(boneIndex);
+			}
+
+			TVector<int32_t> parentBoneIndices;
+			parentBoneIndices.Resize(numBones);
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				int32_t parentNode = parents[static_cast<size_t>(gltfSkin.joints[boneIndex])];
+				int32_t parentBone = -1;
+				for (size_t depth = 0; parentNode >= 0 && depth < numNodes; ++depth)
+				{
+					parentBone = boneIndexByNode[static_cast<size_t>(parentNode)];
+					if (parentBone >= 0)
+					{
+						break;
+					}
+					parentNode = parents[static_cast<size_t>(parentNode)];
+				}
+				parentBoneIndices[boneIndex] = parentBone;
+			}
+
+			constexpr uint64_t FnvOffsetBasis = 14695981039346656037ull;
+			uint64_t skeletonSignature = FnvOffsetBasis;
+			AddSkeletonHashUint32(skeletonSignature, static_cast<uint32_t>(numBones));
+			for (size_t boneIndex = 0; boneIndex < numBones; ++boneIndex)
+			{
+				AddSkeletonHashUint32(
+					skeletonSignature,
+					static_cast<uint32_t>(parentBoneIndices[boneIndex] + 1));
+				const auto& jointNode = gltfModel.nodes[
+					static_cast<size_t>(gltfSkin.joints[boneIndex])];
+				for (char character : jointNode.name)
+				{
+					AddSkeletonHashByte(skeletonSignature, static_cast<uint8_t>(character));
+				}
+				AddSkeletonHashByte(skeletonSignature, 0);
 			}
 
 			TVector<Math::Transform> base(numNodes);
@@ -619,8 +690,81 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				}
 			}
 
+			auto composeGlobalTransforms = [numNodes, &parents](
+				const TVector<Math::Transform>& local,
+				TVector<Math::Transform>& global)
+			{
+				global.Resize(numNodes);
+				TVector<uint8_t> composeState(numNodes);
+				auto compose = [&](auto&& self, size_t nodeIndex) -> bool
+				{
+					if (composeState[nodeIndex] == 2)
+					{
+						return IsTransformFinite(global[nodeIndex]);
+					}
+					if (composeState[nodeIndex] == 1)
+					{
+						global[nodeIndex] = local[nodeIndex];
+						composeState[nodeIndex] = 2;
+						return false;
+					}
+
+					composeState[nodeIndex] = 1;
+					Math::Transform composed = local[nodeIndex];
+					const int32_t parentIndex = parents[nodeIndex];
+					if (parentIndex >= 0 && self(self, static_cast<size_t>(parentIndex)))
+					{
+						const Math::Transform& parent = global[static_cast<size_t>(parentIndex)];
+						composed.m_position = parent.TransformPosition(composed.m_position);
+						composed.m_rotation = parent.m_rotation * composed.m_rotation;
+						composed.m_scale.x *= parent.m_scale.x;
+						composed.m_scale.y *= parent.m_scale.y;
+						composed.m_scale.z *= parent.m_scale.z;
+					}
+
+					global[nodeIndex] = IsTransformFinite(composed) ? composed : local[nodeIndex];
+					composeState[nodeIndex] = 2;
+					return IsTransformFinite(global[nodeIndex]);
+				};
+
+				for (size_t nodeIndex = 0; nodeIndex < numNodes; ++nodeIndex)
+				{
+					compose(compose, nodeIndex);
+				}
+			};
+
+			auto buildLocalBonePose = [&gltfSkin, &parentBoneIndices](
+				const TVector<Math::Transform>& global,
+				TVector<Math::Transform>& outPose,
+				size_t poseOffset)
+			{
+				for (size_t boneIndex = 0; boneIndex < parentBoneIndices.Num(); ++boneIndex)
+				{
+					const size_t nodeIndex = static_cast<size_t>(gltfSkin.joints[boneIndex]);
+					glm::mat4 localMatrix = global[nodeIndex].Matrix();
+					const int32_t parentBoneIndex = parentBoneIndices[boneIndex];
+					if (parentBoneIndex >= 0)
+					{
+						const size_t parentNodeIndex = static_cast<size_t>(
+							gltfSkin.joints[static_cast<size_t>(parentBoneIndex)]);
+						localMatrix = glm::inverse(global[parentNodeIndex].Matrix()) * localMatrix;
+					}
+					Math::Transform localTransform = IsMatrixFinite(localMatrix) ?
+						Math::Transform::FromMatrix(localMatrix) : Math::Transform::Identity;
+					outPose[poseOffset + boneIndex] = IsTransformFinite(localTransform) ?
+						localTransform : Math::Transform::Identity;
+				}
+			};
+
+			TVector<Math::Transform> baseGlobal;
+			composeGlobalTransforms(base, baseGlobal);
+			TVector<Math::Transform> restPose(numBones);
+			buildLocalBonePose(baseGlobal, restPose, 0);
+
 			TVector<PreparedAnimationChannel> preparedChannels;
 			preparedChannels.Reserve(gltfAnim.channels.size());
+			float animationDuration = 0.0f;
+			size_t maxSourceSampleCount = 0;
 			for (const auto& channel : gltfAnim.channels)
 			{
 				if (channel.sampler < 0 ||
@@ -646,6 +790,21 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 				const size_t sampleCount = inputView.m_accessor->count;
 
 				PreparedAnimationChannel prepared;
+				prepared.m_timestamps.Resize(sampleCount);
+				bool bValid = true;
+				for (size_t sample = 0; sample < sampleCount; ++sample)
+				{
+					bValid &= TryReadAccessorFloat(
+						inputView,
+						sample,
+						0,
+						prepared.m_timestamps[sample]);
+				}
+				if (!bValid || !AnimationClipSampler::ValidateTimestamps(prepared.m_timestamps))
+				{
+					continue;
+				}
+
 				int32_t outputType = TINYGLTF_TYPE_VEC3;
 				if (channel.target_path == "translation")
 				{
@@ -665,151 +824,162 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 					continue;
 				}
 
-				prepared.m_bCubicSpline = sampler.interpolation == "CUBICSPLINE";
-				if (!prepared.m_bCubicSpline &&
-					!sampler.interpolation.empty() &&
-					sampler.interpolation != "LINEAR" &&
-					sampler.interpolation != "STEP")
+				if (sampler.interpolation.empty() || sampler.interpolation == "LINEAR")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::Linear;
+				}
+				else if (sampler.interpolation == "STEP")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::Step;
+				}
+				else if (sampler.interpolation == "CUBICSPLINE")
+				{
+					prepared.m_interpolation = EAnimationInterpolation::CubicSpline;
+				}
+				else
 				{
 					continue;
 				}
 
-				if (prepared.m_bCubicSpline &&
+				const bool bCubicSpline =
+					prepared.m_interpolation == EAnimationInterpolation::CubicSpline;
+				if (bCubicSpline &&
 					sampleCount > std::numeric_limits<size_t>::max() / 3)
 				{
 					continue;
 				}
 
-				const size_t outputCount = prepared.m_bCubicSpline ?
+				const size_t outputCount = bCubicSpline ?
 					sampleCount * 3 : sampleCount;
+				GltfFloatAccessorView outputView;
 				if (!TryGetFloatAccessorView(
 					gltfModel,
 					sampler.output,
 					outputType,
 					outputCount,
-					prepared.m_output) ||
-					prepared.m_output.m_accessor->count != outputCount)
+					outputView) ||
+					outputView.m_accessor->count != outputCount)
+				{
+					continue;
+				}
+
+				prepared.m_values.Resize(outputCount);
+				const size_t componentCount =
+					prepared.m_target == EAnimationTarget::Rotation ? 4 : 3;
+				bValid = true;
+				for (size_t element = 0; element < outputCount; ++element)
+				{
+					glm::vec4 value(0.0f);
+					for (size_t component = 0; component < componentCount; ++component)
+					{
+						bValid &= TryReadAccessorFloat(
+							outputView,
+							element,
+							component,
+							value[static_cast<glm::length_t>(component)]);
+					}
+					prepared.m_values[element] = value;
+				}
+				if (!bValid)
 				{
 					continue;
 				}
 
 				prepared.m_targetNode =
 					static_cast<size_t>(channel.target_node);
-				prepared.m_sampleCount = sampleCount;
+				animationDuration = (std::max)(
+					animationDuration,
+					prepared.m_timestamps[prepared.m_timestamps.Num() - 1]);
+				maxSourceSampleCount = (std::max)(maxSourceSampleCount, sampleCount);
 				preparedChannels.Add(prepared);
 			}
 
+			if (preparedChannels.IsEmpty() || !std::isfinite(animationDuration))
+			{
+				return false;
+			}
+
+			constexpr float TargetSamplingFps = 30.0f;
+			const double targetIntervals = std::ceil(
+				static_cast<double>(animationDuration) * TargetSamplingFps);
+			if (!std::isfinite(targetIntervals) ||
+				targetIntervals > static_cast<double>(MaxVectorElements - 1))
+			{
+				return false;
+			}
+
+			const size_t numIntervals = (std::max)(
+				static_cast<size_t>(targetIntervals),
+				maxSourceSampleCount - 1);
+			const size_t numFrames = numIntervals + 1;
+			if (numFrames > MaxVectorElements / numBones)
+			{
+				return false;
+			}
+
+			TVector<Math::Transform> framesData;
+			framesData.Resize(numFrames * numBones);
+			const float samplingFps = animationDuration > 0.0f ?
+				static_cast<float>(numIntervals) / animationDuration : TargetSamplingFps;
+
 			for (size_t f = 0; f < numFrames; ++f)
 			{
+				const float sampleTime = (std::min)(
+					static_cast<float>(f) / samplingFps,
+					animationDuration);
 				TVector<Math::Transform> local(base);
 				for (const auto& channel : preparedChannels)
 				{
-					const size_t sample =
-						(std::min)(f, channel.m_sampleCount - 1);
-					const size_t outputElement = channel.m_bCubicSpline ?
-						sample * 3 + 1 : sample;
-					const size_t componentCount =
-						channel.m_target == EAnimationTarget::Rotation ? 4 : 3;
-					float values[4]{};
-					bool bValid = true;
-					for (size_t component = 0;
-						component < componentCount;
-						++component)
-					{
-						bValid &= TryReadAccessorFloat(
-							channel.m_output,
-							outputElement,
-							component,
-							values[component]);
-					}
-
-					if (!bValid)
-					{
-						continue;
-					}
-
 					Math::Transform& target = local[channel.m_targetNode];
-					if (channel.m_target == EAnimationTarget::Translation)
+					if (channel.m_target == EAnimationTarget::Rotation)
 					{
-						target.m_position = glm::vec4(
-							values[0], values[1], values[2], 1.0f);
-					}
-					else if (channel.m_target == EAnimationTarget::Scale)
-					{
-						target.m_scale = glm::vec4(
-							values[0], values[1], values[2], 1.0f);
+						AnimationClipSampler::SampleRotation(
+							channel.m_timestamps,
+							channel.m_values,
+							channel.m_interpolation,
+							sampleTime,
+							target.m_rotation);
 					}
 					else
 					{
-						glm::quat rotation(
-							values[3], values[0], values[1], values[2]);
-						const float lengthSquared = glm::dot(rotation, rotation);
-						if (std::isfinite(lengthSquared) &&
-							lengthSquared > std::numeric_limits<float>::epsilon())
+						glm::vec4 value;
+						if (AnimationClipSampler::SampleVector(
+							channel.m_timestamps,
+							channel.m_values,
+							channel.m_interpolation,
+							sampleTime,
+							value))
 						{
-							target.m_rotation = glm::normalize(rotation);
+							value.w = 1.0f;
+							if (channel.m_target == EAnimationTarget::Translation)
+							{
+								target.m_position = value;
+							}
+							else
+							{
+								target.m_scale = value;
+							}
 						}
 					}
 				}
 
-				TVector<Math::Transform> global(numNodes);
-				TVector<uint8_t> composeState(numNodes);
-				auto compose = [&](auto&& self, size_t nodeIndex) -> bool
-				{
-					if (composeState[nodeIndex] == 2)
-					{
-						return IsTransformFinite(global[nodeIndex]);
-					}
-					if (composeState[nodeIndex] == 1)
-					{
-						global[nodeIndex] = local[nodeIndex];
-						composeState[nodeIndex] = 2;
-						return false;
-					}
-
-					composeState[nodeIndex] = 1;
-					Math::Transform composed = local[nodeIndex];
-					const int32_t parentIndex = parents[nodeIndex];
-					if (parentIndex >= 0 &&
-						self(self, static_cast<size_t>(parentIndex)))
-					{
-						const Math::Transform& parent =
-							global[static_cast<size_t>(parentIndex)];
-						composed.m_position =
-							parent.TransformPosition(composed.m_position);
-						composed.m_rotation =
-							parent.m_rotation * composed.m_rotation;
-						composed.m_scale.x *= parent.m_scale.x;
-						composed.m_scale.y *= parent.m_scale.y;
-						composed.m_scale.z *= parent.m_scale.z;
-					}
-
-					global[nodeIndex] = IsTransformFinite(composed) ?
-						composed : local[nodeIndex];
-					composeState[nodeIndex] = 2;
-					return IsTransformFinite(global[nodeIndex]);
-				};
-
-				for (size_t i = 0; i < numNodes; ++i)
-				{
-					compose(compose, i);
-				}
-
-				for (size_t j = 0; j < numBones; ++j)
-				{
-					const size_t nodeIndex =
-						static_cast<size_t>(gltfSkin.joints[j]);
-					framesData[f * numBones + j] = global[nodeIndex];
-				}
+				TVector<Math::Transform> global;
+				composeGlobalTransforms(local, global);
+				buildLocalBonePose(global, framesData, f * numBones);
 			}
 
 			anim->m_numBones = static_cast<uint32_t>(numBones);
 			anim->m_numFrames = static_cast<uint32_t>(numFrames);
-			anim->m_fps = 30.0f;
+			anim->m_fps = samplingFps;
+			anim->m_duration = animationDuration;
 			anim->m_frames = std::move(framesData);
+			anim->m_restPose = std::move(restPose);
+			anim->m_parentBoneIndices = std::move(parentBoneIndices);
+			anim->m_skeletonSignature = skeletonSignature;
 		}
 	}
 
+	++anim->m_revision;
 	outAnimation = anim;
 	return true;
 }

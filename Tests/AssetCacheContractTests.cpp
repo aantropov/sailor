@@ -1,6 +1,7 @@
 #include "AssetRegistry/AssetCache.h"
 #include "AssetRegistry/AssetScanSourceRevisionCache.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
+#include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
@@ -394,6 +395,8 @@ namespace
 	{
 		RequireSerializedAssetInfoType<AssetInfo>("Sailor::AssetInfo");
 		RequireSerializedAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo");
+		RequireSerializedAssetInfoType<AnimationControllerAssetInfo>("Sailor::AnimationControllerAssetInfo");
+		RequireSerializedAssetInfoType<AnimationSetAssetInfo>("Sailor::AnimationSetAssetInfo");
 		RequireSerializedAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo");
 		RequireSerializedAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo");
 		RequireSerializedAssetInfoType<ModelAssetInfo>("Sailor::ModelAssetInfo");

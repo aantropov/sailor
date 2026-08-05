@@ -65,6 +65,14 @@ same source (for example, the assets generated from one glTF file). It does not
 scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
 change Content topology still use `request_asset_reload`.
 
+`set_animator_parameter` updates one runtime Animator instance using a typed
+Float, Int, Bool, Trigger, or ResetTrigger value. `get_animator_state` returns
+the active state, optional destination state, controller revision, state clocks,
+and crossfade alpha for Editor preview and diagnostics. Both commands identify
+the component by its full `InstanceId`, execute through the regular Editor
+worker, and marshal to the Engine main thread. They never persist runtime
+parameter values into scene or controller YAML.
+
 `create_model_instance` performs one atomic Engine-side model drop. With
 `create_hierarchy = true`, the Engine creates the asset root and the editable
 parent-before-child glTF hierarchy, applies each node's local TRS, and attaches

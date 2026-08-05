@@ -38,6 +38,13 @@ namespace RangeAnnotationFixture
 	};
 }
 
+namespace StableTypeNameFixture
+{
+	class ProjectAsset
+	{
+	};
+}
+
 REFL_AUTO(
 	type(RangeAnnotationFixture::NumericProperties),
 	func(GetSignedValue, property("signedValue"), Sailor::Attributes::Range(-10.0, 10.0)),
@@ -475,6 +482,11 @@ namespace
 	{
 		Require(TypeInfo::GetReflectedPropertyTypeName<uint32_t>() == "uint32",
 			"workspace metadata should use a platform-independent uint32 property name");
+		Require(
+			TypeInfo::GetReflectedPropertyTypeName<
+				TObjectPtr<StableTypeNameFixture::ProjectAsset>>() ==
+				"TObjectPtr<StableTypeNameFixture::ProjectAsset>",
+			"workspace metadata should export canonical TObjectPtr pointee types without compiler mangling");
 	}
 
 	void TestEngineRangeAnnotation()

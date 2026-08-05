@@ -14,7 +14,15 @@ void RHIVertexDescription::AddAttribute(uint32_t location, uint32_t binding, EFo
 	attribute.m_format = format;
 	attribute.m_offset = offset;
 
-	SetAttributeFormat(m_bits, binding, format);
+	SetAttributeFormat(m_bits, location, format);
 
 	m_attributes.Emplace(attribute);
+}
+
+bool RHIVertexDescription::HasAttribute(uint32_t location) const
+{
+	return m_attributes.FindIf([location](const AttributeDescription& attribute)
+		{
+			return attribute.m_location == location;
+		}) != -1;
 }

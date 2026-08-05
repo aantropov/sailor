@@ -104,13 +104,13 @@ void VulkanGraphicsPipeline::Release()
 	}
 }
 
-void VulkanGraphicsPipeline::Compile()
+bool VulkanGraphicsPipeline::Compile()
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	if (m_pipeline)
 	{
-		return;
+		return true;
 	}
 
 	m_layout->Compile();
@@ -144,8 +144,17 @@ void VulkanGraphicsPipeline::Compile()
 
 	ApplyStates(pipelineInfo);
 
-	VK_CHECK(vkCreateGraphicsPipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline));
+	const VkResult result = vkCreateGraphicsPipelines(*m_pDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_pipeline);
 	_freea(shaderStageCreateInfo);
+
+	if (result != VK_SUCCESS || m_pipeline == VK_NULL_HANDLE)
+	{
+		m_pipeline = VK_NULL_HANDLE;
+		SAILOR_LOG_ERROR("VulkanGraphicsPipeline::Compile: vkCreateGraphicsPipelines failed with VkResult %d.", static_cast<int32_t>(result));
+		return false;
+	}
+
+	return true;
 }
 
 void VulkanGraphicsPipeline::ApplyStates(VkGraphicsPipelineCreateInfo& pipelineInfo) const

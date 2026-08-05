@@ -658,6 +658,34 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AnimatorAssetPointers_AreMappedToTypedEditorAssets()
+    {
+        var source = ReadRepositoryFile("Editor", "Utility", "EngineTypes.cs");
+
+        Assert.Contains(
+            "\"Sailor::Animation\" => typeof(AnimationFile)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Sailor::AnimationController\" => typeof(AnimationControllerFile)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Sailor::AnimationSet\" => typeof(AnimationSetFile)",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "const string objectPtrPrefix = \"TObjectPtr<\"",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return engineType[objectPtrPrefix.Length..^1]",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("N6Sailor10TObjectPtr", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CreateEditorWorld_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
@@ -972,6 +1000,110 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AnimationControllerYaml_IsStrictAndAppliedAtomically()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "AnimationControllerFile.cs");
+
+        Assert.Contains(
+            "Unknown animation parameter type",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Unknown animation condition operation",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("!Enum.IsDefined(type)", source, StringComparison.Ordinal);
+        Assert.Contains("!Enum.IsDefined(operation)", source, StringComparison.Ordinal);
+
+        var loadStart = source.IndexOf(
+            "void LoadControllerRoot(YamlMappingNode root)",
+            StringComparison.Ordinal);
+        var loadEnd = source.IndexOf(
+            "void SaveControllerSource()",
+            loadStart,
+            StringComparison.Ordinal);
+        Assert.True(loadStart >= 0);
+        Assert.True(loadEnd > loadStart);
+        var loadBody = source[loadStart..loadEnd];
+        var parseTransitions = loadBody.IndexOf(
+            "var transitions = ReadList(",
+            StringComparison.Ordinal);
+        var commitDefaultState = loadBody.IndexOf(
+            "DefaultStateId = defaultStateId;",
+            StringComparison.Ordinal);
+        Assert.True(parseTransitions >= 0);
+        Assert.True(commitDefaultState > parseTransitions);
+        Assert.Contains("Parameters = parameters;", loadBody, StringComparison.Ordinal);
+        Assert.Contains("States = states;", loadBody, StringComparison.Ordinal);
+        Assert.Contains("Transitions = transitions;", loadBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnimationAssetCreation_PublishesPairBeforeBackgroundEngineReload()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetsService.cs");
+        var createStart = source.IndexOf(
+            "public async Task<AssetFile?> CreateAnimationAssetAsync(",
+            StringComparison.Ordinal);
+        var createEnd = source.IndexOf(
+            "AssetFile? FindAssetBySourcePath(",
+            createStart,
+            StringComparison.Ordinal);
+        Assert.True(createStart >= 0);
+        Assert.True(createEnd > createStart);
+        var createBody = source[createStart..createEnd];
+
+        var disableWatchers = createBody.IndexOf(
+            "watcherState.Watcher.EnableRaisingEvents = false;",
+            StringComparison.Ordinal);
+        var writePair = createBody.IndexOf(
+            "_fileOperations.BeginWriteAssetPair(",
+            StringComparison.Ordinal);
+        var publishOnUiThread = createBody.IndexOf(
+            "PublishCreatedAnimationAsset(",
+            StringComparison.Ordinal);
+        var commit = createBody.IndexOf(
+            "transaction.Commit()",
+            StringComparison.Ordinal);
+        var queueReload = createBody.IndexOf(
+            "QueueAnimationAssetReload();",
+            StringComparison.Ordinal);
+        var restoreWatchers = createBody.IndexOf(
+            "watcherState.Watcher.EnableRaisingEvents =",
+            disableWatchers + 1,
+            StringComparison.Ordinal);
+        var uiRefresh = createBody.IndexOf(
+            "MainThread.InvokeOnMainThreadAsync",
+            StringComparison.Ordinal);
+
+        Assert.True(disableWatchers >= 0);
+        Assert.True(writePair > disableWatchers);
+        Assert.True(restoreWatchers > writePair);
+        Assert.True(uiRefresh > restoreWatchers);
+        Assert.True(publishOnUiThread > uiRefresh);
+        Assert.True(commit > publishOnUiThread);
+        Assert.True(queueReload > commit);
+        Assert.Contains(
+            "SerializeAnimationAssetInfo(",
+            createBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "transaction.Rollback();",
+            createBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "await _engineService.RequestAssetReloadAsync",
+            createBody,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AssetProjection_TreatsGlslAsShaderLibraryDespiteSharedNativeAssetInfoType()
     {
         var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");
@@ -1034,6 +1166,10 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public async Task EnsureMetadataLoadedAsync(", assetFileSource, StringComparison.Ordinal);
         Assert.Contains("await Task.Run(Revert, cancellationToken)", assetFileSource, StringComparison.Ordinal);
         Assert.Contains("await selectedAssetFile.EnsureMetadataLoadedAsync(", selectionSource, StringComparison.Ordinal);
+        Assert.Contains("public async Task<AssetFile?> ResolveAssetAsync(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await Volatile.Read(ref _assetCacheIndexLoadTask)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await EnsureAssetDirectoryLoadedAsync(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await service.ResolveAssetAsync(file.FileId)", contentViewSource, StringComparison.Ordinal);
         Assert.Contains("QueueAssetCacheIndexLoad(launchContext, contentGeneration)", assetsSource, StringComparison.Ordinal);
         Assert.Contains("MergeAssetCacheIndex(result.Entries!)", assetsSource, StringComparison.Ordinal);
         Assert.Contains("Files.Add(file)", assetsSource, StringComparison.Ordinal);

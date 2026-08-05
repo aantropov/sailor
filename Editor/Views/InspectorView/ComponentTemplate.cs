@@ -30,9 +30,14 @@ public class ComponentTemplate : DataTemplate
                 HorizontalOptions = LayoutOptions.Fill,
                 MinimumWidthRequest = 0
             };
+            IDispatcherTimer? animatorRuntimeTimer = null;
+            props.Loaded += (_, _) => animatorRuntimeTimer?.Start();
+            props.Unloaded += (_, _) => animatorRuntimeTimer?.Stop();
 
             props.BindingContextChanged += (sender, args) =>
             {
+                animatorRuntimeTimer?.Stop();
+                animatorRuntimeTimer = null;
                 if (((Grid)sender).BindingContext is not Component component)
                 {
                     props.Children.Clear();
@@ -228,10 +233,90 @@ public class ComponentTemplate : DataTemplate
 
                     Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
                 }
+
+                if (component.Typename.Name == "Sailor::AnimatorComponent")
+                {
+                    animatorRuntimeTimer = AddAnimatorRuntimeControls(props, component);
+                    if (props.IsLoaded)
+                    {
+                        animatorRuntimeTimer.Start();
+                    }
+                }
             };
 
             return props;
         };
+    }
+
+    static IDispatcherTimer AddAnimatorRuntimeControls(Grid props, Component component)
+    {
+        var heading = new Label
+        {
+            Text = "Runtime Controller",
+            FontAttributes = FontAttributes.Bold,
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        Templates.AddGridRow(props, heading, GridLength.Auto);
+        Grid.SetColumnSpan(heading, props.ColumnDefinitions.Count);
+
+        var stateLabel = new Label
+        {
+            Text = "No controller",
+            TextColor = Color.FromArgb("#929AA5"),
+            FontSize = 11
+        };
+        Templates.AddGridRow(props, stateLabel, GridLength.Auto);
+        Grid.SetColumnSpan(stateLabel, props.ColumnDefinitions.Count);
+
+        var controllerFile = AnimatorRuntimeControls.ResolveController(component);
+        if (controllerFile is not null)
+        {
+            foreach (var parameter in controllerFile.Parameters)
+            {
+                var editor = AnimatorRuntimeControls.CreateParameterEditor(
+                    component,
+                    parameter);
+                Templates.AddGridRowWithLabel(
+                    props,
+                    parameter.Name,
+                    editor,
+                    GridLength.Auto);
+            }
+        }
+
+        var timer = props.Dispatcher.CreateTimer();
+        timer.Interval = TimeSpan.FromMilliseconds(100);
+        var stateRequestPending = false;
+        timer.Tick += async (_, _) =>
+        {
+            if (stateRequestPending || component.InstanceId is null || component.InstanceId.IsEmpty())
+            {
+                return;
+            }
+            stateRequestPending = true;
+            try
+            {
+                var state = await MauiProgram.GetService<EngineService>()
+                    .GetAnimatorStateAsync(component.InstanceId);
+                if (state is null || !state.Value.HasController)
+                {
+                    stateLabel.Text = "No controller";
+                    return;
+                }
+                stateLabel.Text = state.Value.IsTransitioning
+                    ? $"{state.Value.ActiveStateName} → {state.Value.DestinationStateName}  {state.Value.TransitionAlpha:P0}"
+                    : $"{state.Value.ActiveStateName}  {state.Value.ActiveStateTime:F2}s";
+            }
+            catch (Exception exception)
+            {
+                stateLabel.Text = exception.Message;
+            }
+            finally
+            {
+                stateRequestPending = false;
+            }
+        };
+        return timer;
     }
 
     static string FormatComponentTypeName(string typeName)

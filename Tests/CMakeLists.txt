@@ -71,6 +71,10 @@ add_executable(ModelImporterContractTests
     ModelImporterContractTests.cpp
 )
 
+add_executable(AnimationSamplingContractTests
+    AnimationSamplingContractTests.cpp
+)
+
 add_executable(VulkanDescriptorCacheTests
     VulkanDescriptorCacheTests.cpp
 )
@@ -213,6 +217,7 @@ target_compile_definitions(GpuCullingContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 target_compile_features(ModelImporterContractTests PRIVATE cxx_std_20)
+target_compile_features(AnimationSamplingContractTests PRIVATE cxx_std_20)
 target_compile_features(VulkanDescriptorCacheTests PRIVATE cxx_std_20)
 target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
@@ -268,6 +273,7 @@ target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(GpuCullingContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(ModelImporterContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(AnimationSamplingContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(VulkanDescriptorCacheTests PRIVATE Sailor::Runtime)
 target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
@@ -368,6 +374,9 @@ target_include_directories(GpuCullingContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(ModelImporterContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(AnimationSamplingContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(VulkanDescriptorCacheTests PRIVATE
@@ -507,6 +516,11 @@ add_test(
 )
 
 add_test(
+    NAME AnimationSamplingContractTests
+    COMMAND AnimationSamplingContractTests
+)
+
+add_test(
     NAME VulkanDescriptorCacheTests
     COMMAND VulkanDescriptorCacheTests
 )
@@ -617,6 +631,7 @@ set_tests_properties(
     BoundsContractTests
     GpuCullingContractTests
     ModelImporterContractTests
+    AnimationSamplingContractTests
     VulkanDescriptorCacheTests
     EditorViewportControllerContractTests
     SkyComponentContractTests

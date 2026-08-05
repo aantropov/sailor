@@ -11,7 +11,6 @@ using System.Globalization;
 using YamlDotNet.Serialization.NamingConventions;
 using SailorEngine;
 using System.Xml.Linq;
-using System.Text.RegularExpressions;
 using SailorEditor.Helpers;
 using SailorEditor.Utility;
 using System.ComponentModel;
@@ -191,6 +190,12 @@ namespace SailorEngine
                 "class Sailor::Material" => typeof(MaterialFile),
                 "Sailor::Shader" => typeof(ShaderFile),
                 "class Sailor::Shader" => typeof(ShaderFile),
+                "Sailor::Animation" => typeof(AnimationFile),
+                "class Sailor::Animation" => typeof(AnimationFile),
+                "Sailor::AnimationController" => typeof(AnimationControllerFile),
+                "class Sailor::AnimationController" => typeof(AnimationControllerFile),
+                "Sailor::AnimationSet" => typeof(AnimationSetFile),
+                "class Sailor::AnimationSet" => typeof(AnimationSetFile),
                 _ => null
             };
 
@@ -216,22 +221,14 @@ namespace SailorEngine
 
         static string GetGenericTypeName(string engineType)
         {
-            var genericMatch = Regex.Match(engineType, @"<(.+?)>");
-            if (genericMatch.Success)
+            const string objectPtrPrefix = "TObjectPtr<";
+            if (engineType.StartsWith(objectPtrPrefix, StringComparison.Ordinal) &&
+                engineType.EndsWith('>'))
             {
-                return genericMatch.Groups[1].Value;
+                return engineType[objectPtrPrefix.Length..^1];
             }
 
-            return engineType switch
-            {
-                "N6Sailor10TObjectPtrINS_5ModelEEE" => "Sailor::Model",
-                "N6Sailor10TObjectPtrINS_7TextureEEE" => "Sailor::Texture",
-                "N6Sailor10TObjectPtrINS_8MaterialEEE" => "Sailor::Material",
-                "N6Sailor10TObjectPtrINS_6ShaderEEE" => "Sailor::Shader",
-                "N6Sailor10TObjectPtrINS_9AnimationEEE" => "Sailor::Animation",
-                "N6Sailor10TObjectPtrINS_21MeshRendererComponentEEE" => "Sailor::MeshRendererComponent",
-                _ => ""
-            };
+            return "";
         }
 
         public static EngineTypes FromYaml(string yamlContent)

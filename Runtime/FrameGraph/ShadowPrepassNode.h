@@ -15,6 +15,10 @@ namespace Sailor
 		struct PerInstanceData
 		{
 			glm::mat4 model;
+			uint32_t skeletonOffset = 0;
+			uint32_t padding0 = 0;
+			uint32_t padding1 = 0;
+			uint32_t padding2 = 0;
 
 			bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
 
@@ -44,8 +48,10 @@ namespace Sailor
 		// Shadow caster material
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials_Evsm{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials_Pcf{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedShadowMaterials_Evsm{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedShadowMaterials_Pcf{};
 
-		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType);
+		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned);
 
 		// Record drawcalls
 		size_t m_sizePerInstanceData = 0;
