@@ -72,7 +72,7 @@ namespace Sailor
 		SAILOR_SHARED_API bool UpdateObject(const class InstanceId& instanceId, const std::string& strYamlNode);
 		SAILOR_API bool ReparentObject(const class InstanceId& instanceId, const class InstanceId& parentInstanceId, bool bKeepWorldTransform);
 		bool CreateGameObject(const class InstanceId& parentInstanceId, const class InstanceId& preferredInstanceId, class InstanceId& outInstanceId);
-		bool CreateModelInstance(
+		SAILOR_SHARED_API bool CreateModelInstance(
 			const TObjectPtr<Model>& model,
 			const std::string& name,
 			const class InstanceId& parentInstanceId,

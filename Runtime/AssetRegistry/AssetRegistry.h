@@ -19,7 +19,7 @@ namespace Sailor
 {
 	class AssetInfo;
 	using AssetInfoPtr = AssetInfo*;
-	SAILOR_API extern bool g_bUseLazyAssetInfoLoading;
+	SAILOR_SHARED_API extern bool g_bUseLazyAssetInfoLoading;
 
 	enum class EAssetType;
 
