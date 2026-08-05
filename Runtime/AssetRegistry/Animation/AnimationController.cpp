@@ -17,8 +17,9 @@ namespace
 		case EAnimationParameterType::Int: return "Int";
 		case EAnimationParameterType::Bool: return "Bool";
 		case EAnimationParameterType::Trigger: return "Trigger";
+		case EAnimationParameterType::Invalid: return "Invalid";
 		}
-		return "Float";
+		return "Invalid";
 	}
 
 	const char* ToString(EAnimationConditionOperation operation)
@@ -32,29 +33,42 @@ namespace
 		case EAnimationConditionOperation::Greater: return "Greater";
 		case EAnimationConditionOperation::GreaterOrEqual: return "GreaterOrEqual";
 		case EAnimationConditionOperation::IsSet: return "IsSet";
+		case EAnimationConditionOperation::Invalid: return "Invalid";
 		}
-		return "Equal";
+		return "Invalid";
 	}
 
 	EAnimationParameterType ParseParameterType(const YAML::Node& node)
 	{
-		const std::string value = node.as<std::string>("Float");
+		if (!node || node.IsNull())
+		{
+			return EAnimationParameterType::Float;
+		}
+
+		const std::string value = node.as<std::string>();
+		if (value == "Float") return EAnimationParameterType::Float;
 		if (value == "Int") return EAnimationParameterType::Int;
 		if (value == "Bool") return EAnimationParameterType::Bool;
 		if (value == "Trigger") return EAnimationParameterType::Trigger;
-		return EAnimationParameterType::Float;
+		return EAnimationParameterType::Invalid;
 	}
 
 	EAnimationConditionOperation ParseConditionOperation(const YAML::Node& node)
 	{
-		const std::string value = node.as<std::string>("Equal");
+		if (!node || node.IsNull())
+		{
+			return EAnimationConditionOperation::Equal;
+		}
+
+		const std::string value = node.as<std::string>();
+		if (value == "Equal") return EAnimationConditionOperation::Equal;
 		if (value == "NotEqual") return EAnimationConditionOperation::NotEqual;
 		if (value == "Less") return EAnimationConditionOperation::Less;
 		if (value == "LessOrEqual") return EAnimationConditionOperation::LessOrEqual;
 		if (value == "Greater") return EAnimationConditionOperation::Greater;
 		if (value == "GreaterOrEqual") return EAnimationConditionOperation::GreaterOrEqual;
 		if (value == "IsSet") return EAnimationConditionOperation::IsSet;
-		return EAnimationConditionOperation::Equal;
+		return EAnimationConditionOperation::Invalid;
 	}
 
 	void AddError(TVector<std::string>* errors, const std::string& error)
@@ -69,6 +83,11 @@ namespace
 		EAnimationParameterType type,
 		EAnimationConditionOperation operation)
 	{
+		if (type == EAnimationParameterType::Invalid ||
+			operation == EAnimationConditionOperation::Invalid)
+		{
+			return false;
+		}
 		if (type == EAnimationParameterType::Trigger)
 		{
 			return operation == EAnimationConditionOperation::IsSet;
@@ -106,6 +125,7 @@ YAML::Node AnimationControllerAsset::Serialize() const
 			serialized["default"] = parameter.m_defaultBool;
 			break;
 		case EAnimationParameterType::Trigger:
+		case EAnimationParameterType::Invalid:
 			break;
 		}
 		result["parameters"].push_back(serialized);
@@ -183,6 +203,7 @@ void AnimationControllerAsset::Deserialize(const YAML::Node& inData)
 				parameter.m_defaultBool = serialized["default"].as<bool>(false);
 				break;
 			case EAnimationParameterType::Trigger:
+			case EAnimationParameterType::Invalid:
 				break;
 			}
 			m_parameters.Add(std::move(parameter));
@@ -361,6 +382,11 @@ bool AnimationController::Validate(TVector<std::string>* outErrors) const
 		if (parameter.m_id == InvalidAnimationControllerNodeId || parameter.m_name.empty())
 		{
 			AddError(outErrors, "Animation parameters require a stable id and name.");
+			bValid = false;
+		}
+		if (parameter.m_type == EAnimationParameterType::Invalid)
+		{
+			AddError(outErrors, "Animation parameter type is unknown.");
 			bValid = false;
 		}
 		if (parameter.m_type == EAnimationParameterType::Float &&
@@ -712,6 +738,7 @@ bool AnimationControllerInstance::AreConditionsMet(
 			case EAnimationConditionOperation::Greater: bConditionMet = value.m_floatValue > condition.m_floatValue; break;
 			case EAnimationConditionOperation::GreaterOrEqual: bConditionMet = value.m_floatValue >= condition.m_floatValue; break;
 			case EAnimationConditionOperation::IsSet: break;
+			case EAnimationConditionOperation::Invalid: break;
 			}
 			break;
 		}
@@ -725,6 +752,7 @@ bool AnimationControllerInstance::AreConditionsMet(
 			case EAnimationConditionOperation::Greater: bConditionMet = value.m_intValue > condition.m_intValue; break;
 			case EAnimationConditionOperation::GreaterOrEqual: bConditionMet = value.m_intValue >= condition.m_intValue; break;
 			case EAnimationConditionOperation::IsSet: break;
+			case EAnimationConditionOperation::Invalid: break;
 			}
 			break;
 		case EAnimationParameterType::Bool:
@@ -734,6 +762,8 @@ bool AnimationControllerInstance::AreConditionsMet(
 			break;
 		case EAnimationParameterType::Trigger:
 			bConditionMet = value.m_boolValue;
+			break;
+		case EAnimationParameterType::Invalid:
 			break;
 		}
 
@@ -859,6 +889,7 @@ bool AnimationControllerInstance::SynchronizeController()
 	}
 
 	const int32_t activeStateIndex = m_controller->FindStateIndex(m_activeStateId);
+	const bool bActiveStateWasRemoved = activeStateIndex < 0;
 	m_activeStateIndex = activeStateIndex >= 0 ?
 		static_cast<uint32_t>(activeStateIndex) : m_controller->GetDefaultStateIndex();
 	if (m_activeStateIndex >= m_controller->GetStates().Num())
@@ -866,9 +897,13 @@ bool AnimationControllerInstance::SynchronizeController()
 		return false;
 	}
 	m_activeStateId = m_controller->GetStates()[m_activeStateIndex].m_id;
+	if (bActiveStateWasRemoved)
+	{
+		m_activeStateTime = 0.0f;
+	}
 
 	const int32_t destinationStateIndex = m_controller->FindStateIndex(m_destinationStateId);
-	m_destinationStateIndex = destinationStateIndex >= 0 ?
+	m_destinationStateIndex = !bActiveStateWasRemoved && destinationStateIndex >= 0 ?
 		static_cast<uint32_t>(destinationStateIndex) : InvalidIndex;
 	if (m_destinationStateIndex == InvalidIndex)
 	{

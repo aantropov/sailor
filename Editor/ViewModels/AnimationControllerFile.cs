@@ -325,10 +325,15 @@ public partial class AnimationControllerFile : AssetFile
 
     void LoadControllerRoot(YamlMappingNode root)
     {
-        DefaultStateId = ReadUInt64(root, "defaultState");
-        Parameters = ReadList(root, "parameters", AnimationControllerParameter.FromYaml);
-        States = ReadList(root, "states", AnimationControllerState.FromYaml);
-        Transitions = ReadList(root, "transitions", AnimationControllerTransition.FromYaml);
+        var defaultStateId = ReadUInt64(root, "defaultState");
+        var parameters = ReadList(root, "parameters", AnimationControllerParameter.FromYaml);
+        var states = ReadList(root, "states", AnimationControllerState.FromYaml);
+        var transitions = ReadList(root, "transitions", AnimationControllerTransition.FromYaml);
+
+        DefaultStateId = defaultStateId;
+        Parameters = parameters;
+        States = states;
+        Transitions = transitions;
         TrackList(Parameters, nameof(Parameters));
         TrackList(States, nameof(States));
         TrackList(Transitions, nameof(Transitions));
@@ -500,9 +505,16 @@ public partial class AnimationControllerParameter : ObservableObject
 
     public static AnimationControllerParameter FromYaml(YamlMappingNode node)
     {
-        _ = Enum.TryParse<AnimationControllerParameterType>(
-            AnimationControllerFile.ReadString(node, "type", "Float"),
-            out var type);
+        var serializedType = AnimationControllerFile.ReadString(node, "type", "Float");
+        if (!Enum.TryParse<AnimationControllerParameterType>(
+                serializedType,
+                ignoreCase: false,
+                out var type) ||
+            !Enum.IsDefined(type))
+        {
+            throw new InvalidDataException(
+                $"Unknown animation parameter type '{serializedType}'.");
+        }
         var result = new AnimationControllerParameter
         {
             Id = AnimationControllerFile.ReadUInt64(node, "id"),
@@ -625,9 +637,19 @@ public partial class AnimationControllerCondition : ObservableObject
 
     public static AnimationControllerCondition FromYaml(YamlMappingNode node)
     {
-        _ = Enum.TryParse<AnimationControllerConditionOperation>(
-            AnimationControllerFile.ReadString(node, "operation", "Equal"),
-            out var operation);
+        var serializedOperation = AnimationControllerFile.ReadString(
+            node,
+            "operation",
+            "Equal");
+        if (!Enum.TryParse<AnimationControllerConditionOperation>(
+                serializedOperation,
+                ignoreCase: false,
+                out var operation) ||
+            !Enum.IsDefined(operation))
+        {
+            throw new InvalidDataException(
+                $"Unknown animation condition operation '{serializedOperation}'.");
+        }
         return new AnimationControllerCondition
         {
             ParameterId = AnimationControllerFile.ReadUInt64(node, "parameter"),

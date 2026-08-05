@@ -20,7 +20,8 @@ namespace Sailor
 		Float,
 		Int,
 		Bool,
-		Trigger
+		Trigger,
+		Invalid = 0xff
 	};
 
 	enum class EAnimationConditionOperation : uint8_t
@@ -31,7 +32,8 @@ namespace Sailor
 		LessOrEqual,
 		Greater,
 		GreaterOrEqual,
-		IsSet
+		IsSet,
+		Invalid = 0xff
 	};
 
 	struct AnimationParameterDefinition
@@ -200,7 +202,7 @@ namespace Sailor
 		uint32_t GetDestinationStateIndex() const { return m_destinationStateIndex; }
 		float GetActiveStateTime() const { return m_activeStateTime; }
 		float GetDestinationStateTime() const { return m_destinationStateTime; }
-		float GetTransitionAlpha() const;
+		SAILOR_API float GetTransitionAlpha() const;
 		const AnimationControllerPtr& GetController() const { return m_controller; }
 
 		static constexpr uint32_t InvalidIndex = (std::numeric_limits<uint32_t>::max)();

@@ -991,6 +991,98 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AnimationControllerYaml_IsStrictAndAppliedAtomically()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "AnimationControllerFile.cs");
+
+        Assert.Contains(
+            "Unknown animation parameter type",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Unknown animation condition operation",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains("!Enum.IsDefined(type)", source, StringComparison.Ordinal);
+        Assert.Contains("!Enum.IsDefined(operation)", source, StringComparison.Ordinal);
+
+        var loadStart = source.IndexOf(
+            "void LoadControllerRoot(YamlMappingNode root)",
+            StringComparison.Ordinal);
+        var loadEnd = source.IndexOf(
+            "void SaveControllerSource()",
+            loadStart,
+            StringComparison.Ordinal);
+        Assert.True(loadStart >= 0);
+        Assert.True(loadEnd > loadStart);
+        var loadBody = source[loadStart..loadEnd];
+        var parseTransitions = loadBody.IndexOf(
+            "var transitions = ReadList(",
+            StringComparison.Ordinal);
+        var commitDefaultState = loadBody.IndexOf(
+            "DefaultStateId = defaultStateId;",
+            StringComparison.Ordinal);
+        Assert.True(parseTransitions >= 0);
+        Assert.True(commitDefaultState > parseTransitions);
+        Assert.Contains("Parameters = parameters;", loadBody, StringComparison.Ordinal);
+        Assert.Contains("States = states;", loadBody, StringComparison.Ordinal);
+        Assert.Contains("Transitions = transitions;", loadBody, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnimationAssetCreation_SuppressesWatcherAndRefreshesOnUiThread()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetsService.cs");
+        var createStart = source.IndexOf(
+            "public async Task<AssetFile?> CreateAnimationAssetAsync(",
+            StringComparison.Ordinal);
+        var createEnd = source.IndexOf(
+            "static string CreateAnimationControllerSource()",
+            createStart,
+            StringComparison.Ordinal);
+        Assert.True(createStart >= 0);
+        Assert.True(createEnd > createStart);
+        var createBody = source[createStart..createEnd];
+
+        var disableWatchers = createBody.IndexOf(
+            "watcherState.Watcher.EnableRaisingEvents = false;",
+            StringComparison.Ordinal);
+        var moveSource = createBody.IndexOf(
+            "File.Move(temporaryPath, sourcePath);",
+            StringComparison.Ordinal);
+        var requestReload = createBody.IndexOf(
+            "_engineService.RequestAssetReloadAsync(cancellationToken)",
+            StringComparison.Ordinal);
+        var restoreWatchers = createBody.IndexOf(
+            "watcherState.Watcher.EnableRaisingEvents =",
+            disableWatchers + 1,
+            StringComparison.Ordinal);
+        var uiRefresh = createBody.IndexOf(
+            "MainThread.InvokeOnMainThreadAsync",
+            StringComparison.Ordinal);
+
+        Assert.True(disableWatchers >= 0);
+        Assert.True(moveSource > disableWatchers);
+        Assert.True(requestReload > moveSource);
+        Assert.True(restoreWatchers > requestReload);
+        Assert.True(uiRefresh > restoreWatchers);
+        Assert.Contains(
+            "var created = FindAssetBySourcePath(sourcePath);",
+            createBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (created is null)",
+            createBody,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AssetProjection_TreatsGlslAsShaderLibraryDespiteSharedNativeAssetInfoType()
     {
         var assetsSource = ReadRepositoryFile("Editor", "Services", "AssetsService.cs");

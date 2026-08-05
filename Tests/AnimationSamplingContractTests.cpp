@@ -265,10 +265,30 @@ namespace
 			NearlyEqual(roundTrip.GetStates()[0].m_editorY, 20.0f),
 			"animation controller YAML must retain source-controlled editor layout");
 
+		YAML::Node invalidParameterType = source.Serialize();
+		invalidParameterType["parameters"][0]["type"] = "Vector";
+		AnimationControllerAsset invalidParameterAsset;
+		invalidParameterAsset.Deserialize(invalidParameterType);
+		Require(invalidParameterAsset.GetParameters()[0].m_type ==
+			EAnimationParameterType::Invalid,
+			"unknown animation parameter types must not become Float");
+
+		YAML::Node invalidConditionOperation = source.Serialize();
+		invalidConditionOperation["transitions"][0]["conditions"][0]["operation"] = "Approximate";
+		AnimationControllerAsset invalidOperationAsset;
+		invalidOperationAsset.Deserialize(invalidConditionOperation);
+		Require(invalidOperationAsset.GetTransitions()[0].m_conditions[0].m_operation ==
+			EAnimationConditionOperation::Invalid,
+			"unknown animation condition operations must not become Equal");
+
 		auto allocator = Memory::ObjectAllocatorPtr::Make(
 			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
 		auto controller = AnimationControllerPtr::Make(allocator, FileId{});
 		TVector<std::string> errors;
+		Require(!controller->Initialize(invalidParameterAsset, &errors) && !errors.IsEmpty(),
+			"unknown animation parameter types must fail graph validation");
+		Require(!controller->Initialize(invalidOperationAsset, &errors) && !errors.IsEmpty(),
+			"unknown animation condition operations must fail graph validation");
 		Require(controller->Initialize(roundTrip, &errors) && errors.IsEmpty(),
 			"a valid controller graph must compile without diagnostics");
 
@@ -448,6 +468,27 @@ namespace
 			controller->GetRevision() == lastValidRevision &&
 			controller->GetStates()[instance.GetActiveStateIndex()].m_id == 100,
 			"an invalid hot reload must retain the last valid immutable runtime graph");
+
+		Require(instance.SetController(controller) && instance.SetBool("Speed", false),
+			"active-state reset fixture must restart the last valid controller");
+		instance.Tick(0.75f, 1.0f);
+		Require(NearlyEqual(instance.GetActiveStateTime(), 0.75f),
+			"active-state reset fixture must accumulate playback time");
+
+		AnimationControllerAsset fallbackAsset;
+		fallbackAsset.SetDefaultStateId(300);
+		fallbackAsset.GetStates().Add(AnimationStateDefinition{
+			.m_id = 300,
+			.m_name = "Fallback",
+			.m_clipSlot = "Fallback"
+		});
+		Require(controller->Initialize(fallbackAsset),
+			"a hot reload may remove the previously active state");
+		instance.Tick(0.0f, 1.0f);
+		Require(controller->GetStates()[instance.GetActiveStateIndex()].m_id == 300 &&
+			NearlyEqual(instance.GetActiveStateTime(), 0.0f) &&
+			!instance.IsTransitioning(),
+			"a removed active state must fall back with a fresh clock and no stale transition");
 
 		instance = AnimationControllerInstance{};
 		controller.DestroyObject(allocator);
