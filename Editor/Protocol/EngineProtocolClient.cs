@@ -417,6 +417,34 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.CreateEditorWorld));
 
+    public async Task<bool> SetEditorSimulationAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorSimulation = new EditorSimulationRequest
+                        {
+                            Enabled = enabled
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetEditorSimulation));
+
+    public async Task<bool> GetEditorSimulationStateAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetEditorSimulationState = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.GetEditorSimulationState));
+
     public async Task SetViewportAsync(
         uint windowPosX,
         uint windowPosY,

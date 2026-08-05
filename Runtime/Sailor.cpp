@@ -21,6 +21,7 @@
 #include "GraphicsDriver/Vulkan/VulkanApi.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
+#include "Physics/JoltRuntime.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
@@ -473,6 +474,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
 	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bEnableRenderValidationLayers));
 	if (!renderer->IsInitialized())
 	{
@@ -1067,7 +1069,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1081,6 +1083,7 @@ void App::Shutdown()
 #endif
 
 	RemoveSubmodule<EngineLoop>();
+	RemoveSubmodule<Physics::JoltRuntime>();
 	RemoveSubmodule<ECS::ECSFactory>();
 	RemoveSubmodule<FrameGraphBuilder>();
 

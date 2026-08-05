@@ -226,6 +226,7 @@ namespace SailorEditor.Services
         public event Action<EngineLifecycleState> OnLifecycleStateChanged = delegate { };
         public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
         public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
+        public event Action<bool> OnEditorSimulationStateChanged = delegate { };
 
         public string EngineContentDirectory => Path.Combine(repoRoot, "Content");
 
@@ -3004,8 +3005,15 @@ namespace SailorEditor.Services
 
             if (result)
             {
+                PublishEditorSimulationState(false);
                 await RefreshCurrentWorldAsync(
                     cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                PublishEditorSimulationState(
+                    await GetEditorSimulationStateAsync(
+                        cancellationToken).ConfigureAwait(false));
             }
 
             return result;
@@ -3028,11 +3036,47 @@ namespace SailorEditor.Services
 
             if (result)
             {
+                PublishEditorSimulationState(false);
                 await RefreshCurrentWorldAsync(
                     cancellationToken).ConfigureAwait(false);
             }
+            else
+            {
+                PublishEditorSimulationState(
+                    await GetEditorSimulationStateAsync(
+                        cancellationToken).ConfigureAwait(false));
+            }
 
             return result;
+        }
+
+        public async Task<bool> SetEditorSimulationAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            var result = await InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorSimulationAsync(
+                    enabled,
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (result)
+                PublishEditorSimulationState(enabled);
+            return result;
+        }
+
+        public Task<bool> GetEditorSimulationStateAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                protocolClient.GetEditorSimulationStateAsync,
+                cancellationToken: cancellationToken);
+
+        void PublishEditorSimulationState(bool enabled)
+        {
+            void Publish() => OnEditorSimulationStateChanged(enabled);
+            if (MainThread.IsMainThread)
+                Publish();
+            else
+                MainThread.BeginInvokeOnMainThread(Publish);
         }
 
         public async Task<string> SerializeCurrentWorldAsync(

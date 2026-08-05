@@ -934,6 +934,31 @@ struct EmptyDefaultTypeInternal {
 PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
     PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 EmptyDefaultTypeInternal _Empty_default_instance_;
 
+inline constexpr EditorSimulationRequest::Impl_::Impl_(
+    ::_pbi::ConstantInitialized) noexcept
+      : enabled_{false},
+        _cached_size_{0} {}
+
+template <typename>
+PROTOBUF_CONSTEXPR EditorSimulationRequest::EditorSimulationRequest(::_pbi::ConstantInitialized)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(_class_data_.base()),
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(),
+#endif  // PROTOBUF_CUSTOM_VTABLE
+      _impl_(::_pbi::ConstantInitialized()) {
+}
+struct EditorSimulationRequestDefaultTypeInternal {
+  PROTOBUF_CONSTEXPR EditorSimulationRequestDefaultTypeInternal() : _instance(::_pbi::ConstantInitialized{}) {}
+  ~EditorSimulationRequestDefaultTypeInternal() {}
+  union {
+    EditorSimulationRequest _instance;
+  };
+};
+
+PROTOBUF_ATTRIBUTE_NO_DESTROY PROTOBUF_CONSTINIT
+    PROTOBUF_ATTRIBUTE_INIT_PRIORITY1 EditorSimulationRequestDefaultTypeInternal _EditorSimulationRequest_default_instance_;
+
 inline constexpr CreateGameObjectRequest::Impl_::Impl_(
     ::_pbi::ConstantInitialized) noexcept
       : parent_instance_id_(
@@ -1466,6 +1491,8 @@ const ::uint32_t
         ::_pbi::kInvalidFieldOffsetTag,
         ::_pbi::kInvalidFieldOffsetTag,
         ::_pbi::kInvalidFieldOffsetTag,
+        ::_pbi::kInvalidFieldOffsetTag,
+        ::_pbi::kInvalidFieldOffsetTag,
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::ProtocolRequest, _impl_.command_),
         ~0u,  // no _has_bits_
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::ProtocolResponse, _internal_metadata_),
@@ -1583,6 +1610,15 @@ const ::uint32_t
         ~0u,  // no sizeof(Split)
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::SizeRequest, _impl_.width_),
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::SizeRequest, _impl_.height_),
+        ~0u,  // no _has_bits_
+        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::EditorSimulationRequest, _internal_metadata_),
+        ~0u,  // no _extensions_
+        ~0u,  // no _oneof_case_
+        ~0u,  // no _weak_field_map_
+        ~0u,  // no _inlined_string_donated_
+        ~0u,  // no _split_
+        ~0u,  // no sizeof(Split)
+        PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::EditorSimulationRequest, _impl_.enabled_),
         ~0u,  // no _has_bits_
         PROTOBUF_FIELD_OFFSET(::sailor::editor::v1::RemoteViewportRequest, _internal_metadata_),
         ~0u,  // no _extensions_
@@ -2019,52 +2055,53 @@ static const ::_pbi::MigrationSchema
     schemas[] ABSL_ATTRIBUTE_SECTION_VARIABLE(protodesc_cold) = {
         {0, -1, -1, sizeof(::sailor::editor::v1::Empty)},
         {8, -1, -1, sizeof(::sailor::editor::v1::ProtocolRequest)},
-        {69, -1, -1, sizeof(::sailor::editor::v1::ProtocolResponse)},
-        {96, -1, -1, sizeof(::sailor::editor::v1::InitializeRequest)},
-        {105, -1, -1, sizeof(::sailor::editor::v1::CountRequest)},
-        {114, -1, -1, sizeof(::sailor::editor::v1::FileIdRequest)},
-        {123, 138, -1, sizeof(::sailor::editor::v1::CreateModelInstanceRequest)},
-        {145, -1, -1, sizeof(::sailor::editor::v1::InstanceIdRequest)},
-        {154, -1, -1, sizeof(::sailor::editor::v1::ViewportIdRequest)},
-        {163, -1, -1, sizeof(::sailor::editor::v1::ViewportRectRequest)},
-        {175, -1, -1, sizeof(::sailor::editor::v1::SizeRequest)},
-        {185, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportRequest)},
-        {200, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportHostRequest)},
-        {211, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportInputRequest)},
-        {231, -1, -1, sizeof(::sailor::editor::v1::ManagedMutationRevisionRequest)},
-        {241, -1, -1, sizeof(::sailor::editor::v1::UpdateObjectRequest)},
-        {251, -1, -1, sizeof(::sailor::editor::v1::ReparentObjectRequest)},
-        {262, -1, -1, sizeof(::sailor::editor::v1::CreateGameObjectRequest)},
-        {272, -1, -1, sizeof(::sailor::editor::v1::AddComponentRequest)},
-        {283, -1, -1, sizeof(::sailor::editor::v1::AnimatorParameterRequest)},
-        {299, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabRequest)},
-        {309, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabFromYamlRequest)},
-        {320, -1, -1, sizeof(::sailor::editor::v1::ViewportRayRequest)},
-        {331, 343, -1, sizeof(::sailor::editor::v1::InstantiatePrefabInstanceRequest)},
-        {347, -1, -1, sizeof(::sailor::editor::v1::ViewportObjectRequest)},
-        {357, -1, -1, sizeof(::sailor::editor::v1::PrefabLinkRequest)},
-        {367, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateRequest)},
-        {378, -1, -1, sizeof(::sailor::editor::v1::SelectionRequest)},
-        {387, -1, -1, sizeof(::sailor::editor::v1::ShowMainWindowRequest)},
-        {396, -1, -1, sizeof(::sailor::editor::v1::RenderPathTracedImageRequest)},
-        {409, -1, -1, sizeof(::sailor::editor::v1::BoolResult)},
-        {418, -1, -1, sizeof(::sailor::editor::v1::Int32Result)},
-        {427, -1, -1, sizeof(::sailor::editor::v1::UInt32Result)},
-        {436, -1, -1, sizeof(::sailor::editor::v1::UInt64Result)},
-        {445, -1, -1, sizeof(::sailor::editor::v1::StringResult)},
-        {455, -1, -1, sizeof(::sailor::editor::v1::StringListResult)},
-        {464, -1, -1, sizeof(::sailor::editor::v1::AssetReloadStateResult)},
-        {476, -1, -1, sizeof(::sailor::editor::v1::InstanceIdResult)},
-        {486, 495, -1, sizeof(::sailor::editor::v1::Vector4Result)},
-        {496, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateResult)},
-        {506, -1, -1, sizeof(::sailor::editor::v1::AnimatorStateResult)},
-        {524, -1, -1, sizeof(::sailor::editor::v1::Vector4)},
-        {536, -1, -1, sizeof(::sailor::editor::v1::ViewportSelectionEvent)},
-        {545, 562, -1, sizeof(::sailor::editor::v1::ViewportTransformEvent)},
-        {571, -1, -1, sizeof(::sailor::editor::v1::ViewportAssetDropEvent)},
-        {582, -1, -1, sizeof(::sailor::editor::v1::ViewportToolShortcutEvent)},
-        {591, -1, -1, sizeof(::sailor::editor::v1::ViewportEvent)},
-        {606, -1, -1, sizeof(::sailor::editor::v1::ViewportEventBatchResult)},
+        {71, -1, -1, sizeof(::sailor::editor::v1::ProtocolResponse)},
+        {98, -1, -1, sizeof(::sailor::editor::v1::InitializeRequest)},
+        {107, -1, -1, sizeof(::sailor::editor::v1::CountRequest)},
+        {116, -1, -1, sizeof(::sailor::editor::v1::FileIdRequest)},
+        {125, 140, -1, sizeof(::sailor::editor::v1::CreateModelInstanceRequest)},
+        {147, -1, -1, sizeof(::sailor::editor::v1::InstanceIdRequest)},
+        {156, -1, -1, sizeof(::sailor::editor::v1::ViewportIdRequest)},
+        {165, -1, -1, sizeof(::sailor::editor::v1::ViewportRectRequest)},
+        {177, -1, -1, sizeof(::sailor::editor::v1::SizeRequest)},
+        {187, -1, -1, sizeof(::sailor::editor::v1::EditorSimulationRequest)},
+        {196, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportRequest)},
+        {211, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportHostRequest)},
+        {222, -1, -1, sizeof(::sailor::editor::v1::RemoteViewportInputRequest)},
+        {242, -1, -1, sizeof(::sailor::editor::v1::ManagedMutationRevisionRequest)},
+        {252, -1, -1, sizeof(::sailor::editor::v1::UpdateObjectRequest)},
+        {262, -1, -1, sizeof(::sailor::editor::v1::ReparentObjectRequest)},
+        {273, -1, -1, sizeof(::sailor::editor::v1::CreateGameObjectRequest)},
+        {283, -1, -1, sizeof(::sailor::editor::v1::AddComponentRequest)},
+        {294, -1, -1, sizeof(::sailor::editor::v1::AnimatorParameterRequest)},
+        {310, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabRequest)},
+        {320, -1, -1, sizeof(::sailor::editor::v1::InstantiatePrefabFromYamlRequest)},
+        {331, -1, -1, sizeof(::sailor::editor::v1::ViewportRayRequest)},
+        {342, 354, -1, sizeof(::sailor::editor::v1::InstantiatePrefabInstanceRequest)},
+        {358, -1, -1, sizeof(::sailor::editor::v1::ViewportObjectRequest)},
+        {368, -1, -1, sizeof(::sailor::editor::v1::PrefabLinkRequest)},
+        {378, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateRequest)},
+        {389, -1, -1, sizeof(::sailor::editor::v1::SelectionRequest)},
+        {398, -1, -1, sizeof(::sailor::editor::v1::ShowMainWindowRequest)},
+        {407, -1, -1, sizeof(::sailor::editor::v1::RenderPathTracedImageRequest)},
+        {420, -1, -1, sizeof(::sailor::editor::v1::BoolResult)},
+        {429, -1, -1, sizeof(::sailor::editor::v1::Int32Result)},
+        {438, -1, -1, sizeof(::sailor::editor::v1::UInt32Result)},
+        {447, -1, -1, sizeof(::sailor::editor::v1::UInt64Result)},
+        {456, -1, -1, sizeof(::sailor::editor::v1::StringResult)},
+        {466, -1, -1, sizeof(::sailor::editor::v1::StringListResult)},
+        {475, -1, -1, sizeof(::sailor::editor::v1::AssetReloadStateResult)},
+        {487, -1, -1, sizeof(::sailor::editor::v1::InstanceIdResult)},
+        {497, 506, -1, sizeof(::sailor::editor::v1::Vector4Result)},
+        {507, -1, -1, sizeof(::sailor::editor::v1::ViewportToolStateResult)},
+        {517, -1, -1, sizeof(::sailor::editor::v1::AnimatorStateResult)},
+        {535, -1, -1, sizeof(::sailor::editor::v1::Vector4)},
+        {547, -1, -1, sizeof(::sailor::editor::v1::ViewportSelectionEvent)},
+        {556, 573, -1, sizeof(::sailor::editor::v1::ViewportTransformEvent)},
+        {582, -1, -1, sizeof(::sailor::editor::v1::ViewportAssetDropEvent)},
+        {593, -1, -1, sizeof(::sailor::editor::v1::ViewportToolShortcutEvent)},
+        {602, -1, -1, sizeof(::sailor::editor::v1::ViewportEvent)},
+        {617, -1, -1, sizeof(::sailor::editor::v1::ViewportEventBatchResult)},
 };
 static const ::_pb::Message* const file_default_instances[] = {
     &::sailor::editor::v1::_Empty_default_instance_._instance,
@@ -2078,6 +2115,7 @@ static const ::_pb::Message* const file_default_instances[] = {
     &::sailor::editor::v1::_ViewportIdRequest_default_instance_._instance,
     &::sailor::editor::v1::_ViewportRectRequest_default_instance_._instance,
     &::sailor::editor::v1::_SizeRequest_default_instance_._instance,
+    &::sailor::editor::v1::_EditorSimulationRequest_default_instance_._instance,
     &::sailor::editor::v1::_RemoteViewportRequest_default_instance_._instance,
     &::sailor::editor::v1::_RemoteViewportHostRequest_default_instance_._instance,
     &::sailor::editor::v1::_RemoteViewportInputRequest_default_instance_._instance,
@@ -2119,7 +2157,7 @@ static const ::_pb::Message* const file_default_instances[] = {
 const char descriptor_table_protodef_editor_5fengine_2eproto[] ABSL_ATTRIBUTE_SECTION_VARIABLE(
     protodesc_cold) = {
     "\n\023editor_engine.proto\022\020sailor.editor.v1\""
-    "\007\n\005Empty\"\334\033\n\017ProtocolRequest\022\030\n\020protocol"
+    "\007\n\005Empty\"\350\034\n\017ProtocolRequest\022\030\n\020protocol"
     "_version\030\001 \001(\r\022\022\n\nrequest_id\030\002 \001(\004\0229\n\nin"
     "itialize\030\n \001(\0132#.sailor.editor.v1.Initia"
     "lizeRequestH\000\022(\n\005start\030\013 \001(\0132\027.sailor.ed"
@@ -2205,176 +2243,180 @@ const char descriptor_table_protodef_editor_5fengine_2eproto[] ABSL_ATTRIBUTE_SE
     "questH\000\022L\n\026set_animator_parameter\030; \001(\0132"
     "*.sailor.editor.v1.AnimatorParameterRequ"
     "estH\000\022A\n\022get_animator_state\030< \001(\0132#.sail"
-    "or.editor.v1.InstanceIdRequestH\000B\t\n\007comm"
-    "andJ\004\010\003\020\nJ\004\0102\0203J\004\010=\020dR\030create_model_game"
-    "_objectR\036resolve_viewport_drop_position\""
-    "\336\007\n\020ProtocolResponse\022\030\n\020protocol_version"
-    "\030\001 \001(\r\022\022\n\nrequest_id\030\002 \001(\004\022\017\n\007success\030\003 "
-    "\001(\010\022\r\n\005error\030\004 \001(\t\022$\n\034supports_strict_in"
-    "stance_ids\030\005 \001(\010\022/\n\014empty_result\030\n \001(\0132\027"
-    ".sailor.editor.v1.EmptyH\000\0223\n\013bool_result"
-    "\030\013 \001(\0132\034.sailor.editor.v1.BoolResultH\000\0225"
-    "\n\014int32_result\030\014 \001(\0132\035.sailor.editor.v1."
-    "Int32ResultH\000\0227\n\ruint32_result\030\r \001(\0132\036.s"
-    "ailor.editor.v1.UInt32ResultH\000\0227\n\ruint64"
-    "_result\030\016 \001(\0132\036.sailor.editor.v1.UInt64R"
-    "esultH\000\0227\n\rstring_result\030\017 \001(\0132\036.sailor."
-    "editor.v1.StringResultH\000\022@\n\022string_list_"
-    "result\030\020 \001(\0132\".sailor.editor.v1.StringLi"
-    "stResultH\000\022M\n\031asset_reload_state_result\030"
-    "\021 \001(\0132(.sailor.editor.v1.AssetReloadStat"
-    "eResultH\000\022@\n\022instance_id_result\030\022 \001(\0132\"."
-    "sailor.editor.v1.InstanceIdResultH\000\022Q\n\033v"
-    "iewport_event_batch_result\030\023 \001(\0132*.sailo"
-    "r.editor.v1.ViewportEventBatchResultH\000\0229"
-    "\n\016vector4_result\030\024 \001(\0132\037.sailor.editor.v"
-    "1.Vector4ResultH\000\022O\n\032viewport_tool_state"
-    "_result\030\025 \001(\0132).sailor.editor.v1.Viewpor"
-    "tToolStateResultH\000\022F\n\025animator_state_res"
-    "ult\030\026 \001(\0132%.sailor.editor.v1.AnimatorSta"
-    "teResultH\000B\010\n\006resultJ\004\010\006\020\nJ\004\010\027\020d\"&\n\021Init"
-    "ializeRequest\022\021\n\targuments\030\001 \003(\t\"!\n\014Coun"
-    "tRequest\022\021\n\tmax_count\030\001 \001(\r\" \n\rFileIdReq"
-    "uest\022\017\n\007file_id\030\001 \001(\t\"\347\001\n\032CreateModelIns"
-    "tanceRequest\022\025\n\rmodel_file_id\030\001 \001(\t\022\014\n\004n"
-    "ame\030\002 \001(\t\022\032\n\022parent_instance_id\030\003 \001(\t\022\030\n"
-    "\020create_hierarchy\030\004 \001(\010\022\034\n\024apply_world_p"
-    "osition\030\005 \001(\010\0221\n\016world_position\030\006 \001(\0132\031."
-    "sailor.editor.v1.Vector4\022\035\n\025preferred_in"
-    "stance_id\030\007 \001(\t\"(\n\021InstanceIdRequest\022\023\n\013"
-    "instance_id\030\001 \001(\t\"(\n\021ViewportIdRequest\022\023"
-    "\n\013viewport_id\030\001 \001(\004\"`\n\023ViewportRectReque"
-    "st\022\024\n\014window_pos_x\030\001 \001(\r\022\024\n\014window_pos_y"
-    "\030\002 \001(\r\022\r\n\005width\030\003 \001(\r\022\016\n\006height\030\004 \001(\r\",\n"
-    "\013SizeRequest\022\r\n\005width\030\001 \001(\r\022\016\n\006height\030\002 "
-    "\001(\r\"\231\001\n\025RemoteViewportRequest\022\023\n\013viewpor"
-    "t_id\030\001 \001(\004\022\024\n\014window_pos_x\030\002 \001(\r\022\024\n\014wind"
-    "ow_pos_y\030\003 \001(\r\022\r\n\005width\030\004 \001(\r\022\016\n\006height\030"
-    "\005 \001(\r\022\017\n\007visible\030\006 \001(\010\022\017\n\007focused\030\007 \001(\010\""
-    "e\n\031RemoteViewportHostRequest\022\023\n\013viewport"
-    "_id\030\001 \001(\004\022\030\n\020host_handle_kind\030\002 \001(\r\022\031\n\021h"
-    "ost_handle_value\030\003 \001(\004\"\374\001\n\032RemoteViewpor"
-    "tInputRequest\022\023\n\013viewport_id\030\001 \001(\004\022\014\n\004ki"
-    "nd\030\002 \001(\r\022\021\n\tpointer_x\030\003 \001(\002\022\021\n\tpointer_y"
-    "\030\004 \001(\002\022\025\n\rwheel_delta_x\030\005 \001(\002\022\025\n\rwheel_d"
-    "elta_y\030\006 \001(\002\022\020\n\010key_code\030\007 \001(\r\022\016\n\006button"
-    "\030\010 \001(\r\022\021\n\tmodifiers\030\t \001(\r\022\017\n\007pressed\030\n \001"
-    "(\010\022\017\n\007focused\030\013 \001(\010\022\020\n\010captured\030\014 \001(\010\"C\n"
-    "\036ManagedMutationRevisionRequest\022\014\n\004kind\030"
-    "\001 \001(\r\022\023\n\013instance_id\030\002 \001(\t\"@\n\023UpdateObje"
-    "ctRequest\022\023\n\013instance_id\030\001 \001(\t\022\024\n\014yaml_c"
-    "hanges\030\002 \001(\t\"f\n\025ReparentObjectRequest\022\023\n"
-    "\013instance_id\030\001 \001(\t\022\032\n\022parent_instance_id"
-    "\030\002 \001(\t\022\034\n\024keep_world_transform\030\003 \001(\010\"T\n\027"
-    "CreateGameObjectRequest\022\032\n\022parent_instan"
-    "ce_id\030\001 \001(\t\022\035\n\025preferred_instance_id\030\002 \001"
-    "(\t\"f\n\023AddComponentRequest\022\023\n\013instance_id"
-    "\030\001 \001(\t\022\033\n\023component_type_name\030\002 \001(\t\022\035\n\025p"
-    "referred_instance_id\030\003 \001(\t\"\346\001\n\030AnimatorP"
-    "arameterRequest\022\023\n\013instance_id\030\001 \001(\t\022\014\n\004"
-    "name\030\002 \001(\t\022\025\n\013float_value\030\003 \001(\002H\000\022\023\n\tint"
-    "_value\030\004 \001(\021H\000\022\024\n\nbool_value\030\005 \001(\010H\000\022*\n\007"
-    "trigger\030\006 \001(\0132\027.sailor.editor.v1.EmptyH\000"
-    "\0220\n\rreset_trigger\030\007 \001(\0132\027.sailor.editor."
-    "v1.EmptyH\000B\007\n\005value\"G\n\030InstantiatePrefab"
-    "Request\022\017\n\007file_id\030\001 \001(\t\022\032\n\022parent_insta"
-    "nce_id\030\002 \001(\t\"p\n InstantiatePrefabFromYam"
-    "lRequest\022\023\n\013prefab_yaml\030\001 \001(\t\022\032\n\022parent_"
-    "instance_id\030\002 \001(\t\022\033\n\023strict_instance_ids"
-    "\030\003 \001(\010\"U\n\022ViewportRayRequest\022\023\n\013viewport"
-    "_id\030\001 \001(\004\022\024\n\014normalized_x\030\002 \001(\002\022\024\n\014norma"
-    "lized_y\030\003 \001(\002\"\240\001\n InstantiatePrefabInsta"
-    "nceRequest\022\017\n\007file_id\030\001 \001(\t\022\032\n\022parent_in"
-    "stance_id\030\002 \001(\t\022\034\n\024apply_world_position\030"
-    "\003 \001(\010\0221\n\016world_position\030\004 \001(\0132\031.sailor.e"
-    "ditor.v1.Vector4\"A\n\025ViewportObjectReques"
-    "t\022\023\n\013viewport_id\030\001 \001(\004\022\023\n\013instance_id\030\002 "
-    "\001(\t\"9\n\021PrefabLinkRequest\022\023\n\013instance_id\030"
-    "\001 \001(\t\022\017\n\007file_id\030\002 \001(\t\"\251\001\n\030ViewportToolS"
-    "tateRequest\022\023\n\013viewport_id\030\001 \001(\004\022\?\n\toper"
-    "ation\030\002 \001(\0162,.sailor.editor.v1.ViewportT"
-    "ransformOperation\0227\n\005space\030\003 \001(\0162(.sailo"
-    "r.editor.v1.ViewportTransformSpace\"(\n\020Se"
-    "lectionRequest\022\024\n\014instance_ids\030\001 \003(\t\"%\n\025"
-    "ShowMainWindowRequest\022\014\n\004show\030\001 \001(\010\"\210\001\n\034"
-    "RenderPathTracedImageRequest\022\023\n\013output_p"
-    "ath\030\001 \001(\t\022\023\n\013instance_id\030\002 \001(\t\022\016\n\006height"
-    "\030\003 \001(\r\022\031\n\021samples_per_pixel\030\004 \001(\r\022\023\n\013max"
-    "_bounces\030\005 \001(\r\"\033\n\nBoolResult\022\r\n\005value\030\001 "
-    "\001(\010\"\034\n\013Int32Result\022\r\n\005value\030\001 \001(\005\"\035\n\014UIn"
-    "t32Result\022\r\n\005value\030\001 \001(\r\"\035\n\014UInt64Result"
-    "\022\r\n\005value\030\001 \001(\004\"0\n\014StringResult\022\021\n\thas_v"
-    "alue\030\001 \001(\010\022\r\n\005value\030\002 \001(\t\"\"\n\020StringListR"
-    "esult\022\016\n\006values\030\001 \003(\t\"\204\001\n\026AssetReloadSta"
-    "teResult\022\021\n\tavailable\030\001 \001(\010\022\032\n\022request_g"
-    "eneration\030\002 \001(\004\022\034\n\024completed_generation\030"
-    "\003 \001(\004\022\035\n\025successful_generation\030\004 \001(\004\":\n\020"
-    "InstanceIdResult\022\021\n\tsucceeded\030\001 \001(\010\022\023\n\013i"
-    "nstance_id\030\002 \001(\t\"9\n\rVector4Result\022(\n\005val"
-    "ue\030\001 \001(\0132\031.sailor.editor.v1.Vector4\"\223\001\n\027"
-    "ViewportToolStateResult\022\?\n\toperation\030\001 \001"
-    "(\0162,.sailor.editor.v1.ViewportTransformO"
-    "peration\0227\n\005space\030\002 \001(\0162(.sailor.editor."
-    "v1.ViewportTransformSpace\"\250\002\n\023AnimatorSt"
-    "ateResult\022\026\n\016has_controller\030\001 \001(\010\022\033\n\023con"
-    "troller_revision\030\002 \001(\004\022\027\n\017active_state_i"
-    "d\030\003 \001(\004\022\031\n\021active_state_name\030\004 \001(\t\022\031\n\021ac"
-    "tive_state_time\030\005 \001(\002\022\025\n\rtransitioning\030\006"
-    " \001(\010\022\034\n\024destination_state_id\030\007 \001(\004\022\036\n\026de"
-    "stination_state_name\030\010 \001(\t\022\036\n\026destinatio"
-    "n_state_time\030\t \001(\002\022\030\n\020transition_alpha\030\n"
-    " \001(\002\"5\n\007Vector4\022\t\n\001x\030\001 \001(\002\022\t\n\001y\030\002 \001(\002\022\t\n"
-    "\001z\030\003 \001(\002\022\t\n\001w\030\004 \001(\002\"6\n\026ViewportSelection"
-    "Event\022\034\n\024selected_instance_id\030\001 \001(\t\"\326\003\n\026"
-    "ViewportTransformEvent\022\023\n\013instance_id\030\001 "
-    "\001(\t\022\?\n\toperation\030\002 \001(\0162,.sailor.editor.v"
-    "1.ViewportTransformOperation\0227\n\005space\030\003 "
-    "\001(\0162(.sailor.editor.v1.ViewportTransform"
-    "Space\0222\n\017before_position\030\004 \001(\0132\031.sailor."
-    "editor.v1.Vector4\0222\n\017before_rotation\030\005 \001"
-    "(\0132\031.sailor.editor.v1.Vector4\022/\n\014before_"
-    "scale\030\006 \001(\0132\031.sailor.editor.v1.Vector4\0221"
-    "\n\016after_position\030\007 \001(\0132\031.sailor.editor.v"
-    "1.Vector4\0221\n\016after_rotation\030\010 \001(\0132\031.sail"
-    "or.editor.v1.Vector4\022.\n\013after_scale\030\t \001("
-    "\0132\031.sailor.editor.v1.Vector4\"U\n\026Viewport"
-    "AssetDropEvent\022\017\n\007file_id\030\001 \001(\t\022\024\n\014norma"
-    "lized_x\030\002 \001(\002\022\024\n\014normalized_y\030\003 \001(\002\"-\n\031V"
-    "iewportToolShortcutEvent\022\020\n\010key_code\030\001 \001"
-    "(\r\"\331\002\n\rViewportEvent\022\020\n\010revision\030\001 \001(\004\022!"
-    "\n\031managed_mutation_revision\030\002 \001(\004\022=\n\tsel"
-    "ection\030\n \001(\0132(.sailor.editor.v1.Viewport"
-    "SelectionEventH\000\022=\n\ttransform\030\013 \001(\0132(.sa"
-    "ilor.editor.v1.ViewportTransformEventH\000\022"
-    ">\n\nasset_drop\030\014 \001(\0132(.sailor.editor.v1.V"
-    "iewportAssetDropEventH\000\022D\n\rtool_shortcut"
-    "\030\r \001(\0132+.sailor.editor.v1.ViewportToolSh"
-    "ortcutEventH\000B\t\n\007payloadJ\004\010\003\020\n\"K\n\030Viewpo"
-    "rtEventBatchResult\022/\n\006events\030\001 \003(\0132\037.sai"
-    "lor.editor.v1.ViewportEvent*\360\001\n\032Viewport"
-    "TransformOperation\022,\n(VIEWPORT_TRANSFORM"
-    "_OPERATION_UNSPECIFIED\020\000\022\'\n#VIEWPORT_TRA"
-    "NSFORM_OPERATION_SELECT\020\001\022*\n&VIEWPORT_TR"
-    "ANSFORM_OPERATION_TRANSLATE\020\002\022\'\n#VIEWPOR"
-    "T_TRANSFORM_OPERATION_ROTATE\020\003\022&\n\"VIEWPO"
-    "RT_TRANSFORM_OPERATION_SCALE\020\004*\212\001\n\026Viewp"
-    "ortTransformSpace\022(\n$VIEWPORT_TRANSFORM_"
-    "SPACE_UNSPECIFIED\020\000\022\"\n\036VIEWPORT_TRANSFOR"
-    "M_SPACE_WORLD\020\001\022\"\n\036VIEWPORT_TRANSFORM_SP"
-    "ACE_LOCAL\020\002B\"\252\002\037SailorEditor.Protocol.Ge"
-    "neratedb\006proto3"
+    "or.editor.v1.InstanceIdRequestH\000\022J\n\025set_"
+    "editor_simulation\030= \001(\0132).sailor.editor."
+    "v1.EditorSimulationRequestH\000\022>\n\033get_edit"
+    "or_simulation_state\030> \001(\0132\027.sailor.edito"
+    "r.v1.EmptyH\000B\t\n\007commandJ\004\010\003\020\nJ\004\0102\0203J\004\010\?\020"
+    "dR\030create_model_game_objectR\036resolve_vie"
+    "wport_drop_position\"\336\007\n\020ProtocolResponse"
+    "\022\030\n\020protocol_version\030\001 \001(\r\022\022\n\nrequest_id"
+    "\030\002 \001(\004\022\017\n\007success\030\003 \001(\010\022\r\n\005error\030\004 \001(\t\022$"
+    "\n\034supports_strict_instance_ids\030\005 \001(\010\022/\n\014"
+    "empty_result\030\n \001(\0132\027.sailor.editor.v1.Em"
+    "ptyH\000\0223\n\013bool_result\030\013 \001(\0132\034.sailor.edit"
+    "or.v1.BoolResultH\000\0225\n\014int32_result\030\014 \001(\013"
+    "2\035.sailor.editor.v1.Int32ResultH\000\0227\n\ruin"
+    "t32_result\030\r \001(\0132\036.sailor.editor.v1.UInt"
+    "32ResultH\000\0227\n\ruint64_result\030\016 \001(\0132\036.sail"
+    "or.editor.v1.UInt64ResultH\000\0227\n\rstring_re"
+    "sult\030\017 \001(\0132\036.sailor.editor.v1.StringResu"
+    "ltH\000\022@\n\022string_list_result\030\020 \001(\0132\".sailo"
+    "r.editor.v1.StringListResultH\000\022M\n\031asset_"
+    "reload_state_result\030\021 \001(\0132(.sailor.edito"
+    "r.v1.AssetReloadStateResultH\000\022@\n\022instanc"
+    "e_id_result\030\022 \001(\0132\".sailor.editor.v1.Ins"
+    "tanceIdResultH\000\022Q\n\033viewport_event_batch_"
+    "result\030\023 \001(\0132*.sailor.editor.v1.Viewport"
+    "EventBatchResultH\000\0229\n\016vector4_result\030\024 \001"
+    "(\0132\037.sailor.editor.v1.Vector4ResultH\000\022O\n"
+    "\032viewport_tool_state_result\030\025 \001(\0132).sail"
+    "or.editor.v1.ViewportToolStateResultH\000\022F"
+    "\n\025animator_state_result\030\026 \001(\0132%.sailor.e"
+    "ditor.v1.AnimatorStateResultH\000B\010\n\006result"
+    "J\004\010\006\020\nJ\004\010\027\020d\"&\n\021InitializeRequest\022\021\n\targ"
+    "uments\030\001 \003(\t\"!\n\014CountRequest\022\021\n\tmax_coun"
+    "t\030\001 \001(\r\" \n\rFileIdRequest\022\017\n\007file_id\030\001 \001("
+    "\t\"\347\001\n\032CreateModelInstanceRequest\022\025\n\rmode"
+    "l_file_id\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\032\n\022parent_"
+    "instance_id\030\003 \001(\t\022\030\n\020create_hierarchy\030\004 "
+    "\001(\010\022\034\n\024apply_world_position\030\005 \001(\010\0221\n\016wor"
+    "ld_position\030\006 \001(\0132\031.sailor.editor.v1.Vec"
+    "tor4\022\035\n\025preferred_instance_id\030\007 \001(\t\"(\n\021I"
+    "nstanceIdRequest\022\023\n\013instance_id\030\001 \001(\t\"(\n"
+    "\021ViewportIdRequest\022\023\n\013viewport_id\030\001 \001(\004\""
+    "`\n\023ViewportRectRequest\022\024\n\014window_pos_x\030\001"
+    " \001(\r\022\024\n\014window_pos_y\030\002 \001(\r\022\r\n\005width\030\003 \001("
+    "\r\022\016\n\006height\030\004 \001(\r\",\n\013SizeRequest\022\r\n\005widt"
+    "h\030\001 \001(\r\022\016\n\006height\030\002 \001(\r\"*\n\027EditorSimulat"
+    "ionRequest\022\017\n\007enabled\030\001 \001(\010\"\231\001\n\025RemoteVi"
+    "ewportRequest\022\023\n\013viewport_id\030\001 \001(\004\022\024\n\014wi"
+    "ndow_pos_x\030\002 \001(\r\022\024\n\014window_pos_y\030\003 \001(\r\022\r"
+    "\n\005width\030\004 \001(\r\022\016\n\006height\030\005 \001(\r\022\017\n\007visible"
+    "\030\006 \001(\010\022\017\n\007focused\030\007 \001(\010\"e\n\031RemoteViewpor"
+    "tHostRequest\022\023\n\013viewport_id\030\001 \001(\004\022\030\n\020hos"
+    "t_handle_kind\030\002 \001(\r\022\031\n\021host_handle_value"
+    "\030\003 \001(\004\"\374\001\n\032RemoteViewportInputRequest\022\023\n"
+    "\013viewport_id\030\001 \001(\004\022\014\n\004kind\030\002 \001(\r\022\021\n\tpoin"
+    "ter_x\030\003 \001(\002\022\021\n\tpointer_y\030\004 \001(\002\022\025\n\rwheel_"
+    "delta_x\030\005 \001(\002\022\025\n\rwheel_delta_y\030\006 \001(\002\022\020\n\010"
+    "key_code\030\007 \001(\r\022\016\n\006button\030\010 \001(\r\022\021\n\tmodifi"
+    "ers\030\t \001(\r\022\017\n\007pressed\030\n \001(\010\022\017\n\007focused\030\013 "
+    "\001(\010\022\020\n\010captured\030\014 \001(\010\"C\n\036ManagedMutation"
+    "RevisionRequest\022\014\n\004kind\030\001 \001(\r\022\023\n\013instanc"
+    "e_id\030\002 \001(\t\"@\n\023UpdateObjectRequest\022\023\n\013ins"
+    "tance_id\030\001 \001(\t\022\024\n\014yaml_changes\030\002 \001(\t\"f\n\025"
+    "ReparentObjectRequest\022\023\n\013instance_id\030\001 \001"
+    "(\t\022\032\n\022parent_instance_id\030\002 \001(\t\022\034\n\024keep_w"
+    "orld_transform\030\003 \001(\010\"T\n\027CreateGameObject"
+    "Request\022\032\n\022parent_instance_id\030\001 \001(\t\022\035\n\025p"
+    "referred_instance_id\030\002 \001(\t\"f\n\023AddCompone"
+    "ntRequest\022\023\n\013instance_id\030\001 \001(\t\022\033\n\023compon"
+    "ent_type_name\030\002 \001(\t\022\035\n\025preferred_instanc"
+    "e_id\030\003 \001(\t\"\346\001\n\030AnimatorParameterRequest\022"
+    "\023\n\013instance_id\030\001 \001(\t\022\014\n\004name\030\002 \001(\t\022\025\n\013fl"
+    "oat_value\030\003 \001(\002H\000\022\023\n\tint_value\030\004 \001(\021H\000\022\024"
+    "\n\nbool_value\030\005 \001(\010H\000\022*\n\007trigger\030\006 \001(\0132\027."
+    "sailor.editor.v1.EmptyH\000\0220\n\rreset_trigge"
+    "r\030\007 \001(\0132\027.sailor.editor.v1.EmptyH\000B\007\n\005va"
+    "lue\"G\n\030InstantiatePrefabRequest\022\017\n\007file_"
+    "id\030\001 \001(\t\022\032\n\022parent_instance_id\030\002 \001(\t\"p\n "
+    "InstantiatePrefabFromYamlRequest\022\023\n\013pref"
+    "ab_yaml\030\001 \001(\t\022\032\n\022parent_instance_id\030\002 \001("
+    "\t\022\033\n\023strict_instance_ids\030\003 \001(\010\"U\n\022Viewpo"
+    "rtRayRequest\022\023\n\013viewport_id\030\001 \001(\004\022\024\n\014nor"
+    "malized_x\030\002 \001(\002\022\024\n\014normalized_y\030\003 \001(\002\"\240\001"
+    "\n InstantiatePrefabInstanceRequest\022\017\n\007fi"
+    "le_id\030\001 \001(\t\022\032\n\022parent_instance_id\030\002 \001(\t\022"
+    "\034\n\024apply_world_position\030\003 \001(\010\0221\n\016world_p"
+    "osition\030\004 \001(\0132\031.sailor.editor.v1.Vector4"
+    "\"A\n\025ViewportObjectRequest\022\023\n\013viewport_id"
+    "\030\001 \001(\004\022\023\n\013instance_id\030\002 \001(\t\"9\n\021PrefabLin"
+    "kRequest\022\023\n\013instance_id\030\001 \001(\t\022\017\n\007file_id"
+    "\030\002 \001(\t\"\251\001\n\030ViewportToolStateRequest\022\023\n\013v"
+    "iewport_id\030\001 \001(\004\022\?\n\toperation\030\002 \001(\0162,.sa"
+    "ilor.editor.v1.ViewportTransformOperatio"
+    "n\0227\n\005space\030\003 \001(\0162(.sailor.editor.v1.View"
+    "portTransformSpace\"(\n\020SelectionRequest\022\024"
+    "\n\014instance_ids\030\001 \003(\t\"%\n\025ShowMainWindowRe"
+    "quest\022\014\n\004show\030\001 \001(\010\"\210\001\n\034RenderPathTraced"
+    "ImageRequest\022\023\n\013output_path\030\001 \001(\t\022\023\n\013ins"
+    "tance_id\030\002 \001(\t\022\016\n\006height\030\003 \001(\r\022\031\n\021sample"
+    "s_per_pixel\030\004 \001(\r\022\023\n\013max_bounces\030\005 \001(\r\"\033"
+    "\n\nBoolResult\022\r\n\005value\030\001 \001(\010\"\034\n\013Int32Resu"
+    "lt\022\r\n\005value\030\001 \001(\005\"\035\n\014UInt32Result\022\r\n\005val"
+    "ue\030\001 \001(\r\"\035\n\014UInt64Result\022\r\n\005value\030\001 \001(\004\""
+    "0\n\014StringResult\022\021\n\thas_value\030\001 \001(\010\022\r\n\005va"
+    "lue\030\002 \001(\t\"\"\n\020StringListResult\022\016\n\006values\030"
+    "\001 \003(\t\"\204\001\n\026AssetReloadStateResult\022\021\n\tavai"
+    "lable\030\001 \001(\010\022\032\n\022request_generation\030\002 \001(\004\022"
+    "\034\n\024completed_generation\030\003 \001(\004\022\035\n\025success"
+    "ful_generation\030\004 \001(\004\":\n\020InstanceIdResult"
+    "\022\021\n\tsucceeded\030\001 \001(\010\022\023\n\013instance_id\030\002 \001(\t"
+    "\"9\n\rVector4Result\022(\n\005value\030\001 \001(\0132\031.sailo"
+    "r.editor.v1.Vector4\"\223\001\n\027ViewportToolStat"
+    "eResult\022\?\n\toperation\030\001 \001(\0162,.sailor.edit"
+    "or.v1.ViewportTransformOperation\0227\n\005spac"
+    "e\030\002 \001(\0162(.sailor.editor.v1.ViewportTrans"
+    "formSpace\"\250\002\n\023AnimatorStateResult\022\026\n\016has"
+    "_controller\030\001 \001(\010\022\033\n\023controller_revision"
+    "\030\002 \001(\004\022\027\n\017active_state_id\030\003 \001(\004\022\031\n\021activ"
+    "e_state_name\030\004 \001(\t\022\031\n\021active_state_time\030"
+    "\005 \001(\002\022\025\n\rtransitioning\030\006 \001(\010\022\034\n\024destinat"
+    "ion_state_id\030\007 \001(\004\022\036\n\026destination_state_"
+    "name\030\010 \001(\t\022\036\n\026destination_state_time\030\t \001"
+    "(\002\022\030\n\020transition_alpha\030\n \001(\002\"5\n\007Vector4\022"
+    "\t\n\001x\030\001 \001(\002\022\t\n\001y\030\002 \001(\002\022\t\n\001z\030\003 \001(\002\022\t\n\001w\030\004 "
+    "\001(\002\"6\n\026ViewportSelectionEvent\022\034\n\024selecte"
+    "d_instance_id\030\001 \001(\t\"\326\003\n\026ViewportTransfor"
+    "mEvent\022\023\n\013instance_id\030\001 \001(\t\022\?\n\toperation"
+    "\030\002 \001(\0162,.sailor.editor.v1.ViewportTransf"
+    "ormOperation\0227\n\005space\030\003 \001(\0162(.sailor.edi"
+    "tor.v1.ViewportTransformSpace\0222\n\017before_"
+    "position\030\004 \001(\0132\031.sailor.editor.v1.Vector"
+    "4\0222\n\017before_rotation\030\005 \001(\0132\031.sailor.edit"
+    "or.v1.Vector4\022/\n\014before_scale\030\006 \001(\0132\031.sa"
+    "ilor.editor.v1.Vector4\0221\n\016after_position"
+    "\030\007 \001(\0132\031.sailor.editor.v1.Vector4\0221\n\016aft"
+    "er_rotation\030\010 \001(\0132\031.sailor.editor.v1.Vec"
+    "tor4\022.\n\013after_scale\030\t \001(\0132\031.sailor.edito"
+    "r.v1.Vector4\"U\n\026ViewportAssetDropEvent\022\017"
+    "\n\007file_id\030\001 \001(\t\022\024\n\014normalized_x\030\002 \001(\002\022\024\n"
+    "\014normalized_y\030\003 \001(\002\"-\n\031ViewportToolShort"
+    "cutEvent\022\020\n\010key_code\030\001 \001(\r\"\331\002\n\rViewportE"
+    "vent\022\020\n\010revision\030\001 \001(\004\022!\n\031managed_mutati"
+    "on_revision\030\002 \001(\004\022=\n\tselection\030\n \001(\0132(.s"
+    "ailor.editor.v1.ViewportSelectionEventH\000"
+    "\022=\n\ttransform\030\013 \001(\0132(.sailor.editor.v1.V"
+    "iewportTransformEventH\000\022>\n\nasset_drop\030\014 "
+    "\001(\0132(.sailor.editor.v1.ViewportAssetDrop"
+    "EventH\000\022D\n\rtool_shortcut\030\r \001(\0132+.sailor."
+    "editor.v1.ViewportToolShortcutEventH\000B\t\n"
+    "\007payloadJ\004\010\003\020\n\"K\n\030ViewportEventBatchResu"
+    "lt\022/\n\006events\030\001 \003(\0132\037.sailor.editor.v1.Vi"
+    "ewportEvent*\360\001\n\032ViewportTransformOperati"
+    "on\022,\n(VIEWPORT_TRANSFORM_OPERATION_UNSPE"
+    "CIFIED\020\000\022\'\n#VIEWPORT_TRANSFORM_OPERATION"
+    "_SELECT\020\001\022*\n&VIEWPORT_TRANSFORM_OPERATIO"
+    "N_TRANSLATE\020\002\022\'\n#VIEWPORT_TRANSFORM_OPER"
+    "ATION_ROTATE\020\003\022&\n\"VIEWPORT_TRANSFORM_OPE"
+    "RATION_SCALE\020\004*\212\001\n\026ViewportTransformSpac"
+    "e\022(\n$VIEWPORT_TRANSFORM_SPACE_UNSPECIFIE"
+    "D\020\000\022\"\n\036VIEWPORT_TRANSFORM_SPACE_WORLD\020\001\022"
+    "\"\n\036VIEWPORT_TRANSFORM_SPACE_LOCAL\020\002B\"\252\002\037"
+    "SailorEditor.Protocol.Generatedb\006proto3"
 };
 static ::absl::once_flag descriptor_table_editor_5fengine_2eproto_once;
 PROTOBUF_CONSTINIT const ::_pbi::DescriptorTable descriptor_table_editor_5fengine_2eproto = {
     false,
     false,
-    9775,
+    9959,
     descriptor_table_protodef_editor_5fengine_2eproto,
     "editor_engine.proto",
     &descriptor_table_editor_5fengine_2eproto_once,
     nullptr,
     0,
-    48,
+    49,
     schemas,
     file_default_instances,
     TableStruct_editor_5fengine_2eproto::offsets,
@@ -3163,6 +3205,32 @@ void ProtocolRequest::set_allocated_get_animator_state(::sailor::editor::v1::Ins
   }
   // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ProtocolRequest.get_animator_state)
 }
+void ProtocolRequest::set_allocated_set_editor_simulation(::sailor::editor::v1::EditorSimulationRequest* set_editor_simulation) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  clear_command();
+  if (set_editor_simulation) {
+    ::google::protobuf::Arena* submessage_arena = set_editor_simulation->GetArena();
+    if (message_arena != submessage_arena) {
+      set_editor_simulation = ::google::protobuf::internal::GetOwnedMessage(message_arena, set_editor_simulation, submessage_arena);
+    }
+    set_has_set_editor_simulation();
+    _impl_.command_.set_editor_simulation_ = set_editor_simulation;
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ProtocolRequest.set_editor_simulation)
+}
+void ProtocolRequest::set_allocated_get_editor_simulation_state(::sailor::editor::v1::Empty* get_editor_simulation_state) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  clear_command();
+  if (get_editor_simulation_state) {
+    ::google::protobuf::Arena* submessage_arena = get_editor_simulation_state->GetArena();
+    if (message_arena != submessage_arena) {
+      get_editor_simulation_state = ::google::protobuf::internal::GetOwnedMessage(message_arena, get_editor_simulation_state, submessage_arena);
+    }
+    set_has_get_editor_simulation_state();
+    _impl_.command_.get_editor_simulation_state_ = get_editor_simulation_state;
+  }
+  // @@protoc_insertion_point(field_set_allocated:sailor.editor.v1.ProtocolRequest.get_editor_simulation_state)
+}
 ProtocolRequest::ProtocolRequest(::google::protobuf::Arena* arena)
 #if defined(PROTOBUF_CUSTOM_VTABLE)
     : ::google::protobuf::Message(arena, _class_data_.base()) {
@@ -3351,6 +3419,12 @@ ProtocolRequest::ProtocolRequest(
         break;
       case kGetAnimatorState:
         _impl_.command_.get_animator_state_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::InstanceIdRequest>(arena, *from._impl_.command_.get_animator_state_);
+        break;
+      case kSetEditorSimulation:
+        _impl_.command_.set_editor_simulation_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::EditorSimulationRequest>(arena, *from._impl_.command_.set_editor_simulation_);
+        break;
+      case kGetEditorSimulationState:
+        _impl_.command_.get_editor_simulation_state_ = ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::Empty>(arena, *from._impl_.command_.get_editor_simulation_state_);
         break;
   }
 
@@ -3790,6 +3864,22 @@ void ProtocolRequest::clear_command() {
       }
       break;
     }
+    case kSetEditorSimulation: {
+      if (GetArena() == nullptr) {
+        delete _impl_.command_.set_editor_simulation_;
+      } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+        ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.set_editor_simulation_);
+      }
+      break;
+    }
+    case kGetEditorSimulationState: {
+      if (GetArena() == nullptr) {
+        delete _impl_.command_.get_editor_simulation_state_;
+      } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+        ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.get_editor_simulation_state_);
+      }
+      break;
+    }
     case COMMAND_NOT_SET: {
       break;
     }
@@ -3834,16 +3924,16 @@ const ::google::protobuf::internal::ClassData* ProtocolRequest::GetClassData() c
   return _class_data_.base();
 }
 PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
-const ::_pbi::TcParseTable<1, 52, 50, 0, 9> ProtocolRequest::_table_ = {
+const ::_pbi::TcParseTable<1, 54, 52, 0, 9> ProtocolRequest::_table_ = {
   {
     0,  // no _has_bits_
     0, // no _extensions_
-    60, 8,  // max_field_number, fast_idx_mask
+    62, 8,  // max_field_number, fast_idx_mask
     offsetof(decltype(_table_), field_lookup_table),
     508,  // skipmap
     offsetof(decltype(_table_), field_entries),
-    52,  // num_field_entries
-    50,  // num_aux_entries
+    54,  // num_field_entries
+    52,  // num_aux_entries
     offsetof(decltype(_table_), aux_entries),
     _class_data_.base(),
     nullptr,  // post_loop_handler
@@ -3860,7 +3950,7 @@ const ::_pbi::TcParseTable<1, 52, 50, 0, 9> ProtocolRequest::_table_ = {
      {8, 63, 0, PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.protocol_version_)}},
   }}, {{
     33, 0, 2,
-    0, 25, 61442, 41,
+    0, 25, 49154, 41,
     65535, 65535
   }}, {{
     // uint32 protocol_version = 1;
@@ -4019,6 +4109,12 @@ const ::_pbi::TcParseTable<1, 52, 50, 0, 9> ProtocolRequest::_table_ = {
     // .sailor.editor.v1.InstanceIdRequest get_animator_state = 60;
     {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_animator_state_), _Internal::kOneofCaseOffset + 0, 49,
     (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
+    // .sailor.editor.v1.EditorSimulationRequest set_editor_simulation = 61;
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.set_editor_simulation_), _Internal::kOneofCaseOffset + 0, 50,
+    (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
+    // .sailor.editor.v1.Empty get_editor_simulation_state = 62;
+    {PROTOBUF_FIELD_OFFSET(ProtocolRequest, _impl_.command_.get_editor_simulation_state_), _Internal::kOneofCaseOffset + 0, 51,
+    (0 | ::_fl::kFcOneof | ::_fl::kMessage | ::_fl::kTvTable)},
   }}, {{
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::InitializeRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::Empty>()},
@@ -4070,6 +4166,8 @@ const ::_pbi::TcParseTable<1, 52, 50, 0, 9> ProtocolRequest::_table_ = {
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::CreateModelInstanceRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::AnimatorParameterRequest>()},
     {::_pbi::TcParser::GetTable<::sailor::editor::v1::InstanceIdRequest>()},
+    {::_pbi::TcParser::GetTable<::sailor::editor::v1::EditorSimulationRequest>()},
+    {::_pbi::TcParser::GetTable<::sailor::editor::v1::Empty>()},
   }}, {{
   }},
 };
@@ -4418,6 +4516,18 @@ PROTOBUF_NOINLINE void ProtocolRequest::Clear() {
                   stream);
               break;
             }
+            case kSetEditorSimulation: {
+              target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+                  61, *this_._impl_.command_.set_editor_simulation_, this_._impl_.command_.set_editor_simulation_->GetCachedSize(), target,
+                  stream);
+              break;
+            }
+            case kGetEditorSimulationState: {
+              target = ::google::protobuf::internal::WireFormatLite::InternalWriteMessage(
+                  62, *this_._impl_.command_.get_editor_simulation_state_, this_._impl_.command_.get_editor_simulation_state_->GetCachedSize(), target,
+                  stream);
+              break;
+            }
             default:
               break;
           }
@@ -4756,6 +4866,18 @@ PROTOBUF_NOINLINE void ProtocolRequest::Clear() {
             case kGetAnimatorState: {
               total_size += 2 +
                             ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.command_.get_animator_state_);
+              break;
+            }
+            // .sailor.editor.v1.EditorSimulationRequest set_editor_simulation = 61;
+            case kSetEditorSimulation: {
+              total_size += 2 +
+                            ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.command_.set_editor_simulation_);
+              break;
+            }
+            // .sailor.editor.v1.Empty get_editor_simulation_state = 62;
+            case kGetEditorSimulationState: {
+              total_size += 2 +
+                            ::google::protobuf::internal::WireFormatLite::MessageSize(*this_._impl_.command_.get_editor_simulation_state_);
               break;
             }
             case COMMAND_NOT_SET: {
@@ -5239,6 +5361,24 @@ void ProtocolRequest::MergeImpl(::google::protobuf::MessageLite& to_msg, const :
               ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::InstanceIdRequest>(arena, *from._impl_.command_.get_animator_state_);
         } else {
           _this->_impl_.command_.get_animator_state_->MergeFrom(from._internal_get_animator_state());
+        }
+        break;
+      }
+      case kSetEditorSimulation: {
+        if (oneof_needs_init) {
+          _this->_impl_.command_.set_editor_simulation_ =
+              ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::EditorSimulationRequest>(arena, *from._impl_.command_.set_editor_simulation_);
+        } else {
+          _this->_impl_.command_.set_editor_simulation_->MergeFrom(from._internal_set_editor_simulation());
+        }
+        break;
+      }
+      case kGetEditorSimulationState: {
+        if (oneof_needs_init) {
+          _this->_impl_.command_.get_editor_simulation_state_ =
+              ::google::protobuf::Message::CopyConstruct<::sailor::editor::v1::Empty>(arena, *from._impl_.command_.get_editor_simulation_state_);
+        } else {
+          _this->_impl_.command_.get_editor_simulation_state_->MergeFrom(from._internal_get_editor_simulation_state());
         }
         break;
       }
@@ -8374,6 +8514,212 @@ void SizeRequest::InternalSwap(SizeRequest* PROTOBUF_RESTRICT other) {
 }
 
 ::google::protobuf::Metadata SizeRequest::GetMetadata() const {
+  return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
+}
+// ===================================================================
+
+class EditorSimulationRequest::_Internal {
+ public:
+};
+
+EditorSimulationRequest::EditorSimulationRequest(::google::protobuf::Arena* arena)
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+    : ::google::protobuf::Message(arena, _class_data_.base()) {
+#else   // PROTOBUF_CUSTOM_VTABLE
+    : ::google::protobuf::Message(arena) {
+#endif  // PROTOBUF_CUSTOM_VTABLE
+  SharedCtor(arena);
+  // @@protoc_insertion_point(arena_constructor:sailor.editor.v1.EditorSimulationRequest)
+}
+EditorSimulationRequest::EditorSimulationRequest(
+    ::google::protobuf::Arena* arena, const EditorSimulationRequest& from)
+    : EditorSimulationRequest(arena) {
+  MergeFrom(from);
+}
+inline PROTOBUF_NDEBUG_INLINE EditorSimulationRequest::Impl_::Impl_(
+    ::google::protobuf::internal::InternalVisibility visibility,
+    ::google::protobuf::Arena* arena)
+      : _cached_size_{0} {}
+
+inline void EditorSimulationRequest::SharedCtor(::_pb::Arena* arena) {
+  new (&_impl_) Impl_(internal_visibility(), arena);
+  _impl_.enabled_ = {};
+}
+EditorSimulationRequest::~EditorSimulationRequest() {
+  // @@protoc_insertion_point(destructor:sailor.editor.v1.EditorSimulationRequest)
+  SharedDtor(*this);
+}
+inline void EditorSimulationRequest::SharedDtor(MessageLite& self) {
+  EditorSimulationRequest& this_ = static_cast<EditorSimulationRequest&>(self);
+  this_._internal_metadata_.Delete<::google::protobuf::UnknownFieldSet>();
+  ABSL_DCHECK(this_.GetArena() == nullptr);
+  this_._impl_.~Impl_();
+}
+
+inline void* EditorSimulationRequest::PlacementNew_(const void*, void* mem,
+                                        ::google::protobuf::Arena* arena) {
+  return ::new (mem) EditorSimulationRequest(arena);
+}
+constexpr auto EditorSimulationRequest::InternalNewImpl_() {
+  return ::google::protobuf::internal::MessageCreator::ZeroInit(sizeof(EditorSimulationRequest),
+                                            alignof(EditorSimulationRequest));
+}
+PROTOBUF_CONSTINIT
+PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::google::protobuf::internal::ClassDataFull EditorSimulationRequest::_class_data_ = {
+    ::google::protobuf::internal::ClassData{
+        &_EditorSimulationRequest_default_instance_._instance,
+        &_table_.header,
+        nullptr,  // OnDemandRegisterArenaDtor
+        nullptr,  // IsInitialized
+        &EditorSimulationRequest::MergeImpl,
+        ::google::protobuf::Message::GetNewImpl<EditorSimulationRequest>(),
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+        &EditorSimulationRequest::SharedDtor,
+        ::google::protobuf::Message::GetClearImpl<EditorSimulationRequest>(), &EditorSimulationRequest::ByteSizeLong,
+            &EditorSimulationRequest::_InternalSerialize,
+#endif  // PROTOBUF_CUSTOM_VTABLE
+        PROTOBUF_FIELD_OFFSET(EditorSimulationRequest, _impl_._cached_size_),
+        false,
+    },
+    &EditorSimulationRequest::kDescriptorMethods,
+    &descriptor_table_editor_5fengine_2eproto,
+    nullptr,  // tracker
+};
+const ::google::protobuf::internal::ClassData* EditorSimulationRequest::GetClassData() const {
+  ::google::protobuf::internal::PrefetchToLocalCache(&_class_data_);
+  ::google::protobuf::internal::PrefetchToLocalCache(_class_data_.tc_table);
+  return _class_data_.base();
+}
+PROTOBUF_CONSTINIT PROTOBUF_ATTRIBUTE_INIT_PRIORITY1
+const ::_pbi::TcParseTable<0, 1, 0, 0, 2> EditorSimulationRequest::_table_ = {
+  {
+    0,  // no _has_bits_
+    0, // no _extensions_
+    1, 0,  // max_field_number, fast_idx_mask
+    offsetof(decltype(_table_), field_lookup_table),
+    4294967294,  // skipmap
+    offsetof(decltype(_table_), field_entries),
+    1,  // num_field_entries
+    0,  // num_aux_entries
+    offsetof(decltype(_table_), field_names),  // no aux_entries
+    _class_data_.base(),
+    nullptr,  // post_loop_handler
+    ::_pbi::TcParser::GenericFallback,  // fallback
+    #ifdef PROTOBUF_PREFETCH_PARSE_TABLE
+    ::_pbi::TcParser::GetTable<::sailor::editor::v1::EditorSimulationRequest>(),  // to_prefetch
+    #endif  // PROTOBUF_PREFETCH_PARSE_TABLE
+  }, {{
+    // bool enabled = 1;
+    {::_pbi::TcParser::SingularVarintNoZag1<bool, offsetof(EditorSimulationRequest, _impl_.enabled_), 63>(),
+     {8, 63, 0, PROTOBUF_FIELD_OFFSET(EditorSimulationRequest, _impl_.enabled_)}},
+  }}, {{
+    65535, 65535
+  }}, {{
+    // bool enabled = 1;
+    {PROTOBUF_FIELD_OFFSET(EditorSimulationRequest, _impl_.enabled_), 0, 0,
+    (0 | ::_fl::kFcSingular | ::_fl::kBool)},
+  }},
+  // no aux_entries
+  {{
+  }},
+};
+
+PROTOBUF_NOINLINE void EditorSimulationRequest::Clear() {
+// @@protoc_insertion_point(message_clear_start:sailor.editor.v1.EditorSimulationRequest)
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  ::uint32_t cached_has_bits = 0;
+  // Prevent compiler warnings about cached_has_bits being unused
+  (void) cached_has_bits;
+
+  _impl_.enabled_ = false;
+  _internal_metadata_.Clear<::google::protobuf::UnknownFieldSet>();
+}
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+        ::uint8_t* EditorSimulationRequest::_InternalSerialize(
+            const MessageLite& base, ::uint8_t* target,
+            ::google::protobuf::io::EpsCopyOutputStream* stream) {
+          const EditorSimulationRequest& this_ = static_cast<const EditorSimulationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+        ::uint8_t* EditorSimulationRequest::_InternalSerialize(
+            ::uint8_t* target,
+            ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+          const EditorSimulationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          // @@protoc_insertion_point(serialize_to_array_start:sailor.editor.v1.EditorSimulationRequest)
+          ::uint32_t cached_has_bits = 0;
+          (void)cached_has_bits;
+
+          // bool enabled = 1;
+          if (this_._internal_enabled() != 0) {
+            target = stream->EnsureSpace(target);
+            target = ::_pbi::WireFormatLite::WriteBoolToArray(
+                1, this_._internal_enabled(), target);
+          }
+
+          if (PROTOBUF_PREDICT_FALSE(this_._internal_metadata_.have_unknown_fields())) {
+            target =
+                ::_pbi::WireFormat::InternalSerializeUnknownFieldsToArray(
+                    this_._internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance), target, stream);
+          }
+          // @@protoc_insertion_point(serialize_to_array_end:sailor.editor.v1.EditorSimulationRequest)
+          return target;
+        }
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+        ::size_t EditorSimulationRequest::ByteSizeLong(const MessageLite& base) {
+          const EditorSimulationRequest& this_ = static_cast<const EditorSimulationRequest&>(base);
+#else   // PROTOBUF_CUSTOM_VTABLE
+        ::size_t EditorSimulationRequest::ByteSizeLong() const {
+          const EditorSimulationRequest& this_ = *this;
+#endif  // PROTOBUF_CUSTOM_VTABLE
+          // @@protoc_insertion_point(message_byte_size_start:sailor.editor.v1.EditorSimulationRequest)
+          ::size_t total_size = 0;
+
+          ::uint32_t cached_has_bits = 0;
+          // Prevent compiler warnings about cached_has_bits being unused
+          (void)cached_has_bits;
+
+           {
+            // bool enabled = 1;
+            if (this_._internal_enabled() != 0) {
+              total_size += 2;
+            }
+          }
+          return this_.MaybeComputeUnknownFieldsSize(total_size,
+                                                     &this_._impl_._cached_size_);
+        }
+
+void EditorSimulationRequest::MergeImpl(::google::protobuf::MessageLite& to_msg, const ::google::protobuf::MessageLite& from_msg) {
+  auto* const _this = static_cast<EditorSimulationRequest*>(&to_msg);
+  auto& from = static_cast<const EditorSimulationRequest&>(from_msg);
+  // @@protoc_insertion_point(class_specific_merge_from_start:sailor.editor.v1.EditorSimulationRequest)
+  ABSL_DCHECK_NE(&from, _this);
+  ::uint32_t cached_has_bits = 0;
+  (void) cached_has_bits;
+
+  if (from._internal_enabled() != 0) {
+    _this->_impl_.enabled_ = from._impl_.enabled_;
+  }
+  _this->_internal_metadata_.MergeFrom<::google::protobuf::UnknownFieldSet>(from._internal_metadata_);
+}
+
+void EditorSimulationRequest::CopyFrom(const EditorSimulationRequest& from) {
+// @@protoc_insertion_point(class_specific_copy_from_start:sailor.editor.v1.EditorSimulationRequest)
+  if (&from == this) return;
+  Clear();
+  MergeFrom(from);
+}
+
+
+void EditorSimulationRequest::InternalSwap(EditorSimulationRequest* PROTOBUF_RESTRICT other) {
+  using std::swap;
+  _internal_metadata_.InternalSwap(&other->_internal_metadata_);
+        swap(_impl_.enabled_, other->_impl_.enabled_);
+}
+
+::google::protobuf::Metadata EditorSimulationRequest::GetMetadata() const {
   return ::google::protobuf::Message::GetMetadataImpl(GetClassData()->full());
 }
 // ===================================================================

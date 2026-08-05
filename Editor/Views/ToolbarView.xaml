@@ -106,6 +106,14 @@
                         <ImageButton Source="bug__arrow.png"
                                      Style="{StaticResource ToolbarIconButtonStyle}"
                                      Clicked="OnPlayDebugButtonClicked"/>
+                        <Button x:Name="SimulationButton"
+                                Text="Simulate"
+                                ImageSource="control.png"
+                                ContentLayout="Left,4"
+                                Style="{StaticResource ToolbarGlyphButtonStyle}"
+                                WidthRequest="82"
+                                MinimumWidthRequest="82"
+                                Clicked="OnSimulationButtonClicked"/>
                     </HorizontalStackLayout>
                 </Border>
             </HorizontalStackLayout>

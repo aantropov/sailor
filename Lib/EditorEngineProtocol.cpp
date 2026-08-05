@@ -1102,6 +1102,19 @@ namespace
 			SetBoolResult(response, Sailor::App::CreateEditorWorld());
 			break;
 
+		case ProtocolRequest::kSetEditorSimulation:
+			SetBoolResult(
+				response,
+				Sailor::App::SetEditorSimulationEnabled(
+					request.set_editor_simulation().enabled()));
+			break;
+
+		case ProtocolRequest::kGetEditorSimulationState:
+			SetBoolResult(
+				response,
+				Sailor::App::IsEditorSimulationEnabled());
+			break;
+
 		case ProtocolRequest::kSetViewport:
 		{
 			const auto& viewport = request.set_viewport();

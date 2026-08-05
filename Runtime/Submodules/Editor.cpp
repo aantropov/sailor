@@ -1,6 +1,7 @@
 #include "Core/LogMacros.h"
 #include "Tasks/Scheduler.h"
 #include "Engine/Types.h"
+#include "Engine/EngineLoop.h"
 #include "Engine/World.h"
 #include "Engine/GameObject.h"
 #include "ECS/TransformECS.h"
@@ -31,6 +32,7 @@
 #include <cmath>
 #include <limits>
 #include "Platform/Win32/Window.h"
+#include "YamlExceptionBoundary.h"
 
 using namespace Sailor;
 
@@ -282,10 +284,116 @@ Editor::~Editor() = default;
 void Editor::SetWorld(World* world)
 {
 	m_world = world;
+	m_simulationSnapshot.clear();
+	m_bSimulationEnabled = false;
 	m_managedSelectionMutationRevision = 0;
 	m_managedMutationState->m_objectRevisions.Clear();
 	m_viewportController->Reset();
 	m_viewportController->SetManagedMutationRevisions(0, 0);
+}
+
+bool Editor::SetSimulationEnabled(bool bEnabled)
+{
+	if (bEnabled == m_bSimulationEnabled)
+	{
+		return true;
+	}
+
+	if (!m_world)
+	{
+		return false;
+	}
+
+	if (bEnabled)
+	{
+		const YAML::Node snapshot = SerializeWorld();
+		std::string serializedSnapshot;
+		std::string diagnostic;
+		if (!snapshot ||
+			!External::TryDumpYaml(
+				snapshot,
+				serializedSnapshot,
+				diagnostic) ||
+			serializedSnapshot.empty())
+		{
+			SAILOR_LOG_ERROR(
+				"Cannot start Editor simulation: %s.",
+				diagnostic.empty()
+					? "the current world could not be snapshotted"
+					: diagnostic.c_str());
+			return false;
+		}
+
+		CancelViewportInteraction();
+		m_simulationSnapshot = std::move(serializedSnapshot);
+		m_world->SetPhysicsSimulationEnabled(true);
+		m_bSimulationEnabled = true;
+		return true;
+	}
+
+	auto* engineLoop = App::GetSubmodule<EngineLoop>();
+	auto* worldImporter = App::GetSubmodule<WorldPrefabImporter>();
+	if (!engineLoop || !worldImporter || m_simulationSnapshot.empty())
+	{
+		return false;
+	}
+
+	YAML::Node snapshot;
+	std::string diagnostic;
+	if (!External::TryLoadYaml(
+			m_simulationSnapshot,
+			snapshot,
+			diagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot stop Editor simulation: the world snapshot is invalid: %s.",
+			diagnostic.c_str());
+		return false;
+	}
+
+	auto worldPrefab = worldImporter->Create();
+	if (!worldPrefab ||
+		!External::GuardYamlExceptions(
+			[&worldPrefab, &snapshot]()
+			{
+				worldPrefab->Deserialize(snapshot);
+			},
+			diagnostic) ||
+		!worldPrefab->IsReady())
+	{
+		if (diagnostic.empty() && worldPrefab)
+		{
+			diagnostic = worldPrefab->GetLoadDiagnostic();
+		}
+		SAILOR_LOG_ERROR(
+			"Cannot stop Editor simulation: the world snapshot could not be restored: %s.",
+			diagnostic.empty() ? "unknown error" : diagnostic.c_str());
+		return false;
+	}
+
+	TVector<InstanceId> selection;
+	selection.Reserve(m_world->m_editorSelection.Num());
+	for (const InstanceId& instanceId : m_world->m_editorSelection)
+	{
+		selection.Add(instanceId);
+	}
+
+	World* oldWorld = m_world;
+	auto restoredWorld = engineLoop->InstantiateWorld(
+		worldPrefab,
+		EngineLoop::EditorWorldMask);
+	if (!restoredWorld)
+	{
+		SAILOR_LOG_ERROR(
+			"Cannot stop Editor simulation: the world snapshot could not be instantiated.");
+		return false;
+	}
+
+	SetWorld(restoredWorld.GetRawPtr());
+	m_world->SetEditorSelection(selection);
+	engineLoop->ExitWorld(oldWorld);
+	engineLoop->ProcessPendingWorldExits();
+	return true;
 }
 
 void Editor::TickViewportTools()

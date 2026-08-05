@@ -71,6 +71,12 @@ if(NOT ixwebsocket_FOUND)
 	sailor_create_stub_target(ixwebsocket::ixwebsocket)
 endif()
 
+find_package(Jolt CONFIG QUIET)
+if(NOT Jolt_FOUND)
+	list(APPEND SAILOR_MISSING_DEPS "Jolt")
+	sailor_create_stub_target(Jolt::Jolt)
+endif()
+
 find_package(magic_enum CONFIG QUIET)
 if(NOT magic_enum_FOUND)
 	list(APPEND SAILOR_MISSING_DEPS "magic_enum")
@@ -128,6 +134,19 @@ file(GLOB_RECURSE SAILOR_RUNTIME_SOURCES
   "${SAILOR_RUNTIME_DIR}/*.mm"
   "${SAILOR_RUNTIME_DIR}/*.hpp"
   "${SAILOR_RUNTIME_DIR}/*.natvis")
+
+# vcpkg builds Jolt without compiler RTTI. Keep the Sailor adapter that derives
+# from Jolt's JobSystemWithBarrier on the same ABI while the rest of Sailor
+# retains RTTI for reflected engine types.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+	set_source_files_properties(
+		"${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp"
+		PROPERTIES COMPILE_OPTIONS "/GR-")
+else()
+	set_source_files_properties(
+		"${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp"
+		PROPERTIES COMPILE_OPTIONS "-fno-rtti")
+endif()
 
 file(GLOB_RECURSE SAILOR_LIB_SOURCES
   "*.h"
@@ -235,6 +254,7 @@ target_link_libraries(SailorLib PRIVATE
 	draco::draco
 	imguizmo::imguizmo
 	ixwebsocket::ixwebsocket
+	Jolt::Jolt
 	meshoptimizer::meshoptimizer
 	protobuf::libprotobuf
 	${CMAKE_DL_LIBS}

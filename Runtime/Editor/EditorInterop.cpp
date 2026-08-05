@@ -471,6 +471,11 @@ bool App::LoadEditorWorld(const char* strFileId)
 			{
 				return false;
 			}
+			if (editor->IsSimulationEnabled() &&
+				!editor->SetSimulationEnabled(false))
+			{
+				return false;
+			}
 
 			auto oldWorld = editor->GetWorld();
 			auto newWorld = engineLoop->InstantiateWorld(worldPrefab, EngineLoop::EditorWorldMask);
@@ -500,6 +505,11 @@ bool App::CreateEditorWorld()
 			{
 				return false;
 			}
+			if (editor->IsSimulationEnabled() &&
+				!editor->SetSimulationEnabled(false))
+			{
+				return false;
+			}
 
 			auto oldWorld = editor->GetWorld();
 			auto newWorld = engineLoop->CreateEmptyWorld("New Scene", EngineLoop::EditorWorldMask);
@@ -516,6 +526,24 @@ bool App::CreateEditorWorld()
 			}
 
 			return true;
+		});
+}
+
+bool App::SetEditorSimulationEnabled(bool bEnabled)
+{
+	return ExecuteOnEngineMainThread<bool>(false, [bEnabled]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			return editor && editor->SetSimulationEnabled(bEnabled);
+		});
+}
+
+bool App::IsEditorSimulationEnabled()
+{
+	return ExecuteOnEngineMainThread<bool>(false, []()
+		{
+			const auto* editor = GetSubmodule<Editor>();
+			return editor && editor->IsSimulationEnabled();
 		});
 }
 

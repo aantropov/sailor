@@ -45,6 +45,8 @@ namespace Sailor
 
 		SAILOR_SHARED_API void SetWorld(class World* world);
 		class World* GetWorld() const { return m_world; }
+		SAILOR_SHARED_API bool SetSimulationEnabled(bool bEnabled);
+		bool IsSimulationEnabled() const { return m_bSimulationEnabled; }
 		void TickViewportTools();
 		void CancelViewportInteraction();
 		bool PullViewportEvent(std::string& outEvent);
@@ -133,6 +135,8 @@ namespace Sailor
 		class Win32::Window* m_pMainWindow = nullptr;
 
 		class World* m_world = nullptr;
+		std::string m_simulationSnapshot{};
+		bool m_bSimulationEnabled = false;
 		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
 		uint64_t m_managedSelectionMutationRevision = 0;
 		TUniquePtr<EditorManagedMutationState> m_managedMutationState{};

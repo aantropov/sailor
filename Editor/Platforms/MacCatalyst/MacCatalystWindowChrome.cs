@@ -17,6 +17,7 @@ namespace SailorEditor.Platforms.MacCatalyst
         const string RedoItem = "SailorEditorToolbarRedo";
         const string PlayItem = "SailorEditorToolbarPlay";
         const string DebugItem = "SailorEditorToolbarDebug";
+        const string SimulateItem = "SailorEditorToolbarSimulate";
         const string TraceSceneItem = "SailorEditorToolbarTraceScene";
         const string TraceSelectionItem = "SailorEditorToolbarTraceSelection";
         const string SaveLayoutItem = "SailorEditorToolbarSaveLayout";
@@ -30,6 +31,7 @@ namespace SailorEditor.Platforms.MacCatalyst
             NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
             PlayItem,
             DebugItem,
+            SimulateItem,
             NSToolbar.NSToolbarFlexibleSpaceItemIdentifier,
             TitleItem,
             TraceSceneItem,
@@ -42,7 +44,8 @@ namespace SailorEditor.Platforms.MacCatalyst
         static readonly NSSet<NSString> CenterToolbarItems = new(new NSString[]
         {
             new NSString(PlayItem),
-            new NSString(DebugItem)
+            new NSString(DebugItem),
+            new NSString(SimulateItem)
         });
 
         static readonly NativeToolbarDelegate ToolbarDelegate = new();
@@ -178,6 +181,7 @@ namespace SailorEditor.Platforms.MacCatalyst
                         "ladybug.fill",
                         () => MauiProgram.GetService<EditorToolbarActions>()
                             .RunWorldAsync(true)),
+                    SimulateItem => CreateSimulationItem(),
                     TraceSceneItem => CreateItem(TraceSceneItem, "Trace Scene", "camera.metering.matrix", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(false)),
                     TraceSelectionItem => CreateItem(TraceSelectionItem, "Trace Selection", "scope", () => MauiProgram.GetService<EditorToolbarActions>().ExportPathTracedImageAsync(true)),
                     SaveLayoutItem => CreateItem(SaveLayoutItem, "Save Layout", "rectangle.3.group", () => MauiProgram.GetService<EditorToolbarActions>().SaveLayoutAsync()),
@@ -206,6 +210,51 @@ namespace SailorEditor.Platforms.MacCatalyst
                 item.Label = currentTitle;
                 item.PaletteLabel = currentTitle;
                 item.ToolTip = currentTitle;
+                return item;
+            }
+
+            NSToolbarItem CreateSimulationItem()
+            {
+                var actions = MauiProgram.GetService<EditorToolbarActions>();
+                var target = new ToolbarActionTarget(
+                    "Simulate",
+                    () => actions.ToggleSimulationAsync());
+                actionTargets[SimulateItem] = target;
+
+                var barButton = CreateButton(
+                    "Simulate",
+                    "play.circle",
+                    target);
+                var item = NSToolbarItem.Create(SimulateItem, barButton);
+                item.Action = InvokeSelector;
+                item.Target = target;
+                item.Enabled = true;
+                item.Autovalidates = false;
+
+                void ApplyState(bool isSimulating)
+                {
+                    var label = isSimulating ? "Stop" : "Simulate";
+                    var symbol = isSimulating
+                        ? "stop.circle.fill"
+                        : "play.circle";
+                    item.Label = label;
+                    item.PaletteLabel = label;
+                    item.ToolTip = isSimulating
+                        ? "Stop physics simulation and restore the scene"
+                        : "Simulate physics in the current scene";
+                    barButton.Image = UIImage.GetSystemImage(symbol);
+                    barButton.Title = label;
+                }
+
+                void Update(bool isSimulating)
+                {
+                    Microsoft.Maui.ApplicationModel.MainThread
+                        .BeginInvokeOnMainThread(
+                            () => ApplyState(isSimulating));
+                }
+
+                actions.SimulationStateChanged += Update;
+                ApplyState(actions.IsSimulating);
                 return item;
             }
 
