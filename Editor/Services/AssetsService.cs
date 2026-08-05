@@ -27,13 +27,17 @@ namespace SailorEditor.Services
         readonly object _watcherLock = new();
         readonly List<FileSystemWatcher> _contentWatchers = [];
         readonly SemaphoreSlim _assetSaveLock = new(1, 1);
+        readonly SemaphoreSlim _folderLoadLock = new(1, 1);
+        readonly AssetCacheIndexStore _assetCacheIndexStore = new();
         EngineLaunchContext? _activeLaunchContext;
         CancellationTokenSource? _pendingFilesystemReload;
+        CancellationTokenSource? _assetCacheIndexLoadCancellation;
         ProjectContentFolderIdAllocator _folderIdAllocator = new();
         HashSet<string> _visitedDirectories = new(ProjectContentPathPolicy.PathComparer);
         int _nextAssetId = 1;
         int _assetOverrideCount;
         long _workspaceEpoch;
+        long _contentGeneration;
 
         public event Action? Changed;
 
@@ -56,7 +60,7 @@ namespace SailorEditor.Services
             AddProjectRoot(engineService.GetLaunchContext());
         }
 
-        void HandleAssetReloadCompleted(AssetReloadCompletion completion)
+        async void HandleAssetReloadCompleted(AssetReloadCompletion completion)
         {
             if (!completion.Succeeded || _activeLaunchContext is null)
             {
@@ -67,18 +71,22 @@ namespace SailorEditor.Services
             {
                 var selectionService = MauiProgram.GetService<SelectionService>();
                 var selectedAssetId = (selectionService.SelectedItem as AssetFile)?.FileId;
-                Refresh();
-                if (selectedAssetId is not null && !selectedAssetId.IsEmpty())
+                await RefreshAsync();
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
+                    if (selectedAssetId is null || selectedAssetId.IsEmpty())
+                    {
+                        return;
+                    }
+
                     if (Assets.TryGetValue(selectedAssetId, out var refreshedAsset))
                     {
                         selectionService.SelectObject(refreshedAsset, force: true);
+                        return;
                     }
-                    else
-                    {
-                        selectionService.ClearSelection();
-                    }
-                }
+
+                    selectionService.ClearSelection();
+                });
             }
             catch (Exception exception)
             {
@@ -573,12 +581,105 @@ namespace SailorEditor.Services
             if (_activeLaunchContext is null)
                 return;
 
+            var loadedFolders = Folders
+                .Where(folder => folder.IsLoaded)
+                .Select(folder => (folder.ProjectRootId, folder.FullPath))
+                .OrderBy(folder => folder.FullPath.Count(character => character == Path.DirectorySeparatorChar))
+                .ToArray();
             AddProjectRoot(_activeLaunchContext);
+            foreach (var loadedFolder in loadedFolders)
+            {
+                var folder = Folders.FirstOrDefault(candidate =>
+                    candidate.ProjectRootId == loadedFolder.ProjectRootId &&
+                    ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath));
+                if (folder is not null)
+                {
+                    MergeFolderSnapshot(folder, ReadDirectoryLevel(folder));
+                }
+            }
+            Changed?.Invoke();
+        }
+
+        public async Task RefreshAsync(CancellationToken cancellationToken = default)
+        {
+            if (_activeLaunchContext is null)
+            {
+                return;
+            }
+
+            var launchContext = _activeLaunchContext;
+            var loadedFolders = Folders
+                .Where(folder => folder.IsLoaded)
+                .Select(folder => (folder.ProjectRootId, folder.FullPath))
+                .OrderBy(folder => folder.FullPath.Count(character => character == Path.DirectorySeparatorChar))
+                .ToArray();
+            await MainThread.InvokeOnMainThreadAsync(() => AddProjectRoot(launchContext));
+            foreach (var loadedFolder in loadedFolders)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var folderId = await MainThread.InvokeOnMainThreadAsync(() =>
+                    Folders.FirstOrDefault(candidate =>
+                        candidate.ProjectRootId == loadedFolder.ProjectRootId &&
+                        ProjectContentPathPolicy.IsSamePath(candidate.FullPath, loadedFolder.FullPath))?.Id);
+                if (folderId is not null)
+                {
+                    await EnsureFolderLoadedAsync(folderId.Value, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        public async Task EnsureFolderLoadedAsync(
+            int folderId,
+            CancellationToken cancellationToken = default)
+        {
+            var generation = Interlocked.Read(ref _contentGeneration);
+            var folder = await MainThread.InvokeOnMainThreadAsync(() =>
+                Folders.FirstOrDefault(candidate => candidate.Id == folderId));
+            if (folder is null || folder.IsLoaded)
+            {
+                return;
+            }
+
+            await _folderLoadLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                folder = await MainThread.InvokeOnMainThreadAsync(() =>
+                    Folders.FirstOrDefault(candidate => candidate.Id == folderId));
+                if (folder is null || folder.IsLoaded ||
+                    generation != Interlocked.Read(ref _contentGeneration))
+                {
+                    return;
+                }
+
+                var snapshot = await Task.Run(
+                    () => ReadDirectoryLevel(folder),
+                    cancellationToken).ConfigureAwait(false);
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    if (generation != Interlocked.Read(ref _contentGeneration))
+                    {
+                        return;
+                    }
+                    var liveFolder = Folders.FirstOrDefault(candidate => candidate.Id == folderId);
+                    if (liveFolder is null || liveFolder.IsLoaded)
+                    {
+                        return;
+                    }
+                    MergeFolderSnapshot(liveFolder, snapshot);
+                    Changed?.Invoke();
+                });
+            }
+            finally
+            {
+                _folderLoadLock.Release();
+            }
         }
 
         public void ResetForWorkspaceChange()
         {
             Interlocked.Increment(ref _workspaceEpoch);
+            Interlocked.Increment(ref _contentGeneration);
+            CancelAssetCacheIndexLoad();
             DisposeContentWatchers();
             Root = new ProjectRoot { Name = string.Empty, Id = ActiveProjectRootId };
             Folders = [];
@@ -599,6 +700,12 @@ namespace SailorEditor.Services
 
             ArgumentNullException.ThrowIfNull(launchContext);
             var launchContextChanged = _activeLaunchContext is null || _activeLaunchContext != launchContext;
+            if (launchContextChanged)
+            {
+                Interlocked.Increment(ref _workspaceEpoch);
+            }
+            var contentGeneration = Interlocked.Increment(ref _contentGeneration);
+            CancelAssetCacheIndexLoad();
             var requestedRoot = Path.GetFullPath(launchContext.ContentDirectory);
             if (!Directory.Exists(requestedRoot))
             {
@@ -631,13 +738,11 @@ namespace SailorEditor.Services
                 var engineRoot = new ProjectRoot { Name = "Engine Content", Id = EngineProjectRootId };
 
                 AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: false);
-                ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
             else if (ProjectContentPathPolicy.IsSamePath(CurrentProjectRootPath, _engineContentDirectory))
             {
                 var workspaceRoot = new ProjectRoot { Name = "Content", Id = ActiveProjectRootId };
                 AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.ContentRootId, CurrentProjectRootPath, isReadOnly: false);
-                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.ContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
             else
             {
@@ -646,9 +751,6 @@ namespace SailorEditor.Services
 
                 AddContentRootFolder(workspaceRoot, ProjectContentFolderIds.ContentRootId, CurrentProjectRootPath, isReadOnly: false);
                 AddContentRootFolder(engineRoot, ProjectContentFolderIds.EngineContentRootId, _engineContentDirectory, isReadOnly: true);
-
-                ReadDirectory(engineRoot, _engineContentDirectory, _engineContentDirectory, ProjectContentFolderIds.EngineContentRootId, useRootedFolderIds: true, isReadOnly: true);
-                ReadDirectory(workspaceRoot, CurrentProjectRootPath, CurrentProjectRootPath, ProjectContentFolderIds.ContentRootId, useRootedFolderIds: true, isReadOnly: false);
             }
 
             if (_assetOverrideCount > 0)
@@ -660,7 +762,81 @@ namespace SailorEditor.Services
             }
 
             Changed?.Invoke();
+            QueueAssetCacheIndexLoad(launchContext, contentGeneration);
         }
+
+        void QueueAssetCacheIndexLoad(
+            EngineLaunchContext launchContext,
+            long contentGeneration)
+        {
+            var cancellation = new CancellationTokenSource();
+            var previous = Interlocked.Exchange(
+                ref _assetCacheIndexLoadCancellation,
+                cancellation);
+            previous?.Cancel();
+            _ = LoadAssetCacheIndexAsync(
+                launchContext,
+                contentGeneration,
+                cancellation);
+        }
+
+        async Task LoadAssetCacheIndexAsync(
+            EngineLaunchContext launchContext,
+            long contentGeneration,
+            CancellationTokenSource cancellation)
+        {
+            try
+            {
+                var result = await Task.Run(
+                    () => _assetCacheIndexStore.Load(
+                        launchContext.AssetCacheFilePath,
+                        launchContext.WorkspaceIdentity,
+                        cancellation.Token),
+                    cancellation.Token).ConfigureAwait(false);
+                if (!result.Succeeded)
+                {
+                    if (result.Status is not AssetCacheIndexStatus.Missing)
+                    {
+                        Console.WriteLine($"[AssetsService] {result.Diagnostic}");
+                    }
+                    return;
+                }
+
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    if (cancellation.IsCancellationRequested ||
+                        contentGeneration != Interlocked.Read(ref _contentGeneration) ||
+                        _activeLaunchContext != launchContext)
+                    {
+                        return;
+                    }
+
+                    MergeAssetCacheIndex(result.Entries!);
+                    Changed?.Invoke();
+                });
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[AssetsService] Failed to load asset cache index: {exception.Message}");
+            }
+            finally
+            {
+                Interlocked.CompareExchange(
+                    ref _assetCacheIndexLoadCancellation,
+                    null,
+                    cancellation);
+                cancellation.Dispose();
+            }
+        }
+
+        void CancelAssetCacheIndexLoad()
+            => Interlocked.Exchange(
+                ref _assetCacheIndexLoadCancellation,
+                null)?.Cancel();
 
         void ConfigureContentWatchers(EngineLaunchContext launchContext)
         {
@@ -762,6 +938,7 @@ namespace SailorEditor.Services
         public void Dispose()
         {
             _engineService.OnAssetReloadCompleted -= HandleAssetReloadCompleted;
+            CancelAssetCacheIndexLoad();
             DisposeContentWatchers();
         }
 
@@ -774,8 +951,227 @@ namespace SailorEditor.Services
                 Id = folderId,
                 ParentFolderId = -1,
                 FullPath = rootPath,
-                IsReadOnly = isReadOnly
+                IsReadOnly = isReadOnly,
+                IsLoaded = false,
+                HasChildren = DirectoryMayContainAssets(rootPath)
             });
+        }
+
+        private sealed record FolderLoadSnapshot(
+            IReadOnlyList<AssetFolder> Folders,
+            IReadOnlyList<AssetFile> Files);
+
+        private void MergeAssetCacheIndex(
+            IReadOnlyList<AssetCacheIndexEntry> entries)
+        {
+            foreach (var entry in entries)
+            {
+                if (!TryResolveAssetIndexLocation(
+                        entry,
+                        out var projectRootId,
+                        out var isReadOnly))
+                {
+                    continue;
+                }
+
+                var fileId = new FileId(entry.FileId);
+                var sourceFile = new FileInfo(entry.SourcePath);
+                var indexedFilename = Path.GetFileNameWithoutExtension(
+                    entry.MetadataFilename);
+                var metadataFile = new FileInfo(
+                    Path.Combine(sourceFile.DirectoryName!, entry.MetadataFilename));
+                if (Assets.TryGetValue(fileId, out var existing))
+                {
+                    if ((existing.AssetInfo is not null &&
+                         ProjectContentPathPolicy.IsSamePath(
+                             existing.AssetInfo.FullName,
+                             metadataFile.FullName)) ||
+                        !ProjectContentAssetResolutionPolicy.ShouldReplace(
+                            existing.IsReadOnly,
+                            isReadOnly))
+                    {
+                        continue;
+                    }
+                }
+
+                var indexedAsset = CreateAssetFile(
+                    entry.AssetInfoType,
+                    Path.GetExtension(indexedFilename));
+                indexedAsset.Id = _nextAssetId++;
+                indexedAsset.DisplayName = indexedFilename;
+                indexedAsset.FolderId = -1;
+                indexedAsset.ProjectRootId = projectRootId;
+                indexedAsset.AssetInfo = metadataFile;
+                indexedAsset.Asset = sourceFile;
+                indexedAsset.OwnsSourceFile = string.Equals(
+                    metadataFile.FullName,
+                    sourceFile.FullName + ".asset",
+                    ProjectContentPathPolicy.PathComparison);
+                indexedAsset.FileId = fileId;
+                indexedAsset.Filename = new FileId(indexedFilename);
+                indexedAsset.IsDirty = false;
+                indexedAsset.IsReadOnly = isReadOnly;
+                indexedAsset.IsMetadataLoaded = false;
+                Assets[fileId] = indexedAsset;
+            }
+        }
+
+        private bool TryResolveAssetIndexLocation(
+            AssetCacheIndexEntry entry,
+            out int projectRootId,
+            out bool isReadOnly)
+        {
+            projectRootId = ActiveProjectRootId;
+            isReadOnly = false;
+            if (ProjectContentPathPolicy.IsInsideRoot(
+                    CurrentProjectRootPath,
+                    entry.SourcePath))
+            {
+                return true;
+            }
+
+            if (CurrentProjectMode == EditorProjectMode.Workspace &&
+                ProjectContentPathPolicy.IsInsideRoot(
+                    _engineContentDirectory,
+                    entry.SourcePath))
+            {
+                projectRootId = EngineProjectRootId;
+                isReadOnly = true;
+                return true;
+            }
+
+            return false;
+        }
+
+        private FolderLoadSnapshot ReadDirectoryLevel(AssetFolder parentFolder)
+        {
+            var folders = new List<AssetFolder>();
+            var files = new List<AssetFile>();
+            var rootPath = parentFolder.ProjectRootId == EngineProjectRootId
+                ? _engineContentDirectory
+                : CurrentProjectRootPath;
+            var directoryPath = ProjectContentPathPolicy.NormalizeRoot(parentFolder.FullPath);
+            if (!Directory.Exists(directoryPath) ||
+                !ProjectContentPathPolicy.IsInsideRoot(rootPath, directoryPath))
+            {
+                return new FolderLoadSnapshot(folders, files);
+            }
+
+            foreach (var directory in Directory.GetDirectories(directoryPath)
+                .Order(ProjectContentPathPolicy.PathComparer))
+            {
+                if (ProjectContentInternalPathPolicy.IsTransactionDirectory(directory))
+                {
+                    continue;
+                }
+                var canonicalChildPath = ProjectContentPathPolicy.NormalizeRoot(directory);
+                if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, canonicalChildPath))
+                {
+                    continue;
+                }
+                var relativeDirectoryPath = Path.GetRelativePath(rootPath, canonicalChildPath);
+                folders.Add(new AssetFolder
+                {
+                    ProjectRootId = parentFolder.ProjectRootId,
+                    Name = Path.GetFileName(canonicalChildPath),
+                    Id = _folderIdAllocator.Allocate(
+                        parentFolder.ProjectRootId,
+                        relativeDirectoryPath,
+                        useRootedFolderIds: true),
+                    ParentFolderId = parentFolder.Id,
+                    FullPath = canonicalChildPath,
+                    IsReadOnly = parentFolder.IsReadOnly,
+                    IsLoaded = false,
+                    HasChildren = DirectoryMayContainAssets(canonicalChildPath)
+                });
+            }
+
+            foreach (var file in Directory.GetFiles(directoryPath)
+                .Order(ProjectContentPathPolicy.PathComparer))
+            {
+                if (!ProjectContentPathPolicy.IsInsideRoot(rootPath, file) ||
+                    !string.Equals(Path.GetExtension(file), ".asset", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                try
+                {
+                    var asset = ReadAssetFile(
+                        new FileInfo(file),
+                        parentFolder.Id,
+                        parentFolder.ProjectRootId,
+                        parentFolder.IsReadOnly);
+                    if (asset.FileId is not null && !asset.FileId.IsEmpty())
+                    {
+                        files.Add(asset);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(exception);
+                }
+            }
+
+            return new FolderLoadSnapshot(folders, files);
+        }
+
+        private void MergeFolderSnapshot(
+            AssetFolder parentFolder,
+            FolderLoadSnapshot snapshot)
+        {
+            foreach (var folder in snapshot.Folders)
+            {
+                if (!Folders.Any(candidate =>
+                    candidate.ProjectRootId == folder.ProjectRootId &&
+                    ProjectContentPathPolicy.IsSamePath(candidate.FullPath, folder.FullPath)))
+                {
+                    Folders.Add(folder);
+                }
+            }
+
+            foreach (var file in snapshot.Files)
+            {
+                Files.Add(file);
+                if (Assets.TryGetValue(file.FileId, out var existing))
+                {
+                    var bSameMetadata = existing.AssetInfo is not null &&
+                        file.AssetInfo is not null &&
+                        ProjectContentPathPolicy.IsSamePath(
+                            existing.AssetInfo.FullName,
+                            file.AssetInfo.FullName);
+                    if (bSameMetadata || ProjectContentAssetResolutionPolicy.ShouldReplace(
+                        existing.IsReadOnly,
+                        file.IsReadOnly))
+                    {
+                        Assets[file.FileId] = file;
+                    }
+                    if (!bSameMetadata)
+                    {
+                        _assetOverrideCount++;
+                    }
+                }
+                else
+                {
+                    Assets.Add(file.FileId, file);
+                }
+            }
+            parentFolder.IsLoaded = true;
+            parentFolder.HasChildren = snapshot.Folders.Count > 0 || snapshot.Files.Count > 0;
+        }
+
+        private static bool DirectoryMayContainAssets(string directoryPath)
+        {
+            try
+            {
+                return Directory.EnumerateFileSystemEntries(directoryPath).Any(path =>
+                    Directory.Exists(path)
+                        ? !ProjectContentInternalPathPolicy.IsTransactionDirectory(path)
+                        : string.Equals(Path.GetExtension(path), ".asset", StringComparison.OrdinalIgnoreCase));
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         public bool CanModifyAsset(AssetFile? assetFile)
@@ -898,7 +1294,8 @@ namespace SailorEditor.Services
 
         private AssetFile ReadAssetFile(FileInfo assetInfo, int parentFolderId, int projectRootId, bool isReadOnly)
         {
-            var declaredFilename = TryReadScalar(assetInfo, "filename");
+            var identity = ReadAssetMetadataIdentity(assetInfo);
+            var declaredFilename = identity.Filename;
             if (!AssetSourcePathContract.TryResolve(
                     assetInfo.FullName,
                     declaredFilename,
@@ -910,40 +1307,8 @@ namespace SailorEditor.Services
             FileInfo assetFile = new(sourceResolution.SourcePath);
 
             var extension = sourceResolution.AssetExtension;
-            var assetInfoType = TryReadScalar(assetInfo, "assetInfoType");
-
-            var engineTypes = MauiProgram.GetService<EngineService>()?.EngineTypes;
-            AssetType assetType = null;
-            if (!string.IsNullOrEmpty(assetInfoType))
-            {
-                engineTypes?.AssetTypes?.TryGetValue(assetInfoType, out assetType);
-            }
-
-            if (assetType == null)
-            {
-                engineTypes?.AssetTypesByExtension?.TryGetValue(extension.TrimStart('.').ToLowerInvariant(), out assetType);
-            }
-
-            if (string.IsNullOrEmpty(assetInfoType) && assetType != null)
-            {
-                assetInfoType = assetType.Name;
-            }
-
-            AssetFile newAssetFile = assetInfoType switch
-            {
-                "Sailor::TextureAssetInfo" => new TextureFile(),
-                "Sailor::ModelAssetInfo" => new ModelFile(),
-                "Sailor::AnimationAssetInfo" => new AnimationFile(),
-                "Sailor::PrefabAssetInfo" => new PrefabFile(),
-                "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
-                "Sailor::ShaderAssetInfo" when string.Equals(extension, ".glsl", StringComparison.OrdinalIgnoreCase) => new ShaderLibraryFile(),
-                "Sailor::ShaderAssetInfo" => new ShaderFile(),
-                "Sailor::MaterialAssetInfo" => new MaterialFile(),
-                "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
-                _ => CreateAssetFileByExtension(extension)
-            };
-
-            newAssetFile.AssetInfoTypeName = assetInfoType;
+            var assetInfoType = identity.AssetInfoType;
+            AssetFile newAssetFile = CreateAssetFile(assetInfoType, extension);
 
             newAssetFile.Id = _nextAssetId++;
             newAssetFile.DisplayName = assetFile.Name;
@@ -952,13 +1317,90 @@ namespace SailorEditor.Services
             newAssetFile.AssetInfo = assetInfo;
             newAssetFile.Asset = assetFile;
             newAssetFile.OwnsSourceFile = sourceResolution.OwnsSourceFile;
-            newAssetFile.AssetType = assetType;
+            newAssetFile.FileId = new FileId(identity.FileId);
+            newAssetFile.Filename = new FileId(identity.Filename);
             newAssetFile.IsDirty = false;
             newAssetFile.IsReadOnly = isReadOnly;
-
-            _ = newAssetFile.Revert();
+            newAssetFile.IsMetadataLoaded = false;
 
             return newAssetFile;
+        }
+
+        private static AssetFile CreateAssetFile(
+            string assetInfoType,
+            string extension)
+        {
+            var engineTypes = MauiProgram.GetService<EngineService>()?.EngineTypes;
+            AssetType assetType = null;
+            if (!string.IsNullOrEmpty(assetInfoType))
+            {
+                engineTypes?.AssetTypes?.TryGetValue(assetInfoType, out assetType);
+            }
+            if (assetType == null)
+            {
+                engineTypes?.AssetTypesByExtension?.TryGetValue(
+                    extension.TrimStart('.').ToLowerInvariant(),
+                    out assetType);
+            }
+            if (string.IsNullOrEmpty(assetInfoType) && assetType != null)
+            {
+                assetInfoType = assetType.Name;
+            }
+
+            AssetFile assetFile = assetInfoType switch
+            {
+                "Sailor::TextureAssetInfo" => new TextureFile(),
+                "Sailor::ModelAssetInfo" => new ModelFile(),
+                "Sailor::AnimationAssetInfo" => new AnimationFile(),
+                "Sailor::PrefabAssetInfo" => new PrefabFile(),
+                "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
+                "Sailor::ShaderAssetInfo" when string.Equals(
+                    extension,
+                    ".glsl",
+                    StringComparison.OrdinalIgnoreCase) => new ShaderLibraryFile(),
+                "Sailor::ShaderAssetInfo" => new ShaderFile(),
+                "Sailor::MaterialAssetInfo" => new MaterialFile(),
+                "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
+                _ => CreateAssetFileByExtension(extension)
+            };
+            assetFile.AssetInfoTypeName = assetInfoType;
+            assetFile.AssetType = assetType;
+            return assetFile;
+        }
+
+        private sealed record AssetMetadataIdentity(
+            string FileId,
+            string Filename,
+            string AssetInfoType);
+
+        private static AssetMetadataIdentity ReadAssetMetadataIdentity(FileInfo assetInfo)
+        {
+            using var reader = new StreamReader(assetInfo.FullName);
+            var yaml = new YamlStream();
+            yaml.Load(reader);
+            if (yaml.Documents.Count == 0 ||
+                yaml.Documents[0].RootNode is not YamlMappingNode root)
+            {
+                throw new InvalidDataException($"Asset metadata root must be a map: {assetInfo.FullName}");
+            }
+
+            static string ReadScalar(YamlMappingNode root, string name)
+                => root.Children.TryGetValue(new YamlScalarNode(name), out var node) &&
+                    node is YamlScalarNode scalar
+                    ? scalar.Value ?? string.Empty
+                    : string.Empty;
+
+            var fileId = ReadScalar(root, "fileId");
+            var filename = ReadScalar(root, "filename");
+            if (string.IsNullOrWhiteSpace(fileId) || string.IsNullOrWhiteSpace(filename))
+            {
+                throw new InvalidDataException($"Asset metadata requires fileId and filename: {assetInfo.FullName}");
+            }
+
+            return new AssetMetadataIdentity(
+                fileId,
+                filename,
+                ReadScalar(root, "assetInfoType"));
         }
 
         private static AssetFile CreateAssetFileByExtension(string extension) => extension switch

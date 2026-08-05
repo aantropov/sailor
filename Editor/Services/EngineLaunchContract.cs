@@ -26,6 +26,7 @@ public sealed record EngineLaunchContext(
     public string TempWorldFilePath => Path.Combine(CacheDirectory, "Temp.world");
     public string TempWorldRuntimePath => Path.GetRelativePath(ContentDirectory, TempWorldFilePath);
     public string EditorTypesCacheFilePath => Path.Combine(CacheDirectory, "EditorTypes.yaml");
+    public string AssetCacheFilePath => Path.Combine(CacheDirectory, "AssetCache.yaml");
 
     public IReadOnlyList<string> BuildArguments(string? world, IEnumerable<string>? extraArguments = null)
     {

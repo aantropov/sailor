@@ -50,7 +50,20 @@ namespace Sailor
 
 	protected:
 
+		enum class EKind : uint8_t
+		{
+			Invalid,
+			GameObject,
+			Component
+		};
+
+		void Assign(std::string_view value);
+
 		StringHash m_instanceId = "NullInstanceId"_h;
+		StringHash m_gameObjectId{};
+		StringHash m_componentId{};
+		EKind m_kind = EKind::Invalid;
+		bool m_bStandaloneComponentIsGameObjectId = false;
 	};
 }
 
@@ -65,8 +78,7 @@ namespace std
 	{
 		SAILOR_API std::size_t operator()(const Sailor::InstanceId& p) const
 		{
-			std::hash<std::string> h;
-			return h(p.ToString());
+			return p.GetHash();
 		}
 	};
 }

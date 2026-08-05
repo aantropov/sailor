@@ -389,6 +389,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 
 	s_pInstance = new App();
 	s_pInstance->m_args = params;
+	g_bUseLazyAssetInfoLoading = params.m_bIsEditor;
 
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Initialize(false);

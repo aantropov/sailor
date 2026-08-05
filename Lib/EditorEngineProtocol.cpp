@@ -761,6 +761,38 @@ namespace
 		}
 	}
 
+	void DispatchCreateModelInstance(
+		const sailor::editor::v1::CreateModelInstanceRequest& request,
+		ProtocolResponse& response)
+	{
+		if (request.model_file_id().empty() ||
+			request.name().empty() ||
+			(request.apply_world_position() &&
+				(!request.has_world_position() ||
+					!std::isfinite(request.world_position().x()) ||
+					!std::isfinite(request.world_position().y()) ||
+					!std::isfinite(request.world_position().z()))))
+		{
+			SetError(response, "The model instance request is invalid.");
+			return;
+		}
+
+		TInteropString instanceId;
+		const auto& worldPosition = request.world_position();
+		const bool bSucceeded = Sailor::App::CreateEditorModelInstance(
+			request.model_file_id().c_str(),
+			request.name().c_str(),
+			request.parent_instance_id().c_str(),
+			request.create_hierarchy(),
+			request.apply_world_position(),
+			worldPosition.x(),
+			worldPosition.y(),
+			worldPosition.z(),
+			request.preferred_instance_id().c_str(),
+			instanceId.GetOutput());
+		SetInstanceIdResult(response, bSucceeded, instanceId.GetValue());
+	}
+
 	void DispatchAddComponent(
 		const sailor::editor::v1::AddComponentRequest& request,
 		ProtocolResponse& response)
@@ -914,6 +946,12 @@ namespace
 			SetBoolResult(
 				response,
 				Sailor::App::UpdateAsset(request.update_asset().file_id().c_str()));
+			break;
+
+		case ProtocolRequest::kCreateModelInstance:
+			DispatchCreateModelInstance(
+				request.create_model_instance(),
+				response);
 			break;
 
 		case ProtocolRequest::kGetAssetReloadState:

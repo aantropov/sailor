@@ -19,6 +19,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -42,6 +43,22 @@ namespace
 		using AssetCache::TryDeserializeAssetCachePayload;
 		using AssetCache::Update;
 		using AssetCache::RestoreAssetImportTime;
+
+		bool Update(
+			const FileId& id,
+			std::time_t assetImportTime,
+			const std::string& sourcePath,
+			const FileRevision& sourceRevision)
+		{
+			return AssetCache::Update(
+				id,
+				assetImportTime,
+				sourcePath,
+				sourceRevision,
+				std::filesystem::path(sourcePath).filename().string() + ".asset",
+				sourceRevision,
+				"Sailor::AssetInfo");
+		}
 	};
 
 	class TempDirectory final
@@ -69,6 +86,24 @@ namespace
 
 	private:
 		std::filesystem::path m_path;
+	};
+
+	class LazyAssetInfoLoadingScope final
+	{
+	public:
+		explicit LazyAssetInfoLoadingScope(bool bEnabled) :
+			m_bPrevious(g_bUseLazyAssetInfoLoading)
+		{
+			g_bUseLazyAssetInfoLoading = bEnabled;
+		}
+
+		~LazyAssetInfoLoadingScope()
+		{
+			g_bUseLazyAssetInfoLoading = m_bPrevious;
+		}
+
+	private:
+		bool m_bPrevious = false;
 	};
 
 	class TestAssetInfo final : public AssetInfo
@@ -422,6 +457,10 @@ namespace
 		entry.m_assetImportTime = assetImportTime;
 		entry.m_sourcePath = sourcePath;
 		entry.m_sourceRevision = MakeRevision();
+		entry.m_metadataFilename =
+			std::filesystem::path(sourcePath).filename().string() + ".asset";
+		entry.m_metadataRevision = MakeRevision();
+		entry.m_assetInfoType = "Sailor::AssetInfo";
 		result.m_data.Insert(fileId, std::move(entry));
 		return result;
 	}
@@ -540,6 +579,143 @@ namespace
 			"the targeted update handler should register for raw assets");
 	}
 
+	void TestLazyScanDefersUnchangedMetadataMaterialization()
+	{
+		LazyAssetInfoLoadingScope lazyLoading(true);
+		TempDirectory directory("lazy-materialization");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteScanAssetFixture(workspaceContext);
+		{
+			AssetRegistry registry(workspaceContext);
+			TestAssetInfoHandler handler;
+			RegisterRawHandler(registry, handler);
+			Require(registry.ScanContentFolder(),
+				"the empty v1 cache should be built by the existing eager scan");
+		}
+
+		const std::filesystem::path cachePath =
+			workspaceContext.GetCache() / "AssetCache.yaml";
+		std::ifstream cacheFile(cachePath, std::ios::binary);
+		const std::string cacheContents{
+			std::istreambuf_iterator<char>(cacheFile),
+			std::istreambuf_iterator<char>()};
+		Require(cacheContents.find("producerIdentity: asset-cache-v1") != std::string::npos &&
+			cacheContents.find("payloadVersion: 1") != std::string::npos &&
+			cacheContents.find("asset-cache-v2") == std::string::npos,
+			"the rebuilt cache must use only the strict asset-cache-v1 identity");
+
+		uint32_t numMetadataLoads = 0;
+		AssetRegistry registry(workspaceContext);
+		TestAssetInfoHandler handler;
+		handler.m_onLoad = [&]() { ++numMetadataLoads; };
+		RegisterRawHandler(registry, handler);
+		Require(registry.ScanContentFolder(),
+			"the current v1 cache should initialize the lazy registry index");
+		Require(numMetadataLoads == 0,
+			"an unchanged lazy scan must not read asset metadata");
+
+		AssetInfoPtr materialized = registry.GetAssetInfoPtr(
+			(workspaceContext.GetContent() / "Retry.raw").string());
+		Require(materialized != nullptr && numMetadataLoads == 1,
+			"the first concrete lookup should materialize exactly one AssetInfo proxy");
+		Require(registry.GetAssetInfoPtr(materialized->GetFileId()) == materialized &&
+			numMetadataLoads == 1,
+			"subsequent lookups should reuse the materialized AssetInfo");
+	}
+
+	void TestV2EnvelopeIsResetInsteadOfMigrated()
+	{
+		TempDirectory directory("reject-v2");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		const FileId oldFileId = MakeFileId("{ASSET-CACHE-OLD-V2}");
+		const auto oldPayload = TestAssetCache::SerializeAssetCachePayload(
+			MakeCache(
+				oldFileId.ToString(),
+				(workspaceContext.GetContent() / "Old.mat").string(),
+				10));
+		const Workspace::WorkspaceCacheIdentity oldIdentity =
+			Workspace::MakeWorkspaceCacheIdentity(
+				"asset-cache",
+				"asset-cache-v2",
+				2,
+				workspaceContext);
+		std::string oldEnvelope;
+		std::string diagnostic;
+		Require(Workspace::SerializeWorkspaceCacheEnvelope(
+			oldIdentity,
+			oldPayload,
+			oldEnvelope,
+			diagnostic),
+			"the old-version rejection fixture should serialize: " + diagnostic);
+		WriteFile(
+			workspaceContext.GetCache() / "AssetCache.yaml",
+			oldEnvelope);
+
+		AssetCache cache;
+		cache.Initialize(workspaceContext);
+		Require(
+			cache.GetLastLoadResult().m_status ==
+				Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion,
+			"an asset-cache-v2 envelope must be rejected instead of migrated");
+		Require(!cache.Contains(oldFileId),
+			"resetting the unsupported envelope must not publish old cache entries");
+
+		std::ifstream cacheFile(
+			workspaceContext.GetCache() / "AssetCache.yaml",
+			std::ios::binary);
+		const std::string rebuiltEnvelope{
+			std::istreambuf_iterator<char>(cacheFile),
+			std::istreambuf_iterator<char>()};
+		Require(rebuiltEnvelope.find("producerIdentity: asset-cache-v1") != std::string::npos &&
+			rebuiltEnvelope.find("payloadVersion: 1") != std::string::npos &&
+			rebuiltEnvelope.find("asset-cache-v2") == std::string::npos,
+			"the unsupported cache must be replaced directly with an empty strict v1 envelope");
+	}
+
+	void TestLazyScanLoadsOnlyNewSecondaryMetadata()
+	{
+		LazyAssetInfoLoadingScope lazyLoading(true);
+		TempDirectory directory("lazy-new-secondary");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw",
+			"source");
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw.asset",
+			"fileId: '{LAZY-PRIMARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: 1\n");
+		{
+			AssetRegistry registry(workspaceContext);
+			TargetedUpdateAssetInfoHandler handler;
+			RegisterTargetedUpdateHandler(registry, handler);
+			Require(registry.ScanContentFolder(),
+				"the initial primary asset should build the strict v1 index");
+		}
+
+		WriteFile(
+			workspaceContext.GetContent() / "Shared.raw2.asset",
+			"fileId: '{LAZY-SECONDARY}'\n"
+			"filename: Shared.raw\n"
+			"testValue: 2\n");
+		AssetRegistry registry(workspaceContext);
+		TargetedUpdateAssetInfoHandler handler;
+		RecordingTargetedUpdateListener listener;
+		handler.Subscribe(&listener);
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder(),
+			"the lazy scan should register new secondary metadata");
+		Require(listener.m_updatedFileIds.size() == 1 &&
+			listener.m_updatedFileIds[0] == MakeFileId("{LAZY-SECONDARY}"),
+			"the lazy scan should read only the newly discovered secondary AssetInfo");
+		Require(registry.GetAssetInfoPtr(
+				MakeFileId("{LAZY-SECONDARY}")) != nullptr,
+			"the new secondary AssetInfo should be immediately resolvable");
+	}
+
 	void TestPayloadRoundTrip()
 	{
 		const FileId fileId = MakeFileId("{ASSET-CACHE-ROUNDTRIP}");
@@ -549,14 +725,15 @@ namespace
 			40);
 		const std::string payload = TestAssetCache::SerializeAssetCachePayload(source);
 		const YAML::Node serializedEntry = YAML::Load(payload)["assetCache"]["assets"][fileId.ToString()];
-		Require(serializedEntry.IsMap() && serializedEntry.size() == 4,
-			"persisted asset cache entries must contain exactly four fields");
+		Require(serializedEntry.IsMap() && serializedEntry.size() == 7,
+			"persisted asset cache v1 entries must contain the watermark and lazy index fields");
 		const YAML::Node serializedRevision = serializedEntry["sourceRevision"];
 		Require(serializedRevision.IsMap() && serializedRevision.size() == 3,
 			"persisted source revisions must contain mtime, size, and content hash");
 		Require(payload.find("metadataLoadTime") == std::string::npos &&
-			payload.find("metadataPath") == std::string::npos,
-			"runtime metadata state must never be serialized into the asset cache");
+			payload.find("metadataPath") == std::string::npos &&
+			serializedEntry["metadataFilename"].as<std::string>() == "Test.mat.asset",
+			"the cache must persist only the colocated metadata filename, never runtime metadata state or a metadata path");
 
 		TestAssetCache::CacheData loaded;
 		std::string diagnostic;
@@ -591,24 +768,24 @@ namespace
 		Require(loaded.m_data.Num() == 0, "empty asset payload should remain empty");
 	}
 
-	void TestLegacyTimestampOnlyPayloadIsRejected()
+	void TestPreV1PayloadIsRejected()
 	{
-		const std::string legacyPayload =
+		const std::string preV1Payload =
 			"assetCache:\n"
 			"  assets:\n"
-			"    '{ASSET-CACHE-V1}':\n"
-			"      fileId: '{ASSET-CACHE-V1}'\n"
+			"    '{ASSET-CACHE-PRE-V1}':\n"
+			"      fileId: '{ASSET-CACHE-PRE-V1}'\n"
 			"      assetImportTime: 7\n"
 			"      sourcePath: '/workspace/Content/Test.mat'\n";
 		TestAssetCache::CacheData destination;
 		std::string diagnostic;
 		Require(!TestAssetCache::TryDeserializeAssetCachePayload(
-			legacyPayload,
+			preV1Payload,
 			destination,
 			diagnostic),
-			"a v1 timestamp-only entry must not be accepted as a v2 exact source revision");
-		Require(diagnostic.find("sourceRevision") != std::string::npos,
-			"the legacy payload diagnostic should name the missing source revision");
+			"a pre-v1 entry must not be accepted by the strict v1 cache schema");
+		Require(!diagnostic.empty(),
+			"the rejected pre-v1 payload should return an actionable diagnostic");
 	}
 
 	void TestCorruptPayloadDoesNotPartiallyPublish()
@@ -629,7 +806,13 @@ namespace
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
 			"        fileSize: 2\n"
-			"        contentHash: 3\n";
+			"        contentHash: 3\n"
+			"      metadataFilename: Test.mat.asset\n"
+			"      metadataRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n"
+			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		std::string diagnostic;
 		Require(
 			!TestAssetCache::TryDeserializeAssetCachePayload(corruptPayload, destination, diagnostic),
@@ -651,7 +834,13 @@ namespace
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
 			"        fileSize: 2\n"
-			"        contentHash: 3\n";
+			"        contentHash: 3\n"
+			"      metadataFilename: Test.mat.asset\n"
+			"      metadataRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n"
+			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 
 		TestAssetCache::CacheData destination;
 		std::string diagnostic;
@@ -679,7 +868,13 @@ namespace
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
 			"        fileSize: 2\n"
-			"        contentHash: 3\n";
+			"        contentHash: 3\n"
+			"      metadataFilename: Test.mat.asset\n"
+			"      metadataRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n"
+			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const YAML::Node node = YAML::Load(corruptPayload)["assetCache"];
 
 		try
@@ -1094,19 +1289,21 @@ namespace
 		Require(info.IsMetaExpired(),
 			"a newer metadata file must remain detectable through runtime AssetInfo state");
 		Require(!cache.Update(&info),
-			"metadata load time changes must not dirty the persisted asset cache");
+			"an unloaded metadata change must not advance the persisted lazy index");
 		info.SetProcessingTimes(
 			importedSourceTime,
 			info.GetMetaLastModificationTime());
 		Require(!info.IsMetaExpired(),
 			"advancing runtime metadata load time should acknowledge the loaded metadata");
+		Require(cache.Update(&info),
+			"the loaded metadata revision should advance the persisted v1 lazy index");
 
 		std::filesystem::remove(metadataPath);
 		Require(info.IsMetaExpired(), "a missing metadata file should expire runtime AssetInfo state");
 		Require(!cache.IsExpired(&info),
 			"missing metadata must not be represented as a persisted cache timestamp or path");
 		Require(!cache.Update(&info),
-			"missing metadata must not dirty or remove persisted source import state");
+			"missing metadata must not advance or remove the last loaded v1 index state");
 		Require(!cache.IsExpired(&info),
 			"runtime metadata validity must remain independent from persisted source import state");
 	}
@@ -1799,7 +1996,13 @@ namespace
 			"      sourceRevision:\n"
 			"        modificationTimeNanoseconds: 1\n"
 			"        fileSize: 2\n"
-			"        contentHash: 3\n";
+			"        contentHash: 3\n"
+			"      metadataFilename: Test.mat.asset\n"
+			"      metadataRevision:\n"
+			"        modificationTimeNanoseconds: 1\n"
+			"        fileSize: 2\n"
+			"        contentHash: 3\n"
+			"      assetInfoType: Sailor::MaterialAssetInfo\n";
 		const std::string invalidPayloads[] =
 		{
 			prefix + "      metadataLoadTime: 2\n",
@@ -1890,7 +2093,10 @@ int main()
 	{
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
-		TestLegacyTimestampOnlyPayloadIsRejected();
+		TestPreV1PayloadIsRejected();
+		TestV2EnvelopeIsResetInsteadOfMigrated();
+		TestLazyScanDefersUnchangedMetadataMaterialization();
+		TestLazyScanLoadsOnlyNewSecondaryMetadata();
 		TestCorruptPayloadDoesNotPartiallyPublish();
 		TestMismatchedEntryIdentityIsCorrupt();
 		TestDirectDeserializeDoesNotThrowOnCorruptData();

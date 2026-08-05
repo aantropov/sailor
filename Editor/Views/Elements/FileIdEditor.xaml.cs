@@ -75,7 +75,12 @@ public class FileIdEditorViewModel : ObservableObject
         if (fileOpen != null)
         {
             var assetService = MauiProgram.GetService<AssetsService>();
-            var asset = assetService.Files.Find(el => el.Asset.FullName == fileOpen.FullPath);
+            var asset = assetService.Assets.Values.FirstOrDefault(el =>
+                el.Asset is not null &&
+                string.Equals(
+                    el.Asset.FullName,
+                    fileOpen.FullPath,
+                    StringComparison.Ordinal));
             FileId = asset?.FileId ?? default;
             System.Diagnostics.Debug.WriteLine($"FileIdEditorViewModel: File selected {FileId}");
         }

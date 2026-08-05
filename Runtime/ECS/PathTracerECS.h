@@ -55,6 +55,7 @@ namespace Sailor
 			m_worldMatrix = glm::mat4(1.0f);
 			m_inverseWorldMatrix = glm::mat4(1.0f);
 			m_modelFileId = FileId();
+			m_meshIndex = -1;
 			m_bNeedsRebuild = true;
 			m_frameLastChange = 0;
 			m_bIsDirty = false;
@@ -70,6 +71,7 @@ namespace Sailor
 		glm::mat4 m_worldMatrix{ 1.0f };
 		glm::mat4 m_inverseWorldMatrix{ 1.0f };
 		FileId m_modelFileId{};
+		int32_t m_meshIndex = -1;
 		bool m_bNeedsRebuild = true;
 
 		friend class PathTracerECS;

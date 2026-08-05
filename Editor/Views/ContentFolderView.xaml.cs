@@ -470,7 +470,7 @@ namespace SailorEditor.Views
             }
         }
 
-        void ToggleFolder(ContentListRow row)
+        async Task ToggleFolder(ContentListRow row)
         {
             if (row.Id == RootRowId)
             {
@@ -490,6 +490,7 @@ namespace SailorEditor.Views
             }
             else
             {
+                await service.EnsureFolderLoadedAsync(folderId);
                 expandedFolderIds.Add(folderId);
             }
 
@@ -590,7 +591,8 @@ namespace SailorEditor.Views
                         depth,
                         folder.Name,
                         folder.IsReadOnly ? "lock_24.png" : isExpanded ? "folder_open_24.png" : "folder_24.png",
-                        HasChildren(foldersByParent, assetsByFolder, folder.Id),
+                        HasChildren(foldersByParent, assetsByFolder, folder.Id) ||
+                            (!folder.IsLoaded && folder.HasChildren),
                         isExpanded,
                         projection.State.SelectedAssetPath is null
                             && projection.State.SelectedAssetFileId is null
@@ -641,7 +643,9 @@ namespace SailorEditor.Views
                 {
                     if (expandLabel.BindingContext is ContentListRow { HasChildren: true } row)
                     {
-                        ToggleFolder(row);
+                        RunContentUiAction(
+                            () => ToggleFolder(row),
+                            "Expand Content folder");
                     }
                 };
                 expandLabel.GestureRecognizers.Add(expandTap);
@@ -767,7 +771,7 @@ namespace SailorEditor.Views
                                     await OpenWorldWithConfirmation(worldFile);
                                     break;
                                 case AssetFolder or ProjectContentFolderItem:
-                                    ToggleFolder(row);
+                                    await ToggleFolder(row);
                                     break;
                             }
                         },

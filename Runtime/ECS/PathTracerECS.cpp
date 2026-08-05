@@ -42,8 +42,11 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 
 		auto pMeshRenderer = pOwnerGameObject->GetComponent<MeshRendererComponent>();
 		ModelPtr pModel = pMeshRenderer ? pMeshRenderer->GetModel() : ModelPtr();
+		const int32_t meshIndex = pMeshRenderer ?
+			pMeshRenderer->GetMeshIndex() : Model::AllMeshes;
 		const FileId modelFileId = pModel ? pModel->GetFileId() : FileId();
-		if (modelFileId != data.m_modelFileId)
+		if (modelFileId != data.m_modelFileId ||
+			meshIndex != data.m_meshIndex)
 		{
 			data.m_bNeedsRebuild = true;
 		}
@@ -63,16 +66,18 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 			data.m_inverseWorldMatrix = glm::inverse(data.m_worldMatrix);
 		}
 
-		if (bNeedsUpdate && pModel && !pModel->HasBLAS() && pModel->HasCpuMeshes())
+		if (bNeedsUpdate && pModel &&
+			!pModel->HasBLAS(meshIndex) && pModel->HasCpuMeshes())
 		{
 			pModel->BuildBLAS();
 		}
 
-		if (!pModel || !pModel->IsReady() || !pModel->HasBLAS())
+		if (!pModel || !pModel->IsReady() || !pModel->HasBLAS(meshIndex))
 		{
 			// Model loading is async; keep rebuild pending until BLAS is available.
 			data.m_bNeedsRebuild = true;
 			data.m_modelFileId = modelFileId;
+			data.m_meshIndex = meshIndex;
 			if (m_proxyOctree.Contains(componentHandle))
 			{
 				m_proxyOctree.Remove(componentHandle);
@@ -80,7 +85,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 			continue;
 		}
 
-		data.m_worldBounds = pModel->GetBoundsAABB();
+		data.m_worldBounds = pModel->GetBoundsAABB(meshIndex);
 		data.m_worldBounds.Apply(data.m_worldMatrix);
 
 		if (data.m_worldBounds.IsValid())
@@ -106,6 +111,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 
 		Raytracing::PathTracer::TLASInstance instance{};
 		instance.m_model = pModel;
+		instance.m_meshIndex = meshIndex;
 		instance.m_worldBounds = data.m_worldBounds;
 		instance.m_worldMatrix = data.m_worldMatrix;
 		instance.m_inverseWorldMatrix = data.m_inverseWorldMatrix;
@@ -129,6 +135,7 @@ Tasks::ITaskPtr PathTracerECS::Tick(float deltaTime)
 			data.m_bNeedsRebuild = false;
 			data.m_bIsDirty = false;
 			data.m_modelFileId = modelFileId;
+			data.m_meshIndex = meshIndex;
 			data.m_frameLastChange = ownerTransform.GetFrameLastChange();
 		}
 	}

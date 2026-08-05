@@ -146,8 +146,12 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						continue;
 					}
 
+					const glm::mat4& meshWorldMatrix =
+						proxy.m_meshModelMatrices.Num() > i ?
+							proxy.m_meshModelMatrices[i] :
+							proxy.m_worldMatrix;
 					ShadowPrepassNode::PerInstanceData data;
-					data.model = proxy.m_worldMatrix;
+					data.model = meshWorldMatrix;
 
 					RHIBatch batch(depthMaterial, mesh);
 

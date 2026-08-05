@@ -327,8 +327,12 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 							shaderBinding = material->GetBindings()->GetShaderBindings()["material"];
 						}
 
+						const glm::mat4& meshWorldMatrix =
+							proxy.m_meshModelMatrices.Num() > i ?
+								proxy.m_meshModelMatrices[i] :
+								proxy.m_worldMatrix;
 						RenderSceneNode::PerInstanceData data;
-						data.model = proxy.m_worldMatrix;
+						data.model = meshWorldMatrix;
 						data.skeletonOffset = proxy.m_skeletonOffset;
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 						data.bIsCulled = 0;
@@ -359,7 +363,7 @@ Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(RHI::RHIFrameGraphPtr frameG
 
 						if (bBackToFront)
 						{
-							const glm::vec4 worldCenter = proxy.m_worldMatrix *
+							const glm::vec4 worldCenter = meshWorldMatrix *
 								glm::vec4(mesh->m_bounds.GetCenter(), 1.0f);
 							const glm::vec4 viewCenter = sceneViewSnapshot.m_camera->GetViewMatrix() *
 								worldCenter;

@@ -20,6 +20,7 @@
 #include "RHI/Material.h"
 #include "RHI/VertexDescription.h"
 #include "Math/Bounds.h"
+#include "Math/Transform.h"
 #include "Raytracing/BVH.h"
 #include <glm/mat4x4.hpp>
 #include "Core/YamlSerializable.h"
@@ -34,17 +35,62 @@ namespace tinygltf
 
 namespace Sailor
 {
+	namespace GltfImporterUtils
+	{
+		struct SceneNode;
+	}
+
 	using ModelPtr = TObjectPtr<class Model>;
 
 	class Model : public Object, public IYamlSerializable
 	{
 	public:
+		static constexpr int32_t AllMeshes = -1;
+
 		struct MeshCpuData
 		{
 			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> m_vertices;
 			TVector<uint32_t> m_indices;
 			Math::AABB m_bounds{};
 			int32_t m_materialIndex = -1;
+		};
+
+		struct Node
+		{
+			std::string m_name;
+			int32_t m_sourceNodeIndex = -1;
+			int32_t m_parentIndex = -1;
+			int32_t m_meshIndex = -1;
+			int32_t m_skinIndex = -1;
+			Math::Transform m_localTransform{};
+			glm::mat4 m_localMatrix{ 1.0f };
+			glm::mat4 m_worldMatrix{ 1.0f };
+			bool m_bTransformDecomposable = true;
+		};
+
+		struct SourceMesh
+		{
+			std::string m_name;
+			TVector<uint32_t> m_renderMeshIndices;
+			Math::AABB m_bounds{};
+		};
+
+		struct RenderInstance
+		{
+			uint32_t m_renderMeshIndex = 0;
+			int32_t m_nodeIndex = -1;
+			glm::mat4 m_modelMatrix{ 1.0f };
+		};
+
+		struct BLASData
+		{
+			TSharedPtr<Raytracing::BVH> m_blas{};
+			TVector<Math::Triangle> m_triangles{};
+
+			bool IsValid() const
+			{
+				return m_blas.IsValid() && !m_triangles.IsEmpty();
+			}
 		};
 
 		SAILOR_API Model(FileId uid, TVector<RHI::RHIMeshPtr> meshes = {}) :
@@ -54,14 +100,28 @@ namespace Sailor
 
 		SAILOR_API const TVector<RHI::RHIMeshPtr>& GetMeshes() const { return m_meshes; }
 		SAILOR_API TVector<RHI::RHIMeshPtr>& GetMeshes() { return m_meshes; }
+		SAILOR_API const TVector<Node>& GetNodes() const { return m_nodes; }
+		SAILOR_API const TVector<SourceMesh>& GetSourceMeshes() const { return m_sourceMeshes; }
+		SAILOR_API const TVector<RenderInstance>& GetRenderInstances() const { return m_renderInstances; }
+		SAILOR_API bool SupportsEditableHierarchy() const { return m_bSupportsEditableHierarchy; }
+		SAILOR_API bool IsSourceMeshIndexValid(int32_t meshIndex) const;
+		SAILOR_API bool CollectRenderData(
+			int32_t meshIndex,
+			TVector<RHI::RHIMeshPtr>& outMeshes,
+			TVector<glm::mat4>& outModelMatrices,
+			Math::AABB& outBounds) const;
 
 		// Should be triggered after mesh/material changes
 		SAILOR_API void Flush();
 
+		// The model hierarchy and RHIMesh objects are available after the importer
+		// task completes, while their GPU uploads may still be in flight.
+		SAILOR_API bool IsStructurallyReady() const;
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API virtual ~Model() = default;
 
 		SAILOR_API const Math::AABB& GetBoundsAABB() const { return m_boundsAabb; }
+		SAILOR_API const Math::AABB& GetBoundsAABB(int32_t meshIndex) const;
 		SAILOR_API const Math::Sphere& GetBoundsSphere() const { return m_boundsSphere; }
 		SAILOR_API const TVector<glm::mat4>& GetInverseBind() const { return m_inverseBind; }
 		SAILOR_API TVector<glm::mat4>& GetInverseBind() { return m_inverseBind; }
@@ -70,8 +130,11 @@ namespace Sailor
 		SAILOR_API bool HasCpuMeshes() const { return m_cpuMeshes.Num() > 0; }
 		SAILOR_API bool BuildBLAS();
 		SAILOR_API bool HasBLAS() const { return m_blas.IsValid() && m_blasTriangles.Num() > 0; }
+		SAILOR_API bool HasBLAS(int32_t meshIndex) const;
 		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS() const { return m_blas; }
+		SAILOR_API const TSharedPtr<Raytracing::BVH>& GetBLAS(int32_t meshIndex) const;
 		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles() const { return m_blasTriangles; }
+		SAILOR_API const TVector<Math::Triangle>& GetBLASTriangles(int32_t meshIndex) const;
 
 		SAILOR_API virtual YAML::Node Serialize() const override;
 		SAILOR_API virtual void Deserialize(const YAML::Node& inData) override;
@@ -79,15 +142,24 @@ namespace Sailor
 	private:
 
 		SAILOR_API void ProceedCpuMeshes(bool bShouldGenerateBLAS, bool bShouldKeepCpuBuffers);
+		bool BuildBLASData(
+			const TVector<RenderInstance>& instances,
+			BLASData& outData) const;
 
 	protected:
 
 		TVector<RHI::RHIMeshPtr> m_meshes;
+		TVector<Node> m_nodes;
+		TVector<SourceMesh> m_sourceMeshes;
+		TVector<RenderInstance> m_renderInstances;
+		bool m_bSupportsEditableHierarchy = true;
 		std::atomic<bool> m_bIsReady{};
+		mutable std::atomic<bool> m_bGpuReady{};
 		TVector<glm::mat4> m_inverseBind;
 		TVector<MeshCpuData> m_cpuMeshes;
 		TSharedPtr<Raytracing::BVH> m_blas{};
 		TVector<Math::Triangle> m_blasTriangles{};
+		TVector<BLASData> m_sourceMeshBlases{};
 
 		Math::AABB m_boundsAabb;
 		Math::Sphere m_boundsSphere;
@@ -108,6 +180,7 @@ namespace Sailor
 			int32_t materialIndex = -1;
 			uint32_t materialSlot = (std::numeric_limits<uint32_t>::max)();
 			glm::vec3 bakedVolumeScale{ 1.0f };
+			int32_t sourceMeshIndex = -1;
 
 			bool HasGeometry() const
 			{
@@ -160,6 +233,9 @@ namespace Sailor
 			Math::Sphere& outBoundsSphere,
 			TVector<glm::mat4>& outInverseBind,
 			tinygltf::Model* outGltfModel = nullptr);
+		static void PopulateModelSceneHierarchy(
+			Model& model,
+			TVector<GltfImporterUtils::SceneNode>& sourceNodes);
 		static bool GenerateFingerprint(
 			const FileId& fileId,
 			const std::string& assetFilepath,

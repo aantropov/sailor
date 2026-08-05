@@ -65,6 +65,16 @@ same source (for example, the assets generated from one glTF file). It does not
 scan Content or wait for unrelated Worker, RHI, or Render work. Commands that
 change Content topology still use `request_asset_reload`.
 
+`create_model_instance` performs one atomic Engine-side model drop. With
+`create_hierarchy = true`, the Engine creates the asset root and the editable
+parent-before-child glTF hierarchy, applies each node's local TRS, and attaches
+one mesh renderer using the source mesh index to every mesh node. With
+`create_hierarchy = false`, or when skinning/non-decomposable node transforms
+make an editable hierarchy unsafe, it creates one GameObject with one mesh
+renderer using `meshIndex = -1` for the complete model. World mutation is
+marshalled from the Editor worker to the Engine main thread; any failure rolls
+back the owned root recursively before the command reports failure.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.History;
+using SailorEditor.Protocol;
 using SailorEditor.Services;
 using SailorEditor.Utility;
 using SailorEditor.ViewModels;
@@ -12,11 +13,35 @@ namespace SailorEditor.Commands;
 
 public static class EditorYaml
 {
-    public static string SerializeGameObject(GameObject gameObject) => SerializationUtils.CreateSerializerBuilder().Build().Serialize(gameObject);
+    [ThreadStatic]
+    static ISerializer gameObjectSerializer;
 
-    public static string SerializeComponent(Component component) => SerializationUtils.CreateSerializerBuilder().WithTypeConverter(new ComponentYamlConverter()).Build().Serialize(component);
+    [ThreadStatic]
+    static ISerializer componentSerializer;
+
+    [ThreadStatic]
+    static ISerializer prefabSerializer;
+
+    public static string SerializeGameObject(GameObject gameObject) =>
+        (gameObjectSerializer ??= SerializationUtils
+            .CreateSerializerBuilder()
+            .Build())
+        .Serialize(gameObject);
+
+    public static string SerializeComponent(Component component) =>
+        (componentSerializer ??= SerializationUtils
+            .CreateSerializerBuilder()
+            .WithTypeConverter(new ComponentYamlConverter())
+            .Build())
+        .Serialize(component);
 
     public static string SerializePrefab(Prefab prefab)
+    {
+        prefabSerializer ??= CreatePrefabSerializer();
+        return prefabSerializer.Serialize(prefab);
+    }
+
+    static ISerializer CreatePrefabSerializer()
     {
         IYamlTypeConverter[] commonConverters =
         [
@@ -31,7 +56,7 @@ public static class EditorYaml
         foreach (var converter in commonConverters)
             serializerBuilder.WithTypeConverter(converter);
 
-        return serializerBuilder.Build().Serialize(prefab);
+        return serializerBuilder.Build();
     }
 }
 
@@ -1046,24 +1071,24 @@ public sealed class CreateModelGameObjectCommand(
     AssetFile modelFile,
     string objectName,
     GameObject? parent = null,
-    Vec4? worldPosition = null) : IUndoableEditorCommand
+    Vec4? worldPosition = null,
+    bool recreateHierarchy = true) : IUndoableEditorCommand
 {
-    const string MeshRendererComponentTypeName =
-        "Sailor::MeshRendererComponent";
-    const string ModelPropertyName = "model";
     const float WorldPositionEpsilon = 0.001f;
 
     readonly FileId _modelFileId = modelFile?.FileId;
     readonly InstanceId? _parentId = parent?.InstanceId;
     readonly Vec4? _worldPosition = worldPosition;
     readonly string _objectName = objectName;
+    readonly bool _recreateHierarchy = recreateHierarchy;
     readonly InstanceId _ownedGameObjectId =
         CreateCanonicalGameObjectInstanceId();
     readonly CreatedHierarchyCommandState _state = new(
         parent?.InstanceId);
+    string? _lastCreationFailureDiagnostic;
 
     public string Name => nameof(CreateModelGameObjectCommand);
-    public string Description => $"Create {_objectName}";
+    public string Description => "Create " + _objectName;
     public IHistoryMergePolicy? MergePolicy => null;
     public bool CanExecute(ActionContext context) =>
         _modelFileId is not null &&
@@ -1074,10 +1099,24 @@ public sealed class CreateModelGameObjectCommand(
         ActionContext context,
         CancellationToken cancellationToken = default)
     {
-        return await _state.ExecuteAsync(
-            CreateWithGenericOperationsAsync,
+        _lastCreationFailureDiagnostic = null;
+        var result = await _state.ExecuteAsync(
+            CreateOnEngineAsync,
             "Create model GameObject failed",
             cancellationToken);
+        if (!result.Succeeded &&
+            !string.IsNullOrWhiteSpace(
+                _lastCreationFailureDiagnostic))
+        {
+            return result with
+            {
+                Message =
+                    "Create model GameObject failed: " +
+                    _lastCreationFailureDiagnostic
+            };
+        }
+
+        return result;
     }
 
     public ValueTask<CommandResult> UndoAsync(
@@ -1085,13 +1124,10 @@ public sealed class CreateModelGameObjectCommand(
         CancellationToken cancellationToken = default)
         => _state.UndoAsync(cancellationToken);
 
-    async Task<InstanceId?> CreateWithGenericOperationsAsync()
+    async Task<InstanceId?> CreateOnEngineAsync()
     {
         var engine = MauiProgram.GetService<EngineService>();
         var world = MauiProgram.GetService<WorldService>();
-        var ownedComponentId =
-            CreateCanonicalComponentInstanceId(
-                _ownedGameObjectId);
         var creationSubmitted = false;
         string? failureDiagnostic = null;
 
@@ -1105,126 +1141,67 @@ public sealed class CreateModelGameObjectCommand(
                         _ownedGameObjectId);
             if (!preflight.Available || !preflight.RootAbsent)
             {
+                _lastCreationFailureDiagnostic =
+                    "preflight could not prove the owned instance id absent" +
+                    FormatDiagnostic(preflight.Diagnostic);
                 Console.Error.WriteLine(
-                    "Create model GameObject preflight could not prove the owned instance id absent" +
-                    FormatDiagnostic(preflight.Diagnostic));
+                    "Create model GameObject failed: " +
+                    _lastCreationFailureDiagnostic);
                 return null;
             }
 
-            var initialParentId = _worldPosition is null
-                ? _parentId
-                : null;
-
             creationSubmitted = true;
-            var createdId = await engine.CreateGameObjectAsync(
-                initialParentId,
-                _ownedGameObjectId,
-                CancellationToken.None);
+            var createdId =
+                await engine.RequestCreateModelInstanceAsync(
+                    _modelFileId,
+                    _objectName,
+                    _parentId,
+                    _recreateHierarchy,
+                    _worldPosition,
+                    _ownedGameObjectId,
+                    CancellationToken.None);
             if (!SameInstanceId(
                     createdId,
-                    _ownedGameObjectId) ||
-                !world.TryGetGameObject(
-                    _ownedGameObjectId,
-                    out _))
+                    _ownedGameObjectId))
             {
                 throw new InvalidOperationException(
-                    "CreateGameObject did not project the owned GameObject");
+                    "CreateModelInstance returned '" +
+                    (createdId?.Value ?? "<null>") +
+                    "', expected owned root '" +
+                    _ownedGameObjectId.Value +
+                    "'");
             }
 
-            var componentId = await engine.AddComponentAsync(
-                _ownedGameObjectId,
-                MeshRendererComponentTypeName,
-                ownedComponentId,
-                CancellationToken.None);
-            if (!SameInstanceId(
-                    componentId,
-                    ownedComponentId) ||
-                !world.TryGetGameObject(
-                    _ownedGameObjectId,
-                    out var createdObject) ||
-                !world.TryGetComponent(
-                    ownedComponentId,
-                    out var meshRenderer))
+            if (!await engine
+                    .RefreshCurrentWorldAuthoritativelyAsync(
+                        CancellationToken.None))
             {
                 throw new InvalidOperationException(
-                    "AddComponent did not project the owned MeshRenderer");
+                    "authoritative refresh failed after model instance creation");
             }
-
-            var updatedObject = CloneGameObject(createdObject);
-            updatedObject.Name = _objectName;
-            if (_worldPosition is not null)
-            {
-                updatedObject.Position = new Vec4(_worldPosition);
-            }
-
-            if (!await engine.CommitChangesAsync(
-                    _ownedGameObjectId,
-                    EditorYaml.SerializeGameObject(updatedObject),
-                    CancellationToken.None))
-            {
-                throw new InvalidOperationException(
-                    "ChangeValue failed for GameObject");
-            }
-
-            var updatedMeshRenderer = CloneComponent(meshRenderer);
-            if (!updatedMeshRenderer.OverrideProperties.ContainsKey(
-                    ModelPropertyName))
-            {
-                throw new InvalidOperationException(
-                    "MeshRenderer has no reflected model property");
-            }
-
-            updatedMeshRenderer.OverrideProperties[ModelPropertyName] =
-                new ObjectPtr
-                {
-                    FileId = new FileId(_modelFileId.Value),
-                    InstanceId = new InstanceId(
-                        InstanceId.NullInstanceId)
-                };
-            if (!await engine.CommitChangesAsync(
-                    ownedComponentId,
-                    EditorYaml.SerializeComponent(
-                        updatedMeshRenderer),
-                    CancellationToken.None))
-            {
-                throw new InvalidOperationException(
-                    "ChangeValue failed for MeshRenderer.model");
-            }
-
-            if (_worldPosition is not null &&
-                _parentId is not null &&
-                !_parentId.IsEmpty() &&
-                !await engine.ReparentObjectAsync(
-                    _ownedGameObjectId,
-                    _parentId,
-                    keepWorldTransform: true,
-                    CancellationToken.None))
-            {
-                throw new InvalidOperationException(
-                    "ReparentObject failed");
-            }
-
-            if (!await engine.RefreshCurrentWorldAuthoritativelyAsync(
-                    CancellationToken.None) ||
-                !MatchesFinalProjection(
+            if (!MatchesRootProjection(
                     world,
-                    ownedComponentId))
+                    out var projectionDiagnostic))
             {
                 throw new InvalidOperationException(
-                    "The authoritative result did not match the requested name, parent, world position, component, and model");
+                    "authoritative model instance mismatch: " +
+                    projectionDiagnostic);
             }
 
+            _lastCreationFailureDiagnostic = null;
             return _ownedGameObjectId;
         }
         catch (Exception exception)
         {
             failureDiagnostic = exception.Message;
+            _lastCreationFailureDiagnostic = failureDiagnostic;
         }
 
         if (!creationSubmitted)
         {
             Console.Error.WriteLine(
-                $"Create model GameObject failed: {failureDiagnostic}");
+                "Create model GameObject failed: " +
+                failureDiagnostic);
             return null;
         }
 
@@ -1232,82 +1209,87 @@ public sealed class CreateModelGameObjectCommand(
             engine,
             world,
             _ownedGameObjectId);
-        if (!cleanup.ConfirmedAbsent ||
-            world.TryGetComponent(ownedComponentId, out _))
+        if (!cleanup.ConfirmedAbsent)
         {
             throw new InvalidOperationException(
-                $"Create model GameObject failed ({failureDiagnostic}); rollback could not confirm owned GameObject/component absent for '{_ownedGameObjectId.Value}'" +
+                "Create model GameObject failed (" +
+                failureDiagnostic +
+                "); rollback could not confirm the owned hierarchy absent for '" +
+                _ownedGameObjectId.Value +
+                "'" +
                 FormatDiagnostic(cleanup.Diagnostic));
         }
 
         Console.Error.WriteLine(
-            $"Create model GameObject failed and was rolled back: {failureDiagnostic}");
+            "Create model GameObject failed and was rolled back: " +
+            failureDiagnostic);
         return null;
     }
 
-    bool MatchesFinalProjection(
+    bool MatchesRootProjection(
         WorldService world,
-        InstanceId componentId)
+        out string? diagnostic)
     {
+        diagnostic = null;
         if (!world.TryGetGameObject(
                 _ownedGameObjectId,
-                out var gameObject) ||
-            !string.Equals(
-                gameObject.Name,
-                _objectName,
-                StringComparison.Ordinal) ||
-            !SameInstanceId(
-                world.ResolveParentInstanceId(gameObject),
-                _parentId) ||
-            !world.TryGetComponent(
-                componentId,
-                out var meshRenderer) ||
-            !string.Equals(
-                meshRenderer.Typename?.Name,
-                MeshRendererComponentTypeName,
-                StringComparison.Ordinal) ||
-            !SameInstanceId(
-                world.FindOwner(meshRenderer)?.InstanceId,
-                _ownedGameObjectId))
+                out var gameObject))
         {
+            diagnostic = "root GameObject is absent";
             return false;
         }
-
-        var projectedComponents =
-            world.GetComponents(gameObject);
-        if (projectedComponents.Count != 1 ||
-            !SameInstanceId(
-                projectedComponents[0].InstanceId,
-                componentId) ||
-            !meshRenderer.OverrideProperties.TryGetValue(
-                ModelPropertyName,
-                out var modelValue) ||
-            modelValue is not ObjectPtr model ||
-            model.FileId is null ||
-            !string.Equals(
-                model.FileId.Value,
-                _modelFileId.Value,
-                StringComparison.Ordinal) ||
-            (model.InstanceId is not null &&
-                !model.InstanceId.IsEmpty()))
+        if (!string.Equals(
+                gameObject.Name,
+                _objectName,
+                StringComparison.Ordinal))
         {
+            diagnostic =
+                "root name is '" +
+                gameObject.Name +
+                "', expected '" +
+                _objectName +
+                "'";
+            return false;
+        }
+        if (!SameInstanceId(
+                world.ResolveParentInstanceId(gameObject),
+                _parentId))
+        {
+            diagnostic = "root parent does not match the drop target";
             return false;
         }
 
         if (_worldPosition is null)
         {
-            return IsNear(
-                ToVector3(gameObject.Position),
-                Vector3.Zero);
+            if (!IsNear(
+                    ToVector3(gameObject.Position),
+                    Vector3.Zero))
+            {
+                diagnostic = "root local position is not zero";
+                return false;
+            }
+
+            return true;
         }
 
-        return TryResolveWorldPosition(
+        if (!TryResolveWorldPosition(
                 world,
                 gameObject,
-                out var projectedWorldPosition) &&
-            IsNear(
+                out var projectedWorldPosition))
+        {
+            diagnostic = "root world position could not be resolved";
+            return false;
+        }
+        if (!IsNear(
                 projectedWorldPosition,
-                ToVector3(_worldPosition));
+                ToVector3(_worldPosition)))
+        {
+            diagnostic =
+                "root world position does not match the drop position";
+            return false;
+        }
+
+        return true;
     }
 
     static bool TryResolveWorldPosition(
@@ -1369,26 +1351,6 @@ public sealed class CreateModelGameObjectCommand(
             : Quaternion.Identity;
     }
 
-    static GameObject CloneGameObject(GameObject gameObject) => new()
-    {
-        Name = gameObject.Name,
-        InstanceId = new InstanceId(gameObject.InstanceId.Value),
-        ParentIndex = gameObject.ParentIndex,
-        Position = new Vec4(gameObject.Position),
-        Rotation = new Rotation(gameObject.Rotation),
-        Scale = new Vec4(gameObject.Scale),
-        ComponentIndices = [.. gameObject.ComponentIndices]
-    };
-
-    static Component CloneComponent(Component component)
-    {
-        var yaml = EditorYaml.SerializeComponent(component);
-        return SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new ComponentYamlConverter())
-            .Build()
-            .Deserialize<Component>(yaml);
-    }
-
     static Vector3 ToVector3(Vec4 value) =>
         value is null
             ? new Vector3(
@@ -1402,14 +1364,12 @@ public sealed class CreateModelGameObjectCommand(
 
     static bool IsNear(
         Vector3 actual,
-        Vector3 expected)
-    {
-        return IsFinite(actual) &&
-            IsFinite(expected) &&
-            NearlyEqual(actual.X, expected.X) &&
-            NearlyEqual(actual.Y, expected.Y) &&
-            NearlyEqual(actual.Z, expected.Z);
-    }
+        Vector3 expected) =>
+        IsFinite(actual) &&
+        IsFinite(expected) &&
+        NearlyEqual(actual.X, expected.X) &&
+        NearlyEqual(actual.Y, expected.Y) &&
+        NearlyEqual(actual.Z, expected.Z);
 
     static bool NearlyEqual(
         float actual,
@@ -1454,16 +1414,11 @@ public sealed class CreateModelGameObjectCommand(
     static string FormatDiagnostic(string? diagnostic) =>
         string.IsNullOrWhiteSpace(diagnostic)
             ? string.Empty
-            : $": {diagnostic}";
+            : ": " + diagnostic;
 
     static InstanceId CreateCanonicalGameObjectInstanceId() =>
         new(Convert.ToHexString(
             RandomNumberGenerator.GetBytes(10)));
-
-    static InstanceId CreateCanonicalComponentInstanceId(
-        InstanceId owner) =>
-        new(
-            $"{Convert.ToHexString(RandomNumberGenerator.GetBytes(8))}_{owner.Value}");
 }
 
 public sealed class InstantiatePrefabAssetCommand(

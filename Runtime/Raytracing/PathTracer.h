@@ -22,6 +22,7 @@ namespace Sailor::Raytracing
 		struct TLASInstance
 		{
 			ModelPtr m_model{};
+			int32_t m_meshIndex = -1;
 			Math::AABB m_worldBounds{};
 			glm::mat4 m_worldMatrix{ 1.0f };
 			glm::mat4 m_inverseWorldMatrix{ 1.0f };

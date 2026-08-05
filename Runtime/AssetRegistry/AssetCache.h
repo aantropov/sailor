@@ -55,13 +55,19 @@ namespace Sailor
 				std::time_t m_assetImportTime{};
 				std::string m_sourcePath;
 				FileRevision m_sourceRevision{};
+				std::string m_metadataFilename;
+				FileRevision m_metadataRevision{};
+				std::string m_assetInfoType;
 
 				SAILOR_API bool operator==(const Entry& rhs) const
 				{
 					return m_fileId == rhs.m_fileId &&
 						m_assetImportTime == rhs.m_assetImportTime &&
 						m_sourcePath == rhs.m_sourcePath &&
-						m_sourceRevision == rhs.m_sourceRevision;
+						m_sourceRevision == rhs.m_sourceRevision &&
+						m_metadataFilename == rhs.m_metadataFilename &&
+						m_metadataRevision == rhs.m_metadataRevision &&
+						m_assetInfoType == rhs.m_assetInfoType;
 				}
 
 				SAILOR_API virtual YAML::Node Serialize() const override;
@@ -89,7 +95,10 @@ namespace Sailor
 			const FileId& id,
 			std::time_t assetImportTime,
 			const std::string& sourcePath,
-			const FileRevision& sourceRevision);
+			const FileRevision& sourceRevision,
+			const std::string& metadataFilename,
+			const FileRevision& metadataRevision,
+			const std::string& assetInfoType);
 		SAILOR_API bool RestoreAssetImportTime(
 			class AssetInfo* info,
 			const FileRevision& sourceRevision) const;

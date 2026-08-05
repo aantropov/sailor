@@ -171,18 +171,18 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
 
 public class ComponentYamlConverter : IYamlTypeConverter
 {
+    readonly IDeserializer bufferedDeserializer = SerializationUtils
+        .CreateDeserializerBuilder()
+        .Build();
+    readonly ISerializer bufferedSerializer = SerializationUtils
+        .CreateSerializerBuilder()
+        .Build();
+
     public bool Accepts(Type type) => type == typeof(Component);
 
     public object ReadYaml(IParser parser, Type type)
     {
-        var deserializer = SerializationUtils.CreateDeserializerBuilder()
-            .WithTypeConverter(new ObservableDictionaryConverter<string, PropertyBase>())
-            .WithTypeConverter(new ComponentTypeYamlConverter())
-            .WithTypeConverter(new ComponentYamlConverter())
-            .Build();
-
-        var serializer = SerializationUtils.CreateSerializerBuilder().Build();
-        var document = deserializer.Deserialize<EditorComponentYamlContract>(parser) ??
+        var document = bufferedDeserializer.Deserialize<EditorComponentYamlContract>(parser) ??
             throw new YamlException("A component YAML document is required.");
         if (string.IsNullOrWhiteSpace(document.Typename))
             throw new YamlException("A component typename must be a non-empty scalar.");
@@ -213,22 +213,22 @@ public class ComponentYamlConverter : IYamlTypeConverter
             var scalar = Convert.ToString(property.Value, CultureInfo.InvariantCulture) ?? string.Empty;
             ObservableObject value = propType switch
             {
-                RotationProperty => DeserializeBuffered<Rotation>(property.Value, serializer, deserializer),
-                Vec4Property => DeserializeBuffered<Vec4>(property.Value, serializer, deserializer),
-                Vec3Property => DeserializeBuffered<Vec3>(property.Value, serializer, deserializer),
-                Vec2Property => DeserializeBuffered<Vec2>(property.Value, serializer, deserializer),
+                RotationProperty => DeserializeBuffered<Rotation>(property.Value, bufferedSerializer, bufferedDeserializer),
+                Vec4Property => DeserializeBuffered<Vec4>(property.Value, bufferedSerializer, bufferedDeserializer),
+                Vec3Property => DeserializeBuffered<Vec3>(property.Value, bufferedSerializer, bufferedDeserializer),
+                Vec2Property => DeserializeBuffered<Vec2>(property.Value, bufferedSerializer, bufferedDeserializer),
                 FileIdProperty => new Observable<FileId>(scalar),
                 Property<List<FileId>> => DeserializeFileIdList(
                     property.Value,
-                    serializer,
-                    deserializer),
+                    bufferedSerializer,
+                    bufferedDeserializer),
                 InstanceIdProperty => new Observable<InstanceId>(scalar),
                 FloatProperty => new Observable<float>((float)EditorComponentScalarCodec.Parse(
                     EditorComponentScalarKind.Float,
                     scalar)),
                 ObjectPtrProperty => property.Value is null
                     ? new ObjectPtr()
-                    : DeserializeBuffered<ObjectPtr>(property.Value, serializer, deserializer),
+                    : DeserializeBuffered<ObjectPtr>(property.Value, bufferedSerializer, bufferedDeserializer),
                 EnumProperty enumProperty => new Observable<string>(ParseEnumOverride(
                     catalog,
                     componentType,
@@ -308,9 +308,6 @@ public class ComponentYamlConverter : IYamlTypeConverter
 
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
-        var serializer = SerializationUtils.CreateSerializerBuilder()            
-            .Build();
-
         var component = (Component)value;
 
         emitter.Emit(new MappingStart(null, null, false, MappingStyle.Block));
@@ -405,7 +402,7 @@ public class ComponentYamlConverter : IYamlTypeConverter
         foreach (var kvp in component.PreservedReadOnlyProperties)
         {
             emitter.Emit(new Scalar(null, kvp.Key));
-            serializer.Serialize(emitter, kvp.Value);
+            bufferedSerializer.Serialize(emitter, kvp.Value);
         }
 
         emitter.Emit(new MappingEnd());

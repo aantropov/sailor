@@ -950,6 +950,14 @@ namespace
 		const std::string selectionTickBody = viewportControllerSource.substr(selectionTickBegin, queueSelectionBegin - selectionTickBegin);
 		Require(selectionTickBody.find("DoesSubmittedGizmoOwnPointer(") != std::string::npos,
 			"scene selection must ignore stale ImGuizmo hover or drag state from a frame without a submitted gizmo");
+		const size_t resolveBoundsBegin = viewportControllerSource.find("bool EditorViewport::ResolveGameObjectBounds(");
+		const size_t viewportTickBegin = viewportControllerSource.find("void EditorViewportController::Tick(World& world)", resolveBoundsBegin);
+		Require(resolveBoundsBegin != std::string::npos && viewportTickBegin > resolveBoundsBegin,
+			"viewport object bounds resolution must be bounded");
+		const std::string resolveBoundsBody = viewportControllerSource.substr(resolveBoundsBegin, viewportTickBegin - resolveBoundsBegin);
+		Require(resolveBoundsBody.find("model->GetBoundsAABB(meshRenderer->GetMeshIndex())") != std::string::npos &&
+			resolveBoundsBody.find("model->GetBoundsAABB();") == std::string::npos,
+			"viewport selection and picking must use the selected glTF source mesh bounds instead of full-model bounds");
 		Require(selectionTickBody.find("ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&") != std::string::npos &&
 			selectionTickBody.find("bUsesMeshBounds)") != std::string::npos,
 			"viewport picking must exclude empty-object selection fallback bounds");
@@ -962,7 +970,6 @@ namespace
 			selectedGizmoBody.find("DrawAABB(selectionBounds, selectionColor)") != std::string::npos &&
 			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor)") != std::string::npos,
 			"selected empty GameObjects must draw a radius-10 center sphere without changing mesh selection bounds");
-		const size_t viewportTickBegin = viewportControllerSource.find("void EditorViewportController::Tick(World& world)");
 		const size_t viewportResetBegin = viewportControllerSource.find("void EditorViewportController::Reset()", viewportTickBegin);
 		Require(viewportTickBegin != std::string::npos && viewportResetBegin > viewportTickBegin &&
 			viewportControllerSource.substr(viewportTickBegin, viewportResetBegin - viewportTickBegin).find("ResetImGuizmoInteractionState();") != std::string::npos,

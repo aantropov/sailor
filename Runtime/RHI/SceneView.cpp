@@ -95,7 +95,23 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 					RHISceneViewProxy viewProxy;
 					viewProxy.m_staticMeshEcs = meshProxy.m_staticMeshEcs;
 					viewProxy.m_worldMatrix = meshProxy.m_worldMatrix;
-					viewProxy.m_meshes = ecsData.GetModel()->GetMeshes();
+					TVector<glm::mat4> modelMatrices;
+					Math::AABB modelBounds;
+					if (!ecsData.GetModel()->CollectRenderData(
+							ecsData.GetMeshIndex(),
+							viewProxy.m_meshes,
+							modelMatrices,
+							modelBounds))
+					{
+						continue;
+					}
+					viewProxy.m_meshModelMatrices.Reserve(
+						modelMatrices.Num());
+					for (const glm::mat4& modelMatrix : modelMatrices)
+					{
+						viewProxy.m_meshModelMatrices.Add(
+							meshProxy.m_worldMatrix * modelMatrix);
+					}
 					viewProxy.m_skeletonOffset = ecsData.GetSkeletonOffset();
 					viewProxy.m_overrideMaterials.Clear();
 					viewProxy.m_renderQueueTags.Clear();
@@ -104,7 +120,7 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 #endif
 					viewProxy.m_frame = ecsData.GetFrameLastChange();
 					viewProxy.m_bCastShadows = ecsData.ShouldCastShadow();
-					viewProxy.m_worldAabb = ecsData.GetModel()->GetBoundsAABB();
+					viewProxy.m_worldAabb = modelBounds;
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
 					viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num());

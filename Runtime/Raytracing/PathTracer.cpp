@@ -1378,7 +1378,9 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 				return;
 			}
 			const auto& instance = m_tlasInstances[idx];
-			if (!instance.m_model || !instance.m_model->HasBLAS() || !instance.m_worldBounds.IsValid())
+			if (!instance.m_model ||
+				!instance.m_model->HasBLAS(instance.m_meshIndex) ||
+				!instance.m_worldBounds.IsValid())
 			{
 				return;
 			}
@@ -1397,7 +1399,11 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 
 			Math::Ray localRay(localOrigin, glm::normalize(localDirRaw));
 			Math::RaycastHit localHit{};
-			if (!instance.m_model->GetBLAS()->IntersectBVH(localRay, localHit, 0, FLT_MAX))
+			if (!instance.m_model->GetBLAS(instance.m_meshIndex)->IntersectBVH(
+					localRay,
+					localHit,
+					0,
+					FLT_MAX))
 			{
 				return;
 			}
@@ -1414,7 +1420,8 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 				return;
 			}
 
-			const auto& localTri = instance.m_model->GetBLASTriangles()[localHit.m_triangleIndex];
+			const auto& localTri = instance.m_model
+				->GetBLASTriangles(instance.m_meshIndex)[localHit.m_triangleIndex];
 			const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
 			const vec3 localNormal = localHit.m_barycentricCoordinate.x * localTri.m_normals[0] +
 				localHit.m_barycentricCoordinate.y * localTri.m_normals[1] +
@@ -1445,7 +1452,8 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 const Math::Triangle& PathTracer::GetTriangle(const TLASHit& hit) const
 {
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
-	return instance.m_model->GetBLASTriangles()[hit.m_triangleIndex];
+	return instance.m_model
+		->GetBLASTriangles(instance.m_meshIndex)[hit.m_triangleIndex];
 }
 
 void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const
@@ -1515,7 +1523,8 @@ uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 	}
 
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
-	const auto& tri = instance.m_model->GetBLASTriangles()[hit.m_triangleIndex];
+	const auto& tri = instance.m_model
+		->GetBLASTriangles(instance.m_meshIndex)[hit.m_triangleIndex];
 	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
 	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
 }

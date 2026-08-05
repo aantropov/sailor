@@ -59,13 +59,14 @@ message ProtocolRequest {
 		ViewportToolStateRequest set_viewport_tool_state = 55;
 		ViewportIdRequest get_viewport_tool_state = 56;
 		FileIdRequest update_asset = 57;
+		CreateModelInstanceRequest create_model_instance = 58;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 58 to 99;
+	reserved 59 to 99;
 }
 
 message ProtocolResponse {
@@ -104,6 +105,16 @@ message CountRequest {
 
 message FileIdRequest {
 	string file_id = 1;
+}
+
+message CreateModelInstanceRequest {
+	string model_file_id = 1;
+	string name = 2;
+	string parent_instance_id = 3;
+	bool create_hierarchy = 4;
+	bool apply_world_position = 5;
+	Vector4 world_position = 6;
+	string preferred_instance_id = 7;
 }
 
 message InstanceIdRequest {

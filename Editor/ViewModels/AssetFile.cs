@@ -24,6 +24,8 @@ public partial class AssetFile : ObservableObject, ICloneable
         "metadataPath"
     };
 
+    readonly SemaphoreSlim metadataLoadLock = new(1, 1);
+
     public AssetFile()
     {
         PropertyChanged += (s, args) =>
@@ -111,6 +113,7 @@ public partial class AssetFile : ObservableObject, ICloneable
                 LoadAssetPropertiesFromAssetInfo();
                 DisplayName = Filename;
                 IsLoaded = false;
+                IsMetadataLoaded = true;
             });
         }
         catch (Exception ex)
@@ -120,6 +123,28 @@ public partial class AssetFile : ObservableObject, ICloneable
 
         ResetDirtyState();
         return Task.CompletedTask;
+    }
+
+    public async Task EnsureMetadataLoadedAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsMetadataLoaded)
+        {
+            return;
+        }
+
+        await metadataLoadLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!IsMetadataLoaded)
+            {
+                await Task.Run(Revert, cancellationToken).ConfigureAwait(false);
+                IsMetadataLoaded = true;
+            }
+        }
+        finally
+        {
+            metadataLoadLock.Release();
+        }
     }
 
     protected void RunWithoutDirtyTracking(Action action)
@@ -568,6 +593,9 @@ public partial class AssetFile : ObservableObject, ICloneable
     public object Clone() => new AssetFile();
 
     public bool IsLoaded { get; set; }
+
+    [YamlIgnore]
+    public bool IsMetadataLoaded { get; set; }
 
     [YamlIgnore]
     public bool IsReadOnly { get; set; }

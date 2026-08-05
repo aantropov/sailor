@@ -25,9 +25,20 @@ namespace Sailor
 		SAILOR_API __forceinline void SetModel(const ModelPtr& model)
 		{
 			m_model = model;
+			m_bInvalidMeshIndexReported = false;
 			if (!m_model)
 			{
 				m_materials.Clear();
+			}
+		}
+		SAILOR_API __forceinline int32_t GetMeshIndex() const { return m_meshIndex; }
+		SAILOR_API __forceinline void SetMeshIndex(int32_t meshIndex)
+		{
+			if (m_meshIndex != meshIndex)
+			{
+				m_meshIndex = meshIndex;
+				m_bInvalidMeshIndexReported = false;
+				MarkDirty();
 			}
 		}
 
@@ -40,6 +51,8 @@ namespace Sailor
 		TVector<MaterialPtr> m_materials;
 		TVector<uint64_t> m_materialContentRevisions;
 		uint32_t m_skeletonOffset = InvalidSkeletonOffset;
+		int32_t m_meshIndex = -1;
+		bool m_bInvalidMeshIndexReported = false;
 
 		friend class StaticMeshRendererECS;
 	};
