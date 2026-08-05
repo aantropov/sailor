@@ -1498,7 +1498,10 @@ RHI::RHIMaterialPtr VulkanGraphicsDriver::CreateMaterial(const RHI::RHIVertexDes
 		0);
 
 	pipeline->m_renderPass = device->GetRenderPass();
-	pipeline->Compile();
+	if (!pipeline->Compile())
+	{
+		return nullptr;
+	}
 
 	res->m_vulkan.m_pipelines.Emplace(std::move(pipeline));
 

@@ -40,6 +40,8 @@ namespace SailorEditor.ViewModels
     public sealed class MaterialFile : AssetFile;
     public sealed class TextureFile : AssetFile;
     public sealed class ModelFile : AssetFile;
+    public sealed class AnimationControllerFile : AssetFile;
+    public sealed class AnimationSetFile : AssetFile;
     public sealed class PrefabFile : AssetFile;
     public sealed class AssetFolder
     {

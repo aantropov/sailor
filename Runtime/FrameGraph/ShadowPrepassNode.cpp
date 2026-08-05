@@ -10,6 +10,8 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "ECS/LightingECS.h"
 
+#include <limits>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
 
@@ -17,9 +19,12 @@ using namespace Sailor::RHI;
 const char* ShadowPrepassNode::m_name = "ShadowPrepass";
 #endif
 
-RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType)
+RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType, bool bSkinned)
 {
-	auto& material = shadowType == EShadowType::EVSM ? m_shadowMaterials_Evsm[vertexDescription->GetVertexAttributeBits()] : m_shadowMaterials_Pcf[vertexDescription->GetVertexAttributeBits()];
+	auto& materials = shadowType == EShadowType::EVSM ?
+		(bSkinned ? m_skinnedShadowMaterials_Evsm : m_shadowMaterials_Evsm) :
+		(bSkinned ? m_skinnedShadowMaterials_Pcf : m_shadowMaterials_Pcf);
+	auto& material = materials[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
 	{
@@ -30,6 +35,10 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 		if (shadowType == EShadowType::EVSM)
 		{
 			defines.Add("EVSM");
+		}
+		if (bSkinned)
+		{
+			defines.Add("SKINNING");
 		}
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines))
@@ -135,7 +144,11 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					}
 
 					const auto& mesh = proxy.m_meshes[i];
-					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType);
+					const bool bSkinned =
+						proxy.m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
+						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
+						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
+					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned);
 
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						depthMaterial->GetVertexShader() &&
@@ -152,6 +165,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 							proxy.m_worldMatrix;
 					ShadowPrepassNode::PerInstanceData data;
 					data.model = meshWorldMatrix;
+					data.skeletonOffset = bSkinned ? proxy.m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
 
 					RHIBatch batch(depthMaterial, mesh);
 
@@ -229,8 +243,14 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 		auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 			{
-				auto material = batch.m_material;
 				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+				const bool bSkinned =
+					batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
+					batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
+				if (bSkinned && sceneView.m_boneMatrices)
+				{
+					sets.Add(sceneView.m_boneMatrices);
+				}
 				return sets;
 			};
 
@@ -430,6 +450,8 @@ void ShadowPrepassNode::Clear()
 	m_perInstanceData.Clear();
 	m_shadowMaterials_Pcf.Clear();
 	m_shadowMaterials_Evsm.Clear();
+	m_skinnedShadowMaterials_Pcf.Clear();
+	m_skinnedShadowMaterials_Evsm.Clear();
 }
 
 glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult)

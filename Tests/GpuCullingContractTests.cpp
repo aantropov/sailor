@@ -789,6 +789,117 @@ namespace
 			"render and depth passes must upload each RHIMesh baked volume scale");
 	}
 
+	void TestDepthPrepassSkinningContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string depthShader = ReadText(
+			sourceRoot / "Content/Shaders/DepthOnly.shader");
+		Require(depthShader.find("- SKINNING") != std::string::npos &&
+			depthShader.find("DefaultBoneIdsBinding") != std::string::npos &&
+			depthShader.find("DefaultBoneWeightsBinding") != std::string::npos &&
+			depthShader.find("layout(std430, set = 2, binding = 0) readonly buffer BoneMatricesSSBO") != std::string::npos &&
+			depthShader.find("data.instance[gl_InstanceIndex].skeletonOffset") != std::string::npos &&
+			depthShader.find("modelMatrix *= skinMatrix") != std::string::npos,
+			"the skinned depth permutation must apply the scene bone palette before projection");
+
+		const std::string depthPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
+		const std::string getDepthMaterialBody = ExtractFunctionBody(
+			depthPrepassSource,
+			"RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(");
+		Require(getDepthMaterialBody.find("m_skinnedDepthOnlyMaterials") != std::string::npos &&
+			getDepthMaterialBody.find("defines.Add(\"SKINNING\")") != std::string::npos,
+			"DepthPrepass must cache a separate material for the skinned shader permutation");
+
+		const std::string prepareBody = ExtractFunctionBody(
+			depthPrepassSource,
+			"Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(");
+		Require(prepareBody.find("proxy.m_skeletonOffset") != std::string::npos &&
+			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
+			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
+			prepareBody.find("GetOrAddDepthMaterial(mesh->m_vertexDescription, bSkinned)") != std::string::npos,
+			"DepthPrepass must select its skinned material from both the skeleton offset and the concrete mesh vertex layout");
+	}
+
+	void TestShadowPrepassSkinningContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string shadowShader = ReadText(
+			sourceRoot / "Content/Shaders/ShadowCaster.shader");
+		Require(shadowShader.find("- SKINNING") != std::string::npos &&
+			shadowShader.find("DefaultBoneIdsBinding") != std::string::npos &&
+			shadowShader.find("DefaultBoneWeightsBinding") != std::string::npos &&
+			shadowShader.find("layout(std430, set = 2, binding = 0) readonly buffer BoneMatricesSSBO") != std::string::npos &&
+			shadowShader.find("data.instance[gl_InstanceIndex].skeletonOffset") != std::string::npos &&
+			shadowShader.find("modelMatrix *= skinMatrix") != std::string::npos,
+			"the skinned shadow permutation must apply the scene bone palette before light projection");
+
+		const std::string shadowPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string getShadowMaterialBody = ExtractFunctionBody(
+			shadowPrepassSource,
+			"RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(");
+		Require(getShadowMaterialBody.find("m_skinnedShadowMaterials_Evsm") != std::string::npos &&
+			getShadowMaterialBody.find("m_skinnedShadowMaterials_Pcf") != std::string::npos &&
+			getShadowMaterialBody.find("defines.Add(\"SKINNING\")") != std::string::npos,
+			"PCF and EVSM shadow passes must cache separate skinned shader permutations");
+
+		const std::string processBody = ExtractFunctionBody(
+			shadowPrepassSource,
+			"void ShadowPrepassNode::Process(");
+		Require(processBody.find("proxy.m_skeletonOffset") != std::string::npos &&
+			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
+			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
+			processBody.find("GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned)") != std::string::npos &&
+			processBody.find("sets.Add(sceneView.m_boneMatrices)") != std::string::npos,
+			"ShadowPrepass must select skinned batches and bind the current bone matrices");
+	}
+
+	void TestVertexDescriptionAttributeIdentityContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string vertexDescriptionSource = ReadText(
+			sourceRoot / "Runtime/RHI/VertexDescription.cpp");
+		Require(vertexDescriptionSource.find("SetAttributeFormat(m_bits, location, format)") != std::string::npos &&
+			vertexDescriptionSource.find("attribute.m_location == location") != std::string::npos,
+			"vertex descriptions must identify and query attributes by shader location, not buffer binding");
+	}
+
+	void TestGraphicsPipelineAttachmentCacheContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string materialSource = ReadText(
+			sourceRoot / "Runtime/RHI/Material.cpp");
+		const std::string getPipelineBody = ExtractFunctionBody(
+			materialSource,
+			"GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(");
+		Require(getPipelineBody.find("ComputeAspectFlagsForFormat(depthStencilAttachment)") != std::string::npos &&
+			getPipelineBody.find("Fits(colorAttachments, depthStencilAttachment, stencilAttachmentFormat)") != std::string::npos,
+			"graphics pipeline lookup must compare a depth-only attachment with an undefined stencil format");
+		Require(getPipelineBody.find("m_pipelinesLock.Lock()") != std::string::npos &&
+			getPipelineBody.find("m_pipelinesLock.Unlock()") != std::string::npos,
+			"parallel command-list recording must serialize graphics pipeline cache misses");
+
+		const std::string pipelineStatesSource = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanPipileneStates.cpp");
+		const std::string buildPipelineBody = ExtractFunctionBody(
+			pipelineStatesSource,
+			"const TVector<VulkanPipelineStatePtr>& VulkanPipelineStateBuilder::BuildPipeline(");
+		Require(buildPipelineBody.find("vertexDescription->GetVertexStride()") != std::string::npos &&
+			buildPipelineBody.find("vertexDescription->GetAttributeDescriptions()") != std::string::npos &&
+			buildPipelineBody.find("vertexAttributeBindings.ToVector()") != std::string::npos &&
+			buildPipelineBody.find("orderedVertexAttributeBindings.Sort()") != std::string::npos,
+			"pipeline-state cache identity must include the concrete vertex layout and shader input locations");
+
+		const std::string pipelineSource = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanPipeline.cpp");
+		const std::string commandBufferSource = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanCommandBuffer.cpp");
+		Require(pipelineSource.find("result != VK_SUCCESS || m_pipeline == VK_NULL_HANDLE") != std::string::npos &&
+			commandBufferSource.find("if (!m_bGraphicsPipelineBound)") != std::string::npos,
+			"failed graphics pipeline compilation must not record draw commands without a valid pipeline");
+	}
+
 	void TestPostProcessPingPongMipIsolationContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1211,6 +1322,10 @@ int main()
 		{ "TransmissionFramebufferMipContract", TestTransmissionFramebufferMipContract },
 		{ "TransmissionFramebufferBindingUsesNodeAttachment", TestTransmissionFramebufferBindingUsesNodeAttachment },
 		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
+		{ "DepthPrepassSkinningContract", TestDepthPrepassSkinningContract },
+		{ "ShadowPrepassSkinningContract", TestShadowPrepassSkinningContract },
+		{ "VertexDescriptionAttributeIdentityContract", TestVertexDescriptionAttributeIdentityContract },
+		{ "GraphicsPipelineAttachmentCacheContract", TestGraphicsPipelineAttachmentCacheContract },
 		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
 		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },

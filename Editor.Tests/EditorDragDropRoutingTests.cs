@@ -40,6 +40,35 @@ public sealed class EditorDragDropRoutingTests
         Assert.Equal(fileId, result);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TryResolveAssetFileId_EnforcesAnimatorAssetTypes(bool controllerField)
+    {
+        var expectedFileId = new FileId(controllerField ? "{CONTROLLER}" : "{ANIMSET}");
+        var wrongFileId = new FileId("{MATERIAL}");
+        AssetFile expectedAsset = controllerField
+            ? new AnimationControllerFile { FileId = expectedFileId }
+            : new AnimationSetFile { FileId = expectedFileId };
+        var wrongAsset = new MaterialFile { FileId = wrongFileId };
+        var supportedType = controllerField
+            ? typeof(AnimationControllerFile)
+            : typeof(AnimationSetFile);
+
+        Assert.True(EditorDragDrop.TryResolveAssetFileId(
+            expectedAsset,
+            supportedType,
+            id => id == expectedFileId ? expectedAsset : null,
+            out var resolvedExpected));
+        Assert.Equal(expectedFileId, resolvedExpected);
+
+        Assert.False(EditorDragDrop.TryResolveAssetFileId(
+            wrongAsset,
+            supportedType,
+            id => id == wrongFileId ? wrongAsset : null,
+            out _));
+    }
+
     [Fact]
     public void TryCreateContentDropCommand_RoutesPrefabOverwriteThroughSingleCommand()
     {

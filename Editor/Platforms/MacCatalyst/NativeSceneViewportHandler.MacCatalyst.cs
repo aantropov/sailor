@@ -936,12 +936,6 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             }
 
             var hasLocalHit = hasActiveHover;
-            if (pressed &&
-                activeMouseModifiers == NativeSceneViewportInputModifier.None &&
-                (!hasLocalHit || !hasPointerSample))
-            {
-                hasLocalHit = TryRecordSystemPointerSample();
-            }
             if (!SceneViewportPointerRouting.ShouldAcceptMouseButton(
                 pressed,
                 hasLocalHit,
@@ -991,36 +985,6 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
                     ResetPointerSample();
                 }
             }
-        }
-
-        bool TryRecordSystemPointerSample()
-        {
-            var window = Window;
-            if (window == null)
-            {
-                return false;
-            }
-
-            using var currentEvent = new CGEvent((CGEventSource?)null);
-            var screen = window.Screen ?? UIScreen.MainScreen;
-            var windowPoint = window.ConvertPointFromCoordinateSpace(
-                currentEvent.Location,
-                screen.CoordinateSpace);
-            var hitView = window.HitTest(windowPoint, null);
-            if (!ReferenceEquals(hitView, this) &&
-                !(hitView?.IsDescendantOfView(this) ?? false))
-            {
-                return false;
-            }
-
-            var localPoint = ConvertPointFromView(windowPoint, window);
-            if (!Bounds.Contains(localPoint))
-            {
-                return false;
-            }
-
-            RecordPointerSample(localPoint);
-            return true;
         }
 
         void QueueFocusReleaseIfPointerRemainsOutside()

@@ -29,6 +29,7 @@ namespace SailorEditor.Services
         readonly SemaphoreSlim _assetSaveLock = new(1, 1);
         readonly SemaphoreSlim _folderLoadLock = new(1, 1);
         readonly AssetCacheIndexStore _assetCacheIndexStore = new();
+        Task _assetCacheIndexLoadTask = Task.CompletedTask;
         EngineLaunchContext? _activeLaunchContext;
         CancellationTokenSource? _pendingFilesystemReload;
         CancellationTokenSource? _assetCacheIndexLoadCancellation;
@@ -208,14 +209,21 @@ namespace SailorEditor.Services
                 baseName,
                 extension);
             var sourcePath = Path.Combine(destinationDirectory, filename);
-            var temporaryPath = Path.Combine(
-                destinationDirectory,
-                $".{filename}.{Guid.NewGuid():N}.tmp");
+            var fileId = new FileId(
+                Guid.NewGuid().ToString().ToUpperInvariant());
+            var sourceContents = createSet
+                ? CreateAnimationSetSource()
+                : CreateAnimationControllerSource();
+            var metadataContents = SerializeAnimationAssetInfo(
+                fileId,
+                filename,
+                createSet);
 
             await _assetSaveLock.WaitAsync(cancellationToken)
                 .ConfigureAwait(false);
             try
             {
+                ProjectContentAssetWriteTransaction transaction;
                 (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
                 lock (_watcherLock)
                 {
@@ -231,22 +239,13 @@ namespace SailorEditor.Services
 
                 try
                 {
-                    var source = createSet
-                        ? CreateAnimationSetSource()
-                        : CreateAnimationControllerSource();
-                    await File.WriteAllTextAsync(
-                            temporaryPath,
-                            source,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                    File.Move(temporaryPath, sourcePath);
-
-                    if (!await _engineService.RequestAssetReloadAsync(cancellationToken)
-                            .ConfigureAwait(false))
-                    {
-                        File.Delete(sourcePath);
-                        return null;
-                    }
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        sourcePath,
+                        sourceContents,
+                        metadataContents,
+                        fileId.Value,
+                        overwrite: false);
                 }
                 finally
                 {
@@ -263,24 +262,41 @@ namespace SailorEditor.Services
                     }
                 }
 
-                return await MainThread.InvokeOnMainThreadAsync(() =>
+                if (!transaction.Result.Succeeded)
                 {
-                    var created = FindAssetBySourcePath(sourcePath);
-                    if (created is null)
-                    {
-                        Refresh();
-                        created = FindAssetBySourcePath(sourcePath);
-                    }
-                    return created;
-                });
-            }
-            catch
-            {
-                if (File.Exists(temporaryPath))
-                {
-                    File.Delete(temporaryPath);
+                    return null;
                 }
-                throw;
+
+                AssetFile? created;
+                try
+                {
+                    created = await MainThread.InvokeOnMainThreadAsync(() =>
+                        PublishCreatedAnimationAsset(
+                            sourcePath,
+                            targetFolder,
+                            fileId));
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+
+                if (created is null)
+                {
+                    transaction.Rollback();
+                    return null;
+                }
+
+                var commit = transaction.Commit();
+                if (!commit.Succeeded)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(Refresh);
+                    return null;
+                }
+
+                QueueAnimationAssetReload();
+                return created;
             }
             finally
             {
@@ -294,6 +310,77 @@ namespace SailorEditor.Services
                 ProjectContentPathPolicy.IsSamePath(
                     asset.Asset.FullName,
                     sourcePath));
+
+        AssetFile? PublishCreatedAnimationAsset(
+            string sourcePath,
+            AssetFolder? targetFolder,
+            FileId expectedFileId)
+        {
+            var created = FindAssetBySourcePath(sourcePath);
+            if (created is not null)
+            {
+                return created;
+            }
+
+            var destinationDirectory = Path.GetDirectoryName(sourcePath);
+            var liveFolder = targetFolder;
+            if (liveFolder is null ||
+                string.IsNullOrWhiteSpace(destinationDirectory) ||
+                !ProjectContentPathPolicy.IsSamePath(
+                    liveFolder.FullPath,
+                    destinationDirectory))
+            {
+                liveFolder = Folders.FirstOrDefault(folder =>
+                    !string.IsNullOrWhiteSpace(destinationDirectory) &&
+                    ProjectContentPathPolicy.IsSamePath(
+                        folder.FullPath,
+                        destinationDirectory));
+            }
+
+            var projectRootId = liveFolder?.ProjectRootId ??
+                (CurrentProjectMode == EditorProjectMode.Engine
+                    ? EngineProjectRootId
+                    : ActiveProjectRootId);
+            var asset = ReadAssetFile(
+                new FileInfo(sourcePath + ".asset"),
+                liveFolder?.Id ?? -1,
+                projectRootId,
+                isReadOnly: false);
+            if (asset.FileId is null || !asset.FileId.Equals(expectedFileId))
+            {
+                return null;
+            }
+
+            Files.Add(asset);
+            Assets[expectedFileId] = asset;
+            if (liveFolder is not null)
+            {
+                liveFolder.HasChildren = true;
+            }
+            Changed?.Invoke();
+            return asset;
+        }
+
+        void QueueAnimationAssetReload()
+            => _ = ReloadCreatedAnimationAssetAsync();
+
+        async Task ReloadCreatedAnimationAssetAsync()
+        {
+            try
+            {
+                if (!await _engineService.RequestAssetReloadAsync()
+                        .ConfigureAwait(false))
+                {
+                    Console.WriteLine(
+                        "[AssetsService] Engine did not register a newly created animation asset.");
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[AssetsService] Failed to register a newly created animation asset: {exception.Message}");
+            }
+        }
 
         static string CreateAnimationControllerSource()
         {
@@ -341,6 +428,22 @@ namespace SailorEditor.Services
             {
                 { "version", "1" },
                 { "clips", new YamlSequenceNode() }
+            });
+
+        static string SerializeAnimationAssetInfo(
+            FileId fileId,
+            string filename,
+            bool createSet) => SaveYaml(
+            new YamlMappingNode
+            {
+                {
+                    "assetInfoType",
+                    createSet
+                        ? "Sailor::AnimationSetAssetInfo"
+                        : "Sailor::AnimationControllerAssetInfo"
+                },
+                { "fileId", fileId.Value },
+                { "filename", filename }
             });
 
         static string SaveYaml(YamlMappingNode root)
@@ -838,6 +941,108 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<AssetFile?> ResolveAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            if (fileId is null || fileId.IsEmpty())
+            {
+                return null;
+            }
+
+            var asset = await MainThread.InvokeOnMainThreadAsync(() =>
+                Assets.TryGetValue(fileId, out var current) ? current : null);
+            if (asset is null)
+            {
+                await Volatile.Read(ref _assetCacheIndexLoadTask)
+                    .WaitAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                asset = await MainThread.InvokeOnMainThreadAsync(() =>
+                    Assets.TryGetValue(fileId, out var current) ? current : null);
+            }
+
+            if (asset is null)
+            {
+                return null;
+            }
+
+            var assetDirectory = asset.AssetInfo?.DirectoryName ??
+                asset.Asset?.DirectoryName;
+            if (string.IsNullOrWhiteSpace(assetDirectory))
+            {
+                return asset;
+            }
+
+            await EnsureAssetDirectoryLoadedAsync(
+                    assetDirectory,
+                    asset.IsReadOnly,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return await MainThread.InvokeOnMainThreadAsync(() =>
+                Assets.TryGetValue(fileId, out var current) ? current : asset);
+        }
+
+        async Task EnsureAssetDirectoryLoadedAsync(
+            string assetDirectory,
+            bool isReadOnly,
+            CancellationToken cancellationToken)
+        {
+            var targetDirectory = ProjectContentPathPolicy.NormalizeRoot(
+                assetDirectory);
+            var rootFolder = await MainThread.InvokeOnMainThreadAsync(() =>
+                Folders
+                    .Where(folder =>
+                        folder.ParentFolderId == -1 &&
+                        folder.IsReadOnly == isReadOnly &&
+                        ProjectContentPathPolicy.IsInsideRoot(
+                            folder.FullPath,
+                            targetDirectory))
+                    .OrderByDescending(folder => folder.FullPath.Length)
+                    .FirstOrDefault());
+            if (rootFolder is null)
+            {
+                return;
+            }
+
+            var relativeDirectory = Path.GetRelativePath(
+                rootFolder.FullPath,
+                targetDirectory);
+            var pathSegments = relativeDirectory == "."
+                ? Array.Empty<string>()
+                : relativeDirectory.Split(
+                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                    StringSplitOptions.RemoveEmptyEntries);
+            var currentFolder = rootFolder;
+            var currentPath = ProjectContentPathPolicy.NormalizeRoot(
+                rootFolder.FullPath);
+            foreach (var pathSegment in pathSegments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await EnsureFolderLoadedAsync(
+                        currentFolder.Id,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                currentPath = ProjectContentPathPolicy.NormalizeRoot(
+                    Path.Combine(currentPath, pathSegment));
+                currentFolder = await MainThread.InvokeOnMainThreadAsync(() =>
+                    Folders.FirstOrDefault(folder =>
+                        folder.ParentFolderId == currentFolder.Id &&
+                        ProjectContentPathPolicy.IsSamePath(
+                            folder.FullPath,
+                            currentPath)));
+                if (currentFolder is null)
+                {
+                    return;
+                }
+            }
+
+            await EnsureFolderLoadedAsync(
+                    currentFolder.Id,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         public void ResetForWorkspaceChange()
         {
             Interlocked.Increment(ref _workspaceEpoch);
@@ -937,10 +1142,11 @@ namespace SailorEditor.Services
                 ref _assetCacheIndexLoadCancellation,
                 cancellation);
             previous?.Cancel();
-            _ = LoadAssetCacheIndexAsync(
+            var loadTask = LoadAssetCacheIndexAsync(
                 launchContext,
                 contentGeneration,
                 cancellation);
+            Volatile.Write(ref _assetCacheIndexLoadTask, loadTask);
         }
 
         async Task LoadAssetCacheIndexAsync(

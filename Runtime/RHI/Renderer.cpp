@@ -564,3 +564,17 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	return true;
 }
+
+void Renderer::WaitIdle()
+{
+	if (m_previousRenderFrame.IsValid())
+	{
+		m_previousRenderFrame->Wait();
+		m_previousRenderFrame.Clear();
+	}
+
+	if (m_driverInstance)
+	{
+		m_driverInstance->WaitIdle();
+	}
+}

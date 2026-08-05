@@ -708,6 +708,13 @@ void App::Start()
 			EditorRuntime::DrainEditorRemoteViewportInputOnEngineThread();
 		}
 
+		if (!pEngineLoop->GetWorlds().IsEmpty() &&
+			currentFrame.GetWorld() != pEngineLoop->GetWorld().GetRawPtr())
+		{
+			bCanCreateNewFrame = true;
+			bFirstFrame = true;
+		}
+
 		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !pMainWindow->IsParentWindowValid())
 		{
 			Stop();

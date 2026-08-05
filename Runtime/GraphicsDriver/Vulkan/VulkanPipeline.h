@@ -63,8 +63,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VulkanRenderPassPtr m_renderPass;
 		uint32_t m_subpass;
 
-		void Compile();
+		bool Compile();
 		void Release();
+		bool IsCompiled() const { return m_pipeline != VK_NULL_HANDLE; }
 
 		operator VkPipeline() const { return m_pipeline; }
 

@@ -16,6 +16,7 @@ public sealed class WorkflowProjectionTests
         store.Select("go-root", SelectionTargetKind.GameObject);
         store.Select("go-root", SelectionTargetKind.GameObject);
         store.Select("cmp-1", SelectionTargetKind.Component);
+        store.Select("asset-1", SelectionTargetKind.Asset);
         store.Clear();
         store.Clear();
 
@@ -23,6 +24,7 @@ public sealed class WorkflowProjectionTests
             snapshots,
             snapshot => Assert.Equal(new SelectionSnapshot("go-root", SelectionTargetKind.GameObject), snapshot),
             snapshot => Assert.Equal(new SelectionSnapshot("cmp-1", SelectionTargetKind.Component), snapshot),
+            snapshot => Assert.Equal(new SelectionSnapshot("asset-1", SelectionTargetKind.Asset), snapshot),
             snapshot => Assert.Equal(SelectionSnapshot.Empty, snapshot));
     }
 
@@ -204,8 +206,9 @@ public sealed class WorkflowProjectionTests
             StringComparison.Ordinal);
         AssertInOrder(
             contentSelection,
-            "EnsureFolderVisible(file.FolderId);",
-            "contentStore.SelectAsset(file);");
+            "await service.ResolveAssetAsync(file.FileId)",
+            "EnsureFolderVisible(resolved.FolderId);",
+            "contentStore.SelectAsset(resolved);");
         Assert.Contains(
             "SelectObject(assetFile, force: true)",
             openAssetCommand,

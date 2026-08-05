@@ -519,7 +519,7 @@ public sealed class EditorViewportEventContractTests
 
         AssertInOrder(
             buttonHandler,
-            "TryRecordSystemPointerSample();",
+            "var hasLocalHit = hasActiveHover;",
             "SceneViewportPointerRouting.ShouldAcceptMouseButton(",
             "QueueFocusReleaseIfPointerRemainsOutside();",
             "if (!IsFirstResponder)",
@@ -570,11 +570,8 @@ public sealed class EditorViewportEventContractTests
         Assert.Contains("input.LeftButton.IsPressed", mouseAttachment, StringComparison.Ordinal);
         Assert.Contains("input.RightButton.IsPressed", mouseAttachment, StringComparison.Ordinal);
         Assert.Contains("input.MiddleButton?.IsPressed == true", mouseAttachment, StringComparison.Ordinal);
-        Assert.Contains("new CGEvent((CGEventSource?)null)", source, StringComparison.Ordinal);
-        Assert.Contains("window.ConvertPointFromCoordinateSpace(", source, StringComparison.Ordinal);
-        Assert.Contains("window.HitTest(windowPoint, null)", source, StringComparison.Ordinal);
-        Assert.Contains("ConvertPointFromView(windowPoint, window)", source, StringComparison.Ordinal);
-        Assert.Contains("RecordPointerSample(localPoint);", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("new CGEvent((CGEventSource?)null)", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryRecordSystemPointerSample", source, StringComparison.Ordinal);
         Assert.Contains("(deltaX * sensitivity) / scale", source, StringComparison.Ordinal);
         Assert.Contains("(deltaY * sensitivity) / scale", source, StringComparison.Ordinal);
         Assert.DoesNotContain(
@@ -640,6 +637,14 @@ public sealed class EditorViewportEventContractTests
         Assert.DoesNotContain("workspaceResetInProgress", localProjection, StringComparison.Ordinal);
         Assert.Contains(
             "IsWorkspaceResetInProgress => Volatile.Read(ref workspaceResetInProgress) != 0",
+            selectionSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AssetFile assetFile => assetFile.FileId?.Value",
+            selectionSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "snapshot.Kind is SelectionTargetKind.GameObject or",
             selectionSource,
             StringComparison.Ordinal);
 

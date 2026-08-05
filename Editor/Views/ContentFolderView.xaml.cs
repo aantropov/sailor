@@ -72,7 +72,7 @@ namespace SailorEditor.Views
             PopulateRows(contentStore.Projection);
         }
 
-        void SelectAssetFile(ObservableObject obj)
+        async void SelectAssetFile(ObservableObject obj)
         {
             if (obj is not AssetFile file || file.FileId is null || file.FileId.IsEmpty())
             {
@@ -89,8 +89,26 @@ namespace SailorEditor.Views
                 return;
             }
 
-            EnsureFolderVisible(file.FolderId);
-            contentStore.SelectAsset(file);
+            try
+            {
+                var resolved = await service.ResolveAssetAsync(file.FileId);
+                var selected = MauiProgram.GetService<SelectionService>()
+                    .SelectedItem as AssetFile;
+                if (resolved is null ||
+                    selected?.FileId is null ||
+                    !selected.FileId.Equals(file.FileId))
+                {
+                    return;
+                }
+
+                EnsureFolderVisible(resolved.FolderId);
+                contentStore.SelectAsset(resolved);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[ContentFolderView] Failed to reveal asset '{file.FileId}': {exception.Message}");
+            }
         }
 
         void OnContentSelectionChanged(object sender, SelectionChangedEventArgs args)

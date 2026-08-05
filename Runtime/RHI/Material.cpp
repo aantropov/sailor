@@ -12,8 +12,10 @@ using namespace Sailor::GraphicsDriver::Vulkan;
 GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddPipeline(const TVector<VkFormat>& colorAttachments, VkFormat depthStencilAttachment)
 {
 	SAILOR_PROFILE_FUNCTION();
+	m_pipelinesLock.Lock();
 
 	uint32_t stateIndex = 0;
+	const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilAttachment : VK_FORMAT_UNDEFINED;
 
 	for (auto& p : m_pipelines)
 	{
@@ -22,9 +24,11 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 		{
 			if (const auto pDynamicState = state.DynamicCast<GraphicsDriver::Vulkan::VulkanStateDynamicRendering>())
 			{
-				if (pDynamicState->Fits(colorAttachments, depthStencilAttachment, depthStencilAttachment))
+				if (pDynamicState->Fits(colorAttachments, depthStencilAttachment, stencilAttachmentFormat))
 				{
-					return p;
+					auto result = p;
+					m_pipelinesLock.Unlock();
+					return result;
 				}
 
 				break;
@@ -38,8 +42,6 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 
 	TVector<VulkanPipelineStatePtr> states = m_pipelines[0]->m_pipelineStates;
 
-	const VkFormat stencilAttachmentFormat = (VulkanApi::ComputeAspectFlagsForFormat(depthStencilAttachment) & VK_IMAGE_ASPECT_STENCIL_BIT) ? depthStencilAttachment : VK_FORMAT_UNDEFINED;
-
 	states[stateIndex] = GraphicsDriver::Vulkan::VulkanStateDynamicRenderingPtr::Make(colorAttachments, depthStencilAttachment, stencilAttachmentFormat);
 
 	GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr pipeline = VulkanGraphicsPipelinePtr::Make(device,
@@ -49,11 +51,17 @@ GraphicsDriver::Vulkan::VulkanGraphicsPipelinePtr RHIMaterial::Vulkan::GetOrAddP
 		0);
 
 	pipeline->m_renderPass = device->GetRenderPass();
-	pipeline->Compile();
+	if (!pipeline->Compile())
+	{
+		m_pipelinesLock.Unlock();
+		return nullptr;
+	}
 
 	m_pipelines.Emplace(std::move(pipeline));
 
-	return *m_pipelines.Last();
+	auto result = *m_pipelines.Last();
+	m_pipelinesLock.Unlock();
+	return result;
 }
 
 void RHIShaderBindingSet::RecalculateCompatibility()

@@ -43,6 +43,7 @@ namespace Sailor::RHI
 
 		SAILOR_API void FixLostDevice();
 		SAILOR_API bool PushFrame(const Sailor::FrameState& frame);
+		SAILOR_API void WaitIdle();
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
 

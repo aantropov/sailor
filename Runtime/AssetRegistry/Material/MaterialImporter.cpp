@@ -139,7 +139,9 @@ RHI::RHIMaterialPtr Material::GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDes
 			}
 			else
 			{
-				// We cannot create RHI material
+				SAILOR_LOG_ERROR("Cannot create RHI material %s for vertex attribute identity %llu.",
+					GetFileId().ToString().c_str(),
+					static_cast<unsigned long long>(vertexDescription->GetVertexAttributeBits()));
 				return nullptr;
 			}
 		}
@@ -165,7 +167,12 @@ void Material::UpdateRHIResource()
 	m_commonShaderBindings.Clear();
 
 	// Create base material
-	GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>());
+	if (!GetOrAddRHI(RHI::Renderer::GetDriver()->GetOrAddVertexDescription<RHI::VertexP3N3T3B3UV2C4I4W4>()))
+	{
+		m_bIsDirty = true;
+		SAILOR_LOG_ERROR("Cannot update RHI resource for material %s.", GetFileId().ToString().c_str());
+		return;
+	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Update samplers");
@@ -226,6 +233,11 @@ void Material::UpdateRHIResource()
 
 void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 {
+	if (!m_commonShaderBindings)
+	{
+		return;
+	}
+
 	TMap<std::string, TVector<uint8_t>> bindingData;
 
 	auto writeParameter = [this, &bindingData](
@@ -320,6 +332,11 @@ void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 
 void Material::ForcelyUpdateUniforms()
 {
+	if (!m_commonShaderBindings)
+	{
+		return;
+	}
+
 	RHI::RHICommandListPtr cmdList;
 	{
 		SAILOR_PROFILE_SCOPE("Create command list");

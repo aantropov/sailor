@@ -1138,6 +1138,53 @@ namespace
 			"an editor empty-world bootstrap must use the untitled scene name");
 	}
 
+	void TestEditorWorldReplacementRetiresRenderFramesContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string rendererHeader = ReadText(sourceRoot / "Runtime/RHI/Renderer.h");
+		const std::string rendererSource = ReadText(sourceRoot / "Runtime/RHI/Renderer.cpp");
+		const std::string engineLoopSource = ReadText(sourceRoot / "Runtime/Engine/EngineLoop.cpp");
+		const std::string appSource = ReadText(sourceRoot / "Runtime/Sailor.cpp");
+
+		Require(rendererHeader.find("SAILOR_API void WaitIdle()") != std::string::npos,
+			"renderer must expose a world-retirement barrier");
+		const size_t waitIdleBegin = rendererSource.find("void Renderer::WaitIdle()");
+		Require(waitIdleBegin != std::string::npos,
+			"renderer must implement its world-retirement barrier");
+		const std::string waitIdleBody = rendererSource.substr(waitIdleBegin);
+		const size_t waitRenderFrame = waitIdleBody.find("m_previousRenderFrame->Wait()");
+		const size_t waitGpu = waitIdleBody.find("m_driverInstance->WaitIdle()");
+		Require(waitRenderFrame != std::string::npos && waitGpu != std::string::npos &&
+			waitRenderFrame < waitGpu,
+			"world retirement must drain the latest chained render frame before waiting for GPU idle");
+
+		const size_t processExitsBegin = engineLoopSource.find(
+			"void EngineLoop::ProcessPendingWorldExits()");
+		const size_t processExitsEnd = engineLoopSource.find(
+			"void EngineLoop::ProcessPendingDependencyResolution", processExitsBegin);
+		Require(processExitsBegin != std::string::npos && processExitsEnd != std::string::npos,
+			"engine loop must expose pending world retirement");
+		const std::string processExitsBody = engineLoopSource.substr(
+			processExitsBegin,
+			processExitsEnd - processExitsBegin);
+		const size_t flushRenderer = processExitsBody.find("renderer->WaitIdle()");
+		const size_t clearWorld = processExitsBody.find("m_worlds[index]->Clear()");
+		Require(flushRenderer != std::string::npos && clearWorld != std::string::npos &&
+			flushRenderer < clearWorld,
+			"pending world retirement must drain renderer work before clearing ECS storage");
+
+		const size_t startBegin = appSource.find("void App::Start()");
+		const size_t startEnd = appSource.find("void App::Stop()", startBegin);
+		Require(startBegin != std::string::npos && startEnd != std::string::npos,
+			"application must expose its engine main loop");
+		const std::string startBody = appSource.substr(startBegin, startEnd - startBegin);
+		Require(startBody.find(
+			"currentFrame.GetWorld() != pEngineLoop->GetWorld().GetRawPtr()") != std::string::npos &&
+			startBody.find("bCanCreateNewFrame = true") != std::string::npos &&
+			startBody.find("bFirstFrame = true") != std::string::npos,
+			"the engine main loop must replace a stale frame immediately after an editor world switch");
+	}
+
 	void TestAnimationRelayoutMarksEveryOwnedMeshDirty()
 	{
 		AnimationMeshTestWorld world;
@@ -3556,6 +3603,7 @@ int main()
 		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },
 		{ "EmptyEditorWorldBootstrapContract", TestEmptyEditorWorldBootstrapContract },
 		{ "WorkspaceEditorStartupWorldContract", TestWorkspaceEditorStartupWorldContract },
+		{ "EditorWorldReplacementRetiresRenderFramesContract", TestEditorWorldReplacementRetiresRenderFramesContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },
 		{ "SparseLightSlotInvalidationAndReuse", TestSparseLightSlotInvalidationAndReuse },
 		{ "RemovingComponentCancelsPendingDependencyResolution", TestRemovingComponentCancelsPendingDependencyResolution },

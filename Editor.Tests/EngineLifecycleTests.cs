@@ -674,6 +674,15 @@ public sealed class EngineLifecycleTests
             "\"Sailor::AnimationSet\" => typeof(AnimationSetFile)",
             source,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "const string objectPtrPrefix = \"TObjectPtr<\"",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return engineType[objectPtrPrefix.Length..^1]",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("N6Sailor10TObjectPtr", source, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1033,7 +1042,7 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
-    public void AnimationAssetCreation_SuppressesWatcherAndRefreshesOnUiThread()
+    public void AnimationAssetCreation_PublishesPairBeforeBackgroundEngineReload()
     {
         var source = ReadRepositoryFile(
             "Editor",
@@ -1043,7 +1052,7 @@ public sealed class EngineLifecycleTests
             "public async Task<AssetFile?> CreateAnimationAssetAsync(",
             StringComparison.Ordinal);
         var createEnd = source.IndexOf(
-            "static string CreateAnimationControllerSource()",
+            "AssetFile? FindAssetBySourcePath(",
             createStart,
             StringComparison.Ordinal);
         Assert.True(createStart >= 0);
@@ -1053,11 +1062,17 @@ public sealed class EngineLifecycleTests
         var disableWatchers = createBody.IndexOf(
             "watcherState.Watcher.EnableRaisingEvents = false;",
             StringComparison.Ordinal);
-        var moveSource = createBody.IndexOf(
-            "File.Move(temporaryPath, sourcePath);",
+        var writePair = createBody.IndexOf(
+            "_fileOperations.BeginWriteAssetPair(",
             StringComparison.Ordinal);
-        var requestReload = createBody.IndexOf(
-            "_engineService.RequestAssetReloadAsync(cancellationToken)",
+        var publishOnUiThread = createBody.IndexOf(
+            "PublishCreatedAnimationAsset(",
+            StringComparison.Ordinal);
+        var commit = createBody.IndexOf(
+            "transaction.Commit()",
+            StringComparison.Ordinal);
+        var queueReload = createBody.IndexOf(
+            "QueueAnimationAssetReload();",
             StringComparison.Ordinal);
         var restoreWatchers = createBody.IndexOf(
             "watcherState.Watcher.EnableRaisingEvents =",
@@ -1068,16 +1083,22 @@ public sealed class EngineLifecycleTests
             StringComparison.Ordinal);
 
         Assert.True(disableWatchers >= 0);
-        Assert.True(moveSource > disableWatchers);
-        Assert.True(requestReload > moveSource);
-        Assert.True(restoreWatchers > requestReload);
+        Assert.True(writePair > disableWatchers);
+        Assert.True(restoreWatchers > writePair);
         Assert.True(uiRefresh > restoreWatchers);
+        Assert.True(publishOnUiThread > uiRefresh);
+        Assert.True(commit > publishOnUiThread);
+        Assert.True(queueReload > commit);
         Assert.Contains(
-            "var created = FindAssetBySourcePath(sourcePath);",
+            "SerializeAnimationAssetInfo(",
             createBody,
             StringComparison.Ordinal);
         Assert.Contains(
-            "if (created is null)",
+            "transaction.Rollback();",
+            createBody,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "await _engineService.RequestAssetReloadAsync",
             createBody,
             StringComparison.Ordinal);
     }
@@ -1145,6 +1166,10 @@ public sealed class EngineLifecycleTests
         Assert.Contains("public async Task EnsureMetadataLoadedAsync(", assetFileSource, StringComparison.Ordinal);
         Assert.Contains("await Task.Run(Revert, cancellationToken)", assetFileSource, StringComparison.Ordinal);
         Assert.Contains("await selectedAssetFile.EnsureMetadataLoadedAsync(", selectionSource, StringComparison.Ordinal);
+        Assert.Contains("public async Task<AssetFile?> ResolveAssetAsync(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await Volatile.Read(ref _assetCacheIndexLoadTask)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await EnsureAssetDirectoryLoadedAsync(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("await service.ResolveAssetAsync(file.FileId)", contentViewSource, StringComparison.Ordinal);
         Assert.Contains("QueueAssetCacheIndexLoad(launchContext, contentGeneration)", assetsSource, StringComparison.Ordinal);
         Assert.Contains("MergeAssetCacheIndex(result.Entries!)", assetsSource, StringComparison.Ordinal);
         Assert.Contains("Files.Add(file)", assetsSource, StringComparison.Ordinal);
