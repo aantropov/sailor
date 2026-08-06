@@ -267,21 +267,21 @@ namespace Sailor
 		template<typename T>
 		static std::string GetCanonicalCppTypeName()
 		{
-#if defined(_MSC_VER)
-			const std::string_view signature = __FUNCSIG__;
-			constexpr std::string_view marker = "GetCanonicalCppTypeName<";
+#if defined(__clang__) || defined(__GNUC__)
+			const std::string_view signature = __PRETTY_FUNCTION__;
+			constexpr std::string_view marker = "T = ";
 			const size_t begin = signature.find(marker);
-			const size_t end = signature.rfind(">(void)");
+			const size_t end = signature.find_first_of(";]", begin + marker.size());
 			if (begin == std::string_view::npos || end == std::string_view::npos)
 			{
 				return {};
 			}
 			std::string_view typeName = signature.substr(begin + marker.size(), end - begin - marker.size());
-#elif defined(__clang__) || defined(__GNUC__)
-			const std::string_view signature = __PRETTY_FUNCTION__;
-			constexpr std::string_view marker = "T = ";
+#elif defined(_MSC_VER)
+			const std::string_view signature = __FUNCSIG__;
+			constexpr std::string_view marker = "GetCanonicalCppTypeName<";
 			const size_t begin = signature.find(marker);
-			const size_t end = signature.find_first_of(";]", begin + marker.size());
+			const size_t end = signature.rfind(">(void)");
 			if (begin == std::string_view::npos || end == std::string_view::npos)
 			{
 				return {};

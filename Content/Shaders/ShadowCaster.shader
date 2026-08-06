@@ -1,6 +1,7 @@
 ---
 defines:
 - EVSM
+- SKINNING
 
 includes:
 - Shaders/Constants.glsl
@@ -39,7 +40,18 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
+      uint skeletonOffset;
+      uint padding0;
+      uint padding1;
+      uint padding2;
   };
+
+  struct BoneData
+  {
+      mat4 matrix;
+  };
+
+  const uint INVALID_SKELETON_OFFSET = 0xFFFFFFFFu;
   
   layout(std430, push_constant) uniform Constants
   {
@@ -50,12 +62,37 @@ glslVertex: |
   {
       PerInstanceData instance[];
   } data;
+
+  #ifdef SKINNING
+  layout(std430, set = 2, binding = 0) readonly buffer BoneMatricesSSBO
+  {
+      BoneData instance[];
+  } bones;
+  #endif
   
   layout(location=DefaultPositionBinding) in vec3 inPosition;
+
+  #ifdef SKINNING
+  layout(location=DefaultBoneIdsBinding) in uvec4 inBoneIds;
+  layout(location=DefaultBoneWeightsBinding) in vec4 inBoneWeights;
+  #endif
   
   void main() 
   {
-      gl_Position = PushConstants.lightMatrix * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+      mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+  #ifdef SKINNING
+      uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
+      if (offset != INVALID_SKELETON_OFFSET)
+      {
+          mat4 skinMatrix = bones.instance[offset + inBoneIds.x].matrix * inBoneWeights.x +
+                            bones.instance[offset + inBoneIds.y].matrix * inBoneWeights.y +
+                            bones.instance[offset + inBoneIds.z].matrix * inBoneWeights.z +
+                            bones.instance[offset + inBoneIds.w].matrix * inBoneWeights.w;
+          modelMatrix *= skinMatrix;
+      }
+  #endif
+
+      gl_Position = PushConstants.lightMatrix * modelMatrix * vec4(inPosition, 1.0);
   }
   
 glslFragment: |
