@@ -144,7 +144,8 @@ file(GLOB_RECURSE SAILOR_RUNTIME_SOURCES
 # vcpkg builds Jolt without compiler RTTI. Keep the Sailor adapter that derives
 # from Jolt's JobSystemWithBarrier on the same ABI while the rest of Sailor
 # retains RTTI for reflected engine types.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+	CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
 	set_source_files_properties(
 		"${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp"
 		PROPERTIES COMPILE_OPTIONS "/GR-")

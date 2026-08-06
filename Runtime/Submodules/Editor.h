@@ -1,4 +1,5 @@
 #pragma once
+#include "Audio/AudioTypes.h"
 #include "Core/Submodule.h"
 #include "Memory/UniquePtr.hpp"
 #include <atomic>
@@ -47,6 +48,8 @@ namespace Sailor
 		class World* GetWorld() const { return m_world; }
 		SAILOR_SHARED_API bool SetSimulationEnabled(bool bEnabled);
 		bool IsSimulationEnabled() const { return m_bSimulationEnabled; }
+		bool PreviewAudioAsset(const class FileId& fileId);
+		void StopAudioPreview();
 		void TickViewportTools();
 		void CancelViewportInteraction();
 		bool PullViewportEvent(std::string& outEvent);
@@ -137,6 +140,7 @@ namespace Sailor
 		class World* m_world = nullptr;
 		std::string m_simulationSnapshot{};
 		bool m_bSimulationEnabled = false;
+		AudioVoiceId m_audioPreviewVoiceId = InvalidAudioVoiceId;
 		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
 		uint64_t m_managedSelectionMutationRevision = 0;
 		TUniquePtr<EditorManagedMutationState> m_managedMutationState{};

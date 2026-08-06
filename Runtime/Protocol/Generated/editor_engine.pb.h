@@ -10585,6 +10585,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetAnimatorState = 60,
     kSetEditorSimulation = 61,
     kGetEditorSimulationState = 62,
+    kPreviewAudioAsset = 63,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -10732,6 +10733,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetAnimatorStateFieldNumber = 60,
     kSetEditorSimulationFieldNumber = 61,
     kGetEditorSimulationStateFieldNumber = 62,
+    kPreviewAudioAssetFieldNumber = 63,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -11741,6 +11743,25 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::Empty* _internal_mutable_get_editor_simulation_state();
 
   public:
+  // .sailor.editor.v1.FileIdRequest preview_audio_asset = 63;
+  bool has_preview_audio_asset() const;
+  private:
+  bool _internal_has_preview_audio_asset() const;
+
+  public:
+  void clear_preview_audio_asset() ;
+  const ::sailor::editor::v1::FileIdRequest& preview_audio_asset() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::FileIdRequest* release_preview_audio_asset();
+  ::sailor::editor::v1::FileIdRequest* mutable_preview_audio_asset();
+  void set_allocated_preview_audio_asset(::sailor::editor::v1::FileIdRequest* value);
+  void unsafe_arena_set_allocated_preview_audio_asset(::sailor::editor::v1::FileIdRequest* value);
+  ::sailor::editor::v1::FileIdRequest* unsafe_arena_release_preview_audio_asset();
+
+  private:
+  const ::sailor::editor::v1::FileIdRequest& _internal_preview_audio_asset() const;
+  ::sailor::editor::v1::FileIdRequest* _internal_mutable_preview_audio_asset();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -11798,11 +11819,12 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_get_animator_state();
   void set_has_set_editor_simulation();
   void set_has_get_editor_simulation_state();
+  void set_has_preview_audio_asset();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 54, 52,
+      1, 55, 53,
       0, 9>
       _table_;
 
@@ -11877,6 +11899,7 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::InstanceIdRequest* get_animator_state_;
       ::sailor::editor::v1::EditorSimulationRequest* set_editor_simulation_;
       ::sailor::editor::v1::Empty* get_editor_simulation_state_;
+      ::sailor::editor::v1::FileIdRequest* preview_audio_asset_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -16807,6 +16830,85 @@ inline ::sailor::editor::v1::Empty* ProtocolRequest::_internal_mutable_get_edito
 inline ::sailor::editor::v1::Empty* ProtocolRequest::mutable_get_editor_simulation_state() ABSL_ATTRIBUTE_LIFETIME_BOUND {
   ::sailor::editor::v1::Empty* _msg = _internal_mutable_get_editor_simulation_state();
   // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.get_editor_simulation_state)
+  return _msg;
+}
+
+// .sailor.editor.v1.FileIdRequest preview_audio_asset = 63;
+inline bool ProtocolRequest::has_preview_audio_asset() const {
+  return command_case() == kPreviewAudioAsset;
+}
+inline bool ProtocolRequest::_internal_has_preview_audio_asset() const {
+  return command_case() == kPreviewAudioAsset;
+}
+inline void ProtocolRequest::set_has_preview_audio_asset() {
+  _impl_._oneof_case_[0] = kPreviewAudioAsset;
+}
+inline void ProtocolRequest::clear_preview_audio_asset() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kPreviewAudioAsset) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.preview_audio_asset_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.preview_audio_asset_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::release_preview_audio_asset() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.preview_audio_asset)
+  if (command_case() == kPreviewAudioAsset) {
+    clear_has_command();
+    auto* temp = _impl_.command_.preview_audio_asset_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.preview_audio_asset_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::_internal_preview_audio_asset() const {
+  return command_case() == kPreviewAudioAsset ? *_impl_.command_.preview_audio_asset_ : reinterpret_cast<::sailor::editor::v1::FileIdRequest&>(::sailor::editor::v1::_FileIdRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::FileIdRequest& ProtocolRequest::preview_audio_asset() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.preview_audio_asset)
+  return _internal_preview_audio_asset();
+}
+inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::unsafe_arena_release_preview_audio_asset() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.preview_audio_asset)
+  if (command_case() == kPreviewAudioAsset) {
+    clear_has_command();
+    auto* temp = _impl_.command_.preview_audio_asset_;
+    _impl_.command_.preview_audio_asset_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_preview_audio_asset(::sailor::editor::v1::FileIdRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_preview_audio_asset();
+    _impl_.command_.preview_audio_asset_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.preview_audio_asset)
+}
+inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::_internal_mutable_preview_audio_asset() {
+  if (command_case() != kPreviewAudioAsset) {
+    clear_command();
+    set_has_preview_audio_asset();
+    _impl_.command_.preview_audio_asset_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::FileIdRequest>(GetArena());
+  }
+  return _impl_.command_.preview_audio_asset_;
+}
+inline ::sailor::editor::v1::FileIdRequest* ProtocolRequest::mutable_preview_audio_asset() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::FileIdRequest* _msg = _internal_mutable_preview_audio_asset();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.preview_audio_asset)
   return _msg;
 }
 
