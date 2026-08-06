@@ -312,10 +312,17 @@ bool Utils::TryGetComponentInstanceId(
 		return false;
 	}
 
+	const auto& instanceIdNode = properties["instanceId"];
+	if (!instanceIdNode.IsScalar())
+	{
+		outDiagnostic = "the reflected component has an invalid instanceId: expected a scalar value";
+		return false;
+	}
+
 	InstanceId instanceId;
 	std::string conversionDiagnostic;
 	if (!External::TryConvertYaml(
-			properties["instanceId"],
+			instanceIdNode,
 			instanceId,
 			conversionDiagnostic))
 	{

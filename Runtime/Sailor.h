@@ -31,6 +31,7 @@ namespace Sailor
 		bool m_bIsEditor = false;
 		bool m_bEnableRenderValidationLayers = true;
 		bool m_bRunPathTracer = false;
+		bool m_bForceNullAudioDevice = false;
 
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
@@ -93,6 +94,7 @@ namespace Sailor
 		SAILOR_API static bool CreateEditorWorld();
 		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
 		SAILOR_API static bool IsEditorSimulationEnabled();
+		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
 		SAILOR_API static bool UpdateEditorObject(const char* strInstanceId, const char* strYamlNode);
 		SAILOR_API static bool SetEditorAnimatorParameter(
 			const char* strInstanceId,

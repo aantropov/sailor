@@ -68,6 +68,7 @@ namespace
 	constexpr uint32_t c_setAnimatorParameterCommandField = 59;
 	constexpr uint32_t c_setEditorSimulationCommandField = 61;
 	constexpr uint32_t c_getEditorSimulationStateCommandField = 62;
+	constexpr uint32_t c_previewAudioAssetCommandField = 63;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -1082,6 +1083,17 @@ namespace
 				kEnabledFieldNumber == 1);
 	}
 
+	void TestAudioPreviewWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kPreviewAudioAssetFieldNumber ==
+			c_previewAudioAssetCommandField);
+		static_assert(
+			sailor::editor::v1::FileIdRequest::
+				kFileIdFieldNumber == 1);
+	}
+
 	void TestEmbeddedNullIsRejected()
 	{
 		std::string fileIdRequest;
@@ -2060,6 +2072,7 @@ int main()
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
 		TestEditorSimulationWireContract();
+		TestAudioPreviewWireContract();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();
 		TestGetExitCodeRoundTripAndFree();

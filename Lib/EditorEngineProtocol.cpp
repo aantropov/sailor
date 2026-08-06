@@ -1115,6 +1115,13 @@ namespace
 				Sailor::App::IsEditorSimulationEnabled());
 			break;
 
+		case ProtocolRequest::kPreviewAudioAsset:
+			SetBoolResult(
+				response,
+				Sailor::App::PreviewEditorAudioAsset(
+					request.preview_audio_asset().file_id().c_str()));
+			break;
+
 		case ProtocolRequest::kSetViewport:
 		{
 			const auto& viewport = request.set_viewport();

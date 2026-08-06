@@ -547,6 +547,28 @@ bool App::IsEditorSimulationEnabled()
 		});
 }
 
+bool App::PreviewEditorAudioAsset(const char* strFileId)
+{
+	if (!strFileId || strFileId[0] == '\0')
+	{
+		return false;
+	}
+
+	const std::string fileIdValue = strFileId;
+	return ExecuteOnEngineMainThread<bool>(false, [fileIdValue]()
+		{
+			auto* editor = GetSubmodule<Editor>();
+			if (!editor)
+			{
+				return false;
+			}
+
+			FileId fileId;
+			fileId.Deserialize(YAML::Node(fileIdValue));
+			return fileId && editor->PreviewAudioAsset(fileId);
+		});
+}
+
 bool App::UpdateEditorObject(const char* strInstanceId, const char* strYamlNode)
 {
 	if (!strInstanceId || !strYamlNode)

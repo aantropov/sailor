@@ -15,7 +15,10 @@
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/FileId.h"
+#include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Audio/AudioImporter.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Audio/AudioSystem.h"
 #include "Core/Reflection.h"
 #include "Math/Math.h"
 #include "Math/Transform.h"
@@ -279,7 +282,57 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 
 }
 
-Editor::~Editor() = default;
+Editor::~Editor()
+{
+	StopAudioPreview();
+}
+
+bool Editor::PreviewAudioAsset(const FileId& fileId)
+{
+	StopAudioPreview();
+
+	auto* assetRegistry = App::GetSubmodule<AssetRegistry>();
+	auto* audioSystem = App::GetSubmodule<AudioSystem>();
+	if (!fileId || !assetRegistry || !audioSystem || !audioSystem->IsInitialized())
+	{
+		return false;
+	}
+
+	const AudioClipPtr clip = assetRegistry->LoadAssetFromFile<AudioClip>(fileId, true);
+	AudioVoiceId voiceId = InvalidAudioVoiceId;
+	if (!clip || !audioSystem->CreateVoice(clip, voiceId))
+	{
+		return false;
+	}
+
+	AudioVoiceSettings settings{};
+	settings.m_bLoop = false;
+	settings.m_bSpatial = false;
+	if (!audioSystem->SetVoiceSettings(voiceId, settings) ||
+		!audioSystem->PlayVoice(voiceId, true))
+	{
+		audioSystem->DestroyVoice(voiceId);
+		return false;
+	}
+
+	m_audioPreviewVoiceId = voiceId;
+	return true;
+}
+
+void Editor::StopAudioPreview()
+{
+	if (m_audioPreviewVoiceId == InvalidAudioVoiceId)
+	{
+		return;
+	}
+
+	if (auto* audioSystem = App::GetSubmodule<AudioSystem>())
+	{
+		audioSystem->StopVoice(m_audioPreviewVoiceId);
+		audioSystem->DestroyVoice(m_audioPreviewVoiceId);
+	}
+	m_audioPreviewVoiceId = InvalidAudioVoiceId;
+}
 
 void Editor::SetWorld(World* world)
 {

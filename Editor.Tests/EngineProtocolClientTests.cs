@@ -167,6 +167,29 @@ public sealed class EngineProtocolClientTests
     }
 
     [Fact]
+    public async Task PreviewAudioAssetAsync_SendsExactFileId()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+        const string fileId = "{89ABCDEF-0123-4567-89AB-CDEF01234567}";
+
+        Assert.True(await client.PreviewAudioAssetAsync(fileId));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.PreviewAudioAsset,
+            capturedRequest.CommandCase);
+        Assert.Equal(fileId, capturedRequest.PreviewAudioAsset.FileId);
+    }
+
+    [Fact]
     public async Task EditorSimulation_UsesTypedSetAndStateCommands()
     {
         var requests = new List<ProtocolRequest>();

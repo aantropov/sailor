@@ -21,6 +21,7 @@ namespace concurrency = tbb;
 #define SAILOR_ENQUEUE_TASK(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda))
 #define SAILOR_ENQUEUE_TASK_RENDER_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::Render))
 #define SAILOR_ENQUEUE_TASK_RHI_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::RHI))
+#define SAILOR_ENQUEUE_TASK_AUDIO_THREAD(Name, Lambda) Sailor::App::GetSubmodule<Tasks::Scheduler>()->Run(Sailor::Tasks::CreateTask(Name, Lambda, Sailor::EThreadType::Audio))
 
 namespace Sailor
 {
@@ -45,7 +46,11 @@ namespace Sailor
 
 		// The outer physics step may wait for Jolt jobs running on Worker threads.
 		// Keep it on a dedicated thread so it cannot exhaust the Worker pool.
-		Physics = 6
+		Physics = 6,
+
+		// Serialized audio backend work. All miniaudio calls are confined to
+		// this dedicated thread and never block game or render updates.
+		Audio = 7
 	};
 
 	namespace Tasks
@@ -155,12 +160,14 @@ namespace Sailor
 			SAILOR_API bool IsRendererThread() const;
 			SAILOR_API bool IsEditorThread() const;
 			SAILOR_API bool IsPhysicsThread() const;
+			SAILOR_API bool IsAudioThread() const;
 			SAILOR_API bool HasThread(DWORD threadId) const;
 
 			SAILOR_API DWORD GetMainThreadId() const { return m_mainThreadId.load(std::memory_order_acquire); }
 			SAILOR_API DWORD GetRendererThreadId() const { return m_renderingThreadId; }
 			SAILOR_API DWORD GetEditorThreadId() const { return m_editorThreadId; }
 			SAILOR_API DWORD GetPhysicsThreadId() const { return m_physicsThreadId; }
+			SAILOR_API DWORD GetAudioThreadId() const { return m_audioThreadId; }
 			SAILOR_API EThreadType GetCurrentThreadType() const;
 
 			SAILOR_API Scheduler();
@@ -193,6 +200,7 @@ namespace Sailor
 			DWORD m_renderingThreadId = -1;
 			DWORD m_editorThreadId = -1;
 			DWORD m_physicsThreadId = -1;
+			DWORD m_audioThreadId = -1;
 
 			// Task Synchronization primitives pool
 			concurrency::concurrent_queue<uint16_t> m_freeList{};

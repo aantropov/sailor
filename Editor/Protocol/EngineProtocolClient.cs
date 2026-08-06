@@ -445,6 +445,22 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.GetEditorSimulationState));
 
+    public async Task<bool> PreviewAudioAssetAsync(
+        string fileId,
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        PreviewAudioAsset = new FileIdRequest
+                        {
+                            FileId = ValidateString(fileId, nameof(fileId))
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.PreviewAudioAsset));
+
     public async Task SetViewportAsync(
         uint windowPosX,
         uint windowPosY,

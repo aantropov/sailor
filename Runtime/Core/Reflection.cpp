@@ -8,6 +8,7 @@
 #include "AssetRegistry/AssetRegistry.h"
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
+#include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
@@ -94,6 +95,7 @@ namespace
 		nodes.Add(ExportAssetInfoType<AnimationAssetInfo>("Sailor::AnimationAssetInfo", { "anim" }));
 		nodes.Add(ExportAssetInfoType<AnimationControllerAssetInfo>("Sailor::AnimationControllerAssetInfo", { "animcontroller" }));
 		nodes.Add(ExportAssetInfoType<AnimationSetAssetInfo>("Sailor::AnimationSetAssetInfo", { "animset" }));
+		nodes.Add(ExportAssetInfoType<AudioAssetInfo>("Sailor::AudioAssetInfo", { "wav", "flac", "mp3" }));
 		nodes.Add(ExportAssetInfoType<MaterialAssetInfo>("Sailor::MaterialAssetInfo", { "mat" }));
 		nodes.Add(ExportAssetInfoType<ShaderAssetInfo>("Sailor::ShaderAssetInfo", { "shader", "glsl" }));
 		nodes.Add(ExportAssetInfoType<FrameGraphAssetInfo>("Sailor::FrameGraphAssetInfo", { "renderer" }));
