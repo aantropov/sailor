@@ -1,24 +1,24 @@
-name: PhysicsFallingBodies
+name: PhysicsBounceComparison
 prefabs:
   - gameObjects:
       - name: Camera
         position:
           - 0
-          - 70
-          - 180
+          - 130
+          - 320
           - 1
         rotation:
-          - -0.17364818
+          - -0.173648
           - 0
           - 0
-          - 0.98480775
+          - 0.984808
         scale:
           - 10
           - 10
           - 10
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000001
+        instanceId: A1540000000000000001
         components:
           - 0
     components:
@@ -26,28 +26,28 @@ prefabs:
         overrideProperties:
           fov: 60
           zNear: 1
-          zFar: 10000
+          zFar: 20000
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000001_14100000000000000001
+          instanceId: A1540000000000000000000000000001_A1540000000000000001
   - gameObjects:
       - name: Sun
         position:
           - 0
+          - 250
           - 100
-          - 50
           - 1
         rotation:
-          - 0.183012709
-          - 0.683012724
-          - 0.183012709
-          - 0.683012724
+          - 0.183013
+          - 0.683013
+          - 0.183013
+          - 0.683013
         scale:
           - 10
           - 10
           - 10
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000002
+        instanceId: A1540000000000000002
         components:
           - 0
     components:
@@ -60,12 +60,12 @@ prefabs:
           lightType: Directional
           shadowType: PCF
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000002_14100000000000000002
+          instanceId: A1540000000000000000000000000002_A1540000000000000002
   - gameObjects:
       - name: StaticGround
         position:
           - 0
-          - -5
+          - -10
           - 0
           - 1
         rotation:
@@ -74,12 +74,12 @@ prefabs:
           - 0
           - 1
         scale:
-          - 120
+          - 240
           - 10
-          - 120
+          - 160
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000003
+        instanceId: A1540000000000000003
         components:
           - 0
           - 1
@@ -91,61 +91,16 @@ prefabs:
             fileId: "{A1450002-0000-4000-8000-000000000002}"
             instanceId: NullInstanceId
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000003_14100000000000000003
+          instanceId: A1540000000000000000000000000003_A1540000000000000003
       - typename: Sailor::RigidBodyComponent
         overrideProperties:
           motionType: Static
-          friction: 0.8
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000004_14100000000000000003
-      - typename: Sailor::CollisionShapeComponent
-        overrideProperties:
-          shapeType: Box
-          size:
-            - 1
-            - 1
-            - 1
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000005_14100000000000000003
-  - gameObjects:
-      - name: DynamicBox
-        position:
-          - -20
-          - 50
-          - 0
-          - 1
-        rotation:
-          - 0
-          - 0
-          - 0
-          - 1
-        scale:
-          - 10
-          - 10
-          - 10
-          - 1
-        parentIndex: 4294967295
-        instanceId: 14100000000000000004
-        components:
-          - 0
-          - 1
-          - 2
-    components:
-      - typename: Sailor::MeshRendererComponent
-        overrideProperties:
-          model:
-            fileId: "{A1450002-0000-4000-8000-000000000002}"
-            instanceId: NullInstanceId
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000006_14100000000000000004
-      - typename: Sailor::RigidBodyComponent
-        overrideProperties:
-          motionType: Dynamic
-          gravityFactor: 10
           mass: 1
-          restitution: 0.15
+          friction: 0.8
+          restitution: 0
+          allowSleeping: true
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000007_14100000000000000004
+          instanceId: A1540000000000000000000000000004_A1540000000000000003
       - typename: Sailor::CollisionShapeComponent
         overrideProperties:
           shapeType: Box
@@ -154,12 +109,12 @@ prefabs:
             - 1
             - 1
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000008_14100000000000000004
+          instanceId: A1540000000000000000000000000005_A1540000000000000003
   - gameObjects:
-      - name: DynamicSphere
+      - name: Bounce_000_Percent
         position:
-          - 0
-          - 80
+          - -90
+          - 120
           - 0
           - 1
         rotation:
@@ -168,12 +123,12 @@ prefabs:
           - 0
           - 1
         scale:
-          - 10
-          - 10
-          - 10
+          - 22
+          - 22
+          - 22
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000005
+        instanceId: A1540000000000000004
         components:
           - 0
           - 1
@@ -185,26 +140,28 @@ prefabs:
             fileId: "{A1450001-0000-4000-8000-000000000001}"
             instanceId: NullInstanceId
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000009_14100000000000000005
+          instanceId: A1540000000000000000000000000006_A1540000000000000004
       - typename: Sailor::RigidBodyComponent
         overrideProperties:
           motionType: Dynamic
           gravityFactor: 10
           mass: 1
-          restitution: 0.6
+          friction: 0.2
+          restitution: 0
+          allowSleeping: true
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000A_14100000000000000005
+          instanceId: A1540000000000000000000000000007_A1540000000000000004
       - typename: Sailor::CollisionShapeComponent
         overrideProperties:
           shapeType: Sphere
           radius: 0.5
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000B_14100000000000000005
+          instanceId: A1540000000000000000000000000008_A1540000000000000004
   - gameObjects:
-      - name: DynamicCapsule
+      - name: Bounce_025_Percent
         position:
-          - 20
-          - 110
+          - -45
+          - 120
           - 0
           - 1
         rotation:
@@ -213,12 +170,12 @@ prefabs:
           - 0
           - 1
         scale:
-          - 10
-          - 20
-          - 10
+          - 22
+          - 22
+          - 22
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000006
+        instanceId: A1540000000000000005
         components:
           - 0
           - 1
@@ -230,26 +187,28 @@ prefabs:
             fileId: "{A1450001-0000-4000-8000-000000000001}"
             instanceId: NullInstanceId
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000C_14100000000000000006
+          instanceId: A1540000000000000000000000000009_A1540000000000000005
       - typename: Sailor::RigidBodyComponent
         overrideProperties:
           motionType: Dynamic
           gravityFactor: 10
           mass: 1
+          friction: 0.2
+          restitution: 0.25
+          allowSleeping: true
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000D_14100000000000000006
+          instanceId: A154000000000000000000000000000A_A1540000000000000005
       - typename: Sailor::CollisionShapeComponent
         overrideProperties:
-          shapeType: Capsule
+          shapeType: Sphere
           radius: 0.5
-          height: 1
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000E_14100000000000000006
+          instanceId: A154000000000000000000000000000B_A1540000000000000005
   - gameObjects:
-      - name: SensorPlatform
+      - name: Bounce_050_Percent
         position:
-          - 50
-          - 30
+          - 0
+          - 120
           - 0
           - 1
         rotation:
@@ -258,12 +217,12 @@ prefabs:
           - 0
           - 1
         scale:
-          - 30
-          - 2.5
-          - 30
+          - 22
+          - 22
+          - 22
           - 1
         parentIndex: 4294967295
-        instanceId: 14100000000000000007
+        instanceId: A1540000000000000006
         components:
           - 0
           - 1
@@ -272,69 +231,117 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
             instanceId: NullInstanceId
           fileId: NullFileId
-          instanceId: 1410000000000000000000000000000F_14100000000000000007
-      - typename: Sailor::RigidBodyComponent
-        overrideProperties:
-          motionType: Static
-          sensor: true
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000010_14100000000000000007
-      - typename: Sailor::CollisionShapeComponent
-        overrideProperties:
-          shapeType: Box
-          size:
-            - 1
-            - 1
-            - 1
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000011_14100000000000000007
-  - gameObjects:
-      - name: SensorProbe
-        position:
-          - 50
-          - 80
-          - 0
-          - 1
-        rotation:
-          - 0
-          - 0
-          - 0
-          - 1
-        scale:
-          - 10
-          - 10
-          - 10
-          - 1
-        parentIndex: 4294967295
-        instanceId: 14100000000000000008
-        components:
-          - 0
-          - 1
-          - 2
-    components:
-      - typename: Sailor::MeshRendererComponent
-        overrideProperties:
-          model:
-            fileId: "{A1450002-0000-4000-8000-000000000002}"
-            instanceId: NullInstanceId
-          fileId: NullFileId
-          instanceId: 14100000000000000000000000000012_14100000000000000008
+          instanceId: A154000000000000000000000000000C_A1540000000000000006
       - typename: Sailor::RigidBodyComponent
         overrideProperties:
           motionType: Dynamic
           gravityFactor: 10
           mass: 1
+          friction: 0.2
+          restitution: 0.5
+          allowSleeping: true
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000013_14100000000000000008
+          instanceId: A154000000000000000000000000000D_A1540000000000000006
       - typename: Sailor::CollisionShapeComponent
         overrideProperties:
-          shapeType: Box
-          size:
-            - 1
-            - 1
-            - 1
+          shapeType: Sphere
+          radius: 0.5
           fileId: NullFileId
-          instanceId: 14100000000000000000000000000014_14100000000000000008
+          instanceId: A154000000000000000000000000000E_A1540000000000000006
+  - gameObjects:
+      - name: Bounce_075_Percent
+        position:
+          - 45
+          - 120
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1540000000000000007
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A154000000000000000000000000000F_A1540000000000000007
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1540000000000000000000000000010_A1540000000000000007
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1540000000000000000000000000011_A1540000000000000007
+  - gameObjects:
+      - name: Bounce_100_Percent
+        position:
+          - 90
+          - 120
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1540000000000000008
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1540000000000000000000000000012_A1540000000000000008
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 1
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1540000000000000000000000000013_A1540000000000000008
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1540000000000000000000000000014_A1540000000000000008

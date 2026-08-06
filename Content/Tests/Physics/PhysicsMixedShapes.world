@@ -1,0 +1,1272 @@
+name: PhysicsMixedShapes
+prefabs:
+  - gameObjects:
+      - name: Camera
+        position:
+          - 0
+          - 150
+          - 360
+          - 1
+        rotation:
+          - -0.173648
+          - 0
+          - 0
+          - 0.984808
+        scale:
+          - 10
+          - 10
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000001
+        components:
+          - 0
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 1
+          zFar: 20000
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000001_A1520000000000000001
+  - gameObjects:
+      - name: Sun
+        position:
+          - 0
+          - 250
+          - 100
+          - 1
+        rotation:
+          - 0.183013
+          - 0.683013
+          - 0.183013
+          - 0.683013
+        scale:
+          - 10
+          - 10
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000002
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 8
+            - 8
+            - 8
+          lightType: Directional
+          shadowType: PCF
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000002_A1520000000000000002
+  - gameObjects:
+      - name: StaticGround
+        position:
+          - 0
+          - -10
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 200
+          - 10
+          - 150
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000003
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000003_A1520000000000000003
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.9
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000004_A1520000000000000003
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000005_A1520000000000000003
+  - gameObjects:
+      - name: CollisionRamp
+        position:
+          - 0
+          - 30
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0.156434
+          - 0.987688
+        scale:
+          - 130
+          - 8
+          - 60
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000004
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000006_A1520000000000000004
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.4
+          restitution: 0.15
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000007_A1520000000000000004
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000008_A1520000000000000004
+  - gameObjects:
+      - name: Box_00
+        position:
+          - -100
+          - 100
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000005
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000009_A1520000000000000005
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000A_A1520000000000000005
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000B_A1520000000000000005
+  - gameObjects:
+      - name: Box_01
+        position:
+          - -78
+          - 112
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000006
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000C_A1520000000000000006
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1.25
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000D_A1520000000000000006
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000E_A1520000000000000006
+  - gameObjects:
+      - name: Box_02
+        position:
+          - -56
+          - 124
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000007
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000000F_A1520000000000000007
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1.5
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000010_A1520000000000000007
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000011_A1520000000000000007
+  - gameObjects:
+      - name: Box_03
+        position:
+          - -34
+          - 136
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000008
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000012_A1520000000000000008
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1.75
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000013_A1520000000000000008
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000014_A1520000000000000008
+  - gameObjects:
+      - name: Box_04
+        position:
+          - -12
+          - 148
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000009
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000015_A1520000000000000009
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000016_A1520000000000000009
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000017_A1520000000000000009
+  - gameObjects:
+      - name: Box_05
+        position:
+          - 10
+          - 160
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000A
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000018_A152000000000000000A
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2.25
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000019_A152000000000000000A
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001A_A152000000000000000A
+  - gameObjects:
+      - name: Box_06
+        position:
+          - 32
+          - 172
+          - -30
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000B
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001B_A152000000000000000B
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2.5
+          friction: 0.65
+          restitution: 0.1
+          allowSleeping: true
+          angularVelocity:
+            - 0.2
+            - 0.4
+            - 0.1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001C_A152000000000000000B
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001D_A152000000000000000B
+  - gameObjects:
+      - name: Sphere_00
+        position:
+          - 100
+          - 120
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000C
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001E_A152000000000000000C
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000001F_A152000000000000000C
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000020_A152000000000000000C
+  - gameObjects:
+      - name: Sphere_01
+        position:
+          - 79
+          - 133.5
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000D
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000021_A152000000000000000D
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000022_A152000000000000000D
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000023_A152000000000000000D
+  - gameObjects:
+      - name: Sphere_02
+        position:
+          - 58
+          - 147
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000E
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000024_A152000000000000000E
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000025_A152000000000000000E
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000026_A152000000000000000E
+  - gameObjects:
+      - name: Sphere_03
+        position:
+          - 37
+          - 160.5
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A152000000000000000F
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000027_A152000000000000000F
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000028_A152000000000000000F
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000029_A152000000000000000F
+  - gameObjects:
+      - name: Sphere_04
+        position:
+          - 16
+          - 174
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000010
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002A_A1520000000000000010
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002B_A1520000000000000010
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002C_A1520000000000000010
+  - gameObjects:
+      - name: Sphere_05
+        position:
+          - -5
+          - 187.5
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000011
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002D_A1520000000000000011
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002E_A1520000000000000011
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000002F_A1520000000000000011
+  - gameObjects:
+      - name: Sphere_06
+        position:
+          - -26
+          - 201
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000012
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000030_A1520000000000000012
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000031_A1520000000000000012
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000032_A1520000000000000012
+  - gameObjects:
+      - name: Sphere_07
+        position:
+          - -47
+          - 214.5
+          - 10
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 20
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000013
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000033_A1520000000000000013
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.2
+          restitution: 0.75
+          allowSleeping: true
+          linearVelocity:
+            - -15
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000034_A1520000000000000013
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000035_A1520000000000000013
+  - gameObjects:
+      - name: Capsule_00
+        position:
+          - -70
+          - 190
+          - 50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 16
+          - 32
+          - 16
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000014
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000036_A1520000000000000014
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.45
+          restitution: 0.25
+          allowSleeping: true
+          angularVelocity:
+            - 0.7
+            - 0.2
+            - 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000037_A1520000000000000014
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 2
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000038_A1520000000000000014
+  - gameObjects:
+      - name: Capsule_01
+        position:
+          - -35
+          - 205
+          - 50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 16
+          - 32
+          - 16
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000015
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000039_A1520000000000000015
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.45
+          restitution: 0.25
+          allowSleeping: true
+          angularVelocity:
+            - 0.7
+            - 0.2
+            - 0.5
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003A_A1520000000000000015
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 2
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003B_A1520000000000000015
+  - gameObjects:
+      - name: Capsule_02
+        position:
+          - 0
+          - 220
+          - 50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 16
+          - 32
+          - 16
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000016
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003C_A1520000000000000016
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.45
+          restitution: 0.25
+          allowSleeping: true
+          angularVelocity:
+            - 0.7
+            - 0.2
+            - 0.5
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003D_A1520000000000000016
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 2
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003E_A1520000000000000016
+  - gameObjects:
+      - name: Capsule_03
+        position:
+          - 35
+          - 235
+          - 50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 16
+          - 32
+          - 16
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000017
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A152000000000000000000000000003F_A1520000000000000017
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.45
+          restitution: 0.25
+          allowSleeping: true
+          angularVelocity:
+            - 0.7
+            - 0.2
+            - 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000040_A1520000000000000017
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 2
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000041_A1520000000000000017
+  - gameObjects:
+      - name: Capsule_04
+        position:
+          - 70
+          - 250
+          - 50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 16
+          - 32
+          - 16
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000018
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450001-0000-4000-8000-000000000001}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000042_A1520000000000000018
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 2
+          friction: 0.45
+          restitution: 0.25
+          allowSleeping: true
+          angularVelocity:
+            - 0.7
+            - 0.2
+            - 0.5
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000043_A1520000000000000018
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Capsule
+          radius: 0.5
+          height: 2
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000044_A1520000000000000018
+  - gameObjects:
+      - name: CompoundBody
+        position:
+          - 0
+          - 240
+          - -50
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 30
+          - 20
+          - 20
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1520000000000000019
+        components:
+          - 0
+          - 1
+          - 2
+          - 3
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000045_A1520000000000000019
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 5
+          friction: 0.55
+          restitution: 0.2
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000046_A1520000000000000019
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 0.5
+            - 1
+            - 1
+          center:
+            - -0.35
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000047_A1520000000000000019
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Sphere
+          radius: 0.4
+          center:
+            - 0.4
+            - 0
+            - 0
+          fileId: NullFileId
+          instanceId: A1520000000000000000000000000048_A1520000000000000019
