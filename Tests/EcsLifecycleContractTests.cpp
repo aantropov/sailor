@@ -836,21 +836,20 @@ namespace
 		const size_t compareCachedRevisions = rendererEcsSource.find(
 			"data.m_materialContentRevisions[materialIndex] != currentRevision",
 			globalRevisionGate);
-		const size_t queueDirtyComponent = rendererEcsSource.find(
-			"data.MarkDirty();",
+		const size_t collectDirtyComponent = rendererEcsSource.find(
+			"dirtyComponents.Add(componentIndex);",
 			compareCachedRevisions);
 		const size_t cacheRebuiltRevisions = rendererEcsSource.find(
 			"data.m_materialContentRevisions[materialIndex] = material ? material->GetContentRevision() : 0ull;",
-			queueDirtyComponent);
+			collectDirtyComponent);
 		Require(globalRevisionGate != std::string::npos &&
 			compareCachedRevisions > globalRevisionGate &&
-			queueDirtyComponent > compareCachedRevisions &&
-			cacheRebuiltRevisions > queueDirtyComponent,
-			"material revisions should scan components only after a global change and enqueue only affected proxies");
-		Require(rendererEcsSource.find("TVector<size_t> dirtyComponents = m_dirtyComponents;") != std::string::npos,
-			"static mesh updates must consume a dirty component list instead of scanning every proxy each frame");
-		Require(rendererEcsSource.find("m_dirtyComponents.Contains(") == std::string::npos,
-			"enqueueing dirty meshes must remain constant-time as the queue grows");
+			collectDirtyComponent > compareCachedRevisions &&
+			cacheRebuiltRevisions > collectDirtyComponent,
+			"material revisions should scan components only after a global change and rebuild only affected proxies");
+		Require(rendererEcsSource.find("for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)") != std::string::npos &&
+			rendererEcsSource.find("m_dirtyComponents") == std::string::npos,
+			"static mesh updates should use the conservative component scan without a separate dirty queue");
 	}
 
 	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()

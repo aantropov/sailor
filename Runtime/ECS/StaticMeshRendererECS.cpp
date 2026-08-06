@@ -160,42 +160,10 @@ namespace
 	};
 }
 
-void StaticMeshRendererData::MarkDirty()
-{
-	m_bIsDirty = true;
-	if (m_bQueuedForUpdate)
-	{
-		return;
-	}
-
-	GameObjectPtr owner = m_owner.StaticCast<GameObject>();
-	if (owner && owner->GetWorld())
-	{
-		m_bQueuedForUpdate = true;
-		owner->GetWorld()->GetECS<StaticMeshRendererECS>()->MarkDirty(this);
-	}
-}
-
-size_t StaticMeshRendererECS::RegisterComponent()
-{
-	const size_t index = ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>::RegisterComponent();
-	m_components[index].m_bQueuedForUpdate = true;
-	m_dirtyComponents.Add(index);
-	return index;
-}
-
 void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
 	m_lastMaterialContentRevision = Material::GetGlobalContentRevision();
-}
-
-void StaticMeshRendererECS::MarkDirty(StaticMeshRendererData* component)
-{
-	if (component)
-	{
-		m_dirtyComponents.Add(GetComponentIndex(component));
-	}
 }
 
 void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
@@ -220,8 +188,6 @@ void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
 
 void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRendererData& component)
 {
-	m_dirtyComponents.RemoveAll([index](size_t dirtyIndex) { return dirtyIndex == index; });
-
 	if (!m_sceneViewProxiesCache)
 	{
 		return;
@@ -254,16 +220,25 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	}
 
 	const uint64_t materialContentRevision = Material::GetGlobalContentRevision();
-	if (materialContentRevision != m_lastMaterialContentRevision)
+	const bool bCheckMaterialRevisions = materialContentRevision != m_lastMaterialContentRevision;
+	TVector<size_t> dirtyComponents;
+	dirtyComponents.Reserve(m_components.Num());
+	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
-		for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
+		if (!IsComponentRegistered(componentIndex))
 		{
-			if (!IsComponentRegistered(componentIndex))
-			{
-				continue;
-			}
+			continue;
+		}
 
-			auto& data = m_components[componentIndex];
+		auto& data = m_components[componentIndex];
+		bool bNeedsUpdate = data.m_bIsDirty || (data.GetModel() && data.m_frameLastChange == 0);
+		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
+		{
+			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
+		}
+
+		if (!bNeedsUpdate && bCheckMaterialRevisions)
+		{
 			bool bMaterialsChanged = data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
 			for (size_t materialIndex = 0; !bMaterialsChanged && materialIndex < data.GetMaterials().Num(); ++materialIndex)
 			{
@@ -272,23 +247,20 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				bMaterialsChanged = data.m_materialContentRevisions[materialIndex] != currentRevision;
 			}
 
-			if (bMaterialsChanged)
-			{
-				data.MarkDirty();
-			}
+			bNeedsUpdate = bMaterialsChanged;
 		}
 
-		m_lastMaterialContentRevision = materialContentRevision;
+		if (bNeedsUpdate)
+		{
+			dirtyComponents.Add(componentIndex);
+		}
 	}
+	m_lastMaterialContentRevision = materialContentRevision;
 
-	if (m_dirtyComponents.IsEmpty())
+	if (dirtyComponents.IsEmpty())
 	{
 		return nullptr;
 	}
-
-	TVector<size_t> dirtyComponents = m_dirtyComponents;
-	m_dirtyComponents.Clear(false);
-	dirtyComponents.Sort();
 
 	const size_t currentFrame = GetWorld()->GetCurrentFrame();
 	auto prepareProxyUpdate = [this, currentFrame](size_t componentIndex)
@@ -504,7 +476,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				data.m_shadowCaster.Clear();
 				bShadowCastersChanged = true;
 			}
-			m_dirtyComponents.Add(update.m_componentIndex);
+			data.m_bIsDirty = true;
 			continue;
 		}
 
@@ -519,7 +491,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 			data.m_materialContentRevisions.Clear();
 			data.m_bIsDirty = false;
-			data.m_bQueuedForUpdate = false;
 			continue;
 		}
 
@@ -573,7 +544,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 		}
 		data.m_bIsDirty = false;
-		data.m_bQueuedForUpdate = false;
 	}
 
 	if (bShadowCastersChanged)
@@ -596,6 +566,5 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 void StaticMeshRendererECS::EndPlay()
 {
 	ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>::EndPlay();
-	m_dirtyComponents.Clear();
 	m_sceneViewProxiesCache.Clear();
 }

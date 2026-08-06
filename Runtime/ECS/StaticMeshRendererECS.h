@@ -13,8 +13,6 @@ namespace Sailor
 {
 	using WorldPtr = class World*;
 	using GameObjectPtr = TObjectPtr<class GameObject>;
-	class StaticMeshRendererECS;
-
 	class StaticMeshRendererData final : public ECS::TComponent
 	{
 	public:
@@ -45,8 +43,6 @@ namespace Sailor
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 		SAILOR_API __forceinline uint32_t GetSkeletonOffset() const { return m_skeletonOffset; }
-		SAILOR_API virtual void MarkDirty() override;
-
 	protected:
 
 		ModelPtr m_model;
@@ -56,7 +52,6 @@ namespace Sailor
 		uint32_t m_skeletonOffset = InvalidSkeletonOffset;
 		int32_t m_meshIndex = -1;
 		bool m_bInvalidMeshIndexReported = false;
-		bool m_bQueuedForUpdate = false;
 
 		friend class StaticMeshRendererECS;
 	};
@@ -67,11 +62,8 @@ namespace Sailor
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual void EndPlay() override;
-		SAILOR_API virtual size_t RegisterComponent() override;
-
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
-		void MarkDirty(StaticMeshRendererData* component);
 		void MarkDirty(GameObjectPtr owner);
 
 		virtual uint32_t GetOrder() const override { return 1000; }
@@ -81,7 +73,6 @@ namespace Sailor
 		SAILOR_API virtual void OnComponentUnregistered(size_t index, StaticMeshRendererData& component) override;
 
 		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
-		TVector<size_t> m_dirtyComponents;
 		uint64_t m_lastMaterialContentRevision = 0;
 	};
 

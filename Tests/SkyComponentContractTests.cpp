@@ -614,18 +614,13 @@ namespace
 					rhs.GetEnvironmentKey().GetHash(),
 			"equal default sky environments should have equal keys and hashes");
 
-		lhs.m_sunIntensity = 500.1f;
-		rhs.m_sunIntensity = 500.9f;
+		lhs.m_sunIntensity = 100.0f;
+		rhs.m_sunIntensity = 700.0f;
 		Require(
 			lhs.GetEnvironmentKey() == rhs.GetEnvironmentKey() &&
 				lhs.GetEnvironmentKey().GetHash() ==
 					rhs.GetEnvironmentKey().GetHash(),
-			"sub-integer sun intensity changes should stay in one environment bucket");
-
-		rhs.m_sunIntensity = 501.0f;
-		Require(
-			!(lhs.GetEnvironmentKey() == rhs.GetEnvironmentKey()),
-			"integer sun intensity changes should invalidate the environment key");
+			"sun intensity should not invalidate an environment shader that does not consume it");
 
 		lhs.m_sunIntensity = rhs.m_sunIntensity = 500.0f;
 		lhs.m_lightDirection =
@@ -994,6 +989,9 @@ namespace
 		const std::string engineLoop = ReadText(
 			sourceRoot /
 				"Runtime/Engine/EngineLoop.cpp");
+		const std::string skyNode = ReadText(
+			sourceRoot /
+				"Runtime/FrameGraph/SkyNode.cpp");
 
 		Require(
 			editorSource.find("Sky Settings") ==
@@ -1015,6 +1013,16 @@ namespace
 			engineLoop.find("AddComponent<SkyComponent>") ==
 				std::string::npos,
 			"EngineLoop should not auto-discover or auto-create a SkyComponent");
+		const size_t generateMipMaps = skyNode.find(
+			"commands->GenerateMipMaps(commandList, cubemap);");
+		Require(
+			skyNode.find("else if (face == 6)") != std::string::npos &&
+			skyNode.find("if (m_updateEnvCubemapPattern == 6)") != std::string::npos &&
+			generateMipMaps != std::string::npos &&
+			skyNode.find(
+				"commands->GenerateMipMaps(commandList, cubemap);",
+				generateMipMaps + 1) == std::string::npos,
+			"the procedural environment should generate mipmaps once and publish immediately afterward");
 
 		RequireWorldSkyLinks(
 			sourceRoot / "Content/Editor.world",

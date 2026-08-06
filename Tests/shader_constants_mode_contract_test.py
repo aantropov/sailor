@@ -54,6 +54,10 @@ def main() -> int:
         raise AssertionError("Engine-mode guard must run before resolving a writable Content path")
     if "GetEngineContentFolder" in update or "GetEngineContent() /" in update:
         raise AssertionError("a distinct workspace must not write through to read-only Engine Content")
+    if "const std::string generatedLibrary = GenerateConstantsLibrary(CacheProducerVersion);" not in update:
+        raise AssertionError("Engine mode must generate the current constants source before validating it")
+    if "currentLibrary != generatedLibrary" not in update:
+        raise AssertionError("Constants.glsl must be repaired when its contents are stale even if its version matches")
 
     print("Shader constants mode contract passed")
     return 0
