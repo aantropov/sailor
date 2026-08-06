@@ -858,7 +858,8 @@ namespace
 		const std::string processBody = ExtractFunctionBody(
 			shadowPrepassSource,
 			"void ShadowPrepassNode::Process(");
-		Require(processBody.find("proxy.m_skeletonOffset") != std::string::npos &&
+		Require((processBody.find("proxy.m_skeletonOffset") != std::string::npos ||
+			processBody.find("proxy->m_skeletonOffset") != std::string::npos) &&
 			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
 			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
 			processBody.find("GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned)") != std::string::npos &&
