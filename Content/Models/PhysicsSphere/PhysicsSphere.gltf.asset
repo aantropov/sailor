@@ -1,0 +1,11 @@
+assetInfoType: Sailor::ModelAssetInfo
+fileId: "{A1450001-0000-4000-8000-000000000001}"
+filename: PhysicsSphere.gltf
+bShouldGenerateMaterials: false
+bShouldBatchByMaterial: true
+bShouldKeepCpuBuffers: false
+bGenerateBLAS: true
+unitScale: 1
+materials:
+  - "{607948CB-4F49-4EF8-8B49-57E350DB38B1}"
+animations: ~

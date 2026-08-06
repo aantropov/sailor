@@ -233,6 +233,9 @@ target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
+target_compile_definitions(PhysicsRuntimeTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
 target_compile_definitions(SkyComponentContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
