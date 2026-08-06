@@ -266,7 +266,7 @@ namespace SailorEditor.Services
 #if WINDOWS
                 return Path.Combine(EngineWorkingDirectory, "SailorEngine-Debug.exe");
 #else
-                return Path.Combine(EngineWorkingDirectory, "Binaries", "Debug", "SailorEngine-Debug");
+                return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Debug");
 #endif
             }
         }
@@ -278,7 +278,7 @@ namespace SailorEditor.Services
 #if WINDOWS
                 return Path.Combine(EngineWorkingDirectory, "SailorEngine-Release.exe");
 #else
-                return Path.Combine(EngineWorkingDirectory, "Binaries", "Release", "SailorEngine-Release");
+                return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Release");
 #endif
             }
         }
@@ -2241,6 +2241,16 @@ namespace SailorEditor.Services
             var stringId = fileId?.Value ?? string.Empty;
             return InvokeRunningInteropAsync(
                 token => protocolClient.UpdateAssetAsync(stringId, token),
+                cancellationToken: cancellationToken);
+        }
+
+        public Task<bool> PreviewAudioAssetAsync(
+            FileId fileId,
+            CancellationToken cancellationToken = default)
+        {
+            var stringId = fileId?.Value ?? string.Empty;
+            return InvokeRunningInteropAsync(
+                token => protocolClient.PreviewAudioAssetAsync(stringId, token),
                 cancellationToken: cancellationToken);
         }
 

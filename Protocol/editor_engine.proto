@@ -64,13 +64,14 @@ message ProtocolRequest {
 		InstanceIdRequest get_animator_state = 60;
 		EditorSimulationRequest set_editor_simulation = 61;
 		Empty get_editor_simulation_state = 62;
+		FileIdRequest preview_audio_asset = 63;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 63 to 99;
+	reserved 64 to 99;
 }
 
 message ProtocolResponse {

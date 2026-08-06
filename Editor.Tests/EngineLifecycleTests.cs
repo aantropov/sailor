@@ -3,6 +3,29 @@ namespace Editor.Tests;
 public sealed class EngineLifecycleTests
 {
     [Fact]
+    public void ManagedPlayLaunch_UsesCMakeRuntimeOutputDirectoryOnNonWindowsHosts()
+    {
+        var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
+
+        Assert.Contains(
+            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"SailorEngine-Debug\")",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"SailorEngine-Release\")",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"Debug\", \"SailorEngine-Debug\")",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"Release\", \"SailorEngine-Release\")",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EditorBundle_CompilesCriticalXamlEntryPoints()
     {
         var project = ReadRepositoryFile("Editor", "SailorEditor.csproj");
