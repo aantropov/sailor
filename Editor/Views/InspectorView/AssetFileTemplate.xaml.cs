@@ -37,6 +37,13 @@ public partial class AssetFileTemplate : DataTemplate
         asset.EnsureAssetPropertiesTyped();
 
         layout.Children.Add(new Views.ControlPanelView { BindingContext = asset });
+        if (string.Equals(
+            asset.AssetInfoTypeName,
+            "Sailor::AudioAssetInfo",
+            StringComparison.Ordinal))
+        {
+            layout.Children.Add(CreateAudioPreviewButton(asset));
+        }
         layout.Children.Add(new Label { Text = asset.AssetType?.Name ?? "Asset Metadata", FontAttributes = FontAttributes.Bold });
 
         var props = new Grid
@@ -61,6 +68,50 @@ public partial class AssetFileTemplate : DataTemplate
         }
 
         layout.Children.Add(props);
+    }
+
+    static Button CreateAudioPreviewButton(AssetFile asset)
+    {
+        var button = new Button
+        {
+            Text = "Play",
+            HeightRequest = 32,
+            WidthRequest = 96,
+            HorizontalOptions = LayoutOptions.Start,
+            BindingContext = asset
+        };
+        button.Clicked += OnAudioPreviewClicked;
+        return button;
+    }
+
+    static async void OnAudioPreviewClicked(object sender, EventArgs args)
+    {
+        if (sender is not Button { BindingContext: AssetFile asset } button ||
+            asset.FileId is null ||
+            asset.FileId.IsEmpty())
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            var engineService = MauiProgram.GetService<EngineService>();
+            if (!await engineService.PreviewAudioAssetAsync(asset.FileId))
+            {
+                engineService.PushConsoleMessage(
+                    $"Cannot preview audio asset: {asset.DisplayName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            MauiProgram.GetService<EngineService>().PushConsoleMessage(
+                $"Cannot preview audio asset '{asset.DisplayName}': {ex.Message}");
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
     }
 
     static bool ShouldHideField(AssetFile asset, string fieldName)

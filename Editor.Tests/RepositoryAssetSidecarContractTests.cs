@@ -10,6 +10,7 @@ public sealed class RepositoryAssetSidecarContractTests
     {
         "Sailor::AssetInfo",
         "Sailor::AnimationAssetInfo",
+        "Sailor::AudioAssetInfo",
         "Sailor::FrameGraphAssetInfo",
         "Sailor::MaterialAssetInfo",
         "Sailor::ModelAssetInfo",

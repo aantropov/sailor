@@ -200,7 +200,7 @@ void Scheduler::Initialize()
 
 	const unsigned coresCount = std::thread::hardware_concurrency();
 	const unsigned numRHIThreads = RHIThreadsNum;
-	const unsigned numReservedThreads = 5u + numRHIThreads;
+	const unsigned numReservedThreads = 6u + numRHIThreads;
 	const unsigned numThreads = coresCount > numReservedThreads
 		? coresCount - numReservedThreads
 		: 1u;
@@ -273,6 +273,17 @@ void Scheduler::Initialize()
 	m_threadTypes[m_physicsThreadId] = EThreadType::Physics;
 	m_workerThreads.Emplace(newPhysicsThread);
 
+	WorkerThread* newAudioThread = new WorkerThread(
+		"Audio Thread",
+		EThreadType::Audio,
+		m_refreshCondVar[(uint32_t)EThreadType::Audio],
+		m_queueMutex[(uint32_t)EThreadType::Audio],
+		m_pSharedTaskQueue[(uint32_t)EThreadType::Audio]);
+
+	m_audioThreadId = newAudioThread->GetThreadId();
+	m_threadTypes[m_audioThreadId] = EThreadType::Audio;
+	m_workerThreads.Emplace(newAudioThread);
+
 	SAILOR_LOG("Initialize Tasks::Scheduler. Cores count: %d, Worker threads count: %zd", coresCount, m_workerThreads.Num());
 }
 
@@ -296,6 +307,7 @@ Scheduler::~Scheduler()
 	NotifyWorkerThread(EThreadType::Editor, true);
 	NotifyWorkerThread(EThreadType::Background, true);
 	NotifyWorkerThread(EThreadType::Physics, true);
+	NotifyWorkerThread(EThreadType::Audio, true);
 
 	for (auto& worker : m_workerThreads)
 	{
@@ -636,6 +648,11 @@ bool Scheduler::IsEditorThread() const
 bool Scheduler::IsPhysicsThread() const
 {
 	return m_physicsThreadId == GetCurrentThreadId();
+}
+
+bool Scheduler::IsAudioThread() const
+{
+	return m_audioThreadId == GetCurrentThreadId();
 }
 
 bool Scheduler::HasThread(DWORD threadId) const

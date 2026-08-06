@@ -11,6 +11,7 @@ namespace Sailor
 	using ShaderSetPtr = TObjectPtr<class ShaderSet>;
 	using FrameGraphPtr = TObjectPtr<class FrameGraph>;
 	using PrefabPtr = TObjectPtr<class Prefab>;
+	using AudioClipPtr = TObjectPtr<class AudioClip>;
 
 	using GameObjectPtr = TObjectPtr<class GameObject>;
 	using WorldPtr = class World*;

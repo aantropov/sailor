@@ -94,6 +94,11 @@ queries the native authority; toolbar state is never inferred solely from a
 previous button click. Both commands use the regular Editor worker and marshal
 world mutations to the Engine main thread.
 
+`preview_audio_asset` accepts an audio clip `fileId`, loads it through the
+regular asset registry, and plays it as a non-spatial one-shot voice. Starting
+another preview stops and destroys the previous preview voice. The Editor sends
+this command asynchronously through the normal WebSocket transport.
+
 Compatibility rules:
 
 - Ordinary commands use baseline `protocol_version = 1`. Strict InstanceId

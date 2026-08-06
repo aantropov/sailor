@@ -8,6 +8,8 @@
 #include "AssetRegistry/Animation/AnimationAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
 #include "AssetRegistry/Animation/AnimationControllerImporter.h"
+#include "AssetRegistry/Audio/AudioAssetInfo.h"
+#include "AssetRegistry/Audio/AudioImporter.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
@@ -22,6 +24,7 @@
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
 #include "Physics/JoltRuntime.h"
+#include "Audio/AudioSystem.h"
 #include "RHI/Renderer.h"
 #include "Core/Submodule.h"
 #include "Containers/Vector.h"
@@ -346,6 +349,10 @@ AppArgs ParseCommandLineArgs(const char** args, int32_t num)
 		{
 			params.m_bRunPathTracer = true;
 		}
+		else if (arg == "--null-audio")
+		{
+			params.m_bForceNullAudioDevice = true;
+		}
 	}
 
 	return params;
@@ -474,6 +481,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
+	s_pInstance->AddSubmodule(TSubmodule<AudioSystem>::Make(params.m_bForceNullAudioDevice));
 	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
 	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bEnableRenderValidationLayers));
 	if (!renderer->IsInitialized())
@@ -491,6 +499,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto animationInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationAssetInfoHandler>::Make(assetRegistry));
 	auto animationControllerInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
 	auto animationSetInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
+	auto audioInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AudioAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
@@ -501,6 +510,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<ModelImporter>::Make(modelInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationImporter>::Make(animationInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<AnimationControllerImporter>::Make(animationControllerInfoHandler, animationSetInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
@@ -1069,7 +1079,7 @@ void App::Shutdown()
 
 	if (scheduler)
 	{
-		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics });
+		scheduler->WaitIdle({ EThreadType::Main, EThreadType::Worker, EThreadType::RHI, EThreadType::Render, EThreadType::Editor, EThreadType::Physics, EThreadType::Audio });
 		s_pInstance->m_pendingAssetReloadTask.Clear();
 	}
 
@@ -1100,12 +1110,14 @@ void App::Shutdown()
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<AnimationImporter>();
 	RemoveSubmodule<AnimationControllerImporter>();
+	RemoveSubmodule<AudioImporter>();
 	RemoveSubmodule<ShaderCompiler>();
 	RemoveSubmodule<TextureImporter>();
 	RemoveSubmodule<PrefabImporter>();
 	RemoveSubmodule<WorldPrefabImporter>();
 
 	RemoveSubmodule<AssetRegistry>();
+	RemoveSubmodule<AudioSystem>();
 
 	RemoveSubmodule<Tasks::Scheduler>();
 	RemoveSubmodule<Renderer>();

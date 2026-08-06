@@ -113,6 +113,12 @@ if(NOT Stb_FOUND)
 	set(Stb_INCLUDE_DIR "")
 endif()
 
+find_path(MINIAUDIO_INCLUDE_DIRS "miniaudio.h")
+if(MINIAUDIO_INCLUDE_DIRS MATCHES "NOTFOUND")
+	list(APPEND SAILOR_MISSING_DEPS "miniaudio")
+	set(MINIAUDIO_INCLUDE_DIRS "")
+endif()
+
 if(SAILOR_MISSING_DEPS)
 	set(SAILOR_CONFIGURED_WITH_DEPENDENCY_STUBS ON)
 	list(JOIN SAILOR_MISSING_DEPS ", " SAILOR_MISSING_DEPS_MSG)
@@ -138,7 +144,8 @@ file(GLOB_RECURSE SAILOR_RUNTIME_SOURCES
 # vcpkg builds Jolt without compiler RTTI. Keep the Sailor adapter that derives
 # from Jolt's JobSystemWithBarrier on the same ABI while the rest of Sailor
 # retains RTTI for reflected engine types.
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" OR
+	CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
 	set_source_files_properties(
 		"${SAILOR_RUNTIME_DIR}/Physics/JoltJobSystem.cpp"
 		PROPERTIES COMPILE_OPTIONS "/GR-")
@@ -292,6 +299,8 @@ target_include_directories(SailorLib PUBLIC
 target_include_directories(SailorLib PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}
 	${TINYGLTF_INCLUDE_DIRS})
+target_include_directories(SailorLib SYSTEM PRIVATE
+	${MINIAUDIO_INCLUDE_DIRS})
 
 # Definitions
 target_compile_features(SailorLib PUBLIC cxx_std_20)
@@ -336,12 +345,16 @@ if(WIN32)
 endif()
 
 if(APPLE)
+	find_library(SAILOR_COREAUDIO_FRAMEWORK CoreAudio REQUIRED)
+	find_library(SAILOR_AUDIOTOOLBOX_FRAMEWORK AudioToolbox REQUIRED)
 	find_library(SAILOR_COCOA_FRAMEWORK Cocoa REQUIRED)
 	find_library(SAILOR_QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 	find_library(SAILOR_METAL_FRAMEWORK Metal REQUIRED)
 	find_library(SAILOR_IOSURFACE_FRAMEWORK IOSurface REQUIRED)
 
 	target_link_libraries(SailorLib PRIVATE
+		${SAILOR_COREAUDIO_FRAMEWORK}
+		${SAILOR_AUDIOTOOLBOX_FRAMEWORK}
 		${SAILOR_COCOA_FRAMEWORK}
 		${SAILOR_QUARTZCORE_FRAMEWORK}
 		${SAILOR_METAL_FRAMEWORK}
