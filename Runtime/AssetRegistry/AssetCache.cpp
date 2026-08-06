@@ -45,6 +45,12 @@ namespace
 		return result;
 	}
 
+	template<typename T>
+	bool TryDecodeScalar(const YAML::Node& node, T& outValue)
+	{
+		return node.IsScalar() && YAML::convert<T>::decode(node, outValue);
+	}
+
 	Workspace::WorkspaceCacheIdentity MakeExpectedIdentity()
 	{
 		return Workspace::MakeWorkspaceCacheIdentity(
@@ -227,12 +233,17 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 				return;
 			}
 
-			m_fileId.Deserialize(fileId);
-			m_assetImportTime = assetImportTime.as<std::time_t>();
-			m_sourcePath = NormalizeSourcePath(sourcePath.as<std::string>());
-			m_sourceRevision.m_modificationTimeNanoseconds = modificationTimeNanoseconds.as<int64_t>();
-			m_sourceRevision.m_fileSize = fileSize.as<uint64_t>();
-			m_sourceRevision.m_contentHash = contentHash.as<uint64_t>();
+			std::string decodedSourcePath;
+			if (!TryDecodeScalar(fileId, m_fileId) ||
+				!TryDecodeScalar(assetImportTime, m_assetImportTime) ||
+				!TryDecodeScalar(sourcePath, decodedSourcePath) ||
+				!TryDecodeScalar(modificationTimeNanoseconds, m_sourceRevision.m_modificationTimeNanoseconds) ||
+				!TryDecodeScalar(fileSize, m_sourceRevision.m_fileSize) ||
+				!TryDecodeScalar(contentHash, m_sourceRevision.m_contentHash))
+			{
+				return;
+			}
+			m_sourcePath = NormalizeSourcePath(decodedSourcePath);
 			m_sourceRevision.m_bIsValid = true;
 			const YAML::Node metadataFilename = inData["metadataFilename"];
 			const YAML::Node metadataRevision = inData["metadataRevision"];
@@ -250,12 +261,15 @@ void AssetCache::AssetCacheData::Entry::Deserialize(const YAML::Node& inData)
 			{
 				return;
 			}
-			m_metadataFilename = metadataFilename.as<std::string>();
-			m_metadataRevision.m_modificationTimeNanoseconds = metadataModificationTime.as<int64_t>();
-			m_metadataRevision.m_fileSize = metadataFileSize.as<uint64_t>();
-			m_metadataRevision.m_contentHash = metadataContentHash.as<uint64_t>();
+			if (!TryDecodeScalar(metadataFilename, m_metadataFilename) ||
+				!TryDecodeScalar(metadataModificationTime, m_metadataRevision.m_modificationTimeNanoseconds) ||
+				!TryDecodeScalar(metadataFileSize, m_metadataRevision.m_fileSize) ||
+				!TryDecodeScalar(metadataContentHash, m_metadataRevision.m_contentHash) ||
+				!TryDecodeScalar(assetInfoType, m_assetInfoType))
+			{
+				return;
+			}
 			m_metadataRevision.m_bIsValid = true;
-			m_assetInfoType = assetInfoType.as<std::string>();
 			if (m_sourcePath.empty() || m_metadataFilename.empty() ||
 				std::filesystem::path(m_metadataFilename).filename() != m_metadataFilename ||
 				m_assetInfoType.empty() ||
@@ -339,8 +353,8 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 			return false;
 		}
 
-		const FileId fileId = serializedEntry.first.as<FileId>();
-		if (!fileId)
+		FileId fileId;
+		if (!TryDecodeScalar(serializedEntry.first, fileId) || !fileId)
 		{
 			outDiagnostic = "Asset cache contains invalid file id '" + serializedFileId + "'.";
 			return false;
@@ -393,13 +407,19 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		}
 
 		AssetCacheData::Entry entry;
-		entry.m_fileId = entryFileId.as<FileId>();
-		entry.m_assetImportTime = assetImportTime.as<std::time_t>();
-		entry.m_sourceRevision.m_modificationTimeNanoseconds = modificationTimeNanoseconds.as<int64_t>();
-		entry.m_sourceRevision.m_fileSize = fileSize.as<uint64_t>();
-		entry.m_sourceRevision.m_contentHash = contentHash.as<uint64_t>();
+		std::string serializedSourcePath;
+		if (!TryDecodeScalar(entryFileId, entry.m_fileId) ||
+			!TryDecodeScalar(assetImportTime, entry.m_assetImportTime) ||
+			!TryDecodeScalar(modificationTimeNanoseconds, entry.m_sourceRevision.m_modificationTimeNanoseconds) ||
+			!TryDecodeScalar(fileSize, entry.m_sourceRevision.m_fileSize) ||
+			!TryDecodeScalar(contentHash, entry.m_sourceRevision.m_contentHash) ||
+			!TryDecodeScalar(sourcePath, serializedSourcePath))
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId +
+				"' contains an invalid scalar value.";
+			return false;
+		}
 		entry.m_sourceRevision.m_bIsValid = true;
-		const std::string serializedSourcePath = sourcePath.as<std::string>();
 		if (serializedSourcePath.empty())
 		{
 			outDiagnostic = "Asset cache entry '" + serializedFileId + "' has an empty sourcePath.";
@@ -428,12 +448,17 @@ bool AssetCache::AssetCacheData::TryDeserialize(
 		{
 			return false;
 		}
-		entry.m_metadataFilename = metadataFilename.as<std::string>();
-		entry.m_metadataRevision.m_modificationTimeNanoseconds = metadataModificationTime.as<int64_t>();
-		entry.m_metadataRevision.m_fileSize = metadataFileSize.as<uint64_t>();
-		entry.m_metadataRevision.m_contentHash = metadataContentHash.as<uint64_t>();
+		if (!TryDecodeScalar(metadataFilename, entry.m_metadataFilename) ||
+			!TryDecodeScalar(metadataModificationTime, entry.m_metadataRevision.m_modificationTimeNanoseconds) ||
+			!TryDecodeScalar(metadataFileSize, entry.m_metadataRevision.m_fileSize) ||
+			!TryDecodeScalar(metadataContentHash, entry.m_metadataRevision.m_contentHash) ||
+			!TryDecodeScalar(assetInfoType, entry.m_assetInfoType))
+		{
+			outDiagnostic = "Asset cache entry '" + serializedFileId +
+				"' contains an invalid lazy metadata scalar value.";
+			return false;
+		}
 		entry.m_metadataRevision.m_bIsValid = true;
-		entry.m_assetInfoType = assetInfoType.as<std::string>();
 		if (entry.m_metadataFilename.empty() ||
 			std::filesystem::path(entry.m_metadataFilename).filename() != entry.m_metadataFilename ||
 			entry.m_assetInfoType.empty())

@@ -590,10 +590,11 @@ namespace
 			CreateWorkspaceContext(directory);
 		WriteScanAssetFixture(workspaceContext);
 		{
-			AssetRegistry registry(workspaceContext);
 			TestAssetInfoHandler handler;
+			AssetRegistry registry(workspaceContext);
 			RegisterRawHandler(registry, handler);
-			Require(registry.ScanContentFolder(),
+			Require(registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
 				"the empty v1 cache should be built by the existing eager scan");
 		}
 
@@ -609,11 +610,12 @@ namespace
 			"the rebuilt cache must use only the strict asset-cache-v1 identity");
 
 		uint32_t numMetadataLoads = 0;
-		AssetRegistry registry(workspaceContext);
 		TestAssetInfoHandler handler;
+		AssetRegistry registry(workspaceContext);
 		handler.m_onLoad = [&]() { ++numMetadataLoads; };
 		RegisterRawHandler(registry, handler);
-		Require(registry.ScanContentFolder(),
+		Require(registry.ScanContentFolder() &&
+			registry.CompleteScanProcessing(),
 			"the current v1 cache should initialize the lazy registry index");
 		Require(numMetadataLoads == 0,
 			"an unchanged lazy scan must not read asset metadata");
@@ -692,10 +694,11 @@ namespace
 			"filename: Shared.raw\n"
 			"testValue: 1\n");
 		{
-			AssetRegistry registry(workspaceContext);
 			TargetedUpdateAssetInfoHandler handler;
+			AssetRegistry registry(workspaceContext);
 			RegisterTargetedUpdateHandler(registry, handler);
-			Require(registry.ScanContentFolder(),
+			Require(registry.ScanContentFolder() &&
+				registry.CompleteScanProcessing(),
 				"the initial primary asset should build the strict v1 index");
 		}
 
@@ -704,12 +707,13 @@ namespace
 			"fileId: '{LAZY-SECONDARY}'\n"
 			"filename: Shared.raw\n"
 			"testValue: 2\n");
-		AssetRegistry registry(workspaceContext);
-		TargetedUpdateAssetInfoHandler handler;
 		RecordingTargetedUpdateListener listener;
+		TargetedUpdateAssetInfoHandler handler;
 		handler.Subscribe(&listener);
+		AssetRegistry registry(workspaceContext);
 		RegisterTargetedUpdateHandler(registry, handler);
-		Require(registry.ScanContentFolder(),
+		Require(registry.ScanContentFolder() &&
+			registry.CompleteScanProcessing(),
 			"the lazy scan should register new secondary metadata");
 		Require(listener.m_updatedFileIds.size() == 1 &&
 			listener.m_updatedFileIds[0] == MakeFileId("{LAZY-SECONDARY}"),
