@@ -38,11 +38,17 @@ namespace Sailor
 		uint32_t m_componentIndex = 0;
 		RHI::EShadowType m_shadowType = RHI::EShadowType::None;
 		glm::mat4 m_lightMatrix{};
+		uint64_t m_sceneRevision = 0;
 
 		// <Mesh ECS Index, LastFrameChanged>
 		TVector<TPair<size_t, size_t>> m_snapshot{};
 
 		SAILOR_API bool Equals(const CSMLightState& rhs) const;
+		SAILOR_API bool CanReuse(
+			uint32_t componentIndex,
+			RHI::EShadowType shadowType,
+			const glm::mat4& lightMatrix,
+			uint64_t sceneRevision) const;
 	};
 
 	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
@@ -102,7 +108,8 @@ namespace Sailor
 			const RHI::RHISceneViewPtr& sceneView,
 			const Math::Transform& cameraTransform,
 			const CameraData& cameraData,
-			const TVector<RHI::RHILightProxy>& directionalLights);
+			const TVector<RHI::RHILightProxy>& directionalLights,
+			uint32_t& snapshotIndex);
 
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,

@@ -258,6 +258,15 @@ namespace Sailor
 			}
 		}
 
+		template <typename TCallback>
+		__forceinline void Trace(const Math::Frustum& frustum, TCallback&& callback) const
+		{
+			if (frustum.OverlapsAABB(Math::AABB(m_root->m_center, (float)m_root->m_size * glm::vec3(0.5f, 0.5f, 0.5f))))
+			{
+				Trace_Internal(*m_root, frustum, callback);
+			}
+		}
+
 		__forceinline void TraceRay(const Math::Ray& ray, TVector<TElementType>& outElements, float maxRayLength = FLT_MAX) const
 		{
 			outElements.Clear(false);
@@ -369,6 +378,32 @@ namespace Sailor
 					if (frustum.OverlapsAABB(Math::AABB(node.m_internal[i].m_center, (float)node.m_internal[i].m_size * glm::vec3(0.5f, 0.5f, 0.5f))))
 					{
 						Trace_Internal(node.m_internal[i], frustum, outElements);
+					}
+				}
+			}
+		}
+
+		template <typename TCallback>
+		void Trace_Internal(const TNode& node, const Math::Frustum& frustum, TCallback& callback) const
+		{
+			if (node.m_elements.Num())
+			{
+				for (const auto& el : node.m_elements)
+				{
+					if (frustum.OverlapsAABB(Math::AABB(el.m_second->m_position, el.m_second->m_extents)))
+					{
+						callback(el.m_first);
+					}
+				}
+			}
+
+			if (!node.IsLeaf())
+			{
+				for (uint32_t i = 0; i < 8; i++)
+				{
+					if (frustum.OverlapsAABB(Math::AABB(node.m_internal[i].m_center, (float)node.m_internal[i].m_size * glm::vec3(0.5f, 0.5f, 0.5f))))
+					{
+						Trace_Internal(node.m_internal[i], frustum, callback);
 					}
 				}
 			}

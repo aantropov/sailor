@@ -51,6 +51,18 @@ bool CSMLightState::Equals(const CSMLightState& rhs) const
 	return true;
 }
 
+bool CSMLightState::CanReuse(
+	uint32_t componentIndex,
+	RHI::EShadowType shadowType,
+	const glm::mat4& lightMatrix,
+	uint64_t sceneRevision) const
+{
+	return m_componentIndex == componentIndex &&
+		m_shadowType == shadowType &&
+		m_sceneRevision == sceneRevision &&
+		AreMatricesExactlyEqual(m_lightMatrix, lightMatrix);
+}
+
 void LightingECS::BeginPlay()
 {
 	auto& driver = Sailor::RHI::Renderer::GetDriver();
@@ -259,17 +271,17 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 	const RHI::RHISceneViewPtr& sceneView,
 	const Math::Transform& cameraTransform,
 	const CameraData& cameraData,
-	const TVector<RHI::RHILightProxy>& directionalLights)
+	const TVector<RHI::RHILightProxy>& directionalLights,
+	uint32_t& snapshotIndex)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	uint32_t snapshotIndex = 0;
 	TVector<RHI::RHIUpdateShadowMapCommand> updateShadowMaps{};
 	updateShadowMaps.Reserve(directionalLights.Num() * NumCascades);
 
 	for (const auto& directionalLight : directionalLights)
 	{
-		auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(directionalLight.m_lightMatrix,
+		const auto lightCascadesMatrices = ShadowPrepassNode::CalculateLightProjectionForCascades(directionalLight.m_lightMatrix,
 			cameraTransform.Matrix(),
 			cameraData.GetAspect(),
 			cameraData.GetFov(),
@@ -277,49 +289,94 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cameraData.GetZFar());
 
 		TVector<Math::Frustum> frustums(lightCascadesMatrices.Num());
+		TVector<glm::mat4> lightMatrices(lightCascadesMatrices.Num());
+		bool bCanReuseAllCascades = true;
+		for (uint32_t cascadeIndex = 0; cascadeIndex < lightCascadesMatrices.Num(); ++cascadeIndex)
+		{
+			lightMatrices[cascadeIndex] = lightCascadesMatrices[cascadeIndex] * directionalLight.m_lightMatrix;
+			frustums[cascadeIndex].ExtractFrustumPlanes(lightMatrices[cascadeIndex]);
+			const RHI::EShadowType shadowType = cascadeIndex > 0 ?
+				RHI::EShadowType::PCF : directionalLight.m_shadowType;
+			const uint32_t currentSnapshotIndex = snapshotIndex + cascadeIndex;
+			bCanReuseAllCascades &= currentSnapshotIndex < m_csmSnapshots.Num() &&
+				m_csmSnapshots[currentSnapshotIndex].CanReuse(
+					directionalLight.m_index,
+					shadowType,
+					lightMatrices[cascadeIndex],
+					sceneView->m_shadowCastersRevision);
+		}
+
+		if (bCanReuseAllCascades)
+		{
+			snapshotIndex += (uint32_t)lightCascadesMatrices.Num();
+			continue;
+		}
+
+		const glm::mat4 broadLightMatrix = ShadowPrepassNode::CalculateLightProjectionMatrix(
+			directionalLight.m_lightMatrix,
+			cameraTransform.Matrix(),
+			cameraData.GetAspect(),
+			cameraData.GetFov(),
+			cameraData.GetZNear(),
+			cameraData.GetZFar(),
+			10.0f) * directionalLight.m_lightMatrix;
+		Math::Frustum broadFrustum;
+		broadFrustum.ExtractFrustumPlanes(broadLightMatrix);
+		const auto shadowCasters = sceneView->TraceShadowCasters(broadFrustum);
 
 		RHI::EShadowType bCascadeAdded[NumCascades];
 		const uint32_t alreadyPlacedPasses = (uint32_t)updateShadowMaps.Num();
 
-		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); k++)
+		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); ++k)
 		{
 			bCascadeAdded[k] = RHI::EShadowType::None;
 
-			auto lightMatrix = lightCascadesMatrices[k] * directionalLight.m_lightMatrix;
-			frustums[k].ExtractFrustumPlanes(lightMatrix);
-
 			RHI::RHIUpdateShadowMapCommand cascade;
-			cascade.m_meshList = sceneView->TraceScene(frustums[k], true);
 			cascade.m_shadowMap = m_csmShadowMaps[k];
-			cascade.m_lightMatrix = lightMatrix;
+			cascade.m_lightMatrix = lightMatrices[k];
 			cascade.m_lighMatrixIndex = k;
 			cascade.m_blurRadius = ShadowCascadeBlur[k];
-			
-			// For EVSM only 1st cascade is EVSM
 			cascade.m_shadowType = k > 0 ? RHI::EShadowType::PCF : directionalLight.m_shadowType;
+			cascade.m_meshList.Reserve(shadowCasters.Num());
+			for (const auto& caster : shadowCasters)
+			{
+				if (caster && frustums[k].OverlapsAABB(caster->m_worldAabb))
+				{
+					cascade.m_meshList.Add(caster);
+				}
+			}
 
-			// Track every caster that affects this cascade before removing draw-call
-			// duplicates. Casters removed below are still rendered into this shadow map
-			// through m_internalCommandsList, so they must participate in invalidation.
 			CSMLightState snapshot{};
 			snapshot.m_componentIndex = directionalLight.m_index;
 			snapshot.m_shadowType = cascade.m_shadowType;
-			snapshot.m_lightMatrix = lightMatrix;
+			snapshot.m_lightMatrix = lightMatrices[k];
+			snapshot.m_sceneRevision = sceneView->m_shadowCastersRevision;
 			snapshot.m_snapshot.Reserve(cascade.m_meshList.Num());
 
-			for (const auto& m : cascade.m_meshList)
+			for (const auto& caster : cascade.m_meshList)
 			{
-				snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });
+				snapshot.m_snapshot.Add({ caster->m_staticMeshEcs, caster->m_frame });
+			}
+			snapshot.m_snapshot.Sort([](const auto& lhs, const auto& rhs)
+				{
+					return lhs.m_first < rhs.m_first;
+				});
+
+			if (snapshotIndex < m_csmSnapshots.Num() && snapshot.Equals(m_csmSnapshots[snapshotIndex]))
+			{
+				m_csmSnapshots[snapshotIndex].m_sceneRevision = sceneView->m_shadowCastersRevision;
+				++snapshotIndex;
+				continue;
 			}
 
 			if (k > 0)
 			{
 				int32_t shift = -1;
-				for (uint32_t z = 0; z < k; z++)
+				for (uint32_t z = 0; z < k; ++z)
 				{
 					if (bCascadeAdded[z] != RHI::EShadowType::None)
 					{
-						shift++;
+						++shift;
 					}
 
 					if (bCascadeAdded[z] != cascade.m_shadowType)
@@ -327,13 +384,11 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 						continue;
 					}
 
-					// Don't duplicate data for higher cascades
 					const uint32_t removed = (uint32_t)cascade.m_meshList.RemoveAll([z, &frustums](const auto& m)
 						{
-							return frustums[z].OverlapsAABB(m.m_worldAabb);
+							return m && frustums[z].OverlapsAABB(m->m_worldAabb);
 						});
 
-					// We store cascade dependencies
 					if (removed > 0)
 					{
 						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + shift);
@@ -343,15 +398,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 			if (snapshotIndex < m_csmSnapshots.Num())
 			{
-				if (snapshot.Equals(m_csmSnapshots[snapshotIndex]))
-				{
-					snapshotIndex++;
-					continue;
-				}
-				else
-				{
-					m_csmSnapshots[snapshotIndex] = std::move(snapshot);
-				}
+				m_csmSnapshots[snapshotIndex] = std::move(snapshot);
 			}
 			else
 			{
@@ -360,7 +407,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 			bCascadeAdded[k] = cascade.m_shadowType;
 			updateShadowMaps.Emplace(std::move(cascade));
-			snapshotIndex++;
+			++snapshotIndex;
 		}
 	}
 
@@ -370,6 +417,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
+	uint32_t snapshotIndex = 0;
 
 	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
 	{
@@ -385,16 +433,18 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 
 		GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedSpotLights, sortedPointLights);
 
-		// Cache calculated csms to decrease the shadow maps rendering
-		const uint32_t numCsmSnapshots = (uint32_t)(sceneView->m_cameraTransforms.Num() * directionalLights.Num() * NumCascades);
-		if (m_csmSnapshots.Num() != numCsmSnapshots)
-		{
-			m_csmSnapshots.Clear();
-			m_csmSnapshots.Reserve(numCsmSnapshots);
-		}
-
-		auto updateShadowMaps = PrepareCSMPasses(sceneView, sceneView->m_cameraTransforms[i], camera, directionalLights);
+		auto updateShadowMaps = PrepareCSMPasses(
+			sceneView,
+			sceneView->m_cameraTransforms[i],
+			camera,
+			directionalLights,
+			snapshotIndex);
 		sceneView->m_shadowMapsToUpdate.Add(std::move(updateShadowMaps));
+	}
+
+	if (m_csmSnapshots.Num() > snapshotIndex)
+	{
+		m_csmSnapshots.Resize(snapshotIndex);
 	}
 
 	sceneView->m_totalNumLights = m_numLights;

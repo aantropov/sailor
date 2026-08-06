@@ -234,39 +234,17 @@ void ShaderCompiler::UpdateConstantsLibrary()
 		return;
 	}
 
-	std::string data;
-
-	// Read version
-	std::ifstream assetFile(constantsLibrary);
-	assetFile >> data;
+	std::ifstream assetFile(constantsLibrary, std::ios::binary);
+	const std::string currentLibrary{
+		std::istreambuf_iterator<char>(assetFile),
+		std::istreambuf_iterator<char>()};
 	assetFile.close();
 
-	// Parse version
-	auto lines = Utils::SplitStringByLines(data);
-	if (lines.Num() > 0)
+	const std::string generatedLibrary = GenerateConstantsLibrary(CacheProducerVersion);
+	if (currentLibrary != generatedLibrary)
 	{
-		std::string version = lines[0];
-		Utils::ReplaceAll(version, "/*", " ");
-		Utils::ReplaceAll(version, "*/", " ");
-		Utils::Trim(version);
-
-		std::stringstream ss(version);
-
-		uint32_t versionValue = 0;
-
-		if (ss >> versionValue && (versionValue == CacheProducerVersion))
-		{
-			return;
-		}
-
-		// Clear file
-		std::ofstream ofs;
-		ofs.open(constantsLibrary, std::ofstream::out | std::ofstream::trunc);
-		ofs.close();
-
-		// Update library
-		std::ofstream assetFile(constantsLibrary);
-		assetFile << GenerateConstantsLibrary(CacheProducerVersion);
+		std::ofstream assetFile(constantsLibrary, std::ios::binary | std::ios::trunc);
+		assetFile << generatedLibrary;
 		assetFile.close();
 	}
 }

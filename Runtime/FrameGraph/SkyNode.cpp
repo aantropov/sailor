@@ -867,7 +867,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 				RecordDrawCallStats(1);
 				commands->EndRenderPass(commandList);
 			}
-			else
+			else if (face == 6)
 			{
 				commands->ImageMemoryBarrier(commandList, cubemap, EImageLayout::TransferDstOptimal);
 				commands->GenerateMipMaps(commandList, cubemap);
@@ -876,7 +876,7 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 			commands->EndDebugRegion(commandList);
 		}
 
-		if (m_updateEnvCubemapPattern == 7)
+		if (m_updateEnvCubemapPattern == 6)
 		{
 			m_bIsDirty = false;
 

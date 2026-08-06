@@ -9,21 +9,19 @@ namespace Sailor
 {
 	struct SkyEnvironmentKey
 	{
-		int32_t m_sunIntensity{};
 		glm::ivec3 m_lightDirection{};
 		bool m_bUsesLightDirection{};
 
 		bool operator==(const SkyEnvironmentKey& rhs) const
 		{
-			return m_sunIntensity == rhs.m_sunIntensity &&
-				m_bUsesLightDirection == rhs.m_bUsesLightDirection &&
+			return m_bUsesLightDirection == rhs.m_bUsesLightDirection &&
 				(!m_bUsesLightDirection || m_lightDirection == rhs.m_lightDirection);
 		}
 
 		size_t GetHash() const
 		{
 			size_t hash = 0;
-			HashCombine(hash, m_sunIntensity, m_bUsesLightDirection);
+			HashCombine(hash, m_bUsesLightDirection);
 			if (m_bUsesLightDirection)
 			{
 				HashCombine(hash, m_lightDirection.x, m_lightDirection.y, m_lightDirection.z);
@@ -81,7 +79,6 @@ namespace Sailor
 		SkyEnvironmentKey GetEnvironmentKey() const
 		{
 			SkyEnvironmentKey key;
-			key.m_sunIntensity = static_cast<int32_t>(m_sunIntensity);
 			key.m_bUsesLightDirection =
 				glm::dot(Math::vec4_Down, m_lightDirection) > -0.85f;
 			if (key.m_bUsesLightDirection)

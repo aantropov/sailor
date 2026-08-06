@@ -139,7 +139,7 @@ namespace Sailor
 		SAILOR_API __forceinline class TransformComponent& GetTransformComponent();
 
 		SAILOR_API __forceinline EMobilityType GetMobilityType() const { return m_type; }
-		SAILOR_API __forceinline void SetMobilityType(EMobilityType type) { m_type = type; }
+		SAILOR_API void SetMobilityType(EMobilityType type);
 
 		SAILOR_API size_t GetFrameLastChange() const { return m_frameLastChange; }
 

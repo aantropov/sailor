@@ -10,6 +10,8 @@
 #include "Raytracing/LightingModel.h"
 #include "Raytracing/PathTracer.h"
 
+#include <limits>
+
 namespace Sailor::RHI
 {
 	enum class EShadowType : uint32_t
@@ -19,10 +21,29 @@ namespace Sailor::RHI
 		EVSM
 	};
 
+	struct RHIShadowMeshProxy
+	{
+		RHIMeshPtr m_mesh{};
+		glm::mat4 m_worldMatrix{ 1.0f };
+		size_t m_renderQueueTag{};
+	};
+
+	struct RHIShadowCasterProxy
+	{
+		size_t m_staticMeshEcs{};
+		Math::AABB m_worldAabb{};
+		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
+		size_t m_frame{};
+		TVector<RHIShadowMeshProxy> m_meshes{};
+	};
+
+	using RHIShadowCasterProxyPtr = TSharedPtr<RHIShadowCasterProxy>;
+
 	struct RHIMeshProxy
 	{
 		size_t m_staticMeshEcs = 0;
 		glm::mat4 m_worldMatrix{};
+		RHIShadowCasterProxyPtr m_shadowCaster{};
 		SAILOR_API bool operator==(const RHIMeshProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 	};
 
@@ -55,6 +76,7 @@ namespace Sailor::RHI
 #if defined(__APPLE__)
 		TVector<TSet<uint32_t>> m_materialTextureSamplers;
 #endif
+		RHIShadowCasterProxyPtr m_shadowCaster{};
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
@@ -79,7 +101,7 @@ namespace Sailor::RHI
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		glm::mat4 m_lightMatrix{};
 		TVector<uint32_t> m_internalCommandsList{};
-		TVector<RHISceneViewProxy> m_meshList{};
+		TVector<RHIShadowCasterProxyPtr> m_meshList{};
 	};
 
 	struct RHISceneViewSnapshot
@@ -109,6 +131,7 @@ namespace Sailor::RHI
 	struct RHISceneView
 	{
 		SAILOR_API TVector<RHISceneViewProxy> TraceScene(const Math::Frustum& frustum, bool bSkipMaterials) const;
+		SAILOR_API TVector<RHIShadowCasterProxyPtr> TraceShadowCasters(const Math::Frustum& frustum) const;
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
 
@@ -132,6 +155,7 @@ namespace Sailor::RHI
 		Tasks::TaskPtr<RHI::RHICommandListPtr, void> m_drawImGui;
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;
 		TVector<RHISceneViewSnapshot> m_snapshots;
+		uint64_t m_shadowCastersRevision = 0;
 
 		WorldPtr m_world{};
 		float m_deltaTime{};

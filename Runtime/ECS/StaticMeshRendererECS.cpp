@@ -5,8 +5,8 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/Material.h"
-#include "RHI/Fence.h"
 #include "Components/AnimatorComponent.h"
+#include "Components/MeshRendererComponent.h"
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -54,11 +54,136 @@ namespace
 		outWorldBounds.Apply(ownerWorldMatrix);
 		return outWorldBounds.IsValid();
 	}
+
+	bool AreMatricesExactlyEqual(const glm::mat4& lhs, const glm::mat4& rhs)
+	{
+		for (glm::length_t column = 0; column < lhs.length(); ++column)
+		{
+			for (glm::length_t row = 0; row < lhs[column].length(); ++row)
+			{
+				if (lhs[column][row] != rhs[column][row])
+				{
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	bool AreShadowCastersEqual(
+		const RHI::RHIShadowCasterProxy& lhs,
+		const RHI::RHIShadowCasterProxy& rhs)
+	{
+		if (lhs.m_staticMeshEcs != rhs.m_staticMeshEcs ||
+			lhs.m_worldAabb != rhs.m_worldAabb ||
+			lhs.m_skeletonOffset != rhs.m_skeletonOffset ||
+			lhs.m_meshes.Num() != rhs.m_meshes.Num())
+		{
+			return false;
+		}
+
+		for (size_t index = 0; index < lhs.m_meshes.Num(); ++index)
+		{
+			const auto& lhsMesh = lhs.m_meshes[index];
+			const auto& rhsMesh = rhs.m_meshes[index];
+			if (lhsMesh.m_mesh != rhsMesh.m_mesh ||
+				lhsMesh.m_renderQueueTag != rhsMesh.m_renderQueueTag ||
+				!AreMatricesExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	RHI::RHIShadowCasterProxyPtr CreateShadowCasterProxy(
+		StaticMeshRendererData& data,
+		size_t componentIndex,
+		const TVector<RHI::RHIMeshPtr>& meshes,
+		const TVector<glm::mat4>& matrices,
+		const Math::AABB& worldBounds,
+		const glm::mat4& ownerWorldMatrix,
+		uint32_t skeletonOffset,
+		size_t currentFrame)
+	{
+		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
+		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+
+		auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+		shadowCaster->m_staticMeshEcs = componentIndex;
+		shadowCaster->m_worldAabb = worldBounds;
+		shadowCaster->m_skeletonOffset = skeletonOffset;
+		shadowCaster->m_frame = currentFrame;
+		shadowCaster->m_meshes.Reserve(meshes.Num());
+
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			const size_t materialIndex = meshes[meshIndex]->ResolveMaterialIndex(
+				meshIndex,
+				data.GetMaterials().Num());
+			const auto& material = data.GetMaterials()[materialIndex];
+			const size_t renderQueueTag = material ? material->GetRenderState().GetTag() : 0u;
+			if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
+			{
+				continue;
+			}
+
+			RHI::RHIShadowMeshProxy shadowMesh;
+			shadowMesh.m_mesh = meshes[meshIndex];
+			shadowMesh.m_worldMatrix = matrices.Num() > meshIndex ? matrices[meshIndex] : ownerWorldMatrix;
+			shadowMesh.m_renderQueueTag = renderQueueTag;
+			shadowCaster->m_meshes.Add(std::move(shadowMesh));
+		}
+
+		return shadowCaster->m_meshes.IsEmpty() ? RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
+	}
+
+	enum class EPreparedProxyState : uint8_t
+	{
+		Remove,
+		Retry,
+		Stationary,
+		Static
+	};
+
+	struct PreparedProxyUpdate
+	{
+		size_t m_componentIndex = ECS::InvalidIndex;
+		EPreparedProxyState m_state = EPreparedProxyState::Remove;
+		uint32_t m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
+		RHI::RHIMeshProxy m_stationaryProxy{};
+		RHI::RHISceneViewProxy m_staticProxy{};
+		RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
+		Math::AABB m_worldBounds{};
+	};
 }
 
 void StaticMeshRendererECS::BeginPlay()
 {
 	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
+	m_lastMaterialContentRevision = Material::GetGlobalContentRevision();
+}
+
+void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
+{
+	if (!owner)
+	{
+		return;
+	}
+
+	for (const auto& component : owner->GetComponents())
+	{
+		if (auto meshRenderer = component.DynamicCast<MeshRendererComponent>())
+		{
+			const size_t componentIndex = meshRenderer->GetComponentIndex();
+			if (IsComponentRegistered(componentIndex))
+			{
+				m_components[componentIndex].MarkDirty();
+			}
+		}
+	}
 }
 
 void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRendererData& component)
@@ -75,11 +200,17 @@ void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRend
 	RHI::RHISceneViewProxy staticProxy{};
 	staticProxy.m_staticMeshEcs = index;
 	m_sceneViewProxiesCache->m_staticOctree.Remove(staticProxy);
+
+	if (component.m_shadowCaster)
+	{
+		component.m_shadowCaster.Clear();
+		++m_sceneViewProxiesCache->m_shadowCastersRevision;
+	}
 }
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 {
-	const uint32_t NumComponentsPerTask = 1024;
+	constexpr uint32_t NumDirtyComponentsPerTask = 512;
 
 	SAILOR_PROFILE_FUNCTION();
 
@@ -88,302 +219,337 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		return nullptr;
 	}
 
-	// Remove proxies which no longer belong in their previous mobility tree before
-	// producing updates. Marking moved entries dirty lets the opposite tree receive
-	// the proxy during this same tick.
-	for (size_t index = 0; index < m_components.Num(); index++)
+	const uint64_t materialContentRevision = Material::GetGlobalContentRevision();
+	const bool bCheckMaterialRevisions = materialContentRevision != m_lastMaterialContentRevision;
+	TVector<size_t> dirtyComponents;
+	dirtyComponents.Reserve(m_components.Num());
+	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
-		auto& data = m_components[index];
-		GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-		const ModelPtr& model = data.GetModel();
-		const bool bInvalidMeshIndex = model && model->IsReady() &&
-			data.GetMeshIndex() != Model::AllMeshes &&
-			!model->IsSourceMeshIndexValid(data.GetMeshIndex());
-		if (bInvalidMeshIndex && !data.m_bInvalidMeshIndexReported)
+		if (!IsComponentRegistered(componentIndex))
 		{
-			SAILOR_LOG(
-				"MeshRenderer ignored invalid glTF mesh index %d for model %s.",
-				data.GetMeshIndex(),
-				model->GetFileId().ToString().c_str());
-			data.m_bInvalidMeshIndexReported = true;
+			continue;
 		}
-		else if (!bInvalidMeshIndex)
+
+		auto& data = m_components[componentIndex];
+		bool bNeedsUpdate = data.m_bIsDirty || (data.GetModel() && data.m_frameLastChange == 0);
+		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
 		{
+			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
+		}
+
+		if (!bNeedsUpdate && bCheckMaterialRevisions)
+		{
+			bool bMaterialsChanged = data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
+			for (size_t materialIndex = 0; !bMaterialsChanged && materialIndex < data.GetMaterials().Num(); ++materialIndex)
+			{
+				const auto& material = data.GetMaterials()[materialIndex];
+				const uint64_t currentRevision = material ? material->GetContentRevision() : 0ull;
+				bMaterialsChanged = data.m_materialContentRevisions[materialIndex] != currentRevision;
+			}
+
+			bNeedsUpdate = bMaterialsChanged;
+		}
+
+		if (bNeedsUpdate)
+		{
+			dirtyComponents.Add(componentIndex);
+		}
+	}
+	m_lastMaterialContentRevision = materialContentRevision;
+
+	if (dirtyComponents.IsEmpty())
+	{
+		return nullptr;
+	}
+
+	const size_t currentFrame = GetWorld()->GetCurrentFrame();
+	auto prepareProxyUpdate = [this, currentFrame](size_t componentIndex)
+		{
+			PreparedProxyUpdate result;
+			result.m_componentIndex = componentIndex;
+			if (!IsComponentRegistered(componentIndex))
+			{
+				return result;
+			}
+
+			auto& data = m_components[componentIndex];
+			ObjectPtr ownerObject = data.GetOwner();
+			GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
+			if (!owner || !data.GetModel())
+			{
+				return result;
+			}
+
+			const ModelPtr& model = data.GetModel();
+			if (!model->IsReady())
+			{
+				result.m_state = EPreparedProxyState::Retry;
+				return result;
+			}
+
+			const bool bInvalidMeshIndex = data.GetMeshIndex() != Model::AllMeshes &&
+				!model->IsSourceMeshIndexValid(data.GetMeshIndex());
+			if (bInvalidMeshIndex)
+			{
+				if (!data.m_bInvalidMeshIndexReported)
+				{
+					SAILOR_LOG(
+						"MeshRenderer ignored invalid glTF mesh index %d for model %s.",
+						data.GetMeshIndex(),
+						model->GetFileId().ToString().c_str());
+					data.m_bInvalidMeshIndexReported = true;
+				}
+				return result;
+			}
 			data.m_bInvalidMeshIndexReported = false;
-		}
-		const bool bHasRenderableModel = HasRenderableSelection(data);
-		const bool bShouldBeStationary = data.m_bIsActive && ownerGameObject && bHasRenderableModel &&
-			ownerGameObject->GetMobilityType() == EMobilityType::Stationary;
 
-		if (!bShouldBeStationary)
-		{
-			RHI::RHIMeshProxy proxy{};
-			proxy.m_staticMeshEcs = index;
-			if (m_sceneViewProxiesCache->m_stationaryOctree.Remove(proxy))
+			if (data.GetMaterials().IsEmpty())
 			{
-				data.m_bIsDirty = true;
+				result.m_state = EPreparedProxyState::Retry;
+				return result;
 			}
-		}
-	}
-
-	auto cleanupStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Remove Stale Static Objects",
-		[this]()
-		{
-			for (size_t index = 0; index < m_components.Num(); index++)
+			for (const auto& material : data.GetMaterials())
 			{
-				auto& data = m_components[index];
-				GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-				const bool bHasRenderableModel = HasRenderableSelection(data);
-				bool bHasRenderableMaterials = !data.GetMaterials().IsEmpty();
-				for (const auto& material : data.GetMaterials())
+				if (!material)
 				{
-					bHasRenderableMaterials &= material && material->IsReady();
-				}
-
-				const bool bShouldBeStatic = data.m_bIsActive && ownerGameObject && bHasRenderableModel && bHasRenderableMaterials &&
-					ownerGameObject->GetMobilityType() == EMobilityType::Static;
-
-				if (!bShouldBeStatic)
-				{
-					RHI::RHISceneViewProxy proxy{};
-					proxy.m_staticMeshEcs = index;
-					if (m_sceneViewProxiesCache->m_staticOctree.Remove(proxy))
-					{
-						data.m_bIsDirty = true;
-					}
+					result.m_state = EPreparedProxyState::Retry;
+					return result;
 				}
 			}
-		}, EThreadType::RHI)->Run();
 
-	cleanupStaticTask->Wait();
-
-	//TODO: Resolve New/Delete components
-	TVector<Tasks::TaskPtr<TVector<TPair<RHI::RHIMeshProxy, Math::AABB>>>> tasks;
-	for (uint32_t i = 0; i < (m_components.Num() / NumComponentsPerTask + 1); i++)
-	{
-		auto task = Tasks::CreateTask<TVector<TPair<RHI::RHIMeshProxy, Math::AABB>>>("StaticMeshRendererECS:Update Stationary Objects",
-			[this, i]()
+			const auto& ownerTransform = owner->GetTransformComponent();
+			const glm::mat4& ownerWorldMatrix = ownerTransform.GetCachedWorldMatrix();
+			TVector<RHI::RHIMeshPtr> selectedMeshes;
+			TVector<glm::mat4> selectedMatrices;
+			if (!CollectComponentRenderData(
+					data,
+					ownerWorldMatrix,
+					selectedMeshes,
+					selectedMatrices,
+					result.m_worldBounds))
 			{
-				TVector<TPair<RHI::RHIMeshProxy, Math::AABB>> temp;
-
-				for (uint32_t j = 0; j < NumComponentsPerTask; j++)
-				{
-					const uint32_t index = i * NumComponentsPerTask + j;
-					if (index >= m_components.Num())
-					{
-						break;
-					}
-
-					auto& data = m_components[index];
-					if (!data.m_bIsActive)
-					{
-						continue;
-					}
-
-					GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-					if (!ownerGameObject)
-					{
-						continue;
-					}
-
-					EMobilityType mobilityType = ownerGameObject->GetMobilityType();
-
-					if (mobilityType == EMobilityType::Stationary &&
-						data.m_bIsActive && HasRenderableSelection(data))
-					{
-						const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-						Math::AABB adjustedBounds;
-						TVector<RHI::RHIMeshPtr> selectedMeshes;
-						TVector<glm::mat4> selectedMatrices;
-
-						// Should we update only when transform changed?
-						if ((data.m_bIsDirty || data.m_frameLastChange == 0 || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
-							CollectComponentRenderData(
-								data,
-								ownerTransform.GetCachedWorldMatrix(),
-								selectedMeshes,
-								selectedMatrices,
-								adjustedBounds))
-						{
-							RHI::RHIMeshProxy proxy;
-							proxy.m_staticMeshEcs = GetComponentIndex(&data);
-							proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-							if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
-							{
-								data.m_skeletonOffset = animator->GetSkeletonOffset();
-							}
-							else
-							{
-								data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
-							}
-
-							temp.Emplace(TPair(std::move(proxy), std::move(adjustedBounds)));
-
-							data.m_frameLastChange = ownerTransform.GetFrameLastChange();
-
-							if (data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
-							{
-								UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
-							}
-
-							data.m_bIsDirty = false;
-						}
-					}
-				}
-
-				return temp;
-			}, EThreadType::Worker);
-
-		if (m_components.Num() < NumComponentsPerTask)
-		{
-			task->Execute();
-
-			for (auto& t : task->m_result)
-			{
-				m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(t.m_second.GetCenter(), 1), t.m_second.GetExtents(), t.m_first);
+				return result;
 			}
 
-			break;
-		}
-
-		task->Run();
-		tasks.Add(task);
-	}
-
-	for (auto& task : tasks)
-	{
-		task->Wait();
-		for (auto& t : task->m_result)
-		{
-			m_sceneViewProxiesCache->m_stationaryOctree.Update(glm::vec4(t.m_second.GetCenter(), 1), t.m_second.GetExtents(), t.m_first);
-		}
-	}
-
-	auto updateStaticTask = Tasks::CreateTask("StaticMeshRendererECS:Update Static Objects",
-		[this]()
-		{
-			for (size_t index = 0; index < m_components.Num(); index++)
+			if (auto animator = owner->GetComponent<AnimatorComponent>())
 			{
-				auto& data = m_components[index];
-				if (!data.m_bIsActive)
+				result.m_skeletonOffset = animator->GetSkeletonOffset();
+			}
+
+			result.m_shadowCaster = CreateShadowCasterProxy(
+				data,
+				componentIndex,
+				selectedMeshes,
+				selectedMatrices,
+				result.m_worldBounds,
+				ownerWorldMatrix,
+				result.m_skeletonOffset,
+				currentFrame);
+
+			if (owner->GetMobilityType() == EMobilityType::Stationary)
+			{
+				result.m_state = EPreparedProxyState::Stationary;
+				result.m_stationaryProxy.m_staticMeshEcs = componentIndex;
+				result.m_stationaryProxy.m_worldMatrix = ownerWorldMatrix;
+				return result;
+			}
+
+			if (owner->GetMobilityType() != EMobilityType::Static)
+			{
+				return result;
+			}
+
+			for (const auto& material : data.GetMaterials())
+			{
+				if (!material->IsReady())
 				{
-					continue;
+					result.m_state = EPreparedProxyState::Retry;
+					return result;
 				}
+			}
 
-				GameObjectPtr ownerGameObject = data.m_owner.StaticCast<GameObject>();
-				if (!ownerGameObject)
-				{
-					continue;
-				}
-
-				EMobilityType mobilityType = ownerGameObject->GetMobilityType();
-
-				if (mobilityType == EMobilityType::Static &&
-					data.m_bIsActive && HasRenderableSelection(data))
-				{
-					const auto& ownerTransform = ownerGameObject->GetTransformComponent();
-					Math::AABB adjustedBounds;
-					TVector<RHI::RHIMeshPtr> selectedMeshes;
-					TVector<glm::mat4> selectedMatrices;
-					bool bMaterialsReady = !data.GetMaterials().IsEmpty();
-					bool bMaterialsChanged =
-						data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
-					size_t materialIndex = 0;
-					for (const auto& material : data.GetMaterials())
-					{
-						bMaterialsReady &= material && material->IsReady();
-						const uint64_t materialContentRevision =
-							material ? material->GetContentRevision() : 0ull;
-						if (!bMaterialsChanged &&
-							data.m_materialContentRevisions[materialIndex] != materialContentRevision)
-						{
-							bMaterialsChanged = true;
-						}
-						++materialIndex;
-					}
-
-					if ((data.m_bIsDirty || bMaterialsChanged || ownerTransform.GetFrameLastChange() > data.m_frameLastChange) &&
-						bMaterialsReady &&
-						CollectComponentRenderData(
-							data,
-							ownerTransform.GetCachedWorldMatrix(),
-							selectedMeshes,
-							selectedMatrices,
-							adjustedBounds))
-					{
-						data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
-						for (size_t i = 0; i < data.GetMaterials().Num(); ++i)
-						{
-							data.m_materialContentRevisions[i] = data.GetMaterials()[i]->GetContentRevision();
-						}
-
-						RHI::RHISceneViewProxy proxy;
-						proxy.m_staticMeshEcs = index;
-						proxy.m_worldMatrix = ownerTransform.GetCachedWorldMatrix();
-						proxy.m_frame = ownerTransform.GetFrameLastChange();
-						if (auto animator = ownerGameObject->GetComponent<AnimatorComponent>())
-						{
-							data.m_skeletonOffset = animator->GetSkeletonOffset();
-						}
-						else
-						{
-							data.m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
-						}
-						proxy.m_skeletonOffset = data.m_skeletonOffset;
-						proxy.m_meshes = std::move(selectedMeshes);
-						proxy.m_meshModelMatrices = std::move(selectedMatrices);
-						proxy.m_worldAabb = adjustedBounds;
-						proxy.m_bCastShadows = data.ShouldCastShadow();
-
-						proxy.m_overrideMaterials.Clear();
-						proxy.m_renderQueueTags.Clear();
-						proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
+			result.m_state = EPreparedProxyState::Static;
+			auto& proxy = result.m_staticProxy;
+			proxy.m_staticMeshEcs = componentIndex;
+			proxy.m_worldMatrix = ownerWorldMatrix;
+			proxy.m_frame = currentFrame;
+			proxy.m_skeletonOffset = result.m_skeletonOffset;
+			proxy.m_meshes = std::move(selectedMeshes);
+			proxy.m_meshModelMatrices = std::move(selectedMatrices);
+			proxy.m_worldAabb = result.m_worldBounds;
+			proxy.m_bCastShadows = data.ShouldCastShadow();
+			proxy.m_overrideMaterials.Reserve(proxy.m_meshes.Num());
+			proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
 #if defined(__APPLE__)
-						proxy.m_materialTextureSamplers.Clear();
-						proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
-						auto textureImporter = App::GetSubmodule<TextureImporter>();
+			proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
+			auto textureImporter = App::GetSubmodule<TextureImporter>();
 #endif
-						for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
-						{
-							const size_t materialIndex =
-								proxy.m_meshes[i]->ResolveMaterialIndex(
-									i, data.GetMaterials().Num());
-							auto& material = data.GetMaterials()[materialIndex];
-							proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
-							proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[i]->m_vertexDescription));
+			for (size_t meshIndex = 0; meshIndex < proxy.m_meshes.Num(); ++meshIndex)
+			{
+				const size_t materialIndex = proxy.m_meshes[meshIndex]->ResolveMaterialIndex(
+					meshIndex,
+					data.GetMaterials().Num());
+				auto material = data.GetMaterials()[materialIndex];
+				proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
+				proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[meshIndex]->m_vertexDescription));
 #if defined(__APPLE__)
-							TSet<uint32_t> requestedTextures;
-							requestedTextures.Insert(0u);
-
-							if (textureImporter)
-							{
-								for (const auto& sampler : material->GetSamplers())
-								{
-									const uint32_t textureIndex = sampler.m_second ? (uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-									requestedTextures.Insert(textureIndex);
-								}
-							}
-
-							proxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
-#endif
-						}
-
-						m_sceneViewProxiesCache->m_staticOctree.Update(glm::vec4(adjustedBounds.GetCenter(), 1), adjustedBounds.GetExtents(), proxy);
-
-						data.m_frameLastChange = ownerTransform.GetFrameLastChange();
-
-						if (data.m_frameLastChange == 0 || data.m_frameLastChange != ownerGameObject->GetFrameLastChange())
-						{
-							UpdateGameObject(ownerGameObject, GetWorld()->GetCurrentFrame());
-						}
-
-						data.m_bIsDirty = false;
+				TSet<uint32_t> requestedTextures;
+				requestedTextures.Insert(0u);
+				if (textureImporter)
+				{
+					for (const auto& sampler : material->GetSamplers())
+					{
+						const uint32_t textureIndex = sampler.m_second ?
+							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
+						requestedTextures.Insert(textureIndex);
 					}
 				}
+				proxy.m_materialTextureSamplers.Add(std::move(requestedTextures));
+#endif
 			}
-		}, EThreadType::RHI)->Run();
 
-	updateStaticTask->Wait();
+			return result;
+		};
+
+	TVector<PreparedProxyUpdate> preparedUpdates;
+	preparedUpdates.Reserve(dirtyComponents.Num());
+	if (dirtyComponents.Num() <= NumDirtyComponentsPerTask)
+	{
+		for (size_t componentIndex : dirtyComponents)
+		{
+			preparedUpdates.Add(prepareProxyUpdate(componentIndex));
+		}
+	}
+	else
+	{
+		TVector<Tasks::TaskPtr<TVector<PreparedProxyUpdate>>> tasks;
+		const size_t numTasks = (dirtyComponents.Num() + NumDirtyComponentsPerTask - 1) / NumDirtyComponentsPerTask;
+		tasks.Reserve(numTasks);
+		for (size_t taskIndex = 0; taskIndex < numTasks; ++taskIndex)
+		{
+			const size_t beginIndex = taskIndex * NumDirtyComponentsPerTask;
+			const size_t endIndex = (std::min)(beginIndex + NumDirtyComponentsPerTask, dirtyComponents.Num());
+			auto task = Tasks::CreateTask<TVector<PreparedProxyUpdate>>(
+				"StaticMeshRendererECS:Prepare Dirty Proxies",
+				[beginIndex, endIndex, &dirtyComponents, prepareProxyUpdate]()
+				{
+					TVector<PreparedProxyUpdate> result;
+					result.Reserve(endIndex - beginIndex);
+					for (size_t index = beginIndex; index < endIndex; ++index)
+					{
+						result.Add(prepareProxyUpdate(dirtyComponents[index]));
+					}
+					return result;
+				},
+				EThreadType::Worker);
+			task->Run();
+			tasks.Add(task);
+		}
+
+		for (auto& task : tasks)
+		{
+			task->Wait();
+			preparedUpdates.AddRange(std::move(task->m_result));
+		}
+	}
+
+	bool bShadowCastersChanged = false;
+	for (auto& update : preparedUpdates)
+	{
+		if (!IsComponentRegistered(update.m_componentIndex))
+		{
+			continue;
+		}
+
+		auto& data = m_components[update.m_componentIndex];
+		RHI::RHIMeshProxy stationaryKey{};
+		stationaryKey.m_staticMeshEcs = update.m_componentIndex;
+		RHI::RHISceneViewProxy staticKey{};
+		staticKey.m_staticMeshEcs = update.m_componentIndex;
+
+		if (update.m_state == EPreparedProxyState::Retry)
+		{
+			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
+			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
+			if (data.m_shadowCaster)
+			{
+				data.m_shadowCaster.Clear();
+				bShadowCastersChanged = true;
+			}
+			data.m_bIsDirty = true;
+			continue;
+		}
+
+		if (update.m_state == EPreparedProxyState::Remove)
+		{
+			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
+			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
+			if (data.m_shadowCaster)
+			{
+				data.m_shadowCaster.Clear();
+				bShadowCastersChanged = true;
+			}
+			data.m_materialContentRevisions.Clear();
+			data.m_bIsDirty = false;
+			continue;
+		}
+
+		if (data.m_shadowCaster && update.m_shadowCaster &&
+			AreShadowCastersEqual(*data.m_shadowCaster, *update.m_shadowCaster))
+		{
+			update.m_shadowCaster = data.m_shadowCaster;
+		}
+		else if (data.m_shadowCaster != update.m_shadowCaster)
+		{
+			data.m_shadowCaster = update.m_shadowCaster;
+			bShadowCastersChanged = true;
+		}
+
+		if (update.m_state == EPreparedProxyState::Stationary)
+		{
+			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
+			update.m_stationaryProxy.m_shadowCaster = data.m_shadowCaster;
+			m_sceneViewProxiesCache->m_stationaryOctree.Update(
+				glm::ivec3(update.m_worldBounds.GetCenter()),
+				glm::ivec3(update.m_worldBounds.GetExtents()),
+				update.m_stationaryProxy);
+		}
+		else
+		{
+			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
+			update.m_staticProxy.m_shadowCaster = data.m_shadowCaster;
+			m_sceneViewProxiesCache->m_staticOctree.Update(
+				glm::ivec3(update.m_worldBounds.GetCenter()),
+				glm::ivec3(update.m_worldBounds.GetExtents()),
+				update.m_staticProxy);
+		}
+
+		data.m_skeletonOffset = update.m_skeletonOffset;
+		data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
+		for (size_t materialIndex = 0; materialIndex < data.GetMaterials().Num(); ++materialIndex)
+		{
+			const auto& material = data.GetMaterials()[materialIndex];
+			data.m_materialContentRevisions[materialIndex] = material ? material->GetContentRevision() : 0ull;
+		}
+
+		ObjectPtr ownerObject = data.GetOwner();
+		GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
+		if (owner)
+		{
+			data.m_frameLastChange = owner->GetTransformComponent().GetFrameLastChange();
+			if ((update.m_state == EPreparedProxyState::Static && data.m_frameLastChange == 0) ||
+				data.m_frameLastChange != owner->GetFrameLastChange())
+			{
+				UpdateGameObject(owner, currentFrame);
+			}
+		}
+		data.m_bIsDirty = false;
+	}
+
+	if (bShadowCastersChanged)
+	{
+		++m_sceneViewProxiesCache->m_shadowCastersRevision;
+	}
 
 	return nullptr;
 }
@@ -394,6 +560,7 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 
 	outProxies->m_stationaryOctree = m_sceneViewProxiesCache->m_stationaryOctree;
 	outProxies->m_staticOctree = m_sceneViewProxiesCache->m_staticOctree;
+	outProxies->m_shadowCastersRevision = m_sceneViewProxiesCache->m_shadowCastersRevision;
 }
 
 void StaticMeshRendererECS::EndPlay()
