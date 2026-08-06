@@ -1,0 +1,74 @@
+name: AudioPlayback
+prefabs:
+  - gameObjects:
+      - name: CameraListener
+        position:
+          - 0
+          - 0
+          - 5
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 139A0000000000000001
+        components:
+          - 0
+          - 1
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 0.1
+          zFar: 1000
+          fileId: NullFileId
+          instanceId: 139A0000000000000000000000000001_139A0000000000000001
+      - typename: Sailor::AudioListenerComponent
+        overrideProperties:
+          enabled: true
+          priority: 0
+          fileId: NullFileId
+          instanceId: 139A0000000000000000000000000002_139A0000000000000001
+  - gameObjects:
+      - name: SpatialTone440Hz
+        position:
+          - 0
+          - 0
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 1
+          - 1
+          - 1
+          - 1
+        parentIndex: 4294967295
+        instanceId: 139A0000000000000002
+        components:
+          - 0
+    components:
+      - typename: Sailor::AudioSourceComponent
+        overrideProperties:
+          clip:
+            fileId: "{A1390002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          autoPlay: true
+          loop: true
+          spatial: true
+          volume: 0.25
+          pitch: 1
+          minDistance: 1
+          maxDistance: 20
+          fileId: NullFileId
+          instanceId: 139A0000000000000000000000000003_139A0000000000000002

@@ -132,6 +132,74 @@ namespace
 		Require(bFoundAudioType, "engine type export should include AudioAssetInfo");
 	}
 
+	void TestAudioPlaybackSceneFixture()
+	{
+		const std::filesystem::path root = SAILOR_TEST_SOURCE_DIR;
+		const std::filesystem::path fixtureRoot =
+			root / "Content/Tests/Audio";
+		const YAML::Node world = YAML::LoadFile(
+			(fixtureRoot / "AudioPlayback.world").string());
+		Require(
+			world["name"].as<std::string>() == "AudioPlayback" &&
+				world["prefabs"].IsSequence(),
+			"the audio playback fixture should be a loadable world");
+
+		bool bFoundListener = false;
+		bool bFoundSource = false;
+		for (const YAML::Node& prefab : world["prefabs"])
+		{
+			const YAML::Node components = prefab["components"];
+			if (!components.IsSequence())
+			{
+				continue;
+			}
+
+			for (const YAML::Node& component : components)
+			{
+				const std::string typeName =
+					component["typename"].as<std::string>();
+				const YAML::Node properties = component["overrideProperties"];
+				if (typeName == "Sailor::AudioListenerComponent")
+				{
+					bFoundListener =
+						properties["enabled"].as<bool>() &&
+						properties["priority"].as<int32_t>() == 0;
+				}
+				else if (typeName == "Sailor::AudioSourceComponent")
+				{
+					const YAML::Node clip = properties["clip"];
+					bFoundSource =
+						clip["fileId"].as<std::string>() ==
+							"{A1390002-0000-4000-8000-000000000002}" &&
+						properties["autoPlay"].as<bool>() &&
+						properties["loop"].as<bool>() &&
+						properties["spatial"].as<bool>();
+				}
+			}
+		}
+		Require(
+			bFoundListener && bFoundSource,
+			"the audio playback fixture should pair a listener with a spatial looping source");
+
+		const YAML::Node metadata = YAML::LoadFile(
+			(fixtureRoot / "TestTone440Hz.wav.asset").string());
+		Require(
+			metadata["assetInfoType"].as<std::string>() ==
+				"Sailor::AudioAssetInfo" &&
+				metadata["fileId"].as<std::string>() ==
+					"{A1390002-0000-4000-8000-000000000002}" &&
+				!metadata["stream"].as<bool>(),
+			"the test tone should use typed non-streaming audio metadata");
+
+		const std::string wav = ReadText(
+			fixtureRoot / "TestTone440Hz.wav");
+		Require(
+			wav.size() > 44 &&
+				wav.compare(0, 4, "RIFF") == 0 &&
+				wav.compare(8, 4, "WAVE") == 0,
+			"the audio playback fixture should contain a valid PCM WAV payload");
+	}
+
 	void TestDedicatedAudioThreadContract()
 	{
 		const std::filesystem::path root = SAILOR_TEST_SOURCE_DIR;
@@ -209,6 +277,7 @@ int main()
 		{ "AudioClipSnapshot", TestAudioClipSnapshot },
 		{ "ReflectedAudioAuthoringContract", TestReflectedAudioAuthoringContract },
 		{ "AudioAssetInfoContract", TestAudioAssetInfoContract },
+		{ "AudioPlaybackSceneFixture", TestAudioPlaybackSceneFixture },
 		{ "DedicatedAudioThreadContract", TestDedicatedAudioThreadContract },
 		{ "ComponentAuthoringAndTeardown", TestComponentAuthoringAndTeardown },
 	};
