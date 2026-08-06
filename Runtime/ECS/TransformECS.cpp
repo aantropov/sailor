@@ -1,4 +1,5 @@
 #include "ECS/TransformECS.h"
+#include "ECS/StaticMeshRendererECS.h"
 #include "Engine/GameObject.h"
 
 using namespace Sailor;
@@ -240,6 +241,10 @@ void TransformECS::CalculateMatrices(TransformComponent& parent)
 
 	const glm::mat4x4& parentMatrix = parent.GetCachedWorldMatrix();
 	parent.m_frameLastChange = GetWorld()->GetCurrentFrame();
+	if (GameObjectPtr owner = parent.GetOwner().StaticCast<GameObject>())
+	{
+		GetWorld()->GetECS<StaticMeshRendererECS>()->MarkDirty(owner);
+	}
 
 	for (auto& child : parent.GetChildren())
 	{

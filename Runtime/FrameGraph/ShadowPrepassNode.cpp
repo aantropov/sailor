@@ -123,29 +123,24 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		for (uint32_t passIndex = 0; passIndex < sceneView.m_shadowMapsToUpdate.Num(); passIndex++)
 		{
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[passIndex];
-			for (auto& proxy : shadowPass.m_meshList)
+			for (const auto& proxy : shadowPass.m_meshList)
 			{
-				if (!proxy.m_bCastShadows)
+				if (!proxy)
 				{
 					continue;
 				}
 
-				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
+				for (const auto& shadowMesh : proxy->m_meshes)
 				{
-					if (proxy.m_renderQueueTags.Num() <= i)
-					{
-						continue;
-					}
-
-					const size_t renderQueueTag = proxy.m_renderQueueTags[i];
+					const size_t renderQueueTag = shadowMesh.m_renderQueueTag;
 					if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 					{
 						continue;
 					}
 
-					const auto& mesh = proxy.m_meshes[i];
+					const auto& mesh = shadowMesh.m_mesh;
 					const bool bSkinned =
-						proxy.m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
+						proxy->m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
 					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned);
@@ -159,13 +154,9 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						continue;
 					}
 
-					const glm::mat4& meshWorldMatrix =
-						proxy.m_meshModelMatrices.Num() > i ?
-							proxy.m_meshModelMatrices[i] :
-							proxy.m_worldMatrix;
 					ShadowPrepassNode::PerInstanceData data;
-					data.model = meshWorldMatrix;
-					data.skeletonOffset = bSkinned ? proxy.m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
+					data.model = shadowMesh.m_worldMatrix;
+					data.skeletonOffset = bSkinned ? proxy->m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
 
 					RHIBatch batch(depthMaterial, mesh);
 

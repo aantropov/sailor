@@ -27,6 +27,22 @@
 
 using namespace Sailor;
 
+namespace
+{
+	std::atomic<uint64_t> g_materialContentRevision{};
+}
+
+uint64_t Material::GetGlobalContentRevision()
+{
+	return g_materialContentRevision.load(std::memory_order_acquire);
+}
+
+void Material::AdvanceContentRevision()
+{
+	m_contentRevision.fetch_add(1, std::memory_order_release);
+	g_materialContentRevision.fetch_add(1, std::memory_order_release);
+}
+
 bool Material::IsReady() const
 {
 	return m_shader && m_shader->IsReady() && m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();

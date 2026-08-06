@@ -223,17 +223,20 @@ namespace
 		const size_t textureSlotsOffset = traceBody.find(
 			"viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num())");
 		const size_t readyMaterialOffset = traceBody.find(
-			"if (material && material->IsReady() && !bSkipMaterials)");
+			"if (material && material->IsReady())");
+		const size_t skipMaterialsGuard = traceBody.find(
+			"if (!bSkipMaterials)");
 		Require(materialSlotsOffset != std::string::npos &&
 			textureSlotsOffset != std::string::npos &&
 			readyMaterialOffset != std::string::npos &&
+			skipMaterialsGuard < materialSlotsOffset &&
 			materialSlotsOffset < readyMaterialOffset &&
 			textureSlotsOffset < readyMaterialOffset,
 			"stationary scene proxies must allocate one material and texture slot per mesh before testing asynchronous readiness");
 
 		const std::string readyMaterialBody = ExtractFunctionBody(
 			traceBody,
-			"if (material && material->IsReady() && !bSkipMaterials)");
+			"if (material && material->IsReady())");
 		Require(readyMaterialBody.find(
 			"viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI") != std::string::npos,
 			"a ready stationary material must fill its original mesh slot");
@@ -287,21 +290,29 @@ namespace
 		{
 			const char* m_path;
 			const char* m_signature;
+			const char* m_matrixExpression;
+			const char* m_matrixAssignment;
 			const char* m_label;
 		} frameGraphPasses[] = {
 			{
 				"Runtime/FrameGraph/RenderSceneNode.cpp",
 				"Tasks::TaskPtr<void, void> RenderSceneNode::Prepare(",
+				"proxy.m_meshModelMatrices[i]",
+				"data.model = meshWorldMatrix",
 				"raster"
 			},
 			{
 				"Runtime/FrameGraph/DepthPrepassNode.cpp",
 				"Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(",
+				"proxy.m_meshModelMatrices[i]",
+				"data.model = meshWorldMatrix",
 				"depth"
 			},
 			{
 				"Runtime/FrameGraph/ShadowPrepassNode.cpp",
 				"void ShadowPrepassNode::Process(",
+				"shadowMesh.m_worldMatrix",
+				"data.model = shadowMesh.m_worldMatrix",
 				"shadow"
 			}
 		};
@@ -311,9 +322,9 @@ namespace
 			const std::string body = ExtractFunctionBody(
 				source,
 				pass.m_signature);
-			Require(body.find("proxy.m_meshModelMatrices[i]") !=
+			Require(body.find(pass.m_matrixExpression) !=
 					std::string::npos &&
-				body.find("data.model = meshWorldMatrix") !=
+				body.find(pass.m_matrixAssignment) !=
 					std::string::npos,
 				std::string(pass.m_label) +
 					" pass must consume the selected render part world matrix");
@@ -1073,26 +1084,25 @@ namespace
 			processBody.find("renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag") !=
 				std::string::npos,
 			"the shadow pass must accept only Opaque and Masked render queues");
-		Require(processBody.find("proxy.m_renderQueueTags[i]") !=
+		Require(processBody.find("shadowMesh.m_renderQueueTag") !=
 				std::string::npos,
 			"shadow filtering must use lightweight queue metadata instead of material bindings");
 
-		const std::string sceneViewSource = ReadText(
-			sourceRoot / "Runtime/RHI/SceneView.cpp");
-		const std::string traceSceneBody = ExtractFunctionBody(
-			sceneViewSource,
-			"TVector<RHISceneViewProxy> RHISceneView::TraceScene(");
-		Require(traceSceneBody.find("m_renderQueueTags.Add") !=
-				std::string::npos &&
-			traceSceneBody.find("material->GetRenderState().GetTag()") !=
-				std::string::npos,
-			"shadow traces that skip RHI materials must still publish per-mesh render queues");
+		const std::string sceneViewHeader = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.h");
+		const std::string shadowMeshProxy = ExtractFunctionBody(
+			sceneViewHeader,
+			"struct RHIShadowMeshProxy");
+		Require(shadowMeshProxy.find("RHIMeshPtr m_mesh") != std::string::npos &&
+			shadowMeshProxy.find("size_t m_renderQueueTag") != std::string::npos &&
+			shadowMeshProxy.find("RHIMaterialPtr") == std::string::npos,
+			"shadow casters must retain only mesh, matrix, and queue metadata without material bindings");
 
 		const std::string staticMeshSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		Require(staticMeshSource.find("proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag())") !=
+		Require(staticMeshSource.find("shadowMesh.m_renderQueueTag = renderQueueTag") !=
 				std::string::npos,
-			"cached static proxies must publish the same per-mesh render queues");
+			"dirty mesh updates must cache the render queue in their lightweight shadow proxy");
 	}
 
 	void TestShadowDepthRangeContract()
@@ -1258,9 +1268,12 @@ namespace
 		TexturePtr texture = TexturePtr::Make(allocator, FileId::Invalid);
 
 		uint64_t revision = material->GetContentRevision();
+		const uint64_t globalRevision = Material::GetGlobalContentRevision();
 		material->SetUniform("material.transmissionFactor", 1.0f);
 		Require(material->GetContentRevision() > revision,
 			"changing a scalar uniform must advance the material content revision");
+		Require(Material::GetGlobalContentRevision() > globalRevision,
+			"a material mutation must publish the global revision gate used by dirty mesh updates");
 
 		revision = material->GetContentRevision();
 		material->SetUniform("material.attenuationColor", glm::vec4(0.9f, 0.6f, 0.1f, 1.0f));

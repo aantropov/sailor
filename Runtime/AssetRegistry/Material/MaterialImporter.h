@@ -34,6 +34,7 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
+		SAILOR_API static uint64_t GetGlobalContentRevision();
 
 		SAILOR_API virtual Tasks::ITaskPtr OnHotReload() override;
 
@@ -74,7 +75,7 @@ namespace Sailor
 
 	protected:
 
-		void AdvanceContentRevision() { m_contentRevision.fetch_add(1, std::memory_order_release); }
+		void AdvanceContentRevision();
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 

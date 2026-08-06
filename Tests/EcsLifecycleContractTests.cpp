@@ -776,6 +776,24 @@ namespace
 		Require(octree.Insert(glm::ivec3(-24), glm::ivec3(1), size_t(0)),
 			"the removed element should remain insertable");
 		Require(octree.Num() == 8, "reinsertion should restore the expected count");
+
+		TOctree<size_t> traceOctree(glm::ivec3(0), 128, 4);
+		Require(traceOctree.Insert(glm::ivec3(0, 0, -5), glm::ivec3(1), size_t(42)),
+			"the trace fixture insertion should succeed");
+		Math::Frustum traceFrustum;
+		traceFrustum.ExtractFrustumPlanes(glm::mat4(1.0f), 1.0f, 60.0f, 0.1f, 10.0f);
+		TVector<size_t> tracedElements;
+		traceOctree.Trace(traceFrustum, tracedElements);
+		Require(tracedElements.Num() == 1 && tracedElements[0] == 42,
+			"vector frustum tracing should return the matching element exactly once");
+		size_t callbackCount = 0;
+		traceOctree.Trace(traceFrustum, [&callbackCount](size_t element)
+			{
+				Require(element == 42, "callback frustum tracing should publish the matching element");
+				++callbackCount;
+			});
+		Require(callbackCount == 1,
+			"callback frustum tracing should visit the matching element exactly once");
 	}
 
 	void TestClearingMeshModelAlsoClearsMaterials()
@@ -793,20 +811,13 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string rendererEcsSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		const size_t staticUpdateBegin = rendererEcsSource.find(
-			"StaticMeshRendererECS:Update Static Objects");
-		const size_t copySceneViewBegin = rendererEcsSource.find(
-			"void StaticMeshRendererECS::CopySceneView", staticUpdateBegin);
-		Require(staticUpdateBegin != std::string::npos &&
-			copySceneViewBegin > staticUpdateBegin,
-			"static mesh renderer must expose a bounded static-proxy update path");
-
-		const std::string staticUpdateBody = rendererEcsSource.substr(
-			staticUpdateBegin, copySceneViewBegin - staticUpdateBegin);
-		Require(staticUpdateBody.find(
-			"proxy.m_frame = ownerTransform.GetFrameLastChange();") !=
-			std::string::npos,
-			"static mesh proxies must publish transform revisions so moving shadow casters invalidate cached CSM passes");
+		Require(rendererEcsSource.find(
+			"shadowCaster->m_frame = currentFrame;") != std::string::npos &&
+			rendererEcsSource.find(
+			"++m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos &&
+			rendererEcsSource.find(
+			"outProxies->m_shadowCastersRevision = m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos,
+			"dirty mesh updates must publish a monotonic shadow-caster revision with their lightweight proxy");
 	}
 
 	void TestStaticMeshProxyTracksMaterialContentRevisions()
@@ -820,29 +831,26 @@ namespace
 
 		const std::string rendererEcsSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
-		const size_t staticUpdateBegin = rendererEcsSource.find(
-			"StaticMeshRendererECS:Update Static Objects");
-		const size_t copySceneViewBegin = rendererEcsSource.find(
-			"void StaticMeshRendererECS::CopySceneView", staticUpdateBegin);
-		Require(staticUpdateBegin != std::string::npos &&
-			copySceneViewBegin > staticUpdateBegin,
-			"static mesh renderer must expose a bounded static-proxy update path");
-
-		const std::string staticUpdateBody = rendererEcsSource.substr(
-			staticUpdateBegin, copySceneViewBegin - staticUpdateBegin);
-		const size_t captureCurrentRevision = staticUpdateBody.find(
-			"material->GetContentRevision()");
-		const size_t compareCachedRevisions = staticUpdateBody.find(
-			"data.m_materialContentRevisions[materialIndex] != materialContentRevision");
-		const size_t rebuildForChangedMaterial = staticUpdateBody.find(
-			"data.m_bIsDirty || bMaterialsChanged ||");
-		const size_t cacheRebuiltRevisions = staticUpdateBody.find(
-			"data.m_materialContentRevisions[i] = data.GetMaterials()[i]->GetContentRevision();");
-		Require(captureCurrentRevision != std::string::npos &&
-			compareCachedRevisions > captureCurrentRevision &&
-			rebuildForChangedMaterial > compareCachedRevisions &&
-			cacheRebuiltRevisions > rebuildForChangedMaterial,
-			"a same-pointer material mutation must rebuild the static proxy before caching its new content revision");
+		const size_t globalRevisionGate = rendererEcsSource.find(
+			"materialContentRevision != m_lastMaterialContentRevision");
+		const size_t compareCachedRevisions = rendererEcsSource.find(
+			"data.m_materialContentRevisions[materialIndex] != currentRevision",
+			globalRevisionGate);
+		const size_t queueDirtyComponent = rendererEcsSource.find(
+			"data.MarkDirty();",
+			compareCachedRevisions);
+		const size_t cacheRebuiltRevisions = rendererEcsSource.find(
+			"data.m_materialContentRevisions[materialIndex] = material ? material->GetContentRevision() : 0ull;",
+			queueDirtyComponent);
+		Require(globalRevisionGate != std::string::npos &&
+			compareCachedRevisions > globalRevisionGate &&
+			queueDirtyComponent > compareCachedRevisions &&
+			cacheRebuiltRevisions > queueDirtyComponent,
+			"material revisions should scan components only after a global change and enqueue only affected proxies");
+		Require(rendererEcsSource.find("TVector<size_t> dirtyComponents = m_dirtyComponents;") != std::string::npos,
+			"static mesh updates must consume a dirty component list instead of scanning every proxy each frame");
+		Require(rendererEcsSource.find("m_dirtyComponents.Contains(") == std::string::npos,
+			"enqueueing dirty meshes must remain constant-time as the queue grows");
 	}
 
 	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()
@@ -860,16 +868,24 @@ namespace
 
 		const std::string prepareCsmBody = lightingEcsSource.substr(
 			prepareCsmBegin, fillLightingBegin - prepareCsmBegin);
-		const size_t traceScene = prepareCsmBody.find(
-			"cascade.m_meshList = sceneView->TraceScene");
+		const size_t traceShadowCasters = prepareCsmBody.find(
+			"sceneView->TraceShadowCasters(broadFrustum)");
+		const size_t cascadeLoop = prepareCsmBody.find(
+			"for (uint32_t k = 0; k < lightCascadesMatrices.Num(); ++k)");
 		const size_t captureCaster = prepareCsmBody.find(
-			"snapshot.m_snapshot.Add({ m.m_staticMeshEcs, m.m_frame });");
+			"snapshot.m_snapshot.Add({ caster->m_staticMeshEcs, caster->m_frame });");
 		const size_t filterDependency = prepareCsmBody.find(
 			"cascade.m_meshList.RemoveAll");
-		Require(traceScene != std::string::npos &&
-			captureCaster > traceScene &&
+		Require(traceShadowCasters != std::string::npos &&
+			cascadeLoop > traceShadowCasters &&
+			captureCaster > cascadeLoop &&
 			filterDependency > captureCaster,
-			"CSM invalidation snapshots must capture the complete traced caster list before dependency draw-call filtering");
+			"CSM must query lightweight casters once before distributing and snapshotting them across cascades");
+		Require(prepareCsmBody.find("TraceScene(") == std::string::npos &&
+			prepareCsmBody.find(
+				"TraceShadowCasters(",
+				traceShadowCasters + std::string("TraceShadowCasters(").size()) == std::string::npos,
+			"CSM preparation must not build full scene proxies or repeat the broad caster query per cascade");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
@@ -885,7 +901,20 @@ namespace
 		cachedState.m_componentIndex = 7u;
 		cachedState.m_shadowType = RHI::EShadowType::PCF;
 		cachedState.m_lightMatrix = cachedLightMatrix;
+		cachedState.m_sceneRevision = 23u;
 		cachedState.m_snapshot.Add({ 11u, 19u });
+		Require(cachedState.CanReuse(
+			cachedState.m_componentIndex,
+			cachedState.m_shadowType,
+			cachedState.m_lightMatrix,
+			cachedState.m_sceneRevision),
+			"an unchanged light and shadow-caster scene should reuse its CSM snapshot before tracing");
+		Require(!cachedState.CanReuse(
+			cachedState.m_componentIndex,
+			cachedState.m_shadowType,
+			cachedState.m_lightMatrix,
+			cachedState.m_sceneRevision + 1),
+			"a changed shadow-caster scene revision should require a lightweight CSM query");
 
 		CSMLightState movedState{};
 		movedState.m_componentIndex = cachedState.m_componentIndex;

@@ -113,49 +113,47 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 							meshProxy.m_worldMatrix * modelMatrix);
 					}
 					viewProxy.m_skeletonOffset = ecsData.GetSkeletonOffset();
-					viewProxy.m_overrideMaterials.Clear();
-					viewProxy.m_renderQueueTags.Clear();
-#if defined(__APPLE__)
-					viewProxy.m_materialTextureSamplers.Clear();
-#endif
 					viewProxy.m_frame = ecsData.GetFrameLastChange();
 					viewProxy.m_bCastShadows = ecsData.ShouldCastShadow();
 					viewProxy.m_worldAabb = modelBounds;
 					viewProxy.m_worldAabb.Apply(viewProxy.m_worldMatrix);
 
-					viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num());
-					viewProxy.m_renderQueueTags.Reserve(viewProxy.m_meshes.Num());
-#if defined(__APPLE__)
-					viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num());
-					auto textureImporter = App::GetSubmodule<TextureImporter>();
-#endif
-					// TODO: Should we check AABB for each mesh in model?
-
-					for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
+					if (!bSkipMaterials)
 					{
-						const size_t materialIndex =
-							viewProxy.m_meshes[i]->ResolveMaterialIndex(
-								i, ecsData.GetMaterials().Num());
+						viewProxy.m_overrideMaterials.Resize(viewProxy.m_meshes.Num());
+						viewProxy.m_renderQueueTags.Reserve(viewProxy.m_meshes.Num());
+#if defined(__APPLE__)
+						viewProxy.m_materialTextureSamplers.Resize(viewProxy.m_meshes.Num());
+						auto textureImporter = App::GetSubmodule<TextureImporter>();
+#endif
+						// TODO: Should we check AABB for each mesh in model?
 
-						auto& material = ecsData.GetMaterials()[materialIndex];
-						viewProxy.m_renderQueueTags.Add(material ? material->GetRenderState().GetTag() : 0u);
-#if defined(__APPLE__)
-						auto& requestedTextures = viewProxy.m_materialTextureSamplers[i];
-						requestedTextures.Insert(0u);
-#endif
-						if (material && material->IsReady() && !bSkipMaterials)
+						for (size_t i = 0; i < viewProxy.m_meshes.Num(); i++)
 						{
-							viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription);
+							const size_t materialIndex =
+								viewProxy.m_meshes[i]->ResolveMaterialIndex(
+									i, ecsData.GetMaterials().Num());
+
+							auto& material = ecsData.GetMaterials()[materialIndex];
+							viewProxy.m_renderQueueTags.Add(material ? material->GetRenderState().GetTag() : 0u);
 #if defined(__APPLE__)
-							if (textureImporter)
-							{
-								for (const auto& sampler : material->GetSamplers())
-								{
-									const uint32_t textureIndex = sampler.m_second ? (uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
-									requestedTextures.Insert(textureIndex);
-								}
-							}
+							auto& requestedTextures = viewProxy.m_materialTextureSamplers[i];
+							requestedTextures.Insert(0u);
 #endif
+							if (material && material->IsReady())
+							{
+								viewProxy.m_overrideMaterials[i] = material->GetOrAddRHI(viewProxy.m_meshes[i]->m_vertexDescription);
+#if defined(__APPLE__)
+								if (textureImporter)
+								{
+									for (const auto& sampler : material->GetSamplers())
+									{
+										const uint32_t textureIndex = sampler.m_second ? (uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
+										requestedTextures.Insert(textureIndex);
+									}
+								}
+#endif
+							}
 						}
 					}
 
@@ -190,6 +188,27 @@ TVector<RHISceneViewProxy> RHISceneView::TraceScene(const Math::Frustum& frustum
 	res.AddRange(std::move(proxies));
 
 	return res;
+}
+
+TVector<RHIShadowCasterProxyPtr> RHISceneView::TraceShadowCasters(const Math::Frustum& frustum) const
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	TVector<RHIShadowCasterProxyPtr> result;
+	result.Reserve(m_stationaryOctree.Num() + m_staticOctree.Num());
+
+	auto appendShadowCaster = [&result](const auto& proxy)
+		{
+			if (proxy.m_shadowCaster)
+			{
+				result.Add(proxy.m_shadowCaster);
+			}
+		};
+
+	m_stationaryOctree.Trace(frustum, appendShadowCaster);
+	m_staticOctree.Trace(frustum, appendShadowCaster);
+
+	return result;
 }
 
 void RHISceneView::PrepareSnapshots()

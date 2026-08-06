@@ -28,16 +28,7 @@ namespace
 			return;
 		}
 
-		for (auto component : owner->GetComponents())
-		{
-			if (auto mesh = component.DynamicCast<MeshRendererComponent>())
-			{
-				if (meshEcs->IsComponentRegistered(mesh->GetComponentIndex()))
-				{
-					mesh->GetData().MarkDirty();
-				}
-			}
-		}
+		meshEcs->MarkDirty(owner);
 	}
 }
 

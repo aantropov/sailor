@@ -2,6 +2,7 @@
 #include "Engine/GameObject.h"
 #include "Components/Component.h"
 #include "ECS/TransformECS.h"
+#include "ECS/StaticMeshRendererECS.h"
 #include "Editor/EditorViewportController.h"
 #include "Core/LogMacros.h"
 #include <algorithm>
@@ -27,6 +28,20 @@ void GameObject::BeginPlay()
 TransformComponent& GameObject::GetTransformComponent()
 {
 	return m_pWorld->GetECS<TransformECS>()->GetComponentData(m_transformHandle);
+}
+
+void GameObject::SetMobilityType(EMobilityType type)
+{
+	if (m_type == type)
+	{
+		return;
+	}
+
+	m_type = type;
+	if (m_self && m_pWorld)
+	{
+		m_pWorld->GetECS<StaticMeshRendererECS>()->MarkDirty(m_self);
+	}
 }
 
 void GameObject::SetParent(GameObjectPtr parent)
