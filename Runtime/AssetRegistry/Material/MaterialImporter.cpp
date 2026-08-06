@@ -43,6 +43,18 @@ void Material::AdvanceContentRevision()
 	g_materialContentRevision.fetch_add(1, std::memory_order_release);
 }
 
+void Material::SetShader(ShaderSetPtr shader)
+{
+	m_shader = shader;
+	AdvanceContentRevision();
+}
+
+void Material::SetRenderState(const RHI::RenderState& renderState)
+{
+	m_renderState = renderState;
+	AdvanceContentRevision();
+}
+
 bool Material::IsReady() const
 {
 	return m_shader && m_shader->IsReady() && m_commonShaderBindings.IsValid() && m_commonShaderBindings->IsReady();

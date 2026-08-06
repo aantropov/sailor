@@ -60,16 +60,8 @@ namespace Sailor
 		SAILOR_API void SetSampler(const std::string& name, TexturePtr value);
 		SAILOR_API void SetUniform(const std::string& name, glm::vec4 value);
 		SAILOR_API void SetUniform(const std::string& name, float value);
-		SAILOR_API void SetShader(ShaderSetPtr shader)
-		{
-			m_shader = shader;
-			AdvanceContentRevision();
-		}
-		SAILOR_API void SetRenderState(const RHI::RenderState& renderState)
-		{
-			m_renderState = renderState;
-			AdvanceContentRevision();
-		}
+		SAILOR_API void SetShader(ShaderSetPtr shader);
+		SAILOR_API void SetRenderState(const RHI::RenderState& renderState);
 
 		SAILOR_API ShaderSetPtr GetShader() const { return m_shader; }
 
