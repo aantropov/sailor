@@ -83,6 +83,7 @@ def main() -> int:
         'joltphysics',
         'magic-enum',
         'meshoptimizer',
+        'miniaudio',
         'nlohmann-json',
         'protobuf',
         'refl-cpp',

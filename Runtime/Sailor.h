@@ -31,6 +31,7 @@ namespace Sailor
 		bool m_bIsEditor = false;
 		bool m_bEnableRenderValidationLayers = true;
 		bool m_bRunPathTracer = false;
+		bool m_bForceNullAudioDevice = false;
 
 		uint32_t m_editorPort = 32800;
 		HWND m_editorHwnd{};
