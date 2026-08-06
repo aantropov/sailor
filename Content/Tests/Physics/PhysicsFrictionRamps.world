@@ -1,0 +1,607 @@
+name: PhysicsFrictionRamps
+prefabs:
+  - gameObjects:
+      - name: Camera
+        position:
+          - 200
+          - 180
+          - 340
+          - 1
+        rotation:
+          - -0.173648
+          - 0
+          - 0
+          - 0.984808
+        scale:
+          - 10
+          - 10
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000001
+        components:
+          - 0
+    components:
+      - typename: Sailor::CameraComponent
+        overrideProperties:
+          fov: 60
+          zNear: 1
+          zFar: 20000
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000001_A1550000000000000001
+  - gameObjects:
+      - name: Sun
+        position:
+          - 0
+          - 250
+          - 100
+          - 1
+        rotation:
+          - 0.183013
+          - 0.683013
+          - 0.183013
+          - 0.683013
+        scale:
+          - 10
+          - 10
+          - 10
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000002
+        components:
+          - 0
+    components:
+      - typename: Sailor::LightComponent
+        overrideProperties:
+          intensity:
+            - 8
+            - 8
+            - 8
+          lightType: Directional
+          shadowType: PCF
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000002_A1550000000000000002
+  - gameObjects:
+      - name: StaticGround
+        position:
+          - 0
+          - -10
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - 0
+          - 1
+        scale:
+          - 300
+          - 10
+          - 260
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000003
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000003_A1550000000000000003
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.8
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000004_A1550000000000000003
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000005_A1550000000000000003
+  - gameObjects:
+      - name: Ramp_Friction_000
+        position:
+          - 0
+          - 40
+          - -90
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 140
+          - 7
+          - 35
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000004
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000006_A1550000000000000004
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000007_A1550000000000000004
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000008_A1550000000000000004
+  - gameObjects:
+      - name: Slider_Friction_000
+        position:
+          - -45
+          - 80
+          - -90
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000005
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000009_A1550000000000000005
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000A_A1550000000000000005
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000B_A1550000000000000005
+  - gameObjects:
+      - name: Ramp_Friction_025
+        position:
+          - 0
+          - 40
+          - -45
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 140
+          - 7
+          - 35
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000006
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000C_A1550000000000000006
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.25
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000D_A1550000000000000006
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000E_A1550000000000000006
+  - gameObjects:
+      - name: Slider_Friction_025
+        position:
+          - -45
+          - 80
+          - -45
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000007
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000000F_A1550000000000000007
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.25
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000010_A1550000000000000007
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000011_A1550000000000000007
+  - gameObjects:
+      - name: Ramp_Friction_050
+        position:
+          - 0
+          - 40
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 140
+          - 7
+          - 35
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000008
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000012_A1550000000000000008
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.5
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000013_A1550000000000000008
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000014_A1550000000000000008
+  - gameObjects:
+      - name: Slider_Friction_050
+        position:
+          - -45
+          - 80
+          - 0
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A1550000000000000009
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000015_A1550000000000000009
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.5
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000016_A1550000000000000009
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000017_A1550000000000000009
+  - gameObjects:
+      - name: Ramp_Friction_075
+        position:
+          - 0
+          - 40
+          - 45
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 140
+          - 7
+          - 35
+          - 1
+        parentIndex: 4294967295
+        instanceId: A155000000000000000A
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000018_A155000000000000000A
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 0.75
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000019_A155000000000000000A
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001A_A155000000000000000A
+  - gameObjects:
+      - name: Slider_Friction_075
+        position:
+          - -45
+          - 80
+          - 45
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A155000000000000000B
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001B_A155000000000000000B
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 0.75
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001C_A155000000000000000B
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001D_A155000000000000000B
+  - gameObjects:
+      - name: Ramp_Friction_100
+        position:
+          - 0
+          - 40
+          - 90
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 140
+          - 7
+          - 35
+          - 1
+        parentIndex: 4294967295
+        instanceId: A155000000000000000C
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001E_A155000000000000000C
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Static
+          mass: 1
+          friction: 1
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A155000000000000000000000000001F_A155000000000000000C
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000020_A155000000000000000C
+  - gameObjects:
+      - name: Slider_Friction_100
+        position:
+          - -45
+          - 80
+          - 90
+          - 1
+        rotation:
+          - 0
+          - 0
+          - -0.156434
+          - 0.987688
+        scale:
+          - 22
+          - 22
+          - 22
+          - 1
+        parentIndex: 4294967295
+        instanceId: A155000000000000000D
+        components:
+          - 0
+          - 1
+          - 2
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          model:
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
+            instanceId: NullInstanceId
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000021_A155000000000000000D
+      - typename: Sailor::RigidBodyComponent
+        overrideProperties:
+          motionType: Dynamic
+          gravityFactor: 10
+          mass: 1
+          friction: 1
+          restitution: 0
+          allowSleeping: true
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000022_A155000000000000000D
+      - typename: Sailor::CollisionShapeComponent
+        overrideProperties:
+          shapeType: Box
+          size:
+            - 1
+            - 1
+            - 1
+          fileId: NullFileId
+          instanceId: A1550000000000000000000000000023_A155000000000000000D

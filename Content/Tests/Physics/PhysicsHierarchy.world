@@ -4,18 +4,18 @@ prefabs:
       - name: Camera
         position:
           - 0
-          - 8
-          - 18
+          - 80
+          - 180
           - 1
         rotation:
-          - 0.17364818
+          - -0.17364818
           - 0
           - 0
           - 0.98480775
         scale:
-          - 1
-          - 1
-          - 1
+          - 10
+          - 10
+          - 10
           - 1
         parentIndex: 4294967295
         instanceId: 14110000000000000001
@@ -25,16 +25,16 @@ prefabs:
       - typename: Sailor::CameraComponent
         overrideProperties:
           fov: 60
-          zNear: 0.1
-          zFar: 1000
+          zNear: 1
+          zFar: 10000
           fileId: NullFileId
           instanceId: 14110000000000000000000000000001_14110000000000000001
   - gameObjects:
       - name: Sun
         position:
           - 0
-          - 10
-          - 5
+          - 100
+          - 50
           - 1
         rotation:
           - 0.183012709
@@ -42,9 +42,9 @@ prefabs:
           - 0.183012709
           - 0.683012724
         scale:
-          - 1
-          - 1
-          - 1
+          - 10
+          - 10
+          - 10
           - 1
         parentIndex: 4294967295
         instanceId: 14110000000000000002
@@ -65,7 +65,7 @@ prefabs:
       - name: StaticGround
         position:
           - 0
-          - -0.5
+          - -5
           - 0
           - 1
         rotation:
@@ -74,9 +74,9 @@ prefabs:
           - 0
           - 1
         scale:
-          - 12
-          - 1
-          - 12
+          - 120
+          - 10
+          - 120
           - 1
         parentIndex: 4294967295
         instanceId: 14110000000000000003
@@ -88,7 +88,7 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
             instanceId: NullInstanceId
           fileId: NullFileId
           instanceId: 14110000000000000000000000000003_14110000000000000003
@@ -110,8 +110,8 @@ prefabs:
   - gameObjects:
       - name: TransformedParent
         position:
-          - 3
-          - 1
+          - 30
+          - 10
           - 0
           - 1
         rotation:
@@ -130,7 +130,7 @@ prefabs:
       - name: DynamicChild
         position:
           - 0
-          - 6
+          - 60
           - 0
           - 1
         rotation:
@@ -139,9 +139,9 @@ prefabs:
           - 0
           - 1
         scale:
-          - 1
-          - 1
-          - 1
+          - 10
+          - 10
+          - 10
           - 1
         parentIndex: 0
         instanceId: 14110000000000000005
@@ -153,13 +153,14 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
             instanceId: NullInstanceId
           fileId: NullFileId
           instanceId: 14110000000000000000000000000006_14110000000000000005
       - typename: Sailor::RigidBodyComponent
         overrideProperties:
           motionType: Dynamic
+          gravityFactor: 10
           mass: 1
           fileId: NullFileId
           instanceId: 14110000000000000000000000000007_14110000000000000005
@@ -175,8 +176,8 @@ prefabs:
   - gameObjects:
       - name: KinematicBody_MoveWhileSimulating
         position:
-          - -4
-          - 2
+          - -40
+          - 20
           - 0
           - 1
         rotation:
@@ -185,9 +186,9 @@ prefabs:
           - 0
           - 1
         scale:
-          - 2
-          - 0.5
-          - 2
+          - 20
+          - 5
+          - 20
           - 1
         parentIndex: 4294967295
         instanceId: 14110000000000000006
@@ -199,7 +200,7 @@ prefabs:
       - typename: Sailor::MeshRendererComponent
         overrideProperties:
           model:
-            fileId: "{2387902B-538E-4191-93D6-53503B5571B1}"
+            fileId: "{A1450002-0000-4000-8000-000000000002}"
             instanceId: NullInstanceId
           fileId: NullFileId
           instanceId: 14110000000000000000000000000009_14110000000000000006
