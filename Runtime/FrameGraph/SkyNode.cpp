@@ -427,7 +427,11 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->SetDebugName(m_pSunTexture, "Sun");
 	}
 
-	const float cloudsSize = std::min(App::GetMainWindow()->GetRenderArea().x * CloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * CloudsResolutionFactor);
+	float cloudsResolutionFactor = CloudsResolutionFactor;
+#if defined(__APPLE__)
+	cloudsResolutionFactor *= 0.5f;
+#endif
+	const float cloudsSize = std::min(App::GetMainWindow()->GetRenderArea().x * cloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * cloudsResolutionFactor);
 	const glm::ivec2 desiredCloudsExtent(std::max(1.0f, cloudsSize), std::max(1.0f, cloudsSize));
 
 	if (m_pCloudsTexture && m_pCloudsTexture->GetExtent() != desiredCloudsExtent)
