@@ -43,7 +43,7 @@ renderTargets:
   bGenerateMips: true
 
 - name: EditorOutput
-  format: B8G8R8A8_UNORM
+  format: B8G8R8A8_SRGB
   width: ViewportWidth
   height: ViewportHeight
   bIsSurface: false
@@ -235,9 +235,9 @@ frame:
   - shader: Shaders/HBAO.shader
   - defines: ~
   float:
-  - data.occlusionRadius: 700
+  - data.occlusionRadius: 1.5
   - data.occlusionPower: 1.5
-  - data.occlusionAttenuation: 0.1
+  - data.occlusionAttenuation: 1
   - data.occlusionBias: 0.05
   - data.noiseScale: 25
   renderTargets:

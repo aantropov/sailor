@@ -81,9 +81,12 @@ void LightingECS::BeginPlay()
 		char csmDebugName[64];
 		sprintf_s(csmDebugName, sizeof(csmDebugName), "Shadow Map, CSM: %d, Cascade: %d", i / NumCascades, i % NumCascades);
 
+		const bool bEvsmCascade = i % NumCascades == 0;
 		m_csmShadowMaps.Add(driver->CreateRenderTarget(ShadowCascadeResolutions[i % NumCascades], 1,
-			i % NumCascades == 0 ? ShadowMapFormat_Evsm : ShadowMapFormat,
-			RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Clamp, usage));
+			bEvsmCascade ? ShadowMapFormat_Evsm : ShadowMapFormat,
+			bEvsmCascade ? RHI::ETextureFiltration::Linear : RHI::ETextureFiltration::Nearest,
+			RHI::ETextureClamping::Clamp,
+			usage));
 
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
 	}
@@ -318,7 +321,7 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cameraData.GetAspect(),
 			cameraData.GetFov(),
 			cameraData.GetZNear(),
-			cameraData.GetZFar(),
+			(std::min)(cameraData.GetZFar(), ShadowMaxDistance),
 			10.0f,
 			glm::ivec2(0),
 			ShadowCasterDepthExtension) * directionalLight.m_lightMatrix;

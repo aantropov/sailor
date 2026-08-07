@@ -118,6 +118,7 @@ namespace SailorEditor.Services
         readonly object disposeGate = new();
         readonly EngineProtocolClient protocolClient;
         readonly SemaphoreSlim lifecycleGate = new(1, 1);
+        readonly SemaphoreSlim restartGate = new(1, 1);
         readonly CancellationTokenSource disposeCancellation = new();
         readonly RingBufferedBatcher<ConsoleMessage> consoleMessages = new(MaxBufferedConsoleMessages);
         readonly WorldSnapshotPublicationGate worldSnapshotPublication = new();
@@ -1558,6 +1559,70 @@ namespace SailorEditor.Services
                 SetLifecycleState(EngineLifecycleState.Faulted);
             }
             return EnsureSuccessfulStop(stopFailure);
+#endif
+        }
+
+        public async Task RestartAsync(
+            EngineLaunchContext launchContext,
+            string serializedWorld,
+            SceneViewportToolState? viewportToolState = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(launchContext);
+            if (string.IsNullOrWhiteSpace(serializedWorld))
+            {
+                throw new ArgumentException(
+                    "A serialized recovery world is required to restart the Engine.",
+                    nameof(serializedWorld));
+            }
+
+#if !WINDOWS && !MACCATALYST
+            throw new PlatformNotSupportedException(
+                "The local Engine host is supported only by the Windows and Mac Catalyst editor hosts.");
+#else
+            await restartGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(launchContext.CacheDirectory);
+                await File.WriteAllTextAsync(
+                        launchContext.TempWorldFilePath,
+                        serializedWorld,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Once teardown starts, complete the restart transaction even if
+                // the UI request is cancelled. Leaving the local host half-stopped
+                // would make the next explicit recovery attempt unreliable.
+                if (State is EngineLifecycleState.Starting or
+                    EngineLifecycleState.Running or
+                    EngineLifecycleState.Stopping)
+                {
+                    await StopAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+
+                await StartAsync(
+                        launchContext,
+                        false,
+                        ["--world", launchContext.TempWorldRuntimePath],
+                        CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                if (viewportToolState is { } toolState &&
+                    !await SetViewportToolStateAsync(
+                            toolState.Operation,
+                            toolState.Space,
+                            CancellationToken.None)
+                        .ConfigureAwait(false))
+                {
+                    Console.WriteLine(
+                        "[EngineService] Engine restarted, but the Scene viewport tool state could not be restored.");
+                }
+            }
+            finally
+            {
+                restartGate.Release();
+            }
 #endif
         }
 

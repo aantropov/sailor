@@ -247,18 +247,22 @@ vec2 RaySphereIntersect(vec3 r0, vec3 rd, vec3 s0, float sr)
   // - sr: sphere radius
   // - Returns distance from r0 to first intersecion with sphere,
   //   or -1.0 if no intersection.
-  float a = 1.0f;
-  vec3 s0_r0 = r0 - s0;
-  float b = 2.0 * dot(rd, s0_r0);
-  float c = dot(s0_r0, s0_r0) - (sr * sr);
-  if (b*b - 4.0*a*c < 0.0) 
+  const vec3 s0_r0 = r0 - s0;
+  const float distanceToCenter = length(s0_r0);
+  const float halfB = dot(rd, s0_r0);
+
+  // Factoring |r0-s0|^2-sr^2 avoids subtracting two almost equal, very
+  // large values when the ray starts close to a planet-sized surface.
+  const float c = (distanceToCenter - sr) * (distanceToCenter + sr);
+  const float discriminant = halfB * halfB - c;
+  if (discriminant < 0.0f)
   {
       return vec2(-1.0);
   }
   
-  float tmp = sqrt((b*b) - 4.0*a*c);
-  float x1 = (-b + tmp)/(2.0*a);
-  float x2 = (-b - tmp)/(2.0*a);
+  const float root = sqrt(discriminant);
+  const float x1 = -halfB + root;
+  const float x2 = -halfB - root;
   
   return x1 < x2 ? vec2(x1, x2) : vec2(x2, x1);
 }

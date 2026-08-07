@@ -5,6 +5,7 @@
 #include "RHI/Types.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
+#include "FrameGraph/RenderSceneTextureCache.h"
 
 namespace Sailor
 {
@@ -15,12 +16,20 @@ namespace Sailor
 		struct PerInstanceData
 		{
 			glm::mat4 model;
+			glm::vec4 baseColorFactor{ 1.0f };
 			uint32_t skeletonOffset = 0;
-			uint32_t padding0 = 0;
-			uint32_t padding1 = 0;
-			uint32_t padding2 = 0;
+			uint32_t baseColorSampler = 0;
+			float alphaCutoff = 0.5f;
+			uint32_t padding = 0;
 
-			bool operator==(const PerInstanceData& rhs) const { return this->model == model; }
+			bool operator==(const PerInstanceData& rhs) const
+			{
+				return model == rhs.model &&
+					baseColorFactor == rhs.baseColorFactor &&
+					skeletonOffset == rhs.skeletonOffset &&
+					baseColorSampler == rhs.baseColorSampler &&
+					alphaCutoff == rhs.alphaCutoff;
+			}
 
 			size_t GetHash() const
 			{
@@ -50,8 +59,12 @@ namespace Sailor
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_shadowMaterials_Pcf{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedShadowMaterials_Evsm{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedShadowMaterials_Pcf{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedShadowMaterials_Evsm{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedShadowMaterials_Pcf{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Evsm{};
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Pcf{};
 
-		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned);
+		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked);
 
 		// Record drawcalls
 		size_t m_sizePerInstanceData = 0;
@@ -60,6 +73,7 @@ namespace Sailor
 
 		// Light matrices
 		RHI::RHIShaderBindingPtr m_lightMatrices{};
+		Framegraph::TextureBindingCache m_textureBindingCache{};
 
 		static const char* m_name;
 	};

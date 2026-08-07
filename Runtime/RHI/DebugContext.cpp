@@ -159,13 +159,21 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 
 void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
 {
+	const float shadowFarPlane = (std::min)(zFar, LightingECS::ShadowMaxDistance);
 	TVector<Math::Frustum> cascades;
 	cascades.Reserve(LightingECS::NumCascades);
 	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
 	{
 		Math::Frustum cameraFrustum{};
-		const float cascadeNear = i == 0 ? zNear : zFar * LightingECS::ShadowCascadeLevels[i - 1];
-		const float cascadeFar = zFar * LightingECS::ShadowCascadeLevels[i];
+		float cascadeNear = zNear;
+		if (i > 0)
+		{
+			const float previousSplit = shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 1];
+			const float previousNear = i > 1 ? shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 2] : zNear;
+			cascadeNear = (std::max)(zNear,
+				previousSplit - (previousSplit - previousNear) * LightingECS::ShadowCascadeBlendFraction);
+		}
+		const float cascadeFar = shadowFarPlane * LightingECS::ShadowCascadeLevels[i];
 		cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, cascadeNear, cascadeFar);
 		cascades.Emplace(std::move(cameraFrustum));
 	}

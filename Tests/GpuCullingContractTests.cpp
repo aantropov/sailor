@@ -862,7 +862,7 @@ namespace
 			processBody.find("proxy->m_skeletonOffset") != std::string::npos) &&
 			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
 			processBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
-			processBody.find("GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned)") != std::string::npos &&
+			processBody.find("GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked)") != std::string::npos &&
 			processBody.find("sets.Add(sceneView.m_boneMatrices)") != std::string::npos,
 			"ShadowPrepass must select skinned batches and bind the current bone matrices");
 	}
@@ -977,6 +977,18 @@ namespace
 					std::string::npos,
 				"the final blit must preserve the post-MotionBlur debug overlay");
 		}
+
+		const std::string editorRenderer = ReadText(
+			sourceRoot / "Content/EditorRenderer.renderer");
+		const size_t editorOutput = editorRenderer.find("- name: EditorOutput");
+		Require(editorOutput != std::string::npos,
+			"the editor renderer must declare its transport output");
+		const size_t nextRenderTarget = editorRenderer.find("\n- name:", editorOutput + 1u);
+		const std::string editorOutputDeclaration = editorRenderer.substr(
+			editorOutput,
+			nextRenderTarget - editorOutput);
+		Require(editorOutputDeclaration.find("format: B8G8R8A8_SRGB") != std::string::npos,
+			"the editor transport output must encode linear HDR content to sRGB before IOSurface presentation");
 	}
 
 	void TestTransparentBackToFrontOrderingContract()
@@ -1096,14 +1108,23 @@ namespace
 			"struct RHIShadowMeshProxy");
 		Require(shadowMeshProxy.find("RHIMeshPtr m_mesh") != std::string::npos &&
 			shadowMeshProxy.find("size_t m_renderQueueTag") != std::string::npos &&
+			shadowMeshProxy.find("uint32_t m_baseColorSampler") != std::string::npos &&
+			shadowMeshProxy.find("float m_alphaCutoff") != std::string::npos &&
 			shadowMeshProxy.find("RHIMaterialPtr") == std::string::npos,
-			"shadow casters must retain only mesh, matrix, and queue metadata without material bindings");
+			"shadow casters must retain lightweight mesh and alpha-mask metadata without full material bindings");
 
 		const std::string staticMeshSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
 		Require(staticMeshSource.find("shadowMesh.m_renderQueueTag = renderQueueTag") !=
 				std::string::npos,
 			"dirty mesh updates must cache the render queue in their lightweight shadow proxy");
+
+		const std::string shadowShader = ReadText(
+			sourceRoot / "Content/Shaders/ShadowCaster.shader");
+		Require(shadowShader.find("- MASKED") != std::string::npos &&
+			shadowShader.find("alpha *= texture(") != std::string::npos &&
+			shadowShader.find("if(alpha < inAlphaCutoff)") != std::string::npos,
+			"masked shadow casters must discard fragments using their base-color alpha texture");
 	}
 
 	void TestShadowDepthRangeContract()
@@ -1111,6 +1132,14 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string lightingSource = ReadText(
 			sourceRoot / "Content/Shaders/Lighting.glsl");
+		const std::string lightingHeader = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.h");
+
+		Require(lightingHeader.find("ShadowMapFormat = RHI::EFormat::R16_UNORM") !=
+				std::string::npos &&
+			lightingHeader.find("ShadowMapFormat = RHI::EFormat::R16_SFLOAT") ==
+				std::string::npos,
+			"PCF shadow depth must use uniformly distributed fixed-point precision");
 
 		Require(lightingSource.find("projCoords.xy = projCoords.xy * 0.5 + 0.5;") !=
 				std::string::npos,
@@ -1131,8 +1160,11 @@ namespace
 			lightingSource.find("dot(surfaceNormal, surfaceToLightDirection)") !=
 				std::string::npos,
 			"directional shadow sampling must skip disabled shadows and derive slope bias from the direction toward the light");
-		Require(lightingSource.find("max(slope, EVSM_MIN_SLOPE_BIAS)") !=
+		Require(lightingSource.find("SHADOW_BIAS_MIN_TEXELS") !=
 				std::string::npos &&
+			lightingSource.find("normalizedDepthPerTexel") != std::string::npos &&
+			lightingSource.find("SHADOW_BIAS_CASCADE_3_SCALE") != std::string::npos &&
+			lightingSource.find("SHADOW_BIAS_CASCADE_4_SCALE") != std::string::npos &&
 			lightingSource.find("const float biasedDepth =") !=
 				std::string::npos &&
 			lightingSource.find("exp(EVSM_C1 * biasedDepth)") !=
@@ -1181,6 +1213,46 @@ namespace
 			standardSource.find("dot(normal, light.direction)") == std::string::npos &&
 			gltfSource.find("dot(normal, light.direction)") == std::string::npos,
 			"all lit material paths must use the shared reverse-Z shadow and slope-bias calculation");
+	}
+
+	void TestHbaoMeterScaleContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string hbaoSource = ReadText(
+			sourceRoot / "Content/Shaders/HBAO.shader");
+		const std::string hbaoBlurSource = ReadText(
+			sourceRoot / "Content/Shaders/HBAO_Blur.shader");
+		const std::string editorRenderer = ReadText(
+			sourceRoot / "Content/EditorRenderer.renderer");
+		const std::string defaultRenderer = ReadText(
+			sourceRoot / "Content/DefaultRenderer.renderer");
+
+		Require(hbaoSource.find("ScreenSpaceToViewSpace(uv, depth, frame.invProjection)") !=
+				std::string::npos &&
+			hbaoSource.find("ClipSpaceToViewSpace(vec4(uv.x, uv.y, depth") ==
+				std::string::npos,
+			"HBAO must convert normalized texture coordinates to clip space before reconstructing view positions");
+		Require(hbaoSource.find("horizonVectorLengthSquared") != std::string::npos &&
+			hbaoSource.find("horizonVectorLength < data.occlusionRadius * data.occlusionRadius") ==
+				std::string::npos,
+			"HBAO must compare squared distances with its squared world-space radius");
+		Require(hbaoSource.find("depth <= 0.000001f") != std::string::npos,
+			"HBAO must leave reverse-Z clear-depth sky pixels unoccluded");
+		Require(hbaoBlurSource.find("GetViewDepth") != std::string::npos &&
+			hbaoBlurSource.find("viewDepth - CenterViewDepth") != std::string::npos,
+			"HBAO bilateral blur must compare view-space meter distances rather than nonlinear depth values");
+		Require(editorRenderer.find("data.occlusionRadius: 1.5") != std::string::npos &&
+			defaultRenderer.find("data.occlusionRadius: 1.5") != std::string::npos &&
+			editorRenderer.find("data.occlusionRadius: 700") == std::string::npos &&
+			defaultRenderer.find("data.occlusionRadius: 700") == std::string::npos,
+			"editor and game HBAO configurations must use the same meter-scale radius");
+
+		const std::string skySource = ReadText(
+			sourceRoot / "Content/Shaders/Sky.shader");
+		Require(skySource.find("float PlanetHeight(vec3 position)") != std::string::npos &&
+			skySource.find("vec2 RaySphereAtAltitude") != std::string::npos &&
+			skySource.find("length(position) - earthRadius") == std::string::npos,
+			"near-surface atmosphere math must avoid subtracting planet-sized floats to recover meter heights");
 	}
 
 	void TestPathTracerThicknessSamplerContract()
@@ -1344,6 +1416,7 @@ int main()
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
 		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },
 		{ "ShadowDepthRangeContract", TestShadowDepthRangeContract },
+		{ "HbaoMeterScaleContract", TestHbaoMeterScaleContract },
 		{ "PathTracerThicknessSamplerContract", TestPathTracerThicknessSamplerContract },
 		{ "PathTracerMaterialContentRevisionContract", TestPathTracerMaterialContentRevisionContract },
 	};

@@ -10,8 +10,11 @@
                 Stroke="#2A2A2A"
                 StrokeThickness="1"
                 Padding="3,2">
-            <HorizontalStackLayout Spacing="3"
-                                   VerticalOptions="Center">
+            <Grid ColumnDefinitions="*,Auto"
+                  ColumnSpacing="4">
+                <HorizontalStackLayout Spacing="3"
+                                       Grid.Column="0"
+                                       VerticalOptions="Center">
                 <Button x:Name="SelectToolButton"
                         Text="Q  Select"
                         HeightRequest="26"
@@ -52,7 +55,31 @@
                         FontSize="11"
                         CornerRadius="3"
                         Clicked="OnTransformSpaceClicked" />
-            </HorizontalStackLayout>
+                </HorizontalStackLayout>
+
+                <Border Grid.Column="1"
+                        Stroke="#3B3F46"
+                        StrokeThickness="1"
+                        BackgroundColor="#2A2E35"
+                        Padding="4,1"
+                        StrokeShape="RoundRectangle 3"
+                        HorizontalOptions="End"
+                        VerticalOptions="Center">
+                    <ImageButton x:Name="RestartEngineButton"
+                                 Source="arrow_circle_24.png"
+                                 BackgroundColor="Transparent"
+                                 BorderWidth="0"
+                                 Padding="0"
+                                 WidthRequest="22"
+                                 HeightRequest="22"
+                                 MinimumWidthRequest="22"
+                                 MinimumHeightRequest="22"
+                                 Aspect="AspectFit"
+                                 AutomationProperties.Name="Restart Engine Process"
+                                 ToolTipProperties.Text="Restart Engine Process"
+                                 Clicked="OnRestartEngineClicked" />
+                </Border>
+            </Grid>
         </Border>
 
         <Border x:Name="Viewport"

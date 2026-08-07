@@ -140,12 +140,13 @@ glslFragment: |
         }
         outColor.xyz += vec3(0.05,0.05,0.05);
     }
-   #elif defined(CASCADES)
+  #elif defined(CASCADES)
     float linearDepth = texture(linearDepthSampler, fragTexcoord).r;
+    float shadowFarPlane = min(frame.cameraZNearZFar.y, ShadowMaxDistance);
     int layer = NUM_CSM_CASCADES;
     for (int i = 0; i < NUM_CSM_CASCADES; ++i)
     {
-        if (linearDepth < frame.cameraZNearZFar.y * ShadowCascadeLevels[i])
+        if (linearDepth < shadowFarPlane * ShadowCascadeLevels[i])
         {
             layer = i;
             break;

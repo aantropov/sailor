@@ -890,7 +890,11 @@ namespace
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
 	{
 		Require(std::abs(LightingECS::ShadowCascadeLevels[LightingECS::NumCascades - 1] - 1.0f) <= 0.0001f,
-			"the last shadow cascade must reach the camera far plane");
+			"the last shadow cascade must reach the configured shadow distance");
+		Require(LightingECS::ShadowMaxDistance == 200.0f,
+			"the meter-based editor scene should keep CSM coverage bounded to 200 meters");
+		Require(LightingECS::ShadowCascadeBlendFraction > 0.0f,
+			"adjacent CSM projections must overlap for seam-free transitions");
 
 		const glm::mat4 cachedLightMatrix(1.0f);
 		glm::mat4 movedLightMatrix = cachedLightMatrix;

@@ -415,6 +415,51 @@ glslFragment: |
   {
       return material.instance[materialInstance];
   }
+
+  float CalculateCascadedDirectionalShadow(
+    LightData light,
+    vec3 worldPosition,
+    vec3 surfaceNormal,
+    vec3 surfaceToLightDirection)
+  {
+    const int cascadeLayer = SelectCascade(frame.view, worldPosition, frame.cameraZNearZFar);
+    if(cascadeLayer >= NUM_CSM_CASCADES)
+    {
+      return 1.0f;
+    }
+
+    const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
+    float shadow = CalculateDirectionalShadow(
+      light.shadowType,
+      shadowMaps[cascadeLayer],
+      cascadeLightMatrix,
+      cascadeLightMatrix * vec4(worldPosition, 1.0f),
+      surfaceNormal,
+      surfaceToLightDirection,
+      cascadeLayer);
+
+    const float cascadeBlend = CalculateCascadeBlend(
+      frame.view,
+      worldPosition,
+      frame.cameraZNearZFar,
+      cascadeLayer);
+    if(cascadeBlend > 0.0f)
+    {
+      const int nextCascadeLayer = cascadeLayer + 1;
+      const mat4 nextCascadeLightMatrix = lightsMatrices.instance[nextCascadeLayer];
+      const float nextShadow = CalculateDirectionalShadow(
+        light.shadowType,
+        shadowMaps[nextCascadeLayer],
+        nextCascadeLightMatrix,
+        nextCascadeLightMatrix * vec4(worldPosition, 1.0f),
+        surfaceNormal,
+        surfaceToLightDirection,
+        nextCascadeLayer);
+      shadow = mix(shadow, nextShadow, cascadeBlend);
+    }
+
+    return shadow;
+  }
   
   const float Epsilon = 0.00001;
 
@@ -499,14 +544,11 @@ glslFragment: |
     // Directional light
     if(light.type == 0)
     {
-        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        shadow = CalculateDirectionalShadow(
-          light.shadowType,
-          shadowMaps[cascadeLayer],
-          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+        shadow = CalculateCascadedDirectionalShadow(
+          light,
+          worldPos,
           normal,
-          Li,
-          cascadeLayer);
+          Li);
     }
     // Point light
     else if(light.type == 1)
@@ -734,14 +776,11 @@ glslFragment: |
     float shadow = 1.0f;
     if(light.type == 0)
     {
-        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        shadow = CalculateDirectionalShadow(
-          light.shadowType,
-          shadowMaps[cascadeLayer],
-          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+        shadow = CalculateCascadedDirectionalShadow(
+          light,
+          worldPos,
           normal,
-          -light.direction,
-          cascadeLayer);
+          -light.direction);
     }
     else if(light.type == 1 || light.type == 2)
     {
@@ -791,14 +830,11 @@ glslFragment: |
     float shadow = 1.0f;
     if(light.type == 0)
     {
-        const int cascadeLayer = min(SelectCascade(frame.view, worldPos, frame.cameraZNearZFar), NUM_CSM_CASCADES - 1);
-        shadow = CalculateDirectionalShadow(
-          light.shadowType,
-          shadowMaps[cascadeLayer],
-          lightsMatrices.instance[cascadeLayer] * vec4(worldPos, 1.0f),
+        shadow = CalculateCascadedDirectionalShadow(
+          light,
+          worldPos,
           normal,
-          -light.direction,
-          cascadeLayer);
+          -light.direction);
     }
     else if(light.type == 1 || light.type == 2)
     {

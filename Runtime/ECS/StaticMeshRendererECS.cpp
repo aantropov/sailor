@@ -89,6 +89,12 @@ namespace
 			const auto& rhsMesh = rhs.m_meshes[index];
 			if (lhsMesh.m_mesh != rhsMesh.m_mesh ||
 				lhsMesh.m_renderQueueTag != rhsMesh.m_renderQueueTag ||
+				lhsMesh.m_baseColorFactor != rhsMesh.m_baseColorFactor ||
+				lhsMesh.m_alphaCutoff != rhsMesh.m_alphaCutoff ||
+				lhsMesh.m_baseColorSampler != rhsMesh.m_baseColorSampler ||
+#if defined(__APPLE__)
+				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
+#endif
 				!AreMatricesExactlyEqual(lhsMesh.m_worldMatrix, rhsMesh.m_worldMatrix))
 			{
 				return false;
@@ -110,6 +116,7 @@ namespace
 	{
 		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
 		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		auto textureImporter = App::GetSubmodule<TextureImporter>();
 
 		auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
 		shadowCaster->m_staticMeshEcs = componentIndex;
@@ -134,6 +141,38 @@ namespace
 			shadowMesh.m_mesh = meshes[meshIndex];
 			shadowMesh.m_worldMatrix = matrices.Num() > meshIndex ? matrices[meshIndex] : ownerWorldMatrix;
 			shadowMesh.m_renderQueueTag = renderQueueTag;
+			if (renderQueueTag == maskedQueueTag)
+			{
+				const glm::vec4* baseColorFactor = nullptr;
+				if (!material->GetUniformsVec4().Find("material.baseColorFactor", baseColorFactor))
+				{
+					material->GetUniformsVec4().Find("material.albedo", baseColorFactor);
+				}
+				if (baseColorFactor)
+				{
+					shadowMesh.m_baseColorFactor = *baseColorFactor;
+				}
+
+				const float* alphaCutoff = nullptr;
+				if (material->GetUniformsFloat().Find("material.alphaCutoff", alphaCutoff) && alphaCutoff)
+				{
+					shadowMesh.m_alphaCutoff = *alphaCutoff;
+				}
+
+				const TexturePtr* baseColorTexture = nullptr;
+				if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
+				{
+					material->GetSamplers().Find("albedoSampler", baseColorTexture);
+				}
+				if (textureImporter && baseColorTexture && *baseColorTexture)
+				{
+					shadowMesh.m_baseColorSampler = (uint32_t)textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId());
+				}
+#if defined(__APPLE__)
+				shadowMesh.m_materialTextureSamplers.Insert(0u);
+				shadowMesh.m_materialTextureSamplers.Insert(shadowMesh.m_baseColorSampler);
+#endif
+			}
 			shadowCaster->m_meshes.Add(std::move(shadowMesh));
 		}
 
@@ -315,6 +354,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 					result.m_state = EPreparedProxyState::Retry;
 					return result;
 				}
+				if (!material->IsReady())
+				{
+					result.m_state = EPreparedProxyState::Retry;
+					return result;
+				}
 			}
 
 			const auto& ownerTransform = owner->GetTransformComponent();
@@ -357,15 +401,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			if (owner->GetMobilityType() != EMobilityType::Static)
 			{
 				return result;
-			}
-
-			for (const auto& material : data.GetMaterials())
-			{
-				if (!material->IsReady())
-				{
-					result.m_state = EPreparedProxyState::Retry;
-					return result;
-				}
 			}
 
 			result.m_state = EPreparedProxyState::Static;

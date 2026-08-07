@@ -8,6 +8,7 @@
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "ECS/LightingECS.h"
 
 #include <limits>
@@ -19,11 +20,15 @@ using namespace Sailor::RHI;
 const char* ShadowPrepassNode::m_name = "ShadowPrepass";
 #endif
 
-RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType, bool bSkinned)
+RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, RHI::EShadowType shadowType, bool bSkinned, bool bMasked)
 {
 	auto& materials = shadowType == EShadowType::EVSM ?
-		(bSkinned ? m_skinnedShadowMaterials_Evsm : m_shadowMaterials_Evsm) :
-		(bSkinned ? m_skinnedShadowMaterials_Pcf : m_shadowMaterials_Pcf);
+		(bMasked ?
+			(bSkinned ? m_skinnedMaskedShadowMaterials_Evsm : m_maskedShadowMaterials_Evsm) :
+			(bSkinned ? m_skinnedShadowMaterials_Evsm : m_shadowMaterials_Evsm)) :
+		(bMasked ?
+			(bSkinned ? m_skinnedMaskedShadowMaterials_Pcf : m_maskedShadowMaterials_Pcf) :
+			(bSkinned ? m_skinnedShadowMaterials_Pcf : m_shadowMaterials_Pcf));
 	auto& material = materials[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
@@ -40,12 +45,17 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 		{
 			defines.Add("SKINNING");
 		}
+		if (bMasked)
+		{
+			defines.Add("MASKED");
+		}
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines))
 		{
 			check(pShader->IsReady());
 
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
+			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, GetHash(std::string("Shadow")), false, EDepthCompare::GreaterOrEqual);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -117,6 +127,7 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		uint32_t numMeshes = 0;
 		const size_t opaqueQueueTag = GetHash(std::string("Opaque"));
 		const size_t maskedQueueTag = GetHash(std::string("Masked"));
+		Framegraph::Details::EvictTextureBindingCache(m_textureBindingCache, sceneView.m_frame);
 
 		SAILOR_PROFILE_SCOPE("Filter sceneView by tag");
 
@@ -143,7 +154,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						proxy->m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
-					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned);
+					const bool bMasked = renderQueueTag == maskedQueueTag;
+					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked);
 
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						depthMaterial->GetVertexShader() &&
@@ -157,8 +169,29 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					ShadowPrepassNode::PerInstanceData data;
 					data.model = shadowMesh.m_worldMatrix;
 					data.skeletonOffset = bSkinned ? proxy->m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
+					data.baseColorFactor = shadowMesh.m_baseColorFactor;
+					data.baseColorSampler = shadowMesh.m_baseColorSampler;
+					data.alphaCutoff = shadowMesh.m_alphaCutoff;
 
 					RHIBatch batch(depthMaterial, mesh);
+					if (bMasked)
+					{
+						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
+#if defined(__APPLE__)
+						batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(
+							m_textureBindingCache,
+							shadowMesh.m_materialTextureSamplers,
+							sceneView.m_frame,
+							supportedMeshesPerBatch);
+#else
+						batch.m_textureBindings = App::GetSubmodule<TextureImporter>()->GetTextureSamplersBindingSet();
+#endif
+						batch.m_supportedMeshesPerBatch = supportedMeshesPerBatch;
+						if (!batch.m_textureBindings)
+						{
+							continue;
+						}
+					}
 
 					drawCalls[passIndex][batch][mesh].Add(data);
 					batches[passIndex].Insert(batch);
@@ -235,6 +268,10 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 		auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 			{
 				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+				if (batch.m_textureBindings)
+				{
+					sets.Add(batch.m_textureBindings);
+				}
 				const bool bSkinned =
 					batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 					batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
@@ -443,6 +480,11 @@ void ShadowPrepassNode::Clear()
 	m_shadowMaterials_Evsm.Clear();
 	m_skinnedShadowMaterials_Pcf.Clear();
 	m_skinnedShadowMaterials_Evsm.Clear();
+	m_maskedShadowMaterials_Pcf.Clear();
+	m_maskedShadowMaterials_Evsm.Clear();
+	m_skinnedMaskedShadowMaterials_Pcf.Clear();
+	m_skinnedMaskedShadowMaterials_Evsm.Clear();
+	m_textureBindingCache.Clear();
 }
 
 glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult, glm::ivec2 shadowMapResolution, float zSourceExtension)
@@ -457,22 +499,27 @@ glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lig
 TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
 {
 	SAILOR_PROFILE_FUNCTION();
+	const float shadowFarPlane = (std::min)(cameraFarPlane, LightingECS::ShadowMaxDistance);
 
 	TVector<glm::mat4> ret;
-	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
-		cameraNearPlane,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],
-		10.0f,
-		LightingECS::ShadowCascadeResolutions[0],
-		LightingECS::ShadowCasterDepthExtension));
-
-	for (uint32_t i = 0; i < LightingECS::NumCascades - 1; i++)
+	for (uint32_t i = 0; i < LightingECS::NumCascades; ++i)
 	{
+		const float cascadeFar = shadowFarPlane * LightingECS::ShadowCascadeLevels[i];
+		float cascadeNear = cameraNearPlane;
+		if (i > 0)
+		{
+			const float previousSplit = shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 1];
+			const float previousNear = i > 1 ?
+				shadowFarPlane * LightingECS::ShadowCascadeLevels[i - 2] : cameraNearPlane;
+			const float overlap = (previousSplit - previousNear) * LightingECS::ShadowCascadeBlendFraction;
+			cascadeNear = (std::max)(cameraNearPlane, previousSplit - overlap);
+		}
+
 		ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
-			cameraFarPlane * LightingECS::ShadowCascadeLevels[i],
-			cameraFarPlane * LightingECS::ShadowCascadeLevels[i + 1],
+			cascadeNear,
+			cascadeFar,
 			10.0f,
-			LightingECS::ShadowCascadeResolutions[i + 1],
+			LightingECS::ShadowCascadeResolutions[i],
 			LightingECS::ShadowCasterDepthExtension));
 	}
 

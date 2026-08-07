@@ -26,6 +26,12 @@ namespace Sailor::RHI
 		RHIMeshPtr m_mesh{};
 		glm::mat4 m_worldMatrix{ 1.0f };
 		size_t m_renderQueueTag{};
+		glm::vec4 m_baseColorFactor{ 1.0f };
+		float m_alphaCutoff = 0.5f;
+		uint32_t m_baseColorSampler = 0;
+#if defined(__APPLE__)
+		TSet<uint32_t> m_materialTextureSamplers{};
+#endif
 	};
 
 	struct RHIShadowCasterProxy

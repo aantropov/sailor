@@ -20,6 +20,7 @@ namespace SailorEditor.Views
         bool isInputCaptured = false;
         bool isPlayMode = false;
         bool viewportRetryQueued = false;
+        int engineRestartInProgress;
         long viewportRetryUntilMs = -1;
         NativeSceneViewport? nativeViewportHost;
         nint nativeHostHandle = nint.Zero;
@@ -43,6 +44,7 @@ namespace SailorEditor.Views
         readonly ICommandDispatcher commandDispatcher;
         readonly IActionContextProvider actionContextProvider;
         readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
+        readonly WorkspaceUiService workspaceUiService;
         readonly IAlreadyAppliedTransformTarget viewportTransformTarget;
         readonly SceneViewportLifecycleAdapter viewportAdapter;
         readonly SceneShellFocusCoordinator focusCoordinator;
@@ -73,12 +75,14 @@ namespace SailorEditor.Views
             commandDispatcher = MauiProgram.GetService<ICommandDispatcher>();
             actionContextProvider = MauiProgram.GetService<IActionContextProvider>();
             inspectorPendingEditCoordinator = MauiProgram.GetService<InspectorPendingEditCoordinator>();
+            workspaceUiService = MauiProgram.GetService<WorkspaceUiService>();
             nativeViewportInputQueue = new NativeViewportInputQueue(
                 ProcessNativeViewportInputAsync,
                 exception => Console.WriteLine(
                     $"[SceneView] Native viewport input failed: {exception}"));
             viewportTransformTarget = new EditorViewportTransformTarget(engineService, worldService);
             viewportAdapter = new SceneViewportLifecycleAdapter(new EngineSceneViewportBackend(engineService), EngineService.SceneViewportId);
+            UpdateRestartEngineButton(engineService.State);
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
@@ -345,6 +349,7 @@ namespace SailorEditor.Views
 
         void OnEngineLifecycleStateChanged(EngineLifecycleState state)
         {
+            UpdateRestartEngineButton(state);
             viewportEventRevisionGate.Reset();
             ResetNativeViewportInputQueue();
             if (state != EngineLifecycleState.Running || !isRunning)
@@ -354,6 +359,46 @@ namespace SailorEditor.Views
             QueueViewportRetry(TimeSpan.FromSeconds(1));
             UpdateViewportIntegration();
             _ = RefreshViewportToolStateAsync();
+        }
+
+        async void OnRestartEngineClicked(object sender, EventArgs e)
+        {
+            if (Interlocked.Exchange(ref engineRestartInProgress, 1) != 0)
+            {
+                return;
+            }
+
+            UpdateRestartEngineButton(engineService.State);
+            try
+            {
+                await workspaceUiService.RestartEngineAsync();
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"Restart Engine Process failed: {exception}");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref engineRestartInProgress, 0);
+                UpdateRestartEngineButton(engineService.State);
+            }
+        }
+
+        void UpdateRestartEngineButton(EngineLifecycleState state)
+        {
+            var isRestarting = Volatile.Read(ref engineRestartInProgress) != 0;
+            RestartEngineButton.IsEnabled =
+                !isRestarting &&
+                state is EngineLifecycleState.Running or
+                    EngineLifecycleState.Stopped or
+                    EngineLifecycleState.Faulted;
+            RestartEngineButton.Opacity = RestartEngineButton.IsEnabled
+                ? 1.0
+                : 0.45;
+            RestartEngineButton.BackgroundColor = state == EngineLifecycleState.Faulted
+                ? Color.FromArgb("#5A2C2C")
+                : Colors.Transparent;
         }
 
         async void OnEditorViewportEvents(IReadOnlyList<EditorViewportEvent> viewportEvents)

@@ -1,7 +1,9 @@
 using CommunityToolkit.Maui.Storage;
 using SailorEditor.Commands;
+using SailorEditor.Scene;
 using SailorEditor.Shell;
 using SailorEditor.Workspace;
+using SailorEditor.Workflow;
 
 namespace SailorEditor.Services;
 
@@ -13,6 +15,10 @@ internal sealed class WorkspaceUiService
     readonly EditorShellHost _shellHost;
     readonly ICommandHistoryService _commandHistory;
     readonly SelectionService _selectionService;
+    readonly WorldService _worldService;
+    readonly AssetsService _assetsService;
+    readonly InspectorPendingEditCoordinator _inspectorPendingEditCoordinator;
+    readonly SemaphoreSlim _engineRestartGate = new(1, 1);
     static readonly FilePickerFileType WorkspaceManifestFileType = new(new Dictionary<DevicePlatform, IEnumerable<string>>
     {
         { DevicePlatform.WinUI, [".sailor"] },
@@ -27,7 +33,10 @@ internal sealed class WorkspaceUiService
         WorkspaceActivationCoordinator activationCoordinator,
         EditorShellHost shellHost,
         ICommandHistoryService commandHistory,
-        SelectionService selectionService)
+        SelectionService selectionService,
+        WorldService worldService,
+        AssetsService assetsService,
+        InspectorPendingEditCoordinator inspectorPendingEditCoordinator)
     {
         _workspaceLifecycle = workspaceLifecycle;
         _engineService = engineService;
@@ -35,6 +44,9 @@ internal sealed class WorkspaceUiService
         _shellHost = shellHost;
         _commandHistory = commandHistory;
         _selectionService = selectionService;
+        _worldService = worldService;
+        _assetsService = assetsService;
+        _inspectorPendingEditCoordinator = inspectorPendingEditCoordinator;
         _activationCoordinator.StateChanged += OnActivationStateChanged;
         _engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
     }
@@ -55,6 +67,155 @@ internal sealed class WorkspaceUiService
             catch (Exception ex)
             {
                 ShowRepairState($"Repository runtime startup failed: {ex.Message}");
+            }
+        }
+    }
+
+    public async Task<bool> RestartEngineAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _engineRestartGate.WaitAsync(cancellationToken);
+        try
+        {
+            var restarted = false;
+            await _activationCoordinator.RunSerializedAsync(
+                async token =>
+                {
+                    restarted = await RestartEngineCoreAsync(token)
+                        .ConfigureAwait(false);
+                },
+                cancellationToken).ConfigureAwait(false);
+            return restarted;
+        }
+        finally
+        {
+            _engineRestartGate.Release();
+        }
+    }
+
+    async Task<bool> RestartEngineCoreAsync(CancellationToken cancellationToken)
+    {
+        await MainThread.InvokeOnMainThreadAsync(() =>
+            _shellHost.SetStatus("Restarting Engine…"));
+
+        if (!await _inspectorPendingEditCoordinator
+                .CommitPendingChangesAsync(cancellationToken)
+                .ConfigureAwait(false))
+        {
+            throw new InvalidOperationException(
+                "Pending Inspector changes could not be committed before restarting the Engine.");
+        }
+
+        _commandHistory.BeginWorkspaceChange();
+        _selectionService.BeginWorkspaceChange();
+        await _commandHistory.BeginWorkspaceChangeAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var recovered = false;
+        try
+        {
+            var launchContext =
+                _engineService.ActiveLaunchContext ??
+                _engineService.GetLaunchContext();
+            SceneViewportToolState? viewportToolState = null;
+            var serializedWorld = string.Empty;
+
+            if (_engineService.State == EngineLifecycleState.Running)
+            {
+                try
+                {
+                    viewportToolState = await _engineService
+                        .GetViewportToolStateAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(
+                        $"[WorkspaceUiService] Unable to capture the Scene viewport tool state before restart: {exception.Message}");
+                }
+
+                try
+                {
+                    if (await _engineService
+                            .GetEditorSimulationStateAsync(cancellationToken)
+                            .ConfigureAwait(false) &&
+                        !await _engineService
+                            .SetEditorSimulationAsync(false, cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        throw new InvalidOperationException(
+                            "Physics simulation could not be stopped before restarting the Engine.");
+                    }
+
+                    serializedWorld = await _engineService
+                        .SerializeCurrentWorldAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(
+                        $"[WorkspaceUiService] Live Engine snapshot failed; using the latest Editor world projection: {exception.Message}");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(serializedWorld))
+            {
+                serializedWorld = await MainThread.InvokeOnMainThreadAsync(
+                    _worldService.SerializeCurrentWorld);
+            }
+            if (string.IsNullOrWhiteSpace(serializedWorld))
+            {
+                throw new InvalidOperationException(
+                    "The current scene could not be captured for Engine recovery.");
+            }
+
+            await _engineService.RestartAsync(
+                    launchContext,
+                    serializedWorld,
+                    viewportToolState,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+
+            try
+            {
+                await _assetsService.RefreshAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                Console.WriteLine(
+                    $"[WorkspaceUiService] Engine restarted, but the Content projection refresh failed: {exception.Message}");
+            }
+
+            recovered = true;
+            if (!_activationCoordinator.ReportRuntimeRecovered())
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                    SetProjection(Projection with
+                    {
+                        ActivationPhase = _workspaceLifecycle.Current is null
+                            ? WorkspaceActivationPhase.Idle
+                            : WorkspaceActivationPhase.Ready,
+                        ActivationError = null
+                    }));
+            }
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+                _shellHost.SetStatus("Engine restarted."));
+            return true;
+        }
+        catch (Exception exception)
+        {
+            ShowRepairState(
+                $"Engine restart failed: {exception.Message}");
+            throw;
+        }
+        finally
+        {
+            if (recovered)
+            {
+                _commandHistory.CompleteWorkspaceChange();
+                _selectionService.CompleteWorkspaceChange();
             }
         }
     }

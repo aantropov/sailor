@@ -64,7 +64,7 @@ glslFragment: |
  
   const uint NumDirections = 8;
   const uint NumSamples = 8;
-  const float OcclusionOffset = 0.00001f;
+  const float OcclusionOffset = 0.002f;
   
   const vec2 Directions[8] = 
   {
@@ -88,7 +88,7 @@ glslFragment: |
   vec3 GetViewSpacePos(vec2 uv)
   {
     float depth = texture(depthSampler, uv).r;
-    return ClipSpaceToViewSpace(vec4(uv.x, uv.y, depth, 1.0f), frame.invProjection).xyz;
+    return ScreenSpaceToViewSpace(uv, depth, frame.invProjection).xyz;
   }
   
   vec3 GetViewSpaceNormal(vec2 uv, vec2 depthTextureSize)
@@ -109,9 +109,9 @@ glslFragment: |
     float depthDdx = TakeSmallerAbsDelta(depthLeft, depth, depthRight);
     float depthDdy = TakeSmallerAbsDelta(depthDown, depth, depthUp);
 
-    vec4 mid    =  ClipSpaceToViewSpace(vec4(uv.x, uv.y, depth, 1.0f), frame.invProjection);
-    vec4 right  =  ClipSpaceToViewSpace(vec4(uvRight.x, uvRight.y, depth + depthDdx, 1.0f), frame.invProjection) - mid;
-    vec4 up     =  ClipSpaceToViewSpace(vec4(uvUp.x, uvUp.y, depth + depthDdy, 1.0f), frame.invProjection) - mid;
+    vec4 mid    = ScreenSpaceToViewSpace(uv, depth, frame.invProjection);
+    vec4 right  = ScreenSpaceToViewSpace(uvRight, depth + depthDdx, frame.invProjection) - mid;
+    vec4 up     = ScreenSpaceToViewSpace(uvUp, depth + depthDdy, frame.invProjection) - mid;
 
     return normalize(cross(up.xyz, right.xyz));
   }
@@ -124,24 +124,27 @@ glslFragment: |
   float SampleAO(inout float sinH, vec3 viewSpaceSamplePos, vec3 viewSpaceOriginPos, vec3 viewSpaceOriginNormal)
   {
     vec3 horizonVector = viewSpaceSamplePos - viewSpaceOriginPos;
-    float horizonVectorLength = length(horizonVector);
-
-    vec3 viewSpaceSampleTangent = horizonVector;
-
-    float occlusion = 0.0f;
-
-    float sinS = sin((PI / 2.0) - acos(dot(viewSpaceOriginNormal, normalize(viewSpaceSampleTangent))));
-
-    if(horizonVectorLength < data.occlusionRadius * data.occlusionRadius && sinS > (sinH + data.occlusionBias * 3))
+    float horizonVectorLengthSquared = dot(horizonVector, horizonVector);
+    float occlusionRadiusSquared = data.occlusionRadius * data.occlusionRadius;
+    if(horizonVectorLengthSquared <= 0.000001f || horizonVectorLengthSquared >= occlusionRadiusSquared)
     {
-        float falloffZ = 1 - saturate(abs(horizonVector.z) * 0.007);
-        float distanceFactor = 1 - horizonVectorLength * rcp(data.occlusionRadius * data.occlusionRadius) * rcp(data.occlusionAttenuation);
-
-        occlusion = (sinS - sinH) * distanceFactor * falloffZ;
-        sinH = sinS;
+      return 0.0f;
     }
 
-    return occlusion;
+    float sinS = clamp(dot(viewSpaceOriginNormal, normalize(horizonVector)), -1.0f, 1.0f);
+    if(sinS > sinH + data.occlusionBias)
+    {
+        float falloffZ = 1.0f - saturate(abs(horizonVector.z) / data.occlusionRadius);
+        float distanceFactor = pow(
+          saturate(1.0f - horizonVectorLengthSquared / occlusionRadiusSquared),
+          max(data.occlusionAttenuation, 0.0001f));
+
+        float occlusion = (sinS - sinH) * distanceFactor * falloffZ;
+        sinH = sinS;
+        return occlusion;
+    }
+
+    return 0.0f;
   }
   
   float SampleRayAO(
@@ -184,43 +187,30 @@ glslFragment: |
 
   void main()
   {
-    vec3 viewSpacePosition = GetViewSpacePos(fragTexcoord);
-    
-    // sky dome check
-    if (viewSpacePosition.z > 49000)
+    const float depth = texture(depthSampler, fragTexcoord).r;
+    if(depth <= 0.000001f)
     {
-        outColor = vec4(1,0,0,1);
+        outColor = vec4(1.0f);
         return;
     }
+
+    vec3 viewSpacePosition = GetViewSpacePos(fragTexcoord);
     
     const vec2 depthTextureSize = textureSize(depthSampler, 0);
     const vec2 noiseTextureSize = textureSize(noiseSampler, 0);
     
     vec3 viewSpaceNormal = normalize(GetViewSpaceNormal(fragTexcoord, depthTextureSize));
     
-    viewSpacePosition += viewSpaceNormal * OcclusionOffset * (1  + 0.1 * viewSpacePosition.z / frame.cameraZNearZFar.x);
+    viewSpacePosition += viewSpaceNormal * OcclusionOffset;
     
-    vec3 noise = texture(noiseSampler, fragTexcoord * data.noiseScale).xyz;
+    vec2 noiseUv = fragTexcoord * depthTextureSize / max(noiseTextureSize, vec2(1.0f));
+    vec3 noise = texture(noiseSampler, noiseUv).xyz;
     vec2 noiseOffset = (noise.xy * 2.0 - 1.0) / 4.0;
 
-    float sampleRadius = 0;
-   
-    if(true)
-    {
-      const float MaxAORadius_depthScalar = 2.3;
-      float screenSpace1Meter = length(ViewSpaceToScreenSpace(vec4(0, 1, 0, 1), frame.projection));
-      float maxAORadius = (viewSpacePosition.z - frame.cameraZNearZFar.x) * screenSpace1Meter * MaxAORadius_depthScalar;
-      sampleRadius = min(data.occlusionRadius, maxAORadius);
-    }
-    else
-    {
-      vec3 viewSpace1Pixel = vec3(data.occlusionRadius / frame.viewportSize.x + 0.5, 0, -LinearizeDepth(viewSpacePosition.z, frame.cameraZNearZFar.yx));
-      sampleRadius = length(ScreenSpaceToViewSpace(viewSpace1Pixel.xy, viewSpace1Pixel.z, frame.invProjection));
-    }
-    
-    float projectionScale = 50;
-    float resolutionRatio = (depthTextureSize.y / frame.viewportSize.y);
-    float screenSpaceRadius = ((projectionScale * sampleRadius * resolutionRatio) / viewSpacePosition.z);
+    float viewDepth = max(abs(viewSpacePosition.z), frame.cameraZNearZFar.x);
+    float screenSpaceRadius =
+      0.5f * depthTextureSize.y * abs(frame.projection[1][1]) * data.occlusionRadius / viewDepth;
+    screenSpaceRadius = min(screenSpaceRadius, 128.0f);
 
     if(screenSpaceRadius < 1.0)
     {
