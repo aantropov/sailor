@@ -14,6 +14,11 @@
 
 namespace Sailor::RHI
 {
+	SAILOR_API float CalculateScreenCoveragePercent(
+		const Math::AABB& worldBounds,
+		const glm::mat4& viewMatrix,
+		const glm::mat4& projectionMatrix);
+
 	enum class EShadowType : uint32_t
 	{
 		None = 0,

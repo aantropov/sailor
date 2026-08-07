@@ -23,6 +23,7 @@
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
+#include "RHI/SceneView.h"
 #include "Submodules/Editor.h"
 
 using namespace Sailor;
@@ -806,21 +807,56 @@ namespace
 		Require(data.GetMaterials().IsEmpty(), "clearing a model should clear its stale material overrides");
 	}
 
-	void TestStaticMeshLodSelectionClampsAndUsesDistances()
+	void TestStaticMeshLodSelectionUsesScreenCoverage()
 	{
 		StaticMeshRendererData data;
-		data.SetLodSettings(0u, 2u, TVector<float>{ 20.0f, 60.0f });
-		Require(data.ResolveLod(0.0f, 3u) == 0u &&
-			data.ResolveLod(20.0f, 3u) == 1u &&
-			data.ResolveLod(59.0f, 3u) == 1u &&
-			data.ResolveLod(60.0f, 3u) == 2u,
-			"mesh renderer LOD selection must follow ascending camera-distance thresholds");
+		data.SetLodSettings(0u, 2u, TVector<float>{ 5.0f, 25.0f });
+		Require(data.ResolveLod(100.0f, 3u) == 0u &&
+			data.ResolveLod(25.0f, 3u) == 0u &&
+			data.ResolveLod(24.9f, 3u) == 1u &&
+			data.ResolveLod(4.9f, 3u) == 2u,
+			"mesh renderer LOD selection must follow descending screen-coverage thresholds");
 
-		data.SetLodSettings(1u, 5u, TVector<float>{ 60.0f, 20.0f });
-		Require(data.ResolveLod(0.0f, 3u) == 1u,
-			"mesh renderer minimum LOD must clamp near-camera selection");
-		Require(data.ResolveLod(1000.0f, 2u) == 1u,
+		data.SetLodSettings(1u, 5u, TVector<float>{ 25.0f, 5.0f });
+		Require(data.ResolveLod(100.0f, 3u) == 1u,
+			"mesh renderer minimum LOD must clamp high-coverage selection");
+		Require(data.ResolveLod(0.0f, 2u) == 1u,
 			"mesh renderer maximum LOD must clamp to available model geometry");
+
+		const glm::mat4 projection = glm::perspective(
+			glm::radians(60.0f),
+			1.0f,
+			0.1f,
+			1000.0f);
+		const glm::mat4 view(1.0f);
+		const float nearCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float farCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -20.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float offscreenCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(100.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float behindCameraCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float cameraIntersectionCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		Require(nearCoverage > farCoverage && farCoverage > 0.0f,
+			"projected AABB coverage must decrease as the same object recedes from the camera");
+		Require(offscreenCoverage == 0.0f,
+			"projected AABB coverage must exclude bounds outside the viewport");
+		Require(behindCameraCoverage == 0.0f,
+			"projected AABB coverage must exclude bounds behind the camera");
+		Require(cameraIntersectionCoverage == 100.0f,
+			"projected AABB coverage must conservatively select the highest LOD when bounds cross the camera plane");
 
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string sceneViewSource = ReadText(
@@ -1414,9 +1450,9 @@ namespace
 			"mesh renderer material overrides must be exported as an editable FileId list");
 		Require(properties.ContainsKey("minLod") &&
 			properties.ContainsKey("maxLod") &&
-			properties.ContainsKey("lodDistances") &&
-			properties["lodDistances"] == "List<float>",
-			"mesh renderer LOD limits and distance thresholds must be editable reflected properties");
+			properties.ContainsKey("screenCoverageThresholds") &&
+			properties["screenCoverageThresholds"] == "List<float>",
+			"mesh renderer LOD limits and screen-coverage thresholds must be editable reflected properties");
 
 		PrefabTestWorld world;
 		auto root = world.Instantiate("MaterialOverrides");
@@ -1459,7 +1495,8 @@ namespace
 		meshRenderer->SetOverrideMaterials(overrides);
 		meshRenderer->SetMinLod(1u);
 		meshRenderer->SetMaxLod(2u);
-		meshRenderer->SetLodDistances(TVector<float>{ 80.0f, 30.0f });
+		meshRenderer->SetScreenCoverageThresholds(
+			TVector<float>{ 5.0f, 25.0f });
 		Require(meshRenderer->GetOverrideMaterials() == overrides,
 			"assigning material overrides must preserve their slot order and inherited gaps");
 		Require(meshRenderer->GetData().IsDirty(),
@@ -1490,10 +1527,11 @@ namespace
 		Require(restoredRenderer && areOverridesEquivalent(
 			restoredRenderer->GetOverrideMaterials(), overrides),
 			"prefab instantiation must restore component-owned material overrides");
-		const TVector<float> expectedLodDistances{ 30.0f, 80.0f };
+		const TVector<float> expectedCoverageThresholds{ 25.0f, 5.0f };
 		Require(restoredRenderer->GetMinLod() == 1u &&
 			restoredRenderer->GetMaxLod() == 2u &&
-			restoredRenderer->GetLodDistances() == expectedLodDistances,
+			restoredRenderer->GetScreenCoverageThresholds() ==
+				expectedCoverageThresholds,
 			"prefab instantiation must restore sorted mesh renderer LOD settings");
 
 		restoredRenderer->SetModel(ModelPtr());
@@ -3672,7 +3710,7 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
-		{ "StaticMeshLodSelectionClampsAndUsesDistances", TestStaticMeshLodSelectionClampsAndUsesDistances },
+		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },

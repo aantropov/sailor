@@ -4,6 +4,8 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 
 #include <algorithm>
+#include <cmath>
+#include <functional>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -15,7 +17,10 @@ void MeshRendererComponent::Initialize()
 
 	GetData().SetOwner(GetOwner());
 	GetData().SetMeshIndex(m_meshIndex);
-	GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+	GetData().SetLodSettings(
+		m_minLod,
+		m_maxLod,
+		m_screenCoverageThresholds);
 }
 
 void MeshRendererComponent::BeginPlay()
@@ -68,7 +73,10 @@ void MeshRendererComponent::SetMinLod(uint32_t minLod)
 	m_maxLod = (std::max)(m_maxLod, m_minLod);
 	if (m_handle != ECS::InvalidIndex)
 	{
-		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+		GetData().SetLodSettings(
+			m_minLod,
+			m_maxLod,
+			m_screenCoverageThresholds);
 	}
 }
 
@@ -77,17 +85,32 @@ void MeshRendererComponent::SetMaxLod(uint32_t maxLod)
 	m_maxLod = (std::max)(maxLod, m_minLod);
 	if (m_handle != ECS::InvalidIndex)
 	{
-		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+		GetData().SetLodSettings(
+			m_minLod,
+			m_maxLod,
+			m_screenCoverageThresholds);
 	}
 }
 
-void MeshRendererComponent::SetLodDistances(const TVector<float>& lodDistances)
+void MeshRendererComponent::SetScreenCoverageThresholds(
+	const TVector<float>& screenCoverageThresholds)
 {
-	m_lodDistances = lodDistances;
-	std::sort(m_lodDistances.begin(), m_lodDistances.end());
+	m_screenCoverageThresholds = screenCoverageThresholds;
+	for (float& threshold : m_screenCoverageThresholds)
+	{
+		threshold = std::isfinite(threshold) ?
+			(std::clamp)(threshold, 0.0f, 100.0f) : 0.0f;
+	}
+	std::sort(
+		m_screenCoverageThresholds.begin(),
+		m_screenCoverageThresholds.end(),
+		std::greater<float>());
 	if (m_handle != ECS::InvalidIndex)
 	{
-		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+		GetData().SetLodSettings(
+			m_minLod,
+			m_maxLod,
+			m_screenCoverageThresholds);
 	}
 }
 

@@ -32,8 +32,8 @@ namespace Sailor
 		SAILOR_API void SetMinLod(uint32_t minLod);
 		SAILOR_API uint32_t GetMaxLod() const { return m_maxLod; }
 		SAILOR_API void SetMaxLod(uint32_t maxLod);
-		SAILOR_API const TVector<float>& GetLodDistances() const { return m_lodDistances; }
-		SAILOR_API void SetLodDistances(const TVector<float>& lodDistances);
+		SAILOR_API const TVector<float>& GetScreenCoverageThresholds() const { return m_screenCoverageThresholds; }
+		SAILOR_API void SetScreenCoverageThresholds(const TVector<float>& screenCoverageThresholds);
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
@@ -49,7 +49,7 @@ namespace Sailor
 		TVector<FileId> m_overrideMaterials;
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
-		TVector<float> m_lodDistances{ 25.0f, 75.0f };
+		TVector<float> m_screenCoverageThresholds{ 25.0f, 5.0f };
 	};
 }
 
@@ -69,6 +69,6 @@ REFL_AUTO(
 	func(SetMinLod, property("minLod")),
 	func(GetMaxLod, property("maxLod"), Range(0.0, 16.0)),
 	func(SetMaxLod, property("maxLod")),
-	func(GetLodDistances, property("lodDistances")),
-	func(SetLodDistances, property("lodDistances"))
+	func(GetScreenCoverageThresholds, property("screenCoverageThresholds")),
+	func(SetScreenCoverageThresholds, property("screenCoverageThresholds"))
 )

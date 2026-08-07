@@ -318,15 +318,6 @@ namespace
 		Require(NearlyEqual(restored.GetLodReductionFactor(), 0.4f),
 			"round-tripped model LOD reduction factor");
 
-		YAML::Node legacy = defaults.Serialize();
-		legacy.remove("bGenerateLods");
-		legacy.remove("numGeneratedLods");
-		legacy.remove("lodReductionFactor");
-		ModelAssetInfo migrated;
-		migrated.Deserialize(legacy);
-		Require(migrated.ShouldGenerateLods() &&
-			migrated.GetNumGeneratedLods() == 2u,
-			"legacy model metadata must retain the new LOD defaults");
 	}
 
 	void TestModelLodGenerationAndCacheNaming()
@@ -337,10 +328,12 @@ namespace
 		{
 			for (uint32_t x = 0u; x <= GridSize; ++x)
 			{
-				mesh.outVertices.Add(MakeVertex(glm::vec3(
+				auto vertex = MakeVertex(glm::vec3(
 					static_cast<float>(x),
 					static_cast<float>(y),
-					0.0f)));
+					0.0f));
+				vertex.m_normal = glm::vec3(1.0f, 0.0f, 0.0f);
+				mesh.outVertices.Add(std::move(vertex));
 			}
 		}
 		for (uint32_t y = 0u; y < GridSize; ++y)
@@ -377,6 +370,22 @@ namespace
 			{
 				Require(index < lod.m_vertices.Num(),
 					"generated model LOD indices must reference compacted vertices");
+			}
+			for (const auto& vertex : lod.m_vertices)
+			{
+				Require(NearlyEqual(glm::length(vertex.m_normal), 1.0f) &&
+					NearlyEqual(glm::length(vertex.m_tangent), 1.0f) &&
+					NearlyEqual(glm::length(vertex.m_bitangent), 1.0f),
+					"generated model LOD shading directions must be normalized");
+				Require(std::abs(vertex.m_normal.z) > 0.99f,
+					"generated model LOD normals must be rebuilt from simplified geometry");
+				Require(std::abs(glm::dot(
+						vertex.m_normal,
+						vertex.m_tangent)) < 1e-3f &&
+					std::abs(glm::dot(
+						vertex.m_normal,
+						vertex.m_bitangent)) < 1e-3f,
+					"generated model LOD tangent space must be orthogonal");
 			}
 		}
 

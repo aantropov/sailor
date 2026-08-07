@@ -61,7 +61,7 @@ namespace
 		4ull * 1024ull * 1024ull;
 	constexpr int32_t MaxFingerprintTextureDimension = 256;
 	constexpr int32_t FingerprintImageDimension = 256;
-	constexpr uint32_t ModelLodCacheVersion = 1u;
+	constexpr uint32_t ModelLodCacheVersion = 2u;
 	constexpr uint32_t MaxGeneratedModelLods = 8u;
 	constexpr uint64_t MaxModelLodCacheBytes = 1024ull * 1024ull * 1024ull;
 	constexpr std::array<char, 8> ModelLodCacheMagic = {
@@ -351,6 +351,132 @@ namespace
 		}
 	}
 
+	bool TryNormalizeLodDirection(
+		const glm::vec3& value,
+		glm::vec3& outDirection)
+	{
+		outDirection = glm::vec3(0.0f);
+		if (!Math::AllFinite(value))
+		{
+			return false;
+		}
+
+		const float lengthSquared = glm::dot(value, value);
+		if (!std::isfinite(lengthSquared) || lengthSquared <= 1e-12f)
+		{
+			return false;
+		}
+
+		outDirection = value / std::sqrt(lengthSquared);
+		return Math::AllFinite(outDirection);
+	}
+
+	void RecalculateLodShadingBasis(
+		ModelImporter::MeshContext::LodGeometry& geometry)
+	{
+		const size_t vertexCount = geometry.m_vertices.Num();
+		if (vertexCount == 0u || geometry.m_indices.Num() < 3u)
+		{
+			return;
+		}
+
+		TVector<glm::vec3> normals(vertexCount, glm::vec3(0.0f));
+		TVector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
+		TVector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
+		for (size_t index = 0u;
+			index + 2u < geometry.m_indices.Num();
+			index += 3u)
+		{
+			const uint32_t i0 = geometry.m_indices[index];
+			const uint32_t i1 = geometry.m_indices[index + 1u];
+			const uint32_t i2 = geometry.m_indices[index + 2u];
+			if (i0 >= vertexCount || i1 >= vertexCount || i2 >= vertexCount)
+			{
+				continue;
+			}
+
+			const auto& v0 = geometry.m_vertices[i0];
+			const auto& v1 = geometry.m_vertices[i1];
+			const auto& v2 = geometry.m_vertices[i2];
+			const glm::vec3 edge1 = v1.m_position - v0.m_position;
+			const glm::vec3 edge2 = v2.m_position - v0.m_position;
+			const glm::vec3 faceNormal = glm::cross(edge1, edge2);
+			if (Math::AllFinite(faceNormal))
+			{
+				normals[i0] += faceNormal;
+				normals[i1] += faceNormal;
+				normals[i2] += faceNormal;
+			}
+
+			const glm::vec2 uv1 = v1.m_texcoord - v0.m_texcoord;
+			const glm::vec2 uv2 = v2.m_texcoord - v0.m_texcoord;
+			const float determinant = uv1.x * uv2.y - uv1.y * uv2.x;
+			if (!std::isfinite(determinant) || std::abs(determinant) <= 1e-8f)
+			{
+				continue;
+			}
+
+			const float reciprocal = 1.0f / determinant;
+			const glm::vec3 tangent =
+				(edge1 * uv2.y - edge2 * uv1.y) * reciprocal;
+			const glm::vec3 bitangent =
+				(edge2 * uv1.x - edge1 * uv2.x) * reciprocal;
+			if (Math::AllFinite(tangent) && Math::AllFinite(bitangent))
+			{
+				tangents[i0] += tangent;
+				tangents[i1] += tangent;
+				tangents[i2] += tangent;
+				bitangents[i0] += bitangent;
+				bitangents[i1] += bitangent;
+				bitangents[i2] += bitangent;
+			}
+		}
+
+		for (size_t vertexIndex = 0u;
+			vertexIndex < vertexCount;
+			++vertexIndex)
+		{
+			auto& vertex = geometry.m_vertices[vertexIndex];
+			glm::vec3 normal;
+			if (!TryNormalizeLodDirection(normals[vertexIndex], normal) &&
+				!TryNormalizeLodDirection(vertex.m_normal, normal))
+			{
+				normal = glm::vec3(0.0f, 1.0f, 0.0f);
+			}
+
+			glm::vec3 tangentInput = tangents[vertexIndex];
+			glm::vec3 tangent;
+			if (!TryNormalizeLodDirection(
+					tangentInput - normal * glm::dot(tangentInput, normal),
+					tangent))
+			{
+				tangentInput = vertex.m_tangent;
+			}
+			if (!TryNormalizeLodDirection(
+					tangentInput - normal * glm::dot(tangentInput, normal),
+					tangent))
+			{
+				const glm::vec3 axis = std::abs(normal.y) < 0.999f ?
+					glm::vec3(0.0f, 1.0f, 0.0f) :
+					glm::vec3(1.0f, 0.0f, 0.0f);
+				TryNormalizeLodDirection(glm::cross(axis, normal), tangent);
+			}
+
+			glm::vec3 bitangent;
+			TryNormalizeLodDirection(glm::cross(normal, tangent), bitangent);
+			const glm::vec3 bitangentReference =
+				glm::dot(bitangents[vertexIndex], bitangents[vertexIndex]) > 1e-12f ?
+					bitangents[vertexIndex] : vertex.m_bitangent;
+			const float handedness =
+				Math::AllFinite(bitangentReference) &&
+				glm::dot(bitangent, bitangentReference) < 0.0f ? -1.0f : 1.0f;
+
+			vertex.m_normal = normal;
+			vertex.m_tangent = tangent;
+			vertex.m_bitangent = bitangent * handedness;
+		}
+	}
+
 	ModelImporter::MeshContext::LodGeometry GenerateModelLod(
 		const ModelImporter::MeshContext& mesh,
 		float targetRatio)
@@ -398,6 +524,7 @@ namespace
 				mesh.outVertices.Num(),
 				sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
 			result.m_vertices.Resize(compactedVertexCount);
+			RecalculateLodShadingBasis(result);
 		}
 #endif
 

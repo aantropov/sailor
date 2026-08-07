@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 using namespace Sailor;
 using namespace Sailor::Tasks;
@@ -203,7 +204,7 @@ namespace
 }
 
 uint32_t StaticMeshRendererData::ResolveLod(
-	float distanceToCamera,
+	float screenCoveragePercent,
 	uint32_t numAvailableLods) const
 {
 	if (numAvailableLods == 0u)
@@ -217,12 +218,16 @@ uint32_t StaticMeshRendererData::ResolveLod(
 		minLod,
 		(std::min)(m_maxLod, highestAvailableLod));
 	uint32_t selectedLod = 0u;
+	const float coverage = (std::clamp)(
+		screenCoveragePercent,
+		0.0f,
+		100.0f);
 	for (size_t thresholdIndex = 0;
-		thresholdIndex < m_lodDistances.Num();
+		thresholdIndex < m_screenCoverageThresholds.Num();
 		++thresholdIndex)
 	{
-		const float threshold = m_lodDistances[thresholdIndex];
-		if (!std::isfinite(threshold) || distanceToCamera < threshold)
+		const float threshold = m_screenCoverageThresholds[thresholdIndex];
+		if (!std::isfinite(threshold) || coverage >= threshold)
 		{
 			break;
 		}
@@ -236,12 +241,20 @@ uint32_t StaticMeshRendererData::ResolveLod(
 void StaticMeshRendererData::SetLodSettings(
 	uint32_t minLod,
 	uint32_t maxLod,
-	const TVector<float>& lodDistances)
+	const TVector<float>& screenCoverageThresholds)
 {
 	m_minLod = minLod;
 	m_maxLod = (std::max)(minLod, maxLod);
-	m_lodDistances = lodDistances;
-	std::sort(m_lodDistances.begin(), m_lodDistances.end());
+	m_screenCoverageThresholds = screenCoverageThresholds;
+	for (float& threshold : m_screenCoverageThresholds)
+	{
+		threshold = std::isfinite(threshold) ?
+			(std::clamp)(threshold, 0.0f, 100.0f) : 0.0f;
+	}
+	std::sort(
+		m_screenCoverageThresholds.begin(),
+		m_screenCoverageThresholds.end(),
+		std::greater<float>());
 }
 
 void StaticMeshRendererECS::BeginPlay()
