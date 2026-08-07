@@ -112,6 +112,46 @@ namespace
 				"reverse-Z near corners must be reconstructed from the Vulkan depth-one plane");
 		}
 	}
+
+	void TestFrustumCenterIsTheAverageOfItsCorners()
+	{
+		Math::Frustum cameraSlice;
+		const glm::vec3 cameraPosition(13.0f, 7.0f, -19.0f);
+		const glm::mat4 cameraWorld = glm::translate(glm::mat4(1.0f), cameraPosition);
+		cameraSlice.ExtractFrustumPlanes(cameraWorld, 16.0f / 9.0f, 60.0f, 0.1f, 10.0f);
+
+		glm::vec3 expectedCenter(0.0f);
+		for (const glm::vec3& corner : cameraSlice.GetCorners())
+		{
+			expectedCenter += corner;
+		}
+		expectedCenter /= (float)cameraSlice.GetCorners().Num();
+
+		Require(IsNear(cameraSlice.CalculateCenter(), expectedCenter),
+			"frustum center must be the average of its corners rather than their unnormalized sum");
+	}
+
+	void TestShadowProjectionIncludesCastersTowardLightSource()
+	{
+		Math::Frustum cameraSlice;
+		const glm::mat4 cameraWorld = glm::translate(
+			glm::mat4(1.0f),
+			glm::vec3(0.0f, 0.0f, -50.0f));
+		cameraSlice.ExtractFrustumPlanes(cameraWorld, 1.0f, 60.0f, 1.0f, 10.0f);
+
+		const glm::mat4 shadowProjection = cameraSlice.CalculateOrthoMatrixByView(
+			glm::mat4(1.0f),
+			10.0f,
+			glm::ivec2(4096),
+			200.0f);
+		const float casterDepth = ProjectDepth(
+			shadowProjection,
+			glm::vec3(0.0f, 0.0f, 100.0f));
+		Require(std::isfinite(casterDepth) &&
+			casterDepth >= -0.0001f &&
+			casterDepth <= 1.0001f,
+			"shadow projection must include casters behind the camera toward the light source");
+	}
 }
 
 int main()
@@ -122,6 +162,8 @@ int main()
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
 		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
 		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
+		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
+		{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
 	};
 
 	for (const auto& test : tests)

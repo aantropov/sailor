@@ -189,7 +189,7 @@ namespace Sailor::Math
 		SAILOR_API __forceinline bool ContainsSphere(const Sphere& sphere) const;
 
 		SAILOR_API __forceinline glm::vec3 CalculateCenter() const;
-		SAILOR_API __forceinline glm::mat4 CalculateOrthoMatrixByView(const glm::mat4& view, float zMult) const;
+		SAILOR_API __forceinline glm::mat4 CalculateOrthoMatrixByView(const glm::mat4& view, float zMult, glm::ivec2 shadowMapResolution = glm::ivec2(0), float zSourceExtension = 0.0f) const;
 
 		SAILOR_API __forceinline const TVector<glm::vec3>& GetCorners() const;
 

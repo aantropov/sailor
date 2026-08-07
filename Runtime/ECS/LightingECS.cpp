@@ -319,7 +319,9 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 			cameraData.GetFov(),
 			cameraData.GetZNear(),
 			cameraData.GetZFar(),
-			10.0f) * directionalLight.m_lightMatrix;
+			10.0f,
+			glm::ivec2(0),
+			ShadowCasterDepthExtension) * directionalLight.m_lightMatrix;
 		Math::Frustum broadFrustum;
 		broadFrustum.ExtractFrustumPlanes(broadLightMatrix);
 		const auto shadowCasters = sceneView->TraceShadowCasters(broadFrustum);
