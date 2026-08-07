@@ -72,10 +72,10 @@ glm::vec3 Frustum::CalculateCenter() const
 	{
 		center += glm::vec3(v);
 	}
-	return center;
+	return center / (float)m_corners.Num();
 }
 
-glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult) const
+glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult, glm::ivec2 shadowMapResolution, float zSourceExtension) const
 {
 	float minX = std::numeric_limits<float>::max();
 	float maxX = std::numeric_limits<float>::lowest();
@@ -95,12 +95,38 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		maxZ = std::max(maxZ, trf.z);
 	}
 
+	if (shadowMapResolution.x > 0 && shadowMapResolution.y > 0)
+	{
+		const glm::vec3 worldCenter = CalculateCenter();
+		const glm::vec3 lightSpaceCenter = glm::vec3(view * glm::vec4(worldCenter, 1.0f));
+		float radius = 0.0f;
+		for (const glm::vec3& corner : m_corners)
+		{
+			radius = (std::max)(radius, glm::length(corner - worldCenter));
+		}
+
+		if (radius > std::numeric_limits<float>::epsilon())
+		{
+			const float diameter = 2.0f * radius;
+			const float texelSizeX = diameter / (float)shadowMapResolution.x;
+			const float texelSizeY = diameter / (float)shadowMapResolution.y;
+			const float snappedCenterX = std::round(lightSpaceCenter.x / texelSizeX) * texelSizeX;
+			const float snappedCenterY = std::round(lightSpaceCenter.y / texelSizeY) * texelSizeY;
+			minX = snappedCenterX - radius;
+			maxX = snappedCenterX + radius;
+			minY = snappedCenterY - radius;
+			maxY = snappedCenterY + radius;
+		}
+	}
+
 	// Extend the fitted depth interval relative to its own center. Scaling the
 	// absolute coordinates made the cascade depend on which side of the light's
 	// origin the camera happened to be on.
 	const float zPadding = 0.5f * (maxZ - minZ) * (zMult - 1.0f);
 	minZ -= zPadding;
-	maxZ += zPadding;
+	// Casters behind the camera can still project into the receiver slice. In
+	// light-view space larger Z is toward the directional-light source.
+	maxZ += zPadding + (std::max)(zSourceExtension, 0.0f);
 
 	const float zFar = -minZ;
 	const float zNear = -maxZ;

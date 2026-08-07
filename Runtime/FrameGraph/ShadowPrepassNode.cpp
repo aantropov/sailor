@@ -445,13 +445,13 @@ void ShadowPrepassNode::Clear()
 	m_skinnedShadowMaterials_Evsm.Clear();
 }
 
-glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult)
+glm::mat4 ShadowPrepassNode::CalculateLightProjectionMatrix(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float zMult, glm::ivec2 shadowMapResolution, float zSourceExtension)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	Math::Frustum cameraFrustum{};
 	cameraFrustum.ExtractFrustumPlanes(cameraWorld, aspect, fovY, zNear, zFar);
-	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult);
+	return cameraFrustum.CalculateOrthoMatrixByView(lightView, zMult, shadowMapResolution, zSourceExtension);
 }
 
 TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float cameraNearPlane, float cameraFarPlane)
@@ -461,13 +461,19 @@ TVector<glm::mat4> ShadowPrepassNode::CalculateLightProjectionForCascades(const 
 	TVector<glm::mat4> ret;
 	ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 		cameraNearPlane,
-		cameraFarPlane * LightingECS::ShadowCascadeLevels[0], 10.0f));
+		cameraFarPlane * LightingECS::ShadowCascadeLevels[0],
+		10.0f,
+		LightingECS::ShadowCascadeResolutions[0],
+		LightingECS::ShadowCasterDepthExtension));
 
 	for (uint32_t i = 0; i < LightingECS::NumCascades - 1; i++)
 	{
 		ret.Add(CalculateLightProjectionMatrix(lightView, cameraWorld, aspect, fovY,
 			cameraFarPlane * LightingECS::ShadowCascadeLevels[i],
-			cameraFarPlane * LightingECS::ShadowCascadeLevels[i + 1], 10.0f));
+			cameraFarPlane * LightingECS::ShadowCascadeLevels[i + 1],
+			10.0f,
+			LightingECS::ShadowCascadeResolutions[i + 1],
+			LightingECS::ShadowCasterDepthExtension));
 	}
 
 	return ret;

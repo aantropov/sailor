@@ -158,7 +158,7 @@ void DebugContext::DrawFrustum(const Math::Frustum& frustum, const glm::vec4 col
 }
 
 void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4& cameraWorld, float aspect, float fovY, float zNear, float zFar, float duration)
-{	
+{
 	TVector<Math::Frustum> cascades;
 	cascades.Reserve(LightingECS::NumCascades);
 	for (uint32_t i = 0; i < LightingECS::NumCascades; i++)
@@ -183,7 +183,11 @@ void DebugContext::DrawLightCascades(const glm::mat4& lightView, const glm::mat4
 
 		DrawFrustum(cascadeFrustum, glm::vec4(0, 1, 0, 1), duration);
 
-		const glm::mat4 lightProjection = cascadeFrustum.CalculateOrthoMatrixByView(lightView, zMult);
+		const glm::mat4 lightProjection = cascadeFrustum.CalculateOrthoMatrixByView(
+			lightView,
+			zMult,
+			LightingECS::ShadowCascadeResolutions[i],
+			LightingECS::ShadowCasterDepthExtension);
 
 		// Create matrix and get all extents
 		const glm::mat4 lightViewProjection = lightProjection * lightView;
