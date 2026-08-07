@@ -62,6 +62,102 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void EditorEngineRestart_PreservesSceneAndViewportStateWithoutResettingEditorProjections()
+    {
+        var engineSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "EngineService.cs");
+        var workspaceUiSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "WorkspaceUiService.cs");
+        var sceneXaml = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "SceneView.xaml");
+        var sceneCode = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "SceneView.xaml.cs");
+
+        var restartStart = engineSource.IndexOf(
+            "public async Task RestartAsync(",
+            StringComparison.Ordinal);
+        var restartEnd = engineSource.IndexOf(
+            "int EnsureSuccessfulStop(",
+            restartStart,
+            StringComparison.Ordinal);
+        Assert.True(restartStart >= 0);
+        Assert.True(restartEnd > restartStart);
+        var restartBody = engineSource[restartStart..restartEnd];
+        Assert.Contains(
+            "launchContext.TempWorldFilePath",
+            restartBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await StopAsync(CancellationToken.None)",
+            restartBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "[\"--world\", launchContext.TempWorldRuntimePath]",
+            restartBody,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SetViewportToolStateAsync(",
+            restartBody,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "public async Task<bool> RestartEngineAsync(",
+            workspaceUiSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_worldService.SerializeCurrentWorld",
+            workspaceUiSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_assetsService.RefreshAsync",
+            workspaceUiSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_commandHistory.CompleteWorkspaceChange();",
+            workspaceUiSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "_selectionService.CompleteWorkspaceChange();",
+            workspaceUiSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "ResetForWorkspaceChange",
+            workspaceUiSource[
+                workspaceUiSource.IndexOf(
+                    "async Task<bool> RestartEngineCoreAsync",
+                    StringComparison.Ordinal)..
+                workspaceUiSource.IndexOf(
+                    "public async Task RefreshAsync",
+                    StringComparison.Ordinal)],
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "x:Name=\"RestartEngineButton\"",
+            sceneXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ToolTipProperties.Text=\"Restart Engine Process\"",
+            sceneXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Clicked=\"OnRestartEngineClicked\"",
+            sceneXaml,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await workspaceUiService.RestartEngineAsync();",
+            sceneCode,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ManagedLifecycle_DisposalIsNonBlockingAndPathTracingIsSessionCancelled()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

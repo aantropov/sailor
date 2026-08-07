@@ -33,29 +33,33 @@ void EditorComponent::EditorTick(float deltaTime)
 		auto& debugContext = GetWorld()->GetDebugContext();
 
 		const float maxDuration = std::numeric_limits<float>::max();
-		glm::vec4 gridColor = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f);
+		const glm::vec4 minorGridColor = glm::vec4(0.28f, 0.28f, 0.28f, 1.0f);
+		const glm::vec4 majorGridColor = glm::vec4(0.5f, 0.5f, 0.5f, 1.0f);
 
-		const uint32_t cellCount = 100;
-		const float step = 500.0f;
+		constexpr uint32_t cellCount = 100;
+		constexpr int32_t majorGridInterval = 5;
+		constexpr float gridStepMeters = 1.0f;
 
-		int32_t halfCount = cellCount / 2;
+		const int32_t halfCount = cellCount / 2;
 
 		for (int32_t i = -halfCount; i <= halfCount; i++)
 		{
-			float offset = i * step;
+			const float offset = i * gridStepMeters;
+			const glm::vec4& gridColor = i % majorGridInterval == 0 ?
+				majorGridColor : minorGridColor;
 
 			debugContext->DrawLine(
-				glm::vec3(-halfCount * step, 0.0f, offset),
-				glm::vec3(halfCount * step, 0.0f, offset),
+				glm::vec3(-halfCount * gridStepMeters, 0.0f, offset),
+				glm::vec3(halfCount * gridStepMeters, 0.0f, offset),
 				gridColor, maxDuration);
 
 			debugContext->DrawLine(
-				glm::vec3(offset, 0.0f, -halfCount * step),
-				glm::vec3(offset, 0.0f, halfCount * step),
+				glm::vec3(offset, 0.0f, -halfCount * gridStepMeters),
+				glm::vec3(offset, 0.0f, halfCount * gridStepMeters),
 				gridColor, maxDuration);
 		}
 
-		debugContext->DrawOrigin(glm::vec4(0, 0, 0, 1), glm::mat4(1), 1000.0f, maxDuration);
+		debugContext->DrawOrigin(glm::vec4(0, 0, 0, 1), glm::mat4(1), 10.0f, maxDuration);
 		syncViewAngles();
 		m_lastCursorPos = GetWorld()->GetInput().GetCursorPos();
 		m_bInited = true;
@@ -64,7 +68,9 @@ void EditorComponent::EditorTick(float deltaTime)
 
 	const vec3 cameraViewDirection = transform.GetRotation() * Math::vec4_Forward;
 
-	const float sensitivity = 1500;
+	constexpr float cameraMoveSpeedMetersPerSecond = 1.5f;
+	constexpr float fastMoveMultiplier = 10.0f;
+	constexpr float preciseMoveMultiplier = 0.1f;
 
 	const bool bNavigatingViewport = GetWorld()->GetInput().IsKeyDown(VK_RBUTTON);
 	const glm::ivec2 cursorPos = GetWorld()->GetInput().GetCursorPos();
@@ -96,11 +102,14 @@ void EditorComponent::EditorTick(float deltaTime)
 		if (GetWorld()->GetInput().IsKeyDown('Z'))
 			delta += vec3(0, 0, 1);
 
-		const float boost = (GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? 100.0f : 1.0f) *
-			(GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? 100.0f : 1.0f);
+		const float speedMultiplier =
+			(GetWorld()->GetInput().IsKeyDown(VK_SHIFT) ? fastMoveMultiplier : 1.0f) *
+			(GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? preciseMoveMultiplier : 1.0f);
 		if (glm::length(delta) > 0)
 		{
-			const vec4 shift = vec4(Math::SafeNormalize(delta) * boost * sensitivity * deltaTime, 1.0f);
+			const vec4 shift = vec4(
+				Math::SafeNormalize(delta) * speedMultiplier * cameraMoveSpeedMetersPerSecond * deltaTime,
+				1.0f);
 			transform.SetPosition(transform.GetPosition() + shift);
 		}
 

@@ -23,6 +23,9 @@ glslVertex: |
   }
   
 glslFragment: |
+  const float earthRadius = 6371000.0f;
+  const float sunAngularRadius = radians(0.545f);
+
   layout(set = 0, binding = 0) uniform FrameData
   {
       mat4 view;
@@ -84,13 +87,36 @@ glslFragment: |
       
       const float border = 0.1f;
       
-      const float artisticTune1 = clamp(pow((angle - border) / (1.0f - border), 0.5), 0, 1);
-      const float artisticTune2 = clamp(pow(angle / border, 3), 0, 1);
+      const float artisticTune1 = sqrt(max((angle - border) / (1.0f - border), 0.0f));
+      const float normalizedGroundAngle = angle / border;
+      const float artisticTune2 = clamp(
+        normalizedGroundAngle * normalizedGroundAngle * normalizedGroundAngle,
+        0.0f,
+        1.0f);
       
       vec3 color = angle > border ? mix(HalfIlluminance, ZenithIlluminance, artisticTune1) : 
       mix(GroundIlluminance, HalfIlluminance, artisticTune2);
       
       return color;
+  }
+
+  float SunDiskVisibility(vec3 dirToSun)
+  {
+      const float observerHeight = max(frame.cameraPosition.y, 0.0f);
+      const float horizonDip = acos(clamp(
+        earthRadius / (earthRadius + observerHeight),
+        0.0f,
+        1.0f));
+      const float sunElevation = asin(clamp(dirToSun.y, -1.0f, 1.0f));
+      const float normalizedElevation = clamp(
+        (sunElevation + horizonDip) / sunAngularRadius,
+        -1.0f,
+        1.0f);
+      const float circleSegment = acos(-normalizedElevation) +
+        normalizedElevation * sqrt(max(
+          1.0f - normalizedElevation * normalizedElevation,
+          0.0f));
+      return circleSegment / PI;
   }
   
   void main() 
@@ -99,13 +125,14 @@ glslFragment: |
     const float blurRadius = 5.0f;
         
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
+    const float sunVisibility = SunDiskVisibility(dirToSun);
     
     vec4 uvView = ((frame.projection * frame.view * vec4(dirToSun, 0)) + 1.0f) * 0.5f;
     uvView /= uvView.w;
     
     outColor = vec4(0, 0, 0, 0);
     
-    if(data.sunShaftsIntensity == 0)
+    if(data.sunShaftsIntensity == 0 || sunVisibility <= 0.0f)
     {
         return;
     }
@@ -134,7 +161,7 @@ glslFragment: |
     outColor.a = 1 - clamp(1 - outColor.a * data.sunShaftsIntensity,0,1);
     
 
-    outColor.xyz = vec3(0.005);
-    outColor = outColor.a * outColor * mix(0, 1.0f, 1 - fade / border) * clamp(1 - outColor.r, 0, 1);
+    outColor.xyz = vec3(0.005) * CalculateSunColor(data.lightDirection.xyz);
+    outColor = sunVisibility * outColor.a * outColor * mix(0, 1.0f, 1 - fade / border) * clamp(1 - outColor.r, 0, 1);
     outColor.a *= clamp(pow(texture(cloudsSampler, fragTexcoord.xy).g, 3), 0,1);    
   }

@@ -163,19 +163,59 @@ glslFragment: |
   const float atmosphereRadius = 160000.0f;    // Atmosphere thickness in meters
   const float cloudsStartHeight = 7000.0f;     // Height where clouds start above earth
   const float cloudsThickness = 15000.0f;      // Thickness of the cloud layer
-  const float cloudsStartR = earthRadius + cloudsStartHeight;
-  const float cloudsEndR = cloudsStartR + cloudsThickness;
   const float sunAngularRadius = radians(0.545f); // Sun's angular radius in radians
   const float bigDistance = 600000.0f;         // Used for max trace distance
   const uint integralSteps = 8u;               // Steps for density integration
   const uint integralSteps2 = 128u;            // Steps for atmospheric scattering
+
+  // Atmospheric positions are kept relative to the local tangent surface:
+  // sea level is y=0 and the planet center is (0, -earthRadius, 0). This avoids
+  // losing the low bits of meter-scale camera heights by adding earthRadius.
+  float PlanetHeight(vec3 position)
+  {
+    const float verticalRadius = earthRadius + position.y;
+    const float horizontalDistanceSquared = dot(position.xz, position.xz);
+    const float radialDistance = sqrt(
+      verticalRadius * verticalRadius + horizontalDistanceSquared);
+    return position.y + horizontalDistanceSquared /
+      max(radialDistance + verticalRadius, 1.0f);
+  }
+
+  vec2 RaySphereAtAltitude(vec3 origin, vec3 direction, float altitude)
+  {
+    const float a = dot(direction, direction);
+    const float halfB = dot(direction, origin) + earthRadius * direction.y;
+    const float c = dot(origin, origin) + 2.0f * earthRadius * origin.y -
+      altitude * (2.0f * earthRadius + altitude);
+    const float discriminant = halfB * halfB - a * c;
+    if(discriminant < 0.0f)
+    {
+      return vec2(-1.0f);
+    }
+
+    const float root = sqrt(discriminant);
+    const float inverseA = 1.0f / max(a, 0.000001f);
+    const float x1 = (-halfB - root) * inverseA;
+    const float x2 = (-halfB + root) * inverseA;
+    return vec2(x1, x2);
+  }
+
+  float NearestPositiveIntersection(vec2 intersections)
+  {
+    if(intersections.x > 0.0f)
+    {
+      return intersections.x;
+    }
+
+    return intersections.y > 0.0f ? intersections.y : -1.0f;
+  }
   
   float Density(vec3 a, vec3 b, float H0)
   {
     float res = 0.0f;
     
-    float heightA = length(a) - earthRadius;
-    float heightB = length(b) - earthRadius;
+    float heightA = PlanetHeight(a);
+    float heightB = PlanetHeight(b);
     float stepH = (heightB - heightA) / INTEGRAL_STEPS;
     
     float step = length(b - a) / INTEGRAL_STEPS;
@@ -220,10 +260,10 @@ glslFragment: |
       return (1.0f - g2) / (4.0f * 3.1415f * pow(1.0f + g2 - 2.0f * g * (a), 1.5f));
   }
 
-  vec3 IntersectSphere(vec3 origin, vec3 direction, float innerR, float outerR)
+  vec3 IntersectSphere(vec3 origin, vec3 direction, float innerHeight, float outerHeight)
   {
-      vec2 intersections = RaySphereIntersect(origin, direction, vec3(0), outerR);
-      float outer = intersections.x < 0 ? intersections.y : intersections.x;
+      vec2 intersections = RaySphereAtAltitude(origin, direction, outerHeight);
+      float outer = NearestPositiveIntersection(intersections);
 
       if(outer <= 0.0f)
       {
@@ -235,17 +275,15 @@ glslFragment: |
       const float maxCast = atmosphereRadius * 10;
       float shift = min(maxCast, outer);
       
-  #if defined(FILL)
-      vec2 tmp = RaySphereIntersect(origin, direction, vec3(0), innerR);
-      float inner = tmp.x > 0.0f ? tmp.x : tmp.y;
+      vec2 tmp = RaySphereAtAltitude(origin, direction, innerHeight);
+      float inner = NearestPositiveIntersection(tmp);
       
       if(inner > 0.0f)
       {
-          // If we intersects the Earth we should tune
-          //shift = atmosphereRadius;
-          shift = inner * 3;
+          // The planet is opaque. Integrate only the atmosphere between the
+          // observer and the first surface intersection.
+          shift = min(shift, inner);
       }
-  #endif
       return origin + direction * shift;
   }
   
@@ -259,8 +297,12 @@ glslFragment: |
       
       const float border = 0.1f;
       
-      const float artisticTune1 = clamp(pow((angle - border) / (1.0f - border), 0.5), 0, 1);
-      const float artisticTune2 = clamp(pow(angle / border, 3), 0, 1);
+      const float artisticTune1 = sqrt(max((angle - border) / (1.0f - border), 0.0f));
+      const float normalizedGroundAngle = angle / border;
+      const float artisticTune2 = clamp(
+        normalizedGroundAngle * normalizedGroundAngle * normalizedGroundAngle,
+        0.0f,
+        1.0f);
       
       vec3 color = angle > border ? mix(HalfIlluminance, ZenithIlluminance, artisticTune1) : 
       mix(GroundIlluminance, HalfIlluminance, artisticTune2);
@@ -274,14 +316,18 @@ glslFragment: |
       const float LsZenith = 120000.0f / w;
       const float LsGround = 100000.0f / w;
       
-      const float artisticTune = pow(dot(-sunDirection, vec3(0, 1, 0)), 3);
+      const float sunHeight = dot(-sunDirection, vec3(0, 1, 0));
+      const float artisticTune = clamp(
+        sunHeight * sunHeight * sunHeight,
+        0.0f,
+        1.0f);
       
       return mix(LsGround, LsZenith, artisticTune) * CalculateSunColor(sunDirection);
   }
   
   vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
   {
-     const vec3 destination = IntersectSphere(origin, direction, earthRadius, earthRadius + atmosphereRadius);
+     const vec3 destination = IntersectSphere(origin, direction, 0.0f, atmosphereRadius);
      
      if(length(destination - origin) < 0.01)
      {
@@ -301,8 +347,6 @@ glslFragment: |
      const vec3 B0Mie = vec3(22e-6);
      const float H0Mie = 1200.0f;
 
-     const float heightOrigin = length(origin);
-     const float dh = (length(destination) - heightOrigin) / INTEGRAL_STEPS_2;
      const float dStep = length(step);
      
      vec3 resR = vec3(0.0f);
@@ -326,7 +370,7 @@ glslFragment: |
      for(uint i = 0; i < INTEGRAL_STEPS_2 - 1; i++)
      {
          const vec3 point = origin + step * (i + 1);
-         const float h = length(point) - earthRadius;
+         const float h = max(PlanetHeight(point), 0.0f);
          
          const float hr = exp(-h/H0R)  * dStep;
          const float hm = exp(-h/H0Mie) * dStep;
@@ -334,15 +378,19 @@ glslFragment: |
          densityR  += hr;
          densityMie += hm;
 
-         const vec3  toLight = IntersectSphere(point, -lightDirection, earthRadius, earthRadius + atmosphereRadius);
-         const float hLight  = length(toLight) - earthRadius;
+         const vec3  toLight = IntersectSphere(point, -lightDirection, 0.0f, atmosphereRadius);
+         const float hLight  = max(PlanetHeight(toLight), 0.0f);
          const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
+         const vec2 planetToLightIntersection =
+           RaySphereAtAltitude(point, -lightDirection, 0.0f);
          
          float dStepLight = length(toLight - point) / INTEGRAL_STEPS;
          float densityLightR = 0.0f;
          float densityLightMie = 0.0f;
 
-         bool bReached = true;
+         bool bReached = max(
+           planetToLightIntersection.x,
+           planetToLightIntersection.y) < 0.0f;
          for(int j = 0; j < INTEGRAL_STEPS; j++)
          {
             const float h1 = h + stepToLight * j;
@@ -367,7 +415,7 @@ glslFragment: |
     
     #if defined(SUN)
     // Sun disk
-        vec2 intersection = RaySphereIntersect(origin, direction, vec3(0), earthRadius);
+        vec2 intersection = RaySphereAtAltitude(origin, direction, 0.0f);
         if(max(intersection.x, intersection.y) < 0.0f)
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
@@ -394,7 +442,7 @@ glslFragment: |
   #if defined(CLOUDS)
   float CloudsGetHeight(vec3 position)
   {
-    return clamp(((length(position.y) -  cloudsStartR) / (cloudsEndR - cloudsStartR)), 0, 1);
+    return clamp((PlanetHeight(position) - cloudsStartHeight) / cloudsThickness, 0, 1);
   }
   
   float CloudsSampleDensity(vec3 position)
@@ -434,7 +482,7 @@ glslFragment: |
   
   float CloudsSampleDirectDensity(vec3 position, vec3 dirToSun)
   {
-    float avrStep = (cloudsEndR - cloudsStartR) * 0.01f;
+    float avrStep = cloudsThickness * 0.01f;
     float sumDensity = 0.0;
     
     for(int i = 0; i < 4; i++)
@@ -459,26 +507,32 @@ glslFragment: |
   {
     vec3 traceStart;
     vec3 traceEnd;
-    const float originHeight = length(origin);
+    const float originHeight = PlanetHeight(origin);
     
     // Trace inner and outer spheres
-    vec2 cloudsStartIntersections = RaySphereIntersect(origin, viewDir, vec3(0), cloudsStartR);
-    vec2 cloudsEndIntersections = RaySphereIntersect(origin, viewDir, vec3(0), cloudsEndR);
+    vec2 cloudsStartIntersections = RaySphereAtAltitude(origin, viewDir, cloudsStartHeight);
+    vec2 cloudsEndIntersections = RaySphereAtAltitude(origin, viewDir, cloudsStartHeight + cloudsThickness);
+    const float planetIntersection = NearestPositiveIntersection(
+      RaySphereAtAltitude(origin, viewDir, 0.0f));
+    const float traceLimit = planetIntersection > 0.0f
+      ? min(maxTraceDistance, planetIntersection)
+      : maxTraceDistance;
     
     const float shiftCloudsStart = cloudsStartIntersections.x < 0 ? max(0, cloudsStartIntersections.y) : cloudsStartIntersections.x;
-    const float shiftCloudsEnd = min(maxTraceDistance, cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x);
+    const float shiftCloudsEnd = min(traceLimit, cloudsEndIntersections.x < 0 ? max(0, cloudsEndIntersections.y) : cloudsEndIntersections.x);
     
-    if(shiftCloudsStart > shiftCloudsEnd && cloudsEndIntersections.x < 0)
+    if(shiftCloudsStart >= traceLimit ||
+       (shiftCloudsStart > shiftCloudsEnd && cloudsEndIntersections.x < 0))
     {
         return vec4(0.0f);
     }
 
-    if(originHeight < cloudsStartR)
+    if(originHeight < cloudsStartHeight)
     {
         traceStart = origin + viewDir * shiftCloudsStart;
         traceEnd = origin + viewDir * shiftCloudsEnd;
     }
-    else if(originHeight > cloudsEndR)
+    else if(originHeight > cloudsStartHeight + cloudsThickness)
     {
         traceStart = origin + viewDir * shiftCloudsEnd;
         traceEnd = origin + viewDir * shiftCloudsStart;
@@ -568,7 +622,7 @@ glslFragment: |
                 float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
                 float m3 = data.cloudsAttenuation2 * density;
                 
-                vec2 intersections = RaySphereIntersect(localPosition, dirToSun, vec3(0), earthRadius);
+                vec2 intersections = RaySphereAtAltitude(localPosition, dirToSun, 0.0f);
         
                 // No sun rays throw the Earth
                 if(max(intersections.x, intersections.y) < 0)
@@ -581,10 +635,13 @@ glslFragment: |
         }
         
         position += viewDir * avrStep;
-        float height = length(position);
+        float height = PlanetHeight(position);
 
         // Early out if fully opaque or out of bounds
-        if(transmittanceLow < 0.01 || height > cloudsEndR || height < cloudsStartR || length(position - traceStart) > maxTraceDistance)
+        if(transmittanceLow < 0.01 ||
+           height > cloudsStartHeight + cloudsThickness ||
+           height < cloudsStartHeight ||
+           length(position - traceStart) > maxTraceDistance)
         {
             break;
         }
@@ -594,7 +651,9 @@ glslFragment: |
         }
     }
    
-    vec4 finalColor = vec4(data.sunIntensity * sunColor * colorLow, 1.0 - transmittanceLow);
+    vec4 finalColor = vec4(
+      data.sunIntensity * sunColor * colorLow,
+      1.0 - transmittanceLow);
     return finalColor;
   }
   
@@ -603,15 +662,17 @@ glslFragment: |
   float CalculateSunHeight(vec3 originWorldPos, vec3 worldViewDir, vec3 dirToSun)
   {
       const float l = (dot(worldViewDir, dirToSun) * length(originWorldPos));
-      return length(l * worldViewDir + originWorldPos) - earthRadius;
+      return PlanetHeight(l * worldViewDir + originWorldPos);
   }
   
   void main()
   {
     vec4 dirWorldSpace = vec4(0);
     
-    // Convert from centimeters to meters
-    const vec3 origin = vec3(0, earthRadius, 0) + frame.cameraPosition.xyz * 0.01f;
+    // The atmosphere uses a local tangent frame in meters. Its valid domain
+    // starts at sea level; an editor camera below it observes from the surface.
+    vec3 origin = frame.cameraPosition.xyz;
+    origin.y = max(origin.y, 0.0f);
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     
     #if defined(COMPOSE)
@@ -683,7 +744,7 @@ glslFragment: |
        
        horizon -= exp(-abs(dot(viewDir, vec3(0.0, 1.0, 0.0))) * data.fog);
        horizon = horizon * horizon * horizon;
-       horizon += 1 - clamp((cloudsStartR - length(origin)) / 500, 0, 1);
+       horizon += 1 - clamp((cloudsStartHeight - PlanetHeight(origin)) / 500, 0, 1);
        horizon = clamp(horizon, 0, 1);
        
        float maxTraceDistance = abs(linearDepth - frame.cameraZNearZFar.y) < 1.0f ? bigDistance : linearDepth;

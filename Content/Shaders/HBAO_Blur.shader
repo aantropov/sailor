@@ -64,15 +64,21 @@ glslFragment: |
   layout(location=0) in vec2 fragTexcoord;
   layout(location=0) out vec4 outColor;
  
-  vec4 CalcBilateral(vec2 UV, float R, float CenterD, inout float TotalW)
+  float GetViewDepth(vec2 uv)
+  {
+    float depth = texture(depthSampler, uv).r;
+    return ScreenSpaceToViewSpace(uv, depth, frame.invProjection).z;
+  }
+
+  vec4 CalcBilateral(vec2 UV, float R, float CenterViewDepth, inout float TotalW)
   {
     vec4 C = texture(aoSampler, UV);
-    float D = texture(depthSampler, UV).r;
+    float viewDepth = GetViewDepth(UV);
 
     const float Sigma = float(data.radius) * data.sharpness;
     const float Falloff = 1.0 / (2.0*Sigma*Sigma);
 
-    float DiffD = (D - CenterD) * data.distanceScale;
+    float DiffD = (viewDepth - CenterViewDepth) * data.distanceScale;
     float W = exp2(-R*R*Falloff - DiffD*DiffD);
     TotalW += W;
 
@@ -90,7 +96,7 @@ glslFragment: |
     #endif
     
     vec4 CenterC = texture(aoSampler, fragTexcoord);
-    float CenterD =  texture(depthSampler, fragTexcoord).r;
+    float CenterViewDepth = GetViewDepth(fragTexcoord);
 
     vec4 TotalC = CenterC;
     float TotalW = 1.0;
@@ -98,13 +104,13 @@ glslFragment: |
     for (float i = 1; i <= data.radius; ++i)
     {
         vec2 SampleUV = fragTexcoord + aoPixelSize * i;
-        TotalC += CalcBilateral(SampleUV, i, CenterD, TotalW);
+        TotalC += CalcBilateral(SampleUV, i, CenterViewDepth, TotalW);
     }
 
     for (float j = 1; j <= data.radius; ++j)
     {
         vec2 SampleUV =  fragTexcoord - aoPixelSize * j;
-        TotalC += CalcBilateral(SampleUV, j, CenterD, TotalW);
+        TotalC += CalcBilateral(SampleUV, j, CenterViewDepth, TotalW);
     }
 
     outColor = TotalC/TotalW;

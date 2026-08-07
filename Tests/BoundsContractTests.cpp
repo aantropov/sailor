@@ -95,24 +95,6 @@ namespace
 		}
 	}
 
-	void TestReverseZFrustumCornersUseZeroToOneDepth()
-	{
-		const glm::mat4 projection = glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 100.0f, 1.0f);
-		const Math::Frustum frustum(projection);
-
-		for (uint32_t i = 0; i < 4; i++)
-		{
-			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i])) <= 0.0001f,
-				"reverse-Z far corners must be reconstructed from the Vulkan depth-zero plane");
-		}
-
-		for (uint32_t i = 4; i < 8; i++)
-		{
-			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i]) - 1.0f) <= 0.0001f,
-				"reverse-Z near corners must be reconstructed from the Vulkan depth-one plane");
-		}
-	}
-
 	void TestFrustumCenterIsTheAverageOfItsCorners()
 	{
 		Math::Frustum cameraSlice;
@@ -131,13 +113,36 @@ namespace
 			"frustum center must be the average of its corners rather than their unnormalized sum");
 	}
 
+	void TestReverseZFrustumCornersUseZeroToOneDepth()
+	{
+		const glm::mat4 projection = glm::orthoRH_ZO(-2.0f, 2.0f, -3.0f, 3.0f, 100.0f, 1.0f);
+		const Math::Frustum frustum(projection);
+
+		for (uint32_t i = 0; i < 4; i++)
+		{
+			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i])) <= 0.0001f,
+				"reverse-Z far corners must be reconstructed from the Vulkan depth-zero plane");
+		}
+
+		for (uint32_t i = 4; i < 8; i++)
+		{
+			Require(std::abs(ProjectDepth(projection, frustum.GetCorners()[i]) - 1.0f) <= 0.0001f,
+				"reverse-Z near corners must be reconstructed from the Vulkan depth-one plane");
+		}
+	}
+
 	void TestShadowProjectionIncludesCastersTowardLightSource()
 	{
 		Math::Frustum cameraSlice;
 		const glm::mat4 cameraWorld = glm::translate(
 			glm::mat4(1.0f),
 			glm::vec3(0.0f, 0.0f, -50.0f));
-		cameraSlice.ExtractFrustumPlanes(cameraWorld, 1.0f, 60.0f, 1.0f, 10.0f);
+		cameraSlice.ExtractFrustumPlanes(
+			cameraWorld,
+			1.0f,
+			60.0f,
+			1.0f,
+			10.0f);
 
 		const glm::mat4 shadowProjection = cameraSlice.CalculateOrthoMatrixByView(
 			glm::mat4(1.0f),
@@ -161,9 +166,9 @@ int main()
 		{ "ValidityRejectsNonFiniteBounds", TestValidityRejectsNonFiniteBounds },
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
 		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
-		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
 		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
-		{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
+			{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
+			{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
 	};
 
 	for (const auto& test : tests)

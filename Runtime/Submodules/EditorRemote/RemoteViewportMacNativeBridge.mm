@@ -3,6 +3,7 @@
 #if defined(__APPLE__)
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <Metal/Metal.h>
 #import <IOSurface/IOSurface.h>
 #import <dispatch/dispatch.h>
@@ -603,6 +604,9 @@ namespace Sailor::EditorRemote
 			}
 
 			metalLayer.pixelFormat = metalPixelFormat;
+			CGColorSpaceRef srgbColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+			metalLayer.colorspace = srgbColorSpace;
+			CGColorSpaceRelease(srgbColorSpace);
 			metalLayer.framebufferOnly = NO;
 			metalLayer.drawableSize = CGSizeMake(width, height);
 			if (view != nil)

@@ -105,6 +105,9 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 			radius = (std::max)(radius, glm::length(corner - worldCenter));
 		}
 
+		// A sphere keeps the orthographic extent invariant while the camera rotates.
+		// Snap its light-space center to the texel grid so camera translations do
+		// not make an otherwise static shadow crawl between shadow-map texels.
 		if (radius > std::numeric_limits<float>::epsilon())
 		{
 			const float diameter = 2.0f * radius;
@@ -124,8 +127,9 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 	// origin the camera happened to be on.
 	const float zPadding = 0.5f * (maxZ - minZ) * (zMult - 1.0f);
 	minZ -= zPadding;
-	// Casters behind the camera can still project into the receiver slice. In
-	// light-view space larger Z is toward the directional-light source.
+	// In light-view space, larger Z is toward the directional-light source.
+	// Casters behind the camera can still project into the receiver slice, so
+	// reserve a world-space range on that side without expanding cascade XY.
 	maxZ += zPadding + (std::max)(zSourceExtension, 0.0f);
 
 	const float zFar = -minZ;

@@ -1,7 +1,10 @@
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
-const float EVSM_MIN_SLOPE_BIAS = 0.05f;
-const float EVSM_DEPTH_BIAS_SCALE = 0.003f;
+const float SHADOW_BIAS_MIN_TEXELS = 1.0f;
+const float SHADOW_BIAS_SLOPE_TEXELS = 1.5f;
+const float SHADOW_BIAS_EVSM_CASCADE_1_SCALE = 1.5f;
+const float SHADOW_BIAS_CASCADE_3_SCALE = 1.5f;
+const float SHADOW_BIAS_CASCADE_4_SCALE = 2.0f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
@@ -240,11 +243,12 @@ int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
 {
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
+  float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
   
   int layer = NUM_CSM_CASCADES;
   for (int i = 0; i < NUM_CSM_CASCADES; ++i)
   {
-      if (depthValue < cameraZNearZFar.y * ShadowCascadeLevels[i])
+      if (depthValue < shadowFarPlane * ShadowCascadeLevels[i])
       {
           layer = i;
           break;
@@ -252,6 +256,29 @@ int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
   }
 
   return layer;
+}
+
+float CalculateCascadeBlend(
+  mat4 view,
+  vec3 worldPosition,
+  vec2 cameraZNearZFar,
+  int cascadeLayer)
+{
+  if(cascadeLayer < 0 || cascadeLayer >= NUM_CSM_CASCADES - 1)
+  {
+    return 0.0f;
+  }
+
+  vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
+  float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
+  float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  float cascadeNear = cascadeLayer == 0 ?
+    cameraZNearZFar.x :
+    shadowFarPlane * ShadowCascadeLevels[cascadeLayer - 1];
+  float cascadeFar = shadowFarPlane * ShadowCascadeLevels[cascadeLayer];
+  float blendStart = cascadeFar -
+    (cascadeFar - cascadeNear) * ShadowCascadeBlendFraction;
+  return smoothstep(blendStart, cascadeFar, depthValue);
 }
   
 float Linstep(float minVal, float maxVal, float val) 
@@ -312,8 +339,7 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
   }
   
   vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
-  const float biasedDepth =
-    projCoords.z + EVSM_DEPTH_BIAS_SCALE * bias * pow(0.5f, cascadeLayer);
+  const float biasedDepth = clamp(projCoords.z + bias, 0.0f, 1.0f);
   const float currentDepth = exp(EVSM_C1 * biasedDepth);
   const float negCurrentDepth = -exp(-EVSM_C2 * biasedDepth);
   
@@ -326,6 +352,7 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
 float CalculateDirectionalShadow(
   uint shadowType,
   sampler2D shadowMap,
+  mat4 lightMatrix,
   vec4 fragPosLightSpace,
   vec3 surfaceNormal,
   vec3 surfaceToLightDirection,
@@ -337,15 +364,33 @@ float CalculateDirectionalShadow(
   }
 
   const float slope = 1.0f - clamp(dot(surfaceNormal, surfaceToLightDirection), 0.0f, 1.0f);
+  const ivec2 shadowMapSize = max(textureSize(shadowMap, 0), ivec2(1));
+  const vec3 projectionX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
+  const vec3 projectionY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
+  const vec3 projectionZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
+  const float worldUnitsPerTexelX =
+    2.0f / max(length(projectionX) * float(shadowMapSize.x), 0.000001f);
+  const float worldUnitsPerTexelY =
+    2.0f / max(length(projectionY) * float(shadowMapSize.y), 0.000001f);
+  const float normalizedDepthPerWorldUnit = length(projectionZ);
+  const float normalizedDepthPerTexel =
+    max(worldUnitsPerTexelX, worldUnitsPerTexelY) * normalizedDepthPerWorldUnit;
+  const float cascadeBiasScale =
+    shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0
+      ? SHADOW_BIAS_EVSM_CASCADE_1_SCALE
+      : (cascadeLayer == 2
+        ? SHADOW_BIAS_CASCADE_3_SCALE
+        : (cascadeLayer >= 3 ? SHADOW_BIAS_CASCADE_4_SCALE : 1.0f));
+  const float bias = normalizedDepthPerTexel * cascadeBiasScale *
+    (SHADOW_BIAS_MIN_TEXELS + SHADOW_BIAS_SLOPE_TEXELS * slope);
   if (shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0)
   {
     return ShadowCalculation_Evsm(
       shadowMap,
       fragPosLightSpace,
-      max(slope, EVSM_MIN_SLOPE_BIAS) * (1.0f + cascadeLayer),
+      bias,
       cascadeLayer);
   }
 
-  const float bias = max(0.000075f * slope, 0.000005f);
   return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, bias, cascadeLayer);
 }

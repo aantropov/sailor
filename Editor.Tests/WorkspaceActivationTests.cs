@@ -246,6 +246,31 @@ public sealed class WorkspaceActivationTests
     }
 
     [Fact]
+    public async Task ReportRuntimeRecovered_MovesRepairWorkspaceBackToReady()
+    {
+        var coordinator = new WorkspaceActivationCoordinator(new RecordingActivationOperations());
+        var candidate = CreateCandidate("A");
+        Assert.True((await coordinator.ActivateAsync(Request(candidate))).Succeeded);
+        Assert.True(coordinator.ReportRuntimeFailure("native main loop failed"));
+
+        var recovered = coordinator.ReportRuntimeRecovered();
+
+        Assert.True(recovered);
+        Assert.Equal(WorkspaceActivationPhase.Ready, coordinator.State.Phase);
+        Assert.Null(coordinator.State.Error);
+        Assert.Same(candidate, coordinator.State.Candidate);
+    }
+
+    [Fact]
+    public void ReportRuntimeRecovered_WithoutAnActivatedWorkspaceIsIgnored()
+    {
+        var coordinator = new WorkspaceActivationCoordinator(new RecordingActivationOperations());
+
+        Assert.False(coordinator.ReportRuntimeRecovered());
+        Assert.Equal(WorkspaceActivationPhase.Idle, coordinator.State.Phase);
+    }
+
+    [Fact]
     public async Task ReportRuntimeFailure_DuringFailedPreflightRestoresRepairNotReady()
     {
         var coordinator = new WorkspaceActivationCoordinator(new RecordingActivationOperations());

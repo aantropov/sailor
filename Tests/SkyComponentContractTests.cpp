@@ -992,6 +992,15 @@ namespace
 		const std::string skyNode = ReadText(
 			sourceRoot /
 				"Runtime/FrameGraph/SkyNode.cpp");
+		const std::string skyShader = ReadText(
+			sourceRoot /
+				"Content/Shaders/Sky.shader");
+		const std::string sunShaftsShader = ReadText(
+			sourceRoot /
+				"Content/Shaders/SunShafts.shader");
+		const std::string starsShader = ReadText(
+			sourceRoot /
+				"Content/Shaders/Stars.shader");
 
 		Require(
 			editorSource.find("Sky Settings") ==
@@ -1023,6 +1032,27 @@ namespace
 				"commands->GenerateMipMaps(commandList, cubemap);",
 				generateMipMaps + 1) == std::string::npos,
 			"the procedural environment should generate mipmaps once and publish immediately afterward");
+		Require(
+			skyShader.find("float PlanetHeight(vec3 position)") !=
+				std::string::npos &&
+			skyShader.find("vec2 RaySphereAtAltitude") !=
+				std::string::npos &&
+			skyShader.find("planetToLightIntersection") !=
+				std::string::npos &&
+			skyShader.find("if((-lightDirection).y < 0.0f)") ==
+				std::string::npos &&
+			skyShader.find("pow(angle / border, 3)") ==
+				std::string::npos,
+			"the atmosphere must preserve twilight, occlude sunlight with the planet, and avoid undefined negative pow inputs");
+		Require(
+			sunShaftsShader.find("SunDiskVisibility") != std::string::npos &&
+			sunShaftsShader.find("sunVisibility <= 0.0f") != std::string::npos,
+			"sun shafts must fade with the geometrically visible fraction of the solar disk");
+		Require(
+			starsShader.find("gl_Position.z = 0.0f") != std::string::npos &&
+			starsShader.find("radians(-18.0f)") != std::string::npos &&
+			starsShader.find("radians(-6.0f)") != std::string::npos,
+			"stars must remain on the reverse-Z far plane and appear through physical twilight");
 
 		RequireWorldSkyLinks(
 			sourceRoot / "Content/Editor.world",

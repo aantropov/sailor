@@ -153,6 +153,9 @@ namespace
 		Require(binding.m_layerObject == hostHandle.m_value, "bridge should retain the exact CAMetalLayer pointer");
 		Require(binding.m_deviceObject != 0, "binding should materialize a real Metal device");
 		Require(binding.m_commandQueueObject != 0, "binding should materialize a real Metal command queue");
+		Require(layer.colorspace != nullptr &&
+			CFEqual(CGColorSpaceGetName(layer.colorspace), kCGColorSpaceSRGB),
+			"the editor viewport layer must present encoded pixels in the sRGB color space");
 
 		FramePacket frame{};
 		frame.m_viewportId = 1;

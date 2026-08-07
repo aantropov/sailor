@@ -59,6 +59,32 @@ public sealed class WorkspaceActivationCoordinator
         return true;
     }
 
+    public bool ReportRuntimeRecovered()
+    {
+        WorkspaceActivationState? ready = null;
+        lock (_queueLock)
+        {
+            if (_currentCandidate is null)
+                return false;
+
+            var current = State;
+            if (current.Phase != WorkspaceActivationPhase.Repair)
+                return current.Phase == WorkspaceActivationPhase.Ready;
+
+            _reportedRuntimeFailure = null;
+            _reportedRuntimeFailureGeneration = -1;
+            ready = current with
+            {
+                Phase = WorkspaceActivationPhase.Ready,
+                Candidate = _currentCandidate,
+                Error = null
+            };
+        }
+
+        PublishState(ready);
+        return true;
+    }
+
     public Task<WorkspaceActivationResult> ActivateAsync(
         WorkspaceActivationRequest request,
         CancellationToken cancellationToken = default)

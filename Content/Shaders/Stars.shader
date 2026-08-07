@@ -51,6 +51,10 @@ glslVertex: |
     gl_PointSize = 1;
   	gl_Position = frame.projection * frame.view * PushConstants.model * vec4(inPosition, 1.0);
 
+    // Stars are directions on the celestial sphere. Keep them on the reverse-Z
+    // far plane so changing the camera far distance cannot clip the catalogue.
+    gl_Position.z = 0.0f;
+
     vec3 pos = gl_Position.xyz/gl_Position.w;
     
     //pos.y = 1.0f - pos.y;
@@ -96,11 +100,31 @@ glslFragment: |
   
   layout(set=1, binding=6) uniform sampler2D cloudsSampler;
 
-  const float R = 6371000.0f; // Earth radius in m
+  const float earthRadius = 6371000.0f;
+
+  vec2 RaySphereAtAltitude(vec3 origin, vec3 direction, float altitude)
+  {
+    const float a = dot(direction, direction);
+    const float halfB = dot(direction, origin) + earthRadius * direction.y;
+    const float c = dot(origin, origin) + 2.0f * earthRadius * origin.y -
+      altitude * (2.0f * earthRadius + altitude);
+    const float discriminant = halfB * halfB - a * c;
+    if(discriminant < 0.0f)
+    {
+      return vec2(-1.0f);
+    }
+
+    const float root = sqrt(discriminant);
+    const float inverseA = 1.0f / max(a, 0.000001f);
+    return vec2(
+      (-halfB - root) * inverseA,
+      (-halfB + root) * inverseA);
+  }
   
   void main()
   { 
-    const vec3 origin = vec3(0, R + 1000, 0) + frame.cameraPosition.xyz;
+    vec3 origin = frame.cameraPosition.xyz;
+    origin.y = max(origin.y, 0.0f);
     vec2 viewportPos = gl_FragCoord.xy / vec2(frame.viewportSize);
     viewportPos.y = 1.0f - viewportPos.y;
     
@@ -114,15 +138,26 @@ glslFragment: |
 
     float clouds = texture(cloudsSampler, viewportPos).a;
 
-    vec2 intersection = RaySphereIntersect(origin, dirWorldSpace.xyz, vec3(0), R);
+    vec2 intersection = RaySphereAtAltitude(origin, dirWorldSpace.xyz, 0.0f);
     if(max(intersection.x, intersection.y) < 0.0f)
     {
         const float mask = clamp(1 - 1000 * clamp(length(viewportPos.xy - fragUV.xy), 0.0, 1), 0, 1);
-        const float artisticTune = 1.0f;//pow(max(0, 0.3 + dot(data.lightDirection.xyz, vec3(0, 1, 0))), 0.9);
-        
+        const vec3 dirToSun = normalize(-data.lightDirection.xyz);
+        const vec3 planetUp = normalize(vec3(
+          origin.x,
+          earthRadius + origin.y,
+          origin.z));
+        const float sunElevation = asin(clamp(
+          dot(dirToSun, planetUp),
+          -1.0f,
+          1.0f));
+        const float starVisibility = 1.0f - smoothstep(
+          radians(-18.0f),
+          radians(-6.0f),
+          sunElevation);
+
         outColor = mask * fragColor;
-        outColor.a = clamp(artisticTune, 0, 1);
-        
-        outColor.xyz *= outColor.a * (1.0f - clouds) * 0.15;
+        outColor.xyz *= starVisibility * (1.0f - clouds) * 0.15f;
+        outColor.a = starVisibility;
     }
   }
