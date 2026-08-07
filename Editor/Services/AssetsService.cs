@@ -941,6 +941,43 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<AssetFolder?> ResolveFolderAsync(
+            string folderPath,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(folderPath))
+            {
+                return null;
+            }
+
+            var canonicalPath = ProjectContentPathPolicy.NormalizeRoot(folderPath);
+            var rootFolder = await MainThread.InvokeOnMainThreadAsync(() =>
+                Folders
+                    .Where(folder =>
+                        folder.ParentFolderId == -1 &&
+                        ProjectContentPathPolicy.IsInsideRoot(
+                            folder.FullPath,
+                            canonicalPath))
+                    .OrderByDescending(folder => folder.FullPath.Length)
+                    .FirstOrDefault());
+            if (rootFolder is null)
+            {
+                return null;
+            }
+
+            await EnsureAssetDirectoryLoadedAsync(
+                    canonicalPath,
+                    rootFolder.IsReadOnly,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return await MainThread.InvokeOnMainThreadAsync(() =>
+                Folders.FirstOrDefault(folder =>
+                    folder.ProjectRootId == rootFolder.ProjectRootId &&
+                    ProjectContentPathPolicy.IsSamePath(
+                        folder.FullPath,
+                        canonicalPath)));
+        }
+
         public async Task<AssetFile?> ResolveAssetAsync(
             FileId fileId,
             CancellationToken cancellationToken = default)

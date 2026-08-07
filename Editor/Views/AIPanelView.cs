@@ -1,12 +1,15 @@
 using System.Collections.Specialized;
 using SailorEditor.AI;
+using SailorEditor.Mcp;
 
 namespace SailorEditor.Views;
 
 public sealed class AIPanelView : ContentView
 {
     readonly AIOperatorService _service;
+    readonly McpEditorHostService _mcpHost;
     readonly Label _contextLabel;
+    readonly Label _mcpStatusLabel;
     readonly Label _responseLabel;
     readonly Entry _promptEntry;
     readonly VerticalStackLayout _proposalStack;
@@ -15,8 +18,15 @@ public sealed class AIPanelView : ContentView
     public AIPanelView()
     {
         _service = MauiProgram.GetService<AIOperatorService>();
+        _mcpHost = MauiProgram.GetService<McpEditorHostService>();
 
         _contextLabel = new Label { FontSize = 12, Opacity = 0.8 };
+        _mcpStatusLabel = new Label
+        {
+            FontSize = 11,
+            Opacity = 0.72,
+            LineBreakMode = LineBreakMode.WordWrap,
+        };
         _responseLabel = new Label { FontSize = 12, Opacity = 0.85 };
         _promptEntry = new Entry { Placeholder = "Ask AI to operate the editor. Example: open console" };
         _proposalStack = new VerticalStackLayout { Spacing = 8 };
@@ -36,6 +46,7 @@ public sealed class AIPanelView : ContentView
                 Children =
                 {
                     _contextLabel,
+                    _mcpStatusLabel,
                     _responseLabel,
                     _promptEntry,
                     submitButton,
@@ -72,9 +83,11 @@ public sealed class AIPanelView : ContentView
 
         _service.Proposals.CollectionChanged += OnProposalsChanged;
         _service.AuditTrail.CollectionChanged += OnAuditChanged;
+        _mcpHost.StatusChanged += OnMcpStatusChanged;
         Unloaded += OnUnloaded;
 
         RefreshContext();
+        RefreshMcpStatus();
         RebuildProposals();
         RebuildAudit();
     }
@@ -93,9 +106,21 @@ public sealed class AIPanelView : ContentView
         _contextLabel.Text = $"Context • world: {context.ActiveWorldId ?? "none"} • selection: {context.SelectionCount} • panel: {context.ActivePanelId ?? "none"} • viewport: {context.FocusedViewportId ?? "none"}";
     }
 
+    void RefreshMcpStatus()
+    {
+        var status = _mcpHost.Status;
+        _mcpStatusLabel.Text = status.IsRunning
+            ? $"MCP • running • PID {status.ProcessId} • 127.0.0.1:{status.Port} • clients {status.ConnectedClients}\n" +
+                $"Discovery: {status.DiscoveryFile}"
+            : $"MCP • stopped{(string.IsNullOrWhiteSpace(status.Error) ? string.Empty : " • " + status.Error)}";
+    }
+
     void OnProposalsChanged(object? sender, NotifyCollectionChangedEventArgs e) => MainThread.BeginInvokeOnMainThread(RebuildProposals);
 
     void OnAuditChanged(object? sender, NotifyCollectionChangedEventArgs e) => MainThread.BeginInvokeOnMainThread(RebuildAudit);
+
+    void OnMcpStatusChanged(object? sender, EventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(RefreshMcpStatus);
 
     void RebuildProposals()
     {
@@ -183,6 +208,7 @@ public sealed class AIPanelView : ContentView
     {
         _service.Proposals.CollectionChanged -= OnProposalsChanged;
         _service.AuditTrail.CollectionChanged -= OnAuditChanged;
+        _mcpHost.StatusChanged -= OnMcpStatusChanged;
         Unloaded -= OnUnloaded;
     }
 }

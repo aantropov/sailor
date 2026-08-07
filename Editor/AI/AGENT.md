@@ -137,3 +137,62 @@ If uncertain, require confirmation.
 - State the planned command before execution.
 - Mention whether approval is required.
 - After execution, summarize what changed and whether follow-up is needed.
+
+## MCP Integration
+
+The running Editor publishes an authenticated local MCP endpoint. MCP clients use the
+`SailorEditor.McpBridge` console application as a standard stdio server; the bridge
+attaches to the selected Editor process over loopback. The endpoint is not exposed on
+the LAN and does not add a direct engine API.
+
+Development bridge command:
+
+```text
+dotnet run --project Editor/McpBridge/SailorEditor.McpBridge.csproj -- --pid <editor-pid>
+```
+
+When only one Editor is running, `--pid` may be omitted. With multiple Editors, select
+one explicitly with `--pid <editor-pid>` or `--workspace <workspace-root>`. The AI panel
+shows the current PID, loopback port, connected-client count, and discovery file.
+
+Read tools do not require confirmation. Scene, asset, save, and build tools require
+`confirm: true`. A scene batch is executed through the normal command dispatcher inside
+one undo transaction. Operations can assign an alias and later refer to it as `$alias`.
+
+Example scene batch shape:
+
+```json
+{
+  "confirm": true,
+  "expectedWorkspaceEpoch": 0,
+  "description": "Create a tree",
+  "operations": [
+    {
+      "kind": "create_game_object",
+      "alias": "tree",
+      "name": "Tree",
+      "properties": {
+        "position": { "x": 0, "y": 0, "z": 0, "w": 1 },
+        "scale": { "x": 1, "y": 1, "z": 1, "w": 1 }
+      }
+    },
+    {
+      "kind": "add_component",
+      "target": "$tree",
+      "alias": "renderer",
+      "componentType": "Sailor::MeshRendererComponent",
+      "properties": {
+        "model": {
+          "fileId": "<model-file-id>",
+          "instanceId": "NullInstanceId"
+        }
+      }
+    }
+  ]
+}
+```
+
+Call `sailor_types_list_components` before assigning component properties. It is the
+canonical source for component names, editable fields, enum values, defaults, and typed
+object references. Call `sailor_assets_list` or `sailor_assets_get` to resolve stable
+FileIds instead of guessing content paths.

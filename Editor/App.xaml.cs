@@ -1,6 +1,7 @@
 ﻿#if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
+using SailorEditor.Mcp;
 
 [assembly: XamlCompilation(XamlCompilationOptions.Compile)]
 
@@ -19,6 +20,8 @@ namespace SailorEditor
             window.MinimumWidth = 1024;
             window.MinimumHeight = 768;
             window.Title = "Engine Mode";
+            window.Destroying += async (_, _) =>
+                await MauiProgram.GetService<McpEditorHostService>().StopAsync();
 #if MACCATALYST
             MacCatalystWindowChrome.SetTitle(window.Title);
             MacCatalystWindowChrome.UseCompactTitlebar(window);
