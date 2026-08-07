@@ -73,7 +73,8 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API bool SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 			VulkanFencePtr fence = nullptr,
 			TVector<VulkanSemaphorePtr> signalSemaphores = {},
-			TVector<VulkanSemaphorePtr> waitSemaphores = {});
+			TVector<VulkanSemaphorePtr> waitSemaphores = {},
+			const void* submitNext = nullptr);
 
 		SAILOR_API bool ShouldFixLostDevice(const Platform::Window* pViewport);
 		SAILOR_API void FixLostDevice(Platform::Window* pViewport);

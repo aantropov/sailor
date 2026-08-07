@@ -155,6 +155,12 @@ else()
 		PROPERTIES COMPILE_OPTIONS "-fno-rtti")
 endif()
 
+if(MSVC)
+	set_source_files_properties(
+		"${SAILOR_RUNTIME_DIR}/AssetRegistry/Model/ModelImporter.cpp"
+		PROPERTIES COMPILE_OPTIONS "/bigobj")
+endif()
+
 file(GLOB_RECURSE SAILOR_LIB_SOURCES
   "*.h"
   "*.cpp")
@@ -341,7 +347,7 @@ endif()
 
 if(WIN32)
   target_compile_definitions(SailorLib PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
-  target_link_libraries(SailorLib PRIVATE Winmm.lib)
+  target_link_libraries(SailorLib PRIVATE Winmm.lib d3d11.lib dxgi.lib)
 endif()
 
 if(APPLE)

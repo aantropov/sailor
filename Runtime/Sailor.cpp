@@ -404,7 +404,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 #if defined(_WIN32)
 	Win32::ConsoleWindow::Initialize(false);
 
-	if (params.m_bRunConsole)
+	if (params.m_bRunConsole && !params.m_bIsEditor)
 	{
 		Win32::ConsoleWindow::GetInstance()->OpenWindow(L"Sailor Console");
 	}
@@ -474,6 +474,13 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
+
+#if defined(_WIN32)
+	if (params.m_bIsEditor)
+	{
+		s_pInstance->m_pMainWindow->Show(false);
+	}
+#endif
 
 	if (params.m_bIsEditor)
 	{

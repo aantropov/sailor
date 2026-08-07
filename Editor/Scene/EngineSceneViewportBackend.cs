@@ -4,7 +4,8 @@ namespace SailorEditor.Scene;
 
 internal sealed class EngineSceneViewportBackend(EngineService engineService) : ISceneViewportBackend
 {
-    public void BindMacHost(ulong viewportId, nint hostHandle) => engineService.BindMacRemoteViewportHost(viewportId, hostHandle);
+    public void BindMacHost(ulong viewportId, nint hostHandle, double compositionScale)
+        => engineService.BindMacRemoteViewportHost(viewportId, hostHandle, compositionScale);
 
     public bool TryUpdateViewport(ulong viewportId, SceneViewportRect rect, bool visible, bool focused)
         => engineService.TryUpdateRemoteViewport(viewportId, new Rect(rect.X, rect.Y, rect.Width, rect.Height), visible, focused);

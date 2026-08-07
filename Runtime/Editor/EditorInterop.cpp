@@ -1391,6 +1391,10 @@ void App::ShowMainWindow(bool bShow)
 {
 	if (auto editor = GetSubmodule<Editor>())
 	{
+#if defined(_WIN32)
+		editor->ShowMainWindow(false);
+#else
 		editor->ShowMainWindow(bShow);
+#endif
 	}
 }

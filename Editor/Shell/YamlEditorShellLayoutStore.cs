@@ -8,7 +8,19 @@ public sealed class YamlEditorShellLayoutStore : IEditorShellLayoutStore
 
     public YamlEditorShellLayoutStore(string? layoutPath = null)
     {
-        _layoutPath = layoutPath ?? Path.Combine(FileSystem.Current.AppDataDirectory, "Layouts", "editor-shell-layout.yaml");
+#if MACCATALYST
+        var defaultLayoutPath = Path.Combine(
+            Microsoft.Maui.Storage.FileSystem.Current.AppDataDirectory,
+            "Layouts",
+            "editor-shell-layout.yaml");
+#else
+        var defaultLayoutPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "SailorEditor",
+            "Layouts",
+            "editor-shell-layout.yaml");
+#endif
+        _layoutPath = layoutPath ?? defaultLayoutPath;
     }
 
     public async ValueTask<EditorLayout?> LoadAsync(CancellationToken cancellationToken = default)

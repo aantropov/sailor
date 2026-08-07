@@ -207,6 +207,20 @@ namespace Sailor::RHI
                         ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit | ETextureUsageBit::TextureTransferDst_Bit | ETextureUsageBit::Sampled_Bit) = 0;
 
                 // External memory support
+#if defined(_WIN32)
+		SAILOR_API virtual RHIRenderTargetPtr CreateExportableRenderTarget(
+			glm::ivec2 extent,
+			ETextureFormat format = ETextureFormat::B8G8R8A8_UNORM,
+			ETextureUsageFlags usage = ETextureUsageBit::TextureTransferSrc_Bit |
+				ETextureUsageBit::TextureTransferDst_Bit |
+				ETextureUsageBit::Sampled_Bit) = 0;
+		SAILOR_API virtual RHITexturePtr ImportD3D11Texture(
+			void* handle,
+			glm::ivec2 extent,
+			ETextureFormat format,
+			ETextureUsageFlags usage,
+			EImageLayout layout = EImageLayout::General) = 0;
+#endif
                 SAILOR_API virtual void* ExportImage(RHITexturePtr image) = 0;
                 SAILOR_API virtual RHITexturePtr ImportImage(void* handle,
                         glm::ivec3 extent,

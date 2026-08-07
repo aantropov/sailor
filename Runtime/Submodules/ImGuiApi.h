@@ -19,6 +19,27 @@ namespace Sailor
 		void RenderFrame(RHI::RHICommandListPtr drawCmdList);
 #if defined(_WIN32)
 		void HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+		struct WindowsEditorInputEvent
+		{
+			enum class Type : uint8_t
+			{
+				MousePos,
+				MouseButton,
+				MouseWheel,
+				Key,
+				Focus
+			};
+
+			Type EventType = Type::MousePos;
+			float X = 0.0f;
+			float Y = 0.0f;
+			uint32_t Key = 0;
+			int32_t Button = -1;
+			bool bPressed = false;
+		};
+
+		void HandleWindowsEditorInput(const WindowsEditorInputEvent& event);
 #elif defined(__APPLE__)
 		struct MacEvent
 		{

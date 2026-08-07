@@ -73,6 +73,7 @@ void EditorComponent::EditorTick(float deltaTime)
 	constexpr float preciseMoveMultiplier = 0.1f;
 
 	const bool bNavigatingViewport = GetWorld()->GetInput().IsKeyDown(VK_RBUTTON);
+	const bool bStartedNavigatingViewport = GetWorld()->GetInput().IsButtonClick(VK_RBUTTON);
 	const glm::ivec2 cursorPos = GetWorld()->GetInput().GetCursorPos();
 	if (!bNavigatingViewport)
 	{
@@ -113,7 +114,10 @@ void EditorComponent::EditorTick(float deltaTime)
 			transform.SetPosition(transform.GetPosition() + shift);
 		}
 
-		const vec2 deltaCursorPos = cursorPos - m_lastCursorPos;
+		const glm::ivec2 cursorOrigin = bStartedNavigatingViewport
+			? GetWorld()->GetInput().GetButtonPressCursorPos(VK_RBUTTON)
+			: m_lastCursorPos;
+		const vec2 deltaCursorPos = cursorPos - cursorOrigin;
 		if (deltaCursorPos != vec2(0.0f))
 		{
 			constexpr float rotationDegreesPerPixel = 0.2f;

@@ -68,4 +68,16 @@ internal static class EngineProtocolNative
         CallingConvention = CallingConvention.Cdecl)]
     internal static extern void SailorProtocolStopLocalHost(
         [MarshalAs(UnmanagedType.I1)] bool shutdownEngine);
+
+#if WINDOWS
+    [DllImport(
+        EngineLibrary,
+        EntryPoint = "SailorProtocolSetWindowsViewportHost",
+        ExactSpelling = true,
+        CallingConvention = CallingConvention.Cdecl)]
+    internal static extern int SailorProtocolSetWindowsViewportHost(
+        ulong viewportId,
+        nint swapChainPanelInspectable,
+        float compositionScale);
+#endif
 }

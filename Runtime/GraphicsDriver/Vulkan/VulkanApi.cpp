@@ -1239,6 +1239,96 @@ VulkanImagePtr VulkanApi::CreateImage(
 	return outImage;
 }
 
+#if defined(_WIN32)
+VulkanImagePtr VulkanApi::CreateExportableImage(
+	VulkanDevicePtr device,
+	VkExtent3D extent,
+	VkFormat format,
+	VkImageUsageFlags usage,
+	VkImageLayout defaultLayout,
+	VkExternalMemoryHandleTypeFlagBits handleType)
+{
+	VkPhysicalDeviceExternalImageFormatInfo externalFormatInfo{};
+	externalFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+	externalFormatInfo.handleType = handleType;
+
+	VkPhysicalDeviceImageFormatInfo2 formatInfo{};
+	formatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+	formatInfo.pNext = &externalFormatInfo;
+	formatInfo.format = format;
+	formatInfo.type = VK_IMAGE_TYPE_2D;
+	formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	formatInfo.usage = usage;
+	formatInfo.flags = 0;
+
+	VkExternalImageFormatProperties externalProperties{};
+	externalProperties.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+
+	VkImageFormatProperties2 imageProperties{};
+	imageProperties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+	imageProperties.pNext = &externalProperties;
+
+	const VkResult propertiesResult = vkGetPhysicalDeviceImageFormatProperties2(
+		device->GetPhysicalDevice(),
+		&formatInfo,
+		&imageProperties);
+	const VkExternalMemoryFeatureFlags requiredFeatures =
+		VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
+		VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+	if (propertiesResult != VK_SUCCESS ||
+		(externalProperties.externalMemoryProperties.externalMemoryFeatures & requiredFeatures) != requiredFeatures)
+	{
+		SAILOR_LOG_ERROR(
+			"Vulkan external image is unsupported: result=%d format=%d handleType=0x%x features=0x%x",
+			static_cast<int32_t>(propertiesResult),
+			static_cast<int32_t>(format),
+			static_cast<uint32_t>(handleType),
+			static_cast<uint32_t>(externalProperties.externalMemoryProperties.externalMemoryFeatures));
+		return nullptr;
+	}
+
+	VulkanImagePtr outImage = new VulkanImage(device);
+	outImage->EnableExternalMemory(handleType);
+	outImage->m_extent = extent;
+	outImage->m_imageType = VK_IMAGE_TYPE_2D;
+	outImage->m_format = format;
+	outImage->m_tiling = VK_IMAGE_TILING_OPTIMAL;
+	outImage->m_usage = usage;
+	outImage->m_mipLevels = 1;
+	outImage->m_samples = VK_SAMPLE_COUNT_1_BIT;
+	outImage->m_arrayLayers = 1;
+	outImage->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	outImage->m_defaultLayout = defaultLayout;
+	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_flags = 0;
+	outImage->Compile();
+
+	const VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
+
+	VkMemoryDedicatedAllocateInfo dedicatedInfo{};
+	dedicatedInfo.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+	dedicatedInfo.image = *outImage;
+
+	VkExportMemoryAllocateInfo exportInfo{};
+	exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+	exportInfo.pNext = &dedicatedInfo;
+	exportInfo.handleTypes = handleType;
+
+	auto memory = VulkanDeviceMemoryPtr::Make(
+		device,
+		requirements,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		&exportInfo);
+	if (!memory || outImage->Bind(memory, 0) != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("Failed to allocate or bind Vulkan external image memory.");
+		return nullptr;
+	}
+
+	return outImage;
+}
+#endif
+
 VulkanImagePtr VulkanApi::CreateImage_Immediate(
         VulkanDevicePtr device,
         const void* pData,
@@ -1271,24 +1361,36 @@ VulkanImagePtr VulkanApi::CreateImage_Immediate(
 #ifdef _WIN32
 void* VulkanApi::ExportImage(VulkanDevicePtr device, VulkanImagePtr image, VkExternalMemoryHandleTypeFlagBits handleType)
 {
-        auto vkGetMemoryWin32HandleKHR = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(*device, "vkGetMemoryWin32HandleKHR");
-        if (!vkGetMemoryWin32HandleKHR)
-        {
-                return nullptr;
-        }
+	if (!device || !image || !image->IsExternalMemoryEnabled() || !image->GetMemoryDevice())
+	{
+		return nullptr;
+	}
 
-        VkMemoryGetWin32HandleInfoKHR handleInfo{};
-        handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
-        handleInfo.handleType = handleType;
-        handleInfo.memory = *image->GetMemoryDevice();
+	auto vkGetMemoryWin32HandleKHR = reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(
+		vkGetDeviceProcAddr(*device, "vkGetMemoryWin32HandleKHR"));
+	if (!vkGetMemoryWin32HandleKHR)
+	{
+		SAILOR_LOG_ERROR("vkGetMemoryWin32HandleKHR is unavailable.");
+		return nullptr;
+	}
 
-        HANDLE handle = nullptr;
-        //if (vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle) != VK_SUCCESS)
-        //{
-        //        return nullptr;
-        //}
+	VkMemoryGetWin32HandleInfoKHR handleInfo{};
+	handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+	handleInfo.handleType = handleType;
+	handleInfo.memory = *image->GetMemoryDevice();
 
-        return handle;
+	HANDLE handle = nullptr;
+	const VkResult result = vkGetMemoryWin32HandleKHR(*device, &handleInfo, &handle);
+	if (result != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR(
+			"vkGetMemoryWin32HandleKHR failed: result=%d handleType=0x%x",
+			static_cast<int32_t>(result),
+			static_cast<uint32_t>(handleType));
+		return nullptr;
+	}
+
+	return handle;
 }
 #else
 void* VulkanApi::ExportImage(VulkanDevicePtr /*device*/, VulkanImagePtr /*image*/, VkExternalMemoryHandleTypeFlagBits /*handleType*/)
@@ -1299,50 +1401,109 @@ void* VulkanApi::ExportImage(VulkanDevicePtr /*device*/, VulkanImagePtr /*image*
 
 #ifdef _WIN32
 VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr device,
-        void* handle,
-        VkExtent3D extent,
-        VkFormat format,
-        VkImageUsageFlags usage,
-        VkImageLayout defaultLayout,
-        VkImageCreateFlags flags,
-        uint32_t arrayLayers,
-        VkSampleCountFlagBits sampleCount)
+	void* handle,
+	VkExtent3D extent,
+	VkFormat format,
+	VkImageUsageFlags usage,
+	VkImageLayout defaultLayout,
+	VkImageCreateFlags flags,
+	uint32_t arrayLayers,
+	VkSampleCountFlagBits sampleCount,
+	VkExternalMemoryHandleTypeFlagBits handleType)
 {
-        VulkanImagePtr outImage = new VulkanImage(device);
-        outImage->EnableExternalMemory(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
-        outImage->m_extent = extent;
-        outImage->m_imageType = VK_IMAGE_TYPE_2D;
-        outImage->m_format = format;
-        outImage->m_tiling = VK_IMAGE_TILING_OPTIMAL;
-        outImage->m_usage = usage;
-        outImage->m_mipLevels = 1;
-        outImage->m_samples = sampleCount;
-        outImage->m_arrayLayers = arrayLayers;
-        outImage->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        outImage->m_defaultLayout = defaultLayout;
-        outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        outImage->m_flags = flags;
+	if (!device || !handle)
+	{
+		return nullptr;
+	}
+	if (handleType == static_cast<VkExternalMemoryHandleTypeFlagBits>(0))
+	{
+		handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+	}
 
-        outImage->Compile();
+	VkPhysicalDeviceExternalImageFormatInfo externalFormatInfo{};
+	externalFormatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+	externalFormatInfo.handleType = handleType;
 
-        VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
+	VkPhysicalDeviceImageFormatInfo2 formatInfo{};
+	formatInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+	formatInfo.pNext = &externalFormatInfo;
+	formatInfo.format = format;
+	formatInfo.type = VK_IMAGE_TYPE_2D;
+	formatInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	formatInfo.usage = usage;
+	formatInfo.flags = flags;
 
-		VkImportMemoryWin32HandleInfoKHR importInfo{};
-        importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
-        importInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
-        importInfo.handle = (HANDLE)handle;
+	VkExternalImageFormatProperties externalProperties{};
+	externalProperties.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+	VkImageFormatProperties2 imageProperties{};
+	imageProperties.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+	imageProperties.pNext = &externalProperties;
 
-        auto memory = VulkanDeviceMemoryPtr::Make(device, requirements,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &importInfo);
+	const VkResult propertiesResult = vkGetPhysicalDeviceImageFormatProperties2(
+		device->GetPhysicalDevice(),
+		&formatInfo,
+		&imageProperties);
+	const VkExternalMemoryFeatureFlags externalFeatures =
+		externalProperties.externalMemoryProperties.externalMemoryFeatures;
+	if (propertiesResult != VK_SUCCESS ||
+		(externalFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) == 0)
+	{
+		SAILOR_LOG_ERROR(
+			"Vulkan external image cannot be imported: result=%d format=%d handleType=0x%x features=0x%x",
+			static_cast<int32_t>(propertiesResult),
+			static_cast<int32_t>(format),
+			static_cast<uint32_t>(handleType),
+			static_cast<uint32_t>(externalFeatures));
+		return nullptr;
+	}
 
-        outImage->Bind(memory, 0);
+	VulkanImagePtr outImage = new VulkanImage(device);
+	outImage->EnableExternalMemory(handleType);
+	outImage->m_extent = extent;
+	outImage->m_imageType = VK_IMAGE_TYPE_2D;
+	outImage->m_format = format;
+	outImage->m_tiling = VK_IMAGE_TILING_OPTIMAL;
+	outImage->m_usage = usage;
+	outImage->m_mipLevels = 1;
+	outImage->m_samples = sampleCount;
+	outImage->m_arrayLayers = arrayLayers;
+	outImage->m_sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	outImage->m_defaultLayout = defaultLayout;
+	outImage->m_initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	outImage->m_flags = flags;
+	outImage->Compile();
 
-        return outImage;
+	const VkMemoryRequirements requirements = outImage->GetMemoryRequirements();
+	VkMemoryDedicatedAllocateInfo dedicatedInfo{};
+	dedicatedInfo.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+	dedicatedInfo.image = *outImage;
+
+	VkImportMemoryWin32HandleInfoKHR importInfo{};
+	importInfo.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
+	importInfo.pNext =
+		(externalFeatures & VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT) != 0
+			? &dedicatedInfo
+			: nullptr;
+	importInfo.handleType = handleType;
+	importInfo.handle = static_cast<HANDLE>(handle);
+
+	auto memory = VulkanDeviceMemoryPtr::Make(
+		device,
+		requirements,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		&importInfo);
+	if (!memory || outImage->Bind(memory, 0) != VK_SUCCESS)
+	{
+		SAILOR_LOG_ERROR("Failed to allocate or bind imported Vulkan image memory.");
+		return nullptr;
+	}
+
+	return outImage;
 }
 #else
-VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr /*device*/, void* /*handle*/, VkExtent3D /*extent*/, VkFormat /*format*/, VkImageUsageFlags /*usage*/, VkImageLayout /*defaultLayout*/, VkImageCreateFlags /*flags*/, uint32_t /*arrayLayers*/, VkSampleCountFlagBits /*sampleCount*/)
+VulkanImagePtr VulkanApi::ImportImage(VulkanDevicePtr /*device*/, void* /*handle*/, VkExtent3D /*extent*/, VkFormat /*format*/, VkImageUsageFlags /*usage*/, VkImageLayout /*defaultLayout*/, VkImageCreateFlags /*flags*/, uint32_t /*arrayLayers*/, VkSampleCountFlagBits /*sampleCount*/, VkExternalMemoryHandleTypeFlagBits /*handleType*/)
 {
-        return nullptr;
+	return nullptr;
 }
 #endif
 

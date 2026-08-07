@@ -56,7 +56,6 @@ public partial class MainPage : ContentPage
         }
         if (_shellHost.CurrentLayout is null)
             await _shellHost.InitializeAsync();
-        ShellLayoutHost.Rebuild();
         UpdateStatusText();
     }
 
@@ -64,8 +63,6 @@ public partial class MainPage : ContentPage
     {
         if (e.PropertyName == nameof(EditorShellHost.StatusText))
             MainThread.BeginInvokeOnMainThread(UpdateStatusText);
-        if (e.PropertyName == nameof(EditorShellHost.CurrentLayout))
-            MainThread.BeginInvokeOnMainThread(() => ShellLayoutHost.Rebuild());
     }
 
     void OnWorkspaceProjectionChanged(object? sender, EventArgs e)

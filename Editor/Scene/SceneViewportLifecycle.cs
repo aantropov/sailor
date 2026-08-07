@@ -20,14 +20,15 @@ public readonly record struct SceneViewportFrame(
     SceneViewportRenderTarget RenderTarget,
     bool IsVisible,
     bool IsFocused,
-    nint NativeHostHandle = 0)
+    nint NativeHostHandle = 0,
+    double NativeHostScale = 1)
 {
     public bool HasNativeHost => NativeHostHandle != 0;
 }
 
 public interface ISceneViewportBackend
 {
-    void BindMacHost(ulong viewportId, nint hostHandle);
+    void BindMacHost(ulong viewportId, nint hostHandle, double compositionScale);
     bool TryUpdateViewport(ulong viewportId, SceneViewportRect rect, bool visible, bool focused);
     void SetEditorViewport(SceneViewportRect rect);
     void SetRenderTargetSize(uint width, uint height);
@@ -62,12 +63,12 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
 
         if (frame.HasNativeHost)
         {
-            backend.BindMacHost(viewportId, frame.NativeHostHandle);
+            backend.BindMacHost(viewportId, frame.NativeHostHandle, frame.NativeHostScale);
             _observedHostHandle = frame.NativeHostHandle;
         }
         else if (_observedHostHandle != 0)
         {
-            backend.BindMacHost(viewportId, 0);
+            backend.BindMacHost(viewportId, 0, 1);
             _observedHostHandle = 0;
         }
 
@@ -102,7 +103,7 @@ public sealed class SceneViewportLifecycleAdapter(ISceneViewportBackend backend,
 
         if (_observedHostHandle != 0)
         {
-            backend.BindMacHost(viewportId, 0);
+            backend.BindMacHost(viewportId, 0, 1);
             _observedHostHandle = 0;
         }
 

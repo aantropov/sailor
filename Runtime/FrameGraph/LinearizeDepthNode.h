@@ -23,6 +23,7 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_pLinearizeDepthShader{};
 		RHI::RHIMaterialPtr m_postEffectMaterial{};
 		RHI::RHIShaderBindingSetPtr m_linearizeDepth{};
+		RHI::RHITexturePtr m_boundDepthAttachment{};
 	};
 
 	template class TFrameGraphNode<LinearizeDepthNode>;

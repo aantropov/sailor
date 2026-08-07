@@ -158,6 +158,12 @@ namespace Sailor::GraphicsDriver::Vulkan
 			requiredDeviceExtensions.Add(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
 #endif
 
+#if defined(_WIN32)
+			requiredDeviceExtensions.Add(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+			requiredDeviceExtensions.Add(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+			requiredDeviceExtensions.Add(VK_KHR_WIN32_KEYED_MUTEX_EXTENSION_NAME);
+#endif
+
 #if defined(__APPLE__)
 			requiredDeviceExtensions.Add(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
 #endif
@@ -222,6 +228,16 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkImageCreateFlags flags = 0,
 			uint32_t arrayLayers = 1);
 
+#if defined(_WIN32)
+		SAILOR_API static VulkanImagePtr CreateExportableImage(
+			VulkanDevicePtr device,
+			VkExtent3D extent,
+			VkFormat format,
+			VkImageUsageFlags usage,
+			VkImageLayout defaultLayout,
+			VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT);
+#endif
+
 		SAILOR_API static VulkanCommandBufferPtr UpdateBuffer(VulkanDevicePtr device, const VulkanBufferMemoryPtr& dst, const void* pData, VkDeviceSize size);
 
 		//Immediate context
@@ -244,8 +260,8 @@ namespace Sailor::GraphicsDriver::Vulkan
                         uint32_t arrayLayer = 1);
 
 #ifdef _WIN32
-                SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
-                        VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT);
+		SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
+			VkExternalMemoryHandleTypeFlagBits handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT);
 #else
                 SAILOR_API static void* ExportImage(VulkanDevicePtr device, VulkanImagePtr image,
                         VkExternalMemoryHandleTypeFlagBits handleType = (VkExternalMemoryHandleTypeFlagBits)0);
@@ -259,7 +275,9 @@ namespace Sailor::GraphicsDriver::Vulkan
                         VkImageLayout defaultLayout,
                         VkImageCreateFlags flags = 0,
                         uint32_t arrayLayers = 1,
-                        VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT);
+                        VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT,
+			VkExternalMemoryHandleTypeFlagBits handleType =
+				static_cast<VkExternalMemoryHandleTypeFlagBits>(0));
 
 		//Immediate context
 

@@ -18,11 +18,16 @@
 #include "RHI/Surface.h"
 #include "Submodules/Editor.h"
 #include "Submodules/EditorRemote/RemoteViewportMacTransport.h"
+#if defined(_WIN32)
+#include "Submodules/EditorRemote/RemoteViewportWindowsNative.h"
+#endif
 #include "Submodules/ImGuiApi.h"
 #include "Tasks/Scheduler.h"
+#include "Tasks/Tasks.h"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -409,16 +414,25 @@ namespace
 	struct RemoteViewportBinding
 	{
 		ViewportDescriptor m_descriptor{};
+#if defined(_WIN32)
+		SailorWindowsSharedSurfaceProvider m_surfaceProvider{};
+		SailorWindowsViewportPresenter m_presenter{};
+		WindowsViewportLoopbackBinding m_binding{ m_descriptor, m_surfaceProvider, m_presenter };
+#else
 		SailorRendererFrameSourceProvider m_rendererFrameSourceProvider{};
 		MacLoopbackIOSurfaceProvider m_surfaceProvider{ &m_rendererFrameSourceProvider };
 		MacLoopbackViewportPresenter m_presenter{};
 		MacViewportLoopbackBinding m_binding{ m_descriptor, m_surfaceProvider, m_presenter };
+#endif
 		RECT m_lastRect{};
 		bool m_created = false;
 		bool m_visible = true;
 		bool m_focused = false;
 		uint64_t m_nowMs = 0;
 		Failure m_lastPumpFailure = Failure::Ok();
+#if defined(_WIN32)
+		std::atomic_bool m_pumpScheduled = false;
+#endif
 		std::mutex m_mutex{};
 
 		explicit RemoteViewportBinding(ViewportDescriptor descriptor) :
@@ -471,8 +485,11 @@ namespace
 	};
 
 	TMap<ViewportId, TSharedPtr<RemoteViewportBinding>> g_remoteViewportBindings;
+#if defined(__APPLE__)
 	TMap<ViewportId, Sailor::EditorRemote::MacNativeHostHandle> g_pendingRemoteViewportHostHandles;
+#endif
 	TMap<ViewportId, std::array<bool, 3>> g_remoteViewportMouseButtons;
+	TMap<ViewportId, std::array<bool, 4>> g_remoteViewportKeyboardModifiers;
 	TVector<InputPacket> g_pendingEditorInput;
 	TSet<ViewportId> g_pendingEditorInputResets;
 	std::mutex g_remoteViewportBindingsMutex;
@@ -502,6 +519,7 @@ namespace
 		return it != g_remoteViewportBindings.end() && it.Value() == binding;
 	}
 
+#if defined(__APPLE__)
 	bool TryGetCurrentRemoteViewportHostHandle(
 		ViewportId viewportId,
 		const TSharedPtr<RemoteViewportBinding>& binding,
@@ -525,6 +543,7 @@ namespace
 		}
 		return true;
 	}
+#endif
 
 	ViewportDescriptor MakeRemoteViewportDescriptor(ViewportId viewportId, uint32_t width, uint32_t height)
 	{
@@ -562,6 +581,7 @@ namespace
 
 		std::lock_guard bindingsLock(g_remoteViewportBindingsMutex);
 		g_remoteViewportMouseButtons.Clear();
+		g_remoteViewportKeyboardModifiers.Clear();
 	}
 
 	bool IsEditorInputCurrent(const InputPacket& input)
@@ -607,13 +627,76 @@ namespace
 			state[i] = desired[i];
 			GlobalInput::SetMouseButtonState(i, desired[i] ? KeyState::Pressed : KeyState::Up);
 
-#if defined(__APPLE__)
+#if defined(_WIN32)
+			if (imGui)
+			{
+				ImGuiApi::WindowsEditorInputEvent event{};
+				event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::MouseButton;
+				event.Button = static_cast<int32_t>(i);
+				event.bPressed = desired[i];
+				imGui->HandleWindowsEditorInput(event);
+			}
+#elif defined(__APPLE__)
 			if (imGui)
 			{
 				ImGuiApi::MacEvent event{};
 				event.EventType = ImGuiApi::MacEvent::Type::MouseButton;
 				event.Button = static_cast<int32_t>(i);
 				event.bPressed = desired[i];
+				imGui->HandleMac(event);
+			}
+#else
+			(void)imGui;
+#endif
+		}
+	}
+
+	void SyncEditorKeyboardModifiers(const InputPacket& input, ImGuiApi* imGui)
+	{
+		using Sailor::Win32::GlobalInput;
+		using Sailor::Win32::KeyState;
+
+		constexpr std::array<InputModifier, 4> modifiers = {
+			InputModifier::Shift,
+			InputModifier::Control,
+			InputModifier::Alt,
+			InputModifier::Meta
+		};
+		constexpr std::array<uint32_t, 4> keyCodes = {
+			VK_SHIFT,
+			VK_CONTROL,
+			VK_MENU,
+			VK_LWIN
+		};
+		auto& modifierState = g_remoteViewportKeyboardModifiers[input.m_viewportId];
+
+		for (uint32_t i = 0; i < modifiers.size(); i++)
+		{
+			const bool desired = (input.m_modifiers & modifiers[i]) == modifiers[i];
+			if (modifierState[i] == desired)
+			{
+				continue;
+			}
+
+			modifierState[i] = desired;
+			GlobalInput::SetKeyState(keyCodes[i], desired ? KeyState::Pressed : KeyState::Up);
+
+#if defined(_WIN32)
+			if (imGui)
+			{
+				ImGuiApi::WindowsEditorInputEvent event{};
+				event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::Key;
+				event.Key = keyCodes[i];
+				event.bPressed = desired;
+				imGui->HandleWindowsEditorInput(event);
+			}
+#elif defined(__APPLE__)
+			if (imGui)
+			{
+				ImGuiApi::MacEvent event{};
+				event.EventType = ImGuiApi::MacEvent::Type::Key;
+				event.Key = keyCodes[i];
+				event.bPressed = desired;
 				imGui->HandleMac(event);
 			}
 #else
@@ -629,11 +712,34 @@ namespace
 
 		const KeyState state = input.m_pressed ? KeyState::Pressed : KeyState::Up;
 
-#if defined(__APPLE__)
+#if defined(_WIN32) || defined(__APPLE__)
 		auto* imGui = App::GetSubmodule<ImGuiApi>();
 #else
 		ImGuiApi* imGui = nullptr;
 #endif
+
+#if defined(_WIN32)
+		if (imGui &&
+			(input.m_kind == InputKind::PointerMove ||
+				input.m_kind == InputKind::PointerButton ||
+				input.m_kind == InputKind::PointerWheel))
+		{
+			ImGuiApi::WindowsEditorInputEvent event{};
+			event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::MousePos;
+			event.X = input.m_pointerX;
+			event.Y = input.m_pointerY;
+			imGui->HandleWindowsEditorInput(event);
+		}
+#endif
+
+		if (input.m_kind == InputKind::PointerMove ||
+			input.m_kind == InputKind::PointerButton ||
+			input.m_kind == InputKind::PointerWheel)
+		{
+			GlobalInput::SetCursorPosition(
+				static_cast<int32_t>(input.m_pointerX),
+				static_cast<int32_t>(input.m_pointerY));
+		}
 
 		switch (input.m_kind)
 		{
@@ -642,6 +748,7 @@ namespace
 		case InputKind::PointerWheel:
 		case InputKind::Focus:
 		case InputKind::Capture:
+			SyncEditorKeyboardModifiers(input, imGui);
 			SyncEditorMouseButtons(input, imGui);
 			break;
 		default:
@@ -656,15 +763,6 @@ namespace
 
 		switch (input.m_kind)
 		{
-		case InputKind::PointerMove:
-			GlobalInput::SetCursorPosition(static_cast<int32_t>(input.m_pointerX), static_cast<int32_t>(input.m_pointerY));
-			break;
-		case InputKind::PointerButton:
-			GlobalInput::SetCursorPosition(static_cast<int32_t>(input.m_pointerX), static_cast<int32_t>(input.m_pointerY));
-			break;
-		case InputKind::PointerWheel:
-			GlobalInput::SetCursorPosition(static_cast<int32_t>(input.m_pointerX), static_cast<int32_t>(input.m_pointerY));
-			break;
 		case InputKind::Key:
 			if (input.m_keyCode < 256)
 			{
@@ -674,7 +772,6 @@ namespace
 		default:
 			break;
 		}
-
 #if defined(__APPLE__)
 		if (imGui)
 		{
@@ -705,6 +802,32 @@ namespace
 			}
 
 			imGui->HandleMac(event);
+		}
+#elif defined(_WIN32)
+		if (imGui)
+		{
+			ImGuiApi::WindowsEditorInputEvent event{};
+			switch (input.m_kind)
+			{
+			case InputKind::PointerWheel:
+				event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::MouseWheel;
+				event.X = input.m_wheelDeltaX / (float)WHEEL_DELTA;
+				event.Y = input.m_wheelDeltaY / (float)WHEEL_DELTA;
+				break;
+			case InputKind::Key:
+				event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::Key;
+				event.Key = input.m_keyCode;
+				event.bPressed = input.m_pressed;
+				break;
+			case InputKind::Focus:
+				event.EventType = ImGuiApi::WindowsEditorInputEvent::Type::Focus;
+				event.bPressed = input.m_focused;
+				break;
+			default:
+				return;
+			}
+
+			imGui->HandleWindowsEditorInput(event);
 		}
 #endif
 	}
@@ -769,7 +892,11 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 		{
 			renderer->GetDriver()->WaitIdle();
 		}
+#if defined(_WIN32)
+		mainWindow->Show(false);
+#else
 		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
+#endif
 		mainWindow->SetRenderArea(requestedWindowArea);
 		{
 			std::lock_guard lock(g_editorViewportMutex);
@@ -780,7 +907,11 @@ bool Sailor::EditorRuntime::ApplyPendingEditorViewportOnEngineThread()
 	}
 	else
 	{
+#if defined(_WIN32)
+		mainWindow->Show(false);
+#else
 		mainWindow->ChangeWindowSize(requestedWindowArea.x, requestedWindowArea.y, false);
+#endif
 		mainWindow->SetRenderArea(requestedWindowArea);
 		std::lock_guard lock(g_editorViewportMutex);
 		g_editorRemoteViewportRenderArea = requestedWindowArea;
@@ -837,8 +968,11 @@ void Sailor::EditorRuntime::ResetForAppLifecycle()
 		}
 
 		g_remoteViewportBindings.Clear();
+#if defined(__APPLE__)
 		g_pendingRemoteViewportHostHandles.Clear();
+#endif
 		g_remoteViewportMouseButtons.Clear();
+		g_remoteViewportKeyboardModifiers.Clear();
 	}
 
 	for (auto& binding : bindings)
@@ -897,6 +1031,27 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 
 	for (auto& binding : bindings)
 	{
+#if defined(_WIN32)
+		if (!binding || binding->m_pumpScheduled.exchange(true))
+		{
+			continue;
+		}
+
+		scheduler->Run(Tasks::CreateTask(
+			"Pump Windows editor remote viewport",
+			[binding]()
+			{
+				{
+					std::lock_guard bindingLock(binding->m_mutex);
+					if (binding->m_created && binding->m_visible)
+					{
+						binding->Pump();
+					}
+				}
+				binding->m_pumpScheduled.store(false);
+			},
+			EThreadType::Render));
+#else
 		std::lock_guard bindingLock(binding->m_mutex);
 		if (binding && binding->m_created && binding->m_visible)
 		{
@@ -911,6 +1066,7 @@ void Sailor::EditorRuntime::PumpEditorRemoteViewportsOnEngineThread()
 #endif
 			binding->Pump();
 		}
+#endif
 	}
 }
 
@@ -956,7 +1112,10 @@ void App::SetEditorRenderTargetSize(uint32_t width, uint32_t height)
 
 bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, uint32_t windowPosY, uint32_t width, uint32_t height, bool bVisible, bool bFocused)
 {
-#if !defined(__APPLE__)
+#if defined(_WIN32)
+	SetEditorRenderTargetSize(width, height);
+	SetEditorViewport(0, 0, width, height);
+#elif !defined(__APPLE__)
 	SetEditorViewport(windowPosX, windowPosY, width, height);
 #else
 	SetEditorRenderTargetSize(width, height);
@@ -1014,6 +1173,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 		return true;
 	}
 
+#if defined(__APPLE__)
 	std::optional<MacNativeHostHandle> hostHandle{};
 	if (!TryGetCurrentRemoteViewportHostHandle(viewportId, binding, hostHandle))
 	{
@@ -1023,6 +1183,7 @@ bool App::UpsertEditorRemoteViewport(uint64_t viewportId, uint32_t windowPosX, u
 	{
 		binding->m_binding.GetHost().BindNativeHostHandle(viewportId, *hostHandle);
 	}
+#endif
 	if (!binding->m_created)
 	{
 		binding->m_binding.Create();
@@ -1140,7 +1301,21 @@ uint32_t App::GetEditorRemoteViewportDiagnostics(uint64_t viewportId, char** dia
 	}
 
 	auto info = binding->m_binding.GetRuntimeSession().GetDiagnostics();
-#if defined(__APPLE__)
+#if defined(_WIN32)
+	info.m_nativePresenterSummary = binding->m_presenter.BuildSummary(viewportId);
+	const std::string surfaceSummary = binding->m_surfaceProvider.BuildSummary(
+		viewportId,
+		info.m_connectionEpoch,
+		info.m_generation);
+	if (!surfaceSummary.empty())
+	{
+		if (!info.m_nativePresenterSummary.empty())
+		{
+			info.m_nativePresenterSummary += " ";
+		}
+		info.m_nativePresenterSummary += surfaceSummary;
+	}
+#elif defined(__APPLE__)
 	info.m_nativePresenterSummary = binding->m_presenter.BuildViewportSummary(viewportId);
 	if (const auto* allocation = binding->m_surfaceProvider.FindAllocation({ viewportId, info.m_connectionEpoch, info.m_generation }))
 	{
@@ -1285,6 +1460,41 @@ bool App::SetEditorRemoteViewportMacHostHandle(uint64_t viewportId, uint32_t hos
 	(void)viewportId;
 	(void)hostHandleKind;
 	(void)hostHandleValue;
+	return false;
+#endif
+}
+
+bool App::SetEditorRemoteViewportWindowsHost(
+	uint64_t viewportId,
+	void* swapChainPanelInspectable,
+	float compositionScale)
+{
+#if defined(_WIN32)
+	if (!GetInstance() || !HasEditor())
+	{
+		return false;
+	}
+
+	viewportId = viewportId == 0 ? kPrimaryEditorViewportId : viewportId;
+	auto binding = FindRemoteViewportBinding(viewportId);
+	if (!binding)
+	{
+		return swapChainPanelInspectable == nullptr;
+	}
+
+	std::unique_lock bindingLock(binding->m_mutex, std::try_to_lock);
+	if (!bindingLock.owns_lock() || !IsCurrentRemoteViewportBinding(viewportId, binding))
+	{
+		return false;
+	}
+
+	return binding->m_presenter
+		.BindNativeHost(swapChainPanelInspectable, compositionScale)
+		.IsOk();
+#else
+	(void)viewportId;
+	(void)swapChainPanelInspectable;
+	(void)compositionScale;
 	return false;
 #endif
 }
