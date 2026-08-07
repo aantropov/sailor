@@ -24,3 +24,6 @@ jobs:
 
       - name: Build Editor (Windows)
         run: dotnet build Editor/SailorEditor.csproj -c Release -f net10.0-windows10.0.19041.0
+
+      - name: Build MCP bridge
+        run: dotnet build Editor/McpBridge/SailorEditor.McpBridge.csproj -c Release

@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 EDITOR_PROJECT = REPO_ROOT / "Editor" / "SailorEditor.csproj"
+MCP_BRIDGE_PROJECT = REPO_ROOT / "Editor" / "McpBridge" / "SailorEditor.McpBridge.csproj"
 LOCAL_DOTNET = Path.home() / ".dotnet" / ("dotnet.exe" if platform.system().lower() == "windows" else "dotnet")
 
 
@@ -68,6 +69,16 @@ def maybe_build_engine(engine: bool, config: str) -> None:
         return
     cmd = [sys.executable, str(REPO_ROOT / "build_engine.py"), "--config", config]
     run(cmd)
+
+
+def build_mcp_bridge(dotnet: str, config: str, env: dict[str, str]) -> None:
+    run([
+        dotnet,
+        "build",
+        str(MCP_BRIDGE_PROJECT),
+        "-c",
+        config,
+    ], env=env)
 
 
 def remove_generated_imgui_ini(config: str, output: Path | None) -> None:
@@ -156,6 +167,7 @@ def main() -> int:
         command += ["--self-contained", "true"]
 
     run(command, env=env)
+    build_mcp_bridge(dotnet, args.config, env)
     sync_engine_library(args.config, args.output, args.runtime)
 
     print("\nDone.")

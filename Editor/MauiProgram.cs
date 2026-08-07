@@ -14,6 +14,7 @@ using SailorEditor.Settings;
 using SailorEditor.AI;
 using SailorEditor.Workspace;
 using SailorEditor.Workflow;
+using SailorEditor.Mcp;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
 #endif
@@ -78,6 +79,16 @@ namespace SailorEditor
             builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();
             builder.Services.AddSingleton<IAIActionPlanner, HeuristicAIActionPlanner>();
             builder.Services.AddSingleton<AIOperatorService>();
+            builder.Services.AddSingleton<McpEndpointDiscovery>();
+            builder.Services.AddSingleton<IEditorThreadDispatcher, MauiEditorThreadDispatcher>();
+            builder.Services.AddSingleton<McpEditorTools>();
+            builder.Services.AddSingleton<McpSceneSnapshotBuilder>();
+            builder.Services.AddSingleton<McpSceneBatchExecutor>();
+            builder.Services.AddSingleton<McpAssetOperations>();
+            builder.Services.AddSingleton<McpWorkspaceOperations>();
+            builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();
+            builder.Services.AddSingleton<WorkspaceBuildService>();
+            builder.Services.AddSingleton<McpEditorHostService>();
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ContentFolderView>();
 

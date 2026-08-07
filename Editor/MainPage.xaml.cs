@@ -4,6 +4,7 @@ using SailorEditor.Platforms.MacCatalyst;
 using SailorEditor.Services;
 using SailorEditor.Shell;
 using SailorEditor.Workspace;
+using SailorEditor.Mcp;
 using System.ComponentModel;
 
 namespace SailorEditor;
@@ -12,12 +13,14 @@ public partial class MainPage : ContentPage
 {
     readonly EditorShellHost _shellHost;
     readonly WorkspaceUiService _workspaceUi;
+    readonly McpEditorHostService _mcpHost;
     bool _workspaceUiInitialized;
 
     public MainPage(EditorShellHost shellHost)
     {
         _shellHost = shellHost;
         _workspaceUi = MauiProgram.GetService<WorkspaceUiService>();
+        _mcpHost = MauiProgram.GetService<McpEditorHostService>();
         InitializeComponent();
 #if MACCATALYST
         ToolbarHost.IsVisible = false;
@@ -38,6 +41,19 @@ public partial class MainPage : ContentPage
             await _workspaceUi.InitializeAsync();
         }
 
+        if (!_mcpHost.Status.IsRunning)
+        {
+            try
+            {
+                await _mcpHost.StartAsync();
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    "Unable to start Sailor Editor MCP host: " +
+                    exception.Message);
+            }
+        }
         if (_shellHost.CurrentLayout is null)
             await _shellHost.InitializeAsync();
         ShellLayoutHost.Rebuild();

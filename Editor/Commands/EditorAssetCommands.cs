@@ -17,6 +17,27 @@ public sealed class OpenAssetCommand(AssetFile assetFile) : IEditorCommand
     }
 }
 
+public sealed class ReimportAssetCommand(AssetFile assetFile) : IEditorCommand
+{
+    public string Name => nameof(ReimportAssetCommand);
+    public bool CanExecute(ActionContext context) =>
+        assetFile?.FileId is not null &&
+        !assetFile.FileId.IsEmpty();
+
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var updated = await MauiProgram.GetService<EngineService>()
+            .UpdateAssetAsync(assetFile.FileId, cancellationToken);
+        return updated
+            ? CommandResult.Success(
+                "Asset reimport completed.",
+                assetFile.FileId)
+            : CommandResult.Failure("Asset reimport failed.");
+    }
+}
+
 public sealed class RenameAssetCommand(AssetFile assetFile, string newName) : IEditorCommand
 {
     public string Name => nameof(RenameAssetCommand);

@@ -129,6 +129,24 @@ public sealed class AIOperatorService
         return AddAudit(proposal, items, proposal.Summary);
     }
 
+    public AIActionAuditEntry RecordExternalExecution(
+        string title,
+        AIActionSafety safety,
+        AIProposalState state,
+        IReadOnlyList<AIActionExecutionItem> items,
+        string? summary = null,
+        string? proposalId = null)
+    {
+        var proposal = new AIProposedAction(
+            proposalId ?? "mcp-" + Guid.NewGuid().ToString("N"),
+            title,
+            Array.Empty<IEditorCommand>(),
+            safety,
+            summary,
+            state);
+        return AddAudit(proposal, items, summary);
+    }
+
     bool TryGetProposal(string proposalId, out AIProposedAction proposal) => _proposalLookup.TryGetValue(proposalId, out proposal!);
 
     bool ReplaceProposal(AIProposedAction proposal)
