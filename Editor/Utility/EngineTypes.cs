@@ -329,6 +329,7 @@ namespace SailorEngine
                         var value when value.Contains("InstanceId") => new InstanceIdProperty(),
                         "FileId" => new FileIdProperty(),
                         "List<FileId>" => new Property<List<FileId>>(),
+                        "List<float>" => new Property<List<float>>(),
                         var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                         var value when res.Enums.ContainsKey(value) => new EnumProperty() { Typename = value },
                         _ => throw new InvalidDataException(
@@ -461,6 +462,7 @@ namespace SailorEngine
             {
                 "FileId" => new FileIdProperty(),
                 "List<FileId>" => new Property<List<FileId>>(),
+                "List<float>" => new Property<List<float>>(),
                 var value when value.StartsWith("enum") => new EnumProperty() { Typename = value },
                 _ => throw new InvalidDataException($"Unsupported asset property type: {propertyType}")
             };

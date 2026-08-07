@@ -248,6 +248,10 @@ namespace Sailor
 			{
 				return "List<FileId>";
 			}
+			else if constexpr (std::is_same_v<PropertyType, TVector<float>>)
+			{
+				return "List<float>";
+			}
 			else if constexpr (std::is_enum_v<PropertyType>)
 			{
 				return GetReflectedEnumTypeName<PropertyType>();

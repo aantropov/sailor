@@ -8,6 +8,9 @@
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
 
+#include <algorithm>
+#include <cmath>
+
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
@@ -197,6 +200,48 @@ namespace
 		RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
 		Math::AABB m_worldBounds{};
 	};
+}
+
+uint32_t StaticMeshRendererData::ResolveLod(
+	float distanceToCamera,
+	uint32_t numAvailableLods) const
+{
+	if (numAvailableLods == 0u)
+	{
+		return 0u;
+	}
+
+	const uint32_t highestAvailableLod = numAvailableLods - 1u;
+	const uint32_t minLod = (std::min)(m_minLod, highestAvailableLod);
+	const uint32_t maxLod = (std::max)(
+		minLod,
+		(std::min)(m_maxLod, highestAvailableLod));
+	uint32_t selectedLod = 0u;
+	for (size_t thresholdIndex = 0;
+		thresholdIndex < m_lodDistances.Num();
+		++thresholdIndex)
+	{
+		const float threshold = m_lodDistances[thresholdIndex];
+		if (!std::isfinite(threshold) || distanceToCamera < threshold)
+		{
+			break;
+		}
+
+		selectedLod = static_cast<uint32_t>(thresholdIndex + 1u);
+	}
+
+	return (std::clamp)(selectedLod, minLod, maxLod);
+}
+
+void StaticMeshRendererData::SetLodSettings(
+	uint32_t minLod,
+	uint32_t maxLod,
+	const TVector<float>& lodDistances)
+{
+	m_minLod = minLod;
+	m_maxLod = (std::max)(minLod, maxLod);
+	m_lodDistances = lodDistances;
+	std::sort(m_lodDistances.begin(), m_lodDistances.end());
 }
 
 void StaticMeshRendererECS::BeginPlay()

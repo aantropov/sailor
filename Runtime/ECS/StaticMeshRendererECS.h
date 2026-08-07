@@ -43,6 +43,8 @@ namespace Sailor
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 		SAILOR_API __forceinline uint32_t GetSkeletonOffset() const { return m_skeletonOffset; }
+		SAILOR_API uint32_t ResolveLod(float distanceToCamera, uint32_t numAvailableLods) const;
+		SAILOR_API void SetLodSettings(uint32_t minLod, uint32_t maxLod, const TVector<float>& lodDistances);
 	protected:
 
 		ModelPtr m_model;
@@ -51,6 +53,9 @@ namespace Sailor
 		RHI::RHIShadowCasterProxyPtr m_shadowCaster;
 		uint32_t m_skeletonOffset = InvalidSkeletonOffset;
 		int32_t m_meshIndex = -1;
+		uint32_t m_minLod = 0u;
+		uint32_t m_maxLod = 2u;
+		TVector<float> m_lodDistances{ 25.0f, 75.0f };
 		bool m_bInvalidMeshIndexReported = false;
 
 		friend class StaticMeshRendererECS;

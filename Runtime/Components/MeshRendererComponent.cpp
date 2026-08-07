@@ -3,6 +3,8 @@
 #include "ECS/StaticMeshRendererECS.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 
+#include <algorithm>
+
 using namespace Sailor;
 using namespace Sailor::Tasks;
 
@@ -13,6 +15,7 @@ void MeshRendererComponent::Initialize()
 
 	GetData().SetOwner(GetOwner());
 	GetData().SetMeshIndex(m_meshIndex);
+	GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
 }
 
 void MeshRendererComponent::BeginPlay()
@@ -57,6 +60,35 @@ void MeshRendererComponent::SetOverrideMaterials(const TVector<FileId>& override
 {
 	m_overrideMaterials = overrideMaterials;
 	RebuildMaterials();
+}
+
+void MeshRendererComponent::SetMinLod(uint32_t minLod)
+{
+	m_minLod = minLod;
+	m_maxLod = (std::max)(m_maxLod, m_minLod);
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+	}
+}
+
+void MeshRendererComponent::SetMaxLod(uint32_t maxLod)
+{
+	m_maxLod = (std::max)(maxLod, m_minLod);
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+	}
+}
+
+void MeshRendererComponent::SetLodDistances(const TVector<float>& lodDistances)
+{
+	m_lodDistances = lodDistances;
+	std::sort(m_lodDistances.begin(), m_lodDistances.end());
+	if (m_handle != ECS::InvalidIndex)
+	{
+		GetData().SetLodSettings(m_minLod, m_maxLod, m_lodDistances);
+	}
 }
 
 void MeshRendererComponent::RebuildMaterials()

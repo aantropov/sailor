@@ -806,6 +806,39 @@ namespace
 		Require(data.GetMaterials().IsEmpty(), "clearing a model should clear its stale material overrides");
 	}
 
+	void TestStaticMeshLodSelectionClampsAndUsesDistances()
+	{
+		StaticMeshRendererData data;
+		data.SetLodSettings(0u, 2u, TVector<float>{ 20.0f, 60.0f });
+		Require(data.ResolveLod(0.0f, 3u) == 0u &&
+			data.ResolveLod(20.0f, 3u) == 1u &&
+			data.ResolveLod(59.0f, 3u) == 1u &&
+			data.ResolveLod(60.0f, 3u) == 2u,
+			"mesh renderer LOD selection must follow ascending camera-distance thresholds");
+
+		data.SetLodSettings(1u, 5u, TVector<float>{ 60.0f, 20.0f });
+		Require(data.ResolveLod(0.0f, 3u) == 1u,
+			"mesh renderer minimum LOD must clamp near-camera selection");
+		Require(data.ResolveLod(1000.0f, 2u) == 1u,
+			"mesh renderer maximum LOD must clamp to available model geometry");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const size_t visibleSelection = sceneViewSource.find(
+			"ApplyLodToMeshes(");
+		const size_t visibleShadowSelection = sceneViewSource.find(
+			"proxy.m_shadowCaster = CreateLodShadowCaster(",
+			visibleSelection);
+		const size_t shadowPassSelection = sceneViewSource.find(
+			"shadowCaster = CreateLodShadowCaster(",
+			visibleShadowSelection);
+		Require(visibleSelection != std::string::npos &&
+			visibleShadowSelection > visibleSelection &&
+			shadowPassSelection > visibleShadowSelection,
+			"snapshot preparation must apply the camera-selected LOD to main, depth, and shadow proxies");
+	}
+
 	void TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1379,6 +1412,11 @@ namespace
 		Require(properties.ContainsKey("overrideMaterials") &&
 			properties["overrideMaterials"] == "List<FileId>",
 			"mesh renderer material overrides must be exported as an editable FileId list");
+		Require(properties.ContainsKey("minLod") &&
+			properties.ContainsKey("maxLod") &&
+			properties.ContainsKey("lodDistances") &&
+			properties["lodDistances"] == "List<float>",
+			"mesh renderer LOD limits and distance thresholds must be editable reflected properties");
 
 		PrefabTestWorld world;
 		auto root = world.Instantiate("MaterialOverrides");
@@ -1419,6 +1457,9 @@ namespace
 		TVector<FileId> overrides{ firstMaterial, FileId::Invalid, secondMaterial };
 
 		meshRenderer->SetOverrideMaterials(overrides);
+		meshRenderer->SetMinLod(1u);
+		meshRenderer->SetMaxLod(2u);
+		meshRenderer->SetLodDistances(TVector<float>{ 80.0f, 30.0f });
 		Require(meshRenderer->GetOverrideMaterials() == overrides,
 			"assigning material overrides must preserve their slot order and inherited gaps");
 		Require(meshRenderer->GetData().IsDirty(),
@@ -1449,6 +1490,11 @@ namespace
 		Require(restoredRenderer && areOverridesEquivalent(
 			restoredRenderer->GetOverrideMaterials(), overrides),
 			"prefab instantiation must restore component-owned material overrides");
+		const TVector<float> expectedLodDistances{ 30.0f, 80.0f };
+		Require(restoredRenderer->GetMinLod() == 1u &&
+			restoredRenderer->GetMaxLod() == 2u &&
+			restoredRenderer->GetLodDistances() == expectedLodDistances,
+			"prefab instantiation must restore sorted mesh renderer LOD settings");
 
 		restoredRenderer->SetModel(ModelPtr());
 		Require(areOverridesEquivalent(
@@ -3626,6 +3672,7 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "StaticMeshLodSelectionClampsAndUsesDistances", TestStaticMeshLodSelectionClampsAndUsesDistances },
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },

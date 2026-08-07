@@ -222,6 +222,10 @@ public class ComponentYamlConverter : IYamlTypeConverter
                     property.Value,
                     bufferedSerializer,
                     bufferedDeserializer),
+                Property<List<float>> => DeserializeFloatList(
+                    property.Value,
+                    bufferedSerializer,
+                    bufferedDeserializer),
                 InstanceIdProperty => new Observable<InstanceId>(scalar),
                 FloatProperty => new Observable<float>((float)EditorComponentScalarCodec.Parse(
                     EditorComponentScalarKind.Float,
@@ -306,6 +310,21 @@ public class ComponentYamlConverter : IYamlTypeConverter
                 deserializer) ?? []);
     }
 
+    static ObservableFloatList DeserializeFloatList(
+        object? value,
+        ISerializer serializer,
+        IDeserializer deserializer)
+    {
+        if (value is null)
+            return new ObservableFloatList();
+
+        return new ObservableFloatList(
+            DeserializeBuffered<List<float>>(
+                value,
+                serializer,
+                deserializer) ?? []);
+    }
+
     public void WriteYaml(IEmitter emitter, object value, Type type)
     {
         var component = (Component)value;
@@ -360,6 +379,16 @@ public class ComponentYamlConverter : IYamlTypeConverter
                             emitter,
                             assetId.Value ?? new FileId(),
                             typeof(FileId));
+                    }
+                    emitter.Emit(new SequenceEnd());
+                    break;
+                case ObservableFloatList floatValues:
+                    emitter.Emit(new SequenceStart(null, null, false, SequenceStyle.Block));
+                    foreach (var floatValue in floatValues.Values)
+                    {
+                        emitter.Emit(new Scalar(null, EditorComponentScalarCodec.Format(
+                            EditorComponentScalarKind.Float,
+                            floatValue.Value)));
                     }
                     emitter.Emit(new SequenceEnd());
                     break;

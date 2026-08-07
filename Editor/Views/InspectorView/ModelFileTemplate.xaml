@@ -34,6 +34,9 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <views:ControlPanelView Grid.Row="0" Grid.ColumnSpan="2" />
@@ -94,17 +97,26 @@
         <Label Text="Generate BLAS" VerticalOptions="Center" Grid.Row="6" Grid.Column="0"/>
         <CheckBox IsChecked="{Binding ShouldGenerateBLAS}" Grid.Row="6" Grid.Column="1"/>
 
-        <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
-        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="7" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+        <Label Text="Generate LODs" VerticalOptions="Center" Grid.Row="7" Grid.Column="0"/>
+        <CheckBox IsChecked="{Binding ShouldGenerateLods}" Grid.Row="7" Grid.Column="1"/>
 
-        <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="8" Grid.ColumnSpan="2" />
+        <Label Text="Generated LOD Count" VerticalOptions="Center" Grid.Row="8" Grid.Column="0"/>
+        <Entry Text="{Binding NumGeneratedLods}" VerticalOptions="Center" Grid.Row="8" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
 
-        <HorizontalStackLayout Grid.Row="9" Grid.ColumnSpan="2">
+        <Label Text="LOD Reduction Factor" VerticalOptions="Center" Grid.Row="9" Grid.Column="0"/>
+        <Entry Text="{Binding LodReductionFactor, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="9" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+
+        <Label Text="Unit Scale" VerticalOptions="Center" Grid.Row="10" Grid.Column="0"/>
+        <Entry Text="{Binding UnitScale, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" Grid.Row="10" Grid.Column="1" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric"/>
+
+        <Label Text="Default Materials" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
+
+        <HorizontalStackLayout Grid.Row="12" Grid.ColumnSpan="2">
             <Button Text="+" Command="{Binding AddMaterialCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
             <Button Text="Clear" Width ="40" Command="{Binding ClearMaterialsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="10" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
+        <CollectionView Grid.Row="13" Grid.ColumnSpan="2" ItemsSource="{Binding Materials}">
             <CollectionView.ItemTemplate>
                 <DataTemplate>
                     <HorizontalStackLayout>
@@ -121,14 +133,14 @@
             </CollectionView.ItemTemplate>
         </CollectionView>
 
-        <Label Text="Animations" FontAttributes="Bold" Grid.Row="11" Grid.ColumnSpan="2" />
+        <Label Text="Animations" FontAttributes="Bold" Grid.Row="14" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="12" Grid.ColumnSpan="2">
+        <HorizontalStackLayout Grid.Row="15" Grid.ColumnSpan="2">
             <Button Text="+" Command="{Binding AddAnimationCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"  />
             <Button Text="Clear" Width ="40" Command="{Binding ClearAnimationsCommand, Source={RelativeSource AncestorType={x:Type vm:ModelFile}}}"/>
         </HorizontalStackLayout>
 
-        <VerticalStackLayout Grid.Row="13"
+        <VerticalStackLayout Grid.Row="16"
                              Grid.ColumnSpan="2"
                              BindableLayout.ItemsSource="{Binding Animations}">
             <BindableLayout.ItemTemplate>

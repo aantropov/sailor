@@ -207,10 +207,10 @@ namespace Sailor::RHI
 				auto& matrices = *instancedDrawCall.Second();
 
 				RHI::DrawIndexedIndirectData data{};
-				data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
+				data.m_indexCount = mesh->GetIndexCount();
 				data.m_instanceCount = (uint32_t)matrices.Num();
-				data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-				data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+				data.m_firstIndex = mesh->GetFirstIndex();
+				data.m_vertexOffset = mesh->GetVertexOffset();
 				data.m_firstInstance = storageIndex[j] + ssboOffset;
 				drawIndirect.Emplace(std::move(data));
 				meshesInCurrentBatch++;
@@ -389,10 +389,10 @@ namespace Sailor::RHI
 				auto& matrices = *instancedDrawCall.Second();
 
 				RHI::DrawIndexedIndirectData data{};
-				data.m_indexCount = (uint32_t)mesh->m_indexBuffer->GetSize() / sizeof(uint32_t);
+				data.m_indexCount = mesh->GetIndexCount();
 				data.m_instanceCount = (uint32_t)matrices.Num();
-				data.m_firstIndex = (uint32_t)mesh->m_indexBuffer->GetOffset() / sizeof(uint32_t);
-				data.m_vertexOffset = mesh->m_vertexBuffer->GetOffset() / (uint32_t)mesh->m_vertexDescription->GetVertexStride();
+				data.m_firstIndex = mesh->GetFirstIndex();
+				data.m_vertexOffset = mesh->GetVertexOffset();
 				data.m_firstInstance = storageIndex[j] + ssboOffset;
 
 				drawIndirect.Emplace(std::move(data));

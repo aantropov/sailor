@@ -173,9 +173,16 @@ namespace Sailor
 
 		struct MeshContext
 		{
+			struct LodGeometry
+			{
+				TVector<RHI::VertexP3N3T3B3UV2C4I4W4> m_vertices;
+				TVector<uint32_t> m_indices;
+			};
+
 			TMap<RHI::VertexP3N3T3B3UV2C4I4W4, uint32_t> uniqueVertices;
 			TVector<RHI::VertexP3N3T3B3UV2C4I4W4> outVertices;
 			TVector<uint32_t> outIndices;
+			TVector<LodGeometry> lods;
 			Math::AABB bounds{};
 			int32_t materialIndex = -1;
 			uint32_t materialSlot = (std::numeric_limits<uint32_t>::max)();
@@ -197,6 +204,13 @@ namespace Sailor
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API Tasks::TaskPtr<ModelPtr> LoadModel(FileId uid, ModelPtr& outModel);
 		SAILOR_API bool LoadModel_Immediate(FileId uid, ModelPtr& outModel);
+		SAILOR_API static void GenerateLods(
+			TVector<MeshContext>& meshes,
+			uint32_t numLods,
+			float reductionFactor);
+		SAILOR_API static std::string GetLodCacheFilename(
+			const FileId& fileId,
+			uint32_t lodLevel);
 
 		SAILOR_API Tasks::TaskPtr<bool> LoadDefaultMaterials(FileId uid, TVector<MaterialPtr>& outMaterials);
 

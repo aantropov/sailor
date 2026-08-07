@@ -14,6 +14,85 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+namespace
+{
+	uint32_t ResolveProxyLod(
+		const StaticMeshRendererData& data,
+		const Math::AABB& worldBounds,
+		const Math::Transform& cameraTransform,
+		const RHIMeshPtr& mesh)
+	{
+		if (!mesh)
+		{
+			return 0u;
+		}
+
+		const float distanceToCamera = glm::distance(
+			glm::vec3(cameraTransform.m_position),
+			worldBounds.GetCenter());
+		return data.ResolveLod(distanceToCamera, mesh->GetNumLods());
+	}
+
+	void ApplyLodToMeshes(
+		const StaticMeshRendererData& data,
+		const Math::AABB& worldBounds,
+		const Math::Transform& cameraTransform,
+		TVector<RHIMeshPtr>& meshes)
+	{
+		for (auto& mesh : meshes)
+		{
+			const uint32_t lod = ResolveProxyLod(
+				data,
+				worldBounds,
+				cameraTransform,
+				mesh);
+			if (lod > 0u)
+			{
+				if (RHIMeshPtr lodMesh = mesh->GetLod(lod))
+				{
+					mesh = std::move(lodMesh);
+				}
+			}
+		}
+	}
+
+	RHIShadowCasterProxyPtr CreateLodShadowCaster(
+		const RHIShadowCasterProxyPtr& source,
+		WorldPtr world,
+		const Math::Transform& cameraTransform)
+	{
+		if (!source || !world)
+		{
+			return source;
+		}
+
+		auto* meshEcs = world->GetECS<StaticMeshRendererECS>();
+		if (!meshEcs || !meshEcs->IsComponentRegistered(source->m_staticMeshEcs))
+		{
+			return source;
+		}
+
+		const auto& data = meshEcs->GetComponentData(source->m_staticMeshEcs);
+		RHIShadowCasterProxyPtr result = RHIShadowCasterProxyPtr::Make(*source);
+		for (auto& shadowMesh : result->m_meshes)
+		{
+			const uint32_t lod = ResolveProxyLod(
+				data,
+				source->m_worldAabb,
+				cameraTransform,
+				shadowMesh.m_mesh);
+			if (lod > 0u)
+			{
+				if (RHIMeshPtr lodMesh = shadowMesh.m_mesh->GetLod(lod))
+				{
+					shadowMesh.m_mesh = std::move(lodMesh);
+				}
+			}
+		}
+		return result;
+	}
+}
+
 void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
@@ -241,6 +320,37 @@ void RHISceneView::PrepareSnapshots()
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
 		res.m_proxies = TraceScene(frustum, false);
+		auto* meshEcs = m_world ? m_world->GetECS<StaticMeshRendererECS>() : nullptr;
+		if (meshEcs)
+		{
+			for (auto& proxy : res.m_proxies)
+			{
+				if (!meshEcs->IsComponentRegistered(proxy.m_staticMeshEcs))
+				{
+					continue;
+				}
+				const auto& data = meshEcs->GetComponentData(proxy.m_staticMeshEcs);
+				ApplyLodToMeshes(
+					data,
+					proxy.m_worldAabb,
+					res.m_cameraTransform,
+					proxy.m_meshes);
+				proxy.m_shadowCaster = CreateLodShadowCaster(
+					proxy.m_shadowCaster,
+					m_world,
+					res.m_cameraTransform);
+			}
+		}
+		for (auto& shadowMap : res.m_shadowMapsToUpdate)
+		{
+			for (auto& shadowCaster : shadowMap.m_meshList)
+			{
+				shadowCaster = CreateLodShadowCaster(
+					shadowCaster,
+					m_world,
+					res.m_cameraTransform);
+			}
+		}
 
 		if (i < m_debugDraw.Num())
 		{
