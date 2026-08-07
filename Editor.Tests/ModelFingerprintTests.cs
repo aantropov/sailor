@@ -51,8 +51,40 @@ public sealed class ModelFingerprintTests
             "BindableLayout.ItemsSource=\"{Binding Animations}\"",
             template);
         Assert.DoesNotContain(
-            "<CollectionView Grid.Row=\"13\"",
+            "<CollectionView Grid.Row=\"16\"",
             template);
+    }
+
+    [Fact]
+    public void Inspector_RoundTripsModelLodGenerationSettings()
+    {
+        var viewModel = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "ModelFile.cs");
+        var template = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "ModelFileTemplate.xaml");
+
+        foreach (var property in new[]
+        {
+            "ShouldGenerateLods",
+            "NumGeneratedLods",
+            "LodReductionFactor"
+        })
+        {
+            Assert.Contains(property, viewModel, StringComparison.Ordinal);
+            Assert.Contains($"Binding {property}", template, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("case \"bGenerateLods\"", viewModel, StringComparison.Ordinal);
+        Assert.Contains("case \"numGeneratedLods\"", viewModel, StringComparison.Ordinal);
+        Assert.Contains("case \"lodReductionFactor\"", viewModel, StringComparison.Ordinal);
+        Assert.Contains("new Scalar(null, \"bGenerateLods\")", viewModel, StringComparison.Ordinal);
+        Assert.Contains("new Scalar(null, \"numGeneratedLods\")", viewModel, StringComparison.Ordinal);
+        Assert.Contains("new Scalar(null, \"lodReductionFactor\")", viewModel, StringComparison.Ordinal);
     }
 
     static string ReadRepositoryFile(

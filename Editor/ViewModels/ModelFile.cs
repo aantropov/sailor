@@ -29,6 +29,15 @@ public partial class ModelFile : AssetFile
     bool shouldGenerateBLAS = true;
 
     [ObservableProperty]
+    bool shouldGenerateLods = true;
+
+    [ObservableProperty]
+    uint numGeneratedLods = 2;
+
+    [ObservableProperty]
+    float lodReductionFactor = 0.5f;
+
+    [ObservableProperty]
     float unitScale;
 
     [ObservableProperty]
@@ -152,6 +161,9 @@ public partial class ModelFile : AssetFile
                 ShouldBatchByMaterial = intermediateObject.ShouldBatchByMaterial;
                 ShouldKeepCpuBuffers = intermediateObject.ShouldKeepCpuBuffers;
                 ShouldGenerateBLAS = intermediateObject.ShouldGenerateBLAS;
+                ShouldGenerateLods = intermediateObject.ShouldGenerateLods;
+                NumGeneratedLods = intermediateObject.NumGeneratedLods;
+                LodReductionFactor = intermediateObject.LodReductionFactor;
                 UnitScale = intermediateObject.UnitScale;
                 Materials = intermediateObject.Materials ?? [];
                 Animations = intermediateObject.Animations ?? [];
@@ -221,6 +233,15 @@ public class ModelFileYamlConverter : IYamlTypeConverter
                     case "bGenerateBLAS":
                         assetFile.ShouldGenerateBLAS = deserializer.Deserialize<bool>(parser);
                         break;
+                    case "bGenerateLods":
+                        assetFile.ShouldGenerateLods = deserializer.Deserialize<bool>(parser);
+                        break;
+                    case "numGeneratedLods":
+                        assetFile.NumGeneratedLods = deserializer.Deserialize<uint>(parser);
+                        break;
+                    case "lodReductionFactor":
+                        assetFile.LodReductionFactor = deserializer.Deserialize<float>(parser);
+                        break;
                     case "unitScale":
                         assetFile.UnitScale = deserializer.Deserialize<float>(parser);
                         break;
@@ -274,6 +295,15 @@ public class ModelFileYamlConverter : IYamlTypeConverter
 
         emitter.Emit(new Scalar(null, "bGenerateBLAS"));
         emitter.Emit(new Scalar(null, assetFile.ShouldGenerateBLAS.ToString().ToLower()));
+
+        emitter.Emit(new Scalar(null, "bGenerateLods"));
+        emitter.Emit(new Scalar(null, assetFile.ShouldGenerateLods.ToString().ToLower()));
+
+        emitter.Emit(new Scalar(null, "numGeneratedLods"));
+        emitter.Emit(new Scalar(null, assetFile.NumGeneratedLods.ToString(CultureInfo.InvariantCulture)));
+
+        emitter.Emit(new Scalar(null, "lodReductionFactor"));
+        emitter.Emit(new Scalar(null, assetFile.LodReductionFactor.ToString(CultureInfo.InvariantCulture)));
 
         emitter.Emit(new Scalar(null, "unitScale"));
         emitter.Emit(new Scalar(null, assetFile.UnitScale.ToString(CultureInfo.InvariantCulture)));

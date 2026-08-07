@@ -699,6 +699,35 @@ public partial class ObservableFileIdList : ObservableObject
     }
 }
 
+public partial class ObservableFloatList : ObservableObject
+{
+    public ObservableFloatList()
+    {
+        Values.CollectionChanged += ValuesCollectionChanged;
+        Values.ItemChanged += ValuesItemChanged;
+    }
+
+    public ObservableFloatList(IEnumerable<float> values) : this()
+    {
+        foreach (var value in values)
+        {
+            Values.Add(new Observable<float>(value));
+        }
+    }
+
+    public ObservableList<Observable<float>> Values { get; } = [];
+
+    void ValuesCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(Values));
+    }
+
+    void ValuesItemChanged(object sender, ItemChangedEventArgs<Observable<float>> e)
+    {
+        OnPropertyChanged(nameof(Values));
+    }
+}
+
 public class AssetFileYamlConverter : IYamlTypeConverter
 {
     public bool Accepts(Type type) => type == typeof(AssetFile);

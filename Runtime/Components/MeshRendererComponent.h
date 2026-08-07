@@ -28,6 +28,12 @@ namespace Sailor
 		SAILOR_API void SetMeshIndex(int32_t meshIndex);
 		SAILOR_API const TVector<FileId>& GetOverrideMaterials() const { return m_overrideMaterials; }
 		SAILOR_API void SetOverrideMaterials(const TVector<FileId>& overrideMaterials);
+		SAILOR_API uint32_t GetMinLod() const { return m_minLod; }
+		SAILOR_API void SetMinLod(uint32_t minLod);
+		SAILOR_API uint32_t GetMaxLod() const { return m_maxLod; }
+		SAILOR_API void SetMaxLod(uint32_t maxLod);
+		SAILOR_API const TVector<float>& GetScreenCoverageThresholds() const { return m_screenCoverageThresholds; }
+		SAILOR_API void SetScreenCoverageThresholds(const TVector<float>& screenCoverageThresholds);
 
 		SAILOR_API __forceinline TVector<MaterialPtr>& GetMaterials() { return GetData().GetMaterials(); }
 		SAILOR_API __forceinline StaticMeshRendererData& GetData();
@@ -41,6 +47,9 @@ namespace Sailor
 		size_t m_handle = (size_t)(-1);
 		int32_t m_meshIndex = Model::AllMeshes;
 		TVector<FileId> m_overrideMaterials;
+		uint32_t m_minLod = 0u;
+		uint32_t m_maxLod = 2u;
+		TVector<float> m_screenCoverageThresholds{ 25.0f, 5.0f };
 	};
 }
 
@@ -55,5 +64,11 @@ REFL_AUTO(
 	func(SetMeshIndex, property("meshIndex")),
 
 	func(GetOverrideMaterials, property("overrideMaterials")),
-	func(SetOverrideMaterials, property("overrideMaterials"))
+	func(SetOverrideMaterials, property("overrideMaterials")),
+	func(GetMinLod, property("minLod"), Range(0.0, 16.0)),
+	func(SetMinLod, property("minLod")),
+	func(GetMaxLod, property("maxLod"), Range(0.0, 16.0)),
+	func(SetMaxLod, property("maxLod")),
+	func(GetScreenCoverageThresholds, property("screenCoverageThresholds")),
+	func(SetScreenCoverageThresholds, property("screenCoverageThresholds"))
 )

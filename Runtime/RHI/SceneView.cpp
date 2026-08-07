@@ -11,8 +11,168 @@
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
 
+#include <algorithm>
+#include <array>
+#include <limits>
+
 using namespace Sailor;
 using namespace Sailor::RHI;
+
+float Sailor::RHI::CalculateScreenCoveragePercent(
+	const Math::AABB& worldBounds,
+	const glm::mat4& viewMatrix,
+	const glm::mat4& projectionMatrix)
+{
+	const auto isMatrixFinite = [](const glm::mat4& matrix)
+		{
+			return Math::AllFinite(matrix[0]) &&
+				Math::AllFinite(matrix[1]) &&
+				Math::AllFinite(matrix[2]) &&
+				Math::AllFinite(matrix[3]);
+		};
+	if (!worldBounds.IsValid() ||
+		!isMatrixFinite(viewMatrix) ||
+		!isMatrixFinite(projectionMatrix))
+	{
+		return 0.0f;
+	}
+
+	const glm::vec3 min = worldBounds.m_min;
+	const glm::vec3 max = worldBounds.m_max;
+	const std::array<glm::vec3, 8u> corners = {
+		glm::vec3(min.x, min.y, min.z),
+		glm::vec3(max.x, min.y, min.z),
+		glm::vec3(min.x, max.y, min.z),
+		glm::vec3(max.x, max.y, min.z),
+		glm::vec3(min.x, min.y, max.z),
+		glm::vec3(max.x, min.y, max.z),
+		glm::vec3(min.x, max.y, max.z),
+		glm::vec3(max.x, max.y, max.z)
+	};
+
+	const glm::mat4 viewProjection = projectionMatrix * viewMatrix;
+	std::array<glm::vec4, 8u> clipCorners{};
+	uint32_t numCornersInFront = 0u;
+	for (size_t cornerIndex = 0u;
+		cornerIndex < corners.size();
+		++cornerIndex)
+	{
+		glm::vec4& clip = clipCorners[cornerIndex];
+		clip = viewProjection * glm::vec4(corners[cornerIndex], 1.0f);
+		if (!Math::AllFinite(clip))
+		{
+			return 0.0f;
+		}
+		numCornersInFront += clip.w > 1e-5f ? 1u : 0u;
+	}
+	if (numCornersInFront == 0u)
+	{
+		return 0.0f;
+	}
+	if (numCornersInFront < corners.size())
+	{
+		return 100.0f;
+	}
+
+	glm::vec2 minNdc((std::numeric_limits<float>::max)());
+	glm::vec2 maxNdc((std::numeric_limits<float>::lowest)());
+	for (const glm::vec4& clip : clipCorners)
+	{
+		const glm::vec2 ndc = glm::vec2(clip) / clip.w;
+		minNdc = glm::min(minNdc, ndc);
+		maxNdc = glm::max(maxNdc, ndc);
+	}
+
+	minNdc = glm::max(minNdc, glm::vec2(-1.0f));
+	maxNdc = glm::min(maxNdc, glm::vec2(1.0f));
+	const glm::vec2 coveredNdc = glm::max(
+		maxNdc - minNdc,
+		glm::vec2(0.0f));
+	return (std::clamp)(
+		coveredNdc.x * coveredNdc.y * 25.0f,
+		0.0f,
+		100.0f);
+}
+
+namespace
+{
+	uint32_t ResolveProxyLod(
+		const StaticMeshRendererData& data,
+		const Math::AABB& worldBounds,
+		const CameraData& camera,
+		const RHIMeshPtr& mesh)
+	{
+		if (!mesh)
+		{
+			return 0u;
+		}
+
+		const float screenCoveragePercent = CalculateScreenCoveragePercent(
+			worldBounds,
+			camera.GetViewMatrix(),
+			camera.GetProjectionMatrix());
+		return data.ResolveLod(screenCoveragePercent, mesh->GetNumLods());
+	}
+
+	void ApplyLodToMeshes(
+		const StaticMeshRendererData& data,
+		const Math::AABB& worldBounds,
+		const CameraData& camera,
+		TVector<RHIMeshPtr>& meshes)
+	{
+		for (auto& mesh : meshes)
+		{
+			const uint32_t lod = ResolveProxyLod(
+				data,
+				worldBounds,
+				camera,
+				mesh);
+			if (lod > 0u)
+			{
+				if (RHIMeshPtr lodMesh = mesh->GetLod(lod))
+				{
+					mesh = std::move(lodMesh);
+				}
+			}
+		}
+	}
+
+	RHIShadowCasterProxyPtr CreateLodShadowCaster(
+		const RHIShadowCasterProxyPtr& source,
+		WorldPtr world,
+		const CameraData& camera)
+	{
+		if (!source || !world)
+		{
+			return source;
+		}
+
+		auto* meshEcs = world->GetECS<StaticMeshRendererECS>();
+		if (!meshEcs || !meshEcs->IsComponentRegistered(source->m_staticMeshEcs))
+		{
+			return source;
+		}
+
+		const auto& data = meshEcs->GetComponentData(source->m_staticMeshEcs);
+		RHIShadowCasterProxyPtr result = RHIShadowCasterProxyPtr::Make(*source);
+		for (auto& shadowMesh : result->m_meshes)
+		{
+			const uint32_t lod = ResolveProxyLod(
+				data,
+				source->m_worldAabb,
+				camera,
+				shadowMesh.m_mesh);
+			if (lod > 0u)
+			{
+				if (RHIMeshPtr lodMesh = shadowMesh.m_mesh->GetLod(lod))
+				{
+					shadowMesh.m_mesh = std::move(lodMesh);
+				}
+			}
+		}
+		return result;
+	}
+}
 
 void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 {
@@ -241,6 +401,37 @@ void RHISceneView::PrepareSnapshots()
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
 		res.m_proxies = TraceScene(frustum, false);
+		auto* meshEcs = m_world ? m_world->GetECS<StaticMeshRendererECS>() : nullptr;
+		if (meshEcs)
+		{
+			for (auto& proxy : res.m_proxies)
+			{
+				if (!meshEcs->IsComponentRegistered(proxy.m_staticMeshEcs))
+				{
+					continue;
+				}
+				const auto& data = meshEcs->GetComponentData(proxy.m_staticMeshEcs);
+				ApplyLodToMeshes(
+					data,
+					proxy.m_worldAabb,
+					camera,
+					proxy.m_meshes);
+				proxy.m_shadowCaster = CreateLodShadowCaster(
+					proxy.m_shadowCaster,
+					m_world,
+					camera);
+			}
+		}
+		for (auto& shadowMap : res.m_shadowMapsToUpdate)
+		{
+			for (auto& shadowCaster : shadowMap.m_meshList)
+			{
+				shadowCaster = CreateLodShadowCaster(
+					shadowCaster,
+					m_world,
+					camera);
+			}
+		}
 
 		if (i < m_debugDraw.Num())
 		{

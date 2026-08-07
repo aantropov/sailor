@@ -1173,6 +1173,12 @@ namespace SailorEditor.Services
                     fileId => (FileId)fileId.Value.Clone()));
             }
 
+            if (property is ObservableFloatList floatValues)
+            {
+                return new ObservableFloatList(
+                    floatValues.Values.Select(value => value.Value));
+            }
+
             if (property is ObjectPtr objectPtr)
             {
                 return new ObjectPtr

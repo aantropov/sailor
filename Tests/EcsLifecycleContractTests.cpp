@@ -23,6 +23,7 @@
 #include "ECS/TransformECS.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
+#include "RHI/SceneView.h"
 #include "Submodules/Editor.h"
 
 using namespace Sailor;
@@ -806,6 +807,77 @@ namespace
 		Require(data.GetMaterials().IsEmpty(), "clearing a model should clear its stale material overrides");
 	}
 
+	void TestStaticMeshLodSelectionUsesScreenCoverage()
+	{
+		StaticMeshRendererData data;
+		Require(data.ResolveLod(0.0f, 1u) == 0u &&
+			data.ResolveLod(100.0f, 1u) == 0u,
+			"mesh renderer must keep LOD0 when no generated LOD is available");
+		data.SetLodSettings(0u, 2u, TVector<float>{ 5.0f, 25.0f });
+		Require(data.ResolveLod(100.0f, 3u) == 0u &&
+			data.ResolveLod(25.0f, 3u) == 0u &&
+			data.ResolveLod(24.9f, 3u) == 1u &&
+			data.ResolveLod(4.9f, 3u) == 2u,
+			"mesh renderer LOD selection must follow descending screen-coverage thresholds");
+
+		data.SetLodSettings(1u, 5u, TVector<float>{ 25.0f, 5.0f });
+		Require(data.ResolveLod(100.0f, 3u) == 1u,
+			"mesh renderer minimum LOD must clamp high-coverage selection");
+		Require(data.ResolveLod(0.0f, 2u) == 1u,
+			"mesh renderer maximum LOD must clamp to available model geometry");
+
+		const glm::mat4 projection = glm::perspective(
+			glm::radians(60.0f),
+			1.0f,
+			0.1f,
+			1000.0f);
+		const glm::mat4 view(1.0f);
+		const float nearCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float farCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -20.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float offscreenCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(100.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float behindCameraCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		const float cameraIntersectionCoverage = RHI::CalculateScreenCoveragePercent(
+			Math::AABB(glm::vec3(0.0f), glm::vec3(1.0f)),
+			view,
+			projection);
+		Require(nearCoverage > farCoverage && farCoverage > 0.0f,
+			"projected AABB coverage must decrease as the same object recedes from the camera");
+		Require(offscreenCoverage == 0.0f,
+			"projected AABB coverage must exclude bounds outside the viewport");
+		Require(behindCameraCoverage == 0.0f,
+			"projected AABB coverage must exclude bounds behind the camera");
+		Require(cameraIntersectionCoverage == 100.0f,
+			"projected AABB coverage must conservatively select the highest LOD when bounds cross the camera plane");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const size_t visibleSelection = sceneViewSource.find(
+			"ApplyLodToMeshes(");
+		const size_t visibleShadowSelection = sceneViewSource.find(
+			"proxy.m_shadowCaster = CreateLodShadowCaster(",
+			visibleSelection);
+		const size_t shadowPassSelection = sceneViewSource.find(
+			"shadowCaster = CreateLodShadowCaster(",
+			visibleShadowSelection);
+		Require(visibleSelection != std::string::npos &&
+			visibleShadowSelection > visibleSelection &&
+			shadowPassSelection > visibleShadowSelection,
+			"snapshot preparation must apply the camera-selected LOD to main, depth, and shadow proxies");
+	}
+
 	void TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1379,6 +1451,11 @@ namespace
 		Require(properties.ContainsKey("overrideMaterials") &&
 			properties["overrideMaterials"] == "List<FileId>",
 			"mesh renderer material overrides must be exported as an editable FileId list");
+		Require(properties.ContainsKey("minLod") &&
+			properties.ContainsKey("maxLod") &&
+			properties.ContainsKey("screenCoverageThresholds") &&
+			properties["screenCoverageThresholds"] == "List<float>",
+			"mesh renderer LOD limits and screen-coverage thresholds must be editable reflected properties");
 
 		PrefabTestWorld world;
 		auto root = world.Instantiate("MaterialOverrides");
@@ -1419,6 +1496,10 @@ namespace
 		TVector<FileId> overrides{ firstMaterial, FileId::Invalid, secondMaterial };
 
 		meshRenderer->SetOverrideMaterials(overrides);
+		meshRenderer->SetMinLod(1u);
+		meshRenderer->SetMaxLod(2u);
+		meshRenderer->SetScreenCoverageThresholds(
+			TVector<float>{ 5.0f, 25.0f });
 		Require(meshRenderer->GetOverrideMaterials() == overrides,
 			"assigning material overrides must preserve their slot order and inherited gaps");
 		Require(meshRenderer->GetData().IsDirty(),
@@ -1449,6 +1530,12 @@ namespace
 		Require(restoredRenderer && areOverridesEquivalent(
 			restoredRenderer->GetOverrideMaterials(), overrides),
 			"prefab instantiation must restore component-owned material overrides");
+		const TVector<float> expectedCoverageThresholds{ 25.0f, 5.0f };
+		Require(restoredRenderer->GetMinLod() == 1u &&
+			restoredRenderer->GetMaxLod() == 2u &&
+			restoredRenderer->GetScreenCoverageThresholds() ==
+				expectedCoverageThresholds,
+			"prefab instantiation must restore sorted mesh renderer LOD settings");
 
 		restoredRenderer->SetModel(ModelPtr());
 		Require(areOverridesEquivalent(
@@ -3626,6 +3713,7 @@ int main()
 		{ "EditorKeepWorldReparentRejectsShearedCandidateWithoutMutation", TestEditorKeepWorldReparentRejectsShearedCandidateWithoutMutation },
 		{ "OctreeRelocationPreservesElementCount", TestOctreeRelocationPreservesElementCount },
 		{ "ClearingMeshModelAlsoClearsMaterials", TestClearingMeshModelAlsoClearsMaterials },
+		{ "StaticMeshLodSelectionUsesScreenCoverage", TestStaticMeshLodSelectionUsesScreenCoverage },
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },

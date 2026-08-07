@@ -10,6 +10,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
 #include <nlohmann/json.hpp>
 
@@ -60,6 +61,533 @@ namespace
 		4ull * 1024ull * 1024ull;
 	constexpr int32_t MaxFingerprintTextureDimension = 256;
 	constexpr int32_t FingerprintImageDimension = 256;
+	constexpr uint32_t ModelLodCacheVersion = 2u;
+	constexpr uint32_t MaxGeneratedModelLods = 8u;
+	constexpr uint64_t MaxModelLodCacheBytes = 1024ull * 1024ull * 1024ull;
+	constexpr std::array<char, 8> ModelLodCacheMagic = {
+		'S', 'A', 'I', 'L', 'L', 'O', 'D', '\0'
+	};
+
+	struct ModelLodCacheHeader
+	{
+		std::array<char, 8> m_magic{};
+		uint32_t m_version = ModelLodCacheVersion;
+		uint32_t m_vertexStride = 0u;
+		uint32_t m_meshCount = 0u;
+		uint32_t m_lodLevel = 0u;
+		int64_t m_sourceModificationTime = 0;
+		uint64_t m_sourceSize = 0u;
+		uint64_t m_sourceContentHash = 0u;
+		float m_unitScale = 1.0f;
+		float m_reductionFactor = 0.5f;
+		uint32_t m_bBatchByMaterial = 0u;
+	};
+
+	struct ModelLodCacheMeshHeader
+	{
+		uint64_t m_vertexCount = 0u;
+		uint64_t m_indexCount = 0u;
+	};
+
+	std::filesystem::path GetModelLodCachePath(
+		const FileId& fileId,
+		uint32_t lodLevel)
+	{
+		const std::filesystem::path filename =
+			ModelImporter::GetLodCacheFilename(fileId, lodLevel);
+		if (filename.empty())
+		{
+			return {};
+		}
+
+		return std::filesystem::path(AssetRegistry::GetCacheFolder()) /
+			"Lods" /
+			filename;
+	}
+
+	template<typename T>
+	void AppendModelLodCacheBytes(std::string& output, const T& value)
+	{
+		static_assert(std::is_trivially_copyable_v<T>);
+		output.append(
+			reinterpret_cast<const char*>(&value),
+			sizeof(T));
+	}
+
+	void AppendModelLodCacheRange(
+		std::string& output,
+		const void* data,
+		size_t size)
+	{
+		if (data != nullptr && size > 0u)
+		{
+			output.append(static_cast<const char*>(data), size);
+		}
+	}
+
+	template<typename T>
+	bool ReadModelLodCacheValue(
+		const std::string& input,
+		size_t& offset,
+		T& value)
+	{
+		static_assert(std::is_trivially_copyable_v<T>);
+		if (offset > input.size() || sizeof(T) > input.size() - offset)
+		{
+			return false;
+		}
+
+		std::memcpy(&value, input.data() + offset, sizeof(T));
+		offset += sizeof(T);
+		return true;
+	}
+
+	bool ReadModelLodCacheRange(
+		const std::string& input,
+		size_t& offset,
+		void* data,
+		size_t size)
+	{
+		if (offset > input.size() || size > input.size() - offset ||
+			(data == nullptr && size > 0u))
+		{
+			return false;
+		}
+
+		if (size > 0u)
+		{
+			std::memcpy(data, input.data() + offset, size);
+		}
+		offset += size;
+		return true;
+	}
+
+	bool IsModelLodCacheHeaderCurrent(
+		const ModelLodCacheHeader& header,
+		const ModelAssetInfo& assetInfo,
+		const FileRevision& sourceRevision,
+		uint32_t lodLevel,
+		size_t meshCount)
+	{
+		return header.m_magic == ModelLodCacheMagic &&
+			header.m_version == ModelLodCacheVersion &&
+			header.m_vertexStride == sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) &&
+			header.m_meshCount == meshCount &&
+			header.m_lodLevel == lodLevel &&
+			header.m_sourceModificationTime == sourceRevision.m_modificationTimeNanoseconds &&
+			header.m_sourceSize == sourceRevision.m_fileSize &&
+			header.m_sourceContentHash == sourceRevision.m_contentHash &&
+			header.m_unitScale == assetInfo.GetUnitScale() &&
+			header.m_reductionFactor == assetInfo.GetLodReductionFactor() &&
+			header.m_bBatchByMaterial == static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
+	}
+
+	bool LoadModelLodCache(
+		const ModelAssetInfo& assetInfo,
+		const FileRevision& sourceRevision,
+		uint32_t lodLevel,
+		TVector<ModelImporter::MeshContext>& meshes)
+	{
+		const std::filesystem::path path = GetModelLodCachePath(
+			assetInfo.GetFileId(),
+			lodLevel);
+		std::error_code error;
+		const uint64_t fileSize = path.empty() ? 0u :
+			std::filesystem::file_size(path, error);
+		if (error || fileSize < sizeof(ModelLodCacheHeader) ||
+			fileSize > MaxModelLodCacheBytes)
+		{
+			return false;
+		}
+
+		std::ifstream input(path, std::ios::binary);
+		std::string bytes{
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>() };
+		if (input.bad() || bytes.size() != fileSize)
+		{
+			return false;
+		}
+
+		size_t offset = 0u;
+		ModelLodCacheHeader header{};
+		if (!ReadModelLodCacheValue(bytes, offset, header) ||
+			!IsModelLodCacheHeaderCurrent(
+				header,
+				assetInfo,
+				sourceRevision,
+				lodLevel,
+				meshes.Num()))
+		{
+			return false;
+		}
+
+		TVector<ModelImporter::MeshContext::LodGeometry> loaded;
+		loaded.Resize(meshes.Num());
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			ModelLodCacheMeshHeader meshHeader{};
+			if (!ReadModelLodCacheValue(bytes, offset, meshHeader) ||
+				meshHeader.m_vertexCount > std::numeric_limits<uint32_t>::max() ||
+				meshHeader.m_indexCount > std::numeric_limits<uint32_t>::max())
+			{
+				return false;
+			}
+
+			const uint64_t vertexBytes = meshHeader.m_vertexCount *
+				sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+			const uint64_t indexBytes = meshHeader.m_indexCount * sizeof(uint32_t);
+			if (vertexBytes > MaxModelLodCacheBytes ||
+				indexBytes > MaxModelLodCacheBytes ||
+				vertexBytes + indexBytes > MaxModelLodCacheBytes)
+			{
+				return false;
+			}
+
+			auto& lod = loaded[meshIndex];
+			lod.m_vertices.Resize(static_cast<size_t>(meshHeader.m_vertexCount));
+			lod.m_indices.Resize(static_cast<size_t>(meshHeader.m_indexCount));
+			if (!ReadModelLodCacheRange(
+					bytes,
+					offset,
+					lod.m_vertices.GetData(),
+					static_cast<size_t>(vertexBytes)) ||
+				!ReadModelLodCacheRange(
+					bytes,
+					offset,
+					lod.m_indices.GetData(),
+					static_cast<size_t>(indexBytes)))
+			{
+				return false;
+			}
+
+			for (uint32_t index : lod.m_indices)
+			{
+				if (index >= lod.m_vertices.Num())
+				{
+					return false;
+				}
+			}
+		}
+
+		if (offset != bytes.size())
+		{
+			return false;
+		}
+
+		const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
+		for (size_t meshIndex = 0; meshIndex < meshes.Num(); ++meshIndex)
+		{
+			meshes[meshIndex].lods.Resize((std::max)(
+				meshes[meshIndex].lods.Num(),
+				lodIndex + 1u));
+			meshes[meshIndex].lods[lodIndex] = std::move(loaded[meshIndex]);
+		}
+		return true;
+	}
+
+	void SaveModelLodCache(
+		const ModelAssetInfo& assetInfo,
+		const FileRevision& sourceRevision,
+		uint32_t lodLevel,
+		const TVector<ModelImporter::MeshContext>& meshes)
+	{
+		ModelLodCacheHeader header{};
+		header.m_magic = ModelLodCacheMagic;
+		header.m_vertexStride = sizeof(RHI::VertexP3N3T3B3UV2C4I4W4);
+		header.m_meshCount = static_cast<uint32_t>(meshes.Num());
+		header.m_lodLevel = lodLevel;
+		header.m_sourceModificationTime = sourceRevision.m_modificationTimeNanoseconds;
+		header.m_sourceSize = sourceRevision.m_fileSize;
+		header.m_sourceContentHash = sourceRevision.m_contentHash;
+		header.m_unitScale = assetInfo.GetUnitScale();
+		header.m_reductionFactor = assetInfo.GetLodReductionFactor();
+		header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
+
+		std::string bytes;
+		AppendModelLodCacheBytes(bytes, header);
+		const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
+		for (const auto& mesh : meshes)
+		{
+			const auto* lod = lodIndex < mesh.lods.Num() ?
+				&mesh.lods[lodIndex] : nullptr;
+			ModelLodCacheMeshHeader meshHeader{};
+			meshHeader.m_vertexCount = lod ? lod->m_vertices.Num() : 0u;
+			meshHeader.m_indexCount = lod ? lod->m_indices.Num() : 0u;
+			AppendModelLodCacheBytes(bytes, meshHeader);
+			if (lod)
+			{
+				AppendModelLodCacheRange(
+					bytes,
+					lod->m_vertices.GetData(),
+					lod->m_vertices.Num() * sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
+				AppendModelLodCacheRange(
+					bytes,
+					lod->m_indices.GetData(),
+					lod->m_indices.Num() * sizeof(uint32_t));
+			}
+		}
+
+		if (bytes.size() > MaxModelLodCacheBytes)
+		{
+			return;
+		}
+
+		std::string diagnostic;
+		const std::filesystem::path path = GetModelLodCachePath(
+			assetInfo.GetFileId(),
+			lodLevel);
+		if (!path.empty() &&
+			!Workspace::AtomicReplaceWorkspaceCacheBinary(
+				path,
+				bytes.data(),
+				bytes.size(),
+				diagnostic))
+		{
+			SAILOR_LOG(
+				"Cannot save model LOD cache %s: %s",
+				path.string().c_str(),
+				diagnostic.c_str());
+		}
+	}
+
+	bool TryNormalizeLodDirection(
+		const glm::vec3& value,
+		glm::vec3& outDirection)
+	{
+		outDirection = glm::vec3(0.0f);
+		if (!Math::AllFinite(value))
+		{
+			return false;
+		}
+
+		const float lengthSquared = glm::dot(value, value);
+		if (!std::isfinite(lengthSquared) || lengthSquared <= 1e-12f)
+		{
+			return false;
+		}
+
+		outDirection = value / std::sqrt(lengthSquared);
+		return Math::AllFinite(outDirection);
+	}
+
+	void RecalculateLodShadingBasis(
+		ModelImporter::MeshContext::LodGeometry& geometry)
+	{
+		const size_t vertexCount = geometry.m_vertices.Num();
+		if (vertexCount == 0u || geometry.m_indices.Num() < 3u)
+		{
+			return;
+		}
+
+		TVector<glm::vec3> normals(vertexCount, glm::vec3(0.0f));
+		TVector<glm::vec3> tangents(vertexCount, glm::vec3(0.0f));
+		TVector<glm::vec3> bitangents(vertexCount, glm::vec3(0.0f));
+		for (size_t index = 0u;
+			index + 2u < geometry.m_indices.Num();
+			index += 3u)
+		{
+			const uint32_t i0 = geometry.m_indices[index];
+			const uint32_t i1 = geometry.m_indices[index + 1u];
+			const uint32_t i2 = geometry.m_indices[index + 2u];
+			if (i0 >= vertexCount || i1 >= vertexCount || i2 >= vertexCount)
+			{
+				continue;
+			}
+
+			const auto& v0 = geometry.m_vertices[i0];
+			const auto& v1 = geometry.m_vertices[i1];
+			const auto& v2 = geometry.m_vertices[i2];
+			const glm::vec3 edge1 = v1.m_position - v0.m_position;
+			const glm::vec3 edge2 = v2.m_position - v0.m_position;
+			const glm::vec3 faceNormal = glm::cross(edge1, edge2);
+			if (Math::AllFinite(faceNormal))
+			{
+				normals[i0] += faceNormal;
+				normals[i1] += faceNormal;
+				normals[i2] += faceNormal;
+			}
+
+			const glm::vec2 uv1 = v1.m_texcoord - v0.m_texcoord;
+			const glm::vec2 uv2 = v2.m_texcoord - v0.m_texcoord;
+			const float determinant = uv1.x * uv2.y - uv1.y * uv2.x;
+			if (!std::isfinite(determinant) || std::abs(determinant) <= 1e-8f)
+			{
+				continue;
+			}
+
+			const float reciprocal = 1.0f / determinant;
+			const glm::vec3 tangent =
+				(edge1 * uv2.y - edge2 * uv1.y) * reciprocal;
+			const glm::vec3 bitangent =
+				(edge2 * uv1.x - edge1 * uv2.x) * reciprocal;
+			if (Math::AllFinite(tangent) && Math::AllFinite(bitangent))
+			{
+				tangents[i0] += tangent;
+				tangents[i1] += tangent;
+				tangents[i2] += tangent;
+				bitangents[i0] += bitangent;
+				bitangents[i1] += bitangent;
+				bitangents[i2] += bitangent;
+			}
+		}
+
+		for (size_t vertexIndex = 0u;
+			vertexIndex < vertexCount;
+			++vertexIndex)
+		{
+			auto& vertex = geometry.m_vertices[vertexIndex];
+			glm::vec3 normal;
+			if (!TryNormalizeLodDirection(normals[vertexIndex], normal) &&
+				!TryNormalizeLodDirection(vertex.m_normal, normal))
+			{
+				normal = glm::vec3(0.0f, 1.0f, 0.0f);
+			}
+
+			glm::vec3 tangentInput = tangents[vertexIndex];
+			glm::vec3 tangent;
+			if (!TryNormalizeLodDirection(
+					tangentInput - normal * glm::dot(tangentInput, normal),
+					tangent))
+			{
+				tangentInput = vertex.m_tangent;
+			}
+			if (!TryNormalizeLodDirection(
+					tangentInput - normal * glm::dot(tangentInput, normal),
+					tangent))
+			{
+				const glm::vec3 axis = std::abs(normal.y) < 0.999f ?
+					glm::vec3(0.0f, 1.0f, 0.0f) :
+					glm::vec3(1.0f, 0.0f, 0.0f);
+				TryNormalizeLodDirection(glm::cross(axis, normal), tangent);
+			}
+
+			glm::vec3 bitangent;
+			TryNormalizeLodDirection(glm::cross(normal, tangent), bitangent);
+			const glm::vec3 bitangentReference =
+				glm::dot(bitangents[vertexIndex], bitangents[vertexIndex]) > 1e-12f ?
+					bitangents[vertexIndex] : vertex.m_bitangent;
+			const float handedness =
+				Math::AllFinite(bitangentReference) &&
+				glm::dot(bitangent, bitangentReference) < 0.0f ? -1.0f : 1.0f;
+
+			vertex.m_normal = normal;
+			vertex.m_tangent = tangent;
+			vertex.m_bitangent = bitangent * handedness;
+		}
+	}
+
+	ModelImporter::MeshContext::LodGeometry GenerateModelLod(
+		const ModelImporter::MeshContext& mesh,
+		float targetRatio)
+	{
+		ModelImporter::MeshContext::LodGeometry result{};
+		if (!mesh.HasGeometry())
+		{
+			return result;
+		}
+
+		const size_t triangleIndexCount = mesh.outIndices.Num() -
+			(mesh.outIndices.Num() % 3u);
+		const size_t targetIndexCount = (std::max)(
+			size_t{ 3u },
+			(static_cast<size_t>(triangleIndexCount * targetRatio) / 3u) * 3u);
+
+#if defined(SAILOR_HAS_MESHOPT)
+		result.m_indices.Resize(triangleIndexCount);
+		float simplificationError = 0.0f;
+		const size_t simplifiedIndexCount = meshopt_simplify(
+			result.m_indices.GetData(),
+			mesh.outIndices.GetData(),
+			triangleIndexCount,
+			&mesh.outVertices[0].m_position.x,
+			mesh.outVertices.Num(),
+			sizeof(RHI::VertexP3N3T3B3UV2C4I4W4),
+			(std::min)(targetIndexCount, triangleIndexCount),
+			0.01f,
+			meshopt_SimplifyLockBorder,
+			&simplificationError);
+		result.m_indices.Resize(simplifiedIndexCount);
+		if (simplifiedIndexCount >= 3u)
+		{
+			meshopt_optimizeVertexCache(
+				result.m_indices.GetData(),
+				result.m_indices.GetData(),
+				result.m_indices.Num(),
+				mesh.outVertices.Num());
+			result.m_vertices.Resize(mesh.outVertices.Num());
+			const size_t compactedVertexCount = meshopt_optimizeVertexFetch(
+				result.m_vertices.GetData(),
+				result.m_indices.GetData(),
+				result.m_indices.Num(),
+				mesh.outVertices.GetData(),
+				mesh.outVertices.Num(),
+				sizeof(RHI::VertexP3N3T3B3UV2C4I4W4));
+			result.m_vertices.Resize(compactedVertexCount);
+			RecalculateLodShadingBasis(result);
+		}
+#endif
+
+		if (result.m_vertices.IsEmpty() || result.m_indices.Num() < 3u)
+		{
+			result.m_vertices = mesh.outVertices;
+			result.m_indices = mesh.outIndices;
+		}
+		return result;
+	}
+
+	void PrepareModelLods(
+		const ModelAssetInfo& assetInfo,
+		TVector<ModelImporter::MeshContext>& meshes)
+	{
+		if (!assetInfo.ShouldGenerateLods() || meshes.IsEmpty())
+		{
+			return;
+		}
+
+		const uint32_t numLods = (std::min)(
+			assetInfo.GetNumGeneratedLods(),
+			MaxGeneratedModelLods);
+		const float reductionFactor = (std::clamp)(
+			assetInfo.GetLodReductionFactor(),
+			0.05f,
+			0.95f);
+		FileRevision sourceRevision{};
+		if (numLods == 0u ||
+			!Utils::TryGetFileRevision(
+				assetInfo.GetAssetFilepath(),
+				sourceRevision))
+		{
+			return;
+		}
+
+		for (uint32_t lodLevel = 1u; lodLevel <= numLods; ++lodLevel)
+		{
+			if (LoadModelLodCache(
+					assetInfo,
+					sourceRevision,
+					lodLevel,
+					meshes))
+			{
+				continue;
+			}
+
+			const size_t lodIndex = static_cast<size_t>(lodLevel - 1u);
+			const float targetRatio = std::pow(
+				reductionFactor,
+				static_cast<float>(lodLevel));
+			for (auto& mesh : meshes)
+			{
+				mesh.lods.Resize((std::max)(mesh.lods.Num(), lodIndex + 1u));
+				mesh.lods[lodIndex] = GenerateModelLod(mesh, targetRatio);
+			}
+			SaveModelLodCache(
+				assetInfo,
+				sourceRevision,
+				lodLevel,
+				meshes);
+		}
+	}
 
 	bool IsFiniteGltfMatrix(const glm::mat4& matrix)
 	{
@@ -3103,6 +3631,48 @@ ModelImporter::~ModelImporter()
 	}
 }
 
+std::string ModelImporter::GetLodCacheFilename(
+	const FileId& fileId,
+	uint32_t lodLevel)
+{
+	if (!fileId || lodLevel == 0u)
+	{
+		return {};
+	}
+
+	const std::filesystem::path filename = fileId.ToString() +
+		"_lod" + std::to_string(lodLevel) + ".bin";
+	return filename == filename.filename() ? filename.string() : std::string{};
+}
+
+void ModelImporter::GenerateLods(
+	TVector<MeshContext>& meshes,
+	uint32_t numLods,
+	float reductionFactor)
+{
+	const uint32_t clampedNumLods = (std::min)(
+		numLods,
+		MaxGeneratedModelLods);
+	const float clampedReductionFactor = (std::clamp)(
+		reductionFactor,
+		0.05f,
+		0.95f);
+	for (auto& mesh : meshes)
+	{
+		mesh.lods.Clear();
+		mesh.lods.Reserve(clampedNumLods);
+		for (uint32_t lodLevel = 1u;
+			lodLevel <= clampedNumLods;
+			++lodLevel)
+		{
+			const float targetRatio = std::pow(
+				clampedReductionFactor,
+				static_cast<float>(lodLevel));
+			mesh.lods.Add(GenerateModelLod(mesh, targetRatio));
+		}
+	}
+}
+
 void ModelImporter::OnUpdateAssetInfo(AssetInfoPtr assetInfo, bool bWasExpired)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -5098,6 +5668,10 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					&pData->m_gltfModel);
 				if (pData->m_bIsImported)
 				{
+					PrepareModelLods(*pAssetInfo, pData->m_parsedMeshes);
+				}
+				if (pData->m_bIsImported)
+				{
 					pData->m_bIsImported =
 						GltfImporterUtils::CollectSceneNodes(
 							pData->m_gltfModel,
@@ -5182,9 +5756,46 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 									mesh.materialSlot :
 									static_cast<uint32_t>(meshIndex);
 							pMesh->m_bakedVolumeScale = mesh.bakedVolumeScale;
+							TVector<RHI::VertexP3N3T3B3UV2C4I4W4> uploadVertices = mesh.outVertices;
+							TVector<uint32_t> uploadIndices = mesh.outIndices;
+							TVector<uint32_t> lodVertexOffsets;
+							TVector<uint32_t> lodFirstIndices;
+							lodVertexOffsets.Reserve(mesh.lods.Num());
+							lodFirstIndices.Reserve(mesh.lods.Num());
+							for (const auto& lod : mesh.lods)
+							{
+								lodVertexOffsets.Add(static_cast<uint32_t>(uploadVertices.Num()));
+								lodFirstIndices.Add(static_cast<uint32_t>(uploadIndices.Num()));
+								uploadVertices.AddRange(lod.m_vertices);
+								uploadIndices.AddRange(lod.m_indices);
+							}
+							pMesh->m_indexCount = static_cast<uint32_t>(mesh.outIndices.Num());
+							pMesh->m_firstIndex = 0u;
+							pMesh->m_vertexOffset = 0u;
 							RHI::Renderer::GetDriver()->UpdateMesh(pMesh,
-								mesh.outVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * mesh.outVertices.Num(),
-								mesh.outIndices.GetData(), sizeof(uint32_t) * mesh.outIndices.Num());
+								uploadVertices.GetData(), sizeof(RHI::VertexP3N3T3B3UV2C4I4W4) * uploadVertices.Num(),
+								uploadIndices.GetData(), sizeof(uint32_t) * uploadIndices.Num());
+							pMesh->m_lods.Reserve(mesh.lods.Num());
+							for (size_t lodIndex = 0; lodIndex < mesh.lods.Num(); ++lodIndex)
+							{
+								const auto& lodGeometry = mesh.lods[lodIndex];
+								if (lodGeometry.m_vertices.IsEmpty() || lodGeometry.m_indices.IsEmpty())
+								{
+									continue;
+								}
+
+								RHI::RHIMeshPtr lodMesh = RHI::Renderer::GetDriver()->CreateMesh();
+								lodMesh->m_vertexDescription = pMesh->m_vertexDescription;
+								lodMesh->m_vertexBuffer = pMesh->m_vertexBuffer;
+								lodMesh->m_indexBuffer = pMesh->m_indexBuffer;
+								lodMesh->m_bounds = pMesh->m_bounds;
+								lodMesh->m_materialIndex = pMesh->m_materialIndex;
+								lodMesh->m_bakedVolumeScale = pMesh->m_bakedVolumeScale;
+								lodMesh->m_indexCount = static_cast<uint32_t>(lodGeometry.m_indices.Num());
+								lodMesh->m_firstIndex = lodFirstIndices[lodIndex];
+								lodMesh->m_vertexOffset = lodVertexOffsets[lodIndex];
+								pMesh->m_lods.Add(std::move(lodMesh));
+							}
 
 							const uint32_t renderMeshIndex =
 								static_cast<uint32_t>(pModel->m_meshes.Num());

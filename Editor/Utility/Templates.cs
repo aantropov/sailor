@@ -430,6 +430,66 @@ static class Templates
         };
     }
 
+    public static View FloatListEditor(ObservableFloatList values)
+    {
+        var listEditor = new VerticalStackLayout
+        {
+            HorizontalOptions = LayoutOptions.Fill,
+            Spacing = InspectorFieldSpacing
+        };
+        BindableLayout.SetItemsSource(listEditor, values.Values);
+        BindableLayout.SetItemTemplate(
+            listEditor,
+            new DataTemplate(() =>
+            {
+                var row = new Grid
+                {
+                    ColumnDefinitions =
+                    {
+                        new ColumnDefinition { Width = GridLength.Auto },
+                        new ColumnDefinition { Width = GridLength.Star }
+                    },
+                    ColumnSpacing = InspectorFieldSpacing,
+                    HorizontalOptions = LayoutOptions.Fill
+                };
+
+                row.BindingContextChanged += (sender, args) =>
+                {
+                    row.Children.Clear();
+                    if (row.BindingContext is not Observable<float> value)
+                        return;
+
+                    var removeButton = new Button { Text = "-" };
+                    removeButton.Clicked += (buttonSender, clickArgs) =>
+                        values.Values.Remove(value);
+                    var editor = FloatEditor<Observable<float>>(
+                        static vm => vm.Value,
+                        static (vm, newValue) => vm.Value = newValue);
+                    editor.BindingContext = value;
+                    row.Add(removeButton, 0, 0);
+                    row.Add(editor, 1, 0);
+                };
+
+                return row;
+            }));
+
+        var addButton = new Button { Text = "+" };
+        addButton.Clicked += (sender, args) =>
+            values.Values.Add(new Observable<float>(0.0f));
+        var clearButton = new Button { Text = "Clear" };
+        clearButton.Clicked += (sender, args) => values.Values.Clear();
+
+        return new VerticalStackLayout
+        {
+            HorizontalOptions = LayoutOptions.Fill,
+            Children =
+            {
+                new HorizontalStackLayout { Children = { addButton, clearButton } },
+                listEditor
+            }
+        };
+    }
+
     public static View InstanceIdEditor<TBindingContext>(object bindingContext, string bindingPath, Expression<Func<TBindingContext, InstanceId>> getter, Action<TBindingContext, InstanceId> setter, string expectedTypename = "")
         where TBindingContext : class
     {

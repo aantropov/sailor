@@ -5,6 +5,7 @@
 #include "Raytracing/MaterialUtils.h"
 #include "Raytracing/PathTracer.h"
 #include "Components/MeshRendererComponent.h"
+#include "RHI/Buffer.h"
 
 #include <cmath>
 #include <filesystem>
@@ -286,6 +287,149 @@ namespace
 		emptyMesh.outIndices = { 0, 0, 0 };
 		Require(emptyMesh.HasGeometry(),
 			"a mesh context with vertices and indices must remain uploadable");
+	}
+
+	void TestModelLodMetadataDefaultsAndRoundTrip()
+	{
+		ModelAssetInfo defaults;
+		Require(defaults.ShouldGenerateLods(),
+			"model assets must generate LODs by default");
+		Require(defaults.GetNumGeneratedLods() == 2u,
+			"model assets must generate medium and low LODs by default");
+		Require(NearlyEqual(defaults.GetLodReductionFactor(), 0.5f),
+			"default model LOD reduction factor");
+
+		YAML::Node metadata = defaults.Serialize();
+		Require(metadata["bGenerateLods"].as<bool>(),
+			"model metadata must serialize the LOD generation switch");
+		Require(metadata["numGeneratedLods"].as<uint32_t>() == 2u,
+			"model metadata must serialize the generated LOD count");
+		Require(NearlyEqual(metadata["lodReductionFactor"].as<float>(), 0.5f),
+			"serialized model LOD reduction factor");
+
+		metadata["bGenerateLods"] = false;
+		metadata["numGeneratedLods"] = 4u;
+		metadata["lodReductionFactor"] = 0.4f;
+		ModelAssetInfo restored;
+		restored.Deserialize(metadata);
+		Require(!restored.ShouldGenerateLods() &&
+			restored.GetNumGeneratedLods() == 4u,
+			"model LOD metadata must round-trip generation settings");
+		Require(NearlyEqual(restored.GetLodReductionFactor(), 0.4f),
+			"round-tripped model LOD reduction factor");
+
+	}
+
+	void TestModelLodGenerationAndCacheNaming()
+	{
+		ModelImporter::MeshContext mesh;
+		constexpr uint32_t GridSize = 8u;
+		for (uint32_t y = 0u; y <= GridSize; ++y)
+		{
+			for (uint32_t x = 0u; x <= GridSize; ++x)
+			{
+				auto vertex = MakeVertex(glm::vec3(
+					static_cast<float>(x),
+					static_cast<float>(y),
+					0.0f));
+				vertex.m_normal = glm::vec3(1.0f, 0.0f, 0.0f);
+				mesh.outVertices.Add(std::move(vertex));
+			}
+		}
+		for (uint32_t y = 0u; y < GridSize; ++y)
+		{
+			for (uint32_t x = 0u; x < GridSize; ++x)
+			{
+				const uint32_t topLeft = y * (GridSize + 1u) + x;
+				const uint32_t topRight = topLeft + 1u;
+				const uint32_t bottomLeft = topLeft + GridSize + 1u;
+				const uint32_t bottomRight = bottomLeft + 1u;
+				mesh.outIndices.AddRange({
+					topLeft, bottomLeft, topRight,
+					topRight, bottomLeft, bottomRight
+				});
+			}
+		}
+
+		const size_t sourceIndexCount = mesh.outIndices.Num();
+		TVector<ModelImporter::MeshContext> meshes{ std::move(mesh) };
+		ModelImporter::GenerateLods(meshes, 2u, 0.5f);
+		Require(meshes[0].lods.Num() == 2u,
+			"model import must generate the requested LOD count");
+		Require(!meshes[0].lods[0].m_vertices.IsEmpty() &&
+			!meshes[0].lods[0].m_indices.IsEmpty() &&
+			!meshes[0].lods[1].m_vertices.IsEmpty() &&
+			!meshes[0].lods[1].m_indices.IsEmpty(),
+			"generated model LODs must retain renderable geometry");
+		Require(meshes[0].lods[0].m_indices.Num() < sourceIndexCount &&
+			meshes[0].lods[1].m_indices.Num() <= meshes[0].lods[0].m_indices.Num(),
+			"successive model LODs must reduce or retain triangle count monotonically");
+		for (const auto& lod : meshes[0].lods)
+		{
+			for (uint32_t index : lod.m_indices)
+			{
+				Require(index < lod.m_vertices.Num(),
+					"generated model LOD indices must reference compacted vertices");
+			}
+			for (const auto& vertex : lod.m_vertices)
+			{
+				Require(NearlyEqual(glm::length(vertex.m_normal), 1.0f) &&
+					NearlyEqual(glm::length(vertex.m_tangent), 1.0f) &&
+					NearlyEqual(glm::length(vertex.m_bitangent), 1.0f),
+					"generated model LOD shading directions must be normalized");
+				Require(std::abs(vertex.m_normal.z) > 0.99f,
+					"generated model LOD normals must be rebuilt from simplified geometry");
+				Require(std::abs(glm::dot(
+						vertex.m_normal,
+						vertex.m_tangent)) < 1e-3f &&
+					std::abs(glm::dot(
+						vertex.m_normal,
+						vertex.m_bitangent)) < 1e-3f,
+					"generated model LOD tangent space must be orthogonal");
+			}
+		}
+
+		FileId fileId;
+		fileId.Deserialize(YAML::Node("01234567-89ab-cdef-0123-456789abcdef"));
+		Require(
+			ModelImporter::GetLodCacheFilename(fileId, 2u) ==
+				"01234567-89ab-cdef-0123-456789abcdef_lod2.bin",
+			"model LOD cache filenames must follow the fileId_lodN.bin contract");
+		Require(ModelImporter::GetLodCacheFilename(fileId, 0u).empty(),
+			"LOD0 must remain source geometry instead of a generated cache file");
+	}
+
+	void TestRhiMeshLodsShareBuffersAndDrawRanges()
+	{
+		auto vertexBuffer = RHI::RHIBufferPtr::Make(
+			RHI::EBufferUsageBit::VertexBuffer_Bit,
+			RHI::EMemoryPropertyBit::DeviceLocal);
+		auto indexBuffer = RHI::RHIBufferPtr::Make(
+			RHI::EBufferUsageBit::IndexBuffer_Bit,
+			RHI::EMemoryPropertyBit::DeviceLocal);
+		auto baseMesh = RHI::RHIMeshPtr::Make();
+		baseMesh->m_vertexBuffer = vertexBuffer;
+		baseMesh->m_indexBuffer = indexBuffer;
+		baseMesh->m_indexCount = 120u;
+		Require(baseMesh->GetNumLods() == 1u && !baseMesh->GetLod(1u),
+			"a model without generated LODs must expose only source LOD0");
+		auto mediumMesh = RHI::RHIMeshPtr::Make();
+		mediumMesh->m_vertexBuffer = vertexBuffer;
+		mediumMesh->m_indexBuffer = indexBuffer;
+		mediumMesh->m_indexCount = 60u;
+		mediumMesh->m_firstIndex = 120u;
+		mediumMesh->m_vertexOffset = 80u;
+		baseMesh->m_lods.Add(mediumMesh);
+
+		Require(baseMesh->GetNumLods() == 2u &&
+			baseMesh->GetIndexCount() == 120u &&
+			baseMesh->GetLod(1u)->GetIndexCount() == 60u,
+			"RHI mesh LOD views must retain independent draw ranges");
+		Require(baseMesh->GetLod(1u)->m_vertexBuffer == baseMesh->m_vertexBuffer &&
+			baseMesh->GetLod(1u)->m_indexBuffer == baseMesh->m_indexBuffer,
+			"RHI mesh LOD views must share the base mesh GPU buffers");
+		Require(baseMesh->GetLod(8u) == mediumMesh,
+			"LOD selection must clamp to the highest available mesh view");
 	}
 
 	void TestGltfAlphaModesResolveRenderState()
@@ -1469,6 +1613,9 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "ModelReadinessTracksMeshUploads", TestModelReadinessTracksMeshUploads },
 		{ "MeshContextRejectsEmptyGpuUploads", TestMeshContextRejectsEmptyGpuUploads },
+		{ "ModelLodMetadataDefaultsAndRoundTrip", TestModelLodMetadataDefaultsAndRoundTrip },
+		{ "ModelLodGenerationAndCacheNaming", TestModelLodGenerationAndCacheNaming },
+		{ "RhiMeshLodsShareBuffersAndDrawRanges", TestRhiMeshLodsShareBuffersAndDrawRanges },
 		{ "GltfAlphaModesResolveRenderState", TestGltfAlphaModesResolveRenderState },
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },

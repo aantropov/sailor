@@ -226,6 +226,7 @@ public class ComponentTemplate : DataTemplate
                                     ResolveFileIdListSupportedType(
                                         component,
                                         property.Key)),
+                                ObservableFloatList floatValues => Templates.FloatListEditor(floatValues),
                                 Observable<InstanceId> observableInstanceId => Templates.InstanceIdEditor(component.OverrideProperties[property.Key], nameof(Observable<InstanceId>.Value), (Observable<InstanceId> vm) => vm.Value, (vm, value) => vm.Value = value),
                                 _ => new Label { Text = "Unsupported property type" }
                             };
