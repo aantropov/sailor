@@ -411,6 +411,8 @@ namespace
 		baseMesh->m_vertexBuffer = vertexBuffer;
 		baseMesh->m_indexBuffer = indexBuffer;
 		baseMesh->m_indexCount = 120u;
+		Require(baseMesh->GetNumLods() == 1u && !baseMesh->GetLod(1u),
+			"a model without generated LODs must expose only source LOD0");
 		auto mediumMesh = RHI::RHIMeshPtr::Make();
 		mediumMesh->m_vertexBuffer = vertexBuffer;
 		mediumMesh->m_indexBuffer = indexBuffer;

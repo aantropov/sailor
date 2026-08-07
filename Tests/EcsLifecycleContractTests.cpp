@@ -810,6 +810,9 @@ namespace
 	void TestStaticMeshLodSelectionUsesScreenCoverage()
 	{
 		StaticMeshRendererData data;
+		Require(data.ResolveLod(0.0f, 1u) == 0u &&
+			data.ResolveLod(100.0f, 1u) == 0u,
+			"mesh renderer must keep LOD0 when no generated LOD is available");
 		data.SetLodSettings(0u, 2u, TVector<float>{ 5.0f, 25.0f });
 		Require(data.ResolveLod(100.0f, 3u) == 0u &&
 			data.ResolveLod(25.0f, 3u) == 0u &&
