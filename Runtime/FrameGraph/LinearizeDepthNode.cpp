@@ -46,15 +46,30 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 
 	auto target = GetResolvedAttachment("target");
 
-	if (!m_pLinearizeDepthShader || !target || !m_pLinearizeDepthShader->IsReady())
+	if (!m_pLinearizeDepthShader || !depthAttachment || !target || !m_pLinearizeDepthShader->IsReady())
 	{
 		return;
 	}
 
-	if (!m_linearizeDepth)
+	RHI::RHITexturePtr sampledDepthAttachment = depthAttachment;
+	if (auto depthRenderTarget = depthAttachment.DynamicCast<RHI::RHIRenderTarget>())
 	{
-		m_linearizeDepth = driver->CreateShaderBindings();
-		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler", depthAttachment, 0);
+		if (auto depthAspect = depthRenderTarget->GetDepthAspect())
+		{
+			sampledDepthAttachment = depthAspect;
+		}
+	}
+
+	if (!m_linearizeDepth || m_boundDepthAttachment != sampledDepthAttachment)
+	{
+		if (!m_linearizeDepth)
+		{
+			m_linearizeDepth = driver->CreateShaderBindings();
+		}
+
+		driver->AddSamplerToShaderBindings(m_linearizeDepth, "depthSampler", sampledDepthAttachment, 0);
+		m_linearizeDepth->RecalculateCompatibility();
+		m_boundDepthAttachment = sampledDepthAttachment;
 	}
 
 	if (!m_postEffectMaterial)
@@ -113,6 +128,7 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 void LinearizeDepthNode::Clear()
 {
 	m_linearizeDepth.Clear();
+	m_boundDepthAttachment.Clear();
 	m_postEffectMaterial.Clear();
 	m_pLinearizeDepthShader.Clear();
 }

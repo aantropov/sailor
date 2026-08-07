@@ -394,12 +394,14 @@ VulkanCommandBufferPtr VulkanDevice::CreateCommandBuffer(RHI::ECommandListQueue 
 bool VulkanDevice::SubmitCommandBuffer(VulkanCommandBufferPtr commandBuffer,
 	VulkanFencePtr fence,
 	TVector<VulkanSemaphorePtr> signalSemaphores,
-	TVector<VulkanSemaphorePtr> waitSemaphores)
+	TVector<VulkanSemaphorePtr> waitSemaphores,
+	const void* submitNext)
 {
 	SAILOR_PROFILE_FUNCTION();
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = submitNext;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = { commandBuffer->GetHandle() };
 

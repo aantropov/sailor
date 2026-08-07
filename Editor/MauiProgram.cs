@@ -17,6 +17,8 @@ using SailorEditor.Workflow;
 using SailorEditor.Mcp;
 #if MACCATALYST
 using SailorEditor.Platforms.MacCatalyst;
+#elif WINDOWS
+using SailorEditor.Platforms.Windows;
 #endif
 
 namespace SailorEditor
@@ -31,7 +33,7 @@ namespace SailorEditor
             builder
                 .UseMauiApp<App>()
                 .UseMauiCommunityToolkit()
-#if MACCATALYST
+#if MACCATALYST || WINDOWS
                 .ConfigureMauiHandlers(handlers =>
                 {
                     handlers.AddHandler<NativeSceneViewport, NativeSceneViewportHandler>();

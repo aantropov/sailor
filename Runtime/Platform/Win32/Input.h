@@ -22,6 +22,7 @@ namespace Sailor::Win32
 		SAILOR_API bool IsButtonClick(uint32_t button) const;
 
 		SAILOR_API glm::ivec2 GetCursorPos() const;
+		SAILOR_API glm::ivec2 GetButtonPressCursorPos(uint32_t button) const;
 		SAILOR_API void TrackForChanges(const InputState& previousState);
 
 	protected:
@@ -29,6 +30,7 @@ namespace Sailor::Win32
 		KeyState m_keyboard[256]{};
 		KeyState m_mouse[3]{};
 		int32_t m_cursorPosition[2]{};
+		int32_t m_mousePressPosition[3][2]{};
 
 #if defined(_WIN32)
 		friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);

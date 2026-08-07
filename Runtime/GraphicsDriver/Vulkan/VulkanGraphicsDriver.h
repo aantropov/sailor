@@ -153,6 +153,20 @@ namespace Sailor::GraphicsDriver::Vulkan
 			RHI::ETextureClamping clamping = RHI::ETextureClamping::Clamp,
 			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit | RHI::ETextureUsageBit::TextureTransferDst_Bit | RHI::ETextureUsageBit::Sampled_Bit) override;
 
+#if defined(_WIN32)
+		SAILOR_API virtual RHI::RHIRenderTargetPtr CreateExportableRenderTarget(
+			glm::ivec2 extent,
+			RHI::ETextureFormat format = RHI::ETextureFormat::B8G8R8A8_UNORM,
+			RHI::ETextureUsageFlags usage = RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+				RHI::ETextureUsageBit::TextureTransferDst_Bit |
+				RHI::ETextureUsageBit::Sampled_Bit) override;
+		SAILOR_API virtual RHI::RHITexturePtr ImportD3D11Texture(
+			void* handle,
+			glm::ivec2 extent,
+			RHI::ETextureFormat format,
+			RHI::ETextureUsageFlags usage,
+			RHI::EImageLayout layout = RHI::EImageLayout::General) override;
+#endif
 		SAILOR_API virtual void* ExportImage(RHI::RHITexturePtr image) override;
 		SAILOR_API virtual RHI::RHITexturePtr ImportImage(void* handle,
 			glm::ivec3 extent,

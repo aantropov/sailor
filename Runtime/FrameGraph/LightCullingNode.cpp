@@ -41,6 +41,20 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	{
 		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer").DynamicCast<RHI::RHITexture>();
 	}
+	if (!depthAttachment)
+	{
+		commands->EndDebugRegion(commandList);
+		return;
+	}
+
+	RHI::RHITexturePtr sampledDepthAttachment = depthAttachment;
+	if (auto depthRenderTarget = depthAttachment.DynamicCast<RHI::RHIRenderTarget>())
+	{
+		if (auto depthAspect = depthRenderTarget->GetDepthAspect())
+		{
+			sampledDepthAttachment = depthAspect;
+		}
+	}
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())
@@ -67,7 +81,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			m_culledLights = Sailor::RHI::Renderer::GetDriver()->CreateShaderBindings();
 			RHI::RHIShaderBindingPtr culledLightsSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "culledLights", sizeof(uint32_t) * numTiles * LightsPerTile, 1, 0, true);
 			RHI::RHIShaderBindingPtr lightsGridSSBO = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(m_culledLights, "lightsGrid", sizeof(uint32_t) * numTiles * 2, 1, 1, true);
-			RHI::RHIShaderBindingPtr depthSampler = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", depthAttachment, 2);
+			Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_culledLights, "sceneDepth", sampledDepthAttachment, 2);
 
 			auto shaderBindingSet = sceneView.m_rhiLightsData;
 			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, culledLightsSSBO, "culledLights", 1);

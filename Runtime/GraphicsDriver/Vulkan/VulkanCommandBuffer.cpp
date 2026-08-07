@@ -1075,14 +1075,16 @@ void VulkanCommandBuffer::ImageMemoryBarrier(VulkanImageViewPtr image,
 	VkAccessFlags srcAccess,
 	VkAccessFlags dstAccess,
 	VkPipelineStageFlags srcStage,
-	VkPipelineStageFlags dstStage)
+	VkPipelineStageFlags dstStage,
+	uint32_t srcQueueFamilyIndex,
+	uint32_t dstQueueFamilyIndex)
 {
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	barrier.oldLayout = oldLayout;
 	barrier.newLayout = newLayout;
-	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
+	barrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
 	barrier.image = *image->GetImage();
 
 	barrier.subresourceRange = image->m_subresourceRange;

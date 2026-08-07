@@ -7,6 +7,11 @@
 #include "Containers/Containers.h"
 #include "Containers/Hash.h"
 
+#if defined(_MSC_VER)
+# pragma warning(push)
+# pragma warning(disable: 4251)
+#endif
+
 namespace Sailor::RHI
 {
 	using ShaderByteCode = Sailor::TVector<uint32_t>;
@@ -952,6 +957,10 @@ namespace Sailor::RHI
 		virtual ~IStateModifier() = default;
 	};
 };
+
+#if defined(_MSC_VER)
+# pragma warning(pop)
+#endif
 
 namespace std
 {

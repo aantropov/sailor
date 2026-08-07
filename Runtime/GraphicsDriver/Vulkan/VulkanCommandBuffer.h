@@ -98,7 +98,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 			VkAccessFlags srcAccess,
 			VkAccessFlags dstAccess,
 			VkPipelineStageFlags srcStage,
-			VkPipelineStageFlags dstStage);
+			VkPipelineStageFlags dstStage,
+			uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED);
 
 		SAILOR_API void ImageMemoryBarrier(VulkanImageViewPtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
 		SAILOR_API void ImageMemoryBarrier(VulkanImagePtr image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);

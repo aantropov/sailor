@@ -585,16 +585,24 @@ namespace
 		using Sailor::Win32::GlobalInput;
 		using Sailor::Win32::KeyState;
 
-		GlobalInput::SetKeyState('W', KeyState::Pressed);
-		GlobalInput::SetMouseButtonState(0, KeyState::Pressed);
 		GlobalInput::SetCursorPosition(320, 240);
+		GlobalInput::SetKeyState('W', KeyState::Pressed);
+		GlobalInput::SetMouseButtonState(1, KeyState::Pressed);
+		GlobalInput::SetCursorPosition(350, 275);
+		const glm::ivec2 pressCursor = GlobalInput::GetInputState().GetButtonPressCursorPos(VK_RBUTTON);
+		Require(pressCursor == glm::ivec2(320, 240),
+			"a mouse press must retain its cursor origin while later motion accumulates");
+		Require(GlobalInput::GetInputState().GetCursorPos() - pressCursor == glm::ivec2(30, 35),
+			"the first navigation frame must preserve motion after the press without using a stale cursor origin");
 
 		GlobalInput::Reset();
 		const auto& state = GlobalInput::GetInputState();
 		Require(!state.IsKeyDown('W'), "lifecycle reset should release keyboard input");
-		Require(!state.IsButtonDown(0), "lifecycle reset should release mouse input");
+		Require(!state.IsButtonDown(VK_RBUTTON), "lifecycle reset should release mouse input");
 		const glm::ivec2 cursor = state.GetCursorPos();
 		Require(cursor.x == 0 && cursor.y == 0, "lifecycle reset should clear the stale cursor position");
+		Require(state.GetButtonPressCursorPos(VK_RBUTTON) == glm::ivec2(0),
+			"lifecycle reset should clear mouse press origins");
 	}
 
 	void TestEditorRemoteInputAndViewportEventInteropContract()
@@ -637,15 +645,36 @@ namespace
 		const size_t mainThreadGuard = enginePumpBody.find(
 			"if (!scheduler || !scheduler->IsMainThread())",
 			schedulerLookup);
-		const size_t pumpBinding = enginePumpBody.find(
-			"binding->Pump();",
+		const size_t windowsBranch = enginePumpBody.find(
+			"#if defined(_WIN32)",
 			mainThreadGuard);
+		const size_t platformElse = enginePumpBody.find(
+			"#else",
+			windowsBranch);
+		const size_t windowsReleaseGuard = enginePumpBody.find(
+			"binding->m_pumpScheduled.exchange(true)",
+			windowsBranch);
+		const size_t windowsPump = enginePumpBody.find(
+			"binding->Pump();",
+			windowsReleaseGuard);
+		const size_t windowsRenderThread = enginePumpBody.find(
+			"EThreadType::Render",
+			windowsPump);
+		const size_t nonWindowsPump = enginePumpBody.find(
+			"binding->Pump();",
+			platformElse);
 		Require(
 			schedulerLookup != std::string::npos &&
 				mainThreadGuard > schedulerLookup &&
-				pumpBinding > mainThreadGuard &&
-				CountOccurrences(enginePumpBody, "binding->Pump();") == 1,
-			"remote viewport frame acquisition must be release-guarded and pumped exactly once from the engine main thread");
+				windowsBranch > mainThreadGuard &&
+				windowsReleaseGuard > windowsBranch &&
+				windowsPump > windowsReleaseGuard &&
+				windowsPump < platformElse &&
+				windowsRenderThread > windowsPump &&
+				windowsRenderThread < platformElse &&
+				nonWindowsPump > platformElse &&
+				CountOccurrences(enginePumpBody, "binding->Pump();") == 2,
+			"remote viewport frame acquisition must be release-guarded on the Windows render thread and pumped inline on the main thread elsewhere");
 
 		const size_t upsertViewportBegin = bridgeSource.find(
 			"bool App::UpsertEditorRemoteViewport(",
@@ -663,7 +692,7 @@ namespace
 		Require(
 			upsertViewportBody.find("binding->Pump();") ==
 				std::string::npos,
-			"protocol-thread viewport upsert must defer frame acquisition to the engine main-thread pump");
+			"protocol-thread viewport upsert must defer frame acquisition to the engine-owned pump");
 
 		const size_t retryViewportBegin = bridgeSource.find(
 			"bool App::RetryEditorRemoteViewport(",
@@ -681,8 +710,8 @@ namespace
 		Require(
 			retryViewportBody.find("binding->Pump();") ==
 				std::string::npos &&
-				CountOccurrences(bridgeSource, "binding->Pump();") == 1,
-			"protocol-thread viewport retry must defer frame acquisition and the engine main-thread boundary must remain the sole binding pump owner");
+				CountOccurrences(bridgeSource, "binding->Pump();") == 2,
+			"protocol-thread viewport retry must defer frame acquisition and each platform branch must retain a single binding pump owner");
 
 		const size_t bindNativeLayerBegin = macNativeBridgeSource.find(
 			"Failure BindMacNativeLayer(");
@@ -803,12 +832,25 @@ namespace
 			inputResetBody.find("io.ClearInputMouse()") != std::string::npos &&
 			inputResetBody.find("#if defined(__APPLE__)") == std::string::npos,
 			"focus, capture, resize, and lifecycle reset must release native and ImGui input on every platform");
-		Require(bridgeSource.find("case InputKind::Capture:\n\t\t\tSyncEditorMouseButtons") != std::string::npos &&
+		const size_t captureInputCase = bridgeSource.find("case InputKind::Capture:");
+		const size_t captureModifierSync = bridgeSource.find(
+			"SyncEditorKeyboardModifiers(input, imGui)",
+			captureInputCase);
+		const size_t captureMouseSync = bridgeSource.find(
+			"SyncEditorMouseButtons(input, imGui)",
+			captureModifierSync);
+		Require(captureInputCase != std::string::npos &&
+			captureModifierSync > captureInputCase &&
+			captureMouseSync > captureModifierSync &&
 			bridgeSource.find("input.m_kind == InputKind::Capture && !input.m_captured") != std::string::npos,
 			"capture loss must release native and ImGui mouse buttons");
 		Require(bridgeSource.find("ResolveRemoteMouseButtonState(state, input)") != std::string::npos &&
 			bridgeSource.find("HasInputModifier(input.m_modifiers, InputModifier::MouseLeft)") == std::string::npos,
 			"mouse buttons must change only through explicit button input so resize cannot restart a held drag");
+		Require(bridgeSource.find("SyncEditorKeyboardModifiers(input, imGui)") != std::string::npos &&
+			bridgeSource.find("GlobalInput::SetCursorPosition(") <
+				bridgeSource.find("SyncEditorMouseButtons(input, imGui)"),
+			"pointer packets must synchronize modifier keys and the press origin before changing button state");
 
 		const size_t sendBegin = bridgeSource.find("bool App::SendEditorRemoteViewportInput(");
 		Require(sendBegin != std::string::npos, "editor runtime bridge must expose remote input interop");
@@ -867,7 +909,7 @@ namespace
 			!std::filesystem::exists(sourceRoot / "Lib/InteropExports.cpp"),
 			"the duplicated portable editor export surface must be removed");
 		Require(
-			CountOccurrences(protocolExports, "SAILOR_API ") == 5 &&
+			CountOccurrences(protocolExports, "SAILOR_API ") == 6 &&
 			protocolExports.find(
 				"SAILOR_API int32_t SailorProtocolStartLocalHost(") !=
 				std::string::npos &&
@@ -877,9 +919,12 @@ namespace
 			protocolExports.find(
 				"SAILOR_API void SailorProtocolStopLocalHost(") !=
 				std::string::npos &&
+			protocolExports.find(
+				"SAILOR_API int32_t SailorProtocolSetWindowsViewportHost(") !=
+				std::string::npos &&
 			protocolExports.find("SAILOR_API int32_t SailorProtocolInvoke(") != std::string::npos &&
 			protocolExports.find("SAILOR_API void SailorProtocolFreeBuffer(uint8_t* buffer)") != std::string::npos,
-			"the native boundary must expose local host lifecycle bootstrap plus the two compatibility protocol exports");
+			"the native boundary must expose local host lifecycle bootstrap, the Windows viewport host, and the two compatibility protocol exports");
 		Require(
 			protocolExports.find(
 				"StartEditorEngineWebSocketServer(") != std::string::npos &&
@@ -984,6 +1029,10 @@ namespace
 		Require(imGuiSource.find("case VK_MENU: return ImGuiKey_ModAlt") != std::string::npos &&
 			imGuiSource.find("case VK_LWIN: return ImGuiKey_ModSuper") != std::string::npos,
 			"Mac modifier keys must reach ImGui selection suppression");
+		Require(bridgeSource.find("ImGuiApi::WindowsEditorInputEvent") != std::string::npos &&
+			bridgeSource.find("HandleWindowsEditorInput(event)") != std::string::npos &&
+			imGuiSource.find("io.DisplaySize = ImVec2((float)renderArea.x, (float)renderArea.y)") != std::string::npos,
+			"Windows remote pointer and keyboard input must use the editor render area's ImGui coordinate space");
 		Require(macInputSource.find("SceneViewportPointerRouting.ShouldPublishHoverMove(activeMouseModifiers)") != std::string::npos &&
 			macInputSource.find("SceneViewportPointerRouting.ShouldPublishCapturedMove(") != std::string::npos &&
 			macInputSource.find("TryUsePointerMotionSource(PointerMotionSource.UIKit)") != std::string::npos &&

@@ -165,6 +165,24 @@ extern "C"
 		}
 	}
 
+	SAILOR_API int32_t SailorProtocolSetWindowsViewportHost(
+		uint64_t viewportId,
+		void* swapChainPanelInspectable,
+		float compositionScale) noexcept
+	{
+		try
+		{
+			return Sailor::App::SetEditorRemoteViewportWindowsHost(
+				viewportId,
+				swapChainPanelInspectable,
+				compositionScale) ? 1 : 0;
+		}
+		catch (...)
+		{
+			return 0;
+		}
+	}
+
 	SAILOR_API int32_t SailorProtocolInvoke(
 		const uint8_t* requestData,
 		uint32_t requestSize,

@@ -27,6 +27,8 @@ public sealed class ShellLayoutView : ContentView
     static readonly Color SplitterColor = Color.FromArgb("#2A2C31");
     static readonly Color SplitterHoverColor = Color.FromArgb("#4D8DFF");
 
+    readonly List<ContentView> _panelContentHosts = [];
+
     public static readonly BindableProperty HostProperty = BindableProperty.Create(
         nameof(Host), typeof(EditorShellHost), typeof(ShellLayoutView), propertyChanged: OnHostChanged);
 
@@ -50,7 +52,7 @@ public sealed class ShellLayoutView : ContentView
 
     void OnHostPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(EditorShellHost.State) or nameof(EditorShellHost.CurrentLayout))
+        if (e.PropertyName == nameof(EditorShellHost.CurrentLayout))
             Rebuild();
     }
 
@@ -58,6 +60,11 @@ public sealed class ShellLayoutView : ContentView
     {
         if (IsResizing)
             return;
+
+        foreach (var contentHost in _panelContentHosts)
+            contentHost.Content = null;
+        _panelContentHosts.Clear();
+        Content = null;
 
         Content = Host?.CurrentLayout is { } layout
             ? BuildNode(layout.Root.Content, [])
@@ -205,6 +212,7 @@ public sealed class ShellLayoutView : ContentView
                             finally
                             {
                                 IsResizing = false;
+                                Rebuild();
                             }
                         });
                     }
@@ -280,6 +288,7 @@ public sealed class ShellLayoutView : ContentView
             VerticalOptions = LayoutOptions.Fill,
             BackgroundColor = Colors.Transparent
         };
+        _panelContentHosts.Add(contentHost);
 
         var tabBar = new HorizontalStackLayout
         {

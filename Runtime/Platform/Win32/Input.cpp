@@ -63,6 +63,17 @@ glm::ivec2 InputState::GetCursorPos() const
 	return glm::ivec2(m_cursorPosition[0], m_cursorPosition[1]);
 }
 
+glm::ivec2 InputState::GetButtonPressCursorPos(uint32_t button) const
+{
+	uint32_t index = 0;
+	if (!TryGetMouseButtonIndex(button, index))
+	{
+		return {};
+	}
+
+	return glm::ivec2(m_mousePressPosition[index][0], m_mousePressPosition[index][1]);
+}
+
 void InputState::TrackForChanges(const InputState& previousState)
 {
 	for (uint32_t i = 0; i < 256; i++)
@@ -124,6 +135,12 @@ void GlobalInput::SetMouseButtonState(uint32_t button, KeyState state)
 {
 	if (button < 3)
 	{
+		if (state == KeyState::Pressed && m_rawState.m_mouse[button] == KeyState::Up)
+		{
+			m_rawState.m_mousePressPosition[button][0] = m_rawState.m_cursorPosition[0];
+			m_rawState.m_mousePressPosition[button][1] = m_rawState.m_cursorPosition[1];
+		}
+
 		m_rawState.m_mouse[button] = state;
 		const uint32_t key = button == 0 ? VK_LBUTTON : button == 1 ? VK_RBUTTON : VK_MBUTTON;
 		m_rawState.m_keyboard[key] = state;

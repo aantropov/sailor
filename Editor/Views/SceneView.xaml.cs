@@ -59,7 +59,7 @@ namespace SailorEditor.Views
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
         bool lifecycleSubscribed;
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
         static readonly bool UseNativeViewportHost = true;
 #else
         static readonly bool UseNativeViewportHost = false;
@@ -86,7 +86,7 @@ namespace SailorEditor.Views
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
 
-#if !MACCATALYST
+#if !WINDOWS && !MACCATALYST
             var tapGesture = new TapGestureRecognizer();
             tapGesture.Tapped += (sender, args) =>
             {
@@ -110,7 +110,7 @@ namespace SailorEditor.Views
                 SetSceneFocus(false, sendRemoteFocus: true);
             };
 
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
             if (UseNativeViewportHost)
             {
                 nativeViewportHost = new NativeSceneViewport
@@ -1007,13 +1007,13 @@ namespace SailorEditor.Views
             var remoteRect = Viewport.GetAbsolutePositionWin();
             var editorRect = new SceneViewportRect(remoteRect.X, remoteRect.Y, remoteRect.Width, remoteRect.Height);
             var renderTarget = default(SceneViewportRenderTarget);
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
             if (UseNativeViewportHost)
             {
                 if (nativeHostHandle == nint.Zero)
                 {
                     if (ViewportStatusOverlay.IsVisible)
-                        SetLabelText(ViewportStatusText, "Waiting for native CAMetalLayer host…");
+                        SetLabelText(ViewportStatusText, "Waiting for native viewport host...");
                     return;
                 }
 
@@ -1062,10 +1062,18 @@ namespace SailorEditor.Views
                 renderTarget,
                 IsVisible,
                 isFocused,
-                nativeHostHandle));
+                nativeHostHandle,
+                nativeViewportScale));
 
             if (!updated)
-                viewportAdapter.Sync(new SceneViewportFrame(editorRect, editorRect, renderTarget, IsVisible, isFocused, nativeHostHandle));
+                viewportAdapter.Sync(new SceneViewportFrame(
+                    editorRect,
+                    editorRect,
+                    renderTarget,
+                    IsVisible,
+                    isFocused,
+                    nativeHostHandle,
+                    nativeViewportScale));
         }
 
         double ResolveViewportMouseSensitivity()
@@ -1124,7 +1132,7 @@ namespace SailorEditor.Views
 
         void RequestNativeViewportLayout()
         {
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
             if (!UseNativeViewportHost || nativeViewportHost is null)
             {
                 return;
@@ -1154,7 +1162,7 @@ namespace SailorEditor.Views
 
         void QueueViewportRetry(TimeSpan? keepAlive = null)
         {
-#if MACCATALYST
+#if WINDOWS || MACCATALYST
             if (!UseNativeViewportHost || !isRunning)
             {
                 return;

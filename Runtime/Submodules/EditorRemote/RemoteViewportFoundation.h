@@ -293,7 +293,8 @@ namespace Sailor::EditorRemote
 	{
 		None = 0,
 		CpuDeviceIdle,
-		MetalSharedEvent
+		MetalSharedEvent,
+		Win32KeyedMutex
 	};
 
 	struct FrameSyncMetadata

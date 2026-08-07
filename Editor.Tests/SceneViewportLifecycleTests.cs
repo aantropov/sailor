@@ -19,12 +19,14 @@ public sealed class SceneViewportLifecycleTests
             new SceneViewportRenderTarget(1600, 1200),
             true,
             true,
-            (nint)0xCAFE));
+            (nint)0xCAFE,
+            1.5));
 
         Assert.True(updated);
         Assert.Equal([(ulong)7], backend.UpdatedViewportIds);
         Assert.Equal((ulong)7, backend.BoundViewportId);
         Assert.Equal((nint)0xCAFE, backend.BoundHostHandle);
+        Assert.Equal(1.5, backend.BoundHostScale);
         Assert.Equal(new SceneViewportRect(0, 0, 800, 600), backend.LastEditorViewport);
         Assert.Equal(new SceneViewportRenderTarget(1600, 1200), backend.LastRenderTarget);
     }
@@ -232,6 +234,7 @@ public sealed class SceneViewportLifecycleTests
     {
         public ulong BoundViewportId { get; private set; }
         public nint BoundHostHandle { get; private set; }
+        public double BoundHostScale { get; private set; }
         public int BindCount { get; private set; }
         public List<nint> BoundHostHandles { get; } = [];
         public SceneViewportRect LastEditorViewport { get; private set; }
@@ -241,10 +244,11 @@ public sealed class SceneViewportLifecycleTests
         public List<ulong> UpdatedViewportIds { get; } = [];
         public List<string> Operations { get; } = [];
 
-        public void BindMacHost(ulong viewportId, nint hostHandle)
+        public void BindMacHost(ulong viewportId, nint hostHandle, double compositionScale)
         {
             BoundViewportId = viewportId;
             BoundHostHandle = hostHandle;
+            BoundHostScale = compositionScale;
             BindCount++;
             BoundHostHandles.Add(hostHandle);
             Operations.Add($"bind:{hostHandle}");

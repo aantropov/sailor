@@ -2,6 +2,7 @@
 #include "Containers/Containers.h"
 #include "Memory/UniquePtr.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 
@@ -304,5 +305,188 @@ namespace Sailor::EditorRemote
 		SurfaceGeneration m_importedGeneration = 0;
 		std::optional<FramePacket> m_lastAcceptedFrame{};
 		Failure m_lastFailure = Failure::Ok();
+	};
+
+	class WindowsViewportLoopbackBinding
+	{
+	public:
+		WindowsViewportLoopbackBinding(
+			ViewportDescriptor descriptor,
+			IWindowsSharedSurfaceProvider& provider,
+			IWindowsViewportPresenter& presenter,
+			ConnectionEpoch epoch = 1) :
+			m_transportBackend(provider),
+			m_host(presenter),
+			m_runtimeSession(std::move(descriptor), epoch)
+		{
+		}
+
+		RemoteViewportSession& GetRuntimeSession() { return m_runtimeSession; }
+		const RemoteViewportSession& GetRuntimeSession() const { return m_runtimeSession; }
+		WindowsViewportTransportBackend& GetTransportBackend() { return m_transportBackend; }
+		const WindowsViewportTransportBackend& GetTransportBackend() const { return m_transportBackend; }
+		WindowsViewportNativeHost& GetHost() { return m_host; }
+		const WindowsViewportNativeHost& GetHost() const { return m_host; }
+
+		Failure Create()
+		{
+			auto result = m_runtimeSession.BeginNegotiation();
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			m_visible = true;
+			m_focused = false;
+			m_created = true;
+			return EnsureTransportImported();
+		}
+
+		Failure Resize(uint32_t width, uint32_t height)
+		{
+			const auto previousEpoch = m_runtimeSession.GetConnectionEpoch();
+			const auto previousGeneration = m_runtimeSession.GetGeneration();
+			auto descriptor = m_runtimeSession.GetDescriptor();
+			descriptor.m_width = std::max(width, 1u);
+			descriptor.m_height = std::max(height, 1u);
+			auto result = m_runtimeSession.HandleResize(descriptor);
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			result = EnsureTransportImported();
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			return m_transportBackend.ReleaseSurface(
+				m_runtimeSession.GetViewportId(),
+				previousEpoch,
+				previousGeneration);
+		}
+
+		Failure SetVisible(bool visible)
+		{
+			m_visible = visible;
+			return m_runtimeSession.SetVisible(visible);
+		}
+
+		Failure SetFocused(bool focused)
+		{
+			m_focused = focused;
+			InputPacket input{};
+			input.m_viewportId = m_runtimeSession.GetViewportId();
+			input.m_connectionEpoch = m_runtimeSession.GetConnectionEpoch();
+			input.m_generation = m_runtimeSession.GetGeneration();
+			input.m_kind = InputKind::Focus;
+			input.m_focused = focused;
+			input.m_timestampNs = ++m_inputTimestampNs;
+			return m_runtimeSession.HandleInput(input);
+		}
+
+		Failure PumpFrame()
+		{
+			if (!m_created)
+			{
+				return Failure::FromDomain(
+					ErrorDomain::Session,
+					1,
+					"Windows loopback binding must be created before pumping frames");
+			}
+			if (m_runtimeSession.GetState() != SessionState::Active)
+			{
+				return Failure::Ok();
+			}
+
+			auto result = m_runtimeSession.PublishFrameFromBackend(m_transportBackend);
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			result = m_host.AcceptFrame(m_runtimeSession.GetLastFrame());
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			return m_host.PresentLatestFrame(
+				m_runtimeSession.GetDescriptor().m_viewportId);
+		}
+
+		Failure Destroy()
+		{
+			if (!m_created)
+			{
+				return Failure::Ok();
+			}
+
+			auto release = m_runtimeSession.ReleaseBackendTransport(m_transportBackend);
+			m_host.ResetViewport(m_runtimeSession.GetDescriptor().m_viewportId);
+			auto destroy = m_runtimeSession.Destroy();
+			m_created = false;
+			return !release.IsOk() ? release : destroy;
+		}
+
+	private:
+		Failure EnsureTransportImported()
+		{
+			auto result = m_runtimeSession.EnsureBackendTransport(m_transportBackend);
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			const auto* surface = std::as_const(m_transportBackend).FindSurface(
+				m_runtimeSession.GetViewportId(),
+				m_runtimeSession.GetConnectionEpoch(),
+				m_runtimeSession.GetGeneration());
+			if (!surface)
+			{
+				return Failure::FromDomain(
+					ErrorDomain::Transport,
+					1,
+					"Windows loopback binding could not resolve imported surface");
+			}
+
+			result = m_host.ImportTransport(
+				m_runtimeSession.GetDescriptor(),
+				surface->m_transport,
+				m_runtimeSession.GetConnectionEpoch(),
+				m_runtimeSession.GetGeneration());
+			if (!result.IsOk())
+			{
+				return result;
+			}
+
+			if (!m_visible)
+			{
+				result = m_runtimeSession.SetVisible(false);
+				if (!result.IsOk())
+				{
+					return result;
+				}
+			}
+			if (m_focused)
+			{
+				result = SetFocused(true);
+				if (!result.IsOk())
+				{
+					return result;
+				}
+			}
+
+			return Failure::Ok();
+		}
+
+		WindowsViewportTransportBackend m_transportBackend;
+		WindowsViewportNativeHost m_host;
+		RemoteViewportSession m_runtimeSession;
+		uint64_t m_inputTimestampNs = 0;
+		bool m_created = false;
+		bool m_visible = true;
+		bool m_focused = false;
 	};
 }

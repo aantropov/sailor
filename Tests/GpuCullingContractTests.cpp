@@ -381,6 +381,17 @@ namespace
 			highZShader.find("sourceEnd") != std::string::npos &&
 			highZShader.find("texelFetch") != std::string::npos,
 			"odd-sized Hi-Z mips must explicitly reduce their complete source footprint");
+
+		const std::string linearizeDepthSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/LinearizeDepthNode.cpp");
+		const size_t linearizeDepthAspect = linearizeDepthSource.find(
+			"sampledDepthAttachment = depthAspect");
+		const size_t linearizeDepthBinding = linearizeDepthSource.find(
+			"AddSamplerToShaderBindings(m_linearizeDepth, \"depthSampler\", sampledDepthAttachment",
+			linearizeDepthAspect);
+		Require(linearizeDepthAspect != std::string::npos &&
+			linearizeDepthBinding > linearizeDepthAspect,
+			"linear depth sampling must exclude the stencil aspect from combined depth-stencil targets");
 	}
 
 	void TestForwardPlusTileSynchronizationContract()
@@ -408,6 +419,14 @@ namespace
 		const std::string processBody = ExtractFunctionBody(
 			lightCullingSource,
 			"void LightCullingNode::Process(");
+		const size_t depthAspectOffset = processBody.find(
+			"sampledDepthAttachment = depthAspect");
+		const size_t depthBindingOffset = processBody.find(
+			"AddSamplerToShaderBindings(m_culledLights, \"sceneDepth\", sampledDepthAttachment",
+			depthAspectOffset);
+		Require(depthAspectOffset != std::string::npos &&
+			depthBindingOffset > depthAspectOffset,
+			"Forward+ depth sampling must exclude the stencil aspect from combined depth-stencil targets");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",

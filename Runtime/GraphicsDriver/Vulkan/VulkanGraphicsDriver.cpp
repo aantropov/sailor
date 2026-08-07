@@ -777,6 +777,93 @@ RHI::RHITexturePtr VulkanGraphicsDriver::CreateImage_Immediate(
 	return res;
 }
 
+#if defined(_WIN32)
+RHI::RHIRenderTargetPtr VulkanGraphicsDriver::CreateExportableRenderTarget(
+	glm::ivec2 extent,
+	RHI::ETextureFormat format,
+	RHI::ETextureUsageFlags usage)
+{
+	if (extent.x <= 0 || extent.y <= 0)
+	{
+		return nullptr;
+	}
+
+	auto device = m_vkInstance->GetMainDevice();
+	RHI::RHIRenderTargetPtr result = RHI::RHIRenderTargetPtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Clamp,
+		false,
+		RHI::EImageLayout::General);
+
+	const VkExtent3D vkExtent{
+		static_cast<uint32_t>(extent.x),
+		static_cast<uint32_t>(extent.y),
+		1u
+	};
+	result->m_vulkan.m_image = VulkanApi::CreateExportableImage(
+		device,
+		vkExtent,
+		static_cast<VkFormat>(format),
+		static_cast<VkImageUsageFlags>(usage),
+		VK_IMAGE_LAYOUT_GENERAL);
+	if (!result->m_vulkan.m_image)
+	{
+		return nullptr;
+	}
+
+	result->m_vulkan.m_imageView = VulkanImageViewPtr::Make(
+		device,
+		result->m_vulkan.m_image);
+	result->m_vulkan.m_imageView->Compile();
+	return result;
+}
+
+RHI::RHITexturePtr VulkanGraphicsDriver::ImportD3D11Texture(
+	void* handle,
+	glm::ivec2 extent,
+	RHI::ETextureFormat format,
+	RHI::ETextureUsageFlags usage,
+	RHI::EImageLayout layout)
+{
+	if (!handle || extent.x <= 0 || extent.y <= 0)
+	{
+		return nullptr;
+	}
+
+	auto device = m_vkInstance->GetMainDevice();
+	const VkExtent3D vkExtent{
+		static_cast<uint32_t>(extent.x),
+		static_cast<uint32_t>(extent.y),
+		1u
+	};
+	auto vkImage = VulkanApi::ImportImage(
+		device,
+		handle,
+		vkExtent,
+		static_cast<VkFormat>(format),
+		static_cast<VkImageUsageFlags>(usage),
+		static_cast<VkImageLayout>(layout),
+		0,
+		1,
+		VK_SAMPLE_COUNT_1_BIT,
+		VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT);
+	if (!vkImage)
+	{
+		return nullptr;
+	}
+
+	RHI::RHIRenderTargetPtr result = RHI::RHIRenderTargetPtr::Make(
+		RHI::ETextureFiltration::Linear,
+		RHI::ETextureClamping::Clamp,
+		false,
+		layout);
+	result->m_vulkan.m_image = vkImage;
+	result->m_vulkan.m_imageView = VulkanImageViewPtr::Make(device, vkImage);
+	result->m_vulkan.m_imageView->Compile();
+	return result;
+}
+#endif
+
 void* VulkanGraphicsDriver::ExportImage(RHI::RHITexturePtr image)
 {
 	if (!image || !image->m_vulkan.m_image)
@@ -2913,7 +3000,7 @@ void VulkanGraphicsDriver::SetDefaultViewport(RHI::RHICommandListPtr cmd)
 	auto device = m_vkInstance->GetMainDevice();
 	auto pStateViewport = device->GetCurrentFrameViewport();
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(_WIN32)
 	if (Sailor::App::HasEditor())
 	{
 		const glm::ivec2 renderArea = Sailor::App::GetMainWindow()->GetRenderArea();
@@ -3267,6 +3354,20 @@ bool VulkanGraphicsDriver::FitsDefaultViewport(RHI::RHICommandListPtr cmd)
 {
 	auto device = m_vkInstance->GetMainDevice();
 	auto pStateViewport = device->GetCurrentFrameViewport();
+
+#if defined(_WIN32)
+	if (Sailor::App::HasEditor())
+	{
+		const glm::ivec2 renderArea = Sailor::App::GetMainWindow()->GetRenderArea();
+		const float width = (float)std::max(renderArea.x, 1);
+		const float height = (float)std::max(renderArea.y, 1);
+		pStateViewport = new VulkanStateViewport(0.0f, height,
+			width, -height,
+			{ 0, 0 },
+			{ (uint32_t)width, (uint32_t)height },
+			0.0f, 1.0f);
+	}
+#endif
 
 	return cmd->m_vulkan.m_commandBuffer->FitsViewport(pStateViewport->GetViewport());
 }

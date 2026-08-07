@@ -538,7 +538,7 @@ public sealed class EngineLifecycleTests
         Assert.True(removeAfterFailure > nativeBind);
 
         var sync = lifecycleSource.IndexOf("public bool Sync", StringComparison.Ordinal);
-        var announceHost = lifecycleSource.IndexOf("backend.BindMacHost(viewportId, frame.NativeHostHandle);", sync, StringComparison.Ordinal);
+        var announceHost = lifecycleSource.IndexOf("backend.BindMacHost(viewportId, frame.NativeHostHandle, frame.NativeHostScale);", sync, StringComparison.Ordinal);
         var updateViewport = lifecycleSource.IndexOf("backend.TryUpdateViewport", announceHost, StringComparison.Ordinal);
         Assert.True(sync >= 0);
         Assert.True(announceHost > sync);
@@ -721,6 +721,107 @@ public sealed class EngineLifecycleTests
             source,
             StringComparison.Ordinal);
         Assert.DoesNotContain("TryRefreshSceneRemoteViewport(Viewport)", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WindowsNativeViewport_UsesDrawableRenderAreaAndRoutesCapturedKeyboardInput()
+    {
+        var graphicsSource = ReadRepositoryFile(
+            "Runtime",
+            "GraphicsDriver",
+            "Vulkan",
+            "VulkanGraphicsDriver.cpp");
+        var handlerSource = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "Windows",
+            "NativeSceneViewportHandler.Windows.cs").ReplaceLineEndings("\n");
+        var bridgeSource = ReadRepositoryFile(
+            "Runtime",
+            "Editor",
+            "EditorRuntimeBridge.cpp");
+        var imGuiSource = ReadRepositoryFile(
+            "Runtime",
+            "Submodules",
+            "ImGuiApi.cpp");
+        var editorCameraSource = ReadRepositoryFile(
+            "Runtime",
+            "Components",
+            "EditorComponent.cpp");
+
+        Assert.Equal(
+            1,
+            graphicsSource.Split(
+                "#if defined(__APPLE__) || defined(_WIN32)",
+                StringSplitOptions.None).Length - 1);
+        Assert.Contains(
+            "#if defined(_WIN32)",
+            graphicsSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GetMainWindow()->GetRenderArea()",
+            graphicsSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "keyboardRoot?.AddHandler(\n            UIElement.KeyDownEvent",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "(!viewportFocused && !HasRightMouseCapture())",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ReleaseForwardedKeys();",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AllowFocusOnInteraction = true",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SetViewportFocused(true);",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "ResolveDrawablePosition(panel, point.Position.X, point.Position.Y)",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "return ((float)(x * scale), (float)(y * scale));",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if (!hadActivePointerButtons)",
+            handlerSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "HandleWindowsEditorInput(event);",
+            bridgeSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "io.DisplaySize = ImVec2((float)renderArea.x, (float)renderArea.y);",
+            imGuiSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "constexpr float preciseMoveMultiplier = 0.1f;",
+            editorCameraSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GetWorld()->GetInput().IsKeyDown(VK_CONTROL) ? preciseMoveMultiplier : 1.0f",
+            editorCameraSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GetWorld()->GetInput().IsButtonClick(VK_RBUTTON)",
+            editorCameraSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "GetWorld()->GetInput().GetButtonPressCursorPos(VK_RBUTTON)",
+            editorCameraSource,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "platformView.KeyDown +=",
+            handlerSource,
+            StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1405,6 +1506,10 @@ public sealed class EngineLifecycleTests
             "EntryPoint = \"SailorProtocolStopLocalHost\"",
             nativeInteropSource,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "EntryPoint = \"SailorProtocolSetWindowsViewportHost\"",
+            nativeInteropSource,
+            StringComparison.Ordinal);
         Assert.DoesNotContain(
             "SailorProtocolInvoke",
             nativeInteropSource,
@@ -1413,8 +1518,12 @@ public sealed class EngineLifecycleTests
             "SailorProtocolFreeBuffer",
             nativeInteropSource,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "if (params.m_bRunConsole && !params.m_bIsEditor)",
+            nativeSource,
+            StringComparison.Ordinal);
         Assert.Equal(
-            3,
+            4,
             nativeInteropSource.Split("[DllImport(", StringSplitOptions.None).Length - 1);
         Assert.Contains(
             "const int numArguments = request.arguments_size();",

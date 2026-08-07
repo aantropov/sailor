@@ -146,6 +146,9 @@ namespace SailorEditor.Services
         readonly object macRemoteViewportHostLock = new();
         readonly Dictionary<ulong, (long Generation, nint Handle)> appliedMacRemoteViewportHosts = [];
 #endif
+#if WINDOWS
+        int windowsViewportInteropFailureLogged;
+#endif
         EngineSession? activeSession;
         EngineLaunchContext? activeLaunchContext;
         int lastExitCode;
@@ -643,9 +646,38 @@ namespace SailorEditor.Services
             return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         }
 
-        public void BindMacRemoteViewportHost(ulong viewportId, nint hostHandle)
+        public void BindMacRemoteViewportHost(
+            ulong viewportId,
+            nint hostHandle,
+            double compositionScale = 1)
         {
-#if MACCATALYST
+#if WINDOWS
+            if (!IsRunning)
+            {
+                return;
+            }
+
+            try
+            {
+                if (EngineProtocolNative.SailorProtocolSetWindowsViewportHost(
+                        viewportId,
+                        hostHandle,
+                        double.IsFinite(compositionScale) && compositionScale > 0
+                            ? (float)compositionScale
+                            : 1.0f) != 0)
+                {
+                    Interlocked.Exchange(ref windowsViewportInteropFailureLogged, 0);
+                }
+            }
+            catch (Exception exception)
+            {
+                if (Interlocked.Exchange(ref windowsViewportInteropFailureLogged, 1) == 0)
+                {
+                    Console.WriteLine(
+                        $"[EngineService] Windows viewport host binding failed: {exception}");
+                }
+            }
+#elif MACCATALYST
             var generation = Volatile.Read(ref engineGeneration);
             if (!IsGenerationActive(generation))
             {

@@ -31,6 +31,101 @@ void ImGuiApi::HandleWin32(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	SAILOR_PROFILE_FUNCTION();
 	ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam);
 }
+
+static ImGuiKey SailorMapWindowsVirtualKey(uint32_t key)
+{
+	if (key >= '0' && key <= '9')
+	{
+		return static_cast<ImGuiKey>(ImGuiKey_0 + key - '0');
+	}
+
+	if (key >= 'A' && key <= 'Z')
+	{
+		return static_cast<ImGuiKey>(ImGuiKey_A + key - 'A');
+	}
+
+	if (key >= VK_F1 && key <= VK_F12)
+	{
+		return static_cast<ImGuiKey>(ImGuiKey_F1 + key - VK_F1);
+	}
+
+	switch (key)
+	{
+	case VK_TAB: return ImGuiKey_Tab;
+	case VK_LEFT: return ImGuiKey_LeftArrow;
+	case VK_RIGHT: return ImGuiKey_RightArrow;
+	case VK_UP: return ImGuiKey_UpArrow;
+	case VK_DOWN: return ImGuiKey_DownArrow;
+	case VK_PRIOR: return ImGuiKey_PageUp;
+	case VK_NEXT: return ImGuiKey_PageDown;
+	case VK_HOME: return ImGuiKey_Home;
+	case VK_END: return ImGuiKey_End;
+	case VK_INSERT: return ImGuiKey_Insert;
+	case VK_DELETE: return ImGuiKey_Delete;
+	case VK_BACK: return ImGuiKey_Backspace;
+	case VK_SPACE: return ImGuiKey_Space;
+	case VK_RETURN: return ImGuiKey_Enter;
+	case VK_ESCAPE: return ImGuiKey_Escape;
+	case VK_SHIFT:
+	case VK_LSHIFT:
+	case VK_RSHIFT:
+		return ImGuiKey_ModShift;
+	case VK_CONTROL:
+	case VK_LCONTROL:
+	case VK_RCONTROL:
+		return ImGuiKey_ModCtrl;
+	case VK_MENU:
+	case VK_LMENU:
+	case VK_RMENU:
+		return ImGuiKey_ModAlt;
+	case VK_LWIN:
+	case VK_RWIN:
+		return ImGuiKey_ModSuper;
+	default:
+		return ImGuiKey_None;
+	}
+}
+
+void ImGuiApi::HandleWindowsEditorInput(const WindowsEditorInputEvent& event)
+{
+	SAILOR_PROFILE_FUNCTION();
+
+	if (!ImGui::GetCurrentContext())
+	{
+		return;
+	}
+
+	ImGuiIO& io = ImGui::GetIO();
+	switch (event.EventType)
+	{
+	case WindowsEditorInputEvent::Type::MousePos:
+		io.AddMousePosEvent(event.X, event.Y);
+		break;
+	case WindowsEditorInputEvent::Type::MouseButton:
+		if (event.Button >= 0 && event.Button < ImGuiMouseButton_COUNT)
+		{
+			io.AddMouseButtonEvent(event.Button, event.bPressed);
+		}
+		break;
+	case WindowsEditorInputEvent::Type::MouseWheel:
+		io.AddMouseWheelEvent(event.X, event.Y);
+		break;
+	case WindowsEditorInputEvent::Type::Key:
+	{
+		const ImGuiKey imguiKey = SailorMapWindowsVirtualKey(event.Key);
+		if (imguiKey != ImGuiKey_None)
+		{
+			io.AddKeyEvent(imguiKey, event.bPressed);
+		}
+		break;
+	}
+	case WindowsEditorInputEvent::Type::Focus:
+		io.AddFocusEvent(event.bPressed);
+		break;
+	default:
+		break;
+	}
+}
 #elif defined(__APPLE__)
 static ImGuiKey SailorMapMacVirtualKey(uint32_t key)
 {
@@ -145,6 +240,20 @@ void ImGuiApi::NewFrame()
 
 #if defined(_WIN32)
 	ImGui_ImplWin32_NewFrame();
+	if (App::HasEditor())
+	{
+		auto& window = App::GetMainWindow();
+		if (window)
+		{
+			const glm::ivec2 renderArea = window->GetRenderArea();
+			if (renderArea.x > 0 && renderArea.y > 0)
+			{
+				ImGuiIO& io = ImGui::GetIO();
+				io.DisplaySize = ImVec2((float)renderArea.x, (float)renderArea.y);
+				io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+			}
+		}
+	}
 #elif defined(__APPLE__)
 	static auto s_prevFrameTime = std::chrono::steady_clock::now();
 	const auto now = std::chrono::steady_clock::now();
