@@ -31,6 +31,10 @@ namespace Sailor::Physics
 			uint32_t bodyId,
 			const glm::vec3& linearVelocity,
 			const glm::vec3& angularVelocity);
+		SAILOR_API bool AddForceAtPosition(
+			uint32_t bodyId,
+			const glm::vec3& force,
+			const glm::vec3& position);
 		SAILOR_API bool Step(float deltaTime);
 		SAILOR_API bool Raycast(
 			const glm::vec3& origin,

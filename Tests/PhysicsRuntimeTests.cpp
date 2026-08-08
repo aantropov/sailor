@@ -1,5 +1,6 @@
 #include "Tasks/Tasks.h"
 #include "Components/CollisionShapeComponent.h"
+#include "Components/BuoyancyComponent.h"
 #include "Components/RigidBodyComponent.h"
 #include "Core/Reflection.h"
 #include "ECS/PhysicsECS.h"
@@ -546,6 +547,15 @@ namespace
 			"collision shape should expose typed primitive authoring fields: " +
 				shapeType.Properties()["shapeType"] + ", " +
 				shapeType.Properties()["center"]);
+
+		const TypeInfo& buoyancyType = TypeInfo::Get<BuoyancyComponent>();
+		Require(
+			buoyancyType.Name() == "Sailor::BuoyancyComponent" &&
+				!buoyancyType.Properties()["halfExtents"].empty() &&
+				buoyancyType.Properties()["waveAmplitude"] == "float",
+			"buoyancy should expose Editor-compatible hull and wave fields: " +
+				buoyancyType.Properties()["halfExtents"] + ", " +
+				buoyancyType.Properties()["waveAmplitude"]);
 	}
 
 	void TestComponentTeardownOrdering()
@@ -564,6 +574,38 @@ namespace
 			owner->GetComponents().IsEmpty(),
 			"full object teardown should not access a destroyed rigid body");
 		world.Clear();
+	}
+
+	void TestForceAtPositionAppliesLinearAndAngularImpulse()
+	{
+		Physics::PhysicsWorld world;
+		uint32_t bodyId = ~0u;
+		Physics::RigidBodyDesc body = MakeBox(
+			InstanceId::GenerateNewInstanceId(),
+			Physics::ERigidBodyMotionType::Dynamic,
+			glm::vec3(0.0f),
+			glm::vec3(1.0f));
+		body.m_mass = 1.0f;
+		Require(world.CreateBody(body, bodyId),
+			"dynamic force test body should be created");
+		for (uint32_t step = 0; step < 60; ++step)
+		{
+			Require(world.AddForceAtPosition(
+				bodyId,
+				glm::vec3(0.0f, 14.0f, 0.0f),
+				glm::vec3(0.4f, 0.0f, 0.0f)),
+				"force should be accepted for a live body");
+			Require(world.Step(c_fixedDeltaTime),
+				"force physics step should succeed");
+		}
+
+		Physics::PhysicsBodyPose pose{};
+		Require(world.GetBodyPose(bodyId, pose),
+			"force test pose should be readable");
+		Require(
+			pose.m_position.y > 0.5f &&
+				std::abs(pose.m_angularVelocity.z) > 0.01f,
+			"off-center force should create linear motion and torque");
 	}
 
 	struct PhysicsSceneStats final
@@ -878,6 +920,7 @@ int main()
 		{ "WorldPoseToLocalForTransformedParent", TestWorldPoseToLocalForTransformedParent },
 		{ "ReflectedPhysicsAuthoringContract", TestReflectedPhysicsAuthoringContract },
 		{ "ComponentTeardownOrdering", TestComponentTeardownOrdering },
+		{ "ForceAtPositionAppliesLinearAndAngularImpulse", TestForceAtPositionAppliesLinearAndAngularImpulse },
 		{ "PhysicsSceneFixtures", TestPhysicsSceneFixtures },
 	};
 
