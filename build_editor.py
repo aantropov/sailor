@@ -67,7 +67,14 @@ def prepare_env(dotnet_path: str) -> dict[str, str]:
 def maybe_build_engine(engine: bool, config: str) -> None:
     if not engine:
         return
-    cmd = [sys.executable, str(REPO_ROOT / "build_engine.py"), "--config", config]
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "build_engine.py"),
+        "--config",
+        config,
+        "--target",
+        "SailorExec",
+    ]
     run(cmd)
 
 

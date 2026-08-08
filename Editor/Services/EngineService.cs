@@ -269,6 +269,12 @@ namespace SailorEditor.Services
             {
 #if WINDOWS
                 return Path.Combine(EngineWorkingDirectory, "SailorEngine-Debug.exe");
+#elif MACCATALYST
+                return Path.Combine(
+                    EngineWorkingDirectory,
+                    "Binaries",
+                    "Debug",
+                    "SailorEngine-Debug");
 #else
                 return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Debug");
 #endif
@@ -281,6 +287,12 @@ namespace SailorEditor.Services
             {
 #if WINDOWS
                 return Path.Combine(EngineWorkingDirectory, "SailorEngine-Release.exe");
+#elif MACCATALYST
+                return Path.Combine(
+                    EngineWorkingDirectory,
+                    "Binaries",
+                    "Release",
+                    "SailorEngine-Release");
 #else
                 return Path.Combine(EngineWorkingDirectory, "Binaries", "SailorEngine-Release");
 #endif

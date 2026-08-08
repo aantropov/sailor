@@ -1246,12 +1246,28 @@ namespace SailorEditor.Services
         {
             try
             {
-                var result = await Task.Run(
-                    () => _assetCacheIndexStore.Load(
-                        launchContext.AssetCacheFilePath,
-                        launchContext.WorkspaceIdentity,
-                        cancellation.Token),
+                var engineTypes = _engineService.EngineTypes;
+                var backgroundResult = await Task.Run(
+                    () =>
+                    {
+                        var result = _assetCacheIndexStore.Load(
+                            launchContext.AssetCacheFilePath,
+                            launchContext.WorkspaceIdentity,
+                            cancellation.Token);
+                        var preparedEntries = result.Succeeded
+                            ? PrepareAssetCacheIndex(
+                                result.Entries!,
+                                launchContext,
+                                _engineContentDirectory,
+                                engineTypes,
+                                cancellation.Token)
+                            : [];
+                        return new AssetCacheIndexBackgroundResult(
+                            result,
+                            preparedEntries);
+                    },
                     cancellation.Token).ConfigureAwait(false);
+                var result = backgroundResult.LoadResult;
                 if (!result.Succeeded)
                 {
                     if (result.Status is not AssetCacheIndexStatus.Missing)
@@ -1270,7 +1286,7 @@ namespace SailorEditor.Services
                         return;
                     }
 
-                    MergeAssetCacheIndex(result.Entries!);
+                    MergeAssetCacheIndex(backgroundResult.PreparedEntries);
                     Changed?.Invoke();
                 });
             }
@@ -1420,17 +1436,69 @@ namespace SailorEditor.Services
             IReadOnlyList<AssetFolder> Folders,
             IReadOnlyList<AssetFile> Files);
 
+        private sealed record PreparedAssetCacheEntry(
+            FileId FileId,
+            AssetFile Asset);
+
+        private sealed record AssetCacheIndexBackgroundResult(
+            AssetCacheIndexLoadResult LoadResult,
+            IReadOnlyList<PreparedAssetCacheEntry> PreparedEntries);
+
         private void MergeAssetCacheIndex(
-            IReadOnlyList<AssetCacheIndexEntry> entries)
+            IReadOnlyList<PreparedAssetCacheEntry> entries)
         {
+            using var perfScope = EditorPerf.Scope("AssetsService.MergeAssetCacheIndex");
             foreach (var entry in entries)
             {
-                if (!TryResolveAssetIndexLocation(
-                        entry,
-                        out var projectRootId,
-                        out var isReadOnly))
+                var indexedAsset = entry.Asset;
+                if (Assets.TryGetValue(entry.FileId, out var existing))
                 {
-                    continue;
+                    if ((existing.AssetInfo is not null &&
+                         ProjectContentPathPolicy.IsSamePath(
+                             existing.AssetInfo.FullName,
+                             indexedAsset.AssetInfo.FullName)) ||
+                        !ProjectContentAssetResolutionPolicy.ShouldReplace(
+                            existing.IsReadOnly,
+                            indexedAsset.IsReadOnly))
+                    {
+                        continue;
+                    }
+                }
+
+                indexedAsset.Id = _nextAssetId++;
+                Assets[entry.FileId] = indexedAsset;
+            }
+        }
+
+        private static IReadOnlyList<PreparedAssetCacheEntry>
+            PrepareAssetCacheIndex(
+                IReadOnlyList<AssetCacheIndexEntry> entries,
+                EngineLaunchContext launchContext,
+                string engineContentDirectory,
+                EngineTypes engineTypes,
+                CancellationToken cancellationToken)
+        {
+            using var perfScope = EditorPerf.Scope("AssetsService.PrepareAssetCacheIndex");
+            var prepared = new List<PreparedAssetCacheEntry>(entries.Count);
+            foreach (var entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var projectRootId = ActiveProjectRootId;
+                var isReadOnly = false;
+                if (!ProjectContentPathPolicy.IsInsideRoot(
+                        launchContext.ContentDirectory,
+                        entry.SourcePath))
+                {
+                    if (launchContext.Mode != EditorProjectMode.Workspace ||
+                        !ProjectContentPathPolicy.IsInsideRoot(
+                            engineContentDirectory,
+                            entry.SourcePath))
+                    {
+                        continue;
+                    }
+
+                    projectRootId = EngineProjectRootId;
+                    isReadOnly = true;
                 }
 
                 var fileId = new FileId(entry.FileId);
@@ -1439,24 +1507,10 @@ namespace SailorEditor.Services
                     entry.MetadataFilename);
                 var metadataFile = new FileInfo(
                     Path.Combine(sourceFile.DirectoryName!, entry.MetadataFilename));
-                if (Assets.TryGetValue(fileId, out var existing))
-                {
-                    if ((existing.AssetInfo is not null &&
-                         ProjectContentPathPolicy.IsSamePath(
-                             existing.AssetInfo.FullName,
-                             metadataFile.FullName)) ||
-                        !ProjectContentAssetResolutionPolicy.ShouldReplace(
-                            existing.IsReadOnly,
-                            isReadOnly))
-                    {
-                        continue;
-                    }
-                }
-
                 var indexedAsset = CreateAssetFile(
                     entry.AssetInfoType,
-                    Path.GetExtension(indexedFilename));
-                indexedAsset.Id = _nextAssetId++;
+                    Path.GetExtension(indexedFilename),
+                    engineTypes);
                 indexedAsset.DisplayName = indexedFilename;
                 indexedAsset.FolderId = -1;
                 indexedAsset.ProjectRootId = projectRootId;
@@ -1471,35 +1525,10 @@ namespace SailorEditor.Services
                 indexedAsset.IsDirty = false;
                 indexedAsset.IsReadOnly = isReadOnly;
                 indexedAsset.IsMetadataLoaded = false;
-                Assets[fileId] = indexedAsset;
-            }
-        }
-
-        private bool TryResolveAssetIndexLocation(
-            AssetCacheIndexEntry entry,
-            out int projectRootId,
-            out bool isReadOnly)
-        {
-            projectRootId = ActiveProjectRootId;
-            isReadOnly = false;
-            if (ProjectContentPathPolicy.IsInsideRoot(
-                    CurrentProjectRootPath,
-                    entry.SourcePath))
-            {
-                return true;
+                prepared.Add(new PreparedAssetCacheEntry(fileId, indexedAsset));
             }
 
-            if (CurrentProjectMode == EditorProjectMode.Workspace &&
-                ProjectContentPathPolicy.IsInsideRoot(
-                    _engineContentDirectory,
-                    entry.SourcePath))
-            {
-                projectRootId = EngineProjectRootId;
-                isReadOnly = true;
-                return true;
-            }
-
-            return false;
+            return prepared;
         }
 
         private FolderLoadSnapshot ReadDirectoryLevel(AssetFolder parentFolder)
@@ -1810,9 +1839,10 @@ namespace SailorEditor.Services
 
         private static AssetFile CreateAssetFile(
             string assetInfoType,
-            string extension)
+            string extension,
+            EngineTypes engineTypes = null)
         {
-            var engineTypes = MauiProgram.GetService<EngineService>()?.EngineTypes;
+            engineTypes ??= MauiProgram.GetService<EngineService>()?.EngineTypes;
             AssetType assetType = null;
             if (!string.IsNullOrEmpty(assetInfoType))
             {

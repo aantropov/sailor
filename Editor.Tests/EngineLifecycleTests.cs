@@ -3,26 +3,29 @@ namespace Editor.Tests;
 public sealed class EngineLifecycleTests
 {
     [Fact]
-    public void ManagedPlayLaunch_UsesCMakeRuntimeOutputDirectoryOnNonWindowsHosts()
+    public void ManagedPlayLaunch_UsesConfigurationSpecificCMakeOutputOnMacCatalyst()
     {
         var source = ReadRepositoryFile("Editor", "Services", "EngineService.cs");
 
         Assert.Contains(
-            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"SailorEngine-Debug\")",
+            "\"Debug\",\n                    \"SailorEngine-Debug\")",
             source,
             StringComparison.Ordinal);
         Assert.Contains(
-            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"SailorEngine-Release\")",
+            "\"Release\",\n                    \"SailorEngine-Release\")",
             source,
             StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"Debug\", \"SailorEngine-Debug\")",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "Path.Combine(EngineWorkingDirectory, \"Binaries\", \"Release\", \"SailorEngine-Release\")",
-            source,
-            StringComparison.Ordinal);
+        Assert.Contains("#elif MACCATALYST", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EditorBuildEntryPoints_BuildStandaloneExecutableForPlay()
+    {
+        var runEditor = ReadRepositoryFile("run_editor.py");
+        var buildEditor = ReadRepositoryFile("build_editor.py");
+
+        Assert.Contains("\"--target\",\n        \"SailorExec\"", runEditor, StringComparison.Ordinal);
+        Assert.Contains("\"--target\",\n        \"SailorExec\"", buildEditor, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1391,7 +1394,28 @@ public sealed class EngineLifecycleTests
         Assert.Contains("await EnsureAssetDirectoryLoadedAsync(", assetsSource, StringComparison.Ordinal);
         Assert.Contains("await service.ResolveAssetAsync(file.FileId)", contentViewSource, StringComparison.Ordinal);
         Assert.Contains("QueueAssetCacheIndexLoad(launchContext, contentGeneration)", assetsSource, StringComparison.Ordinal);
-        Assert.Contains("MergeAssetCacheIndex(result.Entries!)", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("? PrepareAssetCacheIndex(", assetsSource, StringComparison.Ordinal);
+        Assert.Contains("MergeAssetCacheIndex(backgroundResult.PreparedEntries)", assetsSource, StringComparison.Ordinal);
+        var backgroundLoad = assetsSource.IndexOf(
+            "var backgroundResult = await Task.Run(",
+            StringComparison.Ordinal);
+        var backgroundPreparation = assetsSource.IndexOf(
+            "? PrepareAssetCacheIndex(",
+            backgroundLoad,
+            StringComparison.Ordinal);
+        var uiPublication = assetsSource.IndexOf(
+            "await MainThread.InvokeOnMainThreadAsync(",
+            backgroundPreparation,
+            StringComparison.Ordinal);
+        var uiMerge = assetsSource.IndexOf(
+            "MergeAssetCacheIndex(backgroundResult.PreparedEntries)",
+            uiPublication,
+            StringComparison.Ordinal);
+        Assert.True(
+            backgroundLoad >= 0 &&
+            backgroundPreparation > backgroundLoad &&
+            uiPublication > backgroundPreparation &&
+            uiMerge > uiPublication);
         Assert.Contains("Files.Add(file)", assetsSource, StringComparison.Ordinal);
         Assert.Contains("Assets[file.FileId] = file", assetsSource, StringComparison.Ordinal);
         Assert.Contains("producerIdentity", cacheIndexSource, StringComparison.Ordinal);

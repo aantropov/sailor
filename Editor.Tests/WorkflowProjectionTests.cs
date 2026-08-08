@@ -876,6 +876,38 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void FloatEditors_ApplyTextOnlyAfterEditingFinishes()
+    {
+        var templatesSource = ReadRepositoryFile(
+            "Editor",
+            "Utility",
+            "Templates.cs");
+        var floatEditor = Slice(
+            templatesSource,
+            "static Entry CreateFloatEditor<TBindingContext>(",
+            "public static View RangedFloatEditor<TBindingContext>(");
+        var deferredInteraction = Slice(
+            templatesSource,
+            "static void ConfigureDeferredFloatEntry<TBindingContext>(",
+            "public static View RangedFloatEditor<TBindingContext>(");
+
+        Assert.Contains(
+            "ConfigureDeferredFloatEntry(",
+            floatEditor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "mode: BindingMode.OneWay",
+            floatEditor,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            deferredInteraction,
+            "entry.Unfocused +=",
+            "float.TryParse(",
+            "setter(bindingContext, parsedValue);",
+            "ScheduleInspectorCommit(current);");
+    }
+
+    [Fact]
     public void WorldProjectionRefresh_DropsStaleSelectionBeforePublishing()
     {
         var worldSource = ReadRepositoryFile("Editor", "Services", "WorldService.cs");
@@ -1736,6 +1768,111 @@ public sealed class WorkflowProjectionTests
             "NumberOfTapsRequired = 2",
             "SelectHierarchyRowAsync(",
             "FocusGameObjectAsync(row)");
+    }
+
+    [Fact]
+    public void InspectorReferences_UseSharedNavigationAndComponentsSelectTheirOwner()
+    {
+        var selectionSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "SelectionService.cs");
+        var navigation = Slice(
+            selectionSource,
+            "public async Task<bool> NavigateToReferenceAsync(",
+            "public async Task SelectObjectAsync(");
+        var targetResolution = Slice(
+            selectionSource,
+            "static GameObject? ResolveSceneReferenceTarget(",
+            "static string? TryGetSelectionId");
+        var fileBehavior = ReadRepositoryFile(
+            "Editor",
+            "Controls",
+            "FileIdSelectBehavior.cs");
+        var instanceBehavior = ReadRepositoryFile(
+            "Editor",
+            "Controls",
+            "InstanceIdSelectBehavior.cs");
+
+        Assert.Contains("Observable<FileId>", navigation, StringComparison.Ordinal);
+        Assert.Contains("Observable<InstanceId>", navigation, StringComparison.Ordinal);
+        Assert.Contains("ObjectPtr objectPtr", navigation, StringComparison.Ordinal);
+        Assert.Contains("AssetFile assetFile", navigation, StringComparison.Ordinal);
+        Assert.Contains("Component component => worldService.FindOwner(component)", navigation, StringComparison.Ordinal);
+        AssertInOrder(
+            targetResolution,
+            "TryGetGameObject(instanceId",
+            "TryGetComponent(instanceId",
+            "worldService.FindOwner(component)");
+        Assert.Contains(
+            ".NavigateToReferenceAsync(BoundProperty)",
+            fileBehavior,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            ".NavigateToReferenceAsync(BoundProperty)",
+            instanceBehavior,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectInstance(id)", instanceBehavior, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ComponentContextMenu_CopyPasteValuesPreservesIdentityAndUsesHistory()
+    {
+        var templateSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "ComponentTemplate.cs");
+        var clipboardSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "ComponentClipboardService.cs");
+        var worldServiceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "WorldService.cs");
+        var menu = Slice(
+            templateSource,
+            "var contextItems = new[]",
+            "var flyout = contextMenuService.CreateFlyout(");
+        var merge = Slice(
+            clipboardSource,
+            "internal static string MergeValues(",
+            "return EditorYaml.SerializeComponent(destination);");
+
+        AssertInOrder(
+            menu,
+            "Text = \"Copy Values\"",
+            "clipboardService.CopyValuesAsync(component)",
+            "Text = \"Paste Values\"",
+            "clipboardService.PasteValuesAsync(component)",
+            "Text = \"Reset to Defaults\"",
+            "Text = \"Remove Component\"");
+        Assert.Equal(
+            4,
+            CountOccurrences(
+                templateSource,
+                "contextMenuService.CreateFlyout(contextItems)"));
+        Assert.Contains("EditorYaml.SerializeComponent(component)", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("copiedValuesYaml = EditorYaml.SerializeComponent(component)", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("var clipboardText = copiedValuesYaml", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("new UpdateComponentCommand(", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("dispatcher.DispatchAsync(", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("IdentityProperties.Contains(property.Key)", merge, StringComparison.Ordinal);
+        Assert.Contains("EditorComponentPropertyAccess.Writable", merge, StringComparison.Ordinal);
+        Assert.Contains("new ComponentYamlConverter()", merge, StringComparison.Ordinal);
+        Assert.Contains("Deserialize<Component>(clipboardYaml)", merge, StringComparison.Ordinal);
+        Assert.Contains("EditorYaml.SerializeComponent(destination)", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("source.Typename", merge, StringComparison.Ordinal);
+        Assert.Contains("target.Typename.Name", merge, StringComparison.Ordinal);
+        Assert.Contains("SetStatus($\"Pasted", clipboardSource, StringComparison.Ordinal);
+        AssertInOrder(
+            Slice(
+                worldServiceSource,
+                "public bool ApplyComponentYamlLocal(",
+                "public IEnumerable<GameObject> EnumerateSubHierarchy("),
+            "owner.NotifyComponentsChanged();",
+            "PublishCurrentWorld();");
     }
 
     static void AssertCommitClearsDirtyBeforeDispatch(string source)

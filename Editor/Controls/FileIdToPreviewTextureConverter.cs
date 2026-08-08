@@ -24,12 +24,8 @@ public class FileIdToPreviewTextureConverter : IValueConverter
             return FileId.NullFileId;
         }
 
-        if (outAsset is TextureFile texture)
-        {
-            return texture.Texture;
-        }
-
-        return FileId.NullFileId;
+        return MauiProgram.GetService<AssetFingerprintService>()
+            .TryGetCachedPreview(outAsset) ?? FileId.NullFileId;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

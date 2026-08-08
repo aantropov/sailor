@@ -7,9 +7,10 @@ using SailorEditor.Controls;
 public class InstanceIdSelectBehavior : Behavior<Label>
 {
     private Label _associatedLabel;
+    private TapGestureRecognizer _tapGestureRecognizer;
 
     public static readonly BindableProperty BoundPropertyProperty =
-        BindableProperty.Create(nameof(BoundProperty), typeof(object), typeof(FileIdDragAndDropBehaviour), null, BindingMode.TwoWay);
+        BindableProperty.Create(nameof(BoundProperty), typeof(object), typeof(InstanceIdSelectBehavior), null, BindingMode.TwoWay);
 
     public object BoundProperty
     {
@@ -26,15 +27,21 @@ public class InstanceIdSelectBehavior : Behavior<Label>
 
         BindingContext = _associatedLabel.BindingContext;
 
-        var tapGestureRecognizer = new TapGestureRecognizer();
-        tapGestureRecognizer.Tapped += OnLabelTapped;
-        bindable.GestureRecognizers.Add(tapGestureRecognizer);
+        _tapGestureRecognizer = new TapGestureRecognizer();
+        _tapGestureRecognizer.Tapped += OnLabelTapped;
+        bindable.GestureRecognizers.Add(_tapGestureRecognizer);
     }
 
     protected override void OnDetachingFrom(Label bindable)
     {
         base.OnDetachingFrom(bindable);
 
+        if (_tapGestureRecognizer is not null)
+        {
+            _tapGestureRecognizer.Tapped -= OnLabelTapped;
+            bindable.GestureRecognizers.Remove(_tapGestureRecognizer);
+            _tapGestureRecognizer = null;
+        }
         _associatedLabel.BindingContextChanged -= OnBindingContextChanged;
         _associatedLabel = null;
     }
@@ -44,14 +51,17 @@ public class InstanceIdSelectBehavior : Behavior<Label>
         BindingContext = _associatedLabel.BindingContext;
     }
 
-    private void OnLabelTapped(object sender, EventArgs e)
+    private async void OnLabelTapped(object sender, EventArgs e)
     {
-        if (BoundProperty != null)
+        try
         {
-            if (BoundProperty is InstanceId id)
-            {
-                MauiProgram.GetService<SelectionService>().SelectInstance(id);
-            }
+            await MauiProgram.GetService<SelectionService>()
+                .NavigateToReferenceAsync(BoundProperty);
+        }
+        catch (Exception exception)
+        {
+            Console.WriteLine(
+                $"[InstanceIdSelectBehavior] Failed to navigate to reference: {exception.Message}");
         }
     }
 }

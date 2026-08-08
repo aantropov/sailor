@@ -273,7 +273,7 @@ static class Templates
             }
         };
 
-        var image = new Image
+        var image = new AssetPreviewImage
         {
             WidthRequest = 64,
             HeightRequest = 64,
@@ -282,10 +282,9 @@ static class Templates
             VerticalOptions = LayoutOptions.Start
         };
 
-        image.Bind<Image, Uniform<FileId>, FileId, Image>(Image.SourceProperty,
-            mode: BindingMode.Default,
-            converter: new FileIdToPreviewTextureConverter(),
-            getter: static (Uniform<FileId> vm) => vm.Value);
+        image.SetBinding(
+            AssetPreviewImage.FileIdProperty,
+            nameof(Uniform<FileId>.Value));
 
         var valueEntry = CreateInspectorValueLabel();
 
@@ -344,10 +343,23 @@ static class Templates
         valueEntry.Behaviors.Add(dragAndDropBehaviour);
         valueEntry.Behaviors.Add(selectBehavior);
 
+        var preview = new AssetPreviewImage
+        {
+            BindingContext = bindingContext,
+            WidthRequest = 36,
+            HeightRequest = 36,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Center
+        };
+        preview.SetBinding(
+            AssetPreviewImage.FileIdProperty,
+            new Binding(bindingPath));
+
         var grid = new Grid
         {
             ColumnDefinitions =
             {
+                new ColumnDefinition { Width = GridLength.Auto },
                 new ColumnDefinition { Width = GridLength.Auto },
                 new ColumnDefinition { Width = GridLength.Star }
             },
@@ -355,7 +367,8 @@ static class Templates
         };
 
         grid.Add(clearButton, 0, 0);
-        grid.Add(valueEntry, 1, 0);
+        grid.Add(preview, 1, 0);
+        grid.Add(valueEntry, 2, 0);
 
         return grid;
     }
@@ -579,8 +592,11 @@ static class Templates
         value.ReturnType = ReturnType.Done;
         value.IsTextPredictionEnabled = false;
         var getValue = getter.Compile();
-        ConfigureCommittingEntry(
+        var converter = new FloatValueConverter();
+        ConfigureDeferredFloatEntry(
             value,
+            getValue,
+            setter,
             normalizeOnUnfocus
                 ? entry =>
                 {
@@ -592,10 +608,43 @@ static class Templates
         value.Bind<Entry, TBindingContext, float, string>(Entry.TextProperty,
             getter: getter,
             setter: setter,
-            mode: BindingMode.TwoWay,
-            converter: new FloatValueConverter());
+            mode: BindingMode.OneWay,
+            converter: converter);
 
         return value;
+    }
+
+    static void ConfigureDeferredFloatEntry<TBindingContext>(
+        Entry entry,
+        Func<TBindingContext, float> getter,
+        Action<TBindingContext, float> setter,
+        Action<Entry> normalizeOnUnfocus)
+        where TBindingContext : class
+    {
+        entry.Completed += (sender, args) => ((Entry)sender).Unfocus();
+        entry.Unfocused += (sender, args) =>
+        {
+            var current = (Entry)sender;
+            if (current.BindingContext is not TBindingContext bindingContext)
+                return;
+
+            if (float.TryParse(
+                    current.Text,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsedValue) &&
+                float.IsFinite(parsedValue))
+            {
+                setter(bindingContext, parsedValue);
+            }
+
+            if (normalizeOnUnfocus is not null)
+                normalizeOnUnfocus(current);
+            else
+                current.Text = NumericRangeEntryInteraction.Format(getter(bindingContext));
+
+            ScheduleInspectorCommit(current);
+        };
     }
 
     public static View RangedFloatEditor<TBindingContext>(

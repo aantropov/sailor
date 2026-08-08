@@ -166,6 +166,9 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
     [YamlIgnore]
     public List<Component> Components { get { return MauiProgram.GetService<WorldService>().GetComponents(this); } }
 
+    public void NotifyComponentsChanged()
+        => OnPropertyChanged(nameof(Components));
+
     public object Clone() => new GameObject()
     {
         Name = Name + "(Clone)",

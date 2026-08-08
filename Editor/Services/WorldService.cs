@@ -747,6 +747,7 @@ namespace SailorEditor.Services
             componentOwnersDict.Remove(current.InstanceId);
             componentOwnersDict[updated.InstanceId] = owner;
 
+            owner.NotifyComponentsChanged();
             PublishCurrentWorld();
             return true;
         }
