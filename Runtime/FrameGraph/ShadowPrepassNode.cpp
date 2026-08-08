@@ -8,6 +8,7 @@
 #include "RHI/Types.h"
 #include "RHI/VertexDescription.h"
 #include "AssetRegistry/AssetRegistry.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "ECS/LightingECS.h"
 
@@ -60,6 +61,81 @@ RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddShadowMaterial(RHI::RHIVertexDesc
 		}
 	}
 
+	return material;
+}
+
+RHI::RHIMaterialPtr ShadowPrepassNode::GetOrAddCustomShadowMaterial(
+	const MaterialPtr& sourceMaterial,
+	RHI::RHIVertexDescriptionPtr vertexDescription,
+	RHI::EShadowType shadowType,
+	bool bMasked)
+{
+	if (!sourceMaterial || !sourceMaterial->GetShader())
+	{
+		return nullptr;
+	}
+
+	auto shaderCompiler = App::GetSubmodule<ShaderCompiler>();
+	auto shaderAsset = shaderCompiler->LoadShaderAsset(
+		sourceMaterial->GetShader()->GetFileId()).Lock();
+	if (!shaderAsset || !shaderAsset->GetSupportedDefines().Contains("SHADOW_CASTER"))
+	{
+		return nullptr;
+	}
+
+	size_t cacheKey = reinterpret_cast<size_t>(sourceMaterial.GetRawPtr());
+	HashCombine(cacheKey,
+		vertexDescription->GetVertexAttributeBits(),
+		static_cast<uint32_t>(shadowType),
+		bMasked,
+		sourceMaterial->GetContentRevision());
+	auto& material = m_customShadowMaterials[cacheKey];
+	if (material)
+	{
+		return material;
+	}
+
+	TVector<std::string> defines = sourceMaterial->GetShader()->GetDefines();
+	if (!defines.Contains("SHADOW_CASTER"))
+	{
+		defines.Add("SHADOW_CASTER");
+	}
+	if (bMasked && shaderAsset->GetSupportedDefines().Contains("ALPHA_CUTOUT") &&
+		!defines.Contains("ALPHA_CUTOUT"))
+	{
+		defines.Add("ALPHA_CUTOUT");
+	}
+	if (shadowType == EShadowType::EVSM && !defines.Contains("EVSM"))
+	{
+		defines.Add("EVSM");
+	}
+
+	ShaderSetPtr shadowShader;
+	if (!shaderCompiler->LoadShader_Immediate(
+		sourceMaterial->GetShader()->GetFileId(),
+		shadowShader,
+		defines) || !shadowShader->IsReady())
+	{
+		return nullptr;
+	}
+
+	const auto& sourceState = sourceMaterial->GetRenderState();
+	RenderState shadowState(true,
+		true,
+		sourceState.GetDepthBias(),
+		true,
+		sourceState.GetCullMode(),
+		EBlendMode::None,
+		sourceState.GetFillMode(),
+		GetHash(std::string("Shadow")),
+		false,
+		EDepthCompare::GreaterOrEqual);
+	material = RHI::Renderer::GetDriver()->CreateMaterial(
+		vertexDescription,
+		RHI::EPrimitiveTopology::TriangleList,
+		shadowState,
+		shadowShader,
+		sourceMaterial->GetShaderBindings());
 	return material;
 }
 
@@ -156,6 +232,18 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
 					const bool bMasked = renderQueueTag == maskedQueueTag;
 					auto depthMaterial = GetOrAddShadowMaterial(mesh->m_vertexDescription, shadowPass.m_shadowType, bSkinned, bMasked);
+					if (shadowMesh.m_customDepthMaterial)
+					{
+						auto customShadowMaterial = GetOrAddCustomShadowMaterial(
+							shadowMesh.m_customDepthMaterial,
+							mesh->m_vertexDescription,
+							shadowPass.m_shadowType,
+							bMasked);
+						if (customShadowMaterial)
+						{
+							depthMaterial = customShadowMaterial;
+						}
+					}
 
 					const bool bIsDepthMaterialReady = depthMaterial &&
 						depthMaterial->GetVertexShader() &&
@@ -168,13 +256,18 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 					ShadowPrepassNode::PerInstanceData data;
 					data.model = shadowMesh.m_worldMatrix;
+					data.sphereBounds = mesh->m_bounds.ToSphere().GetVec4();
+					data.materialInstance = shadowMesh.m_customDepthMaterial &&
+						shadowMesh.m_customDepthMaterial->GetShaderBindings() ?
+						shadowMesh.m_customDepthMaterial->GetShaderBindings()->GetStorageInstanceIndex("material") :
+						0u;
 					data.skeletonOffset = bSkinned ? proxy->m_skeletonOffset : (std::numeric_limits<uint32_t>::max)();
 					data.baseColorFactor = shadowMesh.m_baseColorFactor;
 					data.baseColorSampler = shadowMesh.m_baseColorSampler;
 					data.alphaCutoff = shadowMesh.m_alphaCutoff;
 
 					RHIBatch batch(depthMaterial, mesh);
-					if (bMasked)
+					if (bMasked || depthMaterial->GetRenderState().IsRequiredCustomDepthShader())
 					{
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
@@ -267,10 +360,26 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 		auto shaderBindingsByMaterial = [&](const RHIBatch& batch)
 			{
-				TVector<RHIShaderBindingSetPtr> sets({ sceneView.m_frameBindings, m_perInstanceData });
+				TVector<RHIShaderBindingSetPtr> sets;
+				if (batch.m_material->GetRenderState().IsRequiredCustomDepthShader())
+				{
+					sets = TVector<RHIShaderBindingSetPtr>({
+						sceneView.m_frameBindings,
+						sceneView.m_rhiLightsData,
+						m_perInstanceData,
+						batch.m_material->GetBindings(),
+						batch.m_textureBindings });
+				}
+				else
+				{
+					sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, m_perInstanceData });
+				}
 				if (batch.m_textureBindings)
 				{
-					sets.Add(batch.m_textureBindings);
+					if (!batch.m_material->GetRenderState().IsRequiredCustomDepthShader())
+					{
+						sets.Add(batch.m_textureBindings);
+					}
 				}
 				const bool bSkinned =
 					batch.m_mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
@@ -484,6 +593,7 @@ void ShadowPrepassNode::Clear()
 	m_maskedShadowMaterials_Evsm.Clear();
 	m_skinnedMaskedShadowMaterials_Pcf.Clear();
 	m_skinnedMaskedShadowMaterials_Evsm.Clear();
+	m_customShadowMaterials.Clear();
 	m_textureBindingCache.Clear();
 }
 

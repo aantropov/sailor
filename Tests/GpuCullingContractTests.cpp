@@ -5,6 +5,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "FrameGraph/DepthPrepassNode.h"
 #include "FrameGraph/RenderSceneNode.h"
+#include "FrameGraph/ShadowPrepassNode.h"
 #include "Raytracing/MaterialUtils.h"
 #include "RHI/Buffer.h"
 #include "RHI/Material.h"
@@ -886,6 +887,53 @@ namespace
 			"ShadowPrepass must select skinned batches and bind the current bone matrices");
 	}
 
+	void TestCustomDepthVertexAnimationReachesShadows()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewHeader = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.h");
+		const std::string meshRendererSource = ReadText(
+			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const std::string shadowPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string shadowCasterShader = ReadText(
+			sourceRoot / "Content/Shaders/ShadowCaster.shader");
+
+		Require(sceneViewHeader.find("MaterialPtr m_customDepthMaterial") != std::string::npos &&
+			meshRendererSource.find("IsRequiredCustomDepthShader()") != std::string::npos &&
+			meshRendererSource.find("shadowMesh.m_customDepthMaterial = material") != std::string::npos,
+			"shadow proxies must retain the source custom-depth material");
+		Require(shadowPrepassSource.find("GetOrAddCustomShadowMaterial(") != std::string::npos &&
+			shadowPrepassSource.find("GetSupportedDefines().Contains(\"SHADOW_CASTER\")") != std::string::npos &&
+			shadowPrepassSource.find("defines.Add(\"SHADOW_CASTER\")") != std::string::npos &&
+			shadowPrepassSource.find("defines.Add(\"ALPHA_CUTOUT\")") != std::string::npos &&
+			shadowPrepassSource.find("sceneView.m_rhiLightsData") != std::string::npos &&
+			shadowPrepassSource.find("batch.m_material->GetBindings()") != std::string::npos,
+			"supported custom shadow permutations must bind the same frame, light and material data as the forward vertex shader");
+		Require(shadowPrepassSource.find("auto depthMaterial = GetOrAddShadowMaterial(") != std::string::npos &&
+			shadowPrepassSource.find("if (customShadowMaterial)") != std::string::npos &&
+			shadowPrepassSource.find("depthMaterial = customShadowMaterial") != std::string::npos,
+			"unsupported or failed custom shadow permutations must fall back to the working main shadow caster");
+		Require(shadowPrepassSource.find("RHI::RHIMaterialPtr pushConstantsMaterial") != std::string::npos &&
+			shadowPrepassSource.find("PushConstants(commandList, pushConstantsMaterial, 64") != std::string::npos,
+			"custom shadow permutations must preserve the main CSM cascade-matrix recording path");
+		Require(meshRendererSource.find("if (shadowMesh.m_customDepthMaterial)") != std::string::npos &&
+			meshRendererSource.find("for (const auto& sampler : material->GetSamplers())") != std::string::npos &&
+			meshRendererSource.find("shadowMesh.m_materialTextureSamplers.Insert(textureIndex)") != std::string::npos,
+			"custom shadow vertex animation must receive the material texture remap even for opaque casters");
+		Require(shadowCasterShader.find("vec4 sphereBounds;") != std::string::npos &&
+			shadowCasterShader.find("uint materialInstance;") != std::string::npos &&
+			shadowCasterShader.find("vec4 bakedVolumeScale;") != std::string::npos &&
+			shadowCasterShader.find("uint maskedPadding;") != std::string::npos &&
+			shadowCasterShader.find("uint stridePadding;") != std::string::npos,
+			"the default and custom shadow permutations must share the 144-byte shadow instance layout");
+		Require(sizeof(ShadowPrepassNode::PerInstanceData) == 144u &&
+			sizeof(Framegraph::RenderSceneNode::PerInstanceData) == 112u,
+			"CPU instance layouts must match the conditional std430 strides used by the foliage shadow and forward permutations; shadow=" +
+			std::to_string(sizeof(ShadowPrepassNode::PerInstanceData)) +
+			", forward=" + std::to_string(sizeof(Framegraph::RenderSceneNode::PerInstanceData)));
+	}
+
 	void TestVertexDescriptionAttributeIdentityContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1429,6 +1477,7 @@ int main()
 		{ "BakedVolumeScalePerInstanceLayoutContract", TestBakedVolumeScalePerInstanceLayoutContract },
 		{ "DepthPrepassSkinningContract", TestDepthPrepassSkinningContract },
 		{ "ShadowPrepassSkinningContract", TestShadowPrepassSkinningContract },
+		{ "CustomDepthVertexAnimationReachesShadows", TestCustomDepthVertexAnimationReachesShadows },
 		{ "VertexDescriptionAttributeIdentityContract", TestVertexDescriptionAttributeIdentityContract },
 		{ "GraphicsPipelineAttachmentCacheContract", TestGraphicsPipelineAttachmentCacheContract },
 		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },

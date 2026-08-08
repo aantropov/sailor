@@ -1001,6 +1001,23 @@ namespace
 			"a changed cascade projection must invalidate the cached shadow map even for camera motion below the old threshold");
 	}
 
+	void TestCustomDepthShadowCastersInvalidateCsmEveryFrame()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewHeader = ReadText(sourceRoot / "Runtime/RHI/SceneView.h");
+		const std::string meshRendererSource = ReadText(sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const std::string lightingSource = ReadText(sourceRoot / "Runtime/ECS/LightingECS.cpp");
+
+		Require(sceneViewHeader.find("bool m_bHasCustomDepthShadowCasters = false") != std::string::npos &&
+			meshRendererSource.find("IsRequiredCustomDepthShader()") != std::string::npos &&
+			meshRendererSource.find("m_bHasCustomDepthShadowCasters = bHasCustomDepthShadowCasters") != std::string::npos,
+			"scene snapshots must identify custom-depth shadow casters");
+		Require(lightingSource.find("bForceCustomDepthShadowUpdate") != std::string::npos &&
+			lightingSource.find("bool bCanReuseAllCascades = !bForceCustomDepthShadowUpdate") != std::string::npos &&
+			lightingSource.find("if (!bForceCustomDepthShadowUpdate &&") != std::string::npos,
+			"custom-depth shadow casters must bypass both CSM snapshot reuse paths every frame");
+	}
+
 	void TestAnimationGpuBoneLayoutContract()
 	{
 		const uint32_t invalidOffset = AnimatorComponentData::InvalidGpuOffset;
@@ -3718,6 +3735,7 @@ int main()
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
+		{ "CustomDepthShadowCastersInvalidateCsmEveryFrame", TestCustomDepthShadowCastersInvalidateCsmEveryFrame },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },

@@ -850,10 +850,22 @@ namespace SailorEditor.Views
         void ShowContextMenu(object model)
         {
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
-            if (model is AssetFile assetFile && service.CanModifyAsset(assetFile))
+            if (model is AssetFile assetFile)
             {
                 var items = new List<EditorContextMenuItem>();
-                if (service.CanDuplicateAsset(assetFile))
+                if (service.CanReimportAsset(assetFile))
+                {
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Reimport",
+                        Command = CreateContentContextMenuCommand(
+                            () => ReimportAsset(assetFile),
+                            "Reimport asset")
+                    });
+                }
+
+                if (service.CanModifyAsset(assetFile) &&
+                    service.CanDuplicateAsset(assetFile))
                 {
                     items.Add(new EditorContextMenuItem
                     {
@@ -864,7 +876,8 @@ namespace SailorEditor.Views
                     });
                 }
 
-                if (service.CanRenameAsset(assetFile))
+                if (service.CanModifyAsset(assetFile) &&
+                    service.CanRenameAsset(assetFile))
                 {
                     items.Add(new EditorContextMenuItem
                     {
@@ -875,43 +888,62 @@ namespace SailorEditor.Views
                     });
                 }
 
-                var deleteItem = new EditorContextMenuItem
+                if (service.CanModifyAsset(assetFile))
                 {
-                    Text = "Delete",
-                    IsDestructive = true,
-                    Command = CreateContentContextMenuCommand(
-                        () => DeleteAsset(assetFile),
-                        "Delete asset")
-                };
-                items.Add(deleteItem);
-                contextMenu.Show(items.ToArray());
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Delete",
+                        IsDestructive = true,
+                        Command = CreateContentContextMenuCommand(
+                            () => DeleteAsset(assetFile),
+                            "Delete asset")
+                    });
+                }
+
+                if (items.Count > 0)
+                {
+                    contextMenu.Show(items.ToArray());
+                }
             }
-            else if (model is AssetFolder folder && service.CanCreateFolder(folder))
+            else if (model is AssetFolder folder)
             {
-                var items = new List<EditorContextMenuItem>
+                var items = new List<EditorContextMenuItem>();
+                if (service.CanRefreshFolder(folder))
                 {
-                    new EditorContextMenuItem
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Refresh",
+                        Command = CreateContentContextMenuCommand(
+                            () => RefreshFolder(folder),
+                            "Refresh folder")
+                    });
+                }
+
+                if (service.CanCreateFolder(folder))
+                {
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Folder",
                         Command = CreateContentContextMenuCommand(
                             () => CreateFolder(folder),
                             "Create folder")
-                    },
-                    new EditorContextMenuItem
+                    });
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Animation Controller",
                         Command = CreateContentContextMenuCommand(
                             () => CreateAnimationAsset(folder, false),
                             "Create animation controller")
-                    },
-                    new EditorContextMenuItem
+                    });
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Animation Set",
                         Command = CreateContentContextMenuCommand(
                             () => CreateAnimationAsset(folder, true),
                             "Create animation set")
-                    }
-                };
+                    });
+                }
+
                 if (service.CanModifyFolder(folder))
                 {
                     items.Add(new EditorContextMenuItem
@@ -930,33 +962,88 @@ namespace SailorEditor.Views
                             "Delete folder")
                     });
                 }
-                contextMenu.Show(items.ToArray());
+
+                if (items.Count > 0)
+                {
+                    contextMenu.Show(items.ToArray());
+                }
             }
-            else if (model is ProjectContentFolderItem { IsRoot: true, IsReadOnly: false } &&
-                service.CanCreateFolder(null))
+            else if (model is ProjectContentFolderItem { IsRoot: true } rootFolder)
             {
-                contextMenu.Show(
-                    new EditorContextMenuItem
+                var items = new List<EditorContextMenuItem>();
+                if (service.CanRefreshFolder(rootFolder))
+                {
+                    items.Add(new EditorContextMenuItem
+                    {
+                        Text = "Refresh",
+                        Command = CreateContentContextMenuCommand(
+                            () => RefreshFolder(rootFolder),
+                            "Refresh folder")
+                    });
+                }
+
+                if (service.CanCreateFolder(null))
+                {
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Folder",
                         Command = CreateContentContextMenuCommand(
                             () => CreateFolder(null),
                             "Create folder")
-                    },
-                    new EditorContextMenuItem
+                    });
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Animation Controller",
                         Command = CreateContentContextMenuCommand(
                             () => CreateAnimationAsset(null, false),
                             "Create animation controller")
-                    },
-                    new EditorContextMenuItem
+                    });
+                    items.Add(new EditorContextMenuItem
                     {
                         Text = "Create Animation Set",
                         Command = CreateContentContextMenuCommand(
                             () => CreateAnimationAsset(null, true),
                             "Create animation set")
                     });
+                }
+
+                if (items.Count > 0)
+                {
+                    contextMenu.Show(items.ToArray());
+                }
+            }
+        }
+
+        async Task ReimportAsset(AssetFile assetFile)
+        {
+            if (!await service.ReimportAssetAsync(assetFile))
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Reimport failed",
+                    $"Unable to reimport {assetFile.DisplayName}.",
+                    "OK");
+            }
+        }
+
+        async Task RefreshFolder(AssetFolder? folder)
+        {
+            if (!await service.RefreshFolderAsync(folder))
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Refresh failed",
+                    "Unable to refresh the Content folder.",
+                    "OK");
+            }
+        }
+
+        async Task RefreshFolder(ProjectContentFolderItem folder)
+        {
+            if (!await service.RefreshFolderAsync(folder))
+            {
+                await Application.Current.MainPage.DisplayAlert(
+                    "Refresh failed",
+                    "Unable to refresh the Content folder.",
+                    "OK");
             }
         }
 

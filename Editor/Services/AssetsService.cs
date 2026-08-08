@@ -167,6 +167,59 @@ namespace SailorEditor.Services
             }
         }
 
+        public Task<bool> ReimportAssetAsync(
+            AssetFile assetFile,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(assetFile);
+            if (!CanReimportAsset(assetFile))
+            {
+                return Task.FromResult(false);
+            }
+
+            return _engineService.UpdateAssetAsync(
+                assetFile.FileId,
+                cancellationToken);
+        }
+
+        public async Task<bool> RefreshFolderAsync(
+            AssetFolder? folder,
+            CancellationToken cancellationToken = default)
+        {
+            var directoryPath = folder?.FullPath ?? CurrentProjectRootPath;
+            return await RefreshFolderPathAsync(directoryPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        public async Task<bool> RefreshFolderAsync(
+            ProjectContentFolderItem folder,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(folder);
+            return await RefreshFolderPathAsync(folder.FullPath, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        async Task<bool> RefreshFolderPathAsync(
+            string directoryPath,
+            CancellationToken cancellationToken)
+        {
+            if (!CanRefreshFolderPath(directoryPath))
+            {
+                return false;
+            }
+
+            if (_engineService.IsRunning)
+            {
+                return await _engineService.RequestAssetReloadAsync(
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         public string GetFolderPath(AssetFolder? folder)
         {
             if (folder == null)
@@ -1592,6 +1645,13 @@ namespace SailorEditor.Services
                 || ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, assetFile.Asset.FullName);
         }
 
+        public bool CanReimportAsset(AssetFile? assetFile)
+            => _engineService.IsRunning &&
+               assetFile?.FileId is not null &&
+               !assetFile.FileId.IsEmpty() &&
+               assetFile.AssetInfo?.Exists == true &&
+               assetFile.Asset?.Exists == true;
+
         public bool CanRenameAsset(AssetFile? assetFile)
             => assetFile?.OwnsSourceFile == true && CanModifyAsset(assetFile);
 
@@ -1613,6 +1673,22 @@ namespace SailorEditor.Services
 
         public bool CanCreateFolder(AssetFolder? parentFolder)
             => TryGetWritableDestinationDirectory(parentFolder, out _);
+
+        public bool CanRefreshFolder(AssetFolder? folder)
+        {
+            var directoryPath = folder?.FullPath ?? CurrentProjectRootPath;
+            return CanRefreshFolderPath(directoryPath);
+        }
+
+        public bool CanRefreshFolder(ProjectContentFolderItem? folder)
+            => folder is not null && CanRefreshFolderPath(folder.FullPath);
+
+        bool CanRefreshFolderPath(string directoryPath)
+            => !string.IsNullOrWhiteSpace(directoryPath) &&
+               Directory.Exists(directoryPath) &&
+               (ProjectContentPathPolicy.IsInsideRoot(CurrentProjectRootPath, directoryPath) ||
+                (CurrentProjectMode == EditorProjectMode.Workspace &&
+                 ProjectContentPathPolicy.IsInsideRoot(_engineContentDirectory, directoryPath)));
 
         public bool CanMoveAsset(AssetFile? assetFile, AssetFolder? destinationFolder)
         {

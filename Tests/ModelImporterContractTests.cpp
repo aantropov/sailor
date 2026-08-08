@@ -644,9 +644,9 @@ samplers:
 			"valid generated material properties must be mergeable");
 		Require(material["renderQueue"].as<std::string>() == "Transparent" &&
 			!material["bEnableZWrite"].as<bool>() &&
-			!material["bCustomDepthShader"].as<bool>() &&
+			material["bCustomDepthShader"].as<bool>() &&
 			material["blendMode"].as<std::string>() == "None",
-			"alpha and transmission render state must follow the glTF source");
+			"generated render state must preserve authored custom depth shaders");
 		Require(material["cullMode"].as<std::string>() == "Front" &&
 			material["shaderUid"].as<std::string>() == "custom-shader",
 			"unrelated authored render and shader properties must be preserved");
@@ -693,11 +693,21 @@ uniformsFloat:
 			material,
 			opaqueGenerated),
 			"transmission removal must be mergeable");
-		Require(!material["uniformsFloat"]["material.transmissionFactor"] &&
+		Require(material["bCustomDepthShader"].as<bool>() &&
+			!material["uniformsFloat"]["material.transmissionFactor"] &&
 			!material["uniformsFloat"]["material.thicknessFactor"] &&
 			!material["uniformsVec4"]["material.attenuationColor"] &&
 			!material["samplers"]["transmissionSampler"],
-			"removing the glTF extension must remove stale managed properties");
+			"removing glTF extensions must preserve authored custom depth state");
+
+		material["bCustomDepthShader"] = false;
+		YAML::Node cutoutGenerated = YAML::Clone(opaqueGenerated);
+		cutoutGenerated["bCustomDepthShader"] = true;
+		Require(GltfImporterUtils::MergeGeneratedMaterialProperties(
+			material,
+			cutoutGenerated) &&
+			material["bCustomDepthShader"].as<bool>(),
+			"alpha cutout imports must still force custom depth shaders");
 
 		YAML::Node malformed = YAML::Load("defines: INVALID");
 		const YAML::Node malformedBefore = YAML::Clone(malformed);
