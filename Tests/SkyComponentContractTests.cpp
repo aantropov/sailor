@@ -151,7 +151,69 @@ namespace
 	public:
 
 		using Framegraph::SkyNode::ConsumePendingSkyParams;
+		using Framegraph::SkyNode::CreateEnvironmentProjectionMatrix;
+		using Framegraph::SkyNode::CreateEnvironmentViewMatrices;
 	};
+
+	glm::vec3 ReconstructEnvironmentDirection(
+		const glm::mat4& projection,
+		const glm::mat4& view,
+		const glm::vec2& uv)
+	{
+		glm::vec4 viewDirection = glm::inverse(projection) *
+			glm::vec4(uv * 2.0f - 1.0f, 1.0f, 1.0f);
+		viewDirection /= viewDirection.w;
+		return glm::normalize(glm::vec3(
+			glm::inverse(view) * glm::vec4(
+				glm::vec3(viewDirection), 0.0f)));
+	}
+
+	void TestEnvironmentCubemapOrientation()
+	{
+		const glm::mat4 projection =
+			SkyNodeMailboxProbe::CreateEnvironmentProjectionMatrix();
+		const auto views =
+			SkyNodeMailboxProbe::CreateEnvironmentViewMatrices();
+		Require(views.Num() == 6,
+			"the procedural environment should define all six cubemap faces");
+
+		const glm::vec3 centerDirections[] = {
+			Math::vec3_Right, Math::vec3_Left,
+			Math::vec3_Up, Math::vec3_Down,
+			Math::vec3_Backward, Math::vec3_Forward
+		};
+		const glm::vec3 rightDirections[] = {
+			glm::normalize(Math::vec3_Right + Math::vec3_Forward),
+			glm::normalize(Math::vec3_Left + Math::vec3_Backward),
+			glm::normalize(Math::vec3_Up + Math::vec3_Right),
+			glm::normalize(Math::vec3_Down + Math::vec3_Right),
+			glm::normalize(Math::vec3_Backward + Math::vec3_Right),
+			glm::normalize(Math::vec3_Forward + Math::vec3_Left)
+		};
+		const glm::vec3 topDirections[] = {
+			glm::normalize(Math::vec3_Right + Math::vec3_Up),
+			glm::normalize(Math::vec3_Left + Math::vec3_Up),
+			glm::normalize(Math::vec3_Up + Math::vec3_Forward),
+			glm::normalize(Math::vec3_Down + Math::vec3_Backward),
+			glm::normalize(Math::vec3_Backward + Math::vec3_Up),
+			glm::normalize(Math::vec3_Forward + Math::vec3_Up)
+		};
+
+		for (uint32_t face = 0; face < views.Num(); face++)
+		{
+			Require(
+				IsNear(ReconstructEnvironmentDirection(
+					projection, views[face], glm::vec2(0.5f)),
+					centerDirections[face]) &&
+				IsNear(ReconstructEnvironmentDirection(
+					projection, views[face], glm::vec2(1.0f, 0.5f)),
+					rightDirections[face]) &&
+				IsNear(ReconstructEnvironmentDirection(
+					projection, views[face], glm::vec2(0.5f, 1.0f)),
+					topDirections[face]),
+				"procedural environment face orientation should match Vulkan cubemap sampling");
+		}
+	}
 
 	void RequireRange(
 		const TypeInfo& type,
@@ -1072,6 +1134,7 @@ int main()
 		{ "SettersClampAndUpdateDirection", TestSettersClampAndUpdateDirection },
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
+		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },
 		{ "ExplicitDirectionalLightSynchronization", TestExplicitDirectionalLightSynchronization },
 		{ "DestroyedLightReferencesSerializeAsNull", TestDestroyedLightReferencesSerializeAsNull },
 		{ "PrefabRoundTripRemapsExplicitLight", TestPrefabRoundTripRemapsExplicitLight },

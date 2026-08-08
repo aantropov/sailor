@@ -259,6 +259,27 @@ void SkyNode::SetLocation(float latitudeDegrees, float longitudeDegrees)
 	m_starsModelView = glm::toMat4(precession);
 }
 
+glm::mat4 SkyNode::CreateEnvironmentProjectionMatrix()
+{
+	glm::mat4 projection = Math::PerspectiveRH(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
+	// Vulkan cubemap faces run from -Z to +Z along their horizontal axis,
+	// opposite to the fullscreen camera ray reconstructed by Sky.shader.
+	projection[0][0] *= -1.0f;
+	return projection;
+}
+
+TVector<glm::mat4x4> SkyNode::CreateEnvironmentViewMatrices()
+{
+	return {
+		glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
+		glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Up),
+		glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
+		glm::rotate(glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
+		glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
+		glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
+	};
+}
+
 void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	ResetDrawCallStats();
@@ -552,15 +573,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 
 	if (!m_pEnvCubemapBindings[0])
 	{
-		const glm::mat prjMatrix = Math::PerspectiveRH(glm::radians(90.0f), 1.0f, 0.1f, 1000.0f);
-		const TVector<glm::mat4x4> viewMatrices{
-			glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Up),
-			glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
-			glm::rotate(glm::rotate(glm::mat4(1), glm::radians(90.0f), Math::vec3_Right), glm::radians(180.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(180.0f), Math::vec3_Up),
-			glm::rotate(glm::mat4(1), glm::radians(0.0f), Math::vec3_Up),
-		};
+		const glm::mat4 prjMatrix = CreateEnvironmentProjectionMatrix();
+		const TVector<glm::mat4x4> viewMatrices = CreateEnvironmentViewMatrices();
 
 		for (uint32_t face = 0; face < 6; face++)
 		{

@@ -452,12 +452,16 @@ glslFragment: |
     vec3 shift1 = vec3(-0.0021, 0.0017, -0.02f) * frame.currentTime * -0.5;
     vec3 shift2 = vec3(0.021, 0.017, 0.0f) * frame.currentTime * -0.2;
     
-    const float cloudsLow = pow(texture(cloudsNoiseLowSampler, shift1 + position.xyz / 9000.0f).r, 1);
-    const float cloudsHigh = pow(texture(cloudsNoiseHighSampler, shift2 + position.xyz / 1300.0f).r, 1);
+    // Implicit derivatives are undefined in this divergent ray-march path and
+    // produced different mip selection on native Vulkan and Metal/MoltenVK.
+    const float cloudsLow = textureLod(cloudsNoiseLowSampler,
+      shift1 + position.xyz / 9000.0f, 0.0f).r;
+    const float cloudsHigh = textureLod(cloudsNoiseHighSampler,
+      shift2 + position.xyz / 1300.0f, 0.0f).r;
 
     vec2 uv = position.xz / 409600.0f + vec2(0.2, 0.1);
 
-    vec4 weather = texture(cloudsMapSampler, uv);
+    vec4 weather = textureLod(cloudsMapSampler, uv, 0.0f);
 
     float height = CloudsGetHeight(position);
     
