@@ -88,6 +88,7 @@ public class ComponentTemplate : DataTemplate
                 nameLabel.GestureRecognizers.Add(dragGesture);
 
                 var worldService = MauiProgram.GetService<WorldService>();
+                var clipboardService = MauiProgram.GetService<ComponentClipboardService>();
                 var contextMenuService = MauiProgram.GetService<EditorContextMenuService>();
                 var componentKey = component.InstanceId?.ToString() ?? component.GetHashCode().ToString();
                 var isCompact = CompactComponents.Contains(componentKey);
@@ -115,6 +116,20 @@ public class ComponentTemplate : DataTemplate
                 {
                     new EditorContextMenuItem
                     {
+                        Text = "Copy Values",
+                        Command = CreateContextMenuCommand(
+                            () => clipboardService.CopyValuesAsync(component),
+                            "Copy component values")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Paste Values",
+                        Command = CreateContextMenuCommand(
+                            () => clipboardService.PasteValuesAsync(component),
+                            "Paste component values")
+                    },
+                    new EditorContextMenuItem
+                    {
                         Text = "Reset to Defaults",
                         Command = CreateContextMenuCommand(
                             () => worldService.ResetComponentToDefaultsAsync(component),
@@ -131,9 +146,15 @@ public class ComponentTemplate : DataTemplate
 
                 var flyout = contextMenuService.CreateFlyout(contextItems);
                 FlyoutBase.SetContextFlyout(props, flyout);
-                FlyoutBase.SetContextFlyout(header, flyout);
-                FlyoutBase.SetContextFlyout(nameLabel, flyout);
-                FlyoutBase.SetContextFlyout(compactButton, flyout);
+                FlyoutBase.SetContextFlyout(
+                    header,
+                    contextMenuService.CreateFlyout(contextItems));
+                FlyoutBase.SetContextFlyout(
+                    nameLabel,
+                    contextMenuService.CreateFlyout(contextItems));
+                FlyoutBase.SetContextFlyout(
+                    compactButton,
+                    contextMenuService.CreateFlyout(contextItems));
 
                 header.Add(compactButton, 0, 0);
                 header.Add(nameLabel, 1, 0);

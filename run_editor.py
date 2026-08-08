@@ -55,7 +55,14 @@ def prepare_env() -> dict[str, str]:
 
 
 def build_engine(config: str) -> None:
-    run([sys.executable, str(REPO_ROOT / "build_engine.py"), "--config", config])
+    run([
+        sys.executable,
+        str(REPO_ROOT / "build_engine.py"),
+        "--config",
+        config,
+        "--target",
+        "SailorExec",
+    ])
 
 
 def build_editor(framework: str, config: str, publish: bool) -> None:

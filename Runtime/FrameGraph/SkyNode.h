@@ -73,6 +73,8 @@ namespace Sailor::Framegraph
 		};
 
 		SAILOR_API void ConsumePendingSkyParams();
+		SAILOR_API static glm::mat4 CreateEnvironmentProjectionMatrix();
+		SAILOR_API static TVector<glm::mat4x4> CreateEnvironmentViewMatrices();
 
 		mutable SpinLock m_skyParamsLock;
 		SkyParameters m_skyParams{};

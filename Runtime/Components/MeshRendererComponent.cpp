@@ -99,7 +99,7 @@ void MeshRendererComponent::SetScreenCoverageThresholds(
 	for (float& threshold : m_screenCoverageThresholds)
 	{
 		threshold = std::isfinite(threshold) ?
-			(std::clamp)(threshold, 0.0f, 100.0f) : 0.0f;
+			(std::clamp)(threshold, 0.0f, 1.0f) : 0.0f;
 	}
 	std::sort(
 		m_screenCoverageThresholds.begin(),

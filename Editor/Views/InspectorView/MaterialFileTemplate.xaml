@@ -11,7 +11,6 @@
         <Grid.Resources>
             <ResourceDictionary>
                 <controls:FileIdToFilenameConverter x:Key="FileIdToFilenameConverter"/>
-                <controls:FileIdToPreviewTextureConverter x:Key="FileIdToPreviewTextureConverter"/>
                 <controls:FloatValueConverter x:Key="FloatValueConverter"/>
             </ResourceDictionary>
         </Grid.Resources>
@@ -112,15 +111,15 @@
                         <Button Text="-" Command="{Binding Path=BindingContext.RemoveSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding .}" />
                         <Editor Text="{Binding Key}" WidthRequest="160" VerticalOptions="Center" AutoSize="TextChanges"/>
                         <Button Text="Clear" Command="{Binding Path=BindingContext.ClearSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
-                        <Image Source="{Binding Value, Converter={StaticResource FileIdToPreviewTextureConverter}}"
+                        <controls:AssetPreviewImage FileId="{Binding Value}"
                                 WidthRequest="40"
                                 HeightRequest="40"
                                 Aspect="AspectFit"
                                 VerticalOptions="Center">
-                            <Image.GestureRecognizers>
+                            <controls:AssetPreviewImage.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding Path=BindingContext.SelectSamplerCommand, Source={RelativeSource AncestorType={x:Type Grid}}}" CommandParameter="{Binding Key}" />
-                            </Image.GestureRecognizers>
-                        </Image>
+                            </controls:AssetPreviewImage.GestureRecognizers>
+                        </controls:AssetPreviewImage>
                         <Label Text="{Binding Value, Converter={StaticResource FileIdToFilenameConverter}}" VerticalOptions="Center">
                             <Label.Behaviors>
                                 <controls:FileIdDragAndDropBehaviour BoundProperty="{Binding Value}" SupportedType="{x:Type vm:TextureFile}"/>

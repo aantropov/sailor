@@ -55,6 +55,8 @@ namespace SailorEditor
             builder.Services.AddSingleton<EngineService>();
             builder.Services.AddSingleton<EditorToolbarActions>();
             builder.Services.AddSingleton<EditorContextMenuService>();
+            builder.Services.AddSingleton<ComponentClipboardService>();
+            builder.Services.AddSingleton<AssetFingerprintService>();
             builder.Services.AddSingleton<WorkspaceManifestSerializer>();
             builder.Services.AddSingleton<WorkspaceGeneratedProjectStateService>();
             builder.Services.AddSingleton<WorkspaceProjectGenerator>();

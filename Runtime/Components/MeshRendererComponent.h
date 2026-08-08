@@ -49,7 +49,7 @@ namespace Sailor
 		TVector<FileId> m_overrideMaterials;
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
-		TVector<float> m_screenCoverageThresholds{ 25.0f, 5.0f };
+		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
 	};
 }
 

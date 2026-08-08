@@ -227,7 +227,7 @@ namespace
 }
 
 uint32_t StaticMeshRendererData::ResolveLod(
-	float screenCoveragePercent,
+	float screenCoverage,
 	uint32_t numAvailableLods) const
 {
 	if (numAvailableLods == 0u)
@@ -242,9 +242,9 @@ uint32_t StaticMeshRendererData::ResolveLod(
 		(std::min)(m_maxLod, highestAvailableLod));
 	uint32_t selectedLod = 0u;
 	const float coverage = (std::clamp)(
-		screenCoveragePercent,
+		screenCoverage,
 		0.0f,
-		100.0f);
+		1.0f);
 	for (size_t thresholdIndex = 0;
 		thresholdIndex < m_screenCoverageThresholds.Num();
 		++thresholdIndex)
@@ -272,7 +272,7 @@ void StaticMeshRendererData::SetLodSettings(
 	for (float& threshold : m_screenCoverageThresholds)
 	{
 		threshold = std::isfinite(threshold) ?
-			(std::clamp)(threshold, 0.0f, 100.0f) : 0.0f;
+			(std::clamp)(threshold, 0.0f, 1.0f) : 0.0f;
 	}
 	std::sort(
 		m_screenCoverageThresholds.begin(),

@@ -39,19 +39,23 @@ public partial class MainPage : ContentPage
         if (!_workspaceUiInitialized)
         {
             _workspaceUiInitialized = true;
-            await _workspaceUi.InitializeAsync();
+            var manifestPath = ResolveCommandLineWorkspaceManifest(
+                Environment.GetCommandLineArgs());
+            if (!string.IsNullOrWhiteSpace(manifestPath))
+            {
+                _commandLineWorkspaceHandled = true;
+                await _workspaceUi.OpenWorkspaceAsync(manifestPath);
+                await LoadCommandLineWorldAsync(Environment.GetCommandLineArgs());
+            }
+            else
+            {
+                await _workspaceUi.InitializeAsync();
+            }
         }
 
         if (!_commandLineWorkspaceHandled)
         {
             _commandLineWorkspaceHandled = true;
-            var manifestPath = ResolveCommandLineWorkspaceManifest(
-                Environment.GetCommandLineArgs());
-            if (!string.IsNullOrWhiteSpace(manifestPath))
-            {
-                await _workspaceUi.OpenWorkspaceAsync(manifestPath);
-                await LoadCommandLineWorldAsync(Environment.GetCommandLineArgs());
-            }
         }
 
         if (!_mcpHost.Status.IsRunning)

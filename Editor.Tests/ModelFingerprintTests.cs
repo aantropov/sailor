@@ -39,6 +39,60 @@ public sealed class ModelFingerprintTests
     }
 
     [Fact]
+    public void AssetReferences_UseSharedAsyncFingerprintPreviews()
+    {
+        var service = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetFingerprintService.cs");
+        var preview = ReadRepositoryFile(
+            "Editor",
+            "Controls",
+            "AssetPreviewImage.cs");
+        var templates = ReadRepositoryFile(
+            "Editor",
+            "Utility",
+            "Templates.cs");
+        var texture = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "TextureFile.cs");
+        var converter = ReadRepositoryFile(
+            "Editor",
+            "Controls",
+            "FileIdToPreviewTextureConverter.cs");
+        var fileIdEditor = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "Elements",
+            "FileIdEditor.xaml");
+        var materialTemplate = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "MaterialFileTemplate.xaml");
+
+        Assert.Contains("\"Fingerprints\"", service, StringComparison.Ordinal);
+        Assert.Contains("GlbExtractor.ExtractTextureFromGLB(", service, StringComparison.Ordinal);
+        Assert.Contains("GenerateGlbFingerprint(", service, StringComparison.Ordinal);
+        Assert.Contains("await Task.Run(", service, StringComparison.Ordinal);
+        Assert.Contains("File.Move(temporaryPath, fingerprintPath, true)", service, StringComparison.Ordinal);
+        Assert.Contains("File.GetLastWriteTimeUtc(fingerprintPath)", service, StringComparison.Ordinal);
+        Assert.Contains("LoadTexturePreviewAsync(this, cancellationToken)", texture, StringComparison.Ordinal);
+        Assert.Contains("class AssetPreviewImage", preview, StringComparison.Ordinal);
+        Assert.Contains("new FileId()", preview, StringComparison.Ordinal);
+        Assert.Contains("ResolveAssetAsync(", preview, StringComparison.Ordinal);
+        Assert.Contains("LoadPreviewAsync(asset, cancellation.Token)", preview, StringComparison.Ordinal);
+        Assert.True(
+            CountOccurrences(templates, "new AssetPreviewImage") >= 2,
+            "Both texture fields and general FileId fields must use the shared preview control.");
+        Assert.Contains("AssetPreviewImage.FileIdProperty", templates, StringComparison.Ordinal);
+        Assert.Contains("<controls:AssetPreviewImage", fileIdEditor, StringComparison.Ordinal);
+        Assert.Contains("<controls:AssetPreviewImage", materialTemplate, StringComparison.Ordinal);
+        Assert.Contains("TryGetCachedPreview(outAsset)", converter, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Inspector_UsesParentScrollerForAnimations()
     {
         var template = ReadRepositoryFile(
@@ -109,5 +163,18 @@ public sealed class ModelFingerprintTests
         throw new FileNotFoundException(
             $"Could not find repository file: " +
             $"{Path.Combine(relativePath)}");
+    }
+
+    static int CountOccurrences(string source, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 }

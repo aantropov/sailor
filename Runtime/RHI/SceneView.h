@@ -14,7 +14,7 @@
 
 namespace Sailor::RHI
 {
-	SAILOR_API float CalculateScreenCoveragePercent(
+	SAILOR_API float CalculateScreenCoverage(
 		const Math::AABB& worldBounds,
 		const glm::mat4& viewMatrix,
 		const glm::mat4& projectionMatrix);

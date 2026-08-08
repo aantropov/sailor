@@ -77,6 +77,43 @@ namespace SailorEditor.Services
         public async void SelectObject(ObservableObject obj, bool force = false)
             => await SelectObjectAsync(obj, force);
 
+        public async Task<bool> NavigateToReferenceAsync(
+            object? reference,
+            CancellationToken cancellationToken = default)
+        {
+            if (IsWorkspaceChangeInProgress || reference is null)
+                return false;
+
+            reference = reference switch
+            {
+                Observable<FileId> observableFileId => observableFileId.Value,
+                Observable<InstanceId> observableInstanceId => observableInstanceId.Value,
+                ObjectPtr objectPtr when !objectPtr.FileId.IsEmpty() => objectPtr.FileId,
+                ObjectPtr objectPtr => objectPtr.InstanceId,
+                _ => reference,
+            };
+
+            var worldService = MauiProgram.GetService<WorldService>();
+            ObservableObject? target = reference switch
+            {
+                FileId fileId when !fileId.IsEmpty() =>
+                    await MauiProgram.GetService<AssetsService>()
+                        .ResolveAssetAsync(fileId, cancellationToken),
+                InstanceId instanceId when !instanceId.IsEmpty() =>
+                    ResolveSceneReferenceTarget(worldService, instanceId),
+                Component component => worldService.FindOwner(component),
+                GameObject gameObject => gameObject,
+                AssetFile assetFile => assetFile,
+                _ => null,
+            };
+
+            if (target is null)
+                return false;
+
+            await SelectObjectAsync(target);
+            return true;
+        }
+
         public async Task SelectObjectAsync(
             ObservableObject obj,
             bool force = false)
@@ -271,6 +308,18 @@ namespace SailorEditor.Services
                 Console.WriteLine(
                     $"[SelectionService] Failed to synchronize runtime selection: {exception.Message}");
             }
+        }
+
+        static GameObject? ResolveSceneReferenceTarget(
+            WorldService worldService,
+            InstanceId instanceId)
+        {
+            if (worldService.TryGetGameObject(instanceId, out var gameObject))
+                return gameObject;
+
+            return worldService.TryGetComponent(instanceId, out var component)
+                ? worldService.FindOwner(component)
+                : null;
         }
 
         static string? TryGetSelectionId(ObservableObject obj) => obj switch

@@ -76,27 +76,25 @@ public partial class TextureFile : AssetFile
 
     public override Task Save() => Save(new TextureFileYamlConverter());
 
-    public override async Task<bool> LoadDependentResources()
+    public override Task<bool> LoadDependentResources()
+        => LoadDependentResources(CancellationToken.None);
+
+    public async Task<bool> LoadDependentResources(
+        CancellationToken cancellationToken)
     {
         if (!IsLoaded)
         {
             try
             {
                 await PrepareInspectorResources();
-
-                LoadRuntimeDataWithoutDirtyTracking(() =>
-                {
-                    if (GlbTextureIndex != -1)
-                    {
-                        MemoryStream textureStream = null;
-                        GlbExtractor.ExtractTextureFromGLB(Asset.FullName, GlbTextureIndex, out textureStream);
-                        Texture = ImageSource.FromStream(() => textureStream);
-                    }
-                    else
-                    {
-                        Texture = ImageSource.FromFile(Asset.FullName);
-                    }
-                });
+                var preview = await MauiProgram
+                    .GetService<AssetFingerprintService>()
+                    .LoadTexturePreviewAsync(this, cancellationToken);
+                LoadRuntimeDataWithoutDirtyTracking(() => Texture = preview);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
