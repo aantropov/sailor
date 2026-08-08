@@ -15,6 +15,7 @@ public partial class MainPage : ContentPage
     readonly WorkspaceUiService _workspaceUi;
     readonly McpEditorHostService _mcpHost;
     bool _workspaceUiInitialized;
+    bool _commandLineWorkspaceHandled;
 
     public MainPage(EditorShellHost shellHost)
     {
@@ -39,6 +40,18 @@ public partial class MainPage : ContentPage
         {
             _workspaceUiInitialized = true;
             await _workspaceUi.InitializeAsync();
+        }
+
+        if (!_commandLineWorkspaceHandled)
+        {
+            _commandLineWorkspaceHandled = true;
+            var manifestPath = ResolveCommandLineWorkspaceManifest(
+                Environment.GetCommandLineArgs());
+            if (!string.IsNullOrWhiteSpace(manifestPath))
+            {
+                await _workspaceUi.OpenWorkspaceAsync(manifestPath);
+                await LoadCommandLineWorldAsync(Environment.GetCommandLineArgs());
+            }
         }
 
         if (!_mcpHost.Status.IsRunning)
@@ -106,4 +119,101 @@ public partial class MainPage : ContentPage
 
     static string BuildWindowTitle(WorkspaceUiProjection projection)
         => projection.WindowTitle;
+
+    async Task LoadCommandLineWorldAsync(IReadOnlyList<string> arguments)
+    {
+        var world = ResolveCommandLineValue(arguments, "--world");
+        var contentRoot = _workspaceUi.Projection.ActiveContentPath;
+        if (string.IsNullOrWhiteSpace(world) ||
+            string.IsNullOrWhiteSpace(contentRoot))
+        {
+            return;
+        }
+
+        var worldPath = Path.GetFullPath(
+            Path.IsPathRooted(world)
+                ? world
+                : Path.Combine(contentRoot, world));
+        var assets = MauiProgram.GetService<AssetsService>();
+        var contentFolder = assets.Folders.FirstOrDefault(folder =>
+            string.Equals(
+                Path.GetFullPath(folder.FullPath),
+                Path.GetFullPath(contentRoot),
+                StringComparison.OrdinalIgnoreCase));
+        if (contentFolder is not null)
+            await assets.EnsureFolderLoadedAsync(contentFolder.Id);
+
+        var worldFile = assets.Assets.Values
+            .OfType<SailorEditor.ViewModels.WorldFile>()
+            .FirstOrDefault(asset => asset.Asset is not null &&
+                string.Equals(
+                    Path.GetFullPath(asset.Asset.FullName),
+                    worldPath,
+                    StringComparison.OrdinalIgnoreCase));
+        if (worldFile is null ||
+            !await MauiProgram.GetService<WorldService>().LoadWorldAsync(worldFile))
+        {
+            Console.Error.WriteLine(
+                $"Unable to load command-line workspace world: {worldPath}");
+        }
+    }
+
+    static string? ResolveCommandLineWorkspaceManifest(
+        IReadOnlyList<string> arguments)
+    {
+        string? workspacePath = null;
+        string? manifestPath = null;
+        for (var index = 0; index < arguments.Count; ++index)
+        {
+            var argument = arguments[index];
+            if (argument == "--workspace" && index + 1 < arguments.Count)
+            {
+                workspacePath = arguments[++index];
+            }
+            else if (argument == "--workspace-manifest" &&
+                index + 1 < arguments.Count)
+            {
+                manifestPath = arguments[++index];
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifestPath))
+            return Path.GetFullPath(manifestPath);
+        if (string.IsNullOrWhiteSpace(workspacePath))
+            return null;
+
+        var fullWorkspacePath = Path.GetFullPath(workspacePath);
+        if (File.Exists(fullWorkspacePath))
+            return fullWorkspacePath;
+        if (!Directory.Exists(fullWorkspacePath))
+            return null;
+
+        foreach (var filename in new[]
+        {
+            "SailorWorkspace.sailor",
+            WorkspaceTemplateService.ManifestFileName
+        })
+        {
+            var candidate = Path.Combine(fullWorkspacePath, filename);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return Directory.EnumerateFiles(fullWorkspacePath, "*.sailor")
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    static string? ResolveCommandLineValue(
+        IReadOnlyList<string> arguments,
+        string option)
+    {
+        for (var index = 0; index + 1 < arguments.Count; ++index)
+        {
+            if (arguments[index] == option)
+                return arguments[index + 1];
+        }
+
+        return null;
+    }
 }

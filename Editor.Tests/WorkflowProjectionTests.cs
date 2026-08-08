@@ -525,6 +525,43 @@ public sealed class WorkflowProjectionTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ContentContextMenu_ExposesFolderRefreshAndTargetedAssetReimport()
+    {
+        var viewSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "ContentFolderView.xaml.cs");
+        var serviceSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetsService.cs");
+        var contextMenu = Slice(
+            viewSource,
+            "void ShowContextMenu(object model)",
+            "async Task ReimportAsset(");
+
+        Assert.Contains("model is AssetFile assetFile", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("Text = \"Reimport\"", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("service.CanReimportAsset(assetFile)", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("() => ReimportAsset(assetFile)", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("model is AssetFolder folder", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("Text = \"Refresh\"", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("service.CanRefreshFolder(folder)", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("() => RefreshFolder(folder)", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("ProjectContentFolderItem { IsRoot: true } rootFolder", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("service.CanRefreshFolder(rootFolder)", contextMenu, StringComparison.Ordinal);
+        Assert.Contains("() => RefreshFolder(rootFolder)", contextMenu, StringComparison.Ordinal);
+
+        Assert.Contains("public Task<bool> ReimportAssetAsync(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("return _engineService.UpdateAssetAsync(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("public async Task<bool> RefreshFolderAsync(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("_engineService.RequestAssetReloadAsync(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("public bool CanReimportAsset(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("public bool CanRefreshFolder(", serviceSource, StringComparison.Ordinal);
+        Assert.Contains("CanRefreshFolderPath(folder.FullPath)", serviceSource, StringComparison.Ordinal);
+    }
+
     sealed record ContentProjectionTestRow(
         string Id,
         string Label);
