@@ -88,7 +88,7 @@ namespace Sailor
 		RHI::RHIShaderBindingPtr m_lightMatrices{};
 		Framegraph::TextureBindingCache m_textureBindingCache{};
 
-		static const char* m_name;
+		SAILOR_SHARED_API static const char* m_name;
 	};
 
 	namespace Framegraph
