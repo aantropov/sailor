@@ -811,17 +811,17 @@ namespace
 	{
 		StaticMeshRendererData data;
 		Require(data.ResolveLod(0.0f, 1u) == 0u &&
-			data.ResolveLod(100.0f, 1u) == 0u,
+			data.ResolveLod(1.0f, 1u) == 0u,
 			"mesh renderer must keep LOD0 when no generated LOD is available");
-		data.SetLodSettings(0u, 2u, TVector<float>{ 5.0f, 25.0f });
-		Require(data.ResolveLod(100.0f, 3u) == 0u &&
-			data.ResolveLod(25.0f, 3u) == 0u &&
-			data.ResolveLod(24.9f, 3u) == 1u &&
-			data.ResolveLod(4.9f, 3u) == 2u,
+		data.SetLodSettings(0u, 2u, TVector<float>{ 0.05f, 0.25f });
+		Require(data.ResolveLod(1.0f, 3u) == 0u &&
+			data.ResolveLod(0.25f, 3u) == 0u &&
+			data.ResolveLod(0.249f, 3u) == 1u &&
+			data.ResolveLod(0.049f, 3u) == 2u,
 			"mesh renderer LOD selection must follow descending screen-coverage thresholds");
 
-		data.SetLodSettings(1u, 5u, TVector<float>{ 25.0f, 5.0f });
-		Require(data.ResolveLod(100.0f, 3u) == 1u,
+		data.SetLodSettings(1u, 5u, TVector<float>{ 0.25f, 0.05f });
+		Require(data.ResolveLod(1.0f, 3u) == 1u,
 			"mesh renderer minimum LOD must clamp high-coverage selection");
 		Require(data.ResolveLod(0.0f, 2u) == 1u,
 			"mesh renderer maximum LOD must clamp to available model geometry");
@@ -832,33 +832,34 @@ namespace
 			0.1f,
 			1000.0f);
 		const glm::mat4 view(1.0f);
-		const float nearCoverage = RHI::CalculateScreenCoveragePercent(
+		const float nearCoverage = RHI::CalculateScreenCoverage(
 			Math::AABB(glm::vec3(0.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
 			view,
 			projection);
-		const float farCoverage = RHI::CalculateScreenCoveragePercent(
+		const float farCoverage = RHI::CalculateScreenCoverage(
 			Math::AABB(glm::vec3(0.0f, 0.0f, -20.0f), glm::vec3(1.0f)),
 			view,
 			projection);
-		const float offscreenCoverage = RHI::CalculateScreenCoveragePercent(
+		const float offscreenCoverage = RHI::CalculateScreenCoverage(
 			Math::AABB(glm::vec3(100.0f, 0.0f, -5.0f), glm::vec3(1.0f)),
 			view,
 			projection);
-		const float behindCameraCoverage = RHI::CalculateScreenCoveragePercent(
+		const float behindCameraCoverage = RHI::CalculateScreenCoverage(
 			Math::AABB(glm::vec3(0.0f, 0.0f, 5.0f), glm::vec3(1.0f)),
 			view,
 			projection);
-		const float cameraIntersectionCoverage = RHI::CalculateScreenCoveragePercent(
+		const float cameraIntersectionCoverage = RHI::CalculateScreenCoverage(
 			Math::AABB(glm::vec3(0.0f), glm::vec3(1.0f)),
 			view,
 			projection);
-		Require(nearCoverage > farCoverage && farCoverage > 0.0f,
+		Require(nearCoverage <= 1.0f &&
+			nearCoverage > farCoverage && farCoverage > 0.0f,
 			"projected AABB coverage must decrease as the same object recedes from the camera");
 		Require(offscreenCoverage == 0.0f,
 			"projected AABB coverage must exclude bounds outside the viewport");
 		Require(behindCameraCoverage == 0.0f,
 			"projected AABB coverage must exclude bounds behind the camera");
-		Require(cameraIntersectionCoverage == 100.0f,
+		Require(cameraIntersectionCoverage == 1.0f,
 			"projected AABB coverage must conservatively select the highest LOD when bounds cross the camera plane");
 
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -1516,7 +1517,15 @@ namespace
 		meshRenderer->SetMinLod(1u);
 		meshRenderer->SetMaxLod(2u);
 		meshRenderer->SetScreenCoverageThresholds(
-			TVector<float>{ 5.0f, 25.0f });
+			TVector<float>{ -1.0f, 0.25f, 2.0f });
+		const TVector<float> clampedCoverageThresholds{
+			1.0f, 0.25f, 0.0f };
+		Require(
+			meshRenderer->GetScreenCoverageThresholds() ==
+				clampedCoverageThresholds,
+			"mesh renderer screen coverage must stay normalized to [0, 1]");
+		meshRenderer->SetScreenCoverageThresholds(
+			TVector<float>{ 0.05f, 0.25f });
 		Require(meshRenderer->GetOverrideMaterials() == overrides,
 			"assigning material overrides must preserve their slot order and inherited gaps");
 		Require(meshRenderer->GetData().IsDirty(),
@@ -1547,7 +1556,7 @@ namespace
 		Require(restoredRenderer && areOverridesEquivalent(
 			restoredRenderer->GetOverrideMaterials(), overrides),
 			"prefab instantiation must restore component-owned material overrides");
-		const TVector<float> expectedCoverageThresholds{ 25.0f, 5.0f };
+		const TVector<float> expectedCoverageThresholds{ 0.25f, 0.05f };
 		Require(restoredRenderer->GetMinLod() == 1u &&
 			restoredRenderer->GetMaxLod() == 2u &&
 			restoredRenderer->GetScreenCoverageThresholds() ==

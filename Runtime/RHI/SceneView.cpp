@@ -18,7 +18,7 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
-float Sailor::RHI::CalculateScreenCoveragePercent(
+float Sailor::RHI::CalculateScreenCoverage(
 	const Math::AABB& worldBounds,
 	const glm::mat4& viewMatrix,
 	const glm::mat4& projectionMatrix)
@@ -71,7 +71,7 @@ float Sailor::RHI::CalculateScreenCoveragePercent(
 	}
 	if (numCornersInFront < corners.size())
 	{
-		return 100.0f;
+		return 1.0f;
 	}
 
 	glm::vec2 minNdc((std::numeric_limits<float>::max)());
@@ -89,9 +89,9 @@ float Sailor::RHI::CalculateScreenCoveragePercent(
 		maxNdc - minNdc,
 		glm::vec2(0.0f));
 	return (std::clamp)(
-		coveredNdc.x * coveredNdc.y * 25.0f,
+		coveredNdc.x * coveredNdc.y * 0.25f,
 		0.0f,
-		100.0f);
+		1.0f);
 }
 
 namespace
@@ -107,11 +107,11 @@ namespace
 			return 0u;
 		}
 
-		const float screenCoveragePercent = CalculateScreenCoveragePercent(
+		const float screenCoverage = CalculateScreenCoverage(
 			worldBounds,
 			camera.GetViewMatrix(),
 			camera.GetProjectionMatrix());
-		return data.ResolveLod(screenCoveragePercent, mesh->GetNumLods());
+		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
 	}
 
 	void ApplyLodToMeshes(

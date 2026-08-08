@@ -43,7 +43,7 @@ namespace Sailor
 
 		SAILOR_API __forceinline bool ShouldCastShadow() const { return true; }
 		SAILOR_API __forceinline uint32_t GetSkeletonOffset() const { return m_skeletonOffset; }
-		SAILOR_API uint32_t ResolveLod(float screenCoveragePercent, uint32_t numAvailableLods) const;
+		SAILOR_API uint32_t ResolveLod(float screenCoverage, uint32_t numAvailableLods) const;
 		SAILOR_API void SetLodSettings(
 			uint32_t minLod,
 			uint32_t maxLod,
@@ -58,7 +58,7 @@ namespace Sailor
 		int32_t m_meshIndex = -1;
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
-		TVector<float> m_screenCoverageThresholds{ 25.0f, 5.0f };
+		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
 		bool m_bInvalidMeshIndexReported = false;
 
 		friend class StaticMeshRendererECS;
