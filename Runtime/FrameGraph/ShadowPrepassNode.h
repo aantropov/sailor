@@ -16,15 +16,22 @@ namespace Sailor
 		struct PerInstanceData
 		{
 			glm::mat4 model;
-			glm::vec4 baseColorFactor{ 1.0f };
+			glm::vec4 sphereBounds{};
+			uint32_t materialInstance = 0;
 			uint32_t skeletonOffset = 0;
+			uint32_t bIsCulled = 0;
+			uint32_t padding = 0;
+			glm::vec4 bakedVolumeScale{ 1.0f };
+			glm::vec4 baseColorFactor{ 1.0f };
 			uint32_t baseColorSampler = 0;
 			float alphaCutoff = 0.5f;
-			uint32_t padding = 0;
+			uint32_t maskedPadding = 0;
+			uint32_t stridePadding = 0;
 
 			bool operator==(const PerInstanceData& rhs) const
 			{
 				return model == rhs.model &&
+					materialInstance == rhs.materialInstance &&
 					baseColorFactor == rhs.baseColorFactor &&
 					skeletonOffset == rhs.skeletonOffset &&
 					baseColorSampler == rhs.baseColorSampler &&
@@ -63,8 +70,14 @@ namespace Sailor
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedShadowMaterials_Pcf{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Evsm{};
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedShadowMaterials_Pcf{};
+		TMap<size_t, RHI::RHIMaterialPtr> m_customShadowMaterials{};
 
 		RHI::RHIMaterialPtr GetOrAddShadowMaterial(RHI::RHIVertexDescriptionPtr vertex, RHI::EShadowType shadowType, bool bSkinned, bool bMasked);
+		RHI::RHIMaterialPtr GetOrAddCustomShadowMaterial(
+			const MaterialPtr& sourceMaterial,
+			RHI::RHIVertexDescriptionPtr vertex,
+			RHI::EShadowType shadowType,
+			bool bMasked);
 
 		// Record drawcalls
 		size_t m_sizePerInstanceData = 0;

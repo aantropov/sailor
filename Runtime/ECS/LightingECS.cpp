@@ -293,7 +293,8 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 
 		TVector<Math::Frustum> frustums(lightCascadesMatrices.Num());
 		TVector<glm::mat4> lightMatrices(lightCascadesMatrices.Num());
-		bool bCanReuseAllCascades = true;
+		const bool bForceCustomDepthShadowUpdate = sceneView->m_bHasCustomDepthShadowCasters;
+		bool bCanReuseAllCascades = !bForceCustomDepthShadowUpdate;
 		for (uint32_t cascadeIndex = 0; cascadeIndex < lightCascadesMatrices.Num(); ++cascadeIndex)
 		{
 			lightMatrices[cascadeIndex] = lightCascadesMatrices[cascadeIndex] * directionalLight.m_lightMatrix;
@@ -367,7 +368,9 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 					return lhs.m_first < rhs.m_first;
 				});
 
-			if (snapshotIndex < m_csmSnapshots.Num() && snapshot.Equals(m_csmSnapshots[snapshotIndex]))
+			if (!bForceCustomDepthShadowUpdate &&
+				snapshotIndex < m_csmSnapshots.Num() &&
+				snapshot.Equals(m_csmSnapshots[snapshotIndex]))
 			{
 				m_csmSnapshots[snapshotIndex].m_sceneRevision = sceneView->m_shadowCastersRevision;
 				++snapshotIndex;

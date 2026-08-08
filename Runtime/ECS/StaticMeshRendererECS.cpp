@@ -96,6 +96,7 @@ namespace
 				lhsMesh.m_baseColorFactor != rhsMesh.m_baseColorFactor ||
 				lhsMesh.m_alphaCutoff != rhsMesh.m_alphaCutoff ||
 				lhsMesh.m_baseColorSampler != rhsMesh.m_baseColorSampler ||
+				lhsMesh.m_customDepthMaterial != rhsMesh.m_customDepthMaterial ||
 #if defined(__APPLE__)
 				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
 #endif
@@ -145,6 +146,10 @@ namespace
 			shadowMesh.m_mesh = meshes[meshIndex];
 			shadowMesh.m_worldMatrix = matrices.Num() > meshIndex ? matrices[meshIndex] : ownerWorldMatrix;
 			shadowMesh.m_renderQueueTag = renderQueueTag;
+			if (material->GetRenderState().IsRequiredCustomDepthShader())
+			{
+				shadowMesh.m_customDepthMaterial = material;
+			}
 			if (renderQueueTag == maskedQueueTag)
 			{
 				const glm::vec4* baseColorFactor = nullptr;
@@ -173,10 +178,28 @@ namespace
 					shadowMesh.m_baseColorSampler = (uint32_t)textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId());
 				}
 #if defined(__APPLE__)
-				shadowMesh.m_materialTextureSamplers.Insert(0u);
-				shadowMesh.m_materialTextureSamplers.Insert(shadowMesh.m_baseColorSampler);
+				if (!shadowMesh.m_customDepthMaterial)
+				{
+					shadowMesh.m_materialTextureSamplers.Insert(0u);
+					shadowMesh.m_materialTextureSamplers.Insert(shadowMesh.m_baseColorSampler);
+				}
 #endif
 			}
+#if defined(__APPLE__)
+			if (shadowMesh.m_customDepthMaterial)
+			{
+				shadowMesh.m_materialTextureSamplers.Insert(0u);
+				if (textureImporter)
+				{
+					for (const auto& sampler : material->GetSamplers())
+					{
+						const uint32_t textureIndex = sampler.m_second ?
+							(uint32_t)textureImporter->GetTextureIndex(sampler.m_second->GetFileId()) : 0u;
+						shadowMesh.m_materialTextureSamplers.Insert(textureIndex);
+					}
+				}
+			}
+#endif
 			shadowCaster->m_meshes.Add(std::move(shadowMesh));
 		}
 
@@ -318,6 +341,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 	const uint64_t materialContentRevision = Material::GetGlobalContentRevision();
 	const bool bCheckMaterialRevisions = materialContentRevision != m_lastMaterialContentRevision;
+	bool bHasCustomDepthShadowCasters = false;
 	TVector<size_t> dirtyComponents;
 	dirtyComponents.Reserve(m_components.Num());
 	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
@@ -325,6 +349,19 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		if (!IsComponentRegistered(componentIndex))
 		{
 			continue;
+		}
+
+		auto& registeredData = m_components[componentIndex];
+		if (registeredData.ShouldCastShadow())
+		{
+			for (const auto& material : registeredData.GetMaterials())
+			{
+				if (material && material->GetRenderState().IsRequiredCustomDepthShader())
+				{
+					bHasCustomDepthShadowCasters = true;
+					break;
+				}
+			}
 		}
 
 		auto& data = m_components[componentIndex];
@@ -643,6 +680,7 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 	{
 		++m_sceneViewProxiesCache->m_shadowCastersRevision;
 	}
+	m_sceneViewProxiesCache->m_bHasCustomDepthShadowCasters = bHasCustomDepthShadowCasters;
 
 	return nullptr;
 }
@@ -654,6 +692,7 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 	outProxies->m_stationaryOctree = m_sceneViewProxiesCache->m_stationaryOctree;
 	outProxies->m_staticOctree = m_sceneViewProxiesCache->m_staticOctree;
 	outProxies->m_shadowCastersRevision = m_sceneViewProxiesCache->m_shadowCastersRevision;
+	outProxies->m_bHasCustomDepthShadowCasters = m_sceneViewProxiesCache->m_bHasCustomDepthShadowCasters;
 }
 
 void StaticMeshRendererECS::EndPlay()

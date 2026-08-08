@@ -42,11 +42,17 @@ glslVertex: |
   struct PerInstanceData
   {
       mat4 model;
-      vec4 baseColorFactor;
+      vec4 sphereBounds;
+      uint materialInstance;
       uint skeletonOffset;
+      uint isCulled;
+      uint padding;
+      vec4 bakedVolumeScale;
+      vec4 baseColorFactor;
       uint baseColorSampler;
       float alphaCutoff;
-      uint padding;
+      uint maskedPadding;
+      uint stridePadding;
   };
 
   struct BoneData

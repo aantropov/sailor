@@ -34,6 +34,7 @@ namespace Sailor::RHI
 		glm::vec4 m_baseColorFactor{ 1.0f };
 		float m_alphaCutoff = 0.5f;
 		uint32_t m_baseColorSampler = 0;
+		MaterialPtr m_customDepthMaterial{};
 #if defined(__APPLE__)
 		TSet<uint32_t> m_materialTextureSamplers{};
 #endif
@@ -167,6 +168,7 @@ namespace Sailor::RHI
 		TVector<Tasks::TaskPtr<RHI::RHICommandListPtr>> m_debugDraw;
 		TVector<RHISceneViewSnapshot> m_snapshots;
 		uint64_t m_shadowCastersRevision = 0;
+		bool m_bHasCustomDepthShadowCasters = false;
 
 		WorldPtr m_world{};
 		float m_deltaTime{};

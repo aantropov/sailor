@@ -40,6 +40,7 @@ namespace Sailor
 
 		SAILOR_API ShaderSetPtr GetShader() { return m_shader; }
 		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() { return m_commonShaderBindings; }
+		SAILOR_API RHI::RHIShaderBindingSetPtr GetShaderBindings() const { return m_commonShaderBindings; }
 
 		SAILOR_API const TConcurrentMap<std::string, TexturePtr>& GetSamplers() const { return m_samplers; }
 		SAILOR_API const TConcurrentMap<std::string, glm::vec4>& GetUniformsVec4() const { return m_uniformsVec4; }

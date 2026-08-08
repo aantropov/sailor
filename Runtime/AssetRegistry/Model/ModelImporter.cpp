@@ -2634,7 +2634,6 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 	for (const char* property : {
 		"renderQueue",
 		"bEnableZWrite",
-		"bCustomDepthShader",
 		"blendMode" })
 	{
 		if (!generatedProperties[property] ||
@@ -2644,6 +2643,25 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 		}
 		merged[property] = YAML::Clone(generatedProperties[property]);
 	}
+
+	const YAML::Node generatedCustomDepth =
+		generatedProperties["bCustomDepthShader"];
+	if (!generatedCustomDepth || !generatedCustomDepth.IsScalar())
+	{
+		return false;
+	}
+
+	bool bCustomDepthShader = generatedCustomDepth.as<bool>();
+	const YAML::Node authoredCustomDepth = merged["bCustomDepthShader"];
+	if (authoredCustomDepth)
+	{
+		if (!authoredCustomDepth.IsScalar())
+		{
+			return false;
+		}
+		bCustomDepthShader |= authoredCustomDepth.as<bool>();
+	}
+	merged["bCustomDepthShader"] = bCustomDepthShader;
 
 	auto isManagedDefine = [](const std::string& define)
 		{
