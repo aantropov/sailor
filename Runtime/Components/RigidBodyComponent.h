@@ -37,6 +37,9 @@ namespace Sailor
 		SAILOR_API void SetLinearVelocity(const glm::vec3& value);
 		SAILOR_API const glm::vec3& GetAngularVelocity() const { return m_angularVelocity; }
 		SAILOR_API void SetAngularVelocity(const glm::vec3& value);
+		SAILOR_API bool AddForceAtPosition(
+			const glm::vec3& force,
+			const glm::vec3& worldPosition);
 
 		SAILOR_API void MarkPhysicsDirty();
 		SAILOR_API size_t GetComponentIndex() const { return m_handle; }

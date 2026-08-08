@@ -54,6 +54,10 @@ namespace Sailor
 			uint8_t secondLayer) const;
 		void DrainContactEvents(
 			TVector<Physics::PhysicsContactEvent>& outEvents);
+		bool AddForceAtPosition(
+			size_t componentIndex,
+			const glm::vec3& force,
+			const glm::vec3& worldPosition);
 
 		void SetFixedDeltaTime(float value);
 		float GetFixedDeltaTime() const { return m_fixedDeltaTime; }
@@ -72,6 +76,7 @@ namespace Sailor
 			size_t index,
 			Physics::RigidBodyDesc& outDesc);
 		void SyncAuthoredTransforms(float fixedDeltaTime);
+		void ApplyBuoyancyForces(float sampleTime, float fixedDeltaTime);
 		void ApplyDynamicTransforms(float interpolationAlpha);
 
 		TUniquePtr<Physics::PhysicsWorld> m_physicsWorld{};

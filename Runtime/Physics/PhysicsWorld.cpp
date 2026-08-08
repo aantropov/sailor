@@ -698,6 +698,32 @@ bool Physics::PhysicsWorld::SetBodyVelocity(
 	return true;
 }
 
+bool Physics::PhysicsWorld::AddForceAtPosition(
+	uint32_t bodyId,
+	const glm::vec3& force,
+	const glm::vec3& position)
+{
+	if (bodyId == JPH::BodyID::cInvalidBodyID ||
+		!Math::AllFinite(force) || !Math::AllFinite(position))
+	{
+		return false;
+	}
+
+	const JPH::BodyID id(bodyId);
+	auto& bodyInterface = m_pImpl->m_physicsSystem.GetBodyInterface();
+	if (!bodyInterface.IsAdded(id))
+	{
+		return false;
+	}
+
+	bodyInterface.AddForce(
+		id,
+		ToJolt(force),
+		ToJoltPosition(position),
+		JPH::EActivation::Activate);
+	return true;
+}
+
 bool Physics::PhysicsWorld::Step(float deltaTime)
 {
 	if (!std::isfinite(deltaTime) || deltaTime <= 0.0f)

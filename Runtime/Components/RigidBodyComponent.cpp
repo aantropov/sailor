@@ -201,3 +201,17 @@ void RigidBodyComponent::SetAngularVelocity(const glm::vec3& value)
 		}
 	}
 }
+
+bool RigidBodyComponent::AddForceAtPosition(
+	const glm::vec3& force,
+	const glm::vec3& worldPosition)
+{
+	if (m_handle == ECS::InvalidIndex ||
+		!Math::AllFinite(force) || !Math::AllFinite(worldPosition))
+	{
+		return false;
+	}
+
+	return GetOwner()->GetWorld()->GetECS<PhysicsECS>()
+		->AddForceAtPosition(m_handle, force, worldPosition);
+}
