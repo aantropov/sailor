@@ -77,7 +77,7 @@ namespace Sailor
 		static constexpr float ShadowCasterDepthExtension = 200.0f;
 		static constexpr float ShadowCascadeBlendFraction = 0.1f;
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 0.025f, 0.075f, 0.2f, 1.0f };
-		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {4096,4096}, {4096,4096}, {4096,4096} };
+		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024}, {1024,1024} };
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 2), glm::vec2(1, 1), glm::vec2(1, 1), glm::vec2(1, 1) };
 
 		// TODO: Tightly pack
