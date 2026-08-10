@@ -1276,7 +1276,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 						return newComp->ResolveRefs(
 							reflection,
 							internalDependencies,
-							false);
+							true);
 					},
 					bResolved,
 					resolveDiagnostic))
@@ -1295,7 +1295,7 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 				if (!External::TryInvokeYaml(
 						[newComp, &reflection, this]() mutable
 						{
-							return newComp->ResolveRefs(reflection, m_objectsMap, false);
+							return newComp->ResolveRefs(reflection, m_objectsMap, true);
 						},
 						bResolved,
 						resolveDiagnostic))

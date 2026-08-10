@@ -294,6 +294,8 @@ namespace
 		ModelAssetInfo defaults;
 		Require(defaults.ShouldGenerateLods(),
 			"model assets must generate LODs by default");
+		Require(!defaults.ShouldFlipTexcoordY(),
+			"model assets must preserve glTF texcoords by default");
 		Require(defaults.GetNumGeneratedLods() == 2u,
 			"model assets must generate medium and low LODs by default");
 		Require(NearlyEqual(defaults.GetLodReductionFactor(), 0.5f),
@@ -302,12 +304,15 @@ namespace
 		YAML::Node metadata = defaults.Serialize();
 		Require(metadata["bGenerateLods"].as<bool>(),
 			"model metadata must serialize the LOD generation switch");
+		Require(!metadata["bFlipTexcoordY"].as<bool>(),
+			"model metadata must serialize the texcoord flip switch");
 		Require(metadata["numGeneratedLods"].as<uint32_t>() == 2u,
 			"model metadata must serialize the generated LOD count");
 		Require(NearlyEqual(metadata["lodReductionFactor"].as<float>(), 0.5f),
 			"serialized model LOD reduction factor");
 
 		metadata["bGenerateLods"] = false;
+		metadata["bFlipTexcoordY"] = true;
 		metadata["numGeneratedLods"] = 4u;
 		metadata["lodReductionFactor"] = 0.4f;
 		ModelAssetInfo restored;
@@ -315,6 +320,8 @@ namespace
 		Require(!restored.ShouldGenerateLods() &&
 			restored.GetNumGeneratedLods() == 4u,
 			"model LOD metadata must round-trip generation settings");
+		Require(restored.ShouldFlipTexcoordY(),
+			"model texcoord flip metadata must round-trip");
 		Require(NearlyEqual(restored.GetLodReductionFactor(), 0.4f),
 			"round-tripped model LOD reduction factor");
 
@@ -391,10 +398,10 @@ namespace
 
 		FileId fileId;
 		fileId.Deserialize(YAML::Node("01234567-89ab-cdef-0123-456789abcdef"));
-		Require(
-			ModelImporter::GetLodCacheFilename(fileId, 2u) ==
-				"01234567-89ab-cdef-0123-456789abcdef_lod2.bin",
-			"model LOD cache filenames must follow the fileId_lodN.bin contract");
+			Require(
+				ModelImporter::GetLodCacheFilename(fileId, 2u) ==
+					"01234567-89AB-CDEF-0123-456789ABCDEF_lod2.bin",
+				"model LOD cache filenames must follow the fileId_lodN.bin contract");
 		Require(ModelImporter::GetLodCacheFilename(fileId, 0u).empty(),
 			"LOD0 must remain source geometry instead of a generated cache file");
 	}
