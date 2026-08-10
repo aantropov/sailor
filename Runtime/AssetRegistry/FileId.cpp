@@ -8,10 +8,46 @@
 #include <cstdio>
 #endif
 
+#include <cctype>
+
 using namespace Sailor;
 using namespace nlohmann;
 
 const FileId FileId::Invalid = FileId();
+
+namespace
+{
+	std::string CanonicalizeFileId(std::string value)
+	{
+		const bool bHasBraces = value.size() == 38 &&
+			value.front() == '{' && value.back() == '}';
+		if (!bHasBraces && value.size() != 36)
+			return value;
+
+		const size_t offset = bHasBraces ? 1 : 0;
+		std::string canonical;
+		canonical.reserve(36);
+		for (size_t index = 0; index < 36; index++)
+		{
+			const char character = value[index + offset];
+			if (index == 8 || index == 13 || index == 18 || index == 23)
+			{
+				if (character != '-')
+					return value;
+				canonical.push_back(character);
+				continue;
+			}
+
+			if (!std::isxdigit(static_cast<unsigned char>(character)))
+				return value;
+
+			canonical.push_back(static_cast<char>(
+				std::toupper(static_cast<unsigned char>(character))));
+		}
+
+		return canonical;
+	}
+}
 
 YAML::Node FileId::Serialize() const
 {
@@ -22,7 +58,7 @@ YAML::Node FileId::Serialize() const
 
 void FileId::Deserialize(const YAML::Node& inData)
 {
-	m_fileId = StringHash::Runtime(inData.as<std::string>());
+	m_fileId = StringHash::Runtime(CanonicalizeFileId(inData.as<std::string>()));
 }
 
 const std::string& FileId::ToString() const
@@ -53,6 +89,6 @@ FileId FileId::CreateNewFileId()
 	uuid_unparse_upper(id, buffer);
 #endif
 
-	newuid.m_fileId = StringHash::Runtime(std::string(buffer));
+	newuid.m_fileId = StringHash::Runtime(CanonicalizeFileId(buffer));
 	return newuid;
 }

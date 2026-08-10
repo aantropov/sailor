@@ -57,8 +57,27 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         {
             await _commitGate.WaitAsync(cancellationToken);
             acquired = true;
-            return await CommitInspectorChangesCoreAsync(
-                cancellationToken);
+            if (!await CommitInspectorChangesCoreAsync(cancellationToken) &&
+                HasPendingGameObjectChanges)
+            {
+                return false;
+            }
+
+            foreach (var component in GetComponentsSafely().ToArray())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!component.HasPendingInspectorChanges)
+                    continue;
+
+                if (!await component.CommitInspectorChangesAsync(
+                        cancellationToken) &&
+                    component.HasPendingInspectorChanges)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
         finally
         {
@@ -132,7 +151,25 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     [YamlIgnore]
     public bool HasPendingInspectorChanges =>
+        HasPendingGameObjectChanges ||
+        GetComponentsSafely().Any(component =>
+            component.HasPendingInspectorChanges);
+
+    [YamlIgnore]
+    bool HasPendingGameObjectChanges =>
         IsDirty || Volatile.Read(ref pendingInspectorCommits) != 0;
+
+    IEnumerable<Component> GetComponentsSafely()
+    {
+        try
+        {
+            return Components;
+        }
+        catch
+        {
+            return [];
+        }
+    }
 
     public void Initialize()
     {
@@ -160,6 +197,37 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
 
     [YamlIgnore]
     public int PrefabIndex = -1;
+
+    [YamlIgnore]
+    public bool IsPrefabLinked => TryGetLinkedPrefab(out _);
+
+    [YamlIgnore]
+    public string? PrefabFileId =>
+        TryGetLinkedPrefab(out var prefab)
+            ? prefab.FileId?.Value
+            : null;
+
+    bool TryGetLinkedPrefab(out Prefab prefab)
+    {
+        prefab = null!;
+        try
+        {
+            var world = MauiProgram.GetService<WorldService>();
+            if (PrefabIndex < 0 ||
+                PrefabIndex >= world.Current.Prefabs.Count)
+            {
+                return false;
+            }
+
+            prefab = world.Current.Prefabs[PrefabIndex];
+            return prefab.FileId is not null &&
+                !prefab.FileId.IsEmpty();
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     public void MarkDirty([CallerMemberName] string propertyName = null) { IsDirty = true; OnPropertyChanged(propertyName); }
 

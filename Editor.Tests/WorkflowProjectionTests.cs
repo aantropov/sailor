@@ -1816,6 +1816,37 @@ public sealed class WorkflowProjectionTests
     }
 
     [Fact]
+    public void ApplyPrefab_WaitsForPendingComponentReferenceEdits()
+    {
+        var gameObjectSource = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "GameObject.cs");
+        var templateSource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "InspectorView",
+            "GameObjectTemplate.xaml.cs");
+
+        Assert.Contains(
+            "GetComponentsSafely().Any(component =>",
+            gameObjectSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "component.HasPendingInspectorChanges",
+            gameObjectSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "await component.CommitInspectorChangesAsync(",
+            gameObjectSource,
+            StringComparison.Ordinal);
+        AssertInOrder(
+            templateSource,
+            ".CommitPendingChangesAsync()",
+            "new ApplyPrefabInstanceCommand(gameObject)");
+    }
+
+    [Fact]
     public void ComponentContextMenu_CopyPasteValuesPreservesIdentityAndUsesHistory()
     {
         var templateSource = ReadRepositoryFile(

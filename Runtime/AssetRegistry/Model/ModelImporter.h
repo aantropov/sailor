@@ -242,6 +242,7 @@ namespace Sailor
 			const std::string& assetFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
+			bool bFlipTexcoordY,
 			TVector<MeshContext>& outParsedMeshes,
 			Math::AABB& outBoundsAabb,
 			Math::Sphere& outBoundsSphere,
@@ -255,6 +256,7 @@ namespace Sailor
 			const std::string& assetFilepath,
 			float unitScale,
 			bool bShouldBatchByMaterial,
+			bool bFlipTexcoordY,
 			const std::string& outputPath);
 		static void GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo);
 

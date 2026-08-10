@@ -24,6 +24,7 @@ namespace Sailor
 		SAILOR_API bool ShouldKeepCpuBuffers() const { return m_bShouldKeepCpuBuffers; }
 		SAILOR_API bool ShouldGenerateBLAS() const { return m_bGenerateBLAS; }
 		SAILOR_API bool ShouldGenerateLods() const { return m_bGenerateLods; }
+		SAILOR_API bool ShouldFlipTexcoordY() const { return m_bFlipTexcoordY; }
 		SAILOR_API uint32_t GetNumGeneratedLods() const { return m_numGeneratedLods; }
 		SAILOR_API float GetLodReductionFactor() const { return m_lodReductionFactor; }
 
@@ -46,6 +47,7 @@ namespace Sailor
 		bool m_bShouldKeepCpuBuffers = false;
 		bool m_bGenerateBLAS = true;
 		bool m_bGenerateLods = true;
+		bool m_bFlipTexcoordY = false;
 		uint32_t m_numGeneratedLods = 2u;
 		float m_lodReductionFactor = 0.5f;
 	};
@@ -77,6 +79,7 @@ REFL_AUTO(
 	field(m_bShouldKeepCpuBuffers),
 	field(m_bGenerateBLAS),
 	field(m_bGenerateLods),
+	field(m_bFlipTexcoordY),
 	field(m_numGeneratedLods),
 	field(m_lodReductionFactor),
 	field(m_unitScale),

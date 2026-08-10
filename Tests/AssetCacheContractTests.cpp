@@ -366,6 +366,29 @@ namespace
 		return result;
 	}
 
+	void TestNewFileIdsUseCrossPlatformGuidFormatting()
+	{
+		const FileId braced = MakeFileId("{7810180E-F1BB-4C88-9C9B-28ED9B086974}");
+		const FileId plain = MakeFileId("7810180E-F1BB-4C88-9C9B-28ED9B086974");
+		const FileId lowercase = MakeFileId("7810180e-f1bb-4c88-9c9b-28ed9b086974");
+		Require(braced == plain && plain == lowercase,
+			"Windows and macOS GUID spellings must resolve to the same FileId");
+		Require(braced.ToString() == "7810180E-F1BB-4C88-9C9B-28ED9B086974",
+			"deserialized GUID FileIds must use uppercase unbraced canonical form");
+		Require(braced.Serialize().as<std::string>() == plain.ToString(),
+			"serialized GUID FileIds must remain portable across platforms");
+		Require(MakeFileId("{ASSET-CACHE-SYMBOLIC}").ToString() ==
+			"{ASSET-CACHE-SYMBOLIC}",
+			"non-GUID symbolic FileIds must remain unchanged");
+		Require(MakeFileId("7810180E-F1BB-4C88-9C9B-INVALID-GUID").ToString() ==
+			"7810180E-F1BB-4C88-9C9B-INVALID-GUID",
+			"malformed GUID-like FileIds must remain unchanged");
+
+		const std::string generated = FileId::CreateNewFileId().ToString();
+		Require(generated.size() == 36 && generated.front() != '{' && generated.back() != '}',
+			"new FileIds must use the same unbraced GUID representation on every platform");
+	}
+
 	FileRevision MakeRevision(
 		int64_t modificationTimeNanoseconds = 123456789,
 		uint64_t fileSize = 64,
@@ -2098,6 +2121,7 @@ int main()
 {
 	try
 	{
+		TestNewFileIdsUseCrossPlatformGuidFormatting();
 		TestPayloadRoundTrip();
 		TestEmptyPayloadRoundTrip();
 		TestPreV1PayloadIsRejected();

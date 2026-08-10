@@ -485,16 +485,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				result.m_skeletonOffset,
 				currentFrame);
 
-			if (owner->GetMobilityType() == EMobilityType::Stationary)
+			if (owner->GetMobilityType() != EMobilityType::Static)
 			{
 				result.m_state = EPreparedProxyState::Stationary;
 				result.m_stationaryProxy.m_staticMeshEcs = componentIndex;
 				result.m_stationaryProxy.m_worldMatrix = ownerWorldMatrix;
-				return result;
-			}
-
-			if (owner->GetMobilityType() != EMobilityType::Static)
-			{
 				return result;
 			}
 

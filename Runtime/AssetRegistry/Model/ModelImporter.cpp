@@ -61,7 +61,7 @@ namespace
 		4ull * 1024ull * 1024ull;
 	constexpr int32_t MaxFingerprintTextureDimension = 256;
 	constexpr int32_t FingerprintImageDimension = 256;
-	constexpr uint32_t ModelLodCacheVersion = 2u;
+	constexpr uint32_t ModelLodCacheVersion = 3u;
 	constexpr uint32_t MaxGeneratedModelLods = 8u;
 	constexpr uint64_t MaxModelLodCacheBytes = 1024ull * 1024ull * 1024ull;
 	constexpr std::array<char, 8> ModelLodCacheMagic = {
@@ -81,6 +81,7 @@ namespace
 		float m_unitScale = 1.0f;
 		float m_reductionFactor = 0.5f;
 		uint32_t m_bBatchByMaterial = 0u;
+		uint32_t m_bFlipTexcoordY = 0u;
 	};
 
 	struct ModelLodCacheMeshHeader
@@ -179,7 +180,8 @@ namespace
 			header.m_sourceContentHash == sourceRevision.m_contentHash &&
 			header.m_unitScale == assetInfo.GetUnitScale() &&
 			header.m_reductionFactor == assetInfo.GetLodReductionFactor() &&
-			header.m_bBatchByMaterial == static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
+			header.m_bBatchByMaterial == static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial()) &&
+			header.m_bFlipTexcoordY == static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY());
 	}
 
 	bool LoadModelLodCache(
@@ -303,6 +305,7 @@ namespace
 		header.m_unitScale = assetInfo.GetUnitScale();
 		header.m_reductionFactor = assetInfo.GetLodReductionFactor();
 		header.m_bBatchByMaterial = static_cast<uint32_t>(assetInfo.ShouldBatchByMaterial());
+		header.m_bFlipTexcoordY = static_cast<uint32_t>(assetInfo.ShouldFlipTexcoordY());
 
 		std::string bytes;
 		AppendModelLodCacheBytes(bytes, header);
@@ -3816,6 +3819,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 	const std::string assetFilepath = modelAssetInfo->GetAssetFilepath();
 	const float unitScale = modelAssetInfo->GetUnitScale();
 	const bool bShouldBatchByMaterial = modelAssetInfo->ShouldBatchByMaterial();
+	const bool bFlipTexcoordY = modelAssetInfo->ShouldFlipTexcoordY();
 	FileRevision sourceRevision;
 	if (!Utils::TryGetFileRevision(assetFilepath, sourceRevision))
 	{
@@ -3861,6 +3865,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 			assetFilepath,
 			unitScale,
 			bShouldBatchByMaterial,
+			bFlipTexcoordY,
 			outputPath,
 			generation,
 			sourceRevision
@@ -3879,6 +3884,7 @@ void ModelImporter::GenerateFingerprintAsync(ModelAssetInfoPtr modelAssetInfo)
 					assetFilepath,
 					unitScale,
 					bShouldBatchByMaterial,
+					bFlipTexcoordY,
 					outputPath.string());
 			}
 
@@ -3905,6 +3911,7 @@ bool ModelImporter::GenerateFingerprint(
 	const std::string& assetFilepath,
 	float unitScale,
 	bool bShouldBatchByMaterial,
+	bool bFlipTexcoordY,
 	const std::string& outputPath)
 {
 	TVector<MeshContext> parsedMeshes;
@@ -3914,9 +3921,10 @@ bool ModelImporter::GenerateFingerprint(
 	tinygltf::Model gltfModel;
 	if (!ImportModel(
 			assetFilepath,
-			unitScale,
-			bShouldBatchByMaterial,
-			parsedMeshes,
+		unitScale,
+		bShouldBatchByMaterial,
+		bFlipTexcoordY,
+		parsedMeshes,
 			boundsAabb,
 			boundsSphere,
 			inverseBind,
@@ -5679,6 +5687,7 @@ Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(FileId uid, ModelPtr& outModel
 					pAssetInfo->GetAssetFilepath(),
 					pAssetInfo->GetUnitScale(),
 					pAssetInfo->ShouldBatchByMaterial(),
+					pAssetInfo->ShouldFlipTexcoordY(),
 					pData->m_parsedMeshes,
 					boundsAabb,
 					boundsSphere,
@@ -6005,6 +6014,7 @@ bool ModelImporter::ImportModel(ModelAssetInfoPtr assetInfo, TVector<MeshContext
 			assetInfo->GetAssetFilepath(),
 			assetInfo->GetUnitScale(),
 			assetInfo->ShouldBatchByMaterial(),
+			assetInfo->ShouldFlipTexcoordY(),
 			outParsedMeshes,
 			outBoundsAabb,
 			outBoundsSphere,
@@ -6015,6 +6025,7 @@ bool ModelImporter::ImportModel(
 	const std::string& assetFilepath,
 	float unitScale,
 	bool bShouldBatchByMaterial,
+	bool bFlipTexcoordY,
 	TVector<MeshContext>& outParsedMeshes,
 	Math::AABB& outBoundsAabb,
 	Math::Sphere& outBoundsSphere,
@@ -6453,6 +6464,10 @@ bool ModelImporter::ImportModel(
 						ReadAccessorFloat(texcoordView, i, 0),
 						ReadAccessorFloat(texcoordView, i, 1)) :
 					glm::vec2(0.0f);
+				if (bHasTexcoords && bFlipTexcoordY)
+				{
+					vertex.m_texcoord.y = 1.0f - vertex.m_texcoord.y;
+				}
 				const glm::vec3 sourceTangent = bHasTangents ?
 					glm::vec3(
 						ReadAccessorFloat(tangentView, i, 0),
