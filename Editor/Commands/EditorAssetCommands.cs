@@ -438,6 +438,149 @@ public sealed class CreatePrefabAssetCommand(GameObject gameObject, AssetFolder?
     }
 }
 
+public sealed class ApplyPrefabInstanceCommand(GameObject gameObject) : IEditorCommand
+{
+    readonly InstanceId _instanceId = gameObject.InstanceId is null
+        ? InstanceId.NullInstanceId
+        : new InstanceId(gameObject.InstanceId.Value);
+
+    public string Name => nameof(ApplyPrefabInstanceCommand);
+
+    public bool CanExecute(ActionContext context) =>
+        _instanceId is not null &&
+        !_instanceId.IsEmpty();
+
+    public async Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var engine = MauiProgram.GetService<EngineService>();
+        var world = MauiProgram.GetService<WorldService>();
+        await engine.RefreshCurrentWorldAsync(cancellationToken);
+        if (!world.TryGetGameObject(_instanceId, out var liveObject) ||
+            liveObject.PrefabIndex < 0 ||
+            liveObject.PrefabIndex >= world.Current.Prefabs.Count)
+        {
+            return CommandResult.Failure(
+                "The selected GameObject is no longer available.");
+        }
+
+        var linkedPrefab = world.Current.Prefabs[liveObject.PrefabIndex];
+        if (linkedPrefab.FileId is null || linkedPrefab.FileId.IsEmpty())
+        {
+            return CommandResult.Failure(
+                "The selected GameObject is not linked to a prefab.");
+        }
+
+        var assets = MauiProgram.GetService<AssetsService>();
+        if (!assets.Assets.TryGetValue(
+                linkedPrefab.FileId,
+                out var sourceAsset) ||
+            sourceAsset is not PrefabFile sourcePrefab)
+        {
+            return CommandResult.Failure(
+                $"Prefab asset '{linkedPrefab.FileId.Value}' is not available.");
+        }
+        if (sourcePrefab.IsReadOnly)
+        {
+            return CommandResult.Failure(
+                "The source prefab is read-only.");
+        }
+
+        var write = assets.BeginApplyPrefabOverrides(
+            sourcePrefab,
+            EditorYaml.SerializePrefab(linkedPrefab));
+        if (write is null)
+        {
+            return CommandResult.Failure(
+                "Apply prefab could not prepare an atomic asset write.");
+        }
+
+        var atomicCancellationToken = CancellationToken.None;
+        try
+        {
+            if (!await engine.RequestAssetReloadAsync(
+                    atomicCancellationToken))
+            {
+                return await RollbackAsync(
+                    assets,
+                    write.Transaction,
+                    engine,
+                    "The native registry rejected the updated prefab.");
+            }
+
+            var commit = assets.CompletePrefabAssetWrite(
+                write.Transaction,
+                commit: true);
+            if (!commit.Succeeded)
+            {
+                return await RollbackAsync(
+                    assets,
+                    write.Transaction,
+                    engine,
+                    AssetCommandMessages.Error(
+                        commit,
+                        "The prefab write transaction could not be committed"));
+            }
+
+            await engine.RefreshCurrentWorldAsync(
+                atomicCancellationToken);
+            return CommandResult.Success(
+                "Prefab changes applied.",
+                linkedPrefab.FileId);
+        }
+        catch (Exception exception)
+        {
+            return await RollbackAsync(
+                assets,
+                write.Transaction,
+                engine,
+                $"Apply prefab failed: {exception.Message}");
+        }
+    }
+
+    static async Task<CommandResult> RollbackAsync(
+        AssetsService assets,
+        ProjectContentAssetWriteTransaction transaction,
+        EngineService engine,
+        string reason)
+    {
+        var diagnostics = new List<string> { reason };
+        if (transaction.IsActive)
+        {
+            var rollback = assets.CompletePrefabAssetWrite(
+                transaction,
+                commit: false);
+            if (!rollback.Succeeded)
+            {
+                diagnostics.Add(AssetCommandMessages.Error(
+                    rollback,
+                    "Prefab rollback failed"));
+            }
+        }
+
+        try
+        {
+            if (!await engine.RequestAssetReloadAsync(
+                    CancellationToken.None))
+            {
+                diagnostics.Add(
+                    "The native registry rejected the rollback reload.");
+            }
+            await engine.RefreshCurrentWorldAsync(
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            diagnostics.Add(
+                $"Prefab rollback reconciliation failed: {exception.Message}");
+        }
+
+        return CommandResult.Failure(string.Join(" ", diagnostics));
+    }
+}
+
 static class AssetCommandMessages
 {
     public static async Task<CommandResult> CompleteMutationAsync(

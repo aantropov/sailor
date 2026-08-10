@@ -37,6 +37,10 @@ namespace SailorEditor.ViewModels
         public bool IsReadOnly { get; set; }
     }
 
+    public sealed class AudioFile : AssetFile
+    {
+    }
+
     public sealed class MaterialFile : AssetFile;
     public sealed class TextureFile : AssetFile;
     public sealed class ModelFile : AssetFile;

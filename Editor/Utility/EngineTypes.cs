@@ -196,6 +196,8 @@ namespace SailorEngine
                 "class Sailor::AnimationController" => typeof(AnimationControllerFile),
                 "Sailor::AnimationSet" => typeof(AnimationSetFile),
                 "class Sailor::AnimationSet" => typeof(AnimationSetFile),
+                "Sailor::AudioClip" => typeof(AudioFile),
+                "class Sailor::AudioClip" => typeof(AudioFile),
                 _ => null
             };
 

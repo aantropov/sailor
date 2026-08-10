@@ -619,6 +619,96 @@ namespace SailorEditor.Services
             return new PrefabAssetWriteResult(created, transaction);
         }
 
+        public PrefabAssetWriteResult? BeginApplyPrefabOverrides(
+            PrefabFile existingPrefab,
+            string linkedPrefabYaml)
+        {
+            ArgumentNullException.ThrowIfNull(existingPrefab);
+            if (existingPrefab.IsReadOnly ||
+                existingPrefab.FileId is null ||
+                existingPrefab.FileId.IsEmpty() ||
+                !ProjectContentPathPolicy.IsInsideRoot(
+                    CurrentProjectRootPath,
+                    existingPrefab.Asset.FullName))
+            {
+                return null;
+            }
+
+            string sourceContents;
+            string metadataContents;
+            try
+            {
+                sourceContents = File.ReadAllText(existingPrefab.Asset.FullName);
+                metadataContents = File.ReadAllText(existingPrefab.AssetInfo.FullName);
+                sourceContents = PrefabOverrideApplier.Apply(
+                    sourceContents,
+                    linkedPrefabYaml);
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"Apply prefab preparation failed: {exception}");
+                return null;
+            }
+
+            ProjectContentAssetWriteTransaction transaction;
+            lock (_watcherLock)
+            {
+                var watcherStates = _contentWatchers
+                    .Select(watcher => watcher.EnableRaisingEvents)
+                    .ToArray();
+                try
+                {
+                    foreach (var watcher in _contentWatchers)
+                        watcher.EnableRaisingEvents = false;
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        existingPrefab.Asset.FullName,
+                        sourceContents,
+                        metadataContents,
+                        existingPrefab.FileId.Value,
+                        overwrite: true);
+                }
+                finally
+                {
+                    for (var index = 0;
+                        index < _contentWatchers.Count;
+                        index++)
+                    {
+                        _contentWatchers[index].EnableRaisingEvents =
+                            watcherStates[index];
+                    }
+                }
+            }
+
+            if (!transaction.Result.Succeeded)
+                return null;
+
+            try
+            {
+                Refresh();
+            }
+            catch
+            {
+                CompletePrefabAssetWrite(transaction, commit: false);
+                return null;
+            }
+
+            var refreshed = Assets.TryGetValue(
+                    existingPrefab.FileId,
+                    out var asset) &&
+                asset is PrefabFile prefabFile
+                    ? prefabFile
+                    : null;
+            if (refreshed is null)
+            {
+                CompletePrefabAssetWrite(transaction, commit: false);
+                return null;
+            }
+
+            return new PrefabAssetWriteResult(refreshed, transaction);
+        }
+
         public ProjectContentFileOperationResult CompletePrefabAssetWrite(
             ProjectContentAssetWriteTransaction transaction,
             bool commit)
@@ -1866,6 +1956,7 @@ namespace SailorEditor.Services
                 "Sailor::AnimationAssetInfo" => new AnimationFile(),
                 "Sailor::AnimationControllerAssetInfo" => new AnimationControllerFile(),
                 "Sailor::AnimationSetAssetInfo" => new AnimationSetFile(),
+                "Sailor::AudioAssetInfo" => new AudioFile(),
                 "Sailor::PrefabAssetInfo" => new PrefabFile(),
                 "Sailor::WorldPrefabAssetInfo" => new WorldFile(),
                 "Sailor::ShaderAssetInfo" when string.Equals(
@@ -1924,6 +2015,7 @@ namespace SailorEditor.Services
             ".anim" => new AnimationFile(),
             ".animcontroller" => new AnimationControllerFile(),
             ".animset" => new AnimationSetFile(),
+            ".wav" or ".flac" or ".mp3" => new AudioFile(),
             ".prefab" => new PrefabFile(),
             ".world" => new WorldFile(),
             ".shader" => new ShaderFile(),

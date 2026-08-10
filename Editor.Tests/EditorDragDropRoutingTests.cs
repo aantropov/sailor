@@ -40,6 +40,28 @@ public sealed class EditorDragDropRoutingTests
         Assert.Equal(fileId, result);
     }
 
+    [Fact]
+    public void TryResolveAssetFileId_AcceptsOnlyAudioForAudioClipPointers()
+    {
+        var audioId = new FileId("{AUDIO}");
+        var modelId = new FileId("{MODEL}");
+        var audio = new AudioFile { FileId = audioId };
+        var model = new ModelFile { FileId = modelId };
+
+        Assert.True(EditorDragDrop.TryResolveAssetFileId(
+            audio,
+            typeof(AudioFile),
+            id => id == audioId ? audio : null,
+            out var resolved));
+        Assert.Equal(audioId, resolved);
+
+        Assert.False(EditorDragDrop.TryResolveAssetFileId(
+            model,
+            typeof(AudioFile),
+            id => id == modelId ? model : null,
+            out _));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

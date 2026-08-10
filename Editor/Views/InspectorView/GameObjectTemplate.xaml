@@ -34,39 +34,49 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Properties Label -->
-        <Label Text="Transform" FontAttributes="Bold" Grid.Row="0" Grid.ColumnSpan="2" />
+        <HorizontalStackLayout Grid.Row="0"
+                               Grid.ColumnSpan="2"
+                               Spacing="8"
+                               IsVisible="{Binding IsPrefabLinked}">
+            <Button Text="Apply prefab"
+                    Clicked="OnApplyPrefabClicked" />
+            <Button Text="Select Prefab"
+                    Clicked="OnSelectPrefabClicked" />
+        </HorizontalStackLayout>
 
-        <Label Text="Position" VerticalOptions="Center" Grid.Row="1" Grid.Column="0"/>
-        <Grid Grid.Row="1" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <!-- Properties Label -->
+        <Label Text="Transform" FontAttributes="Bold" Grid.Row="1" Grid.ColumnSpan="2" />
+
+        <Label Text="Position" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
+        <Grid Grid.Row="2" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Position.X, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Position.Y, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Position.Z, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
-        <Label Text="Rotation" VerticalOptions="Center" Grid.Row="2" Grid.Column="0"/>
-        <Grid Grid.Row="2" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <Label Text="Rotation" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
+        <Grid Grid.Row="3" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Rotation.Yaw, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Rotation.Pitch, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Rotation.Roll, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
-        <Label Text="Scale" VerticalOptions="Center" Grid.Row="3" Grid.Column="0"/>
-        <Grid Grid.Row="3" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
+        <Label Text="Scale" VerticalOptions="Center" Grid.Row="4" Grid.Column="0"/>
+        <Grid Grid.Row="4" Grid.Column="1" ColumnSpacing="6" ColumnDefinitions="*,*,*" HorizontalOptions="Fill">
             <Entry Grid.Column="0" Text="{Binding Scale.X, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="1" Text="{Binding Scale.Y, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
             <Entry Grid.Column="2" Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
 
-        <Label Text="Components" FontAttributes="Bold" Grid.Row="4" Grid.ColumnSpan="2" />
+        <Label Text="Components" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="5" Grid.ColumnSpan="2">
+        <HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
             <Button Text="Add Component"
                     Clicked="OnAddComponentClicked" />
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="6" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
+        <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
 
     </Grid>
 </DataTemplate>

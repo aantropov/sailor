@@ -909,6 +909,40 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void AudioClipPointers_AreMappedToTypedEditorAssets()
+    {
+        var engineTypes = ReadRepositoryFile(
+            "Editor",
+            "Utility",
+            "EngineTypes.cs");
+        var assetsService = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "AssetsService.cs");
+        var assetFile = ReadRepositoryFile(
+            "Editor",
+            "ViewModels",
+            "AssetFile.cs");
+
+        Assert.Contains(
+            "\"Sailor::AudioClip\" => typeof(AudioFile)",
+            engineTypes,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\"Sailor::AudioAssetInfo\" => new AudioFile()",
+            assetsService,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "\".wav\" or \".flac\" or \".mp3\" => new AudioFile()",
+            assetsService,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "AudioFile => \"Sailor::AudioAssetInfo\"",
+            assetFile,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void CreateEditorWorld_IsRoutedThroughTheSharedProtocolAbi()
     {
         var managedSource = ReadRepositoryFile("Editor", "Services", "EngineService.cs");

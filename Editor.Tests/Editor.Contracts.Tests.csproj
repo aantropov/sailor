@@ -36,6 +36,7 @@
     <Compile Include="ProjectContentPathPolicyTests.cs" />
     <Compile Include="AssetSourcePathContractTests.cs" />
     <Compile Include="ProjectContentFileOperationsTests.cs" />
+    <Compile Include="PrefabOverrideApplierTests.cs" />
     <Compile Include="ProjectContentFolderRebindPolicyTests.cs" />
     <Compile Include="ProjectContentMutationReloadPolicyTests.cs" />
     <Compile Include="RepositoryAssetSidecarContractTests.cs" />
@@ -113,6 +114,7 @@
     <Compile Include="..\Editor\Content\ProjectContentPathPolicy.cs" Link="Content\ProjectContentPathPolicy.cs" />
     <Compile Include="..\Editor\Content\AssetSourcePathContract.cs" Link="Content\AssetSourcePathContract.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFileOperations.cs" Link="Content\ProjectContentFileOperations.cs" />
+    <Compile Include="..\Editor\Content\PrefabOverrideApplier.cs" Link="Content\PrefabOverrideApplier.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderRebindPolicy.cs" Link="Content\ProjectContentFolderRebindPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentMutationReloadPolicy.cs" Link="Content\ProjectContentMutationReloadPolicy.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceManifest.cs" Link="Workspace\WorkspaceManifest.cs" />
