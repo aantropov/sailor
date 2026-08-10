@@ -1799,7 +1799,7 @@ public sealed class EngineLifecycleTests
     {
         var candidate = Path.Combine(relativePath.Prepend(ResolveRepositoryRoot()).ToArray());
         return File.Exists(candidate)
-            ? File.ReadAllText(candidate)
+            ? File.ReadAllText(candidate).ReplaceLineEndings("\n")
             : throw new FileNotFoundException($"Could not find repository file: {Path.Combine(relativePath)}");
     }
 
