@@ -746,6 +746,35 @@ namespace
 			"the new secondary AssetInfo should be immediately resolvable");
 	}
 
+	void TestScanCanonicalizesUuidMetadataIdentity()
+	{
+		TempDirectory directory("canonical-uuid-scan");
+		const Workspace::WorkspaceContext workspaceContext =
+			CreateWorkspaceContext(directory);
+		WriteFile(
+			workspaceContext.GetContent() / "Portable.raw",
+			"portable-source");
+		WriteFile(
+			workspaceContext.GetContent() / "Portable.raw.asset",
+			"fileId: '{7810180E-F1BB-4C88-9C9B-28ED9B086974}'\n"
+			"filename: Portable.raw\n"
+			"testValue: 9\n");
+
+		TargetedUpdateAssetInfoHandler handler;
+		AssetRegistry registry(workspaceContext);
+		RegisterTargetedUpdateHandler(registry, handler);
+		Require(registry.ScanContentFolder() &&
+			registry.CompleteScanProcessing(),
+			"a Windows-style braced UUID must survive staged metadata loading");
+
+		const FileId portableId =
+			MakeFileId("7810180E-F1BB-4C88-9C9B-28ED9B086974");
+		AssetInfoPtr assetInfo = registry.GetAssetInfoPtr(portableId);
+		Require(assetInfo != nullptr &&
+			assetInfo->GetFileId().ToString() == portableId.ToString(),
+			"the staged registry must publish the canonical cross-platform UUID");
+	}
+
 	void TestPayloadRoundTrip()
 	{
 		const FileId fileId = MakeFileId("{ASSET-CACHE-ROUNDTRIP}");
@@ -2128,6 +2157,7 @@ int main()
 		TestV2EnvelopeIsResetInsteadOfMigrated();
 		TestLazyScanDefersUnchangedMetadataMaterialization();
 		TestLazyScanLoadsOnlyNewSecondaryMetadata();
+		TestScanCanonicalizesUuidMetadataIdentity();
 		TestCorruptPayloadDoesNotPartiallyPublish();
 		TestMismatchedEntryIdentityIsCorrupt();
 		TestDirectDeserializeDoesNotThrowOnCorruptData();

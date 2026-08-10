@@ -216,6 +216,9 @@ namespace
 					}
 
 					outFileId = fileId.as<std::string>();
+					FileId canonicalFileId;
+					canonicalFileId.Deserialize(YAML::Node(outFileId));
+					outFileId = canonicalFileId.ToString();
 					outFilename = filename.as<std::string>();
 					YAML::Node assetInfoType(YAML::NodeType::Undefined);
 					for (const auto& field : metadata)
