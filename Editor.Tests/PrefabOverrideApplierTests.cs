@@ -68,7 +68,7 @@ public sealed class PrefabOverrideApplierTests
     [Fact]
     public void Apply_IgnoresOverridesForUnknownSourceObjects()
     {
-        var linked = LinkedYaml.Replace(
+        var linked = LinkedYaml.ReplaceLineEndings("\n").Replace(
             "source-game-object:\n    name: Applied Root",
             "unknown-game-object:\n    name: Applied Root",
             StringComparison.Ordinal);
