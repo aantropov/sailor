@@ -104,6 +104,10 @@ namespace Sailor::GltfImporterUtils
 		const tinygltf::Node& node,
 		glm::mat4& outMatrix);
 
+	SAILOR_SHARED_API bool IsMaterialUsedBySkinnedMesh(
+		const tinygltf::Model& model,
+		size_t materialIndex);
+
 	SAILOR_SHARED_API bool CollectMeshInstances(
 		const tinygltf::Model& model,
 		TVector<MeshInstance>& outInstances);

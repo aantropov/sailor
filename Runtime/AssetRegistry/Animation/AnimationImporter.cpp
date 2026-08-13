@@ -648,46 +648,15 @@ bool AnimationImporter::ImportAnimation(FileId uid, AnimationPtr& outAnimation)
 			for (size_t i = 0; i < numNodes; ++i)
 			{
 				const auto& n = gltfModel.nodes[i];
-				if (n.translation.size() == 3)
+				glm::mat4 nodeMatrix(1.0f);
+				if (!GltfImporterUtils::TryComposeNodeMatrix(n, nodeMatrix))
 				{
-					const glm::vec4 translation(
-						static_cast<float>(n.translation[0]),
-						static_cast<float>(n.translation[1]),
-						static_cast<float>(n.translation[2]),
-						1.0f);
-					if (Math::AllFinite(translation))
-					{
-						base[i].m_position = translation;
-					}
+					SAILOR_LOG_ERROR(
+						"Cannot import invalid glTF animation node transform: %s",
+						info->GetAssetFilepath().c_str());
+					return false;
 				}
-
-				if (n.rotation.size() == 4)
-				{
-					glm::quat rotation(
-						static_cast<float>(n.rotation[3]),
-						static_cast<float>(n.rotation[0]),
-						static_cast<float>(n.rotation[1]),
-						static_cast<float>(n.rotation[2]));
-					const float lengthSquared = glm::dot(rotation, rotation);
-					if (std::isfinite(lengthSquared) &&
-						lengthSquared > std::numeric_limits<float>::epsilon())
-					{
-						base[i].m_rotation = glm::normalize(rotation);
-					}
-				}
-
-				if (n.scale.size() == 3)
-				{
-					const glm::vec4 scale(
-						static_cast<float>(n.scale[0]),
-						static_cast<float>(n.scale[1]),
-						static_cast<float>(n.scale[2]),
-						1.0f);
-					if (Math::AllFinite(scale))
-					{
-						base[i].m_scale = scale;
-					}
-				}
+				base[i] = Math::Transform::FromMatrix(nodeMatrix);
 			}
 
 			auto composeGlobalTransforms = [numNodes, &parents](

@@ -335,17 +335,16 @@ namespace SailorEditor.Services
                     Error: "Stop simulation before saving the scene.");
             }
 
-            var page = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
-            if (page is null)
-                return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The editor window is unavailable.");
-
             var assetsService = MauiProgram.GetService<AssetsService>();
             var worldAsset = CurrentWorldAsset ?? (IsCurrentWorldUntitled ? null : ResolveCurrentWorldAsset());
             if (worldAsset is not null && assetsService.CanModifyAsset(worldAsset))
             {
                 if (confirmExisting)
                 {
-                    var confirmed = await page.DisplayAlert(
+                    var confirmationPage = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+                    if (confirmationPage is null)
+                        return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The editor window is unavailable.");
+                    var confirmed = await confirmationPage.DisplayAlert(
                         "Save scene",
                         $"Save the current scene to {worldAsset.Asset.FullName}?",
                         "Save",
@@ -359,6 +358,10 @@ namespace SailorEditor.Services
                     assetsService,
                     cancellationToken);
             }
+
+            var page = Application.Current?.Windows.FirstOrDefault()?.Page ?? Application.Current?.MainPage;
+            if (page is null)
+                return new SceneSaveResult(SceneSaveOutcome.Failed, Error: "The editor window is unavailable.");
 
             return await SaveCurrentWorldAsAsync(page, assetsService, cancellationToken);
         }
