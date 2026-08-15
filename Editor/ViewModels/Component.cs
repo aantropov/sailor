@@ -23,6 +23,7 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
         propertyName => propertyName == nameof(OverrideProperties));
     readonly SemaphoreSlim _commitGate = new(1, 1);
     int pendingInspectorCommits;
+    int inspectorBatchDepth;
 
     public Component()
     {
@@ -33,9 +34,27 @@ public partial class Component : ObservableObject, ICloneable, IInspectorEditabl
                 return;
 
             IsDirty = true;
-            if (decision.CommitNow)
+            if (decision.CommitNow && Volatile.Read(ref inspectorBatchDepth) == 0)
                 _ = CommitInspectorChangesSafelyAsync();
         };
+    }
+
+    public async Task<bool> ApplyInspectorBatchAsync(
+        Action mutation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mutation);
+        Interlocked.Increment(ref inspectorBatchDepth);
+        try
+        {
+            mutation();
+        }
+        finally
+        {
+            Interlocked.Decrement(ref inspectorBatchDepth);
+        }
+
+        return await CommitInspectorChangesAsync(cancellationToken);
     }
 
     public async Task<bool> CommitInspectorChangesAsync(

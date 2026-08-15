@@ -219,6 +219,23 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 
 				for (const auto& shadowMesh : proxy->m_meshes)
 				{
+					if (!shadowMesh.m_mesh)
+					{
+						continue;
+					}
+
+					if (shadowMesh.m_maxCameraDistance < (std::numeric_limits<float>::max)())
+					{
+						Math::AABB worldBounds = shadowMesh.m_mesh->m_bounds;
+						worldBounds.Apply(shadowMesh.m_worldMatrix);
+						const glm::vec3 cameraPosition(sceneView.m_cameraTransform.m_position);
+						const glm::vec3 closestPoint = glm::clamp(
+							cameraPosition, worldBounds.m_min, worldBounds.m_max);
+						if (glm::distance(cameraPosition, closestPoint) > shadowMesh.m_maxCameraDistance)
+						{
+							continue;
+						}
+					}
 					const size_t renderQueueTag = shadowMesh.m_renderQueueTag;
 					if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 					{

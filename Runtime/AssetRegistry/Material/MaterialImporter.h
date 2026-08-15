@@ -52,6 +52,7 @@ namespace Sailor
 		SAILOR_API const RHI::RenderState& GetRenderState() const { return m_renderState; }
 
 		SAILOR_API void UpdateRHIResource();
+		SAILOR_API void UpdateRHIResourceAndUniforms();
 
 		// TODO: Incapsulate & isolate
 		SAILOR_API RHI::RHIMaterialPtr GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);

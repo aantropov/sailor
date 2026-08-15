@@ -30,6 +30,7 @@ internal sealed class McpEditorTools
     readonly AIOperatorService _aiOperator;
     readonly McpSceneSnapshotBuilder _sceneSnapshots;
     readonly McpSceneBatchExecutor _sceneBatch;
+    readonly McpLandscapeOperations _landscapeOperations;
     readonly McpAssetOperations _assetOperations;
     readonly McpWorkspaceOperations _workspaceOperations;
 
@@ -42,6 +43,7 @@ internal sealed class McpEditorTools
         AIOperatorService aiOperator,
         McpSceneSnapshotBuilder sceneSnapshots,
         McpSceneBatchExecutor sceneBatch,
+        McpLandscapeOperations landscapeOperations,
         McpAssetOperations assetOperations,
         McpWorkspaceOperations workspaceOperations)
     {
@@ -53,6 +55,7 @@ internal sealed class McpEditorTools
         _aiOperator = aiOperator;
         _sceneSnapshots = sceneSnapshots;
         _sceneBatch = sceneBatch;
+        _landscapeOperations = landscapeOperations;
         _assetOperations = assetOperations;
         _workspaceOperations = workspaceOperations;
     }
@@ -121,6 +124,39 @@ internal sealed class McpEditorTools
                     "reset_component, select, focus. References beginning with '$' resolve an earlier operation alias. " +
                     "Pass the workspace epoch returned by sailor_editor_get_state to reject stale plans. " +
                     "Mutations require confirm=true and successful batches are one undo entry.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (McpLandscapeApplyRequest request, CancellationToken cancellationToken) =>
+                ApplyLandscapeAsync(request, cancellationToken),
+            new()
+            {
+                Name = "sailor_landscape_apply",
+                Description =
+                    "Create or fully author a LandscapeComponent from a level description. " +
+                    "Resolve material, texture and model fileIds with sailor_assets_list/get first. " +
+                    "The request replaces terrain stamps and all vegetation profiles atomically. " +
+                    "A vegetation materialFileId is optional; leave it empty to use the GLB materials. " +
+                    "Vegetation shadows accept None, NearOnly, or All. Leave targetComponentId empty to create a new Landscape GameObject. " +
+                    "Pass the current workspace epoch and confirm=true; the complete edit is one undo entry.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (bool confirm,
+                long? expectedWorkspaceEpoch,
+                string targetComponentId,
+                CancellationToken cancellationToken) =>
+                RegenerateLandscapeAsync(
+                    confirm,
+                    expectedWorkspaceEpoch,
+                    targetComponentId,
+                    cancellationToken),
+            new()
+            {
+                Name = "sailor_landscape_regenerate",
+                Description =
+                    "Regenerate terrain, vegetation, render proxies and collision for an existing LandscapeComponent. " +
+                    "Requires its component instance ID, the current workspace epoch and confirm=true.",
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
@@ -277,6 +313,26 @@ internal sealed class McpEditorTools
                     expectedWorkspaceEpoch,
                     description,
                     operations ?? Array.Empty<McpSceneOperation>()),
+                cancellationToken),
+            cancellationToken);
+
+    public Task<McpSceneBatchResult> ApplyLandscapeAsync(
+        McpLandscapeApplyRequest request,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            () => _landscapeOperations.ApplyAsync(request, cancellationToken),
+            cancellationToken);
+
+    public Task<McpSceneBatchResult> RegenerateLandscapeAsync(
+        bool confirm,
+        long? expectedWorkspaceEpoch,
+        string targetComponentId,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            () => _landscapeOperations.RegenerateAsync(
+                confirm,
+                expectedWorkspaceEpoch,
+                targetComponentId,
                 cancellationToken),
             cancellationToken);
 

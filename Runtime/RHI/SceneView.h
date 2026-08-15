@@ -34,10 +34,22 @@ namespace Sailor::RHI
 		glm::vec4 m_baseColorFactor{ 1.0f };
 		float m_alphaCutoff = 0.5f;
 		uint32_t m_baseColorSampler = 0;
+		float m_maxCameraDistance = (std::numeric_limits<float>::max)();
 		MaterialPtr m_customDepthMaterial{};
 #if defined(__APPLE__)
 		TSet<uint32_t> m_materialTextureSamplers{};
 #endif
+	};
+
+	struct RHILodPolicy
+	{
+		bool m_bEnabled = false;
+		uint32_t m_minLod = 0u;
+		uint32_t m_maxLod = 2u;
+		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
+		float m_maxCameraDistance = (std::numeric_limits<float>::infinity)();
+
+		SAILOR_API uint32_t Resolve(float screenCoverage, uint32_t numAvailableLods) const;
 	};
 
 	struct RHIShadowCasterProxy
@@ -47,6 +59,7 @@ namespace Sailor::RHI
 		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 		size_t m_frame{};
 		TVector<RHIShadowMeshProxy> m_meshes{};
+		RHILodPolicy m_lodPolicy{};
 	};
 
 	using RHIShadowCasterProxyPtr = TSharedPtr<RHIShadowCasterProxy>;
@@ -89,6 +102,7 @@ namespace Sailor::RHI
 		TVector<TSet<uint32_t>> m_materialTextureSamplers;
 #endif
 		RHIShadowCasterProxyPtr m_shadowCaster{};
+		RHILodPolicy m_lodPolicy{};
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;

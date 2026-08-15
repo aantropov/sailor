@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -284,6 +285,43 @@ namespace
 			return new JPH::CapsuleShape(
 				std::max(0.0f, totalHeight * 0.5f - radius),
 				radius);
+		}
+		case Physics::ECollisionShapeType::TriangleMesh:
+		{
+			if (desc.m_vertices.IsEmpty() || desc.m_indices.Num() < 3u)
+			{
+				return {};
+			}
+
+			JPH::VertexList vertices;
+			vertices.reserve(desc.m_vertices.Num());
+			for (const glm::vec3& vertex : desc.m_vertices)
+			{
+				const glm::vec3 scaled = vertex * absoluteScale;
+				vertices.emplace_back(scaled.x, scaled.y, scaled.z);
+			}
+
+			JPH::IndexedTriangleList triangles;
+			triangles.reserve(desc.m_indices.Num() / 3u);
+			for (size_t index = 0u; index + 2u < desc.m_indices.Num(); index += 3u)
+			{
+				const uint32_t i0 = desc.m_indices[index];
+				const uint32_t i1 = desc.m_indices[index + 1u];
+				const uint32_t i2 = desc.m_indices[index + 2u];
+				if (i0 < desc.m_vertices.Num() && i1 < desc.m_vertices.Num() && i2 < desc.m_vertices.Num())
+				{
+					triangles.emplace_back(i0, i1, i2, 0u);
+				}
+			}
+			if (triangles.empty())
+			{
+				return {};
+			}
+
+			JPH::MeshShapeSettings settings(std::move(vertices), std::move(triangles));
+			settings.mBuildQuality = JPH::MeshShapeSettings::EBuildQuality::FavorRuntimePerformance;
+			auto result = settings.Create();
+			return result.HasError() ? JPH::ShapeRefC{} : result.Get();
 		}
 		default:
 			return {};

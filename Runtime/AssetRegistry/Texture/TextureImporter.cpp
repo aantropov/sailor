@@ -618,6 +618,12 @@ bool TextureImporter::ImportTexture(FileId uid, ByteCode& decodedData, int32_t& 
 	return false;
 }
 
+bool TextureImporter::DecodeTextureCpu(FileId uid, ByteCode& decodedData,
+	int32_t& width, int32_t& height, uint32_t& mipLevels)
+{
+	return ImportTexture(uid, decodedData, width, height, mipLevels);
+}
+
 bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 {
 	auto task = LoadTexture(uid, outTexture);

@@ -555,6 +555,71 @@ bool PhysicsECS::AddForceAtPosition(
 			worldPosition);
 }
 
+bool PhysicsECS::CreateStaticTriangleMesh(
+	const InstanceId& instanceId,
+	const TVector<glm::vec3>& vertices,
+	const TVector<uint32_t>& indices,
+	const glm::vec3& position,
+	const glm::quat& rotation,
+	const glm::vec3& scale,
+	uint32_t& outBodyId)
+{
+	outBodyId = RigidBodyData::InvalidBodyId;
+	if (!EnsurePhysicsWorld() || !instanceId || vertices.IsEmpty() || indices.Num() < 3u)
+	{
+		return false;
+	}
+
+	Physics::RigidBodyDesc desc{};
+	desc.m_instanceId = instanceId;
+	desc.m_motionType = Physics::ERigidBodyMotionType::Static;
+	desc.m_position = position;
+	desc.m_rotation = rotation;
+	desc.m_scale = scale;
+	desc.m_friction = 0.8f;
+	desc.m_bAllowSleeping = true;
+	Physics::CollisionShapeDesc shape{};
+	shape.m_type = Physics::ECollisionShapeType::TriangleMesh;
+	shape.m_vertices = vertices;
+	shape.m_indices = indices;
+	desc.m_shapes.Add(std::move(shape));
+	return m_physicsWorld->CreateBody(desc, outBodyId);
+}
+
+bool PhysicsECS::CreateStaticCompound(
+	const InstanceId& instanceId,
+	const TVector<Physics::CollisionShapeDesc>& shapes,
+	const glm::vec3& position,
+	const glm::quat& rotation,
+	const glm::vec3& scale,
+	uint32_t& outBodyId)
+{
+	outBodyId = RigidBodyData::InvalidBodyId;
+	if (!EnsurePhysicsWorld() || !instanceId || shapes.IsEmpty())
+	{
+		return false;
+	}
+
+	Physics::RigidBodyDesc desc{};
+	desc.m_instanceId = instanceId;
+	desc.m_motionType = Physics::ERigidBodyMotionType::Static;
+	desc.m_position = position;
+	desc.m_rotation = rotation;
+	desc.m_scale = scale;
+	desc.m_friction = 0.8f;
+	desc.m_bAllowSleeping = true;
+	desc.m_shapes = shapes;
+	return m_physicsWorld->CreateBody(desc, outBodyId);
+}
+
+void PhysicsECS::DestroyExternalBody(uint32_t bodyId)
+{
+	if (m_physicsWorld && bodyId != RigidBodyData::InvalidBodyId)
+	{
+		m_physicsWorld->DestroyBody(bodyId);
+	}
+}
+
 void PhysicsECS::SetLayerCollisionEnabled(
 	uint8_t firstLayer,
 	uint8_t secondLayer,

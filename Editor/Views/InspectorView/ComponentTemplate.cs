@@ -9,7 +9,7 @@ using SailorEditor.Views;
 using SailorEngine;
 
 namespace SailorEditor;
-public class ComponentTemplate : DataTemplate
+public partial class ComponentTemplate : DataTemplate
 {
     static readonly HashSet<string> CompactComponents = [];
 
@@ -166,6 +166,12 @@ public class ComponentTemplate : DataTemplate
                     return;
                 }
 
+                if (component.Typename.Name == "Sailor::LandscapeComponent")
+                {
+                    AddLandscapeTools(props, component);
+                    AddLandscapeImportEditor(props, component);
+                }
+
                 var engineTypes = MauiProgram.GetService<EngineService>().EngineTypes;
 
                 foreach (var property in EnumerateInspectorProperties(component))
@@ -254,6 +260,11 @@ public class ComponentTemplate : DataTemplate
                     }
 
                     Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
+                }
+
+                if (component.Typename.Name == "Sailor::LandscapeComponent")
+                {
+                    AddLandscapeVegetationEditor(props, component);
                 }
 
                 if (component.Typename.Name == "Sailor::AnimatorComponent")
@@ -352,6 +363,30 @@ public class ComponentTemplate : DataTemplate
     static IEnumerable<KeyValuePair<string, ObservableObject>> EnumerateInspectorProperties(
         Component component)
     {
+        if (component.Typename.Name == "Sailor::LandscapeComponent")
+        {
+            foreach (var property in component.OverrideProperties)
+            {
+                if (property.Key is "sculptStamps" or "paintStamps" or
+                    "layerTextures" or "heightmapTexture" or "materialMasks" or
+                    "vegetationModels" or "vegetationMaterials" or
+                    "vegetationMeshIndex" or
+                    "vegetationInstancesPerChunk" or "vegetationMinScale" or
+                    "vegetationMaxScale" or "vegetationGroundOffset" or
+                    "vegetationShadowMode" or "vegetationShadowDistance" or
+                    "vegetationMinLod" or "vegetationMaxLod" or
+                    "vegetationLod1ScreenCoverage" or "vegetationLod2ScreenCoverage" or
+                    "vegetationCullDistance" or "vegetationColliderRadius" or
+                    "vegetationColliderHeight" or "vegetationColliderOffsetY" or
+                    "regenerate")
+                {
+                    continue;
+                }
+                yield return property;
+            }
+            yield break;
+        }
+
         if (component.Typename.Name != "Sailor::MeshRendererComponent")
         {
             foreach (var property in component.OverrideProperties)
@@ -390,7 +425,10 @@ public class ComponentTemplate : DataTemplate
         return component.Typename.Name == "Sailor::MeshRendererComponent" &&
             propertyName == "overrideMaterials"
             ? typeof(MaterialFile)
-            : null;
+            : component.Typename.Name == "Sailor::LandscapeComponent" &&
+                propertyName == "layerTextures"
+                ? typeof(TextureFile)
+                : null;
     }
 
     static Command CreateContextMenuCommand(

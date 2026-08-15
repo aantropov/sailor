@@ -200,6 +200,71 @@ namespace SailorEditor.Services
                 .ConfigureAwait(false);
         }
 
+        public async Task<FileId?> ImportTextureAsync(
+            string sourcePath,
+            string category,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath) ||
+                string.IsNullOrWhiteSpace(CurrentProjectRootPath))
+            {
+                return null;
+            }
+
+            var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (extension is not (".png" or ".jpg" or ".bmp" or
+                ".tga" or ".dds" or ".hdr"))
+            {
+                return null;
+            }
+
+            var safeCategory = string.Join("_", (category ?? "Textures")
+                .Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            if (string.IsNullOrWhiteSpace(safeCategory))
+            {
+                safeCategory = "Textures";
+            }
+            var destinationDirectory = Path.Combine(
+                CurrentProjectRootPath, "Landscape", safeCategory);
+            Directory.CreateDirectory(destinationDirectory);
+            var destinationName = GetUniqueAssetName(
+                destinationDirectory,
+                Path.GetFileNameWithoutExtension(sourcePath),
+                extension);
+            var destinationPath = Path.Combine(destinationDirectory, destinationName);
+
+            await using (var source = new FileStream(sourcePath, FileMode.Open,
+                FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous))
+            await using (var destination = new FileStream(destinationPath,
+                FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920,
+                FileOptions.Asynchronous))
+            {
+                await source.CopyToAsync(destination, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            if (!_engineService.IsRunning ||
+                !await _engineService.RequestAssetReloadAsync(cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                return null;
+            }
+
+            var metadataPath = destinationPath + ".asset";
+            for (var attempt = 0; attempt < 50 && !File.Exists(metadataPath); ++attempt)
+            {
+                await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+            }
+            if (!File.Exists(metadataPath))
+            {
+                return null;
+            }
+
+            await RefreshAsync(cancellationToken).ConfigureAwait(false);
+            return new FileId(ReadAssetMetadataIdentity(
+                new FileInfo(metadataPath)).FileId);
+        }
+
         async Task<bool> RefreshFolderPathAsync(
             string directoryPath,
             CancellationToken cancellationToken)

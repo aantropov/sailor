@@ -58,6 +58,22 @@ namespace Sailor
 			size_t componentIndex,
 			const glm::vec3& force,
 			const glm::vec3& worldPosition);
+		bool CreateStaticTriangleMesh(
+			const InstanceId& instanceId,
+			const TVector<glm::vec3>& vertices,
+			const TVector<uint32_t>& indices,
+			const glm::vec3& position,
+			const glm::quat& rotation,
+			const glm::vec3& scale,
+			uint32_t& outBodyId);
+		bool CreateStaticCompound(
+			const InstanceId& instanceId,
+			const TVector<Physics::CollisionShapeDesc>& shapes,
+			const glm::vec3& position,
+			const glm::quat& rotation,
+			const glm::vec3& scale,
+			uint32_t& outBodyId);
+		void DestroyExternalBody(uint32_t bodyId);
 
 		void SetFixedDeltaTime(float value);
 		float GetFixedDeltaTime() const { return m_fixedDeltaTime; }

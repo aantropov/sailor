@@ -88,6 +88,7 @@ namespace SailorEditor
             builder.Services.AddSingleton<McpEditorTools>();
             builder.Services.AddSingleton<McpSceneSnapshotBuilder>();
             builder.Services.AddSingleton<McpSceneBatchExecutor>();
+            builder.Services.AddSingleton<McpLandscapeOperations>();
             builder.Services.AddSingleton<McpAssetOperations>();
             builder.Services.AddSingleton<McpWorkspaceOperations>();
             builder.Services.AddSingleton<IWorkspaceProcessRunner, WorkspaceProcessRunner>();

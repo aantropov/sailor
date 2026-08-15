@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <limits>
 
 using namespace Sailor;
@@ -94,6 +95,30 @@ float Sailor::RHI::CalculateScreenCoverage(
 		1.0f);
 }
 
+uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableLods) const
+{
+	if (numAvailableLods == 0u)
+	{
+		return 0u;
+	}
+
+	const uint32_t highestAvailableLod = numAvailableLods - 1u;
+	const uint32_t minLod = (std::min)(m_minLod, highestAvailableLod);
+	const uint32_t maxLod = (std::max)(minLod, (std::min)(m_maxLod, highestAvailableLod));
+	uint32_t selectedLod = 0u;
+	const float coverage = (std::clamp)(screenCoverage, 0.0f, 1.0f);
+	for (size_t index = 0u; index < m_screenCoverageThresholds.Num(); ++index)
+	{
+		if (!std::isfinite(m_screenCoverageThresholds[index]) ||
+			coverage >= m_screenCoverageThresholds[index])
+		{
+			break;
+		}
+		selectedLod = static_cast<uint32_t>(index + 1u);
+	}
+	return (std::clamp)(selectedLod, minLod, maxLod);
+}
+
 namespace
 {
 	uint32_t ResolveProxyLod(
@@ -112,6 +137,31 @@ namespace
 			camera.GetViewMatrix(),
 			camera.GetProjectionMatrix());
 		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
+	}
+
+	void ApplyCustomLodToMeshes(
+		const RHILodPolicy& policy,
+		const Math::AABB& worldBounds,
+		const CameraData& camera,
+		TVector<RHIMeshPtr>& meshes)
+	{
+		const float coverage = CalculateScreenCoverage(
+			worldBounds, camera.GetViewMatrix(), camera.GetProjectionMatrix());
+		for (auto& mesh : meshes)
+		{
+			if (!mesh)
+			{
+				continue;
+			}
+			const uint32_t lod = policy.Resolve(coverage, mesh->GetNumLods());
+			if (lod > 0u)
+			{
+				if (RHIMeshPtr lodMesh = mesh->GetLod(lod))
+				{
+					mesh = std::move(lodMesh);
+				}
+			}
+		}
 	}
 
 	void ApplyLodToMeshes(
@@ -148,20 +198,23 @@ namespace
 		}
 
 		auto* meshEcs = world->GetECS<StaticMeshRendererECS>();
-		if (!meshEcs || !meshEcs->IsComponentRegistered(source->m_staticMeshEcs))
+		const bool bUseStaticMeshSettings = meshEcs &&
+			meshEcs->IsComponentRegistered(source->m_staticMeshEcs);
+		if (!source->m_lodPolicy.m_bEnabled && !bUseStaticMeshSettings)
 		{
 			return source;
 		}
 
-		const auto& data = meshEcs->GetComponentData(source->m_staticMeshEcs);
 		RHIShadowCasterProxyPtr result = RHIShadowCasterProxyPtr::Make(*source);
+		const float coverage = CalculateScreenCoverage(
+			source->m_worldAabb, camera.GetViewMatrix(), camera.GetProjectionMatrix());
 		for (auto& shadowMesh : result->m_meshes)
 		{
-			const uint32_t lod = ResolveProxyLod(
-				data,
-				source->m_worldAabb,
-				camera,
-				shadowMesh.m_mesh);
+			const uint32_t lod = source->m_lodPolicy.m_bEnabled ?
+				source->m_lodPolicy.Resolve(coverage,
+					shadowMesh.m_mesh ? shadowMesh.m_mesh->GetNumLods() : 0u) :
+				ResolveProxyLod(meshEcs->GetComponentData(source->m_staticMeshEcs),
+					source->m_worldAabb, camera, shadowMesh.m_mesh);
 			if (lod > 0u)
 			{
 				if (RHIMeshPtr lodMesh = shadowMesh.m_mesh->GetLod(lod))
@@ -402,25 +455,35 @@ void RHISceneView::PrepareSnapshots()
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
 		res.m_proxies = TraceScene(frustum, false);
 		auto* meshEcs = m_world ? m_world->GetECS<StaticMeshRendererECS>() : nullptr;
-		if (meshEcs)
-		{
-			for (auto& proxy : res.m_proxies)
+		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);
+		res.m_proxies.RemoveAll([&](const RHISceneViewProxy& proxy)
 			{
-				if (!meshEcs->IsComponentRegistered(proxy.m_staticMeshEcs))
+				if (!std::isfinite(proxy.m_lodPolicy.m_maxCameraDistance))
 				{
-					continue;
+					return false;
 				}
+				const glm::vec3 closest = glm::clamp(
+					cameraPosition, proxy.m_worldAabb.m_min, proxy.m_worldAabb.m_max);
+				return glm::distance(cameraPosition, closest) > proxy.m_lodPolicy.m_maxCameraDistance;
+			});
+		for (auto& proxy : res.m_proxies)
+		{
+			if (proxy.m_lodPolicy.m_bEnabled)
+			{
+				ApplyCustomLodToMeshes(proxy.m_lodPolicy, proxy.m_worldAabb,
+					camera, proxy.m_meshes);
+			}
+			else if (meshEcs && meshEcs->IsComponentRegistered(proxy.m_staticMeshEcs))
+			{
 				const auto& data = meshEcs->GetComponentData(proxy.m_staticMeshEcs);
 				ApplyLodToMeshes(
 					data,
 					proxy.m_worldAabb,
 					camera,
 					proxy.m_meshes);
-				proxy.m_shadowCaster = CreateLodShadowCaster(
-					proxy.m_shadowCaster,
-					m_world,
-					camera);
 			}
+			proxy.m_shadowCaster = CreateLodShadowCaster(
+				proxy.m_shadowCaster, m_world, camera);
 		}
 		for (auto& shadowMap : res.m_shadowMapsToUpdate)
 		{

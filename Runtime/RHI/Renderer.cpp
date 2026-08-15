@@ -19,6 +19,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ECS/CameraECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/LandscapeECS.h"
 #include "ECS/AnimationECS.h"
 #include "ECS/PathTracerECS.h"
 
@@ -332,6 +333,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		rhiSceneView->m_world = world;
 		world->GetECS<StaticMeshRendererECS>()->CopySceneView(rhiSceneView);
+		world->GetECS<LandscapeECS>()->AppendSceneView(rhiSceneView);
 		if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
 		{
 			pathTracerEcs->CopySceneView(rhiSceneView);

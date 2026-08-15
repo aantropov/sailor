@@ -92,6 +92,8 @@ namespace Sailor
 		SAILOR_API bool LoadAsset(FileId uid, TObjectPtr<Object>& out, bool bImmediate = true) override;
 		SAILOR_API bool LoadTexture_Immediate(FileId uid, TexturePtr& outTexture);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> LoadTexture(FileId uid, TexturePtr& outTexture);
+		SAILOR_API static bool DecodeTextureCpu(FileId uid, ByteCode& decodedData,
+			int32_t& width, int32_t& height, uint32_t& mipLevels);
 		SAILOR_API TexturePtr GetLoadedTexture(FileId uid);
 		SAILOR_API Tasks::TaskPtr<TexturePtr> GetLoadPromise(FileId uid);
 		SAILOR_API virtual void CollectGarbage() override;
