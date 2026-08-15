@@ -610,8 +610,6 @@ namespace Sailor
 				return;
 			}
 
-			const size_t slack = newCapacity - m_capacity;
-
 			m_capacity = newCapacity;
 
 			if (m_pRawPtr && m_allocator.Reallocate(m_pRawPtr, newCapacity * sizeof(TElementType)))
@@ -626,11 +624,11 @@ namespace Sailor
 			{
 				if constexpr (IsMoveConstructible<TElementType>)
 				{
-					ConstructMoveElements(0, pRawPtr[0], newCapacity - slack);
+					ConstructMoveElements(0, pRawPtr[0], m_arrayNum);
 				}
 				else if constexpr (IsCopyConstructible<TElementType>)
 				{
-					ConstructElements(0, pRawPtr[0], newCapacity - slack);
+					ConstructElements(0, pRawPtr[0], m_arrayNum);
 				}
 				else
 				{
@@ -639,7 +637,7 @@ namespace Sailor
 				}
 
 				// Destruct old elements
-				for (size_t i = 0; i < newCapacity - slack; i++)
+				for (size_t i = 0; i < m_arrayNum; i++)
 				{
 					pRawPtr[i].~TElementType();
 				}
