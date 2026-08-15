@@ -1,4 +1,5 @@
 #include "Math/Bounds.h"
+#include "RHI/SceneView.h"
 
 #include <cmath>
 #include <functional>
@@ -157,6 +158,23 @@ namespace
 			casterDepth <= 1.0001f,
 			"shadow projection must include casters behind the camera toward the light source");
 	}
+
+	void TestLodPolicyResolvesCoverageAndAvailableMeshes()
+	{
+		RHI::RHILodPolicy policy;
+		policy.m_bEnabled = true;
+		policy.m_minLod = 0;
+		policy.m_maxLod = 2;
+		policy.m_screenCoverageThresholds = { 0.25f, 0.05f };
+
+		Require(policy.Resolve(0.5f, 3) == 0, "high coverage must select the highest-detail LOD");
+		Require(policy.Resolve(0.1f, 3) == 1, "medium coverage must select the middle LOD");
+		Require(policy.Resolve(0.01f, 3) == 2, "low coverage must select the lowest-detail LOD");
+		Require(policy.Resolve(0.01f, 2) == 1, "LOD selection must clamp to the available mesh count");
+
+		policy.m_minLod = 1;
+		Require(policy.Resolve(1.0f, 3) == 1, "the configured minimum LOD must be respected");
+	}
 }
 
 int main()
@@ -169,6 +187,7 @@ int main()
 		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
 			{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
 			{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
+			{ "LodPolicyResolvesCoverageAndAvailableMeshes", TestLodPolicyResolvesCoverageAndAvailableMeshes },
 	};
 
 	for (const auto& test : tests)

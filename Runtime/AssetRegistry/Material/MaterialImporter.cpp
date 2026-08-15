@@ -259,6 +259,12 @@ void Material::UpdateRHIResource()
 	m_bIsDirty = false;
 }
 
+void Material::UpdateRHIResourceAndUniforms()
+{
+	UpdateRHIResource();
+	ForcelyUpdateUniforms();
+}
+
 void Material::UpdateUniforms(RHI::RHICommandListPtr cmdList)
 {
 	if (!m_commonShaderBindings)

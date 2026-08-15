@@ -608,6 +608,46 @@ namespace
 			"off-center force should create linear motion and torque");
 	}
 
+	void TestStaticTriangleMeshSupportsDynamicBodies()
+	{
+		Physics::PhysicsWorld world;
+		Physics::RigidBodyDesc terrain{};
+		terrain.m_instanceId = InstanceId::GenerateNewInstanceId();
+		terrain.m_motionType = Physics::ERigidBodyMotionType::Static;
+
+		Physics::CollisionShapeDesc mesh{};
+		mesh.m_type = Physics::ECollisionShapeType::TriangleMesh;
+		mesh.m_vertices = {
+			glm::vec3(-10.0f, 0.0f, -10.0f),
+			glm::vec3(-10.0f, 0.0f, 10.0f),
+			glm::vec3(10.0f, 0.0f, -10.0f),
+			glm::vec3(10.0f, 0.0f, 10.0f)
+		};
+		mesh.m_indices = { 0, 1, 2, 2, 1, 3 };
+		terrain.m_shapes.Add(std::move(mesh));
+
+		uint32_t terrainBody = ~0u;
+		Require(world.CreateBody(terrain, terrainBody),
+			"static triangle-mesh terrain should be created");
+
+		uint32_t dynamicBody = ~0u;
+		Require(world.CreateBody(
+			MakeBox(
+				InstanceId::GenerateNewInstanceId(),
+				Physics::ERigidBodyMotionType::Dynamic,
+				glm::vec3(0.0f, 4.0f, 0.0f),
+				glm::vec3(1.0f)),
+			dynamicBody),
+			"dynamic body above triangle-mesh terrain should be created");
+
+		Step(world, 240);
+		Physics::PhysicsBodyPose pose{};
+		Require(world.GetBodyPose(dynamicBody, pose),
+			"dynamic body on triangle-mesh terrain should remain readable");
+		Require(pose.m_position.y > 0.45f && pose.m_position.y < 0.56f,
+			"dynamic body should settle on triangle-mesh terrain");
+	}
+
 	struct PhysicsSceneStats final
 	{
 		size_t m_dynamicBodies = 0;
@@ -921,6 +961,7 @@ int main()
 		{ "ReflectedPhysicsAuthoringContract", TestReflectedPhysicsAuthoringContract },
 		{ "ComponentTeardownOrdering", TestComponentTeardownOrdering },
 		{ "ForceAtPositionAppliesLinearAndAngularImpulse", TestForceAtPositionAppliesLinearAndAngularImpulse },
+		{ "StaticTriangleMeshSupportsDynamicBodies", TestStaticTriangleMeshSupportsDynamicBodies },
 		{ "PhysicsSceneFixtures", TestPhysicsSceneFixtures },
 	};
 

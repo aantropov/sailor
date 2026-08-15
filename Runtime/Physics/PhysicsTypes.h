@@ -19,7 +19,8 @@ namespace Sailor::Physics
 	{
 		Box = 0,
 		Sphere,
-		Capsule
+		Capsule,
+		TriangleMesh
 	};
 
 	enum class EPhysicsContactType : uint8_t
@@ -37,6 +38,8 @@ namespace Sailor::Physics
 		glm::vec3 m_size = glm::vec3(1.0f);
 		float m_radius = 0.5f;
 		float m_height = 1.0f;
+		TVector<glm::vec3> m_vertices{};
+		TVector<uint32_t> m_indices{};
 	};
 
 	struct RigidBodyDesc final

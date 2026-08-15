@@ -8,6 +8,7 @@
 
 #include "Memory/SharedPtr.hpp"
 #include "Memory/UniquePtr.hpp"
+#include "Containers/Vector.h"
 
 using namespace Sailor;
 
@@ -48,6 +49,40 @@ namespace
 		static inline int s_liveCount = 0;
 		static inline int s_destroyedCount = 0;
 		int m_value = 0;
+	};
+
+	struct VectorLifetimeProbe
+	{
+		VectorLifetimeProbe()
+		{
+			++s_liveCount;
+		}
+
+		VectorLifetimeProbe(const VectorLifetimeProbe&) = delete;
+		VectorLifetimeProbe& operator=(const VectorLifetimeProbe&) = delete;
+
+		VectorLifetimeProbe(VectorLifetimeProbe&&) noexcept
+		{
+			++s_liveCount;
+			++s_moveCount;
+		}
+
+		~VectorLifetimeProbe()
+		{
+			--s_liveCount;
+			++s_destroyedCount;
+		}
+
+		static void Reset()
+		{
+			s_liveCount = 0;
+			s_moveCount = 0;
+			s_destroyedCount = 0;
+		}
+
+		static inline int s_liveCount = 0;
+		static inline int s_moveCount = 0;
+		static inline int s_destroyedCount = 0;
 	};
 
 	void TestSharedPtrConstObserversAndComparison()
@@ -126,6 +161,29 @@ namespace
 			Require(values[i] == 0, "array Make should value-initialize fundamental elements");
 		}
 	}
+
+	void TestVectorReserveMovesOnlyLiveElements()
+	{
+		VectorLifetimeProbe::Reset();
+		{
+			TVector<VectorLifetimeProbe> values;
+			values.Reserve(8);
+			values.Emplace();
+			values.Reserve(16);
+
+			Require(VectorLifetimeProbe::s_liveCount == 1,
+				"vector reserve should preserve exactly one live element");
+			Require(VectorLifetimeProbe::s_moveCount == 1,
+				"vector reserve should move Num elements rather than Capacity elements");
+			Require(VectorLifetimeProbe::s_destroyedCount == 1,
+				"vector reserve should destroy only the initialized source elements");
+		}
+
+		Require(VectorLifetimeProbe::s_liveCount == 0,
+			"vector destruction should release the remaining live element");
+		Require(VectorLifetimeProbe::s_destroyedCount == 2,
+			"vector growth and destruction should destroy each constructed element once");
+	}
 }
 
 int main()
@@ -135,6 +193,7 @@ int main()
 		{ "UniquePtrScalarRelease", TestUniquePtrScalarRelease },
 		{ "UniquePtrArrayLifetimeMoveAndRelease", TestUniquePtrArrayLifetimeMoveAndRelease },
 		{ "UniquePtrArrayValueInitialization", TestUniquePtrArrayValueInitialization },
+		{ "VectorReserveMovesOnlyLiveElements", TestVectorReserveMovesOnlyLiveElements },
 	};
 
 	for (const auto& test : tests)

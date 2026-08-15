@@ -926,8 +926,10 @@ namespace SailorEditor
     public class FileIdYamlConverter : IYamlTypeConverter
     {
         public bool Accepts(Type type) => type == typeof(FileId);
-        public object ReadYaml(IParser parser, Type type) => new FileId(parser.Consume<Scalar>().Value);
-        public void WriteYaml(IEmitter emitter, object value, Type type) => emitter.Emit(new Scalar(((FileId)value).Value));
+        public object ReadYaml(IParser parser, Type type) =>
+            new FileId(parser.Consume<Scalar>().Value ?? string.Empty);
+        public void WriteYaml(IEmitter emitter, object value, Type type) =>
+            emitter.Emit(new Scalar((value as FileId)?.Value ?? string.Empty));
     }
 
     public class InstanceIdYamlConverter : IYamlTypeConverter

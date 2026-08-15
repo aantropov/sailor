@@ -63,6 +63,7 @@
     <Compile Include="McpBridgeIntegrationTests.cs" />
     <Compile Include="WorkspaceBuildPlanTests.cs" />
     <Compile Include="McpSceneSafetyContractTests.cs" />
+    <Compile Include="McpLandscapeContractTests.cs" />
     <Compile Include="McpYamlUtilitiesTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />

@@ -110,6 +110,7 @@ namespace
 				lhsMesh.m_baseColorFactor != rhsMesh.m_baseColorFactor ||
 				lhsMesh.m_alphaCutoff != rhsMesh.m_alphaCutoff ||
 				lhsMesh.m_baseColorSampler != rhsMesh.m_baseColorSampler ||
+				lhsMesh.m_maxCameraDistance != rhsMesh.m_maxCameraDistance ||
 				lhsMesh.m_customDepthMaterial != rhsMesh.m_customDepthMaterial ||
 #if defined(__APPLE__)
 				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
