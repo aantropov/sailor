@@ -13,7 +13,8 @@ internal sealed class WorkspaceActivationOperations(
     WorldService worldService,
     AssetsService assetsService,
     ProjectContentStore projectContentStore,
-    ICommandHistoryService commandHistory) : IWorkspaceActivationOperations
+    ICommandHistoryService commandHistory,
+    WorkspaceOpenRecoveryService workspaceOpenRecovery) : IWorkspaceActivationOperations
 {
     public async Task StopAsync(CancellationToken cancellationToken)
     {
@@ -120,6 +121,19 @@ internal sealed class WorkspaceActivationOperations(
             {
                 await MainThread.InvokeOnMainThreadAsync(
                     worldService.MarkCurrentWorldUntitledForWorkspaceStartup);
+
+                if (workspaceLifecycle.Current is { } session)
+                {
+                    try
+                    {
+                        workspaceOpenRecovery.ClearPending(session);
+                    }
+                    catch (Exception exception)
+                    {
+                        Console.WriteLine(
+                            $"[WorkspaceActivationOperations] Workspace opened, but its recovery marker could not be cleared: {exception.Message}");
+                    }
+                }
             }
         }
         catch (Exception activationFailure)

@@ -185,6 +185,21 @@ public sealed class WorkspaceActivationTests
     }
 
     [Fact]
+    public async Task ActivateAsync_UserDeclinedPreflightDoesNotCrossStopBoundary()
+    {
+        var actions = new RecordingActivationOperations();
+        var coordinator = new WorkspaceActivationCoordinator(actions);
+
+        var result = await coordinator.ActivateAsync(new WorkspaceActivationRequest(
+            "B",
+            _ => throw new OperationCanceledException("User declined recovery.")));
+
+        Assert.True(result.WasCancelled);
+        Assert.Equal(WorkspaceActivationPhase.Idle, result.State.Phase);
+        Assert.Empty(actions.Events);
+    }
+
+    [Fact]
     public async Task ActivateAsync_CancellationAfterStopBeginsCompletesTransaction()
     {
         using var cancellation = new CancellationTokenSource();

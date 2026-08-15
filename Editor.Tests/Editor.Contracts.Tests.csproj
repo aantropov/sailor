@@ -62,6 +62,8 @@
     <Compile Include="McpBridgeOptionsTests.cs" />
     <Compile Include="McpBridgeIntegrationTests.cs" />
     <Compile Include="WorkspaceBuildPlanTests.cs" />
+    <Compile Include="WorkspaceOpenRecoveryTests.cs" />
+    <Compile Include="WorkspaceCacheServiceTests.cs" />
     <Compile Include="McpSceneSafetyContractTests.cs" />
     <Compile Include="McpLandscapeContractTests.cs" />
     <Compile Include="McpYamlUtilitiesTests.cs" />
@@ -171,5 +173,7 @@
     <Compile Include="..\Editor\Services\AssetCacheIndexStore.cs" Link="Services\AssetCacheIndexStore.cs" />
     <Compile Include="..\Editor\Commands\EditorCommandRuntime.cs" Link="Commands\EditorCommandRuntime.cs" />
     <Compile Include="..\Editor\Workspace\WorkspaceBuildService.cs" Link="Workspace\WorkspaceBuildService.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceOpenRecoveryService.cs" Link="Workspace\WorkspaceOpenRecoveryService.cs" />
+    <Compile Include="..\Editor\Workspace\WorkspaceCacheService.cs" Link="Workspace\WorkspaceCacheService.cs" />
   </ItemGroup>
 </Project>

@@ -60,6 +60,16 @@ namespace SailorEditor
             file.Add(new MenuFlyoutSeparator());
             file.Add(new MenuFlyoutItem { Text = "Exit" });
 
+            var build = new MenuBarItem { Text = "Build" };
+            build.Add(CreateWorkspaceMenuItem("Compile", () => _workspaceUi.CompileWorkspaceAsync()));
+            build.Add(CreateWorkspaceMenuItem("Reconfigure", () => _workspaceUi.ReconfigureWorkspaceAsync()));
+            build.Add(new MenuFlyoutSeparator());
+            build.Add(CreateWorkspaceMenuItem("Clear Cache", () => _workspaceUi.ClearWorkspaceCacheAsync()));
+            build.Add(CreateWorkspaceMenuItem("Rerun Engine", async () =>
+            {
+                await _workspaceUi.RestartEngineAsync();
+            }));
+
             var window = new MenuBarItem { Text = "Window" };
             foreach (var panel in MauiProgram.GetService<Panels.PanelRegistry>().GetAllDescriptors().OrderBy(x => x.Title))
             {
@@ -75,6 +85,7 @@ namespace SailorEditor
             preferences.Add(new MenuFlyoutItem { Text = "Dark Theme", Command = new Command(() => ChangeTheme("DarkThemeStyle")) });
 
             MenuBarItems.Add(file);
+            MenuBarItems.Add(build);
             MenuBarItems.Add(window);
             MenuBarItems.Add(preferences);
         }

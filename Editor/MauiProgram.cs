@@ -63,6 +63,8 @@ namespace SailorEditor
             builder.Services.AddSingleton<WorkspaceTemplateService>();
             builder.Services.AddSingleton(_ => new RecentWorkspaceStore());
             builder.Services.AddSingleton<WorkspaceLifecycleService>();
+            builder.Services.AddSingleton<WorkspaceOpenRecoveryService>();
+            builder.Services.AddSingleton<WorkspaceCacheService>();
             builder.Services.AddSingleton<WorkspaceActivationOperations>();
             builder.Services.AddSingleton<IWorkspaceActivationOperations>(sp => sp.GetRequiredService<WorkspaceActivationOperations>());
             builder.Services.AddSingleton<WorkspaceActivationCoordinator>();

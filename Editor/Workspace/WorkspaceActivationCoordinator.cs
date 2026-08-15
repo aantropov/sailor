@@ -173,7 +173,7 @@ public sealed class WorkspaceActivationCoordinator
                 ?? throw new InvalidOperationException("Workspace activation preflight did not return a candidate.");
             cancellationToken.ThrowIfCancellationRequested();
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             candidate?.Preparation.Discard();
             var restored = RestoreStableState(stableState);
