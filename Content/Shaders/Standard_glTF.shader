@@ -899,7 +899,10 @@ glslFragment: |
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
 
-    float occlusion = texture(g_aoSampler, viewportUv).r;
+    float occlusion = 1.0;
+  #ifndef DISABLE_SCREEN_SPACE_AO
+    occlusion = texture(g_aoSampler, viewportUv).r;
+  #endif
     if(material.occlusionSampler != 0)
     {
       float occlusionTex = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.occlusionSampler))], vin.texcoord).r;

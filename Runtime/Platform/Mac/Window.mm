@@ -50,8 +50,14 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	case 0x0F: return 'R';
 	case 0x10: return 'Y';
 	case 0x11: return 'T';
+	case 0x23: return 'P';
 	case 0x20: return 'U';
-	case 0x53: return VK_ESCAPE;
+	case 0x12: return '1';
+	case 0x13: return '2';
+	case 0x14: return '3';
+	case 0x30: return 0x09;
+	case 0x31: return 0x20;
+	case 0x35: return VK_ESCAPE;
 	case 0x60: return VK_F5;
 	case 0x61: return VK_F6;
 	case 0x38:
@@ -247,6 +253,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 - (void)scrollWheel:(NSEvent*)event
 {
 	[self updateCursorFromEvent:event];
+	GlobalInput::AddMouseWheelDelta((float)event.scrollingDeltaY);
 	SailorDispatchImGuiMacEvent({ ImGuiApi::MacEvent::Type::MouseWheel, (float)event.scrollingDeltaX, (float)event.scrollingDeltaY, 0, -1, false, nullptr });
 }
 

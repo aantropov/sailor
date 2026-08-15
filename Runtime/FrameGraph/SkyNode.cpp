@@ -645,7 +645,8 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 	}
 	commands->EndDebugRegion(commandList);
 
-	if (m_skyParams.m_cloudsDensity > 0.0f)
+	if (m_skyParams.m_cloudsDensity > CloudsVisibilityEpsilon &&
+		m_skyParams.m_cloudsCoverage > CloudsVisibilityEpsilon)
 	{
 		commands->BeginDebugRegion(commandList, "Clouds", DebugContext::Color_CmdPostProcess);
 		{

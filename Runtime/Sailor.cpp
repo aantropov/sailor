@@ -734,7 +734,9 @@ void App::Start()
 			bFirstFrame = true;
 		}
 
-		if (systemInputState.IsKeyPressed(VK_ESCAPE) || !pMainWindow->IsParentWindowValid())
+		// Escape is application input. Gameplay UI must get the opportunity to
+		// close its topmost window instead of the engine terminating the process.
+		if (!pMainWindow->IsParentWindowValid())
 		{
 			Stop();
 			break;

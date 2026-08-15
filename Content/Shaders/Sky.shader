@@ -712,6 +712,14 @@ glslFragment: |
        }
 
     #elif defined(CLOUDS)
+      const float cloudsVisibilityEpsilon = 0.0001f;
+      if(data.cloudsDensity <= cloudsVisibilityEpsilon ||
+         data.cloudsCoverage <= cloudsVisibilityEpsilon)
+      {
+          outColor = vec4(0.0f);
+          return;
+      }
+
       #if defined(DITHER)
        vec2 ditherUv = vec2(mod(gl_FragCoord.x, 4), mod(gl_FragCoord.y, 4)) / 4.0f;
        

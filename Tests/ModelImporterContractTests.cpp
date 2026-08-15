@@ -725,6 +725,28 @@ uniformsFloat:
 			"malformed authored YAML must be rejected without partial mutation");
 	}
 
+	void TestSkinnedGltfMaterialsRequireSkinningShaderVariant()
+	{
+		tinygltf::Model model;
+		model.materials.resize(2);
+		model.meshes.resize(2);
+		model.meshes[0].primitives.resize(1);
+		model.meshes[0].primitives[0].material = 0;
+		model.meshes[0].primitives[0].attributes["JOINTS_0"] = 0;
+		model.meshes[0].primitives[0].attributes["WEIGHTS_0"] = 1;
+		model.meshes[1].primitives.resize(1);
+		model.meshes[1].primitives[0].material = 1;
+		model.nodes.resize(2);
+		model.nodes[0].mesh = 0;
+		model.nodes[0].skin = 0;
+		model.nodes[1].mesh = 1;
+
+		Require(GltfImporterUtils::IsMaterialUsedBySkinnedMesh(model, 0),
+			"a material on a skinned primitive must compile the SKINNING variant");
+		Require(!GltfImporterUtils::IsMaterialUsedBySkinnedMesh(model, 1),
+			"an unskinned material must not pay for the SKINNING variant");
+	}
+
 	void TestGeneratedMaterialMigrationRecognizesLegacyOwnership()
 	{
 		const std::filesystem::path sourceRoot =
@@ -1637,6 +1659,7 @@ int main()
 		{ "MaterialAssetRetainsRenderQueue", TestMaterialAssetRetainsRenderQueue },
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
 		{ "GeneratedMaterialMigrationPreservesAuthoredProperties", TestGeneratedMaterialMigrationPreservesAuthoredProperties },
+		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
 		{ "GeneratedMaterialMigrationRecognizesLegacyOwnership", TestGeneratedMaterialMigrationRecognizesLegacyOwnership },
 		{ "GltfMaterialTextureColorSpaces", TestGltfMaterialTextureColorSpaces },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },

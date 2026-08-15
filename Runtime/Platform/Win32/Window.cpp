@@ -954,6 +954,11 @@ LRESULT CALLBACK Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, L
 		GlobalInput::SetCursorPosition((int32_t)LOWORD(lParam), (int32_t)HIWORD(lParam));
 		return FALSE;
 	}
+	case WM_MOUSEWHEEL:
+	{
+		GlobalInput::AddMouseWheelDelta(static_cast<float>(GET_WHEEL_DELTA_WPARAM(wParam)) / static_cast<float>(WHEEL_DELTA));
+		return FALSE;
+	}
 
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:

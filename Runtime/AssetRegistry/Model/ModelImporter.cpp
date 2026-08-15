@@ -2668,7 +2668,8 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 
 	auto isManagedDefine = [](const std::string& define)
 		{
-			return define == "TRANSMISSION" || define == "ALPHA_CUTOUT";
+			return define == "TRANSMISSION" || define == "ALPHA_CUTOUT" ||
+				define == "SKINNING";
 		};
 
 	YAML::Node mergedDefines(YAML::NodeType::Sequence);
@@ -2705,6 +2706,7 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 
 		bool bHasTransmission = false;
 		bool bHasAlphaCutout = false;
+		bool bHasSkinning = false;
 		for (const YAML::Node& defineNode : generatedDefines)
 		{
 			if (!defineNode.IsScalar())
@@ -2722,6 +2724,11 @@ bool GltfImporterUtils::MergeGeneratedMaterialProperties(
 			{
 				mergedDefines.push_back(define);
 				bHasAlphaCutout = true;
+			}
+			else if (define == "SKINNING" && !bHasSkinning)
+			{
+				mergedDefines.push_back(define);
+				bHasSkinning = true;
 			}
 		}
 	}
@@ -2879,6 +2886,34 @@ bool GltfImporterUtils::TryComposeNodeMatrix(
 		glm::mat4_cast(rotation) *
 		glm::scale(glm::mat4(1.0f), scale);
 	return IsFiniteGltfMatrix(outMatrix);
+}
+
+bool GltfImporterUtils::IsMaterialUsedBySkinnedMesh(
+	const tinygltf::Model& model,
+	size_t materialIndex)
+{
+	for (const tinygltf::Node& node : model.nodes)
+	{
+		if (node.skin < 0 || node.mesh < 0 ||
+			static_cast<size_t>(node.mesh) >= model.meshes.size())
+		{
+			continue;
+		}
+
+		for (const tinygltf::Primitive& primitive :
+			model.meshes[static_cast<size_t>(node.mesh)].primitives)
+		{
+			if (primitive.material >= 0 &&
+				static_cast<size_t>(primitive.material) == materialIndex &&
+				primitive.attributes.find("JOINTS_0") != primitive.attributes.end() &&
+				primitive.attributes.find("WEIGHTS_0") != primitive.attributes.end())
+			{
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 
 bool GltfImporterUtils::CollectSceneNodes(
@@ -4705,6 +4740,10 @@ bool ModelImporter::GenerateMaterialAssets(ModelAssetInfoPtr assetInfo)
 
 		MaterialAsset::Data& data = materials[i];
 		data.m_name = !material.name.empty() ? material.name : ("material" + std::to_string(i));
+		if (GltfImporterUtils::IsMaterialUsedBySkinnedMesh(gltfModel, i))
+		{
+			data.m_shaderDefines.Add("SKINNING");
+		}
 
 		std::filesystem::path materialNamePath;
 		if (!App::GetSubmodule<AssetRegistry>()->ResolveWorkspaceContentPathForWrite(
@@ -5385,6 +5424,12 @@ bool ModelImporter::UpdateGeneratedMaterialProperties(
 			alphaMode.m_blendMode);
 
 		YAML::Node generatedDefines(YAML::NodeType::Sequence);
+		if (GltfImporterUtils::IsMaterialUsedBySkinnedMesh(
+				gltfModel,
+				materialIndex))
+		{
+			generatedDefines.push_back("SKINNING");
+		}
 		if (transmission.IsEnabled())
 		{
 			generatedDefines.push_back("TRANSMISSION");

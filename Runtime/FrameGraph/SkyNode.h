@@ -18,6 +18,7 @@ namespace Sailor::Framegraph
 		const float CloudsResolutionFactor = 0.5f;
 		const uint32_t CloudsNoiseHighResolution = 32u;
 		const uint32_t CloudsNoiseLowResolution = 128u;
+		static constexpr float CloudsVisibilityEpsilon = 0.0001f;
 
 		struct BrighStarCatalogue_Header
 		{

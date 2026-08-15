@@ -23,6 +23,7 @@ namespace Sailor::Win32
 
 		SAILOR_API glm::ivec2 GetCursorPos() const;
 		SAILOR_API glm::ivec2 GetButtonPressCursorPos(uint32_t button) const;
+		SAILOR_API float GetMouseWheelDelta() const;
 		SAILOR_API void TrackForChanges(const InputState& previousState);
 
 	protected:
@@ -31,6 +32,8 @@ namespace Sailor::Win32
 		KeyState m_mouse[3]{};
 		int32_t m_cursorPosition[2]{};
 		int32_t m_mousePressPosition[3][2]{};
+		float m_mouseWheelPosition = 0.0f;
+		float m_mouseWheelDelta = 0.0f;
 
 #if defined(_WIN32)
 		friend LRESULT Sailor::Win32::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -50,6 +53,7 @@ namespace Sailor::Win32
 		SAILOR_API static void SetKeyState(uint32_t key, KeyState state);
 		SAILOR_API static void SetMouseButtonState(uint32_t button, KeyState state);
 		SAILOR_API static void SetCursorPosition(int32_t x, int32_t y);
+		SAILOR_API static void AddMouseWheelDelta(float delta);
 		SAILOR_API static void Reset();
 
 	protected:
