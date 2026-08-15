@@ -74,8 +74,14 @@ glm::ivec2 InputState::GetButtonPressCursorPos(uint32_t button) const
 	return glm::ivec2(m_mousePressPosition[index][0], m_mousePressPosition[index][1]);
 }
 
+float InputState::GetMouseWheelDelta() const
+{
+	return m_mouseWheelDelta;
+}
+
 void InputState::TrackForChanges(const InputState& previousState)
 {
+	m_mouseWheelDelta = m_mouseWheelPosition - previousState.m_mouseWheelPosition;
 	for (uint32_t i = 0; i < 256; i++)
 	{
 		auto prevState = previousState.m_keyboard[i];
@@ -151,6 +157,11 @@ void GlobalInput::SetCursorPosition(int32_t x, int32_t y)
 {
 	m_rawState.m_cursorPosition[0] = x;
 	m_rawState.m_cursorPosition[1] = y;
+}
+
+void GlobalInput::AddMouseWheelDelta(float delta)
+{
+	m_rawState.m_mouseWheelPosition += delta;
 }
 
 void GlobalInput::Reset()

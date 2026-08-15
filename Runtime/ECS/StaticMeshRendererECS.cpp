@@ -75,6 +75,20 @@ namespace
 		return true;
 	}
 
+	void GetConservativeOctreeBounds(
+		const Math::AABB& bounds,
+		glm::ivec3& outCenter,
+		glm::ivec3& outExtents)
+	{
+		const glm::ivec3 minimum = glm::ivec3(glm::floor(bounds.m_min));
+		const glm::ivec3 maximum = glm::ivec3(glm::ceil(bounds.m_max));
+		outCenter = minimum + (maximum - minimum) / 2;
+		outExtents = glm::max(
+			maximum - outCenter,
+			outCenter - minimum);
+		outExtents = glm::max(outExtents, glm::ivec3(1));
+	}
+
 	bool AreShadowCastersEqual(
 		const RHI::RHIShadowCasterProxy& lhs,
 		const RHI::RHIShadowCasterProxy& rhs)
@@ -634,18 +648,24 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		{
 			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
 			update.m_stationaryProxy.m_shadowCaster = data.m_shadowCaster;
+			glm::ivec3 octreeCenter{};
+			glm::ivec3 octreeExtents{};
+			GetConservativeOctreeBounds(update.m_worldBounds, octreeCenter, octreeExtents);
 			m_sceneViewProxiesCache->m_stationaryOctree.Update(
-				glm::ivec3(update.m_worldBounds.GetCenter()),
-				glm::ivec3(update.m_worldBounds.GetExtents()),
+				octreeCenter,
+				octreeExtents,
 				update.m_stationaryProxy);
 		}
 		else
 		{
 			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
 			update.m_staticProxy.m_shadowCaster = data.m_shadowCaster;
+			glm::ivec3 octreeCenter{};
+			glm::ivec3 octreeExtents{};
+			GetConservativeOctreeBounds(update.m_worldBounds, octreeCenter, octreeExtents);
 			m_sceneViewProxiesCache->m_staticOctree.Update(
-				glm::ivec3(update.m_worldBounds.GetCenter()),
-				glm::ivec3(update.m_worldBounds.GetExtents()),
+				octreeCenter,
+				octreeExtents,
 				update.m_staticProxy);
 		}
 

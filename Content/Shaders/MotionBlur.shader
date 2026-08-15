@@ -68,21 +68,21 @@ glslFragment: |
       
       vec4 viewPos = inverse(frame.projection) * clipPos;
       viewPos /= viewPos.w;
+
+      vec3 color = textureLod(colorSampler, fragTexcoord, 0.0).xyz;
   
       vec4 worldPos = inverse(frame.view) * viewPos;
 
       vec4 previousClipPos = previousFrame.projection * previousFrame.view * worldPos;
       previousClipPos /= previousClipPos.w;
       
-      vec2 velocity = (clipPos.xy - previousClipPos.xy) / 2.0;
-  
-      velocity /= data.maxSpeed;
-      
-      velocity.x = min(1, velocity.x) * data.intensity;
-      velocity.y = min(1, velocity.y) * data.intensity;
-      
-      vec3 color = textureLod(colorSampler, fragTexcoord, 0.0).xyz;
-      vec2 texCoord = fragTexcoord;
+      vec2 velocity = (clipPos.xy - previousClipPos.xy) * 0.5 * data.intensity;
+      vec2 velocityPixels = velocity * vec2(frame.viewportSize);
+      float speedPixels = length(velocityPixels);
+      if (speedPixels > data.maxSpeed && speedPixels > 0.0)
+      {
+          velocity *= data.maxSpeed / speedPixels;
+      }
       
       if(length(velocity) <= 0.0001)
       {
@@ -90,13 +90,15 @@ glslFragment: |
           return;
       }
       
-      for(int i = 1; i < int(data.samples); ++i) 
+      int sampleCount = max(1, int(data.samples));
+      for(int i = 1; i < sampleCount; ++i)
       {
-          texCoord = clamp(texCoord + velocity, 0.0, 1.0);
+          float t = float(i) / float(max(1, sampleCount - 1));
+          vec2 texCoord = clamp(fragTexcoord - velocity * t, 0.0, 1.0);
           vec3 currentColor = textureLod(colorSampler, texCoord, 0.0).xyz;
           color += currentColor;
       }
       
-      color /= float(data.samples);
+      color /= float(sampleCount);
       outColor = vec4(color, 1.0);
   }

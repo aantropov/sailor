@@ -32,6 +32,7 @@ internal sealed class McpEditorTools
     readonly McpSceneBatchExecutor _sceneBatch;
     readonly McpAssetOperations _assetOperations;
     readonly McpWorkspaceOperations _workspaceOperations;
+    readonly McpCSharpEvaluator _csharpEvaluator;
 
     public McpEditorTools(
         IEditorThreadDispatcher editorThread,
@@ -43,7 +44,8 @@ internal sealed class McpEditorTools
         McpSceneSnapshotBuilder sceneSnapshots,
         McpSceneBatchExecutor sceneBatch,
         McpAssetOperations assetOperations,
-        McpWorkspaceOperations workspaceOperations)
+        McpWorkspaceOperations workspaceOperations,
+        McpCSharpEvaluator csharpEvaluator)
     {
         _editorThread = editorThread;
         _contextProvider = contextProvider;
@@ -55,6 +57,7 @@ internal sealed class McpEditorTools
         _sceneBatch = sceneBatch;
         _assetOperations = assetOperations;
         _workspaceOperations = workspaceOperations;
+        _csharpEvaluator = csharpEvaluator;
     }
 
     public McpServerTool[] CreateTools() =>
@@ -121,6 +124,21 @@ internal sealed class McpEditorTools
                     "reset_component, select, focus. References beginning with '$' resolve an earlier operation alias. " +
                     "Pass the workspace epoch returned by sailor_editor_get_state to reject stale plans. " +
                     "Mutations require confirm=true and successful batches are one undo entry.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (bool confirm,
+                string code,
+                int timeoutMs,
+                CancellationToken cancellationToken) =>
+                EvalCSharpAsync(confirm, code, timeoutMs, cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_eval_csharp",
+                Description =
+                    "Compile trusted C# code out of process, then evaluate it inside Sailor Editor with Services, EditorThread, " +
+                    "CancellationToken and Print available. The code is the body of an async method; use return to provide a result. " +
+                    "This is an unrestricted local operation and requires confirm=true. timeoutMs is clamped to 100..30000.",
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
@@ -295,6 +313,33 @@ internal sealed class McpEditorTools
                 return new { succeeded, message = succeeded ? "Undo completed." : "Nothing was undone.", undoCount = _history.UndoCount, redoCount = _history.RedoCount };
             },
             cancellationToken);
+
+    public async Task<McpCSharpEvalResult> EvalCSharpAsync(
+        bool confirm,
+        string code,
+        int timeoutMs,
+        CancellationToken cancellationToken = default)
+    {
+        if (!confirm)
+            return new McpCSharpEvalResult(false, null, null, string.Empty, "C# evaluation requires confirm=true.");
+
+        var result = await Task.Run(
+            () => _csharpEvaluator.EvaluateAsync(code, timeoutMs, cancellationToken),
+            cancellationToken);
+        await _editorThread.InvokeAsync(
+            () =>
+            {
+                _aiOperator.RecordExternalExecution(
+                    "MCP C# eval",
+                    AIActionSafety.ConfirmRequired,
+                    result.Succeeded ? AIProposalState.Executed : AIProposalState.Failed,
+                    [new AIActionExecutionItem("Evaluate C#", result.Succeeded, result.Error)],
+                    result.Succeeded ? "C# evaluation completed." : "C# evaluation failed.");
+                return Task.CompletedTask;
+            },
+            cancellationToken);
+        return result;
+    }
 
     public Task<object> RedoAsync(
         bool confirm,

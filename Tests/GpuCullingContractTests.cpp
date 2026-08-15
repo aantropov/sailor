@@ -993,6 +993,16 @@ namespace
 			secondBaseMipSample != std::string::npos &&
 			motionBlur.find("texture(colorSampler") == std::string::npos,
 			"motion blur must sample only the tone-mapped base mip after Secondary was used as an HDR transmission snapshot");
+		Require(motionBlur.find("cameraRelativeDepth") == std::string::npos &&
+			motionBlur.find("speedPixels > data.maxSpeed") != std::string::npos &&
+			motionBlur.find("min(1, velocity") == std::string::npos,
+			"depth-reprojection motion blur must clamp signed velocity symmetrically without distance-based geometry exclusions");
+
+		const std::string standardGltf = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		Require(standardGltf.find("#ifndef DISABLE_SCREEN_SPACE_AO") != std::string::npos &&
+			standardGltf.find("float occlusion = 1.0") != std::string::npos,
+			"late-rendered viewmodels must be able to skip screen-space AO while retaining material occlusion");
 
 		const std::string eyeAdaptationSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/EyeAdaptationNode.cpp");
@@ -1013,9 +1023,15 @@ namespace
 			const std::string renderer = ReadText(rendererPath);
 			const size_t motionBlurOffset = renderer.find(
 				"- shader: Shaders/MotionBlur.shader");
+			const size_t viewmodelOffset = renderer.find(
+				"- Tag: Viewmodel",
+				motionBlurOffset);
+			const size_t eyeAdaptationOffset = renderer.find(
+				"- name: EyeAdaptation",
+				viewmodelOffset);
 			const size_t debugDrawOffset = renderer.find(
 				"- name: DebugDraw",
-				motionBlurOffset);
+				eyeAdaptationOffset);
 			const size_t outputBlitOffset = renderer.find(
 				"- name: Blit",
 				debugDrawOffset);
@@ -1023,10 +1039,18 @@ namespace
 				"- name: RenderImGui",
 				outputBlitOffset);
 			Require(motionBlurOffset != std::string::npos &&
+				viewmodelOffset != std::string::npos &&
+				eyeAdaptationOffset != std::string::npos &&
 				debugDrawOffset != std::string::npos &&
 				outputBlitOffset != std::string::npos &&
 				renderImGuiOffset != std::string::npos,
 				"the post-process, debug overlay, and final output sequence must be explicit");
+			const std::string toneMappingTail = renderer.substr(
+				eyeAdaptationOffset,
+				debugDrawOffset - eyeAdaptationOffset);
+			Require(toneMappingTail.find("- src: Secondary") != std::string::npos &&
+				toneMappingTail.find("- dst: Main") != std::string::npos,
+				"the tone-mapped Secondary target must be copied back to Main before final output");
 
 			const std::string debugDraw = renderer.substr(
 				debugDrawOffset,
