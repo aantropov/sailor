@@ -1304,7 +1304,9 @@ public sealed class WorkflowProjectionTests
             "linkedPrefab->ConfigureLinkedInstance(",
             "linkedPrefab->AppendDetachedSupplementalHierarchy(",
             "prefab = std::move(linkedPrefab);",
-            "return editor->InstantiatePrefab(");
+            "const bool bInstantiated = editor->InstantiatePrefab(",
+            "SetInteropString(",
+            "return bInstantiated;");
         AssertInOrder(
             instantiate,
             "if (prefab->m_bLinkedPrefabSnapshotRecord)",
@@ -1904,6 +1906,56 @@ public sealed class WorkflowProjectionTests
                 "public IEnumerable<GameObject> EnumerateSubHierarchy("),
             "owner.NotifyComponentsChanged();",
             "PublishCurrentWorld();");
+    }
+
+    [Fact]
+    public void HierarchyClipboard_DuplicatesSubtreesThroughUndoableNativeInstantiation()
+    {
+        var hierarchySource = ReadRepositoryFile(
+            "Editor",
+            "Views",
+            "HierarchyView.xaml.cs");
+        var clipboardSource = ReadRepositoryFile(
+            "Editor",
+            "Services",
+            "GameObjectClipboardService.cs");
+        var commandSource = ReadRepositoryFile(
+            "Editor",
+            "Commands",
+            "EditorWorldCommands.cs");
+        var worldSource = ReadRepositoryFile(
+            "Runtime",
+            "Engine",
+            "World.cpp");
+
+        Assert.Contains("Text = \"Duplicate\"", hierarchySource, StringComparison.Ordinal);
+        Assert.Contains("CreateKeyboardAccelerators(\"C\")", hierarchySource, StringComparison.Ordinal);
+        Assert.Contains("CreateKeyboardAccelerators(\"V\")", hierarchySource, StringComparison.Ordinal);
+        Assert.Contains("KeyboardAcceleratorModifiers.Ctrl", hierarchySource, StringComparison.Ordinal);
+        Assert.Contains("KeyboardAcceleratorModifiers.Cmd", hierarchySource, StringComparison.Ordinal);
+        Assert.Contains("CreatePrefabFromSubHierarchy", clipboardSource, StringComparison.Ordinal);
+        Assert.Contains("new DuplicateGameObjectCommand(", clipboardSource, StringComparison.Ordinal);
+
+        var duplicateCommand = Slice(
+            commandSource,
+            "public sealed class DuplicateGameObjectCommand",
+            "sealed class CreatedHierarchySnapshot");
+        Assert.Contains(": IUndoableEditorCommand", duplicateCommand, StringComparison.Ordinal);
+        Assert.Contains("InstantiatePrefabFromYamlAsync(", duplicateCommand, StringComparison.Ordinal);
+        Assert.Contains("_state.UndoAsync", duplicateCommand, StringComparison.Ordinal);
+
+        var forcedInstantiation = Slice(
+            worldSource,
+            "GameObjectPtr World::Instantiate(\n\tPrefabPtr prefab,\n\tbool bStrictInstanceIds,",
+            "GameObjectPtr World::Instantiate(const std::string& name)");
+        AssertInOrder(
+            forcedInstantiation,
+            "bForceNewInstanceIds ||",
+            "internalDependencies[oldInstanceId] = newComponent;",
+            "internalDependencies[prefab->m_gameObjects[j].m_instanceId] = gameObject;",
+            "TMap<InstanceId, ObjectPtr> resolveContext = m_objectsMap;",
+            "resolveContext[dependency.m_first] = *dependency.m_second;",
+            "newComp->ResolveRefs(");
     }
 
     static void AssertCommitClearsDirtyBeforeDispatch(string source)

@@ -148,6 +148,8 @@ void GameObject::EditorTick(float deltaTime)
 		auto& el = m_components[i];
 		el->EditorTick(deltaTime);
 	}
+
+	m_componentsToAdd = 0;
 }
 
 void GameObject::DrawEditorSelectedGizmo()
@@ -159,23 +161,22 @@ void GameObject::DrawEditorSelectedGizmo()
 		std::max(std::abs(localScale.x), std::max(std::abs(localScale.y), std::abs(localScale.z))) * 100.0f);
 
 	Math::AABB selectionBounds{};
-	bool bUsesMeshBounds = false;
-	if (EditorViewport::ResolveGameObjectBounds(m_self, selectionBounds, bUsesMeshBounds))
+	bool bUsesSelectableGeometry = false;
+	if (EditorViewport::ResolveGameObjectBounds(
+			m_self,
+			selectionBounds,
+			bUsesSelectableGeometry))
 	{
 		const glm::vec4 selectionColor(1.0f, 0.62f, 0.05f, 1.0f);
-		if (bUsesMeshBounds)
+		if (bUsesSelectableGeometry)
 		{
 			GetWorld()->GetDebugContext()->DrawAABB(selectionBounds, selectionColor);
-		}
-		else
-		{
-			GetWorld()->GetDebugContext()->DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor);
 		}
 	}
 
 	GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, transform.GetCachedWorldMatrix(), axisSize);
 
-	for (uint32_t i = 0; i < m_components.Num() - m_componentsToAdd; i++)
+	for (uint32_t i = 0; i < m_components.Num(); i++)
 	{
 		m_components[i]->OnGizmo();
 	}

@@ -175,6 +175,33 @@ namespace
 		policy.m_minLod = 1;
 		Require(policy.Resolve(1.0f, 3) == 1, "the configured minimum LOD must be respected");
 	}
+
+	void TestStabilizedShadowProjectionKeepsReceiverGuardBand()
+	{
+		Math::Frustum cameraSlice;
+		cameraSlice.ExtractFrustumPlanes(
+			glm::translate(glm::mat4(1.0f), glm::vec3(0.013f, 0.017f, 0.0f)),
+			16.0f / 9.0f,
+			60.0f,
+			0.1f,
+			40.0f);
+
+		const glm::ivec2 resolution(1024);
+		const glm::mat4 shadowProjection = cameraSlice.CalculateOrthoMatrixByView(
+			glm::mat4(1.0f),
+			10.0f,
+			resolution,
+			200.0f);
+		const glm::vec2 guardUv(2.0f / (float)resolution.x);
+		for (const glm::vec3& corner : cameraSlice.GetCorners())
+		{
+			const glm::vec4 clip = shadowProjection * glm::vec4(corner, 1.0f);
+			const glm::vec2 uv = glm::vec2(clip) * 0.5f + 0.5f;
+			Require(uv.x >= guardUv.x && uv.x <= 1.0f - guardUv.x &&
+				uv.y >= guardUv.y && uv.y <= 1.0f - guardUv.y,
+				"stabilized CSM projection must retain every receiver corner plus the PCF footprint");
+		}
+	}
 }
 
 int main()
@@ -185,9 +212,10 @@ int main()
 		{ "TransformPreservesAllNegativeBounds", TestTransformPreservesAllNegativeBounds },
 		{ "ReversedShadowProjectionUsesZeroToOneDepth", TestReversedShadowProjectionUsesZeroToOneDepth },
 		{ "FrustumCenterIsTheAverageOfItsCorners", TestFrustumCenterIsTheAverageOfItsCorners },
-			{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
-			{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
-			{ "LodPolicyResolvesCoverageAndAvailableMeshes", TestLodPolicyResolvesCoverageAndAvailableMeshes },
+		{ "ReverseZFrustumCornersUseZeroToOneDepth", TestReverseZFrustumCornersUseZeroToOneDepth },
+		{ "ShadowProjectionIncludesCastersTowardLightSource", TestShadowProjectionIncludesCastersTowardLightSource },
+		{ "LodPolicyResolvesCoverageAndAvailableMeshes", TestLodPolicyResolvesCoverageAndAvailableMeshes },
+		{ "StabilizedShadowProjectionKeepsReceiverGuardBand", TestStabilizedShadowProjectionKeepsReceiverGuardBand },
 	};
 
 	for (const auto& test : tests)

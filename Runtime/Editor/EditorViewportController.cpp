@@ -3,6 +3,7 @@
 #include "AssetRegistry/Model/ModelImporter.h"
 #include "Components/CameraComponent.h"
 #include "Components/EditorComponent.h"
+#include "Components/CollisionShapeComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Core/YamlSerializable.h"
 #include "ECS/CameraECS.h"
@@ -433,10 +434,10 @@ bool EditorViewport::TryConvertWorldToLocalTransform(
 bool EditorViewport::ResolveGameObjectBounds(
 	const TObjectPtr<GameObject>& gameObject,
 	Math::AABB& outWorldBounds,
-	bool& outUsesMeshBounds)
+	bool& outUsesSelectableGeometry)
 {
 	outWorldBounds = {};
-	outUsesMeshBounds = false;
+	outUsesSelectableGeometry = false;
 	if (!gameObject || gameObject->GetComponent<EditorComponent>())
 	{
 		return false;
@@ -445,33 +446,40 @@ bool EditorViewport::ResolveGameObjectBounds(
 	const glm::mat4 worldMatrix = CalculateCurrentWorldMatrix(gameObject);
 	for (const auto& component : gameObject->GetComponents())
 	{
-		auto meshRenderer = component.DynamicCast<MeshRendererComponent>();
-		const ModelPtr model = meshRenderer ? meshRenderer->GetModel() : ModelPtr{};
-		if (!model || !model->IsReady())
+		Math::AABB componentBounds{};
+		if (auto meshRenderer = component.DynamicCast<MeshRendererComponent>())
+		{
+			const ModelPtr model = meshRenderer->GetModel();
+			if (model && model->IsReady())
+			{
+				componentBounds = model->GetBoundsAABB(
+					meshRenderer->GetMeshIndex());
+				componentBounds.Apply(worldMatrix);
+			}
+		}
+		else if (auto collisionShape =
+			component.DynamicCast<CollisionShapeComponent>())
+		{
+			collisionShape->TryGetWorldBounds(worldMatrix, componentBounds);
+		}
+
+		if (!componentBounds.IsValid())
 		{
 			continue;
 		}
 
-		Math::AABB meshBounds =
-			model->GetBoundsAABB(meshRenderer->GetMeshIndex());
-		meshBounds.Apply(worldMatrix);
-		if (!meshBounds.IsValid())
+		if (outUsesSelectableGeometry)
 		{
-			continue;
-		}
-
-		if (outUsesMeshBounds)
-		{
-			outWorldBounds.Extend(meshBounds);
+			outWorldBounds.Extend(componentBounds);
 		}
 		else
 		{
-			outWorldBounds = meshBounds;
-			outUsesMeshBounds = true;
+			outWorldBounds = componentBounds;
+			outUsesSelectableGeometry = true;
 		}
 	}
 
-	if (outUsesMeshBounds)
+	if (outUsesSelectableGeometry)
 	{
 		return true;
 	}
@@ -638,9 +646,12 @@ bool EditorViewportController::TraceViewportRay(
 	for (const auto& gameObject : world.GetGameObjects())
 	{
 		Math::AABB bounds{};
-		bool bUsesMeshBounds = false;
-		if (ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&
-			bUsesMeshBounds)
+		bool bUsesSelectableGeometry = false;
+		if (ResolveGameObjectBounds(
+				gameObject,
+				bounds,
+				bUsesSelectableGeometry) &&
+			bUsesSelectableGeometry)
 		{
 			candidates.Add(PickCandidate{ gameObject->GetInstanceId(), bounds });
 		}
@@ -664,17 +675,17 @@ bool EditorViewportController::FocusCameraOnObject(
 	const auto targetObject =
 		world.GetObjectByInstanceId(instanceId).DynamicCast<GameObject>();
 	Math::AABB targetBounds{};
-	bool bUsesMeshBounds = false;
+	bool bUsesSelectableGeometry = false;
 	if (!targetObject ||
 		!ResolveGameObjectBounds(
 			targetObject,
 			targetBounds,
-			bUsesMeshBounds))
+			bUsesSelectableGeometry))
 	{
 		return false;
 	}
 
-	if (!bUsesMeshBounds)
+	if (!bUsesSelectableGeometry)
 	{
 		targetBounds = Math::AABB(
 			targetBounds.GetCenter(),
@@ -1003,9 +1014,12 @@ void EditorViewportController::TickSelection(World& world)
 	for (const auto& gameObject : world.GetGameObjects())
 	{
 		Math::AABB bounds{};
-		bool bUsesMeshBounds = false;
-		if (ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&
-			bUsesMeshBounds)
+		bool bUsesSelectableGeometry = false;
+		if (ResolveGameObjectBounds(
+				gameObject,
+				bounds,
+				bUsesSelectableGeometry) &&
+			bUsesSelectableGeometry)
 		{
 			candidates.Add(PickCandidate{ gameObject->GetInstanceId(), bounds });
 		}

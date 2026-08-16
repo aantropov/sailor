@@ -1,5 +1,4 @@
 #include "Components/LandscapeComponent.h"
-#include "ECS/LandscapeECS.h"
 #include "Engine/GameObject.h"
 
 #include <algorithm>
@@ -12,11 +11,6 @@ void LandscapeComponent::Initialize()
 	m_handle = ecs->RegisterComponent();
 	auto& data = ecs->GetComponentData(m_handle);
 	data.SetOwner(GetOwner());
-	SyncToECS(data);
-}
-
-void LandscapeComponent::SyncToECS(LandscapeData& data) const
-{
 	data.SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
 		m_heightScale, m_noiseScale, m_seed, m_textureTiling);
 	data.SetMaterial(m_material);
@@ -56,7 +50,20 @@ void LandscapeComponent::MarkDirty()
 {
 	if (auto* data = TryGetData())
 	{
-		SyncToECS(*data);
+		data->SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
+			m_heightScale, m_noiseScale, m_seed, m_textureTiling);
+		data->SetMaterial(m_material);
+		data->SetLayerTextures(m_layerTextures);
+		data->SetImportMaps(m_heightmapTexture, m_materialMasks);
+		data->SetAuthoredStamps(m_sculptStamps, m_paintStamps);
+		data->SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
+			m_vegetationMeshIndex, m_vegetationInstancesPerChunk, m_vegetationMinScale,
+			m_vegetationMaxScale, m_vegetationGroundOffset,
+			m_vegetationShadowMode, m_vegetationShadowDistance,
+			m_vegetationMinLod, m_vegetationMaxLod,
+			m_vegetationLod1ScreenCoverage, m_vegetationLod2ScreenCoverage,
+			m_vegetationCullDistance, m_vegetationColliderRadius,
+			m_vegetationColliderHeight, m_vegetationColliderOffsetY);
 	}
 }
 
@@ -91,4 +98,5 @@ void LandscapeComponent::SetVegetationCullDistance(const TVector<float>& value) 
 void LandscapeComponent::SetVegetationColliderRadius(const TVector<float>& value) { m_vegetationColliderRadius = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationColliderHeight(const TVector<float>& value) { m_vegetationColliderHeight = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationColliderOffsetY(const TVector<float>& value) { m_vegetationColliderOffsetY = value; MarkDirty(); }
-void LandscapeComponent::SetRegenerate(bool value) { if (value) MarkDirty(); }
+void LandscapeComponent::SetRegenerate(bool value) { m_bRegenerate = false; if (value) MarkDirty(); }
+void LandscapeComponent::SetFlatten(bool value) { m_bFlatten = false; if (value) { m_heightScale = 0.0f; MarkDirty(); } }

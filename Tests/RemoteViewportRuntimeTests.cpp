@@ -614,6 +614,8 @@ namespace
 		const std::string editorSource = ReadText(sourceRoot / "Runtime/Submodules/Editor.cpp");
 		const std::string viewportControllerSource = ReadText(sourceRoot / "Runtime/Editor/EditorViewportController.cpp");
 		const std::string gameObjectSource = ReadText(sourceRoot / "Runtime/Engine/GameObject.cpp");
+		const std::string collisionShapeSource = ReadText(
+			sourceRoot / "Runtime/Components/CollisionShapeComponent.cpp");
 		const std::string imGuiSource = ReadText(sourceRoot / "Runtime/Submodules/ImGuiApi.cpp");
 		const std::string macInputSource = ReadText(sourceRoot / "Editor/Platforms/MacCatalyst/NativeSceneViewportHandler.MacCatalyst.cs");
 		const std::string windowsExports = ReadText(sourceRoot / "Lib/DllMain.cpp");
@@ -1000,21 +1002,34 @@ namespace
 		Require(resolveBoundsBegin != std::string::npos && viewportTickBegin > resolveBoundsBegin,
 			"viewport object bounds resolution must be bounded");
 		const std::string resolveBoundsBody = viewportControllerSource.substr(resolveBoundsBegin, viewportTickBegin - resolveBoundsBegin);
-		Require(resolveBoundsBody.find("model->GetBoundsAABB(meshRenderer->GetMeshIndex())") != std::string::npos &&
+		Require(resolveBoundsBody.find("model->GetBoundsAABB(") != std::string::npos &&
+			resolveBoundsBody.find("meshRenderer->GetMeshIndex())") != std::string::npos &&
 			resolveBoundsBody.find("model->GetBoundsAABB();") == std::string::npos,
 			"viewport selection and picking must use the selected glTF source mesh bounds instead of full-model bounds");
-		Require(selectionTickBody.find("ResolveGameObjectBounds(gameObject, bounds, bUsesMeshBounds) &&") != std::string::npos &&
-			selectionTickBody.find("bUsesMeshBounds)") != std::string::npos,
-			"viewport picking must exclude empty-object selection fallback bounds");
+		Require(selectionTickBody.find("bUsesSelectableGeometry) &&") != std::string::npos &&
+			resolveBoundsBody.find("DynamicCast<CollisionShapeComponent>()") != std::string::npos,
+			"viewport picking must include collision geometry and exclude empty-object selection fallback bounds");
 		const size_t selectedGizmoBegin = gameObjectSource.find("void GameObject::DrawEditorSelectedGizmo()");
 		const size_t selectedGizmoEnd = gameObjectSource.find("void GameObject::Tick(", selectedGizmoBegin);
 		Require(selectedGizmoBegin != std::string::npos && selectedGizmoEnd > selectedGizmoBegin,
 			"selected GameObject gizmo drawing must be bounded");
 		const std::string selectedGizmoBody = gameObjectSource.substr(selectedGizmoBegin, selectedGizmoEnd - selectedGizmoBegin);
-		Require(selectedGizmoBody.find("if (bUsesMeshBounds)") != std::string::npos &&
+		const size_t editorTickBegin = gameObjectSource.find("void GameObject::EditorTick(float deltaTime)");
+		const size_t selectedGizmoFunctionBegin = gameObjectSource.find("void GameObject::DrawEditorSelectedGizmo()", editorTickBegin);
+		Require(editorTickBegin != std::string::npos && selectedGizmoFunctionBegin > editorTickBegin &&
+			gameObjectSource.substr(editorTickBegin, selectedGizmoFunctionBegin - editorTickBegin).find("m_componentsToAdd = 0;") != std::string::npos,
+			"editor tick must release deferred components so components added to a running editor world can draw gizmos");
+		Require(selectedGizmoBody.find("if (bUsesSelectableGeometry)") != std::string::npos &&
 			selectedGizmoBody.find("DrawAABB(selectionBounds, selectionColor)") != std::string::npos &&
-			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor)") != std::string::npos,
-			"selected empty GameObjects must draw a radius-10 center sphere without changing mesh selection bounds");
+			collisionShapeSource.find("void CollisionShapeComponent::OnGizmo()") != std::string::npos &&
+			collisionShapeSource.find("case Physics::ECollisionShapeType::Box:") != std::string::npos &&
+			collisionShapeSource.find("case Physics::ECollisionShapeType::Sphere:") != std::string::npos &&
+			collisionShapeSource.find("case Physics::ECollisionShapeType::Capsule:") != std::string::npos &&
+			selectedGizmoBody.find("DrawSphere(selectionBounds.GetCenter(), 10.0f, selectionColor)") == std::string::npos,
+			"selected GameObjects must draw collision primitives without the empty-object debug sphere");
+		Require(collisionShapeSource.find("GetDebugContext()") != std::string::npos &&
+			selectedGizmoBody.find("i < m_components.Num()") != std::string::npos,
+			"collision gizmos must use the same selected-object debug path as mesh renderer bounds, including newly added components");
 		const size_t viewportResetBegin = viewportControllerSource.find("void EditorViewportController::Reset()", viewportTickBegin);
 		Require(viewportTickBegin != std::string::npos && viewportResetBegin > viewportTickBegin &&
 			viewportControllerSource.substr(viewportTickBegin, viewportResetBegin - viewportTickBegin).find("ResetImGuizmoInteractionState();") != std::string::npos,

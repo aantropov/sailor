@@ -618,8 +618,15 @@ VkPresentModeKHR VulkanApi::ChooseSwapPresentMode(const TVector<VkPresentModeKHR
 
 	for (const auto& availablePresentMode : availablePresentModes)
 	{
-		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR ||
-			availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+		if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR)
+		{
+			return availablePresentMode;
+		}
+	}
+
+	for (const auto& availablePresentMode : availablePresentModes)
+	{
+		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR)
 		{
 			return availablePresentMode;
 		}

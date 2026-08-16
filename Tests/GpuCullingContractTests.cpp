@@ -1225,6 +1225,12 @@ namespace
 			sourceRoot / "Content/Shaders/Lighting.glsl");
 		const std::string lightingHeader = ReadText(
 			sourceRoot / "Runtime/ECS/LightingECS.h");
+		const std::string standardShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard.shader");
+		const std::string landscapeShader = ReadText(
+			sourceRoot / "Content/Shaders/Landscape.shader");
+		const std::string standardGltfShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
 
 		Require(lightingHeader.find("ShadowMapFormat = RHI::EFormat::R16_UNORM") !=
 				std::string::npos &&
@@ -1238,31 +1244,70 @@ namespace
 		Require(lightingSource.find("projCoords = projCoords * 0.5 + 0.5;") ==
 				std::string::npos,
 			"Vulkan zero-to-one shadow depth must not be remapped as OpenGL depth");
-		Require(lightingSource.find("float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;") !=
+		Require(lightingSource.find("const float pcfDepth = texture(shadowMap, sampleUv).r;") !=
 				std::string::npos &&
 			lightingSource.find("texture(shadowMap, projCoords.xy + offset).r * 0.5 + 0.5") ==
 				std::string::npos,
 			"PCF must compare raw reverse-Z Vulkan depth values");
+		Require(lightingSource.find("any(lessThan(sampleUv, vec2(0.0f)))") !=
+				std::string::npos &&
+			lightingSource.find("shadow += 1.0f;") != std::string::npos,
+			"PCF taps outside a cascade projection must remain lit instead of repeating clamped border depth");
 		Require(lightingSource.find("projCoords.z < 0.0f || projCoords.z > 1.0f") !=
 				std::string::npos,
 			"shadow sampling must reject coordinates outside Vulkan's zero-to-one depth range");
 		Require(lightingSource.find("shadowType == SHADOW_TYPE_NONE") !=
 				std::string::npos &&
-			lightingSource.find("dot(surfaceNormal, surfaceToLightDirection)") !=
+			lightingSource.find("dot(normal, toLight)") !=
 				std::string::npos,
-			"directional shadow sampling must skip disabled shadows and derive slope bias from the direction toward the light");
-		Require(lightingSource.find("SHADOW_BIAS_MIN_TEXELS") !=
+			"directional shadow sampling must skip disabled shadows and derive receiver offset from the direction toward the light");
+		Require(lightingSource.find(
+				"return cascadeLayer == 0 ? lightShadowType : SHADOW_TYPE_PCF;") !=
 				std::string::npos &&
-			lightingSource.find("normalizedDepthPerTexel") != std::string::npos &&
-			lightingSource.find("SHADOW_BIAS_CASCADE_3_SCALE") != std::string::npos &&
-			lightingSource.find("SHADOW_BIAS_CASCADE_4_SCALE") != std::string::npos &&
-			lightingSource.find("const float biasedDepth =") !=
+			standardShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer)") !=
 				std::string::npos &&
-			lightingSource.find("exp(EVSM_C1 * biasedDepth)") !=
+			standardShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer)") !=
 				std::string::npos &&
-			lightingSource.find("-exp(-EVSM_C2 * biasedDepth)") !=
+			landscapeShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer)") !=
+				std::string::npos &&
+			landscapeShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer)") !=
+				std::string::npos &&
+			standardGltfShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer)") !=
+				std::string::npos &&
+			standardGltfShader.find(
+				"GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer)") !=
 				std::string::npos,
-			"both EVSM warps must use the same non-zero receiver depth bias to avoid self-shadowing bands");
+			"CSM sampling and blending must interpret the near EVSM map and the wider PCF maps using their actual formats");
+		Require(lightingSource.find("float CalculateShadowDistanceFade(") !=
+				std::string::npos &&
+			lightingSource.find("cascadeLayer != NUM_CSM_CASCADES - 1") !=
+				std::string::npos &&
+			standardShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
+				std::string::npos &&
+			landscapeShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
+				std::string::npos &&
+			standardGltfShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
+				std::string::npos,
+			"the final CSM cascade must fade to unshadowed lighting instead of ending at a visible hard boundary");
+		Require(lightingSource.find("SHADOW_RECEIVER_LIGHT_OFFSET") !=
+				std::string::npos &&
+			lightingSource.find("SHADOW_RECEIVER_NORMAL_OFFSET") != std::string::npos &&
+			lightingSource.find("vec3 OffsetDirectionalShadowReceiver(") != std::string::npos &&
+			lightingSource.find("normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta)") != std::string::npos &&
+			lightingSource.find("currentDepth + bias") == std::string::npos &&
+			lightingSource.find("exp(EVSM_C1 * projCoords.z)") !=
+				std::string::npos &&
+			lightingSource.find("-exp(-EVSM_C2 * projCoords.z)") !=
+				std::string::npos &&
+			standardShader.find("cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f)") != std::string::npos &&
+			landscapeShader.find("cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f)") != std::string::npos &&
+			standardGltfShader.find("cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f)") != std::string::npos,
+			"all cascades and material shaders must project the same world-space-offset receiver to avoid split bands");
 
 		const std::string boundsSource = ReadText(
 			sourceRoot / "Runtime/Math/Bounds.cpp");
@@ -1342,8 +1387,10 @@ namespace
 			sourceRoot / "Content/Shaders/Sky.shader");
 		Require(skySource.find("float PlanetHeight(vec3 position)") != std::string::npos &&
 			skySource.find("vec2 RaySphereAtAltitude") != std::string::npos &&
+			skySource.find("ResolveAtmosphereRayOrigin") != std::string::npos &&
+			skySource.find("origin.y = max(origin.y, 0.0f)") == std::string::npos &&
 			skySource.find("length(position) - earthRadius") == std::string::npos,
-			"near-surface atmosphere math must avoid subtracting planet-sized floats to recover meter heights");
+			"near-surface atmosphere math must remain stable for arbitrary camera height without clamping world coordinates");
 	}
 
 	void TestPathTracerThicknessSamplerContract()

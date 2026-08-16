@@ -77,6 +77,10 @@ def find_editor_artifact(host_os: str, framework: str, config: str, published: b
     if host_os == "mac":
         candidates = sorted(config_dir.rglob("SailorEditor.app"))
         if candidates:
+            runtime = "maccatalyst-arm64" if platform.machine() == "arm64" else "maccatalyst-x64"
+            runtime_candidates = [candidate for candidate in candidates if runtime in candidate.parts]
+            if runtime_candidates:
+                candidates = runtime_candidates
             if published:
                 pub = [c for c in candidates if "publish" in c.parts]
                 return pub[0] if pub else candidates[0]

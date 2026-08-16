@@ -1159,7 +1159,8 @@ bool Editor::InstantiatePrefab(
 	const InstanceId& parentInstanceId,
 	const glm::vec3* worldPosition,
 	InstanceId& outInstanceId,
-	bool bStrictInstanceIds)
+	bool bStrictInstanceIds,
+	bool bForceNewInstanceIds)
 {
 	SAILOR_PROFILE_FUNCTION();
 	outInstanceId = InstanceId::Invalid;
@@ -1207,7 +1208,10 @@ bool Editor::InstantiatePrefab(
 		}
 	}
 
-	auto root = m_world->Instantiate(prefab, bStrictInstanceIds);
+	auto root = m_world->Instantiate(
+		prefab,
+		bStrictInstanceIds,
+		bForceNewInstanceIds);
 	if (!root)
 	{
 		return false;

@@ -618,9 +618,9 @@ public sealed class EngineProtocolClientTests
 
         await client.InitializeAsync(["SailorEditor"]);
         Assert.True(
-            await client.InstantiatePrefabFromYamlStrictAsync(
+            (await client.InstantiatePrefabFromYamlStrictAsync(
                 "prefab: undo",
-                string.Empty));
+                string.Empty)).Succeeded);
 
         Assert.Single(transport.InitializeRequests);
         Assert.Equal(
@@ -736,18 +736,22 @@ public sealed class EngineProtocolClientTests
             requests.Add(request);
             return Success(
                 request,
-                response => response.BoolResult =
-                    new BoolResult { Value = true });
+                response => response.InstanceIdResult =
+                    new InstanceIdResult
+                    {
+                        Succeeded = true,
+                        InstanceId = "created-root"
+                    });
         });
 
         Assert.True(
-            await client.InstantiatePrefabFromYamlAsync(
+            (await client.InstantiatePrefabFromYamlAsync(
                 "prefab: default",
-                string.Empty));
+                string.Empty)).Succeeded);
         Assert.True(
-            await client.InstantiatePrefabFromYamlStrictAsync(
+            (await client.InstantiatePrefabFromYamlStrictAsync(
                 "prefab: undo",
-                "parent"));
+                "parent")).Succeeded);
 
         Assert.Collection(
             requests,
@@ -801,17 +805,21 @@ public sealed class EngineProtocolClientTests
                 ProtocolRequest.CommandOneofCase.InstantiatePrefabFromYaml =>
                     Success(
                         request,
-                        response => response.BoolResult =
-                            new BoolResult { Value = true }),
+                        response => response.InstanceIdResult =
+                            new InstanceIdResult
+                            {
+                                Succeeded = true,
+                                InstanceId = "created-root"
+                            }),
                 _ => throw new InvalidOperationException(
                     $"Unexpected command {request.CommandCase}.")
             };
         });
 
         Assert.True(
-            await client.InstantiatePrefabFromYamlStrictAsync(
+            (await client.InstantiatePrefabFromYamlStrictAsync(
                 "prefab: undo",
-                "parent"));
+                "parent")).Succeeded);
 
         Assert.Collection(
             requests,
@@ -855,8 +863,12 @@ public sealed class EngineProtocolClientTests
                     }
                     else
                     {
-                        response.BoolResult =
-                            new BoolResult { Value = true };
+                        response.InstanceIdResult =
+                            new InstanceIdResult
+                            {
+                                Succeeded = true,
+                                InstanceId = "created-root"
+                            };
                     }
                 },
                 supportsStrictInstanceIds: false);
@@ -864,9 +876,9 @@ public sealed class EngineProtocolClientTests
 
         await client.InitializeAsync(["SailorEditor"]);
         Assert.True(
-            await client.InstantiatePrefabFromYamlAsync(
+            (await client.InstantiatePrefabFromYamlAsync(
                 "prefab: legacy",
-                string.Empty));
+                string.Empty)).Succeeded);
 
         var exception =
             await Assert.ThrowsAsync<EngineProtocolException>(
@@ -1394,8 +1406,12 @@ public sealed class EngineProtocolClientTests
                         }
                         else
                         {
-                            response.BoolResult =
-                                new BoolResult { Value = true };
+                            response.InstanceIdResult =
+                                new InstanceIdResult
+                                {
+                                    Succeeded = true,
+                                    InstanceId = "created-root"
+                                };
                         }
                     }).ToByteArray());
         }

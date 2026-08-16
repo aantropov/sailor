@@ -260,15 +260,6 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	totalFramesCount++;
 
-	const float TargetCpuTime = (1000.0f / 130);
-
-	if (timer.ResultMs() < TargetCpuTime)
-	{
-		SAILOR_PROFILE_SCOPE("Sleep Main Thread to cap FPS (~120fps)");
-
-		std::this_thread::sleep_for(std::chrono::milliseconds(std::max(1ull, (uint64_t)(TargetCpuTime - timer.ResultMs()))));
-	}
-
 	if (timer.ResultAccumulatedMs() > 1000)
 	{
 		m_cpuFps = totalFramesCount;

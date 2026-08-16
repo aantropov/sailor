@@ -185,8 +185,9 @@ glslFragment: |
   {
     const float a = dot(direction, direction);
     const float halfB = dot(direction, origin) + earthRadius * direction.y;
-    const float c = dot(origin, origin) + 2.0f * earthRadius * origin.y -
-      altitude * (2.0f * earthRadius + altitude);
+    const float heightDelta = origin.y - altitude;
+    const float c = dot(origin.xz, origin.xz) +
+      heightDelta * (2.0f * earthRadius + origin.y + altitude);
     const float discriminant = halfB * halfB - a * c;
     if(discriminant < 0.0f)
     {
@@ -194,10 +195,18 @@ glslFragment: |
     }
 
     const float root = sqrt(discriminant);
-    const float inverseA = 1.0f / max(a, 0.000001f);
-    const float x1 = (-halfB - root) * inverseA;
-    const float x2 = (-halfB + root) * inverseA;
-    return vec2(x1, x2);
+    const float q = -halfB - (halfB >= 0.0f ? root : -root);
+    if(abs(q) <= 0.000001f)
+    {
+      const float repeatedRoot = -halfB / max(a, 0.000001f);
+      return vec2(repeatedRoot);
+    }
+
+    const float firstRoot = q / a;
+    const float secondRoot = c / q;
+    return firstRoot < secondRoot
+      ? vec2(firstRoot, secondRoot)
+      : vec2(secondRoot, firstRoot);
   }
 
   float NearestPositiveIntersection(vec2 intersections)
@@ -208,6 +217,83 @@ glslFragment: |
     }
 
     return intersections.y > 0.0f ? intersections.y : -1.0f;
+  }
+
+  float RadialMotion(vec3 position, vec3 direction)
+  {
+    return dot(direction, vec3(
+      position.x,
+      earthRadius + position.y,
+      position.z));
+  }
+
+  bool RayEntersAltitudeSphere(
+    vec3 origin,
+    vec3 direction,
+    float altitude,
+    out float distance)
+  {
+    const float heightFromBoundary = PlanetHeight(origin) - altitude;
+    const float boundaryTolerance = 0.001f;
+    distance = -1.0f;
+
+    if(heightFromBoundary < -boundaryTolerance)
+    {
+      // The ray already starts inside this sphere. Its positive root exits the
+      // sphere and therefore must not be treated as an opaque entry.
+      return false;
+    }
+
+    if(abs(heightFromBoundary) <= boundaryTolerance)
+    {
+      if(RadialMotion(origin, direction) < 0.0f)
+      {
+        distance = 0.0f;
+        return true;
+      }
+
+      return false;
+    }
+
+    distance = NearestPositiveIntersection(
+      RaySphereAtAltitude(origin, direction, altitude));
+    return distance > 0.0f;
+  }
+
+  bool ResolveAtmosphereRayOrigin(
+    vec3 origin,
+    vec3 direction,
+    out vec3 atmosphereOrigin,
+    out float distanceToAtmosphere)
+  {
+    atmosphereOrigin = origin;
+    distanceToAtmosphere = 0.0f;
+    if(PlanetHeight(origin) >= 0.0f)
+    {
+      return true;
+    }
+
+    // World-space zero is only the atmosphere datum, not a hard limit on game
+    // coordinates. From below the datum, an outward ray enters the atmosphere
+    // at the positive surface exit. An inward ray cannot see the sky.
+    if(RadialMotion(origin, direction) < 0.0f)
+    {
+      return false;
+    }
+
+    const vec2 surfaceIntersections =
+      RaySphereAtAltitude(origin, direction, 0.0f);
+    const float surfaceExit = max(
+      surfaceIntersections.x,
+      surfaceIntersections.y);
+    if(surfaceExit < 0.0f)
+    {
+      return false;
+    }
+
+    distanceToAtmosphere = surfaceExit;
+    atmosphereOrigin = origin + direction * surfaceExit;
+    return true;
   }
   
   float Density(vec3 a, vec3 b, float H0)
@@ -275,14 +361,16 @@ glslFragment: |
       const float maxCast = atmosphereRadius * 10;
       float shift = min(maxCast, outer);
       
-      vec2 tmp = RaySphereAtAltitude(origin, direction, innerHeight);
-      float inner = NearestPositiveIntersection(tmp);
-      
-      if(inner > 0.0f)
+      float inner = -1.0f;
+      if(RayEntersAltitudeSphere(
+        origin,
+        direction,
+        innerHeight,
+        inner))
       {
           // The planet is opaque. Integrate only the atmosphere between the
           // observer and the first surface intersection.
-          shift = min(shift, inner);
+          shift = min(shift, max(inner, 0.0f));
       }
       return origin + direction * shift;
   }
@@ -327,6 +415,18 @@ glslFragment: |
   
   vec3 SkyLighting(vec3 origin, vec3 direction, vec3 lightDirection)
   {
+     vec3 atmosphereOrigin;
+     float distanceToAtmosphere;
+     if(!ResolveAtmosphereRayOrigin(
+       origin,
+       direction,
+       atmosphereOrigin,
+       distanceToAtmosphere))
+     {
+       return vec3(0.0f);
+     }
+
+     origin = atmosphereOrigin;
      const vec3 destination = IntersectSphere(origin, direction, 0.0f, atmosphereRadius);
      
      if(length(destination - origin) < 0.01)
@@ -381,16 +481,16 @@ glslFragment: |
          const vec3  toLight = IntersectSphere(point, -lightDirection, 0.0f, atmosphereRadius);
          const float hLight  = max(PlanetHeight(toLight), 0.0f);
          const float stepToLight = (hLight - h) / INTEGRAL_STEPS;
-         const vec2 planetToLightIntersection =
-           RaySphereAtAltitude(point, -lightDirection, 0.0f);
-         
          float dStepLight = length(toLight - point) / INTEGRAL_STEPS;
          float densityLightR = 0.0f;
          float densityLightMie = 0.0f;
 
-         bool bReached = max(
-           planetToLightIntersection.x,
-           planetToLightIntersection.y) < 0.0f;
+         float planetEntryDistance = -1.0f;
+         bool bReached = !RayEntersAltitudeSphere(
+           point,
+           -lightDirection,
+           0.0f,
+           planetEntryDistance);
          for(int j = 0; j < INTEGRAL_STEPS; j++)
          {
             const float h1 = h + stepToLight * j;
@@ -415,8 +515,12 @@ glslFragment: |
     
     #if defined(SUN)
     // Sun disk
-        vec2 intersection = RaySphereAtAltitude(origin, direction, 0.0f);
-        if(max(intersection.x, intersection.y) < 0.0f)
+        float planetEntryDistance = -1.0f;
+        if(!RayEntersAltitudeSphere(
+          origin,
+          direction,
+          0.0f,
+          planetEntryDistance))
         {
             const float t = (1 - pow((1 - theta)/(1-zeta), 2));
             const float attenuation = mix(0.83, 1.0f, t);
@@ -511,6 +615,21 @@ glslFragment: |
   {
     vec3 traceStart;
     vec3 traceEnd;
+    vec3 atmosphereOrigin;
+    float distanceToAtmosphere;
+    if(!ResolveAtmosphereRayOrigin(
+      origin,
+      viewDir,
+      atmosphereOrigin,
+      distanceToAtmosphere))
+    {
+      return vec4(0.0f);
+    }
+
+    origin = atmosphereOrigin;
+    maxTraceDistance = max(
+      maxTraceDistance - distanceToAtmosphere,
+      0.0f);
     const float originHeight = PlanetHeight(origin);
     
     // Trace inner and outer spheres
@@ -626,10 +745,14 @@ glslFragment: |
                 float m2 = exp(-dA[j] * data.cloudsAttenuation1 * sunDensity);
                 float m3 = data.cloudsAttenuation2 * density;
                 
-                vec2 intersections = RaySphereAtAltitude(localPosition, dirToSun, 0.0f);
-        
-                // No sun rays throw the Earth
-                if(max(intersections.x, intersections.y) < 0)
+                float planetEntryDistance = -1.0f;
+
+                // No sun rays through the Earth.
+                if(!RayEntersAltitudeSphere(
+                  localPosition,
+                  dirToSun,
+                  0.0f,
+                  planetEntryDistance))
                 {
                     colorLow += dB[j] * (m11 + m12) * m2 * m3 * transmittanceLow;
                 }
@@ -673,10 +796,9 @@ glslFragment: |
   {
     vec4 dirWorldSpace = vec4(0);
     
-    // The atmosphere uses a local tangent frame in meters. Its valid domain
-    // starts at sea level; an editor camera below it observes from the surface.
-    vec3 origin = frame.cameraPosition.xyz;
-    origin.y = max(origin.y, 0.0f);
+    // Keep the actual camera position. Atmospheric functions resolve a ray
+    // crossing the datum geometrically, including cameras below world y=0.
+    const vec3 origin = frame.cameraPosition.xyz;
     const vec3 dirToSun = normalize(-data.lightDirection.xyz);
     
     #if defined(COMPOSE)

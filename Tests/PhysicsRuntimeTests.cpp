@@ -97,6 +97,29 @@ namespace
 		return result;
 	}
 
+	Physics::RigidBodyDesc MakeTriangleMesh(
+		const InstanceId& instanceId,
+		const glm::vec3& position,
+		const glm::vec3& scale = glm::vec3(1.0f))
+	{
+		Physics::RigidBodyDesc result{};
+		result.m_instanceId = instanceId;
+		result.m_motionType = Physics::ERigidBodyMotionType::Static;
+		result.m_position = position;
+		result.m_scale = scale;
+
+		Physics::CollisionShapeDesc shape{};
+		shape.m_type = Physics::ECollisionShapeType::TriangleMesh;
+		shape.m_vertices.AddRange({
+			glm::vec3(-5.0f, 0.0f, -5.0f),
+			glm::vec3(5.0f, 0.0f, -5.0f),
+			glm::vec3(-5.0f, 0.0f, 5.0f),
+			glm::vec3(5.0f, 0.0f, 5.0f) });
+		shape.m_indices.AddRange({ 0u, 2u, 1u, 1u, 2u, 3u });
+		result.m_shapes.Add(std::move(shape));
+		return result;
+	}
+
 	void Step(Physics::PhysicsWorld& world, uint32_t numSteps)
 	{
 		for (uint32_t step = 0; step < numSteps; ++step)
@@ -200,6 +223,53 @@ namespace
 		Require(
 			hit.m_normal.y > 0.99f,
 			"raycast should return a world-space surface normal");
+	}
+
+	void TestStaticTriangleMeshCollisionAndRaycast()
+	{
+		Physics::PhysicsWorld world;
+		const InstanceId landscapeId = InstanceId::GenerateNewInstanceId();
+		uint32_t landscapeBody = ~0u;
+		uint32_t dynamicBody = ~0u;
+		Require(
+			world.CreateBody(
+				MakeTriangleMesh(
+					landscapeId,
+					glm::vec3(0.0f, 1.25f, 0.0f),
+					glm::vec3(2.0f, 1.0f, 2.0f)),
+				landscapeBody),
+			"static landscape triangle mesh should be created");
+		Require(
+			world.CreateBody(
+				MakeSphere(
+					InstanceId::GenerateNewInstanceId(),
+					Physics::ERigidBodyMotionType::Dynamic,
+					glm::vec3(0.0f, 4.0f, 0.0f),
+					0.5f),
+				dynamicBody),
+			"dynamic sphere above landscape should be created");
+
+		Step(world, 240u);
+		Physics::PhysicsBodyPose pose{};
+		Require(
+			world.GetBodyPose(dynamicBody, pose),
+			"dynamic sphere pose above triangle mesh should be readable");
+		Require(
+			pose.m_position.y > 1.70f && pose.m_position.y < 1.80f,
+			"dynamic sphere should settle on the scaled landscape mesh");
+
+		world.DestroyBody(dynamicBody);
+		Physics::PhysicsRaycastHit hit{};
+		Require(
+			world.Raycast(
+				glm::vec3(0.0f, 5.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				10.0f,
+				hit),
+			"raycast should hit the landscape triangle mesh");
+		Require(
+			hit.m_instanceId == landscapeId && hit.m_normal.y > 0.99f,
+			"landscape raycast should resolve its owner and upward normal");
 	}
 
 	void TestKinematicAuthority()
@@ -951,6 +1021,7 @@ int main()
 	Physics::JoltRuntime runtime;
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "FixedStepGravityContactsAndRaycast", TestFixedStepGravityContactsAndRaycast },
+		{ "StaticTriangleMeshCollisionAndRaycast", TestStaticTriangleMeshCollisionAndRaycast },
 		{ "KinematicAuthority", TestKinematicAuthority },
 		{ "ScaledSphereVolume", TestScaledSphereVolume },
 		{ "CollisionLayersAndQueryMask", TestCollisionLayersAndQueryMask },

@@ -1,5 +1,6 @@
 #include "Editor/EditorViewportController.h"
 #include "AssetRegistry/Model/ModelImporter.h"
+#include "Components/CollisionShapeComponent.h"
 #include "Components/EditorComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "ECS/StaticMeshRendererECS.h"
@@ -583,7 +584,7 @@ namespace
 			"a gizmo submitted and dragged this frame must own the pointer");
 	}
 
-	void TestResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback()
+	void TestResolveGameObjectBoundsAggregatesSelectableGeometry()
 	{
 		BoundsTestWorld world;
 		auto parent = world.Instantiate("Parent");
@@ -620,14 +621,45 @@ namespace
 		expectedFirst.Extend(expectedSecond);
 
 		Math::AABB actualBounds;
-		bool bUsesMeshBounds = false;
-		Require(EditorViewport::ResolveGameObjectBounds(meshObject, actualBounds, bUsesMeshBounds),
+		bool bUsesSelectableGeometry = false;
+		Require(EditorViewport::ResolveGameObjectBounds(meshObject, actualBounds, bUsesSelectableGeometry),
 			"a hierarchy object with ready mesh renderers must expose selectable world bounds");
-		Require(bUsesMeshBounds,
+		Require(bUsesSelectableGeometry,
 			"ready mesh renderers must be distinguished from the origin fallback");
 		Require(AreVectorsNear(actualBounds.m_min, expectedFirst.m_min) &&
 			AreVectorsNear(actualBounds.m_max, expectedFirst.m_max),
 			"mesh bounds must aggregate every renderer after hierarchy, rotation, and negative-scale transforms");
+
+		auto collisionObject = world.Instantiate("CollisionObject");
+		collisionObject->GetTransformComponent().SetPosition(
+			glm::vec4(4.0f, 5.0f, 6.0f, 1.0f));
+		collisionObject->GetTransformComponent().SetScale(
+			glm::vec4(-2.0f, 3.0f, 4.0f, 1.0f));
+		auto boxShape = collisionObject->AddComponent<CollisionShapeComponent>();
+		boxShape->SetShapeType(Physics::ECollisionShapeType::Box);
+		boxShape->SetCenter(glm::vec3(1.0f, -1.0f, 0.5f));
+		boxShape->SetSize(glm::vec3(2.0f));
+		auto sphereShape = collisionObject->AddComponent<CollisionShapeComponent>();
+		sphereShape->SetShapeType(Physics::ECollisionShapeType::Sphere);
+		sphereShape->SetCenter(glm::vec3(-2.0f, 0.0f, 0.0f));
+		sphereShape->SetRadius(0.5f);
+		auto capsuleShape = collisionObject->AddComponent<CollisionShapeComponent>();
+		capsuleShape->SetShapeType(Physics::ECollisionShapeType::Capsule);
+		capsuleShape->SetCenter(glm::vec3(0.0f, 0.0f, -2.0f));
+		capsuleShape->SetRadius(0.25f);
+		capsuleShape->SetHeight(2.0f);
+
+		bUsesSelectableGeometry = false;
+		Require(EditorViewport::ResolveGameObjectBounds(
+				collisionObject,
+				actualBounds,
+				bUsesSelectableGeometry),
+			"an object with collision primitives but no mesh must expose selectable bounds");
+		Require(bUsesSelectableGeometry,
+			"collision primitives must participate in viewport picking");
+		Require(AreVectorsNear(actualBounds.m_min, glm::vec3(0.0f, -1.0f, -3.0f)) &&
+			AreVectorsNear(actualBounds.m_max, glm::vec3(10.0f, 8.0f, 12.0f)),
+			"selection bounds must aggregate every collision primitive with signed owner scale and local offsets");
 
 		auto fallbackObject = world.Instantiate("FallbackObject");
 		fallbackObject->SetParent(parent);
@@ -636,20 +668,20 @@ namespace
 			parent->GetTransformComponent().GetTransform().Matrix() *
 			fallbackObject->GetTransformComponent().GetTransform().Matrix();
 		const glm::vec3 fallbackPosition(fallbackWorldMatrix[3]);
-		bUsesMeshBounds = true;
-		Require(EditorViewport::ResolveGameObjectBounds(fallbackObject, actualBounds, bUsesMeshBounds),
+		bUsesSelectableGeometry = true;
+		Require(EditorViewport::ResolveGameObjectBounds(fallbackObject, actualBounds, bUsesSelectableGeometry),
 			"an object without a ready mesh must expose its center for the selected-object marker");
-		Require(!bUsesMeshBounds,
+		Require(!bUsesSelectableGeometry,
 			"selection fallback bounds must be excluded from viewport mesh picking");
 		Require(AreVectorsNear(actualBounds.GetCenter(), fallbackPosition),
 			"selection fallback must use the fully composed world position");
 
 		auto editorOnlyObject = world.Instantiate("EditorOnlyObject");
 		editorOnlyObject->AddComponent<EditorComponent>();
-		bUsesMeshBounds = true;
-		Require(!EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesMeshBounds),
+		bUsesSelectableGeometry = true;
+		Require(!EditorViewport::ResolveGameObjectBounds(editorOnlyObject, actualBounds, bUsesSelectableGeometry),
 			"editor-only infrastructure must never enter scene picking candidates");
-		Require(!bUsesMeshBounds,
+		Require(!bUsesSelectableGeometry,
 			"rejected editor-only objects must clear the mesh-bound result flag");
 
 		world.Clear();
@@ -679,7 +711,7 @@ int main()
 		{ "PickNearestBreaksTiesDeterministically", TestPickNearestBreaksTiesDeterministically },
 		{ "SelectionGesturePolicyRejectsNavigationModifiersAndUiOwnership", TestSelectionGesturePolicyRejectsNavigationModifiersAndUiOwnership },
 		{ "OnlySubmittedGizmoOwnsPointerForCurrentFrame", TestOnlySubmittedGizmoOwnsPointerForCurrentFrame },
-		{ "ResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback", TestResolveGameObjectBoundsDistinguishesMeshPickingFromSelectionFallback },
+		{ "ResolveGameObjectBoundsAggregatesSelectableGeometry", TestResolveGameObjectBoundsAggregatesSelectableGeometry },
 	};
 
 	for (const auto& test : tests)

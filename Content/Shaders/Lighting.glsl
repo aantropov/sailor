@@ -1,13 +1,21 @@
 const float EVSM_C1 = 40.0f;
 const float EVSM_C2 = 40.0f;
-const float SHADOW_BIAS_MIN_TEXELS = 1.0f;
-const float SHADOW_BIAS_SLOPE_TEXELS = 1.5f;
-const float SHADOW_BIAS_EVSM_CASCADE_1_SCALE = 1.5f;
-const float SHADOW_BIAS_CASCADE_3_SCALE = 1.5f;
-const float SHADOW_BIAS_CASCADE_4_SCALE = 2.0f;
+// Offset the receiver before projecting it into a cascade. Applying bias after
+// projection makes the effective surface offset depend on that cascade's depth
+// range and precision, which exposes the split as a band.
+const float SHADOW_RECEIVER_LIGHT_OFFSET = 0.005f;
+const float SHADOW_RECEIVER_NORMAL_OFFSET = 0.02f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
+
+uint GetDirectionalCascadeShadowType(uint lightShadowType, int cascadeLayer)
+{
+  // The renderer stores the near cascade using the light's requested mode,
+  // while all wider cascades use depth-only PCF maps. Sampling a PCF map as
+  // EVSM moments produces a dark band during the cross-cascade blend.
+  return cascadeLayer == 0 ? lightShadowType : SHADOW_TYPE_PCF;
+}
 
 layout(std430)
 struct LightData
@@ -207,7 +215,7 @@ float LuminanceCzm(vec3 rgb)
     return dot(rgb, w);
 }
 
-float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float bias)
+float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
 {
    float shadow = 0.0;
    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
@@ -228,9 +236,21 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
 
    for(int i = 0; i < samples; ++i)
    {
-       vec2 offset = poissonDisk[i] * radius * texelSize;
-       float pcfDepth = texture(shadowMap, projCoords.xy + offset).r;
-       shadow += currentDepth + bias > pcfDepth ? 1.0 : 0.0;
+       const vec2 offset = poissonDisk[i] * radius * texelSize;
+       const vec2 sampleUv = projCoords.xy + offset;
+       if(any(lessThan(sampleUv, vec2(0.0f))) ||
+          any(greaterThan(sampleUv, vec2(1.0f))))
+       {
+           // A clamped depth lookup repeats the outer texel and creates a dark
+           // PCF rim at the cascade boundary. Outside the current projection
+           // there is no occluder represented by this map; the overlapping
+           // cascade supplies the valid shadow sample for this region.
+           shadow += 1.0f;
+           continue;
+       }
+
+       const float pcfDepth = texture(shadowMap, sampleUv).r;
+       shadow += currentDepth > pcfDepth ? 1.0 : 0.0;
    }
 
    shadow /= float(samples);
@@ -280,6 +300,27 @@ float CalculateCascadeBlend(
     (cascadeFar - cascadeNear) * ShadowCascadeBlendFraction;
   return smoothstep(blendStart, cascadeFar, depthValue);
 }
+
+float CalculateShadowDistanceFade(
+  mat4 view,
+  vec3 worldPosition,
+  vec2 cameraZNearZFar,
+  int cascadeLayer)
+{
+  if(cascadeLayer != NUM_CSM_CASCADES - 1)
+  {
+    return 0.0f;
+  }
+
+  const vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
+  const float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
+  const float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  const float cascadeNear = shadowFarPlane *
+    ShadowCascadeLevels[NUM_CSM_CASCADES - 2];
+  const float fadeStart = shadowFarPlane -
+    (shadowFarPlane - cascadeNear) * ShadowCascadeBlendFraction;
+  return smoothstep(fadeStart, shadowFarPlane, depthValue);
+}
   
 float Linstep(float minVal, float maxVal, float val) 
 {
@@ -305,7 +346,7 @@ float Chebyshev(vec2 moments, float currentDepth, float minVariance, float linst
     return ReduceLightBleed(variance / (variance + d * d), linstep);
 }
 
-float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
+float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, int cascadeLayer)
 {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
   projCoords.xy = projCoords.xy * 0.5 + 0.5;
@@ -320,12 +361,11 @@ float ShadowCalculation_Pcf(sampler2D shadowMap, vec4 fragPosLightSpace, float b
   
   const float currentDepth = projCoords.z;
   
-  //float shadow = currentDepth + bias > closestDepth ? 1.0 : 0.0;
-  float shadow = ManualPCF(shadowMap, projCoords, currentDepth, bias);
+  float shadow = ManualPCF(shadowMap, projCoords, currentDepth);
   return shadow;  
 }
 
-float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float bias, int cascadeLayer)
+float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, int cascadeLayer)
 {
   vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
   projCoords.xy = projCoords.xy * 0.5 + 0.5;
@@ -339,9 +379,8 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
   }
   
   vec4 shadow = texture(shadowMap, projCoords.xy);// > 0.39 ? 1.0f : 0.0f;
-  const float biasedDepth = clamp(projCoords.z + bias, 0.0f, 1.0f);
-  const float currentDepth = exp(EVSM_C1 * biasedDepth);
-  const float negCurrentDepth = -exp(-EVSM_C2 * biasedDepth);
+  const float currentDepth = exp(EVSM_C1 * projCoords.z);
+  const float negCurrentDepth = -exp(-EVSM_C2 * projCoords.z);
   
   float posValue = Chebyshev(shadow.xy, currentDepth, 0.01, 0);
   float negValue = Chebyshev(shadow.zw, negCurrentDepth, 0, 0) * (cascadeLayer > 2 ? 0 : 1);
@@ -352,10 +391,7 @@ float ShadowCalculation_Evsm(sampler2D shadowMap, vec4 fragPosLightSpace, float 
 float CalculateDirectionalShadow(
   uint shadowType,
   sampler2D shadowMap,
-  mat4 lightMatrix,
   vec4 fragPosLightSpace,
-  vec3 surfaceNormal,
-  vec3 surfaceToLightDirection,
   int cascadeLayer)
 {
   if (shadowType == SHADOW_TYPE_NONE)
@@ -363,34 +399,27 @@ float CalculateDirectionalShadow(
     return 1.0f;
   }
 
-  const float slope = 1.0f - clamp(dot(surfaceNormal, surfaceToLightDirection), 0.0f, 1.0f);
-  const ivec2 shadowMapSize = max(textureSize(shadowMap, 0), ivec2(1));
-  const vec3 projectionX = vec3(lightMatrix[0][0], lightMatrix[1][0], lightMatrix[2][0]);
-  const vec3 projectionY = vec3(lightMatrix[0][1], lightMatrix[1][1], lightMatrix[2][1]);
-  const vec3 projectionZ = vec3(lightMatrix[0][2], lightMatrix[1][2], lightMatrix[2][2]);
-  const float worldUnitsPerTexelX =
-    2.0f / max(length(projectionX) * float(shadowMapSize.x), 0.000001f);
-  const float worldUnitsPerTexelY =
-    2.0f / max(length(projectionY) * float(shadowMapSize.y), 0.000001f);
-  const float normalizedDepthPerWorldUnit = length(projectionZ);
-  const float normalizedDepthPerTexel =
-    max(worldUnitsPerTexelX, worldUnitsPerTexelY) * normalizedDepthPerWorldUnit;
-  const float cascadeBiasScale =
-    shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0
-      ? SHADOW_BIAS_EVSM_CASCADE_1_SCALE
-      : (cascadeLayer == 2
-        ? SHADOW_BIAS_CASCADE_3_SCALE
-        : (cascadeLayer >= 3 ? SHADOW_BIAS_CASCADE_4_SCALE : 1.0f));
-  const float bias = normalizedDepthPerTexel * cascadeBiasScale *
-    (SHADOW_BIAS_MIN_TEXELS + SHADOW_BIAS_SLOPE_TEXELS * slope);
   if (shadowType == SHADOW_TYPE_EVSM && cascadeLayer == 0)
   {
     return ShadowCalculation_Evsm(
       shadowMap,
       fragPosLightSpace,
-      bias,
       cascadeLayer);
   }
 
-  return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, bias, cascadeLayer);
+  return ShadowCalculation_Pcf(shadowMap, fragPosLightSpace, cascadeLayer);
+}
+
+vec3 OffsetDirectionalShadowReceiver(
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection)
+{
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 toLight = normalize(surfaceToLightDirection);
+  const float cosTheta = clamp(dot(normal, toLight), 0.0f, 1.0f);
+  const float sinTheta = sqrt(max(1.0f - cosTheta * cosTheta, 0.0f));
+  return worldPosition +
+    toLight * SHADOW_RECEIVER_LIGHT_OFFSET +
+    normal * (SHADOW_RECEIVER_NORMAL_OFFSET * sinTheta);
 }

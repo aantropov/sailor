@@ -867,6 +867,14 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab)
 
 GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 {
+	return Instantiate(prefab, bStrictInstanceIds, false);
+}
+
+GameObjectPtr World::Instantiate(
+	PrefabPtr prefab,
+	bool bStrictInstanceIds,
+	bool bForceNewInstanceIds)
+{
 	if (!prefab || prefab->m_gameObjects.IsEmpty())
 	{
 		SAILOR_LOG_ERROR("Cannot instantiate an invalid or empty prefab.");
@@ -1159,7 +1167,8 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 				? strictSourceToInstanceIds[sourceInstanceId]
 				: sourceInstanceId;
 			if (!bStrictInstanceIds &&
-				(!gameObjectId ||
+				(bForceNewInstanceIds ||
+					!gameObjectId ||
 					m_objectsMap.ContainsKey(gameObjectId) ||
 					reservedInstanceIds.Contains(gameObjectId)))
 			{
@@ -1251,6 +1260,15 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 			gameObject;
 	}
 
+	TMap<InstanceId, ObjectPtr> resolveContext = m_objectsMap;
+	for (const auto& dependency : internalDependencies)
+	{
+		// Source ids inside the instantiated prefab must shadow live
+		// world objects with the same ids. Other entries remain available
+		// for references outside the copied hierarchy.
+		resolveContext[dependency.m_first] = *dependency.m_second;
+	}
+
 	for (uint32_t goIndex = 0; goIndex < gameObjects.Num(); goIndex++)
 	{
 		auto& go = gameObjects[goIndex];
@@ -1267,15 +1285,14 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 
 			const ReflectedData& reflection = prefab->m_components[componentIndex];
 
-			// Resolve internal dependencies first
 			bool bResolved = false;
 			std::string resolveDiagnostic;
 			if (!External::TryInvokeYaml(
-					[newComp, &reflection, &internalDependencies]() mutable
+					[newComp, &reflection, &resolveContext]() mutable
 					{
 						return newComp->ResolveRefs(
 							reflection,
-							internalDependencies,
+							resolveContext,
 							true);
 					},
 					bResolved,
@@ -1288,27 +1305,6 @@ GameObjectPtr World::Instantiate(PrefabPtr prefab, bool bStrictInstanceIds)
 					resolveDiagnostic.c_str());
 				return {};
 			}
-
-			// Resolve external dependencies
-			if (!bResolved)
-			{
-				if (!External::TryInvokeYaml(
-						[newComp, &reflection, this]() mutable
-						{
-							return newComp->ResolveRefs(reflection, m_objectsMap, true);
-						},
-						bResolved,
-						resolveDiagnostic))
-				{
-					SAILOR_LOG_ERROR(
-						"Cannot resolve external references for component %u from prefab '%s': %s.",
-						componentIndex,
-						prefab->GetFileId().ToString().c_str(),
-						resolveDiagnostic.c_str());
-					return {};
-				}
-			}
-
 			if (!bResolved)
 			{
 				ComponentsToResolveDependencies.Add(TPair(newComp, reflection));

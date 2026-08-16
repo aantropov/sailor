@@ -49,6 +49,7 @@ namespace
 	constexpr uint32_t c_boolResultField = 11;
 	constexpr uint32_t c_int32ResultField = 12;
 	constexpr uint32_t c_uint64ResultField = 14;
+	constexpr uint32_t c_instanceIdResultField = 18;
 	constexpr uint32_t c_viewportEventBatchResultField = 19;
 	constexpr uint32_t c_viewportToolStateResultField = 21;
 	constexpr uint32_t c_animatorStateResultField = 22;
@@ -278,7 +279,8 @@ namespace
 				response.m_resultPayload.assign(
 					reinterpret_cast<const char*>(value),
 					static_cast<size_t>(length));
-				if (fieldNumber == c_boolResultField)
+				if (fieldNumber == c_boolResultField ||
+					fieldNumber == c_instanceIdResultField)
 				{
 					Require(
 						TryDecodeBoolResult(
@@ -1041,7 +1043,7 @@ namespace
 					EditorEngineProtocolStrictInstanceIdsVersion &&
 				response.m_requestId == 26 &&
 				response.m_success &&
-				response.m_resultField == c_boolResultField &&
+				response.m_resultField == c_instanceIdResultField &&
 				!response.m_boolResult &&
 				response.m_supportsStrictInstanceIds,
 				"a capability-compatible host must dispatch a version-gated strict restore request");

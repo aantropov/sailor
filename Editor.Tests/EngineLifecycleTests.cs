@@ -29,6 +29,25 @@ public sealed class EngineLifecycleTests
     }
 
     [Fact]
+    public void EditorLauncher_PrefersTheCurrentMacCatalystRuntimeBundle()
+    {
+        var runEditor = ReadRepositoryFile("run_editor.py");
+
+        Assert.Contains(
+            "runtime = \"maccatalyst-arm64\" if platform.machine() == \"arm64\" else \"maccatalyst-x64\"",
+            runEditor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "runtime_candidates = [candidate for candidate in candidates if runtime in candidate.parts]",
+            runEditor,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "if runtime_candidates:\n                candidates = runtime_candidates",
+            runEditor,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EditorBundle_CompilesCriticalXamlEntryPoints()
     {
         var project = ReadRepositoryFile("Editor", "SailorEditor.csproj");
