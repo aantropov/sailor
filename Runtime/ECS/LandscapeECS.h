@@ -19,7 +19,7 @@ namespace Sailor
 		ModelPtr m_model{};
 		MaterialPtr m_material{};
 		TVector<MaterialPtr> m_modelMaterials{};
-		Tasks::TaskPtr<bool> m_modelMaterialsTask{};
+		bool m_bModelMaterialsRequested = false;
 		int32_t m_meshIndex = -1;
 		uint32_t m_instancesPerChunk = 0u;
 		float m_minScale = 0.75f;
@@ -83,6 +83,9 @@ namespace Sailor
 			const TVector<float>& colliderOffsetY);
 
 	public:
+		// Immutable while worker tasks build a dirty landscape revision.
+		// LandscapeECS owns mutation and publishes the finished chunks atomically
+		// on the game thread.
 		uint32_t m_chunksX = 4u;
 		uint32_t m_chunksZ = 4u;
 		float m_chunkSize = 24.0f;
@@ -101,6 +104,7 @@ namespace Sailor
 		TVector<LandscapeVegetationProfile> m_vegetationProfiles{};
 		TVector<LandscapeChunk> m_chunks{};
 		TVector<uint32_t> m_physicsBodies{};
+		uint64_t m_buildRevision = 0u;
 
 		friend class LandscapeECS;
 	};
@@ -108,6 +112,7 @@ namespace Sailor
 	class LandscapeECS final : public ECS::TSystem<LandscapeECS, LandscapeData>
 	{
 	public:
+		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
 		SAILOR_API void AppendSceneView(RHI::RHISceneViewPtr& sceneView) const;

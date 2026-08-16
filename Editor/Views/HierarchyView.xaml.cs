@@ -19,6 +19,7 @@ namespace SailorEditor.Views
         readonly WorldService service;
         readonly HierarchyProjectionService projectionService;
         readonly InspectorPendingEditCoordinator inspectorPendingEditCoordinator;
+        readonly GameObjectClipboardService gameObjectClipboardService;
         readonly ObservableCollection<HierarchyListRow> visibleRows = [];
         readonly Dictionary<string, GameObject> gameObjectsById = new(StringComparer.Ordinal);
         bool suppressSelectionChanged;
@@ -32,6 +33,8 @@ namespace SailorEditor.Views
             projectionService = MauiProgram.GetService<HierarchyProjectionService>();
             inspectorPendingEditCoordinator =
                 MauiProgram.GetService<InspectorPendingEditCoordinator>();
+            gameObjectClipboardService =
+                MauiProgram.GetService<GameObjectClipboardService>();
 
             HierarchyList.ItemsSource = visibleRows;
             HierarchyList.SelectionChanged += OnHierarchySelectionChanged;
@@ -416,13 +419,30 @@ namespace SailorEditor.Views
             var contextMenu = MauiProgram.GetService<EditorContextMenuService>();
             if (gameObject == null)
             {
-                return contextMenu.CreateFlyout(new EditorContextMenuItem
-                {
-                    Text = "New GameObject",
-                    Command = CreateContextMenuCommand(
-                        () => service.CreateGameObjectAsync(),
-                        "Create GameObject")
-                });
+                return contextMenu.CreateFlyout(
+                    new EditorContextMenuItem
+                    {
+                        Text = "New GameObject",
+                        Command = CreateContextMenuCommand(
+                            () => service.CreateGameObjectAsync(),
+                            "Create GameObject")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Copy",
+                        KeyboardAccelerators = CreateKeyboardAccelerators("C"),
+                        Command = CreateContextMenuCommand(
+                            CopySelectedGameObjectAsync,
+                            "Copy GameObject")
+                    },
+                    new EditorContextMenuItem
+                    {
+                        Text = "Paste",
+                        KeyboardAccelerators = CreateKeyboardAccelerators("V"),
+                        Command = CreateContextMenuCommand(
+                            PasteGameObjectAsync,
+                            "Paste GameObject")
+                    });
             }
 
             var items = new List<EditorContextMenuItem>
@@ -440,6 +460,13 @@ namespace SailorEditor.Views
                     Command = CreateContextMenuCommand(
                         () => RenameGameObject(gameObject),
                         "Rename GameObject")
+                },
+                new EditorContextMenuItem
+                {
+                    Text = "Duplicate",
+                    Command = CreateContextMenuCommand(
+                        () => DuplicateGameObjectAsync(gameObject),
+                        "Duplicate GameObject")
                 },
                 new EditorContextMenuItem
                 {
@@ -489,6 +516,70 @@ namespace SailorEditor.Views
             }
 
             return contextMenu.CreateFlyout([.. items]);
+        }
+
+        static IReadOnlyList<KeyboardAccelerator> CreateKeyboardAccelerators(
+            string key)
+            =>
+            [
+                new KeyboardAccelerator
+                {
+                    Key = key,
+                    Modifiers = KeyboardAcceleratorModifiers.Ctrl
+                },
+                new KeyboardAccelerator
+                {
+                    Key = key,
+                    Modifiers = KeyboardAcceleratorModifiers.Cmd
+                }
+            ];
+
+        GameObject? GetSelectedGameObject()
+        {
+            if (HierarchyList.SelectedItem is not HierarchyListRow row)
+            {
+                return null;
+            }
+
+            return gameObjectsById.TryGetValue(
+                row.InstanceId,
+                out var gameObject)
+                ? gameObject
+                : null;
+        }
+
+        async Task CommitPendingInspectorChangesAsync()
+        {
+            if (!await inspectorPendingEditCoordinator
+                    .CommitPendingChangesAsync())
+            {
+                throw new InvalidOperationException(
+                    "Pending Inspector changes could not be committed.");
+            }
+        }
+
+        async Task CopySelectedGameObjectAsync()
+        {
+            var gameObject = GetSelectedGameObject();
+            if (gameObject is null)
+            {
+                return;
+            }
+
+            await CommitPendingInspectorChangesAsync();
+            await gameObjectClipboardService.CopyAsync(gameObject);
+        }
+
+        async Task PasteGameObjectAsync()
+        {
+            await CommitPendingInspectorChangesAsync();
+            await gameObjectClipboardService.PasteAsync();
+        }
+
+        async Task DuplicateGameObjectAsync(GameObject gameObject)
+        {
+            await CommitPendingInspectorChangesAsync();
+            await gameObjectClipboardService.DuplicateAsync(gameObject);
         }
 
         static Command CreateContextMenuCommand(

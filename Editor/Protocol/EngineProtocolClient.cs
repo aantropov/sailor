@@ -1057,7 +1057,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             ValidateTransformSpace(result.Space));
     }
 
-    public Task<bool> InstantiatePrefabFromYamlAsync(
+    public Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlAsync(
         string prefabYaml,
         string parentInstanceId,
         CancellationToken cancellationToken = default)
@@ -1068,7 +1068,7 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             protocolVersion: ProtocolVersion,
             cancellationToken: cancellationToken);
 
-    public async Task<bool> InstantiatePrefabFromYamlStrictAsync(
+    public async Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlStrictAsync(
         string prefabYaml,
         string parentInstanceId,
         CancellationToken cancellationToken = default)
@@ -1095,13 +1095,13 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    async Task<bool> InstantiatePrefabFromYamlCoreAsync(
+    async Task<EngineProtocolCreationResult> InstantiatePrefabFromYamlCoreAsync(
         string prefabYaml,
         string parentInstanceId,
         bool strictInstanceIds,
         uint protocolVersion,
         CancellationToken cancellationToken)
-        => ReadBool(
+        => ReadCreation(
             await SendAsync(
                     new ProtocolRequest
                     {

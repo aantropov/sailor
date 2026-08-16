@@ -9,6 +9,7 @@ public class EditorContextMenuItem
     public object CommandParameter { get; init; }
     public bool IsEnabled { get; init; } = true;
     public bool IsDestructive { get; init; } = false;
+    public IReadOnlyList<KeyboardAccelerator> KeyboardAccelerators { get; init; } = [];
 }
 
 public class EditorContextMenuService
@@ -18,13 +19,19 @@ public class EditorContextMenuService
         var flyout = new MenuFlyout();
         foreach (var item in items.Where(item => item != null))
         {
-            flyout.Add(new MenuFlyoutItem
+            var flyoutItem = new MenuFlyoutItem
             {
                 Text = item.Text,
                 Command = item.Command,
                 CommandParameter = item.CommandParameter,
                 IsEnabled = item.IsEnabled
-            });
+            };
+            foreach (var accelerator in item.KeyboardAccelerators)
+            {
+                flyoutItem.KeyboardAccelerators.Add(accelerator);
+            }
+
+            flyout.Add(flyoutItem);
         }
 
         return flyout;

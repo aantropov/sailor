@@ -346,13 +346,8 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 		broadFrustum.ExtractFrustumPlanes(broadLightMatrix);
 		const auto shadowCasters = sceneView->TraceShadowCasters(broadFrustum);
 
-		RHI::EShadowType bCascadeAdded[NumCascades];
-		const uint32_t alreadyPlacedPasses = (uint32_t)updateShadowMaps.Num();
-
 		for (uint32_t k = 0; k < lightCascadesMatrices.Num(); ++k)
 		{
-			bCascadeAdded[k] = RHI::EShadowType::None;
-
 			RHI::RHIUpdateShadowMapCommand cascade;
 			cascade.m_shadowMap = m_csmShadowMaps[k];
 			cascade.m_lightMatrix = lightMatrices[k];
@@ -393,33 +388,6 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 				continue;
 			}
 
-			if (k > 0)
-			{
-				int32_t shift = -1;
-				for (uint32_t z = 0; z < k; ++z)
-				{
-					if (bCascadeAdded[z] != RHI::EShadowType::None)
-					{
-						++shift;
-					}
-
-					if (bCascadeAdded[z] != cascade.m_shadowType)
-					{
-						continue;
-					}
-
-					const uint32_t removed = (uint32_t)cascade.m_meshList.RemoveAll([z, &frustums](const auto& m)
-						{
-							return m && frustums[z].OverlapsAABB(m->m_worldAabb);
-						});
-
-					if (removed > 0)
-					{
-						cascade.m_internalCommandsList.Add(alreadyPlacedPasses + shift);
-					}
-				}
-			}
-
 			if (snapshotIndex < m_csmSnapshots.Num())
 			{
 				m_csmSnapshots[snapshotIndex] = std::move(snapshot);
@@ -429,7 +397,6 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 				m_csmSnapshots.Emplace(std::move(snapshot));
 			}
 
-			bCascadeAdded[k] = cascade.m_shadowType;
 			updateShadowMaps.Emplace(std::move(cascade));
 			++snapshotIndex;
 		}

@@ -3029,79 +3029,62 @@ namespace SailorEditor.Services
                     $"Unsupported viewport transform space '{space}'.")
             };
 
-        public Task<bool> InstantiatePrefabFromYamlAsync(
+        public Task<InstanceId?> InstantiatePrefabFromYamlAsync(
             string prefabYaml,
             InstanceId? parentId = null,
             CancellationToken cancellationToken = default)
-            => InstantiatePrefabFromYamlCoreAsync(
-                prefabYaml,
-                parentId,
-                cancellationToken);
-
-        public async Task<bool> InstantiatePrefabFromYamlStrictAsync(
-            string prefabYaml,
-            InstanceId? parentId,
-            CancellationToken cancellationToken = default)
         {
-            var result =
-                await RequestInstantiatePrefabFromYamlStrictAsync(
-                    prefabYaml,
-                    parentId,
-                    cancellationToken).ConfigureAwait(false);
-
-            if (result)
+            if (string.IsNullOrWhiteSpace(prefabYaml))
             {
-                await RefreshCurrentWorldAsync(
-                    cancellationToken).ConfigureAwait(false);
+                return Task.FromResult<InstanceId?>(null);
             }
 
-            return result;
+            return InvokeCreationInteropAsync(
+                token => protocolClient.InstantiatePrefabFromYamlAsync(
+                    prefabYaml,
+                    parentId?.Value ?? string.Empty,
+                    token),
+                refreshWorld: true,
+                cancellationToken);
         }
 
-        internal Task<bool> RequestInstantiatePrefabFromYamlStrictAsync(
+        public Task<InstanceId?> InstantiatePrefabFromYamlStrictAsync(
             string prefabYaml,
             InstanceId? parentId,
             CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(prefabYaml))
             {
-                return Task.FromResult(false);
+                return Task.FromResult<InstanceId?>(null);
+            }
+
+            return InvokeCreationInteropAsync(
+                token => protocolClient.InstantiatePrefabFromYamlStrictAsync(
+                    prefabYaml,
+                    parentId?.Value ?? string.Empty,
+                    token),
+                refreshWorld: true,
+                cancellationToken);
+        }
+
+        internal Task<InstanceId?> RequestInstantiatePrefabFromYamlStrictAsync(
+            string prefabYaml,
+            InstanceId? parentId,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(prefabYaml))
+            {
+                return Task.FromResult<InstanceId?>(null);
             }
 
             var stringParentId = parentId?.Value ?? string.Empty;
-            return InvokeRunningInteropAsync(
+            return InvokeCreationInteropAsync(
                 token => protocolClient.InstantiatePrefabFromYamlStrictAsync(
                     prefabYaml,
                     stringParentId,
                     token),
-                cancellationToken: cancellationToken);
-        }
-
-        async Task<bool> InstantiatePrefabFromYamlCoreAsync(
-            string prefabYaml,
-            InstanceId? parentId,
-            CancellationToken cancellationToken)
-        {
-            if (string.IsNullOrWhiteSpace(prefabYaml))
-            {
-                return false;
-            }
-
-            var stringParentId = parentId?.Value ?? string.Empty;
-            var result = await InvokeRunningInteropAsync(
-                token => protocolClient.InstantiatePrefabFromYamlAsync(
-                    prefabYaml,
-                    stringParentId,
-                    token),
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-
-            if (result)
-            {
-                await RefreshCurrentWorldAsync(
-                    cancellationToken).ConfigureAwait(false);
-            }
-
-            return result;
+                refreshWorld: false,
+                cancellationToken);
         }
 
         public async Task<bool> LoadWorldAsync(

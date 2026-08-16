@@ -320,14 +320,15 @@ glslFragment: |
       return 1.0f;
     }
 
+    const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
+      worldPosition,
+      surfaceNormal,
+      surfaceToLightDirection);
     const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
     float shadow = CalculateDirectionalShadow(
-      light.shadowType,
+      GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer),
       shadowMaps[cascadeLayer],
-      cascadeLightMatrix,
-      cascadeLightMatrix * vec4(worldPosition, 1.0f),
-      surfaceNormal,
-      surfaceToLightDirection,
+      cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
       cascadeLayer);
 
     const float cascadeBlend = CalculateCascadeBlend(
@@ -340,15 +341,19 @@ glslFragment: |
       const int nextCascadeLayer = cascadeLayer + 1;
       const mat4 nextCascadeLightMatrix = lightsMatrices.instance[nextCascadeLayer];
       const float nextShadow = CalculateDirectionalShadow(
-        light.shadowType,
+        GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer),
         shadowMaps[nextCascadeLayer],
-        nextCascadeLightMatrix,
-        nextCascadeLightMatrix * vec4(worldPosition, 1.0f),
-        surfaceNormal,
-        surfaceToLightDirection,
+        nextCascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
         nextCascadeLayer);
       shadow = mix(shadow, nextShadow, cascadeBlend);
     }
+
+    const float shadowDistanceFade = CalculateShadowDistanceFade(
+      frame.view,
+      worldPosition,
+      frame.cameraZNearZFar,
+      cascadeLayer);
+    shadow = mix(shadow, 1.0f, shadowDistanceFade);
 
     return shadow;
   }

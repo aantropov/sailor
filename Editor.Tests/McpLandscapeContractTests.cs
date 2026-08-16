@@ -79,7 +79,10 @@ public sealed class McpLandscapeContractTests
         Assert.Contains("\"Collider radius\"", source, StringComparison.Ordinal);
         Assert.DoesNotContain("GetOrCreateLandscapeFloatList", source, StringComparison.Ordinal);
         var component = ReadRepositoryFile("Editor", "ViewModels", "Component.cs");
-        Assert.DoesNotContain("AddMissingLandscapeVegetationProperties", component, StringComparison.Ordinal);
+        Assert.Contains("AddMissingLandscapeVegetationProperties", component, StringComparison.Ordinal);
+        Assert.Contains("new Observable<FileId>(new FileId())", component, StringComparison.Ordinal);
+        Assert.Contains("new ObservableFileIdList()", component, StringComparison.Ordinal);
+        Assert.Contains("vegetationCullDistance", component, StringComparison.Ordinal);
         Assert.Contains("Import landscape heightmap", source, StringComparison.Ordinal);
         Assert.Contains("Import Material Masks", source, StringComparison.Ordinal);
         Assert.Contains("RebuildLandscapeAsync(component, advanceSeed: true)", source, StringComparison.Ordinal);
@@ -112,15 +115,10 @@ public sealed class McpLandscapeContractTests
         var source = ReadRepositoryFile("Runtime", "ECS", "LandscapeECS.cpp");
 
         Assert.Contains("models.Num()", source, StringComparison.Ordinal);
-        Assert.Contains("LoadDefaultMaterials(", source, StringComparison.Ordinal);
-        Assert.Contains("profile.m_modelFileId, profile.m_modelMaterials", source, StringComparison.Ordinal);
+        Assert.Contains("LoadDefaultMaterials(profile.m_modelFileId", source, StringComparison.Ordinal);
         Assert.Contains("ResolveMaterialIndex(", source, StringComparison.Ordinal);
         Assert.Contains("vegetationMaterials[meshIndex]", source, StringComparison.Ordinal);
         Assert.DoesNotContain("!profile.m_modelFileId || !profile.m_materialFileId", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("m_buildRevision", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("revision %", source, StringComparison.Ordinal);
-        var header = ReadRepositoryFile("Runtime", "ECS", "LandscapeECS.h");
-        Assert.DoesNotContain("m_buildRevision", header, StringComparison.Ordinal);
     }
 
     static string ReadRepositoryFile(params string[] relativePath)

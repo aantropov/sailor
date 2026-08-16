@@ -1099,13 +1099,21 @@ namespace
 				std::string::npos &&
 			skyShader.find("vec2 RaySphereAtAltitude") !=
 				std::string::npos &&
-			skyShader.find("planetToLightIntersection") !=
+			skyShader.find("ResolveAtmosphereRayOrigin") !=
+				std::string::npos &&
+			skyShader.find("origin.y = max(origin.y, 0.0f)") ==
+				std::string::npos &&
+			skyShader.find("const float q = -halfB") !=
+				std::string::npos &&
+			skyShader.find("heightDelta * (2.0f * earthRadius") !=
+				std::string::npos &&
+			skyShader.find("planetToLightIntersection") ==
 				std::string::npos &&
 			skyShader.find("if((-lightDirection).y < 0.0f)") ==
 				std::string::npos &&
 			skyShader.find("pow(angle / border, 3)") ==
 				std::string::npos,
-			"the atmosphere must preserve twilight, occlude sunlight with the planet, and avoid undefined negative pow inputs");
+			"the atmosphere must preserve twilight, handle below-datum cameras geometrically, occlude sunlight with the planet, and avoid undefined negative pow inputs");
 		Require(
 			sunShaftsShader.find("SunDiskVisibility") != std::string::npos &&
 			sunShaftsShader.find("sunVisibility <= 0.0f") != std::string::npos,

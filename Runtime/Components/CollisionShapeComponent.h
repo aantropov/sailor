@@ -1,5 +1,6 @@
 #pragma once
 #include "Components/Component.h"
+#include "Math/Bounds.h"
 #include "Physics/PhysicsTypes.h"
 
 namespace Sailor
@@ -11,6 +12,7 @@ namespace Sailor
 	public:
 		SAILOR_API void Initialize() override;
 		SAILOR_API void EndPlay() override;
+		SAILOR_API void OnGizmo() override;
 
 		SAILOR_API Physics::ECollisionShapeType GetShapeType() const { return m_shapeType; }
 		SAILOR_API void SetShapeType(Physics::ECollisionShapeType value);
@@ -26,6 +28,9 @@ namespace Sailor
 		SAILOR_API void SetHeight(float value);
 
 		SAILOR_API Physics::CollisionShapeDesc BuildDesc() const;
+		SAILOR_API bool TryGetWorldBounds(
+			const glm::mat4& ownerWorldMatrix,
+			Math::AABB& outBounds) const;
 
 	private:
 		void NotifyRigidBody();

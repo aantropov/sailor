@@ -259,6 +259,64 @@ public sealed class CreateGameObjectCommand(InstanceId? parentId = null) : IUndo
     }
 }
 
+public sealed class DuplicateGameObjectCommand : IUndoableEditorCommand
+{
+    readonly string _prefabYaml;
+    readonly string _description;
+    readonly CreatedHierarchyCommandState _state;
+
+    public DuplicateGameObjectCommand(GameObject source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        var world = MauiProgram.GetService<WorldService>();
+        var prefab = world.CreatePrefabFromSubHierarchy(source, out _);
+        _prefabYaml = EditorYaml.SerializePrefab(prefab);
+        _description = $"Duplicate {source.Name}";
+        _state = new CreatedHierarchyCommandState(
+            world.ResolveParentInstanceId(source));
+    }
+
+    public DuplicateGameObjectCommand(
+        string prefabYaml,
+        InstanceId? parentId,
+        string description = "Paste GameObject")
+    {
+        if (string.IsNullOrWhiteSpace(prefabYaml))
+        {
+            throw new ArgumentException(
+                "Prefab YAML cannot be empty.",
+                nameof(prefabYaml));
+        }
+
+        _prefabYaml = prefabYaml;
+        _description = description;
+        _state = new CreatedHierarchyCommandState(parentId);
+    }
+
+    public string Name => nameof(DuplicateGameObjectCommand);
+    public string Description => _description;
+    public IHistoryMergePolicy? MergePolicy => null;
+    public bool CanExecute(ActionContext context) =>
+        !string.IsNullOrWhiteSpace(_prefabYaml);
+
+    public Task<CommandResult> ExecuteAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => _state.ExecuteAsync(
+            () => MauiProgram.GetService<EngineService>()
+                .InstantiatePrefabFromYamlAsync(
+                    _prefabYaml,
+                    _state.ParentId,
+                    CancellationToken.None),
+            "Duplicate GameObject failed",
+            cancellationToken);
+
+    public ValueTask<CommandResult> UndoAsync(
+        ActionContext context,
+        CancellationToken cancellationToken = default)
+        => _state.UndoAsync(cancellationToken);
+}
+
 sealed class CreatedHierarchySnapshot
 {
     readonly HashSet<string> _gameObjectIds;
@@ -672,13 +730,15 @@ static class StrictHierarchyRestore
         string? requestDiagnostic = null;
         try
         {
-            response =
+            var restoredRootId =
                 await engine.RequestInstantiatePrefabFromYamlStrictAsync(
                     snapshot.PrefabYaml,
                     parentId,
-                    CancellationToken.None)
-                ? EngineMutationResponseState.Accepted
-                : EngineMutationResponseState.Rejected;
+                    CancellationToken.None);
+            response = restoredRootId is not null &&
+                restoredRootId.Equals(snapshot.RootInstanceId)
+                    ? EngineMutationResponseState.Accepted
+                    : EngineMutationResponseState.Rejected;
         }
         catch (Exception exception)
         {
@@ -851,6 +911,8 @@ sealed class CreatedHierarchyCommandState(
         ? null
         : new FileId(prefabLinkFileId.Value);
     CreatedHierarchySnapshot? _snapshot;
+
+    public InstanceId? ParentId => _parentId;
 
     public async Task<CommandResult> ExecuteAsync(
         Func<Task<InstanceId?>> createAsync,

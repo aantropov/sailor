@@ -220,6 +220,7 @@ internal sealed class McpLandscapeOperations
             ["vegetationColliderHeight"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.ColliderHeight)),
             ["vegetationColliderOffsetY"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.ColliderOffsetY)),
             ["regenerate"] = JsonSerializer.SerializeToElement(false),
+            ["flatten"] = JsonSerializer.SerializeToElement(false),
         };
 
         if (string.IsNullOrWhiteSpace(request.TargetComponentId))

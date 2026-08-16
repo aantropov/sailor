@@ -3289,6 +3289,94 @@ namespace
 		world.Clear();
 	}
 
+	void TestForcedPrefabIdsRemapInternalAndPreserveExternalReferences()
+	{
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		constexpr const char* rootId =
+			"10010010010010010000";
+		constexpr const char* childId =
+			"20020020020020020000";
+		constexpr const char* externalOwnerId =
+			"30030030030030030000";
+		constexpr const char* sourceComponentId =
+			"1111111111111111_10010010010010010000";
+		constexpr const char* internalTargetId =
+			"2222222222222222_20020020020020020000";
+		constexpr const char* externalTargetId =
+			"3333333333333333_30030030030030030000";
+
+		PrefabTestWorld world;
+		GameObjectPtr externalOwner = world.Instantiate(
+			"ExternalTarget",
+			DeserializeInstanceId(externalOwnerId));
+		ComponentPtr externalTarget =
+			TObjectPtr<PrefabRollbackTestComponent>::Make(
+				world.GetAllocator());
+		externalTarget = externalOwner->AddComponentRaw(
+			externalTarget,
+			DeserializeInstanceId(externalTargetId));
+		Require(static_cast<bool>(externalTarget),
+			"the external dependency fixture should be created");
+
+		YAML::Node sourceProperties;
+		sourceProperties["m_sourceDependency"]["fileId"] =
+			"NullFileId";
+		sourceProperties["m_sourceDependency"]["instanceId"] =
+			internalTargetId;
+		sourceProperties["m_liveDependency"]["fileId"] =
+			"NullFileId";
+		sourceProperties["m_liveDependency"]["instanceId"] =
+			externalTargetId;
+
+		YAML::Node components(YAML::NodeType::Sequence);
+		components.push_back(MakeReflectedComponent(
+			sourceComponentId,
+			sourceProperties,
+			true,
+			PrefabMixedDependencyTestComponent::
+				GetStaticTypeInfo().Name()));
+		components.push_back(MakeReflectedComponent(
+			internalTargetId,
+			{}));
+
+		YAML::Node prefabNode = MakePrefabNode({ noParent, 0 });
+		prefabNode["gameObjects"][0]["instanceId"] = rootId;
+		prefabNode["gameObjects"][0]["components"] =
+			YAML::Node(YAML::NodeType::Sequence);
+		prefabNode["gameObjects"][0]["components"].push_back(0);
+		prefabNode["gameObjects"][1]["instanceId"] = childId;
+		prefabNode["gameObjects"][1]["components"] =
+			YAML::Node(YAML::NodeType::Sequence);
+		prefabNode["gameObjects"][1]["components"].push_back(1);
+		prefabNode["components"] = components;
+
+		GameObjectPtr copiedRoot = world.Instantiate(
+			DeserializePrefab(world, prefabNode),
+			false,
+			true);
+		Require(copiedRoot &&
+			copiedRoot->GetInstanceId() !=
+				DeserializeInstanceId(rootId) &&
+			copiedRoot->GetChildren().Num() == 1 &&
+			copiedRoot->GetChildren()[0]->GetInstanceId() !=
+				DeserializeInstanceId(childId),
+			"forced prefab instantiation should assign new ids to every copied game object");
+
+		auto copiedSource = copiedRoot->GetComponent<
+			PrefabMixedDependencyTestComponent>();
+		auto copiedInternalTarget = copiedRoot->GetChildren()[0]->
+			GetComponent<PrefabRollbackTestComponent>();
+		Require(copiedSource && copiedInternalTarget &&
+			copiedSource->m_sourceDependency ==
+				copiedInternalTarget &&
+			copiedSource->m_liveDependency == externalTarget,
+			"forced prefab instantiation should remap internal references and preserve external references");
+		Require(world.GetPendingDependencyCount() == 0,
+			"all copied references should resolve without pending work");
+
+		world.Clear();
+	}
+
 	void TestStrictPrefabInstantiationPreservesIdsAndRejectsAtomically()
 	{
 		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
@@ -3797,6 +3885,7 @@ int main()
 		{ "EditorUpdatePreservesNewUnresolvedDependency", TestEditorUpdatePreservesNewUnresolvedDependency },
 		{ "LegacyPrefabApiSymbolsRemainAddressable", TestLegacyPrefabApiSymbolsRemainAddressable },
 		{ "PrefabComponentReferencesFollowRemappedOwners", TestPrefabComponentReferencesFollowRemappedOwners },
+		{ "ForcedPrefabIdsRemapInternalAndPreserveExternalReferences", TestForcedPrefabIdsRemapInternalAndPreserveExternalReferences },
 		{ "LinkedPrefabPersistenceAndWorldContract", TestLinkedPrefabPersistenceAndWorldContract },
 		{ "LinkedPrefabBaselineAndSaveFailureContract", TestLinkedPrefabBaselineAndSaveFailureContract },
 		{ "LinkedPrefabSourceStructureEvolutionContract", TestLinkedPrefabSourceStructureEvolutionContract },

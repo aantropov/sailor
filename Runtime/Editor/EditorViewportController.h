@@ -71,7 +71,7 @@ namespace Sailor
 		SAILOR_API bool ResolveGameObjectBounds(
 			const TObjectPtr<GameObject>& gameObject,
 			Math::AABB& outWorldBounds,
-			bool& outUsesMeshBounds);
+			bool& outUsesSelectableGeometry);
 
 		SAILOR_API bool CanBeginSelectionGesture(
 			bool bHasModifiers,

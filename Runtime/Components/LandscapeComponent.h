@@ -1,13 +1,12 @@
 #pragma once
 
 #include "Components/Component.h"
+#include "ECS/LandscapeECS.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
-#include "ECS/ECS.h"
+#include "AssetRegistry/Model/ModelImporter.h"
 
 namespace Sailor
 {
-	class LandscapeData;
-
 	class LandscapeComponent final : public Component
 	{
 		SAILOR_REFLECTABLE(LandscapeComponent)
@@ -78,14 +77,15 @@ namespace Sailor
 		SAILOR_API void SetVegetationColliderHeight(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetVegetationColliderOffsetY() const { return m_vegetationColliderOffsetY; }
 		SAILOR_API void SetVegetationColliderOffsetY(const TVector<float>& value);
-		SAILOR_API bool GetRegenerate() const { return false; }
+		SAILOR_API bool GetRegenerate() const { return m_bRegenerate; }
 		SAILOR_API void SetRegenerate(bool value);
+		SAILOR_API bool GetFlatten() const { return m_bFlatten; }
+		SAILOR_API void SetFlatten(bool value);
 
 		SAILOR_API size_t GetComponentIndex() const { return m_handle; }
 
 	private:
 		void MarkDirty();
-		void SyncToECS(LandscapeData& data) const;
 		LandscapeData* TryGetData();
 
 		size_t m_handle = ECS::InvalidIndex;
@@ -120,6 +120,8 @@ namespace Sailor
 		TVector<float> m_vegetationColliderRadius{};
 		TVector<float> m_vegetationColliderHeight{};
 		TVector<float> m_vegetationColliderOffsetY{};
+		bool m_bRegenerate = false;
+		bool m_bFlatten = false;
 	};
 }
 
@@ -190,5 +192,7 @@ REFL_AUTO(
 	func(GetVegetationColliderOffsetY, property("vegetationColliderOffsetY")),
 	func(SetVegetationColliderOffsetY, property("vegetationColliderOffsetY")),
 	func(GetRegenerate, property("regenerate")),
-	func(SetRegenerate, property("regenerate"))
+	func(SetRegenerate, property("regenerate")),
+	func(GetFlatten, property("flatten")),
+	func(SetFlatten, property("flatten"))
 )

@@ -71,7 +71,17 @@ static uint32_t SailorMapMacKeyCode(unsigned short keyCode)
 	}
 }
 
-static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width, int32_t height, bool bIsFullScreen, bool bRunsInsideEditor)
+static void SailorConfigureMetalLayer(CAMetalLayer* metalLayer, bool bIsVsyncRequested)
+{
+	if (!metalLayer)
+	{
+		return;
+	}
+
+	metalLayer.displaySyncEnabled = bIsVsyncRequested ? YES : NO;
+}
+
+static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width, int32_t height, bool bIsFullScreen, bool bRunsInsideEditor, bool bIsVsyncRequested)
 {
 	if (bRunsInsideEditor)
 	{
@@ -92,6 +102,7 @@ static void SailorApplyMacWindowSizeOnMainThread(NSWindow* window, int32_t width
 				contentView.layer = metalLayer;
 			}
 
+			SailorConfigureMetalLayer(metalLayer, bIsVsyncRequested);
 			metalLayer.contentsScale = backingScale;
 			metalLayer.frame = contentView.bounds;
 			metalLayer.drawableSize = CGSizeMake((CGFloat)width, (CGFloat)height);
@@ -404,8 +415,10 @@ bool Window::Create(LPCSTR title, LPCSTR className, int32_t inWidth, int32_t inH
 		SailorContentView* contentView = [[SailorContentView alloc] initWithFrame:frame];
 		contentView.sailorWindow = this;
 		contentView.wantsLayer = YES;
-		contentView.layer = [CAMetalLayer layer];
-		contentView.layer.contentsScale = [window backingScaleFactor];
+		CAMetalLayer* metalLayer = [CAMetalLayer layer];
+		SailorConfigureMetalLayer(metalLayer, bIsVsyncRequested);
+		contentView.layer = metalLayer;
+		metalLayer.contentsScale = [window backingScaleFactor];
 
 		window.contentView = contentView;
 		window.acceptsMouseMovedEvents = YES;
@@ -463,12 +476,12 @@ void Window::ChangeWindowSize(int32_t width, int32_t height, bool bInIsFullScree
 	{
 		dispatch_async(dispatch_get_main_queue(), ^
 		{
-			SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor);
+			SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, m_bIsVsyncRequested);
 		});
 		return;
 	}
 
-	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor);
+	SailorApplyMacWindowSizeOnMainThread(window, contentWidth, contentHeight, bInIsFullScreen, bRunsInsideEditor, m_bIsVsyncRequested);
 }
 
 void Sailor::Win32::Window::ProcessMacMsgs()
@@ -656,13 +669,16 @@ void* Window::GetMetalLayer() const
 		return nullptr;
 	}
 
-	if (!window.contentView.wantsLayer)
+	CAMetalLayer* metalLayer = [window.contentView.layer isKindOfClass:[CAMetalLayer class]] ? (CAMetalLayer*)window.contentView.layer : nil;
+	if (!metalLayer)
 	{
 		window.contentView.wantsLayer = YES;
-		window.contentView.layer = [CAMetalLayer layer];
+		metalLayer = [CAMetalLayer layer];
+		window.contentView.layer = metalLayer;
 	}
 
-	return (__bridge void*)window.contentView.layer;
+	SailorConfigureMetalLayer(metalLayer, m_bIsVsyncRequested);
+	return (__bridge void*)metalLayer;
 }
 
 void* Window::GetNativeView() const
