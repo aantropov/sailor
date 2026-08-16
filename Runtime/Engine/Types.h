@@ -38,6 +38,20 @@ namespace Sailor
 		Area
 	};
 
+	enum class ELightShadowQuality : uint8_t
+	{
+		VeryLow = 0,
+		Low,
+		Medium,
+		High
+	};
+
+	enum class ELightShadowFilter : uint8_t
+	{
+		Hard = 0,
+		Soft
+	};
+
 	enum class EAnimationPlayMode : uint8_t
 	{
 		Repeat = 0,

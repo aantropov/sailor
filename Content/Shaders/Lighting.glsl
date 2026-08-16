@@ -8,6 +8,9 @@ const float SHADOW_BIAS_CASCADE_4_SCALE = 2.0f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
+const uint INVALID_SHADOW_MAP_INDEX = 0xFFFFFFFFu;
+const uint SOFT_SHADOW_MAP_BIT = 0x80000000u;
+const uint SHADOW_MAP_INDEX_MASK = 0x7FFFFFFFu;
 
 layout(std430)
 struct LightData
@@ -236,6 +239,53 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth, float 
    shadow /= float(samples);
    
    return shadow;
+}
+
+uint SelectPointShadowFace(vec3 lightToReceiver)
+{
+  const vec3 axis = abs(lightToReceiver);
+  if(axis.x >= axis.y && axis.x >= axis.z)
+  {
+    return lightToReceiver.x >= 0.0f ? 0u : 1u;
+  }
+  if(axis.y >= axis.z)
+  {
+    return lightToReceiver.y >= 0.0f ? 2u : 3u;
+  }
+  return lightToReceiver.z >= 0.0f ? 4u : 5u;
+}
+
+float CalculateLocalPcfShadow(
+  sampler2D shadowMap,
+  mat4 lightMatrix,
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection,
+  bool softShadow)
+{
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 toLight = normalize(surfaceToLightDirection);
+  const float slope = 1.0f - clamp(dot(normal, toLight), 0.0f, 1.0f);
+  const vec3 receiverPosition = worldPosition + normal * (0.001f + 0.003f * slope);
+
+  const vec4 fragPosLightSpace = lightMatrix * vec4(receiverPosition, 1.0f);
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  projCoords.xy = projCoords.xy * 0.5f + 0.5f;
+  projCoords.y = 1.0f - projCoords.y;
+  if(any(lessThan(projCoords, vec3(0.0f))) ||
+     any(greaterThan(projCoords, vec3(1.0f))))
+  {
+    return 1.0f;
+  }
+
+  const float bias = 0.0005f + 0.0015f * slope;
+  if(softShadow)
+  {
+    return ManualPCF(shadowMap, projCoords, projCoords.z, bias);
+  }
+
+  const float shadowDepth = texture(shadowMap, projCoords.xy).r;
+  return projCoords.z + bias > shadowDepth ? 1.0f : 0.0f;
 }
 
 

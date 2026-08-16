@@ -460,6 +460,39 @@ glslFragment: |
 
     return shadow;
   }
+
+  float CalculateLocalLightShadow(
+    LightData light,
+    uint lightIndex,
+    vec3 worldPosition,
+    vec3 surfaceNormal,
+    vec3 surfaceToLightDirection)
+  {
+    const uint packedShadowIndex = shadowIndices.instance[lightIndex];
+    if(light.shadowType == SHADOW_TYPE_NONE ||
+       packedShadowIndex == INVALID_SHADOW_MAP_INDEX)
+    {
+      return 1.0f;
+    }
+
+    uint shadowMapIndex = packedShadowIndex & SHADOW_MAP_INDEX_MASK;
+    if(light.type == 1u)
+    {
+      shadowMapIndex += SelectPointShadowFace(worldPosition - light.worldPosition);
+    }
+    if(shadowMapIndex >= MAX_SHADOWS_IN_VIEW)
+    {
+      return 1.0f;
+    }
+
+    return CalculateLocalPcfShadow(
+      shadowMaps[shadowMapIndex],
+      lightsMatrices.instance[shadowMapIndex],
+      worldPosition,
+      surfaceNormal,
+      surfaceToLightDirection,
+      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u);
+  }
   
   const float Epsilon = 0.00001;
 
@@ -529,7 +562,7 @@ glslFragment: |
   }
   #endif
 
-  vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
+  vec3 CalculateLighting(LightData light, uint lightIndex, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
     float shadow = 1.0f;
@@ -557,6 +590,7 @@ glslFragment: |
       const float distance    = length(pointToLight);
       const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
       falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
+      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
     // Spot light
     else if(light.type == 2)
@@ -573,6 +607,8 @@ glslFragment: |
       {
         falloff = 0.0f;
       }
+
+      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
     
     vec3 Lradiance = light.intensity;
@@ -1031,7 +1067,7 @@ glslFragment: |
             continue;
         }
     
-        outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+        outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
   #ifdef CLEAR_COAT
         outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
   #endif

@@ -117,3 +117,25 @@ void LightComponent::SetShadowType(RHI::EShadowType value)
 		lightData.MarkDirty();
 	}
 }
+
+void LightComponent::SetShadowQuality(ELightShadowQuality value)
+{
+	LightData& lightData = GetData();
+
+	if (value != lightData.m_shadowQuality)
+	{
+		lightData.m_shadowQuality = value;
+		lightData.MarkDirty();
+	}
+}
+
+void LightComponent::SetShadowFilter(ELightShadowFilter value)
+{
+	LightData& lightData = GetData();
+
+	if (value != lightData.m_shadowFilter)
+	{
+		lightData.m_shadowFilter = value;
+		lightData.MarkDirty();
+	}
+}

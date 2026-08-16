@@ -11,6 +11,8 @@
 #include "RHI/SceneView.h"
 #include "Raytracing/LightingModel.h"
 
+#include <limits>
+
 namespace Sailor
 {
 	using WorldPtr = class World*;
@@ -27,6 +29,8 @@ namespace Sailor
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
 		RHI::EShadowType m_shadowType = RHI::EShadowType::PCF;
+		ELightShadowQuality m_shadowQuality = ELightShadowQuality::Medium;
+		ELightShadowFilter m_shadowFilter = ELightShadowFilter::Soft;
 
 	protected:
 
@@ -51,6 +55,17 @@ namespace Sailor
 			uint64_t sceneRevision) const;
 	};
 
+	struct LocalLightShadowAllocation
+	{
+		uint32_t m_componentIndex = (std::numeric_limits<uint32_t>::max)();
+		ELightType m_lightType = ELightType::Point;
+		ELightShadowQuality m_quality = ELightShadowQuality::Medium;
+		uint64_t m_lastUsedFrame = 0;
+		float m_memoryMb = 0.0f;
+		TVector<uint32_t> m_slots{};
+		TVector<CSMLightState> m_snapshots{};
+	};
+
 	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
 	{
 	public:
@@ -58,11 +73,24 @@ namespace Sailor
 		// Global constants
 		static constexpr uint32_t MaxShadowsInView = 128;
 		static constexpr uint32_t LightsMaxNum = 65535;
+		static constexpr uint32_t InvalidShadowMapIndex = (std::numeric_limits<uint32_t>::max)();
+		static constexpr uint32_t SoftShadowMapBit = 0x80000000u;
 		static constexpr size_t GetGpuLightSlotsCount(size_t numComponentSlots)
 		{
 			return numComponentSlots < LightsMaxNum ? numComponentSlots : LightsMaxNum;
 		}
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
+		static constexpr uint32_t GetLocalShadowMapCount(ELightType lightType)
+		{
+			return lightType == ELightType::Point ? 6u :
+				lightType == ELightType::Spot ? 1u : 0u;
+		}
+		static constexpr uint32_t GetLocalShadowResolution(ELightShadowQuality quality)
+		{
+			return quality == ELightShadowQuality::VeryLow ? 256u :
+				quality == ELightShadowQuality::Low ? 512u :
+				quality == ELightShadowQuality::High ? 2048u : 1024u;
+		}
 
 		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
 		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
@@ -114,6 +142,19 @@ namespace Sailor
 			const TVector<RHI::RHILightProxy>& directionalLights,
 			uint32_t& snapshotIndex);
 
+		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareLocalShadowPasses(
+			const RHI::RHISceneViewPtr& sceneView,
+			const TVector<RHI::RHILightProxy>& spotLights,
+			const TVector<RHI::RHILightProxy>& pointLights,
+			TVector<uint32_t>& shadowIndices);
+		SAILOR_API bool EnsureLocalShadowAllocation(
+			uint32_t componentIndex,
+			ELightType lightType,
+			ELightShadowQuality quality,
+			uint64_t frame);
+		SAILOR_API void ReleaseLocalShadowAllocation(uint32_t componentIndex);
+		SAILOR_API void ReleaseUnusedLocalShadowAllocations(uint64_t frame);
+
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,
 			TVector<RHI::RHILightProxy>& outDirectionalLights,
@@ -132,6 +173,9 @@ namespace Sailor
 
 		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
 		TVector<CSMLightState> m_csmSnapshots;
+		TVector<RHI::RHIRenderTargetPtr> m_shadowMapSlots;
+		TVector<uint32_t> m_shadowMapOwners;
+		TVector<LocalLightShadowAllocation> m_localShadowAllocations;
 
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
 

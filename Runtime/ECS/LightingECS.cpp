@@ -89,19 +89,27 @@ void LightingECS::BeginPlay()
 			usage));
 
 		driver->SetDebugName(m_csmShadowMaps[m_csmShadowMaps.Num() - 1], csmDebugName);
+		const float bytesPerPixel = bEvsmCascade ? 16.0f : 2.0f;
+		m_shadowMapsMb += static_cast<float>(
+			ShadowCascadeResolutions[i].x * ShadowCascadeResolutions[i].y) *
+			bytesPerPixel / (1024.0f * 1024.0f);
 	}
 
+	m_shadowMapSlots.Resize(MaxShadowsInView);
+	m_shadowMapOwners.Resize(MaxShadowsInView);
 	TVector<RHI::RHITexturePtr> shadowMaps(MaxShadowsInView);
 	for (uint32_t i = 0; i < MaxShadowsInView; i++)
 	{
-		shadowMaps[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+		m_shadowMapOwners[i] = InvalidShadowMapIndex;
+		m_shadowMapSlots[i] = (i < m_csmShadowMaps.Num()) ? m_csmShadowMaps[i] : m_defaultShadowMap;
+		shadowMaps[i] = m_shadowMapSlots[i];
 	}
 
 	m_shadowMaps = Sailor::RHI::Renderer::GetDriver()->AddSamplerToShaderBindings(m_lightsData, "shadowMaps", shadowMaps, 9);
 
 	auto shaderBindingSet = m_lightsData;
 	m_lightMatrices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "lightsMatrices", sizeof(glm::mat4), LightingECS::MaxShadowsInView, 6);
-	m_shadowIndices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "shadowIndices", sizeof(uint32_t), LightingECS::MaxShadowsInView, 7);
+	m_shadowIndices = Sailor::RHI::Renderer::GetDriver()->AddSsboToShaderBindings(shaderBindingSet, "shadowIndices", sizeof(uint32_t), LightingECS::LightsMaxNum, 7);
 }
 
 Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
@@ -203,11 +211,16 @@ void LightingECS::EndPlay()
 {
 	m_lightsData.Clear();
 	m_csmShadowMaps.Clear();
+	m_csmSnapshots.Clear();
+	m_shadowMapSlots.Clear();
+	m_shadowMapOwners.Clear();
+	m_localShadowAllocations.Clear();
 	m_defaultShadowMap.Clear();
 	m_shadowMaps.Clear();
 	m_lightMatrices.Clear();
 	m_shadowIndices.Clear();
 	m_numLights = 0;
+	m_shadowMapsMb = 0.0f;
 }
 
 void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
@@ -225,7 +238,8 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 		auto& light = m_components[index];
 		if (light.m_shadowType != RHI::EShadowType::None && light.m_bIsActive)
 		{
-			GameObjectPtr owner = light.m_owner.StaticCast<GameObject>();
+			ObjectPtr ownerObject = light.m_owner;
+			GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
 			if (!owner)
 			{
 				continue;
@@ -243,12 +257,14 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 
 			if (light.m_type != ELightType::Directional)
 			{
-				const float sphereRadius = std::max(std::max(light.m_bounds.x, light.m_bounds.y), light.m_bounds.z);
+				const float sphereRadius = (std::max)(glm::abs(light.m_bounds.x),
+					(std::max)(glm::abs(light.m_bounds.y), glm::abs(light.m_bounds.z)));
+				const glm::vec3 worldPosition = ownerTransform.GetWorldPosition();
 
-				if (frustum.ContainsSphere(Math::Sphere(ownerTransform.GetPosition(), sphereRadius)))
+				if (frustum.ContainsSphere(Math::Sphere(worldPosition, sphereRadius)))
 				{
 					// TODO: Sort by screen size, not by distance to camera
-					lightProxy.m_distanceToCamera = glm::length(ownerTransform.GetPosition() - cameraTransform.m_position);
+					lightProxy.m_distanceToCamera = glm::length(worldPosition - glm::vec3(cameraTransform.m_position));
 
 					if (ELightType::Spot == light.m_type)
 					{
@@ -422,10 +438,309 @@ TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareCSMPasses(
 	return updateShadowMaps;
 }
 
+void LightingECS::ReleaseLocalShadowAllocation(uint32_t componentIndex)
+{
+	if (componentIndex >= m_localShadowAllocations.Num())
+	{
+		return;
+	}
+
+	auto& allocation = m_localShadowAllocations[componentIndex];
+	if (allocation.m_componentIndex != componentIndex)
+	{
+		return;
+	}
+
+	auto& driver = Sailor::RHI::Renderer::GetDriver();
+	for (uint32_t slot : allocation.m_slots)
+	{
+		if (slot >= m_shadowMapSlots.Num())
+		{
+			continue;
+		}
+
+		m_shadowMapOwners[slot] = InvalidShadowMapIndex;
+		m_shadowMapSlots[slot] = m_defaultShadowMap;
+		driver->UpdateShaderBinding(m_lightsData, "shadowMaps", m_defaultShadowMap, slot);
+	}
+
+	m_shadowMapsMb = (std::max)(0.0f, m_shadowMapsMb - allocation.m_memoryMb);
+	allocation = {};
+}
+
+bool LightingECS::EnsureLocalShadowAllocation(
+	uint32_t componentIndex,
+	ELightType lightType,
+	ELightShadowQuality quality,
+	uint64_t frame)
+{
+	if (m_localShadowAllocations.Num() <= componentIndex)
+	{
+		m_localShadowAllocations.Resize(static_cast<size_t>(componentIndex) + 1);
+	}
+
+	auto& current = m_localShadowAllocations[componentIndex];
+	if (current.m_componentIndex == componentIndex &&
+		current.m_lightType == lightType &&
+		current.m_quality == quality &&
+		!current.m_slots.IsEmpty())
+	{
+		current.m_lastUsedFrame = frame;
+		return true;
+	}
+
+	ReleaseLocalShadowAllocation(componentIndex);
+
+	const uint32_t mapCount = GetLocalShadowMapCount(lightType);
+	if (mapCount == 0)
+	{
+		return false;
+	}
+
+	uint32_t firstSlot = InvalidShadowMapIndex;
+	for (uint32_t candidate = NumCascades;
+		candidate + mapCount <= MaxShadowsInView;
+		++candidate)
+	{
+		bool bRangeAvailable = true;
+		for (uint32_t offset = 0; offset < mapCount; ++offset)
+		{
+			if (m_shadowMapOwners[candidate + offset] != InvalidShadowMapIndex)
+			{
+				bRangeAvailable = false;
+				break;
+			}
+		}
+
+		if (bRangeAvailable)
+		{
+			firstSlot = candidate;
+			break;
+		}
+	}
+
+	if (firstSlot == InvalidShadowMapIndex)
+	{
+		return false;
+	}
+
+	const uint32_t resolution = GetLocalShadowResolution(quality);
+	const float allocationMb = static_cast<float>(resolution) *
+		static_cast<float>(resolution) * 2.0f * static_cast<float>(mapCount) /
+		(1024.0f * 1024.0f);
+	if (m_shadowMapsMb + allocationMb > ShadowsMemoryBudgetMb)
+	{
+		return false;
+	}
+
+	const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
+		RHI::ETextureUsageBit::TextureTransferSrc_Bit |
+		RHI::ETextureUsageBit::TextureTransferDst_Bit |
+		RHI::ETextureUsageBit::Sampled_Bit;
+	auto& driver = Sailor::RHI::Renderer::GetDriver();
+
+	LocalLightShadowAllocation allocation{};
+	allocation.m_componentIndex = componentIndex;
+	allocation.m_lightType = lightType;
+	allocation.m_quality = quality;
+	allocation.m_lastUsedFrame = frame;
+	allocation.m_memoryMb = allocationMb;
+	allocation.m_slots.Reserve(mapCount);
+	allocation.m_snapshots.Resize(mapCount);
+
+	for (uint32_t face = 0; face < mapCount; ++face)
+	{
+		const uint32_t slot = firstSlot + face;
+		auto shadowMap = driver->CreateRenderTarget(
+			glm::ivec2(resolution),
+			1,
+			ShadowMapFormat,
+			RHI::ETextureFiltration::Nearest,
+			RHI::ETextureClamping::Clamp,
+			usage);
+
+		char debugName[96];
+		sprintf_s(debugName, sizeof(debugName),
+			"Shadow Map, Local Light: %u, Face: %u", componentIndex, face);
+		driver->SetDebugName(shadowMap, debugName);
+
+		m_shadowMapOwners[slot] = componentIndex;
+		m_shadowMapSlots[slot] = shadowMap;
+		driver->UpdateShaderBinding(m_lightsData, "shadowMaps", shadowMap, slot);
+		allocation.m_slots.Add(slot);
+	}
+
+	m_shadowMapsMb += allocationMb;
+	m_localShadowAllocations[componentIndex] = std::move(allocation);
+	return true;
+}
+
+void LightingECS::ReleaseUnusedLocalShadowAllocations(uint64_t frame)
+{
+	for (uint32_t componentIndex = 0;
+		componentIndex < m_localShadowAllocations.Num();
+		++componentIndex)
+	{
+		const auto& allocation = m_localShadowAllocations[componentIndex];
+		if (allocation.m_componentIndex == componentIndex &&
+			allocation.m_lastUsedFrame != frame)
+		{
+			ReleaseLocalShadowAllocation(componentIndex);
+		}
+	}
+}
+
+TVector<RHI::RHIUpdateShadowMapCommand> LightingECS::PrepareLocalShadowPasses(
+	const RHI::RHISceneViewPtr& sceneView,
+	const TVector<RHI::RHILightProxy>& spotLights,
+	const TVector<RHI::RHILightProxy>& pointLights,
+	TVector<uint32_t>& shadowIndices)
+{
+	TVector<RHI::RHIUpdateShadowMapCommand> updateShadowMaps{};
+	const uint64_t frame = GetWorld()->GetCurrentFrame();
+
+	auto prepareLights = [&](const TVector<RHI::RHILightProxy>& lights)
+	{
+		for (const auto& lightProxy : lights)
+		{
+			if (lightProxy.m_index >= m_components.Num() ||
+				lightProxy.m_index >= shadowIndices.Num())
+			{
+				continue;
+			}
+
+			const auto& light = m_components[lightProxy.m_index];
+			if (light.m_shadowType == RHI::EShadowType::None ||
+				(light.m_type != ELightType::Point && light.m_type != ELightType::Spot) ||
+				!EnsureLocalShadowAllocation(
+					lightProxy.m_index,
+					light.m_type,
+					light.m_shadowQuality,
+					frame))
+			{
+				continue;
+			}
+
+			auto& allocation = m_localShadowAllocations[lightProxy.m_index];
+			const uint32_t firstSlot = allocation.m_slots[0];
+			shadowIndices[lightProxy.m_index] = firstSlot |
+				(light.m_shadowFilter == ELightShadowFilter::Soft ? SoftShadowMapBit : 0u);
+
+			ObjectPtr ownerObject = light.m_owner;
+			GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
+			if (!owner)
+			{
+				continue;
+			}
+
+			const auto& transform = owner->GetTransformComponent();
+			const glm::vec3 position = transform.GetWorldPosition();
+			const float farPlane = (std::max)(
+				glm::abs(light.m_bounds.x),
+				(std::max)(glm::abs(light.m_bounds.y), glm::abs(light.m_bounds.z)));
+			if (farPlane <= 0.05f)
+			{
+				shadowIndices[lightProxy.m_index] = InvalidShadowMapIndex;
+				continue;
+			}
+
+			const float nearPlane = (std::max)(0.01f, farPlane * 0.001f);
+			TVector<glm::mat4> lightMatrices{};
+			if (light.m_type == ELightType::Spot)
+			{
+				const float fieldOfView = glm::clamp(
+					glm::abs(light.m_cutOff.y) * 2.0f,
+					1.0f,
+					179.0f);
+				const glm::mat4 view = glm::lookAtRH(
+					position,
+					position + glm::normalize(transform.GetForwardVector()),
+					glm::normalize(glm::vec3(
+						transform.GetCachedWorldMatrix() * Math::vec4_Up)));
+				lightMatrices.Add(Math::PerspectiveRH(
+					glm::radians(fieldOfView), 1.0f, nearPlane, farPlane) * view);
+			}
+			else
+			{
+				static constexpr glm::vec3 directions[6] = {
+					{ 1.0f, 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f },
+					{ 0.0f, 1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f },
+					{ 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, -1.0f }
+				};
+				static constexpr glm::vec3 upVectors[6] = {
+					{ 0.0f, -1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f },
+					{ 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, -1.0f },
+					{ 0.0f, -1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f }
+				};
+				const glm::mat4 projection = Math::PerspectiveRH(
+					glm::radians(90.0f), 1.0f, nearPlane, farPlane);
+				for (uint32_t face = 0; face < 6; ++face)
+				{
+					lightMatrices.Add(projection * glm::lookAtRH(
+						position,
+						position + directions[face],
+						upVectors[face]));
+				}
+			}
+
+			for (uint32_t face = 0; face < lightMatrices.Num(); ++face)
+			{
+				auto& cachedState = allocation.m_snapshots[face];
+				if (!sceneView->m_bHasCustomDepthShadowCasters &&
+					cachedState.CanReuse(
+					lightProxy.m_index,
+					RHI::EShadowType::PCF,
+					lightMatrices[face],
+					sceneView->m_shadowCastersRevision))
+				{
+					continue;
+				}
+
+				Math::Frustum shadowFrustum(lightMatrices[face]);
+				RHI::RHIUpdateShadowMapCommand shadowPass{};
+				shadowPass.m_shadowMap = m_shadowMapSlots[allocation.m_slots[face]];
+				shadowPass.m_lightMatrix = lightMatrices[face];
+				shadowPass.m_lighMatrixIndex = allocation.m_slots[face];
+				shadowPass.m_shadowType = RHI::EShadowType::PCF;
+				shadowPass.m_meshList = sceneView->TraceShadowCasters(shadowFrustum);
+
+				CSMLightState snapshot{};
+				snapshot.m_componentIndex = lightProxy.m_index;
+				snapshot.m_shadowType = RHI::EShadowType::PCF;
+				snapshot.m_lightMatrix = lightMatrices[face];
+				snapshot.m_sceneRevision = sceneView->m_shadowCastersRevision;
+				snapshot.m_snapshot.Reserve(shadowPass.m_meshList.Num());
+				for (const auto& caster : shadowPass.m_meshList)
+				{
+					if (caster)
+					{
+						snapshot.m_snapshot.Add({ caster->m_staticMeshEcs, caster->m_frame });
+					}
+				}
+				snapshot.m_snapshot.Sort([](const auto& lhs, const auto& rhs)
+					{
+						return lhs.m_first < rhs.m_first;
+					});
+				cachedState = std::move(snapshot);
+				updateShadowMaps.Emplace(std::move(shadowPass));
+			}
+		}
+	};
+
+	prepareLights(spotLights);
+	prepareLights(pointLights);
+	return updateShadowMaps;
+}
+
 void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
 	uint32_t snapshotIndex = 0;
+	TVector<uint32_t> shadowIndices(GetGpuLightSlotsCount(m_components.Num()));
+	for (auto& shadowIndex : shadowIndices)
+	{
+		shadowIndex = InvalidShadowMapIndex;
+	}
 
 	for (uint32_t i = 0; i < sceneView->m_cameraTransforms.Num(); i++)
 	{
@@ -439,7 +754,7 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 		TVector<RHI::RHILightProxy> sortedSpotLights;
 		TVector<RHI::RHILightProxy> sortedPointLights;
 
-		GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedSpotLights, sortedPointLights);
+		GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedPointLights, sortedSpotLights);
 
 		auto updateShadowMaps = PrepareCSMPasses(
 			sceneView,
@@ -447,6 +762,15 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			camera,
 			directionalLights,
 			snapshotIndex);
+		auto localShadowMaps = PrepareLocalShadowPasses(
+			sceneView,
+			sortedSpotLights,
+			sortedPointLights,
+			shadowIndices);
+		for (auto& localShadowMap : localShadowMaps)
+		{
+			updateShadowMaps.Emplace(std::move(localShadowMap));
+		}
 		sceneView->m_shadowMapsToUpdate.Add(std::move(updateShadowMaps));
 	}
 
@@ -454,6 +778,18 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 	{
 		m_csmSnapshots.Resize(snapshotIndex);
 	}
+
+	if (!shadowIndices.IsEmpty())
+	{
+		auto commands = Sailor::RHI::Renderer::GetDriverCommands();
+		commands->UpdateShaderBinding(
+			GetWorld()->GetCommandList(),
+			m_shadowIndices,
+			shadowIndices.GetData(),
+			shadowIndices.Num() * sizeof(uint32_t),
+			0);
+	}
+	ReleaseUnusedLocalShadowAllocations(GetWorld()->GetCurrentFrame());
 
 	sceneView->m_totalNumLights = m_numLights;
 	sceneView->m_rhiLightsData = m_lightsData;

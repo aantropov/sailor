@@ -933,7 +933,7 @@ namespace
 		const size_t prepareCsmBegin = lightingEcsSource.find(
 			"LightingECS::PrepareCSMPasses");
 		const size_t fillLightingBegin = lightingEcsSource.find(
-			"void LightingECS::FillLightingData", prepareCsmBegin);
+			"void LightingECS::ReleaseLocalShadowAllocation", prepareCsmBegin);
 		Require(prepareCsmBegin != std::string::npos &&
 			fillLightingBegin > prepareCsmBegin,
 			"lighting ECS must expose a bounded CSM preparation path");
@@ -958,6 +958,43 @@ namespace
 				"TraceShadowCasters(",
 				traceShadowCasters + std::string("TraceShadowCasters(").size()) == std::string::npos,
 			"CSM preparation must not build full scene proxies or repeat the broad caster query per cascade");
+	}
+
+	void TestLocalLightShadowContract()
+	{
+		Require(LightingECS::GetLocalShadowMapCount(ELightType::Point) == 6u,
+			"a point light must render all six shadow faces");
+		Require(LightingECS::GetLocalShadowMapCount(ELightType::Spot) == 1u,
+			"a spot light must render one perspective shadow map");
+		Require(LightingECS::GetLocalShadowMapCount(ELightType::Directional) == 0u,
+			"local shadow allocation must not replace directional CSM");
+		Require(LightingECS::GetLocalShadowResolution(ELightShadowQuality::VeryLow) == 256u &&
+			LightingECS::GetLocalShadowResolution(ELightShadowQuality::Low) == 512u &&
+			LightingECS::GetLocalShadowResolution(ELightShadowQuality::Medium) == 1024u &&
+			LightingECS::GetLocalShadowResolution(ELightShadowQuality::High) == 2048u,
+			"local shadow quality must map to the documented power-of-two resolutions");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string lightComponentHeader = ReadText(
+			sourceRoot / "Runtime/Components/LightComponent.h");
+		const std::string lightingSource = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const std::string lightingShader = ReadText(
+			sourceRoot / "Content/Shaders/Lighting.glsl");
+		Require(lightComponentHeader.find("property(\"shadowQuality\")") != std::string::npos &&
+			lightComponentHeader.find("property(\"shadowFilter\")") != std::string::npos,
+			"light shadow quality and hard/soft filtering must be editor-visible reflected properties");
+		Require(lightingSource.find("glm::radians(90.0f)") != std::string::npos &&
+			lightingSource.find("light.m_type == ELightType::Spot") != std::string::npos &&
+			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
+			"point and spot shadow passes must use their respective projections and PCF-only rendering");
+		Require(lightingSource.find("m_shadowMapsMb + allocationMb > ShadowsMemoryBudgetMb") != std::string::npos &&
+			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos,
+			"local shadow allocation must respect both memory and descriptor limits");
+		Require(lightingShader.find("SelectPointShadowFace") != std::string::npos &&
+			lightingShader.find("CalculateLocalPcfShadow") != std::string::npos &&
+			lightingShader.find("SOFT_SHADOW_MAP_BIT") != std::string::npos,
+			"lighting shaders must select point faces and support hard/soft PCF sampling");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
@@ -3743,6 +3780,7 @@ int main()
 		{ "StaticMeshProxyPublishesTransformRevisionForShadowInvalidation", TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation },
 		{ "StaticMeshProxyTracksMaterialContentRevisions", TestStaticMeshProxyTracksMaterialContentRevisions },
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
+		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "CustomDepthShadowCastersInvalidateCsmEveryFrame", TestCustomDepthShadowCastersInvalidateCsmEveryFrame },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
