@@ -1302,12 +1302,17 @@ namespace
 		case ProtocolRequest::kInstantiatePrefabFromYaml:
 		{
 			const auto& instantiate = request.instantiate_prefab_from_yaml();
-			SetBoolResult(
-				response,
+			TInteropString instanceId;
+			const bool bSucceeded =
 				Sailor::App::InstantiateEditorPrefabFromYaml(
 					instantiate.prefab_yaml().c_str(),
 					instantiate.parent_instance_id().c_str(),
-					instantiate.strict_instance_ids()));
+					instantiate.strict_instance_ids(),
+					instanceId.GetOutput());
+			SetInstanceIdResult(
+				response,
+				bSucceeded,
+				instanceId.GetValue());
 			break;
 		}
 

@@ -118,7 +118,8 @@ public sealed class HierarchyMutationRecoveryPolicyTests
     [Fact]
     public void LegacyInstantiateCall_WithThirdDefaultArgument_RemainsUnambiguous()
     {
-        Func<EngineProtocolClient, Task<bool>> compileLegacyCall =
+        Func<EngineProtocolClient, Task<EngineProtocolCreationResult>>
+            compileLegacyCall =
             client => client.InstantiatePrefabFromYamlAsync(
                 "prefab: {}",
                 string.Empty,

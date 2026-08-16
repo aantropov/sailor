@@ -110,15 +110,28 @@ glm::mat4 Frustum::CalculateOrthoMatrixByView(const glm::mat4& view, float zMult
 		// not make an otherwise static shadow crawl between shadow-map texels.
 		if (radius > std::numeric_limits<float>::epsilon())
 		{
-			const float diameter = 2.0f * radius;
+			// Snapping can move the projection by half a texel. Keep the original
+			// receiver sphere plus a complete two-texel PCF footprint inside the
+			// map on both axes, otherwise every cascade exposes a border strip.
+			constexpr float shadowGuardTexels = 3.0f;
+			const float safeResolutionX = (std::max)(
+				(float)shadowMapResolution.x - 2.0f * shadowGuardTexels,
+				1.0f);
+			const float safeResolutionY = (std::max)(
+				(float)shadowMapResolution.y - 2.0f * shadowGuardTexels,
+				1.0f);
+			const float guardedRadius = radius * (std::max)(
+				(float)shadowMapResolution.x / safeResolutionX,
+				(float)shadowMapResolution.y / safeResolutionY);
+			const float diameter = 2.0f * guardedRadius;
 			const float texelSizeX = diameter / (float)shadowMapResolution.x;
 			const float texelSizeY = diameter / (float)shadowMapResolution.y;
 			const float snappedCenterX = std::round(lightSpaceCenter.x / texelSizeX) * texelSizeX;
 			const float snappedCenterY = std::round(lightSpaceCenter.y / texelSizeY) * texelSizeY;
-			minX = snappedCenterX - radius;
-			maxX = snappedCenterX + radius;
-			minY = snappedCenterY - radius;
-			maxY = snappedCenterY + radius;
+			minX = snappedCenterX - guardedRadius;
+			maxX = snappedCenterX + guardedRadius;
+			minY = snappedCenterY - guardedRadius;
+			maxY = snappedCenterY + guardedRadius;
 		}
 	}
 

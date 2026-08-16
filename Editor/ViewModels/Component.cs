@@ -276,7 +276,68 @@ public class ComponentYamlConverter : IYamlTypeConverter
             component.OverrideProperties[property.Key] = value;
         }
 
+        AddMissingLandscapeVegetationProperties(component, document.Typename);
+
         return component;
+    }
+
+    static void AddMissingLandscapeVegetationProperties(
+        Component component,
+        string componentTypeName)
+    {
+        if (!string.Equals(
+                componentTypeName,
+                "Sailor::LandscapeComponent",
+                StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (component.Typename.Properties.ContainsKey("heightmapTexture") &&
+            !component.OverrideProperties.ContainsKey("heightmapTexture"))
+        {
+            component.OverrideProperties["heightmapTexture"] =
+                new Observable<FileId>(new FileId());
+        }
+
+        if (component.Typename.Properties.ContainsKey("materialMasks") &&
+            !component.OverrideProperties.ContainsKey("materialMasks"))
+        {
+            component.OverrideProperties["materialMasks"] = new ObservableFileIdList();
+        }
+
+        if (!component.OverrideProperties.TryGetValue(
+                "vegetationModels",
+                out var modelsProperty) ||
+            modelsProperty is not ObservableFileIdList models)
+        {
+            return;
+        }
+
+        (string Name, float DefaultValue)[] properties =
+        [
+            ("vegetationMeshIndex", -1.0f),
+            ("vegetationMinLod", 0.0f),
+            ("vegetationMaxLod", 2.0f),
+            ("vegetationLod1ScreenCoverage", 0.25f),
+            ("vegetationLod2ScreenCoverage", 0.05f),
+            ("vegetationCullDistance", 120.0f),
+            ("vegetationColliderRadius", 0.0f),
+            ("vegetationColliderHeight", 2.0f),
+            ("vegetationColliderOffsetY", 1.0f)
+        ];
+
+        foreach (var property in properties)
+        {
+            if (!component.Typename.Properties.ContainsKey(property.Name) ||
+                component.OverrideProperties.ContainsKey(property.Name))
+            {
+                continue;
+            }
+
+            component.OverrideProperties[property.Name] = new ObservableFloatList(
+                Enumerable.Repeat(property.DefaultValue, models.Values.Count));
+        }
     }
 
     static string ParseEnumOverride(

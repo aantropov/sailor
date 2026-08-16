@@ -378,7 +378,7 @@ public partial class ComponentTemplate : DataTemplate
                     "vegetationLod1ScreenCoverage" or "vegetationLod2ScreenCoverage" or
                     "vegetationCullDistance" or "vegetationColliderRadius" or
                     "vegetationColliderHeight" or "vegetationColliderOffsetY" or
-                    "regenerate")
+                    "regenerate" or "flatten")
                 {
                     continue;
                 }

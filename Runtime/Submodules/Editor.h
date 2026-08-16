@@ -107,7 +107,8 @@ namespace Sailor
 			const class InstanceId& parentInstanceId,
 			const glm::vec3* worldPosition,
 			class InstanceId& outInstanceId,
-			bool bStrictInstanceIds = false);
+			bool bStrictInstanceIds = false,
+			bool bForceNewInstanceIds = false);
 		bool TraceViewportRay(
 			uint64_t viewportId,
 			float normalizedX,

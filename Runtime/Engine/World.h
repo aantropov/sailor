@@ -50,6 +50,10 @@ namespace Sailor
 		SAILOR_API GameObjectPtr Instantiate(
 			PrefabPtr prefab,
 			bool bStrictInstanceIds);
+		SAILOR_API GameObjectPtr Instantiate(
+			PrefabPtr prefab,
+			bool bStrictInstanceIds,
+			bool bForceNewInstanceIds);
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name = "Untitled");
 		SAILOR_API GameObjectPtr Instantiate(const std::string& name, const InstanceId& preferredInstanceId);
 		SAILOR_API void Destroy(GameObjectPtr object);

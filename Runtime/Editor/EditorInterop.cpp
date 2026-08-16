@@ -1100,6 +1100,19 @@ bool App::InstantiateEditorPrefabFromYaml(
 	const char* strParentInstanceId,
 	bool bStrictInstanceIds)
 {
+	return InstantiateEditorPrefabFromYaml(
+		strPrefabYaml,
+		strParentInstanceId,
+		bStrictInstanceIds,
+		nullptr);
+}
+
+bool App::InstantiateEditorPrefabFromYaml(
+	const char* strPrefabYaml,
+	const char* strParentInstanceId,
+	bool bStrictInstanceIds,
+	char** outInstanceId)
+{
 	if (!strPrefabYaml || strPrefabYaml[0] == '\0')
 	{
 		return false;
@@ -1109,7 +1122,7 @@ bool App::InstantiateEditorPrefabFromYaml(
 	const std::string parentInstanceIdValue = strParentInstanceId ? strParentInstanceId : "";
 	return ExecuteOnEngineMainThread<bool>(
 		false,
-		[prefabYaml, parentInstanceIdValue, bStrictInstanceIds]()
+		[prefabYaml, parentInstanceIdValue, bStrictInstanceIds, outInstanceId]()
 		{
 			auto editor = GetSubmodule<Editor>();
 			auto prefabImporter = GetSubmodule<PrefabImporter>();
@@ -1188,10 +1201,22 @@ bool App::InstantiateEditorPrefabFromYaml(
 				prefab = std::move(linkedPrefab);
 			}
 
-			return editor->InstantiatePrefab(
+			InstanceId createdInstanceId;
+			const bool bInstantiated = editor->InstantiatePrefab(
 				prefab,
 				parentInstanceId,
-				bStrictInstanceIds);
+				nullptr,
+				createdInstanceId,
+				bStrictInstanceIds,
+				!bStrictInstanceIds);
+			if (bInstantiated && outInstanceId)
+			{
+				SetInteropString(
+					createdInstanceId.ToString(),
+					outInstanceId);
+			}
+
+			return bInstantiated;
 		});
 }
 

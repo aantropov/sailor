@@ -106,8 +106,9 @@ glslFragment: |
   {
     const float a = dot(direction, direction);
     const float halfB = dot(direction, origin) + earthRadius * direction.y;
-    const float c = dot(origin, origin) + 2.0f * earthRadius * origin.y -
-      altitude * (2.0f * earthRadius + altitude);
+    const float heightDelta = origin.y - altitude;
+    const float c = dot(origin.xz, origin.xz) +
+      heightDelta * (2.0f * earthRadius + origin.y + altitude);
     const float discriminant = halfB * halfB - a * c;
     if(discriminant < 0.0f)
     {
@@ -115,16 +116,69 @@ glslFragment: |
     }
 
     const float root = sqrt(discriminant);
-    const float inverseA = 1.0f / max(a, 0.000001f);
-    return vec2(
-      (-halfB - root) * inverseA,
-      (-halfB + root) * inverseA);
+    const float q = -halfB - (halfB >= 0.0f ? root : -root);
+    if(abs(q) <= 0.000001f)
+    {
+      const float repeatedRoot = -halfB / max(a, 0.000001f);
+      return vec2(repeatedRoot);
+    }
+
+    const float firstRoot = q / a;
+    const float secondRoot = c / q;
+    return firstRoot < secondRoot
+      ? vec2(firstRoot, secondRoot)
+      : vec2(secondRoot, firstRoot);
+  }
+
+  float PlanetHeight(vec3 position)
+  {
+    const float verticalRadius = earthRadius + position.y;
+    const float horizontalDistanceSquared = dot(position.xz, position.xz);
+    const float radialDistance = sqrt(
+      verticalRadius * verticalRadius + horizontalDistanceSquared);
+    return position.y + horizontalDistanceSquared /
+      max(radialDistance + verticalRadius, 1.0f);
+  }
+
+  float RadialMotion(vec3 position, vec3 direction)
+  {
+    return dot(direction, vec3(
+      position.x,
+      earthRadius + position.y,
+      position.z));
+  }
+
+  bool RayCanReachSky(vec3 origin, vec3 direction)
+  {
+    const float height = PlanetHeight(origin);
+    const float boundaryTolerance = 0.001f;
+    if(height < -boundaryTolerance)
+    {
+      if(RadialMotion(origin, direction) < 0.0f)
+      {
+        return false;
+      }
+
+      const vec2 intersections =
+        RaySphereAtAltitude(origin, direction, 0.0f);
+      return max(intersections.x, intersections.y) >= 0.0f;
+    }
+
+    if(abs(height) <= boundaryTolerance)
+    {
+      return RadialMotion(origin, direction) >= 0.0f;
+    }
+
+    const vec2 intersections =
+      RaySphereAtAltitude(origin, direction, 0.0f);
+    const bool entersPlanet =
+      intersections.x > 0.0f || intersections.y > 0.0f;
+    return !entersPlanet;
   }
   
   void main()
   { 
-    vec3 origin = frame.cameraPosition.xyz;
-    origin.y = max(origin.y, 0.0f);
+    const vec3 origin = frame.cameraPosition.xyz;
     vec2 viewportPos = gl_FragCoord.xy / vec2(frame.viewportSize);
     viewportPos.y = 1.0f - viewportPos.y;
     
@@ -138,8 +192,7 @@ glslFragment: |
 
     float clouds = texture(cloudsSampler, viewportPos).a;
 
-    vec2 intersection = RaySphereAtAltitude(origin, dirWorldSpace.xyz, 0.0f);
-    if(max(intersection.x, intersection.y) < 0.0f)
+    if(RayCanReachSky(origin, dirWorldSpace.xyz))
     {
         const float mask = clamp(1 - 1000 * clamp(length(viewportPos.xy - fragUV.xy), 0.0, 1), 0, 1);
         const vec3 dirToSun = normalize(-data.lightDirection.xyz);

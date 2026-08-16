@@ -46,6 +46,7 @@ VulkanSwapchain::VulkanSwapchain(VulkanDevicePtr device, uint32_t width, uint32_
 
 	m_surfaceFormat = VulkanApi::ChooseSwapSurfaceFormat(m_swapChainSupport.m_formats);
 	m_presentMode = VulkanApi::ChooseSwapPresentMode(m_swapChainSupport.m_presentModes, bIsVSync);
+	SAILOR_LOG("Vulkan swapchain present mode: %d (vsync requested: %d)", (int32_t)m_presentMode, (int32_t)bIsVSync);
 	m_swapchainExtent = VulkanApi::ChooseSwapExtent(m_swapChainSupport.m_capabilities, width, height);
 
 	uint32_t imageCount = m_swapChainSupport.m_capabilities.minImageCount + 1;

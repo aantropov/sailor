@@ -530,6 +530,10 @@ void LandscapeData::SetVegetationProfiles(
 	MarkDirty();
 }
 
+void LandscapeECS::BeginPlay()
+{
+}
+
 void LandscapeECS::OnComponentUnregistered(size_t, LandscapeData& component)
 {
 	DestroyPhysicsBodies(component);
@@ -592,37 +596,21 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 
 		auto* modelImporter = App::GetSubmodule<ModelImporter>();
 		auto* materialImporter = App::GetSubmodule<MaterialImporter>();
-		bool bVegetationResourcesReady = true;
 		for (auto& profile : data.m_vegetationProfiles)
 		{
 			if (!profile.m_model && modelImporter && profile.m_modelFileId)
 			{
 				modelImporter->LoadModel_Immediate(profile.m_modelFileId, profile.m_model);
 			}
-			if (profile.m_model && !profile.m_model->IsReady())
-			{
-				bVegetationResourcesReady = false;
-				continue;
-			}
 			if (profile.m_materialFileId && !profile.m_material && materialImporter)
 			{
 				materialImporter->LoadMaterial_Immediate(profile.m_materialFileId, profile.m_material);
 			}
-			else if (!profile.m_materialFileId && profile.m_model &&
-				!profile.m_modelMaterialsTask && modelImporter)
+			else if (!profile.m_materialFileId && !profile.m_bModelMaterialsRequested && modelImporter)
 			{
-				profile.m_modelMaterialsTask = modelImporter->LoadDefaultMaterials(
-					profile.m_modelFileId, profile.m_modelMaterials);
+				modelImporter->LoadDefaultMaterials(profile.m_modelFileId, profile.m_modelMaterials);
+				profile.m_bModelMaterialsRequested = true;
 			}
-			if ((profile.m_material && !profile.m_material->IsReady()) ||
-				(profile.m_modelMaterialsTask && !profile.m_modelMaterialsTask->IsFinished()))
-			{
-				bVegetationResourcesReady = false;
-			}
-		}
-		if (!bVegetationResourcesReady)
-		{
-			continue;
 		}
 
 		LandscapeCpuTexture heightmap;
@@ -666,6 +654,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		size_t vegetationRenderProxies = 0u;
 		size_t vegetationProfilesNotReady = 0u;
 		size_t vegetationProfilesWithoutRenderData = 0u;
+		bool bVegetationResourcesPending = false;
 		const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
 		const Math::Transform ownerTransform = Math::Transform::FromMatrix(ownerMatrix);
 		auto* physics = GetWorld()->GetECS<PhysicsECS>();
@@ -763,6 +752,8 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 					(bUseMaterialOverride && (!profile.m_material || !profile.m_material->IsReady())))
 				{
 					++vegetationProfilesNotReady;
+					bVegetationResourcesPending = bVegetationResourcesPending ||
+						(profile.m_model && (!bUseMaterialOverride || profile.m_material));
 					continue;
 				}
 
@@ -798,6 +789,8 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				if (!bVegetationMaterialsReady)
 				{
 					++vegetationProfilesNotReady;
+					bVegetationResourcesPending = bVegetationResourcesPending ||
+						(!bUseMaterialOverride && !profile.m_modelMaterials.IsEmpty());
 					continue;
 				}
 				LandscapeVegetationRenderProxy vegetationRenderProxy;
@@ -892,20 +885,25 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			}
 			data.m_chunks.Add(std::move(chunk));
 		}
-		data.m_bIsDirty = false;
+		// Model and material import tasks complete before their GPU upload fences do.
+		// Keep the component dirty while valid vegetation resources are pending so
+		// the next frame can populate the vegetation proxies after those fences signal.
+		data.m_bIsDirty = bVegetationResourcesPending;
 		data.SetLastChange(owner->GetTransformComponent().GetFrameLastChange());
+		++data.m_buildRevision;
 		++m_shadowCastersRevision;
 		size_t vegetationPerChunk = 0u;
 		for (const auto& profile : data.m_vegetationProfiles)
 		{
 			vegetationPerChunk += profile.m_instancesPerChunk;
 		}
-		SAILOR_LOG("LandscapeECS: built %zu chunks with %zu collision bodies (%ux%u, %.1fm, resolution %u), %zu vegetation profiles, %zu instances per chunk and %zu render proxies (%zu profile loads not ready, %zu without render data), %zu sculpt and %zu paint stamps.",
+		SAILOR_LOG("LandscapeECS: built %zu chunks with %zu collision bodies (%ux%u, %.1fm, resolution %u), %zu vegetation profiles, %zu instances per chunk and %zu render proxies (%zu profile loads not ready, %zu without render data), %zu sculpt and %zu paint stamps, revision %llu.",
 			data.m_chunks.Num(), data.m_physicsBodies.Num(), data.m_chunksX, data.m_chunksZ, data.m_chunkSize,
 			data.m_chunkResolution, data.m_vegetationProfiles.Num(), vegetationPerChunk,
 			vegetationRenderProxies, vegetationProfilesNotReady,
 			vegetationProfilesWithoutRenderData,
-			data.m_sculptStamps.Num() / 5u, data.m_paintStamps.Num() / 5u);
+			data.m_sculptStamps.Num() / 5u, data.m_paintStamps.Num() / 5u,
+			static_cast<unsigned long long>(data.m_buildRevision));
 	}
 	return nullptr;
 }
@@ -935,17 +933,9 @@ void LandscapeECS::AppendSceneView(RHI::RHISceneViewPtr& sceneView) const
 		}
 		for (const auto& profile : m_components[componentIndex].m_vegetationProfiles)
 		{
-			if (profile.m_shadowMode == ELandscapeVegetationShadowMode::None)
-			{
-				continue;
-			}
 			sceneView->m_bHasCustomDepthShadowCasters |= profile.m_material &&
+				profile.m_shadowMode != ELandscapeVegetationShadowMode::None &&
 				profile.m_material->GetRenderState().IsRequiredCustomDepthShader();
-			for (const auto& material : profile.m_modelMaterials)
-			{
-				sceneView->m_bHasCustomDepthShadowCasters |= material &&
-					material->GetRenderState().IsRequiredCustomDepthShader();
-			}
 		}
 	}
 	sceneView->m_shadowCastersRevision =

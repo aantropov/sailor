@@ -149,6 +149,11 @@ namespace Sailor
 			const char* strPrefabYaml,
 			const char* strParentInstanceId,
 			bool bStrictInstanceIds);
+		SAILOR_API static bool InstantiateEditorPrefabFromYaml(
+			const char* strPrefabYaml,
+			const char* strParentInstanceId,
+			bool bStrictInstanceIds,
+			char** outInstanceId);
 		SAILOR_API static bool FocusEditorCamera(const char* strInstanceId);
 		SAILOR_API static bool SetEditorPrefabLink(
 			const char* strInstanceId,

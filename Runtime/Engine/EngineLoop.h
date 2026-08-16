@@ -20,7 +20,6 @@ namespace Sailor
 		static constexpr EWorldBehaviourMask EditorWorldMask = (uint8_t)EWorldBehaviourBit::EcsTickable |
 			(uint8_t)EWorldBehaviourBit::EditorTick;
 
-		const float MaxCpuFrames = 120.0f;
 
 		SAILOR_API void ProcessCpuFrame(FrameState& currentInputState);
 		SAILOR_API uint32_t GetCpuFps() const { return m_cpuFps; }
