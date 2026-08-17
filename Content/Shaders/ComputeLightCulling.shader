@@ -46,58 +46,60 @@ glslCompute: |
       float deltaTime;
   } frame;
 
-  shared ViewFrustum frustum;
   shared int lightCountForTile;
   shared uint minDepthInt;
   shared uint maxDepthInt;
-  shared uint candidateIndices[LIGHTS_CANDIDATES_PER_TILE];
-  shared float candidateImpact[LIGHTS_CANDIDATES_PER_TILE];
 
-  // Construct view frustum
-  ViewFrustum CreateFrustum(ivec2 tileId)
+  bool SphereTileOverlaps(vec3 lightPosition, float radius, ivec2 tileId,
+      float zNear, float zFar)
   {
-      vec3 eyePos = vec3(0,0,0);
-      vec4 screenSpace[5];
-
-      // Top left point
-      screenSpace[0] = vec4(tileId.xy * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Top right point
-      screenSpace[1] = vec4(vec2(tileId.x + 1, tileId.y) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Bottom left point
-      screenSpace[2] = vec4(vec2(tileId.x, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Bottom right point
-      screenSpace[3] = vec4(vec2(tileId.x + 1, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-
-        // Center point
-      screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
-
-      vec3 viewSpace[5];
-      // Now convert the screen space points to view space
-      for ( int i = 0; i < 5; i++ )
+      if(lightPosition.z - radius > zFar || lightPosition.z + radius < zNear)
       {
-          viewSpace[i] = ScreenSpaceToViewSpace(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;
+          return false;
       }
 
-    ViewFrustum frustum;
+      // A sphere intersecting the camera plane can cover any screen tile.
+      if(lightPosition.z <= radius)
+      {
+          return true;
+      }
 
-    // Left plane
-    frustum.planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
-    // Right plane
-    frustum.planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
-    // Top plane
-    frustum.planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
-    // Bottom plane
-    frustum.planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
+      // Project the sphere's view-space AABB. It is slightly wider than the
+      // exact projected sphere, but cannot reject a pixel influenced by it.
+      // Evaluate both depths because the ratio's extremum depends on the sign
+      // of the view-space coordinate.
+      const float nearestDepth = lightPosition.z - radius;
+      const float farthestDepth = lightPosition.z + radius;
+      const vec2 boundsMin = lightPosition.xy - vec2(radius);
+      const vec2 boundsMax = lightPosition.xy + vec2(radius);
+      vec2 projectedMin = min(
+          min(boundsMin / nearestDepth, boundsMin / farthestDepth),
+          min(boundsMax / nearestDepth, boundsMax / farthestDepth));
+      vec2 projectedMax = max(
+          max(boundsMin / nearestDepth, boundsMin / farthestDepth),
+          max(boundsMax / nearestDepth, boundsMax / farthestDepth));
 
-      frustum.center = viewSpace[4].xy;
+      // Sailor renders with a negative-height Vulkan viewport, so framebuffer
+      // rows (and gl_FragCoord) run opposite to mathematical view-space Y.
+      const vec2 projectionScale = vec2(
+          frame.projection[0][0],
+          -frame.projection[1][1]);
+      projectedMin *= projectionScale;
+      projectedMax *= projectionScale;
+      const vec2 ndcMin = min(projectedMin, projectedMax);
+      const vec2 ndcMax = max(projectedMin, projectedMax);
+      const vec2 screenMin = (ndcMin * 0.5f + 0.5f) * PushConstants.viewportSize;
+      const vec2 screenMax = (ndcMax * 0.5f + 0.5f) * PushConstants.viewportSize;
+      const vec2 tileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
+      const vec2 tileMax = vec2((tileId + ivec2(1)) * LIGHTS_CULLING_TILE_SIZE);
 
-      return frustum;
+      return all(greaterThanEqual(screenMax, tileMin)) &&
+          all(lessThanEqual(screenMin, tileMax));
   }
 
   void main()
   {
       ivec2 location = ivec2(gl_GlobalInvocationID.xy);
-      ivec2 itemID = ivec2(gl_LocalInvocationID.xy);
       ivec2 tileId = ivec2(gl_WorkGroupID.xy);
       ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
       uint tileIndex = tileId.y * tileNumber.x + tileId.x;
@@ -111,25 +113,17 @@ glslCompute: |
 
       barrier();
 
-    const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
-    if (isInsideViewport)
-    {
-        vec2 uv = vec2(gl_GlobalInvocationID.xy + vec2(0.5, 0.5)) / PushConstants.viewportSize;
-        uv.y = 1 - uv.y;
-        const float viewDepth = texture(sceneDepth, uv).x;
-
-        // LinearDepth stores positive view-space distance. Positive IEEE floats
-        // preserve ordering when reduced through their uint representation.
-        uint depthInt = floatBitsToUint(viewDepth);
-        atomicMax(maxDepthInt, depthInt);
-        atomicMin(minDepthInt, depthInt);
-    }
-
-      barrier();
-
-      if (gl_LocalInvocationIndex == 0)
+      // LinearDepth is produced from the same opaque/masked depth prepass and
+      // stores positive view-space distance in framebuffer coordinates.
+      const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
+      if (isInsideViewport)
       {
-          frustum = CreateFrustum(tileId);
+          const float viewDepth = texelFetch(sceneDepth, location, 0).x;
+
+          // Positive IEEE floats preserve ordering when reduced through uint atomics.
+          const uint depthInt = floatBitsToUint(viewDepth);
+          atomicMax(maxDepthInt, depthInt);
+          atomicMin(minDepthInt, depthInt);
       }
 
       barrier();
@@ -144,7 +138,7 @@ glslCompute: |
       {
           // Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
           uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
-          if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_CANDIDATES_PER_TILE)
+          if (lightIndex >= PushConstants.lightsNum)
           {
               break;
           }
@@ -158,12 +152,13 @@ glslCompute: |
           if(light.instance[lightIndex].type == 0)
           {
               uint offset = atomicAdd(lightCountForTile, 1);
-              if(offset < LIGHTS_CANDIDATES_PER_TILE)
+              if(offset < LIGHTS_PER_TILE)
               {
-                  candidateIndices[offset] = int(lightIndex);
-                  candidateImpact[offset] = 0.0f;
-                  continue;
+                  culledLights.indices[
+                      tileIndex * LIGHTS_PER_TILE + offset] =
+                      lightIndex;
               }
+              continue;
           }
 
           float radius = light.instance[lightIndex].bounds.x;
@@ -173,18 +168,20 @@ glslCompute: |
           // Reverse Z
           lightPosViewSpace.z *= -1;
 
-          const float zFar = uintBitsToFloat(maxDepthInt);
           const float zNear = uintBitsToFloat(minDepthInt);
+          const float zFar = uintBitsToFloat(maxDepthInt);
 
-          // If greater than zero, then it is a visible light
-          if (SphereFrustumOverlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar))
+          // Cull against the conservative projected sphere bounds and the
+          // exact depth interval occupied by this tile.
+          if (SphereTileOverlaps(lightPosViewSpace.xyz, radius, tileId, zNear, zFar))
           {
               // Add index to the shared array of visible indices
               uint offset = atomicAdd(lightCountForTile, 1);
-              if(offset < LIGHTS_CANDIDATES_PER_TILE)
+              if(offset < LIGHTS_PER_TILE)
               {
-                  candidateIndices[offset] = int(lightIndex);
-                  candidateImpact[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
+                  culledLights.indices[
+                      tileIndex * LIGHTS_PER_TILE + offset] =
+                      lightIndex;
               }
           }
       }
@@ -192,49 +189,15 @@ glslCompute: |
 
       if(gl_LocalInvocationIndex == 0)
       {
-          uint numCandidates = min(lightCountForTile, LIGHTS_CANDIDATES_PER_TILE);
-
-          // Sort by distance
-          if(numCandidates > LIGHTS_PER_TILE)
-          {
-              uint numSorted = LIGHTS_PER_TILE;
-
-              for(uint i = 0; i < numCandidates-1; i++)
-              {
-                  for(uint j = 0; j < numCandidates - i - 1; j++)
-                  {
-                      if(candidateImpact[j] < candidateImpact[j+1])
-                      {
-                          float value = candidateImpact[j];
-                          candidateImpact[j] = candidateImpact[j+1];
-                          candidateImpact[j+1] = value;
-
-                          uint index = candidateIndices[j];
-                          candidateIndices[j] = candidateIndices[j+1];
-                          candidateIndices[j+1] = index;
-                      }
-                  }
-
-                  --numSorted;
-
-                  if(numSorted == 0)
-                  {
-                      break;
-                  }
-              }
-          }
-
           // Fill lightsGrid
-        const uint numLights = min(numCandidates, LIGHTS_PER_TILE);
-        const uint offset = tileIndex * LIGHTS_PER_TILE;
+          const uint uncappedNumLights = uint(lightCountForTile);
+          const uint numLights = min(uncappedNumLights, uint(LIGHTS_PER_TILE));
+          const uint offset = tileIndex * LIGHTS_PER_TILE;
 
-          lightsGrid.instance[tileIndex].num = numLights;
+          const bool lightsOverflow = uncappedNumLights > LIGHTS_PER_TILE;
+          lightsGrid.instance[tileIndex].num = lightsOverflow ?
+              (uint(PushConstants.lightsNum) | LIGHT_TILE_OVERFLOW_BIT) :
+              numLights;
           lightsGrid.instance[tileIndex].offset = offset;
-
-          // Copy calculated data
-          for(uint i = 0; i < numLights; i++)
-          {
-              culledLights.indices[offset + i] = candidateIndices[numCandidates - i - 1];
-          }
       }
   }

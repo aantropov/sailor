@@ -20,7 +20,8 @@
 #define GPU_CULLING_GROUP_SIZE 256
 
 // Shadows
-#define MAX_SHADOWS_IN_VIEW 128
+#define MAX_SHADOWS_IN_VIEW 2048
+#define MAX_SHADOW_MAP_SAMPLERS 128
 #define MAX_TEXTURES_IN_SCENE 8192
 #define NUM_CSM_CASCADES 4
 const float ShadowMaxDistance = 200;

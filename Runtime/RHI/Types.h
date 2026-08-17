@@ -825,9 +825,13 @@ namespace Sailor::RHI
 		std::atomic<uint32_t> m_gpuFps = 0u;
 		std::atomic<uint32_t> m_numBatches = 0u;
 		std::atomic<uint32_t> m_numInstances = 0u;
-		size_t m_gpuHeapBudget;
-		size_t m_gpuHeapUsage;
-		uint32_t m_numSubmittedCommandBuffers;
+		std::atomic<size_t> m_materialsMemoryUsage = 0u;
+		std::atomic<size_t> m_texturesMemoryUsage = 0u;
+		std::atomic<size_t> m_meshesMemoryUsage = 0u;
+		std::atomic<size_t> m_generalMemoryUsage = 0u;
+		size_t m_gpuHeapBudget = 0u;
+		size_t m_gpuHeapUsage = 0u;
+		uint32_t m_numSubmittedCommandBuffers = 0u;
 	};
 
 	class RHIResource : public TRefBase

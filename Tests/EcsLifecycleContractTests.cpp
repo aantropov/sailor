@@ -983,12 +983,29 @@ namespace
 			LightingECS::GetLocalShadowResolution(ELightShadowQuality::Medium) == 1024u &&
 			LightingECS::GetLocalShadowResolution(ELightShadowQuality::High) == 2048u,
 			"local shadow quality must map to the documented power-of-two resolutions");
+		Require(LightingECS::LocalShadowMinResolution == 64u,
+			"distant local lights must be allowed to fall back to 64x64 shadow tiles");
+		Require(LightingECS::MaxShadowsInView >= 1804u &&
+			LightingECS::MaxShadowMapSamplers < LightingECS::MaxShadowsInView,
+			"shadow matrix capacity must cover 300 point lights without allocating one sampler per face");
+		Require(LightingECS::DefaultShadowsMemoryBudgetMb == 768.0f,
+			"the runtime shadow cache must expose the planned 768 MB default budget");
 
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string lightComponentHeader = ReadText(
 			sourceRoot / "Runtime/Components/LightComponent.h");
 		const std::string lightingSource = ReadText(
 			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const std::string lightingHeader = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.h");
+		const std::string engineLoopSource = ReadText(
+			sourceRoot / "Runtime/Engine/EngineLoop.cpp");
+		const std::string rendererSource = ReadText(
+			sourceRoot / "Runtime/RHI/Renderer.cpp");
+		const std::string rhiTypesHeader = ReadText(
+			sourceRoot / "Runtime/RHI/Types.h");
+		const std::string blockAllocatorHeader = ReadText(
+			sourceRoot / "Runtime/Memory/MemoryBlockAllocator.hpp");
 		const std::string shadowPrepassSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
 		const std::string sceneViewSource = ReadText(
@@ -997,6 +1014,10 @@ namespace
 			sourceRoot / "Content/Shaders/Lighting.glsl");
 		const std::string lightCullingShader = ReadText(
 			sourceRoot / "Content/Shaders/ComputeLightCulling.shader");
+		const std::string linearizeDepthShader = ReadText(
+			sourceRoot / "Content/Shaders/LinearizeDepth.shader");
+		const std::string defaultRenderer = ReadText(
+			sourceRoot / "Content/DefaultRenderer.renderer");
 		Require(lightComponentHeader.find("property(\"shadowQuality\")") != std::string::npos &&
 			lightComponentHeader.find("property(\"shadowFilter\")") != std::string::npos,
 			"light shadow quality and hard/soft filtering must be editor-visible reflected properties");
@@ -1007,11 +1028,24 @@ namespace
 			lightingSource.find("light.m_type == ELightType::Spot") != std::string::npos &&
 			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
 			"point and spot shadow passes must use their respective projections and PCF-only rendering");
-		Require(lightingSource.find("TryAllocateLocalShadowTiles(mapCount, desiredResolution, tiles)") != std::string::npos &&
+		Require(lightingSource.find("TryCreateLocalShadowAtlas") != std::string::npos &&
+			lightingSource.find("UpdateShaderBinding(\n\t\tm_lightsData,\n\t\t\"shadowMaps\"") != std::string::npos &&
+			lightingSource.find("NumCascades + atlasIndex") != std::string::npos,
+			"local shadow atlases must be created and published into the sampler array on demand");
+		Require(lightingSource.find("TryAllocateLocalShadowTiles(") != std::string::npos &&
+			lightingSource.find("uint32_t& outAtlasIndex") != std::string::npos &&
 			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos &&
 			lightingSource.find("candidate = static_cast<uint32_t>(m_csmShadowMaps.Num())") != std::string::npos &&
-			lightingSource.find("m_localShadowAtlas") != std::string::npos,
-			"local shadow allocation must use the bounded shared atlas without overlapping directional slots");
+			lightingSource.find("m_shadowMapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb") != std::string::npos,
+			"local shadow allocation must use bounded dynamic atlases without overlapping directional slots or the memory budget");
+		Require(lightingHeader.find("GetCsmShadowsOccupiedMemoryMb") != std::string::npos &&
+			lightingHeader.find("GetLocalShadowsOccupiedMemoryMb") != std::string::npos &&
+			engineLoopSource.find("Shadows %.1f / %.0f MB") != std::string::npos &&
+			engineLoopSource.find("Materials %.1f MB") != std::string::npos &&
+			rendererSource.find("void Renderer::UpdateMemoryStats()") != std::string::npos &&
+			rhiTypesHeader.find("m_texturesMemoryUsage") != std::string::npos &&
+			blockAllocatorHeader.find("const size_t occupiedSpace = m_usedDataSpace") != std::string::npos,
+			"frame statistics must expose shadow, CSM, local atlas, and Vulkan allocator memory without racing allocator updates");
 		Require(lightingSource.find("App::GetMainWindow()->GetRenderArea().y") != std::string::npos &&
 			lightingSource.find("camera,\n\t\t\t1080u,") == std::string::npos,
 			"dynamic local-shadow resolution must use the active viewport instead of a fixed reference height");
@@ -1022,7 +1056,9 @@ namespace
 			lightingSource.find("frustum.ContainsSphere(Math::Sphere(worldPosition, sphereRadius))") == std::string::npos,
 			"local shadow lights must remain visible when their influence sphere intersects the camera frustum");
 		Require(lightingSource.find("sceneView->m_shadowIndices.Add(std::move(shadowIndices))") != std::string::npos &&
+			lightingSource.find("sceneView->m_shadowMapsToBlit.Add(std::move(shadowMapsToBlit))") != std::string::npos &&
 			lightingSource.find("sceneView->m_shadowAtlasTiles.Add(std::move(shadowAtlasTiles))") != std::string::npos &&
+			sceneViewSource.find("res.m_shadowMapsToBlit = std::move(m_shadowMapsToBlit[i])") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowIndices = std::move(m_shadowIndices[i])") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i])") != std::string::npos &&
 			shadowPrepassSource.find("sceneView.m_shadowIndices.GetData()") != std::string::npos &&
@@ -1034,12 +1070,34 @@ namespace
 			"scene preparation must not record shadow-index uploads into the world command list");
 		Require(lightingShader.find("SelectPointShadowFace") != std::string::npos &&
 			lightingShader.find("CalculateLocalPcfShadow") != std::string::npos &&
+			lightingShader.find("DecodeShadowAtlasIndex") != std::string::npos &&
 			lightingShader.find("atlasRect.xy + projCoords.xy * atlasRect.zw") != std::string::npos &&
 			lightingShader.find("SOFT_SHADOW_MAP_BIT") != std::string::npos,
 			"lighting shaders must select point faces and support atlas-aware hard/soft PCF sampling");
-		Require(lightCullingShader.find("const float viewDepth = texture(sceneDepth, uv).x;") != std::string::npos &&
-			lightCullingShader.find("ScreenSpaceToViewSpace(uv, deviceDepth") == std::string::npos,
-			"tiled local-light culling must consume the renderer's linear view-depth target directly");
+		Require(lightingSource.find("snapshot.Equals(cachedState)") != std::string::npos,
+			"a global caster revision must not redraw a local static shadow whose actual caster snapshot is unchanged");
+		Require(shadowPrepassSource.find("Downsample Local Shadow Tiles") != std::string::npos &&
+			shadowPrepassSource.find("sceneView.m_shadowMapsToBlit") != std::string::npos &&
+			shadowPrepassSource.find("commands->BlitImage(") != std::string::npos,
+			"distance-driven local shadow downgrades must migrate cached tiles through a GPU blit");
+		Require(lightCullingShader.find("uintBitsToFloat(minDepthInt)") != std::string::npos &&
+			lightCullingShader.find("uintBitsToFloat(maxDepthInt)") != std::string::npos &&
+			lightCullingShader.find("texelFetch(sceneDepth, location, 0)") != std::string::npos &&
+			lightCullingShader.find("SphereTileOverlaps(") != std::string::npos &&
+			lightCullingShader.find("uv.y = 1 - uv.y") == std::string::npos &&
+			lightingShader.find("float(safeViewportSize.y) - fragmentPosition.y") == std::string::npos,
+			"tiled local-light culling must use per-tile depth bounds and address compute and fragment tiles in the same framebuffer coordinates");
+		Require(linearizeDepthShader.find("REVERSE_Z_INF_FAR_PLANE") == std::string::npos &&
+			linearizeDepthShader.find("LinearizeDepth(depth, frame.cameraZNearZFar.yx)") != std::string::npos &&
+			linearizeDepthShader.find("texelFetch(depthSampler, pixel, 0)") != std::string::npos &&
+			linearizeDepthShader.find("fragTexcoord.y") == std::string::npos,
+			"Forward+ depth bounds must linearize the camera's finite reverse-Z projection in matching framebuffer coordinates");
+		const size_t lightCullingNode = defaultRenderer.find("- name: LightCulling");
+		Require(lightCullingNode != std::string::npos &&
+			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) != std::string::npos &&
+			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) <
+				defaultRenderer.find("- name:", lightCullingNode + 1),
+			"Forward+ culling must consume the frame graph's linear depth target");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()

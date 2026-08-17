@@ -283,13 +283,19 @@ namespace Sailor::Memory
 		}
 
 		MemoryBlock& GetMemoryBlock(uint32_t index) const { return m_blocks[index]; }
-		size_t GetOccupiedSpace() const { return m_usedDataSpace; }
+		size_t GetOccupiedSpace() const
+		{
+			m_lock.Lock();
+			const size_t occupiedSpace = m_usedDataSpace;
+			m_lock.Unlock();
+			return occupiedSpace;
+		}
 
 		TGlobalAllocator& GetGlobalAllocator() { return m_dataAllocator; }
 
 	private:
 
-		SpinLock m_lock;
+		mutable SpinLock m_lock;
 		static constexpr uint32_t InvalidIndexUINT32 = (uint32_t)-1;
 
 		bool HeuristicToSkipBlocks(float occupation) const

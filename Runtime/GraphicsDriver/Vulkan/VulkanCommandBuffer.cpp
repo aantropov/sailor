@@ -541,7 +541,12 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 	m_rhiDependecies.Insert(dst);
 	m_rhiDependecies.Insert(src);
 
-	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
+	const bool bRegionsHaveSameExtent =
+		srcRegion.extent.width == dstRegion.extent.width &&
+		srcRegion.extent.height == dstRegion.extent.height;
+	if (src->m_format == dst->m_format &&
+		std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0 &&
+		bRegionsHaveSameExtent)
 	{
 		// Resolve Multisampling 
 		if (src->GetImage()->m_samples != VK_SAMPLE_COUNT_1_BIT && (dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
@@ -563,7 +568,10 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			resolve.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			resolve.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			resolve.extent = src->GetImage()->m_extent;
+			resolve.extent = {
+				srcRegion.extent.width,
+				srcRegion.extent.height,
+				1u };
 
 			vkCmdResolveImage(
 				m_commandBuffer,
@@ -597,7 +605,10 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			copy.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			copy.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			copy.extent = src->GetImage()->m_extent;
+			copy.extent = {
+				srcRegion.extent.width,
+				srcRegion.extent.height,
+				1u };
 
 			vkCmdCopyImage(
 				m_commandBuffer,

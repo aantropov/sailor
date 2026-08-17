@@ -34,6 +34,8 @@ struct LightData
 };
 
 const uint INVALID_LIGHT_TYPE = 0xFFFFFFFFu;
+const uint LIGHT_TILE_OVERFLOW_BIT = 0x80000000u;
+const uint LIGHT_TILE_COUNT_MASK = 0x7FFFFFFFu;
 
 layout(std430)
 struct LightsGrid
@@ -48,11 +50,8 @@ uint GetLightTileIndex(vec2 fragmentPosition, ivec2 viewportSize)
   const ivec2 numTiles =
     (safeViewportSize + ivec2(LIGHTS_CULLING_TILE_SIZE - 1)) /
     LIGHTS_CULLING_TILE_SIZE;
-  const vec2 screenPosition = vec2(
-    fragmentPosition.x,
-    float(safeViewportSize.y) - fragmentPosition.y);
   const ivec2 tileId = clamp(
-    ivec2(screenPosition) / LIGHTS_CULLING_TILE_SIZE,
+    ivec2(fragmentPosition) / LIGHTS_CULLING_TILE_SIZE,
     ivec2(0),
     numTiles - ivec2(1));
   return uint(tileId.y * numTiles.x + tileId.x);
@@ -277,10 +276,15 @@ uint SelectPointShadowFace(vec3 lightToReceiver)
 
 vec4 DecodeShadowAtlasRect(uint packedTile)
 {
-  const uint tileX = packedTile & 31u;
-  const uint tileY = (packedTile >> 5u) & 31u;
-  const uint tileCells = 1u << ((packedTile >> 10u) & 7u);
-  return vec4(tileX, tileY, tileCells, tileCells) / 32.0f;
+  const uint tileX = packedTile & 63u;
+  const uint tileY = (packedTile >> 6u) & 63u;
+  const uint tileCells = 1u << ((packedTile >> 12u) & 7u);
+  return vec4(tileX, tileY, tileCells, tileCells) / 64.0f;
+}
+
+uint DecodeShadowAtlasIndex(uint packedTile)
+{
+  return packedTile >> 15u;
 }
 
 float CalculateLocalPcfShadow(

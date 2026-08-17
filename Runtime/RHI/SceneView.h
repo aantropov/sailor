@@ -131,6 +131,14 @@ namespace Sailor::RHI
 		TVector<RHIShadowCasterProxyPtr> m_meshList{};
 	};
 
+	struct RHIBlitShadowMapCommand
+	{
+		RHI::RHIRenderTargetPtr m_source{};
+		RHI::RHIRenderTargetPtr m_destination{};
+		glm::ivec4 m_sourceArea{};
+		glm::ivec4 m_destinationArea{};
+	};
+
 	struct RHISceneViewSnapshot
 	{
 		float m_deltaTime = 0.0f;
@@ -146,6 +154,7 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
+		TVector<RHIBlitShadowMapCommand> m_shadowMapsToBlit{};
 		TVector<uint32_t> m_shadowIndices{};
 		TVector<uint32_t> m_shadowAtlasTiles{};
 
@@ -173,6 +182,7 @@ namespace Sailor::RHI
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;
+		TVector<TVector<RHIBlitShadowMapCommand>> m_shadowMapsToBlit;
 		TVector<TVector<uint32_t>> m_shadowIndices;
 		TVector<TVector<uint32_t>> m_shadowAtlasTiles;
 

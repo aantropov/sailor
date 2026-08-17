@@ -204,6 +204,77 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				0);
 		}
 	}
+
+	if (!sceneView.m_shadowMapsToBlit.IsEmpty())
+	{
+		commands->BeginDebugRegion(
+			commandList,
+			"Downsample Local Shadow Tiles",
+			DebugContext::Color_CmdTransfer);
+		for (const auto& blit : sceneView.m_shadowMapsToBlit)
+		{
+			if (!blit.m_source || !blit.m_destination ||
+				blit.m_sourceArea.z <= 0 || blit.m_sourceArea.w <= 0 ||
+				blit.m_destinationArea.z <= 0 || blit.m_destinationArea.w <= 0)
+			{
+				continue;
+			}
+
+			if (blit.m_source == blit.m_destination)
+			{
+				auto scratch = driver->GetOrAddTemporaryRenderTarget(
+					blit.m_source->GetFormat(),
+					glm::ivec2(blit.m_destinationArea.z, blit.m_destinationArea.w),
+					1);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_source, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					blit.m_source,
+					scratch,
+					blit.m_sourceArea,
+					glm::ivec4(0, 0, scratch->GetExtent().x, scratch->GetExtent().y),
+					ETextureFiltration::Nearest);
+
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_destination, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					scratch,
+					blit.m_destination,
+					glm::ivec4(0, 0, scratch->GetExtent().x, scratch->GetExtent().y),
+					blit.m_destinationArea,
+					ETextureFiltration::Nearest);
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::ShaderReadOnlyOptimal);
+				driver->ReleaseTemporaryRenderTarget(scratch);
+			}
+			else
+			{
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_source, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_destination, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					blit.m_source,
+					blit.m_destination,
+					blit.m_sourceArea,
+					blit.m_destinationArea,
+					ETextureFiltration::Nearest);
+			}
+
+			commands->ImageMemoryBarrier(
+				commandList, blit.m_source, EImageLayout::ShaderReadOnlyOptimal);
+			commands->ImageMemoryBarrier(
+				commandList, blit.m_destination, EImageLayout::ShaderReadOnlyOptimal);
+		}
+		commands->EndDebugRegion(commandList);
+	}
 	if (sceneView.m_shadowMapsToUpdate.Num() == 0)
 	{
 		return;

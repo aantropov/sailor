@@ -11,6 +11,7 @@
 #include "Components/MeshRendererComponent.h"
 #include "Components/CameraComponent.h"
 #include "Components/EditorComponent.h"
+#include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
@@ -27,7 +28,16 @@ using namespace Sailor;
 
 namespace
 {
-	void DrawViewportStatsOverlay(uint32_t cpuFps, uint32_t gpuFps, uint32_t numBatches, uint32_t numInstances)
+	void DrawViewportStatsOverlay(
+		uint32_t cpuFps,
+		uint32_t gpuFps,
+		uint32_t numBatches,
+		uint32_t numInstances,
+		float shadowMemoryMb,
+		float csmShadowMemoryMb,
+		float localShadowMemoryMb,
+		float shadowMemoryBudgetMb,
+		const RHI::Stats& stats)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 		if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
@@ -35,8 +45,26 @@ namespace
 			return;
 		}
 
-		char text[128];
-		std::snprintf(text, sizeof(text), "CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u", cpuFps, gpuFps, numBatches, numInstances);
+		constexpr float BytesToMb = 1.0f / (1024.0f * 1024.0f);
+		char text[512];
+		std::snprintf(
+			text,
+			sizeof(text),
+			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
+			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
+			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB",
+			cpuFps,
+			gpuFps,
+			numBatches,
+			numInstances,
+			shadowMemoryMb,
+			shadowMemoryBudgetMb,
+			csmShadowMemoryMb,
+			localShadowMemoryMb,
+			stats.m_materialsMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
+			stats.m_texturesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
+			stats.m_meshesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
+			stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
 
 		constexpr float Margin = 10.0f;
 		const ImVec2 textSize = ImGui::CalcTextSize(text);
@@ -203,12 +231,32 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	const auto renderer = App::GetSubmodule<RHI::Renderer>();
 	if (renderer)
 	{
+		float shadowMemoryMb = 0.0f;
+		float csmShadowMemoryMb = 0.0f;
+		float localShadowMemoryMb = 0.0f;
+		float shadowMemoryBudgetMb = 0.0f;
+		for (const auto& world : m_worlds)
+		{
+			if (auto lighting = world->GetECS<LightingECS>())
+			{
+				shadowMemoryMb += lighting->GetShadowsOccupiedMemoryMb();
+				csmShadowMemoryMb += lighting->GetCsmShadowsOccupiedMemoryMb();
+				localShadowMemoryMb += lighting->GetLocalShadowsOccupiedMemoryMb();
+				shadowMemoryBudgetMb += lighting->GetShadowsMemoryBudgetMb();
+			}
+		}
+
 		const auto& stats = renderer->GetStats();
 		DrawViewportStatsOverlay(
 			m_cpuFps,
 			stats.m_gpuFps.load(std::memory_order_relaxed),
 			stats.m_numBatches.load(std::memory_order_relaxed),
-			stats.m_numInstances.load(std::memory_order_relaxed));
+			stats.m_numInstances.load(std::memory_order_relaxed),
+			shadowMemoryMb,
+			csmShadowMemoryMb,
+			localShadowMemoryMb,
+			shadowMemoryBudgetMb,
+			stats);
 	}
 
 	auto& task = currentInputState.GetDrawImGuiTask();

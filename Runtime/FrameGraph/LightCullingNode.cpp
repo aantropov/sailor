@@ -32,14 +32,13 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		auto computeShaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeLightCulling.shader");
 		App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(computeShaderInfo->GetFileId(), m_pComputeShader);
 	}
-
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
-	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
+	auto depthAttachment = GetRHIResource("linearDepth").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer").DynamicCast<RHI::RHITexture>();
+		depthAttachment = frameGraph->GetRenderTarget("LinearDepth").DynamicCast<RHI::RHITexture>();
 	}
 	if (!depthAttachment)
 	{
@@ -48,13 +47,6 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	RHI::RHITexturePtr sampledDepthAttachment = depthAttachment;
-	if (auto depthRenderTarget = depthAttachment.DynamicCast<RHI::RHIRenderTarget>())
-	{
-		if (auto depthAspect = depthRenderTarget->GetDepthAspect())
-		{
-			sampledDepthAttachment = depthAspect;
-		}
-	}
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())
@@ -69,7 +61,6 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		pushConstants.m_viewportSize = depthAttachment->GetExtent();
 		pushConstants.m_numTiles.x = (depthAttachment->GetExtent().x - 1) / (int32_t)TileSize + 1;
 		pushConstants.m_numTiles.y = (depthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;
-
 		const bool bBindingsOutdated = !m_culledLights ||
 			m_boundLightsData != sceneView.m_rhiLightsData ||
 			m_boundDepthAttachment != depthAttachment ||
@@ -97,6 +88,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ sceneView.m_rhiLightsData, m_culledLights, sceneView.m_frameBindings },
 			&pushConstants, sizeof(PushConstants));
+
 		commands->MemoryBarrier(commandList,
 			static_cast<EAccessFlags>(EAccessBit::ShaderWrite_Bit),
 			static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));

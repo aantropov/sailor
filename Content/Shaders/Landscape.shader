@@ -4,7 +4,8 @@ includes:
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
 
-defines: []
+defines:
+- SUPPORT_LIGHTS_OVERFLOW
 
 glslCommon: |
   #version 460
@@ -113,7 +114,7 @@ glslVertex: |
   } shadowIndices;
 
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
 
      layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
      {
@@ -273,7 +274,7 @@ glslFragment: |
   } shadowIndices;
 
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
 
      layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
      {
@@ -392,10 +393,17 @@ glslFragment: |
       return 1.0f;
     }
 
+    const uint packedAtlasTile = shadowAtlasTiles.instance[shadowMapIndex];
+    const uint shadowSamplerIndex = NUM_CSM_CASCADES + DecodeShadowAtlasIndex(packedAtlasTile);
+    if(shadowSamplerIndex >= MAX_SHADOW_MAP_SAMPLERS)
+    {
+      return 1.0f;
+    }
+
     return CalculateLocalPcfShadow(
-      shadowMaps[NUM_CSM_CASCADES],
+      shadowMaps[nonuniformEXT(shadowSamplerIndex)],
       lightsMatrices.instance[shadowMapIndex],
-      DecodeShadowAtlasRect(shadowAtlasTiles.instance[shadowMapIndex]),
+      DecodeShadowAtlasRect(packedAtlasTile),
       worldPosition,
       surfaceNormal,
       surfaceToLightDirection,
@@ -559,15 +567,25 @@ glslFragment: |
     const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
     const uint listLength = uint(culledLights.indices.length());
     const uint availableLights = offset < listLength ? listLength - offset : 0;
-    const uint numLights = hasLightTile ? min(
-        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
-        availableLights) : 0;
+    const uint packedNumLights = hasLightTile ? lightsGrid.instance[tileIndex].num : 0u;
+    const bool lightsOverflow = (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
+    const uint numLights = !hasLightTile ? 0u :
+    #ifdef SUPPORT_LIGHTS_OVERFLOW
+        (lightsOverflow ? min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(light.instance.length())) :
+            min(packedNumLights & LIGHT_TILE_COUNT_MASK, availableLights));
+    #else
+        min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
+    #endif
 
     outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
 
     for(int i = 0; i < numLights; i++)
     {
+    #ifdef SUPPORT_LIGHTS_OVERFLOW
+        uint index = lightsOverflow ? uint(i) : culledLights.indices[offset + i];
+    #else
         uint index = culledLights.indices[offset + i];
+    #endif
         if(index == uint(-1) ||
             index >= uint(light.instance.length()) ||
             light.instance[index].type == INVALID_LIGHT_TYPE)

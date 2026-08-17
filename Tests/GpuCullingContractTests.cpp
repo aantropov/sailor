@@ -412,25 +412,37 @@ namespace
 			cullingShader.find("atomicAdd(culledLights") ==
 				std::string::npos,
 			"Forward+ light-list allocation must not race across workgroups");
+		Require(cullingShader.find("candidateImpact") == std::string::npos &&
+			cullingShader.find("BitonicSortCandidates") == std::string::npos &&
+			cullingShader.find("uncappedNumLights > LIGHTS_PER_TILE") !=
+				std::string::npos,
+			"Forward+ must mark tiles whose compact 128-light list overflows");
 		Require(cullingShader.find("const bool isInsideViewport") !=
 				std::string::npos &&
 			cullingShader.find("if (isInsideViewport)") !=
 				std::string::npos,
 			"partial Forward+ tiles must not sample outside the viewport");
+		Require(cullingShader.find("bool SphereTileOverlaps(") !=
+				std::string::npos &&
+			cullingShader.find("-frame.projection[1][1]") !=
+				std::string::npos &&
+			cullingShader.find("greaterThanEqual(screenMax, tileMin)") !=
+				std::string::npos,
+			"Forward+ sphere bounds must use the negative-height Vulkan viewport orientation");
 
 		const std::string lightCullingSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/LightCullingNode.cpp");
 		const std::string processBody = ExtractFunctionBody(
 			lightCullingSource,
 			"void LightCullingNode::Process(");
-		const size_t depthAspectOffset = processBody.find(
-			"sampledDepthAttachment = depthAspect");
+		const size_t linearDepthLookup = processBody.find(
+			"GetRHIResource(\"linearDepth\")");
 		const size_t depthBindingOffset = processBody.find(
 			"AddSamplerToShaderBindings(m_culledLights, \"sceneDepth\", sampledDepthAttachment",
-			depthAspectOffset);
-		Require(depthAspectOffset != std::string::npos &&
-			depthBindingOffset > depthAspectOffset,
-			"Forward+ depth sampling must exclude the stencil aspect from combined depth-stencil targets");
+			linearDepthLookup);
+		Require(linearDepthLookup != std::string::npos &&
+			depthBindingOffset > linearDepthLookup,
+			"Forward+ must reduce the frame graph's linear view-space depth target");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",
@@ -449,12 +461,13 @@ namespace
 			processBody.find("m_bindingsViewportSize != pushConstants.m_viewportSize") !=
 				std::string::npos,
 			"Forward+ buffers must be recreated when their resource identity or extent changes");
-
 		const std::string lightingLibrary = ReadText(
 			sourceRoot / "Content/Shaders/Lighting.glsl");
 		Require(lightingLibrary.find("uint GetLightTileIndex(") !=
 				std::string::npos &&
 			lightingLibrary.find("const ivec2 tileId = clamp(") !=
+				std::string::npos &&
+			lightingLibrary.find("LIGHT_TILE_OVERFLOW_BIT") !=
 				std::string::npos,
 			"Forward+ consumers must clamp screen coordinates to the tile grid");
 		Require(lightingLibrary.find(
@@ -474,8 +487,11 @@ namespace
 			Require(shader.find(
 					"GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize)") !=
 					std::string::npos &&
+				shader.find("lightsGrid.instance[tileIndex].num") !=
+					std::string::npos &&
+				shader.find("usesOverflowList") == std::string::npos &&
 				shader.find(
-					"min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE))") !=
+					"min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE))") ==
 					std::string::npos &&
 				shader.find("lightsGrid.instance.length()") !=
 					std::string::npos &&
@@ -490,13 +506,34 @@ namespace
 			sourceRoot / "Content/Shaders/Standard_glTF.shader" })
 		{
 			const std::string shader = ReadText(shaderPath);
-			Require(shader.find("light.instance.length()") !=
+			Require(shader.find("SUPPORT_LIGHTS_OVERFLOW") !=
+					std::string::npos &&
+				shader.find("lightsOverflow ? uint(i)") !=
+					std::string::npos &&
+				shader.find("light.instance.length()") !=
 					std::string::npos &&
 				shader.find("light.instance[index].type == INVALID_LIGHT_TYPE") !=
 					std::string::npos,
 				"Forward+ lighting must reject invalid light indices: " +
 					shaderPath.generic_string());
 		}
+	}
+
+	void TestRegionBlitDoesNotPromoteToFullImageCopy()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string source = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanCommandBuffer.cpp");
+		const std::string body = ExtractFunctionBody(
+			source,
+			"bool VulkanCommandBuffer::BlitImage(");
+		Require(body.find("bRegionsHaveSameExtent") != std::string::npos &&
+			body.find("srcRegion.extent.width") != std::string::npos &&
+			body.find("srcRegion.extent.height") != std::string::npos,
+			"equal-format image operations must use copy only when source and destination regions have equal dimensions");
+		Require(body.find("copy.extent = {\n\t\t\t\tsrcRegion.extent.width") != std::string::npos &&
+			body.find("copy.extent = src->GetImage()->m_extent") == std::string::npos,
+			"a regional copy must never silently expand to the complete source image");
 	}
 
 	void TestVulkanMemoryBarrierRecordsPipelineBarrier()
@@ -1543,6 +1580,7 @@ int main()
 		{ "ModelHierarchyRenderPropagationContract", TestModelHierarchyRenderPropagationContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
 		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
+		{ "RegionBlitDoesNotPromoteToFullImageCopy", TestRegionBlitDoesNotPromoteToFullImageCopy },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
 		{ "CommandListImageTrackingPreservesPublishedContents", TestCommandListImageTrackingPreservesPublishedContents },

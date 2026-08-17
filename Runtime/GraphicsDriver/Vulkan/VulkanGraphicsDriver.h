@@ -288,6 +288,9 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocator();
 		SAILOR_API TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocator();
+		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetMaterialSsboAllocatorIfInitialized() const { return m_materialSsboAllocator; }
+		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetGeneralSsboAllocatorIfInitialized() const { return m_generalSsboAllocator; }
+		SAILOR_API const TSharedPtr<VulkanBufferAllocator>& GetMeshSsboAllocatorIfInitialized() const { return m_meshSsboAllocator; }
 		SAILOR_API const TConcurrentMap<std::string, TSharedPtr<VulkanBufferAllocator>>& GetUniformBufferAllocators() const { return m_uniformBuffers; }
 
 	protected:
