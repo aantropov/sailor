@@ -1021,9 +1021,9 @@ namespace
 		Require(lightComponentHeader.find("property(\"shadowQuality\")") != std::string::npos &&
 			lightComponentHeader.find("property(\"shadowFilter\")") != std::string::npos,
 			"light shadow quality and hard/soft filtering must be editor-visible reflected properties");
-		Require(lightComponentHeader.find("property(\"radius\")") != std::string::npos &&
-			lightComponentHeader.find("Range(0.01, 100000.0)") != std::string::npos,
-			"local lights must expose an explicit positive radius in the editor");
+		Require(lightComponentHeader.find("func(GetRadius, property(\"radius\"), SkipCDO())") != std::string::npos &&
+			lightComponentHeader.find("func(GetRadius, property(\"radius\"), SkipCDO(), Range(") == std::string::npos,
+			"local light radius must be an unrestricted float field in the editor");
 		Require(lightingSource.find("glm::radians(90.0f)") != std::string::npos &&
 			lightingSource.find("light.m_type == ELightType::Spot") != std::string::npos &&
 			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
@@ -1091,13 +1091,13 @@ namespace
 			linearizeDepthShader.find("LinearizeDepth(depth, frame.cameraZNearZFar.yx)") != std::string::npos &&
 			linearizeDepthShader.find("texelFetch(depthSampler, pixel, 0)") != std::string::npos &&
 			linearizeDepthShader.find("fragTexcoord.y") == std::string::npos,
-			"Forward+ depth bounds must linearize the camera's finite reverse-Z projection in matching framebuffer coordinates");
+			"linear-depth consumers must preserve the camera's finite reverse-Z projection and framebuffer coordinates");
 		const size_t lightCullingNode = defaultRenderer.find("- name: LightCulling");
 		Require(lightCullingNode != std::string::npos &&
-			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) != std::string::npos &&
-			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) <
+			defaultRenderer.find("- depthStencil: DepthBuffer", lightCullingNode) != std::string::npos &&
+			defaultRenderer.find("- depthStencil: DepthBuffer", lightCullingNode) <
 				defaultRenderer.find("- name:", lightCullingNode + 1),
-			"Forward+ culling must consume the frame graph's linear depth target");
+			"Forward+ culling must reconstruct view depth directly from the depth prepass target");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()

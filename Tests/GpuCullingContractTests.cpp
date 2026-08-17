@@ -420,8 +420,14 @@ namespace
 		Require(cullingShader.find("const bool isInsideViewport") !=
 				std::string::npos &&
 			cullingShader.find("if (isInsideViewport)") !=
+				std::string::npos &&
+			cullingShader.find("const float deviceDepth = texelFetch(sceneDepth, location, 0).x") !=
+				std::string::npos &&
+			cullingShader.find("LinearizeDepth(") !=
+				std::string::npos &&
+			cullingShader.find("frame.cameraZNearZFar.yx") !=
 				std::string::npos,
-			"partial Forward+ tiles must not sample outside the viewport");
+			"Forward+ must reconstruct view depth from the matching in-bounds depth-prepass pixel");
 		Require(cullingShader.find("bool SphereTileOverlaps(") !=
 				std::string::npos &&
 			cullingShader.find("-frame.projection[1][1]") !=
@@ -429,20 +435,46 @@ namespace
 			cullingShader.find("greaterThanEqual(screenMax, tileMin)") !=
 				std::string::npos,
 			"Forward+ sphere bounds must use the negative-height Vulkan viewport orientation");
+		Require(cullingShader.find("const float zNear = uintBitsToFloat(minDepthInt)") !=
+				std::string::npos &&
+			cullingShader.find("const float zFar = uintBitsToFloat(maxDepthInt)") !=
+				std::string::npos,
+			"Forward+ light culling must use the exact reduced near-far tile interval");
+
+		const std::string lightingShader = ReadText(
+			sourceRoot / "Content/Shaders/Lighting.glsl");
+		const std::string standardShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard.shader");
+		const std::string gltfShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		const std::string landscapeShader = ReadText(
+			sourceRoot / "Content/Shaders/Landscape.shader");
+		Require(lightingShader.find("CalculateLocalLightRangeAttenuation") !=
+				std::string::npos &&
+			lightingShader.find("smoothstep(0.9f, 1.0f, normalizedDistance)") != std::string::npos &&
+			lightingShader.find("return attenuation * rangeWindow") != std::string::npos &&
+			standardShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos &&
+			gltfShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos &&
+			landscapeShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos,
+			"all Forward+ surface shaders must preserve attenuation and only fade the final edge of the culling radius");
 
 		const std::string lightCullingSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/LightCullingNode.cpp");
 		const std::string processBody = ExtractFunctionBody(
 			lightCullingSource,
 			"void LightCullingNode::Process(");
-		const size_t linearDepthLookup = processBody.find(
-			"GetRHIResource(\"linearDepth\")");
+		const size_t depthLookup = processBody.find(
+			"GetRHIResource(\"depthStencil\")");
 		const size_t depthBindingOffset = processBody.find(
 			"AddSamplerToShaderBindings(m_culledLights, \"sceneDepth\", sampledDepthAttachment",
-			linearDepthLookup);
-		Require(linearDepthLookup != std::string::npos &&
-			depthBindingOffset > linearDepthLookup,
-			"Forward+ must reduce the frame graph's linear view-space depth target");
+			depthLookup);
+		Require(depthLookup != std::string::npos &&
+			depthBindingOffset > depthLookup &&
+			processBody.find("ImageMemoryBarrier(commandList, depthAttachment", depthBindingOffset) != std::string::npos,
+			"Forward+ must sample the depth aspect while transitioning the owning depth target");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",
@@ -456,7 +488,7 @@ namespace
 			"fragment lighting must wait for Forward+ compute shader writes");
 		Require(processBody.find("m_boundLightsData != sceneView.m_rhiLightsData") !=
 				std::string::npos &&
-			processBody.find("m_boundDepthAttachment != depthAttachment") !=
+			processBody.find("m_boundDepthAttachment != sampledDepthAttachment") !=
 				std::string::npos &&
 			processBody.find("m_bindingsViewportSize != pushConstants.m_viewportSize") !=
 				std::string::npos,
@@ -888,8 +920,27 @@ namespace
 		Require(prepareBody.find("proxy.m_skeletonOffset") != std::string::npos &&
 			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
 			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
-			prepareBody.find("GetOrAddDepthMaterial(mesh->m_vertexDescription, bSkinned)") != std::string::npos,
+			prepareBody.find("GetOrAddDepthMaterial(") != std::string::npos &&
+			prepareBody.find("bSkinned,") != std::string::npos &&
+			prepareBody.find("bMaskedQueue);") != std::string::npos,
 			"DepthPrepass must select its skinned material from both the skeleton offset and the concrete mesh vertex layout");
+
+		Require(depthShader.find("- MASKED") != std::string::npos &&
+			depthShader.find("ResolveTextureSamplerIndex") != std::string::npos &&
+			depthShader.find("alpha < inAlphaCutoff") != std::string::npos &&
+			depthShader.find("float alpha = inVertexAlpha") != std::string::npos &&
+			prepareBody.find("proxy.m_baseColorSamplers") != std::string::npos &&
+			prepareBody.find("effectiveAlphaCutoff") != std::string::npos &&
+			prepareBody.find("const bool bRequiredCustomDepth = !bMaskedQueue") != std::string::npos,
+			"masked depth prepass must apply the same alpha silhouette as the forward material");
+
+		const std::string processBody = ExtractFunctionBody(
+			depthPrepassSource,
+			"void DepthPrepassNode::Process(");
+		Require(processBody.find("shaderInfo->GetFileId(), m_pComputeMeshCullingShader);") !=
+				std::string::npos &&
+			processBody.find("OCCLUSION_CULLING") == std::string::npos,
+			"the depth prepass must keep GPU frustum culling but cannot occlusion-cull the geometry that produces current-frame Hi-Z");
 	}
 
 	void TestShadowPrepassSkinningContract()

@@ -113,12 +113,15 @@ glslCompute: |
 
       barrier();
 
-      // LinearDepth is produced from the same opaque/masked depth prepass and
-      // stores positive view-space distance in framebuffer coordinates.
+      // Read the depth-prepass pixel that belongs to this framebuffer tile and
+      // reconstruct positive view-space distance without another viewport pass.
       const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
       if (isInsideViewport)
       {
-          const float viewDepth = texelFetch(sceneDepth, location, 0).x;
+          const float deviceDepth = texelFetch(sceneDepth, location, 0).x;
+          const float viewDepth = LinearizeDepth(
+              deviceDepth,
+              frame.cameraZNearZFar.yx);
 
           // Positive IEEE floats preserve ordering when reduced through uint atomics.
           const uint depthInt = floatBitsToUint(viewDepth);
@@ -161,7 +164,7 @@ glslCompute: |
               continue;
           }
 
-          float radius = light.instance[lightIndex].bounds.x;
+          const float radius = light.instance[lightIndex].bounds.x;
           vec4 lightPosViewSpace = frame.view * vec4(light.instance[lightIndex].worldPosition, 1);
           lightPosViewSpace /= lightPosViewSpace.w;
 

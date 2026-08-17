@@ -98,6 +98,9 @@ namespace Sailor::RHI
 		TVector<glm::mat4> m_meshModelMatrices;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		TVector<size_t> m_renderQueueTags;
+		TVector<glm::vec4> m_baseColorFactors;
+		TVector<uint32_t> m_baseColorSamplers;
+		TVector<float> m_alphaCutoffs;
 #if defined(__APPLE__)
 		TVector<TSet<uint32_t>> m_materialTextureSamplers;
 #endif

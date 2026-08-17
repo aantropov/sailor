@@ -57,6 +57,24 @@ uint GetLightTileIndex(vec2 fragmentPosition, ivec2 viewportSize)
   return uint(tileId.y * numTiles.x + tileId.x);
 }
 
+float CalculateLocalLightRangeAttenuation(LightData light, float distanceToLight)
+{
+  const float safeRadius = max(light.bounds.x, 0.00001f);
+  const float normalizedDistance = clamp(distanceToLight / safeRadius, 0.0f, 1.0f);
+  const float squaredDistance = distanceToLight * distanceToLight;
+  const float attenuation = 1.0f / max(
+    light.attenuation.x +
+      light.attenuation.y * distanceToLight +
+      light.attenuation.z * squaredDistance,
+    0.00001f);
+
+  // Radius is the actual light range in world metres. Preserve the configured
+  // attenuation throughout that range and only soften the final edge so tile
+  // rejection reaches zero without visibly shrinking the light volume.
+  const float rangeWindow = 1.0f - smoothstep(0.9f, 1.0f, normalizedDistance);
+  return attenuation * rangeWindow;
+}
+
 // Importance sample GGX normal distribution function for a fixed roughness value.
 // This returns normalized half-vector between Li & Lo.
 // For derivation see: http://blog.tobias-franke.eu/2014/03/30/notes_on_importance_sampling.html

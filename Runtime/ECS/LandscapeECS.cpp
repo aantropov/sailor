@@ -400,6 +400,51 @@ namespace
 		shadowCaster.m_meshes.Add(std::move(shadowMesh));
 	}
 
+	void AppendDepthMaterialMetadata(RHI::RHISceneViewProxy& proxy, const MaterialPtr& material)
+	{
+		glm::vec4 baseColorFactor{ 1.0f };
+		float alphaCutoff = 0.5f;
+		uint32_t baseColorSampler = 0u;
+		if (material->GetRenderState().GetTag() != GetHash(std::string("Masked")))
+		{
+			proxy.m_baseColorFactors.Add(baseColorFactor);
+			proxy.m_alphaCutoffs.Add(alphaCutoff);
+			proxy.m_baseColorSamplers.Add(baseColorSampler);
+			return;
+		}
+
+		const glm::vec4* materialBaseColorFactor = nullptr;
+		if (!material->GetUniformsVec4().Find("material.baseColorFactor", materialBaseColorFactor))
+		{
+			material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
+		}
+		if (materialBaseColorFactor)
+		{
+			baseColorFactor = *materialBaseColorFactor;
+		}
+		proxy.m_baseColorFactors.Add(baseColorFactor);
+
+		const float* materialAlphaCutoff = nullptr;
+		if (material->GetUniformsFloat().Find("material.alphaCutoff", materialAlphaCutoff) && materialAlphaCutoff)
+		{
+			alphaCutoff = *materialAlphaCutoff;
+		}
+		proxy.m_alphaCutoffs.Add(alphaCutoff);
+
+		const TexturePtr* baseColorTexture = nullptr;
+		if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
+		{
+			material->GetSamplers().Find("albedoSampler", baseColorTexture);
+		}
+		auto* textureImporter = App::GetSubmodule<TextureImporter>();
+		if (textureImporter && baseColorTexture && *baseColorTexture)
+		{
+			baseColorSampler = static_cast<uint32_t>(
+				textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
+		}
+		proxy.m_baseColorSamplers.Add(baseColorSampler);
+	}
+
 	void GetOctreeBounds(const Math::AABB& bounds, glm::ivec3& center, glm::ivec3& extents)
 	{
 		const glm::ivec3 minimum = glm::ivec3(glm::floor(bounds.m_min));
@@ -719,6 +764,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			proxy.m_meshModelMatrices.Add(ownerMatrix);
 			proxy.m_overrideMaterials.Add(data.m_runtimeMaterial->GetOrAddRHI(mesh->m_vertexDescription));
 			proxy.m_renderQueueTags.Add(data.m_runtimeMaterial->GetRenderState().GetTag());
+			AppendDepthMaterialMetadata(proxy, data.m_runtimeMaterial);
 			auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
 			shadowCaster->m_staticMeshEcs = proxy.m_staticMeshEcs;
 			shadowCaster->m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
@@ -844,6 +890,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 						vegetationProxy.m_overrideMaterials.Add(material->GetOrAddRHI(
 							vegetationMeshes[meshIndex]->m_vertexDescription));
 						vegetationProxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
+						AppendDepthMaterialMetadata(vegetationProxy, material);
 						if (profile.m_shadowMode != ELandscapeVegetationShadowMode::None)
 						{
 							AppendShadowMesh(*vegetationShadowCaster, vegetationMeshes[meshIndex], meshMatrix,

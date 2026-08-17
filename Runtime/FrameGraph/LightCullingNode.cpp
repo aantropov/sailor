@@ -35,10 +35,10 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	auto commands = App::GetSubmodule<RHI::Renderer>()->GetDriverCommands();
 	commands->BeginDebugRegion(commandList, GetName(), DebugContext::Color_CmdCompute);
 
-	auto depthAttachment = GetRHIResource("linearDepth").DynamicCast<RHI::RHITexture>();
+	auto depthAttachment = GetRHIResource("depthStencil").DynamicCast<RHI::RHITexture>();
 	if (!depthAttachment)
 	{
-		depthAttachment = frameGraph->GetRenderTarget("LinearDepth").DynamicCast<RHI::RHITexture>();
+		depthAttachment = frameGraph->GetRenderTarget("DepthBuffer").DynamicCast<RHI::RHITexture>();
 	}
 	if (!depthAttachment)
 	{
@@ -47,6 +47,13 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 	}
 
 	RHI::RHITexturePtr sampledDepthAttachment = depthAttachment;
+	if (auto depthRenderTarget = depthAttachment.DynamicCast<RHI::RHIRenderTarget>())
+	{
+		if (auto depthAspect = depthRenderTarget->GetDepthAspect())
+		{
+			sampledDepthAttachment = depthAspect;
+		}
+	}
 
 #ifdef _DEBUG
 	if (RHIShaderPtr computeShader = m_pComputeShader->GetDebugComputeShaderRHI())
@@ -63,7 +70,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		pushConstants.m_numTiles.y = (depthAttachment->GetExtent().y - 1) / (int32_t)TileSize + 1;
 		const bool bBindingsOutdated = !m_culledLights ||
 			m_boundLightsData != sceneView.m_rhiLightsData ||
-			m_boundDepthAttachment != depthAttachment ||
+			m_boundDepthAttachment != sampledDepthAttachment ||
 			m_bindingsViewportSize != pushConstants.m_viewportSize;
 		if (bBindingsOutdated)
 		{
@@ -79,7 +86,7 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			Sailor::RHI::Renderer::GetDriver()->AddShaderBinding(shaderBindingSet, lightsGridSSBO, "lightsGrid", 2);
 
 			m_boundLightsData = sceneView.m_rhiLightsData;
-			m_boundDepthAttachment = depthAttachment;
+			m_boundDepthAttachment = sampledDepthAttachment;
 			m_bindingsViewportSize = pushConstants.m_viewportSize;
 		}
 

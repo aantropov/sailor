@@ -60,7 +60,7 @@ REFL_AUTO(
 	func(GetAttenuation, property("attenuation"), SkipCDO()),
 	func(SetAttenuation, property("attenuation"), SkipCDO()),
 
-	func(GetRadius, property("radius"), SkipCDO(), Range(0.01, 100000.0)),
+	func(GetRadius, property("radius"), SkipCDO()),
 	func(SetRadius, property("radius"), SkipCDO()),
 
 	func(GetCutOff, property("cutOff"), SkipCDO()),

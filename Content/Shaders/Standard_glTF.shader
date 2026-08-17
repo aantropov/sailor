@@ -614,8 +614,7 @@ glslFragment: |
     {
       // Attenuation
       const float distance    = length(pointToLight);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
+      falloff = CalculateLocalLightRangeAttenuation(light, distance);
       shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
     // Spot light
@@ -626,8 +625,8 @@ glslFragment: |
       float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
       const float distance    = length(pointToLight);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
+      falloff = CalculateLocalLightRangeAttenuation(light, distance) *
+        clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
       
       if(theta < light.cutOff.y)
       {
@@ -750,29 +749,19 @@ glslFragment: |
             float transmissionFalloff = falloff;
             if(light.type == 1)
             {
-              float attenuation = 1.0 /
-                (light.attenuation.x +
-                  light.attenuation.y * exitPointToLightLength +
-                  light.attenuation.z *
-                    exitPointToLightLength * exitPointToLightLength);
-              transmissionFalloff = attenuation *
-                (1.0 - pow(clamp(
-                  exitPointToLightLength / light.bounds.x,
-                  0.0,
-                  1.0), 2.0));
+              transmissionFalloff = CalculateLocalLightRangeAttenuation(
+                light,
+                exitPointToLightLength);
             }
             else if(light.type == 2)
             {
-              float attenuation = 1.0 /
-                (light.attenuation.x +
-                  light.attenuation.y * exitPointToLightLength +
-                  light.attenuation.z *
-                    exitPointToLightLength * exitPointToLightLength);
               float coneRange = light.cutOff.x - light.cutOff.y;
               float coneCos = dot(
                 transmissionLi,
                 normalize(-light.direction));
-              transmissionFalloff = attenuation * clamp(
+              transmissionFalloff = CalculateLocalLightRangeAttenuation(
+                light,
+                exitPointToLightLength) * clamp(
                 (coneCos - light.cutOff.y) / max(coneRange, Epsilon),
                 0.0,
                 1.0);
@@ -847,8 +836,7 @@ glslFragment: |
     else if(light.type == 1 || light.type == 2)
     {
         const float distance = length(light.worldPosition - worldPos);
-        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-        falloff = attenuation;
+        falloff = CalculateLocalLightRangeAttenuation(light, distance);
     }
 
     vec3 pointToLight = light.type == 0 ?
@@ -901,8 +889,7 @@ glslFragment: |
     else if(light.type == 1 || light.type == 2)
     {
         const float distance = length(light.worldPosition - worldPos);
-        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-        falloff = attenuation;
+        falloff = CalculateLocalLightRangeAttenuation(light, distance);
     }
 
     vec3 pointToLight = light.type == 0 ?

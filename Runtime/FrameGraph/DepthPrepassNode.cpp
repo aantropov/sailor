@@ -18,9 +18,14 @@ using namespace Sailor::RHI;
 const char* DepthPrepassNode::m_name = "DepthPrepass";
 #endif
 
-RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertexDescription, bool bSkinned)
+RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
+	RHI::RHIVertexDescriptionPtr vertexDescription,
+	bool bSkinned,
+	bool bMasked)
 {
-	auto& materials = bSkinned ? m_skinnedDepthOnlyMaterials : m_depthOnlyMaterials;
+	auto& materials = bMasked ?
+		(bSkinned ? m_skinnedMaskedDepthOnlyMaterials : m_maskedDepthOnlyMaterials) :
+		(bSkinned ? m_skinnedDepthOnlyMaterials : m_depthOnlyMaterials);
 	auto& material = materials[vertexDescription->GetVertexAttributeBits()];
 
 	if (!material)
@@ -32,10 +37,15 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(RHI::RHIVertexDescri
 		{
 			defines.Add("SKINNING");
 		}
+		if (bMasked)
+		{
+			defines.Add("MASKED");
+		}
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines) && pShader->IsReady())
 		{
-			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, ECullMode::Back, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
+			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
+			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
 	}
@@ -61,6 +71,7 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 
 	const std::string QueueTag = GetString("Tag");
 	const size_t QueueTagHash = GetHash(QueueTag);
+	const bool bMaskedQueue = QueueTagHash == GetHash(std::string("Masked"));
 
 	auto res = Tasks::CreateTask("Prepare DepthPrepassNode " + std::to_string(sceneView.m_frame),
 		[=, this, holdRhiResources = frameGraph, &syncSharedResources = m_syncSharedResources, &sceneViewSnapshot = sceneView]() mutable {
@@ -98,9 +109,13 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						proxy.m_skeletonOffset != (std::numeric_limits<uint32_t>::max)() &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding) &&
 						mesh->m_vertexDescription->HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding);
-					auto depthMaterial = GetOrAddDepthMaterial(mesh->m_vertexDescription, bSkinned);
+					auto depthMaterial = GetOrAddDepthMaterial(
+						mesh->m_vertexDescription,
+						bSkinned,
+						bMaskedQueue);
 
-					const bool bRequiredCustomDepth = proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
+					const bool bRequiredCustomDepth = !bMaskedQueue &&
+						proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
 					if (bRequiredCustomDepth)
 					{
 						depthMaterial = proxy.GetMaterials()[i];
@@ -136,13 +151,25 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						}
 						data.materialInstance = shaderBinding.IsValid() ? shaderBinding->GetStorageInstanceIndex() : 0;
 					}
+					else if (bMaskedQueue)
+					{
+						data.materialInstance = proxy.m_baseColorSamplers.Num() > i ?
+							proxy.m_baseColorSamplers[i] : 0u;
+						const float baseColorAlpha = proxy.m_baseColorFactors.Num() > i ?
+							proxy.m_baseColorFactors[i].a : 1.0f;
+						const float alphaCutoff = proxy.m_alphaCutoffs.Num() > i ?
+							proxy.m_alphaCutoffs[i] : 0.5f;
+						const float effectiveAlphaCutoff = baseColorAlpha > 0.000001f ?
+							alphaCutoff / baseColorAlpha : 2.0f;
+						data.padding = glm::floatBitsToUint(effectiveAlphaCutoff);
+					}
 					else
 					{
 						data.materialInstance = 0;
 					}
 
 					RHIBatch batch(depthMaterial, mesh);
-					if (bRequiredCustomDepth)
+					if (bRequiredCustomDepth || bMaskedQueue)
 					{
 						uint32_t supportedMeshesPerBatch = (std::numeric_limits<uint32_t>::max)();
 #if defined(__APPLE__)
@@ -215,7 +242,12 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		{
 			if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr("Shaders/ComputeMeshCulling.shader"))
 			{
-				App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pComputeMeshCullingShader, { "OCCLUSION_CULLING" });
+				// The depth prepass produces the current frame's occlusion source.
+				// Culling its contributors against the previous frame can create holes
+				// in depth after camera or LOD changes. Keep GPU frustum culling here;
+				// the main scene pass can occlusion-cull against the completed Hi-Z.
+				App::GetSubmodule<ShaderCompiler>()->LoadShader(
+					shaderInfo->GetFileId(), m_pComputeMeshCullingShader);
 			}
 		}
 
@@ -301,6 +333,10 @@ void DepthPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 			if (material->GetRenderState().IsRequiredCustomDepthShader())
 			{
 				sets = TVector<RHIShaderBindingSetPtr>({ sceneView.m_frameBindings, sceneView.m_rhiLightsData, m_perInstanceData, material->GetBindings(), batch.m_textureBindings });
+			}
+			else if (batch.m_textureBindings)
+			{
+				sets.Add(batch.m_textureBindings);
 			}
 
 			const bool bSkinned =

@@ -435,8 +435,7 @@ glslFragment: |
     {
       // Attenuation
       const float distance    = length(light.worldPosition - worldPos);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
+      falloff = CalculateLocalLightRangeAttenuation(light, distance);
       Li = normalize(light.worldPosition - worldPos);
       shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
@@ -449,8 +448,8 @@ glslFragment: |
       float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
       const float distance    = length(light.worldPosition - worldPos);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);
+      falloff = CalculateLocalLightRangeAttenuation(light, distance) *
+        clamp((theta - light.cutOff.y) / epsilon, 0.0, 1.0);
 
       if(theta < light.cutOff.y)
       {
