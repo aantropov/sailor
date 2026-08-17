@@ -1025,7 +1025,10 @@ namespace
 			lightingSource.find("sceneView->m_shadowAtlasTiles.Add(std::move(shadowAtlasTiles))") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowIndices = std::move(m_shadowIndices[i])") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i])") != std::string::npos &&
-			shadowPrepassSource.find("transferCommandList,\n\t\t\t\tshadowIndices") != std::string::npos,
+			shadowPrepassSource.find("sceneView.m_shadowIndices.GetData()") != std::string::npos &&
+			shadowPrepassSource.find("sceneView.m_shadowAtlasTiles.GetData()") != std::string::npos &&
+			shadowPrepassSource.find("commands->UpdateShaderBinding(") != std::string::npos &&
+			shadowPrepassSource.find("transferCommandList") != std::string::npos,
 			"local shadow indices and atlas transforms must cross the scene snapshot and upload through the frame transfer command list");
 		Require(lightingSource.find("GetWorld()->GetCommandList(),\n\t\t\tm_shadowIndices") == std::string::npos,
 			"scene preparation must not record shadow-index uploads into the world command list");
