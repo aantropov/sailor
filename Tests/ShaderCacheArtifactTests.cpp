@@ -976,6 +976,101 @@ namespace
 			"native nested GLSL include text should remain opaque to the YAML include resolver");
 	}
 
+	void TestRuntimeLightingShadersCompile()
+	{
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		const std::array<const char*, 3> shaderPaths =
+		{
+			"Shaders/Standard.shader",
+			"Shaders/Standard_glTF.shader",
+			"Shaders/Landscape.shader"
+		};
+
+		for (const char* shaderPath : shaderPaths)
+		{
+			const std::filesystem::path sourcePath = contentRoot / shaderPath;
+			ShaderAsset shader;
+			shader.Deserialize(YAML::Load(ReadText(sourcePath)));
+
+			std::string source = shader.GetGlslCommonCode() + "\n#define FRAGMENT\n";
+#if defined(__APPLE__)
+			source += "#define SAILOR_TEXTURE_REMAP\n";
+#endif
+			std::string diagnostic;
+			Require(
+				ShaderYamlIncludeResolver::Append(
+					shader.GetIncludes(),
+					[&](const std::string& include, std::string& contents)
+					{
+						const std::filesystem::path includePath = contentRoot / include;
+						std::ifstream input(includePath, std::ios::binary);
+						if (!input.is_open())
+						{
+							return false;
+						}
+						contents.assign(
+							std::istreambuf_iterator<char>(input),
+							std::istreambuf_iterator<char>());
+						return true;
+					},
+					source,
+					diagnostic),
+				std::string("runtime shader includes should resolve for ") + shaderPath +
+					": " + diagnostic);
+
+			source += "\n#ifdef FRAGMENT\n" + shader.GetGlslFragmentCode() +
+				"\n#endif\n";
+			RHI::ShaderByteCode byteCode;
+			Require(
+				ShaderCompilerTestAccess::CompileGlslToSpirv(
+					shaderPath,
+					source,
+					RHI::EShaderStage::Fragment,
+					byteCode,
+					false),
+				std::string("runtime fragment shader should compile: ") + shaderPath);
+			Require(!byteCode.IsEmpty(),
+				std::string("runtime fragment shader should produce SPIR-V: ") + shaderPath);
+		}
+
+		const char* computeShaderPath = "Shaders/ComputeLightCulling.shader";
+		ShaderAsset computeShader;
+		computeShader.Deserialize(YAML::Load(ReadText(contentRoot / computeShaderPath)));
+		std::string computeSource = computeShader.GetGlslCommonCode() + "\n#define COMPUTE\n";
+		std::string computeDiagnostic;
+		Require(
+			ShaderYamlIncludeResolver::Append(
+				computeShader.GetIncludes(),
+				[&](const std::string& include, std::string& contents)
+				{
+					std::ifstream input(contentRoot / include, std::ios::binary);
+					if (!input.is_open())
+					{
+						return false;
+					}
+					contents.assign(
+						std::istreambuf_iterator<char>(input),
+						std::istreambuf_iterator<char>());
+					return true;
+				},
+				computeSource,
+				computeDiagnostic),
+			std::string("light-culling shader includes should resolve: ") + computeDiagnostic);
+		computeSource += "\n#ifdef COMPUTE\n" + computeShader.GetGlslComputeCode() + "\n#endif\n";
+		RHI::ShaderByteCode computeByteCode;
+		Require(
+			ShaderCompilerTestAccess::CompileGlslToSpirv(
+				computeShaderPath,
+				computeSource,
+				RHI::EShaderStage::Compute,
+				computeByteCode,
+				false),
+			"runtime light-culling compute shader should compile");
+		Require(!computeByteCode.IsEmpty(),
+			"runtime light-culling compute shader should produce SPIR-V");
+	}
+
 	void TestShaderSourceNormalization()
 	{
 		std::string diagnostic;
@@ -1120,6 +1215,7 @@ int main()
 		TestShaderCompilerFailureLifecycle();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
+		TestRuntimeLightingShadersCompile();
 		TestShaderSourceNormalization();
 		TestShaderSourceRewritePreservesFileIdentity();
 		std::cout << "Shader cache artifact tests passed.\n";

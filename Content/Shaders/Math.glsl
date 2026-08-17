@@ -223,7 +223,7 @@ ViewFrustum CreateViewFrustum(ivec2 viewportSize, mat4 invProjection)
 
 bool SphereFrustumOverlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, float zFar)
 {
-  if (lightPos.z - radius > zNear || lightPos.z + radius < zFar) 
+  if (lightPos.z - radius > zFar || lightPos.z + radius < zNear)
   {
     return false;
   }

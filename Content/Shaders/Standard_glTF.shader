@@ -154,9 +154,14 @@ glslVertex: |
   {
       uint instance[];
   } shadowIndices;
-  
+
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
   layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+
+     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
+     {
+         uint instance[];
+     } shadowAtlasTiles;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -366,12 +371,17 @@ glslFragment: |
   {
       uint instance[];
   } shadowIndices;
-  
+
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
   layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
   #ifdef TRANSMISSION
   layout(set=1, binding=10) uniform sampler2D g_transmissionFramebufferSampler;
   #endif
+
+     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
+     {
+         uint instance[];
+     } shadowAtlasTiles;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -490,12 +500,15 @@ glslFragment: |
       return 1.0f;
     }
 
+    const vec4 atlasRect = DecodeShadowAtlasRect(shadowAtlasTiles.instance[shadowMapIndex]);
     return CalculateLocalPcfShadow(
-      shadowMaps[shadowMapIndex],
+      shadowMaps[NUM_CSM_CASCADES],
       lightsMatrices.instance[shadowMapIndex],
+      atlasRect,
       worldPosition,
       surfaceNormal,
       surfaceToLightDirection,
+      length(light.worldPosition - worldPosition),
       (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u);
   }
   
@@ -1071,7 +1084,7 @@ glslFragment: |
         {
             continue;
         }
-    
+
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
   #ifdef CLEAR_COAT
         outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);

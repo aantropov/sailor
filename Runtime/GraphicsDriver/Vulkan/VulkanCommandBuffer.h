@@ -110,6 +110,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API void ClearImage(VulkanImageViewPtr dst, const glm::vec4& clearColor);
 		SAILOR_API void ClearDepthStencil(VulkanImageViewPtr dst, float depth, uint32_t stencil);
+		SAILOR_API void ClearAttachments(VkRect2D renderArea, const glm::vec4& clearColor, float clearDepth);
 
 		SAILOR_API void GenerateMipMaps(VulkanImagePtr image);
 		SAILOR_API void ClearDependencies();

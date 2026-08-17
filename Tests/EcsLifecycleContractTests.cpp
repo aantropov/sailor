@@ -958,6 +958,16 @@ namespace
 				"TraceShadowCasters(",
 				traceShadowCasters + std::string("TraceShadowCasters(").size()) == std::string::npos,
 			"CSM preparation must not build full scene proxies or repeat the broad caster query per cascade");
+		Require(prepareCsmBody.find("bHasCachedShadowCasters") != std::string::npos &&
+			prepareCsmBody.find("bCanReuseAllCascades && bHasCachedShadowCasters") != std::string::npos,
+			"CSM must not reuse an empty bootstrap snapshot before asynchronous mesh proxies become available");
+		Require(lightingEcsSource.find("bHasCachedLocalShadowCasters") != std::string::npos &&
+			lightingEcsSource.find("if (bHasCachedLocalShadowCasters &&") != std::string::npos,
+			"local shadows must not reuse an empty bootstrap snapshot before asynchronous mesh proxies become available");
+		Require(prepareCsmBody.find("LightingECS:Build CSM Cascade") != std::string::npos &&
+			prepareCsmBody.find("EThreadType::Worker") != std::string::npos &&
+			prepareCsmBody.find("cascadeCasterTasks[k]->Wait()") != std::string::npos,
+			"CSM caster filtering must run per cascade on worker tasks and join before command assembly");
 	}
 
 	void TestLocalLightShadowContract()
@@ -979,22 +989,54 @@ namespace
 			sourceRoot / "Runtime/Components/LightComponent.h");
 		const std::string lightingSource = ReadText(
 			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const std::string shadowPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
 		const std::string lightingShader = ReadText(
 			sourceRoot / "Content/Shaders/Lighting.glsl");
+		const std::string lightCullingShader = ReadText(
+			sourceRoot / "Content/Shaders/ComputeLightCulling.shader");
 		Require(lightComponentHeader.find("property(\"shadowQuality\")") != std::string::npos &&
 			lightComponentHeader.find("property(\"shadowFilter\")") != std::string::npos,
 			"light shadow quality and hard/soft filtering must be editor-visible reflected properties");
+		Require(lightComponentHeader.find("property(\"radius\")") != std::string::npos &&
+			lightComponentHeader.find("Range(0.01, 100000.0)") != std::string::npos,
+			"local lights must expose an explicit positive radius in the editor");
 		Require(lightingSource.find("glm::radians(90.0f)") != std::string::npos &&
 			lightingSource.find("light.m_type == ELightType::Spot") != std::string::npos &&
 			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
 			"point and spot shadow passes must use their respective projections and PCF-only rendering");
-		Require(lightingSource.find("m_shadowMapsMb + allocationMb > ShadowsMemoryBudgetMb") != std::string::npos &&
-			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos,
-			"local shadow allocation must respect both memory and descriptor limits");
+		Require(lightingSource.find("TryAllocateLocalShadowTiles(mapCount, desiredResolution, tiles)") != std::string::npos &&
+			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos &&
+			lightingSource.find("candidate = static_cast<uint32_t>(m_csmShadowMaps.Num())") != std::string::npos &&
+			lightingSource.find("m_localShadowAtlas") != std::string::npos,
+			"local shadow allocation must use the bounded shared atlas without overlapping directional slots");
+		Require(lightingSource.find("App::GetMainWindow()->GetRenderArea().y") != std::string::npos &&
+			lightingSource.find("camera,\n\t\t\t1080u,") == std::string::npos,
+			"dynamic local-shadow resolution must use the active viewport instead of a fixed reference height");
+		Require(lightingSource.find(
+			"GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedPointLights, sortedSpotLights)") != std::string::npos,
+			"point and spot lights must remain in their matching sorted collections");
+		Require(lightingSource.find("frustum.OverlapsSphere(Math::Sphere(worldPosition, sphereRadius))") != std::string::npos &&
+			lightingSource.find("frustum.ContainsSphere(Math::Sphere(worldPosition, sphereRadius))") == std::string::npos,
+			"local shadow lights must remain visible when their influence sphere intersects the camera frustum");
+		Require(lightingSource.find("sceneView->m_shadowIndices.Add(std::move(shadowIndices))") != std::string::npos &&
+			lightingSource.find("sceneView->m_shadowAtlasTiles.Add(std::move(shadowAtlasTiles))") != std::string::npos &&
+			sceneViewSource.find("res.m_shadowIndices = std::move(m_shadowIndices[i])") != std::string::npos &&
+			sceneViewSource.find("res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i])") != std::string::npos &&
+			shadowPrepassSource.find("transferCommandList,\n\t\t\t\tshadowIndices") != std::string::npos,
+			"local shadow indices and atlas transforms must cross the scene snapshot and upload through the frame transfer command list");
+		Require(lightingSource.find("GetWorld()->GetCommandList(),\n\t\t\tm_shadowIndices") == std::string::npos,
+			"scene preparation must not record shadow-index uploads into the world command list");
 		Require(lightingShader.find("SelectPointShadowFace") != std::string::npos &&
 			lightingShader.find("CalculateLocalPcfShadow") != std::string::npos &&
+			lightingShader.find("atlasRect.xy + projCoords.xy * atlasRect.zw") != std::string::npos &&
 			lightingShader.find("SOFT_SHADOW_MAP_BIT") != std::string::npos,
-			"lighting shaders must select point faces and support hard/soft PCF sampling");
+			"lighting shaders must select point faces and support atlas-aware hard/soft PCF sampling");
+		Require(lightCullingShader.find("const float viewDepth = texture(sceneDepth, uv).x;") != std::string::npos &&
+			lightCullingShader.find("ScreenSpaceToViewSpace(uv, deviceDepth") == std::string::npos,
+			"tiled local-light culling must consume the renderer's linear view-depth target directly");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
@@ -1039,21 +1081,27 @@ namespace
 			"a changed cascade projection must invalidate the cached shadow map even for camera motion below the old threshold");
 	}
 
-	void TestCustomDepthShadowCastersInvalidateCsmEveryFrame()
+	void TestShadowCachePolicy()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
-		const std::string sceneViewHeader = ReadText(sourceRoot / "Runtime/RHI/SceneView.h");
 		const std::string meshRendererSource = ReadText(sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
 		const std::string lightingSource = ReadText(sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const size_t localShadowBegin = lightingSource.find("LightingECS::PrepareLocalShadowPasses");
+		const size_t fillLightingBegin = lightingSource.find("void LightingECS::FillLightingData", localShadowBegin);
+		Require(localShadowBegin != std::string::npos && fillLightingBegin > localShadowBegin,
+			"lighting ECS must expose a bounded local-shadow preparation path");
+		const std::string localShadowBody = lightingSource.substr(
+			localShadowBegin, fillLightingBegin - localShadowBegin);
 
-		Require(sceneViewHeader.find("bool m_bHasCustomDepthShadowCasters = false") != std::string::npos &&
-			meshRendererSource.find("IsRequiredCustomDepthShader()") != std::string::npos &&
-			meshRendererSource.find("m_bHasCustomDepthShadowCasters = bHasCustomDepthShadowCasters") != std::string::npos,
-			"scene snapshots must identify custom-depth shadow casters");
+		Require(meshRendererSource.find("++m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos &&
+			lightingSource.find("sceneView->m_shadowCastersRevision") != std::string::npos,
+			"shadow caches must invalidate when the shadow-caster scene revision changes");
 		Require(lightingSource.find("bForceCustomDepthShadowUpdate") != std::string::npos &&
-			lightingSource.find("bool bCanReuseAllCascades = !bForceCustomDepthShadowUpdate") != std::string::npos &&
-			lightingSource.find("if (!bForceCustomDepthShadowUpdate &&") != std::string::npos,
-			"custom-depth shadow casters must bypass both CSM snapshot reuse paths every frame");
+			lightingSource.find("bool bCanReuseAllCascades = !bForceCustomDepthShadowUpdate") != std::string::npos,
+			"directional CSM must retain the conservative custom-depth update policy");
+		Require(localShadowBody.find("m_bHasCustomDepthShadowCasters") == std::string::npos &&
+			localShadowBody.find("cachedState.CanReuse(") != std::string::npos,
+			"static local-light shadow maps must reuse revision-validated snapshots even with custom-depth vegetation");
 	}
 
 	void TestAnimationGpuBoneLayoutContract()
@@ -3870,7 +3918,7 @@ int main()
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
-		{ "CustomDepthShadowCastersInvalidateCsmEveryFrame", TestCustomDepthShadowCastersInvalidateCsmEveryFrame },
+		{ "ShadowCachePolicy", TestShadowCachePolicy },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "ExpiredWorldPrefabInvalidatesLoadedCacheContract", TestExpiredWorldPrefabInvalidatesLoadedCacheContract },

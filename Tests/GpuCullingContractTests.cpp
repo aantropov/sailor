@@ -367,6 +367,9 @@ namespace
 			cullingShader.find("column1") != std::string::npos &&
 			cullingShader.find("column2") != std::string::npos,
 			"sphere scaling must account for every transformed basis vector");
+		Require(cullingShader.find(
+			"SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.x, frame.cameraZNearZFar.y)") != std::string::npos,
+			"mesh culling must pass near and far planes in the shared frustum helper's canonical order");
 		Require(cullingShader.find("textureQueryLevels(depthHighZ)") != std::string::npos &&
 			cullingShader.find("ceil(log2") != std::string::npos,
 			"occlusion LOD selection must cover the projected bounds and clamp to the pyramid");

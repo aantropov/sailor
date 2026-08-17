@@ -682,6 +682,24 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 	m_gpuCost += 5;
 }
 
+void VulkanCommandBuffer::ClearAttachments(VkRect2D renderArea, const glm::vec4& clearColor, float clearDepth)
+{
+	VkClearAttachment attachments[2]{};
+	attachments[0].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	attachments[0].colorAttachment = 0;
+	attachments[0].clearValue.color = { { clearColor.x, clearColor.y, clearColor.z, clearColor.w } };
+	attachments[1].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	attachments[1].clearValue.depthStencil = { clearDepth, 0u };
+
+	VkClearRect rect{};
+	rect.rect = renderArea;
+	rect.baseArrayLayer = 0u;
+	rect.layerCount = 1u;
+	vkCmdClearAttachments(m_commandBuffer, 2u, attachments, 1u, &rect);
+	m_numRecordedCommands++;
+	m_gpuCost += 2;
+}
+
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)
 {
 	vkCmdPushConstants(m_commandBuffer, *pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_VERTEX_BIT, (uint32_t)offset, (uint32_t)size, ptr);

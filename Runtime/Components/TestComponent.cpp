@@ -102,7 +102,7 @@ void TestComponent::BeginPlay()
 	//spotLight->GetTransformComponent().SetPosition(vec3(200.0f, 40.0f, 0.0f));
 	//spotLight->GetTransformComponent().SetRotation(quat(vec3(-45, 0.0f, 0.0f)));
 
-	//lightComponent->SetBounds(vec3(300.0f, 300.0f, 300.0f));
+	//lightComponent->SetRadius(300.0f);
 	//lightComponent->SetIntensity(vec3(260.0f, 260.0f, 200.0f));
 	//lightComponent->SetLightType(ELightType::Spot);
 
@@ -119,7 +119,7 @@ void TestComponent::BeginPlay()
 
 				//lightGameObject->SetMobilityType(EMobilityType::Static);
 				lightGameObject->GetTransformComponent().SetPosition(vec3(i, j, k));
-				lightComponent->SetBounds(vec3(size, size, size));
+				lightComponent->SetRadius(size);
 				lightComponent->SetIntensity(vec3(rand() % 256, rand() % 256, rand() % 256));
 
 				m_lights.Emplace(std::move(lightGameObject));

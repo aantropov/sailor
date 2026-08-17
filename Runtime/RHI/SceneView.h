@@ -124,6 +124,7 @@ namespace Sailor::RHI
 		uint32_t m_lighMatrixIndex{};
 		EShadowType m_shadowType = EShadowType::None;
 		glm::vec2 m_blurRadius{}; // [Umbra, Penumbra]
+		glm::ivec4 m_renderArea{}; // [x, y, width, height], zero means the full target
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		glm::mat4 m_lightMatrix{};
 		TVector<uint32_t> m_internalCommandsList{};
@@ -145,6 +146,8 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
+		TVector<uint32_t> m_shadowIndices{};
+		TVector<uint32_t> m_shadowAtlasTiles{};
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
@@ -170,6 +173,8 @@ namespace Sailor::RHI
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;
+		TVector<TVector<uint32_t>> m_shadowIndices;
+		TVector<TVector<uint32_t>> m_shadowAtlasTiles;
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

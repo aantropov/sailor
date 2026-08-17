@@ -1,0 +1,27 @@
+name: SpotShadow
+prefabs:
+  - gameObjects:
+      - name: SpotShadow
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: A3000000000000000001
+        components: [0, 1]
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: SpotShadow
+          screenshotName: SpotShadow
+          captureAfterFrames: 180
+          minRunTimeSeconds: 2
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: A3000000000000000000000000000002_A3000000000000000001
+      - typename: Sailor::ShadowVisualTestSetupComponent
+        overrideProperties:
+          directional: false
+          point: false
+          spot: true
+          fileId: NullFileId
+          instanceId: A3000000000000000000000000000003_A3000000000000000001

@@ -150,7 +150,7 @@ glslCompute: |
 
     float radius = sphereBounds.w * ConservativeSphereScale(data.instance[instanceIndex].model);
 
-    bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.y, frame.cameraZNearZFar.x);
+    bool bIsCulled = !SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.x, frame.cameraZNearZFar.y);
   
     return bIsCulled;
   }

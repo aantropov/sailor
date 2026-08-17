@@ -25,7 +25,7 @@ namespace Sailor
 
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
-		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
+		float m_radius = 100.0f;
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
 		RHI::EShadowType m_shadowType = RHI::EShadowType::PCF;
@@ -59,10 +59,11 @@ namespace Sailor
 	{
 		uint32_t m_componentIndex = (std::numeric_limits<uint32_t>::max)();
 		ELightType m_lightType = ELightType::Point;
-		ELightShadowQuality m_quality = ELightShadowQuality::Medium;
+		uint32_t m_resolution = 0;
+		uint32_t m_requestedResolution = 0;
 		uint64_t m_lastUsedFrame = 0;
-		float m_memoryMb = 0.0f;
 		TVector<uint32_t> m_slots{};
+		TVector<glm::ivec4> m_tiles{};
 		TVector<CSMLightState> m_snapshots{};
 	};
 
@@ -80,6 +81,8 @@ namespace Sailor
 			return numComponentSlots < LightsMaxNum ? numComponentSlots : LightsMaxNum;
 		}
 		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
+		static constexpr uint32_t LocalShadowAtlasResolution = 4096;
+		static constexpr uint32_t LocalShadowMinResolution = 128;
 		static constexpr uint32_t GetLocalShadowMapCount(ELightType lightType)
 		{
 			return lightType == ELightType::Point ? 6u :
@@ -146,12 +149,22 @@ namespace Sailor
 			const RHI::RHISceneViewPtr& sceneView,
 			const TVector<RHI::RHILightProxy>& spotLights,
 			const TVector<RHI::RHILightProxy>& pointLights,
-			TVector<uint32_t>& shadowIndices);
+			const CameraData& cameraData,
+			uint32_t viewportHeight,
+			TVector<uint32_t>& shadowIndices,
+			TVector<uint32_t>& shadowAtlasTiles);
 		SAILOR_API bool EnsureLocalShadowAllocation(
 			uint32_t componentIndex,
 			ELightType lightType,
-			ELightShadowQuality quality,
+			uint32_t desiredResolution,
 			uint64_t frame);
+		SAILOR_API uint32_t CalculateLocalShadowResolution(
+			const LightData& light,
+			float distanceToCamera,
+			const CameraData& cameraData,
+			uint32_t viewportHeight) const;
+		SAILOR_API bool TryAllocateLocalShadowTiles(uint32_t count, uint32_t desiredResolution, TVector<glm::ivec4>& outTiles);
+		SAILOR_API void ReleaseLocalShadowTiles(const TVector<glm::ivec4>& tiles);
 		SAILOR_API void ReleaseLocalShadowAllocation(uint32_t componentIndex);
 		SAILOR_API void ReleaseUnusedLocalShadowAllocations(uint64_t frame);
 
@@ -170,14 +183,17 @@ namespace Sailor
 		RHI::RHIShaderBindingPtr m_shadowMaps;
 		RHI::RHIShaderBindingPtr m_lightMatrices;
 		RHI::RHIShaderBindingPtr m_shadowIndices;
+		RHI::RHIShaderBindingPtr m_shadowAtlasTiles;
 
 		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
 		TVector<CSMLightState> m_csmSnapshots;
 		TVector<RHI::RHIRenderTargetPtr> m_shadowMapSlots;
 		TVector<uint32_t> m_shadowMapOwners;
 		TVector<LocalLightShadowAllocation> m_localShadowAllocations;
+		TVector<uint8_t> m_localShadowAtlasOccupancy;
 
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
+		RHI::RHIRenderTargetPtr m_localShadowAtlas;
 
 		float m_shadowMapsMb = 0;
 	};

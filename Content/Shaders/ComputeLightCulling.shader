@@ -116,10 +116,11 @@ glslCompute: |
     {
         vec2 uv = vec2(gl_GlobalInvocationID.xy + vec2(0.5, 0.5)) / PushConstants.viewportSize;
         uv.y = 1 - uv.y;
-        float linearDepth = texture(sceneDepth, uv).x;
+        const float viewDepth = texture(sceneDepth, uv).x;
 
-        // Convert depth to uint so we can do atomic min and max comparisons between the threads
-        uint depthInt = floatBitsToUint(linearDepth);
+        // LinearDepth stores positive view-space distance. Positive IEEE floats
+        // preserve ordering when reduced through their uint representation.
+        uint depthInt = floatBitsToUint(viewDepth);
         atomicMax(maxDepthInt, depthInt);
         atomicMin(minDepthInt, depthInt);
     }
@@ -172,13 +173,8 @@ glslCompute: |
           // Reverse Z
           lightPosViewSpace.z *= -1;
 
-          float zFar = uintBitsToFloat(maxDepthInt);
-          float zNear = uintBitsToFloat(minDepthInt);
-
-          // Add extra bounds
-          const float diff = zFar - zNear;
-          zFar -= diff;
-          zNear += diff;
+          const float zFar = uintBitsToFloat(maxDepthInt);
+          const float zNear = uintBitsToFloat(minDepthInt);
 
           // If greater than zero, then it is a visible light
           if (SphereFrustumOverlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar))

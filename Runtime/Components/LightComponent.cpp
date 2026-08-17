@@ -45,8 +45,7 @@ void LightComponent::OnGizmo()
 	const glm::vec4 worldPosition = GetOwner()->GetTransformComponent().GetWorldPosition();
 	const glm::vec3 forward = GetOwner()->GetTransformComponent().GetForwardVector();
 
-	const glm::vec3 bounds = glm::abs(GetData().m_bounds);
-	const float originSize = glm::clamp(std::max(bounds.x, std::max(bounds.y, bounds.z)), 25.0f, 250.0f);
+	const float originSize = glm::clamp(glm::abs(GetData().m_radius), 25.0f, 250.0f);
 
 	GetOwner()->GetWorld()->GetDebugContext()->DrawOrigin(worldPosition, GetOwner()->GetTransformComponent().GetCachedWorldMatrix(), originSize);
 	GetOwner()->GetWorld()->GetDebugContext()->DrawArrow(worldPosition, glm::vec3(worldPosition) + forward * originSize, vec4(1, 1, 1, 1));
@@ -85,13 +84,14 @@ void LightComponent::SetAttenuation(const glm::vec3& value)
 	}
 }
 
-void LightComponent::SetBounds(const glm::vec3& value)
+void LightComponent::SetRadius(float value)
 {
 	LightData& lightData = GetData();
+	value = (std::max)(value, 0.01f);
 
-	if (value != lightData.m_bounds)
+	if (value != lightData.m_radius)
 	{
-		lightData.m_bounds = value;
+		lightData.m_radius = value;
 		lightData.MarkDirty();
 	}
 }

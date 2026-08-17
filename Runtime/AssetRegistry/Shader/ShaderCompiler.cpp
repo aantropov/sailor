@@ -1719,6 +1719,21 @@ bool ShaderCompilerTestAccess::ReadShaderSourceBinary(
 	return ShaderCompiler::ReadShaderSourceBinary(filepath, outSource, outDiagnostic);
 }
 
+bool ShaderCompilerTestAccess::CompileGlslToSpirv(
+	const std::string& filename,
+	const std::string& source,
+	RHI::EShaderStage shaderStage,
+	RHI::ShaderByteCode& outByteCode,
+	bool bIsDebug)
+{
+	return ShaderCompiler::CompileGlslToSpirv(
+		filename,
+		source,
+		shaderStage,
+		outByteCode,
+		bIsDebug);
+}
+
 bool ShaderCompilerTestAccess::ExerciseFailedLoadEvictionAndRetry()
 {
 	constexpr uint32_t permutation = 7;
