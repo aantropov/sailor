@@ -10,6 +10,7 @@ defines:
  - CLEAR_COAT
  - SHEEN
  - TRANSMISSION
+ - SUPPORT_LIGHTS_OVERFLOW
 
 glslCommon: |
   #version 460
@@ -154,9 +155,14 @@ glslVertex: |
   {
       uint instance[];
   } shadowIndices;
-  
+
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
+
+     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
+     {
+         uint instance[];
+     } shadowAtlasTiles;
 
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -366,12 +372,17 @@ glslFragment: |
   {
       uint instance[];
   } shadowIndices;
-  
+
   layout(set=1, binding=8) uniform sampler2D g_aoSampler;
-  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOWS_IN_VIEW];
+  layout(set=1, binding=9) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
   #ifdef TRANSMISSION
   layout(set=1, binding=10) uniform sampler2D g_transmissionFramebufferSampler;
   #endif
+
+     layout(std430, set = 1, binding = 11) readonly buffer ShadowAtlasTilesSSBO
+     {
+         uint instance[];
+     } shadowAtlasTiles;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
@@ -465,6 +476,49 @@ glslFragment: |
 
     return shadow;
   }
+
+  float CalculateLocalLightShadow(
+    LightData light,
+    uint lightIndex,
+    vec3 worldPosition,
+    vec3 surfaceNormal,
+    vec3 surfaceToLightDirection)
+  {
+    const uint packedShadowIndex = shadowIndices.instance[lightIndex];
+    if(light.shadowType == SHADOW_TYPE_NONE ||
+       packedShadowIndex == INVALID_SHADOW_MAP_INDEX)
+    {
+      return 1.0f;
+    }
+
+    uint shadowMapIndex = packedShadowIndex & SHADOW_MAP_INDEX_MASK;
+    if(light.type == 1u)
+    {
+      shadowMapIndex += SelectPointShadowFace(worldPosition - light.worldPosition);
+    }
+    if(shadowMapIndex >= MAX_SHADOWS_IN_VIEW)
+    {
+      return 1.0f;
+    }
+
+    const uint packedAtlasTile = shadowAtlasTiles.instance[shadowMapIndex];
+    const uint shadowSamplerIndex = NUM_CSM_CASCADES + DecodeShadowAtlasIndex(packedAtlasTile);
+    if(shadowSamplerIndex >= MAX_SHADOW_MAP_SAMPLERS)
+    {
+      return 1.0f;
+    }
+
+    const vec4 atlasRect = DecodeShadowAtlasRect(packedAtlasTile);
+    return CalculateLocalPcfShadow(
+      shadowMaps[nonuniformEXT(shadowSamplerIndex)],
+      lightsMatrices.instance[shadowMapIndex],
+      atlasRect,
+      worldPosition,
+      surfaceNormal,
+      surfaceToLightDirection,
+      length(light.worldPosition - worldPosition),
+      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u);
+  }
   
   const float Epsilon = 0.00001;
 
@@ -534,7 +588,7 @@ glslFragment: |
   }
   #endif
 
-  vec3 CalculateLighting(LightData light, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
+  vec3 CalculateLighting(LightData light, uint lightIndex, MaterialData material, vec3 F0, vec3 Lo,float cosLo, vec3 normal, vec3 worldPos)
   {
     float falloff = 1.0f;
     float shadow = 1.0f;
@@ -560,8 +614,8 @@ glslFragment: |
     {
       // Attenuation
       const float distance    = length(pointToLight);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * (1 - pow(clamp(distance / light.bounds.x, 0,1), 2));
+      falloff = CalculateLocalLightRangeAttenuation(light, distance);
+      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
     // Spot light
     else if(light.type == 2)
@@ -571,13 +625,15 @@ glslFragment: |
       float epsilon   = light.cutOff.x - light.cutOff.y;
       float theta = dot(lightDir, normalize(-light.direction));
       const float distance    = length(pointToLight);
-      const float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-      falloff         = attenuation * clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
+      falloff = CalculateLocalLightRangeAttenuation(light, distance) *
+        clamp((theta - light.cutOff.y) / max(epsilon, Epsilon), 0.0, 1.0);
       
       if(theta < light.cutOff.y)
       {
         falloff = 0.0f;
       }
+
+      shadow = CalculateLocalLightShadow(light, lightIndex, worldPos, normal, Li);
     }
     
     vec3 Lradiance = light.intensity;
@@ -693,29 +749,19 @@ glslFragment: |
             float transmissionFalloff = falloff;
             if(light.type == 1)
             {
-              float attenuation = 1.0 /
-                (light.attenuation.x +
-                  light.attenuation.y * exitPointToLightLength +
-                  light.attenuation.z *
-                    exitPointToLightLength * exitPointToLightLength);
-              transmissionFalloff = attenuation *
-                (1.0 - pow(clamp(
-                  exitPointToLightLength / light.bounds.x,
-                  0.0,
-                  1.0), 2.0));
+              transmissionFalloff = CalculateLocalLightRangeAttenuation(
+                light,
+                exitPointToLightLength);
             }
             else if(light.type == 2)
             {
-              float attenuation = 1.0 /
-                (light.attenuation.x +
-                  light.attenuation.y * exitPointToLightLength +
-                  light.attenuation.z *
-                    exitPointToLightLength * exitPointToLightLength);
               float coneRange = light.cutOff.x - light.cutOff.y;
               float coneCos = dot(
                 transmissionLi,
                 normalize(-light.direction));
-              transmissionFalloff = attenuation * clamp(
+              transmissionFalloff = CalculateLocalLightRangeAttenuation(
+                light,
+                exitPointToLightLength) * clamp(
                 (coneCos - light.cutOff.y) / max(coneRange, Epsilon),
                 0.0,
                 1.0);
@@ -790,8 +836,7 @@ glslFragment: |
     else if(light.type == 1 || light.type == 2)
     {
         const float distance = length(light.worldPosition - worldPos);
-        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-        falloff = attenuation;
+        falloff = CalculateLocalLightRangeAttenuation(light, distance);
     }
 
     vec3 pointToLight = light.type == 0 ?
@@ -844,8 +889,7 @@ glslFragment: |
     else if(light.type == 1 || light.type == 2)
     {
         const float distance = length(light.worldPosition - worldPos);
-        float attenuation = 1.0 / (light.attenuation.x + light.attenuation.y * distance + light.attenuation.z * (distance * distance));
-        falloff = attenuation;
+        falloff = CalculateLocalLightRangeAttenuation(light, distance);
     }
 
     vec3 pointToLight = light.type == 0 ?
@@ -1014,9 +1058,15 @@ glslFragment: |
     const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
     const uint listLength = uint(culledLights.indices.length());
     const uint availableLights = offset < listLength ? listLength - offset : 0;
-    const uint numLights = hasLightTile ? min(
-        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
-        availableLights) : 0;
+    const uint packedNumLights = hasLightTile ? lightsGrid.instance[tileIndex].num : 0u;
+    const bool lightsOverflow = (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
+    const uint numLights = !hasLightTile ? 0u :
+    #ifdef SUPPORT_LIGHTS_OVERFLOW
+        (lightsOverflow ? min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(light.instance.length())) :
+            min(packedNumLights & LIGHT_TILE_COUNT_MASK, availableLights));
+    #else
+        min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
+    #endif
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
   #ifdef CLEAR_COAT
@@ -1028,15 +1078,19 @@ glslFragment: |
     
     for(int i = 0; i < numLights; i++)
     {
+    #ifdef SUPPORT_LIGHTS_OVERFLOW
+        uint index = lightsOverflow ? uint(i) : culledLights.indices[offset + i];
+    #else
         uint index = culledLights.indices[offset + i];
+    #endif
         if(index == uint(-1) ||
             index >= uint(light.instance.length()) ||
             light.instance[index].type == INVALID_LIGHT_TYPE)
         {
             continue;
         }
-    
-        outColor.xyz += CalculateLighting(light.instance[index], material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+
+        outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
   #ifdef CLEAR_COAT
         outColor.xyz += material.clearcoatFactor * ClearCoatLighting(light.instance[index], material.clearcoatRoughnessFactor, Fdielectric, -viewDirection, cosLoCC, clearcoatNormal, vin.worldPosition);
   #endif

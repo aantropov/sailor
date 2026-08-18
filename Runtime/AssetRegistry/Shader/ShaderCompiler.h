@@ -308,6 +308,12 @@ namespace Sailor
 			const std::string& filepath,
 			std::string& outSource,
 			std::string& outDiagnostic);
+		SAILOR_API static bool CompileGlslToSpirv(
+			const std::string& filename,
+			const std::string& source,
+			RHI::EShaderStage shaderStage,
+			RHI::ShaderByteCode& outByteCode,
+			bool bIsDebug);
 		SAILOR_API static bool ExerciseFailedLoadEvictionAndRetry();
 		SAILOR_API static bool ExercisePromiseGarbageCollection();
 	};

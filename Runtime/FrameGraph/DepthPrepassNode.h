@@ -50,10 +50,15 @@ namespace Sailor
 
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
 		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedDepthOnlyMaterials;
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedDepthOnlyMaterials;
+		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedDepthOnlyMaterials;
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
 
-		RHI::RHIMaterialPtr GetOrAddDepthMaterial(RHI::RHIVertexDescriptionPtr vertex, bool bSkinned);
+		RHI::RHIMaterialPtr GetOrAddDepthMaterial(
+			RHI::RHIVertexDescriptionPtr vertex,
+			bool bSkinned,
+			bool bMasked);
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
 		// Culling

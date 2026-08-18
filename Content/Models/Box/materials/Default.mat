@@ -4,7 +4,8 @@ bSupportMultisampling: true
 bCustomDepthShader: false
 depthBias: 0
 renderQueue: Opaque
-defines: ~
+defines:
+- SUPPORT_LIGHTS_OVERFLOW
 cullMode: Back
 blendMode: None
 fillMode: Fill

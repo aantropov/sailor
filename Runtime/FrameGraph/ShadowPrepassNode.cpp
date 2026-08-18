@@ -173,13 +173,113 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 	}
 
 	RHIShaderBindingPtr blurDataBinding = m_pBlurShaderBindings->GetOrAddShaderBinding("data");
+	auto shaderBindingSet = sceneView.m_rhiLightsData;
+	if (shaderBindingSet &&
+		shaderBindingSet->HasBinding("shadowIndices") &&
+		!sceneView.m_shadowIndices.IsEmpty())
+	{
+		auto shadowIndices = shaderBindingSet->GetOrAddShaderBinding("shadowIndices");
+		if (shadowIndices && shadowIndices->IsBind())
+		{
+			commands->UpdateShaderBinding(
+				transferCommandList,
+				shadowIndices,
+				sceneView.m_shadowIndices.GetData(),
+				sceneView.m_shadowIndices.Num() * sizeof(uint32_t),
+				0);
+		}
+	}
+	if (shaderBindingSet &&
+		shaderBindingSet->HasBinding("shadowAtlasTiles") &&
+		!sceneView.m_shadowAtlasTiles.IsEmpty())
+	{
+		auto shadowAtlasTiles = shaderBindingSet->GetOrAddShaderBinding("shadowAtlasTiles");
+		if (shadowAtlasTiles && shadowAtlasTiles->IsBind())
+		{
+			commands->UpdateShaderBinding(
+				transferCommandList,
+				shadowAtlasTiles,
+				sceneView.m_shadowAtlasTiles.GetData(),
+				sceneView.m_shadowAtlasTiles.Num() * sizeof(uint32_t),
+				0);
+		}
+	}
 
+	if (!sceneView.m_shadowMapsToBlit.IsEmpty())
+	{
+		commands->BeginDebugRegion(
+			commandList,
+			"Downsample Local Shadow Tiles",
+			DebugContext::Color_CmdTransfer);
+		for (const auto& blit : sceneView.m_shadowMapsToBlit)
+		{
+			if (!blit.m_source || !blit.m_destination ||
+				blit.m_sourceArea.z <= 0 || blit.m_sourceArea.w <= 0 ||
+				blit.m_destinationArea.z <= 0 || blit.m_destinationArea.w <= 0)
+			{
+				continue;
+			}
+
+			if (blit.m_source == blit.m_destination)
+			{
+				auto scratch = driver->GetOrAddTemporaryRenderTarget(
+					blit.m_source->GetFormat(),
+					glm::ivec2(blit.m_destinationArea.z, blit.m_destinationArea.w),
+					1);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_source, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					blit.m_source,
+					scratch,
+					blit.m_sourceArea,
+					glm::ivec4(0, 0, scratch->GetExtent().x, scratch->GetExtent().y),
+					ETextureFiltration::Nearest);
+
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_destination, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					scratch,
+					blit.m_destination,
+					glm::ivec4(0, 0, scratch->GetExtent().x, scratch->GetExtent().y),
+					blit.m_destinationArea,
+					ETextureFiltration::Nearest);
+				commands->ImageMemoryBarrier(
+					commandList, scratch, EImageLayout::ShaderReadOnlyOptimal);
+				driver->ReleaseTemporaryRenderTarget(scratch);
+			}
+			else
+			{
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_source, EImageLayout::TransferSrcOptimal);
+				commands->ImageMemoryBarrier(
+					commandList, blit.m_destination, EImageLayout::TransferDstOptimal);
+				commands->BlitImage(
+					commandList,
+					blit.m_source,
+					blit.m_destination,
+					blit.m_sourceArea,
+					blit.m_destinationArea,
+					ETextureFiltration::Nearest);
+			}
+
+			commands->ImageMemoryBarrier(
+				commandList, blit.m_source, EImageLayout::ShaderReadOnlyOptimal);
+			commands->ImageMemoryBarrier(
+				commandList, blit.m_destination, EImageLayout::ShaderReadOnlyOptimal);
+		}
+		commands->EndDebugRegion(commandList);
+	}
 	if (sceneView.m_shadowMapsToUpdate.Num() == 0)
 	{
 		return;
 	}
 
-	auto shaderBindingSet = sceneView.m_rhiLightsData;
 	if (!shaderBindingSet || !shaderBindingSet->HasBinding("lightsMatrices"))
 	{
 		return;
@@ -420,8 +520,16 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 			SAILOR_PROFILE_SCOPE("Record Shadow Map Pass");
 
 			const auto& shadowPass = sceneView.m_shadowMapsToUpdate[index];
+			const glm::ivec2 shadowExtent = shadowPass.m_shadowMap->GetExtent();
+			const bool bUsesAtlasTile = shadowPass.m_renderArea.z > 0 && shadowPass.m_renderArea.w > 0;
+			const glm::ivec4 renderArea = bUsesAtlasTile ?
+				shadowPass.m_renderArea :
+				glm::ivec4(0, 0, shadowExtent.x, shadowExtent.y);
 
-			RHI::RHIRenderTargetPtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(driver->GetDepthBuffer()->GetFormat(), shadowPass.m_shadowMap->GetExtent(), 1);
+			RHI::RHIRenderTargetPtr depthAttachment = driver->GetOrAddTemporaryRenderTarget(
+				driver->GetDepthBuffer()->GetFormat(),
+				shadowExtent,
+				1);
 
 			commands->BeginDebugRegion(commandList, debugMarker, DebugContext::Color_CmdGraphics);
 			{
@@ -440,13 +548,17 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				commands->BeginRenderPass(commandList,
 					TVector<RHI::RHITexturePtr>{ shadowPass.m_shadowMap },
 					depthAttachment,
-					glm::vec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+					glm::vec4(renderArea),
 					glm::ivec2(0, 0),
-					true,
+					!bUsesAtlasTile,
 					shadowClearValue,
 					0.0f,
 					false,
 					true);
+				if (bUsesAtlasTile)
+				{
+					commands->ClearAttachments(commandList, renderArea, shadowClearValue, 0.0f);
+				}
 
 				RHI::RHIMaterialPtr pushConstantsMaterial;
 				if (passes[index].Num() > 0)
@@ -473,8 +585,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 				if (pushConstantsMaterial && passes[index].Num() > 0)
 				{
 					m_drawCallStats += RHIRecordDrawCall(0, (uint32_t)passes[index].Num(), passes[index], commandList, transferCommandList, shaderBindingsByMaterial, drawCalls[index], passIndices[index], m_indirectBuffers[index],
-						glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
-						glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+						glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
+						glm::uvec4(renderArea),
 						glm::vec2(0.0f, 1.0f));
 				}
 
@@ -486,8 +598,8 @@ void ShadowPrepassNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandList
 					{
 						m_drawCallStats += RHIDrawCall(0, numBatches, passes[dependencyPass], commandList, shaderBindingsByMaterial,
 							drawCalls[dependencyPass], m_indirectBuffers[dependencyPass],
-							glm::ivec4(0, shadowPass.m_shadowMap->GetExtent().y, shadowPass.m_shadowMap->GetExtent().x, -shadowPass.m_shadowMap->GetExtent().y),
-							glm::uvec4(0, 0, shadowPass.m_shadowMap->GetExtent().x, shadowPass.m_shadowMap->GetExtent().y),
+							glm::ivec4(renderArea.x, renderArea.y + renderArea.w, renderArea.z, -renderArea.w),
+							glm::uvec4(renderArea),
 							glm::vec2(0.0f, 1.0f));
 					}
 				}

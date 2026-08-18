@@ -520,8 +520,13 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			proxy.m_bCastShadows = data.ShouldCastShadow();
 			proxy.m_overrideMaterials.Reserve(proxy.m_meshes.Num());
 			proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
+			proxy.m_baseColorFactors.Reserve(proxy.m_meshes.Num());
+			proxy.m_baseColorSamplers.Reserve(proxy.m_meshes.Num());
+			proxy.m_alphaCutoffs.Reserve(proxy.m_meshes.Num());
 #if defined(__APPLE__)
 			proxy.m_materialTextureSamplers.Reserve(proxy.m_meshes.Num());
+			auto textureImporter = App::GetSubmodule<TextureImporter>();
+#else
 			auto textureImporter = App::GetSubmodule<TextureImporter>();
 #endif
 			for (size_t meshIndex = 0; meshIndex < proxy.m_meshes.Num(); ++meshIndex)
@@ -532,6 +537,39 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				auto material = data.GetMaterials()[materialIndex];
 				proxy.m_renderQueueTags.Add(material->GetRenderState().GetTag());
 				proxy.m_overrideMaterials.Add(material->GetOrAddRHI(proxy.m_meshes[meshIndex]->m_vertexDescription));
+
+				glm::vec4 baseColorFactor{ 1.0f };
+				const glm::vec4* materialBaseColorFactor = nullptr;
+				if (!material->GetUniformsVec4().Find("material.baseColorFactor", materialBaseColorFactor))
+				{
+					material->GetUniformsVec4().Find("material.albedo", materialBaseColorFactor);
+				}
+				if (materialBaseColorFactor)
+				{
+					baseColorFactor = *materialBaseColorFactor;
+				}
+				proxy.m_baseColorFactors.Add(baseColorFactor);
+
+				float alphaCutoff = 0.5f;
+				const float* materialAlphaCutoff = nullptr;
+				if (material->GetUniformsFloat().Find("material.alphaCutoff", materialAlphaCutoff) && materialAlphaCutoff)
+				{
+					alphaCutoff = *materialAlphaCutoff;
+				}
+				proxy.m_alphaCutoffs.Add(alphaCutoff);
+
+				uint32_t baseColorSampler = 0u;
+				const TexturePtr* baseColorTexture = nullptr;
+				if (!material->GetSamplers().Find("baseColorSampler", baseColorTexture))
+				{
+					material->GetSamplers().Find("albedoSampler", baseColorTexture);
+				}
+				if (textureImporter && baseColorTexture && *baseColorTexture)
+				{
+					baseColorSampler = static_cast<uint32_t>(
+						textureImporter->GetTextureIndex((*baseColorTexture)->GetFileId()));
+				}
+				proxy.m_baseColorSamplers.Add(baseColorSampler);
 #if defined(__APPLE__)
 				TSet<uint32_t> requestedTextures;
 				requestedTextures.Insert(0u);

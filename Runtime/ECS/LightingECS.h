@@ -11,6 +11,8 @@
 #include "RHI/SceneView.h"
 #include "Raytracing/LightingModel.h"
 
+#include <limits>
+
 namespace Sailor
 {
 	using WorldPtr = class World*;
@@ -23,10 +25,12 @@ namespace Sailor
 
 		glm::vec3 m_intensity{ 100.0f, 100.0f, 100.0f };
 		glm::vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
-		glm::vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
+		float m_radius = 100.0f;
 		glm::vec2 m_cutOff{ 30.0f, 45.0f };
 		ELightType m_type = ELightType::Point;
 		RHI::EShadowType m_shadowType = RHI::EShadowType::PCF;
+		ELightShadowQuality m_shadowQuality = ELightShadowQuality::Medium;
+		ELightShadowFilter m_shadowFilter = ELightShadowFilter::Soft;
 
 	protected:
 
@@ -51,18 +55,59 @@ namespace Sailor
 			uint64_t sceneRevision) const;
 	};
 
+	struct LocalLightShadowAllocation
+	{
+		uint32_t m_componentIndex = (std::numeric_limits<uint32_t>::max)();
+		ELightType m_lightType = ELightType::Point;
+		uint32_t m_resolution = 0;
+		uint32_t m_requestedResolution = 0;
+		uint32_t m_atlasIndex = (std::numeric_limits<uint32_t>::max)();
+		uint64_t m_lastUsedFrame = 0;
+		TVector<uint32_t> m_slots{};
+		TVector<glm::ivec4> m_tiles{};
+		TVector<CSMLightState> m_snapshots{};
+	};
+
+	struct LocalShadowAtlas
+	{
+		RHI::RHIRenderTargetPtr m_texture{};
+		TVector<uint8_t> m_occupancy{};
+	};
+
 	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
 	{
 	public:
 
 		// Global constants
-		static constexpr uint32_t MaxShadowsInView = 128;
+		static constexpr uint32_t MaxShadowMapSamplers = 128;
+		static constexpr uint32_t MaxShadowsInView = 2048;
 		static constexpr uint32_t LightsMaxNum = 65535;
+		static constexpr uint32_t InvalidShadowMapIndex = (std::numeric_limits<uint32_t>::max)();
+		static constexpr uint32_t SoftShadowMapBit = 0x80000000u;
 		static constexpr size_t GetGpuLightSlotsCount(size_t numComponentSlots)
 		{
 			return numComponentSlots < LightsMaxNum ? numComponentSlots : LightsMaxNum;
 		}
-		static constexpr float ShadowsMemoryBudgetMb = 350.0f;
+		static constexpr float DefaultShadowsMemoryBudgetMb = 768.0f;
+		static constexpr uint32_t LocalShadowAtlasResolution = 4096;
+		static constexpr uint32_t LocalShadowMinResolution = 64;
+		static constexpr uint32_t LocalShadowAtlasCellsPerAxis =
+			LocalShadowAtlasResolution / LocalShadowMinResolution;
+		static constexpr float LocalShadowAtlasMemoryMb =
+			static_cast<float>(LocalShadowAtlasResolution * LocalShadowAtlasResolution * 2u) /
+			(1024.0f * 1024.0f);
+		static constexpr uint64_t LocalShadowCacheRetentionFrames = 300u;
+		static constexpr uint32_t GetLocalShadowMapCount(ELightType lightType)
+		{
+			return lightType == ELightType::Point ? 6u :
+				lightType == ELightType::Spot ? 1u : 0u;
+		}
+		static constexpr uint32_t GetLocalShadowResolution(ELightShadowQuality quality)
+		{
+			return quality == ELightShadowQuality::VeryLow ? 256u :
+				quality == ELightShadowQuality::Low ? 512u :
+				quality == ELightShadowQuality::High ? 2048u : 1024u;
+		}
 
 		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
 		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
@@ -104,6 +149,16 @@ namespace Sailor
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
+		float GetCsmShadowsOccupiedMemoryMb() const { return m_csmShadowMapsMb; }
+		float GetLocalShadowsOccupiedMemoryMb() const
+		{
+			return (std::max)(0.0f, m_shadowMapsMb - m_csmShadowMapsMb);
+		}
+		float GetShadowsMemoryBudgetMb() const { return m_shadowsMemoryBudgetMb; }
+		void SetShadowsMemoryBudgetMb(float budgetMb)
+		{
+			m_shadowsMemoryBudgetMb = (std::max)(budgetMb, 0.0f);
+		}
 
 	protected:
 
@@ -113,6 +168,45 @@ namespace Sailor
 			const CameraData& cameraData,
 			const TVector<RHI::RHILightProxy>& directionalLights,
 			uint32_t& snapshotIndex);
+
+		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareLocalShadowPasses(
+			const RHI::RHISceneViewPtr& sceneView,
+			const TVector<RHI::RHILightProxy>& spotLights,
+			const TVector<RHI::RHILightProxy>& pointLights,
+			const CameraData& cameraData,
+			uint32_t viewportHeight,
+			TVector<uint32_t>& shadowIndices,
+			TVector<uint32_t>& shadowAtlasTiles,
+			TVector<RHI::RHIBlitShadowMapCommand>& shadowMapsToBlit);
+		SAILOR_API bool EnsureLocalShadowAllocation(
+			uint32_t componentIndex,
+			ELightType lightType,
+			uint32_t desiredResolution,
+			uint64_t frame,
+			TVector<RHI::RHIBlitShadowMapCommand>& shadowMapsToBlit);
+		SAILOR_API uint32_t CalculateLocalShadowResolution(
+			const LightData& light,
+			float distanceToCamera,
+			const CameraData& cameraData,
+			uint32_t viewportHeight) const;
+		SAILOR_API bool TryAllocateLocalShadowTiles(
+			uint32_t count,
+			uint32_t desiredResolution,
+			uint32_t& outAtlasIndex,
+			TVector<glm::ivec4>& outTiles);
+		SAILOR_API bool TryAllocateLocalShadowTilesInAtlas(
+			uint32_t atlasIndex,
+			uint32_t count,
+			uint32_t resolution,
+			TVector<glm::ivec4>& outTiles);
+		SAILOR_API bool TryCreateLocalShadowAtlas(uint32_t& outAtlasIndex);
+		SAILOR_API void ReleaseLocalShadowTiles(uint32_t atlasIndex, const TVector<glm::ivec4>& tiles);
+		SAILOR_API void ReleaseUnusedLocalShadowAtlases();
+		SAILOR_API void ReleaseLocalShadowAllocation(uint32_t componentIndex);
+		SAILOR_API bool EvictLeastRecentlyUsedLocalShadowAllocation(
+			uint32_t protectedComponentIndex,
+			uint64_t frame);
+		SAILOR_API void ReleaseUnusedLocalShadowAllocations(uint64_t frame);
 
 		SAILOR_API void GetLightsInFrustum(const Math::Frustum& frustum,
 			const Math::Transform& cameraTransform,
@@ -129,13 +223,18 @@ namespace Sailor
 		RHI::RHIShaderBindingPtr m_shadowMaps;
 		RHI::RHIShaderBindingPtr m_lightMatrices;
 		RHI::RHIShaderBindingPtr m_shadowIndices;
+		RHI::RHIShaderBindingPtr m_shadowAtlasTiles;
 
 		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
 		TVector<CSMLightState> m_csmSnapshots;
+		TVector<uint32_t> m_shadowMapOwners;
+		TVector<LocalLightShadowAllocation> m_localShadowAllocations;
+		TVector<LocalShadowAtlas> m_localShadowAtlases;
 
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
-
 		float m_shadowMapsMb = 0;
+		float m_csmShadowMapsMb = 0;
+		float m_shadowsMemoryBudgetMb = DefaultShadowsMemoryBudgetMb;
 	};
 
 	template class ECS::TSystem<LightingECS, LightData>;

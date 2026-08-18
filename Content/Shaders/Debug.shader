@@ -127,9 +127,9 @@ glslFragment: |
     const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
     const uint listLength = uint(culledLights.indices.length());
     const uint availableLights = offset < listLength ? listLength - offset : 0;
-    const uint numLights = hasLightTile ? min(
-        min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE)),
-        availableLights) : 0;
+    const uint numLights = !hasLightTile ? 0u : min(
+        min(lightsGrid.instance[tileIndex].num & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)),
+        availableLights);
     
     for(int i = 0; i < numLights; i++)
     {

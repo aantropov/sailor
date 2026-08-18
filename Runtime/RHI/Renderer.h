@@ -62,6 +62,7 @@ namespace Sailor::RHI
 		SAILOR_API static void MemoryStats();
 
 	protected:
+		void UpdateMemoryStats();
 
 		RHI::EMsaaSamples m_msaaSamples;
 

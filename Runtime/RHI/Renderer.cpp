@@ -133,31 +133,53 @@ Renderer::~Renderer()
 void Renderer::MemoryStats()
 {
 #if defined(SAILOR_BUILD_WITH_VULKAN)
-	auto driverInstance = App::GetSubmodule<Renderer>()->GetDriver().DynamicCast<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>();
-
-	const auto& internalMemoryAllocators = VulkanApi::GetInstance()->GetMainDevice()->GetMemoryAllocators();
-
-	float texturesOccupiedSpace = 0.0f;
-	for (const auto& allocator : internalMemoryAllocators)
+	auto renderer = App::GetSubmodule<Renderer>();
+	if (!renderer)
 	{
-		texturesOccupiedSpace += allocator.m_second->GetOccupiedSpace() / (1024.0f * 1024.0f);
+		return;
 	}
-
-	const auto& uniformBuffersMemoryAllocators = driverInstance->GetUniformBufferAllocators();
-
-	float uniformBuffersOccupiedSpace = 0.0f;
-	for (const auto& allocator : uniformBuffersMemoryAllocators)
-	{
-		uniformBuffersOccupiedSpace += allocator.m_second->GetOccupiedSpace() / (1024.0f * 1024.0f);
-	}
+	renderer->UpdateMemoryStats();
+	const auto& stats = renderer->GetStats();
+	constexpr float BytesToMb = 1.0f / (1024.0f * 1024.0f);
 
 	SAILOR_LOG("Memory consumption (GPU):");
-	SAILOR_LOG("Materials: % 2.fmb", driverInstance->GetMaterialSsboAllocator()->GetOccupiedSpace() / (1024.0f * 1024.0f));
-	SAILOR_LOG("General: % 2.fmb", driverInstance->GetGeneralSsboAllocator()->GetOccupiedSpace() / (1024.0f * 1024.0f));
-	SAILOR_LOG("Meshes: % 2.fmb", driverInstance->GetMeshSsboAllocator()->GetOccupiedSpace() / (1024.0f * 1024.0f));
-	SAILOR_LOG("Textures: % 2.fmb", texturesOccupiedSpace);
-	SAILOR_LOG("UniformBuffers: % 2.fmb", uniformBuffersOccupiedSpace);
+	SAILOR_LOG("Materials: %.2fmb", stats.m_materialsMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
+	SAILOR_LOG("General: %.2fmb", stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
+	SAILOR_LOG("Meshes: %.2fmb", stats.m_meshesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
+	SAILOR_LOG("Textures: %.2fmb", stats.m_texturesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
 
+#endif
+}
+
+void Renderer::UpdateMemoryStats()
+{
+#if defined(SAILOR_BUILD_WITH_VULKAN)
+	auto driverInstance = GetDriver().DynamicCast<Sailor::GraphicsDriver::Vulkan::VulkanGraphicsDriver>();
+	if (!driverInstance)
+	{
+		return;
+	}
+
+	size_t texturesOccupiedSpace = 0u;
+	const auto& internalMemoryAllocators = VulkanApi::GetInstance()->GetMainDevice()->GetMemoryAllocators();
+	for (const auto& allocator : internalMemoryAllocators)
+	{
+		texturesOccupiedSpace += allocator.m_second->GetOccupiedSpace();
+	}
+
+	const auto& materialAllocator = driverInstance->GetMaterialSsboAllocatorIfInitialized();
+	const auto& generalAllocator = driverInstance->GetGeneralSsboAllocatorIfInitialized();
+	const auto& meshAllocator = driverInstance->GetMeshSsboAllocatorIfInitialized();
+	m_stats.m_materialsMemoryUsage.store(
+		materialAllocator ? materialAllocator->GetOccupiedSpace() : 0u,
+		std::memory_order_relaxed);
+	m_stats.m_generalMemoryUsage.store(
+		generalAllocator ? generalAllocator->GetOccupiedSpace() : 0u,
+		std::memory_order_relaxed);
+	m_stats.m_meshesMemoryUsage.store(
+		meshAllocator ? meshAllocator->GetOccupiedSpace() : 0u,
+		std::memory_order_relaxed);
+	m_stats.m_texturesMemoryUsage.store(texturesOccupiedSpace, std::memory_order_relaxed);
 #endif
 }
 
@@ -504,6 +526,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 							m_stats.m_gpuHeapUsage = heapUsage;
 							m_stats.m_gpuHeapBudget = heapBudget;
 							m_stats.m_numSubmittedCommandBuffers = m_driverInstance->GetNumSubmittedCommandBuffers();
+							UpdateMemoryStats();
 #endif // SAILOR_BUILD_WITH_VULKAN
 						}
 					}

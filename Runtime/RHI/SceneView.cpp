@@ -263,6 +263,9 @@ void RHISceneView::Clear()
 	m_cameras.Clear();
 	m_cameraTransforms.Clear();
 	m_shadowMapsToUpdate.Clear();
+	m_shadowMapsToBlit.Clear();
+	m_shadowIndices.Clear();
+	m_shadowAtlasTiles.Clear();
 
 	m_drawImGui.Clear();
 	m_debugDraw.Clear();
@@ -453,6 +456,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_boneMatrices = m_boneMatrices;
 		res.m_drawImGui = m_drawImGui;
 		res.m_shadowMapsToUpdate = std::move(m_shadowMapsToUpdate[i]);
+		res.m_shadowMapsToBlit = std::move(m_shadowMapsToBlit[i]);
+		res.m_shadowIndices = std::move(m_shadowIndices[i]);
+		res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i]);
 		res.m_proxies = TraceScene(frustum, false);
 		auto* meshEcs = m_world ? m_world->GetECS<StaticMeshRendererECS>() : nullptr;
 		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);

@@ -25,17 +25,21 @@ namespace Sailor
 
 		SAILOR_API __forceinline const glm::vec3& GetIntensity() const { return GetData().m_intensity; }
 		SAILOR_API __forceinline const glm::vec3& GetAttenuation() const { return GetData().m_attenuation; }
-		SAILOR_API __forceinline const glm::vec3& GetBounds() const { return GetData().m_bounds; }
+		SAILOR_API __forceinline float GetRadius() const { return GetData().m_radius; }
 		SAILOR_API __forceinline const glm::vec2& GetCutOff() const { return GetData().m_cutOff; }
 		SAILOR_API __forceinline ELightType GetLightType() const { return (ELightType)GetData().m_type; }
 		SAILOR_API __forceinline RHI::EShadowType GetShadowType() const { return GetData().m_shadowType; }
+		SAILOR_API __forceinline ELightShadowQuality GetShadowQuality() const { return GetData().m_shadowQuality; }
+		SAILOR_API __forceinline ELightShadowFilter GetShadowFilter() const { return GetData().m_shadowFilter; }
 
 		SAILOR_API void SetCutOff(const glm::vec2& innerOuterDegrees);
 		SAILOR_API void SetIntensity(const glm::vec3& value);
 		SAILOR_API void SetAttenuation(const glm::vec3& value);
-		SAILOR_API void SetBounds(const glm::vec3& value);
+		SAILOR_API void SetRadius(float value);
 		SAILOR_API void SetLightType(ELightType value);
 		SAILOR_API void SetShadowType(RHI::EShadowType value);
+		SAILOR_API void SetShadowQuality(ELightShadowQuality value);
+		SAILOR_API void SetShadowFilter(ELightShadowFilter value);
 
 	protected:
 
@@ -56,8 +60,8 @@ REFL_AUTO(
 	func(GetAttenuation, property("attenuation"), SkipCDO()),
 	func(SetAttenuation, property("attenuation"), SkipCDO()),
 
-	func(GetBounds, property("bounds"), SkipCDO()),
-	func(SetBounds, property("bounds"), SkipCDO()),
+	func(GetRadius, property("radius"), SkipCDO()),
+	func(SetRadius, property("radius"), SkipCDO()),
 
 	func(GetCutOff, property("cutOff"), SkipCDO()),
 	func(SetCutOff, property("cutOff"), SkipCDO()),
@@ -66,5 +70,11 @@ REFL_AUTO(
 	func(SetLightType, property("lightType"), SkipCDO()),
 
 	func(GetShadowType, property("shadowType"), SkipCDO()),
-	func(SetShadowType, property("shadowType"), SkipCDO())
+	func(SetShadowType, property("shadowType"), SkipCDO()),
+
+	func(GetShadowQuality, property("shadowQuality"), SkipCDO()),
+	func(SetShadowQuality, property("shadowQuality"), SkipCDO()),
+
+	func(GetShadowFilter, property("shadowFilter"), SkipCDO()),
+	func(SetShadowFilter, property("shadowFilter"), SkipCDO())
 )

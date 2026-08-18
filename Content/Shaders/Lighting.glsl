@@ -8,6 +8,9 @@ const float SHADOW_RECEIVER_NORMAL_OFFSET = 0.02f;
 const uint SHADOW_TYPE_NONE = 0u;
 const uint SHADOW_TYPE_PCF = 1u;
 const uint SHADOW_TYPE_EVSM = 2u;
+const uint INVALID_SHADOW_MAP_INDEX = 0xFFFFFFFFu;
+const uint SOFT_SHADOW_MAP_BIT = 0x80000000u;
+const uint SHADOW_MAP_INDEX_MASK = 0x7FFFFFFFu;
 
 uint GetDirectionalCascadeShadowType(uint lightShadowType, int cascadeLayer)
 {
@@ -31,6 +34,8 @@ struct LightData
 };
 
 const uint INVALID_LIGHT_TYPE = 0xFFFFFFFFu;
+const uint LIGHT_TILE_OVERFLOW_BIT = 0x80000000u;
+const uint LIGHT_TILE_COUNT_MASK = 0x7FFFFFFFu;
 
 layout(std430)
 struct LightsGrid
@@ -45,14 +50,29 @@ uint GetLightTileIndex(vec2 fragmentPosition, ivec2 viewportSize)
   const ivec2 numTiles =
     (safeViewportSize + ivec2(LIGHTS_CULLING_TILE_SIZE - 1)) /
     LIGHTS_CULLING_TILE_SIZE;
-  const vec2 screenPosition = vec2(
-    fragmentPosition.x,
-    float(safeViewportSize.y) - fragmentPosition.y);
   const ivec2 tileId = clamp(
-    ivec2(screenPosition) / LIGHTS_CULLING_TILE_SIZE,
+    ivec2(fragmentPosition) / LIGHTS_CULLING_TILE_SIZE,
     ivec2(0),
     numTiles - ivec2(1));
   return uint(tileId.y * numTiles.x + tileId.x);
+}
+
+float CalculateLocalLightRangeAttenuation(LightData light, float distanceToLight)
+{
+  const float safeRadius = max(light.bounds.x, 0.00001f);
+  const float normalizedDistance = clamp(distanceToLight / safeRadius, 0.0f, 1.0f);
+  const float squaredDistance = distanceToLight * distanceToLight;
+  const float attenuation = 1.0f / max(
+    light.attenuation.x +
+      light.attenuation.y * distanceToLight +
+      light.attenuation.z * squaredDistance,
+    0.00001f);
+
+  // Radius is the actual light range in world metres. Preserve the configured
+  // attenuation throughout that range and only soften the final edge so tile
+  // rejection reaches zero without visibly shrinking the light volume.
+  const float rangeWindow = 1.0f - smoothstep(0.9f, 1.0f, normalizedDistance);
+  return attenuation * rangeWindow;
 }
 
 // Importance sample GGX normal distribution function for a fixed roughness value.
@@ -256,6 +276,99 @@ float ManualPCF(sampler2D shadowMap, vec3 projCoords, float currentDepth)
    shadow /= float(samples);
    
    return shadow;
+}
+
+uint SelectPointShadowFace(vec3 lightToReceiver)
+{
+  const vec3 axis = abs(lightToReceiver);
+  if(axis.x >= axis.y && axis.x >= axis.z)
+  {
+    return lightToReceiver.x >= 0.0f ? 0u : 1u;
+  }
+  if(axis.y >= axis.z)
+  {
+    return lightToReceiver.y >= 0.0f ? 2u : 3u;
+  }
+  return lightToReceiver.z >= 0.0f ? 4u : 5u;
+}
+
+vec4 DecodeShadowAtlasRect(uint packedTile)
+{
+  const uint tileX = packedTile & 63u;
+  const uint tileY = (packedTile >> 6u) & 63u;
+  const uint tileCells = 1u << ((packedTile >> 12u) & 7u);
+  return vec4(tileX, tileY, tileCells, tileCells) / 64.0f;
+}
+
+uint DecodeShadowAtlasIndex(uint packedTile)
+{
+  return packedTile >> 15u;
+}
+
+float CalculateLocalPcfShadow(
+  sampler2D shadowMap,
+  mat4 lightMatrix,
+  vec4 atlasRect,
+  vec3 worldPosition,
+  vec3 surfaceNormal,
+  vec3 surfaceToLightDirection,
+  float surfaceToLightDistance,
+  bool softShadow)
+{
+  const vec3 normal = normalize(surfaceNormal);
+  const vec3 toLight = normalize(surfaceToLightDirection);
+  const float slope = 1.0f - clamp(dot(normal, toLight), 0.0f, 1.0f);
+  const float tileResolution = max(
+    float(textureSize(shadowMap, 0).x) * atlasRect.z,
+    1.0f);
+  const float receiverTexelWorldSize = max(
+    2.0f * surfaceToLightDistance / tileResolution,
+    0.001f);
+  const vec3 receiverPosition = worldPosition +
+    normal * receiverTexelWorldSize * (1.0f + slope) +
+    toLight * receiverTexelWorldSize * 0.25f;
+
+  const vec4 fragPosLightSpace = lightMatrix * vec4(receiverPosition, 1.0f);
+  vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+  projCoords.xy = projCoords.xy * 0.5f + 0.5f;
+  projCoords.y = 1.0f - projCoords.y;
+  if(any(lessThan(projCoords, vec3(0.0f))) ||
+     any(greaterThan(projCoords, vec3(1.0f))))
+  {
+    return 1.0f;
+  }
+
+  if(softShadow)
+  {
+    const vec2 atlasTexelSize = 1.0f / textureSize(shadowMap, 0);
+    const vec2 tileMin = atlasRect.xy + atlasTexelSize * 0.5f;
+    const vec2 tileMax = atlasRect.xy + atlasRect.zw - atlasTexelSize * 0.5f;
+    const vec2 atlasUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
+    const vec2 poissonDisk[16] = vec2[](
+      vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
+      vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
+      vec2(-0.91588581, 0.45771432), vec2(-0.81544232, -0.87912464),
+      vec2(-0.38277543, 0.27676845), vec2(0.97484398, 0.75648379),
+      vec2(0.44323325, -0.97511554), vec2(0.53742981, -0.47373420),
+      vec2(-0.26496911, -0.41893023), vec2(0.79197514, 0.19090188),
+      vec2(-0.24188840, 0.99706507), vec2(-0.81409955, 0.91437590),
+      vec2(0.19984126, 0.78641367), vec2(0.14383161, -0.14100790));
+    float lit = 0.0f;
+    for(int sampleIndex = 0; sampleIndex < 16; ++sampleIndex)
+    {
+      const vec2 sampleUv = clamp(
+        atlasUv + poissonDisk[sampleIndex] * 2.0f * atlasTexelSize,
+        tileMin,
+        tileMax);
+      const float shadowDepth = texture(shadowMap, sampleUv).r;
+      lit += projCoords.z > shadowDepth ? 1.0f : 0.0f;
+    }
+    return lit / 16.0f;
+  }
+
+  const vec2 atlasUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
+  const float shadowDepth = texture(shadowMap, atlasUv).r;
+  return projCoords.z > shadowDepth ? 1.0f : 0.0f;
 }
 
 

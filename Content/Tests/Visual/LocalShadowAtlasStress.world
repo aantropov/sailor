@@ -1,0 +1,24 @@
+name: LocalShadowAtlasStress
+prefabs:
+  - gameObjects:
+      - name: LocalShadowAtlasStress
+        position: [0, 0, 0, 1]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1, 1]
+        parentIndex: 4294967295
+        instanceId: A5000000000000000001
+        components: [0, 1]
+    components:
+      - typename: Sailor::VisualTestCaseComponent
+        overrideProperties:
+          testName: LocalShadowAtlasStress
+          screenshotName: LocalShadowAtlasStress
+          captureAfterFrames: 1
+          minRunTimeSeconds: 30
+          quitAfterFinish: true
+          fileId: NullFileId
+          instanceId: A5000000000000000000000000000002_A5000000000000000001
+      - typename: Sailor::LocalShadowAtlasStressTestSetupComponent
+        overrideProperties:
+          fileId: NullFileId
+          instanceId: A5000000000000000000000000000003_A5000000000000000001

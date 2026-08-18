@@ -541,7 +541,12 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 	m_rhiDependecies.Insert(dst);
 	m_rhiDependecies.Insert(src);
 
-	if (src->m_format == dst->m_format && std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0)
+	const bool bRegionsHaveSameExtent =
+		srcRegion.extent.width == dstRegion.extent.width &&
+		srcRegion.extent.height == dstRegion.extent.height;
+	if (src->m_format == dst->m_format &&
+		std::memcmp(&src->GetImage()->m_extent, &dst->GetImage()->m_extent, sizeof(VkExtent3D)) == 0 &&
+		bRegionsHaveSameExtent)
 	{
 		// Resolve Multisampling 
 		if (src->GetImage()->m_samples != VK_SAMPLE_COUNT_1_BIT && (dst->GetImage()->m_samples & VK_SAMPLE_COUNT_1_BIT))
@@ -563,7 +568,10 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			resolve.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			resolve.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			resolve.extent = src->GetImage()->m_extent;
+			resolve.extent = {
+				srcRegion.extent.width,
+				srcRegion.extent.height,
+				1u };
 
 			vkCmdResolveImage(
 				m_commandBuffer,
@@ -597,7 +605,10 @@ bool VulkanCommandBuffer::BlitImage(VulkanImageViewPtr src, VulkanImageViewPtr d
 			copy.srcSubresource.baseArrayLayer = src->m_subresourceRange.baseArrayLayer;
 			copy.srcSubresource.aspectMask = VulkanApi::ComputeAspectFlagsForFormat(src->m_format);
 
-			copy.extent = src->GetImage()->m_extent;
+			copy.extent = {
+				srcRegion.extent.width,
+				srcRegion.extent.height,
+				1u };
 
 			vkCmdCopyImage(
 				m_commandBuffer,
@@ -680,6 +691,24 @@ void VulkanCommandBuffer::ClearImage(VulkanImageViewPtr dst, const glm::vec4& cl
 	vkCmdClearColorImage(m_commandBuffer, *dst->GetImage(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clearColorValue, 1, &range);
 	m_numRecordedCommands++;
 	m_gpuCost += 5;
+}
+
+void VulkanCommandBuffer::ClearAttachments(VkRect2D renderArea, const glm::vec4& clearColor, float clearDepth)
+{
+	VkClearAttachment attachments[2]{};
+	attachments[0].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	attachments[0].colorAttachment = 0;
+	attachments[0].clearValue.color = { { clearColor.x, clearColor.y, clearColor.z, clearColor.w } };
+	attachments[1].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+	attachments[1].clearValue.depthStencil = { clearDepth, 0u };
+
+	VkClearRect rect{};
+	rect.rect = renderArea;
+	rect.baseArrayLayer = 0u;
+	rect.layerCount = 1u;
+	vkCmdClearAttachments(m_commandBuffer, 2u, attachments, 1u, &rect);
+	m_numRecordedCommands++;
+	m_gpuCost += 2;
 }
 
 void VulkanCommandBuffer::PushConstants(VulkanPipelineLayoutPtr pipelineLayout, size_t offset, size_t size, const void* ptr)

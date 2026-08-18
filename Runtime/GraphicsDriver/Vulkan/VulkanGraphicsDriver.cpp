@@ -2405,6 +2405,14 @@ void VulkanGraphicsDriver::ClearImage(RHI::RHICommandListPtr cmd, RHI::RHITextur
 	cmd->m_vulkan.m_commandBuffer->ClearImage(dst->m_vulkan.m_imageView, clearColor);
 }
 
+void VulkanGraphicsDriver::ClearAttachments(RHI::RHICommandListPtr cmd, glm::ivec4 renderArea, const glm::vec4& clearColor, float clearDepth)
+{
+	VkRect2D rect{};
+	rect.offset = { renderArea.x, renderArea.y };
+	rect.extent = { static_cast<uint32_t>(renderArea.z), static_cast<uint32_t>(renderArea.w) };
+	cmd->m_vulkan.m_commandBuffer->ClearAttachments(rect, clearColor, clearDepth);
+}
+
 void VulkanGraphicsDriver::ExecuteSecondaryCommandList(RHI::RHICommandListPtr cmd, RHI::RHICommandListPtr cmdSecondary)
 {
 	//TODO: Check secondary

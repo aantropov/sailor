@@ -32,7 +32,7 @@ glslCompute: |
       LightsGrid instance[];
   } lightsGrid;
 
-  layout(set = 1, binding = 2) uniform sampler2D sceneDepth;
+  layout(set = 1, binding = 2) uniform sampler2D linearDepth;
 
   layout(set = 2, binding = 0) uniform FrameData
   {
@@ -46,58 +46,74 @@ glslCompute: |
       float deltaTime;
   } frame;
 
-  shared ViewFrustum frustum;
+  shared ViewFrustum tileFrustum;
   shared int lightCountForTile;
   shared uint minDepthInt;
   shared uint maxDepthInt;
-  shared uint candidateIndices[LIGHTS_CANDIDATES_PER_TILE];
-  shared float candidateImpact[LIGHTS_CANDIDATES_PER_TILE];
 
-  // Construct view frustum
-  ViewFrustum CreateFrustum(ivec2 tileId)
+  ViewFrustum CreateTileFrustum(ivec2 tileId)
   {
-      vec3 eyePos = vec3(0,0,0);
-      vec4 screenSpace[5];
+      const vec2 tileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
+      const vec2 tileMax = min(
+          vec2((tileId + ivec2(1)) * LIGHTS_CULLING_TILE_SIZE),
+          vec2(PushConstants.viewportSize));
+      const vec2 tileCenter = (tileMin + tileMax) * 0.5f;
+      const vec3 eyePosition = vec3(0.0f);
+      vec3 corners[4];
 
-      // Top left point
-      screenSpace[0] = vec4(tileId.xy * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Top right point
-      screenSpace[1] = vec4(vec2(tileId.x + 1, tileId.y) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Bottom left point
-      screenSpace[2] = vec4(vec2(tileId.x, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
-      // Bottom right point
-      screenSpace[3] = vec4(vec2(tileId.x + 1, tileId.y + 1) * LIGHTS_CULLING_TILE_SIZE, -1.0f, 1.0f );
+      corners[0] = ScreenSpaceToViewSpace(
+          vec4(tileMin, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[1] = ScreenSpaceToViewSpace(
+          vec4(tileMax.x, tileMin.y, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[2] = ScreenSpaceToViewSpace(
+          vec4(tileMin.x, tileMax.y, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[3] = ScreenSpaceToViewSpace(
+          vec4(tileMax, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
 
-        // Center point
-      screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
+      ViewFrustum result;
+      result.planes[0] = ComputePlane(eyePosition, corners[2], corners[0]);
+      result.planes[1] = ComputePlane(eyePosition, corners[1], corners[3]);
+      result.planes[2] = ComputePlane(eyePosition, corners[0], corners[1]);
+      result.planes[3] = ComputePlane(eyePosition, corners[3], corners[2]);
+      result.center = ScreenSpaceToViewSpace(
+          vec4(tileCenter, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xy;
 
-      vec3 viewSpace[5];
-      // Now convert the screen space points to view space
-      for ( int i = 0; i < 5; i++ )
+      return result;
+  }
+
+  bool SphereTileOverlaps(vec3 lightPosition, float radius,
+      ViewFrustum frustum, float zNear, float zFar)
+  {
+      if(lightPosition.z - radius > zFar || lightPosition.z + radius < zNear)
       {
-          viewSpace[i] = ScreenSpaceToViewSpace(screenSpace[i], frame.viewportSize, frame.invProjection).xyz;
+          return false;
       }
 
-    ViewFrustum frustum;
+      for(int i = 0; i < 4; ++i)
+      {
+          if(dot(frustum.planes[i].xyz, lightPosition) -
+              frustum.planes[i].w < -radius)
+          {
+              return false;
+          }
+      }
 
-    // Left plane
-    frustum.planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
-    // Right plane
-    frustum.planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
-    // Top plane
-    frustum.planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
-    // Bottom plane
-    frustum.planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
-
-      frustum.center = viewSpace[4].xy;
-
-      return frustum;
+      return true;
   }
 
   void main()
   {
       ivec2 location = ivec2(gl_GlobalInvocationID.xy);
-      ivec2 itemID = ivec2(gl_LocalInvocationID.xy);
       ivec2 tileId = ivec2(gl_WorkGroupID.xy);
       ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
       uint tileIndex = tileId.y * tileNumber.x + tileId.x;
@@ -111,24 +127,24 @@ glslCompute: |
 
       barrier();
 
-    const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
-    if (isInsideViewport)
-    {
-        vec2 uv = vec2(gl_GlobalInvocationID.xy + vec2(0.5, 0.5)) / PushConstants.viewportSize;
-        uv.y = 1 - uv.y;
-        float linearDepth = texture(sceneDepth, uv).x;
+      // Read the depth-prepass pixel that belongs to this framebuffer tile and
+      // reconstruct positive view-space distance without another viewport pass.
+      const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
+      if (isInsideViewport)
+      {
+          const float viewDepth = texelFetch(linearDepth, location, 0).x;
 
-        // Convert depth to uint so we can do atomic min and max comparisons between the threads
-        uint depthInt = floatBitsToUint(linearDepth);
-        atomicMax(maxDepthInt, depthInt);
-        atomicMin(minDepthInt, depthInt);
-    }
+          // Positive IEEE floats preserve ordering when reduced through uint atomics.
+          const uint depthInt = floatBitsToUint(viewDepth);
+          atomicMax(maxDepthInt, depthInt);
+          atomicMin(minDepthInt, depthInt);
+      }
 
       barrier();
 
-      if (gl_LocalInvocationIndex == 0)
+      if(gl_LocalInvocationIndex == 0)
       {
-          frustum = CreateFrustum(tileId);
+          tileFrustum = CreateTileFrustum(tileId);
       }
 
       barrier();
@@ -143,7 +159,7 @@ glslCompute: |
       {
           // Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
           uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
-          if (lightIndex >= PushConstants.lightsNum || lightCountForTile >= LIGHTS_CANDIDATES_PER_TILE)
+          if (lightIndex >= PushConstants.lightsNum)
           {
               break;
           }
@@ -157,38 +173,37 @@ glslCompute: |
           if(light.instance[lightIndex].type == 0)
           {
               uint offset = atomicAdd(lightCountForTile, 1);
-              if(offset < LIGHTS_CANDIDATES_PER_TILE)
+              if(offset < LIGHTS_PER_TILE)
               {
-                  candidateIndices[offset] = int(lightIndex);
-                  candidateImpact[offset] = 0.0f;
-                  continue;
+                  culledLights.indices[
+                      tileIndex * LIGHTS_PER_TILE + offset] =
+                      lightIndex;
               }
+              continue;
           }
 
-          float radius = light.instance[lightIndex].bounds.x;
+          const float radius = light.instance[lightIndex].bounds.x;
           vec4 lightPosViewSpace = frame.view * vec4(light.instance[lightIndex].worldPosition, 1);
           lightPosViewSpace /= lightPosViewSpace.w;
 
           // Reverse Z
           lightPosViewSpace.z *= -1;
 
-          float zFar = uintBitsToFloat(maxDepthInt);
-          float zNear = uintBitsToFloat(minDepthInt);
+          const float zNear = uintBitsToFloat(minDepthInt);
+          const float zFar = uintBitsToFloat(maxDepthInt);
 
-          // Add extra bounds
-          const float diff = zFar - zNear;
-          zFar -= diff;
-          zNear += diff;
-
-          // If greater than zero, then it is a visible light
-          if (SphereFrustumOverlaps(lightPosViewSpace.xyz, radius, frustum, zNear, zFar))
+          // Cull against the tile's view frustum and the exact depth interval
+          // occupied by this tile.
+          if (SphereTileOverlaps(
+              lightPosViewSpace.xyz, radius, tileFrustum, zNear, zFar))
           {
               // Add index to the shared array of visible indices
               uint offset = atomicAdd(lightCountForTile, 1);
-              if(offset < LIGHTS_CANDIDATES_PER_TILE)
+              if(offset < LIGHTS_PER_TILE)
               {
-                  candidateIndices[offset] = int(lightIndex);
-                  candidateImpact[offset] = length(lightPosViewSpace.xyz - vec3(frustum.center.xy, (zFar + zNear) * 0.5));
+                  culledLights.indices[
+                      tileIndex * LIGHTS_PER_TILE + offset] =
+                      lightIndex;
               }
           }
       }
@@ -196,49 +211,15 @@ glslCompute: |
 
       if(gl_LocalInvocationIndex == 0)
       {
-          uint numCandidates = min(lightCountForTile, LIGHTS_CANDIDATES_PER_TILE);
-
-          // Sort by distance
-          if(numCandidates > LIGHTS_PER_TILE)
-          {
-              uint numSorted = LIGHTS_PER_TILE;
-
-              for(uint i = 0; i < numCandidates-1; i++)
-              {
-                  for(uint j = 0; j < numCandidates - i - 1; j++)
-                  {
-                      if(candidateImpact[j] < candidateImpact[j+1])
-                      {
-                          float value = candidateImpact[j];
-                          candidateImpact[j] = candidateImpact[j+1];
-                          candidateImpact[j+1] = value;
-
-                          uint index = candidateIndices[j];
-                          candidateIndices[j] = candidateIndices[j+1];
-                          candidateIndices[j+1] = index;
-                      }
-                  }
-
-                  --numSorted;
-
-                  if(numSorted == 0)
-                  {
-                      break;
-                  }
-              }
-          }
-
           // Fill lightsGrid
-        const uint numLights = min(numCandidates, LIGHTS_PER_TILE);
-        const uint offset = tileIndex * LIGHTS_PER_TILE;
+          const uint uncappedNumLights = uint(lightCountForTile);
+          const uint numLights = min(uncappedNumLights, uint(LIGHTS_PER_TILE));
+          const uint offset = tileIndex * LIGHTS_PER_TILE;
 
-          lightsGrid.instance[tileIndex].num = numLights;
+          const bool lightsOverflow = uncappedNumLights > LIGHTS_PER_TILE;
+          lightsGrid.instance[tileIndex].num = lightsOverflow ?
+              (uint(PushConstants.lightsNum) | LIGHT_TILE_OVERFLOW_BIT) :
+              numLights;
           lightsGrid.instance[tileIndex].offset = offset;
-
-          // Copy calculated data
-          for(uint i = 0; i < numLights; i++)
-          {
-              culledLights.indices[offset + i] = candidateIndices[numCandidates - i - 1];
-          }
       }
   }

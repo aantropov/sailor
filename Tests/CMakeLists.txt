@@ -255,6 +255,9 @@ target_compile_features(WorkspaceContextTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(AssetCacheContractTests PRIVATE cxx_std_20)
 target_compile_features(ShaderCacheArtifactTests PRIVATE cxx_std_20)
+target_compile_definitions(ShaderCacheArtifactTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(AssetMountDiscoveryTests PRIVATE cxx_std_20)
 target_compile_definitions(WorkspaceModuleFixture PRIVATE
     SAILOR_WORKSPACE_MODULE

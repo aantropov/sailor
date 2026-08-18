@@ -3,9 +3,6 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 
-defines: 
-- REVERSE_Z_INF_FAR_PLANE
-
 colorAttachments :
 - R32_SFLOAT
 
@@ -39,36 +36,33 @@ glslCommon: |
  
 glslVertex: |
  layout(location=DefaultPositionBinding) in vec3 inPosition;
- layout(location=DefaultTexcoordBinding) in vec2 inTexcoord;
- 
- layout(location=0) out vec2 fragTexcoord;
  
  void main() 
  {
- 	gl_Position = vec4(inPosition, 1);
- 	fragTexcoord = inTexcoord;
- 
- 	// Flip Y
- 	fragTexcoord.y = 1.0f - fragTexcoord.y;
+     gl_Position = vec4(inPosition, 1);
  }
 
 glslFragment: |
- layout(location=0) in vec2 fragTexcoord;
- 
  layout(set=1, binding=0) uniform sampler2D depthSampler;
  layout(location=0) out vec4 outColor;
  
  void main() 
  {
- 	float depth = texture(depthSampler, fragTexcoord).x;
- 	vec4 vss = vec4(0, 0, depth, 1);
- 	vec4 invVss = frame.invProjection * vss;
- 	float zvs = invVss.z / invVss.w;
- 	
+    // Preserve framebuffer coordinates exactly. This avoids coupling depth
+    // reconstruction to viewport orientation or platform vertex-Y conversion.
+    ivec2 depthSize = textureSize(depthSampler, 0);
+    ivec2 pixel = clamp(ivec2(gl_FragCoord.xy), ivec2(0), depthSize - ivec2(1));
+    float depth = texelFetch(depthSampler, pixel, 0).x;
+     vec4 vss = vec4(0, 0, depth, 1);
+     vec4 invVss = frame.invProjection * vss;
+     float zvs = invVss.z / invVss.w;
+
  #ifdef REVERSE_Z_INF_FAR_PLANE
- 	float linearDepth = -frame.cameraZNearZFar.x / depth;
+    float linearDepth = -frame.cameraZNearZFar.x / depth;
  #else
- 	float linearDepth = -LinearizeDepth(depth, frame.cameraZNearZFar.yx);
+    // The default camera uses a finite reverse-Z projection. Passing far/near
+    // restores the positive view-space distance, including clear depth at far.
+    float linearDepth = -LinearizeDepth(depth, frame.cameraZNearZFar.yx);
  #endif
- 	outColor = vec4(-linearDepth);
+    outColor = vec4(-linearDepth);
  }

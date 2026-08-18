@@ -269,7 +269,7 @@ void PerformanceTestSetupComponent::SpawnLights()
 					auto light = lightGo->AddComponent<LightComponent>();
 					light->SetLightType(ELightType::Point);
 					light->SetIntensity(palette[(x + y * lightGrid + z * lightGrid * lightGrid) % (sizeof(palette) / sizeof(palette[0]))] * 45.0f);
-					light->SetBounds(glm::vec3(450.0f));
+					light->SetRadius(450.0f);
 					light->SetAttenuation(glm::vec3(1.0f, 0.030f, 0.0015f));
 					light->SetShadowType(RHI::EShadowType::None);
 				}

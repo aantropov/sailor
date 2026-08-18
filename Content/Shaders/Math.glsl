@@ -108,10 +108,10 @@ vec4 slerp(vec4 start, vec4 end, float t)
      return ((start*cos(theta)) + (RelativeVec*sin(theta)));
 }
 
-// Vulkan NDC, Reverse Z: minDepth = 1.0, maxDepth = 0.0
+// Vulkan NDC with reverse Z: the camera near plane maps to 1 and far to 0.
 const vec2 NdcUpperLeft = vec2(-1.0, -1.0);
-const float NdcNearPlane = 0.0;
-const float NdcFarPlane = 1.0;
+const float NdcNearPlane = 1.0;
+const float NdcFarPlane = 0.0;
 
 struct ViewFrustum
 {
@@ -188,13 +188,13 @@ ViewFrustum CreateViewFrustum(ivec2 viewportSize, mat4 invProjection)
   vec4 screenSpace[5];
 
   // Top left point
-  screenSpace[0] = vec4(0.0f, 0.0f, -1.0f, 1.0f );
+  screenSpace[0] = vec4(0.0f, 0.0f, NdcNearPlane, 1.0f );
   // Top right point
-  screenSpace[1] = vec4(viewportSize.x, 0.0f, -1.0f, 1.0f );
+  screenSpace[1] = vec4(viewportSize.x, 0.0f, NdcNearPlane, 1.0f );
   // Bottom left point
-  screenSpace[2] = vec4(0.0f, viewportSize.y, -1.0f, 1.0f );
+  screenSpace[2] = vec4(0.0f, viewportSize.y, NdcNearPlane, 1.0f );
   // Bottom right point
-  screenSpace[3] = vec4(viewportSize.xy, -1.0f, 1.0f );
+  screenSpace[3] = vec4(viewportSize.xy, NdcNearPlane, 1.0f );
   // Center point
   screenSpace[4] = (screenSpace[0] + screenSpace[3]) * 0.5f;
   
@@ -223,7 +223,7 @@ ViewFrustum CreateViewFrustum(ivec2 viewportSize, mat4 invProjection)
 
 bool SphereFrustumOverlaps(vec3 lightPos, float radius, ViewFrustum frustum, float zNear, float zFar)
 {
-  if (lightPos.z - radius > zNear || lightPos.z + radius < zFar) 
+  if (lightPos.z - radius > zFar || lightPos.z + radius < zNear)
   {
     return false;
   }

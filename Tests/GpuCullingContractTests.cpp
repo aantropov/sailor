@@ -367,6 +367,9 @@ namespace
 			cullingShader.find("column1") != std::string::npos &&
 			cullingShader.find("column2") != std::string::npos,
 			"sphere scaling must account for every transformed basis vector");
+		Require(cullingShader.find(
+			"SphereFrustumOverlaps(center.xyz, radius, frustum, frame.cameraZNearZFar.x, frame.cameraZNearZFar.y)") != std::string::npos,
+			"mesh culling must pass near and far planes in the shared frustum helper's canonical order");
 		Require(cullingShader.find("textureQueryLevels(depthHighZ)") != std::string::npos &&
 			cullingShader.find("ceil(log2") != std::string::npos,
 			"occlusion LOD selection must cover the projected bounds and clamp to the pyramid");
@@ -409,25 +412,72 @@ namespace
 			cullingShader.find("atomicAdd(culledLights") ==
 				std::string::npos,
 			"Forward+ light-list allocation must not race across workgroups");
+		Require(cullingShader.find("candidateImpact") == std::string::npos &&
+			cullingShader.find("BitonicSortCandidates") == std::string::npos &&
+			cullingShader.find("uncappedNumLights > LIGHTS_PER_TILE") !=
+				std::string::npos,
+			"Forward+ must mark tiles whose compact 128-light list overflows");
 		Require(cullingShader.find("const bool isInsideViewport") !=
 				std::string::npos &&
 			cullingShader.find("if (isInsideViewport)") !=
+				std::string::npos &&
+			cullingShader.find("texelFetch(linearDepth, location, 0).x") !=
 				std::string::npos,
-			"partial Forward+ tiles must not sample outside the viewport");
+			"Forward+ must reduce the matching texels from the pre-linearized depth target");
+		Require(cullingShader.find("bool SphereTileOverlaps(") !=
+				std::string::npos &&
+			cullingShader.find("ViewFrustum CreateTileFrustum(") !=
+				std::string::npos &&
+			cullingShader.find("ScreenSpaceToViewSpace(") !=
+				std::string::npos &&
+			cullingShader.find("frame.invProjection") !=
+				std::string::npos &&
+			cullingShader.find("dot(frustum.planes[i].xyz, lightPosition)") !=
+				std::string::npos,
+			"Forward+ sphere bounds must use the inverse-projected tile frustum");
+		Require(cullingShader.find("if(lightPosition.z <= radius)") ==
+				std::string::npos,
+			"Forward+ screen culling must not bypass tile bounds based on light radius");
+		Require(cullingShader.find("const float zNear = uintBitsToFloat(minDepthInt)") !=
+				std::string::npos &&
+			cullingShader.find("const float zFar = uintBitsToFloat(maxDepthInt)") !=
+				std::string::npos,
+			"Forward+ light culling must use the exact reduced near-far tile interval");
+
+		const std::string lightingShader = ReadText(
+			sourceRoot / "Content/Shaders/Lighting.glsl");
+		const std::string standardShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard.shader");
+		const std::string gltfShader = ReadText(
+			sourceRoot / "Content/Shaders/Standard_glTF.shader");
+		const std::string landscapeShader = ReadText(
+			sourceRoot / "Content/Shaders/Landscape.shader");
+		Require(lightingShader.find("CalculateLocalLightRangeAttenuation") !=
+				std::string::npos &&
+			lightingShader.find("smoothstep(0.9f, 1.0f, normalizedDistance)") != std::string::npos &&
+			lightingShader.find("return attenuation * rangeWindow") != std::string::npos &&
+			standardShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos &&
+			gltfShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos &&
+			landscapeShader.find("CalculateLocalLightRangeAttenuation(light, distance)") !=
+				std::string::npos,
+			"all Forward+ surface shaders must preserve attenuation and only fade the final edge of the culling radius");
 
 		const std::string lightCullingSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/LightCullingNode.cpp");
 		const std::string processBody = ExtractFunctionBody(
 			lightCullingSource,
 			"void LightCullingNode::Process(");
-		const size_t depthAspectOffset = processBody.find(
-			"sampledDepthAttachment = depthAspect");
+		const size_t depthLookup = processBody.find(
+			"GetRHIResource(\"linearDepth\")");
 		const size_t depthBindingOffset = processBody.find(
-			"AddSamplerToShaderBindings(m_culledLights, \"sceneDepth\", sampledDepthAttachment",
-			depthAspectOffset);
-		Require(depthAspectOffset != std::string::npos &&
-			depthBindingOffset > depthAspectOffset,
-			"Forward+ depth sampling must exclude the stencil aspect from combined depth-stencil targets");
+			"AddSamplerToShaderBindings(m_culledLights, \"linearDepth\", linearDepthAttachment",
+			depthLookup);
+		Require(depthLookup != std::string::npos &&
+			depthBindingOffset > depthLookup &&
+			processBody.find("ImageMemoryBarrier(commandList, linearDepthAttachment", depthBindingOffset) != std::string::npos,
+			"Forward+ must sample the pre-linearized R32F depth target");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",
@@ -441,17 +491,18 @@ namespace
 			"fragment lighting must wait for Forward+ compute shader writes");
 		Require(processBody.find("m_boundLightsData != sceneView.m_rhiLightsData") !=
 				std::string::npos &&
-			processBody.find("m_boundDepthAttachment != depthAttachment") !=
+			processBody.find("m_boundDepthAttachment != linearDepthAttachment") !=
 				std::string::npos &&
 			processBody.find("m_bindingsViewportSize != pushConstants.m_viewportSize") !=
 				std::string::npos,
 			"Forward+ buffers must be recreated when their resource identity or extent changes");
-
 		const std::string lightingLibrary = ReadText(
 			sourceRoot / "Content/Shaders/Lighting.glsl");
 		Require(lightingLibrary.find("uint GetLightTileIndex(") !=
 				std::string::npos &&
 			lightingLibrary.find("const ivec2 tileId = clamp(") !=
+				std::string::npos &&
+			lightingLibrary.find("LIGHT_TILE_OVERFLOW_BIT") !=
 				std::string::npos,
 			"Forward+ consumers must clamp screen coordinates to the tile grid");
 		Require(lightingLibrary.find(
@@ -471,8 +522,11 @@ namespace
 			Require(shader.find(
 					"GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize)") !=
 					std::string::npos &&
+				shader.find("lightsGrid.instance[tileIndex].num") !=
+					std::string::npos &&
+				shader.find("usesOverflowList") == std::string::npos &&
 				shader.find(
-					"min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE))") !=
+					"min(lightsGrid.instance[tileIndex].num, uint(LIGHTS_PER_TILE))") ==
 					std::string::npos &&
 				shader.find("lightsGrid.instance.length()") !=
 					std::string::npos &&
@@ -487,13 +541,34 @@ namespace
 			sourceRoot / "Content/Shaders/Standard_glTF.shader" })
 		{
 			const std::string shader = ReadText(shaderPath);
-			Require(shader.find("light.instance.length()") !=
+			Require(shader.find("SUPPORT_LIGHTS_OVERFLOW") !=
+					std::string::npos &&
+				shader.find("lightsOverflow ? uint(i)") !=
+					std::string::npos &&
+				shader.find("light.instance.length()") !=
 					std::string::npos &&
 				shader.find("light.instance[index].type == INVALID_LIGHT_TYPE") !=
 					std::string::npos,
 				"Forward+ lighting must reject invalid light indices: " +
 					shaderPath.generic_string());
 		}
+	}
+
+	void TestRegionBlitDoesNotPromoteToFullImageCopy()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string source = ReadText(
+			sourceRoot / "Runtime/GraphicsDriver/Vulkan/VulkanCommandBuffer.cpp");
+		const std::string body = ExtractFunctionBody(
+			source,
+			"bool VulkanCommandBuffer::BlitImage(");
+		Require(body.find("bRegionsHaveSameExtent") != std::string::npos &&
+			body.find("srcRegion.extent.width") != std::string::npos &&
+			body.find("srcRegion.extent.height") != std::string::npos,
+			"equal-format image operations must use copy only when source and destination regions have equal dimensions");
+		Require(body.find("copy.extent = {\n\t\t\t\tsrcRegion.extent.width") != std::string::npos &&
+			body.find("copy.extent = src->GetImage()->m_extent") == std::string::npos,
+			"a regional copy must never silently expand to the complete source image");
 	}
 
 	void TestVulkanMemoryBarrierRecordsPipelineBarrier()
@@ -848,8 +923,27 @@ namespace
 		Require(prepareBody.find("proxy.m_skeletonOffset") != std::string::npos &&
 			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneIdsBinding)") != std::string::npos &&
 			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
-			prepareBody.find("GetOrAddDepthMaterial(mesh->m_vertexDescription, bSkinned)") != std::string::npos,
+			prepareBody.find("GetOrAddDepthMaterial(") != std::string::npos &&
+			prepareBody.find("bSkinned,") != std::string::npos &&
+			prepareBody.find("bMaskedQueue);") != std::string::npos,
 			"DepthPrepass must select its skinned material from both the skeleton offset and the concrete mesh vertex layout");
+
+		Require(depthShader.find("- MASKED") != std::string::npos &&
+			depthShader.find("ResolveTextureSamplerIndex") != std::string::npos &&
+			depthShader.find("alpha < inAlphaCutoff") != std::string::npos &&
+			depthShader.find("float alpha = inVertexAlpha") != std::string::npos &&
+			prepareBody.find("proxy.m_baseColorSamplers") != std::string::npos &&
+			prepareBody.find("effectiveAlphaCutoff") != std::string::npos &&
+			prepareBody.find("const bool bRequiredCustomDepth = !bMaskedQueue") != std::string::npos,
+			"masked depth prepass must apply the same alpha silhouette as the forward material");
+
+		const std::string processBody = ExtractFunctionBody(
+			depthPrepassSource,
+			"void DepthPrepassNode::Process(");
+		Require(processBody.find("shaderInfo->GetFileId(), m_pComputeMeshCullingShader);") !=
+				std::string::npos &&
+			processBody.find("OCCLUSION_CULLING") == std::string::npos,
+			"the depth prepass must keep GPU frustum culling but cannot occlusion-cull the geometry that produces current-frame Hi-Z");
 	}
 
 	void TestShadowPrepassSkinningContract()
@@ -1540,6 +1634,7 @@ int main()
 		{ "ModelHierarchyRenderPropagationContract", TestModelHierarchyRenderPropagationContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
 		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
+		{ "RegionBlitDoesNotPromoteToFullImageCopy", TestRegionBlitDoesNotPromoteToFullImageCopy },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },
 		{ "ShaderReadOnlyBarrierSynchronizesShaderSampling", TestShaderReadOnlyBarrierSynchronizesShaderSampling },
 		{ "CommandListImageTrackingPreservesPublishedContents", TestCommandListImageTrackingPreservesPublishedContents },

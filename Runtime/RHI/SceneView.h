@@ -98,6 +98,9 @@ namespace Sailor::RHI
 		TVector<glm::mat4> m_meshModelMatrices;
 		TVector<RHIMaterialPtr> m_overrideMaterials;
 		TVector<size_t> m_renderQueueTags;
+		TVector<glm::vec4> m_baseColorFactors;
+		TVector<uint32_t> m_baseColorSamplers;
+		TVector<float> m_alphaCutoffs;
 #if defined(__APPLE__)
 		TVector<TSet<uint32_t>> m_materialTextureSamplers;
 #endif
@@ -124,10 +127,19 @@ namespace Sailor::RHI
 		uint32_t m_lighMatrixIndex{};
 		EShadowType m_shadowType = EShadowType::None;
 		glm::vec2 m_blurRadius{}; // [Umbra, Penumbra]
+		glm::ivec4 m_renderArea{}; // [x, y, width, height], zero means the full target
 		RHI::RHIRenderTargetPtr m_shadowMap{};
 		glm::mat4 m_lightMatrix{};
 		TVector<uint32_t> m_internalCommandsList{};
 		TVector<RHIShadowCasterProxyPtr> m_meshList{};
+	};
+
+	struct RHIBlitShadowMapCommand
+	{
+		RHI::RHIRenderTargetPtr m_source{};
+		RHI::RHIRenderTargetPtr m_destination{};
+		glm::ivec4 m_sourceArea{};
+		glm::ivec4 m_destinationArea{};
 	};
 
 	struct RHISceneViewSnapshot
@@ -145,6 +157,9 @@ namespace Sailor::RHI
 
 		uint32_t m_totalNumLights = 0;
 		TVector<RHIUpdateShadowMapCommand> m_shadowMapsToUpdate{};
+		TVector<RHIBlitShadowMapCommand> m_shadowMapsToBlit{};
+		TVector<uint32_t> m_shadowIndices{};
+		TVector<uint32_t> m_shadowAtlasTiles{};
 
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_rhiLightsData{};
@@ -170,6 +185,9 @@ namespace Sailor::RHI
 
 		// For each camera
 		TVector<TVector<RHIUpdateShadowMapCommand>> m_shadowMapsToUpdate;
+		TVector<TVector<RHIBlitShadowMapCommand>> m_shadowMapsToBlit;
+		TVector<TVector<uint32_t>> m_shadowIndices;
+		TVector<TVector<uint32_t>> m_shadowAtlasTiles;
 
 		TVector<CameraData> m_cameras;
 		TVector<Math::Transform> m_cameraTransforms;

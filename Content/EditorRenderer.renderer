@@ -139,7 +139,7 @@ frame:
 - name: LightCulling
 ############################
   renderTargets:
-  - depthStencil: LinearDepth
+  - linearDepth: LinearDepth
 
 ############################
 - name: Clear
