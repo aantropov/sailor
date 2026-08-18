@@ -53,16 +53,14 @@ glslFragment: |
     ivec2 depthSize = textureSize(depthSampler, 0);
     ivec2 pixel = clamp(ivec2(gl_FragCoord.xy), ivec2(0), depthSize - ivec2(1));
     float depth = texelFetch(depthSampler, pixel, 0).x;
-     vec4 vss = vec4(0, 0, depth, 1);
-     vec4 invVss = frame.invProjection * vss;
-     float zvs = invVss.z / invVss.w;
-
  #ifdef REVERSE_Z_INF_FAR_PLANE
-    float linearDepth = -frame.cameraZNearZFar.x / depth;
+    float linearDepth = frame.cameraZNearZFar.x / depth;
  #else
-    // The default camera uses a finite reverse-Z projection. Passing far/near
-    // restores the positive view-space distance, including clear depth at far.
-    float linearDepth = -LinearizeDepth(depth, frame.cameraZNearZFar.yx);
+    // Reconstruct from the same projection matrix that produced the depth.
+    // This remains exact when the camera projection parameters or conventions
+    // change and keeps the result in positive view-space distance.
+    vec4 viewPosition = frame.invProjection * vec4(0.0, 0.0, depth, 1.0);
+    float linearDepth = abs(viewPosition.z / viewPosition.w);
  #endif
-    outColor = vec4(-linearDepth);
+    outColor = vec4(linearDepth);
  }

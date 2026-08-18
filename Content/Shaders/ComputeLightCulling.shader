@@ -127,8 +127,8 @@ glslCompute: |
 
       barrier();
 
-      // Read the depth-prepass pixel that belongs to this framebuffer tile and
-      // reconstruct positive view-space distance without another viewport pass.
+      // Read the depth-prepass pixel that belongs to this framebuffer tile from
+      // the R32F target produced by the graphics linearization pass.
       const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
       if (isInsideViewport)
       {

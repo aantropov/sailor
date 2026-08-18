@@ -42,23 +42,42 @@ namespace Sailor
 		SAILOR_API RHI::ESortingOrder GetSortingOrder() const;
 
 	protected:
+		struct DepthMaterialKey
+		{
+			RHI::VertexAttributeBits m_vertexAttributes = 0u;
+			RHI::ECullMode m_cullMode = RHI::ECullMode::Back;
+
+			bool operator==(const DepthMaterialKey& rhs) const
+			{
+				return m_vertexAttributes == rhs.m_vertexAttributes &&
+					m_cullMode == rhs.m_cullMode;
+			}
+
+			size_t GetHash() const
+			{
+				size_t result = std::hash<RHI::VertexAttributeBits>{}(m_vertexAttributes);
+				HashCombine(result, static_cast<uint32_t>(m_cullMode));
+				return result;
+			}
+		};
 
 		uint32_t m_numMeshes = 0;
 		SpinLock m_syncSharedResources;
 		RHI::TDrawCalls<PerInstanceData> m_drawCalls;
 		TSet<RHI::RHIBatch> m_batches;
 
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedDepthOnlyMaterials;
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_maskedDepthOnlyMaterials;
-		TMap<RHI::VertexAttributeBits, RHI::RHIMaterialPtr> m_skinnedMaskedDepthOnlyMaterials;
+		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_depthOnlyMaterials;
+		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_skinnedDepthOnlyMaterials;
+		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_maskedDepthOnlyMaterials;
+		TMap<DepthMaterialKey, RHI::RHIMaterialPtr> m_skinnedMaskedDepthOnlyMaterials;
 		RHI::RHIShaderBindingSetPtr m_perInstanceData;
 		size_t m_sizePerInstanceData = 0;
 
 		RHI::RHIMaterialPtr GetOrAddDepthMaterial(
 			RHI::RHIVertexDescriptionPtr vertex,
 			bool bSkinned,
-			bool bMasked);
+			bool bMasked,
+			RHI::ECullMode cullMode);
 		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
 
 		// Culling

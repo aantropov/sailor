@@ -1090,7 +1090,8 @@ namespace
 		Require(linearizeDepthShader.find("#ifdef REVERSE_Z_INF_FAR_PLANE") != std::string::npos &&
 			linearizeDepthShader.find("- REVERSE_Z_INF_FAR_PLANE") == std::string::npos &&
 			linearizeDepthShader.find("frame.cameraZNearZFar.x / depth") != std::string::npos &&
-			linearizeDepthShader.find("LinearizeDepth(depth, frame.cameraZNearZFar.yx)") != std::string::npos &&
+			linearizeDepthShader.find("frame.invProjection * vec4(0.0, 0.0, depth, 1.0)") != std::string::npos &&
+			linearizeDepthShader.find("abs(viewPosition.z / viewPosition.w)") != std::string::npos &&
 			linearizeDepthShader.find("texelFetch(depthSampler, pixel, 0)") != std::string::npos &&
 			linearizeDepthShader.find("fragTexcoord.y") == std::string::npos,
 			"linear depth must retain disabled infinite-far support while defaulting to finite reverse-Z in framebuffer coordinates");
