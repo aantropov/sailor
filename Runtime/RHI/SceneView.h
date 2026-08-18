@@ -91,7 +91,7 @@ namespace Sailor::RHI
 		Math::AABB m_worldAabb{};
 
 		bool m_bCastShadows{};
-		uint32_t m_skeletonOffset = 0;
+		uint32_t m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 		size_t m_frame{};
 
 		TVector<RHIMeshPtr> m_meshes;

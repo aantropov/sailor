@@ -82,6 +82,9 @@ void LightCullingNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListP
 		}
 
 		commands->ImageMemoryBarrier(commandList, linearDepthAttachment, RHI::EImageLayout::ShaderReadOnlyOptimal);
+		commands->MemoryBarrier(commandList,
+			static_cast<EAccessFlags>(EAccessBit::ColorAttachmentWrite_Bit),
+			static_cast<EAccessFlags>(EAccessBit::ShaderRead_Bit));
 		commands->Dispatch(commandList, computeShader,
 			pushConstants.m_numTiles.x, pushConstants.m_numTiles.y, 1,
 			{ sceneView.m_rhiLightsData, m_culledLights, sceneView.m_frameBindings },

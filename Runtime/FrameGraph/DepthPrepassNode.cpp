@@ -21,12 +21,14 @@ const char* DepthPrepassNode::m_name = "DepthPrepass";
 RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
 	RHI::RHIVertexDescriptionPtr vertexDescription,
 	bool bSkinned,
-	bool bMasked)
+	bool bMasked,
+	RHI::ECullMode cullMode)
 {
 	auto& materials = bMasked ?
 		(bSkinned ? m_skinnedMaskedDepthOnlyMaterials : m_maskedDepthOnlyMaterials) :
 		(bSkinned ? m_skinnedDepthOnlyMaterials : m_depthOnlyMaterials);
-	auto& material = materials[vertexDescription->GetVertexAttributeBits()];
+	const DepthMaterialKey key{ vertexDescription->GetVertexAttributeBits(), cullMode };
+	auto& material = materials[key];
 
 	if (!material)
 	{
@@ -44,7 +46,6 @@ RHI::RHIMaterialPtr DepthPrepassNode::GetOrAddDepthMaterial(
 
 		if (App::GetSubmodule<ShaderCompiler>()->LoadShader_Immediate(shaderFileId->GetFileId(), pShader, defines) && pShader->IsReady())
 		{
-			const ECullMode cullMode = bMasked ? ECullMode::None : ECullMode::Back;
 			RenderState renderState = RHI::RenderState(true, true, 0.0f, false, cullMode, EBlendMode::None, EFillMode::Fill, GetHash(std::string("DepthOnly")), true);
 			material = RHI::Renderer::GetDriver()->CreateMaterial(vertexDescription, RHI::EPrimitiveTopology::TriangleList, renderState, pShader);
 		}
@@ -83,7 +84,6 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 			m_drawCalls.Clear();
 			m_batches.Clear();
 			Framegraph::Details::EvictTextureBindingCache(m_textureBindingCache, sceneViewSnapshot.m_frame);
-
 			for (auto& proxy : sceneViewSnapshot.m_proxies)
 			{
 				for (size_t i = 0; i < proxy.m_meshes.Num(); i++)
@@ -98,7 +98,8 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 						continue;
 					}
 
-					if (proxy.GetMaterials()[i]->GetRenderState().GetTag() != QueueTagHash)
+					const auto& sourceMaterial = proxy.GetMaterials()[i];
+					if (sourceMaterial->GetRenderState().GetTag() != QueueTagHash)
 					{
 						continue;
 					}
@@ -112,13 +113,14 @@ Tasks::TaskPtr<void, void> DepthPrepassNode::Prepare(RHI::RHIFrameGraphPtr frame
 					auto depthMaterial = GetOrAddDepthMaterial(
 						mesh->m_vertexDescription,
 						bSkinned,
-						bMaskedQueue);
+						bMaskedQueue,
+						sourceMaterial->GetRenderState().GetCullMode());
 
 					const bool bRequiredCustomDepth = !bMaskedQueue &&
-						proxy.GetMaterials()[i]->GetRenderState().IsRequiredCustomDepthShader();
+						sourceMaterial->GetRenderState().IsRequiredCustomDepthShader();
 					if (bRequiredCustomDepth)
 					{
-						depthMaterial = proxy.GetMaterials()[i];
+						depthMaterial = sourceMaterial;
 					}
 
 					const bool bIsDepthMaterialReady = depthMaterial &&

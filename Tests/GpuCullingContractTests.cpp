@@ -18,6 +18,7 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -479,6 +480,14 @@ namespace
 			processBody.find("ImageMemoryBarrier(commandList, linearDepthAttachment", depthBindingOffset) != std::string::npos,
 			"Forward+ must sample the pre-linearized R32F depth target");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
+		const size_t depthBarrierOffset = processBody.find(
+			"commands->MemoryBarrier(",
+			depthBindingOffset);
+		Require(depthBarrierOffset != std::string::npos &&
+			depthBarrierOffset < dispatchOffset &&
+			processBody.find("EAccessBit::ColorAttachmentWrite_Bit", depthBarrierOffset) < dispatchOffset &&
+			processBody.find("EAccessBit::ShaderRead_Bit", depthBarrierOffset) < dispatchOffset,
+			"Forward+ compute sampling must wait for the linear-depth color attachment write");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",
 			dispatchOffset);
@@ -897,6 +906,11 @@ namespace
 
 	void TestDepthPrepassSkinningContract()
 	{
+		const RHI::RHISceneViewProxy unskinnedProxy{};
+		Require(unskinnedProxy.m_skeletonOffset ==
+			(std::numeric_limits<uint32_t>::max)(),
+			"scene proxies without an animator must use the invalid skeleton offset so meshes with unused bone attributes stay rigid in the depth pass");
+
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string depthShader = ReadText(
 			sourceRoot / "Content/Shaders/DepthOnly.shader");
@@ -925,8 +939,12 @@ namespace
 			prepareBody.find("HasAttribute(RHI::RHIVertexDescription::DefaultBoneWeightsBinding)") != std::string::npos &&
 			prepareBody.find("GetOrAddDepthMaterial(") != std::string::npos &&
 			prepareBody.find("bSkinned,") != std::string::npos &&
-			prepareBody.find("bMaskedQueue);") != std::string::npos,
+			prepareBody.find("bMaskedQueue,") != std::string::npos,
 			"DepthPrepass must select its skinned material from both the skeleton offset and the concrete mesh vertex layout");
+		Require(getDepthMaterialBody.find("DepthMaterialKey key") != std::string::npos &&
+			getDepthMaterialBody.find("cullMode") != std::string::npos &&
+			prepareBody.find("sourceMaterial->GetRenderState().GetCullMode()") != std::string::npos,
+			"DepthPrepass must preserve the source material cull mode so its depth contributors match the visible geometry");
 
 		Require(depthShader.find("- MASKED") != std::string::npos &&
 			depthShader.find("ResolveTextureSamplerIndex") != std::string::npos &&
