@@ -57,9 +57,12 @@ glslFragment: |
      vec4 invVss = frame.invProjection * vss;
      float zvs = invVss.z / invVss.w;
 
-    // The camera uses a finite reverse-Z projection. Passing far/near restores
-    // the positive view-space distance from that projection, including the
-    // clear-depth value at the finite far plane.
+ #ifdef REVERSE_Z_INF_FAR_PLANE
+    float linearDepth = -frame.cameraZNearZFar.x / depth;
+ #else
+    // The default camera uses a finite reverse-Z projection. Passing far/near
+    // restores the positive view-space distance, including clear depth at far.
     float linearDepth = -LinearizeDepth(depth, frame.cameraZNearZFar.yx);
+ #endif
     outColor = vec4(-linearDepth);
  }

@@ -1087,11 +1087,13 @@ namespace
 			lightCullingShader.find("uv.y = 1 - uv.y") == std::string::npos &&
 			lightingShader.find("float(safeViewportSize.y) - fragmentPosition.y") == std::string::npos,
 			"tiled local-light culling must use per-tile depth bounds and address compute and fragment tiles in the same framebuffer coordinates");
-		Require(linearizeDepthShader.find("REVERSE_Z_INF_FAR_PLANE") == std::string::npos &&
+		Require(linearizeDepthShader.find("#ifdef REVERSE_Z_INF_FAR_PLANE") != std::string::npos &&
+			linearizeDepthShader.find("- REVERSE_Z_INF_FAR_PLANE") == std::string::npos &&
+			linearizeDepthShader.find("frame.cameraZNearZFar.x / depth") != std::string::npos &&
 			linearizeDepthShader.find("LinearizeDepth(depth, frame.cameraZNearZFar.yx)") != std::string::npos &&
 			linearizeDepthShader.find("texelFetch(depthSampler, pixel, 0)") != std::string::npos &&
 			linearizeDepthShader.find("fragTexcoord.y") == std::string::npos,
-			"linear-depth consumers must preserve the camera's finite reverse-Z projection and framebuffer coordinates");
+			"linear depth must retain disabled infinite-far support while defaulting to finite reverse-Z in framebuffer coordinates");
 		const size_t lightCullingNode = defaultRenderer.find("- name: LightCulling");
 		Require(lightCullingNode != std::string::npos &&
 			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) != std::string::npos &&
