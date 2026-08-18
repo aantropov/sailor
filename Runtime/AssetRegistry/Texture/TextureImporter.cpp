@@ -627,6 +627,12 @@ bool TextureImporter::DecodeTextureCpu(FileId uid, ByteCode& decodedData,
 bool TextureImporter::LoadTexture_Immediate(FileId uid, TexturePtr& outTexture)
 {
 	auto task = LoadTexture(uid, outTexture);
+	if (!task)
+	{
+		outTexture = nullptr;
+		return false;
+	}
+
 	task->Wait();
 	return task->GetResult().IsValid();
 }

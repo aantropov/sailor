@@ -109,12 +109,39 @@ def remove_generated_imgui_ini(config: str, output: Path | None) -> None:
             print(f"Removed generated file before build: {imgui_ini}")
 
 
-def sync_engine_library(config: str, output: Path | None, runtime: str | None) -> None:
+def find_engine_library(config: str) -> Path | None:
     library_name = "Sailor-Debug.dylib" if config == "Debug" else "Sailor-Release.dylib"
-    source = REPO_ROOT / "build-mac-vcpkg" / "Lib" / config / library_name
-    if not source.exists():
-        print(f"Engine library was not found, skipping app sync: {source}")
+    library_root = REPO_ROOT / "build-mac-vcpkg" / "Lib"
+    candidates = [
+        library_root / library_name,
+        library_root / config / library_name,
+    ]
+    existing_candidates = [candidate for candidate in candidates if candidate.exists()]
+    if not existing_candidates:
+        print(f"Engine library was not found, skipping app sync: {candidates}")
+        return None
+    return max(existing_candidates, key=lambda candidate: candidate.stat().st_mtime_ns)
+
+
+def stage_engine_library(config: str) -> None:
+    source = find_engine_library(config)
+    if source is None:
         return
+
+    destination = REPO_ROOT / "build-mac-vcpkg" / "Lib" / config / source.name
+    if source.resolve() == destination.resolve():
+        return
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    print(f"Staged engine library for editor build: {destination}")
+
+
+def sync_engine_library(config: str, output: Path | None, runtime: str | None) -> None:
+    source = find_engine_library(config)
+    if source is None:
+        return
+    library_name = source.name
 
     search_roots = [
         REPO_ROOT / "Binaries" / "Editor" / config,
@@ -161,6 +188,7 @@ def main() -> int:
 
     maybe_build_engine(args.build_engine, args.config)
     remove_generated_imgui_ini(args.config, args.output)
+    stage_engine_library(args.config)
 
     dotnet = detect_dotnet()
     env = prepare_env(dotnet)
