@@ -421,20 +421,23 @@ namespace
 				std::string::npos &&
 			cullingShader.find("if (isInsideViewport)") !=
 				std::string::npos &&
-			cullingShader.find("const float deviceDepth = texelFetch(sceneDepth, location, 0).x") !=
-				std::string::npos &&
-			cullingShader.find("LinearizeDepth(") !=
-				std::string::npos &&
-			cullingShader.find("frame.cameraZNearZFar.yx") !=
+			cullingShader.find("texelFetch(linearDepth, location, 0).x") !=
 				std::string::npos,
-			"Forward+ must reconstruct view depth from the matching in-bounds depth-prepass pixel");
+			"Forward+ must reduce the matching texels from the pre-linearized depth target");
 		Require(cullingShader.find("bool SphereTileOverlaps(") !=
 				std::string::npos &&
-			cullingShader.find("-frame.projection[1][1]") !=
+			cullingShader.find("ViewFrustum CreateTileFrustum(") !=
 				std::string::npos &&
-			cullingShader.find("greaterThanEqual(screenMax, tileMin)") !=
+			cullingShader.find("ScreenSpaceToViewSpace(") !=
+				std::string::npos &&
+			cullingShader.find("frame.invProjection") !=
+				std::string::npos &&
+			cullingShader.find("dot(frustum.planes[i].xyz, lightPosition)") !=
 				std::string::npos,
-			"Forward+ sphere bounds must use the negative-height Vulkan viewport orientation");
+			"Forward+ sphere bounds must use the inverse-projected tile frustum");
+		Require(cullingShader.find("if(lightPosition.z <= radius)") ==
+				std::string::npos,
+			"Forward+ screen culling must not bypass tile bounds based on light radius");
 		Require(cullingShader.find("const float zNear = uintBitsToFloat(minDepthInt)") !=
 				std::string::npos &&
 			cullingShader.find("const float zFar = uintBitsToFloat(maxDepthInt)") !=
@@ -467,14 +470,14 @@ namespace
 			lightCullingSource,
 			"void LightCullingNode::Process(");
 		const size_t depthLookup = processBody.find(
-			"GetRHIResource(\"depthStencil\")");
+			"GetRHIResource(\"linearDepth\")");
 		const size_t depthBindingOffset = processBody.find(
-			"AddSamplerToShaderBindings(m_culledLights, \"sceneDepth\", sampledDepthAttachment",
+			"AddSamplerToShaderBindings(m_culledLights, \"linearDepth\", linearDepthAttachment",
 			depthLookup);
 		Require(depthLookup != std::string::npos &&
 			depthBindingOffset > depthLookup &&
-			processBody.find("ImageMemoryBarrier(commandList, depthAttachment", depthBindingOffset) != std::string::npos,
-			"Forward+ must sample the depth aspect while transitioning the owning depth target");
+			processBody.find("ImageMemoryBarrier(commandList, linearDepthAttachment", depthBindingOffset) != std::string::npos,
+			"Forward+ must sample the pre-linearized R32F depth target");
 		const size_t dispatchOffset = processBody.find("commands->Dispatch(");
 		const size_t barrierOffset = processBody.find(
 			"commands->MemoryBarrier(",
@@ -488,7 +491,7 @@ namespace
 			"fragment lighting must wait for Forward+ compute shader writes");
 		Require(processBody.find("m_boundLightsData != sceneView.m_rhiLightsData") !=
 				std::string::npos &&
-			processBody.find("m_boundDepthAttachment != sampledDepthAttachment") !=
+			processBody.find("m_boundDepthAttachment != linearDepthAttachment") !=
 				std::string::npos &&
 			processBody.find("m_bindingsViewportSize != pushConstants.m_viewportSize") !=
 				std::string::npos,

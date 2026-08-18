@@ -32,7 +32,7 @@ glslCompute: |
       LightsGrid instance[];
   } lightsGrid;
 
-  layout(set = 1, binding = 2) uniform sampler2D sceneDepth;
+  layout(set = 1, binding = 2) uniform sampler2D linearDepth;
 
   layout(set = 2, binding = 0) uniform FrameData
   {
@@ -46,55 +46,69 @@ glslCompute: |
       float deltaTime;
   } frame;
 
+  shared ViewFrustum tileFrustum;
   shared int lightCountForTile;
   shared uint minDepthInt;
   shared uint maxDepthInt;
 
-  bool SphereTileOverlaps(vec3 lightPosition, float radius, ivec2 tileId,
-      float zNear, float zFar)
+  ViewFrustum CreateTileFrustum(ivec2 tileId)
+  {
+      const vec2 tileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
+      const vec2 tileMax = min(
+          vec2((tileId + ivec2(1)) * LIGHTS_CULLING_TILE_SIZE),
+          vec2(PushConstants.viewportSize));
+      const vec2 tileCenter = (tileMin + tileMax) * 0.5f;
+      const vec3 eyePosition = vec3(0.0f);
+      vec3 corners[4];
+
+      corners[0] = ScreenSpaceToViewSpace(
+          vec4(tileMin, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[1] = ScreenSpaceToViewSpace(
+          vec4(tileMax.x, tileMin.y, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[2] = ScreenSpaceToViewSpace(
+          vec4(tileMin.x, tileMax.y, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+      corners[3] = ScreenSpaceToViewSpace(
+          vec4(tileMax, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xyz;
+
+      ViewFrustum result;
+      result.planes[0] = ComputePlane(eyePosition, corners[2], corners[0]);
+      result.planes[1] = ComputePlane(eyePosition, corners[1], corners[3]);
+      result.planes[2] = ComputePlane(eyePosition, corners[0], corners[1]);
+      result.planes[3] = ComputePlane(eyePosition, corners[3], corners[2]);
+      result.center = ScreenSpaceToViewSpace(
+          vec4(tileCenter, NdcNearPlane, 1.0f),
+          PushConstants.viewportSize,
+          frame.invProjection).xy;
+
+      return result;
+  }
+
+  bool SphereTileOverlaps(vec3 lightPosition, float radius,
+      ViewFrustum frustum, float zNear, float zFar)
   {
       if(lightPosition.z - radius > zFar || lightPosition.z + radius < zNear)
       {
           return false;
       }
 
-      // A sphere intersecting the camera plane can cover any screen tile.
-      if(lightPosition.z <= radius)
+      for(int i = 0; i < 4; ++i)
       {
-          return true;
+          if(dot(frustum.planes[i].xyz, lightPosition) -
+              frustum.planes[i].w < -radius)
+          {
+              return false;
+          }
       }
 
-      // Project the sphere's view-space AABB. It is slightly wider than the
-      // exact projected sphere, but cannot reject a pixel influenced by it.
-      // Evaluate both depths because the ratio's extremum depends on the sign
-      // of the view-space coordinate.
-      const float nearestDepth = lightPosition.z - radius;
-      const float farthestDepth = lightPosition.z + radius;
-      const vec2 boundsMin = lightPosition.xy - vec2(radius);
-      const vec2 boundsMax = lightPosition.xy + vec2(radius);
-      vec2 projectedMin = min(
-          min(boundsMin / nearestDepth, boundsMin / farthestDepth),
-          min(boundsMax / nearestDepth, boundsMax / farthestDepth));
-      vec2 projectedMax = max(
-          max(boundsMin / nearestDepth, boundsMin / farthestDepth),
-          max(boundsMax / nearestDepth, boundsMax / farthestDepth));
-
-      // Sailor renders with a negative-height Vulkan viewport, so framebuffer
-      // rows (and gl_FragCoord) run opposite to mathematical view-space Y.
-      const vec2 projectionScale = vec2(
-          frame.projection[0][0],
-          -frame.projection[1][1]);
-      projectedMin *= projectionScale;
-      projectedMax *= projectionScale;
-      const vec2 ndcMin = min(projectedMin, projectedMax);
-      const vec2 ndcMax = max(projectedMin, projectedMax);
-      const vec2 screenMin = (ndcMin * 0.5f + 0.5f) * PushConstants.viewportSize;
-      const vec2 screenMax = (ndcMax * 0.5f + 0.5f) * PushConstants.viewportSize;
-      const vec2 tileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
-      const vec2 tileMax = vec2((tileId + ivec2(1)) * LIGHTS_CULLING_TILE_SIZE);
-
-      return all(greaterThanEqual(screenMax, tileMin)) &&
-          all(lessThanEqual(screenMin, tileMax));
+      return true;
   }
 
   void main()
@@ -118,15 +132,19 @@ glslCompute: |
       const bool isInsideViewport = all(lessThan(location, PushConstants.viewportSize));
       if (isInsideViewport)
       {
-          const float deviceDepth = texelFetch(sceneDepth, location, 0).x;
-          const float viewDepth = LinearizeDepth(
-              deviceDepth,
-              frame.cameraZNearZFar.yx);
+          const float viewDepth = texelFetch(linearDepth, location, 0).x;
 
           // Positive IEEE floats preserve ordering when reduced through uint atomics.
           const uint depthInt = floatBitsToUint(viewDepth);
           atomicMax(maxDepthInt, depthInt);
           atomicMin(minDepthInt, depthInt);
+      }
+
+      barrier();
+
+      if(gl_LocalInvocationIndex == 0)
+      {
+          tileFrustum = CreateTileFrustum(tileId);
       }
 
       barrier();
@@ -174,9 +192,10 @@ glslCompute: |
           const float zNear = uintBitsToFloat(minDepthInt);
           const float zFar = uintBitsToFloat(maxDepthInt);
 
-          // Cull against the conservative projected sphere bounds and the
-          // exact depth interval occupied by this tile.
-          if (SphereTileOverlaps(lightPosViewSpace.xyz, radius, tileId, zNear, zFar))
+          // Cull against the tile's view frustum and the exact depth interval
+          // occupied by this tile.
+          if (SphereTileOverlaps(
+              lightPosViewSpace.xyz, radius, tileFrustum, zNear, zFar))
           {
               // Add index to the shared array of visible indices
               uint offset = atomicAdd(lightCountForTile, 1);

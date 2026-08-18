@@ -1082,7 +1082,7 @@ namespace
 			"distance-driven local shadow downgrades must migrate cached tiles through a GPU blit");
 		Require(lightCullingShader.find("uintBitsToFloat(minDepthInt)") != std::string::npos &&
 			lightCullingShader.find("uintBitsToFloat(maxDepthInt)") != std::string::npos &&
-			lightCullingShader.find("texelFetch(sceneDepth, location, 0)") != std::string::npos &&
+			lightCullingShader.find("texelFetch(linearDepth, location, 0)") != std::string::npos &&
 			lightCullingShader.find("SphereTileOverlaps(") != std::string::npos &&
 			lightCullingShader.find("uv.y = 1 - uv.y") == std::string::npos &&
 			lightingShader.find("float(safeViewportSize.y) - fragmentPosition.y") == std::string::npos,
@@ -1094,10 +1094,10 @@ namespace
 			"linear-depth consumers must preserve the camera's finite reverse-Z projection and framebuffer coordinates");
 		const size_t lightCullingNode = defaultRenderer.find("- name: LightCulling");
 		Require(lightCullingNode != std::string::npos &&
-			defaultRenderer.find("- depthStencil: DepthBuffer", lightCullingNode) != std::string::npos &&
-			defaultRenderer.find("- depthStencil: DepthBuffer", lightCullingNode) <
+			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) != std::string::npos &&
+			defaultRenderer.find("- linearDepth: LinearDepth", lightCullingNode) <
 				defaultRenderer.find("- name:", lightCullingNode + 1),
-			"Forward+ culling must reconstruct view depth directly from the depth prepass target");
+			"Forward+ culling must consume the pre-linearized depth target");
 	}
 
 	void TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves()
