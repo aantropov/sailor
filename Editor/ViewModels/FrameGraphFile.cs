@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Utility;
+using SailorEditor.Workflow;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
@@ -17,10 +18,18 @@ public partial class FrameGraphFile : AssetFile
     ObservableList<FrameGraphScalar> floats = [];
 
     [ObservableProperty]
+    ObservableList<FrameGraphVec4Value> vec4 = [];
+
+    [ObservableProperty]
     ObservableList<FrameGraphRenderTarget> renderTargets = [];
 
     [ObservableProperty]
     ObservableList<FrameGraphNode> nodes = [];
+
+    [ObservableProperty]
+    FrameGraphNode? selectedNode;
+
+    public bool HasSelectedNode => SelectedNode is not null;
 
     public FrameGraphFile()
     {
@@ -32,13 +41,28 @@ public partial class FrameGraphFile : AssetFile
         RemoveFloatCommand = new Command<FrameGraphScalar>(value => Floats.Remove(value));
         ClearFloatsCommand = new Command(() => Floats.Clear());
 
+        AddVec4Command = new Command(() => Vec4.Add(new FrameGraphVec4Value()));
+        RemoveVec4Command = new Command<FrameGraphVec4Value>(value => Vec4.Remove(value));
+        ClearVec4Command = new Command(() => Vec4.Clear());
+
         AddRenderTargetCommand = new Command(() => RenderTargets.Add(new FrameGraphRenderTarget()));
         RemoveRenderTargetCommand = new Command<FrameGraphRenderTarget>(target => RenderTargets.Remove(target));
         ClearRenderTargetsCommand = new Command(() => RenderTargets.Clear());
 
-        AddNodeCommand = new Command(() => Nodes.Add(new FrameGraphNode()));
-        RemoveNodeCommand = new Command<FrameGraphNode>(node => Nodes.Remove(node));
-        ClearNodesCommand = new Command(() => Nodes.Clear());
+        AddNodeCommand = new Command(() =>
+        {
+            var node = new FrameGraphNode();
+            Nodes.Add(node);
+            SelectedNode = node;
+        });
+        RemoveNodeCommand = new Command<FrameGraphNode>(RemoveNode);
+        ClearNodesCommand = new Command(() =>
+        {
+            Nodes.Clear();
+            SelectedNode = null;
+        });
+        MoveNodeEarlierCommand = new Command<FrameGraphNode>(node => MoveNode(node, -1));
+        MoveNodeLaterCommand = new Command<FrameGraphNode>(node => MoveNode(node, 1));
     }
 
     public ICommand AddSamplerCommand { get; }
@@ -47,12 +71,55 @@ public partial class FrameGraphFile : AssetFile
     public ICommand AddFloatCommand { get; }
     public ICommand RemoveFloatCommand { get; }
     public ICommand ClearFloatsCommand { get; }
+    public ICommand AddVec4Command { get; }
+    public ICommand RemoveVec4Command { get; }
+    public ICommand ClearVec4Command { get; }
     public ICommand AddRenderTargetCommand { get; }
     public ICommand RemoveRenderTargetCommand { get; }
     public ICommand ClearRenderTargetsCommand { get; }
     public ICommand AddNodeCommand { get; }
     public ICommand RemoveNodeCommand { get; }
     public ICommand ClearNodesCommand { get; }
+    public ICommand MoveNodeEarlierCommand { get; }
+    public ICommand MoveNodeLaterCommand { get; }
+
+    partial void OnSelectedNodeChanged(FrameGraphNode? value) =>
+        OnPropertyChanged(nameof(HasSelectedNode));
+
+    partial void OnNodesChanged(ObservableList<FrameGraphNode> value)
+    {
+        if (SelectedNode is not null && !value.Contains(SelectedNode))
+        {
+            SelectedNode = null;
+        }
+    }
+
+    void RemoveNode(FrameGraphNode? node)
+    {
+        if (node is null)
+        {
+            return;
+        }
+
+        var index = Nodes.IndexOf(node);
+        if (index < 0)
+        {
+            return;
+        }
+
+        Nodes.RemoveAt(index);
+        SelectedNode = Nodes.Count == 0
+            ? null
+            : Nodes[Math.Min(index, Nodes.Count - 1)];
+    }
+
+    void MoveNode(FrameGraphNode? node, int offset)
+    {
+        if (FrameGraphDiagramOrder.Move(Nodes, node, offset))
+        {
+            SelectedNode = node;
+        }
+    }
 
     public override Task Save()
     {
@@ -93,11 +160,13 @@ public partial class FrameGraphFile : AssetFile
         var root = stream.Documents.Count > 0 ? stream.Documents[0].RootNode as YamlMappingNode : null;
         Samplers = ReadList(root, "samplers", FrameGraphSampler.FromYaml);
         Floats = ReadNamedScalarList(root, "float");
+        Vec4 = ReadNamedVec4List(root, "vec4");
         RenderTargets = ReadList(root, "renderTargets", FrameGraphRenderTarget.FromYaml);
         Nodes = ReadList(root, "frame", FrameGraphNode.FromYaml);
 
         TrackList(Samplers, nameof(Samplers));
         TrackList(Floats, nameof(Floats));
+        TrackList(Vec4, nameof(Vec4));
         TrackList(RenderTargets, nameof(RenderTargets));
         TrackList(Nodes, nameof(Nodes));
     }
@@ -108,6 +177,7 @@ public partial class FrameGraphFile : AssetFile
         {
             { "samplers", WriteList(Samplers, sampler => sampler.ToYaml()) },
             { "float", WriteNamedScalarList(Floats) },
+            { "vec4", WriteNamedVec4List(Vec4) },
             { "renderTargets", WriteList(RenderTargets, target => target.ToYaml()) },
             { "frame", WriteList(Nodes, node => node.ToYaml()) }
         };
@@ -166,6 +236,30 @@ public partial class FrameGraphFile : AssetFile
         return result;
     }
 
+    static ObservableList<FrameGraphVec4Value> ReadNamedVec4List(YamlMappingNode root, string name)
+    {
+        var result = new ObservableList<FrameGraphVec4Value>();
+        if (root?.Children.TryGetValue(new YamlScalarNode(name), out var node) != true ||
+            node is not YamlSequenceNode sequence)
+        {
+            return result;
+        }
+
+        foreach (var item in sequence.Children.OfType<YamlMappingNode>())
+        {
+            foreach (var entry in item.Children)
+            {
+                result.Add(new FrameGraphVec4Value
+                {
+                    Key = ScalarToString(entry.Key),
+                    Value = FrameGraphVec4.FromYaml(entry.Value)
+                });
+            }
+        }
+
+        return result;
+    }
+
     static YamlSequenceNode WriteList<T>(IEnumerable<T> values, Func<T, YamlMappingNode> serialize)
     {
         var sequence = new YamlSequenceNode();
@@ -182,6 +276,19 @@ public partial class FrameGraphFile : AssetFile
         foreach (var value in values)
         {
             sequence.Add(new YamlMappingNode { { value.Key ?? string.Empty, Scalar(value.Value) } });
+        }
+        return sequence;
+    }
+
+    static YamlSequenceNode WriteNamedVec4List(IEnumerable<FrameGraphVec4Value> values)
+    {
+        var sequence = new YamlSequenceNode();
+        foreach (var value in values)
+        {
+            sequence.Add(new YamlMappingNode
+            {
+                { value.Key ?? string.Empty, value.Value?.ToYaml() ?? new FrameGraphVec4().ToYaml() }
+            });
         }
         return sequence;
     }
@@ -365,11 +472,25 @@ public partial class FrameGraphVec4 : ObservableObject
 
 public partial class FrameGraphVec4Value : ObservableObject
 {
+    public FrameGraphVec4Value()
+    {
+        Value.PropertyChanged += OnComponentChanged;
+    }
+
     [ObservableProperty]
     string key = string.Empty;
 
     [ObservableProperty]
     FrameGraphVec4 value = new();
+
+    partial void OnValueChanging(FrameGraphVec4 value) =>
+        Value.PropertyChanged -= OnComponentChanged;
+
+    partial void OnValueChanged(FrameGraphVec4 value) =>
+        value.PropertyChanged += OnComponentChanged;
+
+    void OnComponentChanged(object? sender, PropertyChangedEventArgs args) =>
+        OnPropertyChanged(nameof(Value));
 }
 
 public partial class FrameGraphTargetBinding : ObservableObject
@@ -385,6 +506,9 @@ public partial class FrameGraphNode : ObservableObject
 {
     [ObservableProperty]
     string name = string.Empty;
+
+    [ObservableProperty]
+    string tag = string.Empty;
 
     public FrameGraphNode()
     {
@@ -430,7 +554,11 @@ public partial class FrameGraphNode : ObservableObject
 
     public static FrameGraphNode FromYaml(YamlMappingNode node)
     {
-        var result = new FrameGraphNode { Name = ReadString(node, "name") };
+        var result = new FrameGraphNode
+        {
+            Name = ReadString(node, "name"),
+            Tag = ReadString(node, "tag")
+        };
         ReadNamedScalarList(node, "string", result.Strings);
         ReadNamedScalarList(node, "float", result.Floats);
         ReadVec4List(node, result.Vec4);
@@ -441,6 +569,10 @@ public partial class FrameGraphNode : ObservableObject
     public YamlMappingNode ToYaml()
     {
         var node = new YamlMappingNode { { "name", Name ?? string.Empty } };
+        if (!string.IsNullOrWhiteSpace(Tag))
+        {
+            node.Add("tag", Tag);
+        }
         AddNamedScalarList(node, "string", Strings);
         AddNamedScalarList(node, "float", Floats);
         AddVec4List(node, Vec4);
