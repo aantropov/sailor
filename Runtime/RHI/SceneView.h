@@ -52,6 +52,36 @@ namespace Sailor::RHI
 		SAILOR_API uint32_t Resolve(float screenCoverage, uint32_t numAvailableLods) const;
 	};
 
+	struct RHIInstanceWorldBounds
+	{
+		// Immutable after proxy publication so camera snapshots can share it.
+		TVector<Math::AABB> m_aabbs{};
+	};
+
+	struct RHIInstanceLodCullingData
+	{
+		Math::AABB m_cellWorldAabb{};
+		glm::vec3 m_minInstanceWorldExtents{ (std::numeric_limits<float>::max)() };
+		glm::vec3 m_maxInstanceWorldExtents{};
+		uint32_t m_meshesPerInstance = 0u;
+		TSharedPtr<RHIInstanceWorldBounds> m_instanceWorldBounds{};
+
+		SAILOR_API bool IsValid(size_t numMeshes) const;
+	};
+
+	enum class EInstanceLodCullingMode : uint8_t
+	{
+		Culled = 0u,
+		Uniform,
+		PerInstance
+	};
+
+	struct RHIInstanceLodCullingDecision
+	{
+		EInstanceLodCullingMode m_mode = EInstanceLodCullingMode::Uniform;
+		float m_uniformScreenCoverage = 0.0f;
+	};
+
 	struct RHIShadowCasterProxy
 	{
 		size_t m_staticMeshEcs{};
@@ -60,6 +90,7 @@ namespace Sailor::RHI
 		size_t m_frame{};
 		TVector<RHIShadowMeshProxy> m_meshes{};
 		RHILodPolicy m_lodPolicy{};
+		RHIInstanceLodCullingData m_instanceLodCulling{};
 	};
 
 	using RHIShadowCasterProxyPtr = TSharedPtr<RHIShadowCasterProxy>;
@@ -106,11 +137,44 @@ namespace Sailor::RHI
 #endif
 		RHIShadowCasterProxyPtr m_shadowCaster{};
 		RHILodPolicy m_lodPolicy{};
+		RHIInstanceLodCullingData m_instanceLodCulling{};
 
 		SAILOR_API bool operator==(const RHISceneViewProxy& rhs) const { return m_staticMeshEcs == rhs.m_staticMeshEcs; }
 		SAILOR_API const TVector<RHIMaterialPtr>& GetMaterials() const;
 
 	};
+
+	namespace SceneViewDetails
+	{
+		SAILOR_API bool HasAlignedInstanceData(const RHISceneViewProxy& proxy);
+		SAILOR_API bool HasAlignedInstanceData(const RHIShadowCasterProxy& proxy);
+		SAILOR_API RHIInstanceLodCullingDecision ClassifyInstanceCell(
+			const RHISceneViewProxy& proxy,
+			const Math::Frustum& frustum,
+			const glm::vec3& cameraPosition,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix);
+		SAILOR_API RHIInstanceLodCullingDecision ClassifyInstanceCell(
+			const RHIShadowCasterProxy& proxy,
+			const Math::Frustum& frustum,
+			const glm::vec3& cameraPosition,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix);
+		SAILOR_API bool ApplyInstanceLodCullingDecision(
+			RHISceneViewProxy& proxy,
+			const RHIInstanceLodCullingDecision& decision,
+			const Math::Frustum& frustum,
+			const glm::vec3& cameraPosition,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix);
+		SAILOR_API RHIShadowCasterProxyPtr ApplyInstanceLodCullingDecision(
+			const RHIShadowCasterProxyPtr& source,
+			const RHIInstanceLodCullingDecision& decision,
+			const Math::Frustum& frustum,
+			const glm::vec3& cameraPosition,
+			const glm::mat4& viewMatrix,
+			const glm::mat4& projectionMatrix);
+	}
 
 	struct RHIPathTracerProxy
 	{

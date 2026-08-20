@@ -853,6 +853,15 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				vegetationProxy.m_lodPolicy.m_screenCoverageThresholds =
 					profile.m_screenCoverageThresholds;
 				vegetationProxy.m_lodPolicy.m_maxCameraDistance = profile.m_cullDistance;
+				auto& instanceLodCulling = vegetationProxy.m_instanceLodCulling;
+				instanceLodCulling.m_meshesPerInstance =
+					static_cast<uint32_t>(vegetationMeshes.Num());
+				instanceLodCulling.m_instanceWorldBounds =
+					TSharedPtr<RHI::RHIInstanceWorldBounds>::Make();
+				auto& instanceWorldAabbs =
+					instanceLodCulling.m_instanceWorldBounds->m_aabbs;
+				instanceWorldAabbs.Reserve(
+					profile.m_instancesPerChunk);
 				auto vegetationShadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
 				vegetationShadowCaster->m_staticMeshEcs = vegetationProxy.m_staticMeshEcs;
 				vegetationShadowCaster->m_skeletonOffset =
@@ -867,6 +876,8 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				const float shadowDistance = (std::min)(profile.m_cullDistance,
 					profile.m_shadowMode == ELandscapeVegetationShadowMode::NearOnly ?
 					profile.m_shadowDistance : (std::numeric_limits<float>::max)());
+				vegetationShadowCaster->m_lodPolicy.m_maxCameraDistance =
+					shadowDistance;
 				for (const auto& placement : cpu.m_vegetation)
 				{
 					if (placement.m_profileIndex != profileIndex)
@@ -881,6 +892,17 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 					Math::AABB instanceBounds = vegetationBounds;
 					instanceBounds.Apply(instanceMatrix);
 					batchedVegetationBounds.Extend(instanceBounds);
+					// Build the chunk's instance-center bounds from transformed pivots.
+					instanceLodCulling.m_cellWorldAabb.Extend(
+						instanceBounds.GetCenter());
+					const glm::vec3 instanceExtents = instanceBounds.GetExtents();
+					instanceLodCulling.m_minInstanceWorldExtents = glm::min(
+						instanceLodCulling.m_minInstanceWorldExtents,
+						instanceExtents);
+					instanceLodCulling.m_maxInstanceWorldExtents = glm::max(
+						instanceLodCulling.m_maxInstanceWorldExtents,
+						instanceExtents);
+					instanceWorldAabbs.Add(instanceBounds);
 					for (size_t meshIndex = 0; meshIndex < vegetationMeshes.Num(); ++meshIndex)
 					{
 						MaterialPtr& material = vegetationMaterials[meshIndex];
@@ -903,7 +925,39 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 					continue;
 				}
 				vegetationProxy.m_worldAabb = batchedVegetationBounds;
+				const bool bInstanceLodCullingValid =
+					instanceLodCulling.IsValid(vegetationProxy.m_meshes.Num());
+				if (!bInstanceLodCullingValid)
+				{
+					instanceLodCulling = {};
+				}
 				vegetationShadowCaster->m_worldAabb = vegetationProxy.m_worldAabb;
+				if (bInstanceLodCullingValid &&
+					!vegetationShadowCaster->m_meshes.IsEmpty())
+				{
+					auto& shadowInstanceLodCulling =
+						vegetationShadowCaster->m_instanceLodCulling;
+					shadowInstanceLodCulling = instanceLodCulling;
+					const size_t numInstances =
+						shadowInstanceLodCulling.m_instanceWorldBounds->m_aabbs.Num();
+					if (numInstances == 0u ||
+						vegetationShadowCaster->m_meshes.Num() % numInstances != 0u)
+					{
+						shadowInstanceLodCulling = {};
+					}
+					else
+					{
+						shadowInstanceLodCulling.m_meshesPerInstance =
+							static_cast<uint32_t>(
+								vegetationShadowCaster->m_meshes.Num() /
+								numInstances);
+						if (!shadowInstanceLodCulling.IsValid(
+							vegetationShadowCaster->m_meshes.Num()))
+						{
+							shadowInstanceLodCulling = {};
+						}
+					}
+				}
 				vegetationProxy.m_shadowCaster = vegetationShadowCaster->m_meshes.IsEmpty() ?
 					RHI::RHIShadowCasterProxyPtr{} : vegetationShadowCaster;
 #if defined(__APPLE__)

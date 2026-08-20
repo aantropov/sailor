@@ -10,6 +10,7 @@
 #include "RHI/Buffer.h"
 #include "RHI/Material.h"
 #include "RHI/Mesh.h"
+#include "RHI/SceneView.h"
 #include "RHI/Texture.h"
 
 #include <cmath>
@@ -399,6 +400,322 @@ namespace
 			"linear depth sampling must exclude the stencil aspect from combined depth-stencil targets");
 	}
 
+	void TestVegetationBoundaryInstanceLodCullingContract()
+	{
+		const glm::mat4 view(1.0f);
+		const glm::mat4 projection = glm::perspective(
+			glm::radians(60.0f),
+			1.0f,
+			0.1f,
+			1000.0f);
+		Math::Frustum frustum;
+		frustum.ExtractFrustumPlanes(
+			glm::mat4(1.0f),
+			1.0f,
+			60.0f,
+			0.1f,
+			1000.0f);
+		const glm::vec3 cameraPosition(0.0f);
+
+		auto firstMesh = RHI::RHIMeshPtr::Make();
+		firstMesh->m_bounds = Math::AABB(glm::vec3(0.0f), glm::vec3(0.5f));
+		auto secondMesh = RHI::RHIMeshPtr::Make();
+		secondMesh->m_bounds = firstMesh->m_bounds;
+		auto firstLodMesh = RHI::RHIMeshPtr::Make();
+		auto secondLodMesh = RHI::RHIMeshPtr::Make();
+		firstMesh->m_lods.Add(firstLodMesh);
+		secondMesh->m_lods.Add(secondLodMesh);
+		auto culledMaterial = RHI::RHIMaterialPtr::Make(
+			RHI::RenderState{},
+			RHI::RHIShaderPtr{},
+			RHI::RHIShaderPtr{});
+		auto retainedMaterial = RHI::RHIMaterialPtr::Make(
+			RHI::RenderState{},
+			RHI::RHIShaderPtr{},
+			RHI::RHIShaderPtr{});
+		const Math::AABB nearInstance(
+			glm::vec3(0.0f, 0.0f, -8.0f),
+			glm::vec3(0.5f));
+		const Math::AABB farInstance(
+			glm::vec3(0.0f, 0.0f, -16.0f),
+			glm::vec3(0.5f));
+
+		RHI::RHISceneViewProxy proxy;
+		proxy.m_meshes.Add(firstMesh);
+		proxy.m_meshes.Add(secondMesh);
+		proxy.m_meshes.Add(firstMesh);
+		proxy.m_meshes.Add(secondMesh);
+		proxy.m_meshModelMatrices.Add(glm::translate(
+			glm::mat4(1.0f), farInstance.GetCenter()));
+		proxy.m_meshModelMatrices.Add(glm::translate(
+			glm::mat4(1.0f), farInstance.GetCenter()));
+		proxy.m_meshModelMatrices.Add(glm::translate(
+			glm::mat4(1.0f), nearInstance.GetCenter()));
+		proxy.m_meshModelMatrices.Add(glm::translate(
+			glm::mat4(1.0f), nearInstance.GetCenter()));
+		proxy.m_overrideMaterials.Add(culledMaterial);
+		proxy.m_overrideMaterials.Add(culledMaterial);
+		proxy.m_overrideMaterials.Add(retainedMaterial);
+		proxy.m_overrideMaterials.Add(retainedMaterial);
+		proxy.m_renderQueueTags.Add(11u);
+		proxy.m_renderQueueTags.Add(12u);
+		proxy.m_renderQueueTags.Add(13u);
+		proxy.m_renderQueueTags.Add(14u);
+		proxy.m_baseColorFactors.Add(glm::vec4(1.0f));
+		proxy.m_baseColorFactors.Add(glm::vec4(0.5f));
+		proxy.m_baseColorFactors.Add(glm::vec4(0.25f));
+		proxy.m_baseColorFactors.Add(glm::vec4(0.125f));
+		proxy.m_baseColorSamplers.Add(21u);
+		proxy.m_baseColorSamplers.Add(22u);
+		proxy.m_baseColorSamplers.Add(23u);
+		proxy.m_baseColorSamplers.Add(24u);
+		proxy.m_alphaCutoffs.Add(0.3f);
+		proxy.m_alphaCutoffs.Add(0.7f);
+		proxy.m_alphaCutoffs.Add(0.4f);
+		proxy.m_alphaCutoffs.Add(0.8f);
+#if defined(__APPLE__)
+		proxy.m_materialTextureSamplers.Resize(4u);
+		proxy.m_materialTextureSamplers[0].Insert(31u);
+		proxy.m_materialTextureSamplers[1].Insert(32u);
+		proxy.m_materialTextureSamplers[2].Insert(33u);
+		proxy.m_materialTextureSamplers[3].Insert(34u);
+#endif
+		proxy.m_worldAabb.Extend(nearInstance);
+		proxy.m_worldAabb.Extend(farInstance);
+		proxy.m_lodPolicy.m_bEnabled = true;
+		proxy.m_lodPolicy.m_minLod = 0u;
+		proxy.m_lodPolicy.m_maxLod = 0u;
+		proxy.m_lodPolicy.m_screenCoverageThresholds.Clear();
+		proxy.m_lodPolicy.m_maxCameraDistance = 12.0f;
+		proxy.m_instanceLodCulling.m_cellWorldAabb = Math::AABB(
+			glm::vec3(0.0f, 0.0f, -12.0f),
+			glm::vec3(1.0f, 1.0f, 4.0f));
+		proxy.m_instanceLodCulling.m_minInstanceWorldExtents = glm::vec3(0.5f);
+		proxy.m_instanceLodCulling.m_maxInstanceWorldExtents = glm::vec3(0.5f);
+		proxy.m_instanceLodCulling.m_meshesPerInstance = 2u;
+		proxy.m_instanceLodCulling.m_instanceWorldBounds =
+			TSharedPtr<RHI::RHIInstanceWorldBounds>::Make();
+		proxy.m_instanceLodCulling.m_instanceWorldBounds->m_aabbs.Add(
+			farInstance);
+		proxy.m_instanceLodCulling.m_instanceWorldBounds->m_aabbs.Add(
+			nearInstance);
+		RHI::RHISceneViewProxy classificationProxy = proxy;
+		Require(classificationProxy.m_instanceLodCulling.m_instanceWorldBounds ==
+			proxy.m_instanceLodCulling.m_instanceWorldBounds,
+			"scene snapshots must share immutable vegetation bounds instead of copying them");
+		auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
+		shadowCaster->m_worldAabb = proxy.m_worldAabb;
+		shadowCaster->m_lodPolicy = proxy.m_lodPolicy;
+		shadowCaster->m_instanceLodCulling = proxy.m_instanceLodCulling;
+		for (size_t meshIndex = 0u; meshIndex < proxy.m_meshes.Num(); ++meshIndex)
+		{
+			RHI::RHIShadowMeshProxy shadowMesh;
+			shadowMesh.m_mesh = proxy.m_meshes[meshIndex];
+			shadowMesh.m_worldMatrix = proxy.m_meshModelMatrices[meshIndex];
+			shadowCaster->m_meshes.Add(std::move(shadowMesh));
+		}
+		Require(RHI::SceneViewDetails::HasAlignedInstanceData(*shadowCaster),
+			"vegetation shadow casters must preserve exact per-instance mesh ranges");
+		const auto shadowBoundaryDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				*shadowCaster,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(shadowBoundaryDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::PerInstance,
+			"a shadow caster crossing a cull boundary must enable per-instance work");
+		const auto compactedShadowCaster =
+			RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+				shadowCaster,
+				shadowBoundaryDecision,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(compactedShadowCaster &&
+			compactedShadowCaster->m_meshes.Num() == 2u &&
+			compactedShadowCaster->m_meshes[0].m_mesh == firstMesh &&
+			compactedShadowCaster->m_meshes[1].m_mesh == secondMesh &&
+			compactedShadowCaster->m_meshes[0].m_worldMatrix[3].z == -8.0f &&
+			compactedShadowCaster->m_meshes[1].m_worldMatrix[3].z == -8.0f &&
+			!compactedShadowCaster->m_instanceLodCulling.m_instanceWorldBounds,
+			"shadow culling must compact the complete retained instance without stale ranges");
+
+		Require(RHI::SceneViewDetails::HasAlignedInstanceData(proxy),
+			"vegetation instance metadata must describe exact, aligned mesh ranges");
+		const auto boundaryDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				proxy,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(boundaryDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::PerInstance,
+			"a cull distance crossing the chunk vertices must enable per-instance work");
+		Require(RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+				proxy,
+				boundaryDecision,
+				frustum,
+				cameraPosition,
+				view,
+				projection),
+			"a boundary chunk with one visible instance must remain renderable");
+		Require(proxy.m_meshes.Num() == 2u &&
+			proxy.m_meshModelMatrices.Num() == 2u &&
+			proxy.m_overrideMaterials.Num() == 2u &&
+			proxy.m_renderQueueTags.Num() == 2u &&
+			proxy.m_baseColorFactors.Num() == 2u &&
+			proxy.m_baseColorSamplers.Num() == 2u &&
+			proxy.m_alphaCutoffs.Num() == 2u &&
+			proxy.m_meshes[0] == firstMesh &&
+			proxy.m_meshes[1] == secondMesh &&
+			proxy.m_overrideMaterials[0] == retainedMaterial &&
+			proxy.m_overrideMaterials[1] == retainedMaterial &&
+			proxy.m_renderQueueTags[0] == 13u &&
+			proxy.m_renderQueueTags[1] == 14u &&
+			proxy.m_baseColorFactors[0].x == 0.25f &&
+			proxy.m_baseColorFactors[1].x == 0.125f &&
+			proxy.m_baseColorSamplers[0] == 23u &&
+			proxy.m_baseColorSamplers[1] == 24u &&
+			proxy.m_alphaCutoffs[0] == 0.4f &&
+			proxy.m_alphaCutoffs[1] == 0.8f &&
+			proxy.m_meshModelMatrices[0][3].z == -8.0f &&
+			proxy.m_meshModelMatrices[1][3].z == -8.0f &&
+			!proxy.m_instanceLodCulling.m_instanceWorldBounds,
+			"per-instance culling must compact every mesh-parallel array without stale indices");
+#if defined(__APPLE__)
+		Require(proxy.m_materialTextureSamplers.Num() == 2u &&
+			proxy.m_materialTextureSamplers[0].Contains(33u) &&
+			proxy.m_materialTextureSamplers[1].Contains(34u),
+			"macOS texture metadata must compact with the retained vegetation instance");
+#endif
+
+		classificationProxy.m_lodPolicy.m_maxCameraDistance =
+			(std::numeric_limits<float>::infinity)();
+		classificationProxy.m_lodPolicy.m_maxLod = 1u;
+		const float nearCoverage = RHI::CalculateScreenCoverage(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -8.0f), glm::vec3(0.5f)),
+			view,
+			projection);
+		const float farCoverage = RHI::CalculateScreenCoverage(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -16.0f), glm::vec3(0.5f)),
+			view,
+			projection);
+		Require(nearCoverage > farCoverage,
+			"the LOD boundary fixture requires distinct near and far coverage");
+		classificationProxy.m_lodPolicy.m_screenCoverageThresholds = {
+			(nearCoverage + farCoverage) * 0.5f
+		};
+		const auto lodBoundaryDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				classificationProxy,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(lodBoundaryDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::PerInstance,
+			"an LOD threshold between near and far chunk vertices must enable per-instance work");
+		RHI::RHISceneViewProxy perInstanceLodProxy = classificationProxy;
+		Require(RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+				perInstanceLodProxy,
+				lodBoundaryDecision,
+				frustum,
+				cameraPosition,
+				view,
+				projection) &&
+			perInstanceLodProxy.m_meshes.Num() == 4u &&
+			perInstanceLodProxy.m_meshes[0] == firstLodMesh &&
+			perInstanceLodProxy.m_meshes[1] == secondLodMesh &&
+			perInstanceLodProxy.m_meshes[2] == firstMesh &&
+			perInstanceLodProxy.m_meshes[3] == secondMesh,
+			"a boundary chunk must resolve LOD independently for each complete instance group");
+		auto perInstanceLodShadowCaster =
+			RHI::RHIShadowCasterProxyPtr::Make(*shadowCaster);
+		perInstanceLodShadowCaster->m_lodPolicy =
+			classificationProxy.m_lodPolicy;
+		const auto shadowLodBoundaryDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				*perInstanceLodShadowCaster,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		const auto resolvedLodShadowCaster =
+			RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+				perInstanceLodShadowCaster,
+				shadowLodBoundaryDecision,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(shadowLodBoundaryDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::PerInstance &&
+			resolvedLodShadowCaster &&
+			resolvedLodShadowCaster->m_meshes.Num() == 4u &&
+			resolvedLodShadowCaster->m_meshes[0].m_mesh == firstLodMesh &&
+			resolvedLodShadowCaster->m_meshes[1].m_mesh == secondLodMesh &&
+			resolvedLodShadowCaster->m_meshes[2].m_mesh == firstMesh &&
+			resolvedLodShadowCaster->m_meshes[3].m_mesh == secondMesh,
+			"shadow boundary chunks must resolve LOD per complete vegetation instance");
+
+		classificationProxy.m_lodPolicy.m_screenCoverageThresholds.Clear();
+		classificationProxy.m_lodPolicy.m_maxLod = 0u;
+		classificationProxy.m_lodPolicy.m_maxCameraDistance = 100.0f;
+		const auto uniformDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				classificationProxy,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(uniformDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::Uniform,
+			"a chunk wholly inside one LOD and culling interval must use the uniform fast path");
+
+		classificationProxy.m_lodPolicy.m_maxCameraDistance = 2.0f;
+		const auto culledDecision =
+			RHI::SceneViewDetails::ClassifyInstanceCell(
+				classificationProxy,
+				frustum,
+				cameraPosition,
+				view,
+				projection);
+		Require(culledDecision.m_mode ==
+			RHI::EInstanceLodCullingMode::Culled,
+			"a chunk beyond the cull boundary at every vertex must be discarded without per-instance work");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string sceneViewSource = ReadText(
+			sourceRoot / "Runtime/RHI/SceneView.cpp");
+		const std::string landscapeSource = ReadText(
+			sourceRoot / "Runtime/ECS/LandscapeECS.cpp");
+		Require(sceneViewSource.find(
+				"Prepare vegetation chunk LOD and culling") !=
+				std::string::npos &&
+			sceneViewSource.find(
+				"Prepare vegetation shadow LOD and culling") !=
+				std::string::npos &&
+			sceneViewSource.find(
+				"EThreadType::Worker") != std::string::npos &&
+			sceneViewSource.find(
+				"scheduler->GetNumWorkerThreads()") != std::string::npos,
+			"vegetation chunks must be distributed across the bounded worker Task pool");
+		Require(landscapeSource.find(
+				"instanceLodCulling.m_cellWorldAabb.Extend(") !=
+				std::string::npos &&
+			landscapeSource.find(
+				"instanceWorldAabbs.Add(instanceBounds)") !=
+				std::string::npos &&
+			landscapeSource.find(
+				"vegetationShadowCaster->m_instanceLodCulling") !=
+				std::string::npos,
+			"landscape proxies and shadow casters must share exact instance bounds for snapshot culling");
+	}
+
 	void TestForwardPlusTileSynchronizationContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -613,6 +930,27 @@ namespace
 				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		Require((shaderReadStages & VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT) != 0,
 			"shader-read image layouts must synchronize graphics shader stages");
+		Require((shaderReadStages & VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT) != 0,
+			"shader-read image layouts must synchronize compute shader sampling");
+
+		for (const VkImageLayout depthAttachmentLayout : {
+			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL })
+		{
+			const VkAccessFlags depthAttachmentAccess =
+				VulkanCommandBuffer::GetAccessFlags(depthAttachmentLayout);
+			Require((depthAttachmentAccess &
+				VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT) != 0,
+				"depth attachment layouts must publish depth writes before sampling");
+
+			const VkPipelineStageFlags depthAttachmentStages =
+				VulkanCommandBuffer::GetPipelineStage(depthAttachmentLayout);
+			Require((depthAttachmentStages &
+				VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT) != 0 &&
+				(depthAttachmentStages &
+					VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT) != 0,
+				"depth attachment layouts must synchronize early and late depth writes");
+		}
 	}
 
 	void TestCommandListImageTrackingPreservesPublishedContents()
@@ -1651,6 +1989,7 @@ int main()
 		{ "SceneViewProxyMaterialAlignmentContract", TestSceneViewProxyMaterialAlignmentContract },
 		{ "ModelHierarchyRenderPropagationContract", TestModelHierarchyRenderPropagationContract },
 		{ "GpuCullingShaderSafetyContract", TestGpuCullingShaderSafetyContract },
+		{ "VegetationBoundaryInstanceLodCullingContract", TestVegetationBoundaryInstanceLodCullingContract },
 		{ "ForwardPlusTileSynchronizationContract", TestForwardPlusTileSynchronizationContract },
 		{ "RegionBlitDoesNotPromoteToFullImageCopy", TestRegionBlitDoesNotPromoteToFullImageCopy },
 		{ "VulkanMemoryBarrierRecordsPipelineBarrier", TestVulkanMemoryBarrierRecordsPipelineBarrier },
