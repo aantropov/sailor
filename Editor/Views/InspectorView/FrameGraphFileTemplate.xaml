@@ -9,185 +9,401 @@
 
     <VerticalStackLayout x:Name="Root" Spacing="10">
         <VerticalStackLayout.Resources>
-            <controls:FloatValueConverter x:Key="FloatValueConverter"/>
+            <controls:FloatValueConverter x:Key="FloatValueConverter" />
         </VerticalStackLayout.Resources>
 
         <views:ControlPanelView />
 
-        <Label Text="Samplers" FontAttributes="Bold" />
-        <HorizontalStackLayout>
-            <Button Text="+" Command="{Binding AddSamplerCommand}" />
-            <Button Text="Clear" Command="{Binding ClearSamplersCommand}" />
+        <Label Text="Frame Pipeline" FontAttributes="Bold" FontSize="16" />
+        <HorizontalStackLayout Spacing="6">
+            <Button Text="Add Node" Command="{Binding AddNodeCommand}" />
+            <Button Text="Earlier"
+                    Command="{Binding MoveNodeEarlierCommand}"
+                    CommandParameter="{Binding SelectedNode}"
+                    IsEnabled="{Binding HasSelectedNode}" />
+            <Button Text="Later"
+                    Command="{Binding MoveNodeLaterCommand}"
+                    CommandParameter="{Binding SelectedNode}"
+                    IsEnabled="{Binding HasSelectedNode}" />
+            <Button Text="Delete"
+                    Command="{Binding RemoveNodeCommand}"
+                    CommandParameter="{Binding SelectedNode}"
+                    IsEnabled="{Binding HasSelectedNode}" />
         </HorizontalStackLayout>
-        <CollectionView ItemsSource="{Binding Samplers}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:FrameGraphSampler">
-                    <Grid ColumnSpacing="6" Padding="0,2">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="170" />
-                            <ColumnDefinition Width="260" />
-                        </Grid.ColumnDefinitions>
-                        <Button Grid.Column="0" Text="-" Command="{Binding BindingContext.RemoveSamplerCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
-                        <Entry Grid.Column="1" Text="{Binding Name}" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Column="2" Text="{Binding FileId}" Placeholder="fileId" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Column="3" Text="{Binding Path}" Placeholder="path" ReturnType="Done" Completed="OnEntryCompleted" />
-                    </Grid>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
 
-        <Label Text="Global Floats" FontAttributes="Bold" />
-        <HorizontalStackLayout>
-            <Button Text="+" Command="{Binding AddFloatCommand}" />
-            <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
-        </HorizontalStackLayout>
-        <CollectionView ItemsSource="{Binding Floats}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:FrameGraphScalar">
-                    <HorizontalStackLayout Spacing="6">
-                        <Button Text="-" Command="{Binding BindingContext.RemoveFloatCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
-                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Text="{Binding Value}" WidthRequest="180" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
+        <ScrollView Orientation="Horizontal"
+                    HorizontalScrollBarVisibility="Always">
+            <controls:FrameGraphDiagramView BindingContext="{Binding .}"
+                                            HorizontalOptions="Start" />
+        </ScrollView>
+        <Label Text="Cards follow serialized frame order. Select a card to edit its bindings and parameters."
+               FontSize="11"
+               TextColor="#929AA5" />
+
+        <Border Stroke="#3B424D"
+                BackgroundColor="#1D2229"
+                Padding="10"
+                IsVisible="{Binding HasSelectedNode}">
+            <VerticalStackLayout x:Name="SelectedNodeEditor"
+                                 x:DataType="vm:FrameGraphNode"
+                                 BindingContext="{Binding BindingContext.SelectedNode, Source={x:Reference Root}}"
+                                 Spacing="8">
+                <Label Text="Selected Node" FontAttributes="Bold" FontSize="14" />
+                <Entry Text="{Binding Name}"
+                       Placeholder="node name"
+                       FontAttributes="Bold"
+                       ReturnType="Done"
+                       Completed="OnEntryCompleted" />
+                <Entry Text="{Binding Tag}"
+                       Placeholder="optional runtime tag (defaults to node name)"
+                       ReturnType="Done"
+                       Completed="OnEntryCompleted" />
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label Text="Render Target Bindings"
+                           FontAttributes="Bold"
+                           FontSize="12"
+                           VerticalTextAlignment="Center" />
+                    <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                        <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
+                        <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
                     </HorizontalStackLayout>
+                </Grid>
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding RenderTargets}" Spacing="4">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FrameGraphTargetBinding">
+                            <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
+                                <Button Text="-"
+                                        Command="{Binding BindingContext.SelectedNode.RemoveRenderTargetCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding .}" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Key}"
+                                       Placeholder="slot"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="2"
+                                       Text="{Binding Value}"
+                                       Placeholder="resource"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label Text="Strings"
+                           FontAttributes="Bold"
+                           FontSize="12"
+                           VerticalTextAlignment="Center" />
+                    <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                        <Button Text="+" Command="{Binding AddStringCommand}" />
+                        <Button Text="Clear" Command="{Binding ClearStringsCommand}" />
+                    </HorizontalStackLayout>
+                </Grid>
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Strings}" Spacing="4">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FrameGraphScalar">
+                            <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
+                                <Button Text="-"
+                                        Command="{Binding BindingContext.SelectedNode.RemoveStringCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding .}" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Key}"
+                                       Placeholder="name"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="2"
+                                       Text="{Binding Value}"
+                                       Placeholder="value"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label Text="Floats"
+                           FontAttributes="Bold"
+                           FontSize="12"
+                           VerticalTextAlignment="Center" />
+                    <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                        <Button Text="+" Command="{Binding AddFloatCommand}" />
+                        <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
+                    </HorizontalStackLayout>
+                </Grid>
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Floats}" Spacing="4">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FrameGraphScalar">
+                            <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
+                                <Button Text="-"
+                                        Command="{Binding BindingContext.SelectedNode.RemoveFloatCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding .}" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Key}"
+                                       Placeholder="name"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="2"
+                                       Text="{Binding Value}"
+                                       Placeholder="value"
+                                       Keyboard="Numeric"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <Label Text="Vec4"
+                           FontAttributes="Bold"
+                           FontSize="12"
+                           VerticalTextAlignment="Center" />
+                    <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                        <Button Text="+" Command="{Binding AddVec4Command}" />
+                        <Button Text="Clear" Command="{Binding ClearVec4Command}" />
+                    </HorizontalStackLayout>
+                </Grid>
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Vec4}" Spacing="4">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:FrameGraphVec4Value">
+                            <VerticalStackLayout Spacing="4">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                    <Button Text="-"
+                                            Command="{Binding BindingContext.SelectedNode.RemoveVec4Command, Source={x:Reference Root}}"
+                                            CommandParameter="{Binding .}" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding Key}"
+                                           Placeholder="name"
+                                           ReturnType="Done"
+                                           Completed="OnEntryCompleted" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4" Margin="38,0,0,0">
+                                    <Entry Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}"
+                                           Placeholder="X"
+                                           Keyboard="Numeric"
+                                           ReturnType="Done"
+                                           Completed="OnEntryCompleted" />
+                                    <Entry Grid.Column="1"
+                                           Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}"
+                                           Placeholder="Y"
+                                           Keyboard="Numeric"
+                                           ReturnType="Done"
+                                           Completed="OnEntryCompleted" />
+                                    <Entry Grid.Column="2"
+                                           Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}"
+                                           Placeholder="Z"
+                                           Keyboard="Numeric"
+                                           ReturnType="Done"
+                                           Completed="OnEntryCompleted" />
+                                    <Entry Grid.Column="3"
+                                           Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}"
+                                           Placeholder="W"
+                                           Keyboard="Numeric"
+                                           ReturnType="Done"
+                                           Completed="OnEntryCompleted" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </Border>
+
+        <Label Text="Renderer Resources" FontAttributes="Bold" FontSize="16" Margin="0,6,0,0" />
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Label Text="Samplers" FontAttributes="Bold" VerticalTextAlignment="Center" />
+            <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                <Button Text="+" Command="{Binding AddSamplerCommand}" />
+                <Button Text="Clear" Command="{Binding ClearSamplersCommand}" />
+            </HorizontalStackLayout>
+        </Grid>
+        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Samplers}" Spacing="6">
+            <BindableLayout.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphSampler">
+                    <Border Stroke="#3B424D" Padding="8">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                <Button Text="-"
+                                        Command="{Binding BindingContext.RemoveSamplerCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding .}" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       Placeholder="sampler name"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                            <Entry Text="{Binding FileId}"
+                                   Placeholder="fileId"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                            <Entry Text="{Binding Path}"
+                                   Placeholder="asset path"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                        </VerticalStackLayout>
+                    </Border>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
-        <Label Text="Render Targets" FontAttributes="Bold" />
-        <HorizontalStackLayout>
-            <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
-            <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
-        </HorizontalStackLayout>
-        <CollectionView ItemsSource="{Binding RenderTargets}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:FrameGraphRenderTarget">
-                    <Grid ColumnSpacing="6" RowSpacing="4" Padding="0,4">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="160" />
-                            <ColumnDefinition Width="140" />
-                            <ColumnDefinition Width="140" />
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <Button Grid.RowSpan="3" Grid.Column="0" Text="-" Command="{Binding BindingContext.RemoveRenderTargetCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
-                        <Entry Grid.Column="1" Text="{Binding Name}" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Column="2" Text="{Binding Format}" Placeholder="format" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Column="3" Text="{Binding Width}" Placeholder="width" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Column="4" Text="{Binding Height}" Placeholder="height" ReturnType="Done" Completed="OnEntryCompleted" />
-
-                        <Entry Grid.Row="1" Grid.Column="1" Text="{Binding Clamping}" Placeholder="clamping" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Row="1" Grid.Column="2" Text="{Binding Filtration}" Placeholder="filtration" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Row="1" Grid.Column="3" Text="{Binding Reduction}" Placeholder="reduction" ReturnType="Done" Completed="OnEntryCompleted" />
-                        <Entry Grid.Row="1" Grid.Column="4" Text="{Binding MaxMipLevel}" Placeholder="max mip" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-
-                        <HorizontalStackLayout Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="4" Spacing="10">
-                            <Label Text="Surface" VerticalOptions="Center" />
-                            <CheckBox IsChecked="{Binding IsSurface}" />
-                            <Label Text="Compute" VerticalOptions="Center" />
-                            <CheckBox IsChecked="{Binding IsCompatibleWithComputeShaders}" />
-                            <Label Text="Mips" VerticalOptions="Center" />
-                            <CheckBox IsChecked="{Binding GenerateMips}" />
-                        </HorizontalStackLayout>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Label Text="Global Floats" FontAttributes="Bold" VerticalTextAlignment="Center" />
+            <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                <Button Text="+" Command="{Binding AddFloatCommand}" />
+                <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
+            </HorizontalStackLayout>
+        </Grid>
+        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Floats}" Spacing="4">
+            <BindableLayout.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphScalar">
+                    <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="6">
+                        <Button Text="-"
+                                Command="{Binding BindingContext.RemoveFloatCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        <Entry Grid.Column="1"
+                               Text="{Binding Key}"
+                               Placeholder="name"
+                               ReturnType="Done"
+                               Completed="OnEntryCompleted" />
+                        <Entry Grid.Column="2"
+                               Text="{Binding Value}"
+                               Placeholder="value"
+                               Keyboard="Numeric"
+                               ReturnType="Done"
+                               Completed="OnEntryCompleted" />
                     </Grid>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
 
-        <Label Text="Frame Nodes" FontAttributes="Bold" />
-        <HorizontalStackLayout>
-            <Button Text="+" Command="{Binding AddNodeCommand}" />
-            <Button Text="Clear" Command="{Binding ClearNodesCommand}" />
-        </HorizontalStackLayout>
-        <CollectionView ItemsSource="{Binding Nodes}">
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="vm:FrameGraphNode">
-                    <VerticalStackLayout Spacing="6" Padding="0,8">
-                        <HorizontalStackLayout Spacing="6">
-                            <Button Text="-" Command="{Binding BindingContext.RemoveNodeCommand, Source={x:Reference Root}}" CommandParameter="{Binding .}" />
-                            <Entry Text="{Binding Name}" WidthRequest="220" Placeholder="node name" FontAttributes="Bold" ReturnType="Done" Completed="OnEntryCompleted" />
-                        </HorizontalStackLayout>
-
-                        <Label Text="Render Targets" FontAttributes="Bold" FontSize="12" />
-                        <HorizontalStackLayout>
-                            <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
-                            <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
-                        </HorizontalStackLayout>
-                        <CollectionView ItemsSource="{Binding RenderTargets}">
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FrameGraphTargetBinding">
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveRenderTargetCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
-                                        <Entry Text="{Binding Key}" WidthRequest="160" Placeholder="slot" ReturnType="Done" Completed="OnEntryCompleted" />
-                                        <Entry Text="{Binding Value}" WidthRequest="220" Placeholder="target" ReturnType="Done" Completed="OnEntryCompleted" />
-                                    </HorizontalStackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-
-                        <Label Text="Strings" FontAttributes="Bold" FontSize="12" />
-                        <HorizontalStackLayout>
-                            <Button Text="+" Command="{Binding AddStringCommand}" />
-                            <Button Text="Clear" Command="{Binding ClearStringsCommand}" />
-                        </HorizontalStackLayout>
-                        <CollectionView ItemsSource="{Binding Strings}">
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FrameGraphScalar">
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveStringCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
-                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                                        <Entry Text="{Binding Value}" WidthRequest="260" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" />
-                                    </HorizontalStackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-
-                        <Label Text="Floats" FontAttributes="Bold" FontSize="12" />
-                        <HorizontalStackLayout>
-                            <Button Text="+" Command="{Binding AddFloatCommand}" />
-                            <Button Text="Clear" Command="{Binding ClearFloatsCommand}" />
-                        </HorizontalStackLayout>
-                        <CollectionView ItemsSource="{Binding Floats}">
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FrameGraphScalar">
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveFloatCommand, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
-                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                                        <Entry Text="{Binding Value}" WidthRequest="180" Placeholder="value" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-                                    </HorizontalStackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
-
-                        <Label Text="Vec4" FontAttributes="Bold" FontSize="12" />
-                        <HorizontalStackLayout>
-                            <Button Text="+" Command="{Binding AddVec4Command}" />
-                            <Button Text="Clear" Command="{Binding ClearVec4Command}" />
-                        </HorizontalStackLayout>
-                        <CollectionView ItemsSource="{Binding Vec4}">
-                            <CollectionView.ItemTemplate>
-                                <DataTemplate x:DataType="vm:FrameGraphVec4Value">
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Button Text="-" Command="{Binding Path=BindingContext.RemoveVec4Command, Source={RelativeSource AncestorType={x:Type VerticalStackLayout}}}" CommandParameter="{Binding .}" />
-                                        <Entry Text="{Binding Key}" WidthRequest="180" Placeholder="name" ReturnType="Done" Completed="OnEntryCompleted" />
-                                        <Entry Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-                                        <Entry Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-                                        <Entry Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-                                        <Entry Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}" WidthRequest="60" ReturnType="Done" Completed="OnEntryCompleted" Keyboard="Numeric" />
-                                    </HorizontalStackLayout>
-                                </DataTemplate>
-                            </CollectionView.ItemTemplate>
-                        </CollectionView>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Label Text="Global Vec4" FontAttributes="Bold" VerticalTextAlignment="Center" />
+            <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                <Button Text="+" Command="{Binding AddVec4Command}" />
+                <Button Text="Clear" Command="{Binding ClearVec4Command}" />
+            </HorizontalStackLayout>
+        </Grid>
+        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Vec4}" Spacing="4">
+            <BindableLayout.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphVec4Value">
+                    <VerticalStackLayout Spacing="4">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                            <Button Text="-"
+                                    Command="{Binding BindingContext.RemoveVec4Command, Source={x:Reference Root}}"
+                                    CommandParameter="{Binding .}" />
+                            <Entry Grid.Column="1"
+                                   Text="{Binding Key}"
+                                   Placeholder="name"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4" Margin="38,0,0,0">
+                            <Entry Text="{Binding Value.X, Converter={StaticResource FloatValueConverter}}"
+                                   Placeholder="X"
+                                   Keyboard="Numeric"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                            <Entry Grid.Column="1"
+                                   Text="{Binding Value.Y, Converter={StaticResource FloatValueConverter}}"
+                                   Placeholder="Y"
+                                   Keyboard="Numeric"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                            <Entry Grid.Column="2"
+                                   Text="{Binding Value.Z, Converter={StaticResource FloatValueConverter}}"
+                                   Placeholder="Z"
+                                   Keyboard="Numeric"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                            <Entry Grid.Column="3"
+                                   Text="{Binding Value.W, Converter={StaticResource FloatValueConverter}}"
+                                   Placeholder="W"
+                                   Keyboard="Numeric"
+                                   ReturnType="Done"
+                                   Completed="OnEntryCompleted" />
+                        </Grid>
                     </VerticalStackLayout>
                 </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
+
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Label Text="Render Targets" FontAttributes="Bold" VerticalTextAlignment="Center" />
+            <HorizontalStackLayout Grid.Column="1" Spacing="4">
+                <Button Text="+" Command="{Binding AddRenderTargetCommand}" />
+                <Button Text="Clear" Command="{Binding ClearRenderTargetsCommand}" />
+            </HorizontalStackLayout>
+        </Grid>
+        <VerticalStackLayout BindableLayout.ItemsSource="{Binding RenderTargets}" Spacing="6">
+            <BindableLayout.ItemTemplate>
+                <DataTemplate x:DataType="vm:FrameGraphRenderTarget">
+                    <Border Stroke="#3B424D" Padding="8">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                                <Button Text="-"
+                                        Command="{Binding BindingContext.RemoveRenderTargetCommand, Source={x:Reference Root}}"
+                                        CommandParameter="{Binding .}" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Name}"
+                                       Placeholder="target name"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                <Entry Text="{Binding Format}"
+                                       Placeholder="format"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding MaxMipLevel}"
+                                       Placeholder="max mip level"
+                                       Keyboard="Numeric"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                <Entry Text="{Binding Width}"
+                                       Placeholder="width"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Height}"
+                                       Placeholder="height"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
+                                <Entry Text="{Binding Clamping}"
+                                       Placeholder="clamping"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="1"
+                                       Text="{Binding Filtration}"
+                                       Placeholder="filtration"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                                <Entry Grid.Column="2"
+                                       Text="{Binding Reduction}"
+                                       Placeholder="reduction"
+                                       ReturnType="Done"
+                                       Completed="OnEntryCompleted" />
+                            </Grid>
+                            <HorizontalStackLayout Spacing="10">
+                                <Label Text="Surface" VerticalOptions="Center" />
+                                <CheckBox IsChecked="{Binding IsSurface}" />
+                                <Label Text="Compute" VerticalOptions="Center" />
+                                <CheckBox IsChecked="{Binding IsCompatibleWithComputeShaders}" />
+                                <Label Text="Mips" VerticalOptions="Center" />
+                                <CheckBox IsChecked="{Binding GenerateMips}" />
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+                </DataTemplate>
+            </BindableLayout.ItemTemplate>
+        </VerticalStackLayout>
     </VerticalStackLayout>
 </DataTemplate>

@@ -87,6 +87,7 @@
     <Compile Include="SceneDocumentContractTests.cs" />
     <Compile Include="WorldAssetRebindPolicyTests.cs" />
     <Compile Include="EngineLifecycleTests.cs" />
+    <Compile Include="FrameGraphDiagramLayoutTests.cs" />
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="LatestSceneViewportStateTests.cs" />
     <Compile Include="LatestQueuedCommandTests.cs" />
@@ -159,6 +160,7 @@
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
     <Compile Include="..\Editor\Workflow\InspectorPendingEditCoordinator.cs" Link="Workflow\InspectorPendingEditCoordinator.cs" />
+    <Compile Include="..\Editor\Workflow\FrameGraphDiagramLayout.cs" Link="Workflow\FrameGraphDiagramLayout.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />
     <Compile Include="..\Editor\Services\EngineLaunchContract.cs" Link="Services\EngineLaunchContract.cs" />
