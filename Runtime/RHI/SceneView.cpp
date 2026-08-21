@@ -10,6 +10,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
+#include "Tasks/Scheduler.h"
 
 #include <algorithm>
 #include <array>
@@ -119,8 +120,108 @@ uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableL
 	return (std::clamp)(selectedLod, minLod, maxLod);
 }
 
+bool RHI::RHIInstanceLodCullingData::IsValid(size_t numMeshes) const
+{
+	if (!m_cellWorldAabb.IsValid() ||
+		m_meshesPerInstance == 0u ||
+		!m_instanceWorldBounds ||
+		m_instanceWorldBounds->m_aabbs.IsEmpty() ||
+		!Math::AllFinite(m_minInstanceWorldExtents) ||
+		!Math::AllFinite(m_maxInstanceWorldExtents) ||
+		glm::any(glm::lessThan(m_minInstanceWorldExtents, glm::vec3(0.0f))) ||
+		glm::any(glm::lessThan(m_maxInstanceWorldExtents, m_minInstanceWorldExtents)))
+	{
+		return false;
+	}
+
+	const size_t meshesPerInstance = static_cast<size_t>(m_meshesPerInstance);
+	const size_t numInstances = m_instanceWorldBounds->m_aabbs.Num();
+	return numInstances <= numMeshes / meshesPerInstance &&
+		numInstances * meshesPerInstance == numMeshes;
+}
+
 namespace
 {
+	template<typename T>
+	bool IsAlignedOrEmpty(const TVector<T>& values, size_t expectedSize)
+	{
+		return values.IsEmpty() || values.Num() == expectedSize;
+	}
+
+	template<typename T>
+	void MoveAlignedElement(TVector<T>& values,
+		size_t sourceIndex,
+		size_t destinationIndex)
+	{
+		if (!values.IsEmpty() && sourceIndex != destinationIndex)
+		{
+			values[destinationIndex] = std::move(values[sourceIndex]);
+		}
+	}
+
+	template<typename T>
+	void ResizeAligned(TVector<T>& values, size_t size)
+	{
+		if (!values.IsEmpty())
+		{
+			values.Resize(size);
+		}
+	}
+
+	std::array<glm::vec3, 8u> GetAabbPoints(const Math::AABB& bounds)
+	{
+		const glm::vec3& min = bounds.m_min;
+		const glm::vec3& max = bounds.m_max;
+		return {
+			glm::vec3(min.x, min.y, min.z),
+			glm::vec3(max.x, max.y, max.z),
+			glm::vec3(min.x, max.y, max.z),
+			glm::vec3(max.x, min.y, max.z),
+			glm::vec3(max.x, max.y, min.z),
+			glm::vec3(max.x, min.y, min.z),
+			glm::vec3(min.x, max.y, min.z),
+			glm::vec3(min.x, min.y, max.z)
+		};
+	}
+
+	RHIMeshPtr ResolveLodMesh(const RHILodPolicy& policy,
+		float screenCoverage,
+		const RHIMeshPtr& sourceMesh)
+	{
+		if (!sourceMesh)
+		{
+			return {};
+		}
+
+		const uint32_t lod = policy.Resolve(
+			screenCoverage,
+			sourceMesh->GetNumLods());
+		if (lod > 0u)
+		{
+			if (RHIMeshPtr lodMesh = sourceMesh->GetLod(lod))
+			{
+				return lodMesh;
+			}
+		}
+		return sourceMesh;
+	}
+
+	void ClearProxyMeshData(RHISceneViewProxy& proxy)
+	{
+		proxy.m_meshes.Clear();
+		proxy.m_meshModelMatrices.Clear();
+		proxy.m_overrideMaterials.Clear();
+		proxy.m_renderQueueTags.Clear();
+		proxy.m_baseColorFactors.Clear();
+		proxy.m_baseColorSamplers.Clear();
+		proxy.m_alphaCutoffs.Clear();
+#if defined(__APPLE__)
+		proxy.m_materialTextureSamplers.Clear();
+#endif
+		proxy.m_instanceLodCulling = {};
+		proxy.m_worldAabb = {};
+	}
+
 	uint32_t ResolveProxyLod(
 		const StaticMeshRendererData& data,
 		const Math::AABB& worldBounds,
@@ -187,14 +288,156 @@ namespace
 		}
 	}
 
+	RHIInstanceLodCullingDecision ClassifyInstanceCellData(
+		const Math::AABB& worldAabb,
+		const RHILodPolicy& lodPolicy,
+		const RHIInstanceLodCullingData& instanceData,
+		size_t numMeshes,
+		bool bHasAlignedInstanceData,
+		const Math::Frustum& frustum,
+		const glm::vec3& cameraPosition,
+		const glm::mat4& viewMatrix,
+		const glm::mat4& projectionMatrix)
+	{
+		RHIInstanceLodCullingDecision decision;
+		if (!bHasAlignedInstanceData ||
+			!instanceData.IsValid(numMeshes))
+		{
+			decision.m_uniformScreenCoverage = CalculateScreenCoverage(
+				worldAabb,
+				viewMatrix,
+				projectionMatrix);
+			return decision;
+		}
+
+		if (!worldAabb.IsValid() || !frustum.OverlapsAABB(worldAabb))
+		{
+			decision.m_mode = EInstanceLodCullingMode::Culled;
+			return decision;
+		}
+
+		const auto cullingCellPoints = GetAabbPoints(worldAabb);
+		bool bCrossesBoundary = false;
+		if (std::isfinite(lodPolicy.m_maxCameraDistance))
+		{
+			const glm::vec3 closestPoint = glm::clamp(
+				cameraPosition,
+				worldAabb.m_min,
+				worldAabb.m_max);
+			const float nearestDistance = glm::distance(
+				cameraPosition,
+				closestPoint);
+			if (nearestDistance > lodPolicy.m_maxCameraDistance)
+			{
+				decision.m_mode = EInstanceLodCullingMode::Culled;
+				return decision;
+			}
+
+			float farthestVertexDistance = 0.0f;
+			for (const glm::vec3& point : cullingCellPoints)
+			{
+				farthestVertexDistance = (std::max)(
+					farthestVertexDistance,
+					glm::distance(cameraPosition, point));
+			}
+			bCrossesBoundary =
+				farthestVertexDistance > lodPolicy.m_maxCameraDistance;
+		}
+
+		for (const glm::vec3& point : cullingCellPoints)
+		{
+			if (!frustum.ContainsPoint(point))
+			{
+				bCrossesBoundary = true;
+				break;
+			}
+		}
+
+		if (bCrossesBoundary)
+		{
+			decision.m_mode = EInstanceLodCullingMode::PerInstance;
+			return decision;
+		}
+
+		float minScreenCoverage = 1.0f;
+		float maxScreenCoverage = 0.0f;
+		const auto cellPoints = GetAabbPoints(instanceData.m_cellWorldAabb);
+		const auto sampleCoverage = [&](const glm::vec3& center,
+			const glm::vec3& extents)
+			{
+				const float coverage = CalculateScreenCoverage(
+					Math::AABB(center, glm::max(extents, glm::vec3(0.001f))),
+					viewMatrix,
+					projectionMatrix);
+				minScreenCoverage = (std::min)(minScreenCoverage, coverage);
+				maxScreenCoverage = (std::max)(maxScreenCoverage, coverage);
+			};
+
+		for (const glm::vec3& point : cellPoints)
+		{
+			sampleCoverage(point, instanceData.m_minInstanceWorldExtents);
+			sampleCoverage(point, instanceData.m_maxInstanceWorldExtents);
+		}
+		const glm::vec3 closestCellPoint = glm::clamp(
+			cameraPosition,
+			instanceData.m_cellWorldAabb.m_min,
+			instanceData.m_cellWorldAabb.m_max);
+		sampleCoverage(closestCellPoint,
+			instanceData.m_minInstanceWorldExtents);
+		sampleCoverage(closestCellPoint,
+			instanceData.m_maxInstanceWorldExtents);
+		sampleCoverage(instanceData.m_cellWorldAabb.GetCenter(),
+			instanceData.m_minInstanceWorldExtents);
+		sampleCoverage(instanceData.m_cellWorldAabb.GetCenter(),
+			instanceData.m_maxInstanceWorldExtents);
+
+		decision.m_uniformScreenCoverage =
+			(minScreenCoverage + maxScreenCoverage) * 0.5f;
+		if (lodPolicy.m_bEnabled)
+		{
+			const size_t policyLodCount = (std::max)(
+				static_cast<size_t>(lodPolicy.m_maxLod) + 1u,
+				lodPolicy.m_screenCoverageThresholds.Num() + 1u);
+			const uint32_t numAvailableLods = static_cast<uint32_t>((std::min)(
+				policyLodCount,
+				static_cast<size_t>((std::numeric_limits<uint32_t>::max)())));
+			if (lodPolicy.Resolve(minScreenCoverage, numAvailableLods) !=
+				lodPolicy.Resolve(maxScreenCoverage, numAvailableLods))
+			{
+				decision.m_mode = EInstanceLodCullingMode::PerInstance;
+			}
+		}
+
+		return decision;
+	}
+
 	RHIShadowCasterProxyPtr CreateLodShadowCaster(
 		const RHIShadowCasterProxyPtr& source,
 		WorldPtr world,
-		const CameraData& camera)
+		const CameraData& camera,
+		const Math::Transform& cameraTransform,
+		const Math::Frustum* cullingFrustum = nullptr)
 	{
 		if (!source || !world)
 		{
 			return source;
+		}
+		if (cullingFrustum &&
+			SceneViewDetails::HasAlignedInstanceData(*source))
+		{
+			const auto decision = SceneViewDetails::ClassifyInstanceCell(
+				*source,
+				*cullingFrustum,
+				glm::vec3(cameraTransform.m_position),
+				camera.GetViewMatrix(),
+				camera.GetProjectionMatrix());
+			return SceneViewDetails::ApplyInstanceLodCullingDecision(
+				source,
+				decision,
+				*cullingFrustum,
+				glm::vec3(cameraTransform.m_position),
+				camera.GetViewMatrix(),
+				camera.GetProjectionMatrix());
 		}
 
 		auto* meshEcs = world->GetECS<StaticMeshRendererECS>();
@@ -225,6 +468,335 @@ namespace
 		}
 		return result;
 	}
+}
+
+bool RHI::SceneViewDetails::HasAlignedInstanceData(const RHISceneViewProxy& proxy)
+{
+	const size_t numMeshes = proxy.m_meshes.Num();
+	if (!proxy.m_instanceLodCulling.IsValid(numMeshes))
+	{
+		return false;
+	}
+
+	return IsAlignedOrEmpty(proxy.m_meshModelMatrices, numMeshes) &&
+		IsAlignedOrEmpty(proxy.m_overrideMaterials, numMeshes) &&
+		IsAlignedOrEmpty(proxy.m_renderQueueTags, numMeshes) &&
+		IsAlignedOrEmpty(proxy.m_baseColorFactors, numMeshes) &&
+		IsAlignedOrEmpty(proxy.m_baseColorSamplers, numMeshes) &&
+		IsAlignedOrEmpty(proxy.m_alphaCutoffs, numMeshes)
+#if defined(__APPLE__)
+		&& IsAlignedOrEmpty(proxy.m_materialTextureSamplers, numMeshes)
+#endif
+		;
+}
+
+bool RHI::SceneViewDetails::HasAlignedInstanceData(
+	const RHIShadowCasterProxy& proxy)
+{
+	return proxy.m_instanceLodCulling.IsValid(proxy.m_meshes.Num());
+}
+
+RHIInstanceLodCullingDecision RHI::SceneViewDetails::ClassifyInstanceCell(
+	const RHISceneViewProxy& proxy,
+	const Math::Frustum& frustum,
+	const glm::vec3& cameraPosition,
+	const glm::mat4& viewMatrix,
+	const glm::mat4& projectionMatrix)
+{
+	return ClassifyInstanceCellData(
+		proxy.m_worldAabb,
+		proxy.m_lodPolicy,
+		proxy.m_instanceLodCulling,
+		proxy.m_meshes.Num(),
+		HasAlignedInstanceData(proxy),
+		frustum,
+		cameraPosition,
+		viewMatrix,
+		projectionMatrix);
+}
+
+RHIInstanceLodCullingDecision RHI::SceneViewDetails::ClassifyInstanceCell(
+	const RHIShadowCasterProxy& proxy,
+	const Math::Frustum& frustum,
+	const glm::vec3& cameraPosition,
+	const glm::mat4& viewMatrix,
+	const glm::mat4& projectionMatrix)
+{
+	return ClassifyInstanceCellData(
+		proxy.m_worldAabb,
+		proxy.m_lodPolicy,
+		proxy.m_instanceLodCulling,
+		proxy.m_meshes.Num(),
+		HasAlignedInstanceData(proxy),
+		frustum,
+		cameraPosition,
+		viewMatrix,
+		projectionMatrix);
+}
+
+bool RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+	RHISceneViewProxy& proxy,
+	const RHIInstanceLodCullingDecision& decision,
+	const Math::Frustum& frustum,
+	const glm::vec3& cameraPosition,
+	const glm::mat4& viewMatrix,
+	const glm::mat4& projectionMatrix)
+{
+	if (!HasAlignedInstanceData(proxy))
+	{
+		return !proxy.m_meshes.IsEmpty();
+	}
+
+	if (decision.m_mode == EInstanceLodCullingMode::Culled)
+	{
+		ClearProxyMeshData(proxy);
+		return false;
+	}
+
+	if (decision.m_mode == EInstanceLodCullingMode::Uniform)
+	{
+		if (proxy.m_lodPolicy.m_bEnabled)
+		{
+			for (RHIMeshPtr& mesh : proxy.m_meshes)
+			{
+				mesh = ResolveLodMesh(
+					proxy.m_lodPolicy,
+					decision.m_uniformScreenCoverage,
+					mesh);
+			}
+		}
+		proxy.m_instanceLodCulling = {};
+		return !proxy.m_meshes.IsEmpty();
+	}
+
+	const size_t meshesPerInstance = static_cast<size_t>(
+		proxy.m_instanceLodCulling.m_meshesPerInstance);
+	const TSharedPtr<RHIInstanceWorldBounds> sourceInstanceWorldBounds =
+		proxy.m_instanceLodCulling.m_instanceWorldBounds;
+	const TVector<Math::AABB>& sourceInstanceWorldAabbs =
+		sourceInstanceWorldBounds->m_aabbs;
+
+	// Compact every mesh-parallel stream in place to keep indices aligned
+	// without allocating a second full set of vegetation instance data.
+	Math::AABB visibleWorldAabb;
+	size_t writeMeshIndex = 0u;
+	for (size_t instanceIndex = 0u;
+		instanceIndex < sourceInstanceWorldAabbs.Num();
+		++instanceIndex)
+	{
+		const Math::AABB& instanceWorldAabb =
+			sourceInstanceWorldAabbs[instanceIndex];
+		if (!instanceWorldAabb.IsValid())
+		{
+			continue;
+		}
+
+		if (std::isfinite(proxy.m_lodPolicy.m_maxCameraDistance))
+		{
+			const glm::vec3 closestPoint = glm::clamp(
+				cameraPosition,
+				instanceWorldAabb.m_min,
+				instanceWorldAabb.m_max);
+			if (glm::distance(cameraPosition, closestPoint) >
+				proxy.m_lodPolicy.m_maxCameraDistance)
+			{
+				continue;
+			}
+		}
+		if (!frustum.OverlapsAABB(instanceWorldAabb))
+		{
+			continue;
+		}
+
+		const size_t firstMesh = instanceIndex * meshesPerInstance;
+		const size_t endMesh = firstMesh + meshesPerInstance;
+		bool bMeshesValid = endMesh <= proxy.m_meshes.Num();
+		for (size_t meshIndex = firstMesh;
+			bMeshesValid && meshIndex < endMesh;
+			++meshIndex)
+		{
+			bMeshesValid = proxy.m_meshes[meshIndex].IsValid();
+		}
+		if (!bMeshesValid)
+		{
+			continue;
+		}
+
+		const float screenCoverage = proxy.m_lodPolicy.m_bEnabled ?
+			CalculateScreenCoverage(instanceWorldAabb,
+				viewMatrix,
+				projectionMatrix) : 0.0f;
+		for (size_t meshIndex = firstMesh;
+			meshIndex < endMesh;
+			++meshIndex)
+		{
+			RHIMeshPtr resolvedMesh = ResolveLodMesh(
+				proxy.m_lodPolicy,
+				screenCoverage,
+				proxy.m_meshes[meshIndex]);
+			proxy.m_meshes[writeMeshIndex] = std::move(resolvedMesh);
+			MoveAlignedElement(proxy.m_meshModelMatrices,
+				meshIndex,
+				writeMeshIndex);
+			MoveAlignedElement(proxy.m_overrideMaterials,
+				meshIndex,
+				writeMeshIndex);
+			MoveAlignedElement(proxy.m_renderQueueTags,
+				meshIndex,
+				writeMeshIndex);
+			MoveAlignedElement(proxy.m_baseColorFactors,
+				meshIndex,
+				writeMeshIndex);
+			MoveAlignedElement(proxy.m_baseColorSamplers,
+				meshIndex,
+				writeMeshIndex);
+			MoveAlignedElement(proxy.m_alphaCutoffs,
+				meshIndex,
+				writeMeshIndex);
+#if defined(__APPLE__)
+			MoveAlignedElement(proxy.m_materialTextureSamplers,
+				meshIndex,
+				writeMeshIndex);
+#endif
+			++writeMeshIndex;
+		}
+
+		visibleWorldAabb.Extend(instanceWorldAabb);
+	}
+
+	if (writeMeshIndex == 0u)
+	{
+		ClearProxyMeshData(proxy);
+		return false;
+	}
+
+	proxy.m_meshes.Resize(writeMeshIndex);
+	ResizeAligned(proxy.m_meshModelMatrices, writeMeshIndex);
+	ResizeAligned(proxy.m_overrideMaterials, writeMeshIndex);
+	ResizeAligned(proxy.m_renderQueueTags, writeMeshIndex);
+	ResizeAligned(proxy.m_baseColorFactors, writeMeshIndex);
+	ResizeAligned(proxy.m_baseColorSamplers, writeMeshIndex);
+	ResizeAligned(proxy.m_alphaCutoffs, writeMeshIndex);
+#if defined(__APPLE__)
+	ResizeAligned(proxy.m_materialTextureSamplers, writeMeshIndex);
+#endif
+	proxy.m_instanceLodCulling = {};
+	proxy.m_worldAabb = visibleWorldAabb;
+	return true;
+}
+
+RHIShadowCasterProxyPtr RHI::SceneViewDetails::ApplyInstanceLodCullingDecision(
+	const RHIShadowCasterProxyPtr& source,
+	const RHIInstanceLodCullingDecision& decision,
+	const Math::Frustum& frustum,
+	const glm::vec3& cameraPosition,
+	const glm::mat4& viewMatrix,
+	const glm::mat4& projectionMatrix)
+{
+	if (!source || !HasAlignedInstanceData(*source))
+	{
+		return source;
+	}
+	if (decision.m_mode == EInstanceLodCullingMode::Culled)
+	{
+		return {};
+	}
+
+	RHIShadowCasterProxyPtr result = RHIShadowCasterProxyPtr::Make(*source);
+	if (decision.m_mode == EInstanceLodCullingMode::Uniform)
+	{
+		if (result->m_lodPolicy.m_bEnabled)
+		{
+			for (RHIShadowMeshProxy& shadowMesh : result->m_meshes)
+			{
+				shadowMesh.m_mesh = ResolveLodMesh(
+					result->m_lodPolicy,
+					decision.m_uniformScreenCoverage,
+					shadowMesh.m_mesh);
+			}
+		}
+		result->m_instanceLodCulling = {};
+		return result;
+	}
+
+	const size_t meshesPerInstance = static_cast<size_t>(
+		result->m_instanceLodCulling.m_meshesPerInstance);
+	const TSharedPtr<RHIInstanceWorldBounds> sourceInstanceWorldBounds =
+		result->m_instanceLodCulling.m_instanceWorldBounds;
+	const TVector<Math::AABB>& sourceInstanceWorldAabbs =
+		sourceInstanceWorldBounds->m_aabbs;
+
+	Math::AABB visibleWorldAabb;
+	size_t writeMeshIndex = 0u;
+	for (size_t instanceIndex = 0u;
+		instanceIndex < sourceInstanceWorldAabbs.Num();
+		++instanceIndex)
+	{
+		const Math::AABB& instanceWorldAabb =
+			sourceInstanceWorldAabbs[instanceIndex];
+		if (!instanceWorldAabb.IsValid())
+		{
+			continue;
+		}
+		if (std::isfinite(result->m_lodPolicy.m_maxCameraDistance))
+		{
+			const glm::vec3 closestPoint = glm::clamp(
+				cameraPosition,
+				instanceWorldAabb.m_min,
+				instanceWorldAabb.m_max);
+			if (glm::distance(cameraPosition, closestPoint) >
+				result->m_lodPolicy.m_maxCameraDistance)
+			{
+				continue;
+			}
+		}
+		if (!frustum.OverlapsAABB(instanceWorldAabb))
+		{
+			continue;
+		}
+
+		const size_t firstMesh = instanceIndex * meshesPerInstance;
+		const size_t endMesh = firstMesh + meshesPerInstance;
+		bool bMeshesValid = endMesh <= result->m_meshes.Num();
+		for (size_t meshIndex = firstMesh;
+			bMeshesValid && meshIndex < endMesh;
+			++meshIndex)
+		{
+			bMeshesValid = result->m_meshes[meshIndex].m_mesh.IsValid();
+		}
+		if (!bMeshesValid)
+		{
+			continue;
+		}
+
+		const float screenCoverage = result->m_lodPolicy.m_bEnabled ?
+			CalculateScreenCoverage(instanceWorldAabb,
+				viewMatrix,
+				projectionMatrix) : 0.0f;
+		for (size_t meshIndex = firstMesh;
+			meshIndex < endMesh;
+			++meshIndex)
+		{
+			RHIShadowMeshProxy shadowMesh =
+				std::move(result->m_meshes[meshIndex]);
+			shadowMesh.m_mesh = ResolveLodMesh(
+				result->m_lodPolicy,
+				screenCoverage,
+				shadowMesh.m_mesh);
+			result->m_meshes[writeMeshIndex] = std::move(shadowMesh);
+			++writeMeshIndex;
+		}
+		visibleWorldAabb.Extend(instanceWorldAabb);
+	}
+
+	if (writeMeshIndex == 0u)
+	{
+		return {};
+	}
+	result->m_meshes.Resize(writeMeshIndex);
+	result->m_instanceLodCulling = {};
+	result->m_worldAabb = visibleWorldAabb;
+	return result;
 }
 
 void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
@@ -462,18 +1034,106 @@ void RHISceneView::PrepareSnapshots()
 		res.m_proxies = TraceScene(frustum, false);
 		auto* meshEcs = m_world ? m_world->GetECS<StaticMeshRendererECS>() : nullptr;
 		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);
-		res.m_proxies.RemoveAll([&](const RHISceneViewProxy& proxy)
-			{
-				if (!std::isfinite(proxy.m_lodPolicy.m_maxCameraDistance))
-				{
-					return false;
-				}
-				const glm::vec3 closest = glm::clamp(
-					cameraPosition, proxy.m_worldAabb.m_min, proxy.m_worldAabb.m_max);
-				return glm::distance(cameraPosition, closest) > proxy.m_lodPolicy.m_maxCameraDistance;
-			});
-		for (auto& proxy : res.m_proxies)
+		const glm::mat4 viewMatrix = camera.GetViewMatrix();
+		const glm::mat4 projectionMatrix = camera.GetProjectionMatrix();
+		TVector<size_t> instanceLodCullingProxyIndices;
+		TVector<uint8_t> instanceLodCullingProxyFlags(
+			res.m_proxies.Num());
+		instanceLodCullingProxyIndices.Reserve(res.m_proxies.Num());
+		for (size_t proxyIndex = 0u;
+			proxyIndex < res.m_proxies.Num();
+			++proxyIndex)
 		{
+			if (SceneViewDetails::HasAlignedInstanceData(
+				res.m_proxies[proxyIndex]))
+			{
+				instanceLodCullingProxyFlags[proxyIndex] = 1u;
+				instanceLodCullingProxyIndices.Add(proxyIndex);
+			}
+		}
+
+		const auto prepareInstanceLodCullingProxy =
+			[&](size_t proxyIndex)
+			{
+				auto& taskProxy = res.m_proxies[proxyIndex];
+				const auto decision = SceneViewDetails::ClassifyInstanceCell(
+					taskProxy,
+					frustum,
+					cameraPosition,
+					viewMatrix,
+					projectionMatrix);
+				if (SceneViewDetails::ApplyInstanceLodCullingDecision(
+					taskProxy,
+					decision,
+					frustum,
+					cameraPosition,
+					viewMatrix,
+					projectionMatrix))
+				{
+					taskProxy.m_shadowCaster = CreateLodShadowCaster(
+						taskProxy.m_shadowCaster,
+						m_world,
+						camera,
+						m_cameraTransforms[i]);
+				}
+			};
+
+		TVector<Tasks::TaskPtr<void, void>> instanceLodCullingTasks;
+		if (!instanceLodCullingProxyIndices.IsEmpty())
+		{
+			auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+			// Bound task allocation to the real worker pool. Strided ranges keep
+			// expensive boundary chunks distributed when their costs differ.
+			const size_t numTasks = (std::min)(
+				instanceLodCullingProxyIndices.Num(),
+				static_cast<size_t>((std::max)(
+					scheduler ? scheduler->GetNumWorkerThreads() : 1u,
+					1u)));
+			instanceLodCullingTasks.Reserve(numTasks);
+			for (size_t taskIndex = 0u; taskIndex < numTasks; ++taskIndex)
+			{
+				auto task = Tasks::CreateTask(
+					"Prepare vegetation chunk LOD and culling",
+					[&, taskIndex, numTasks]()
+					{
+						for (size_t proxyListIndex = taskIndex;
+							proxyListIndex < instanceLodCullingProxyIndices.Num();
+							proxyListIndex += numTasks)
+						{
+							prepareInstanceLodCullingProxy(
+								instanceLodCullingProxyIndices[proxyListIndex]);
+						}
+					},
+					EThreadType::Worker);
+				task->Run();
+				instanceLodCullingTasks.Add(std::move(task));
+			}
+		}
+
+		for (size_t proxyIndex = 0u;
+			proxyIndex < res.m_proxies.Num();
+			++proxyIndex)
+		{
+			auto& proxy = res.m_proxies[proxyIndex];
+			if (instanceLodCullingProxyFlags[proxyIndex] != 0u)
+			{
+				continue;
+			}
+
+			if (std::isfinite(proxy.m_lodPolicy.m_maxCameraDistance))
+			{
+				const glm::vec3 closest = glm::clamp(
+					cameraPosition,
+					proxy.m_worldAabb.m_min,
+					proxy.m_worldAabb.m_max);
+				if (glm::distance(cameraPosition, closest) >
+					proxy.m_lodPolicy.m_maxCameraDistance)
+				{
+					ClearProxyMeshData(proxy);
+					continue;
+				}
+			}
+
 			if (proxy.m_lodPolicy.m_bEnabled)
 			{
 				ApplyCustomLodToMeshes(proxy.m_lodPolicy, proxy.m_worldAabb,
@@ -489,17 +1149,109 @@ void RHISceneView::PrepareSnapshots()
 					proxy.m_meshes);
 			}
 			proxy.m_shadowCaster = CreateLodShadowCaster(
-				proxy.m_shadowCaster, m_world, camera);
+				proxy.m_shadowCaster,
+				m_world,
+				camera,
+				m_cameraTransforms[i]);
 		}
-		for (auto& shadowMap : res.m_shadowMapsToUpdate)
+		for (auto& task : instanceLodCullingTasks)
 		{
-			for (auto& shadowCaster : shadowMap.m_meshList)
+			task->Wait();
+		}
+		res.m_proxies.RemoveAll([](const RHISceneViewProxy& proxy)
 			{
+				return proxy.m_meshes.IsEmpty();
+			});
+		struct ShadowCasterWorkItem
+		{
+			size_t m_shadowMapIndex = 0u;
+			size_t m_shadowCasterIndex = 0u;
+		};
+		TVector<Math::Frustum> shadowFrustums(
+			res.m_shadowMapsToUpdate.Num());
+		TVector<ShadowCasterWorkItem> shadowCasterWorkItems;
+		for (size_t shadowMapIndex = 0u;
+			shadowMapIndex < res.m_shadowMapsToUpdate.Num();
+			++shadowMapIndex)
+		{
+			auto& shadowMap = res.m_shadowMapsToUpdate[shadowMapIndex];
+			shadowFrustums[shadowMapIndex].ExtractFrustumPlanes(
+				shadowMap.m_lightMatrix);
+			for (size_t shadowCasterIndex = 0u;
+				shadowCasterIndex < shadowMap.m_meshList.Num();
+				++shadowCasterIndex)
+			{
+				auto& shadowCaster =
+					shadowMap.m_meshList[shadowCasterIndex];
+				if (!shadowCaster)
+				{
+					continue;
+				}
+				if (SceneViewDetails::HasAlignedInstanceData(*shadowCaster))
+				{
+					shadowCasterWorkItems.Add({
+						shadowMapIndex,
+						shadowCasterIndex });
+					continue;
+				}
 				shadowCaster = CreateLodShadowCaster(
 					shadowCaster,
 					m_world,
-					camera);
+					camera,
+					m_cameraTransforms[i]);
 			}
+		}
+
+		TVector<Tasks::TaskPtr<void, void>> shadowCasterTasks;
+		if (!shadowCasterWorkItems.IsEmpty())
+		{
+			auto* scheduler = App::GetSubmodule<Tasks::Scheduler>();
+			const size_t numTasks = (std::min)(
+				shadowCasterWorkItems.Num(),
+				static_cast<size_t>((std::max)(
+					scheduler ? scheduler->GetNumWorkerThreads() : 1u,
+					1u)));
+			shadowCasterTasks.Reserve(numTasks);
+			for (size_t taskIndex = 0u; taskIndex < numTasks; ++taskIndex)
+			{
+				auto task = Tasks::CreateTask(
+					"Prepare vegetation shadow LOD and culling",
+					[&, taskIndex, numTasks]()
+					{
+						for (size_t workItemIndex = taskIndex;
+							workItemIndex < shadowCasterWorkItems.Num();
+							workItemIndex += numTasks)
+						{
+							const ShadowCasterWorkItem& workItem =
+								shadowCasterWorkItems[workItemIndex];
+							auto& shadowCaster = res.m_shadowMapsToUpdate[
+								workItem.m_shadowMapIndex].m_meshList[
+								workItem.m_shadowCasterIndex];
+							shadowCaster = CreateLodShadowCaster(
+								shadowCaster,
+								m_world,
+								camera,
+								m_cameraTransforms[i],
+								&shadowFrustums[
+									workItem.m_shadowMapIndex]);
+						}
+					},
+					EThreadType::Worker);
+				task->Run();
+				shadowCasterTasks.Add(std::move(task));
+			}
+		}
+		for (auto& task : shadowCasterTasks)
+		{
+			task->Wait();
+		}
+		for (auto& shadowMap : res.m_shadowMapsToUpdate)
+		{
+			shadowMap.m_meshList.RemoveAll(
+				[](const RHIShadowCasterProxyPtr& shadowCaster)
+				{
+					return !shadowCaster || shadowCaster->m_meshes.IsEmpty();
+				});
 		}
 
 		if (i < m_debugDraw.Num())
