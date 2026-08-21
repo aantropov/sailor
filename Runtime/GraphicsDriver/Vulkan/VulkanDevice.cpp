@@ -1036,6 +1036,7 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	m_bLastFrameSubmitSuccessful = false;
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport ||
 		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
@@ -1124,6 +1125,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	//TODO: Transfer queue for transfer family command lists
 	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+	m_bLastFrameSubmitSuccessful = submitResult == VK_SUCCESS;
 
 	m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 

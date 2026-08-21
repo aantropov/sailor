@@ -25,6 +25,7 @@ struct LightData
 {
   uint type;
   uint shadowType;
+  uint activeCascadeCount;
   vec3 worldPosition;
   vec3 direction;
   vec3 intensity;
@@ -374,16 +375,29 @@ float CalculateLocalPcfShadow(
 }
 
 
-int SelectCascade(mat4 view, vec3 worldPosition, vec2 cameraZNearZFar)
+float GetActiveShadowCascadeLevel(int cascadeLayer, uint activeCascadeCount)
+{
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  const int levelIndex = NUM_CSM_CASCADES - int(safeCascadeCount) + cascadeLayer;
+  return ShadowCascadeLevels[clamp(levelIndex, 0, NUM_CSM_CASCADES - 1)];
+}
+
+int SelectCascade(
+  mat4 view,
+  vec3 worldPosition,
+  vec2 cameraZNearZFar,
+  uint activeCascadeCount)
 {
   vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0);
   float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
   float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
   
-  int layer = NUM_CSM_CASCADES;
-  for (int i = 0; i < NUM_CSM_CASCADES; ++i)
+  int layer = int(safeCascadeCount);
+  for (int i = 0; i < int(safeCascadeCount); ++i)
   {
-      if (depthValue < shadowFarPlane * ShadowCascadeLevels[i])
+      if (depthValue < shadowFarPlane *
+        GetActiveShadowCascadeLevel(i, safeCascadeCount))
       {
           layer = i;
           break;
@@ -397,9 +411,11 @@ float CalculateCascadeBlend(
   mat4 view,
   vec3 worldPosition,
   vec2 cameraZNearZFar,
-  int cascadeLayer)
+  int cascadeLayer,
+  uint activeCascadeCount)
 {
-  if(cascadeLayer < 0 || cascadeLayer >= NUM_CSM_CASCADES - 1)
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  if(cascadeLayer < 0 || cascadeLayer >= int(safeCascadeCount) - 1)
   {
     return 0.0f;
   }
@@ -409,8 +425,10 @@ float CalculateCascadeBlend(
   float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
   float cascadeNear = cascadeLayer == 0 ?
     cameraZNearZFar.x :
-    shadowFarPlane * ShadowCascadeLevels[cascadeLayer - 1];
-  float cascadeFar = shadowFarPlane * ShadowCascadeLevels[cascadeLayer];
+    shadowFarPlane * GetActiveShadowCascadeLevel(
+      cascadeLayer - 1, safeCascadeCount);
+  float cascadeFar = shadowFarPlane * GetActiveShadowCascadeLevel(
+    cascadeLayer, safeCascadeCount);
   float blendStart = cascadeFar -
     (cascadeFar - cascadeNear) * ShadowCascadeBlendFraction;
   return smoothstep(blendStart, cascadeFar, depthValue);
@@ -420,9 +438,11 @@ float CalculateShadowDistanceFade(
   mat4 view,
   vec3 worldPosition,
   vec2 cameraZNearZFar,
-  int cascadeLayer)
+  int cascadeLayer,
+  uint activeCascadeCount)
 {
-  if(cascadeLayer != NUM_CSM_CASCADES - 1)
+  const uint safeCascadeCount = clamp(activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+  if(cascadeLayer != int(safeCascadeCount) - 1)
   {
     return 0.0f;
   }
@@ -430,8 +450,10 @@ float CalculateShadowDistanceFade(
   const vec4 fragPosViewSpace = view * vec4(worldPosition, 1.0f);
   const float depthValue = abs(fragPosViewSpace.z / fragPosViewSpace.w);
   const float shadowFarPlane = min(cameraZNearZFar.y, ShadowMaxDistance);
-  const float cascadeNear = shadowFarPlane *
-    ShadowCascadeLevels[NUM_CSM_CASCADES - 2];
+  const float cascadeNear = safeCascadeCount > 1u ?
+    shadowFarPlane * GetActiveShadowCascadeLevel(
+      int(safeCascadeCount) - 2, safeCascadeCount) :
+    cameraZNearZFar.x;
   const float fadeStart = shadowFarPlane -
     (shadowFarPlane - cascadeNear) * ShadowCascadeBlendFraction;
   return smoothstep(fadeStart, shadowFarPlane, depthValue);

@@ -32,6 +32,8 @@
 #include "RHI/Renderer.h"
 #include "Sailor.h"
 
+#include <limits>
+
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -44,6 +46,44 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 	{
 		SAILOR_LOG_ERROR("VulkanGraphicsDriver initialization failed: Vulkan instance/device is unavailable.");
 		return;
+	}
+
+	const auto device = m_vkInstance->GetMainDevice();
+	VkPhysicalDeviceProperties physicalDeviceProperties{};
+	vkGetPhysicalDeviceProperties(device->GetPhysicalDevice(), &physicalDeviceProperties);
+	uint32_t queueFamilyCount = 0u;
+	vkGetPhysicalDeviceQueueFamilyProperties(
+		device->GetPhysicalDevice(),
+		&queueFamilyCount,
+		nullptr);
+	TVector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+	if (queueFamilyCount > 0u)
+	{
+		vkGetPhysicalDeviceQueueFamilyProperties(
+			device->GetPhysicalDevice(),
+			&queueFamilyCount,
+			queueFamilyProperties.GetData());
+	}
+	const uint32_t graphicsQueueFamily =
+		device->GetQueueFamilies().m_graphicsFamily.value_or(queueFamilyCount);
+	if (graphicsQueueFamily < queueFamilyCount &&
+		queueFamilyProperties[graphicsQueueFamily].timestampValidBits > 0u &&
+		physicalDeviceProperties.limits.timestampPeriod > 0.0f)
+	{
+		VkQueryPoolCreateInfo queryPoolInfo{};
+		queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		queryPoolInfo.queryCount = NumGpuFrameTimeQuerySlots * 2u;
+		if (vkCreateQueryPool(
+			*device,
+			&queryPoolInfo,
+			nullptr,
+			&m_gpuFrameTimeQueryPool) == VK_SUCCESS)
+		{
+			m_gpuTimestampValidBits =
+				queueFamilyProperties[graphicsQueueFamily].timestampValidBits;
+			m_gpuTimestampPeriodNs = physicalDeviceProperties.limits.timestampPeriod;
+		}
 	}
 
 	m_backBuffer = RHI::RHIRenderTargetPtr::Make(RHI::ETextureFiltration::Linear, RHI::ETextureClamping::Repeat, false, RHI::EImageLayout::PresentSrc);
@@ -100,6 +140,16 @@ VulkanGraphicsDriver::~VulkanGraphicsDriver()
 		return;
 	}
 
+	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
+	{
+		m_vkInstance->WaitIdle();
+		vkDestroyQueryPool(
+			*m_vkInstance->GetMainDevice(),
+			m_gpuFrameTimeQueryPool,
+			nullptr);
+		m_gpuFrameTimeQueryPool = VK_NULL_HANDLE;
+	}
+
 	m_vkInstance->GetMainDevice()->Shutdown();
 
 	// Waiting finishing releasing of rendering resources
@@ -140,8 +190,191 @@ void VulkanGraphicsDriver::BeginConditionalDestroy()
 
 	m_trackedFences.Clear();
 	m_uniformBuffers.Clear();
+	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
+	{
+		vkDestroyQueryPool(
+			*m_vkInstance->GetMainDevice(),
+			m_gpuFrameTimeQueryPool,
+			nullptr);
+		m_gpuFrameTimeQueryPool = VK_NULL_HANDLE;
+		m_bHasGpuFrameTime.store(false, std::memory_order_release);
+		m_gpuFrameTimeQuerySlots = {};
+		m_activeGpuFrameTimeQuerySlot =
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+		m_pendingGpuFrameTimeQuerySlot =
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+	}
 
 	m_vkInstance->GetMainDevice()->BeginConditionalDestroy();
+}
+
+bool VulkanGraphicsDriver::SupportsGpuFrameTimeQueries() const
+{
+	return m_gpuFrameTimeQueryPool != VK_NULL_HANDLE &&
+		m_gpuTimestampValidBits > 0u &&
+		m_gpuTimestampPeriodNs > 0.0f;
+}
+
+void VulkanGraphicsDriver::PollGpuFrameTimeQueries()
+{
+	for (uint32_t slot = 0u; slot < NumGpuFrameTimeQuerySlots; ++slot)
+	{
+		if (m_gpuFrameTimeQuerySlots.GetState(slot) !=
+			RHI::EGpuFrameTimeQuerySlotState::Issued)
+		{
+			continue;
+		}
+
+		const uint32_t firstQuery = slot * 2u;
+		uint64_t timestamps[2]{};
+		const VkResult result = vkGetQueryPoolResults(
+			*m_vkInstance->GetMainDevice(),
+			m_gpuFrameTimeQueryPool,
+			firstQuery,
+			2u,
+			sizeof(timestamps),
+			timestamps,
+			sizeof(uint64_t),
+			VK_QUERY_RESULT_64_BIT);
+		if (result == VK_SUCCESS)
+		{
+			const uint64_t timestampMask = m_gpuTimestampValidBits >= 64u ?
+				(std::numeric_limits<uint64_t>::max)() :
+				(1ull << m_gpuTimestampValidBits) - 1ull;
+			const uint64_t elapsedTicks =
+				(timestamps[1] - timestamps[0]) & timestampMask;
+			const float milliseconds = static_cast<float>(
+				static_cast<double>(elapsedTicks) *
+				static_cast<double>(m_gpuTimestampPeriodNs) /
+				1000000.0);
+			m_gpuFrameTimeMs.store(milliseconds, std::memory_order_relaxed);
+			m_bHasGpuFrameTime.store(true, std::memory_order_release);
+			m_gpuFrameTimeQuerySlots.MarkCompleted(slot);
+		}
+		else if (result != VK_NOT_READY)
+		{
+			m_bHasGpuFrameTime.store(false, std::memory_order_release);
+			m_gpuFrameTimeQuerySlots.MarkCompleted(slot);
+		}
+	}
+}
+
+bool VulkanGraphicsDriver::BeginGpuFrameTimeQuery(
+	RHI::RHICommandListPtr commandList)
+{
+	if (!SupportsGpuFrameTimeQueries() ||
+		!commandList ||
+		commandList->GetQueue() != RHI::ECommandListQueue::Graphics ||
+		!commandList->m_vulkan.m_commandBuffer ||
+		m_activeGpuFrameTimeQuerySlot !=
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot ||
+		m_pendingGpuFrameTimeQuerySlot !=
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+	{
+		return false;
+	}
+
+	PollGpuFrameTimeQueries();
+	const uint32_t slot = m_gpuFrameTimeQuerySlots.Acquire();
+	if (slot ==
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+	{
+		return false;
+	}
+
+	const uint32_t firstQuery = slot * 2u;
+	const VkCommandBuffer commandBuffer =
+		*commandList->m_vulkan.m_commandBuffer->GetHandle();
+	vkCmdResetQueryPool(
+		commandBuffer,
+		m_gpuFrameTimeQueryPool,
+		firstQuery,
+		2u);
+	vkCmdWriteTimestamp(
+		commandBuffer,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		m_gpuFrameTimeQueryPool,
+		firstQuery);
+	m_activeGpuFrameTimeQuerySlot = slot;
+	return true;
+}
+
+void VulkanGraphicsDriver::EndGpuFrameTimeQuery(
+	RHI::RHICommandListPtr commandList)
+{
+	if (m_activeGpuFrameTimeQuerySlot ==
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot ||
+		m_pendingGpuFrameTimeQuerySlot !=
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot ||
+		!SupportsGpuFrameTimeQueries() ||
+		!commandList ||
+		commandList->GetQueue() != RHI::ECommandListQueue::Graphics ||
+		!commandList->m_vulkan.m_commandBuffer)
+	{
+		if (m_activeGpuFrameTimeQuerySlot !=
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+		{
+			m_gpuFrameTimeQuerySlots.CancelRecording(
+				m_activeGpuFrameTimeQuerySlot);
+			m_activeGpuFrameTimeQuerySlot =
+				RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+		}
+		return;
+	}
+
+	vkCmdWriteTimestamp(
+		*commandList->m_vulkan.m_commandBuffer->GetHandle(),
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		m_gpuFrameTimeQueryPool,
+		m_activeGpuFrameTimeQuerySlot * 2u + 1u);
+	m_pendingGpuFrameTimeQuerySlot = m_activeGpuFrameTimeQuerySlot;
+	m_activeGpuFrameTimeQuerySlot =
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+}
+
+void VulkanGraphicsDriver::CommitGpuFrameTimeQuery()
+{
+	if (m_pendingGpuFrameTimeQuerySlot ==
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+	{
+		return;
+	}
+
+	m_gpuFrameTimeQuerySlots.MarkIssued(m_pendingGpuFrameTimeQuerySlot);
+	m_pendingGpuFrameTimeQuerySlot =
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+}
+
+void VulkanGraphicsDriver::CancelGpuFrameTimeQuery()
+{
+	if (m_activeGpuFrameTimeQuerySlot !=
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+	{
+		m_gpuFrameTimeQuerySlots.CancelRecording(
+			m_activeGpuFrameTimeQuerySlot);
+		m_activeGpuFrameTimeQuerySlot =
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+	}
+
+	if (m_pendingGpuFrameTimeQuerySlot !=
+		RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot)
+	{
+		m_gpuFrameTimeQuerySlots.CancelRecording(
+			m_pendingGpuFrameTimeQuerySlot);
+		m_pendingGpuFrameTimeQuerySlot =
+			RHI::TGpuFrameTimeQueryRing<NumGpuFrameTimeQuerySlots>::InvalidSlot;
+	}
+}
+
+bool VulkanGraphicsDriver::TryGetGpuFrameTimeMs(float& outMilliseconds) const
+{
+	if (!m_bHasGpuFrameTime.load(std::memory_order_acquire))
+	{
+		return false;
+	}
+
+	outMilliseconds = m_gpuFrameTimeMs.load(std::memory_order_relaxed);
+	return true;
 }
 
 uint32_t VulkanGraphicsDriver::GetNumSubmittedCommandBuffers() const
@@ -421,18 +654,34 @@ uint32_t VulkanGraphicsDriver::GetMaxFramesInFlight() const
 
 bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
-	const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const
+	const TVector<RHI::RHISemaphorePtr>& waitSemaphores)
 {
 	SAILOR_PROFILE_FUNCTION();
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
+		CancelGpuFrameTimeQuery();
 		return false;
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
 	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
-	return m_vkInstance->GetMainDevice()->PresentFrame(state, primaryBuffers, vkWaitSemaphores);
+	const bool bPresented = m_vkInstance->GetMainDevice()->PresentFrame(
+		state,
+		primaryBuffers,
+		vkWaitSemaphores);
+	if (m_gpuFrameTimeQueryPool != VK_NULL_HANDLE)
+	{
+		if (m_vkInstance->GetMainDevice()->WasLastFrameSubmitSuccessful())
+		{
+			CommitGpuFrameTimeQuery();
+		}
+		else
+		{
+			CancelGpuFrameTimeQuery();
+		}
+	}
+	return bPresented;
 }
 
 bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
@@ -442,13 +691,25 @@ bool VulkanGraphicsDriver::SubmitFrameWithoutPresent(
 	SAILOR_PROFILE_FUNCTION();
 	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
 	{
+		CancelGpuFrameTimeQuery();
 		return false;
 	}
 
 	const TVector<VulkanCommandBufferPtr> primaryBuffers = primaryCommandBuffers.Select<VulkanCommandBufferPtr>([](const auto& lhs) { return lhs->m_vulkan.m_commandBuffer; });
 	const TVector<VulkanSemaphorePtr> vkWaitSemaphores = waitSemaphores.Select<VulkanSemaphorePtr>([](const auto& lhs) { return lhs->m_vulkan.m_semaphore; });
 
-	return m_vkInstance->GetMainDevice()->SubmitFrameWithoutPresent(primaryBuffers, vkWaitSemaphores);
+	const bool bSubmitted = m_vkInstance->GetMainDevice()->SubmitFrameWithoutPresent(
+		primaryBuffers,
+		vkWaitSemaphores);
+	if (bSubmitted)
+	{
+		CommitGpuFrameTimeQuery();
+	}
+	else
+	{
+		CancelGpuFrameTimeQuery();
+	}
+	return bSubmitted;
 }
 
 void VulkanGraphicsDriver::WaitIdle()

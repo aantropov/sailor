@@ -108,7 +108,12 @@ void LinearizeDepthNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandLis
 		false);
 
 	commands->BindMaterial(commandList, m_postEffectMaterial);
-	commands->SetDefaultViewport(commandList);
+	commands->SetViewport(commandList,
+		0, (float)target->GetExtent().y,
+		(float)target->GetExtent().x, -(float)target->GetExtent().y,
+		glm::vec2(0, 0),
+		glm::vec2(target->GetExtent().x, target->GetExtent().y),
+		0, 1.0f);
 	commands->BindVertexBuffer(commandList, mesh->m_vertexBuffer, 0);
 	commands->BindIndexBuffer(commandList, mesh->m_indexBuffer, 0);
 	commands->BindShaderBindings(commandList, m_postEffectMaterial, { sceneView.m_frameBindings,  m_linearizeDepth });

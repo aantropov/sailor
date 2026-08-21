@@ -18,6 +18,7 @@
 #include "RHI/CommandList.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <imgui.h>
 #include <cstdio>
@@ -37,7 +38,8 @@ namespace
 		float csmShadowMemoryMb,
 		float localShadowMemoryMb,
 		float shadowMemoryBudgetMb,
-		const RHI::Stats& stats)
+		const RHI::Stats& stats,
+		const char* gpuQueryText)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 		if (io.DisplaySize.x <= 0.0f || io.DisplaySize.y <= 0.0f)
@@ -46,13 +48,13 @@ namespace
 		}
 
 		constexpr float BytesToMb = 1.0f / (1024.0f * 1024.0f);
-		char text[512];
+		char text[640];
 		std::snprintf(
 			text,
 			sizeof(text),
 			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
 			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
-			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB",
+			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB%s%s",
 			cpuFps,
 			gpuFps,
 			numBatches,
@@ -64,7 +66,9 @@ namespace
 			stats.m_materialsMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_texturesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_meshesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
-			stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb);
+			stats.m_generalMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
+			gpuQueryText && gpuQueryText[0] != '\0' ? "\n" : "",
+			gpuQueryText ? gpuQueryText : "");
 
 		constexpr float Margin = 10.0f;
 		const ImVec2 textSize = ImGui::CalcTextSize(text);
@@ -217,6 +221,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 
 	static uint32_t totalFramesCount = 0U;
 	static Utils::Timer timer;
+	const auto cpuFrameStartedAt = std::chrono::steady_clock::now();
 
 	timer.Start();
 
@@ -229,7 +234,8 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 	}
 
 	const auto renderer = App::GetSubmodule<RHI::Renderer>();
-	if (renderer)
+	const Settings::ERenderStatsMode statsMode = App::GetRenderStatsMode();
+	if (renderer && statsMode != Settings::ERenderStatsMode::None)
 	{
 		float shadowMemoryMb = 0.0f;
 		float csmShadowMemoryMb = 0.0f;
@@ -247,6 +253,36 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}
 
 		const auto& stats = renderer->GetStats();
+		char gpuQueryText[96]{};
+		if (statsMode == Settings::ERenderStatsMode::RenderStatsAndQueries)
+		{
+			if (!renderer->GetDriver()->SupportsGpuFrameTimeQueries())
+			{
+				std::snprintf(
+					gpuQueryText,
+					sizeof(gpuQueryText),
+					"GPU queries unavailable");
+			}
+			else
+			{
+				float gpuFrameTimeMs = 0.0f;
+				if (renderer->GetDriver()->TryGetGpuFrameTimeMs(gpuFrameTimeMs))
+				{
+					std::snprintf(
+						gpuQueryText,
+						sizeof(gpuQueryText),
+						"GPU frame %.2f ms",
+						gpuFrameTimeMs);
+				}
+				else
+				{
+					std::snprintf(
+						gpuQueryText,
+						sizeof(gpuQueryText),
+						"GPU query pending");
+				}
+			}
+		}
 		DrawViewportStatsOverlay(
 			m_cpuFps,
 			stats.m_gpuFps.load(std::memory_order_relaxed),
@@ -256,7 +292,8 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
 			shadowMemoryBudgetMb,
-			stats);
+			stats,
+			gpuQueryText);
 	}
 
 	auto& task = currentInputState.GetDrawImGuiTask();
@@ -303,6 +340,19 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}, EThreadType::RHI);
 
 	task->Run();
+
+	if (m_fpsCap > 0u)
+	{
+		const auto targetCpuFrameTime =
+			std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+				std::chrono::duration<double>(1.0 / static_cast<double>(m_fpsCap)));
+		const auto cpuFrameDeadline = cpuFrameStartedAt + targetCpuFrameTime;
+		if (std::chrono::steady_clock::now() < cpuFrameDeadline)
+		{
+			SAILOR_PROFILE_SCOPE("Sleep Main Thread to cap CPU FPS");
+			std::this_thread::sleep_until(cpuFrameDeadline);
+		}
+	}
 
 	timer.Stop();
 

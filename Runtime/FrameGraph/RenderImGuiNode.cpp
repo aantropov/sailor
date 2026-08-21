@@ -36,7 +36,15 @@ void RenderImGuiNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 	}
 
-	RHI::RHITexturePtr depthAttachment = frameGraph->GetRenderTarget("DepthBuffer");
+	RHI::RHITexturePtr depthAttachment = GetResolvedAttachment("depthStencil");
+	for (const auto& r : m_unresolvedResourceParams)
+	{
+		if (r.First() == "depthStencil")
+		{
+			depthAttachment = frameGraph->GetRenderTarget(*r.Second());
+			break;
+		}
+	}
 
 	if (!colorAttachment || !depthAttachment)
 		return;

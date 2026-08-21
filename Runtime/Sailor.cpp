@@ -55,6 +55,7 @@
 #include "Workspace/WorkspaceModuleManager.h"
 #include "Workspace/WorkspacePathEncoding.h"
 #include "YamlExceptionBoundary.h"
+#include <atomic>
 
 #if defined(_WIN32)
 #include <timeapi.h>
@@ -65,6 +66,12 @@ using namespace Sailor::RHI;
 
 App* App::s_pInstance = nullptr;
 std::string App::s_workspace = "../";
+
+namespace
+{
+	Settings::GraphicsSettingsState g_graphicsSettingsState{};
+	std::atomic<Settings::ERenderStatsMode> g_renderStatsMode{ Settings::ERenderStatsMode::None };
+}
 
 App::~App() = default;
 
@@ -82,6 +89,42 @@ const Workspace::WorkspaceContext& App::GetWorkspaceContext()
 {
 	check(s_pInstance);
 	return s_pInstance->m_workspaceContext;
+}
+
+const Settings::GraphicsSettings& App::GetGraphicsSettings()
+{
+	return g_graphicsSettingsState.m_projectSettings;
+}
+
+const Settings::GraphicsQualityProfile& App::GetActiveGraphicsSettings()
+{
+	return g_graphicsSettingsState.GetActiveProfile();
+}
+
+Settings::EGraphicsQualitySelection App::GetSelectedGraphicsQuality()
+{
+	return g_graphicsSettingsState.m_editorSettings.m_selectedQuality;
+}
+
+Settings::EGraphicsQuality App::GetActiveGraphicsQuality()
+{
+	return g_graphicsSettingsState.m_activeQuality;
+}
+
+Settings::ERenderStatsMode App::GetRenderStatsMode()
+{
+	return g_renderStatsMode.load(std::memory_order_acquire);
+}
+
+bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
+{
+	if (!Settings::IsValidRenderStatsMode(mode))
+	{
+		return false;
+	}
+
+	g_renderStatsMode.store(mode, std::memory_order_release);
+	return true;
 }
 
 namespace
@@ -368,6 +411,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	EditorRuntime::ResetForAppLifecycle();
+	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
+	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 
 	{
 		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
@@ -430,6 +475,43 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		s_pInstance->s_workspace += "/";
 	}
 
+	g_graphicsSettingsState = Settings::LoadGraphicsSettings(
+		s_pInstance->m_workspaceContext,
+		params.m_bIsEditor);
+	g_renderStatsMode.store(
+		params.m_bIsEditor
+			? g_graphicsSettingsState.m_editorSettings.m_statsMode
+			: Settings::ERenderStatsMode::None,
+		std::memory_order_release);
+	if (g_graphicsSettingsState.m_projectLoadStatus == Settings::EGraphicsSettingsLoadStatus::Loaded ||
+		g_graphicsSettingsState.m_projectLoadStatus == Settings::EGraphicsSettingsLoadStatus::Missing)
+	{
+		SAILOR_LOG("%s", g_graphicsSettingsState.m_projectDiagnostic.c_str());
+	}
+	else
+	{
+		SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_projectDiagnostic.c_str());
+	}
+	if (params.m_bIsEditor)
+	{
+		if (g_graphicsSettingsState.m_editorLoadStatus == Settings::EGraphicsSettingsLoadStatus::Loaded ||
+			g_graphicsSettingsState.m_editorLoadStatus == Settings::EGraphicsSettingsLoadStatus::Missing)
+		{
+			SAILOR_LOG("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
+		}
+		else
+		{
+			SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
+		}
+	}
+	SAILOR_LOG(
+		"Active graphics quality: %s (FPS cap %u, MSAA %ux, shadow bias %.3f, stats mode %s).",
+		Settings::ToString(g_graphicsSettingsState.m_activeQuality),
+		g_graphicsSettingsState.GetActiveProfile().m_fpsCap,
+		g_graphicsSettingsState.GetActiveProfile().m_msaaSamples,
+		g_graphicsSettingsState.GetActiveProfile().m_shadowBias,
+		Settings::ToString(GetRenderStatsMode()));
+
 	bool bWorkspaceModuleActivationFailed = false;
 	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
 	const auto& workspaceModuleResult = s_pInstance->m_pWorkspaceModuleManager->Load(
@@ -473,7 +555,16 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		className = std::format("SailorEditor PID{}", ::GetCurrentThreadId());
 	}
 
-	s_pInstance->m_pMainWindow->Create(className.c_str(), className.c_str(), 1024, 768, false, false, params.m_editorHwnd);
+	// The editor renders continuously into an embedded viewport. Keep its hidden
+	// swapchain synchronized so an idle Scene View does not spin at uncapped FPS.
+	s_pInstance->m_pMainWindow->Create(
+		className.c_str(),
+		className.c_str(),
+		1024,
+		768,
+		false,
+		params.m_bIsEditor,
+		params.m_editorHwnd);
 
 #if defined(_WIN32)
 	if (params.m_bIsEditor)
@@ -490,7 +581,10 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<Tasks::Scheduler>::Make())->Initialize();
 	s_pInstance->AddSubmodule(TSubmodule<AudioSystem>::Make(params.m_bForceNullAudioDevice));
 	s_pInstance->AddSubmodule(TSubmodule<Physics::JoltRuntime>::Make());
-	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(s_pInstance->m_pMainWindow.GetRawPtr(), RHI::EMsaaSamples::Samples_1, bEnableRenderValidationLayers));
+	auto renderer = s_pInstance->AddSubmodule(TSubmodule<Renderer>::Make(
+		s_pInstance->m_pMainWindow.GetRawPtr(),
+		Settings::ToMsaaSamples(GetActiveGraphicsSettings().m_msaaSamples),
+		bEnableRenderValidationLayers));
 	if (!renderer->IsInitialized())
 	{
 		SAILOR_LOG_ERROR("App initialization aborted: renderer backend failed to initialize.");
@@ -547,7 +641,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	}
 
 	s_pInstance->AddSubmodule(TSubmodule<ImGuiApi>::Make((void*)s_pInstance->m_pMainWindow->GetHWND()));
-	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make());
+	auto engineLoop = s_pInstance->AddSubmodule(TSubmodule<EngineLoop>::Make(
+		GetActiveGraphicsSettings().m_fpsCap));
 
 #ifdef SAILOR_EDITOR
 	AssetRegistry::WriteTextFile(AssetRegistry::GetCacheFolder() + "EngineTypes.yaml", Reflection::ExportEngineTypes());
@@ -1151,6 +1246,8 @@ void App::Shutdown()
 
 	delete s_pInstance;
 	s_pInstance = nullptr;
+	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
+	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
 }
 
 bool App::IsRendererInitialized()

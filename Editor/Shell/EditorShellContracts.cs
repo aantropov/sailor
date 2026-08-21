@@ -21,3 +21,28 @@ public interface IEditorShellHost
 
     ValueTask FocusPanelAsync(PanelId panelId, CancellationToken cancellationToken = default);
 }
+
+public sealed class SplitResizeDragState
+{
+    public double Translation { get; private set; }
+
+    public void Begin()
+        => Translation = 0;
+
+    public double Update(double translation)
+    {
+        if (double.IsFinite(translation))
+            Translation = translation;
+        return Translation;
+    }
+
+    public double Complete()
+    {
+        var translation = Translation;
+        Translation = 0;
+        return translation;
+    }
+
+    public void Cancel()
+        => Translation = 0;
+}

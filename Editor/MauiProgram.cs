@@ -79,6 +79,47 @@ namespace SailorEditor
             builder.Services.AddSingleton<IEditorShellLayoutStore, YamlEditorShellLayoutStore>();
             builder.Services.AddSingleton(sp => new UnifiedSettingsStore(EditorSettingsCatalog.Definitions));
             builder.Services.AddSingleton<EditorSettingsPersistenceStore>();
+            builder.Services.AddSingleton(sp =>
+            {
+                var engineService = sp.GetRequiredService<EngineService>();
+                var activationCoordinator = sp.GetRequiredService<WorkspaceActivationCoordinator>();
+                var workspaceUiService = sp.GetRequiredService<WorkspaceUiService>();
+                return new GraphicsSettingsService(
+                    () =>
+                    {
+                        var launchContext = engineService.GetLaunchContext();
+                        return GraphicsSettingsPaths.Create(
+                            launchContext.WorkspaceRoot,
+                            launchContext.CacheDirectory);
+                    },
+                    restartEngineAsync: null,
+                    applyStatsModeAsync: null,
+                    workspaceGenerationProvider: () =>
+                        activationCoordinator.State.Generation,
+                    serializeWorkspaceMutationAsync: (operation, cancellationToken) =>
+                        activationCoordinator.RunSerializedAsync(
+                            operation,
+                            cancellationToken),
+                    restartEngineForGenerationAsync: (generation, cancellationToken) =>
+                        workspaceUiService.RestartEngineForGenerationAsync(
+                            generation,
+                            cancellationToken),
+                    applyStatsModeForGenerationAsync: async (mode, generation, cancellationToken) =>
+                    {
+                        var applied = false;
+                        await activationCoordinator.RunSerializedAsync(
+                            async token =>
+                            {
+                                if (activationCoordinator.State.Generation != generation)
+                                    return;
+                                applied = await engineService
+                                    .SetEditorStatsModeAsync(mode, token)
+                                    .ConfigureAwait(false);
+                            },
+                            cancellationToken).ConfigureAwait(false);
+                        return applied;
+                    });
+            });
             builder.Services.AddSingleton<EditorShellHost>();
             builder.Services.AddSingleton<IAIAgentInstructionsProvider, MarkdownAIAgentInstructionsProvider>();
             builder.Services.AddSingleton<IAIEditorContextProvider, EditorAIContextProvider>();

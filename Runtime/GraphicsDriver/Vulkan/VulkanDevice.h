@@ -67,6 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
+		SAILOR_API bool WasLastFrameSubmitSuccessful() const { return m_bLastFrameSubmitSuccessful; }
 		SAILOR_API bool SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
@@ -240,5 +241,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_numSubmittedCommandBuffers = 0;
 
 		bool m_bIsDeviceLost = false;
+		bool m_bLastFrameSubmitSuccessful = false;
 	};
 }

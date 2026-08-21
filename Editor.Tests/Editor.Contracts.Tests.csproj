@@ -67,6 +67,8 @@
     <Compile Include="McpYamlUtilitiesTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />
+    <Compile Include="GraphicsSettingsTests.cs" />
+    <Compile Include="GraphicsSettingsUiContractTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneViewportInteractionTests.cs" />
@@ -110,6 +112,9 @@
     <Compile Include="..\Editor\History\HistoryContracts.cs" Link="History\HistoryContracts.cs" />
     <Compile Include="..\Editor\Settings\SettingsContracts.cs" Link="Settings\SettingsContracts.cs" />
     <Compile Include="..\Editor\Settings\UnifiedSettingsStore.cs" Link="Settings\UnifiedSettingsStore.cs" />
+    <Compile Include="..\Editor\Settings\GraphicsSettings.cs" Link="Settings\GraphicsSettings.cs" />
+    <Compile Include="..\Editor\Settings\GraphicsSettingsDraft.cs" Link="Settings\GraphicsSettingsDraft.cs" />
+    <Compile Include="..\Editor\Settings\GraphicsSettingsService.cs" Link="Settings\GraphicsSettingsService.cs" />
     <Compile Include="..\Editor\Content\ProjectContentAssetResolutionPolicy.cs" Link="Content\ProjectContentAssetResolutionPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
     <Compile Include="..\Editor\Content\ProjectContentFolderIds.cs" Link="Content\ProjectContentFolderIds.cs" />

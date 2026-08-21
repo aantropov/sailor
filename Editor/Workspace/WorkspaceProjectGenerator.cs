@@ -1,4 +1,5 @@
 using System.Text;
+using SailorEditor.Settings;
 
 namespace SailorEditor.Workspace;
 
@@ -34,6 +35,8 @@ public sealed class WorkspaceProjectGenerator
         var generatedFiles = new Dictionary<string, string>
         {
             [Path.Combine(session.WorkspaceRoot, ".gitignore")] = BuildGitIgnore(session.Manifest),
+            [Path.Combine(session.WorkspaceRoot, GraphicsSettingsPaths.ProjectFileName)] =
+                GraphicsSettingsYamlCodec.SerializeProject(GraphicsSettingsDefaults.Project),
             [Path.Combine(session.GeneratedProjectDirectory, "CMakeLists.txt")] = BuildCMakeProject(session),
             [Path.Combine(componentsDirectory, "SampleComponent.h")] = BuildSampleComponentHeader(session.Manifest.LogicModuleName),
             [Path.Combine(componentsDirectory, "SampleComponent.cpp")] = BuildSampleComponentSource(session.Manifest.LogicModuleName),

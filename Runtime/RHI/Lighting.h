@@ -12,6 +12,7 @@ namespace Sailor::RHI
 
 		uint32_t m_type = InvalidType;
 		uint32_t m_shadowType = 0u;
+		uint32_t m_activeCascadeCount = 1u;
 		alignas(16) glm::vec3 m_worldPosition{};
 		alignas(16) glm::vec3 m_direction{};
 		alignas(16) glm::vec3 m_intensity{};

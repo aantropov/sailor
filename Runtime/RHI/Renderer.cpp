@@ -22,6 +22,7 @@
 #include "ECS/LandscapeECS.h"
 #include "ECS/AnimationECS.h"
 #include "ECS/PathTracerECS.h"
+#include "Settings/GraphicsSettings.h"
 
 using namespace Sailor;
 using namespace Sailor::RHI;
@@ -549,7 +550,57 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					RHISemaphorePtr chainSemaphore{};
 					const bool bCanRenderFrame = !m_bForceStop &&
 						(bHasSwapchainImage || App::HasEditor());
-					bool bFrameSubmitsSucceeded = m_bForceStop || updateFrameRHI(chainSemaphore);
+					bool bFrameSubmitsSucceeded = true;
+					bool bGpuFrameTimeQueryStarted = false;
+					if (bCanRenderFrame &&
+						App::GetRenderStatsMode() ==
+						Settings::ERenderStatsMode::RenderStatsAndQueries &&
+						m_driverInstance->SupportsGpuFrameTimeQueries())
+					{
+						auto queryBeginCommandList = m_driverInstance->CreateCommandList(
+							false,
+							RHI::ECommandListQueue::Graphics);
+						m_driverInstance->SetDebugName(
+							queryBeginCommandList,
+							"GpuFrameTime:Begin");
+						GetDriverCommands()->BeginCommandList(
+							queryBeginCommandList,
+							true);
+						bGpuFrameTimeQueryStarted =
+							m_driverInstance->BeginGpuFrameTimeQuery(
+								queryBeginCommandList);
+						GetDriverCommands()->EndCommandList(queryBeginCommandList);
+
+						if (bGpuFrameTimeQueryStarted)
+						{
+							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+							auto fence = RHIFencePtr::Make();
+							GetDriver()->SetDebugName(
+								signalSemaphore,
+								"GpuFrameTime:Begin");
+							GetDriver()->SetDebugName(fence, "GpuFrameTime:Begin");
+							if (!GetDriver()->SubmitCommandList(
+								queryBeginCommandList,
+								fence,
+								signalSemaphore,
+								chainSemaphore))
+							{
+								GetDriver()->CancelGpuFrameTimeQuery();
+								bGpuFrameTimeQueryStarted = false;
+								bFrameSubmitsSucceeded = false;
+								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit the GPU frame-time begin boundary.");
+							}
+							else
+							{
+								chainSemaphore = signalSemaphore;
+							}
+						}
+					}
+
+					if (bFrameSubmitsSucceeded && !m_bForceStop)
+					{
+						bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
+					}
 					DrawCallStats drawCallStats;
 
 					if (bFrameSubmitsSucceeded && bCanRenderFrame &&
@@ -558,7 +609,6 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						if (!App::HasEditor())
 						{
 							rhiFrameGraph->SetRenderTarget("BackBuffer", m_driverInstance->GetBackBuffer());
-							rhiFrameGraph->SetRenderTarget("DepthBuffer", m_driverInstance->GetDepthBuffer());
 						}
 
 						RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
@@ -601,6 +651,51 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 							chainSemaphore = signalSemaphore;
 							i++;
+						}
+					}
+
+					if (bGpuFrameTimeQueryStarted)
+					{
+						auto queryEndCommandList = m_driverInstance->CreateCommandList(
+							false,
+							RHI::ECommandListQueue::Graphics);
+						m_driverInstance->SetDebugName(
+							queryEndCommandList,
+							"GpuFrameTime:End");
+						GetDriverCommands()->BeginCommandList(
+							queryEndCommandList,
+							true);
+						m_driverInstance->EndGpuFrameTimeQuery(queryEndCommandList);
+						GetDriverCommands()->EndCommandList(queryEndCommandList);
+
+						if (bFrameSubmitsSucceeded)
+						{
+							primaryCommandLists.Add(queryEndCommandList);
+						}
+						else
+						{
+							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
+							auto fence = RHIFencePtr::Make();
+							GetDriver()->SetDebugName(
+								signalSemaphore,
+								"GpuFrameTime:EndAfterFailure");
+							GetDriver()->SetDebugName(
+								fence,
+								"GpuFrameTime:EndAfterFailure");
+							if (GetDriver()->SubmitCommandList(
+								queryEndCommandList,
+								fence,
+								signalSemaphore,
+								chainSemaphore))
+							{
+								GetDriver()->CommitGpuFrameTimeQuery();
+								chainSemaphore = signalSemaphore;
+							}
+							else
+							{
+								GetDriver()->CancelGpuFrameTimeQuery();
+								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit the GPU frame-time end boundary after a frame failure.");
+							}
 						}
 					}
 

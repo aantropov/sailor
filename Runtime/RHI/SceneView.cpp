@@ -10,6 +10,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
 #include <array>
@@ -786,7 +787,14 @@ uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableL
 		}
 		selectedLod = static_cast<uint32_t>(index + 1u);
 	}
-	return (std::clamp)(selectedLod, minLod, maxLod);
+	const int32_t lodBias = App::GetInstance() ?
+		App::GetActiveGraphicsSettings().m_lodBias : 0;
+	return Settings::ApplyLodBias(
+		selectedLod,
+		numAvailableLods,
+		minLod,
+		maxLod,
+		lodBias);
 }
 
 namespace

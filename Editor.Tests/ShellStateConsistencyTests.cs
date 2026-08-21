@@ -95,6 +95,18 @@ public sealed class ShellStateConsistencyTests
         Assert.NotNull(layoutStore.Layout);
     }
 
+    [Fact]
+    public void SplitResizeDragState_PersistsLastAppliedRunningTranslation()
+    {
+        var drag = new SplitResizeDragState();
+
+        drag.Begin();
+        drag.Update(96);
+
+        Assert.Equal(96, drag.Complete());
+        Assert.Equal(0, drag.Translation);
+    }
+
     static PanelInstance CreatePanel(PanelId panelId, PanelTypeId panelTypeId, PanelRole role, string groupId)
         => new(panelId, panelTypeId, panelTypeId.Value, role, new Microsoft.Maui.Controls.Label(), true, groupId);
 

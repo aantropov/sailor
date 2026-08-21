@@ -1,4 +1,5 @@
 using SailorEditor.Workspace;
+using SailorEditor.Settings;
 
 namespace SailorEditor.Editor.Tests;
 
@@ -35,6 +36,14 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.True(File.Exists(workspace.File("Source/WorkspaceTypes.h")));
         Assert.True(File.Exists(workspace.File("Source/WorkspaceModule.cpp")));
         Assert.True(File.Exists(workspace.File(".gitignore")));
+        var projectSettingsPath = workspace.File(GraphicsSettingsPaths.ProjectFileName);
+        Assert.True(File.Exists(projectSettingsPath));
+        var projectSettings = await File.ReadAllTextAsync(projectSettingsPath);
+        Assert.Contains("defaultQuality: High", projectSettings);
+        Assert.Contains("Ultra:", projectSettings);
+        Assert.Contains("fpsCap: 120", projectSettings);
+        Assert.Contains("shadowBias: 0", projectSettings);
+        Assert.Contains("VeryLow:", projectSettings);
         var generatedState = new WorkspaceGeneratedProjectStateService().GetStatePath(workspace.Root);
         Assert.True(File.Exists(generatedState));
         Assert.Equal(generatedState, generated.CreatedFiles.Last());

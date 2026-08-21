@@ -9,6 +9,7 @@
 #include "RHI/CommandList.h"
 #include "FrameGraph/LightCullingNode.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
 
 #include <atomic>
@@ -542,7 +543,15 @@ RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCm
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
-	frameData.m_viewportSize = glm::ivec2(App::GetMainWindow()->GetRenderArea().x, App::GetMainWindow()->GetRenderArea().y);
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const Settings::GraphicsExtent renderExtent =
+		Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+			App::GetActiveGraphicsSettings().m_resolutionFactor);
+	frameData.m_viewportSize = glm::ivec2(
+		static_cast<int32_t>(renderExtent.m_width),
+		static_cast<int32_t>(renderExtent.m_height));
 
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("previousFrameData"), &previousFrame, sizeof(previousFrame));
@@ -659,7 +668,6 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 
 		driverCommands->BeginCommandList(cmdList, true);
 		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
-
 		driverCommands->BeginCommandList(transferCmdList, true);
 		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
