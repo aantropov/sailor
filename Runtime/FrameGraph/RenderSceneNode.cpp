@@ -1175,6 +1175,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	std::string gpuCullingSetting;
 	TryGetString("GPUCulling", gpuCullingSetting);
 	const bool bGpuCullingRequested = gpuCullingSetting == "true";
+	std::string occlusionCullingSetting;
+	TryGetString("OcclusionCulling", occlusionCullingSetting);
+	const bool bOcclusionCullingRequested =
+		bGpuCullingRequested && occlusionCullingSetting == "true";
 	const uint32_t numInstances = resources->m_packet.GetNumStorageInstances();
 	const uint32_t numInstanceIndices = resources->m_packet.GetNumDrawInstances();
 	const size_t numAllocatedInstanceIndices =
@@ -1224,9 +1228,10 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	}
 
 	RHIShaderPtr cullingShader;
+	RHITexturePtr depthHighZ;
 	if (bGpuCullingEnabled && m_pComputeMeshCullingShader && m_pComputeMeshCullingShader->IsReady())
 	{
-		auto depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
+		depthHighZ = GetResolvedAttachment("depthHighZ").StaticCast<RHI::RHITexture>();
 		if (depthHighZ)
 		{
 			if (!resources->m_computeMeshCullingBindings ||
@@ -1281,16 +1286,21 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		resources->m_renderPassColorAttachments;
 	renderPassColorAttachments.Clear(false);
 	renderPassColorAttachments.Add(colorAttachment);
-	commands->BeginRenderPass(
-		commandList,
-		renderPassColorAttachments,
-		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		0.0f,
-		true);
+	bool bRenderPassStarted = false;
+	auto beginRenderPass = [&]()
+		{
+			commands->BeginRenderPass(
+				commandList,
+				renderPassColorAttachments,
+				depthAttachment,
+				glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
+				glm::ivec2(0, 0),
+				false,
+				glm::vec4(0.0f),
+				0.0f,
+				true);
+			bRenderPassStarted = true;
+		};
 
 	auto& cullingBindings = resources->m_cullingDispatchBindings;
 	cullingBindings.Clear(false);
@@ -1302,21 +1312,50 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			resources->m_cullingIndirectBufferBinding[0],
 			sceneView.m_frameBindings };
 	}
-	m_drawCallStats = RHIRecordPackedDrawPacket(
-		resources->m_packet,
-		commandList,
-		transferCommandList,
-		collectShaderBindings,
-		resources->m_perInstanceData,
-		resources->m_indirectBuffers[0],
-		viewport,
-		scissors,
-		glm::vec2(0.0f, 1.0f),
-		cullingShader,
-		&resources->m_cullingIndirectBufferBinding[0],
-		cullingBindings);
+	const bool bCurrentDepthOcclusionEnabled =
+		bOcclusionCullingRequested && cullingShader && depthHighZ;
+	if (bCurrentDepthOcclusionEnabled)
+	{
+		// Main-pass occlusion must execute on the graphics list after this frame's
+		// depth pyramid. The flight upload list still completes before graphics.
+		commands->ImageMemoryBarrierForComputeSampling(commandList, depthHighZ);
+		m_drawCallStats = RHIRecordPackedDrawPacketWithCurrentDepthOcclusion(
+			resources->m_packet,
+			commandList,
+			transferCommandList,
+			collectShaderBindings,
+			resources->m_perInstanceData,
+			resources->m_indirectBuffers[0],
+			viewport,
+			scissors,
+			glm::vec2(0.0f, 1.0f),
+			cullingShader,
+			&resources->m_cullingIndirectBufferBinding[0],
+			cullingBindings,
+			beginRenderPass);
+	}
+	else
+	{
+		beginRenderPass();
+		m_drawCallStats = RHIRecordPackedDrawPacket(
+			resources->m_packet,
+			commandList,
+			transferCommandList,
+			collectShaderBindings,
+			resources->m_perInstanceData,
+			resources->m_indirectBuffers[0],
+			viewport,
+			scissors,
+			glm::vec2(0.0f, 1.0f),
+			cullingShader,
+			&resources->m_cullingIndirectBufferBinding[0],
+			cullingBindings);
+	}
 
-	commands->EndRenderPass(commandList);
+	if (bRenderPassStarted)
+	{
+		commands->EndRenderPass(commandList);
+	}
 	commands->EndDebugRegion(commandList);
 	m_syncSharedResources.Unlock();
 }
