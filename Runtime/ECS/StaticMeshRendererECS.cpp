@@ -17,6 +17,38 @@ using namespace Sailor::Tasks;
 
 namespace
 {
+	constexpr uint8_t StaticSpatialChange = 1u << 0u;
+	constexpr uint8_t StationarySpatialChange = 1u << 1u;
+	constexpr uint8_t DynamicSpatialChange = 1u << 2u;
+
+	uint8_t GetSpatialChangeMask(EMobilityType mobility)
+	{
+		switch (mobility)
+		{
+		case EMobilityType::Static:
+			return StaticSpatialChange;
+		case EMobilityType::Stationary:
+			return StationarySpatialChange;
+		case EMobilityType::Dynamic:
+			return DynamicSpatialChange;
+		}
+		return DynamicSpatialChange;
+	}
+
+	uint64_t CalculateMaterialRenderMetadataSignature(
+		const TVector<MaterialPtr>& materials)
+	{
+		size_t result = 1469598103934665603ull;
+		HashCombine(result, materials.Num());
+		for (const auto& material : materials)
+		{
+			HashCombine(result,
+				material,
+				material ? material->GetRenderMetadataRevision() : 0ull);
+		}
+		return static_cast<uint64_t>(result);
+	}
+
 	bool HasRenderableSelection(const StaticMeshRendererData& data)
 	{
 		const ModelPtr& model = data.GetModel();
@@ -36,22 +68,19 @@ namespace
 			return false;
 		}
 
-		TVector<glm::mat4> modelMatrices;
 		Math::AABB modelBounds;
 		if (!data.GetModel()->CollectRenderData(
 				data.GetMeshIndex(),
 				outMeshes,
-				modelMatrices,
+				outWorldMatrices,
 				modelBounds))
 		{
 			return false;
 		}
 
-		outWorldMatrices.Clear();
-		outWorldMatrices.Reserve(modelMatrices.Num());
-		for (const glm::mat4& modelMatrix : modelMatrices)
+		for (glm::mat4& modelMatrix : outWorldMatrices)
 		{
-			outWorldMatrices.Add(ownerWorldMatrix * modelMatrix);
+			modelMatrix = ownerWorldMatrix * modelMatrix;
 		}
 
 		outWorldBounds = modelBounds;
@@ -112,6 +141,7 @@ namespace
 				lhsMesh.m_baseColorSampler != rhsMesh.m_baseColorSampler ||
 				lhsMesh.m_maxCameraDistance != rhsMesh.m_maxCameraDistance ||
 				lhsMesh.m_customDepthMaterial != rhsMesh.m_customDepthMaterial ||
+				lhsMesh.m_customDepthShader != rhsMesh.m_customDepthShader ||
 #if defined(__APPLE__)
 				lhsMesh.m_materialTextureSamplers != rhsMesh.m_materialTextureSamplers ||
 #endif
@@ -150,7 +180,7 @@ namespace
 			const size_t materialIndex = meshes[meshIndex]->ResolveMaterialIndex(
 				meshIndex,
 				data.GetMaterials().Num());
-			const auto& material = data.GetMaterials()[materialIndex];
+			auto material = data.GetMaterials()[materialIndex];
 			const size_t renderQueueTag = material ? material->GetRenderState().GetTag() : 0u;
 			if (renderQueueTag != opaqueQueueTag && renderQueueTag != maskedQueueTag)
 			{
@@ -163,7 +193,9 @@ namespace
 			shadowMesh.m_renderQueueTag = renderQueueTag;
 			if (material->GetRenderState().IsRequiredCustomDepthShader())
 			{
-				shadowMesh.m_customDepthMaterial = material;
+				shadowMesh.m_customDepthMaterial = material->GetOrAddRHI(
+					meshes[meshIndex]->m_vertexDescription);
+				shadowMesh.m_customDepthShader = material->GetShader();
 			}
 			if (renderQueueTag == maskedQueueTag)
 			{
@@ -221,24 +253,6 @@ namespace
 		return shadowCaster->m_meshes.IsEmpty() ? RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
 	}
 
-	enum class EPreparedProxyState : uint8_t
-	{
-		Remove,
-		Retry,
-		Stationary,
-		Static
-	};
-
-	struct PreparedProxyUpdate
-	{
-		size_t m_componentIndex = ECS::InvalidIndex;
-		EPreparedProxyState m_state = EPreparedProxyState::Remove;
-		uint32_t m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
-		RHI::RHIMeshProxy m_stationaryProxy{};
-		RHI::RHISceneViewProxy m_staticProxy{};
-		RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
-		Math::AABB m_worldBounds{};
-	};
 }
 
 uint32_t StaticMeshRendererData::ResolveLod(
@@ -297,8 +311,102 @@ void StaticMeshRendererData::SetLodSettings(
 
 void StaticMeshRendererECS::BeginPlay()
 {
-	m_sceneViewProxiesCache = RHI::RHISceneViewPtr::Make();
+	m_rhiScene = RHI::RHIScenePtr::Make();
 	m_lastMaterialContentRevision = Material::GetGlobalContentRevision();
+	PublishSceneVersion();
+}
+
+void StaticMeshRendererECS::PublishSceneVersion(uint8_t spatialChangeMask)
+{
+	auto version = RHI::RHISpatialSceneVersionPtr::Make();
+	version->m_revision = ++m_sceneVersionRevision;
+	if (spatialChangeMask != 0u || !m_publishedSceneVersion)
+	{
+		++m_spatialRevision;
+	}
+	version->m_shadowCastersRevision = m_shadowCastersRevision;
+	version->m_bHasCustomDepthShadowCasters = m_bHasCustomDepthShadowCasters;
+	version->m_scene = m_rhiScene;
+	if (m_rhiScene)
+	{
+		version->m_sceneVersion = m_rhiScene->PublishVersion(
+			m_lastMaterialContentRevision,
+			m_shadowCastersRevision,
+			m_spatialRevision);
+
+		const bool bRebuildStatic = !m_publishedSceneVersion ||
+			(spatialChangeMask & StaticSpatialChange) != 0u;
+		const bool bRebuildStationary = !m_publishedSceneVersion ||
+			(spatialChangeMask & StationarySpatialChange) != 0u;
+		const bool bRebuildDynamic = !m_publishedSceneVersion ||
+			(spatialChangeMask & DynamicSpatialChange) != 0u;
+		if (bRebuildStatic)
+		{
+			version->m_staticOctree = TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(
+				glm::ivec3(0, 0, 0), 16536 * 16, 4);
+		}
+		if (!bRebuildStatic)
+		{
+			version->m_staticOctree = m_publishedSceneVersion->m_staticOctree;
+		}
+		if (bRebuildStationary)
+		{
+			version->m_stationaryOctree = TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(
+				glm::ivec3(0, 0, 0), 16536 * 16, 4);
+		}
+		if (!bRebuildStationary)
+		{
+			version->m_stationaryOctree = m_publishedSceneVersion->m_stationaryOctree;
+		}
+		if (bRebuildDynamic)
+		{
+			version->m_dynamicOctree = TSharedPtr<TOctree<RHI::RenderInstanceHandle>>::Make(
+				glm::ivec3(0, 0, 0), 16536 * 16, 4);
+		}
+		if (!bRebuildDynamic)
+		{
+			version->m_dynamicOctree = m_publishedSceneVersion->m_dynamicOctree;
+		}
+
+		auto rebuildSpatialRoot = [&](const TSharedPtr<TVector<RHI::RenderInstanceHandle>>& handles,
+			const TSharedPtr<TOctree<RHI::RenderInstanceHandle>>& octree)
+			{
+				if (!handles || !octree)
+				{
+					return;
+				}
+				for (const auto& handle : *handles)
+				{
+					const RHI::RHISceneInstanceRecord* record = nullptr;
+					if (!version->m_sceneVersion->Resolve(handle, record) || !record)
+					{
+						continue;
+					}
+					glm::ivec3 octreeCenter{};
+					glm::ivec3 octreeExtents{};
+					GetConservativeOctreeBounds(
+						record->m_worldBounds,
+						octreeCenter,
+						octreeExtents);
+					octree->Update(octreeCenter, octreeExtents, handle);
+				}
+			};
+		if (bRebuildStatic)
+		{
+			rebuildSpatialRoot(version->m_sceneVersion->m_staticHandles, version->m_staticOctree);
+		}
+		if (bRebuildStationary)
+		{
+			rebuildSpatialRoot(
+				version->m_sceneVersion->m_stationaryHandles,
+				version->m_stationaryOctree);
+		}
+		if (bRebuildDynamic)
+		{
+			rebuildSpatialRoot(version->m_sceneVersion->m_dynamicHandles, version->m_dynamicOctree);
+		}
+	}
+	m_publishedSceneVersion = std::move(version);
 }
 
 void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
@@ -323,24 +431,25 @@ void StaticMeshRendererECS::MarkDirty(GameObjectPtr owner)
 
 void StaticMeshRendererECS::OnComponentUnregistered(size_t index, StaticMeshRendererData& component)
 {
-	if (!m_sceneViewProxiesCache)
+	uint8_t spatialChangeMask = 0u;
+	RHI::RenderInstanceHandle* renderHandle = nullptr;
+	if (m_rhiScene && m_renderInstanceHandles.Find(index, renderHandle) && renderHandle)
 	{
-		return;
+		RHI::RHISceneInstanceRecord previousRecord;
+		if (m_rhiScene->ResolveCurrent(*renderHandle, previousRecord))
+		{
+			spatialChangeMask |= GetSpatialChangeMask(previousRecord.m_mobility);
+		}
+		m_rhiScene->RemoveInstance(*renderHandle);
+		m_renderInstanceHandles.Remove(index);
 	}
-
-	RHI::RHIMeshProxy stationaryProxy{};
-	stationaryProxy.m_staticMeshEcs = index;
-	m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryProxy);
-
-	RHI::RHISceneViewProxy staticProxy{};
-	staticProxy.m_staticMeshEcs = index;
-	m_sceneViewProxiesCache->m_staticOctree.Remove(staticProxy);
 
 	if (component.m_shadowCaster)
 	{
 		component.m_shadowCaster.Clear();
-		++m_sceneViewProxiesCache->m_shadowCastersRevision;
+		++m_shadowCastersRevision;
 	}
+	PublishSceneVersion(spatialChangeMask);
 }
 
 Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
@@ -349,15 +458,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 	SAILOR_PROFILE_FUNCTION();
 
-	if (!m_sceneViewProxiesCache)
-	{
-		return nullptr;
-	}
-
 	const uint64_t materialContentRevision = Material::GetGlobalContentRevision();
 	const bool bCheckMaterialRevisions = materialContentRevision != m_lastMaterialContentRevision;
 	bool bHasCustomDepthShadowCasters = false;
-	TVector<size_t> dirtyComponents;
+	auto& dirtyComponents = m_componentScanScratch;
+	dirtyComponents.Clear(false);
 	dirtyComponents.Reserve(m_components.Num());
 	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
@@ -380,7 +485,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 
 		auto& data = m_components[componentIndex];
-		bool bNeedsUpdate = data.m_bIsDirty || (data.GetModel() && data.m_frameLastChange == 0);
+		bool bNeedsUpdate = data.m_bIsDirty ||
+			(data.GetModel() && data.m_frameLastChange == 0);
 		if (GameObjectPtr owner = data.m_owner.StaticCast<GameObject>())
 		{
 			bNeedsUpdate |= owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
@@ -388,7 +494,8 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 		if (!bNeedsUpdate && bCheckMaterialRevisions)
 		{
-			bool bMaterialsChanged = data.m_materialContentRevisions.Num() != data.GetMaterials().Num();
+			bool bMaterialsChanged =
+				data.m_materialContentRevisions.Num() != data.GetMaterials().Num() + 1u;
 			for (size_t materialIndex = 0; !bMaterialsChanged && materialIndex < data.GetMaterials().Num(); ++materialIndex)
 			{
 				const auto& material = data.GetMaterials()[materialIndex];
@@ -404,10 +511,9 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			dirtyComponents.Add(componentIndex);
 		}
 	}
-	m_lastMaterialContentRevision = materialContentRevision;
-
 	if (dirtyComponents.IsEmpty())
 	{
+		m_lastMaterialContentRevision = materialContentRevision;
 		return nullptr;
 	}
 
@@ -429,10 +535,36 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				return result;
 			}
 
+			const bool bTopologyDirty = data.m_bIsDirty ||
+				(data.GetModel() && data.m_frameLastChange == 0);
+			const bool bTransformDirty = owner->GetTransformComponent().GetFrameLastChange() > data.m_frameLastChange;
+			const bool bMaterialsDirty =
+				data.m_materialContentRevisions.Num() != data.GetMaterials().Num() + 1u ||
+				data.m_materialContentRevisions[data.GetMaterials().Num()] !=
+					CalculateMaterialRenderMetadataSignature(data.GetMaterials());
+			if (bTransformDirty)
+			{
+				result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::Transform) |
+					RHI::ToMask(RHI::ESceneChangeBit::Bounds);
+			}
+			if (bTopologyDirty)
+			{
+				result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) |
+					RHI::ToMask(RHI::ESceneChangeBit::Material) |
+					RHI::ToMask(RHI::ESceneChangeBit::RenderState) |
+					RHI::ToMask(RHI::ESceneChangeBit::ShadowState) |
+					RHI::ToMask(RHI::ESceneChangeBit::Bounds);
+			}
+			else if (bMaterialsDirty)
+			{
+				result.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::Material) |
+					RHI::ToMask(RHI::ESceneChangeBit::RenderState) |
+					RHI::ToMask(RHI::ESceneChangeBit::ShadowState);
+			}
 			const ModelPtr& model = data.GetModel();
 			if (!model->IsReady())
 			{
-				result.m_state = EPreparedProxyState::Retry;
+				result.m_state = EPreparedProxyState::Pending;
 				return result;
 			}
 
@@ -454,25 +586,74 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 
 			if (data.GetMaterials().IsEmpty())
 			{
-				result.m_state = EPreparedProxyState::Retry;
 				return result;
 			}
 			for (const auto& material : data.GetMaterials())
 			{
 				if (!material)
 				{
-					result.m_state = EPreparedProxyState::Retry;
+					result.m_state = EPreparedProxyState::Pending;
 					return result;
 				}
 				if (!material->IsReady())
 				{
-					result.m_state = EPreparedProxyState::Retry;
+					result.m_state = !bTopologyDirty && !bTransformDirty && !bMaterialsDirty ?
+						EPreparedProxyState::PendingMaterialVersion : EPreparedProxyState::Pending;
 					return result;
 				}
+			}
+			if (!bTopologyDirty && !bTransformDirty && !bMaterialsDirty)
+			{
+				// Uniform-only changes publish a new immutable RHI material version.
+				// Scene topology and instance records remain valid and are selected by
+				// the submission's material cutoff during packet construction.
+				result.m_state = EPreparedProxyState::MaterialVersionOnly;
+				return result;
 			}
 
 			const auto& ownerTransform = owner->GetTransformComponent();
 			const glm::mat4& ownerWorldMatrix = ownerTransform.GetCachedWorldMatrix();
+			if (auto animator = owner->GetComponent<AnimatorComponent>())
+			{
+				result.m_skeletonOffset = animator->GetSkeletonOffset();
+			}
+
+			// A transform-only update must not rebuild and then discard the full
+			// mesh/material/shadow topology. Once the published resource stores
+			// local mesh transforms, the scene record can carry the new mutable
+			// state while every active version retains the immutable topology.
+			if (!bTopologyDirty && !bMaterialsDirty && m_rhiScene)
+			{
+				RHI::RenderInstanceHandle* renderHandle = nullptr;
+				RHI::RHISceneInstanceRecord previousRecord;
+				if (m_renderInstanceHandles.Find(componentIndex, renderHandle) &&
+					renderHandle &&
+					m_rhiScene->ResolveCurrent(*renderHandle, previousRecord))
+				{
+					const auto previousResource =
+						previousRecord.m_topology.DynamicCast<RHI::RHISceneProxyResource>();
+					Math::AABB worldBounds = model->GetBoundsAABB(data.GetMeshIndex());
+					worldBounds.Apply(ownerWorldMatrix);
+					if (previousResource && previousResource->m_bMeshTransformsAreLocal &&
+						worldBounds.IsValid())
+					{
+						result.m_worldBounds = worldBounds;
+						result.m_shadowCaster = data.m_shadowCaster;
+						result.m_state = owner->GetMobilityType() == EMobilityType::Static ?
+							EPreparedProxyState::Static : EPreparedProxyState::Stationary;
+						result.m_staticProxy.m_staticMeshEcs = componentIndex;
+						result.m_staticProxy.m_mobility = owner->GetMobilityType();
+						result.m_staticProxy.m_worldMatrix = ownerWorldMatrix;
+						result.m_staticProxy.m_worldAabb = worldBounds;
+						result.m_staticProxy.m_frame = currentFrame;
+						result.m_staticProxy.m_skeletonOffset = result.m_skeletonOffset;
+						result.m_staticProxy.m_bCastShadows = data.ShouldCastShadow();
+						result.m_bStateOnly = true;
+						return result;
+					}
+				}
+			}
+
 			TVector<RHI::RHIMeshPtr> selectedMeshes;
 			TVector<glm::mat4> selectedMatrices;
 			if (!CollectComponentRenderData(
@@ -485,11 +666,6 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				return result;
 			}
 
-			if (auto animator = owner->GetComponent<AnimatorComponent>())
-			{
-				result.m_skeletonOffset = animator->GetSkeletonOffset();
-			}
-
 			result.m_shadowCaster = CreateShadowCasterProxy(
 				data,
 				componentIndex,
@@ -500,17 +676,11 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 				result.m_skeletonOffset,
 				currentFrame);
 
-			if (owner->GetMobilityType() != EMobilityType::Static)
-			{
-				result.m_state = EPreparedProxyState::Stationary;
-				result.m_stationaryProxy.m_staticMeshEcs = componentIndex;
-				result.m_stationaryProxy.m_worldMatrix = ownerWorldMatrix;
-				return result;
-			}
-
-			result.m_state = EPreparedProxyState::Static;
+			result.m_state = owner->GetMobilityType() == EMobilityType::Static ?
+				EPreparedProxyState::Static : EPreparedProxyState::Stationary;
 			auto& proxy = result.m_staticProxy;
 			proxy.m_staticMeshEcs = componentIndex;
+			proxy.m_mobility = owner->GetMobilityType();
 			proxy.m_worldMatrix = ownerWorldMatrix;
 			proxy.m_frame = currentFrame;
 			proxy.m_skeletonOffset = result.m_skeletonOffset;
@@ -518,6 +688,10 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			proxy.m_meshModelMatrices = std::move(selectedMatrices);
 			proxy.m_worldAabb = result.m_worldBounds;
 			proxy.m_bCastShadows = data.ShouldCastShadow();
+			proxy.m_lodPolicy.m_bEnabled = true;
+			proxy.m_lodPolicy.m_minLod = data.m_minLod;
+			proxy.m_lodPolicy.m_maxLod = data.m_maxLod;
+			proxy.m_lodPolicy.m_screenCoverageThresholds = data.m_screenCoverageThresholds;
 			proxy.m_overrideMaterials.Reserve(proxy.m_meshes.Num());
 			proxy.m_renderQueueTags.Reserve(proxy.m_meshes.Num());
 			proxy.m_baseColorFactors.Reserve(proxy.m_meshes.Num());
@@ -589,35 +763,34 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			return result;
 		};
 
-	TVector<PreparedProxyUpdate> preparedUpdates;
-	preparedUpdates.Reserve(dirtyComponents.Num());
+	auto& preparedUpdates = m_preparedUpdatesScratch;
+	preparedUpdates.Clear(false);
+	preparedUpdates.Resize(dirtyComponents.Num());
 	if (dirtyComponents.Num() <= NumDirtyComponentsPerTask)
 	{
-		for (size_t componentIndex : dirtyComponents)
+		for (size_t index = 0; index < dirtyComponents.Num(); ++index)
 		{
-			preparedUpdates.Add(prepareProxyUpdate(componentIndex));
+			preparedUpdates[index] = prepareProxyUpdate(dirtyComponents[index]);
 		}
 	}
 	else
 	{
-		TVector<Tasks::TaskPtr<TVector<PreparedProxyUpdate>>> tasks;
+		auto& tasks = m_prepareTasksScratch;
+		tasks.Clear(false);
 		const size_t numTasks = (dirtyComponents.Num() + NumDirtyComponentsPerTask - 1) / NumDirtyComponentsPerTask;
 		tasks.Reserve(numTasks);
 		for (size_t taskIndex = 0; taskIndex < numTasks; ++taskIndex)
 		{
 			const size_t beginIndex = taskIndex * NumDirtyComponentsPerTask;
 			const size_t endIndex = (std::min)(beginIndex + NumDirtyComponentsPerTask, dirtyComponents.Num());
-			auto task = Tasks::CreateTask<TVector<PreparedProxyUpdate>>(
+			auto task = Tasks::CreateTask(
 				"StaticMeshRendererECS:Prepare Dirty Proxies",
-				[beginIndex, endIndex, &dirtyComponents, prepareProxyUpdate]()
+				[beginIndex, endIndex, &dirtyComponents, &preparedUpdates, prepareProxyUpdate]()
 				{
-					TVector<PreparedProxyUpdate> result;
-					result.Reserve(endIndex - beginIndex);
 					for (size_t index = beginIndex; index < endIndex; ++index)
 					{
-						result.Add(prepareProxyUpdate(dirtyComponents[index]));
+						preparedUpdates[index] = prepareProxyUpdate(dirtyComponents[index]);
 					}
-					return result;
 				},
 				EThreadType::Worker);
 			task->Run();
@@ -627,11 +800,15 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		for (auto& task : tasks)
 		{
 			task->Wait();
-			preparedUpdates.AddRange(std::move(task->m_result));
 		}
 	}
 
 	bool bShadowCastersChanged = false;
+	bool bSceneRecordsChanged = false;
+	bool bMaterialVersionsPending = false;
+	const bool bPreviousHasCustomDepthShadowCasters =
+		m_bHasCustomDepthShadowCasters;
+	uint8_t spatialChangeMask = 0u;
 	for (auto& update : preparedUpdates)
 	{
 		if (!IsComponentRegistered(update.m_componentIndex))
@@ -640,28 +817,37 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 
 		auto& data = m_components[update.m_componentIndex];
-		RHI::RHIMeshProxy stationaryKey{};
-		stationaryKey.m_staticMeshEcs = update.m_componentIndex;
-		RHI::RHISceneViewProxy staticKey{};
-		staticKey.m_staticMeshEcs = update.m_componentIndex;
-
-		if (update.m_state == EPreparedProxyState::Retry)
-		{
-			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
-			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
-			if (data.m_shadowCaster)
+		auto cacheMaterialRevisions = [&data]()
 			{
-				data.m_shadowCaster.Clear();
-				bShadowCastersChanged = true;
-			}
+				data.m_materialContentRevisions.Resize(data.GetMaterials().Num() + 1u);
+				for (size_t materialIndex = 0u;
+					materialIndex < data.GetMaterials().Num(); ++materialIndex)
+				{
+					const auto& material = data.GetMaterials()[materialIndex];
+					data.m_materialContentRevisions[materialIndex] = material ?
+						material->GetContentRevision() : 0ull;
+				}
+				data.m_materialContentRevisions[data.GetMaterials().Num()] =
+					CalculateMaterialRenderMetadataSignature(data.GetMaterials());
+			};
+		if (update.m_state == EPreparedProxyState::Pending)
+		{
 			data.m_bIsDirty = true;
+			continue;
+		}
+		if (update.m_state == EPreparedProxyState::PendingMaterialVersion)
+		{
+			bMaterialVersionsPending = true;
+			continue;
+		}
+		if (update.m_state == EPreparedProxyState::MaterialVersionOnly)
+		{
+			cacheMaterialRevisions();
 			continue;
 		}
 
 		if (update.m_state == EPreparedProxyState::Remove)
 		{
-			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
-			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
 			if (data.m_shadowCaster)
 			{
 				data.m_shadowCaster.Clear();
@@ -669,6 +855,17 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			}
 			data.m_materialContentRevisions.Clear();
 			data.m_bIsDirty = false;
+			RHI::RenderInstanceHandle* renderHandle = nullptr;
+			if (m_rhiScene && m_renderInstanceHandles.Find(update.m_componentIndex, renderHandle) && renderHandle)
+			{
+				RHI::RHISceneInstanceRecord previousRecord;
+				if (m_rhiScene->ResolveCurrent(*renderHandle, previousRecord))
+				{
+					spatialChangeMask |= GetSpatialChangeMask(previousRecord.m_mobility);
+				}
+				bSceneRecordsChanged |= m_rhiScene->RemoveInstance(*renderHandle);
+				m_renderInstanceHandles.Remove(update.m_componentIndex);
+			}
 			continue;
 		}
 
@@ -682,39 +879,112 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 			data.m_shadowCaster = update.m_shadowCaster;
 			bShadowCastersChanged = true;
 		}
-
-		if (update.m_state == EPreparedProxyState::Stationary)
+		if (update.m_bStateOnly &&
+			(update.m_changeMask & RHI::ToMask(RHI::ESceneChangeBit::Transform)) != 0u &&
+			update.m_staticProxy.m_bCastShadows)
 		{
-			m_sceneViewProxiesCache->m_staticOctree.Remove(staticKey);
-			update.m_stationaryProxy.m_shadowCaster = data.m_shadowCaster;
-			glm::ivec3 octreeCenter{};
-			glm::ivec3 octreeExtents{};
-			GetConservativeOctreeBounds(update.m_worldBounds, octreeCenter, octreeExtents);
-			m_sceneViewProxiesCache->m_stationaryOctree.Update(
-				octreeCenter,
-				octreeExtents,
-				update.m_stationaryProxy);
+			bShadowCastersChanged = true;
 		}
-		else
+
+		update.m_staticProxy.m_shadowCaster = data.m_shadowCaster;
+		if (update.m_staticProxy.m_shadowCaster)
 		{
-			m_sceneViewProxiesCache->m_stationaryOctree.Remove(stationaryKey);
-			update.m_staticProxy.m_shadowCaster = data.m_shadowCaster;
-			glm::ivec3 octreeCenter{};
-			glm::ivec3 octreeExtents{};
-			GetConservativeOctreeBounds(update.m_worldBounds, octreeCenter, octreeExtents);
-			m_sceneViewProxiesCache->m_staticOctree.Update(
-				octreeCenter,
-				octreeExtents,
-				update.m_staticProxy);
+			update.m_staticProxy.m_shadowCaster->m_mobility = update.m_staticProxy.m_mobility;
+		}
+		if (m_rhiScene)
+		{
+			RHI::RHISceneInstanceRecord sceneRecord;
+			sceneRecord.m_producerKey = update.m_componentIndex;
+			sceneRecord.m_mobility = update.m_staticProxy.m_mobility;
+			sceneRecord.m_worldMatrix = update.m_staticProxy.m_worldMatrix;
+			sceneRecord.m_worldBounds = update.m_staticProxy.m_worldAabb;
+			sceneRecord.m_topologyRevision = currentFrame;
+			sceneRecord.m_materialRevision = Material::GetGlobalContentRevision();
+			sceneRecord.m_skeletonOffset = update.m_staticProxy.m_skeletonOffset;
+			sceneRecord.m_renderFlags = update.m_staticProxy.m_bCastShadows ? 1u : 0u;
+
+			RHI::RenderInstanceHandle* renderHandle = nullptr;
+			if (m_renderInstanceHandles.Find(update.m_componentIndex, renderHandle) && renderHandle)
+			{
+				RHI::RHISceneInstanceRecord previousRecord;
+				const bool bResolvedPrevious =
+					m_rhiScene->ResolveCurrent(*renderHandle, previousRecord);
+				if (bResolvedPrevious)
+				{
+					const RHI::SceneChangeMask topologyChanges =
+						RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) |
+						RHI::ToMask(RHI::ESceneChangeBit::Material) |
+						RHI::ToMask(RHI::ESceneChangeBit::RenderState) |
+						RHI::ToMask(RHI::ESceneChangeBit::ShadowState);
+					bool bCanReuseTopology = (update.m_changeMask & topologyChanges) == 0u;
+					if (bCanReuseTopology &&
+						(update.m_changeMask & RHI::ToMask(RHI::ESceneChangeBit::Transform)) != 0u)
+					{
+						const auto previousResource =
+							previousRecord.m_topology.DynamicCast<RHI::RHISceneProxyResource>();
+						bCanReuseTopology = previousResource &&
+							previousResource->m_bMeshTransformsAreLocal;
+					}
+					if (bCanReuseTopology)
+					{
+						sceneRecord.m_topology = previousRecord.m_topology;
+						sceneRecord.m_topologyRevision = previousRecord.m_topologyRevision;
+						if ((update.m_changeMask &
+							RHI::ToMask(RHI::ESceneChangeBit::Material)) == 0u)
+						{
+							sceneRecord.m_materialRevision = previousRecord.m_materialRevision;
+						}
+					}
+					else
+					{
+						update.m_changeMask |=
+							RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology);
+						sceneRecord.m_topology =
+							RHI::RHISceneProxyResourcePtr::Make(std::move(update.m_staticProxy));
+					}
+					if (previousRecord.m_mobility != sceneRecord.m_mobility)
+					{
+						update.m_changeMask |= RHI::ToMask(RHI::ESceneChangeBit::Mobility);
+					}
+					if (const auto resource = sceneRecord.m_topology.DynamicCast<RHI::RHISceneProxyResource>())
+					{
+						sceneRecord.m_shadowRevision = resource->m_shadowRevision;
+					}
+				}
+				const RHI::SceneChangeMask spatialChanges =
+					RHI::ToMask(RHI::ESceneChangeBit::Transform) |
+					RHI::ToMask(RHI::ESceneChangeBit::Bounds) |
+					RHI::ToMask(RHI::ESceneChangeBit::Mobility);
+				const bool bUpdated = m_rhiScene->UpdateInstance(
+					*renderHandle,
+					sceneRecord,
+					update.m_changeMask);
+				bSceneRecordsChanged |= bUpdated;
+				if (bUpdated && (update.m_changeMask & spatialChanges) != 0u)
+				{
+					if (bResolvedPrevious)
+					{
+						spatialChangeMask |= GetSpatialChangeMask(previousRecord.m_mobility);
+					}
+					spatialChangeMask |= GetSpatialChangeMask(sceneRecord.m_mobility);
+				}
+			}
+			else
+			{
+				sceneRecord.m_topology =
+					RHI::RHISceneProxyResourcePtr::Make(std::move(update.m_staticProxy));
+				if (const auto resource = sceneRecord.m_topology.DynamicCast<RHI::RHISceneProxyResource>())
+				{
+					sceneRecord.m_shadowRevision = resource->m_shadowRevision;
+				}
+				m_renderInstanceHandles[update.m_componentIndex] = m_rhiScene->AddInstance(sceneRecord);
+				bSceneRecordsChanged = true;
+				spatialChangeMask |= GetSpatialChangeMask(sceneRecord.m_mobility);
+			}
 		}
 
 		data.m_skeletonOffset = update.m_skeletonOffset;
-		data.m_materialContentRevisions.Resize(data.GetMaterials().Num());
-		for (size_t materialIndex = 0; materialIndex < data.GetMaterials().Num(); ++materialIndex)
-		{
-			const auto& material = data.GetMaterials()[materialIndex];
-			data.m_materialContentRevisions[materialIndex] = material ? material->GetContentRevision() : 0ull;
-		}
+		cacheMaterialRevisions();
 
 		ObjectPtr ownerObject = data.GetOwner();
 		GameObjectPtr owner = ownerObject.StaticCast<GameObject>();
@@ -729,12 +999,21 @@ Tasks::ITaskPtr StaticMeshRendererECS::Tick(float deltaTime)
 		}
 		data.m_bIsDirty = false;
 	}
+	if (!bMaterialVersionsPending)
+	{
+		m_lastMaterialContentRevision = materialContentRevision;
+	}
 
 	if (bShadowCastersChanged)
 	{
-		++m_sceneViewProxiesCache->m_shadowCastersRevision;
+		++m_shadowCastersRevision;
 	}
-	m_sceneViewProxiesCache->m_bHasCustomDepthShadowCasters = bHasCustomDepthShadowCasters;
+	m_bHasCustomDepthShadowCasters = bHasCustomDepthShadowCasters;
+	if (bSceneRecordsChanged || bShadowCastersChanged ||
+		bPreviousHasCustomDepthShadowCasters != m_bHasCustomDepthShadowCasters)
+	{
+		PublishSceneVersion(spatialChangeMask);
+	}
 
 	return nullptr;
 }
@@ -743,14 +1022,20 @@ void StaticMeshRendererECS::CopySceneView(RHI::RHISceneViewPtr& outProxies)
 {
 	SAILOR_PROFILE_FUNCTION();
 
-	outProxies->m_stationaryOctree = m_sceneViewProxiesCache->m_stationaryOctree;
-	outProxies->m_staticOctree = m_sceneViewProxiesCache->m_staticOctree;
-	outProxies->m_shadowCastersRevision = m_sceneViewProxiesCache->m_shadowCastersRevision;
-	outProxies->m_bHasCustomDepthShadowCasters = m_sceneViewProxiesCache->m_bHasCustomDepthShadowCasters;
+	outProxies->AddSceneVersion(m_publishedSceneVersion);
 }
 
 void StaticMeshRendererECS::EndPlay()
 {
 	ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>::EndPlay();
-	m_sceneViewProxiesCache.Clear();
+	m_publishedSceneVersion.Clear();
+	m_rhiScene.Clear();
+	m_renderInstanceHandles.Clear();
+	m_sceneVersionRevision = 0ull;
+	m_spatialRevision = 0ull;
+	m_shadowCastersRevision = 0ull;
+	m_componentScanScratch.Clear();
+	m_preparedUpdatesScratch.Clear();
+	m_prepareTasksScratch.Clear();
+	m_bHasCustomDepthShadowCasters = false;
 }

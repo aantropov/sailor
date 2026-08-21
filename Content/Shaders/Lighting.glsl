@@ -338,12 +338,15 @@ float CalculateLocalPcfShadow(
     return 1.0f;
   }
 
+  const vec2 atlasTexelSize = 1.0f / textureSize(shadowMap, 0);
+  const vec2 tileMin = atlasRect.xy + atlasTexelSize * 0.5f;
+  const vec2 tileMax = atlasRect.xy + atlasRect.zw - atlasTexelSize * 0.5f;
+  const vec2 atlasUv = clamp(
+    atlasRect.xy + projCoords.xy * atlasRect.zw,
+    tileMin,
+    tileMax);
   if(softShadow)
   {
-    const vec2 atlasTexelSize = 1.0f / textureSize(shadowMap, 0);
-    const vec2 tileMin = atlasRect.xy + atlasTexelSize * 0.5f;
-    const vec2 tileMax = atlasRect.xy + atlasRect.zw - atlasTexelSize * 0.5f;
-    const vec2 atlasUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
     const vec2 poissonDisk[16] = vec2[](
       vec2(-0.94201624, -0.39906216), vec2(0.94558609, -0.76890725),
       vec2(-0.094184101, -0.92938870), vec2(0.34495938, 0.29387760),
@@ -366,7 +369,6 @@ float CalculateLocalPcfShadow(
     return lit / 16.0f;
   }
 
-  const vec2 atlasUv = atlasRect.xy + projCoords.xy * atlasRect.zw;
   const float shadowDepth = texture(shadowMap, atlasUv).r;
   return projCoords.z > shadowDepth ? 1.0f : 0.0f;
 }

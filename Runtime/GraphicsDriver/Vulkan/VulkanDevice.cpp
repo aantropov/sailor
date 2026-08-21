@@ -968,21 +968,52 @@ VulkanImageViewPtr VulkanDevice::GetDepthBuffer() const
 
 bool VulkanDevice::AcquireNextImage()
 {
-	// Wait while we recreate swapchain from main thread to sync with Win32Api
-	if (m_bIsSwapChainOutdated)
+	uint32_t flightSlot = 0u;
+	bool bHasSwapchainImage = false;
+	return BeginRenderSubmission(flightSlot, bHasSwapchainImage) && bHasSwapchainImage;
+}
+
+uint32_t VulkanDevice::GetMaxFramesInFlight() const
+{
+	return VulkanApi::MaxFramesInFlight;
+}
+
+bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
+{
+	outFlightSlot = static_cast<uint32_t>(m_currentFrame);
+	outHasSwapchainImage = false;
+
+	if (m_currentFrame >= m_syncFences.Num() || !m_syncFences[m_currentFrame])
 	{
 		return false;
 	}
 
-	// Wait while GPU is finishing frame
-	m_syncFences[m_currentFrame]->Wait();
+	// The slot fence is the ownership boundary for every mutable resource retained
+	// by this flight. Always wait it, including the editor/no-present path and an
+	// outdated swapchain, before FrameGraph preparation can reuse the slot.
+	const VkResult previousFrameResult = m_syncFences[m_currentFrame]->Wait();
+	if (previousFrameResult != VK_SUCCESS)
+	{
+		if (previousFrameResult == VK_ERROR_DEVICE_LOST)
+		{
+			m_bIsDeviceLost = true;
+		}
+		return false;
+	}
+
+	// Wait while we recreate swapchain from main thread to sync with Win32Api.
+	// The flight slot is still safely acquired even though there is no image.
+	if (m_bIsSwapChainOutdated)
+	{
+		return true;
+	}
 
 	VkResult result = m_swapchain->AcquireNextImage(UINT64_MAX, m_imageAvailableSemaphores[m_currentFrame], VulkanFencePtr(), m_currentSwapchainImageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		m_bIsSwapChainOutdated = true;
-		return false;
+		return true;
 	}
 	else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 	{
@@ -999,6 +1030,7 @@ bool VulkanDevice::AcquireNextImage()
 	// Mark the image as now being in use by this frame
 	m_syncImages[m_currentSwapchainImageIndex] = m_syncFences[m_currentFrame];
 
+	outHasSwapchainImage = true;
 	return true;
 }
 
@@ -1013,7 +1045,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 	}
 
 	// Clear previous frame deps
-	m_frameDeps[m_currentFrame].Clear();
+	m_frameDeps[m_currentFrame].Clear(false);
 
 	TVector<VkCommandBuffer> commandBuffers;
 
@@ -1153,7 +1185,7 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 		return false;
 	}
 
-	m_frameDeps[m_currentFrame].Clear();
+	m_frameDeps[m_currentFrame].Clear(false);
 
 	TVector<VkCommandBuffer> commandBuffers;
 	if (primaryCommandBuffers.Num() > 0)
@@ -1201,11 +1233,6 @@ bool VulkanDevice::SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPt
 	if (waitStages)
 	{
 		_freea(waitStages);
-	}
-
-	if (submitResult == VK_SUCCESS)
-	{
-		m_syncFences[m_currentFrame]->Wait();
 	}
 
 	m_currentFrame = (m_currentFrame + 1) % VulkanApi::MaxFramesInFlight;

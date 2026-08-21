@@ -98,5 +98,15 @@ void LandscapeComponent::SetVegetationCullDistance(const TVector<float>& value) 
 void LandscapeComponent::SetVegetationColliderRadius(const TVector<float>& value) { m_vegetationColliderRadius = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationColliderHeight(const TVector<float>& value) { m_vegetationColliderHeight = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationColliderOffsetY(const TVector<float>& value) { m_vegetationColliderOffsetY = value; MarkDirty(); }
-void LandscapeComponent::SetRegenerate(bool value) { m_bRegenerate = false; if (value) MarkDirty(); }
+void LandscapeComponent::SetRegenerate(bool value)
+{
+	m_bRegenerate = false;
+	if (value)
+	{
+		if (auto* data = TryGetData())
+		{
+			data->RequestFullRebuild();
+		}
+	}
+}
 void LandscapeComponent::SetFlatten(bool value) { m_bFlatten = false; if (value) { m_heightScale = 0.0f; MarkDirty(); } }

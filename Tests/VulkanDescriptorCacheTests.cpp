@@ -198,6 +198,22 @@ namespace
 			"removing the expired descriptor cache key must release its map entry");
 	}
 
+	void TestConcurrentMapConstFindDoesNotExposeEndIterator()
+	{
+		TConcurrentMap<std::string, uint32_t> values;
+		values.At_Lock("present") = 7u;
+		values.Unlock("present");
+
+		const auto& constValues = values;
+		const uint32_t* present = nullptr;
+		Require(constValues.Find("present", present) && present && *present == 7u,
+			"const Find must return the stored value for an existing key");
+
+		const uint32_t* missing = nullptr;
+		Require(!constValues.Find("missing", missing) && missing == nullptr,
+			"const Find must not expose or dereference the end iterator for a missing key");
+	}
+
 	void TestDescriptorCacheKeyTracksDescriptorRevision()
 	{
 		using DescriptorCacheKey =
@@ -408,10 +424,10 @@ namespace
 			"batch.m_textureBindings = Framegraph::Details::GetTextureBindingSet(") !=
 			std::string::npos &&
 			depthPrepassSource.find(
-				"material->GetBindings(), batch.m_textureBindings") !=
+				"sets.Add(batch.GetMaterialBindings());") !=
 				std::string::npos &&
 			depthPrepassSource.find(
-				"material->GetBindings(), textureSamplers") ==
+				"batch.m_material->GetBindings(),") ==
 				std::string::npos,
 			"custom depth batches must use their dense texture bindings instead of the legacy global set");
 		Require(gltfShader.find(
@@ -768,6 +784,8 @@ int main()
 			TestSsboElementAlignmentPreservesStd430Stride },
 		{ "DescriptorCacheKeyKeepsItsCompatibilitySnapshot",
 			TestDescriptorCacheKeyKeepsItsCompatibilitySnapshot },
+		{ "ConcurrentMapConstFindDoesNotExposeEndIterator",
+			TestConcurrentMapConstFindDoesNotExposeEndIterator },
 		{ "DescriptorCacheKeyTracksDescriptorRevision",
 			TestDescriptorCacheKeyTracksDescriptorRevision },
 		{ "TextureSamplerUpdatesUseSynchronizedSnapshot",

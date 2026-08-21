@@ -34,6 +34,7 @@ namespace Sailor
 		SAILOR_API virtual bool IsReady() const override;
 		SAILOR_API bool IsDirty() const { return m_bIsDirty.load(); }
 		SAILOR_API uint64_t GetContentRevision() const { return m_contentRevision.load(std::memory_order_acquire); }
+		SAILOR_API uint64_t GetRenderMetadataRevision() const { return m_renderMetadataRevision.load(std::memory_order_acquire); }
 		SAILOR_API static uint64_t GetGlobalContentRevision();
 
 		SAILOR_API virtual Tasks::ITaskPtr OnHotReload() override;
@@ -53,6 +54,7 @@ namespace Sailor
 
 		SAILOR_API void UpdateRHIResource();
 		SAILOR_API void UpdateRHIResourceAndUniforms();
+		SAILOR_API void SynchronizeUniformValues(const Material& source);
 
 		// TODO: Incapsulate & isolate
 		SAILOR_API RHI::RHIMaterialPtr GetOrAddRHI(RHI::RHIVertexDescriptionPtr vertexDescription);
@@ -70,11 +72,13 @@ namespace Sailor
 	protected:
 
 		void AdvanceContentRevision();
+		void AdvanceRenderMetadataRevision();
 		void ForcelyUpdateUniforms();
 		void UpdateUniforms(RHI::RHICommandListPtr cmdList);
 
 		std::atomic<bool> m_bIsDirty{};
 		std::atomic<uint64_t> m_contentRevision{};
+		std::atomic<uint64_t> m_renderMetadataRevision{};
 
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_commonShaderBindings{};

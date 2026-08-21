@@ -48,11 +48,10 @@ glslVertex: |
       uint isCulled;
       uint padding;
       vec4 bakedVolumeScale;
-      vec4 baseColorFactor;
+      float baseColorAlpha;
       uint baseColorSampler;
       float alphaCutoff;
       uint maskedPadding;
-      uint stridePadding;
   };
 
   struct BoneData
@@ -71,6 +70,11 @@ glslVertex: |
   {
       PerInstanceData instance[];
   } data;
+
+  layout(std430, set = 1, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
 
   #ifdef SKINNING
   #ifdef MASKED
@@ -100,15 +104,16 @@ glslVertex: |
   
   void main() 
   {
-      mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+      uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+      mat4 modelMatrix = data.instance[instanceIndex].model;
   #ifdef MASKED
       outTexcoord = inTexcoord;
-      outBaseColorFactor = data.instance[gl_InstanceIndex].baseColorFactor;
-      outBaseColorSampler = data.instance[gl_InstanceIndex].baseColorSampler;
-      outAlphaCutoff = data.instance[gl_InstanceIndex].alphaCutoff;
+      outBaseColorFactor = vec4(1.0, 1.0, 1.0, data.instance[instanceIndex].baseColorAlpha);
+      outBaseColorSampler = data.instance[instanceIndex].baseColorSampler;
+      outAlphaCutoff = data.instance[instanceIndex].alphaCutoff;
   #endif
   #ifdef SKINNING
-      uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
+      uint offset = data.instance[instanceIndex].skeletonOffset;
       if (offset != INVALID_SKELETON_OFFSET)
       {
           mat4 skinMatrix = bones.instance[offset + inBoneIds.x].matrix * inBoneWeights.x +

@@ -10,6 +10,7 @@ namespace Sailor
 
 	public:
 		SAILOR_API virtual void BeginPlay() override;
+		SAILOR_API virtual void Tick(float deltaTime) override;
 
 		SAILOR_API bool GetDirectional() const { return m_bDirectional; }
 		SAILOR_API void SetDirectional(bool value) { m_bDirectional = value; }
@@ -19,11 +20,20 @@ namespace Sailor
 		SAILOR_API void SetSpot(bool value) { m_bSpot = value; }
 
 	private:
-		void SpawnBox(const char* name, const glm::vec3& position, const glm::vec3& scale);
+		GameObjectPtr SpawnBox(
+			const char* name,
+			const glm::vec3& position,
+			const glm::vec3& scale,
+			EMobilityType mobility);
 		void SpawnLights();
 		void EnsureSky();
 		void EnsureCamera();
 
+		GameObjectPtr m_stationaryCaster{};
+		GameObjectPtr m_dynamicCaster{};
+		TVector<TObjectPtr<class LightComponent>> m_localShadowLights{};
+		uint32_t m_numFrames = 0u;
+		float m_elapsedTime = 0.0f;
 		bool m_bDirectional = false;
 		bool m_bPoint = false;
 		bool m_bSpot = false;

@@ -73,6 +73,11 @@ namespace Sailor::RHI
 		SAILOR_API virtual bool ShouldFixLostDevice(const Win32::Window* pViewport) = 0;
 		SAILOR_API virtual bool FixLostDevice(Win32::Window* pViewport) = 0;
 
+		// Waits only the flight slot that is about to be reused. This must happen
+		// before FrameGraph preparation mutates any submission-owned resources.
+		SAILOR_API virtual bool BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage) = 0;
+		SAILOR_API virtual uint32_t GetMaxFramesInFlight() const = 0;
+
 		SAILOR_API virtual bool AcquireNextImage() = 0;
 		SAILOR_API virtual bool PresentFrame(const Sailor::FrameState& state,
 			const TVector<RHICommandListPtr>& primaryCommandBuffers = {},
@@ -153,6 +158,8 @@ namespace Sailor::RHI
 
 		// Shader binding set
 		SAILOR_API virtual RHIShaderBindingSetPtr CreateShaderBindings() = 0;
+		SAILOR_API virtual RHIShaderBindingSetPtr CloneMaterialShaderBindings(
+			const RHIShaderBindingSetPtr& source) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, RHIBufferPtr buffer, const std::string& name, uint32_t shaderBinding) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddSsboToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t elementSize, size_t numElements, uint32_t shaderBinding, bool bBindSsboWithOffset = false) = 0;
 		SAILOR_API virtual RHI::RHIShaderBindingPtr AddBufferToShaderBindings(RHIShaderBindingSetPtr& pShaderBindings, const std::string& name, size_t size, uint32_t shaderBinding, RHI::EShaderBindingType bufferType) = 0;
@@ -313,6 +320,7 @@ namespace Sailor::RHI
 
 		SAILOR_API virtual void MemoryBarrier(RHI::RHICommandListPtr cmd, RHI::EAccessFlags srcBit, RHI::EAccessFlags dstBit) = 0;
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EImageLayout newLayout) = 0;
+		SAILOR_API virtual void ImageMemoryBarrierForComputeSampling(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image) = 0;
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout layout, bool bAllowToWriteFromComputeShader) = 0;
 		SAILOR_API virtual void ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image, RHI::EFormat format, RHI::EImageLayout oldLayout, RHI::EImageLayout newLayout) = 0;
 		SAILOR_API virtual bool BlitImage(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr src, RHI::RHITexturePtr dst, glm::ivec4 srcRegionRect, glm::ivec4 dstRegionRect, RHI::ETextureFiltration filtration = RHI::ETextureFiltration::Linear) = 0;

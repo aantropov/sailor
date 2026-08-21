@@ -13,19 +13,19 @@ glslCommon: |
 glslVertex: |
   struct LightData
   {
-  	vec3 worldPosition;
-  	vec3 direction;
-  	vec3 intensity;
-  	vec3 attenuation;
-  	vec4 bounds;
-  	int type;
+      vec3 worldPosition;
+      vec3 direction;
+      vec3 intensity;
+      vec3 attenuation;
+      vec4 bounds;
+      int type;
   };
   
   struct PerInstanceData
   {
-  	mat4 model;
+      mat4 model;
     vec4 sphereBounds;
-  	uint materialInstance;
+      uint materialInstance;
     uint skeletonOffset;
     uint isCulled;
     uint padding;
@@ -34,7 +34,7 @@ glslVertex: |
   
   struct MaterialData
   {
-  	vec4 color;
+      vec4 color;
   };
   
   layout(set = 0, binding = 0) uniform FrameData
@@ -62,24 +62,29 @@ glslVertex: |
   } previousFrame;
   
   layout(std140, set = 1, binding = 0) readonly buffer LightDataSSBO
-  {	
-  	LightData instance[];
+  {
+      LightData instance[];
   } light;
   
   layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
   {
-  	PerInstanceData instance[];
+      PerInstanceData instance[];
   } data;
+
+  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
   
   #ifdef CUSTOM_DATA
   layout(std140, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
-  	MaterialData instance[];
+      MaterialData instance[];
   } material;
   
   MaterialData GetMaterialData()
   {
-  	return material.instance[data.instance[gl_InstanceIndex].materialInstance];
+    return material.instance[data.instance[instanceIndices.instance[gl_InstanceIndex]].materialInstance];
   }
   #endif
   
@@ -94,17 +99,18 @@ glslVertex: |
   
   void main() 
   {
-  	gl_Position = frame.projection * frame.view * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
-  	vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+      uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+      gl_Position = frame.projection * frame.view * data.instance[instanceIndex].model * vec4(inPosition, 1.0);
+      vec4 worldNormal = data.instance[instanceIndex].model * vec4(inNormal, 0.0);
   
-  	fragColor = 1 - inColor * gl_Position.z / 3000;
+      fragColor = 1 - inColor * gl_Position.z / 3000;
   
   #ifdef CUSTOM_DATA
-  	fragColor *= GetMaterialData().color;
+      fragColor *= GetMaterialData().color;
   #endif
   
-  	fragNormal = worldNormal.xyz;
-  	fragTexcoord = inTexcoord;
+      fragNormal = worldNormal.xyz;
+      fragTexcoord = inTexcoord;
   }
 
 glslFragment: |  
@@ -121,9 +127,9 @@ glslFragment: |
   void main() 
   {
   #ifndef NO_DIFFUSE
-  	outColor = fragColor * texture(diffuseSampler, fragTexcoord);
+      outColor = fragColor * texture(diffuseSampler, fragTexcoord);
   #endif
   
-  	outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
-  	outColor.xyz += 0.007;    
+      outColor.xyz *= max(0.2, dot(normalize(-vec3(-0.3, -0.5, 0.1)), fragNormal.xyz));
+      outColor.xyz += 0.007;
   }

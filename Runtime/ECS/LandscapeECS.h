@@ -20,6 +20,7 @@ namespace Sailor
 		MaterialPtr m_material{};
 		TVector<MaterialPtr> m_modelMaterials{};
 		bool m_bModelMaterialsRequested = false;
+		uint64_t m_cachedMaterialRenderMetadataRevision = 0ull;
 		int32_t m_meshIndex = -1;
 		uint32_t m_instancesPerChunk = 0u;
 		float m_minScale = 0.75f;
@@ -38,17 +39,19 @@ namespace Sailor
 
 	struct LandscapeVegetationRenderProxy final
 	{
-		RHI::RHISceneViewProxy m_proxy{};
+		RHI::RHISceneProxyResourcePtr m_resource{};
 		glm::ivec3 m_octreeCenter{};
 		glm::ivec3 m_octreeExtents{ 1 };
 	};
 
 	struct LandscapeChunk final
 	{
-		RHI::RHISceneViewProxy m_proxy{};
+		RHI::RHISceneProxyResourcePtr m_resource{};
 		glm::ivec3 m_octreeCenter{};
 		glm::ivec3 m_octreeExtents{ 1 };
 		TVector<LandscapeVegetationRenderProxy> m_vegetationProxies{};
+		TVector<uint32_t> m_physicsBodies{};
+		uint64_t m_buildRevision = 0u;
 	};
 
 	class LandscapeData final : public ECS::TComponent
@@ -63,6 +66,7 @@ namespace Sailor
 			const TVector<FileId>& materialMasks);
 		SAILOR_API void SetAuthoredStamps(const TVector<float>& sculptStamps,
 			const TVector<float>& paintStamps);
+		SAILOR_API void RequestFullRebuild();
 		SAILOR_API void SetVegetationProfiles(
 			const TVector<FileId>& models,
 			const TVector<FileId>& materials,
@@ -96,6 +100,8 @@ namespace Sailor
 		float m_textureTiling = 0.15f;
 		MaterialPtr m_material{};
 		MaterialPtr m_runtimeMaterial{};
+		uint64_t m_cachedSourceMaterialContentRevision = 0ull;
+		uint64_t m_cachedSourceMaterialRenderMetadataRevision = 0ull;
 		TVector<FileId> m_layerTextures{};
 		FileId m_heightmapTexture{};
 		TVector<FileId> m_materialMasks{};
@@ -104,6 +110,8 @@ namespace Sailor
 		TVector<LandscapeVegetationProfile> m_vegetationProfiles{};
 		TVector<LandscapeChunk> m_chunks{};
 		TVector<uint32_t> m_physicsBodies{};
+		TSet<uint32_t> m_dirtyChunks{};
+		bool m_bRebuildAllChunks = true;
 		uint64_t m_buildRevision = 0u;
 
 		friend class LandscapeECS;
@@ -123,7 +131,16 @@ namespace Sailor
 
 	private:
 		void DestroyPhysicsBodies(LandscapeData& component);
+		void DestroyChunkPhysicsBodies(LandscapeData& component, LandscapeChunk& chunk);
+		void PublishSceneVersion();
 		uint64_t m_shadowCastersRevision = 0u;
+		uint64_t m_sceneVersionRevision = 0u;
+		uint64_t m_spatialRevision = 0u;
+		size_t m_spatialHash = 0u;
+		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
+		RHI::RHIScenePtr m_rhiScene{};
+		TMap<size_t, RHI::RenderInstanceHandle> m_renderInstanceHandles{};
+		TMap<size_t, uint64_t> m_publishedBuildRevisions{};
 	};
 
 	template class ECS::TSystem<LandscapeECS, LandscapeData>;

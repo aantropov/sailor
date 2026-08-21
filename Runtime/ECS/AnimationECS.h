@@ -91,6 +91,10 @@ namespace Sailor
 
 		RHI::RHIShaderBindingSetPtr m_bonesBinding{};
 		RHI::RHIShaderBindingPtr m_bonesBuffer{};
+		TVector<glm::mat4> m_cpuBoneMatrices{};
+		TSharedPtr<TVector<glm::mat4>> m_publishedBoneMatrices{};
+		TVector<TSharedPtr<TVector<glm::mat4>>> m_boneSnapshotPool{};
+		uint64_t m_animationRevision = 0ull;
 		uint32_t m_nextBoneOffset = 0;
 	};
 

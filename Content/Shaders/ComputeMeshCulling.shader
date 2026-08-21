@@ -15,6 +15,8 @@ glslCompute: |
     uint numBatches;
     uint numInstances;
     uint firstInstanceIndex;
+    uint firstStorageInstance;
+    uint firstCandidateInstance;
     uint phase;
     uint enableOcclusion;
   } PushConstants;
@@ -25,9 +27,14 @@ glslCompute: |
       vec4 sphereBounds;
       uint materialInstance;
       uint skeletonOffset;
+  #ifdef DEPTH_INSTANCE_LAYOUT
+      uint padding;
+      uint reserved;
+  #else
       uint isCulled;
       uint padding;
       vec4 bakedVolumeScale;
+  #endif
   };
   
   struct DrawIndexedIndirectData
@@ -44,6 +51,11 @@ glslCompute: |
   {
       PerInstanceData instance[];
   } data;
+
+  layout(std430, set = 1, binding = 1) buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
   
   layout(std430, set = 2, binding = 0) buffer DrawIndexedIndirectBuffer
   {
@@ -174,7 +186,11 @@ glslCompute: |
       // GLSL workgroup barrier cannot synchronize multiple workgroups.
       if (globalIndex < PushConstants.numInstances)
       {
-        uint instanceId = PushConstants.firstInstanceIndex + globalIndex;
+        uint compactIndex = PushConstants.firstInstanceIndex + globalIndex;
+        uint candidateIndex = PushConstants.firstCandidateInstance + globalIndex;
+        // Candidate indices are immutable for the logical view. Phase 0 copies
+        // them into a separate output range before phase 1 compacts that range.
+        uint instanceId = instanceIndices.instance[candidateIndex];
 
         bool bIsCulled = FrustumCulling(instanceId);
         #ifdef OCCLUSION_CULLING
@@ -184,7 +200,7 @@ glslCompute: |
           }
         #endif
         
-        data.instance[instanceId].isCulled = bIsCulled ? 1u : 0u;
+        instanceIndices.instance[compactIndex] = bIsCulled ? 0xFFFFFFFFu : instanceId;
       }
     }
     else if (globalIndex < PushConstants.numBatches)
@@ -197,12 +213,13 @@ glslCompute: |
         
         for (uint i = 0; i < drawIndexedIndirect.batches[batchId].instanceCount; i++)
         {
-            if (data.instance[readIndex].isCulled == 0)
+            uint instanceId = instanceIndices.instance[readIndex];
+            if (instanceId != 0xFFFFFFFFu)
             {
-                if (readIndex != writeIndex)
-                {
-                    data.instance[writeIndex] = data.instance[readIndex];
-                }
+              if (readIndex != writeIndex)
+              {
+                    instanceIndices.instance[writeIndex] = instanceId;
+              }
                 writeIndex++;
             }
             readIndex++;

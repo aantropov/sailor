@@ -112,6 +112,7 @@ frame:
   - Tag: Opaque
   - ClearDepth: true
   - GPUCulling: true
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
@@ -120,6 +121,7 @@ frame:
   string:
   - Tag: Masked
   - GPUCulling: true
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
@@ -147,6 +149,8 @@ frame:
 ############################
 - name: ShadowPrepass
 ############################
+  string:
+  - VirtualizeInstancePayloads: true
 
 ############################
 - name: Sky
@@ -276,6 +280,7 @@ frame:
   string:
   - Tag: Opaque
   - GPUCulling: true
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
@@ -299,6 +304,7 @@ frame:
   string:
   - Tag: Masked
   - GPUCulling: true
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
@@ -320,6 +326,7 @@ frame:
   - Tag: Transparent
   - Sorting: BackToFront
   - GPUCulling: false
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer
@@ -354,6 +361,7 @@ frame:
   string:
   - Tag: Viewmodel
   - GPUCulling: false
+  - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
   - depthStencil: DepthBuffer

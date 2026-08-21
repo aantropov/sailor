@@ -15,6 +15,25 @@ using namespace Sailor::Tasks;
 
 namespace
 {
+	TSharedPtr<TVector<glm::mat4>> AcquireBoneSnapshot(
+		TVector<TSharedPtr<TVector<glm::mat4>>>& pool,
+		const TVector<glm::mat4>& source)
+	{
+		for (auto& candidate : pool)
+		{
+			if (candidate && !candidate.IsShared())
+			{
+				*candidate = source;
+				return candidate;
+			}
+		}
+
+		auto snapshot = TSharedPtr<TVector<glm::mat4>>::Make();
+		*snapshot = source;
+		pool.Add(snapshot);
+		return snapshot;
+	}
+
 	void MarkMeshSkeletonDirty(GameObjectPtr owner)
 	{
 		if (!owner)
@@ -36,13 +55,17 @@ void AnimationECS::BeginPlay()
 {
 	auto& driver = RHI::Renderer::GetDriver();
 	m_bonesBinding = driver->CreateShaderBindings();
-	m_bonesBuffer = driver->AddSsboToShaderBindings(m_bonesBinding, "bones", sizeof(glm::mat4), BonesMaxNum, 0);
+	m_bonesBuffer.Clear();
 }
 
 void AnimationECS::EndPlay()
 {
 	m_bonesBinding.Clear();
 	m_bonesBuffer.Clear();
+	m_cpuBoneMatrices.Clear();
+	m_publishedBoneMatrices.Clear();
+	m_boneSnapshotPool.Clear();
+	m_animationRevision = 0ull;
 	m_nextBoneOffset = 0;
 }
 
@@ -269,10 +292,7 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 		}
 	}
 
-	auto renderer = App::GetSubmodule<RHI::Renderer>();
-	auto commands = renderer->GetDriverCommands();
-	auto cmdList = GetWorld()->GetCommandList();
-	commands->BeginDebugRegion(cmdList, "AnimationECS:Update", RHI::DebugContext::Color_CmdTransfer);
+	bool bBoneDataChanged = false;
 
 	for (const auto& data : m_components)
 	{
@@ -500,17 +520,39 @@ Tasks::ITaskPtr AnimationECS::Tick(float deltaTime)
 			data.m_currentMatrices[i] = data.m_globalMatrices[i] * bind;
 		}
 
-		commands->UpdateShaderBinding(cmdList, m_bonesBuffer,
-			data.m_currentMatrices.GetData(),
-			sizeof(glm::mat4) * data.m_currentMatrices.Num(),
-			m_bonesBuffer->GetBufferOffset() + sizeof(glm::mat4) * data.m_gpuOffset);
+		const size_t requiredMatrices = static_cast<size_t>(data.m_gpuOffset) + data.m_currentMatrices.Num();
+		if (m_cpuBoneMatrices.Num() < requiredMatrices)
+		{
+			m_cpuBoneMatrices.Resize(requiredMatrices);
+		}
+		for (size_t matrixIndex = 0u; matrixIndex < data.m_currentMatrices.Num(); ++matrixIndex)
+		{
+			m_cpuBoneMatrices[data.m_gpuOffset + matrixIndex] = data.m_currentMatrices[matrixIndex];
+		}
+		bBoneDataChanged = true;
 	}
 
-	commands->EndDebugRegion(cmdList);
+	if (m_cpuBoneMatrices.Num() != m_nextBoneOffset)
+	{
+		m_cpuBoneMatrices.Resize(m_nextBoneOffset);
+		bBoneDataChanged = true;
+	}
+	if (bBoneDataChanged || !m_publishedBoneMatrices)
+	{
+		m_publishedBoneMatrices = AcquireBoneSnapshot(
+			m_boneSnapshotPool,
+			m_cpuBoneMatrices);
+		++m_animationRevision;
+	}
+
 	return nullptr;
 }
 
 void AnimationECS::FillAnimationData(RHI::RHISceneViewPtr& sceneView)
 {
+	// The empty set is an immutable identity token for this AnimationECS. The
+	// frame graph replaces it with a flight-local binding before recording draws.
 	sceneView->m_boneMatrices = m_bonesBinding;
+	sceneView->m_cpuBoneMatrices = m_publishedBoneMatrices;
+	sceneView->m_animationRevision = m_animationRevision;
 }

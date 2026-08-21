@@ -77,6 +77,9 @@ namespace Sailor::RHI
 		TConcurrentMap<WorldPtr, TList<TPair<RHISceneViewPtr,bool>>, 4, ERehashPolicy::Never> m_cachedSceneViews{};
 			TUniquePtr<IGraphicsDriver> m_driverInstance{};
 			Tasks::ITaskPtr m_previousRenderFrame{};
+			TVector<RHIRenderSubmissionContextPtr> m_submissionContexts{};
+			std::atomic<uint64_t> m_nextSubmissionId = 1ull;
+			uint64_t m_frameGraphResourceGeneration = 0ull;
 			bool m_bIsInitialized = false;
 		};
 	};

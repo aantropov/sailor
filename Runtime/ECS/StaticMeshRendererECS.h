@@ -73,15 +73,47 @@ namespace Sailor
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopySceneView(RHI::RHISceneViewPtr& outProxies);
 		void MarkDirty(GameObjectPtr owner);
+		const RHI::RHIScenePtr& GetRHIScene() const { return m_rhiScene; }
 
 		virtual uint32_t GetOrder() const override { return 1000; }
 
 	protected:
+		enum class EPreparedProxyState : uint8_t
+		{
+			Remove,
+			Pending,
+			PendingMaterialVersion,
+			MaterialVersionOnly,
+			Stationary,
+			Static
+		};
+
+		struct PreparedProxyUpdate
+		{
+			size_t m_componentIndex = ECS::InvalidIndex;
+			EPreparedProxyState m_state = EPreparedProxyState::Remove;
+			uint32_t m_skeletonOffset = StaticMeshRendererData::InvalidSkeletonOffset;
+			RHI::RHISceneViewProxy m_staticProxy{};
+			RHI::RHIShadowCasterProxyPtr m_shadowCaster{};
+			Math::AABB m_worldBounds{};
+			RHI::SceneChangeMask m_changeMask = RHI::ToMask(RHI::ESceneChangeBit::None);
+			bool m_bStateOnly = false;
+		};
 
 		SAILOR_API virtual void OnComponentUnregistered(size_t index, StaticMeshRendererData& component) override;
+		void PublishSceneVersion(uint8_t spatialChangeMask = 0x7u);
 
-		RHI::RHISceneViewPtr m_sceneViewProxiesCache;
+		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
+		RHI::RHIScenePtr m_rhiScene{};
+		TMap<size_t, RHI::RenderInstanceHandle> m_renderInstanceHandles{};
+		uint64_t m_sceneVersionRevision = 0ull;
+		uint64_t m_spatialRevision = 0ull;
+		uint64_t m_shadowCastersRevision = 0ull;
 		uint64_t m_lastMaterialContentRevision = 0;
+		TVector<size_t> m_componentScanScratch{};
+		TVector<PreparedProxyUpdate> m_preparedUpdatesScratch{};
+		TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};
+		bool m_bHasCustomDepthShadowCasters = false;
 	};
 
 	template class ECS::TSystem<StaticMeshRendererECS, StaticMeshRendererData>;
