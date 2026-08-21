@@ -557,7 +557,7 @@ namespace
 		const std::string batchHeader = ReadText(sourceRoot / "Runtime/RHI/Batch.hpp");
 		const std::string cullingBody = ExtractFunctionBody(
 			batchHeader,
-			"const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings = {})");
+			"DrawCallStats RHIRecordPackedDrawPacketImpl(");
 
 		Require(cullingBody.find("constants.m_firstInstanceIndex = firstIndexInstance") != std::string::npos,
 			"packed culling must address the flight-local compact index stream");
@@ -573,14 +573,44 @@ namespace
 		Require(cullingBody.find("EAccessBit::ShaderWrite_Bit") != std::string::npos &&
 			cullingBody.find("commands->MemoryBarrier") != std::string::npos,
 			"the compaction dispatch must wait for culling shader writes");
-		Require(cullingBody.find("m_bEnableOcclusion = 0") != std::string::npos,
-			"previous-frame Hi-Z must not cull current-frame transforms");
+		Require(cullingBody.find(
+			"constants.m_bEnableOcclusion = bEnableOcclusion ? 1u : 0u") != std::string::npos,
+			"the packed path must publish the requested occlusion mode to the compute shader");
+		Require(cullingBody.find("cullingCommandList == graphicsCmdList") != std::string::npos &&
+			cullingBody.find("EAccessBit::IndirectCommandRead_Bit") != std::string::npos,
+			"same-list GPU culling must make compacted indices and indirect commands visible before drawing");
 
 		Require(cullingBody.find(
 			"driver->AddBufferToShaderBindings(") != std::string::npos &&
 			cullingBody.find(
 			"*indirectCommandBufferBinding") != std::string::npos,
 			"the packed path must update the GPU-culling descriptor when its shared indirect buffer grows");
+
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string renderSceneProcess = ExtractFunctionBody(
+			renderSceneSource,
+			"void RenderSceneNode::Process(");
+		Require(renderSceneProcess.find("TryGetString(\"OcclusionCulling\"") != std::string::npos &&
+			renderSceneProcess.find("ImageMemoryBarrierForComputeSampling(commandList, depthHighZ)") != std::string::npos &&
+			renderSceneProcess.find("RHIRecordPackedDrawPacketWithCurrentDepthOcclusion(") != std::string::npos,
+			"main-pass occlusion must sample current-frame Hi-Z and dispatch before opening its render pass");
+
+		for (const std::filesystem::path rendererPath : {
+			sourceRoot / "Content/DefaultRenderer.renderer",
+			sourceRoot / "Content/EditorRenderer.renderer" })
+		{
+			const std::string renderer = ReadText(rendererPath);
+			const size_t depthHighZ = renderer.find("- name: DepthHighZ", renderer.find("frame:"));
+			const size_t opaquePass = renderer.find("- Tag: Opaque", depthHighZ);
+			const size_t maskedPass = renderer.find("- Tag: Masked", opaquePass);
+			Require(depthHighZ != std::string::npos &&
+				opaquePass != std::string::npos &&
+				maskedPass != std::string::npos &&
+				renderer.find("- OcclusionCulling: true", opaquePass) < maskedPass &&
+				renderer.find("- OcclusionCulling: true", maskedPass) != std::string::npos,
+				"opaque and masked main passes must explicitly enable current-depth GPU occlusion");
+		}
 	}
 
 	void TestBatchTextureBindingIdentityContract()
@@ -658,7 +688,7 @@ namespace
 
 		const std::string drawBody = ExtractFunctionBody(
 			batchHeader,
-			"const TVector<RHIShaderBindingSetPtr>& cullingDispatchBindings = {})");
+			"DrawCallStats RHIRecordPackedDrawPacketImpl(");
 		Require(drawBody.find("firstGroup.m_batch == groups[runEnd].m_batch") != std::string::npos &&
 			drawBody.find("collectShaderBindings(batch, drawBindingSets)") != std::string::npos &&
 			drawBody.find("commands->BindShaderBindings(") != std::string::npos &&
