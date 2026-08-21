@@ -1323,6 +1323,33 @@ namespace
 			"a new bone-matrix generation must invalidate animated shadows even when RHIScene is unchanged");
 	}
 
+	void TestCsmShadowTargetFormatTracksShadowMode()
+	{
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::PCF) ==
+				LightingECS::ShadowMapFormat,
+			"a PCF near cascade must use the compact single-channel shadow target");
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::EVSM) ==
+				LightingECS::ShadowMapFormat_Evsm,
+			"an EVSM near cascade must use the four-channel floating-point moments target");
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::PCF) !=
+				LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::EVSM),
+			"switching the near cascade between PCF and EVSM must invalidate an incompatible flight target");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string lightingSource = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		Require(
+			lightingSource.find("writableShadowMap->GetFormat() != shadowMapFormat") !=
+				std::string::npos &&
+			lightingSource.find("writableShadowMap->GetExtent().x != shadowMapExtent.x") !=
+				std::string::npos &&
+			lightingSource.find("writableShadowMap.Clear();") != std::string::npos,
+			"flight-local CSM targets must be recreated when their mode or resolution changes");
+	}
+
 	void TestShadowCachePolicy()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -4166,6 +4193,7 @@ int main()
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
+		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },
 		{ "ShadowCachePolicy", TestShadowCachePolicy },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },

@@ -85,6 +85,22 @@ namespace
 		}
 		return token;
 	}
+
+	float CalculateCsmShadowMapMemoryMb(
+		const RHI::RHIRenderTargetPtr& shadowMap)
+	{
+		if (!shadowMap)
+		{
+			return 0.0f;
+		}
+
+		const float bytesPerPixel =
+			shadowMap->GetFormat() == LightingECS::ShadowMapFormat_Evsm ?
+				16.0f : 2.0f;
+		const glm::ivec2 extent = shadowMap->GetExtent();
+		return static_cast<float>(extent.x * extent.y) * bytesPerPixel /
+			(1024.0f * 1024.0f);
+	}
 }
 
 bool CSMLightState::CanReuse(
@@ -541,6 +557,10 @@ void LightingECS::PrepareCSMPasses(
 
 			const bool bEvsmCascade =
 				cascade.m_shadowType == RHI::EShadowType::EVSM;
+			const glm::ivec2 shadowMapExtent =
+				ShadowCascadeResolutions[k % NumCascades];
+			const RHI::EFormat shadowMapFormat =
+				GetCsmShadowMapFormat(cascade.m_shadowType);
 			if (flightResources.m_csmShadowMaps.Num() <= snapshotIndex)
 			{
 				flightResources.m_csmShadowMaps.Resize(
@@ -548,6 +568,31 @@ void LightingECS::PrepareCSMPasses(
 			}
 			auto& writableShadowMap =
 				flightResources.m_csmShadowMaps[snapshotIndex];
+			if (writableShadowMap &&
+				(writableShadowMap->GetFormat() != shadowMapFormat ||
+					writableShadowMap->GetExtent().x != shadowMapExtent.x ||
+					writableShadowMap->GetExtent().y != shadowMapExtent.y))
+			{
+				const auto staleShadowMap = writableShadowMap;
+				const float staleMemoryMb =
+					CalculateCsmShadowMapMemoryMb(staleShadowMap);
+				m_csmShadowMapsMb = (std::max)(
+					0.0f,
+					m_csmShadowMapsMb - staleMemoryMb);
+				m_shadowMapsMb = (std::max)(
+					0.0f,
+					m_shadowMapsMb - staleMemoryMb);
+				if (m_csmShadowMaps[k] == staleShadowMap)
+				{
+					m_csmShadowMaps[k].Clear();
+				}
+				if (m_shadowMapTextures[k] == staleShadowMap)
+				{
+					m_shadowMapTextures[k] = m_defaultShadowMap;
+					m_bShadowMapBindingsDirty = true;
+				}
+				writableShadowMap.Clear();
+			}
 			if (!writableShadowMap)
 			{
 				const auto usage = RHI::ETextureUsageBit::ColorAttachment_Bit |
@@ -555,18 +600,16 @@ void LightingECS::PrepareCSMPasses(
 					RHI::ETextureUsageBit::TextureTransferDst_Bit |
 					RHI::ETextureUsageBit::Sampled_Bit;
 				writableShadowMap = RHI::Renderer::GetDriver()->CreateRenderTarget(
-					ShadowCascadeResolutions[k % NumCascades],
+					shadowMapExtent,
 					1,
-					bEvsmCascade ? ShadowMapFormat_Evsm : ShadowMapFormat,
+					shadowMapFormat,
 					bEvsmCascade ? RHI::ETextureFiltration::Linear : RHI::ETextureFiltration::Nearest,
 					RHI::ETextureClamping::Clamp,
 					usage);
 				if (writableShadowMap)
 				{
-					const float bytesPerPixel = bEvsmCascade ? 16.0f : 2.0f;
-					const float shadowMapMemoryMb = static_cast<float>(
-						ShadowCascadeResolutions[k].x * ShadowCascadeResolutions[k].y) *
-						bytesPerPixel / (1024.0f * 1024.0f);
+					const float shadowMapMemoryMb =
+						CalculateCsmShadowMapMemoryMb(writableShadowMap);
 					m_csmShadowMapsMb += shadowMapMemoryMb;
 					m_shadowMapsMb += shadowMapMemoryMb;
 				}

@@ -126,8 +126,13 @@ namespace Sailor
 				quality == ELightShadowQuality::High ? 2048u : 1024u;
 		}
 
-		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
-		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
+		static constexpr RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
+		static constexpr RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
+		static constexpr RHI::EFormat GetCsmShadowMapFormat(RHI::EShadowType shadowType)
+		{
+			return shadowType == RHI::EShadowType::EVSM ?
+				ShadowMapFormat_Evsm : ShadowMapFormat;
+		}
 
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
 		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps
