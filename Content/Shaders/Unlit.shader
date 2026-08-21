@@ -118,6 +118,11 @@ glslVertex: |
   {
       PerInstanceData instance[];
   } data;
+
+  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
   
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
@@ -136,22 +141,23 @@ glslVertex: |
   
   void main() 
   {
-    vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+    uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+    vec4 vertexPosition = data.instance[instanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
-    gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
+    gl_Position = frame.projection * (frame.view * (data.instance[instanceIndex].model * vec4(inPosition, 1.0)));
     
     #if defined(SHADOW)
-        gl_Position = lightsMatrices.instance[0] * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+        gl_Position = lightsMatrices.instance[0] * data.instance[instanceIndex].model * vec4(inPosition, 1.0);
     #endif
 
-    vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
+    vec4 worldNormal = data.instance[instanceIndex].model * vec4(inNormal, 0.0);
 
     vout.color = inColor;
     vout.normal = normalize(worldNormal.xyz);
     vout.texcoord = inTexcoord;
-    materialInstance = data.instance[gl_InstanceIndex].materialInstance;
-    vout.tangentBasis = mat3(data.instance[gl_InstanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
+    materialInstance = data.instance[instanceIndex].materialInstance;
+    vout.tangentBasis = mat3(data.instance[instanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
   }
 
 glslFragment: |

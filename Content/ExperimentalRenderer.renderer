@@ -117,6 +117,8 @@ frame:
   - linearDepth: LinearDepth
 
 - name: ShadowPrepass
+  string:
+  - VirtualizeInstancePayloads: true
 
 - name: Sky
   renderTargets:

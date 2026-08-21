@@ -67,6 +67,10 @@ add_executable(GpuCullingContractTests
     GpuCullingContractTests.cpp
 )
 
+add_executable(RHISceneVirtualizationTests
+    RHISceneVirtualizationTests.cpp
+)
+
 add_executable(ModelImporterContractTests
     ModelImporterContractTests.cpp
 )
@@ -221,6 +225,7 @@ target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
 target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
+target_compile_features(RHISceneVirtualizationTests PRIVATE cxx_std_20)
 target_compile_definitions(GpuCullingContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
@@ -291,6 +296,7 @@ target_link_libraries(InstanceIdContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(EcsLifecycleContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(BoundsContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(GpuCullingContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(RHISceneVirtualizationTests PRIVATE Sailor::Runtime)
 target_link_libraries(ModelImporterContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AnimationSamplingContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(VulkanDescriptorCacheTests PRIVATE Sailor::Runtime)
@@ -394,6 +400,9 @@ target_include_directories(BoundsContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(GpuCullingContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(RHISceneVirtualizationTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(ModelImporterContractTests PRIVATE
@@ -540,6 +549,11 @@ add_test(
 )
 
 add_test(
+    NAME RHISceneVirtualizationTests
+    COMMAND RHISceneVirtualizationTests
+)
+
+add_test(
     NAME ModelImporterContractTests
     COMMAND ModelImporterContractTests
 )
@@ -669,6 +683,7 @@ set_tests_properties(
     EcsLifecycleContractTests
     BoundsContractTests
     GpuCullingContractTests
+    RHISceneVirtualizationTests
     ModelImporterContractTests
     AnimationSamplingContractTests
     VulkanDescriptorCacheTests

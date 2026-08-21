@@ -3,6 +3,7 @@
 #include "Memory/RefPtr.hpp"
 #include "Engine/Object.h"
 #include "RHI/Types.h"
+#include "RHI/RenderSubmission.h"
 #include "FrameGraph/BaseFrameGraphNode.h"
 #include "FrameGraph/FrameGraphNode.h"
 #include "FrameGraph/RenderSceneTextureCache.h"
@@ -26,13 +27,17 @@ namespace Sailor::Framegraph
 			uint32_t padding = 0;
 			vec4 bakedVolumeScale = vec4(1.0f);
 
-			bool operator==(const PerInstanceData& rhs) const { return this->materialInstance == rhs.materialInstance && this->model == rhs.model; }
-
-			size_t GetHash() const
+			bool operator==(const PerInstanceData& rhs) const
 			{
-				hash<glm::mat4> p;
-				return p(model);
+				return model == rhs.model &&
+					sphereBounds == rhs.sphereBounds &&
+					materialInstance == rhs.materialInstance &&
+					skeletonOffset == rhs.skeletonOffset &&
+					bIsCulled == rhs.bIsCulled &&
+					padding == rhs.padding &&
+					bakedVolumeScale == rhs.bakedVolumeScale;
 			}
+
 		};
 
 		SAILOR_API static const char* GetName() { return m_name; }
@@ -53,32 +58,59 @@ namespace Sailor::Framegraph
 			size_t m_meshIndex = 0;
 		};
 
-		void ProcessBackToFront(RHI::RHIFrameGraphPtr frameGraph,
-			RHI::RHICommandListPtr transferCommandList,
-			RHI::RHICommandListPtr commandList,
-			const RHI::RHISceneViewSnapshot& sceneView,
-			const RHI::RHIShaderBindingPtr& storageBinding,
-			const std::string& queueTag);
+		class SubmissionResources final : public RHI::RHIFrameGraphSubmissionResource
+		{
+		public:
+			void ResetForSubmission() override
+			{
+				m_orderedDrawItems.Clear(false);
+				m_renderPassColorAttachments.Clear(false);
+				m_cullingDispatchBindings.Clear(false);
+				m_arenaRangeInstances.Clear(false);
+				m_arenaRangeStableKeys.Clear(false);
+				m_arenaRangeMaterialVersionRuns.Clear(false);
+			}
+
+			void InvalidateSubmission() override
+			{
+				ResetForSubmission();
+				m_packet.InvalidateUploadedState();
+			}
+
+			RHI::TPackedDrawPacket<PerInstanceData> m_packet;
+			TVector<OrderedDrawItem> m_orderedDrawItems;
+			TVector<RHI::RHIBufferPtr> m_indirectBuffers;
+			RHI::RHIShaderBindingSetPtr m_perInstanceData{};
+			size_t m_sizePerInstanceData = 0u;
+			size_t m_sizeInstanceIndices = 0u;
+			TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
+			RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
+			RHI::RHITexturePtr m_cullingDepthHighZ{};
+			RHI::RHIShaderBindingSetPtr m_nodeLightsBindings{};
+			RHI::RHIShaderBindingSetPtr m_nodeLightsSource{};
+			RHI::RHITexturePtr m_transmissionTexture{};
+			uint64_t m_nodeLightsSourceRevision = 0ull;
+			TVector<RHI::RHITexturePtr> m_renderPassColorAttachments{};
+			TVector<RHI::RHIShaderBindingSetPtr> m_cullingDispatchBindings{};
+			TVector<PerInstanceData> m_arenaRangeInstances{};
+			TVector<uint64_t> m_arenaRangeStableKeys{};
+			TVector<RHI::PackedDrawArenaMaterialRun> m_arenaRangeMaterialVersionRuns{};
+			std::array<TextureDependencyCollector,
+				RHI::TPackedDrawPacket<PerInstanceData>::NumMobilitySegments>
+				m_requestedPacketTextures{};
+		};
 
 		SAILOR_SHARED_API static const char* m_name;
 
-		uint32_t m_numMeshes = 0;
 		SpinLock m_syncSharedResources;
-		RHI::TDrawCalls<PerInstanceData> m_drawCalls;
-		TSet<RHI::RHIBatch> m_batches;
-		TVector<OrderedDrawItem> m_orderedDrawItems;
-		TVector<RHI::RHIBufferPtr> m_indirectBuffers;
-
-		RHI::RHIShaderBindingSetPtr m_perInstanceData;
-		size_t m_sizePerInstanceData = 0;
 
 		// Culling
-		TVector<RHI::RHIShaderBindingSetPtr> m_cullingIndirectBufferBinding;
 		ShaderSetPtr m_pComputeMeshCullingShader{};
-		RHI::RHIShaderBindingSetPtr m_computeMeshCullingBindings{};
 
 		// Shared cache across platforms; macOS relies on it most because of descriptor pressure.
 		TextureBindingCache m_textureBindingCache;
+		RHI::TPackedDrawPacketPayloadCache<PerInstanceData> m_packetPayloadCache;
+		RHI::TPackedDrawPagedArenaCache<PerInstanceData> m_pagedArenaCache;
 	};
 
 	template class TFrameGraphNode<RenderSceneNode>;

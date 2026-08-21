@@ -33,10 +33,6 @@ namespace Sailor::Framegraph
 		static const char* m_name;
 
 		ShaderSetPtr m_pComputeShader{};
-		RHI::RHIShaderBindingSetPtr m_culledLights;
-		RHI::RHIShaderBindingSetPtr m_boundLightsData;
-		RHI::RHITexturePtr m_boundDepthAttachment;
-		glm::ivec2 m_bindingsViewportSize{};
 	};
 
 	template class TFrameGraphNode<LightCullingNode>;

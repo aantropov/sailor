@@ -53,28 +53,39 @@ glslCompute: |
 
   ViewFrustum CreateTileFrustum(ivec2 tileId)
   {
-      const vec2 tileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
-      const vec2 tileMax = min(
+      const vec2 viewportSize = vec2(PushConstants.viewportSize);
+      const vec2 framebufferTileMin = vec2(tileId * LIGHTS_CULLING_TILE_SIZE);
+      const vec2 framebufferTileMax = min(
           vec2((tileId + ivec2(1)) * LIGHTS_CULLING_TILE_SIZE),
-          vec2(PushConstants.viewportSize));
-      const vec2 tileCenter = (tileMin + tileMax) * 0.5f;
+          viewportSize);
+
+      // The graphics viewport has a negative height, so framebuffer Y grows
+      // opposite to the projection-space Y expected by inverse projection.
+      const vec2 projectionTileMin = vec2(
+          framebufferTileMin.x,
+          viewportSize.y - framebufferTileMax.y);
+      const vec2 projectionTileMax = vec2(
+          framebufferTileMax.x,
+          viewportSize.y - framebufferTileMin.y);
+      const vec2 projectionTileCenter =
+          (projectionTileMin + projectionTileMax) * 0.5f;
       const vec3 eyePosition = vec3(0.0f);
       vec3 corners[4];
 
       corners[0] = ScreenSpaceToViewSpace(
-          vec4(tileMin, NdcNearPlane, 1.0f),
+          vec4(projectionTileMin, NdcNearPlane, 1.0f),
           PushConstants.viewportSize,
           frame.invProjection).xyz;
       corners[1] = ScreenSpaceToViewSpace(
-          vec4(tileMax.x, tileMin.y, NdcNearPlane, 1.0f),
+          vec4(projectionTileMax.x, projectionTileMin.y, NdcNearPlane, 1.0f),
           PushConstants.viewportSize,
           frame.invProjection).xyz;
       corners[2] = ScreenSpaceToViewSpace(
-          vec4(tileMin.x, tileMax.y, NdcNearPlane, 1.0f),
+          vec4(projectionTileMin.x, projectionTileMax.y, NdcNearPlane, 1.0f),
           PushConstants.viewportSize,
           frame.invProjection).xyz;
       corners[3] = ScreenSpaceToViewSpace(
-          vec4(tileMax, NdcNearPlane, 1.0f),
+          vec4(projectionTileMax, NdcNearPlane, 1.0f),
           PushConstants.viewportSize,
           frame.invProjection).xyz;
 
@@ -84,7 +95,7 @@ glslCompute: |
       result.planes[2] = ComputePlane(eyePosition, corners[0], corners[1]);
       result.planes[3] = ComputePlane(eyePosition, corners[3], corners[2]);
       result.center = ScreenSpaceToViewSpace(
-          vec4(tileCenter, NdcNearPlane, 1.0f),
+          vec4(projectionTileCenter, NdcNearPlane, 1.0f),
           PushConstants.viewportSize,
           frame.invProjection).xy;
 
@@ -94,6 +105,15 @@ glslCompute: |
   bool SphereTileOverlaps(vec3 lightPosition, float radius,
       ViewFrustum frustum, float zNear, float zFar)
   {
+      // Every tile frustum starts at the camera. If the camera is inside the
+      // light volume, rejecting a tile from its reduced depth interval can
+      // expose 16x16 discontinuities at foreground vegetation. Keep the light
+      // for every tile and let the fragment shader apply the exact 3D range.
+      if(dot(lightPosition, lightPosition) <= radius * radius)
+      {
+          return true;
+      }
+
       if(lightPosition.z - radius > zFar || lightPosition.z + radius < zNear)
       {
           return false;

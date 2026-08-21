@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
@@ -1071,6 +1072,77 @@ namespace
 			"runtime light-culling compute shader should produce SPIR-V");
 	}
 
+	void TestShadowCasterPermutationsCompile()
+	{
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		auto compilePermutation = [&](
+			const char* shaderPath,
+			std::initializer_list<const char*> permutationDefines)
+			{
+				ShaderAsset shader;
+				shader.Deserialize(YAML::Load(ReadText(contentRoot / shaderPath)));
+				auto compileStage = [&](
+					const char* stageDefine,
+					const std::string& stageSource,
+					RHI::EShaderStage stage)
+					{
+						std::string source = shader.GetGlslCommonCode() + "\n#define " +
+							stageDefine + "\n";
+						for (const char* define : permutationDefines)
+						{
+							source += std::string("#define ") + define + "\n";
+						}
+#if defined(__APPLE__)
+						source += "#define SAILOR_TEXTURE_REMAP\n";
+#endif
+						std::string diagnostic;
+						Require(
+							ShaderYamlIncludeResolver::Append(
+								shader.GetIncludes(),
+								[&](const std::string& include, std::string& contents)
+								{
+									std::ifstream input(contentRoot / include, std::ios::binary);
+									if (!input.is_open())
+									{
+										return false;
+									}
+									contents.assign(
+										std::istreambuf_iterator<char>(input),
+										std::istreambuf_iterator<char>());
+									return true;
+								},
+								source,
+								diagnostic),
+							std::string("shadow shader includes should resolve for ") +
+								shaderPath + ": " + diagnostic);
+						source += std::string("\n#ifdef ") + stageDefine + "\n" +
+							stageSource + "\n#endif\n";
+						RHI::ShaderByteCode byteCode;
+						Require(
+							ShaderCompilerTestAccess::CompileGlslToSpirv(
+								shaderPath,
+								source,
+								stage,
+								byteCode,
+								false),
+							std::string("shadow shader stage should compile: ") + shaderPath);
+						Require(!byteCode.IsEmpty(),
+							std::string("shadow shader stage should produce SPIR-V: ") + shaderPath);
+					};
+
+				compileStage("VERTEX", shader.GetGlslVertexCode(), RHI::EShaderStage::Vertex);
+				compileStage("FRAGMENT", shader.GetGlslFragmentCode(), RHI::EShaderStage::Fragment);
+			};
+
+		compilePermutation("Shaders/ShadowCaster.shader", { "MASKED" });
+		compilePermutation("Shaders/ShadowCaster.shader", { "EVSM", "SKINNING", "MASKED" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "SHADOW_CASTER" });
+		compilePermutation("Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER" });
+		compilePermutation(
+			"Experimental/MeshParticles/Particle.shader", { "PACKED_SHADOW_CASTER", "EVSM" });
+	}
+
 	void TestShaderSourceNormalization()
 	{
 		std::string diagnostic;
@@ -1216,6 +1288,7 @@ int main()
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
 		TestRuntimeLightingShadersCompile();
+		TestShadowCasterPermutationsCompile();
 		TestShaderSourceNormalization();
 		TestShaderSourceRewritePreservesFileIdentity();
 		std::cout << "Shader cache artifact tests passed.\n";

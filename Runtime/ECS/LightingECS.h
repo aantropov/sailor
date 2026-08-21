@@ -5,12 +5,13 @@
 #include "ECS/ECS.h"
 #include "Engine/Types.h"
 #include "RHI/Types.h"
-#include "Containers/Pair.h"
 #include "Components/Component.h"
 #include "Memory/Memory.h"
 #include "RHI/SceneView.h"
+#include "RHI/Lighting.h"
 #include "Raytracing/LightingModel.h"
 
+#include <bitset>
 #include <limits>
 
 namespace Sailor
@@ -43,16 +44,24 @@ namespace Sailor
 		RHI::EShadowType m_shadowType = RHI::EShadowType::None;
 		glm::mat4 m_lightMatrix{};
 		uint64_t m_sceneRevision = 0;
+		uint64_t m_animationRevision = 0;
+		uint64_t m_resourceRevision = 0;
+		bool m_bContainsDynamicCasters = false;
+		bool m_bContainsAnimatedCasters = false;
+		TSharedPtr<TVector<RHI::RHISceneVersionPtr>> m_casterSceneVersions{};
+		RHI::RHIRenderTargetPtr m_shadowMap{};
+		RHI::RHISubmissionCompletionTokenPtr m_submissionToken{};
+		RHI::RHISubmissionCompletionTokenPtr m_payloadCompletionToken{};
 
-		// <Mesh ECS Index, LastFrameChanged>
-		TVector<TPair<size_t, size_t>> m_snapshot{};
-
-		SAILOR_API bool Equals(const CSMLightState& rhs) const;
 		SAILOR_API bool CanReuse(
 			uint32_t componentIndex,
 			RHI::EShadowType shadowType,
 			const glm::mat4& lightMatrix,
-			uint64_t sceneRevision) const;
+			uint64_t sceneRevision,
+			const TSharedPtr<TVector<RHI::RHISceneVersionPtr>>& sceneVersions,
+			const Math::Frustum& shadowFrustum,
+			const RHI::RHISubmissionCompletionTokenPtr& currentSubmissionToken = {},
+			uint64_t animationRevision = 0ull) const;
 	};
 
 	struct LocalLightShadowAllocation
@@ -63,15 +72,23 @@ namespace Sailor
 		uint32_t m_requestedResolution = 0;
 		uint32_t m_atlasIndex = (std::numeric_limits<uint32_t>::max)();
 		uint64_t m_lastUsedFrame = 0;
+		uint64_t m_revision = 0;
 		TVector<uint32_t> m_slots{};
 		TVector<glm::ivec4> m_tiles{};
-		TVector<CSMLightState> m_snapshots{};
 	};
 
 	struct LocalShadowAtlas
 	{
 		RHI::RHIRenderTargetPtr m_texture{};
 		TVector<uint8_t> m_occupancy{};
+	};
+
+	struct LightingShadowFlightResources
+	{
+		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps{};
+		TVector<CSMLightState> m_csmSnapshots{};
+		TVector<RHI::RHIRenderTargetPtr> m_localShadowAtlasTextures{};
+		TVector<TVector<CSMLightState>> m_localShadowSnapshots{};
 	};
 
 	class LightingECS final : public ECS::TSystem<LightingECS, LightData>
@@ -109,8 +126,13 @@ namespace Sailor
 				quality == ELightShadowQuality::High ? 2048u : 1024u;
 		}
 
-		const RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
-		const RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
+		static constexpr RHI::EFormat ShadowMapFormat = RHI::EFormat::R16_UNORM;
+		static constexpr RHI::EFormat ShadowMapFormat_Evsm = RHI::EFormat::R32G32B32A32_SFLOAT;
+		static constexpr RHI::EFormat GetCsmShadowMapFormat(RHI::EShadowType shadowType)
+		{
+			return shadowType == RHI::EShadowType::EVSM ?
+				ShadowMapFormat_Evsm : ShadowMapFormat;
+		}
 
 		// CSM is based on https://learnopengl.com/Guest-Articles/2021/CSM
 		// and https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps
@@ -126,19 +148,7 @@ namespace Sailor
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 2), glm::vec2(1, 1), glm::vec2(1, 1), glm::vec2(1, 1) };
 
 		// TODO: Tightly pack
-		struct LightShaderData
-		{
-			static constexpr uint32_t InvalidType = static_cast<uint32_t>(-1);
-
-			uint32_t m_type = InvalidType;
-			uint32_t m_shadowType;
-			alignas(16) glm::vec3 m_worldPosition;
-			alignas(16) glm::vec3 m_direction;
-			alignas(16) glm::vec3 m_intensity;
-			alignas(16) glm::vec3 m_attenuation;
-			alignas(16) glm::vec2 m_cutOff;
-			alignas(16) glm::vec3 m_bounds;
-		};
+		using LightShaderData = RHI::RHILightShaderData;
 
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
@@ -162,28 +172,32 @@ namespace Sailor
 
 	protected:
 
-		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareCSMPasses(
+		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,
 			const Math::Transform& cameraTransform,
 			const CameraData& cameraData,
 			const TVector<RHI::RHILightProxy>& directionalLights,
-			uint32_t& snapshotIndex);
+			uint32_t flightSlot,
+			LightingShadowFlightResources& flightResources,
+			uint32_t& snapshotIndex,
+			TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps);
 
-		SAILOR_API TVector<RHI::RHIUpdateShadowMapCommand> PrepareLocalShadowPasses(
+		SAILOR_API void PrepareLocalShadowPasses(
 			const RHI::RHISceneViewPtr& sceneView,
 			const TVector<RHI::RHILightProxy>& spotLights,
 			const TVector<RHI::RHILightProxy>& pointLights,
 			const CameraData& cameraData,
 			uint32_t viewportHeight,
+			uint32_t flightSlot,
+			LightingShadowFlightResources& flightResources,
 			TVector<uint32_t>& shadowIndices,
 			TVector<uint32_t>& shadowAtlasTiles,
-			TVector<RHI::RHIBlitShadowMapCommand>& shadowMapsToBlit);
+			TVector<RHI::RHIUpdateShadowMapCommand>& outUpdateShadowMaps);
 		SAILOR_API bool EnsureLocalShadowAllocation(
 			uint32_t componentIndex,
 			ELightType lightType,
 			uint32_t desiredResolution,
-			uint64_t frame,
-			TVector<RHI::RHIBlitShadowMapCommand>& shadowMapsToBlit);
+			uint64_t frame);
 		SAILOR_API uint32_t CalculateLocalShadowResolution(
 			const LightData& light,
 			float distanceToCamera,
@@ -200,6 +214,11 @@ namespace Sailor
 			uint32_t resolution,
 			TVector<glm::ivec4>& outTiles);
 		SAILOR_API bool TryCreateLocalShadowAtlas(uint32_t& outAtlasIndex);
+		SAILOR_API bool EnsureWritableLocalShadowAtlas(
+			uint32_t atlasIndex,
+			uint32_t flightSlot,
+			LightingShadowFlightResources& flightResources);
+		SAILOR_API void PublishShadowMapBindings();
 		SAILOR_API void ReleaseLocalShadowTiles(uint32_t atlasIndex, const TVector<glm::ivec4>& tiles);
 		SAILOR_API void ReleaseUnusedLocalShadowAtlases();
 		SAILOR_API void ReleaseLocalShadowAllocation(uint32_t componentIndex);
@@ -217,24 +236,34 @@ namespace Sailor
 		// Lights
 		uint32_t m_numLights = 0;
 		RHI::RHIShaderBindingSetPtr m_lightsData;
+		TVector<LightShaderData> m_cpuLightsData{};
+		TSharedPtr<TVector<LightShaderData>> m_publishedLightsData{};
+		TVector<TSharedPtr<TVector<LightShaderData>>> m_lightsSnapshotPool{};
+		uint64_t m_lightingRevision = 0ull;
 
 		// Shadows
-		// Light matrices and shadowMaps
+		// Texture template shared by immutable per-flight lighting descriptors.
 		RHI::RHIShaderBindingPtr m_shadowMaps;
-		RHI::RHIShaderBindingPtr m_lightMatrices;
-		RHI::RHIShaderBindingPtr m_shadowIndices;
-		RHI::RHIShaderBindingPtr m_shadowAtlasTiles;
+		TVector<RHI::RHITexturePtr> m_shadowMapTextures{};
+		std::bitset<MaxShadowMapSamplers - NumCascades> m_writableLocalShadowAtlases{};
+		bool m_bShadowMapBindingsDirty = false;
 
 		TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps;
-		TVector<CSMLightState> m_csmSnapshots;
+		TVector<LightingShadowFlightResources> m_shadowFlightResources;
 		TVector<uint32_t> m_shadowMapOwners;
 		TVector<LocalLightShadowAllocation> m_localShadowAllocations;
 		TVector<LocalShadowAtlas> m_localShadowAtlases;
+		TVector<RHI::RHILightProxy> m_directionalLightsScratch{};
+		TVector<RHI::RHILightProxy> m_pointLightsScratch{};
+		TVector<RHI::RHILightProxy> m_spotLightsScratch{};
+		TVector<glm::mat4> m_cascadeProjectionScratch{};
+		TVector<RHI::RHIVisibleShadowCaster> m_csmBroadCastersScratch{};
 
 		RHI::RHIRenderTargetPtr m_defaultShadowMap;
 		float m_shadowMapsMb = 0;
 		float m_csmShadowMapsMb = 0;
 		float m_shadowsMemoryBudgetMb = DefaultShadowsMemoryBudgetMb;
+		uint64_t m_localShadowAllocationRevision = 0ull;
 	};
 
 	template class ECS::TSystem<LightingECS, LightData>;

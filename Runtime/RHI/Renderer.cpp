@@ -26,6 +26,28 @@
 using namespace Sailor;
 using namespace Sailor::RHI;
 
+namespace
+{
+	struct RenderSubmissionBeginState
+	{
+		~RenderSubmissionBeginState()
+		{
+			if (m_bMaterialCaptureActive)
+			{
+				RHIMaterial::EndSubmissionVersionCapture(m_submissionId);
+			}
+		}
+
+		bool m_bLifecycleReady = false;
+		bool m_bHasSwapchainImage = false;
+		bool m_bMaterialCaptureActive = false;
+		uint64_t m_submissionId = 0ull;
+		uint64_t m_materialRevision = 0ull;
+		uint32_t m_flightSlot = 0u;
+		RHIRenderSubmissionContextPtr m_context{};
+	};
+}
+
 void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
 {
 	bShouldRemoveFromList = false;
@@ -77,6 +99,13 @@ Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool
 	}
 #endif
 	m_bIsInitialized = true;
+
+	const uint32_t numFlightSlots = (std::max)(1u, m_driverInstance->GetMaxFramesInFlight());
+	m_submissionContexts.Resize(numFlightSlots);
+	for (auto& context : m_submissionContexts)
+	{
+		context = RHIRenderSubmissionContextPtr::Make();
+	}
 
 	// Create default Vertices descriptions cache 
 	auto& vertexP3N3UV2C4 = m_driverInstance->GetOrAddVertexDescription<RHI::VertexP3N3UV2C4>();
@@ -317,6 +346,10 @@ bool Renderer::EnsureFrameGraph()
 	}
 
 	m_bFrameGraphOutdated = false;
+	if (m_frameGraph)
+	{
+		++m_frameGraphResourceGeneration;
+	}
 	return m_frameGraph.IsValid();
 }
 
@@ -347,6 +380,15 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 	WorldPtr world = frame.GetWorld();
 	RHISceneViewPtr rhiSceneView;
+	const uint64_t currentFrame = world->GetCurrentFrame();
+	const uint64_t submissionId = m_nextSubmissionId.fetch_add(1ull, std::memory_order_relaxed);
+	auto rhiFrameGraph = m_frameGraph->GetRHI();
+	const uint64_t frameGraphResourceGeneration = m_frameGraphResourceGeneration;
+	auto submissionBeginState = TSharedPtr<RenderSubmissionBeginState>::Make();
+	submissionBeginState->m_submissionId = submissionId;
+	submissionBeginState->m_materialRevision =
+		RHIMaterial::BeginSubmissionVersionCapture(submissionId);
+	submissionBeginState->m_bMaterialCaptureActive = true;
 
 	{
 		SAILOR_PROFILE_SCOPE("Copy scene view to render thread");
@@ -361,36 +403,111 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 			pathTracerEcs->CopySceneView(rhiSceneView);
 		}
 		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
-		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
-		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
 
 		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
+	}
 
+	const uint64_t sceneRevision = rhiSceneView->m_sceneRevision;
+	auto acquireRenderSubmission = Tasks::CreateTask(
+		"Acquire render submission flight " + std::to_string(currentFrame),
+		[this, rhiSceneView, submissionId, sceneRevision,
+			frameGraphResourceGeneration, submissionBeginState]()
+		{
+			uint32_t flightSlot = 0u;
+			bool bHasSwapchainImage = false;
+			submissionBeginState->m_bLifecycleReady =
+				m_driverInstance->BeginRenderSubmission(
+					flightSlot,
+					bHasSwapchainImage);
+			submissionBeginState->m_flightSlot = flightSlot;
+			submissionBeginState->m_bHasSwapchainImage = bHasSwapchainImage;
+
+			if (submissionBeginState->m_bLifecycleReady &&
+				flightSlot < m_submissionContexts.Num())
+			{
+				auto context = m_submissionContexts[flightSlot];
+				context->BeginSubmission(
+					submissionId,
+					flightSlot,
+					sceneRevision,
+					submissionBeginState->m_materialRevision,
+					frameGraphResourceGeneration);
+				for (const auto& spatialVersion : rhiSceneView->m_sceneVersions)
+				{
+					if (!spatialVersion || !spatialVersion->m_scene ||
+						!spatialVersion->m_sceneVersion)
+					{
+						continue;
+					}
+
+					auto flightState = spatialVersion->m_scene->PrepareFlight(
+						flightSlot,
+						spatialVersion->m_sceneVersion);
+					context->RetainResource(spatialVersion->m_scene);
+					context->RetainResource(spatialVersion->m_sceneVersion);
+					context->RetainResource(flightState);
+					spatialVersion->m_scene->CollectGarbage();
+				}
+				rhiSceneView->SetSubmissionContext(context);
+				submissionBeginState->m_context = std::move(context);
+			}
+			else
+			{
+				submissionBeginState->m_bLifecycleReady = false;
+				SAILOR_LOG_ERROR(
+					"Renderer::PushFrame: failed to acquire render submission flight slot.");
+			}
+
+			this->GetDriver()->TrackResources_ThreadSafe();
+		},
+		Sailor::EThreadType::Render);
+	if (m_previousRenderFrame.IsValid())
+	{
+		acquireRenderSubmission->Join(m_previousRenderFrame);
+	}
+	acquireRenderSubmission->Run();
+	acquireRenderSubmission->Wait();
+
+	if (!submissionBeginState->m_bLifecycleReady ||
+		!submissionBeginState->m_context)
+	{
+		if (submissionBeginState->m_bMaterialCaptureActive)
+		{
+			RHIMaterial::EndSubmissionVersionCapture(submissionId);
+			submissionBeginState->m_bMaterialCaptureActive = false;
+		}
+		rhiSceneView->Clear();
+		auto& list = m_cachedSceneViews.At_Lock(world);
+		auto it = list.FindIf([&](const auto& el)
+			{
+				return el.m_first == rhiSceneView;
+			});
+		if (it != list.end())
+		{
+			(*it).m_second = true;
+		}
+		m_cachedSceneViews.Unlock(world);
+		return false;
+	}
+
+	{
+		SAILOR_PROFILE_SCOPE("Prepare flight-local scene view");
+		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
+		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
 		rhiSceneView->PrepareDebugDrawCommandLists(world);
 		rhiSceneView->PrepareSnapshots();
-
 	}
 
 	{
 		SAILOR_PROFILE_SCOPE("Push frame");
 
-		uint64_t currentFrame = world->GetCurrentFrame();
-		auto rhiFrameGraph = m_frameGraph->GetRHI();
-
-		auto renderFrame = Tasks::CreateTask("Trace command lists & Track RHI resources " + std::to_string(currentFrame),
-			[this]() { this->GetDriver()->TrackResources_ThreadSafe(); }, Sailor::EThreadType::Render);
-
 		auto renderFrame1 = Tasks::CreateTask("Render Frame " + std::to_string(currentFrame),
-			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView]() mutable
+			[this, rhiFrameGraph = rhiFrameGraph, frame, rhiSceneView, submissionId, submissionBeginState]() mutable
 			{
 				SAILOR_PROFILE_SCOPE("Render Frame");
-				if (m_bForceStop)
-				{
-					return;
-				}
-
+				bool bSubmissionResourcesSucceeded = false;
 				auto frameInstance = frame;
 				static Utils::Timer timer;
 				timer.Start();
@@ -425,14 +542,18 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						return true;
 					};
 
-				const bool bHasSwapchainImage = m_driverInstance->AcquireNextImage();
-				if (bHasSwapchainImage || App::HasEditor())
+				const bool bHasSwapchainImage = submissionBeginState->m_bHasSwapchainImage;
+				if (submissionBeginState->m_bLifecycleReady)
 				{
+					bool bFrameGraphProcessed = false;
 					RHISemaphorePtr chainSemaphore{};
-					bool bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
+					const bool bCanRenderFrame = !m_bForceStop &&
+						(bHasSwapchainImage || App::HasEditor());
+					bool bFrameSubmitsSucceeded = m_bForceStop || updateFrameRHI(chainSemaphore);
 					DrawCallStats drawCallStats;
 
-					if (bFrameSubmitsSucceeded && !m_bFrameGraphOutdated && !m_pViewport->IsIconic())
+					if (bFrameSubmitsSucceeded && bCanRenderFrame &&
+						!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
 					{
 						if (!App::HasEditor())
 						{
@@ -441,19 +562,21 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						}
 
 						RHISemaphorePtr frameGraphChainSemaphore = chainSemaphore;
-						if (!rhiFrameGraph->Process(
+						const bool bFrameGraphSucceeded = rhiFrameGraph->Process(
 							rhiSceneView,
 							transferCommandLists,
 							primaryCommandLists,
 							chainSemaphore,
-							frameGraphChainSemaphore))
+							frameGraphChainSemaphore);
+						chainSemaphore = frameGraphChainSemaphore;
+						if (!bFrameGraphSucceeded)
 						{
 							SAILOR_LOG_ERROR("Renderer::PushFrame: FrameGraph command buffer submission failed.");
 							bFrameSubmitsSucceeded = false;
 						}
 						else
 						{
-							chainSemaphore = frameGraphChainSemaphore;
+							bFrameGraphProcessed = true;
 							drawCallStats = rhiFrameGraph->GetDrawCallStats();
 						}
 					}
@@ -482,18 +605,26 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 
 					TVector<RHISemaphorePtr> waitFrameUpdate;
-					if (bFrameSubmitsSucceeded && chainSemaphore)
+					if (chainSemaphore)
 					{
 						waitFrameUpdate.Add(chainSemaphore);
+						if (bFrameSubmitsSucceeded && submissionBeginState->m_context)
+						{
+							submissionBeginState->m_context->SetResourceReadySemaphore(chainSemaphore);
+						}
 					}
 
-					if (!bFrameSubmitsSucceeded && bHasSwapchainImage)
+					if (!bFrameSubmitsSucceeded)
 					{
 						TVector<RHICommandListPtr> noCommandLists;
-						TVector<RHISemaphorePtr> noWaitSemaphores;
-						if (!m_driverInstance->PresentFrame(frame, noCommandLists, noWaitSemaphores))
+						const bool bFlightReleased = bHasSwapchainImage ?
+							m_driverInstance->PresentFrame(frame, noCommandLists, waitFrameUpdate) :
+							m_driverInstance->SubmitFrameWithoutPresent(
+								noCommandLists,
+								waitFrameUpdate);
+						if (!bFlightReleased)
 						{
-							SAILOR_LOG_ERROR("Renderer::PushFrame: failed to release an acquired swapchain image after a submit failure.");
+							SAILOR_LOG_ERROR("Renderer::PushFrame: failed to fence an acquired flight slot after a submit failure.");
 						}
 					}
 
@@ -502,11 +633,12 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					{
 						bFrameCompleted = bHasSwapchainImage
 							? m_driverInstance->PresentFrame(frame, primaryCommandLists, waitFrameUpdate)
-							: App::HasEditor() && m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate);
+							: m_driverInstance->SubmitFrameWithoutPresent(primaryCommandLists, waitFrameUpdate);
 					}
 
 					if (bFrameCompleted)
 					{
+						bSubmissionResourcesSucceeded = bFrameGraphProcessed;
 						m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
 						m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
 						totalFramesCount++;
@@ -532,16 +664,23 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 					else
 					{
+						if (submissionBeginState->m_context)
+						{
+							submissionBeginState->m_context->InvalidateSubmissionResources();
+						}
 						m_stats.m_gpuFps.store(0u, std::memory_order_relaxed);
 						m_stats.m_numBatches.store(0u, std::memory_order_relaxed);
 						m_stats.m_numInstances.store(0u, std::memory_order_relaxed);
 					}
 				}
-				else
+				if (submissionBeginState->m_bMaterialCaptureActive)
 				{
-					RHISemaphorePtr chainSemaphore;
-					updateFrameRHI(chainSemaphore);
+					RHIMaterial::EndSubmissionVersionCapture(submissionId);
+					submissionBeginState->m_bMaterialCaptureActive = false;
 				}
+
+				rhiSceneView->CompleteSubmissionResources(
+					bSubmissionResourcesSucceeded);
 
 				{
 					SAILOR_PROFILE_SCOPE("Clear after Present");
@@ -565,20 +704,10 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		for (auto& t : prepareRenderFrame)
 		{
-			t->Join(renderFrame);
-
-			if (m_previousRenderFrame.IsValid())
-			{
-				renderFrame->Join(m_previousRenderFrame);
-			}
-
 			renderFrame1->Join(t);
-
 		}
-		renderFrame1->Join(renderFrame);
 
 		renderFrame1->Run();
-		renderFrame->Run();
 		for (auto& t : prepareRenderFrame)
 		{
 			t->Run();

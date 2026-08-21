@@ -168,6 +168,11 @@ glslVertex: |
   {
       PerInstanceData instance[];
   } data;
+
+  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
   
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
@@ -193,17 +198,18 @@ glslVertex: |
   
   void main()
   {
-    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+    uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+    mat4 modelMatrix = data.instance[instanceIndex].model;
   #ifdef TRANSMISSION
     mat3 instanceLinearMatrix = mat3(modelMatrix);
     vout.modelScale = vec3(
       length(instanceLinearMatrix[0]),
       length(instanceLinearMatrix[1]),
       length(instanceLinearMatrix[2])) *
-      data.instance[gl_InstanceIndex].bakedVolumeScale.xyz;
+      data.instance[instanceIndex].bakedVolumeScale.xyz;
   #endif
   #ifdef SKINNING
-    uint offset = data.instance[gl_InstanceIndex].skeletonOffset;
+    uint offset = data.instance[instanceIndex].skeletonOffset;
 
     if (offset != INVALID_SKELETON_OFFSET)
     {
@@ -247,7 +253,7 @@ glslVertex: |
 
     vout.color = inColor;
     vout.texcoord = inTexcoord;
-    materialInstance = data.instance[gl_InstanceIndex].materialInstance;
+    materialInstance = data.instance[instanceIndex].materialInstance;
   }
 
 glslFragment: |

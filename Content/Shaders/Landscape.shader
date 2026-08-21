@@ -126,6 +126,11 @@ glslVertex: |
       PerInstanceData instance[];
   } data;
 
+  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
+
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
       MaterialData instance[];
@@ -143,7 +148,8 @@ glslVertex: |
 
   void main()
   {
-    mat4 modelMatrix = data.instance[gl_InstanceIndex].model;
+    uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+    mat4 modelMatrix = data.instance[instanceIndex].model;
     vec4 vertexPosition = modelMatrix * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
@@ -173,7 +179,7 @@ glslVertex: |
     vout.color = inColor;
     vout.normal = normal;
     vout.texcoord = inTexcoord;
-    materialInstance = data.instance[gl_InstanceIndex].materialInstance;
+    materialInstance = data.instance[instanceIndex].materialInstance;
     vout.tangentBasis = mat3(tangent, bitangent, normal);
   }
 

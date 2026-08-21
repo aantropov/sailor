@@ -392,6 +392,33 @@ bool VulkanGraphicsDriver::AcquireNextImage()
 	return bRes;
 }
 
+bool VulkanGraphicsDriver::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSwapchainImage)
+{
+	SAILOR_PROFILE_FUNCTION();
+	outFlightSlot = 0u;
+	outHasSwapchainImage = false;
+	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return false;
+	}
+
+	const bool bResult = m_vkInstance->GetMainDevice()->BeginRenderSubmission(
+		outFlightSlot,
+		outHasSwapchainImage);
+	RefreshSwapchainTargets();
+	return bResult;
+}
+
+uint32_t VulkanGraphicsDriver::GetMaxFramesInFlight() const
+{
+	if (!m_bIsInitialized || !m_vkInstance || !m_vkInstance->GetMainDevice())
+	{
+		return 0u;
+	}
+
+	return m_vkInstance->GetMainDevice()->GetMaxFramesInFlight();
+}
+
 bool VulkanGraphicsDriver::PresentFrame(const class FrameState& state,
 	const TVector<RHI::RHICommandListPtr>& primaryCommandBuffers,
 	const TVector<RHI::RHISemaphorePtr>& waitSemaphores) const
@@ -1698,6 +1725,72 @@ RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CreateShaderBindings()
 	return res;
 }
 
+RHI::RHIShaderBindingSetPtr VulkanGraphicsDriver::CloneMaterialShaderBindings(
+	const RHI::RHIShaderBindingSetPtr& source)
+{
+	SAILOR_PROFILE_FUNCTION();
+	if (!source)
+	{
+		return {};
+	}
+
+	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
+	auto device = m_vkInstance->GetMainDevice();
+	auto result = CreateShaderBindings();
+	result->SetLayoutShaderBindings(source->GetLayoutBindings());
+
+	for (const auto& entry : source->GetShaderBindings())
+	{
+		const auto& sourceBinding = entry.m_second;
+		if (!sourceBinding)
+		{
+			continue;
+		}
+
+		auto& targetBinding = result->GetOrAddShaderBinding(entry.m_first);
+		const auto& layout = sourceBinding->GetLayout();
+		targetBinding->SetLayout(layout);
+		targetBinding->m_vulkan.m_descriptorSetLayout =
+			sourceBinding->m_vulkan.m_descriptorSetLayout;
+		targetBinding->m_vulkan.m_bBindSsboWithOffset =
+			sourceBinding->m_vulkan.m_bBindSsboWithOffset;
+		targetBinding->SetTextureBindings(sourceBinding->GetTextureBindings());
+
+		if (layout.m_type == RHI::EShaderBindingType::UniformBuffer ||
+			layout.m_type == RHI::EShaderBindingType::UniformBufferDynamic)
+		{
+			auto& allocator = GetUniformBufferAllocator(layout.m_name);
+			const size_t size = (std::max)(size_t{ 1u }, static_cast<size_t>(layout.m_size));
+			targetBinding->m_vulkan.m_valueBinding =
+				TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+					allocator->Allocate(size, device->GetMinUboOffsetAlignment()),
+					allocator);
+			targetBinding->m_vulkan.m_storageInstanceIndex = 0u;
+		}
+		else if (layout.m_type == RHI::EShaderBindingType::StorageBuffer ||
+			layout.m_type == RHI::EShaderBindingType::StorageBufferDynamic)
+		{
+			auto& allocator = GetMaterialSsboAllocator();
+			const uint32_t paddedSize = (std::max)(1u, layout.m_paddedSize);
+			targetBinding->m_vulkan.m_valueBinding =
+				TManagedMemoryPtr<VulkanBufferMemoryPtr, VulkanBufferAllocator>::Make(
+					allocator->Allocate(paddedSize, paddedSize),
+					allocator);
+			const auto& allocation = targetBinding->m_vulkan.m_valueBinding->Get();
+			check((allocation.m_offset % paddedSize) == 0u);
+			targetBinding->m_vulkan.m_storageInstanceIndex =
+				static_cast<uint32_t>(allocation.m_offset / paddedSize);
+		}
+	}
+
+	result->RecalculateCompatibility();
+	if (!UpdateDescriptorSet(result))
+	{
+		return {};
+	}
+	return result;
+}
+
 RHI::RHIShaderBindingPtr VulkanGraphicsDriver::AddShaderBinding(RHI::RHIShaderBindingSetPtr& pShaderBindings, const RHI::RHIShaderBindingPtr& binding, const std::string& name, uint32_t shaderBinding)
 {
 	std::lock_guard<std::recursive_mutex> descriptorLock(m_descriptorUpdateMutex);
@@ -2334,6 +2427,45 @@ void VulkanGraphicsDriver::ImageMemoryBarrier(RHI::RHICommandListPtr cmd, RHI::R
 	}
 
 	ImageMemoryBarrier(cmd, image, image->GetFormat(), oldLayout, newLayout);
+
+	imageBarriers[vkHandle] = TPair(image, newLayout);
+}
+
+void VulkanGraphicsDriver::ImageMemoryBarrierForComputeSampling(RHI::RHICommandListPtr cmd, RHI::RHITexturePtr image)
+{
+	constexpr RHI::EImageLayout newLayout = RHI::EImageLayout::ShaderReadOnlyOptimal;
+	if (m_bIsTrackingGpu)
+	{
+		m_lastFrameGpuStats.m_barriers[image][newLayout]++;
+	}
+
+	auto& imageBarriers = cmd->m_vulkan.m_commandBuffer->GetImageBarriers();
+	const VkImage vkHandle = *image->m_vulkan.m_image;
+	if (!imageBarriers.ContainsKey(vkHandle))
+	{
+		imageBarriers[vkHandle] = TPair(image, image->GetDefaultLayout());
+	}
+
+	const RHI::EImageLayout oldLayout = imageBarriers[vkHandle].Second();
+	const bool bComputeOld = oldLayout == RHI::EImageLayout::ComputeRead ||
+		oldLayout == RHI::EImageLayout::ComputeWrite;
+	const VkImageLayout oldVkLayout = bComputeOld ?
+		VK_IMAGE_LAYOUT_GENERAL : static_cast<VkImageLayout>(oldLayout);
+	const VkAccessFlags oldAccess = bComputeOld ?
+		(oldLayout == RHI::EImageLayout::ComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : VK_ACCESS_SHADER_READ_BIT) :
+		VulkanCommandBuffer::GetAccessFlags(oldVkLayout);
+	const VkPipelineStageFlags oldStage = bComputeOld ?
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT : VulkanCommandBuffer::GetPipelineStage(oldVkLayout);
+
+	cmd->m_vulkan.m_commandBuffer->ImageMemoryBarrier(
+		image->m_vulkan.m_imageView,
+		static_cast<VkFormat>(image->GetFormat()),
+		oldVkLayout,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		oldAccess,
+		VK_ACCESS_SHADER_READ_BIT,
+		oldStage,
+		VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
 	imageBarriers[vkHandle] = TPair(image, newLayout);
 }

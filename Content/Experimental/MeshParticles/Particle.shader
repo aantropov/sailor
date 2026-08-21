@@ -6,6 +6,8 @@ includes:
 
 defines:
 - SHADOW_CASTER
+- PACKED_SHADOW_CASTER
+- EVSM
 
 glslCommon: |
   #version 460
@@ -31,6 +33,22 @@ glslVertex: |
     mat3 tangentBasis;
   } vout;
   
+  #ifdef PACKED_SHADOW_CASTER
+  struct PerInstanceData
+  {
+      mat4 model;
+      vec4 sphereBounds;
+      uint materialInstance;
+      uint skeletonOffset;
+      uint isCulled;
+      uint padding;
+      vec4 bakedVolumeScale;
+      float baseColorAlpha;
+      uint baseColorSampler;
+      float alphaCutoff;
+      uint maskedPadding;
+  };
+  #else
   struct PerInstanceData
   {
       mat4 model;
@@ -39,6 +57,7 @@ glslVertex: |
       uint materialInstance;
       uint isCulled;
   };
+  #endif
   
   struct MaterialData
   {
@@ -105,6 +124,18 @@ glslVertex: |
   {
       PerInstanceData instance[];
   } data;
+
+  #ifdef PACKED_SHADOW_CASTER
+  layout(std430, set = 2, binding = 1) readonly buffer InstanceIndicesSSBO
+  {
+      uint instance[];
+  } instanceIndices;
+
+  layout(std430, push_constant) uniform Constants
+  {
+      mat4 lightMatrix;
+  } PushConstants;
+  #endif
   
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
@@ -116,13 +147,16 @@ glslVertex: |
     
   void main() 
   {
+  #ifdef PACKED_SHADOW_CASTER
+    uint instanceIndex = instanceIndices.instance[gl_InstanceIndex];
+    gl_Position = PushConstants.lightMatrix * data.instance[instanceIndex].model * vec4(inPosition, 1.0);
+  #else
     vec4 vertexPosition = data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     vout.worldPosition = vertexPosition.xyz / vertexPosition.w;
 
     gl_Position = frame.projection * (frame.view * (data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0)));
-    
     #if defined(SHADOW_CASTER)
-        gl_Position = lightsMatrices.instance[0] * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
+      gl_Position = lightsMatrices.instance[0] * data.instance[gl_InstanceIndex].model * vec4(inPosition, 1.0);
     #endif
     
     vec4 worldNormal = data.instance[gl_InstanceIndex].model * vec4(inNormal, 0.0);
@@ -133,6 +167,7 @@ glslVertex: |
     vout.texcoord = inTexcoord;
     materialInstance = data.instance[gl_InstanceIndex].materialInstance;
     vout.tangentBasis = mat3(data.instance[gl_InstanceIndex].model) * mat3(inTangent, inBitangent, inNormal);
+  #endif
   }
 
 glslFragment: |
@@ -148,16 +183,15 @@ glslFragment: |
     mat3 tangentBasis;
   } vin;
   
-  layout(location=0) out vec4 outColor;
-  
-  struct PerInstanceData
-  {
-      mat4 model;
-      vec4 color;
-      vec4 colorOld;
-      uint materialInstance;
-      uint isCulled;
-  };
+  #if defined(SHADOW_CASTER) || defined(PACKED_SHADOW_CASTER)
+    #if defined(EVSM)
+      layout(location=0) out vec4 outDepth;
+    #else
+      layout(location=0) out float outDepth;
+    #endif
+  #else
+    layout(location=0) out vec4 outColor;
+  #endif
   
   struct MaterialData
   {
@@ -219,11 +253,6 @@ glslFragment: |
   
   layout(set=1, binding=8) uniform sampler2D shadowMaps[MAX_SHADOW_MAP_SAMPLERS];
   layout(set=1, binding=9) uniform sampler2D g_aoSampler;
-  
-  layout(std430, set = 2, binding = 0) readonly buffer PerInstanceDataSSBO
-  {
-      PerInstanceData instance[];
-  } data;
   
   layout(std430, set = 3, binding = 0) readonly buffer MaterialDataSSBO
   {
@@ -240,8 +269,15 @@ glslFragment: |
   
   void main() 
   {
-    #if defined(SHADOW_CASTER)
-        outColor.x = gl_FragCoord.z;
+    #if defined(SHADOW_CASTER) || defined(PACKED_SHADOW_CASTER)
+      #if defined(EVSM)
+        outDepth.x = exp(EVSM_C1 * gl_FragCoord.z);
+        outDepth.y = outDepth.x * outDepth.x;
+        outDepth.z = -exp(-EVSM_C2 * gl_FragCoord.z);
+        outDepth.w = outDepth.z * outDepth.z;
+      #else
+        outDepth = gl_FragCoord.z;
+      #endif
     #else   
         MaterialData material = GetMaterialData();
         outColor = vin.color;        

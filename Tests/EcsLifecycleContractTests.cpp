@@ -865,18 +865,18 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string sceneViewSource = ReadText(
 			sourceRoot / "Runtime/RHI/SceneView.cpp");
-		const size_t visibleSelection = sceneViewSource.find(
-			"ApplyLodToMeshes(");
-		const size_t visibleShadowSelection = sceneViewSource.find(
-			"proxy.m_shadowCaster = CreateLodShadowCaster(",
-			visibleSelection);
-		const size_t shadowPassSelection = sceneViewSource.find(
-			"shadowCaster = CreateLodShadowCaster(",
-			visibleShadowSelection);
-		Require(visibleSelection != std::string::npos &&
-			visibleShadowSelection > visibleSelection &&
-			shadowPassSelection > visibleShadowSelection,
-			"snapshot preparation must apply the camera-selected LOD to main, depth, and shadow proxies");
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string depthSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/DepthPrepassNode.cpp");
+		const std::string shadowSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		Require(sceneViewSource.find("source->m_lodPolicy.Resolve(") != std::string::npos &&
+			sceneViewSource.find("topology->m_lodPolicy.Resolve(") != std::string::npos &&
+			renderSceneSource.find("proxy.ResolveMesh(") != std::string::npos &&
+			depthSource.find("proxy.ResolveMesh(") != std::string::npos &&
+			shadowSource.find("proxy.ResolveMesh(") != std::string::npos,
+			"main, depth, and shadow packets must resolve view-local LODs from lightweight visible references");
 	}
 
 	void TestStaticMeshProxyPublishesTransformRevisionForShadowInvalidation()
@@ -884,13 +884,23 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string rendererEcsSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
+		const size_t stateOnlyPath = rendererEcsSource.find(
+			"if (!bTopologyDirty && !bMaterialsDirty && m_rhiScene)");
+		const size_t topologyCollection = rendererEcsSource.find(
+			"CollectComponentRenderData(", stateOnlyPath);
 		Require(rendererEcsSource.find(
 			"shadowCaster->m_frame = currentFrame;") != std::string::npos &&
 			rendererEcsSource.find(
-			"++m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos &&
+			"++m_shadowCastersRevision;") != std::string::npos &&
 			rendererEcsSource.find(
-			"outProxies->m_shadowCastersRevision = m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos,
-			"dirty mesh updates must publish a monotonic shadow-caster revision with their lightweight proxy");
+			"version->m_shadowCastersRevision = m_shadowCastersRevision;") != std::string::npos &&
+			stateOnlyPath != std::string::npos &&
+			topologyCollection != std::string::npos &&
+			rendererEcsSource.find(
+				"previousResource->m_bMeshTransformsAreLocal", stateOnlyPath) < topologyCollection &&
+			rendererEcsSource.find(
+				"result.m_bStateOnly = true;", stateOnlyPath) < topologyCollection,
+			"transform-only mesh updates must publish shadow invalidation while reusing immutable topology before full render-data collection");
 	}
 
 	void TestStaticMeshProxyTracksMaterialContentRevisions()
@@ -899,8 +909,10 @@ namespace
 		const std::string rendererEcsHeader = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.h");
 		Require(rendererEcsHeader.find("TVector<uint64_t> m_materialContentRevisions;") !=
-			std::string::npos,
-			"static mesh renderer data must retain the material revisions represented by its cached proxy");
+				std::string::npos &&
+			rendererEcsHeader.find("m_materialRenderMetadataRevisions") == std::string::npos &&
+			rendererEcsHeader.find("m_bMaterialVersionPending") == std::string::npos,
+			"static mesh material state must reuse one compact revision vector without new per-component allocations");
 
 		const std::string rendererEcsSource = ReadText(
 			sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
@@ -912,17 +924,46 @@ namespace
 		const size_t collectDirtyComponent = rendererEcsSource.find(
 			"dirtyComponents.Add(componentIndex);",
 			compareCachedRevisions);
-		const size_t cacheRebuiltRevisions = rendererEcsSource.find(
-			"data.m_materialContentRevisions[materialIndex] = material ? material->GetContentRevision() : 0ull;",
+		const size_t compareRenderMetadataRevisions = rendererEcsSource.find(
+			"CalculateMaterialRenderMetadataSignature(data.GetMaterials())",
 			collectDirtyComponent);
+		const size_t cacheRebuiltRevisions = rendererEcsSource.find(
+			"data.m_materialContentRevisions[materialIndex] = material ?",
+			collectDirtyComponent);
+		const size_t materialVersionOnlyBegin = rendererEcsSource.find(
+			"if (update.m_state == EPreparedProxyState::MaterialVersionOnly)");
+		const size_t materialVersionOnlyCache = rendererEcsSource.find(
+			"cacheMaterialRevisions();",
+			materialVersionOnlyBegin);
+		const size_t materialVersionOnlyContinue = rendererEcsSource.find(
+			"continue;",
+			materialVersionOnlyCache);
+		const size_t nextSceneUpdate = rendererEcsSource.find(
+			"UpdateInstance",
+			materialVersionOnlyBegin);
 		Require(globalRevisionGate != std::string::npos &&
 			compareCachedRevisions > globalRevisionGate &&
 			collectDirtyComponent > compareCachedRevisions &&
-			cacheRebuiltRevisions > collectDirtyComponent,
-			"material revisions should scan components only after a global change and rebuild only affected proxies");
+			compareRenderMetadataRevisions > collectDirtyComponent &&
+			cacheRebuiltRevisions > compareRenderMetadataRevisions &&
+			rendererEcsSource.find("data.GetMaterials().Num() + 1u") != std::string::npos &&
+			rendererEcsSource.find("bool bMaterialVersionsPending = false;") != std::string::npos &&
+			materialVersionOnlyBegin != std::string::npos &&
+			materialVersionOnlyCache > materialVersionOnlyBegin &&
+			materialVersionOnlyContinue > materialVersionOnlyCache &&
+			nextSceneUpdate > materialVersionOnlyContinue,
+			"material changes should publish pending bindings while rebuilding proxy topology only for render metadata");
 		Require(rendererEcsSource.find("for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)") != std::string::npos &&
 			rendererEcsSource.find("m_dirtyComponents") == std::string::npos,
 			"static mesh updates should use the conservative component scan without a separate dirty queue");
+		Require(rendererEcsHeader.find("TVector<PreparedProxyUpdate> m_preparedUpdatesScratch{};") != std::string::npos &&
+			rendererEcsHeader.find("TVector<Tasks::ITaskPtr> m_prepareTasksScratch{};") != std::string::npos &&
+			rendererEcsSource.find("preparedUpdates.Resize(dirtyComponents.Num());") != std::string::npos &&
+			rendererEcsSource.find("TVector<glm::mat4> modelMatrices;") == std::string::npos &&
+			rendererEcsSource.find("modelMatrix = ownerWorldMatrix * modelMatrix;") != std::string::npos &&
+			rendererEcsSource.find("TVector<Tasks::TaskPtr<TVector<PreparedProxyUpdate>>>") == std::string::npos &&
+			rendererEcsSource.find("preparedUpdates.AddRange") == std::string::npos,
+			"dirty mesh proxy preparation should reuse one pre-sized result array without per-task result vectors");
 	}
 
 	void TestCsmSnapshotTracksCastersBeforeDependencyFiltering()
@@ -930,6 +971,8 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string lightingEcsSource = ReadText(
 			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const std::string lightingEcsHeader = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.h");
 		const size_t prepareCsmBegin = lightingEcsSource.find(
 			"LightingECS::PrepareCSMPasses");
 		const size_t fillLightingBegin = lightingEcsSource.find(
@@ -940,34 +983,50 @@ namespace
 
 		const std::string prepareCsmBody = lightingEcsSource.substr(
 			prepareCsmBegin, fillLightingBegin - prepareCsmBegin);
+		const size_t reuseDecision = prepareCsmBody.find(
+			"csmSnapshots[currentSnapshotIndex].CanReuse(");
 		const size_t traceShadowCasters = prepareCsmBody.find(
-			"sceneView->TraceShadowCasters(broadFrustum)");
-		const size_t cascadeLoop = prepareCsmBody.find(
-			"for (uint32_t k = 0; k < lightCascadesMatrices.Num(); ++k)");
-		const size_t captureCaster = prepareCsmBody.find(
-			"snapshot.m_snapshot.Add({ caster->m_staticMeshEcs, caster->m_frame });");
-		const size_t filterDependency = prepareCsmBody.find(
-			"cascade.m_meshList.RemoveAll");
-		Require(traceShadowCasters != std::string::npos &&
-			cascadeLoop > traceShadowCasters &&
-			captureCaster > cascadeLoop &&
-			filterDependency > captureCaster,
-			"CSM must query lightweight casters once before distributing and snapshotting them across cascades");
+			"sceneView->TraceShadowCasters(broadFrustum, m_csmBroadCastersScratch)");
+		Require(reuseDecision != std::string::npos &&
+			traceShadowCasters > reuseDecision,
+			"CSM must consult retained scene versions before tracing any shadow casters");
 		Require(prepareCsmBody.find("TraceScene(") == std::string::npos &&
 			prepareCsmBody.find(
 				"TraceShadowCasters(",
 				traceShadowCasters + std::string("TraceShadowCasters(").size()) == std::string::npos,
 			"CSM preparation must not build full scene proxies or repeat the broad caster query per cascade");
-		Require(prepareCsmBody.find("bHasCachedShadowCasters") != std::string::npos &&
-			prepareCsmBody.find("bCanReuseAllCascades && bHasCachedShadowCasters") != std::string::npos,
-			"CSM must not reuse an empty bootstrap snapshot before asynchronous mesh proxies become available");
-		Require(lightingEcsSource.find("bHasCachedLocalShadowCasters") != std::string::npos &&
-			lightingEcsSource.find("if (bHasCachedLocalShadowCasters &&") != std::string::npos,
-			"local shadows must not reuse an empty bootstrap snapshot before asynchronous mesh proxies become available");
+		Require(prepareCsmBody.find("cascadeNeedsUpdate[cascadeIndex]") != std::string::npos &&
+			prepareCsmBody.find("if (cascadeNeedsUpdate[k] == 0u)") != std::string::npos,
+			"a localized scene change must filter and rebuild only invalidated CSM cascades");
 		Require(prepareCsmBody.find("LightingECS:Build CSM Cascade") != std::string::npos &&
 			prepareCsmBody.find("EThreadType::Worker") != std::string::npos &&
 			prepareCsmBody.find("cascadeCasterTasks[k]->Wait()") != std::string::npos,
 			"CSM caster filtering must run per cascade on worker tasks and join before command assembly");
+		Require(prepareCsmBody.find("const auto& shadowCasters = m_csmBroadCastersScratch;") != std::string::npos &&
+			lightingEcsHeader.find("TVector<RHI::RHIVisibleShadowCaster> m_csmBroadCastersScratch{};") != std::string::npos,
+			"CSM invalidation must reuse broad-caster scratch instead of reallocating the broad query result");
+		const size_t selectFlightCsm = prepareCsmBody.find(
+			"flightResources.m_csmShadowMaps[snapshotIndex]");
+		const size_t allocateFlightCsm = prepareCsmBody.find(
+			"if (!writableShadowMap)", selectFlightCsm);
+		const size_t createFlightCsm = prepareCsmBody.find(
+			"CreateRenderTarget(", allocateFlightCsm);
+		Require(lightingEcsHeader.find("struct LightingShadowFlightResources") != std::string::npos &&
+			lightingEcsHeader.find("TVector<RHI::RHIRenderTargetPtr> m_csmShadowMaps{};") != std::string::npos &&
+			lightingEcsHeader.find("TVector<CSMLightState> m_csmSnapshots{};") != std::string::npos &&
+			prepareCsmBody.find("auto& csmSnapshots = flightResources.m_csmSnapshots;") != std::string::npos &&
+			selectFlightCsm != std::string::npos &&
+			allocateFlightCsm > selectFlightCsm &&
+			createFlightCsm > allocateFlightCsm &&
+			prepareCsmBody.find("cascade.m_shadowMap = writableShadowMap;") != std::string::npos &&
+			prepareCsmBody.find("std::move(writableShadowMap)") == std::string::npos,
+			"changed CSM cascades must overwrite the freed flight-slot texture and allocate only while warming an empty slot");
+		Require(prepareCsmBody.find(
+			"cascade.m_shadowType == RHI::EShadowType::EVSM") != std::string::npos,
+			"PCF cascades must use the compact depth format instead of allocating EVSM moments per flight");
+		Require(lightingEcsSource.find("snapshot.Equals(") == std::string::npos &&
+			lightingEcsSource.find("m_snapshot.Add(") == std::string::npos,
+			"a transform invalidation must not be overridden by a duplicate caster-id snapshot");
 	}
 
 	void TestLocalLightShadowContract()
@@ -1008,6 +1067,8 @@ namespace
 			sourceRoot / "Runtime/Memory/MemoryBlockAllocator.hpp");
 		const std::string shadowPrepassSource = ReadText(
 			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
+		const std::string frameGraphSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RHIFrameGraph.cpp");
 		const std::string sceneViewSource = ReadText(
 			sourceRoot / "Runtime/RHI/SceneView.cpp");
 		const std::string lightingShader = ReadText(
@@ -1029,9 +1090,11 @@ namespace
 			lightingSource.find("shadowPass.m_shadowType = RHI::EShadowType::PCF") != std::string::npos,
 			"point and spot shadow passes must use their respective projections and PCF-only rendering");
 		Require(lightingSource.find("TryCreateLocalShadowAtlas") != std::string::npos &&
-			lightingSource.find("UpdateShaderBinding(\n\t\tm_lightsData,\n\t\t\"shadowMaps\"") != std::string::npos &&
-			lightingSource.find("NumCascades + atlasIndex") != std::string::npos,
-			"local shadow atlases must be created and published into the sampler array on demand");
+			lightingSource.find("m_shadowMapTextures[NumCascades + atlasIndex] = texture") != std::string::npos &&
+			lightingSource.find("m_bShadowMapBindingsDirty = true") != std::string::npos &&
+			lightingSource.find("PublishShadowMapBindings()") != std::string::npos &&
+			lightingSource.find("AddSamplerToShaderBindings(") != std::string::npos,
+			"local shadow atlases must publish a new immutable sampler generation on demand");
 		Require(lightingSource.find("TryAllocateLocalShadowTiles(") != std::string::npos &&
 			lightingSource.find("uint32_t& outAtlasIndex") != std::string::npos &&
 			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos &&
@@ -1049,22 +1112,41 @@ namespace
 		Require(lightingSource.find("App::GetMainWindow()->GetRenderArea().y") != std::string::npos &&
 			lightingSource.find("camera,\n\t\t\t1080u,") == std::string::npos,
 			"dynamic local-shadow resolution must use the active viewport instead of a fixed reference height");
-		Require(lightingSource.find(
-			"GetLightsInFrustum(frustum, sceneView->m_cameraTransforms[i], directionalLights, sortedPointLights, sortedSpotLights)") != std::string::npos,
+		Require(lightingSource.find("m_directionalLightsScratch.Clear(false)") != std::string::npos &&
+			lightingSource.find("m_pointLightsScratch.Clear(false)") != std::string::npos &&
+			lightingSource.find("m_spotLightsScratch.Clear(false)") != std::string::npos &&
+			lightingSource.find("m_directionalLightsScratch,\n\t\t\tm_pointLightsScratch,\n\t\t\tm_spotLightsScratch") != std::string::npos,
 			"point and spot lights must remain in their matching sorted collections");
+		Require(lightingHeader.find(
+			"std::bitset<MaxShadowMapSamplers - NumCascades> m_writableLocalShadowAtlases") != std::string::npos &&
+			lightingHeader.find("TVector<RHI::RHIRenderTargetPtr> m_localShadowAtlasTextures{};") != std::string::npos &&
+			lightingHeader.find("TVector<TVector<CSMLightState>> m_localShadowSnapshots{};") != std::string::npos &&
+			lightingSource.find("m_writableLocalShadowAtlases.reset()") != std::string::npos &&
+			lightingSource.find("flightResources.m_localShadowAtlasTextures[atlasIndex]") != std::string::npos &&
+			lightingSource.find("shadowMapsToBlit.Add(") == std::string::npos &&
+			lightingSource.find("std::array<Math::Frustum, NumCascades> frustums") != std::string::npos &&
+			lightingSource.find("std::array<glm::mat4, 6u> lightMatrices") != std::string::npos &&
+			shadowPrepassSource.find("outMatrices.Clear(false)") != std::string::npos,
+			"per-camera shadow preparation must reuse bounded CPU scratch and freed flight-slot shadow textures without transient allocations");
 		Require(lightingSource.find("frustum.OverlapsSphere(Math::Sphere(worldPosition, sphereRadius))") != std::string::npos &&
 			lightingSource.find("frustum.ContainsSphere(Math::Sphere(worldPosition, sphereRadius))") == std::string::npos,
 			"local shadow lights must remain visible when their influence sphere intersects the camera frustum");
-		Require(lightingSource.find("sceneView->m_shadowIndices.Add(std::move(shadowIndices))") != std::string::npos &&
-			lightingSource.find("sceneView->m_shadowMapsToBlit.Add(std::move(shadowMapsToBlit))") != std::string::npos &&
-			lightingSource.find("sceneView->m_shadowAtlasTiles.Add(std::move(shadowAtlasTiles))") != std::string::npos &&
+		Require(lightingSource.find("sceneView->m_shadowIndices.Resize(numCameras)") != std::string::npos &&
+			lightingSource.find("shadowIndices = std::move(previous.m_shadowIndices)") != std::string::npos &&
+			lightingSource.find("shadowMapsToBlit = std::move(previous.m_shadowMapsToBlit)") != std::string::npos &&
+			lightingSource.find("shadowAtlasTiles = std::move(previous.m_shadowAtlasTiles)") != std::string::npos &&
+			lightingSource.find("shadowIndices.Resize(m_numLights)") != std::string::npos &&
+			lightingSource.find("shadowAtlasTiles.Resize(NumCascades)") != std::string::npos &&
+			lightingSource.find("shadowAtlasTiles.Resize(static_cast<size_t>(shadowSlot) + 1u)") != std::string::npos &&
+			lightingSource.find("TVector<uint32_t> shadowAtlasTiles(MaxShadowsInView)") == std::string::npos &&
 			sceneViewSource.find("res.m_shadowMapsToBlit = std::move(m_shadowMapsToBlit[i])") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowIndices = std::move(m_shadowIndices[i])") != std::string::npos &&
 			sceneViewSource.find("res.m_shadowAtlasTiles = std::move(m_shadowAtlasTiles[i])") != std::string::npos &&
-			shadowPrepassSource.find("sceneView.m_shadowIndices.GetData()") != std::string::npos &&
-			shadowPrepassSource.find("sceneView.m_shadowAtlasTiles.GetData()") != std::string::npos &&
-			shadowPrepassSource.find("commands->UpdateShaderBinding(") != std::string::npos &&
-			shadowPrepassSource.find("transferCommandList") != std::string::npos,
+			frameGraphSource.find("snapshot.m_shadowIndices.GetData()") != std::string::npos &&
+			frameGraphSource.find("snapshot.m_shadowAtlasTiles.GetData()") != std::string::npos &&
+			frameGraphSource.find("PrepareViewSubmissionResources(") != std::string::npos &&
+			frameGraphSource.find("commands->UpdateShaderBinding(") != std::string::npos &&
+			frameGraphSource.find("transferCmdList") != std::string::npos,
 			"local shadow indices and atlas transforms must cross the scene snapshot and upload through the frame transfer command list");
 		Require(lightingSource.find("GetWorld()->GetCommandList(),\n\t\t\tm_shadowIndices") == std::string::npos,
 			"scene preparation must not record shadow-index uploads into the world command list");
@@ -1072,14 +1154,16 @@ namespace
 			lightingShader.find("CalculateLocalPcfShadow") != std::string::npos &&
 			lightingShader.find("DecodeShadowAtlasIndex") != std::string::npos &&
 			lightingShader.find("atlasRect.xy + projCoords.xy * atlasRect.zw") != std::string::npos &&
+			lightingShader.find("tileMin,\n    tileMax") != std::string::npos &&
 			lightingShader.find("SOFT_SHADOW_MAP_BIT") != std::string::npos,
 			"lighting shaders must select point faces and support atlas-aware hard/soft PCF sampling");
-		Require(lightingSource.find("snapshot.Equals(cachedState)") != std::string::npos,
-			"a global caster revision must not redraw a local static shadow whose actual caster snapshot is unchanged");
-		Require(shadowPrepassSource.find("Downsample Local Shadow Tiles") != std::string::npos &&
-			shadowPrepassSource.find("sceneView.m_shadowMapsToBlit") != std::string::npos &&
-			shadowPrepassSource.find("commands->BlitImage(") != std::string::npos,
-			"distance-driven local shadow downgrades must migrate cached tiles through a GPU blit");
+		Require(lightingSource.find("snapshot.Equals(cachedState)") == std::string::npos &&
+			lightingSource.find("m_submissionToken != currentSubmissionToken") != std::string::npos,
+			"local shadow reuse must use COW scene diffs and submission identity without hiding transform invalidation behind caster ids");
+		Require(lightingSource.find("current.m_revision = ++m_localShadowAllocationRevision") != std::string::npos &&
+			lightingSource.find("cachedState.m_resourceRevision == allocation.m_revision") != std::string::npos &&
+			shadowPrepassSource.find("sceneView.m_shadowMapsToBlit") != std::string::npos,
+			"distance-driven tile moves must invalidate only that flight-local shadow while retaining the generic blit command path");
 		Require(lightCullingShader.find("uintBitsToFloat(minDepthInt)") != std::string::npos &&
 			lightCullingShader.find("uintBitsToFloat(maxDepthInt)") != std::string::npos &&
 			lightCullingShader.find("texelFetch(linearDepth, location, 0)") != std::string::npos &&
@@ -1121,28 +1205,149 @@ namespace
 		cachedState.m_shadowType = RHI::EShadowType::PCF;
 		cachedState.m_lightMatrix = cachedLightMatrix;
 		cachedState.m_sceneRevision = 23u;
-		cachedState.m_snapshot.Add({ 11u, 19u });
+		cachedState.m_casterSceneVersions =
+			TSharedPtr<TVector<RHI::RHISceneVersionPtr>>::Make();
+		cachedState.m_submissionToken = RHI::RHISubmissionCompletionTokenPtr::Make();
+		cachedState.m_submissionToken->Complete(true);
+		cachedState.m_payloadCompletionToken =
+			RHI::RHISubmissionCompletionTokenPtr::Make();
+		cachedState.m_payloadCompletionToken->Complete(true);
+		Math::Frustum shadowFrustum;
 		Require(cachedState.CanReuse(
 			cachedState.m_componentIndex,
 			cachedState.m_shadowType,
 			cachedState.m_lightMatrix,
-			cachedState.m_sceneRevision),
+			cachedState.m_sceneRevision,
+			cachedState.m_casterSceneVersions,
+			shadowFrustum),
 			"an unchanged light and shadow-caster scene should reuse its CSM snapshot before tracing");
 		Require(!cachedState.CanReuse(
 			cachedState.m_componentIndex,
 			cachedState.m_shadowType,
-			cachedState.m_lightMatrix,
-			cachedState.m_sceneRevision + 1),
-			"a changed shadow-caster scene revision should require a lightweight CSM query");
-
-		CSMLightState movedState{};
-		movedState.m_componentIndex = cachedState.m_componentIndex;
-		movedState.m_shadowType = cachedState.m_shadowType;
-		movedState.m_lightMatrix = movedLightMatrix;
-		movedState.m_snapshot.Add({ 11u, 19u });
-
-		Require(!movedState.Equals(cachedState),
+			movedLightMatrix,
+			cachedState.m_sceneRevision,
+			cachedState.m_casterSceneVersions,
+			shadowFrustum),
 			"a changed cascade projection must invalidate the cached shadow map even for camera motion below the old threshold");
+
+		CSMLightState pendingState = cachedState;
+		pendingState.m_submissionToken = RHI::RHISubmissionCompletionTokenPtr::Make();
+		Require(!pendingState.CanReuse(
+			pendingState.m_componentIndex,
+			pendingState.m_shadowType,
+			pendingState.m_lightMatrix,
+			pendingState.m_sceneRevision,
+			pendingState.m_casterSceneVersions,
+			shadowFrustum),
+			"a pending shadow resource must not leak into another submission");
+		Require(pendingState.CanReuse(
+			pendingState.m_componentIndex,
+			pendingState.m_shadowType,
+			pendingState.m_lightMatrix,
+			pendingState.m_sceneRevision,
+			pendingState.m_casterSceneVersions,
+			shadowFrustum,
+			pendingState.m_submissionToken),
+			"multiple cameras in one submission may reuse the same scheduled shadow update");
+
+		CSMLightState incompletePayloadState = cachedState;
+		incompletePayloadState.m_payloadCompletionToken =
+			RHI::RHISubmissionCompletionTokenPtr::Make();
+		incompletePayloadState.m_payloadCompletionToken->Complete(false);
+		Require(!incompletePayloadState.CanReuse(
+			incompletePayloadState.m_componentIndex,
+			incompletePayloadState.m_shadowType,
+			incompletePayloadState.m_lightMatrix,
+			incompletePayloadState.m_sceneRevision,
+			incompletePayloadState.m_casterSceneVersions,
+			shadowFrustum),
+			"a shadow pass with incomplete mesh or material dependencies must be rebuilt");
+
+		CSMLightState pendingPayloadState = pendingState;
+		pendingPayloadState.m_payloadCompletionToken =
+			RHI::RHISubmissionCompletionTokenPtr::Make();
+		Require(pendingPayloadState.CanReuse(
+			pendingPayloadState.m_componentIndex,
+			pendingPayloadState.m_shadowType,
+			pendingPayloadState.m_lightMatrix,
+			pendingPayloadState.m_sceneRevision,
+			pendingPayloadState.m_casterSceneVersions,
+			shadowFrustum,
+			pendingPayloadState.m_submissionToken),
+			"multiple cameras in one submission may share one pending shadow payload build");
+
+		auto nextSubmissionToken = RHI::RHISubmissionCompletionTokenPtr::Make();
+		CSMLightState dynamicState = cachedState;
+		dynamicState.m_bContainsDynamicCasters = true;
+		Require(!dynamicState.CanReuse(
+			dynamicState.m_componentIndex,
+			dynamicState.m_shadowType,
+			dynamicState.m_lightMatrix,
+			dynamicState.m_sceneRevision,
+			dynamicState.m_casterSceneVersions,
+			shadowFrustum,
+			nextSubmissionToken),
+			"a shadow map containing dynamic casters must be rebuilt for every submission");
+		Require(dynamicState.CanReuse(
+			dynamicState.m_componentIndex,
+			dynamicState.m_shadowType,
+			dynamicState.m_lightMatrix,
+			dynamicState.m_sceneRevision,
+			dynamicState.m_casterSceneVersions,
+			shadowFrustum,
+			dynamicState.m_submissionToken),
+			"multiple cameras in one submission may share a scheduled dynamic shadow update");
+
+		CSMLightState animatedState = cachedState;
+		animatedState.m_animationRevision = 41ull;
+		animatedState.m_bContainsAnimatedCasters = true;
+		Require(animatedState.CanReuse(
+			animatedState.m_componentIndex,
+			animatedState.m_shadowType,
+			animatedState.m_lightMatrix,
+			animatedState.m_sceneRevision,
+			animatedState.m_casterSceneVersions,
+			shadowFrustum,
+			nextSubmissionToken,
+			41ull),
+			"an unchanged bone-matrix generation may reuse its shadow map");
+		Require(!animatedState.CanReuse(
+			animatedState.m_componentIndex,
+			animatedState.m_shadowType,
+			animatedState.m_lightMatrix,
+			animatedState.m_sceneRevision,
+			animatedState.m_casterSceneVersions,
+			shadowFrustum,
+			nextSubmissionToken,
+			42ull),
+			"a new bone-matrix generation must invalidate animated shadows even when RHIScene is unchanged");
+	}
+
+	void TestCsmShadowTargetFormatTracksShadowMode()
+	{
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::PCF) ==
+				LightingECS::ShadowMapFormat,
+			"a PCF near cascade must use the compact single-channel shadow target");
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::EVSM) ==
+				LightingECS::ShadowMapFormat_Evsm,
+			"an EVSM near cascade must use the four-channel floating-point moments target");
+		Require(
+			LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::PCF) !=
+				LightingECS::GetCsmShadowMapFormat(RHI::EShadowType::EVSM),
+			"switching the near cascade between PCF and EVSM must invalidate an incompatible flight target");
+
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string lightingSource = ReadText(
+			sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		Require(
+			lightingSource.find("writableShadowMap->GetFormat() != shadowMapFormat") !=
+				std::string::npos &&
+			lightingSource.find("writableShadowMap->GetExtent().x != shadowMapExtent.x") !=
+				std::string::npos &&
+			lightingSource.find("writableShadowMap.Clear();") != std::string::npos,
+			"flight-local CSM targets must be recreated when their mode or resolution changes");
 	}
 
 	void TestShadowCachePolicy()
@@ -1150,6 +1355,8 @@ namespace
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
 		const std::string meshRendererSource = ReadText(sourceRoot / "Runtime/ECS/StaticMeshRendererECS.cpp");
 		const std::string lightingSource = ReadText(sourceRoot / "Runtime/ECS/LightingECS.cpp");
+		const std::string shadowPrepassSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/ShadowPrepassNode.cpp");
 		const size_t localShadowBegin = lightingSource.find("LightingECS::PrepareLocalShadowPasses");
 		const size_t fillLightingBegin = lightingSource.find("void LightingECS::FillLightingData", localShadowBegin);
 		Require(localShadowBegin != std::string::npos && fillLightingBegin > localShadowBegin,
@@ -1157,15 +1364,19 @@ namespace
 		const std::string localShadowBody = lightingSource.substr(
 			localShadowBegin, fillLightingBegin - localShadowBegin);
 
-		Require(meshRendererSource.find("++m_sceneViewProxiesCache->m_shadowCastersRevision;") != std::string::npos &&
+		Require(meshRendererSource.find("++m_shadowCastersRevision;") != std::string::npos &&
 			lightingSource.find("sceneView->m_shadowCastersRevision") != std::string::npos,
 			"shadow caches must invalidate when the shadow-caster scene revision changes");
 		Require(lightingSource.find("bForceCustomDepthShadowUpdate") != std::string::npos &&
-			lightingSource.find("bool bCanReuseAllCascades = !bForceCustomDepthShadowUpdate") != std::string::npos,
+			lightingSource.find("const bool bCanReuseCascade = !bForceCustomDepthShadowUpdate") != std::string::npos,
 			"directional CSM must retain the conservative custom-depth update policy");
 		Require(localShadowBody.find("m_bHasCustomDepthShadowCasters") == std::string::npos &&
 			localShadowBody.find("cachedState.CanReuse(") != std::string::npos,
 			"static local-light shadow maps must reuse revision-validated snapshots even with custom-depth vegetation");
+		Require(lightingSource.find("m_payloadCompletionToken->IsSuccessful()") != std::string::npos &&
+			shadowPrepassSource.find("bPassPayloadComplete") != std::string::npos &&
+			shadowPrepassSource.find("m_payloadCompletionToken->Complete(") != std::string::npos,
+			"incomplete shadow packets must remain invalid and retry instead of caching a cleared map");
 	}
 
 	void TestAnimationGpuBoneLayoutContract()
@@ -3982,6 +4193,7 @@ int main()
 		{ "CsmSnapshotTracksCastersBeforeDependencyFiltering", TestCsmSnapshotTracksCastersBeforeDependencyFiltering },
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
+		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },
 		{ "ShadowCachePolicy", TestShadowCachePolicy },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },

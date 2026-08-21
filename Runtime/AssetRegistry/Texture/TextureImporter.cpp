@@ -380,6 +380,32 @@ TextureImporter::TextureSamplersSnapshot TextureImporter::GetTextureSamplersSnap
 	return snapshot;
 }
 
+uint64_t TextureImporter::CalculateTextureSamplersRevision(
+	const TVector<uint32_t>& requestedIndices) const
+{
+	size_t result = 1469598103934665603ull;
+	m_textureSamplersLock.Lock();
+	if (!m_textureSamplersBindings)
+	{
+		m_textureSamplersLock.Unlock();
+		return 0ull;
+	}
+
+	for (const uint32_t requestedIndex : requestedIndices)
+	{
+		if (requestedIndex >= MaxTexturesInScene)
+		{
+			continue;
+		}
+		const uint64_t contentRevision =
+			requestedIndex < m_textureSamplerSlotRevisions.Num() ?
+			m_textureSamplerSlotRevisions[requestedIndex] : 0ull;
+		HashCombine(result, requestedIndex, contentRevision);
+	}
+	m_textureSamplersLock.Unlock();
+	return static_cast<uint64_t>(result);
+}
+
 bool TextureImporter::RegisterTextureSamplerBinding(RHI::RHITexturePtr texture, size_t& outIndex)
 {
 	outIndex = 0;
