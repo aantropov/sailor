@@ -2355,7 +2355,7 @@ namespace
 			"CSM sampling and blending must interpret the near EVSM map and the wider PCF maps using their actual formats");
 		Require(lightingSource.find("float CalculateShadowDistanceFade(") !=
 				std::string::npos &&
-			lightingSource.find("cascadeLayer != NUM_CSM_CASCADES - 1") !=
+			lightingSource.find("cascadeLayer != int(safeCascadeCount) - 1") !=
 				std::string::npos &&
 			standardShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
 				std::string::npos &&
@@ -2363,7 +2363,7 @@ namespace
 				std::string::npos &&
 			standardGltfShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
 				std::string::npos,
-			"the final CSM cascade must fade to unshadowed lighting instead of ending at a visible hard boundary");
+			"the final active CSM cascade must fade to unshadowed lighting instead of ending at a visible hard boundary");
 		Require(lightingSource.find("SHADOW_RECEIVER_LIGHT_OFFSET") !=
 				std::string::npos &&
 			lightingSource.find("SHADOW_RECEIVER_NORMAL_OFFSET") != std::string::npos &&
