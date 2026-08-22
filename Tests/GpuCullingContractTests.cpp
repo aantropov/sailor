@@ -2030,6 +2030,32 @@ namespace
 			"failed graphics pipeline compilation must not record draw commands without a valid pipeline");
 	}
 
+	void TestRenderSceneSurfaceResolveContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string processBody = ExtractFunctionBody(
+			renderSceneSource,
+			"void RenderSceneNode::Process(");
+
+		Require(processBody.find("if (colorSurface)") != std::string::npos &&
+			processBody.find("resources->m_renderPassColorSurfaces") !=
+				std::string::npos &&
+			processBody.find("colorSurface->NeedsResolve()") !=
+				std::string::npos &&
+			processBody.find("colorSurface->GetResolved()") !=
+				std::string::npos &&
+			processBody.find("renderPassColorSurfaces.Add(colorSurface)") !=
+				std::string::npos &&
+			processBody.find("commands->BeginRenderPass(\n\t\t\tcommandList,\n\t\t\trenderPassColorSurfaces") !=
+				std::string::npos,
+			"RenderScene must pass an RHISurface to the surface render-pass overload so an MSAA target is resolved exactly once");
+		Require(processBody.find("renderPassColorAttachments.Add(colorAttachment)") !=
+				std::string::npos,
+			"RenderScene must retain the direct texture attachment fallback for non-surface frame-graph outputs");
+	}
+
 	void TestPostProcessPingPongMipIsolationContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -2646,6 +2672,7 @@ int main()
 		{ "CustomDepthVertexAnimationReachesShadows", TestCustomDepthVertexAnimationReachesShadows },
 		{ "VertexDescriptionAttributeIdentityContract", TestVertexDescriptionAttributeIdentityContract },
 		{ "GraphicsPipelineAttachmentCacheContract", TestGraphicsPipelineAttachmentCacheContract },
+		{ "RenderSceneSurfaceResolveContract", TestRenderSceneSurfaceResolveContract },
 		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
 		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },
