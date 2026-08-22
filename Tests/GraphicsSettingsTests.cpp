@@ -56,6 +56,14 @@ namespace
 		}
 	}
 
+	template<typename TTest>
+	void RunTest(const char* name, TTest&& test)
+	{
+		std::cout << "[ RUN      ] " << name << std::endl;
+		test();
+		std::cout << "[       OK ] " << name << std::endl;
+	}
+
 	bool IsNear(float lhs, float rhs, float tolerance = 0.0001f)
 	{
 		return std::abs(lhs - rhs) <= tolerance;
@@ -682,12 +690,12 @@ int main()
 {
 	try
 	{
-		TestBuiltInDefaultsAndPolicies();
-		TestProjectParsingAndValidation();
-		TestEditorParsingAndAppStatsMode();
-		TestWorkspaceSelectionAndEditorIsolation();
-		TestGpuFrameTimeQueryRingDoesNotReuseDelayedSlots();
-		TestGraphicsSettingsRuntimeIntegrationContracts();
+		RunTest("BuiltInDefaultsAndPolicies", TestBuiltInDefaultsAndPolicies);
+		RunTest("ProjectParsingAndValidation", TestProjectParsingAndValidation);
+		RunTest("EditorParsingAndAppStatsMode", TestEditorParsingAndAppStatsMode);
+		RunTest("WorkspaceSelectionAndEditorIsolation", TestWorkspaceSelectionAndEditorIsolation);
+		RunTest("GpuFrameTimeQueryRingDoesNotReuseDelayedSlots", TestGpuFrameTimeQueryRingDoesNotReuseDelayedSlots);
+		RunTest("GraphicsSettingsRuntimeIntegrationContracts", TestGraphicsSettingsRuntimeIntegrationContracts);
 	}
 	catch (const std::exception& exception)
 	{
