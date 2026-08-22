@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -19,6 +21,32 @@ using namespace Sailor::Settings;
 
 namespace
 {
+	const char* g_currentTestName = "startup";
+
+	[[noreturn]] void ReportTermination() noexcept
+	{
+		std::cerr << "GraphicsSettingsTests terminated while running: " <<
+			g_currentTestName << std::endl;
+
+		try
+		{
+			if (const std::exception_ptr exception = std::current_exception())
+			{
+				std::rethrow_exception(exception);
+			}
+		}
+		catch (const std::exception& exception)
+		{
+			std::cerr << "Termination exception: " << exception.what() << std::endl;
+		}
+		catch (...)
+		{
+			std::cerr << "Termination exception: unknown" << std::endl;
+		}
+
+		std::_Exit(2);
+	}
+
 	class TempDirectory final
 	{
 	public:
@@ -59,9 +87,12 @@ namespace
 	template<typename TTest>
 	void RunTest(const char* name, TTest&& test)
 	{
+		const char* previousTestName = g_currentTestName;
+		g_currentTestName = name;
 		std::cout << "[ RUN      ] " << name << std::endl;
 		test();
 		std::cout << "[       OK ] " << name << std::endl;
+		g_currentTestName = previousTestName;
 	}
 
 	bool IsNear(float lhs, float rhs, float tolerance = 0.0001f)
@@ -189,17 +220,21 @@ graphics:
 		const std::string& payload,
 		const std::string& fieldPath)
 	{
-		const ProjectGraphicsSettingsLoadResult result = ParseProjectGraphicsSettings(
-			payload,
-			"validation fixture");
-		Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid,
-			"invalid project field should be rejected: " + result.m_diagnostic);
-		Require(result.m_diagnostic.find(fieldPath) != std::string::npos,
-			"invalid project diagnostic should identify " + fieldPath + ": " + result.m_diagnostic);
-		Require(result.m_settings.m_defaultQuality == EGraphicsQuality::High,
-			"invalid project settings should retain the safe built-in default");
-		Require(result.m_settings.GetProfile(EGraphicsQuality::Ultra).m_msaaSamples == 8u,
-			"invalid project settings should not publish partially parsed profile values");
+		const std::string testName = "ProjectParsing.Invalid." + fieldPath;
+		RunTest(testName.c_str(), [&]()
+			{
+				const ProjectGraphicsSettingsLoadResult result = ParseProjectGraphicsSettings(
+					payload,
+					"validation fixture");
+				Require(result.m_status == EGraphicsSettingsLoadStatus::Invalid,
+					"invalid project field should be rejected: " + result.m_diagnostic);
+				Require(result.m_diagnostic.find(fieldPath) != std::string::npos,
+					"invalid project diagnostic should identify " + fieldPath + ": " + result.m_diagnostic);
+				Require(result.m_settings.m_defaultQuality == EGraphicsQuality::High,
+					"invalid project settings should retain the safe built-in default");
+				Require(result.m_settings.GetProfile(EGraphicsQuality::Ultra).m_msaaSamples == 8u,
+					"invalid project settings should not publish partially parsed profile values");
+			});
 	}
 
 	void TestBuiltInDefaultsAndPolicies()
@@ -317,34 +352,44 @@ graphics:
 
 	void TestProjectParsingAndValidation()
 	{
-		const ProjectGraphicsSettingsLoadResult parsed = ParseProjectGraphicsSettings(
-			ValidProjectSettings(),
-			"valid project fixture");
-		Require(parsed.IsLoaded(), "valid project settings should load: " + parsed.m_diagnostic);
-		Require(parsed.m_settings.m_defaultQuality == EGraphicsQuality::Medium,
-			"project default quality should deserialize");
-		Require(parsed.m_settings.GetProfile(EGraphicsQuality::Low).m_lodBias == 1,
-			"explicit positive signed LOD bias should deserialize");
-		Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_fpsCap == 120u,
-			"FPS cap should deserialize with the active quality profile");
-		Require(IsNear(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_shadowBias, 1.25f),
-			"shadow bias should deserialize with the quality profile");
-		Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_shadowCascadeResolutions[3] == 0u,
-			"inactive cascade storage should be cleared");
+		RunTest("ProjectParsing.ValidDocument", []()
+			{
+				const ProjectGraphicsSettingsLoadResult parsed = ParseProjectGraphicsSettings(
+					ValidProjectSettings(),
+					"valid project fixture");
+				Require(parsed.IsLoaded(), "valid project settings should load: " + parsed.m_diagnostic);
+				Require(parsed.m_settings.m_defaultQuality == EGraphicsQuality::Medium,
+					"project default quality should deserialize");
+				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Low).m_lodBias == 1,
+					"explicit positive signed LOD bias should deserialize");
+				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_fpsCap == 120u,
+					"FPS cap should deserialize with the active quality profile");
+				Require(IsNear(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_shadowBias, 1.25f),
+					"shadow bias should deserialize with the quality profile");
+				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_shadowCascadeResolutions[3] == 0u,
+					"inactive cascade storage should be cleared");
+			});
 
-		const ProjectGraphicsSettingsLoadResult unsupported = ParseProjectGraphicsSettings(
-			ReplaceFirst(ValidProjectSettings(), "settingsVersion: 1", "settingsVersion: 2"),
-			"future project fixture");
-		Require(unsupported.m_status == EGraphicsSettingsLoadStatus::UnsupportedVersion,
-			"future project version should be distinguished from corrupt data");
-		Require(unsupported.m_settings.m_defaultQuality == EGraphicsQuality::High,
-			"unsupported project version should use built-in defaults");
-		const ProjectGraphicsSettingsLoadResult multipleDocuments = ParseProjectGraphicsSettings(
-			ValidProjectSettings() + "---\nsettingsVersion: 1\n",
-			"multiple project documents");
-		Require(multipleDocuments.m_status == EGraphicsSettingsLoadStatus::Invalid &&
-			multipleDocuments.m_diagnostic.find("exactly one YAML document") != std::string::npos,
-			"multiple project documents should be rejected atomically");
+		RunTest("ProjectParsing.UnsupportedVersion", []()
+			{
+				const ProjectGraphicsSettingsLoadResult unsupported = ParseProjectGraphicsSettings(
+					ReplaceFirst(ValidProjectSettings(), "settingsVersion: 1", "settingsVersion: 2"),
+					"future project fixture");
+				Require(unsupported.m_status == EGraphicsSettingsLoadStatus::UnsupportedVersion,
+					"future project version should be distinguished from corrupt data");
+				Require(unsupported.m_settings.m_defaultQuality == EGraphicsQuality::High,
+					"unsupported project version should use built-in defaults");
+			});
+
+		RunTest("ProjectParsing.MultipleDocuments", []()
+			{
+				const ProjectGraphicsSettingsLoadResult multipleDocuments = ParseProjectGraphicsSettings(
+					ValidProjectSettings() + "---\nsettingsVersion: 1\n",
+					"multiple project documents");
+				Require(multipleDocuments.m_status == EGraphicsSettingsLoadStatus::Invalid &&
+					multipleDocuments.m_diagnostic.find("exactly one YAML document") != std::string::npos,
+					"multiple project documents should be rejected atomically");
+			});
 
 		RequireInvalidProjectField(
 			ReplaceFirst(ValidProjectSettings(), "defaultQuality: Medium", "defaultQuality: Custom"),
@@ -688,6 +733,8 @@ graphics:
 
 int main()
 {
+	std::set_terminate(ReportTermination);
+
 	try
 	{
 		RunTest("BuiltInDefaultsAndPolicies", TestBuiltInDefaultsAndPolicies);
