@@ -817,7 +817,7 @@ namespace
 		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
 	}
 
-	void ApplyCustomLodToMeshes(
+	[[maybe_unused]] void ApplyCustomLodToMeshes(
 		const RHILodPolicy& policy,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -842,7 +842,7 @@ namespace
 		}
 	}
 
-	void ApplyLodToMeshes(
+	[[maybe_unused]] void ApplyLodToMeshes(
 		const StaticMeshRendererData& data,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -865,7 +865,7 @@ namespace
 		}
 	}
 
-	RHIShadowCasterProxyPtr CreateLodShadowCaster(
+	[[maybe_unused]] RHIShadowCasterProxyPtr CreateLodShadowCaster(
 		const RHIShadowCasterProxyPtr& source,
 		WorldPtr world,
 		const CameraData& camera)
