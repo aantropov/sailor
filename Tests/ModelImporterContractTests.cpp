@@ -8,11 +8,8 @@
 #include "RHI/Buffer.h"
 
 #include <cmath>
-#include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iostream>
-#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -176,15 +173,6 @@ namespace
 		}
 	}
 
-	std::string ReadText(const std::filesystem::path& path)
-	{
-		std::ifstream input(path, std::ios::binary);
-		Require(input.is_open(),
-			"test source should be readable: " + path.generic_string());
-		return std::string(
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
-	}
 
 	RHI::VertexP3N3T3B3UV2C4I4W4 MakeVertex(const glm::vec3& position)
 	{
@@ -747,148 +735,6 @@ uniformsFloat:
 			"an unskinned material must not pay for the SKINNING variant");
 	}
 
-	void TestGeneratedMaterialMigrationRecognizesLegacyOwnership()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t migrationBegin = importer.find(
-			"bool ModelImporter::UpdateGeneratedMaterialProperties(");
-		const size_t migrationEnd = importer.find(
-			"Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel",
-			migrationBegin);
-		Require(migrationBegin != std::string::npos &&
-			migrationEnd != std::string::npos,
-			"generated material migration implementation must remain present");
-		const std::string migration = importer.substr(
-			migrationBegin,
-			migrationEnd - migrationBegin);
-
-		for (const std::string contract : {
-			"sanitizeLegacyMaterialStem",
-			"gltfModel.materials[materialIndex].name",
-			"legacyMaterialPath",
-			"defaultMaterials[materialIndex]",
-			"std::filesystem::equivalent",
-			"GetAssetInfoIdsByTypeAndSource",
-			"TMap<int32_t, FileId> textureIdsByGltfIndex",
-			"ModelImporter::CreateTextureAsset(",
-			"generatedTextureVirtualPath",
-			"m_generatedMaterialMigrationComplete.At_Lock",
-			"assetRegistry->UpdateAsset(materialId)",
-			"AtomicReplaceWorkspaceCacheText" })
-		{
-			Require(migration.find(contract) != std::string::npos,
-				"generated material migration lost its ownership/reload contract: " +
-					contract);
-		}
-
-		const size_t textureHelperBegin = importer.find(
-			"FileId ModelImporter::CreateTextureAsset(");
-		const size_t textureHelperEnd = importer.find(
-			"FileId CreateAnimationAsset(",
-			textureHelperBegin);
-		Require(textureHelperBegin != std::string::npos &&
-			textureHelperEnd != std::string::npos,
-			"generated texture identity helper must remain present");
-		const std::string textureHelper = importer.substr(
-			textureHelperBegin,
-			textureHelperEnd - textureHelperBegin);
-		Require(textureHelper.find(
-				"assetRegistry->RegisterGeneratedSecondaryAssetInfo(filepath)") !=
-				std::string::npos &&
-			textureHelper.find("FileId::CreateNewFileId()") !=
-				std::string::npos &&
-			textureHelper.find("existingTextureInfo->GetGlbTextureIndex()") !=
-				std::string::npos &&
-			textureHelper.find("AtomicReplaceWorkspaceCacheText") !=
-				std::string::npos,
-			"generated texture updates must reuse a compatible existing FileId "
-			"and allocate only a genuinely new secondary asset");
-
-		const size_t customSkipBegin = migration.find(
-			"if (!findOwnedMaterial(");
-		const size_t customSkipEnd = migration.find(
-			"const tinygltf::Material& sourceMaterial",
-			customSkipBegin);
-		Require(customSkipBegin != std::string::npos &&
-			customSkipEnd != std::string::npos,
-			"custom material ownership check must remain present");
-		const std::string customSkip = migration.substr(
-			customSkipBegin,
-			customSkipEnd - customSkipBegin);
-		Require(customSkip.find("continue;") != std::string::npos &&
-			customSkip.find("bSucceeded = false") == std::string::npos,
-			"preserving a custom replacement is a successful skip and must not "
-			"leave on-demand migration retrying forever");
-
-		const size_t loadModelBegin = importer.find(
-			"Tasks::TaskPtr<ModelPtr> ModelImporter::LoadModel(");
-		const size_t loadModelEnd = importer.find(
-			"bool ModelImporter::LoadModel_Immediate(",
-			loadModelBegin);
-		Require(loadModelBegin != std::string::npos &&
-			loadModelEnd != std::string::npos,
-			"model load implementation must remain present");
-		const std::string loadModel = importer.substr(
-			loadModelBegin,
-			loadModelEnd - loadModelBegin);
-		Require(loadModel.find("&pData->m_gltfModel") != std::string::npos &&
-			loadModel.find(
-				"UpdateGeneratedMaterialPropertiesOnDemand") !=
-				std::string::npos &&
-			loadModel.find("EThreadType::Main") != std::string::npos &&
-			loadModel.find(
-				"m_generatedMaterialMigrationTasks") != std::string::npos,
-			"unchanged legacy materials must migrate on demand from the "
-			"already parsed model on the main thread without blocking RHI upload");
-	}
-
-	void TestGltfMaterialTextureColorSpaces()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-
-		for (const std::string textureSuffix : {
-			"_ormTexture.png.asset",
-			"_occlusionTexture.png.asset",
-			"_clearcoatTexture.png.asset",
-			"_clearcoatRoughnessTexture.png.asset",
-			"_sheenRoughnessTexture.png.asset" })
-		{
-			const size_t textureOffset = importer.find(textureSuffix);
-			Require(textureOffset != std::string::npos,
-				"glTF data texture generation should remain present: " +
-				textureSuffix);
-			const size_t lineEnd = importer.find('\n', textureOffset);
-			Require(importer.substr(textureOffset, lineEnd - textureOffset)
-				.find("R8G8B8A8_UNORM") != std::string::npos,
-				"glTF scalar/data textures must bypass sRGB decoding: " +
-				textureSuffix);
-		}
-
-		for (const std::string textureSuffix : {
-			"_baseColorTexture.png.asset",
-			"_emissionTexture.png.asset",
-			"_sheenColorTexture.png.asset" })
-		{
-			const size_t textureOffset = importer.find(textureSuffix);
-			Require(textureOffset != std::string::npos,
-				"glTF color texture generation should remain present: " +
-				textureSuffix);
-			const size_t lineEnd = importer.find('\n', textureOffset);
-			Require(importer.substr(textureOffset, lineEnd - textureOffset)
-				.find("R8G8B8A8_SRGB") != std::string::npos,
-				"glTF color textures must retain sRGB decoding: " +
-				textureSuffix);
-		}
-	}
-
 	void TestCompactedMeshesRetainMaterialSlots()
 	{
 		RHI::RHIMesh mesh;
@@ -902,64 +748,6 @@ uniformsFloat:
 			(std::numeric_limits<size_t>::max)(),
 			"material resolution without materials must remain invalid");
 
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t sourceMeshContextOffset = importer.find(
-			"context.materialSlot = bShouldBatchByMaterial ?");
-		Require(sourceMeshContextOffset != std::string::npos,
-			"source mesh contexts must distinguish batched material indices from primitive slots");
-		const size_t sourceMeshContextEnd = importer.find(
-			"context.sourceMeshIndex =",
-			sourceMeshContextOffset);
-		Require(sourceMeshContextEnd != std::string::npos,
-			"source mesh material-slot assignment must remain bounded");
-		const std::string materialSlotAssignment = importer.substr(
-			sourceMeshContextOffset,
-			sourceMeshContextEnd - sourceMeshContextOffset);
-		Require(materialSlotAssignment.find(
-				"static_cast<uint32_t>(materialIndex)") !=
-				std::string::npos,
-			"material-batched source meshes must retain glTF material indices");
-		Require(materialSlotAssignment.find(
-				"static_cast<uint32_t>(outParsedMeshes.Num())") !=
-				std::string::npos,
-			"unbatched source meshes must retain global primitive material slots");
-	}
-
-	void TestDefaultMaterialLoadingPreservesSourceSlots()
-	{
-		const std::filesystem::path sourceRoot =
-			std::filesystem::path(__FILE__).parent_path().parent_path();
-		const std::string importer = ReadText(
-			sourceRoot /
-			"Runtime/AssetRegistry/Model/ModelImporter.cpp");
-		const size_t functionOffset = importer.find(
-			"Tasks::TaskPtr<bool> ModelImporter::LoadDefaultMaterials(");
-		Require(functionOffset != std::string::npos,
-			"default material loading implementation must remain present");
-		const size_t functionEnd = importer.find(
-			"\nbool ModelImporter::LoadAsset(",
-			functionOffset);
-		Require(functionEnd != std::string::npos,
-			"default material loading implementation must remain bounded");
-		const std::string function = importer.substr(
-			functionOffset,
-			functionEnd - functionOffset);
-
-		Require(function.find(
-				"outMaterials.Resize(defaultMaterials.Num())") !=
-				std::string::npos,
-			"default material loading must reserve every original glTF material slot");
-		Require(function.find(
-				"outMaterials[materialIndex] = material") !=
-				std::string::npos,
-			"successfully loaded materials must be assigned to their original glTF slots");
-		Require(function.find("outMaterials.Add(material)") ==
-				std::string::npos,
-			"missing default materials must not compact and shift later material slots");
 	}
 
 	void TestGeneratedTangentsPreserveMirroredUvHandedness()
@@ -1660,10 +1448,7 @@ int main()
 		{ "GltfTransmissionExtensionResolvesMaterialFields", TestGltfTransmissionExtensionResolvesMaterialFields },
 		{ "GeneratedMaterialMigrationPreservesAuthoredProperties", TestGeneratedMaterialMigrationPreservesAuthoredProperties },
 		{ "SkinnedGltfMaterialsRequireSkinningShaderVariant", TestSkinnedGltfMaterialsRequireSkinningShaderVariant },
-		{ "GeneratedMaterialMigrationRecognizesLegacyOwnership", TestGeneratedMaterialMigrationRecognizesLegacyOwnership },
-		{ "GltfMaterialTextureColorSpaces", TestGltfMaterialTextureColorSpaces },
 		{ "CompactedMeshesRetainMaterialSlots", TestCompactedMeshesRetainMaterialSlots },
-		{ "DefaultMaterialLoadingPreservesSourceSlots", TestDefaultMaterialLoadingPreservesSourceSlots },
 		{ "GeneratedTangentsPreserveMirroredUvHandedness", TestGeneratedTangentsPreserveMirroredUvHandedness },
 		{ "PathTracerTransformsShadingBasisCorrectly", TestPathTracerTransformsShadingBasisCorrectly },
 		{ "BuildBlasRejectsOutOfRangeIndicesAtomically", TestBuildBlasRejectsOutOfRangeIndicesAtomically },

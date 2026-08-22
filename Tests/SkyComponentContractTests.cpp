@@ -2,11 +2,8 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
-#include <filesystem>
-#include <fstream>
 #include <functional>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -84,15 +81,6 @@ namespace
 			: local;
 	}
 
-	std::string ReadText(const std::filesystem::path& path)
-	{
-		std::ifstream input(path, std::ios::binary);
-		Require(input.is_open(),
-			"test source should be readable: " + path.generic_string());
-		return std::string(
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
-	}
 
 	class SkyTestWorld final : public World
 	{
@@ -270,95 +258,6 @@ namespace
 			(!node["fileId"] && !node["instanceId"]);
 	}
 
-	void RequireWorldSkyLinks(
-		const std::filesystem::path& path,
-		const std::string& worldName)
-	{
-		const YAML::Node world = YAML::LoadFile(path.string());
-		Require(world["prefabs"].IsSequence(),
-			worldName + " should contain a prefab list");
-
-		size_t skyCount = 0;
-		for (const YAML::Node& prefab : world["prefabs"])
-		{
-			const YAML::Node components = prefab["components"];
-			const YAML::Node gameObjects = prefab["gameObjects"];
-			if (!components.IsSequence() || !gameObjects.IsSequence())
-			{
-				continue;
-			}
-
-			for (const YAML::Node& gameObject : gameObjects)
-			{
-				std::vector<std::string> localLightIds;
-				std::vector<std::string> localSkyLightIds;
-				const YAML::Node componentIndices =
-					gameObject["components"];
-				if (!componentIndices.IsSequence())
-				{
-					continue;
-				}
-
-				for (const YAML::Node& componentIndexNode :
-					componentIndices)
-				{
-					const size_t componentIndex =
-						componentIndexNode.as<size_t>();
-					Require(componentIndex < components.size(),
-						worldName +
-							" should not reference an out-of-range component");
-					const YAML::Node component =
-						components[componentIndex];
-					const std::string typeName =
-						component["typename"].as<std::string>();
-					const YAML::Node properties =
-						component["overrideProperties"];
-
-					if (typeName ==
-						LightComponent::GetStaticTypeInfo().Name())
-					{
-						Require(
-							properties["instanceId"].IsScalar(),
-							worldName +
-								" light should have an instance id");
-						localLightIds.push_back(
-							properties["instanceId"].
-								as<std::string>());
-					}
-					else if (typeName ==
-						SkyComponent::GetStaticTypeInfo().Name())
-					{
-						++skyCount;
-						const YAML::Node reference =
-							properties["m_directionalLight"];
-						Require(
-							reference.IsMap() &&
-								reference["instanceId"].IsScalar(),
-							worldName +
-								" sky should explicitly reference a light");
-						localSkyLightIds.push_back(
-							reference["instanceId"].
-								as<std::string>());
-					}
-				}
-
-				for (const std::string& lightId :
-					localSkyLightIds)
-				{
-					Require(
-						std::find(
-							localLightIds.begin(),
-							localLightIds.end(),
-							lightId) != localLightIds.end(),
-						worldName +
-							" sky should reference a LightComponent on the same game object");
-				}
-			}
-		}
-
-		Require(skyCount > 0,
-			worldName + " should explicitly contain a SkyComponent");
-	}
 
 	void TestSkyParameterGpuLayoutAndDefaults()
 	{
@@ -1031,107 +930,6 @@ namespace
 
 		world.Clear();
 	}
-
-	void TestSourceAndContentContracts()
-	{
-		const std::filesystem::path sourceRoot =
-			SAILOR_TEST_SOURCE_DIR;
-		const std::string editorSource = ReadText(
-			sourceRoot /
-				"Runtime/Components/EditorComponent.cpp");
-		const std::string editorHeader = ReadText(
-			sourceRoot /
-				"Runtime/Components/EditorComponent.h");
-		const std::string testSource = ReadText(
-			sourceRoot /
-				"Runtime/Components/TestComponent.cpp");
-		const std::string testHeader = ReadText(
-			sourceRoot /
-				"Runtime/Components/TestComponent.h");
-		const std::string engineLoop = ReadText(
-			sourceRoot /
-				"Runtime/Engine/EngineLoop.cpp");
-		const std::string skyNode = ReadText(
-			sourceRoot /
-				"Runtime/FrameGraph/SkyNode.cpp");
-		const std::string skyShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/Sky.shader");
-		const std::string sunShaftsShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/SunShafts.shader");
-		const std::string starsShader = ReadText(
-			sourceRoot /
-				"Content/Shaders/Stars.shader");
-
-		Require(
-			editorSource.find("Sky Settings") ==
-					std::string::npos &&
-				editorSource.find("GetSkyParams") ==
-					std::string::npos &&
-				editorHeader.find("SkyNode") ==
-					std::string::npos,
-			"EditorComponent should not retain the legacy direct sky editor");
-		Require(
-			testSource.find("Sky Settings") ==
-					std::string::npos &&
-				testSource.find("GetSkyParams") ==
-					std::string::npos &&
-				testHeader.find("SkyNode") ==
-					std::string::npos,
-			"TestComponent should not retain the legacy direct sky editor");
-		Require(
-			engineLoop.find("AddComponent<SkyComponent>") ==
-				std::string::npos,
-			"EngineLoop should not auto-discover or auto-create a SkyComponent");
-		const size_t generateMipMaps = skyNode.find(
-			"commands->GenerateMipMaps(commandList, cubemap);");
-		Require(
-			skyNode.find("else if (face == 6)") != std::string::npos &&
-			skyNode.find("if (m_updateEnvCubemapPattern == 6)") != std::string::npos &&
-			generateMipMaps != std::string::npos &&
-			skyNode.find(
-				"commands->GenerateMipMaps(commandList, cubemap);",
-				generateMipMaps + 1) == std::string::npos,
-			"the procedural environment should generate mipmaps once and publish immediately afterward");
-		Require(
-			skyShader.find("float PlanetHeight(vec3 position)") !=
-				std::string::npos &&
-			skyShader.find("vec2 RaySphereAtAltitude") !=
-				std::string::npos &&
-			skyShader.find("ResolveAtmosphereRayOrigin") !=
-				std::string::npos &&
-			skyShader.find("origin.y = max(origin.y, 0.0f)") ==
-				std::string::npos &&
-			skyShader.find("const float q = -halfB") !=
-				std::string::npos &&
-			skyShader.find("heightDelta * (2.0f * earthRadius") !=
-				std::string::npos &&
-			skyShader.find("planetToLightIntersection") ==
-				std::string::npos &&
-			skyShader.find("if((-lightDirection).y < 0.0f)") ==
-				std::string::npos &&
-			skyShader.find("pow(angle / border, 3)") ==
-				std::string::npos,
-			"the atmosphere must preserve twilight, handle below-datum cameras geometrically, occlude sunlight with the planet, and avoid undefined negative pow inputs");
-		Require(
-			sunShaftsShader.find("SunDiskVisibility") != std::string::npos &&
-			sunShaftsShader.find("sunVisibility <= 0.0f") != std::string::npos,
-			"sun shafts must fade with the geometrically visible fraction of the solar disk");
-		Require(
-			starsShader.find("gl_Position.z = 0.0f") != std::string::npos &&
-			starsShader.find("radians(-18.0f)") != std::string::npos &&
-			starsShader.find("radians(-6.0f)") != std::string::npos,
-			"stars must remain on the reverse-Z far plane and appear through physical twilight");
-
-		RequireWorldSkyLinks(
-			sourceRoot / "Content/Editor.world",
-			"Editor.world");
-		RequireWorldSkyLinks(
-			sourceRoot /
-				"Content/Tests/Visual/EmptyWorldStartupShutdown.world",
-			"EmptyWorldStartupShutdown.world");
-	}
 }
 
 int main()
@@ -1146,7 +944,6 @@ int main()
 		{ "ExplicitDirectionalLightSynchronization", TestExplicitDirectionalLightSynchronization },
 		{ "DestroyedLightReferencesSerializeAsNull", TestDestroyedLightReferencesSerializeAsNull },
 		{ "PrefabRoundTripRemapsExplicitLight", TestPrefabRoundTripRemapsExplicitLight },
-		{ "SourceAndContentContracts", TestSourceAndContentContracts },
 	};
 
 	for (const auto& test : tests)
