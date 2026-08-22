@@ -109,7 +109,7 @@ namespace
 	{
 		std::ifstream input(path, std::ios::binary);
 		Require(input.is_open(), "test source should be readable: " + path.generic_string());
-		std::string text(
+		std::string text = std::string(
 			std::istreambuf_iterator<char>(input),
 			std::istreambuf_iterator<char>());
 		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());

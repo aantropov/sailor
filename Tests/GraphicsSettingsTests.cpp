@@ -74,7 +74,7 @@ namespace
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / relativePath,
 			std::ios::binary);
 		Require(input.good(), "repository source should be readable: " + relativePath.generic_string());
-		std::string text(
+		std::string text = std::string(
 			std::istreambuf_iterator<char>(input),
 			std::istreambuf_iterator<char>());
 		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
