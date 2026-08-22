@@ -12,6 +12,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Texture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -46,7 +47,11 @@ namespace
 	{
 		std::ifstream input(path, std::ios::binary);
 		Require(input.is_open(), "test source should be readable: " + path.generic_string());
-		return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+		std::string text(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
 	}
 
 	std::string ExtractFunctionBody(const std::string& source, const std::string& signature)

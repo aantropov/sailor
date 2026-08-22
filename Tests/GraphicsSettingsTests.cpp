@@ -4,6 +4,7 @@
 #include "Workspace/WorkspaceContext.h"
 #include "RHI/GpuFrameTimeQueryRing.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -73,9 +74,11 @@ namespace
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / relativePath,
 			std::ios::binary);
 		Require(input.good(), "repository source should be readable: " + relativePath.generic_string());
-		return std::string(
+		std::string text(
 			std::istreambuf_iterator<char>(input),
 			std::istreambuf_iterator<char>());
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
 	}
 
 	std::string ReplaceFirst(
