@@ -13,6 +13,7 @@
 #include <sstream>
 #include <system_error>
 #include <utility>
+#include <yaml-cpp/eventhandler.h>
 #include <yaml-cpp/yaml.h>
 
 namespace
@@ -88,6 +89,37 @@ namespace
 		return source + " is invalid: field " + Quote(fieldPath) + " " + requirement + ".";
 	}
 
+	class YamlDocumentCounter final : public YAML::EventHandler
+	{
+	public:
+		void OnDocumentStart(const YAML::Mark&) override { ++m_numDocuments; }
+		void OnDocumentEnd() override {}
+		void OnNull(const YAML::Mark&, YAML::anchor_t) override {}
+		void OnAlias(const YAML::Mark&, YAML::anchor_t) override {}
+		void OnScalar(
+			const YAML::Mark&,
+			const std::string&,
+			YAML::anchor_t,
+			const std::string&) override {}
+		void OnSequenceStart(
+			const YAML::Mark&,
+			const std::string&,
+			YAML::anchor_t,
+			YAML::EmitterStyle::value) override {}
+		void OnSequenceEnd() override {}
+		void OnMapStart(
+			const YAML::Mark&,
+			const std::string&,
+			YAML::anchor_t,
+			YAML::EmitterStyle::value) override {}
+		void OnMapEnd() override {}
+
+		size_t GetNumDocuments() const noexcept { return m_numDocuments; }
+
+	private:
+		size_t m_numDocuments = 0u;
+	};
+
 	bool TryLoadSingleDocument(
 		const std::string& payload,
 		YAML::Node& outDocument,
@@ -97,11 +129,14 @@ namespace
 		if (!External::GuardYamlExceptions(
 				[&]()
 				{
-					auto documents = YAML::LoadAll(payload);
-					documentCount = documents.size();
+					std::istringstream input(payload);
+					YAML::Parser parser(input);
+					YamlDocumentCounter counter;
+					while (parser.HandleNextDocument(counter)) {}
+					documentCount = counter.GetNumDocuments();
 					if (documentCount == 1u)
 					{
-						outDocument = std::move(documents[0]);
+						outDocument = YAML::Load(payload);
 					}
 				},
 				outDiagnostic))
