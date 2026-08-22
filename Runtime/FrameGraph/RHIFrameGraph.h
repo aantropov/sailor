@@ -31,6 +31,7 @@ namespace Sailor::RHI
 		SAILOR_API RHI::RHITexturePtr GetSampler(const std::string& name);
 		SAILOR_API RHI::RHIRenderTargetPtr GetRenderTarget(const std::string& name);
 		SAILOR_API RHI::RHISurfacePtr GetSurface(const std::string& name);
+		SAILOR_API glm::ivec2 GetSceneRenderExtent();
 
 		SAILOR_API RHI::RHIMeshPtr GetFullscreenNdcQuad() { return m_postEffectPlane; }
 		SAILOR_API RHI::DrawCallStats GetDrawCallStats() const { return m_drawCallStats; }
@@ -59,7 +60,7 @@ namespace Sailor::RHI
 
 	protected:
 
-		RHI::UboFrameData FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime) const;
+		RHI::UboFrameData FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime);
 
 		TMap<std::string, RHI::RHITexturePtr> m_samplers;
 		TMap<std::string, RHI::RHIRenderTargetPtr> m_renderTargets;

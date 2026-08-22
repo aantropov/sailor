@@ -51,8 +51,15 @@ namespace Sailor::RHI
 		SAILOR_API void DrawPlane(const Math::Plane& plane, float size, const glm::vec4 color = { 0.0f, 1.0f, 0.3f, 0.0f }, float duration = 0.0f);
 		SAILOR_API void Tick(RHI::RHICommandListPtr transferCmd, float deltaTime);
 		SAILOR_API DrawSnapshot GetDrawSnapshot() const;
-		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const;
-		SAILOR_API void DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection, const DrawSnapshot& snapshot) const;
+		SAILOR_API void DrawDebugMesh(
+			RHI::RHICommandListPtr secondaryDrawCmdList,
+			const glm::mat4x4& viewProjection,
+			const glm::ivec2& renderExtent) const;
+		SAILOR_API void DrawDebugMesh(
+			RHI::RHICommandListPtr secondaryDrawCmdList,
+			const glm::mat4x4& viewProjection,
+			const DrawSnapshot& snapshot,
+			const glm::ivec2& renderExtent) const;
 
 	protected:
 

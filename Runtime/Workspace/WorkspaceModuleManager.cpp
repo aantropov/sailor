@@ -4,6 +4,7 @@
 #include "Components/Component.h"
 #include "Core/Reflection.h"
 #include "Core/Utils.h"
+#include "ECS/ECSAutoRegistration.h"
 #include "Workspace/WorkspaceModuleApi.h"
 
 #include <algorithm>
@@ -1161,7 +1162,9 @@ const Sailor::Workspace::WorkspaceModuleLoadResult& Sailor::Workspace::Workspace
 	m_result.m_modulePath = loadPath;
 
 	Reflection::SetEngineAutoRegistrationSuppressed(true);
+	ECS::SetAutoRegistrationSuppressed(true);
 	const bool bLibraryOpened = m_library.Open(loadPath);
+	ECS::SetAutoRegistrationSuppressed(false);
 	Reflection::SetEngineAutoRegistrationSuppressed(false);
 	if (!bLibraryOpened)
 	{

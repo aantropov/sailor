@@ -99,6 +99,10 @@ add_executable(AudioContractTests
     AudioContractTests.cpp
 )
 
+add_executable(GraphicsSettingsTests
+    GraphicsSettingsTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -242,6 +246,10 @@ target_compile_definitions(PhysicsRuntimeTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
+target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
+target_compile_definitions(GraphicsSettingsTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_definitions(SkyComponentContractTests PRIVATE
     SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
 )
@@ -304,6 +312,7 @@ target_link_libraries(EditorViewportControllerContractTests PRIVATE Sailor::Runt
 target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(AudioContractTests PRIVATE Sailor::Runtime)
+target_link_libraries(GraphicsSettingsTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -352,6 +361,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(SkyComponentContractTests)
     sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
     sailor_stage_workspace_test_runtime(AudioContractTests)
+    sailor_stage_workspace_test_runtime(GraphicsSettingsTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
@@ -424,6 +434,9 @@ target_include_directories(PhysicsRuntimeTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(AudioContractTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GraphicsSettingsTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -589,6 +602,11 @@ add_test(
 )
 
 add_test(
+    NAME GraphicsSettingsTests
+    COMMAND GraphicsSettingsTests
+)
+
+add_test(
     NAME WorkspaceModuleContractTests
     COMMAND WorkspaceModuleContractTests
 )
@@ -691,6 +709,7 @@ set_tests_properties(
     SkyComponentContractTests
     PhysicsRuntimeTests
     AudioContractTests
+    GraphicsSettingsTests
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
     EditorEngineWebSocketLateStopTests
@@ -707,6 +726,7 @@ if(WIN32 AND CMAKE_VERSION VERSION_GREATER_EQUAL "3.22" AND VCPKG_INSTALLED_DIR 
         WorkspaceCacheContractTests
         AssetCacheContractTests
         ShaderCacheArtifactTests
+        GraphicsSettingsTests
         WorkspaceModuleContractTests
         WorkspaceModuleRuntimeTests
         PROPERTIES ENVIRONMENT_MODIFICATION

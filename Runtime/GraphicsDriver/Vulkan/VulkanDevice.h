@@ -67,6 +67,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		SAILOR_API VulkanImageViewPtr GetDepthBuffer() const;
 
 		SAILOR_API bool PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
+		SAILOR_API bool WasLastFrameSubmitSuccessful() const { return m_bLastFrameSubmitSuccessful; }
 		SAILOR_API bool SubmitFrameWithoutPresent(const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& waitSemaphores);
 
 		SAILOR_API bool IsSwapChainOutdated() const { return m_bIsSwapChainOutdated; }
@@ -83,6 +84,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 
 		SAILOR_API bool IsMultiDrawIndirectSupported() const { return m_bSupportsMultiDrawIndirect; };
 		SAILOR_API bool IsDescriptorUpdateAfterBindSupported() const { return m_bSupportsDescriptorUpdateAfterBind; }
+		SAILOR_API bool IsHostQueryResetSupported() const { return m_bSupportsHostQueryReset; }
 		SAILOR_API float GetMaxAllowedAnisotropy() const { return m_physicalDeviceProperties.limits.maxSamplerAnisotropy; };
 		SAILOR_API VkSampleCountFlagBits GetMaxAllowedMsaaSamples() const { return m_maxAllowedMsaaSamples; };
 		SAILOR_API VkSampleCountFlagBits GetCurrentMsaaSamples() const { return m_currentMsaaSamples; };
@@ -169,6 +171,7 @@ namespace Sailor::GraphicsDriver::Vulkan
 		VkSampleCountFlagBits m_currentMsaaSamples = VK_SAMPLE_COUNT_1_BIT;
 		bool m_bSupportsMultiDrawIndirect = false;
 		bool m_bSupportsDescriptorUpdateAfterBind = false;
+		bool m_bSupportsHostQueryReset = false;
 
 		VkMemoryRequirements m_memoryRequirements_StagingBuffer;
 
@@ -240,5 +243,6 @@ namespace Sailor::GraphicsDriver::Vulkan
 		uint32_t m_numSubmittedCommandBuffers = 0;
 
 		bool m_bIsDeviceLost = false;
+		bool m_bLastFrameSubmitSuccessful = false;
 	};
 }

@@ -54,8 +54,26 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
             return;
         }
 
-        var nextBounds = new CGRect(0, 0, Math.Max(width, 1), Math.Max(height, 1));
+        var platformBounds = PlatformView?.Bounds ?? CGRect.Empty;
+        var nextBounds = ResolveLayoutBounds(platformBounds, width, height);
         var nextContentsScale = contentsScale > 0 ? (nfloat)contentsScale : UIScreen.MainScreen.Scale;
+        QueueLayoutUpdate(nextBounds, nextContentsScale);
+    }
+
+    void UpdatePlatformLayout(CGRect platformBounds, nfloat contentsScale)
+    {
+        if (!isConnected || platformBounds.Width <= 0 || platformBounds.Height <= 0)
+        {
+            return;
+        }
+
+        QueueLayoutUpdate(
+            ResolveLayoutBounds(platformBounds, platformBounds.Width, platformBounds.Height),
+            contentsScale > 0 ? contentsScale : UIScreen.MainScreen.Scale);
+    }
+
+    void QueueLayoutUpdate(CGRect nextBounds, nfloat nextContentsScale)
+    {
         if (currentBounds.Equals(nextBounds) && Math.Abs((double)(currentContentsScale - nextContentsScale)) < 0.01)
         {
             return;
@@ -72,6 +90,13 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
 
         layoutFlushQueued = true;
         DispatchQueue.MainQueue.DispatchAsync(FlushPendingLayout);
+    }
+
+    static CGRect ResolveLayoutBounds(CGRect platformBounds, double fallbackWidth, double fallbackHeight)
+    {
+        var width = platformBounds.Width > 0 ? platformBounds.Width : Math.Max(fallbackWidth, 1);
+        var height = platformBounds.Height > 0 ? platformBounds.Height : Math.Max(fallbackHeight, 1);
+        return new CGRect(0, 0, width, height);
     }
 
     public void RequestInputFocus()
@@ -296,6 +321,15 @@ public sealed class NativeSceneViewportHandler : ViewHandler<NativeSceneViewport
         }
 
         public override bool CanBecomeFirstResponder => true;
+
+        public override void LayoutSubviews()
+        {
+            base.LayoutSubviews();
+            if (owner.TryGetTarget(out var handler))
+            {
+                handler.UpdatePlatformLayout(Bounds, ContentScaleFactor);
+            }
+        }
 
         public void FocusInput()
         {

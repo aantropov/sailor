@@ -7,6 +7,7 @@
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
 #include "FrameGraph/ShadowPrepassNode.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <array>
 
@@ -229,6 +230,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 	bool bPublishedChanges = false;
 	uint32_t numLights = 0;
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	for (size_t index = 0; index < numGpuLightSlots; ++index)
 	{
 		auto& data = m_components[index];
@@ -259,7 +261,15 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 			if (data.m_bIsDirty || data.m_frameLastChange < ownerTransform.GetFrameLastChange())
 			{
 				shaderData.m_type = (uint32_t)data.m_type;
-				shaderData.m_shadowType = (uint32_t)data.m_shadowType;
+				const RHI::EShadowType effectiveShadowType =
+					!graphicsProfile.m_bSupportSoftShadows &&
+					data.m_shadowType == RHI::EShadowType::EVSM ?
+					RHI::EShadowType::PCF : data.m_shadowType;
+				shaderData.m_shadowType = (uint32_t)effectiveShadowType;
+				shaderData.m_activeCascadeCount = (std::clamp)(
+					graphicsProfile.m_shadowCascadeCount,
+					1u,
+					NumCascades);
 				shaderData.m_attenuation = data.m_attenuation;
 				shaderData.m_bounds = glm::vec3(data.m_radius);
 				shaderData.m_intensity = data.m_intensity;
@@ -338,6 +348,7 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 
 	// TODO: Cache lights that cast shadows separately to decrease algo complexity
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 	for (size_t index = 0; index < numGpuLightSlots; index++)
 	{
 		auto& light = m_components[index];
@@ -358,7 +369,10 @@ void LightingECS::GetLightsInFrustum(const Math::Frustum& frustum,
 			lightProxy.m_lightTransform = ownerTransform.GetTransform();
 			lightProxy.m_distanceToCamera = 0.0f;
 			lightProxy.m_index = (uint32_t)index;
-			lightProxy.m_shadowType = light.m_shadowType;
+			lightProxy.m_shadowType =
+				!graphicsProfile.m_bSupportSoftShadows &&
+				light.m_shadowType == RHI::EShadowType::EVSM ?
+				RHI::EShadowType::PCF : light.m_shadowType;
 
 			if (light.m_type != ELightType::Directional)
 			{
@@ -407,6 +421,7 @@ void LightingECS::PrepareCSMPasses(
 	const auto casterSceneVersions = sceneView->GetRetainedSceneVersions();
 	const auto submissionToken = sceneView->GetOrCreateSubmissionCompletionToken();
 	auto& csmSnapshots = flightResources.m_csmSnapshots;
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
 
 	for (const auto& directionalLight : directionalLights)
 	{
@@ -557,8 +572,8 @@ void LightingECS::PrepareCSMPasses(
 
 			const bool bEvsmCascade =
 				cascade.m_shadowType == RHI::EShadowType::EVSM;
-			const glm::ivec2 shadowMapExtent =
-				ShadowCascadeResolutions[k % NumCascades];
+			const glm::ivec2 shadowMapExtent(
+				graphicsProfile.GetShadowCascadeResolution(k));
 			const RHI::EFormat shadowMapFormat =
 				GetCsmShadowMapFormat(cascade.m_shadowType);
 			if (flightResources.m_csmShadowMaps.Num() <= snapshotIndex)
@@ -971,7 +986,11 @@ uint32_t LightingECS::CalculateLocalShadowResolution(
 	const CameraData& cameraData,
 	uint32_t viewportHeight) const
 {
-	const uint32_t qualityLimit = GetLocalShadowResolution(light.m_shadowQuality);
+	const ELightShadowQuality effectiveQuality =
+		Settings::ApplyShadowQualityCap(
+			light.m_shadowQuality,
+			App::GetActiveGraphicsSettings().m_shadowQuality);
+	const uint32_t qualityLimit = GetLocalShadowResolution(effectiveQuality);
 	const float safeDistance = (std::max)(distanceToCamera, 0.01f);
 	const float focalLengthPixels = static_cast<float>((std::max)(viewportHeight, 1u)) /
 		(2.0f * glm::tan(glm::radians(cameraData.GetFov()) * 0.5f));
@@ -1052,7 +1071,7 @@ bool LightingECS::EnsureLocalShadowAllocation(
 	{
 		auto findFreeSlots = [&]()
 		{
-			for (uint32_t candidate = static_cast<uint32_t>(m_csmShadowMaps.Num());
+			for (uint32_t candidate = NumCascades;
 				candidate + mapCount <= MaxShadowsInView;
 				++candidate)
 			{
@@ -1357,7 +1376,9 @@ void LightingECS::PrepareLocalShadowPasses(
 			}
 			const uint32_t firstSlot = allocation.m_slots[0];
 			shadowIndices[lightProxy.m_index] = firstSlot |
-				(light.m_shadowFilter == ELightShadowFilter::Soft ? SoftShadowMapBit : 0u);
+				(light.m_shadowFilter == ELightShadowFilter::Soft &&
+					App::GetActiveGraphicsSettings().m_bSupportSoftShadows ?
+					SoftShadowMapBit : 0u);
 
 			const float nearPlane = (std::max)(0.01f, farPlane * 0.001f);
 			std::array<glm::mat4, 6u> lightMatrices{};
@@ -1490,9 +1511,13 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 	auto& flightResources = m_shadowFlightResources[flightSlot];
 	m_writableLocalShadowAtlases.reset();
 	uint32_t snapshotIndex = 0;
-	const uint32_t viewportHeight = static_cast<uint32_t>((std::max)(
-		App::GetMainWindow()->GetRenderArea().y,
-		1));
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const Settings::GraphicsExtent renderExtent =
+		Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+			App::GetActiveGraphicsSettings().m_resolutionFactor);
+	const uint32_t viewportHeight = renderExtent.m_height;
 	const size_t numCameras = sceneView->m_cameraTransforms.Num();
 	sceneView->m_shadowMapsToUpdate.Resize(numCameras);
 	sceneView->m_shadowMapsToBlit.Resize(numCameras);

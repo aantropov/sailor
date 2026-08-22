@@ -109,7 +109,11 @@ namespace
 	{
 		std::ifstream input(path, std::ios::binary);
 		Require(input.is_open(), "test source should be readable: " + path.generic_string());
-		return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+		std::string text = std::string(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
 	}
 
 	class LifecycleData final : public ECS::TComponent
@@ -1098,9 +1102,9 @@ namespace
 		Require(lightingSource.find("TryAllocateLocalShadowTiles(") != std::string::npos &&
 			lightingSource.find("uint32_t& outAtlasIndex") != std::string::npos &&
 			lightingSource.find("candidate + mapCount <= MaxShadowsInView") != std::string::npos &&
-			lightingSource.find("candidate = static_cast<uint32_t>(m_csmShadowMaps.Num())") != std::string::npos &&
+			lightingSource.find("candidate = NumCascades") != std::string::npos &&
 			lightingSource.find("m_shadowMapsMb + LocalShadowAtlasMemoryMb > m_shadowsMemoryBudgetMb") != std::string::npos,
-			"local shadow allocation must use bounded dynamic atlases without overlapping directional slots or the memory budget");
+			"local shadow allocation must use bounded dynamic atlases after the fixed directional ABI slots and within the memory budget");
 		Require(lightingHeader.find("GetCsmShadowsOccupiedMemoryMb") != std::string::npos &&
 			lightingHeader.find("GetLocalShadowsOccupiedMemoryMb") != std::string::npos &&
 			engineLoopSource.find("Shadows %.1f / %.0f MB") != std::string::npos &&
@@ -1109,9 +1113,10 @@ namespace
 			rhiTypesHeader.find("m_texturesMemoryUsage") != std::string::npos &&
 			blockAllocatorHeader.find("const size_t occupiedSpace = m_usedDataSpace") != std::string::npos,
 			"frame statistics must expose shadow, CSM, local atlas, and Vulkan allocator memory without racing allocator updates");
-		Require(lightingSource.find("App::GetMainWindow()->GetRenderArea().y") != std::string::npos &&
+		Require(lightingSource.find("Settings::ResolveRenderDimensions(") != std::string::npos &&
+			lightingSource.find("const uint32_t viewportHeight = renderExtent.m_height") != std::string::npos &&
 			lightingSource.find("camera,\n\t\t\t1080u,") == std::string::npos,
-			"dynamic local-shadow resolution must use the active viewport instead of a fixed reference height");
+			"dynamic local-shadow resolution must use the scaled render height instead of a fixed reference height");
 		Require(lightingSource.find("m_directionalLightsScratch.Clear(false)") != std::string::npos &&
 			lightingSource.find("m_pointLightsScratch.Clear(false)") != std::string::npos &&
 			lightingSource.find("m_spotLightsScratch.Clear(false)") != std::string::npos &&

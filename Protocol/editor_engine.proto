@@ -65,13 +65,14 @@ message ProtocolRequest {
 		EditorSimulationRequest set_editor_simulation = 61;
 		Empty get_editor_simulation_state = 62;
 		FileIdRequest preview_audio_asset = 63;
+		EditorStatsModeRequest set_editor_stats_mode = 64;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 64 to 99;
+	reserved 65 to 99;
 }
 
 message ProtocolResponse {
@@ -145,6 +146,10 @@ message SizeRequest {
 
 message EditorSimulationRequest {
 	bool enabled = 1;
+}
+
+message EditorStatsModeRequest {
+	EditorStatsMode mode = 1;
 }
 
 message RemoteViewportRequest {
@@ -345,6 +350,13 @@ enum ViewportTransformSpace {
 	VIEWPORT_TRANSFORM_SPACE_UNSPECIFIED = 0;
 	VIEWPORT_TRANSFORM_SPACE_WORLD = 1;
 	VIEWPORT_TRANSFORM_SPACE_LOCAL = 2;
+}
+
+enum EditorStatsMode {
+	EDITOR_STATS_MODE_UNSPECIFIED = 0;
+	EDITOR_STATS_MODE_NONE = 1;
+	EDITOR_STATS_MODE_RENDER_STATS = 2;
+	EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES = 3;
 }
 
 message Vector4 {

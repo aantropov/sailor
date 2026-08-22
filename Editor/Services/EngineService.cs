@@ -5,6 +5,7 @@ using SailorEditor.Protocol.Generated;
 using SailorEditor.Utility;
 using SailorEditor.Workspace;
 using SailorEditor.Scene;
+using SailorEditor.Settings;
 using System.Threading;
 using System.Globalization;
 
@@ -2955,6 +2956,25 @@ namespace SailorEditor.Services
                     ToProtocolSpace(space),
                     token),
                 cancellationToken: cancellationToken);
+
+        public Task<bool> SetEditorStatsModeAsync(
+            GraphicsStatsMode mode,
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorStatsModeAsync(
+                    ToProtocolStatsMode(mode),
+                    token),
+                cancellationToken: cancellationToken);
+
+        static EditorStatsMode ToProtocolStatsMode(GraphicsStatsMode mode)
+            => mode switch
+            {
+                GraphicsStatsMode.None => EditorStatsMode.None,
+                GraphicsStatsMode.RenderStats => EditorStatsMode.RenderStats,
+                GraphicsStatsMode.RenderStatsAndQueries =>
+                    EditorStatsMode.RenderStatsAndQueries,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
 
         public async Task<SceneViewportToolState?> GetViewportToolStateAsync(
             CancellationToken cancellationToken = default)

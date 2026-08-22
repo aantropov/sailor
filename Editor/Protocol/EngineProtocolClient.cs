@@ -445,6 +445,27 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 .ConfigureAwait(false),
             nameof(ProtocolRequest.GetEditorSimulationState));
 
+    public async Task<bool> SetEditorStatsModeAsync(
+        EditorStatsMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        if (mode == EditorStatsMode.Unspecified || !Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorStatsMode = new EditorStatsModeRequest
+                        {
+                            Mode = mode
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetEditorStatsMode));
+    }
+
     public async Task<bool> PreviewAudioAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)

@@ -120,6 +120,7 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(57, ProtocolRequest.UpdateAssetFieldNumber);
         Assert.Equal(61, ProtocolRequest.SetEditorSimulationFieldNumber);
         Assert.Equal(62, ProtocolRequest.GetEditorSimulationStateFieldNumber);
+        Assert.Equal(64, ProtocolRequest.SetEditorStatsModeFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
     }

@@ -146,6 +146,16 @@ namespace Sailor
 		static constexpr float ShadowCascadeLevels[NumCascades] = { 0.025f, 0.075f, 0.2f, 1.0f };
 		static constexpr glm::ivec2 ShadowCascadeResolutions[NumCascades] = { {4096,4096}, {2048,2048}, {1024,1024}, {1024,1024} };
 		static constexpr glm::ivec2 ShadowCascadeBlur[NumCascades] = { glm::vec2(2, 2), glm::vec2(1, 1), glm::vec2(1, 1), glm::vec2(1, 1) };
+		static constexpr float GetShadowCascadeLevel(
+			uint32_t cascadeIndex,
+			uint32_t activeCascadeCount)
+		{
+			const uint32_t safeCount = activeCascadeCount < 1u ? 1u :
+				(activeCascadeCount > NumCascades ? NumCascades : activeCascadeCount);
+			const uint32_t safeIndex = cascadeIndex < safeCount ?
+				cascadeIndex : safeCount - 1u;
+			return ShadowCascadeLevels[NumCascades - safeCount + safeIndex];
+		}
 
 		// TODO: Tightly pack
 		using LightShaderData = RHI::RHILightShaderData;

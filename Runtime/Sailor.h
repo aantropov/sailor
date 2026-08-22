@@ -9,6 +9,7 @@
 #include "Platform/Win32/Window.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
+#include "Settings/GraphicsSettings.h"
 #include "Workspace/WorkspaceContext.h"
 #include <functional>
 
@@ -52,6 +53,12 @@ namespace Sailor
 		SAILOR_API static App* GetInstance();
 		SAILOR_API static const std::string& GetWorkspace();
 		SAILOR_API static const Workspace::WorkspaceContext& GetWorkspaceContext();
+		SAILOR_API static const Settings::GraphicsSettings& GetGraphicsSettings();
+		SAILOR_API static const Settings::GraphicsQualityProfile& GetActiveGraphicsSettings();
+		SAILOR_API static Settings::EGraphicsQualitySelection GetSelectedGraphicsQuality();
+		SAILOR_API static Settings::EGraphicsQuality GetActiveGraphicsQuality();
+		SAILOR_API static Settings::ERenderStatsMode GetRenderStatsMode();
+		SAILOR_API static bool SetRenderStatsMode(Settings::ERenderStatsMode mode);
 
 		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();

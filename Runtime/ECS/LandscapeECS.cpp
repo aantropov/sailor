@@ -1110,9 +1110,9 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			shadowCaster->m_worldAabb = proxy.m_worldAabb;
 			proxy.m_shadowCaster = shadowCaster->m_meshes.IsEmpty() ?
 				RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
+			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 #if defined(__APPLE__)
 			proxy.m_materialTextureSamplers.Resize(1u);
-			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 			proxy.m_materialTextureSamplers[0].Insert(0u);
 			if (textureImporter)
 			{

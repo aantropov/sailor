@@ -439,8 +439,11 @@ glslFragment: |
     vec3 surfaceNormal,
     vec3 surfaceToLightDirection)
   {
-    const int cascadeLayer = SelectCascade(frame.view, worldPosition, frame.cameraZNearZFar);
-    if(cascadeLayer >= NUM_CSM_CASCADES)
+    const uint activeCascadeCount = clamp(
+      light.activeCascadeCount, 1u, uint(NUM_CSM_CASCADES));
+    const int cascadeLayer = SelectCascade(
+      frame.view, worldPosition, frame.cameraZNearZFar, activeCascadeCount);
+    if(cascadeLayer >= int(activeCascadeCount))
     {
       return 1.0f;
     }
@@ -460,7 +463,8 @@ glslFragment: |
       frame.view,
       worldPosition,
       frame.cameraZNearZFar,
-      cascadeLayer);
+      cascadeLayer,
+      activeCascadeCount);
     if(cascadeBlend > 0.0f)
     {
       const int nextCascadeLayer = cascadeLayer + 1;
@@ -477,7 +481,8 @@ glslFragment: |
       frame.view,
       worldPosition,
       frame.cameraZNearZFar,
-      cascadeLayer);
+      cascadeLayer,
+      activeCascadeCount);
     shadow = mix(shadow, 1.0f, shadowDistanceFade);
 
     return shadow;

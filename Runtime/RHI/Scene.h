@@ -162,8 +162,10 @@ namespace Sailor::RHI
 	class RHISceneVersion final : public RHIResource
 	{
 	public:
-		bool Resolve(RenderInstanceHandle handle, const RHISceneInstanceRecord*& outRecord) const;
-		bool HasShadowChangesIntersecting(
+		SAILOR_SHARED_API bool Resolve(
+			RenderInstanceHandle handle,
+			const RHISceneInstanceRecord*& outRecord) const;
+		SAILOR_SHARED_API bool HasShadowChangesIntersecting(
 			const RHISceneVersion& previousVersion,
 			const Math::Frustum& shadowFrustum) const;
 
@@ -204,14 +206,19 @@ namespace Sailor::RHI
 	class RHISceneRangeAllocator
 	{
 	public:
-		SceneRangeHandle Allocate(uint32_t count);
-		bool Resolve(SceneRangeHandle handle, PhysicalAllocation& outAllocation) const;
-		bool Retire(SceneRangeHandle handle, uint64_t retirementRevision);
-		void Collect(uint64_t minimumRetainedRevision);
+		SAILOR_SHARED_API SceneRangeHandle Allocate(uint32_t count);
+		SAILOR_SHARED_API bool Resolve(
+			SceneRangeHandle handle,
+			PhysicalAllocation& outAllocation) const;
+		SAILOR_SHARED_API bool Retire(
+			SceneRangeHandle handle,
+			uint64_t retirementRevision);
+		SAILOR_SHARED_API void Collect(uint64_t minimumRetainedRevision);
 		uint32_t GetBufferGeneration() const { return m_bufferGeneration; }
 		uint32_t GetCapacity() const { return m_capacity; }
 
-		static TVector<DirtySceneRange> CoalesceDirtyRanges(TVector<DirtySceneRange> ranges);
+		SAILOR_SHARED_API static TVector<DirtySceneRange> CoalesceDirtyRanges(
+			TVector<DirtySceneRange> ranges);
 
 	private:
 		struct RangeSlot
@@ -244,26 +251,31 @@ namespace Sailor::RHI
 	class RHIScene final : public RHIResource
 	{
 	public:
-		explicit RHIScene(uint32_t numFlightSlots = 2u);
+		SAILOR_SHARED_API explicit RHIScene(uint32_t numFlightSlots = 2u);
 
-		RenderInstanceHandle AddInstance(const RHISceneInstanceRecord& record);
-		bool UpdateInstance(
+		SAILOR_SHARED_API RenderInstanceHandle AddInstance(
+			const RHISceneInstanceRecord& record);
+		SAILOR_SHARED_API bool UpdateInstance(
 			RenderInstanceHandle handle,
 			const RHISceneInstanceRecord& record,
 			SceneChangeMask changeMask);
-		bool RemoveInstance(RenderInstanceHandle handle);
-		bool ResolveCurrent(RenderInstanceHandle handle, RHISceneInstanceRecord& outRecord) const;
+		SAILOR_SHARED_API bool RemoveInstance(RenderInstanceHandle handle);
+		SAILOR_SHARED_API bool ResolveCurrent(
+			RenderInstanceHandle handle,
+			RHISceneInstanceRecord& outRecord) const;
 
-		RHISceneVersionPtr PublishVersion(
+		SAILOR_SHARED_API RHISceneVersionPtr PublishVersion(
 			uint64_t materialRevision = 0ull,
 			uint64_t shadowRevision = 0ull,
 			uint64_t spatialRevision = 0ull);
-		RHISceneVersionPtr GetCurrentVersion() const;
-		RHISceneFlightStatePtr PrepareFlight(uint32_t flightSlot, RHISceneVersionPtr targetVersion);
-		void CollectGarbage();
+		SAILOR_SHARED_API RHISceneVersionPtr GetCurrentVersion() const;
+		SAILOR_SHARED_API RHISceneFlightStatePtr PrepareFlight(
+			uint32_t flightSlot,
+			RHISceneVersionPtr targetVersion);
+		SAILOR_SHARED_API void CollectGarbage();
 
 		uint64_t GetRevision() const { return m_revision; }
-		uint64_t GetJournalFirstRevision() const;
+		SAILOR_SHARED_API uint64_t GetJournalFirstRevision() const;
 		const RHISceneMetrics& GetMetrics() const { return m_metrics; }
 
 	private:

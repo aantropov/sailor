@@ -73,6 +73,22 @@ internal sealed class WorkspaceUiService
 
     public async Task<bool> RestartEngineAsync(
         CancellationToken cancellationToken = default)
+        => await RestartEngineForGenerationAsync(
+                expectedGeneration: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    public async Task<bool> RestartEngineForGenerationAsync(
+        long expectedGeneration,
+        CancellationToken cancellationToken = default)
+        => await RestartEngineForGenerationAsync(
+                (long?)expectedGeneration,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+    async Task<bool> RestartEngineForGenerationAsync(
+        long? expectedGeneration,
+        CancellationToken cancellationToken)
     {
         await _engineRestartGate.WaitAsync(cancellationToken);
         try
@@ -81,6 +97,12 @@ internal sealed class WorkspaceUiService
             await _activationCoordinator.RunSerializedAsync(
                 async token =>
                 {
+                    if (expectedGeneration.HasValue &&
+                        _activationCoordinator.State.Generation !=
+                            expectedGeneration.Value)
+                    {
+                        return;
+                    }
                     restarted = await RestartEngineCoreAsync(token)
                         .ConfigureAwait(false);
                 },

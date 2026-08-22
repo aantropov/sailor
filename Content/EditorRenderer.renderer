@@ -23,13 +23,18 @@ float:
 renderTargets:
 - name: DepthBuffer
   format: D32_SFLOAT_S8_UINT
+  width: RenderWidth
+  height: RenderHeight
+
+- name: OverlayDepthBuffer
+  format: D32_SFLOAT_S8_UINT
   width: ViewportWidth
   height: ViewportHeight
 
 - name: Main
   format: R16G16B16A16_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
   bIsSurface: true
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
@@ -37,8 +42,8 @@ renderTargets:
 
 - name: Secondary
   format: R16G16B16A16_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
   bIsSurface: false
   bGenerateMips: true
 
@@ -50,38 +55,38 @@ renderTargets:
 
 - name: Sky
   format: R16G16B16A16_SFLOAT
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
   clamping: Clamp
   bIsSurface: false
 
 - name: HalfDepth
   format: D32_SFLOAT_S8_UINT
-  width: ViewportWidth/2
-  height: ViewportHeight/2
+  width: RenderWidth/2
+  height: RenderHeight/2
   
 - name: DepthHighZ
   format: R32_SFLOAT
-  width: ViewportWidth/2
-  height: ViewportHeight/2
+  width: RenderWidth/2
+  height: RenderHeight/2
   bIsCompatibleWithComputeShaders: true
   bGenerateMips: true
   reduction: Min
 
 - name: AO
   format: R8_UNORM
-  width: ViewportWidth/2
-  height: ViewportHeight/2
+  width: RenderWidth/2
+  height: RenderHeight/2
 
 - name: TemporaryR8
   format: R8_UNORM
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
 
 - name: g_AO
   format: R8_UNORM
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
   
 - name: QuarterMain1
   format: R16G16B16A16_SFLOAT
@@ -97,8 +102,8 @@ renderTargets:
 - name: LinearDepth
   format: R32_SFLOAT
   filtration: Nearest
-  width: ViewportWidth
-  height: ViewportHeight
+  width: RenderWidth
+  height: RenderHeight
   bIsSurface: false
 
 ############################
@@ -444,7 +449,7 @@ frame:
 #############################
   renderTargets:
   - color: EditorOutput
-  - depthStencil: DepthBuffer
+  - depthStencil: OverlayDepthBuffer
 
 #############################
 - name: EditorReadback

@@ -7,6 +7,7 @@
 #include "RHI/Material.h"
 #include "Components/AnimatorComponent.h"
 #include "Components/MeshRendererComponent.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
 #include <cmath>
@@ -287,7 +288,14 @@ uint32_t StaticMeshRendererData::ResolveLod(
 		selectedLod = static_cast<uint32_t>(thresholdIndex + 1u);
 	}
 
-	return (std::clamp)(selectedLod, minLod, maxLod);
+	const int32_t lodBias = App::GetInstance() ?
+		App::GetActiveGraphicsSettings().m_lodBias : 0;
+	return Settings::ApplyLodBias(
+		selectedLod,
+		numAvailableLods,
+		minLod,
+		maxLod,
+		lodBias);
 }
 
 void StaticMeshRendererData::SetLodSettings(

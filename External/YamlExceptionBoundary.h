@@ -76,11 +76,21 @@ namespace Sailor::External
 		TValue& outValue,
 		std::string& outDiagnostic) noexcept
 	{
-		return GuardYamlExceptions(
-			[&node, &outValue]()
+		bool bConverted = false;
+		if (!GuardYamlExceptions(
+			[&node, &outValue, &bConverted]()
 			{
-				outValue = node.as<TValue>();
+				bConverted = YAML::convert<TValue>::decode(node, outValue);
 			},
-			outDiagnostic);
+			outDiagnostic))
+		{
+			return false;
+		}
+
+		if (!bConverted)
+		{
+			outDiagnostic = "YAML value could not be converted to the requested type.";
+		}
+		return bConverted;
 	}
 }

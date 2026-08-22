@@ -7,6 +7,7 @@
 #include "AssetRegistry/FileId.h"
 #include "Core/YamlSerializable.h"
 #include "Tasks/Tasks.h"
+#include "Settings/GraphicsSettings.h"
 
 namespace Sailor
 {
@@ -90,13 +91,29 @@ namespace Sailor
 					auto strings = Utils::SplitString(str, "/");
 					float multiplier = strings.Num() > 1 ? 1.0f / (float)std::atof(strings[1].c_str()) : 1.0f;
 
-					if (str.starts_with("ViewportWidth"))
+					const glm::ivec2 viewportExtent =
+						App::GetMainWindow()->GetRenderArea();
+					const Settings::GraphicsExtent renderExtent =
+						Settings::ResolveRenderDimensions(
+							static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+							static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+							App::GetActiveGraphicsSettings().m_resolutionFactor);
+
+					if (str.starts_with("RenderWidth"))
 					{
-						res = std::max(1u, (uint32_t)((float)App::GetMainWindow()->GetRenderArea().x * multiplier));
+						res = std::max(1u, (uint32_t)((float)renderExtent.m_width * multiplier));
+					}
+					else if (str.starts_with("RenderHeight"))
+					{
+						res = std::max(1u, (uint32_t)((float)renderExtent.m_height * multiplier));
+					}
+					else if (str.starts_with("ViewportWidth"))
+					{
+						res = std::max(1u, (uint32_t)((float)viewportExtent.x * multiplier));
 					}
 					else if (str.starts_with("ViewportHeight"))
 					{
-						res = std::max(1u, (uint32_t)((float)App::GetMainWindow()->GetRenderArea().y * multiplier));
+						res = std::max(1u, (uint32_t)((float)viewportExtent.y * multiplier));
 					}
 					else
 					{

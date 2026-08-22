@@ -416,7 +416,9 @@ namespace Sailor::RHI
 			const Math::Frustum& frustum,
 			TVector<RHIVisibleShadowCaster>& outVisibleCasters) const;
 		SAILOR_API void PrepareSnapshots();
-		SAILOR_API void PrepareDebugDrawCommandLists(WorldPtr world);
+		SAILOR_API void PrepareDebugDrawCommandLists(
+			WorldPtr world,
+			const glm::ivec2& renderExtent);
 		SAILOR_API void SetSubmissionContext(RHIRenderSubmissionContextPtr submissionContext);
 		SAILOR_API RHISubmissionCompletionTokenPtr GetOrCreateSubmissionCompletionToken();
 		SAILOR_API bool IsCurrentSubmissionCompletionToken(

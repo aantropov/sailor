@@ -1,6 +1,7 @@
 #include "SkyNode.h"
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
+#include "Settings/GraphicsSettings.h"
 #include "RHI/Shader.h"
 #include "RHI/Surface.h"
 #include "RHI/RenderTarget.h"
@@ -420,11 +421,29 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		}
 	}
 
+	const auto& graphicsProfile = App::GetActiveGraphicsSettings();
+	const Settings::GraphicsExtent desiredSkyExtent =
+		Settings::ResolveSkyExtent(graphicsProfile);
+	if (m_pSkyTexture &&
+		m_pSkyTexture->GetExtent() != glm::ivec2(
+			static_cast<int32_t>(desiredSkyExtent.m_width),
+			static_cast<int32_t>(desiredSkyExtent.m_height)))
+	{
+		m_pSkyTexture.Clear();
+		m_pShaderBindings.Clear();
+		m_pSkyMaterial.Clear();
+		m_pComposeMaterial.Clear();
+		m_pCloudsMaterial.Clear();
+		m_pSunShaftsMaterial.Clear();
+	}
+
 	if (!m_pSkyTexture)
 	{
 		m_pSkyTexture = driver->CreateRenderTarget(
 			commandList,
-			glm::ivec2(SkyResolution, SkyResolution),
+			glm::ivec2(
+				static_cast<int32_t>(desiredSkyExtent.m_width),
+				static_cast<int32_t>(desiredSkyExtent.m_height)),
 			1,
 			ETextureFormat::R16G16B16A16_SFLOAT,
 			ETextureFiltration::Linear,
@@ -448,12 +467,25 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		driver->SetDebugName(m_pSunTexture, "Sun");
 	}
 
-	float cloudsResolutionFactor = CloudsResolutionFactor;
+	float cloudsPlatformMultiplier = 1.0f;
 #if defined(__APPLE__)
-	cloudsResolutionFactor *= 0.5f;
+	cloudsPlatformMultiplier = 0.5f;
 #endif
-	const float cloudsSize = std::min(App::GetMainWindow()->GetRenderArea().x * cloudsResolutionFactor, App::GetMainWindow()->GetRenderArea().y * cloudsResolutionFactor);
-	const glm::ivec2 desiredCloudsExtent(std::max(1.0f, cloudsSize), std::max(1.0f, cloudsSize));
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const Settings::GraphicsExtent renderExtent =
+		Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+			graphicsProfile.m_resolutionFactor);
+	const Settings::GraphicsExtent cloudsExtent =
+		Settings::ResolveCloudsExtent(
+			renderExtent.m_width,
+			renderExtent.m_height,
+			graphicsProfile,
+			cloudsPlatformMultiplier);
+	const glm::ivec2 desiredCloudsExtent(
+		static_cast<int32_t>(cloudsExtent.m_width),
+		static_cast<int32_t>(cloudsExtent.m_height));
 
 	if (m_pCloudsTexture && m_pCloudsTexture->GetExtent() != desiredCloudsExtent)
 	{
@@ -802,7 +834,12 @@ void SkyNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transf
 		commands->BindShaderBindings(commandList, m_pStarsMaterial, { sceneView.m_frameBindings, m_pShaderBindings });
 		commands->PushConstants(commandList, m_pStarsMaterial, sizeof(PushConstants), &pushConstants);
 
-		commands->SetDefaultViewport(commandList);
+		commands->SetViewport(commandList,
+			0, (float)target->GetExtent().y,
+			(float)target->GetExtent().x, -(float)target->GetExtent().y,
+			glm::vec2(0, 0),
+			glm::vec2(target->GetExtent().x, target->GetExtent().y),
+			0, 1.0f);
 
 		commands->DrawIndexed(commandList, (uint32_t)m_starsMesh->m_indexBuffer->GetSize() / sizeof(uint32_t), 1u, 0u, 0u, 0u);
 		RecordDrawCallStats(1);
