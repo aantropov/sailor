@@ -466,6 +466,21 @@ graphics:
 
 	void TestGpuFrameTimeQueryRingDoesNotReuseDelayedSlots()
 	{
+		float milliseconds = 0.0f;
+		Require(
+			RHI::TryResolveGpuFrameTimeMilliseconds(
+				100u, 150u, 64u, 1000000.0f, milliseconds) &&
+			milliseconds == 50.0f,
+			"ordered timestamp results should resolve to milliseconds");
+		Require(
+			!RHI::TryResolveGpuFrameTimeMilliseconds(
+				200u, 100u, 64u, 1.0f, milliseconds),
+			"a stale full-width end timestamp must not become an enormous unsigned duration");
+		Require(
+			RHI::TryResolveGpuFrameTimeMilliseconds(
+				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds),
+			"limited-width timestamp counters should still support a valid wrap");
+
 		RHI::TGpuFrameTimeQueryRing<2u> ring;
 		const uint32_t first = ring.Acquire();
 		Require(first == 0u && ring.MarkIssued(first),
@@ -600,6 +615,13 @@ graphics:
 			"signed LOD bias must affect both mesh and per-instance selection paths");
 
 		const std::string renderer = ReadRepositoryFile("Runtime/RHI/Renderer.cpp");
+		const size_t submissionContextsRelease = renderer.find(
+			"m_submissionContexts.Clear();");
+		const size_t driverRelease = renderer.find("m_driverInstance.Clear();");
+		Require(submissionContextsRelease != std::string::npos &&
+			driverRelease != std::string::npos &&
+			submissionContextsRelease < driverRelease,
+			"renderer shutdown must release flight-local GPU resources before the Vulkan driver and instance");
 		const size_t beginBoundary = renderer.find("BeginGpuFrameTimeQuery(");
 		const size_t updateSubmission = renderer.find(
 			"bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore)");
@@ -614,16 +636,32 @@ graphics:
 			"Runtime/FrameGraph/RHIFrameGraph.cpp");
 		Require(frameGraph.find("GpuFrameTimeQuery") == std::string::npos,
 			"frame timing must not be narrowed to a graphics framegraph snapshot");
+		Require(frameGraph.find("GetSceneRenderExtent()") != std::string::npos &&
+			frameGraph.find("debugDraw->GetResolvedAttachment(\"color\")") !=
+				std::string::npos &&
+			frameGraph.find("frameData.m_viewportSize = GetSceneRenderExtent();") !=
+				std::string::npos,
+			"frame shader data must use the actual resolved scene target extent");
+		const std::string vulkanDriver = ReadRepositoryFile(
+			"Runtime/GraphicsDriver/Vulkan/VulkanGraphicsDriver.cpp");
+		Require(
+			vulkanDriver.find("vkResetQueryPool(") != std::string::npos &&
+			vulkanDriver.find("vkCmdResetQueryPool(") == std::string::npos &&
+			vulkanDriver.find("VK_QUERY_RESULT_WITH_AVAILABILITY_BIT") !=
+				std::string::npos,
+			"timestamp slots must clear stale availability before reuse and poll both availability values");
 		const std::string debugContext = ReadRepositoryFile(
 			"Runtime/RHI/DebugContext.cpp");
-		Require(debugContext.find("Settings::ResolveRenderDimensions(") !=
+		Require(debugContext.find("Settings::ResolveRenderDimensions(") ==
 			std::string::npos &&
+			debugContext.find("renderExtent.x") != std::string::npos &&
+			debugContext.find("renderExtent.y") != std::string::npos &&
 			debugContext.find("commands->SetDefaultViewport(secondaryDrawCmdList)") ==
 			std::string::npos &&
 			debugContext.find("-renderHeight") != std::string::npos &&
 			debugContext.find("glm::vec2(renderWidth, renderHeight)") !=
 			std::string::npos,
-			"debug grid secondary commands must use the scaled target viewport and scissor");
+			"debug grid secondary commands must use the exact resolved target viewport and scissor");
 		const std::string engineLoop = ReadRepositoryFile("Runtime/Engine/EngineLoop.cpp");
 		Require(engineLoop.find("GPU queries unavailable") != std::string::npos,
 			"unsupported timestamp devices must report an explicit Stats overlay state");

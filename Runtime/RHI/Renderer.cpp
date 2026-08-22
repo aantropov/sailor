@@ -157,6 +157,16 @@ Renderer::~Renderer()
 			Renderer::GetDriver()->WaitIdle();
 		}
 	}
+
+	// Submission contexts retain materials, pipelines, shader modules, and the
+	// Vulkan device that created them. Release every renderer-owned GPU resource
+	// before destroying the driver/Vulkan instance. Otherwise the last device
+	// reference can be released from a late shader-module destructor after the
+	// instance has already been destroyed (MoltenVK crashes in that ordering).
+	m_previousRenderFrame.Clear();
+	m_frameGraph.Clear();
+	m_cachedSceneViews.Clear();
+	m_submissionContexts.Clear();
 	m_driverInstance.Clear();
 }
 
@@ -247,6 +257,7 @@ void Renderer::BeginConditionalDestroy()
 		m_previousRenderFrame.Clear();
 		m_frameGraph.Clear();
 		m_cachedSceneViews.Clear();
+		m_submissionContexts.Clear();
 		return;
 	}
 
@@ -260,6 +271,7 @@ void Renderer::BeginConditionalDestroy()
 
 	m_frameGraph.Clear();
 	m_cachedSceneViews.Clear();
+	m_submissionContexts.Clear();
 	m_driverInstance->BeginConditionalDestroy();
 }
 
@@ -497,7 +509,9 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		world->GetECS<AnimationECS>()->FillAnimationData(rhiSceneView);
 		world->GetECS<LightingECS>()->FillLightingData(rhiSceneView);
 		rhiSceneView->m_drawImGui = frame.GetDrawImGuiTask();
-		rhiSceneView->PrepareDebugDrawCommandLists(world);
+		rhiSceneView->PrepareDebugDrawCommandLists(
+			world,
+			rhiFrameGraph->GetSceneRenderExtent());
 		rhiSceneView->PrepareSnapshots();
 	}
 

@@ -5,6 +5,7 @@
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/RenderTarget.h"
+#include "RHI/Surface.h"
 #include "RHI/Cubemap.h"
 #include "RHI/CommandList.h"
 #include "FrameGraph/LightCullingNode.h"
@@ -523,7 +524,52 @@ void RHIFrameGraph::SetSurface(const std::string& name, RHI::RHISurfacePtr surfa
 	m_surfaces[name] = surface;
 }
 
-RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime) const
+glm::ivec2 RHIFrameGraph::GetSceneRenderExtent()
+{
+	if (const auto debugDraw = GetGraphNode("DebugDraw"))
+	{
+		if (const auto colorAttachment = debugDraw->GetResolvedAttachment("color"))
+		{
+			const glm::ivec2 extent = colorAttachment->GetExtent();
+			return glm::ivec2(
+				(std::max)(extent.x, 1),
+				(std::max)(extent.y, 1));
+		}
+	}
+
+	if (const auto mainSurface = GetSurface("Main"))
+	{
+		const auto colorAttachment = mainSurface->GetResolved() ?
+			mainSurface->GetResolved() : mainSurface->GetTarget();
+		if (colorAttachment)
+		{
+			const glm::ivec2 extent = colorAttachment->GetExtent();
+			return glm::ivec2(
+				(std::max)(extent.x, 1),
+				(std::max)(extent.y, 1));
+		}
+	}
+
+	if (const auto mainTarget = GetRenderTarget("Main"))
+	{
+		const glm::ivec2 extent = mainTarget->GetExtent();
+		return glm::ivec2(
+			(std::max)(extent.x, 1),
+			(std::max)(extent.y, 1));
+	}
+
+	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
+	const Settings::GraphicsExtent fallbackExtent =
+		Settings::ResolveRenderDimensions(
+			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
+			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
+			App::GetActiveGraphicsSettings().m_resolutionFactor);
+	return glm::ivec2(
+		static_cast<int32_t>(fallbackExtent.m_width),
+		static_cast<int32_t>(fallbackExtent.m_height));
+}
+
+RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCmdList, RHI::RHISceneViewSnapshot& snapshot, const RHI::UboFrameData& previousFrame, float deltaTime, float worldTime)
 {
 	SAILOR_PROFILE_FUNCTION();
 
@@ -543,15 +589,7 @@ RHI::UboFrameData RHIFrameGraph::FillFrameData(RHI::RHICommandListPtr transferCm
 	frameData.m_currentTime = worldTime;
 	frameData.m_deltaTime = deltaTime;
 	frameData.m_view = snapshot.m_camera->GetViewMatrix();
-	const glm::ivec2 viewportExtent = App::GetMainWindow()->GetRenderArea();
-	const Settings::GraphicsExtent renderExtent =
-		Settings::ResolveRenderDimensions(
-			static_cast<uint32_t>((std::max)(viewportExtent.x, 1)),
-			static_cast<uint32_t>((std::max)(viewportExtent.y, 1)),
-			App::GetActiveGraphicsSettings().m_resolutionFactor);
-	frameData.m_viewportSize = glm::ivec2(
-		static_cast<int32_t>(renderExtent.m_width),
-		static_cast<int32_t>(renderExtent.m_height));
+	frameData.m_viewportSize = GetSceneRenderExtent();
 
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("frameData"), &frameData, sizeof(frameData));
 	RHI::Renderer::GetDriverCommands()->UpdateShaderBinding(transferCmdList, snapshot.m_frameBindings->GetOrAddShaderBinding("previousFrameData"), &previousFrame, sizeof(previousFrame));

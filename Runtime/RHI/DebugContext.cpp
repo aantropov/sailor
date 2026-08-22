@@ -6,7 +6,6 @@
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "ECS/LightingECS.h"
 #include "AssetRegistry/AssetRegistry.h"
-#include "Settings/GraphicsSettings.h"
 
 #ifdef SAILOR_BUILD_WITH_VULKAN
 #include "GraphicsDriver/Vulkan/VulkanPipeline.h"
@@ -388,15 +387,23 @@ DebugContext::DrawSnapshot DebugContext::GetDrawSnapshot() const
 	return snapshot;
 }
 
-void DebugContext::DrawDebugMesh(RHI::RHICommandListPtr secondaryDrawCmdList, const glm::mat4x4& viewProjection) const
+void DebugContext::DrawDebugMesh(
+	RHI::RHICommandListPtr secondaryDrawCmdList,
+	const glm::mat4x4& viewProjection,
+	const glm::ivec2& renderExtent) const
 {
-	DrawDebugMesh(secondaryDrawCmdList, viewProjection, GetDrawSnapshot());
+	DrawDebugMesh(
+		secondaryDrawCmdList,
+		viewProjection,
+		GetDrawSnapshot(),
+		renderExtent);
 }
 
 void DebugContext::DrawDebugMesh(
 	RHI::RHICommandListPtr secondaryDrawCmdList,
 	const glm::mat4x4& viewProjection,
-	const DrawSnapshot& snapshot) const
+	const DrawSnapshot& snapshot,
+	const glm::ivec2& renderExtent) const
 {
 	if (!snapshot.m_vertexBuffer ||
 		!snapshot.m_indexBuffer ||
@@ -407,14 +414,8 @@ void DebugContext::DrawDebugMesh(
 	}
 
 	auto commands = RHI::Renderer::GetDriverCommands();
-	const glm::ivec2 outputExtent = App::GetMainWindow()->GetRenderArea();
-	const Settings::GraphicsExtent renderExtent =
-		Settings::ResolveRenderDimensions(
-			static_cast<uint32_t>((std::max)(outputExtent.x, 1)),
-			static_cast<uint32_t>((std::max)(outputExtent.y, 1)),
-			App::GetActiveGraphicsSettings().m_resolutionFactor);
-	const float renderWidth = static_cast<float>(renderExtent.m_width);
-	const float renderHeight = static_cast<float>(renderExtent.m_height);
+	const float renderWidth = static_cast<float>((std::max)(renderExtent.x, 1));
+	const float renderHeight = static_cast<float>((std::max)(renderExtent.y, 1));
 
 	commands->BindMaterial(secondaryDrawCmdList, snapshot.m_material);
 	commands->SetViewport(

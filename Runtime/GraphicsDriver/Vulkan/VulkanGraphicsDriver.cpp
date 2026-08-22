@@ -32,8 +32,6 @@
 #include "RHI/Renderer.h"
 #include "Sailor.h"
 
-#include <limits>
-
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
 
@@ -67,6 +65,7 @@ void VulkanGraphicsDriver::Initialize(Win32::Window* pViewport, RHI::EMsaaSample
 	const uint32_t graphicsQueueFamily =
 		device->GetQueueFamilies().m_graphicsFamily.value_or(queueFamilyCount);
 	if (graphicsQueueFamily < queueFamilyCount &&
+		device->IsHostQueryResetSupported() &&
 		queueFamilyProperties[graphicsQueueFamily].timestampValidBits > 0u &&
 		physicalDeviceProperties.limits.timestampPeriod > 0.0f)
 	{
@@ -211,6 +210,9 @@ void VulkanGraphicsDriver::BeginConditionalDestroy()
 bool VulkanGraphicsDriver::SupportsGpuFrameTimeQueries() const
 {
 	return m_gpuFrameTimeQueryPool != VK_NULL_HANDLE &&
+		m_vkInstance &&
+		m_vkInstance->GetMainDevice() &&
+		m_vkInstance->GetMainDevice()->IsHostQueryResetSupported() &&
 		m_gpuTimestampValidBits > 0u &&
 		m_gpuTimestampPeriodNs > 0.0f;
 }
@@ -226,29 +228,35 @@ void VulkanGraphicsDriver::PollGpuFrameTimeQueries()
 		}
 
 		const uint32_t firstQuery = slot * 2u;
-		uint64_t timestamps[2]{};
+		uint64_t queryResults[4]{};
 		const VkResult result = vkGetQueryPoolResults(
 			*m_vkInstance->GetMainDevice(),
 			m_gpuFrameTimeQueryPool,
 			firstQuery,
 			2u,
-			sizeof(timestamps),
-			timestamps,
-			sizeof(uint64_t),
-			VK_QUERY_RESULT_64_BIT);
+			sizeof(queryResults),
+			queryResults,
+			sizeof(uint64_t) * 2u,
+			VK_QUERY_RESULT_64_BIT |
+				VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
 		if (result == VK_SUCCESS)
 		{
-			const uint64_t timestampMask = m_gpuTimestampValidBits >= 64u ?
-				(std::numeric_limits<uint64_t>::max)() :
-				(1ull << m_gpuTimestampValidBits) - 1ull;
-			const uint64_t elapsedTicks =
-				(timestamps[1] - timestamps[0]) & timestampMask;
-			const float milliseconds = static_cast<float>(
-				static_cast<double>(elapsedTicks) *
-				static_cast<double>(m_gpuTimestampPeriodNs) /
-				1000000.0);
-			m_gpuFrameTimeMs.store(milliseconds, std::memory_order_relaxed);
-			m_bHasGpuFrameTime.store(true, std::memory_order_release);
+			if (queryResults[1] == 0ull || queryResults[3] == 0ull)
+			{
+				continue;
+			}
+
+			float milliseconds = 0.0f;
+			if (RHI::TryResolveGpuFrameTimeMilliseconds(
+				queryResults[0],
+				queryResults[2],
+				m_gpuTimestampValidBits,
+				m_gpuTimestampPeriodNs,
+				milliseconds))
+			{
+				m_gpuFrameTimeMs.store(milliseconds, std::memory_order_relaxed);
+				m_bHasGpuFrameTime.store(true, std::memory_order_release);
+			}
 			m_gpuFrameTimeQuerySlots.MarkCompleted(slot);
 		}
 		else if (result != VK_NOT_READY)
@@ -285,8 +293,12 @@ bool VulkanGraphicsDriver::BeginGpuFrameTimeQuery(
 	const uint32_t firstQuery = slot * 2u;
 	const VkCommandBuffer commandBuffer =
 		*commandList->m_vulkan.m_commandBuffer->GetHandle();
-	vkCmdResetQueryPool(
-		commandBuffer,
+
+	// The slot is acquired only after its prior results have completed. Reset it
+	// synchronously on the host so stale availability from that prior generation
+	// cannot be observed before the queued reset command executes.
+	vkResetQueryPool(
+		*m_vkInstance->GetMainDevice(),
 		m_gpuFrameTimeQueryPool,
 		firstQuery,
 		2u);

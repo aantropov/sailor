@@ -905,7 +905,9 @@ namespace
 	}
 }
 
-void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
+void RHISceneView::PrepareDebugDrawCommandLists(
+	WorldPtr world,
+	const glm::ivec2& renderExtent)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
@@ -921,7 +923,11 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix, debugDrawSnapshot);
+				world->GetDebugContext()->DrawDebugMesh(
+					secondaryCmdList,
+					matrix,
+					debugDrawSnapshot,
+					renderExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;
