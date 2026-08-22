@@ -732,9 +732,9 @@ public sealed class GraphicsSettingsTests
         TempWorkspace(string root, bool customCache)
         {
             Root = root;
-            CustomCacheDirectory = Path.Combine(
-                root,
-                customCache ? "Intermediate/Editor Cache" : "Cache");
+            CustomCacheDirectory = customCache
+                ? Path.Combine(root, "Intermediate", "Editor Cache")
+                : Path.Combine(root, "Cache");
             Directory.CreateDirectory(root);
             Paths = GraphicsSettingsPaths.Create(root, CustomCacheDirectory);
         }

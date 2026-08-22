@@ -89,7 +89,7 @@ public sealed class GraphicsSettingsUiContractTests
             var path = Path.Combine(
                 new[] { current.FullName }.Concat(pathParts).ToArray());
             if (File.Exists(path))
-                return File.ReadAllText(path);
+                return File.ReadAllText(path).ReplaceLineEndings("\n");
             current = current.Parent;
         }
 
