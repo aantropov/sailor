@@ -78,21 +78,39 @@ void BlitNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr trans
 	glm::ivec4 srcRegion(0, 0, src->GetExtent().x, src->GetExtent().y);
 	glm::ivec4 dstRegion(0, 0, dst->GetExtent().x, dst->GetExtent().y);
 
-	commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
-	commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
-
-	const bool bResolvedBlitSuccessful = commands->BlitImage(
-		commandList,
-		src,
-		dst,
-		srcRegion,
-		dstRegion,
-		bIsDepthFormat ?
-			ETextureFiltration::Nearest :
-			ETextureFiltration::Linear);
+	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
+	const bool bUseFullscreenColorBlit =
+		!bIsDepthFormat &&
+		!dstSurface &&
+		m_blitToMsaaTargetMaterial &&
+		src->GetExtent() != dst->GetExtent();
+	bool bResolvedBlitSuccessful = false;
+	if (bUseFullscreenColorBlit)
+	{
+		// A fullscreen pass owns the native output viewport explicitly. This keeps
+		// resolution-scaled Scene View targets correctly fitted on MoltenVK instead
+		// of relying on cross-format vkCmdBlitImage scaling.
+		commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::ShaderReadOnlyOptimal);
+		commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::ColorAttachmentOptimal);
+		BlitRaw(commandList, frameGraph, sceneView, src, dst);
+		bResolvedBlitSuccessful = true;
+	}
+	else
+	{
+		commands->ImageMemoryBarrier(commandList, src, RHI::EImageLayout::TransferSrcOptimal);
+		commands->ImageMemoryBarrier(commandList, dst, RHI::EImageLayout::TransferDstOptimal);
+		bResolvedBlitSuccessful = commands->BlitImage(
+			commandList,
+			src,
+			dst,
+			srcRegion,
+			dstRegion,
+			bIsDepthFormat ?
+				ETextureFiltration::Nearest :
+				ETextureFiltration::Linear);
+	}
 
 	// Blit to MSAA targets
-	RHISurfacePtr dstSurface = GetRHIResource("dst").DynamicCast<RHISurface>();
 	if (dstSurface && dstSurface->NeedsResolve())
 	{
 		bool bMsaaBlitSuccessful = false;

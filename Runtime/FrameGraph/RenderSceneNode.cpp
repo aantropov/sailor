@@ -1274,23 +1274,56 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		std::string(GetName()) + " QueueTag:" + GetString("Tag") + " Packed",
 		DebugContext::Color_CmdGraphics);
 	commands->ImageMemoryBarrier(commandList, colorAttachment, EImageLayout::ColorAttachmentOptimal);
+	if (colorSurface && colorSurface->NeedsResolve())
+	{
+		commands->ImageMemoryBarrier(
+			commandList,
+			colorSurface->GetResolved(),
+			EImageLayout::ColorAttachmentOptimal);
+	}
 	const auto depthLayout = RHI::IsDepthStencilFormat(depthAttachment->GetFormat()) ?
 		EImageLayout::DepthStencilAttachmentOptimal : EImageLayout::DepthAttachmentOptimal;
 	commands->ImageMemoryBarrier(commandList, depthAttachment, depthLayout);
-	auto& renderPassColorAttachments =
-		resources->m_renderPassColorAttachments;
-	renderPassColorAttachments.Clear(false);
-	renderPassColorAttachments.Add(colorAttachment);
-	commands->BeginRenderPass(
-		commandList,
-		renderPassColorAttachments,
-		depthAttachment,
-		glm::vec4(0, 0, colorAttachment->GetExtent().x, colorAttachment->GetExtent().y),
-		glm::ivec2(0, 0),
-		false,
-		glm::vec4(0.0f),
-		0.0f,
-		true);
+	const glm::vec4 renderArea(
+		0,
+		0,
+		colorAttachment->GetExtent().x,
+		colorAttachment->GetExtent().y);
+	if (colorSurface)
+	{
+		auto& renderPassColorSurfaces =
+			resources->m_renderPassColorSurfaces;
+		renderPassColorSurfaces.Clear(false);
+		renderPassColorSurfaces.Add(colorSurface);
+		commands->BeginRenderPass(
+			commandList,
+			renderPassColorSurfaces,
+			depthAttachment,
+			renderArea,
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			0.0f,
+			true);
+	}
+	else
+	{
+		auto& renderPassColorAttachments =
+			resources->m_renderPassColorAttachments;
+		renderPassColorAttachments.Clear(false);
+		renderPassColorAttachments.Add(colorAttachment);
+		commands->BeginRenderPass(
+			commandList,
+			renderPassColorAttachments,
+			depthAttachment,
+			renderArea,
+			glm::ivec2(0, 0),
+			false,
+			glm::vec4(0.0f),
+			0.0f,
+			true,
+			true);
+	}
 
 	auto& cullingBindings = resources->m_cullingDispatchBindings;
 	cullingBindings.Clear(false);

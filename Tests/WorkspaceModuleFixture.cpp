@@ -1,4 +1,5 @@
 #include "Components/Component.h"
+#include "ECS/TransformECS.h"
 #include "Workspace/WorkspaceTypeRegistration.h"
 
 namespace WorkspaceFixture

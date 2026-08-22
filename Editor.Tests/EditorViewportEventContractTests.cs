@@ -480,6 +480,42 @@ public sealed class EditorViewportEventContractTests
     }
 
     [Fact]
+    public void MacViewportLayout_UsesCurrentPlatformBoundsInsteadOfStaleManagedSize()
+    {
+        var source = ReadRepositoryFile(
+            "Editor",
+            "Platforms",
+            "MacCatalyst",
+            "NativeSceneViewportHandler.MacCatalyst.cs");
+        var requestLayout = Slice(
+            source,
+            "public void RequestLayoutUpdate(double width, double height, double contentsScale)",
+            "void UpdatePlatformLayout(");
+        var platformLayout = Slice(
+            source,
+            "public override void LayoutSubviews()",
+            "public void FocusInput()");
+
+        AssertInOrder(
+            requestLayout,
+            "var platformBounds = PlatformView?.Bounds ?? CGRect.Empty;",
+            "ResolveLayoutBounds(platformBounds, width, height)",
+            "QueueLayoutUpdate(nextBounds, nextContentsScale);");
+        AssertInOrder(
+            platformLayout,
+            "base.LayoutSubviews();",
+            "handler.UpdatePlatformLayout(Bounds, ContentScaleFactor);");
+        Assert.Contains(
+            "var width = platformBounds.Width > 0 ? platformBounds.Width : Math.Max(fallbackWidth, 1);",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "var height = platformBounds.Height > 0 ? platformBounds.Height : Math.Max(fallbackHeight, 1);",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MacMouseInput_AcquiresFocusOnlyForOwnedPressAndReleasesLifecycleObservers()
     {
         var source = ReadRepositoryFile(

@@ -70,6 +70,7 @@ namespace
 	constexpr uint32_t c_setEditorSimulationCommandField = 61;
 	constexpr uint32_t c_getEditorSimulationStateCommandField = 62;
 	constexpr uint32_t c_previewAudioAssetCommandField = 63;
+	constexpr uint32_t c_setEditorStatsModeCommandField = 64;
 
 	void Require(bool condition, const std::string& message)
 	{
@@ -1085,6 +1086,51 @@ namespace
 				kEnabledFieldNumber == 1);
 	}
 
+	void TestEditorStatsModeWireContract()
+	{
+		static_assert(
+			sailor::editor::v1::ProtocolRequest::
+				kSetEditorStatsModeFieldNumber ==
+			c_setEditorStatsModeCommandField);
+		static_assert(
+			sailor::editor::v1::EditorStatsModeRequest::
+				kModeFieldNumber == 1);
+		static_assert(
+			sailor::editor::v1::EDITOR_STATS_MODE_NONE == 1);
+		static_assert(
+			sailor::editor::v1::EDITOR_STATS_MODE_RENDER_STATS == 2);
+		static_assert(
+			sailor::editor::v1::
+				EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES == 3);
+
+		std::string invalidModeRequest;
+		AppendVarintField(invalidModeRequest, 1u, 99u);
+		Sailor::Protocol::TEditorEngineProtocolLifecycleGate gate;
+		std::string admissionError;
+		Require(
+			gate.TryBeginInitialization(admissionError),
+			"Stats mode protocol fixture lifecycle must initialize");
+		gate.CompleteInitialization(true);
+		Sailor::Protocol::EditorEngineProtocolDependencies dependencies{};
+		dependencies.m_lifecycleGate = &gate;
+
+		TProtocolBuffer buffer;
+		const auto response = RequireProtocolResponse(
+			MakeRequest(
+				EditorEngineProtocolVersion,
+				28,
+				c_setEditorStatsModeCommandField,
+				invalidModeRequest),
+			buffer,
+			dependencies);
+		Require(
+			response.m_requestId == 28 &&
+			!response.m_success &&
+			response.m_resultField == 0 &&
+			response.m_error.find("stats mode") != std::string::npos,
+			"an invalid Editor stats mode must fail without mutating runtime state");
+	}
+
 	void TestAudioPreviewWireContract()
 	{
 		static_assert(
@@ -2074,6 +2120,7 @@ int main()
 		TestStrictInstanceIdProtocolGate();
 		TestModelInstanceWireContract();
 		TestEditorSimulationWireContract();
+		TestEditorStatsModeWireContract();
 		TestAudioPreviewWireContract();
 		TestEmbeddedNullIsRejected();
 		TestUtf8StringIsAccepted();

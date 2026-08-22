@@ -4,6 +4,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
+#include "Settings/GraphicsSettings.h"
 #include "Tasks/Scheduler.h"
 #include "Tasks/Tasks.h"
 
@@ -1121,6 +1122,35 @@ namespace
 				Sailor::App::PreviewEditorAudioAsset(
 					request.preview_audio_asset().file_id().c_str()));
 			break;
+
+		case ProtocolRequest::kSetEditorStatsMode:
+		{
+			Sailor::Settings::ERenderStatsMode statsMode{};
+			switch (request.set_editor_stats_mode().mode())
+			{
+			case sailor::editor::v1::EDITOR_STATS_MODE_NONE:
+				statsMode = Sailor::Settings::ERenderStatsMode::None;
+				break;
+			case sailor::editor::v1::EDITOR_STATS_MODE_RENDER_STATS:
+				statsMode = Sailor::Settings::ERenderStatsMode::RenderStats;
+				break;
+			case sailor::editor::v1::EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES:
+				statsMode = Sailor::Settings::ERenderStatsMode::RenderStatsAndQueries;
+				break;
+			case sailor::editor::v1::EDITOR_STATS_MODE_UNSPECIFIED:
+			default:
+				SetError(response, "The Editor stats mode is invalid.");
+				break;
+			}
+
+			if (response.error().empty())
+			{
+				SetBoolResult(
+					response,
+					Sailor::App::SetRenderStatsMode(statsMode));
+			}
+			break;
+		}
 
 		case ProtocolRequest::kSetViewport:
 		{

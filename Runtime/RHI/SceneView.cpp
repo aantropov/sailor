@@ -10,6 +10,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "RHI/DebugContext.h"
 #include "RHI/CommandList.h"
+#include "Settings/GraphicsSettings.h"
 
 #include <algorithm>
 #include <array>
@@ -786,7 +787,14 @@ uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableL
 		}
 		selectedLod = static_cast<uint32_t>(index + 1u);
 	}
-	return (std::clamp)(selectedLod, minLod, maxLod);
+	const int32_t lodBias = App::GetInstance() ?
+		App::GetActiveGraphicsSettings().m_lodBias : 0;
+	return Settings::ApplyLodBias(
+		selectedLod,
+		numAvailableLods,
+		minLod,
+		maxLod,
+		lodBias);
 }
 
 namespace
@@ -809,7 +817,7 @@ namespace
 		return data.ResolveLod(screenCoverage, mesh->GetNumLods());
 	}
 
-	void ApplyCustomLodToMeshes(
+	[[maybe_unused]] void ApplyCustomLodToMeshes(
 		const RHILodPolicy& policy,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -834,7 +842,7 @@ namespace
 		}
 	}
 
-	void ApplyLodToMeshes(
+	[[maybe_unused]] void ApplyLodToMeshes(
 		const StaticMeshRendererData& data,
 		const Math::AABB& worldBounds,
 		const CameraData& camera,
@@ -857,7 +865,7 @@ namespace
 		}
 	}
 
-	RHIShadowCasterProxyPtr CreateLodShadowCaster(
+	[[maybe_unused]] RHIShadowCasterProxyPtr CreateLodShadowCaster(
 		const RHIShadowCasterProxyPtr& source,
 		WorldPtr world,
 		const CameraData& camera)
@@ -897,7 +905,9 @@ namespace
 	}
 }
 
-void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
+void RHISceneView::PrepareDebugDrawCommandLists(
+	WorldPtr world,
+	const glm::ivec2& renderExtent)
 {
 	m_debugDraw.Reserve(m_cameras.Num());
 	const DebugContext::DrawSnapshot debugDrawSnapshot = world->GetDebugContext()->GetDrawSnapshot();
@@ -913,7 +923,11 @@ void RHISceneView::PrepareDebugDrawCommandLists(WorldPtr world)
 				Sailor::RHI::Renderer::GetDriver()->SetDebugName(secondaryCmdList, "Draw Debug Mesh");
 				auto commands = App::GetSubmodule<Renderer>()->GetDriverCommands();
 				commands->BeginSecondaryCommandList(secondaryCmdList, false, true);
-				world->GetDebugContext()->DrawDebugMesh(secondaryCmdList, matrix, debugDrawSnapshot);
+				world->GetDebugContext()->DrawDebugMesh(
+					secondaryCmdList,
+					matrix,
+					debugDrawSnapshot,
+					renderExtent);
 				commands->EndCommandList(secondaryCmdList);
 
 				return secondaryCmdList;

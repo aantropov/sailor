@@ -733,6 +733,7 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 		supportedCore12.descriptorBindingStorageBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingUniformBufferUpdateAfterBind &&
 		supportedCore12.descriptorBindingStorageImageUpdateAfterBind;
+	m_bSupportsHostQueryReset = supportedCore12.hostQueryReset == VK_TRUE;
 
 
 	AddFeature<VkPhysicalDeviceVulkan12Features>(features, [&](auto& core12)
@@ -752,9 +753,11 @@ void VulkanDevice::CreateLogicalDevice(VkPhysicalDevice physicalDevice)
 			core12.descriptorBindingVariableDescriptorCount = supportedCore12.descriptorBindingVariableDescriptorCount;
 			core12.descriptorIndexing = supportedCore12.descriptorIndexing;
 			core12.descriptorBindingUpdateUnusedWhilePending = supportedCore12.descriptorBindingUpdateUnusedWhilePending;
+			core12.hostQueryReset = supportedCore12.hostQueryReset;
 		});
 
 	SAILOR_LOG("m_bSupportsDescriptorUpdateAfterBind = %d", (int32_t)m_bSupportsDescriptorUpdateAfterBind);
+	SAILOR_LOG("m_bSupportsHostQueryReset = %d", (int32_t)m_bSupportsHostQueryReset);
 	SAILOR_LOG("maxDescriptorSetUpdateAfterBindSamplers = %d", (int32_t)supportedCore12Properties.maxDescriptorSetUpdateAfterBindSamplers);
 
 	VkDeviceCreateInfo createInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
@@ -1036,6 +1039,7 @@ bool VulkanDevice::BeginRenderSubmission(uint32_t& outFlightSlot, bool& outHasSw
 
 bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCommandBufferPtr>& primaryCommandBuffers, const TVector<VulkanSemaphorePtr>& semaphoresToWait)
 {
+	m_bLastFrameSubmitSuccessful = false;
 	//////////////////////////////////////////////////
 	if (!m_pCurrentFrameViewport ||
 		(m_pCurrentFrameViewport->GetViewport().width != m_swapchain->GetExtent().width ||
@@ -1124,6 +1128,7 @@ bool VulkanDevice::PresentFrame(const FrameState& state, const TVector<VulkanCom
 
 	//TODO: Transfer queue for transfer family command lists
 	const VkResult submitResult = m_graphicsQueue->Submit(submitInfo, m_syncFences[m_currentFrame]);
+	m_bLastFrameSubmitSuccessful = submitResult == VK_SUCCESS;
 
 	m_numSubmittedCommandBuffersAcc += (uint32_t)commandBuffers.Num();
 

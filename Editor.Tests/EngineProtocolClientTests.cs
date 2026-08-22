@@ -219,6 +219,48 @@ public sealed class EngineProtocolClientTests
             requests[1].CommandCase);
     }
 
+    [Theory]
+    [InlineData(EditorStatsMode.None)]
+    [InlineData(EditorStatsMode.RenderStats)]
+    [InlineData(EditorStatsMode.RenderStatsAndQueries)]
+    public async Task SetEditorStatsModeAsync_SendsExplicitTypedMode(
+        EditorStatsMode mode)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetEditorStatsModeAsync(mode));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetEditorStatsMode,
+            capturedRequest.CommandCase);
+        Assert.Equal(mode, capturedRequest.SetEditorStatsMode.Mode);
+    }
+
+    [Theory]
+    [InlineData(EditorStatsMode.Unspecified)]
+    [InlineData((EditorStatsMode)99)]
+    public async Task SetEditorStatsModeAsync_RejectsInvalidModes(
+        EditorStatsMode mode)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetEditorStatsModeAsync(mode));
+    }
+
     [Fact]
     public async Task AnimatorParameters_UseTypedProtocolValues()
     {

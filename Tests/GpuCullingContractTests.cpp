@@ -12,6 +12,7 @@
 #include "RHI/Mesh.h"
 #include "RHI/Texture.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -46,7 +47,11 @@ namespace
 	{
 		std::ifstream input(path, std::ios::binary);
 		Require(input.is_open(), "test source should be readable: " + path.generic_string());
-		return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+		std::string text = std::string(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+		return text;
 	}
 
 	std::string ExtractFunctionBody(const std::string& source, const std::string& signature)
@@ -2030,6 +2035,32 @@ namespace
 			"failed graphics pipeline compilation must not record draw commands without a valid pipeline");
 	}
 
+	void TestRenderSceneSurfaceResolveContract()
+	{
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+		const std::string renderSceneSource = ReadText(
+			sourceRoot / "Runtime/FrameGraph/RenderSceneNode.cpp");
+		const std::string processBody = ExtractFunctionBody(
+			renderSceneSource,
+			"void RenderSceneNode::Process(");
+
+		Require(processBody.find("if (colorSurface)") != std::string::npos &&
+			processBody.find("resources->m_renderPassColorSurfaces") !=
+				std::string::npos &&
+			processBody.find("colorSurface->NeedsResolve()") !=
+				std::string::npos &&
+			processBody.find("colorSurface->GetResolved()") !=
+				std::string::npos &&
+			processBody.find("renderPassColorSurfaces.Add(colorSurface)") !=
+				std::string::npos &&
+			processBody.find("commands->BeginRenderPass(\n\t\t\tcommandList,\n\t\t\trenderPassColorSurfaces") !=
+				std::string::npos,
+			"RenderScene must pass an RHISurface to the surface render-pass overload so an MSAA target is resolved exactly once");
+		Require(processBody.find("renderPassColorAttachments.Add(colorAttachment)") !=
+				std::string::npos,
+			"RenderScene must retain the direct texture attachment fallback for non-surface frame-graph outputs");
+	}
+
 	void TestPostProcessPingPongMipIsolationContract()
 	{
 		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
@@ -2329,7 +2360,7 @@ namespace
 			"CSM sampling and blending must interpret the near EVSM map and the wider PCF maps using their actual formats");
 		Require(lightingSource.find("float CalculateShadowDistanceFade(") !=
 				std::string::npos &&
-			lightingSource.find("cascadeLayer != NUM_CSM_CASCADES - 1") !=
+			lightingSource.find("cascadeLayer != int(safeCascadeCount) - 1") !=
 				std::string::npos &&
 			standardShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
 				std::string::npos &&
@@ -2337,7 +2368,7 @@ namespace
 				std::string::npos &&
 			standardGltfShader.find("shadow = mix(shadow, 1.0f, shadowDistanceFade);") !=
 				std::string::npos,
-			"the final CSM cascade must fade to unshadowed lighting instead of ending at a visible hard boundary");
+			"the final active CSM cascade must fade to unshadowed lighting instead of ending at a visible hard boundary");
 		Require(lightingSource.find("SHADOW_RECEIVER_LIGHT_OFFSET") !=
 				std::string::npos &&
 			lightingSource.find("SHADOW_RECEIVER_NORMAL_OFFSET") != std::string::npos &&
@@ -2646,6 +2677,7 @@ int main()
 		{ "CustomDepthVertexAnimationReachesShadows", TestCustomDepthVertexAnimationReachesShadows },
 		{ "VertexDescriptionAttributeIdentityContract", TestVertexDescriptionAttributeIdentityContract },
 		{ "GraphicsPipelineAttachmentCacheContract", TestGraphicsPipelineAttachmentCacheContract },
+		{ "RenderSceneSurfaceResolveContract", TestRenderSceneSurfaceResolveContract },
 		{ "PostProcessPingPongMipIsolationContract", TestPostProcessPingPongMipIsolationContract },
 		{ "TransparentBackToFrontOrderingContract", TestTransparentBackToFrontOrderingContract },
 		{ "ShadowCasterRenderQueueContract", TestShadowCasterRenderQueueContract },

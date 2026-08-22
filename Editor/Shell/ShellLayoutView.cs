@@ -173,6 +173,7 @@ public sealed class ShellLayoutView : ContentView
         var startPrimary = 0d;
         var startSecondary = 0d;
         var totalAvailable = 0d;
+        var dragState = new SplitResizeDragState();
 
         pan.PanUpdated += (_, e) =>
         {
@@ -180,6 +181,7 @@ public sealed class ShellLayoutView : ContentView
             {
                 case GestureStatus.Started:
                     IsResizing = true;
+                    dragState.Begin();
                     CaptureSplitSizes(split, grid, leadingIndex, out startPrimary, out startSecondary, out totalAvailable);
                     break;
 
@@ -187,13 +189,15 @@ public sealed class ShellLayoutView : ContentView
                     if (totalAvailable <= 0)
                         return;
 
-                    var translation = isHorizontal ? e.TotalX : e.TotalY;
-                    var primary = Math.Clamp(startPrimary + translation, 40d, totalAvailable - 40d);
+                    var requestedTranslation = isHorizontal ? e.TotalX : e.TotalY;
+                    var primary = Math.Clamp(startPrimary + requestedTranslation, 40d, totalAvailable - 40d);
                     var secondary = Math.Max(totalAvailable - primary, 40d);
+                    dragState.Update(primary - startPrimary);
                     ApplySplitSizes(split, grid, leadingIndex, primary, secondary);
                     break;
 
                 case GestureStatus.Canceled:
+                    dragState.Cancel();
                     IsResizing = false;
                     Rebuild();
                     break;
@@ -201,7 +205,10 @@ public sealed class ShellLayoutView : ContentView
                 case GestureStatus.Completed:
                     if (totalAvailable > 0 && Host is not null)
                     {
-                        var translationDelta = isHorizontal ? e.TotalX : e.TotalY;
+                        // MacCatalyst reports TotalX/TotalY as zero on the Completed
+                        // event. Persist the last applied Running value so the split
+                        // does not snap back when the pointer is released.
+                        var translationDelta = dragState.Complete();
                         var ratioDelta = translationDelta / totalAvailable * (split.SizeRatios[leadingIndex] + split.SizeRatios[leadingIndex + 1]);
                         _ = MainThread.InvokeOnMainThreadAsync(async () =>
                         {
@@ -218,6 +225,7 @@ public sealed class ShellLayoutView : ContentView
                     }
                     else
                     {
+                        dragState.Cancel();
                         IsResizing = false;
                         Rebuild();
                     }

@@ -51,14 +51,17 @@ namespace SailorEditor.Views
         readonly SceneViewportSelectionRouter selectionRouter = new(NullSceneViewportSelectionPicker.Instance);
         readonly EditorViewportEventRevisionGate viewportEventRevisionGate = new();
         readonly UnifiedSettingsStore settingsStore;
+        readonly GraphicsSettingsService graphicsSettingsService;
         readonly NativeViewportInputQueue nativeViewportInputQueue;
         readonly object viewportToolStateLock = new();
         readonly SemaphoreSlim viewportToolStateGate = new(1, 1);
+        readonly SemaphoreSlim graphicsSettingsGate = new(1, 1);
         SceneViewportToolState viewportToolState =
             SceneViewportToolShortcuts.Default;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
         bool lifecycleSubscribed;
+        bool updatingGraphicsPickers;
 #if WINDOWS || MACCATALYST
         static readonly bool UseNativeViewportHost = true;
 #else
@@ -70,6 +73,7 @@ namespace SailorEditor.Views
             InitializeComponent();
             UpdateViewportToolVisuals();
             settingsStore = MauiProgram.GetService<UnifiedSettingsStore>();
+            graphicsSettingsService = MauiProgram.GetService<GraphicsSettingsService>();
             engineService = MauiProgram.GetService<EngineService>();
             worldService = MauiProgram.GetService<WorldService>();
             commandDispatcher = MauiProgram.GetService<ICommandDispatcher>();
@@ -85,6 +89,12 @@ namespace SailorEditor.Views
             UpdateRestartEngineButton(engineService.State);
             var shellState = MauiProgram.GetService<State.ShellState>();
             focusCoordinator = new SceneShellFocusCoordinator(shellState, $"scene:{EngineService.SceneViewportId}", () => ResolveFocusTarget(shellState));
+            QualityPicker.ItemsSource = QualityOptions
+                .Select(option => option.DisplayName)
+                .ToList();
+            StatsModePicker.ItemsSource = StatsModeOptions
+                .Select(option => option.DisplayName)
+                .ToList();
 
 #if !WINDOWS && !MACCATALYST
             var tapGesture = new TapGestureRecognizer();
@@ -155,6 +165,7 @@ namespace SailorEditor.Views
                 isRunning = true;
                 SubscribeToEngineLifecycle();
                 _ = RefreshViewportToolStateAsync();
+                _ = RefreshGraphicsSettingsAsync(reload: false);
 #if MACCATALYST
                 if (!UseNativeViewportHost)
                 {
@@ -333,6 +344,8 @@ namespace SailorEditor.Views
 
             engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
             engineService.OnEditorViewportEvents += OnEditorViewportEvents;
+            graphicsSettingsService.SettingsChanged += OnGraphicsSettingsChanged;
+            workspaceUiService.ProjectionChanged += OnWorkspaceProjectionChanged;
             viewportEventRevisionGate.Reset();
             lifecycleSubscribed = true;
         }
@@ -344,6 +357,8 @@ namespace SailorEditor.Views
 
             engineService.OnLifecycleStateChanged -= OnEngineLifecycleStateChanged;
             engineService.OnEditorViewportEvents -= OnEditorViewportEvents;
+            graphicsSettingsService.SettingsChanged -= OnGraphicsSettingsChanged;
+            workspaceUiService.ProjectionChanged -= OnWorkspaceProjectionChanged;
             lifecycleSubscribed = false;
         }
 
@@ -384,6 +399,174 @@ namespace SailorEditor.Views
                 UpdateRestartEngineButton(engineService.State);
             }
         }
+
+        async void OnQualitySelectedIndexChanged(
+            object sender,
+            EventArgs e)
+        {
+            if (updatingGraphicsPickers ||
+                QualityPicker.SelectedIndex < 0 ||
+                QualityPicker.SelectedIndex >= QualityOptions.Length)
+            {
+                return;
+            }
+
+            await ApplyQualitySelectionAsync(
+                QualityOptions[QualityPicker.SelectedIndex].Value);
+        }
+
+        async void OnStatsModeSelectedIndexChanged(
+            object sender,
+            EventArgs e)
+        {
+            if (updatingGraphicsPickers ||
+                StatsModePicker.SelectedIndex < 0 ||
+                StatsModePicker.SelectedIndex >= StatsModeOptions.Length)
+            {
+                return;
+            }
+
+            await ApplyStatsModeAsync(
+                StatsModeOptions[StatsModePicker.SelectedIndex].Value);
+        }
+
+        async Task ApplyQualitySelectionAsync(
+            EditorQualitySelection selection)
+        {
+            await graphicsSettingsGate.WaitAsync();
+            SetGraphicsPickersEnabled(false);
+            try
+            {
+                var result = await graphicsSettingsService
+                    .SetSelectedQualityAsync(selection);
+                if (result.QualityChanged && !result.EngineRestarted)
+                {
+                    Console.WriteLine(
+                        "[SceneView] Quality selection was saved, but the Engine restart did not complete.");
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to apply graphics quality: {exception}");
+                await RefreshGraphicsSettingsAsync(reload: true);
+            }
+            finally
+            {
+                SetGraphicsPickersEnabled(true);
+                graphicsSettingsGate.Release();
+            }
+        }
+
+        async Task ApplyStatsModeAsync(GraphicsStatsMode mode)
+        {
+            await graphicsSettingsGate.WaitAsync();
+            SetGraphicsPickersEnabled(false);
+            try
+            {
+                var result = await graphicsSettingsService.SetStatsModeAsync(mode);
+                if (result.StatsChanged && !result.StatsAppliedLive)
+                {
+                    Console.WriteLine(
+                        "[SceneView] Stats mode was saved, but the live Engine command was rejected.");
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to apply renderer Stats mode: {exception}");
+                await RefreshGraphicsSettingsAsync(reload: true);
+            }
+            finally
+            {
+                SetGraphicsPickersEnabled(true);
+                graphicsSettingsGate.Release();
+            }
+        }
+
+        async Task RefreshGraphicsSettingsAsync(bool reload)
+        {
+            try
+            {
+                var snapshot = reload
+                    ? await graphicsSettingsService.ReloadAsync()
+                    : await graphicsSettingsService.EnsureLoadedAsync();
+                Dispatcher.Dispatch(() => UpdateGraphicsPickers(snapshot));
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to load graphics settings: {exception}");
+            }
+        }
+
+        void OnGraphicsSettingsChanged(
+            object? sender,
+            GraphicsSettingsSnapshot snapshot)
+            => Dispatcher.Dispatch(() => UpdateGraphicsPickers(snapshot));
+
+        void OnWorkspaceProjectionChanged(object? sender, EventArgs e)
+            => _ = RefreshGraphicsSettingsAsync(reload: false);
+
+        void UpdateGraphicsPickers(GraphicsSettingsSnapshot snapshot)
+        {
+            updatingGraphicsPickers = true;
+            try
+            {
+                QualityPicker.SelectedIndex = Array.FindIndex(
+                    QualityOptions,
+                    option => option.Value ==
+                        snapshot.Editor.Graphics.SelectedQuality);
+                StatsModePicker.SelectedIndex = Array.FindIndex(
+                    StatsModeOptions,
+                    option => option.Value ==
+                        snapshot.Editor.Graphics.StatsMode);
+                ToolTipProperties.SetText(
+                    QualityPicker,
+                    $"Scene View quality: {FormatQuality(snapshot.EffectiveQuality)}. Changing it restarts the Engine.");
+            }
+            finally
+            {
+                updatingGraphicsPickers = false;
+            }
+        }
+
+        void SetGraphicsPickersEnabled(bool enabled)
+        {
+            QualityPicker.IsEnabled = enabled;
+            StatsModePicker.IsEnabled = enabled;
+        }
+
+        static string FormatQuality(GraphicsQualityLevel quality)
+            => quality == GraphicsQualityLevel.VeryLow
+                ? "Very Low"
+                : quality.ToString();
+
+        readonly record struct GraphicsPickerOption<T>(
+            T Value,
+            string DisplayName)
+            where T : struct, Enum;
+
+        static readonly GraphicsPickerOption<EditorQualitySelection>[]
+            QualityOptions =
+            [
+                new(EditorQualitySelection.ProjectDefault, "Project Default"),
+                new(EditorQualitySelection.Ultra, "Ultra"),
+                new(EditorQualitySelection.High, "High"),
+                new(EditorQualitySelection.Medium, "Medium"),
+                new(EditorQualitySelection.Low, "Low"),
+                new(EditorQualitySelection.VeryLow, "Very Low")
+            ];
+
+        static readonly GraphicsPickerOption<GraphicsStatsMode>[]
+            StatsModeOptions =
+            [
+                new(GraphicsStatsMode.None, "None"),
+                new(GraphicsStatsMode.RenderStats, "Render stats"),
+                new(
+                    GraphicsStatsMode.RenderStatsAndQueries,
+                    "Render stats + queries")
+            ];
 
         void UpdateRestartEngineButton(EngineLifecycleState state)
         {
