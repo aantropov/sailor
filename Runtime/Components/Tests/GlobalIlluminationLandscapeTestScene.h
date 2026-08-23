@@ -37,6 +37,7 @@ namespace Sailor::GlobalIlluminationLandscapeTestScene
 	inline constexpr uint32_t LandscapeSeed = 155u;
 	inline constexpr float LandscapeTextureTiling = 0.09f;
 	inline constexpr float LandscapeWorldY = -4.0f;
+	inline constexpr float EveningSunAngleDegrees = 8.0f;
 
 	SAILOR_SHARED_API const TVector<Box>& GetBoxes();
 	SAILOR_SHARED_API TVector<float> GetLandscapeSculptStamps();

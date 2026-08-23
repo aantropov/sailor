@@ -132,8 +132,8 @@ const TVector<Box>& GlobalIlluminationLandscapeTestScene::GetBoxes()
 	static const TVector<Box> boxes{
 		{
 			"Evening Shadow Ridge",
-			glm::vec3(-8.5f, 1.0f, 0.0f),
-			glm::vec3(1.25f, 5.0f, 11.0f),
+			glm::vec3(1.5f, 1.0f, -7.0f),
+			glm::vec3(11.0f, 5.0f, 1.25f),
 			EMaterial::ShadowRidge,
 			"Tests/Visual/GlobalIlluminationRidge.mat"
 		},
@@ -267,7 +267,11 @@ void GlobalIlluminationLandscapeTestScene::BuildBakeTriangles(
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightDirection()
 {
-	return glm::normalize(glm::vec3(0.92f, -0.32f, 0.08f));
+	const float sunAngleRadians = glm::radians(EveningSunAngleDegrees);
+	return glm::normalize(glm::vec3(
+		0.2f,
+		std::sin(-sunAngleRadians),
+		std::cos(sunAngleRadians)));
 }
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightIntensity()

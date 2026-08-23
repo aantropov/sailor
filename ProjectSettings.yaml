@@ -7,7 +7,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 8
       shadowQuality: High
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 4096
@@ -25,7 +25,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 4
       shadowQuality: High
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 4
       shadowCascadeResolutions:
       - 2048
@@ -43,7 +43,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 2
       shadowQuality: Medium
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 3
       shadowCascadeResolutions:
       - 2048
@@ -60,7 +60,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 1
       shadowQuality: Low
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 2
       shadowCascadeResolutions:
       - 1024
@@ -76,7 +76,7 @@ graphics:
       fpsCap: 120
       msaaSamples: 1
       shadowQuality: VeryLow
-      shadowBias: 0
+      shadowBias: 1.25
       shadowCascadeCount: 1
       shadowCascadeResolutions:
       - 512

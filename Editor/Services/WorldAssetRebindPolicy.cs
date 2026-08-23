@@ -8,6 +8,15 @@ public readonly record struct WorldAssetRebindResult<TAsset>(
 
 public static class WorldAssetRebindPolicy
 {
+    public static bool HasSameStableIdentity(
+        string? inspectedIdentity,
+        string? activeIdentity)
+        => !string.IsNullOrEmpty(inspectedIdentity) &&
+            string.Equals(
+                inspectedIdentity,
+                activeIdentity,
+                StringComparison.Ordinal);
+
     public static WorldAssetRebindResult<TAsset> Resolve<TAsset>(
         TAsset? currentAsset,
         bool hasStableFileId,

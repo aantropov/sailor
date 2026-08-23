@@ -13,7 +13,7 @@ public sealed class GraphicsSettingsTests
         Assert.Equal(GraphicsQualityLevel.High, project.Graphics.DefaultQuality);
         Assert.Equal(120, project.Graphics.Presets.Ultra.FpsCap);
         Assert.Equal(8, project.Graphics.Presets.Ultra.MsaaSamples);
-        Assert.Equal(0.0, project.Graphics.Presets.Ultra.ShadowBias);
+        Assert.Equal(1.25, project.Graphics.Presets.Ultra.ShadowBias);
         Assert.Equal([4096, 2048, 2048, 1024], project.Graphics.Presets.Ultra.ShadowCascadeResolutions);
         Assert.Equal(0.85, project.Graphics.Presets.Medium.ResolutionFactor);
         Assert.Equal(GraphicsShadowQuality.Medium, project.Graphics.Presets.Medium.ShadowQuality);
@@ -31,7 +31,7 @@ public sealed class GraphicsSettingsTests
         var yaml = GraphicsSettingsYamlCodec.SerializeProject(project);
         Assert.Contains("defaultQuality: High", yaml);
         Assert.Contains("fpsCap: 120", yaml);
-        Assert.Contains("shadowBias: 0", yaml);
+        Assert.Contains("shadowBias: 1.25", yaml);
         Assert.Contains("VeryLow:", yaml);
         Assert.Contains("supportSoftShadows: true", yaml);
         Assert.Contains("vegetationInstanceBudget: 32768", yaml);
@@ -645,7 +645,7 @@ public sealed class GraphicsSettingsTests
             "1",
             reverted.GetPreset(GraphicsQualityLevel.Ultra).ResolutionFactor);
         Assert.Equal(
-            "0",
+            "1.25",
             reverted.GetPreset(GraphicsQualityLevel.Ultra).ShadowBias);
         Assert.Equal(
             "4",

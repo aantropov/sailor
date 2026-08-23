@@ -268,7 +268,7 @@ graphics:
 			ultra.m_msaaSamples == 8u,
 			"Ultra should use native resolution, a 120 FPS cap, and 8x MSAA");
 		Require(ultra.m_shadowQuality == ELightShadowQuality::High &&
-			IsNear(ultra.m_shadowBias, 0.0f) &&
+			IsNear(ultra.m_shadowBias, 1.25f) &&
 			ultra.m_shadowCascadeCount == 4u &&
 			ultra.GetShadowCascadeResolution(0u) == 4096u &&
 			ultra.GetShadowCascadeResolution(3u) == 1024u,
@@ -286,7 +286,7 @@ graphics:
 		Require(IsNear(high.m_resolutionFactor, 1.0f) && high.m_fpsCap == 120u &&
 			high.m_msaaSamples == 4u &&
 			high.m_shadowQuality == ELightShadowQuality::High &&
-			IsNear(high.m_shadowBias, 0.0f) && high.m_shadowCascadeCount == 4u &&
+			IsNear(high.m_shadowBias, 1.25f) && high.m_shadowCascadeCount == 4u &&
 			high.m_shadowCascadeResolutions ==
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 2048u, 1024u, 1024u } &&
 			high.m_bSupportSoftShadows && IsNear(high.m_cloudsResolutionMultiplier, 0.75f) &&
@@ -299,7 +299,7 @@ graphics:
 		Require(IsNear(medium.m_resolutionFactor, 0.85f) && medium.m_fpsCap == 120u &&
 			medium.m_msaaSamples == 2u &&
 			medium.m_shadowQuality == ELightShadowQuality::Medium &&
-			IsNear(medium.m_shadowBias, 0.0f) && medium.m_shadowCascadeCount == 3u &&
+			IsNear(medium.m_shadowBias, 1.25f) && medium.m_shadowCascadeCount == 3u &&
 			medium.m_shadowCascadeResolutions ==
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 1024u, 512u, 0u } &&
 			medium.m_bSupportSoftShadows && IsNear(medium.m_cloudsResolutionMultiplier, 0.5f) &&
@@ -312,7 +312,7 @@ graphics:
 		Require(IsNear(low.m_resolutionFactor, 0.7f) && low.m_fpsCap == 120u &&
 			low.m_msaaSamples == 1u &&
 			low.m_shadowQuality == ELightShadowQuality::Low &&
-			IsNear(low.m_shadowBias, 0.0f) && low.m_shadowCascadeCount == 2u &&
+			IsNear(low.m_shadowBias, 1.25f) && low.m_shadowCascadeCount == 2u &&
 			low.m_shadowCascadeResolutions ==
 				std::array<uint32_t, MaxShadowCascades>{ 1024u, 512u, 0u, 0u } &&
 			!low.m_bSupportSoftShadows && IsNear(low.m_cloudsResolutionMultiplier, 0.25f) &&
@@ -326,7 +326,7 @@ graphics:
 			veryLow.m_fpsCap == 120u &&
 			veryLow.m_msaaSamples == 1u &&
 			veryLow.m_shadowQuality == ELightShadowQuality::VeryLow &&
-			IsNear(veryLow.m_shadowBias, 0.0f) &&
+			IsNear(veryLow.m_shadowBias, 1.25f) &&
 			veryLow.m_shadowCascadeCount == 1u &&
 			!veryLow.m_bSupportSoftShadows &&
 			IsNear(veryLow.m_cloudsResolutionMultiplier, 0.125f) &&

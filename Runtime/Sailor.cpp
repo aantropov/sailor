@@ -526,7 +526,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		}
 	}
 	SAILOR_LOG(
-		"Active graphics quality: %s (FPS cap %u, MSAA %ux, shadow bias %.3f, stats mode %s).",
+		"Active graphics quality: %s (FPS cap %u, MSAA %ux, PCF shadow bias %.3f, stats mode %s).",
 		Settings::ToString(g_graphicsSettingsState.m_activeQuality),
 		g_graphicsSettingsState.GetActiveProfile().m_fpsCap,
 		g_graphicsSettingsState.GetActiveProfile().m_msaaSamples,

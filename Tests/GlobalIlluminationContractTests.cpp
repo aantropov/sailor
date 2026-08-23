@@ -246,12 +246,12 @@ namespace
 		ProbeVolumeBakeRequest request;
 		request.m_stateName = "Evening Landscape Bounce";
 		request.m_bakerVersion =
-			"Sailor deterministic evening-landscape visual fixture/1";
+			"Sailor deterministic evening-landscape visual fixture/2";
 		request.m_volumeMin = glm::vec3(-22.0f, -6.0f, -18.0f);
 		request.m_volumeMax = glm::vec3(22.0f, 16.0f, 18.0f);
 		request.m_settings = settings;
 		request.m_sceneGeometryBounds.Add(fixture.m_bounds);
-		request.m_sourceWorldHash = 0x155e11e71a9d5ca9ull;
+		request.m_sourceWorldHash = 0x155e11e71a9d5ca2ull;
 		ProbeVolumeBakeResult result = ProbeVolumeBaker::Bake(request, pathTracer);
 		Require(result.IsSuccess(),
 			"the evening landscape visual fixture must bake: " +
@@ -817,7 +817,10 @@ components:
 		bool bHasLandscape = false;
 		bool bHasVisualTest = false;
 		bool bHasEveningLight = false;
+		bool bHasSky = false;
 		bool bHasCamera = false;
+		std::string eveningLightComponentId;
+		std::string skyDirectionalLightComponentId;
 		uint32_t savedTopologyCount = 0u;
 		for (const YAML::Node& prefab : world["prefabs"])
 		{
@@ -854,6 +857,44 @@ components:
 					IsNear(
 						properties["indirectLightingIntensity"].as<float>(),
 						1.0f);
+				if (bHasEveningLight)
+				{
+					eveningLightComponentId =
+						properties["instanceId"].as<std::string>();
+				}
+			}
+			if (typeName == "Sailor::SkyComponent")
+			{
+				const YAML::Node directionalLight =
+					properties["m_directionalLight"];
+				const YAML::Node intensity =
+					properties["directionalLightIntensity"];
+				bHasSky = name == "Evening Sky" &&
+					IsNear(
+						properties["sunAngle"].as<float>(),
+						GlobalIlluminationLandscapeTestScene::
+							EveningSunAngleDegrees) &&
+					directionalLight && directionalLight.IsMap() &&
+					directionalLight["instanceId"] &&
+					intensity && intensity.IsSequence() &&
+					intensity.size() == 3u &&
+					IsNear(
+						intensity[0].as<float>(),
+						GlobalIlluminationLandscapeTestScene::
+							GetEveningLightIntensity().x) &&
+					IsNear(
+						intensity[1].as<float>(),
+						GlobalIlluminationLandscapeTestScene::
+							GetEveningLightIntensity().y) &&
+					IsNear(
+						intensity[2].as<float>(),
+						GlobalIlluminationLandscapeTestScene::
+							GetEveningLightIntensity().z);
+				if (bHasSky)
+				{
+					skyDirectionalLightComponentId =
+						directionalLight["instanceId"].as<std::string>();
+				}
 			}
 			if (typeName == "Sailor::MeshRendererComponent")
 			{
@@ -865,11 +906,13 @@ components:
 			}
 		}
 		Require(bHasLandscape && bHasVisualTest && bHasEveningLight &&
+			bHasSky && !eveningLightComponentId.empty() &&
+			eveningLightComponentId == skyDirectionalLightComponentId &&
 			bHasCamera && savedTopologyCount ==
 				GlobalIlluminationLandscapeTestScene::GetBoxes().Num(),
-			"the visual world must save the landscape, evening light, camera, "
-			"validation component, and all occlusion/bounce topology; runtime-only "
-			"spawned geometry is not accepted");
+			"the visual world must save the landscape, an evening light linked to "
+			"the SkyComponent, camera, validation component, and all "
+			"occlusion/bounce topology; runtime-only spawned geometry is not accepted");
 	}
 
 	void TestGpuPackingAndWeightOnlyUpdates()

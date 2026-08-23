@@ -134,9 +134,9 @@ prefabs:
   - gameObjects:
       - name: Evening Shadow Ridge
         position:
-          - -8.5
+          - 1.5
           - 1
-          - 0
+          - -7
           - 1
         rotation:
           - 0
@@ -144,9 +144,9 @@ prefabs:
           - 0
           - 1
         scale:
-          - 1.25
-          - 5
           - 11
+          - 5
+          - 1.25
           - 1
         parentIndex: 4294967295
         instanceId: 15515515515515515513
@@ -348,7 +348,9 @@ prefabs:
         overrideProperties:
           sunAngle: 8
           scatteringSteps: 5
-          m_directionalLight: ~
+          m_directionalLight:
+            fileId: ""
+            instanceId: 15500000000040008000000000000106_15515515515515515517
           cloudsDensity: 0.300000012
           cloudsAttenuation1: 0.300000012
           cloudsPhaseEccentricity2: 0.50999999
@@ -366,9 +368,9 @@ prefabs:
           ambient: 0
           scatteringIntensity: 0.5
           directionalLightIntensity:
-            - 17
-            - 17
-            - 17
+            - 6.5
+            - 3.20000005
+            - 1.35000002
           fileId: ""
           sunShaftsDistance: 60
   - gameObjects:

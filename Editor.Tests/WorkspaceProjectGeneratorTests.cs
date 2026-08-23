@@ -42,7 +42,7 @@ public sealed class WorkspaceProjectGeneratorTests
         Assert.Contains("defaultQuality: High", projectSettings);
         Assert.Contains("Ultra:", projectSettings);
         Assert.Contains("fpsCap: 120", projectSettings);
-        Assert.Contains("shadowBias: 0", projectSettings);
+        Assert.Contains("shadowBias: 1.25", projectSettings);
         Assert.Contains("VeryLow:", projectSettings);
         var generatedState = new WorkspaceGeneratedProjectStateService().GetStatePath(workspace.Root);
         Assert.True(File.Exists(generatedState));

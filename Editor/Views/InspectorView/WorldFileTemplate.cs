@@ -112,11 +112,18 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
         Build();
     }
 
-    bool IsCurrentWorld() =>
-        worldFile?.FileId is not null &&
-        !worldFile.FileId.IsEmpty() &&
-        worldService.CurrentWorldAsset?.FileId is not null &&
-        worldFile.FileId == worldService.CurrentWorldAsset.FileId;
+    bool IsCurrentWorld()
+    {
+        var inspectedFileId = worldFile?.FileId;
+        var activeFileId = worldService.CurrentWorldAsset?.FileId;
+        return inspectedFileId is not null &&
+            !inspectedFileId.IsEmpty() &&
+            activeFileId is not null &&
+            !activeFileId.IsEmpty() &&
+            WorldAssetRebindPolicy.HasSameStableIdentity(
+                inspectedFileId.Value,
+                activeFileId.Value);
+    }
 
     void Build()
     {

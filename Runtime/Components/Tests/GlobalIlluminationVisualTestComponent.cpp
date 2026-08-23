@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/AssetRegistry.h"
 #include "Components/CameraComponent.h"
+#include "Components/LightComponent.h"
 #include "Components/MeshRendererComponent.h"
 #include "Components/SkyComponent.h"
 #include "ECS/GlobalIlluminationECS.h"
@@ -170,11 +171,18 @@ GameObjectPtr GlobalIlluminationVisualTestComponent::SpawnBox(
 
 void GlobalIlluminationVisualTestComponent::EnsureSkyAndCamera()
 {
+	auto lightObject = GetWorld()->Instantiate("GiVisualTestDirectionalLight");
+	auto directionalLight = lightObject->AddComponent<LightComponent>();
+	directionalLight->SetLightType(ELightType::Directional);
+	directionalLight->SetShadowType(RHI::EShadowType::PCF);
+	directionalLight->SetIndirectLightingIntensity(1.0f);
+
 	auto skyObject = GetWorld()->Instantiate("GiVisualTestSky");
 	auto sky = skyObject->AddComponent<SkyComponent>();
 	sky->SetAmbient(0.0f);
 	sky->SetSunIntensity(0.0f);
 	sky->SetCloudsCoverage(0.0f);
+	sky->SetDirectionalLight(directionalLight);
 
 	auto cameraObject = GetWorld()->Instantiate("GiVisualTestCamera");
 	const glm::vec3 position(0.0f, 32.0f, 108.0f);
