@@ -107,6 +107,21 @@ internal sealed class McpLandscapeOperations
             return Fail("noiseScale must be a finite positive number.", out error);
         if (!IsFinitePositive(request.TextureTiling))
             return Fail("textureTiling must be a finite positive number.", out error);
+        if (request.LodDistances is null || request.LodDistances.Length > 7 ||
+            request.LodDistances.Any(value => !IsFinitePositive(value)) ||
+            !request.LodDistances.SequenceEqual(request.LodDistances.Order()))
+        {
+            return Fail("lodDistances must contain at most seven finite positive values in ascending order.", out error);
+        }
+        if (!float.IsFinite(request.LodSkirtDepth) || request.LodSkirtDepth is < 0.0f or > 64.0f)
+            return Fail("lodSkirtDepth must be finite and between 0 and 64.", out error);
+        if (request.GrassInstanceBudget > 1048576)
+            return Fail("grassInstanceBudget cannot exceed 1048576.", out error);
+        if (!float.IsFinite(request.GrassResidencyHysteresis) ||
+            request.GrassResidencyHysteresis is < 0.0f or > 512.0f)
+        {
+            return Fail("grassResidencyHysteresis must be finite and between 0 and 512.", out error);
+        }
         if (string.IsNullOrWhiteSpace(request.MaterialFileId))
             return Fail("materialFileId is required.", out error);
         if (request.LayerTextureFileIds is null || request.LayerTextureFileIds.Length != 4 ||
@@ -122,6 +137,7 @@ internal sealed class McpLandscapeOperations
 
         var vegetation = request.Vegetation ?? [];
         var shadowModes = new List<float>(vegetation.Length);
+        var residencyModes = new List<float>(vegetation.Length);
         foreach (var profile in vegetation)
         {
             if (string.IsNullOrWhiteSpace(profile.ModelFileId))
@@ -132,6 +148,10 @@ internal sealed class McpLandscapeOperations
                 return Fail("vegetation instancesPerChunk cannot exceed 2048.", out error);
             if (profile.MeshIndex < -1)
                 return Fail("vegetation meshIndex must be -1 (all meshes) or a non-negative mesh index.", out error);
+            if (!TryParseResidency(profile.Residency, out var residencyMode))
+                return Fail("vegetation residency must be Persistent or Grass.", out error);
+            if (!float.IsFinite(profile.Priority) || profile.Priority is < 0.0f or > 100.0f)
+                return Fail("vegetation priority must be finite and between 0 and 100.", out error);
             if (!IsFinitePositive(profile.MinScale) ||
                 !IsFinitePositive(profile.MaxScale) ||
                 profile.MaxScale < profile.MinScale)
@@ -159,7 +179,10 @@ internal sealed class McpLandscapeOperations
             {
                 return Fail("vegetation collider requires radius >= 0, height >= 2 * radius, and a finite Y offset.", out error);
             }
+            if (residencyMode == 1.0f && profile.ColliderRadius > 0.0f)
+                return Fail("Grass vegetation cannot create colliders; use Persistent residency for collidable profiles.", out error);
             shadowModes.Add(shadowMode);
+            residencyModes.Add(residencyMode);
         }
 
         var sculptValues = new List<float>((request.Sculpt?.Length ?? 0) * 5);
@@ -200,12 +223,18 @@ internal sealed class McpLandscapeOperations
             ["heightmapTexture"] = JsonSerializer.SerializeToElement(request.HeightmapTextureFileId ?? string.Empty),
             ["materialMasks"] = JsonSerializer.SerializeToElement(request.MaterialMaskFileIds),
             ["textureTiling"] = JsonSerializer.SerializeToElement(request.TextureTiling),
+            ["lodDistances"] = JsonSerializer.SerializeToElement(request.LodDistances),
+            ["lodSkirtDepth"] = JsonSerializer.SerializeToElement(request.LodSkirtDepth),
+            ["grassInstanceBudget"] = JsonSerializer.SerializeToElement(request.GrassInstanceBudget),
+            ["grassResidencyHysteresis"] = JsonSerializer.SerializeToElement(request.GrassResidencyHysteresis),
             ["sculptStamps"] = JsonSerializer.SerializeToElement(sculptValues),
             ["paintStamps"] = JsonSerializer.SerializeToElement(paintValues),
             ["vegetationModels"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.ModelFileId)),
             ["vegetationMaterials"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.MaterialFileId)),
             ["vegetationMeshIndex"] = JsonSerializer.SerializeToElement(vegetation.Select(value => (float)value.MeshIndex)),
             ["vegetationInstancesPerChunk"] = JsonSerializer.SerializeToElement(vegetation.Select(value => (float)value.InstancesPerChunk)),
+            ["vegetationResidency"] = JsonSerializer.SerializeToElement(residencyModes),
+            ["vegetationPriority"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.Priority)),
             ["vegetationMinScale"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.MinScale)),
             ["vegetationMaxScale"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.MaxScale)),
             ["vegetationGroundOffset"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.GroundOffset)),
@@ -283,6 +312,17 @@ internal sealed class McpLandscapeOperations
             "none" => 0.0f,
             "nearonly" or "near_only" or "near only" => 1.0f,
             "all" => 2.0f,
+            _ => -1.0f,
+        };
+        return mode >= 0.0f;
+    }
+
+    static bool TryParseResidency(string value, out float mode)
+    {
+        mode = value?.Trim().ToLowerInvariant() switch
+        {
+            "persistent" => 0.0f,
+            "grass" or "budgeted" or "budgetedgrass" or "budgeted_grass" => 1.0f,
             _ => -1.0f,
         };
         return mode >= 0.0f;

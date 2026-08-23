@@ -196,6 +196,7 @@ namespace Sailor
 			const RHI::RHISceneViewPtr& sceneView,
 			const TVector<RHI::RHILightProxy>& spotLights,
 			const TVector<RHI::RHILightProxy>& pointLights,
+			const Math::Transform& cameraTransform,
 			const CameraData& cameraData,
 			uint32_t viewportHeight,
 			uint32_t flightSlot,

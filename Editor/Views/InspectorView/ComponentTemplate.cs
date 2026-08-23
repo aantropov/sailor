@@ -371,7 +371,8 @@ public partial class ComponentTemplate : DataTemplate
                     "layerTextures" or "heightmapTexture" or "materialMasks" or
                     "vegetationModels" or "vegetationMaterials" or
                     "vegetationMeshIndex" or
-                    "vegetationInstancesPerChunk" or "vegetationMinScale" or
+                    "vegetationInstancesPerChunk" or "vegetationResidency" or
+                    "vegetationPriority" or "vegetationMinScale" or
                     "vegetationMaxScale" or "vegetationGroundOffset" or
                     "vegetationShadowMode" or "vegetationShadowDistance" or
                     "vegetationMinLod" or "vegetationMaxLod" or

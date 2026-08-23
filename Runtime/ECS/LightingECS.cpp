@@ -502,7 +502,10 @@ void LightingECS::PrepareCSMPasses(
 			ShadowCasterDepthExtension) * directionalLight.m_lightMatrix;
 		Math::Frustum broadFrustum;
 		broadFrustum.ExtractFrustumPlanes(broadLightMatrix);
-		sceneView->TraceShadowCasters(broadFrustum, m_csmBroadCastersScratch);
+		sceneView->TraceShadowCasters(
+			broadFrustum,
+			glm::vec3(cameraTransform.m_position),
+			m_csmBroadCastersScratch);
 		const auto& shadowCasters = m_csmBroadCastersScratch;
 		std::array<Tasks::TaskPtr<TVector<RHI::RHIVisibleShadowCaster>>, NumCascades>
 			cascadeCasterTasks{};
@@ -1297,6 +1300,7 @@ void LightingECS::PrepareLocalShadowPasses(
 	const RHI::RHISceneViewPtr& sceneView,
 	const TVector<RHI::RHILightProxy>& spotLights,
 	const TVector<RHI::RHILightProxy>& pointLights,
+	const Math::Transform& cameraTransform,
 	const CameraData& cameraData,
 	uint32_t viewportHeight,
 	uint32_t flightSlot,
@@ -1462,7 +1466,9 @@ void LightingECS::PrepareLocalShadowPasses(
 				shadowPass.m_lightMatrix = lightMatrices[face];
 				shadowPass.m_lighMatrixIndex = shadowSlot;
 				shadowPass.m_shadowType = RHI::EShadowType::PCF;
-				shadowPass.m_meshList = sceneView->TraceShadowCasters(shadowFrustum);
+				shadowPass.m_meshList = sceneView->TraceShadowCasters(
+					shadowFrustum,
+					glm::vec3(cameraTransform.m_position));
 
 				CSMLightState snapshot{};
 				snapshot.m_componentIndex = lightProxy.m_index;
@@ -1590,6 +1596,7 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 			sceneView,
 			m_spotLightsScratch,
 			m_pointLightsScratch,
+			sceneView->m_cameraTransforms[i],
 			camera,
 			viewportHeight,
 			flightSlot,

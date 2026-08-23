@@ -39,6 +39,14 @@ namespace Sailor
 		SAILOR_API void SetMaterialMasks(const TVector<FileId>& value);
 		SAILOR_API float GetTextureTiling() const { return m_textureTiling; }
 		SAILOR_API void SetTextureTiling(float value);
+		SAILOR_API const TVector<float>& GetLodDistances() const { return m_lodDistances; }
+		SAILOR_API void SetLodDistances(const TVector<float>& value);
+		SAILOR_API float GetLodSkirtDepth() const { return m_lodSkirtDepth; }
+		SAILOR_API void SetLodSkirtDepth(float value);
+		SAILOR_API uint32_t GetGrassInstanceBudget() const { return m_grassInstanceBudget; }
+		SAILOR_API void SetGrassInstanceBudget(uint32_t value);
+		SAILOR_API float GetGrassResidencyHysteresis() const { return m_grassResidencyHysteresis; }
+		SAILOR_API void SetGrassResidencyHysteresis(float value);
 		SAILOR_API const TVector<float>& GetSculptStamps() const { return m_sculptStamps; }
 		SAILOR_API void SetSculptStamps(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetPaintStamps() const { return m_paintStamps; }
@@ -51,6 +59,10 @@ namespace Sailor
 		SAILOR_API void SetVegetationMeshIndex(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetVegetationInstancesPerChunk() const { return m_vegetationInstancesPerChunk; }
 		SAILOR_API void SetVegetationInstancesPerChunk(const TVector<float>& value);
+		SAILOR_API const TVector<float>& GetVegetationResidency() const { return m_vegetationResidency; }
+		SAILOR_API void SetVegetationResidency(const TVector<float>& value);
+		SAILOR_API const TVector<float>& GetVegetationPriority() const { return m_vegetationPriority; }
+		SAILOR_API void SetVegetationPriority(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetVegetationMinScale() const { return m_vegetationMinScale; }
 		SAILOR_API void SetVegetationMinScale(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetVegetationMaxScale() const { return m_vegetationMaxScale; }
@@ -101,12 +113,18 @@ namespace Sailor
 		FileId m_heightmapTexture{};
 		TVector<FileId> m_materialMasks{};
 		float m_textureTiling = 0.15f;
+		TVector<float> m_lodDistances{ 96.0f, 192.0f };
+		float m_lodSkirtDepth = 2.0f;
+		uint32_t m_grassInstanceBudget = 32768u;
+		float m_grassResidencyHysteresis = 12.0f;
 		TVector<float> m_sculptStamps{};
 		TVector<float> m_paintStamps{};
 		TVector<FileId> m_vegetationModels{};
 		TVector<FileId> m_vegetationMaterials{};
 		TVector<float> m_vegetationMeshIndex{};
 		TVector<float> m_vegetationInstancesPerChunk{};
+		TVector<float> m_vegetationResidency{};
+		TVector<float> m_vegetationPriority{};
 		TVector<float> m_vegetationMinScale{};
 		TVector<float> m_vegetationMaxScale{};
 		TVector<float> m_vegetationGroundOffset{};
@@ -153,6 +171,14 @@ REFL_AUTO(
 	func(SetMaterialMasks, property("materialMasks")),
 	func(GetTextureTiling, property("textureTiling"), Range(0.001, 8.0)),
 	func(SetTextureTiling, property("textureTiling")),
+	func(GetLodDistances, property("lodDistances")),
+	func(SetLodDistances, property("lodDistances")),
+	func(GetLodSkirtDepth, property("lodSkirtDepth"), Range(0.0, 64.0)),
+	func(SetLodSkirtDepth, property("lodSkirtDepth")),
+	func(GetGrassInstanceBudget, property("grassInstanceBudget"), Range(0.0, 1048576.0)),
+	func(SetGrassInstanceBudget, property("grassInstanceBudget")),
+	func(GetGrassResidencyHysteresis, property("grassResidencyHysteresis"), Range(0.0, 512.0)),
+	func(SetGrassResidencyHysteresis, property("grassResidencyHysteresis")),
 	func(GetSculptStamps, property("sculptStamps")),
 	func(SetSculptStamps, property("sculptStamps")),
 	func(GetPaintStamps, property("paintStamps")),
@@ -165,6 +191,10 @@ REFL_AUTO(
 	func(SetVegetationMeshIndex, property("vegetationMeshIndex")),
 	func(GetVegetationInstancesPerChunk, property("vegetationInstancesPerChunk")),
 	func(SetVegetationInstancesPerChunk, property("vegetationInstancesPerChunk")),
+	func(GetVegetationResidency, property("vegetationResidency")),
+	func(SetVegetationResidency, property("vegetationResidency")),
+	func(GetVegetationPriority, property("vegetationPriority")),
+	func(SetVegetationPriority, property("vegetationPriority")),
 	func(GetVegetationMinScale, property("vegetationMinScale")),
 	func(SetVegetationMinScale, property("vegetationMinScale")),
 	func(GetVegetationMaxScale, property("vegetationMaxScale")),

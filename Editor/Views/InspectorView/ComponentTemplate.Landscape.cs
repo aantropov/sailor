@@ -137,6 +137,8 @@ public partial class ComponentTemplate
                 out var materials,
                 out var meshIndex,
                 out var instancesPerChunk,
+                out var residency,
+                out var priority,
                 out var minScale,
                 out var maxScale,
                 out var groundOffset,
@@ -192,6 +194,8 @@ public partial class ComponentTemplate
                 materials.Values.Count,
                 meshIndex.Values.Count,
                 instancesPerChunk.Values.Count,
+                residency.Values.Count,
+                priority.Values.Count,
                 minScale.Values.Count,
                 maxScale.Values.Count,
                 groundOffset.Values.Count,
@@ -256,7 +260,8 @@ public partial class ComponentTemplate
                     await component.ApplyInspectorBatchAsync(() =>
                     {
                         RemoveLandscapeVegetationProfile(index, models, materials,
-                            meshIndex, instancesPerChunk, minScale, maxScale, groundOffset,
+                            meshIndex, instancesPerChunk, residency, priority,
+                            minScale, maxScale, groundOffset,
                             shadowMode, shadowDistance, minLod, maxLod,
                             lod1ScreenCoverage, lod2ScreenCoverage, cullDistance,
                             colliderRadius, colliderHeight, colliderOffsetY);
@@ -281,6 +286,23 @@ public partial class ComponentTemplate
                     component, meshIndex.Values[index], value => MathF.Max(-1.0f, MathF.Round(value))));
                 AddVegetationField(card, "Per chunk", CreateLandscapeFloatEditor(
                     component, instancesPerChunk.Values[index], value => MathF.Max(0.0f, MathF.Round(value))));
+                var residencyPicker = new Picker
+                {
+                    ItemsSource = new[] { "Persistent", "Grass (budgeted)" },
+                    SelectedIndex = Math.Clamp((int)residency.Values[index].Value, 0, 1),
+                    FontSize = 12,
+                    BindingContext = component
+                };
+                residencyPicker.SelectedIndexChanged += (_, _) =>
+                {
+                    if (residencyPicker.SelectedIndex < 0)
+                        return;
+                    residency.Values[index].Value = residencyPicker.SelectedIndex;
+                    _ = component.CommitInspectorChangesAsync();
+                };
+                AddVegetationField(card, "Residency", residencyPicker);
+                AddVegetationField(card, "Priority", CreateLandscapeFloatEditor(
+                    component, priority.Values[index], value => Math.Clamp(value, 0.0f, 100.0f)));
                 AddVegetationField(card, "Min scale", CreateLandscapeFloatEditor(
                     component, minScale.Values[index], value => MathF.Max(0.01f, value)));
                 AddVegetationField(card, "Max scale", CreateLandscapeFloatEditor(
@@ -337,6 +359,8 @@ public partial class ComponentTemplate
                     materials.Values.Add(new Observable<FileId>(new FileId()));
                     meshIndex.Values.Add(new Observable<float>(-1.0f));
                     instancesPerChunk.Values.Add(new Observable<float>(4.0f));
+                    residency.Values.Add(new Observable<float>(0.0f));
+                    priority.Values.Add(new Observable<float>(1.0f));
                     minScale.Values.Add(new Observable<float>(0.75f));
                     maxScale.Values.Add(new Observable<float>(1.25f));
                     groundOffset.Values.Add(new Observable<float>(0.0f));
@@ -527,6 +551,8 @@ public partial class ComponentTemplate
         ObservableFileIdList materials,
         ObservableFloatList meshIndex,
         ObservableFloatList instancesPerChunk,
+        ObservableFloatList residency,
+        ObservableFloatList priority,
         ObservableFloatList minScale,
         ObservableFloatList maxScale,
         ObservableFloatList groundOffset,
@@ -545,6 +571,8 @@ public partial class ComponentTemplate
         materials.Values.RemoveAt(index);
         meshIndex.Values.RemoveAt(index);
         instancesPerChunk.Values.RemoveAt(index);
+        residency.Values.RemoveAt(index);
+        priority.Values.RemoveAt(index);
         minScale.Values.RemoveAt(index);
         maxScale.Values.RemoveAt(index);
         groundOffset.Values.RemoveAt(index);
@@ -566,6 +594,8 @@ public partial class ComponentTemplate
         out ObservableFileIdList materials,
         out ObservableFloatList meshIndex,
         out ObservableFloatList instancesPerChunk,
+        out ObservableFloatList residency,
+        out ObservableFloatList priority,
         out ObservableFloatList minScale,
         out ObservableFloatList maxScale,
         out ObservableFloatList groundOffset,
@@ -584,6 +614,8 @@ public partial class ComponentTemplate
         component.OverrideProperties.TryGetValue("vegetationMaterials", out var materialsProperty);
         component.OverrideProperties.TryGetValue("vegetationMeshIndex", out var meshIndexProperty);
         component.OverrideProperties.TryGetValue("vegetationInstancesPerChunk", out var instancesPerChunkProperty);
+        component.OverrideProperties.TryGetValue("vegetationResidency", out var residencyProperty);
+        component.OverrideProperties.TryGetValue("vegetationPriority", out var priorityProperty);
         component.OverrideProperties.TryGetValue("vegetationMinScale", out var minScaleProperty);
         component.OverrideProperties.TryGetValue("vegetationMaxScale", out var maxScaleProperty);
         component.OverrideProperties.TryGetValue("vegetationGroundOffset", out var groundOffsetProperty);
@@ -602,6 +634,8 @@ public partial class ComponentTemplate
         materials = materialsProperty as ObservableFileIdList;
         meshIndex = meshIndexProperty as ObservableFloatList;
         instancesPerChunk = instancesPerChunkProperty as ObservableFloatList;
+        residency = residencyProperty as ObservableFloatList;
+        priority = priorityProperty as ObservableFloatList;
         minScale = minScaleProperty as ObservableFloatList;
         maxScale = maxScaleProperty as ObservableFloatList;
         groundOffset = groundOffsetProperty as ObservableFloatList;
@@ -619,6 +653,8 @@ public partial class ComponentTemplate
         {
             EnsureLandscapeProfileLength(materials, models.Values.Count);
             EnsureLandscapeProfileLength(meshIndex, models.Values.Count, -1.0f);
+            EnsureLandscapeProfileLength(residency, models.Values.Count, 0.0f);
+            EnsureLandscapeProfileLength(priority, models.Values.Count, 1.0f);
             EnsureLandscapeProfileLength(minLod, models.Values.Count, 0.0f);
             EnsureLandscapeProfileLength(maxLod, models.Values.Count, 2.0f);
             EnsureLandscapeProfileLength(lod1ScreenCoverage, models.Values.Count, 0.25f);
@@ -629,7 +665,8 @@ public partial class ComponentTemplate
             EnsureLandscapeProfileLength(colliderOffsetY, models.Values.Count, 1.0f);
         }
         return models is not null && materials is not null && meshIndex is not null &&
-            instancesPerChunk is not null && minScale is not null &&
+            instancesPerChunk is not null && residency is not null && priority is not null &&
+            minScale is not null &&
             maxScale is not null && groundOffset is not null &&
             shadowMode is not null && shadowDistance is not null &&
             minLod is not null && maxLod is not null &&

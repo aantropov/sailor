@@ -306,6 +306,28 @@ public class ComponentYamlConverter : IYamlTypeConverter
             component.OverrideProperties["materialMasks"] = new ObservableFileIdList();
         }
 
+        if (component.Typename.Properties.ContainsKey("lodDistances") &&
+            !component.OverrideProperties.ContainsKey("lodDistances"))
+        {
+            component.OverrideProperties["lodDistances"] =
+                new ObservableFloatList([96.0f, 192.0f]);
+        }
+        if (component.Typename.Properties.ContainsKey("lodSkirtDepth") &&
+            !component.OverrideProperties.ContainsKey("lodSkirtDepth"))
+        {
+            component.OverrideProperties["lodSkirtDepth"] = new Observable<float>(2.0f);
+        }
+        if (component.Typename.Properties.ContainsKey("grassInstanceBudget") &&
+            !component.OverrideProperties.ContainsKey("grassInstanceBudget"))
+        {
+            component.OverrideProperties["grassInstanceBudget"] = new Observable<uint>(32768u);
+        }
+        if (component.Typename.Properties.ContainsKey("grassResidencyHysteresis") &&
+            !component.OverrideProperties.ContainsKey("grassResidencyHysteresis"))
+        {
+            component.OverrideProperties["grassResidencyHysteresis"] = new Observable<float>(12.0f);
+        }
+
         if (!component.OverrideProperties.TryGetValue(
                 "vegetationModels",
                 out var modelsProperty) ||
@@ -317,6 +339,8 @@ public class ComponentYamlConverter : IYamlTypeConverter
         (string Name, float DefaultValue)[] properties =
         [
             ("vegetationMeshIndex", -1.0f),
+            ("vegetationResidency", 0.0f),
+            ("vegetationPriority", 1.0f),
             ("vegetationMinLod", 0.0f),
             ("vegetationMaxLod", 2.0f),
             ("vegetationLod1ScreenCoverage", 0.25f),

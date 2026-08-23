@@ -53,6 +53,10 @@ namespace Sailor
 		virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		void CopyCameraData(RHI::RHISceneViewPtr& outCameras);
 		bool TryGetActiveCamera(Math::Transform& outCameraTransform, CameraData& outCameraData);
+		const TVector<Math::Transform>& GetActiveCameraTransforms() const
+		{
+			return m_rhiCameraTransforms;
+		}
 
 		virtual uint32_t GetOrder() const override { return 100; }
 
