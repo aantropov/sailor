@@ -14,12 +14,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <yaml-cpp/yaml.h>
 
 using namespace Sailor;
 using namespace Sailor::GraphicsDriver::Vulkan;
@@ -37,6 +41,92 @@ namespace
 		if (!condition)
 		{
 			throw std::runtime_error(message);
+		}
+	}
+
+	std::string ReadText(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		Require(input.is_open(), "renderer contract should be readable: " + path.generic_string());
+		return std::string(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+	}
+
+	std::string GetFrameGraphSetting(const YAML::Node& pass, const char* setting)
+	{
+		const YAML::Node settings = pass["string"];
+		if (!settings || !settings.IsSequence())
+		{
+			return {};
+		}
+
+		for (const YAML::Node& entry : settings)
+		{
+			const YAML::Node value = entry[setting];
+			if (value && value.IsScalar())
+			{
+				return value.as<std::string>();
+			}
+		}
+
+		return {};
+	}
+
+	void TestRendererGpuCullingPassContract()
+	{
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		const char* rendererPaths[] =
+		{
+			"DefaultRenderer.renderer",
+			"EditorRenderer.renderer"
+		};
+
+		for (const char* rendererPath : rendererPaths)
+		{
+			const YAML::Node renderer = YAML::Load(ReadText(contentRoot / rendererPath));
+			const YAML::Node frame = renderer["frame"];
+			Require(frame && frame.IsSequence(),
+				std::string(rendererPath) + " should contain a frame graph");
+
+			uint32_t depthPasses = 0u;
+			uint32_t mainPasses = 0u;
+			for (const YAML::Node& pass : frame)
+			{
+				const YAML::Node nameNode = pass["name"];
+				if (!nameNode || !nameNode.IsScalar())
+				{
+					continue;
+				}
+
+				const std::string name = nameNode.as<std::string>();
+				const std::string tag = GetFrameGraphSetting(pass, "Tag");
+				if (name == "DepthPrepass" && (tag == "Opaque" || tag == "Masked"))
+				{
+					++depthPasses;
+					Require(GetFrameGraphSetting(pass, "GPUCulling") == "false",
+						std::string(rendererPath) + " must keep GPU culling disabled in " + tag +
+						" depth prepass");
+					Require(GetFrameGraphSetting(pass, "VirtualizeInstancePayloads") == "true",
+						std::string(rendererPath) + " must keep instance virtualization enabled in " + tag +
+						" depth prepass");
+				}
+				else if (name == "RenderScene" && (tag == "Opaque" || tag == "Masked"))
+				{
+					++mainPasses;
+					Require(GetFrameGraphSetting(pass, "GPUCulling") == "true",
+						std::string(rendererPath) + " must keep GPU culling enabled in " + tag +
+						" main pass");
+					Require(GetFrameGraphSetting(pass, "VirtualizeInstancePayloads") == "true",
+						std::string(rendererPath) + " must keep instance virtualization enabled in " + tag +
+						" main pass");
+				}
+			}
+
+			Require(depthPasses == 2u && mainPasses == 2u,
+				std::string(rendererPath) +
+				" should expose opaque and masked depth/main pass pairs");
 		}
 	}
 
@@ -776,6 +866,7 @@ namespace
 int main()
 {
 	const std::pair<const char*, std::function<void()>> tests[] = {
+		{ "RendererGpuCullingPassContract", TestRendererGpuCullingPassContract },
 		{ "MipExtentUsesVulkanFloorAndClamp", TestMipExtentUsesVulkanFloorAndClamp },
 		{ "PackedDrawMobilityPayloadVirtualization", TestPackedDrawMobilityPayloadVirtualization },
 		{ "MaterialVersionPublicationContract", TestMaterialVersionPublicationContract },
