@@ -1083,6 +1083,9 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "DISABLE_SCREEN_SPACE_AO" });
 		const RHI::ShaderByteCode debugAoByteCode = compileRuntimeFragment(
 			"Shaders/Debug.shader",
 			{ "AO" });

@@ -826,9 +826,9 @@ glslFragment: |
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
 
-    // Occlusion affects indirect lighting, not analytic lights. Apply the
-    // visibility directly to diffuse IBL and use a view- and roughness-aware
-    // approximation for specular IBL.
+    // Apply visibility directly to diffuse IBL and use a view- and
+    // roughness-aware approximation for specular IBL. The bounded analytic
+    // contact term is composed separately after direct-light accumulation.
     float ambientOcclusion = clamp(material.occlusionStrength, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
       ambientOcclusion,
@@ -957,7 +957,8 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
-    const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
+    const vec2 viewportUv = gl_FragCoord.xy *
+      rcp(vec2(textureSize(g_aoSampler, 0)));
     
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
@@ -973,10 +974,11 @@ glslFragment: |
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
 
-    float occlusion = 1.0;
+    float screenSpaceOcclusion = 1.0;
   #ifndef DISABLE_SCREEN_SPACE_AO
-    occlusion = texture(g_aoSampler, viewportUv).r;
+    screenSpaceOcclusion = texture(g_aoSampler, viewportUv).r;
   #endif
+    float occlusion = screenSpaceOcclusion;
     if(material.occlusionSampler != 0)
     {
       float occlusionTex = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.occlusionSampler))], vin.texcoord).r;
@@ -1100,6 +1102,8 @@ glslFragment: |
   #ifdef SHEEN
     outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo, material.occlusionStrength);
   #endif
+
+    const vec3 nonAnalyticLighting = outColor.xyz;
     
     for(int i = 0; i < numLights; i++)
     {
@@ -1123,6 +1127,10 @@ glslFragment: |
         outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
   #endif
     }
+
+    outColor.xyz = nonAnalyticLighting +
+      (outColor.xyz - nonAnalyticLighting) *
+      CalculateDirectLightingOcclusion(screenSpaceOcclusion);
 
   #ifdef TRANSMISSION
     float dielectricFresnel =

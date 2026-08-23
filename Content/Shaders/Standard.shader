@@ -546,7 +546,8 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
-    const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
+    const vec2 viewportUv = gl_FragCoord.xy *
+      rcp(vec2(textureSize(g_aoSampler, 0)));
     
     MaterialData material = GetMaterialData();
     material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord) * vin.color;
@@ -595,7 +596,8 @@ glslFragment: |
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
     
-    outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
+    const vec3 indirectLighting = AmbientLighting(material, F0, Lr, normal, cosLo);
+    outColor.xyz = indirectLighting;
     
     for(int i = 0; i < numLights; i++)
     {
@@ -613,6 +615,10 @@ glslFragment: |
 
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
     }
+
+    outColor.xyz = indirectLighting +
+      (outColor.xyz - indirectLighting) *
+      CalculateDirectLightingOcclusion(material.ao);
 
     outColor.a = material.albedo.a;
   }

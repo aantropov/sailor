@@ -126,9 +126,18 @@ glslFragment: |
     return normalize(cross(right.xyz, framebufferDown.xyz));
   }
   
-  vec2 SnapTexel(vec2 uv, vec2 depthTextureSize)
+  vec2 SnapTexelOffset(vec2 uvOffset, vec2 depthTextureSize)
   {
-     return round(uv * depthTextureSize) * rcp(depthTextureSize);
+    return round(uvOffset * depthTextureSize) * rcp(depthTextureSize);
+  }
+
+  vec2 SnapTexelCenter(vec2 uv, vec2 depthTextureSize)
+  {
+    vec2 pixel = clamp(
+      floor(uv * depthTextureSize),
+      vec2(0.0f),
+      depthTextureSize - vec2(1.0f));
+    return (pixel + vec2(0.5f)) * rcp(depthTextureSize);
   }
   
   float SampleAO(inout float sinH, vec3 viewSpaceSamplePos, vec3 viewSpaceOriginPos, vec3 viewSpaceOriginNormal)
@@ -172,9 +181,9 @@ glslFragment: |
     direction *= sampleRadius;
 
     // jitter the starting position for ray marching between the nearest neighbour and the sample step size
-    vec2 stepUV = SnapTexel(direction * rcp(NumSamples + 1.0f), depthTextureSize);
+    vec2 stepUV = SnapTexelOffset(direction * rcp(NumSamples + 1.0f), depthTextureSize);
     vec2 jitteredOffset = mix(singleTexelStep, stepUV, jitter);
-    vec2 rayStart = SnapTexel(rayOrigin + jitteredOffset, depthTextureSize);
+    vec2 rayStart = SnapTexelCenter(rayOrigin + jitteredOffset, depthTextureSize);
     vec2 rayEnd = rayStart + direction;
 
     // top occlusion keeps track of the occlusion contribution of the last found occluder.
@@ -186,7 +195,9 @@ glslFragment: |
     [[unroll]]
     for (uint step = 0; step < NumSamples; ++step)
     {
-        vec2 uv = SnapTexel(mix(rayStart, rayEnd, step / float(NumSamples)), depthTextureSize);
+        vec2 uv = SnapTexelCenter(
+          mix(rayStart, rayEnd, step / float(NumSamples)),
+          depthTextureSize);
         vec3 viewSpaceSamplePos = GetViewSpacePos(uv);
 
         occlusion += SampleAO(sinH, viewSpaceSamplePos, viewSpaceOriginPos, viewSpaceOriginNormal);
@@ -244,6 +255,10 @@ glslFragment: |
             depthTextureSize);
     }
 
-    outColor = vec4(1 - saturate((data.occlusionPower / NumDirections) * occlusionFactor));
+    float averageOcclusion = saturate(occlusionFactor / float(NumDirections));
+    float visibility = saturate(1.0f - averageOcclusion);
+    // Treat power as the final visibility exponent so it changes contrast
+    // without changing the directional normalization of the estimator.
+    outColor = vec4(pow(visibility, max(data.occlusionPower, 0.0001f)));
     //outColor.xyz = viewSpaceNormal;
   }

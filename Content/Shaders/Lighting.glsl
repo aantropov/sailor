@@ -37,6 +37,7 @@ struct LightData
 const uint INVALID_LIGHT_TYPE = 0xFFFFFFFFu;
 const uint LIGHT_TILE_OVERFLOW_BIT = 0x80000000u;
 const uint LIGHT_TILE_COUNT_MASK = 0x7FFFFFFFu;
+const float SCREEN_SPACE_AO_DIRECT_LIGHTING_STRENGTH = 0.5f;
 
 layout(std430)
 struct LightsGrid
@@ -161,6 +162,18 @@ float CalculateSpecularOcclusion(float ambientOcclusion, float cosLo, float roug
   const float clampedRoughness = clamp(roughness, 0.0, 1.0);
   const float exponent = exp2(-16.0 * clampedRoughness - 1.0);
   return clamp(pow(nDotV + ao, exponent) - 1.0 + ao, 0.0, 1.0);
+}
+
+// A bounded direct-lighting contribution turns screen-space AO into a useful
+// contact shadow even in scenes where analytic lights dominate the IBL.
+// Keep the strength bounded so emissive lighting and authored light shadows
+// remain the primary sources of contrast.
+float CalculateDirectLightingOcclusion(float ambientOcclusion)
+{
+  return mix(
+    1.0,
+    clamp(ambientOcclusion, 0.0, 1.0),
+    SCREEN_SPACE_AO_DIRECT_LIGHTING_STRENGTH);
 }
 
 vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 radius)
