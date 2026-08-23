@@ -304,9 +304,9 @@ prefabs:
       - typename: Sailor::LightComponent
         overrideProperties:
           intensity:
-            - 6.5
-            - 3.20000005
-            - 1.35000002
+            - 24
+            - 12
+            - 5
           shadowQuality: Medium
           indirectLightingIntensity: 1
           attenuation:
@@ -368,9 +368,9 @@ prefabs:
           ambient: 0
           scatteringIntensity: 0.5
           directionalLightIntensity:
-            - 6.5
-            - 3.20000005
-            - 1.35000002
+            - 24
+            - 12
+            - 5
           fileId: ""
           sunShaftsDistance: 60
   - gameObjects:

@@ -246,12 +246,12 @@ namespace
 		ProbeVolumeBakeRequest request;
 		request.m_stateName = "Evening Landscape Bounce";
 		request.m_bakerVersion =
-			"Sailor deterministic evening-landscape visual fixture/2";
+			"Sailor deterministic evening-landscape visual fixture/3";
 		request.m_volumeMin = glm::vec3(-22.0f, -6.0f, -18.0f);
 		request.m_volumeMax = glm::vec3(22.0f, 16.0f, 18.0f);
 		request.m_settings = settings;
 		request.m_sceneGeometryBounds.Add(fixture.m_bounds);
-		request.m_sourceWorldHash = 0x155e11e71a9d5ca2ull;
+		request.m_sourceWorldHash = 0x155e11e71a9d5ca3ull;
 		ProbeVolumeBakeResult result = ProbeVolumeBaker::Bake(request, pathTracer);
 		Require(result.IsSuccess(),
 			"the evening landscape visual fixture must bake: " +
@@ -765,7 +765,8 @@ components:
 		const float receiverEnergy = glm::dot(
 			receiverIrradiance,
 			glm::vec3(0.2126f, 0.7152f, 0.0722f));
-		Require(receiverEnergy > 0.015f,
+		Require(
+			receiverEnergy > MinimumReceiverIrradianceEnergy,
 			"an occluded receiver must retain measurable reflected irradiance");
 
 		float minimumDcEnergy = (std::numeric_limits<float>::max)();

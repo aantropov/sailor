@@ -150,7 +150,8 @@ bool GlobalIlluminationLandscapeVisualTestComponent::
 	outReceiverEnergy = glm::dot(
 		irradiance,
 		glm::vec3(0.2126f, 0.7152f, 0.0722f));
-	if (!std::isfinite(outReceiverEnergy) || outReceiverEnergy <= 0.015f)
+	if (!std::isfinite(outReceiverEnergy) || outReceiverEnergy <=
+		GlobalIlluminationLandscapeTestScene::MinimumReceiverIrradianceEnergy)
 	{
 		outDiagnostic =
 			"The directly occluded receiver has no measurable secondary irradiance.";

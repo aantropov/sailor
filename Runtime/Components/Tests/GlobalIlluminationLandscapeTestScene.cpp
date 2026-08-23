@@ -276,7 +276,7 @@ glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightDirection()
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightIntensity()
 {
-	return glm::vec3(6.5f, 3.2f, 1.35f);
+	return glm::vec3(24.0f, 12.0f, 5.0f);
 }
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetReceiverEvidencePoint()
