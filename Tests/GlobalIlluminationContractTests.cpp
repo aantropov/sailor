@@ -160,6 +160,32 @@ namespace
 		return material;
 	}
 
+	bool IntersectsBakeTriangles(
+		const TVector<Math::Triangle>& triangles,
+		const Math::Ray& ray,
+		float maxRayLength)
+	{
+		for (const Math::Triangle& triangle : triangles)
+		{
+			glm::vec2 barycentric{};
+			float distance = 0.0f;
+			if (Math::IntersectRayTriangle(
+					ray.GetOrigin(),
+					ray.GetDirection(),
+					triangle.m_vertices[0],
+					triangle.m_vertices[1],
+					triangle.m_vertices[2],
+					barycentric,
+					distance) &&
+				distance < maxRayLength &&
+				distance > -0.0000001f)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	struct EveningLandscapeRaytracingFixture final
 	{
 		Memory::ObjectAllocatorPtr m_allocator{};
@@ -197,7 +223,7 @@ namespace
 			TSharedPtr<TVector<Math::Triangle>>::Make(std::move(triangles));
 		fixture.m_blas = TSharedPtr<Raytracing::BVH>::Make(
 			static_cast<uint32_t>(fixture.m_triangles->Num()));
-		fixture.m_blas->BuildBVH(*fixture.m_triangles);
+		BuildBakeBlas(*fixture.m_blas, *fixture.m_triangles);
 
 		Raytracing::PathTracer::TLASInstance instance;
 		instance.m_triangles = fixture.m_triangles;
@@ -720,18 +746,14 @@ components:
 		EveningLandscapeRaytracingFixture fixture =
 			MakeEveningLandscapeRaytracingFixture();
 		const glm::vec3 toLight = -GetEveningLightDirection();
-		Math::RaycastHit receiverOccluder;
-		Require(fixture.m_blas->IntersectBVH(
+		Require(IntersectsBakeTriangles(
+				*fixture.m_triangles,
 				Math::Ray(GetReceiverEvidencePoint(), toLight),
-				receiverOccluder,
-				0u,
 				120.0f),
 			"the evening ridge must geometrically block direct sun at the receiver");
-		Math::RaycastHit cliffOccluder;
-		Require(!fixture.m_blas->IntersectBVH(
+		Require(!IntersectsBakeTriangles(
+				*fixture.m_triangles,
 				Math::Ray(GetBounceCliffEvidencePoint(), toLight),
-				cliffOccluder,
-				0u,
 				120.0f),
 			"the upper warm cliff must remain directly exposed to the evening sun");
 

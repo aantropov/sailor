@@ -1,4 +1,5 @@
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
+#include "Raytracing/BVH.h"
 
 #include <algorithm>
 #include <cmath>
@@ -263,6 +264,13 @@ void GlobalIlluminationLandscapeTestScene::BuildBakeTriangles(
 			outBounds.Extend(vertex);
 		}
 	}
+}
+
+void GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+	Raytracing::BVH& outBlas,
+	const TVector<Math::Triangle>& triangles)
+{
+	outBlas.BuildBVH(triangles);
 }
 
 glm::vec3 GlobalIlluminationLandscapeTestScene::GetEveningLightDirection()

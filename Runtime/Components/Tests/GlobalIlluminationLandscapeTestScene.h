@@ -6,6 +6,11 @@
 
 #include <cstdint>
 
+namespace Sailor::Raytracing
+{
+	class BVH;
+}
+
 namespace Sailor::GlobalIlluminationLandscapeTestScene
 {
 	enum class EMaterial : uint8_t
@@ -46,6 +51,9 @@ namespace Sailor::GlobalIlluminationLandscapeTestScene
 	SAILOR_SHARED_API void BuildBakeTriangles(
 		TVector<Math::Triangle>& outTriangles,
 		Math::AABB& outBounds);
+	SAILOR_SHARED_API void BuildBakeBlas(
+		Raytracing::BVH& outBlas,
+		const TVector<Math::Triangle>& triangles);
 
 	SAILOR_SHARED_API glm::vec3 GetEveningLightDirection();
 	SAILOR_SHARED_API glm::vec3 GetEveningLightIntensity();
