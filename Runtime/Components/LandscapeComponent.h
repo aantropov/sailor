@@ -43,8 +43,6 @@ namespace Sailor
 		SAILOR_API void SetLodDistances(const TVector<float>& value);
 		SAILOR_API float GetLodSkirtDepth() const { return m_lodSkirtDepth; }
 		SAILOR_API void SetLodSkirtDepth(float value);
-		SAILOR_API uint32_t GetGrassInstanceBudget() const { return m_grassInstanceBudget; }
-		SAILOR_API void SetGrassInstanceBudget(uint32_t value);
 		SAILOR_API float GetGrassResidencyHysteresis() const { return m_grassResidencyHysteresis; }
 		SAILOR_API void SetGrassResidencyHysteresis(float value);
 		SAILOR_API const TVector<float>& GetSculptStamps() const { return m_sculptStamps; }
@@ -115,7 +113,6 @@ namespace Sailor
 		float m_textureTiling = 0.15f;
 		TVector<float> m_lodDistances{ 96.0f, 192.0f };
 		float m_lodSkirtDepth = 2.0f;
-		uint32_t m_grassInstanceBudget = 32768u;
 		float m_grassResidencyHysteresis = 12.0f;
 		TVector<float> m_sculptStamps{};
 		TVector<float> m_paintStamps{};
@@ -175,8 +172,6 @@ REFL_AUTO(
 	func(SetLodDistances, property("lodDistances")),
 	func(GetLodSkirtDepth, property("lodSkirtDepth"), Range(0.0, 64.0)),
 	func(SetLodSkirtDepth, property("lodSkirtDepth")),
-	func(GetGrassInstanceBudget, property("grassInstanceBudget"), Range(0.0, 1048576.0)),
-	func(SetGrassInstanceBudget, property("grassInstanceBudget")),
 	func(GetGrassResidencyHysteresis, property("grassResidencyHysteresis"), Range(0.0, 512.0)),
 	func(SetGrassResidencyHysteresis, property("grassResidencyHysteresis")),
 	func(GetSculptStamps, property("sculptStamps")),

@@ -17,6 +17,9 @@ public sealed class GraphicsSettingsTests
         Assert.Equal([4096, 2048, 2048, 1024], project.Graphics.Presets.Ultra.ShadowCascadeResolutions);
         Assert.Equal(0.85, project.Graphics.Presets.Medium.ResolutionFactor);
         Assert.Equal(GraphicsShadowQuality.Medium, project.Graphics.Presets.Medium.ShadowQuality);
+        Assert.Equal(65536, project.Graphics.Presets.Ultra.VegetationInstanceBudget);
+        Assert.Equal(32768, project.Graphics.Presets.High.VegetationInstanceBudget);
+        Assert.Equal(2048, project.Graphics.Presets.VeryLow.VegetationInstanceBudget);
         Assert.Equal(0.125, project.Graphics.Presets.VeryLow.CloudsResolutionMultiplier);
         Assert.Equal(2, project.Graphics.Presets.VeryLow.LodBias);
         Assert.True(GraphicsSettingsValidator.Validate(project).IsValid);
@@ -28,6 +31,7 @@ public sealed class GraphicsSettingsTests
         Assert.Contains("shadowBias: 0", yaml);
         Assert.Contains("VeryLow:", yaml);
         Assert.Contains("supportSoftShadows: true", yaml);
+        Assert.Contains("vegetationInstanceBudget: 32768", yaml);
     }
 
     [Fact]
@@ -44,6 +48,7 @@ public sealed class GraphicsSettingsTests
             ShadowCascadeResolutions = [1024, 300],
             CloudsResolutionMultiplier = 3.0,
             SkyResolution = 96,
+            VegetationInstanceBudget = 1048577,
             LodBias = 9
         };
         var document = GraphicsSettingsDefaults.Project with
@@ -67,7 +72,32 @@ public sealed class GraphicsSettingsTests
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.shadowCascadeResolutions");
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.cloudsResolutionMultiplier");
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.skyResolution");
+        Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.vegetationInstanceBudget");
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.lodBias");
+    }
+
+    [Fact]
+    public async Task LegacyPresetWithoutVegetationBudget_UsesItsQualityDefault()
+    {
+        using var workspace = TempWorkspace.Create();
+        var root = LoadRoot(
+            GraphicsSettingsYamlCodec.SerializeProject(GraphicsSettingsDefaults.Project));
+        var graphics = Assert.IsType<YamlMappingNode>(
+            root.Children[new YamlScalarNode("graphics")]);
+        var presets = Assert.IsType<YamlMappingNode>(
+            graphics.Children[new YamlScalarNode("presets")]);
+        var medium = Assert.IsType<YamlMappingNode>(
+            presets.Children[new YamlScalarNode("Medium")]);
+        medium.Children.Remove(new YamlScalarNode("vegetationInstanceBudget"));
+        await File.WriteAllTextAsync(workspace.Paths.ProjectSettingsPath, Save(root));
+
+        var snapshot = await new GraphicsSettingsService(() => workspace.Paths)
+            .EnsureLoadedAsync();
+
+        Assert.Equal(16384, snapshot.Project.Graphics.Presets.Medium.VegetationInstanceBudget);
+        Assert.DoesNotContain(
+            snapshot.Diagnostics,
+            value => value.Contains("vegetationInstanceBudget", StringComparison.Ordinal));
     }
 
     [Fact]

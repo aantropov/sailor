@@ -15,9 +15,7 @@ void LandscapeComponent::Initialize()
 	data.SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
 		m_heightScale, m_noiseScale, m_seed, m_textureTiling);
 	data.SetLodSettings(m_lodDistances, m_lodSkirtDepth);
-	data.SetVegetationStreamingSettings(
-		m_grassInstanceBudget,
-		m_grassResidencyHysteresis);
+	data.SetGrassResidencyHysteresis(m_grassResidencyHysteresis);
 	data.SetMaterial(m_material);
 	data.SetLayerTextures(m_layerTextures);
 	data.SetImportMaps(m_heightmapTexture, m_materialMasks);
@@ -59,9 +57,7 @@ void LandscapeComponent::MarkDirty()
 		data->SetSettings(m_chunksX, m_chunksZ, m_chunkSize, m_chunkResolution,
 			m_heightScale, m_noiseScale, m_seed, m_textureTiling);
 		data->SetLodSettings(m_lodDistances, m_lodSkirtDepth);
-		data->SetVegetationStreamingSettings(
-			m_grassInstanceBudget,
-			m_grassResidencyHysteresis);
+		data->SetGrassResidencyHysteresis(m_grassResidencyHysteresis);
 		data->SetMaterial(m_material);
 		data->SetLayerTextures(m_layerTextures);
 		data->SetImportMaps(m_heightmapTexture, m_materialMasks);
@@ -102,7 +98,6 @@ void LandscapeComponent::SetLodDistances(const TVector<float>& value)
 	MarkDirty();
 }
 void LandscapeComponent::SetLodSkirtDepth(float value) { m_lodSkirtDepth = std::isfinite(value) ? (std::clamp)(value, 0.0f, 64.0f) : 2.0f; MarkDirty(); }
-void LandscapeComponent::SetGrassInstanceBudget(uint32_t value) { m_grassInstanceBudget = (std::min)(value, 1048576u); MarkDirty(); }
 void LandscapeComponent::SetGrassResidencyHysteresis(float value) { m_grassResidencyHysteresis = std::isfinite(value) ? (std::clamp)(value, 0.0f, 512.0f) : 12.0f; MarkDirty(); }
 void LandscapeComponent::SetSculptStamps(const TVector<float>& value) { m_sculptStamps = value; m_sculptStamps.Resize(m_sculptStamps.Num() / 5u * 5u); MarkDirty(); }
 void LandscapeComponent::SetPaintStamps(const TVector<float>& value) { m_paintStamps = value; m_paintStamps.Resize(m_paintStamps.Num() / 5u * 5u); MarkDirty(); }

@@ -66,7 +66,6 @@ public sealed record McpLandscapeApplyRequest
     public float TextureTiling { get; init; } = 0.15f;
     public float[] LodDistances { get; init; } = [96.0f, 192.0f];
     public float LodSkirtDepth { get; init; } = 2.0f;
-    public uint GrassInstanceBudget { get; init; } = 32768;
     public float GrassResidencyHysteresis { get; init; } = 12.0f;
     public McpLandscapeVegetationProfile[] Vegetation { get; init; } = [];
     public McpLandscapeSculptStamp[] Sculpt { get; init; } = [];

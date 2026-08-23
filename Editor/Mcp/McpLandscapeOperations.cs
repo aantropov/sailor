@@ -115,8 +115,6 @@ internal sealed class McpLandscapeOperations
         }
         if (!float.IsFinite(request.LodSkirtDepth) || request.LodSkirtDepth is < 0.0f or > 64.0f)
             return Fail("lodSkirtDepth must be finite and between 0 and 64.", out error);
-        if (request.GrassInstanceBudget > 1048576)
-            return Fail("grassInstanceBudget cannot exceed 1048576.", out error);
         if (!float.IsFinite(request.GrassResidencyHysteresis) ||
             request.GrassResidencyHysteresis is < 0.0f or > 512.0f)
         {
@@ -225,7 +223,6 @@ internal sealed class McpLandscapeOperations
             ["textureTiling"] = JsonSerializer.SerializeToElement(request.TextureTiling),
             ["lodDistances"] = JsonSerializer.SerializeToElement(request.LodDistances),
             ["lodSkirtDepth"] = JsonSerializer.SerializeToElement(request.LodSkirtDepth),
-            ["grassInstanceBudget"] = JsonSerializer.SerializeToElement(request.GrassInstanceBudget),
             ["grassResidencyHysteresis"] = JsonSerializer.SerializeToElement(request.GrassResidencyHysteresis),
             ["sculptStamps"] = JsonSerializer.SerializeToElement(sculptValues),
             ["paintStamps"] = JsonSerializer.SerializeToElement(paintValues),

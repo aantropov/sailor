@@ -92,25 +92,29 @@ namespace
 			"a skirted LOD range must reference the appended skirt vertices");
 	}
 
-	void TestGrassSelectionIsPrioritizedDeterministicAndBudgeted()
+	void TestGrassSelectionFillsStableChunkRingsWithinGlobalBudget()
 	{
 		TVector<LandscapeGrassCandidate> candidates = {
-			{ 7u, 1u, 5u, 1.0f, 3.0f, false, 0.0f },
-			{ 3u, 0u, 4u, 2.0f, 100.0f, false, 0.0f },
-			{ 1u, 2u, 5u, 1.0f, 3.0f, true, 0.0f },
-			{ 0u, 0u, 5u, 1.0f, 2.0f, false, 0.0f },
+			{ 0u, 7u, 1u, 4u, 1u, 1u, 100.0f, false },
+			{ 0u, 3u, 0u, 3u, 0u, 0u, 1.0f, false },
+			{ 0u, 3u, 1u, 2u, 0u, 0u, 2.0f, false },
+			{ 0u, 9u, 0u, 5u, 1u, 2u, 1.0f, true },
 		};
 
-		const auto first = SelectLandscapeGrassResidency(candidates, 11u);
-		const auto second = SelectLandscapeGrassResidency(candidates, 11u);
+		TVector<LandscapeGrassSelection> first;
+		TVector<LandscapeGrassSelection> second;
+		SelectLandscapeGrassResidency(candidates, 8u, first);
+		SelectLandscapeGrassResidency(candidates, 8u, second);
 		Require(first.Num() == 3u && second.Num() == first.Num(),
 			"the hard budget must select exactly three candidate ranges");
-		Require(first[0].m_chunkIndex == 3u && first[0].m_instanceCount == 4u,
-			"profile priority must win before camera distance");
-		Require(first[1].m_chunkIndex == 0u && first[1].m_instanceCount == 5u,
-			"camera distance must order candidates with equal priority");
-		Require(first[2].m_chunkIndex == 1u && first[2].m_instanceCount == 2u,
-			"resident state must stabilize equal candidates and the final range must be partially admitted");
+		Require(first[0].m_chunkIndex == 3u && first[0].m_profileIndex == 1u &&
+			first[0].m_instanceCount == 2u,
+			"the current chunk must be filled first and use profile priority within that chunk");
+		Require(first[1].m_chunkIndex == 3u && first[1].m_profileIndex == 0u &&
+			first[1].m_instanceCount == 3u,
+			"all admitted profiles from the current chunk must precede neighboring chunks");
+		Require(first[2].m_chunkIndex == 9u && first[2].m_instanceCount == 3u,
+			"an already resident neighbor must be retained within its ring and may partially fill the budget");
 
 		uint32_t totalInstances = 0u;
 		for (size_t index = 0u; index < first.Num(); ++index)
@@ -121,26 +125,78 @@ namespace
 				first[index].m_instanceCount == second[index].m_instanceCount,
 				"identical inputs must produce an identical selection order and count");
 		}
-		Require(totalInstances == 11u,
+		Require(totalInstances == 8u,
 			"selected instances must fill the budget without exceeding it");
-		Require(SelectLandscapeGrassResidency(candidates, 0u).IsEmpty(),
+		TVector<LandscapeGrassSelection> empty;
+		SelectLandscapeGrassResidency(candidates, 0u, empty);
+		Require(empty.IsEmpty(),
 			"a zero instance budget must produce an empty active set");
 	}
 
-	void TestGrassResidencyHysteresisPreventsBoundaryChurn()
+	void TestGrassResidencyStabilityNeverOverridesANearerRing()
 	{
 		TVector<LandscapeGrassCandidate> candidates = {
-			{ 0u, 0u, 4u, 1.0f, 10.0f, false, 0.0f },
-			{ 1u, 0u, 4u, 1.0f, 11.0f, true, 2.0f },
+			{ 0u, 0u, 0u, 4u, 1u, 1u, 1.0f, false },
+			{ 0u, 1u, 0u, 4u, 1u, 2u, 1.0f, true },
 		};
-		const auto retained = SelectLandscapeGrassResidency(candidates, 4u);
+		TVector<LandscapeGrassSelection> retained;
+		SelectLandscapeGrassResidency(candidates, 4u, retained);
 		Require(retained.Num() == 1u && retained[0].m_chunkIndex == 1u,
-			"a resident chunk must remain selected while the challenger is inside its hysteresis margin");
+			"a resident chunk must remain selected over another candidate in the same ring");
 
-		candidates[1].m_distance = 13.0f;
-		const auto replaced = SelectLandscapeGrassResidency(candidates, 4u);
+		for (auto& candidate : candidates)
+		{
+			if (candidate.m_chunkIndex == 0u)
+			{
+				candidate.m_chunkRing = 0u;
+			}
+		}
+		TVector<LandscapeGrassSelection> replaced;
+		SelectLandscapeGrassResidency(candidates, 4u, replaced);
 		Require(replaced.Num() == 1u && replaced[0].m_chunkIndex == 0u,
-			"a meaningfully nearer chunk must replace a resident beyond its hysteresis margin");
+			"a candidate in a nearer chunk ring must replace a resident from a farther ring");
+	}
+
+	void TestGrassSelectionUsesOneBudgetAcrossLandscapeComponents()
+	{
+		TVector<LandscapeGrassCandidate> candidates = {
+			{ 1u, 0u, 0u, 4u, 0u, 0u, 1.0f, false },
+			{ 0u, 0u, 0u, 4u, 0u, 0u, 1.0f, false },
+		};
+		TVector<LandscapeGrassSelection> selected;
+		SelectLandscapeGrassResidency(candidates, 6u, selected);
+		Require(selected.Num() == 2u &&
+			selected[0].m_componentIndex == 0u && selected[0].m_instanceCount == 4u &&
+			selected[1].m_componentIndex == 1u && selected[1].m_instanceCount == 2u,
+			"one deterministic budget must be shared across all landscape components");
+	}
+
+	void TestGrassChunksMustOverlapTheCameraFrustum()
+	{
+		Math::Frustum frustum;
+		frustum.ExtractFrustumPlanes(
+			glm::mat4(1.0f),
+			1.0f,
+			90.0f,
+			0.1f,
+			100.0f);
+
+		Require(DoesLandscapeGrassChunkOverlapFrustum(
+			Math::AABB(glm::vec3(0.0f, 0.0f, -8.0f), glm::vec3(1.0f)),
+			frustum),
+			"a grass chunk in front of the camera must be admitted");
+		Require(!DoesLandscapeGrassChunkOverlapFrustum(
+			Math::AABB(glm::vec3(0.0f, 0.0f, 8.0f), glm::vec3(1.0f)),
+			frustum),
+			"a grass chunk behind the camera must not consume the budget");
+
+		const Math::AABB edgeChunk(
+			glm::vec3(15.0f, 0.0f, -8.0f),
+			glm::vec3(0.5f));
+		Require(!DoesLandscapeGrassChunkOverlapFrustum(edgeChunk, frustum),
+			"a non-resident chunk outside the side plane must be culled");
+		Require(DoesLandscapeGrassChunkOverlapFrustum(edgeChunk, frustum, 8.0f),
+			"the residency margin must retain a chunk near a frustum edge");
 	}
 }
 
@@ -149,8 +205,10 @@ int main()
 	const std::pair<const char*, std::function<void()>> tests[] = {
 		{ "LodCoordinatesPreserveChunkBoundaries", TestLodCoordinatesPreserveChunkBoundaries },
 		{ "LodIndicesStayWithinPackedTerrainAndSkirtVertices", TestLodIndicesStayWithinPackedTerrainAndSkirtVertices },
-		{ "GrassSelectionIsPrioritizedDeterministicAndBudgeted", TestGrassSelectionIsPrioritizedDeterministicAndBudgeted },
-		{ "GrassResidencyHysteresisPreventsBoundaryChurn", TestGrassResidencyHysteresisPreventsBoundaryChurn },
+		{ "GrassSelectionFillsStableChunkRingsWithinGlobalBudget", TestGrassSelectionFillsStableChunkRingsWithinGlobalBudget },
+		{ "GrassResidencyStabilityNeverOverridesANearerRing", TestGrassResidencyStabilityNeverOverridesANearerRing },
+		{ "GrassSelectionUsesOneBudgetAcrossLandscapeComponents", TestGrassSelectionUsesOneBudgetAcrossLandscapeComponents },
+		{ "GrassChunksMustOverlapTheCameraFrustum", TestGrassChunksMustOverlapTheCameraFrustum },
 	};
 
 	for (const auto& test : tests)

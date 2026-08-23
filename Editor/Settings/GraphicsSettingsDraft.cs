@@ -13,6 +13,7 @@ public sealed record GraphicsQualityPresetDraft(
     bool SupportSoftShadows,
     string CloudsResolutionMultiplier,
     string SkyResolution,
+    string VegetationInstanceBudget,
     string LodBias)
 {
     public static GraphicsQualityPresetDraft FromSettings(
@@ -28,6 +29,7 @@ public sealed record GraphicsQualityPresetDraft(
             settings.SupportSoftShadows,
             FormatDouble(settings.CloudsResolutionMultiplier),
             settings.SkyResolution.ToString(CultureInfo.InvariantCulture),
+            settings.VegetationInstanceBudget.ToString(CultureInfo.InvariantCulture),
             settings.LodBias.ToString(CultureInfo.InvariantCulture));
 
     internal bool TryBuild(
@@ -73,6 +75,12 @@ public sealed record GraphicsQualityPresetDraft(
             issues,
             out var skyResolution);
         valid &= TryParseInt(
+            VegetationInstanceBudget,
+            $"{path}.vegetationInstanceBudget",
+            "Vegetation instance budget",
+            issues,
+            out var vegetationInstanceBudget);
+        valid &= TryParseInt(
             LodBias,
             $"{path}.lodBias",
             "LOD bias",
@@ -91,6 +99,7 @@ public sealed record GraphicsQualityPresetDraft(
             SupportSoftShadows = SupportSoftShadows,
             CloudsResolutionMultiplier = cloudsResolutionMultiplier,
             SkyResolution = skyResolution,
+            VegetationInstanceBudget = vegetationInstanceBudget,
             LodBias = lodBias
         };
         return valid;

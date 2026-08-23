@@ -919,6 +919,7 @@ public sealed class SettingsPanelView : ContentView
         readonly Switch _supportSoftShadows;
         readonly Entry _cloudsResolutionMultiplier;
         readonly Entry _skyResolution;
+        readonly Entry _vegetationInstanceBudget;
         readonly Entry _lodBias;
 
         public GraphicsPresetEditor(
@@ -953,6 +954,8 @@ public sealed class SettingsPanelView : ContentView
             _cloudsResolutionMultiplier = CreateEntry(
                 draft.CloudsResolutionMultiplier);
             _skyResolution = CreateEntry(draft.SkyResolution);
+            _vegetationInstanceBudget = CreateEntry(
+                draft.VegetationInstanceBudget);
             _lodBias = CreateEntry(draft.LodBias);
         }
 
@@ -972,6 +975,7 @@ public sealed class SettingsPanelView : ContentView
                 _supportSoftShadows.IsToggled,
                 _cloudsResolutionMultiplier.Text ?? string.Empty,
                 _skyResolution.Text ?? string.Empty,
+                _vegetationInstanceBudget.Text ?? string.Empty,
                 _lodBias.Text ?? string.Empty);
 
         public View CreateView(bool initiallyExpanded, bool isActive)
@@ -991,6 +995,7 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),
                     CreatePresetField("Clouds Resolution Multiplier", "0.0625–2.0", _cloudsResolutionMultiplier),
                     CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
+                    CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
                     CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias)
                 }
             };
@@ -1094,6 +1099,12 @@ public sealed class SettingsPanelView : ContentView
                 issues,
                 out var skyResolution);
             valid &= TryParseInt(
+                _vegetationInstanceBudget.Text,
+                $"{path}.vegetationInstanceBudget",
+                "Vegetation instance budget",
+                issues,
+                out var vegetationInstanceBudget);
+            valid &= TryParseInt(
                 _lodBias.Text,
                 $"{path}.lodBias",
                 "LOD bias",
@@ -1123,6 +1134,7 @@ public sealed class SettingsPanelView : ContentView
                 SupportSoftShadows = _supportSoftShadows.IsToggled,
                 CloudsResolutionMultiplier = cloudsResolutionMultiplier,
                 SkyResolution = skyResolution,
+                VegetationInstanceBudget = vegetationInstanceBudget,
                 LodBias = lodBias
             };
             return valid;

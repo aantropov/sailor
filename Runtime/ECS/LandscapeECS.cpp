@@ -550,7 +550,7 @@ namespace
 		const LandscapeVegetationProfile& profile,
 		const glm::mat4& ownerMatrix,
 		uint64_t frame,
-		const TVector<glm::mat4>& instanceTransforms,
+		TVector<glm::mat4> instanceTransforms,
 		EMobilityType mobility,
 		uint64_t revision,
 		LandscapeVegetationRenderProxy& result)
@@ -686,9 +686,7 @@ namespace
 #endif
 		}
 
-		instanceGroup.m_meshes = std::move(vegetationMeshes);
-		instanceGroup.m_meshTransforms = std::move(vegetationModelMatrices);
-		instanceGroup.m_instanceTransforms = instanceTransforms;
+		const uint32_t instanceCount = static_cast<uint32_t>(instanceTransforms.Num());
 		Math::AABB batchedVegetationBounds;
 		for (const auto& localInstanceMatrix : instanceTransforms)
 		{
@@ -697,12 +695,15 @@ namespace
 			instanceBounds.Apply(instanceMatrix);
 			batchedVegetationBounds.Extend(instanceBounds);
 		}
-		if (instanceGroup.m_instanceTransforms.IsEmpty() ||
-			instanceGroup.m_meshes.IsEmpty() ||
+		if (instanceTransforms.IsEmpty() ||
+			vegetationMeshes.IsEmpty() ||
 			!batchedVegetationBounds.IsValid())
 		{
 			return EVegetationProxyBuildResult::NoRenderData;
 		}
+		instanceGroup.m_meshes = std::move(vegetationMeshes);
+		instanceGroup.m_meshTransforms = std::move(vegetationModelMatrices);
+		instanceGroup.m_instanceTransforms = std::move(instanceTransforms);
 
 		vegetationProxy.m_worldAabb = batchedVegetationBounds;
 		auto vegetationShadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
@@ -724,7 +725,7 @@ namespace
 		result.m_resource = RHI::RHISceneProxyResourcePtr::Make(
 			std::move(vegetationProxy));
 		result.m_profileIndex = profileIndex;
-		result.m_instanceCount = static_cast<uint32_t>(instanceTransforms.Num());
+		result.m_instanceCount = instanceCount;
 		result.m_revision = revision;
 		result.m_mobility = mobility;
 		return EVegetationProxyBuildResult::Success;
@@ -879,12 +880,63 @@ namespace
 		return glm::mix(a, b, tz);
 	}
 
+	uint64_t CalculateGrassViewRevision(
+		const LandscapeData& data,
+		const LandscapeVegetationProfile& profile,
+		const glm::mat4& inverseOwnerMatrix,
+		const TVector<glm::vec3>& cameraPositions)
+	{
+		const float meanInstanceSpacing = data.m_chunkSize /
+			std::sqrt(static_cast<float>((std::max)(profile.m_instancesPerChunk, 1u)));
+		const double cellSize = static_cast<double>((std::clamp)(
+			meanInstanceSpacing,
+			0.5f,
+			4.0f));
+		auto quantize = [cellSize](float value)
+			{
+				if (!std::isfinite(value))
+				{
+					return int64_t(0);
+				}
+				const double coordinate = std::floor(static_cast<double>(value) / cellSize);
+				return static_cast<int64_t>((std::clamp)(
+					coordinate,
+					static_cast<double>((std::numeric_limits<int64_t>::lowest)()),
+					static_cast<double>((std::numeric_limits<int64_t>::max)())));
+			};
+
+		size_t result = 1469598103934665603ull;
+		HashCombine(result, cameraPositions.Num());
+		for (const glm::vec3& worldPosition : cameraPositions)
+		{
+			const glm::vec3 localPosition = glm::vec3(
+				inverseOwnerMatrix * glm::vec4(worldPosition, 1.0f));
+			HashCombine(
+				result,
+				quantize(localPosition.x),
+				quantize(localPosition.y),
+				quantize(localPosition.z));
+		}
+		return static_cast<uint64_t>(result) | 1ull;
+	}
+
 	TVector<glm::mat4> BuildGrassInstanceTransforms(
 		const LandscapeData& data,
 		const LandscapeChunk& chunk,
 		size_t profileIndex,
-		uint32_t instanceCount)
+		uint32_t instanceCount,
+		const glm::mat4& ownerMatrix,
+		const TVector<glm::vec3>& cameraPositions)
 	{
+		struct InstancePlacement final
+		{
+			glm::vec3 m_position{};
+			float m_angle = 0.0f;
+			float m_scale = 1.0f;
+			float m_cameraDistanceSquared = 0.0f;
+			uint32_t m_instanceIndex = 0u;
+		};
+
 		TVector<glm::mat4> result;
 		if (profileIndex >= data.m_vegetationProfiles.Num())
 		{
@@ -895,28 +947,94 @@ namespace
 		const float landscapeDepth = data.m_chunksZ * data.m_chunkSize;
 		const float originX = chunk.m_chunkX * data.m_chunkSize - landscapeWidth * 0.5f;
 		const float originZ = chunk.m_chunkZ * data.m_chunkSize - landscapeDepth * 0.5f;
+		instanceCount = (std::min)(instanceCount, profile.m_instancesPerChunk);
 		result.Reserve(instanceCount);
-		for (uint32_t instance = 0u; instance < instanceCount; ++instance)
+		const bool bPartialSelection =
+			instanceCount < profile.m_instancesPerChunk &&
+			!cameraPositions.IsEmpty();
+		auto buildPlacement = [&](uint32_t instance)
 		{
 			const uint32_t randomSeed = data.m_seed ^
 				static_cast<uint32_t>(chunk.m_chunkX * 92821u +
 					chunk.m_chunkZ * 68917u +
 					profileIndex * 4099u +
 					instance * 131u);
-			glm::vec3 position;
-			position.x = originX + Random01(randomSeed) * data.m_chunkSize;
-			position.z = originZ + Random01(randomSeed + 1u) * data.m_chunkSize;
-			position.y = SampleLandscapeChunkHeight(data, chunk, position.x, position.z) +
+			InstancePlacement placement;
+			placement.m_instanceIndex = instance;
+			placement.m_position.x = originX + Random01(randomSeed) * data.m_chunkSize;
+			placement.m_position.z = originZ + Random01(randomSeed + 1u) * data.m_chunkSize;
+			placement.m_position.y = SampleLandscapeChunkHeight(
+				data,
+				chunk,
+				placement.m_position.x,
+				placement.m_position.z) +
 				profile.m_groundOffset;
-			const float angle = Random01(randomSeed + 2u) * glm::two_pi<float>();
-			const float scale = glm::mix(
+			placement.m_angle = Random01(randomSeed + 2u) * glm::two_pi<float>();
+			placement.m_scale = glm::mix(
 				profile.m_minScale,
 				profile.m_maxScale,
 				Random01(randomSeed + 3u));
+			if (bPartialSelection)
+			{
+				placement.m_cameraDistanceSquared =
+					(std::numeric_limits<float>::infinity)();
+				const glm::vec3 worldPosition = glm::vec3(
+					ownerMatrix * glm::vec4(placement.m_position, 1.0f));
+				for (const glm::vec3& cameraPosition : cameraPositions)
+				{
+					const glm::vec3 delta = worldPosition - cameraPosition;
+					placement.m_cameraDistanceSquared = (std::min)(
+						placement.m_cameraDistanceSquared,
+						glm::dot(delta, delta));
+				}
+			}
+			return placement;
+		};
+		auto appendTransform = [&result](const InstancePlacement& placement)
+		{
 			result.Add(
-				glm::translate(glm::mat4(1.0f), position) *
-				glm::rotate(glm::mat4(1.0f), angle, glm::vec3(0.0f, 1.0f, 0.0f)) *
-				glm::scale(glm::mat4(1.0f), glm::vec3(scale)));
+				glm::translate(glm::mat4(1.0f), placement.m_position) *
+				glm::rotate(glm::mat4(1.0f), placement.m_angle,
+					glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::scale(glm::mat4(1.0f), glm::vec3(placement.m_scale)));
+		};
+
+		if (!bPartialSelection)
+		{
+			for (uint32_t instance = 0u; instance < instanceCount; ++instance)
+			{
+				appendTransform(buildPlacement(instance));
+			}
+			return result;
+		}
+
+		TVector<InstancePlacement> placements;
+		placements.Reserve(profile.m_instancesPerChunk);
+		for (uint32_t instance = 0u; instance < profile.m_instancesPerChunk; ++instance)
+		{
+			placements.Add(buildPlacement(instance));
+		}
+		auto compareDistance = [](const InstancePlacement& lhs, const InstancePlacement& rhs)
+			{
+				if (lhs.m_cameraDistanceSquared != rhs.m_cameraDistanceSquared)
+				{
+					return lhs.m_cameraDistanceSquared < rhs.m_cameraDistanceSquared;
+				}
+				return lhs.m_instanceIndex < rhs.m_instanceIndex;
+			};
+		std::nth_element(
+			placements.begin(),
+			placements.begin() + instanceCount,
+			placements.end(),
+			compareDistance);
+		placements.Resize(instanceCount);
+		placements.Sort([](const InstancePlacement& lhs, const InstancePlacement& rhs)
+			{
+				return lhs.m_instanceIndex < rhs.m_instanceIndex;
+			});
+		for (const auto& placement : placements)
+		{
+			appendTransform(placement);
 		}
 		return result;
 	}
@@ -999,21 +1117,16 @@ void LandscapeData::SetLodSettings(
 	RequestFullRebuild();
 }
 
-void LandscapeData::SetVegetationStreamingSettings(
-	uint32_t grassInstanceBudget,
+void LandscapeData::SetGrassResidencyHysteresis(
 	float grassResidencyHysteresis)
 {
-	const uint32_t normalizedBudget = (std::min)(grassInstanceBudget, 1048576u);
 	const float normalizedHysteresis = std::isfinite(grassResidencyHysteresis) ?
 		(std::clamp)(grassResidencyHysteresis, 0.0f, 512.0f) : 12.0f;
-	if (m_grassInstanceBudget == normalizedBudget &&
-		m_grassResidencyHysteresis == normalizedHysteresis)
+	if (m_grassResidencyHysteresis == normalizedHysteresis)
 	{
 		return;
 	}
-	m_grassInstanceBudget = normalizedBudget;
 	m_grassResidencyHysteresis = normalizedHysteresis;
-	MarkDirty();
 }
 
 void LandscapeData::SetLayerTextures(const TVector<FileId>& textures)
@@ -1239,8 +1352,11 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 	bool bSceneChanged = false;
 	const auto* cameraEcs = GetWorld() ? GetWorld()->GetECS<CameraECS>() : nullptr;
 	const TVector<Math::Transform> noCameraTransforms;
+	const TVector<CameraData> noCameras;
 	const auto& cameraTransforms = cameraEcs ?
 		cameraEcs->GetActiveCameraTransforms() : noCameraTransforms;
+	const auto& cameras = cameraEcs ?
+		cameraEcs->GetActiveCameras() : noCameras;
 	for (size_t componentIndex = 0; componentIndex < m_components.Num(); ++componentIndex)
 	{
 		if (!IsComponentRegistered(componentIndex))
@@ -1311,10 +1427,6 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		}
 		if (!data.IsDirty() && !transformChanged)
 		{
-			bSceneChanged |= UpdateGrassResidency(
-				componentIndex,
-				data,
-				cameraTransforms);
 			continue;
 		}
 		if (!owner || !bTerrainMaterialReady)
@@ -1392,10 +1504,6 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		{
 			data.m_bIsDirty = false;
 			data.SetLastChange(owner->GetTransformComponent().GetFrameLastChange());
-			bSceneChanged |= UpdateGrassResidency(
-				componentIndex,
-				data,
-				cameraTransforms);
 			continue;
 		}
 
@@ -1560,8 +1668,8 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			shadowCaster->m_worldAabb = proxy.m_worldAabb;
 			proxy.m_shadowCaster = shadowCaster->m_meshes.IsEmpty() ?
 				RHI::RHIShadowCasterProxyPtr{} : shadowCaster;
-			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 #if defined(__APPLE__)
+			auto* textureImporter = App::GetSubmodule<TextureImporter>();
 			proxy.m_materialTextureSamplers.Resize(1u);
 			proxy.m_materialTextureSamplers[0].Insert(0u);
 			if (textureImporter)
@@ -1606,7 +1714,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 					profile,
 					ownerMatrix,
 					proxy.m_frame,
-					instanceTransforms,
+					std::move(instanceTransforms),
 					EMobilityType::Static,
 					data.m_buildRevision + 1u,
 					vegetationRenderProxy);
@@ -1642,10 +1750,6 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		data.SetLastChange(owner->GetTransformComponent().GetFrameLastChange());
 		++m_shadowCastersRevision;
 		bSceneChanged = true;
-		bSceneChanged |= UpdateGrassResidency(
-			componentIndex,
-			data,
-			cameraTransforms);
 		size_t vegetationPerChunk = 0u;
 		for (const auto& profile : data.m_vegetationProfiles)
 		{
@@ -1659,6 +1763,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			data.m_sculptStamps.Num() / 5u, data.m_paintStamps.Num() / 5u,
 			static_cast<unsigned long long>(data.m_buildRevision));
 	}
+	bSceneChanged |= UpdateGrassResidency(cameraTransforms, cameras);
 	if (bSceneChanged)
 	{
 		PublishSceneVersion();
@@ -1667,20 +1772,9 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 }
 
 bool LandscapeECS::UpdateGrassResidency(
-	size_t componentIndex,
-	LandscapeData& component,
-	const TVector<Math::Transform>& cameraTransforms)
+	const TVector<Math::Transform>& cameraTransforms,
+	const TVector<CameraData>& cameras)
 {
-	if (component.m_chunks.IsEmpty())
-	{
-		component.m_activeGrassInstances = 0u;
-		return false;
-	}
-
-	auto grassKey = [&component](size_t chunkIndex, size_t profileIndex)
-		{
-			return chunkIndex * component.m_vegetationProfiles.Num() + profileIndex;
-		};
 	auto findResident = [](const LandscapeChunk& chunk, size_t profileIndex)
 		-> const LandscapeVegetationRenderProxy*
 		{
@@ -1694,174 +1788,541 @@ bool LandscapeECS::UpdateGrassResidency(
 			}
 			return nullptr;
 		};
+	auto toChunkCoordinate = [](double localPosition, double extent, double chunkSize)
+		{
+			const double coordinate = std::floor(
+				(localPosition + extent * 0.5) / chunkSize);
+			return static_cast<int32_t>((std::clamp)(
+				coordinate,
+				static_cast<double>((std::numeric_limits<int32_t>::lowest)()),
+				static_cast<double>((std::numeric_limits<int32_t>::max)())));
+		};
 
-	TVector<LandscapeGrassCandidate> candidates;
-	for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
+	const size_t numCameras = (std::min)(cameraTransforms.Num(), cameras.Num());
+	m_cameraPositionsScratch.Resize(numCameras);
+	m_cameraFrustumsScratch.Resize(numCameras);
+	for (size_t cameraIndex = 0u; cameraIndex < numCameras; ++cameraIndex)
 	{
-		const auto& chunk = component.m_chunks[chunkIndex];
-		if (!chunk.m_resource || cameraTransforms.IsEmpty())
+		const auto& camera = cameras[cameraIndex];
+		const float aspect = std::isfinite(camera.GetAspect()) && camera.GetAspect() > 0.0f ?
+			camera.GetAspect() : 1.0f;
+		const float fov = std::isfinite(camera.GetFov()) ?
+			(std::clamp)(camera.GetFov(), 1.0f, 179.0f) : 90.0f;
+		const float zNear = std::isfinite(camera.GetZNear()) ?
+			(std::max)(camera.GetZNear(), 0.001f) : 0.1f;
+		const float zFar = std::isfinite(camera.GetZFar()) ?
+			(std::max)(camera.GetZFar(), zNear + 0.001f) : 1000.0f;
+		m_cameraPositionsScratch[cameraIndex] = glm::vec3(
+			cameraTransforms[cameraIndex].m_position);
+		m_cameraFrustumsScratch[cameraIndex].ExtractFrustumPlanes(
+			cameraTransforms[cameraIndex].Matrix(),
+			aspect,
+			fov,
+			zNear,
+			zFar);
+	}
+
+	m_grassCandidatesScratch.Clear(false);
+	for (size_t componentIndex = 0u; componentIndex < m_components.Num(); ++componentIndex)
+	{
+		if (!IsComponentRegistered(componentIndex))
 		{
 			continue;
 		}
-		const Math::AABB& worldBounds = chunk.m_resource->m_proxy.m_worldAabb;
-		float minCameraDistance = (std::numeric_limits<float>::infinity)();
-		for (const auto& cameraTransform : cameraTransforms)
+		auto& component = m_components[componentIndex];
+		component.m_activeGrassInstances = 0u;
+		GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
+		if (!owner || component.m_chunks.IsEmpty() || numCameras == 0u)
 		{
-			const glm::vec3 cameraPosition(cameraTransform.m_position);
-			const glm::vec3 closest = glm::clamp(
-				cameraPosition,
-				worldBounds.m_min,
-				worldBounds.m_max);
-			minCameraDistance = (std::min)(
-				minCameraDistance,
-				glm::distance(cameraPosition, closest));
+			continue;
 		}
 
-		for (size_t profileIndex = 0u;
-			profileIndex < component.m_vegetationProfiles.Num();
-			++profileIndex)
+		const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+		const glm::mat4 inverseOwnerMatrix = glm::inverse(ownerMatrix);
+		const double landscapeWidth = static_cast<double>(component.m_chunksX) * component.m_chunkSize;
+		const double landscapeDepth = static_cast<double>(component.m_chunksZ) * component.m_chunkSize;
+		m_cameraChunkCoordinatesScratch.Clear(false);
+		for (size_t cameraIndex = 0u; cameraIndex < numCameras; ++cameraIndex)
 		{
-			const auto& profile = component.m_vegetationProfiles[profileIndex];
-			if (profile.m_residency != ELandscapeVegetationResidency::Grass ||
-				!profile.m_modelFileId ||
-				profile.m_instancesPerChunk == 0u)
+			const auto& cameraTransform = cameraTransforms[cameraIndex];
+			const glm::vec4 localPosition = inverseOwnerMatrix *
+				glm::vec4(glm::vec3(cameraTransform.m_position), 1.0f);
+			if (!std::isfinite(localPosition.x) || !std::isfinite(localPosition.z))
 			{
 				continue;
 			}
-			const bool bResident = findResident(chunk, profileIndex) != nullptr;
-			const float residencyDistance = profile.m_cullDistance +
-				(bResident ? component.m_grassResidencyHysteresis : 0.0f);
-			if (minCameraDistance > residencyDistance)
+			m_cameraChunkCoordinatesScratch.Add(glm::ivec2(
+				toChunkCoordinate(localPosition.x, landscapeWidth, component.m_chunkSize),
+				toChunkCoordinate(localPosition.z, landscapeDepth, component.m_chunkSize)));
+		}
+		if (m_cameraChunkCoordinatesScratch.IsEmpty())
+		{
+			continue;
+		}
+
+		for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
+		{
+			const auto& chunk = component.m_chunks[chunkIndex];
+			if (!chunk.m_resource)
 			{
 				continue;
 			}
-			LandscapeGrassCandidate candidate;
-			candidate.m_chunkIndex = chunkIndex;
-			candidate.m_profileIndex = profileIndex;
-			candidate.m_capacity = profile.m_instancesPerChunk;
-			candidate.m_priority = profile.m_priority;
-			candidate.m_distance = minCameraDistance;
-			candidate.m_bResident = bResident;
-			candidate.m_residencyHysteresis =
-				component.m_grassResidencyHysteresis;
-			candidates.Add(std::move(candidate));
+			bool bChunkResident = false;
+			for (const auto& proxy : chunk.m_vegetationProxies)
+			{
+				bChunkResident |= proxy.m_mobility == EMobilityType::Dynamic;
+			}
+			const Math::AABB& worldBounds = chunk.m_resource->m_proxy.m_worldAabb;
+			bool bOverlapsCameraFrustum = false;
+			for (const auto& frustum : m_cameraFrustumsScratch)
+			{
+				if (DoesLandscapeGrassChunkOverlapFrustum(
+						worldBounds,
+						frustum,
+						bChunkResident ? component.m_grassResidencyHysteresis : 0.0f))
+				{
+					bOverlapsCameraFrustum = true;
+					break;
+				}
+			}
+			if (!bOverlapsCameraFrustum)
+			{
+				continue;
+			}
+
+			uint32_t chunkRing = (std::numeric_limits<uint32_t>::max)();
+			uint32_t chunkManhattanDistance = (std::numeric_limits<uint32_t>::max)();
+			for (const glm::ivec2& cameraChunk : m_cameraChunkCoordinatesScratch)
+			{
+				const uint64_t distanceX = static_cast<uint64_t>(std::abs(
+					static_cast<int64_t>(cameraChunk.x) - chunk.m_chunkX));
+				const uint64_t distanceZ = static_cast<uint64_t>(std::abs(
+					static_cast<int64_t>(cameraChunk.y) - chunk.m_chunkZ));
+				const uint32_t ring = static_cast<uint32_t>((std::min)(
+					(std::max)(distanceX, distanceZ),
+					static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)())));
+				const uint32_t manhattanDistance = static_cast<uint32_t>((std::min)(
+					distanceX + distanceZ,
+					static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)())));
+				if (ring < chunkRing ||
+					(ring == chunkRing && manhattanDistance < chunkManhattanDistance))
+				{
+					chunkRing = ring;
+					chunkManhattanDistance = manhattanDistance;
+				}
+			}
+
+			float minCameraDistance = (std::numeric_limits<float>::infinity)();
+			for (size_t cameraIndex = 0u; cameraIndex < numCameras; ++cameraIndex)
+			{
+				const glm::vec3& cameraPosition = m_cameraPositionsScratch[cameraIndex];
+				const glm::vec3 closest = glm::clamp(
+					cameraPosition,
+					worldBounds.m_min,
+					worldBounds.m_max);
+				minCameraDistance = (std::min)(
+					minCameraDistance,
+					glm::distance(cameraPosition, closest));
+			}
+
+			for (size_t profileIndex = 0u;
+				profileIndex < component.m_vegetationProfiles.Num();
+				++profileIndex)
+			{
+				const auto& profile = component.m_vegetationProfiles[profileIndex];
+				if (profile.m_residency != ELandscapeVegetationResidency::Grass ||
+					!profile.m_modelFileId ||
+					profile.m_instancesPerChunk == 0u)
+				{
+					continue;
+				}
+				const bool bResident = findResident(chunk, profileIndex) != nullptr;
+				const float residencyDistance = profile.m_cullDistance +
+					(bResident ? component.m_grassResidencyHysteresis : 0.0f);
+				if (minCameraDistance > residencyDistance)
+				{
+					continue;
+				}
+
+				LandscapeGrassCandidate candidate;
+				candidate.m_componentIndex = componentIndex;
+				candidate.m_chunkIndex = chunkIndex;
+				candidate.m_profileIndex = profileIndex;
+				candidate.m_capacity = profile.m_instancesPerChunk;
+				candidate.m_chunkRing = chunkRing;
+				candidate.m_chunkManhattanDistance = chunkManhattanDistance;
+				candidate.m_priority = profile.m_priority;
+				candidate.m_bChunkResident = bChunkResident;
+				m_grassCandidatesScratch.Add(std::move(candidate));
+			}
 		}
 	}
 
-	const auto selections = SelectLandscapeGrassResidency(
-		std::move(candidates),
-		component.m_grassInstanceBudget);
-	TMap<size_t, uint32_t> selectedCounts;
-	for (const auto& selection : selections)
+	const uint32_t instanceBudget = (std::min)(
+		App::GetActiveGraphicsSettings().m_vegetationInstanceBudget,
+		1048576u);
+	const size_t numCandidates = m_grassCandidatesScratch.Num();
+	SelectLandscapeGrassResidency(
+		m_grassCandidatesScratch,
+		instanceBudget,
+		m_grassSelectionsScratch);
+	for (auto& selection : m_grassSelectionsScratch)
 	{
-		selectedCounts[grassKey(
-			selection.m_chunkIndex,
-			selection.m_profileIndex)] = selection.m_instanceCount;
+		if (!IsComponentRegistered(selection.m_componentIndex))
+		{
+			continue;
+		}
+		auto& component = m_components[selection.m_componentIndex];
+		if (selection.m_profileIndex >= component.m_vegetationProfiles.Num())
+		{
+			continue;
+		}
+		const auto& profile = component.m_vegetationProfiles[selection.m_profileIndex];
+		if (selection.m_instanceCount >= profile.m_instancesPerChunk)
+		{
+			continue;
+		}
+		GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
+		if (!owner)
+		{
+			continue;
+		}
+		selection.m_viewRevision = CalculateGrassViewRevision(
+			component,
+			profile,
+			glm::inverse(owner->GetTransformComponent().GetCachedWorldMatrix()),
+			m_cameraPositionsScratch);
+	}
+	m_grassSelectionsScratch.Sort([](
+		const LandscapeGrassSelection& lhs,
+		const LandscapeGrassSelection& rhs)
+		{
+			if (lhs.m_componentIndex != rhs.m_componentIndex)
+			{
+				return lhs.m_componentIndex < rhs.m_componentIndex;
+			}
+			if (lhs.m_chunkIndex != rhs.m_chunkIndex)
+			{
+				return lhs.m_chunkIndex < rhs.m_chunkIndex;
+			}
+			return lhs.m_profileIndex < rhs.m_profileIndex;
+		});
+	auto findSelection = [this](
+		size_t componentIndex,
+		size_t chunkIndex,
+		size_t profileIndex) -> const LandscapeGrassSelection*
+		{
+			size_t first = 0u;
+			size_t last = m_grassSelectionsScratch.Num();
+			while (first < last)
+			{
+				const size_t middle = first + (last - first) / 2u;
+				const auto& selection = m_grassSelectionsScratch[middle];
+				const bool bBefore = selection.m_componentIndex < componentIndex ||
+					(selection.m_componentIndex == componentIndex &&
+						(selection.m_chunkIndex < chunkIndex ||
+							(selection.m_chunkIndex == chunkIndex &&
+								selection.m_profileIndex < profileIndex)));
+				if (bBefore)
+				{
+					first = middle + 1u;
+				}
+				else
+				{
+					last = middle;
+				}
+			}
+			if (first >= m_grassSelectionsScratch.Num())
+			{
+				return nullptr;
+			}
+			const auto& selection = m_grassSelectionsScratch[first];
+			return selection.m_componentIndex == componentIndex &&
+				selection.m_chunkIndex == chunkIndex &&
+				selection.m_profileIndex == profileIndex ?
+				&selection : nullptr;
+		};
+
+	m_grassBuildRequestsScratch.Clear(false);
+	for (size_t componentIndex = 0u; componentIndex < m_components.Num(); ++componentIndex)
+	{
+		if (!IsComponentRegistered(componentIndex))
+		{
+			continue;
+		}
+		auto& component = m_components[componentIndex];
+		GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
+		if (!owner)
+		{
+			continue;
+		}
+		const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+		for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
+		{
+			auto& chunk = component.m_chunks[chunkIndex];
+			for (size_t profileIndex = 0u;
+				profileIndex < component.m_vegetationProfiles.Num();
+				++profileIndex)
+			{
+				const auto& profile = component.m_vegetationProfiles[profileIndex];
+				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				{
+					continue;
+				}
+				const auto* resident = findResident(chunk, profileIndex);
+				const uint32_t residentCount = resident ? resident->m_instanceCount : 0u;
+				const auto* selection = findSelection(
+					componentIndex,
+					chunkIndex,
+					profileIndex);
+				const uint32_t selectedCount = selection ? selection->m_instanceCount : 0u;
+				const bool bPartialSelection = selection &&
+					selectedCount < profile.m_instancesPerChunk;
+				if (selectedCount == 0u ||
+					(residentCount == selectedCount &&
+						(!bPartialSelection ||
+							resident->m_viewRevision == selection->m_viewRevision)))
+				{
+					continue;
+				}
+
+				const LandscapeData* componentData = &component;
+				const LandscapeChunk* chunkData = &chunk;
+				auto task = Tasks::CreateTask<TVector<glm::mat4>>(
+					"LandscapeECS:Build Grass Transforms",
+					[componentData,
+						chunkData,
+						profileIndex,
+						selectedCount,
+						ownerMatrix,
+						this]()
+					{
+						return BuildGrassInstanceTransforms(
+							*componentData,
+							*chunkData,
+							profileIndex,
+							selectedCount,
+							ownerMatrix,
+							m_cameraPositionsScratch);
+					},
+					EThreadType::Worker);
+				task->Run();
+				GrassTransformBuildRequest request;
+				request.m_componentIndex = componentIndex;
+				request.m_chunkIndex = chunkIndex;
+				request.m_profileIndex = profileIndex;
+				request.m_instanceCount = selectedCount;
+				request.m_viewRevision = selection->m_viewRevision;
+				request.m_task = std::move(task);
+				m_grassBuildRequestsScratch.Add(std::move(request));
+			}
+		}
 	}
 
-	GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
-	if (!owner)
-	{
-		return false;
-	}
-	const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
-	const uint64_t frame = GetWorld()->GetCurrentFrame();
 	bool bChanged = false;
 	uint32_t activeInstances = 0u;
-	for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
+	const uint64_t frame = GetWorld()->GetCurrentFrame();
+	auto findBuildRequest = [this](
+		size_t componentIndex,
+		size_t chunkIndex,
+		size_t profileIndex) -> GrassTransformBuildRequest*
+		{
+			size_t first = 0u;
+			size_t last = m_grassBuildRequestsScratch.Num();
+			while (first < last)
+			{
+				const size_t middle = first + (last - first) / 2u;
+				const auto& request = m_grassBuildRequestsScratch[middle];
+				const bool bBefore = request.m_componentIndex < componentIndex ||
+					(request.m_componentIndex == componentIndex &&
+						(request.m_chunkIndex < chunkIndex ||
+							(request.m_chunkIndex == chunkIndex &&
+								request.m_profileIndex < profileIndex)));
+				if (bBefore)
+				{
+					first = middle + 1u;
+				}
+				else
+				{
+					last = middle;
+				}
+			}
+			if (first >= m_grassBuildRequestsScratch.Num())
+			{
+				return nullptr;
+			}
+			auto& request = m_grassBuildRequestsScratch[first];
+			return request.m_componentIndex == componentIndex &&
+				request.m_chunkIndex == chunkIndex &&
+				request.m_profileIndex == profileIndex ?
+				&request : nullptr;
+		};
+	for (size_t componentIndex = 0u; componentIndex < m_components.Num(); ++componentIndex)
 	{
-		auto& chunk = component.m_chunks[chunkIndex];
-		TVector<LandscapeVegetationRenderProxy> nextProxies;
-		nextProxies.Reserve(chunk.m_vegetationProxies.Num());
-		for (const auto& proxy : chunk.m_vegetationProxies)
+		if (!IsComponentRegistered(componentIndex))
 		{
-			if (proxy.m_mobility != EMobilityType::Dynamic)
-			{
-				nextProxies.Add(proxy);
-			}
+			continue;
 		}
-
-		for (size_t profileIndex = 0u;
-			profileIndex < component.m_vegetationProfiles.Num();
-			++profileIndex)
+		auto& component = m_components[componentIndex];
+		uint32_t componentActiveInstances = 0u;
+		GameObjectPtr owner = const_cast<ObjectPtr&>(component.GetOwner()).StaticCast<GameObject>();
+		const glm::mat4 ownerMatrix = owner ?
+			owner->GetTransformComponent().GetCachedWorldMatrix() : glm::mat4(1.0f);
+		for (size_t chunkIndex = 0u; chunkIndex < component.m_chunks.Num(); ++chunkIndex)
 		{
-			const auto& profile = component.m_vegetationProfiles[profileIndex];
-			if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+			auto& chunk = component.m_chunks[chunkIndex];
+			bool bNeedsUpdate = false;
+			for (size_t profileIndex = 0u;
+				profileIndex < component.m_vegetationProfiles.Num();
+				++profileIndex)
+			{
+				const auto& profile = component.m_vegetationProfiles[profileIndex];
+				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				{
+					continue;
+				}
+				const auto* resident = findResident(chunk, profileIndex);
+				const uint32_t residentCount = resident ? resident->m_instanceCount : 0u;
+				const auto* selection = findSelection(
+					componentIndex,
+					chunkIndex,
+					profileIndex);
+				const uint32_t selectedCount = selection ? selection->m_instanceCount : 0u;
+				const bool bPartialSelection = selection &&
+					selectedCount < profile.m_instancesPerChunk;
+				bNeedsUpdate |= residentCount != selectedCount ||
+					(resident && bPartialSelection &&
+						resident->m_viewRevision != selection->m_viewRevision);
+				componentActiveInstances += residentCount;
+			}
+			if (!bNeedsUpdate)
 			{
 				continue;
 			}
 
-			const LandscapeVegetationRenderProxy* resident =
-				findResident(chunk, profileIndex);
-			const uint32_t* selectedCountPtr = nullptr;
-			selectedCounts.Find(
-				grassKey(chunkIndex, profileIndex),
-				selectedCountPtr);
-			const uint32_t selectedCount = selectedCountPtr ? *selectedCountPtr : 0u;
-			if (selectedCount == 0u)
+			TVector<LandscapeVegetationRenderProxy> nextProxies;
+			nextProxies.Reserve(chunk.m_vegetationProxies.Num());
+			for (const auto& proxy : chunk.m_vegetationProxies)
 			{
-				bChanged |= resident != nullptr;
-				continue;
+				if (proxy.m_mobility != EMobilityType::Dynamic)
+				{
+					nextProxies.Add(proxy);
+				}
 			}
-			if (resident && resident->m_instanceCount == selectedCount)
+			bool bChunkChanged = false;
+			for (size_t profileIndex = 0u;
+				profileIndex < component.m_vegetationProfiles.Num();
+				++profileIndex)
 			{
-				nextProxies.Add(*resident);
-				activeInstances += resident->m_instanceCount;
-				continue;
-			}
+				const auto& profile = component.m_vegetationProfiles[profileIndex];
+				if (profile.m_residency != ELandscapeVegetationResidency::Grass)
+				{
+					continue;
+				}
 
-			const auto instanceTransforms = BuildGrassInstanceTransforms(
-				component,
-				chunk,
-				profileIndex,
-				selectedCount);
-			LandscapeVegetationRenderProxy streamedProxy;
-			const uint64_t revision = (uint64_t(1u) << 63u) |
-				++component.m_streamingRevision;
-			const auto buildResult = BuildLandscapeVegetationProxy(
-				componentIndex,
-				chunkIndex,
-				profileIndex,
-				profile,
-				ownerMatrix,
-				frame,
-				instanceTransforms,
-				EMobilityType::Dynamic,
-				revision,
-				streamedProxy);
-			if (buildResult != EVegetationProxyBuildResult::Success)
-			{
-				if (resident && resident->m_instanceCount <= selectedCount)
+				const auto* resident = findResident(chunk, profileIndex);
+				const auto* selection = findSelection(
+					componentIndex,
+					chunkIndex,
+					profileIndex);
+				const uint32_t selectedCount = selection ? selection->m_instanceCount : 0u;
+				if (selectedCount == 0u)
+				{
+					bChunkChanged |= resident != nullptr;
+					if (resident)
+					{
+						componentActiveInstances -= resident->m_instanceCount;
+					}
+					continue;
+				}
+				const bool bPartialSelection =
+					selectedCount < profile.m_instancesPerChunk;
+				if (resident && resident->m_instanceCount == selectedCount &&
+					(!bPartialSelection ||
+						resident->m_viewRevision == selection->m_viewRevision))
 				{
 					nextProxies.Add(*resident);
-					activeInstances += resident->m_instanceCount;
+					continue;
 				}
-				else if (resident)
+				if (!owner)
 				{
-					bChanged = true;
+					continue;
 				}
-				continue;
-			}
-			nextProxies.Add(std::move(streamedProxy));
-			activeInstances += selectedCount;
-			bChanged = true;
-		}
 
-		if (nextProxies.Num() != chunk.m_vegetationProxies.Num())
-		{
-			bChanged = true;
+				auto* buildRequest = findBuildRequest(
+					componentIndex,
+					chunkIndex,
+					profileIndex);
+				if (!buildRequest ||
+					buildRequest->m_instanceCount != selectedCount ||
+					buildRequest->m_viewRevision != selection->m_viewRevision)
+				{
+					if (resident)
+					{
+						nextProxies.Add(*resident);
+					}
+					continue;
+				}
+				buildRequest->m_task->Wait();
+				auto instanceTransforms = std::move(buildRequest->m_task->m_result);
+				LandscapeVegetationRenderProxy streamedProxy;
+				const uint64_t revision = (uint64_t(1u) << 63u) |
+					++component.m_streamingRevision;
+				const auto buildResult = BuildLandscapeVegetationProxy(
+					componentIndex,
+					chunkIndex,
+					profileIndex,
+					profile,
+					ownerMatrix,
+					frame,
+					std::move(instanceTransforms),
+					EMobilityType::Dynamic,
+					revision,
+					streamedProxy);
+				if (buildResult != EVegetationProxyBuildResult::Success)
+				{
+					if (resident && resident->m_instanceCount <= selectedCount)
+					{
+						nextProxies.Add(*resident);
+					}
+					else if (resident)
+					{
+						componentActiveInstances -= resident->m_instanceCount;
+						bChunkChanged = true;
+					}
+					continue;
+				}
+				streamedProxy.m_viewRevision = selection->m_viewRevision;
+				if (resident)
+				{
+					componentActiveInstances -= resident->m_instanceCount;
+				}
+				nextProxies.Add(std::move(streamedProxy));
+				componentActiveInstances += selectedCount;
+				bChunkChanged = true;
+			}
+
+			if (bChunkChanged)
+			{
+				chunk.m_vegetationProxies = std::move(nextProxies);
+				bChanged = true;
+			}
 		}
-		chunk.m_vegetationProxies = std::move(nextProxies);
+		component.m_activeGrassInstances = componentActiveInstances;
+		activeInstances += componentActiveInstances;
 	}
-	component.m_activeGrassInstances = activeInstances;
+	for (auto& buildRequest : m_grassBuildRequestsScratch)
+	{
+		buildRequest.m_task->Wait();
+	}
 	if (bChanged)
 	{
 		++m_shadowCastersRevision;
 		SAILOR_LOG(
-			"LandscapeECS: grass residency changed to %u of %u budgeted instances across %zu candidates.",
+			"LandscapeECS: grass residency changed to %u of %u graphics-quality instances across %zu visible candidates.",
 			activeInstances,
-			component.m_grassInstanceBudget,
-			selections.Num());
+			instanceBudget,
+			numCandidates);
 	}
 	return bChanged;
 }

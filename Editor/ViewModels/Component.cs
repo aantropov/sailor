@@ -317,11 +317,6 @@ public class ComponentYamlConverter : IYamlTypeConverter
         {
             component.OverrideProperties["lodSkirtDepth"] = new Observable<float>(2.0f);
         }
-        if (component.Typename.Properties.ContainsKey("grassInstanceBudget") &&
-            !component.OverrideProperties.ContainsKey("grassInstanceBudget"))
-        {
-            component.OverrideProperties["grassInstanceBudget"] = new Observable<uint>(32768u);
-        }
         if (component.Typename.Properties.ContainsKey("grassResidencyHysteresis") &&
             !component.OverrideProperties.ContainsKey("grassResidencyHysteresis"))
         {

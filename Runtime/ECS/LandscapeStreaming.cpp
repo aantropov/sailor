@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 using namespace Sailor;
 
@@ -99,48 +98,45 @@ void Sailor::AppendLandscapeLodIndices(
 		false);
 }
 
-TVector<LandscapeGrassSelection> Sailor::SelectLandscapeGrassResidency(
-	TVector<LandscapeGrassCandidate> candidates,
-	uint32_t instanceBudget)
+void Sailor::SelectLandscapeGrassResidency(
+	TVector<LandscapeGrassCandidate>& candidates,
+	uint32_t instanceBudget,
+	TVector<LandscapeGrassSelection>& outSelections)
 {
 	candidates.Sort([](
 		const LandscapeGrassCandidate& lhs,
 		const LandscapeGrassCandidate& rhs)
 		{
+			if (lhs.m_chunkRing != rhs.m_chunkRing)
+			{
+				return lhs.m_chunkRing < rhs.m_chunkRing;
+			}
+			if (lhs.m_bChunkResident != rhs.m_bChunkResident)
+			{
+				return lhs.m_bChunkResident;
+			}
+			if (lhs.m_chunkManhattanDistance != rhs.m_chunkManhattanDistance)
+			{
+				return lhs.m_chunkManhattanDistance < rhs.m_chunkManhattanDistance;
+			}
+			if (lhs.m_componentIndex != rhs.m_componentIndex)
+			{
+				return lhs.m_componentIndex < rhs.m_componentIndex;
+			}
+			if (lhs.m_chunkIndex != rhs.m_chunkIndex)
+			{
+				return lhs.m_chunkIndex < rhs.m_chunkIndex;
+			}
 			const float lhsPriority = std::isfinite(lhs.m_priority) ? lhs.m_priority : 0.0f;
 			const float rhsPriority = std::isfinite(rhs.m_priority) ? rhs.m_priority : 0.0f;
 			if (lhsPriority != rhsPriority)
 			{
 				return lhsPriority > rhsPriority;
 			}
-			const float lhsDistance = std::isfinite(lhs.m_distance) ?
-				lhs.m_distance : (std::numeric_limits<float>::infinity)();
-			const float rhsDistance = std::isfinite(rhs.m_distance) ?
-				rhs.m_distance : (std::numeric_limits<float>::infinity)();
-			const float lhsHysteresis = lhs.m_bResident &&
-				std::isfinite(lhs.m_residencyHysteresis) ?
-				(std::max)(lhs.m_residencyHysteresis, 0.0f) : 0.0f;
-			const float rhsHysteresis = rhs.m_bResident &&
-				std::isfinite(rhs.m_residencyHysteresis) ?
-				(std::max)(rhs.m_residencyHysteresis, 0.0f) : 0.0f;
-			const float lhsRankDistance = (std::max)(lhsDistance - lhsHysteresis, 0.0f);
-			const float rhsRankDistance = (std::max)(rhsDistance - rhsHysteresis, 0.0f);
-			if (lhsRankDistance != rhsRankDistance)
-			{
-				return lhsRankDistance < rhsRankDistance;
-			}
-			if (lhs.m_bResident != rhs.m_bResident)
-			{
-				return lhs.m_bResident;
-			}
-			if (lhs.m_chunkIndex != rhs.m_chunkIndex)
-			{
-				return lhs.m_chunkIndex < rhs.m_chunkIndex;
-			}
 			return lhs.m_profileIndex < rhs.m_profileIndex;
 		});
 
-	TVector<LandscapeGrassSelection> result;
+	outSelections.Clear(false);
 	for (const auto& candidate : candidates)
 	{
 		if (instanceBudget == 0u)
@@ -155,11 +151,29 @@ TVector<LandscapeGrassSelection> Sailor::SelectLandscapeGrassResidency(
 			continue;
 		}
 		LandscapeGrassSelection selection;
+		selection.m_componentIndex = candidate.m_componentIndex;
 		selection.m_chunkIndex = candidate.m_chunkIndex;
 		selection.m_profileIndex = candidate.m_profileIndex;
 		selection.m_instanceCount = selectedCount;
-		result.Add(std::move(selection));
+		outSelections.Add(std::move(selection));
 		instanceBudget -= selectedCount;
 	}
-	return result;
+}
+
+bool Sailor::DoesLandscapeGrassChunkOverlapFrustum(
+	const Math::AABB& worldBounds,
+	const Math::Frustum& frustum,
+	float residencyMargin)
+{
+	if (!worldBounds.IsValid())
+	{
+		return false;
+	}
+
+	Math::AABB cullingBounds = worldBounds;
+	const float margin = std::isfinite(residencyMargin) ?
+		(std::max)(residencyMargin, 0.0f) : 0.0f;
+	cullingBounds.m_min -= glm::vec3(margin);
+	cullingBounds.m_max += glm::vec3(margin);
+	return frustum.OverlapsAABB(cullingBounds);
 }

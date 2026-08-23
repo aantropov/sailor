@@ -1,10 +1,13 @@
 #pragma once
 
 #include "ECS/ECS.h"
+#include "ECS/LandscapeStreaming.h"
 #include "RHI/SceneView.h"
 
 namespace Sailor
 {
+	class CameraData;
+
 	enum class ELandscapeVegetationShadowMode : uint8_t
 	{
 		None = 0u,
@@ -54,6 +57,7 @@ namespace Sailor
 		size_t m_profileIndex = 0u;
 		uint32_t m_instanceCount = 0u;
 		uint64_t m_revision = 0u;
+		uint64_t m_viewRevision = 0u;
 		EMobilityType m_mobility = EMobilityType::Static;
 	};
 
@@ -80,8 +84,7 @@ namespace Sailor
 		SAILOR_API void SetLodSettings(
 			const TVector<float>& distances,
 			float skirtDepth);
-		SAILOR_API void SetVegetationStreamingSettings(
-			uint32_t grassInstanceBudget,
+		SAILOR_API void SetGrassResidencyHysteresis(
 			float grassResidencyHysteresis);
 		SAILOR_API void SetMaterial(const MaterialPtr& material);
 		SAILOR_API void SetLayerTextures(const TVector<FileId>& textures);
@@ -125,7 +128,6 @@ namespace Sailor
 		float m_textureTiling = 0.15f;
 		TVector<float> m_lodDistances{ 96.0f, 192.0f };
 		float m_lodSkirtDepth = 2.0f;
-		uint32_t m_grassInstanceBudget = 32768u;
 		float m_grassResidencyHysteresis = 12.0f;
 		MaterialPtr m_material{};
 		MaterialPtr m_runtimeMaterial{};
@@ -161,12 +163,21 @@ namespace Sailor
 		SAILOR_API virtual void OnComponentUnregistered(size_t index, LandscapeData& component) override;
 
 	private:
+		struct GrassTransformBuildRequest final
+		{
+			size_t m_componentIndex = 0u;
+			size_t m_chunkIndex = 0u;
+			size_t m_profileIndex = 0u;
+			uint32_t m_instanceCount = 0u;
+			uint64_t m_viewRevision = 0u;
+			Tasks::TaskPtr<TVector<glm::mat4>> m_task{};
+		};
+
 		void DestroyPhysicsBodies(LandscapeData& component);
 		void DestroyChunkPhysicsBodies(LandscapeData& component, LandscapeChunk& chunk);
 		bool UpdateGrassResidency(
-			size_t componentIndex,
-			LandscapeData& component,
-			const TVector<Math::Transform>& cameraTransforms);
+			const TVector<Math::Transform>& cameraTransforms,
+			const TVector<CameraData>& cameras);
 		void PublishSceneVersion();
 		uint64_t m_shadowCastersRevision = 0u;
 		uint64_t m_sceneVersionRevision = 0u;
@@ -177,6 +188,12 @@ namespace Sailor
 		RHI::RHIScenePtr m_rhiScene{};
 		TMap<size_t, RHI::RenderInstanceHandle> m_renderInstanceHandles{};
 		TMap<size_t, uint64_t> m_publishedBuildRevisions{};
+		TVector<LandscapeGrassCandidate> m_grassCandidatesScratch{};
+		TVector<LandscapeGrassSelection> m_grassSelectionsScratch{};
+		TVector<glm::ivec2> m_cameraChunkCoordinatesScratch{};
+		TVector<glm::vec3> m_cameraPositionsScratch{};
+		TVector<Math::Frustum> m_cameraFrustumsScratch{};
+		TVector<GrassTransformBuildRequest> m_grassBuildRequestsScratch{};
 	};
 
 	template class ECS::TSystem<LandscapeECS, LandscapeData>;

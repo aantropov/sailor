@@ -869,5 +869,6 @@ static class GraphicsSettingsEquality
             left.CloudsResolutionMultiplier.Equals(
                 right.CloudsResolutionMultiplier) &&
             left.SkyResolution == right.SkyResolution &&
+            left.VegetationInstanceBudget == right.VegetationInstanceBudget &&
             left.LodBias == right.LodBias;
 }

@@ -57,6 +57,10 @@ namespace Sailor
 		{
 			return m_rhiCameraTransforms;
 		}
+		const TVector<CameraData>& GetActiveCameras() const
+		{
+			return m_rhiCameras;
+		}
 
 		virtual uint32_t GetOrder() const override { return 100; }
 
