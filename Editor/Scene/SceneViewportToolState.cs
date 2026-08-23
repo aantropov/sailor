@@ -1,5 +1,56 @@
 namespace SailorEditor.Scene;
 
+public enum SceneViewRenderMode
+{
+    Lit = 0,
+    AmbientOcclusion,
+    Cascades,
+    LightTiles
+}
+
+public static class SceneViewRenderModeNames
+{
+    public static IReadOnlyList<string> Supported { get; } =
+    [
+        "lit",
+        "ambient_occlusion",
+        "cascades",
+        "light_tiles"
+    ];
+
+    public static string ToExternalName(SceneViewRenderMode mode) => mode switch
+    {
+        SceneViewRenderMode.Lit => "lit",
+        SceneViewRenderMode.AmbientOcclusion => "ambient_occlusion",
+        SceneViewRenderMode.Cascades => "cascades",
+        SceneViewRenderMode.LightTiles => "light_tiles",
+        _ => throw new ArgumentOutOfRangeException(nameof(mode))
+    };
+
+    public static bool TryParse(
+        string? value,
+        out SceneViewRenderMode mode)
+    {
+        var normalized = value?
+            .Trim()
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+        mode = normalized switch
+        {
+            "lit" => SceneViewRenderMode.Lit,
+            "ambientocclusion" or "ao" =>
+                SceneViewRenderMode.AmbientOcclusion,
+            "cascades" or "csm" => SceneViewRenderMode.Cascades,
+            "lighttiles" => SceneViewRenderMode.LightTiles,
+            _ => default
+        };
+        return normalized is "lit" or "ambientocclusion" or "ao" or
+            "cascades" or "csm" or "lighttiles";
+    }
+}
+
 public readonly record struct SceneViewportToolState(
     EditorViewportTransformOperation Operation,
     EditorViewportTransformSpace Space);

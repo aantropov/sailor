@@ -19,6 +19,30 @@ using namespace Sailor::Framegraph;
 const char* PostProcessNode::m_name = "PostProcess";
 #endif
 
+void PostProcessNode::PreloadShader()
+{
+	if (m_pShader)
+	{
+		return;
+	}
+
+	auto shaderPath = GetString("shader");
+	check(!shaderPath.empty());
+
+	auto definesStr = GetString("defines");
+	TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");
+
+	if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
+	{
+		App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pShader, defines);
+	}
+}
+
+bool PostProcessNode::IsShaderReady() const
+{
+	return m_pShader && m_pShader->IsReady();
+}
+
 void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPtr transferCommandList, RHI::RHICommandListPtr commandList, const RHI::RHISceneViewSnapshot& sceneView)
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -45,19 +69,7 @@ void PostProcessNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 		}
 	}
 
-	if (!m_pShader)
-	{
-		auto shaderPath = GetString("shader");
-		check(!shaderPath.empty());
-
-		auto definesStr = GetString("defines");
-		TVector<std::string> defines = Sailor::Utils::SplitString(definesStr, " ");
-
-		if (auto shaderInfo = App::GetSubmodule<AssetRegistry>()->GetAssetInfoPtr(shaderPath))
-		{
-			App::GetSubmodule<ShaderCompiler>()->LoadShader(shaderInfo->GetFileId(), m_pShader, defines);
-		}
-	}
+	PreloadShader();
 
 	if (!m_pShader || !m_pShader->IsReady() || !target)
 	{

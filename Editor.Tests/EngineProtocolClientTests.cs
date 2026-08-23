@@ -261,6 +261,74 @@ public sealed class EngineProtocolClientTests
             client.SetEditorStatsModeAsync(mode));
     }
 
+    [Theory]
+    [InlineData(EditorRenderMode.Lit)]
+    [InlineData(EditorRenderMode.AmbientOcclusion)]
+    [InlineData(EditorRenderMode.Cascades)]
+    [InlineData(EditorRenderMode.LightTiles)]
+    public async Task SetEditorRenderModeAsync_SendsExplicitTypedMode(
+        EditorRenderMode mode)
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true });
+        });
+
+        Assert.True(await client.SetEditorRenderModeAsync(mode));
+
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.SetEditorRenderMode,
+            capturedRequest.CommandCase);
+        Assert.Equal(mode, capturedRequest.SetEditorRenderMode.Mode);
+    }
+
+    [Theory]
+    [InlineData(EditorRenderMode.Unspecified)]
+    [InlineData((EditorRenderMode)99)]
+    public async Task SetEditorRenderModeAsync_RejectsInvalidModes(
+        EditorRenderMode mode)
+    {
+        var client = CreateClient(request =>
+            Success(
+                request,
+                response => response.BoolResult =
+                    new BoolResult { Value = true }));
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            client.SetEditorRenderModeAsync(mode));
+    }
+
+    [Fact]
+    public async Task GetEditorRenderModeAsync_ReadsTypedEngineState()
+    {
+        ProtocolRequest? capturedRequest = null;
+        var client = CreateClient(request =>
+        {
+            capturedRequest = request;
+            return Success(
+                request,
+                response => response.EditorRenderModeResult =
+                    new EditorRenderModeResult
+                    {
+                        Mode = EditorRenderMode.Cascades
+                    });
+        });
+
+        Assert.Equal(
+            EditorRenderMode.Cascades,
+            await client.GetEditorRenderModeAsync());
+        Assert.NotNull(capturedRequest);
+        Assert.Equal(
+            ProtocolRequest.CommandOneofCase.GetEditorRenderMode,
+            capturedRequest.CommandCase);
+    }
+
     [Fact]
     public async Task AnimatorParameters_UseTypedProtocolValues()
     {

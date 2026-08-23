@@ -80,6 +80,12 @@ extern CreateGameObjectRequestDefaultTypeInternal _CreateGameObjectRequest_defau
 class CreateModelInstanceRequest;
 struct CreateModelInstanceRequestDefaultTypeInternal;
 extern CreateModelInstanceRequestDefaultTypeInternal _CreateModelInstanceRequest_default_instance_;
+class EditorRenderModeRequest;
+struct EditorRenderModeRequestDefaultTypeInternal;
+extern EditorRenderModeRequestDefaultTypeInternal _EditorRenderModeRequest_default_instance_;
+class EditorRenderModeResult;
+struct EditorRenderModeResultDefaultTypeInternal;
+extern EditorRenderModeResultDefaultTypeInternal _EditorRenderModeResult_default_instance_;
 class EditorSimulationRequest;
 struct EditorSimulationRequestDefaultTypeInternal;
 extern EditorSimulationRequestDefaultTypeInternal _EditorSimulationRequest_default_instance_;
@@ -322,6 +328,42 @@ inline bool EditorStatsMode_Parse(absl::string_view name, EditorStatsMode* value
   return ::google::protobuf::internal::ParseNamedEnum<EditorStatsMode>(
       EditorStatsMode_descriptor(), name, value);
 }
+enum EditorRenderMode : int {
+  EDITOR_RENDER_MODE_UNSPECIFIED = 0,
+  EDITOR_RENDER_MODE_LIT = 1,
+  EDITOR_RENDER_MODE_AMBIENT_OCCLUSION = 2,
+  EDITOR_RENDER_MODE_CASCADES = 3,
+  EDITOR_RENDER_MODE_LIGHT_TILES = 4,
+  EditorRenderMode_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  EditorRenderMode_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+bool EditorRenderMode_IsValid(int value);
+extern const uint32_t EditorRenderMode_internal_data_[];
+constexpr EditorRenderMode EditorRenderMode_MIN = static_cast<EditorRenderMode>(0);
+constexpr EditorRenderMode EditorRenderMode_MAX = static_cast<EditorRenderMode>(4);
+constexpr int EditorRenderMode_ARRAYSIZE = 4 + 1;
+const ::google::protobuf::EnumDescriptor*
+EditorRenderMode_descriptor();
+template <typename T>
+const std::string& EditorRenderMode_Name(T value) {
+  static_assert(std::is_same<T, EditorRenderMode>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to EditorRenderMode_Name().");
+  return EditorRenderMode_Name(static_cast<EditorRenderMode>(value));
+}
+template <>
+inline const std::string& EditorRenderMode_Name(EditorRenderMode value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<EditorRenderMode_descriptor,
+                                                 0, 4>(
+      static_cast<int>(value));
+}
+inline bool EditorRenderMode_Parse(absl::string_view name, EditorRenderMode* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<EditorRenderMode>(
+      EditorRenderMode_descriptor(), name, value);
+}
 
 // ===================================================================
 
@@ -387,7 +429,7 @@ class ViewportToolStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateResult*>(
         &_ViewportToolStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 41;
+  static constexpr int kIndexInFileMessages = 43;
   friend void swap(ViewportToolStateResult& a, ViewportToolStateResult& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateResult* other) {
     if (other == this) return;
@@ -589,7 +631,7 @@ class ViewportToolStateRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolStateRequest*>(
         &_ViewportToolStateRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 28;
+  static constexpr int kIndexInFileMessages = 30;
   friend void swap(ViewportToolStateRequest& a, ViewportToolStateRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportToolStateRequest* other) {
     if (other == this) return;
@@ -803,7 +845,7 @@ class ViewportToolShortcutEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportToolShortcutEvent*>(
         &_ViewportToolShortcutEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 47;
+  static constexpr int kIndexInFileMessages = 49;
   friend void swap(ViewportToolShortcutEvent& a, ViewportToolShortcutEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportToolShortcutEvent* other) {
     if (other == this) return;
@@ -993,7 +1035,7 @@ class ViewportSelectionEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportSelectionEvent*>(
         &_ViewportSelectionEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 44;
+  static constexpr int kIndexInFileMessages = 46;
   friend void swap(ViewportSelectionEvent& a, ViewportSelectionEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportSelectionEvent* other) {
     if (other == this) return;
@@ -1415,7 +1457,7 @@ class ViewportRayRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportRayRequest*>(
         &_ViewportRayRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 24;
+  static constexpr int kIndexInFileMessages = 26;
   friend void swap(ViewportRayRequest& a, ViewportRayRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportRayRequest* other) {
     if (other == this) return;
@@ -1629,7 +1671,7 @@ class ViewportObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportObjectRequest*>(
         &_ViewportObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 26;
+  static constexpr int kIndexInFileMessages = 28;
   friend void swap(ViewportObjectRequest& a, ViewportObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ViewportObjectRequest* other) {
     if (other == this) return;
@@ -2027,7 +2069,7 @@ class ViewportAssetDropEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportAssetDropEvent*>(
         &_ViewportAssetDropEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 46;
+  static constexpr int kIndexInFileMessages = 48;
   friend void swap(ViewportAssetDropEvent& a, ViewportAssetDropEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportAssetDropEvent* other) {
     if (other == this) return;
@@ -2247,7 +2289,7 @@ class Vector4 final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4*>(
         &_Vector4_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 43;
+  static constexpr int kIndexInFileMessages = 45;
   friend void swap(Vector4& a, Vector4& b) { a.Swap(&b); }
   inline void Swap(Vector4* other) {
     if (other == this) return;
@@ -2473,7 +2515,7 @@ class UpdateObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const UpdateObjectRequest*>(
         &_UpdateObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 17;
+  static constexpr int kIndexInFileMessages = 19;
   friend void swap(UpdateObjectRequest& a, UpdateObjectRequest& b) { a.Swap(&b); }
   inline void Swap(UpdateObjectRequest* other) {
     if (other == this) return;
@@ -2687,7 +2729,7 @@ class UInt64Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt64Result*>(
         &_UInt64Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 35;
+  static constexpr int kIndexInFileMessages = 37;
   friend void swap(UInt64Result& a, UInt64Result& b) { a.Swap(&b); }
   inline void Swap(UInt64Result* other) {
     if (other == this) return;
@@ -2877,7 +2919,7 @@ class UInt32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const UInt32Result*>(
         &_UInt32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 34;
+  static constexpr int kIndexInFileMessages = 36;
   friend void swap(UInt32Result& a, UInt32Result& b) { a.Swap(&b); }
   inline void Swap(UInt32Result* other) {
     if (other == this) return;
@@ -3067,7 +3109,7 @@ class StringResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringResult*>(
         &_StringResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 36;
+  static constexpr int kIndexInFileMessages = 38;
   friend void swap(StringResult& a, StringResult& b) { a.Swap(&b); }
   inline void Swap(StringResult* other) {
     if (other == this) return;
@@ -3275,7 +3317,7 @@ class StringListResult final : public ::google::protobuf::Message
     return reinterpret_cast<const StringListResult*>(
         &_StringListResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 37;
+  static constexpr int kIndexInFileMessages = 39;
   friend void swap(StringListResult& a, StringListResult& b) { a.Swap(&b); }
   inline void Swap(StringListResult* other) {
     if (other == this) return;
@@ -3679,7 +3721,7 @@ class ShowMainWindowRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ShowMainWindowRequest*>(
         &_ShowMainWindowRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 30;
+  static constexpr int kIndexInFileMessages = 32;
   friend void swap(ShowMainWindowRequest& a, ShowMainWindowRequest& b) { a.Swap(&b); }
   inline void Swap(ShowMainWindowRequest* other) {
     if (other == this) return;
@@ -3869,7 +3911,7 @@ class SelectionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const SelectionRequest*>(
         &_SelectionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 29;
+  static constexpr int kIndexInFileMessages = 31;
   friend void swap(SelectionRequest& a, SelectionRequest& b) { a.Swap(&b); }
   inline void Swap(SelectionRequest* other) {
     if (other == this) return;
@@ -4071,7 +4113,7 @@ class ReparentObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ReparentObjectRequest*>(
         &_ReparentObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 18;
+  static constexpr int kIndexInFileMessages = 20;
   friend void swap(ReparentObjectRequest& a, ReparentObjectRequest& b) { a.Swap(&b); }
   inline void Swap(ReparentObjectRequest* other) {
     if (other == this) return;
@@ -4297,7 +4339,7 @@ class RenderPathTracedImageRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RenderPathTracedImageRequest*>(
         &_RenderPathTracedImageRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 31;
+  static constexpr int kIndexInFileMessages = 33;
   friend void swap(RenderPathTracedImageRequest& a, RenderPathTracedImageRequest& b) { a.Swap(&b); }
   inline void Swap(RenderPathTracedImageRequest* other) {
     if (other == this) return;
@@ -4547,7 +4589,7 @@ class RemoteViewportRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RemoteViewportRequest*>(
         &_RemoteViewportRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 13;
+  static constexpr int kIndexInFileMessages = 15;
   friend void swap(RemoteViewportRequest& a, RemoteViewportRequest& b) { a.Swap(&b); }
   inline void Swap(RemoteViewportRequest* other) {
     if (other == this) return;
@@ -4809,7 +4851,7 @@ class RemoteViewportInputRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RemoteViewportInputRequest*>(
         &_RemoteViewportInputRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 15;
+  static constexpr int kIndexInFileMessages = 17;
   friend void swap(RemoteViewportInputRequest& a, RemoteViewportInputRequest& b) { a.Swap(&b); }
   inline void Swap(RemoteViewportInputRequest* other) {
     if (other == this) return;
@@ -5131,7 +5173,7 @@ class RemoteViewportHostRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const RemoteViewportHostRequest*>(
         &_RemoteViewportHostRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 14;
+  static constexpr int kIndexInFileMessages = 16;
   friend void swap(RemoteViewportHostRequest& a, RemoteViewportHostRequest& b) { a.Swap(&b); }
   inline void Swap(RemoteViewportHostRequest* other) {
     if (other == this) return;
@@ -5345,7 +5387,7 @@ class PrefabLinkRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const PrefabLinkRequest*>(
         &_PrefabLinkRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 27;
+  static constexpr int kIndexInFileMessages = 29;
   friend void swap(PrefabLinkRequest& a, PrefabLinkRequest& b) { a.Swap(&b); }
   inline void Swap(PrefabLinkRequest* other) {
     if (other == this) return;
@@ -5559,7 +5601,7 @@ class ManagedMutationRevisionRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const ManagedMutationRevisionRequest*>(
         &_ManagedMutationRevisionRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 16;
+  static constexpr int kIndexInFileMessages = 18;
   friend void swap(ManagedMutationRevisionRequest& a, ManagedMutationRevisionRequest& b) { a.Swap(&b); }
   inline void Swap(ManagedMutationRevisionRequest* other) {
     if (other == this) return;
@@ -5767,7 +5809,7 @@ class Int32Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Int32Result*>(
         &_Int32Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 33;
+  static constexpr int kIndexInFileMessages = 35;
   friend void swap(Int32Result& a, Int32Result& b) { a.Swap(&b); }
   inline void Swap(Int32Result* other) {
     if (other == this) return;
@@ -5957,7 +5999,7 @@ class InstantiatePrefabRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const InstantiatePrefabRequest*>(
         &_InstantiatePrefabRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 22;
+  static constexpr int kIndexInFileMessages = 24;
   friend void swap(InstantiatePrefabRequest& a, InstantiatePrefabRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabRequest* other) {
     if (other == this) return;
@@ -6171,7 +6213,7 @@ class InstantiatePrefabFromYamlRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabFromYamlRequest*>(
         &_InstantiatePrefabFromYamlRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 23;
+  static constexpr int kIndexInFileMessages = 25;
   friend void swap(InstantiatePrefabFromYamlRequest& a, InstantiatePrefabFromYamlRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabFromYamlRequest* other) {
     if (other == this) return;
@@ -6397,7 +6439,7 @@ class InstanceIdResult final : public ::google::protobuf::Message
     return reinterpret_cast<const InstanceIdResult*>(
         &_InstanceIdResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 39;
+  static constexpr int kIndexInFileMessages = 41;
   friend void swap(InstanceIdResult& a, InstanceIdResult& b) { a.Swap(&b); }
   inline void Swap(InstanceIdResult* other) {
     if (other == this) return;
@@ -7665,6 +7707,386 @@ class EditorSimulationRequest final : public ::google::protobuf::Message
 };
 // -------------------------------------------------------------------
 
+class EditorRenderModeResult final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.EditorRenderModeResult) */ {
+ public:
+  inline EditorRenderModeResult() : EditorRenderModeResult(nullptr) {}
+  ~EditorRenderModeResult() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(EditorRenderModeResult* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(EditorRenderModeResult));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR EditorRenderModeResult(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline EditorRenderModeResult(const EditorRenderModeResult& from) : EditorRenderModeResult(nullptr, from) {}
+  inline EditorRenderModeResult(EditorRenderModeResult&& from) noexcept
+      : EditorRenderModeResult(nullptr, std::move(from)) {}
+  inline EditorRenderModeResult& operator=(const EditorRenderModeResult& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline EditorRenderModeResult& operator=(EditorRenderModeResult&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const EditorRenderModeResult& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const EditorRenderModeResult* internal_default_instance() {
+    return reinterpret_cast<const EditorRenderModeResult*>(
+        &_EditorRenderModeResult_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 14;
+  friend void swap(EditorRenderModeResult& a, EditorRenderModeResult& b) { a.Swap(&b); }
+  inline void Swap(EditorRenderModeResult* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(EditorRenderModeResult* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  EditorRenderModeResult* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<EditorRenderModeResult>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const EditorRenderModeResult& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const EditorRenderModeResult& from) { EditorRenderModeResult::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(EditorRenderModeResult* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.EditorRenderModeResult"; }
+
+ protected:
+  explicit EditorRenderModeResult(::google::protobuf::Arena* arena);
+  EditorRenderModeResult(::google::protobuf::Arena* arena, const EditorRenderModeResult& from);
+  EditorRenderModeResult(::google::protobuf::Arena* arena, EditorRenderModeResult&& from) noexcept
+      : EditorRenderModeResult(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kModeFieldNumber = 1,
+  };
+  // .sailor.editor.v1.EditorRenderMode mode = 1;
+  void clear_mode() ;
+  ::sailor::editor::v1::EditorRenderMode mode() const;
+  void set_mode(::sailor::editor::v1::EditorRenderMode value);
+
+  private:
+  ::sailor::editor::v1::EditorRenderMode _internal_mode() const;
+  void _internal_set_mode(::sailor::editor::v1::EditorRenderMode value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.EditorRenderModeResult)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      0, 1, 0,
+      0, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const EditorRenderModeResult& from_msg);
+    int mode_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
+class EditorRenderModeRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:sailor.editor.v1.EditorRenderModeRequest) */ {
+ public:
+  inline EditorRenderModeRequest() : EditorRenderModeRequest(nullptr) {}
+  ~EditorRenderModeRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(EditorRenderModeRequest* msg, std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(EditorRenderModeRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR EditorRenderModeRequest(
+      ::google::protobuf::internal::ConstantInitialized);
+
+  inline EditorRenderModeRequest(const EditorRenderModeRequest& from) : EditorRenderModeRequest(nullptr, from) {}
+  inline EditorRenderModeRequest(EditorRenderModeRequest&& from) noexcept
+      : EditorRenderModeRequest(nullptr, std::move(from)) {}
+  inline EditorRenderModeRequest& operator=(const EditorRenderModeRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline EditorRenderModeRequest& operator=(EditorRenderModeRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const EditorRenderModeRequest& default_instance() {
+    return *internal_default_instance();
+  }
+  static inline const EditorRenderModeRequest* internal_default_instance() {
+    return reinterpret_cast<const EditorRenderModeRequest*>(
+        &_EditorRenderModeRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 13;
+  friend void swap(EditorRenderModeRequest& a, EditorRenderModeRequest& b) { a.Swap(&b); }
+  inline void Swap(EditorRenderModeRequest* other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(EditorRenderModeRequest* other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  EditorRenderModeRequest* New(::google::protobuf::Arena* arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<EditorRenderModeRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const EditorRenderModeRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const EditorRenderModeRequest& from) { EditorRenderModeRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(
+      ::google::protobuf::MessageLite& to_msg,
+      const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* _InternalSerialize(
+      const MessageLite& msg, ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* _InternalSerialize(
+      ::uint8_t* target,
+      ::google::protobuf::io::EpsCopyOutputStream* stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(EditorRenderModeRequest* other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(
+      ::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "sailor.editor.v1.EditorRenderModeRequest"; }
+
+ protected:
+  explicit EditorRenderModeRequest(::google::protobuf::Arena* arena);
+  EditorRenderModeRequest(::google::protobuf::Arena* arena, const EditorRenderModeRequest& from);
+  EditorRenderModeRequest(::google::protobuf::Arena* arena, EditorRenderModeRequest&& from) noexcept
+      : EditorRenderModeRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* GetClassData() const PROTOBUF_FINAL;
+  static void* PlacementNew_(const void*, void* mem,
+                             ::google::protobuf::Arena* arena);
+  static constexpr auto InternalNewImpl_();
+  static const ::google::protobuf::internal::ClassDataFull _class_data_;
+
+ public:
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kModeFieldNumber = 1,
+  };
+  // .sailor.editor.v1.EditorRenderMode mode = 1;
+  void clear_mode() ;
+  ::sailor::editor::v1::EditorRenderMode mode() const;
+  void set_mode(::sailor::editor::v1::EditorRenderMode value);
+
+  private:
+  ::sailor::editor::v1::EditorRenderMode _internal_mode() const;
+  void _internal_set_mode(::sailor::editor::v1::EditorRenderMode value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:sailor.editor.v1.EditorRenderModeRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<
+      0, 1, 0,
+      0, 2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(
+        ::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena);
+    inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
+                          ::google::protobuf::Arena* arena, const Impl_& from,
+                          const EditorRenderModeRequest& from_msg);
+    int mode_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_editor_5fengine_2eproto;
+};
+// -------------------------------------------------------------------
+
 class CreateGameObjectRequest final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:sailor.editor.v1.CreateGameObjectRequest) */ {
  public:
@@ -7724,7 +8146,7 @@ class CreateGameObjectRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const CreateGameObjectRequest*>(
         &_CreateGameObjectRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 19;
+  static constexpr int kIndexInFileMessages = 21;
   friend void swap(CreateGameObjectRequest& a, CreateGameObjectRequest& b) { a.Swap(&b); }
   inline void Swap(CreateGameObjectRequest* other) {
     if (other == this) return;
@@ -8128,7 +8550,7 @@ class BoolResult final : public ::google::protobuf::Message
     return reinterpret_cast<const BoolResult*>(
         &_BoolResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 32;
+  static constexpr int kIndexInFileMessages = 34;
   friend void swap(BoolResult& a, BoolResult& b) { a.Swap(&b); }
   inline void Swap(BoolResult* other) {
     if (other == this) return;
@@ -8318,7 +8740,7 @@ class AssetReloadStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AssetReloadStateResult*>(
         &_AssetReloadStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 38;
+  static constexpr int kIndexInFileMessages = 40;
   friend void swap(AssetReloadStateResult& a, AssetReloadStateResult& b) { a.Swap(&b); }
   inline void Swap(AssetReloadStateResult* other) {
     if (other == this) return;
@@ -8544,7 +8966,7 @@ class AnimatorStateResult final : public ::google::protobuf::Message
     return reinterpret_cast<const AnimatorStateResult*>(
         &_AnimatorStateResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 42;
+  static constexpr int kIndexInFileMessages = 44;
   friend void swap(AnimatorStateResult& a, AnimatorStateResult& b) { a.Swap(&b); }
   inline void Swap(AnimatorStateResult* other) {
     if (other == this) return;
@@ -8854,7 +9276,7 @@ class AddComponentRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const AddComponentRequest*>(
         &_AddComponentRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 20;
+  static constexpr int kIndexInFileMessages = 22;
   friend void swap(AddComponentRequest& a, AddComponentRequest& b) { a.Swap(&b); }
   inline void Swap(AddComponentRequest* other) {
     if (other == this) return;
@@ -9086,7 +9508,7 @@ class ViewportTransformEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportTransformEvent*>(
         &_ViewportTransformEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 45;
+  static constexpr int kIndexInFileMessages = 47;
   friend void swap(ViewportTransformEvent& a, ViewportTransformEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportTransformEvent* other) {
     if (other == this) return;
@@ -9409,7 +9831,7 @@ class Vector4Result final : public ::google::protobuf::Message
     return reinterpret_cast<const Vector4Result*>(
         &_Vector4Result_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 40;
+  static constexpr int kIndexInFileMessages = 42;
   friend void swap(Vector4Result& a, Vector4Result& b) { a.Swap(&b); }
   inline void Swap(Vector4Result* other) {
     if (other == this) return;
@@ -9605,7 +10027,7 @@ class InstantiatePrefabInstanceRequest final : public ::google::protobuf::Messag
     return reinterpret_cast<const InstantiatePrefabInstanceRequest*>(
         &_InstantiatePrefabInstanceRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 25;
+  static constexpr int kIndexInFileMessages = 27;
   friend void swap(InstantiatePrefabInstanceRequest& a, InstantiatePrefabInstanceRequest& b) { a.Swap(&b); }
   inline void Swap(InstantiatePrefabInstanceRequest* other) {
     if (other == this) return;
@@ -10149,7 +10571,7 @@ class AnimatorParameterRequest final : public ::google::protobuf::Message
     return reinterpret_cast<const AnimatorParameterRequest*>(
         &_AnimatorParameterRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 21;
+  static constexpr int kIndexInFileMessages = 23;
   friend void swap(AnimatorParameterRequest& a, AnimatorParameterRequest& b) { a.Swap(&b); }
   inline void Swap(AnimatorParameterRequest* other) {
     if (other == this) return;
@@ -10465,7 +10887,7 @@ class ViewportEvent final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEvent*>(
         &_ViewportEvent_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 48;
+  static constexpr int kIndexInFileMessages = 50;
   friend void swap(ViewportEvent& a, ViewportEvent& b) { a.Swap(&b); }
   inline void Swap(ViewportEvent* other) {
     if (other == this) return;
@@ -10815,6 +11237,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetEditorSimulationState = 62,
     kPreviewAudioAsset = 63,
     kSetEditorStatsMode = 64,
+    kSetEditorRenderMode = 65,
+    kGetEditorRenderMode = 66,
     COMMAND_NOT_SET = 0,
   };
   static inline const ProtocolRequest* internal_default_instance() {
@@ -10964,6 +11388,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
     kGetEditorSimulationStateFieldNumber = 62,
     kPreviewAudioAssetFieldNumber = 63,
     kSetEditorStatsModeFieldNumber = 64,
+    kSetEditorRenderModeFieldNumber = 65,
+    kGetEditorRenderModeFieldNumber = 66,
   };
   // uint64 request_id = 2;
   void clear_request_id() ;
@@ -12011,6 +12437,44 @@ class ProtocolRequest final : public ::google::protobuf::Message
   ::sailor::editor::v1::EditorStatsModeRequest* _internal_mutable_set_editor_stats_mode();
 
   public:
+  // .sailor.editor.v1.EditorRenderModeRequest set_editor_render_mode = 65;
+  bool has_set_editor_render_mode() const;
+  private:
+  bool _internal_has_set_editor_render_mode() const;
+
+  public:
+  void clear_set_editor_render_mode() ;
+  const ::sailor::editor::v1::EditorRenderModeRequest& set_editor_render_mode() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::EditorRenderModeRequest* release_set_editor_render_mode();
+  ::sailor::editor::v1::EditorRenderModeRequest* mutable_set_editor_render_mode();
+  void set_allocated_set_editor_render_mode(::sailor::editor::v1::EditorRenderModeRequest* value);
+  void unsafe_arena_set_allocated_set_editor_render_mode(::sailor::editor::v1::EditorRenderModeRequest* value);
+  ::sailor::editor::v1::EditorRenderModeRequest* unsafe_arena_release_set_editor_render_mode();
+
+  private:
+  const ::sailor::editor::v1::EditorRenderModeRequest& _internal_set_editor_render_mode() const;
+  ::sailor::editor::v1::EditorRenderModeRequest* _internal_mutable_set_editor_render_mode();
+
+  public:
+  // .sailor.editor.v1.Empty get_editor_render_mode = 66;
+  bool has_get_editor_render_mode() const;
+  private:
+  bool _internal_has_get_editor_render_mode() const;
+
+  public:
+  void clear_get_editor_render_mode() ;
+  const ::sailor::editor::v1::Empty& get_editor_render_mode() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::Empty* release_get_editor_render_mode();
+  ::sailor::editor::v1::Empty* mutable_get_editor_render_mode();
+  void set_allocated_get_editor_render_mode(::sailor::editor::v1::Empty* value);
+  void unsafe_arena_set_allocated_get_editor_render_mode(::sailor::editor::v1::Empty* value);
+  ::sailor::editor::v1::Empty* unsafe_arena_release_get_editor_render_mode();
+
+  private:
+  const ::sailor::editor::v1::Empty& _internal_get_editor_render_mode() const;
+  ::sailor::editor::v1::Empty* _internal_mutable_get_editor_render_mode();
+
+  public:
   void clear_command();
   CommandCase command_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolRequest)
@@ -12070,12 +12534,14 @@ class ProtocolRequest final : public ::google::protobuf::Message
   void set_has_get_editor_simulation_state();
   void set_has_preview_audio_asset();
   void set_has_set_editor_stats_mode();
+  void set_has_set_editor_render_mode();
+  void set_has_get_editor_render_mode();
   inline bool has_command() const;
   inline void clear_has_command();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      1, 56, 54,
-      0, 9>
+      1, 58, 56,
+      0, 11>
       _table_;
 
   friend class ::google::protobuf::MessageLite;
@@ -12151,6 +12617,8 @@ class ProtocolRequest final : public ::google::protobuf::Message
       ::sailor::editor::v1::Empty* get_editor_simulation_state_;
       ::sailor::editor::v1::FileIdRequest* preview_audio_asset_;
       ::sailor::editor::v1::EditorStatsModeRequest* set_editor_stats_mode_;
+      ::sailor::editor::v1::EditorRenderModeRequest* set_editor_render_mode_;
+      ::sailor::editor::v1::Empty* get_editor_render_mode_;
     } command_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -12220,7 +12688,7 @@ class ViewportEventBatchResult final : public ::google::protobuf::Message
     return reinterpret_cast<const ViewportEventBatchResult*>(
         &_ViewportEventBatchResult_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 49;
+  static constexpr int kIndexInFileMessages = 51;
   friend void swap(ViewportEventBatchResult& a, ViewportEventBatchResult& b) { a.Swap(&b); }
   inline void Swap(ViewportEventBatchResult* other) {
     if (other == this) return;
@@ -12427,6 +12895,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kVector4Result = 20,
     kViewportToolStateResult = 21,
     kAnimatorStateResult = 22,
+    kEditorRenderModeResult = 23,
     RESULT_NOT_SET = 0,
   };
   static inline const ProtocolResponse* internal_default_instance() {
@@ -12538,6 +13007,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
     kVector4ResultFieldNumber = 20,
     kViewportToolStateResultFieldNumber = 21,
     kAnimatorStateResultFieldNumber = 22,
+    kEditorRenderModeResultFieldNumber = 23,
   };
   // string error = 4;
   void clear_error() ;
@@ -12842,6 +13312,25 @@ class ProtocolResponse final : public ::google::protobuf::Message
   ::sailor::editor::v1::AnimatorStateResult* _internal_mutable_animator_state_result();
 
   public:
+  // .sailor.editor.v1.EditorRenderModeResult editor_render_mode_result = 23;
+  bool has_editor_render_mode_result() const;
+  private:
+  bool _internal_has_editor_render_mode_result() const;
+
+  public:
+  void clear_editor_render_mode_result() ;
+  const ::sailor::editor::v1::EditorRenderModeResult& editor_render_mode_result() const;
+  PROTOBUF_NODISCARD ::sailor::editor::v1::EditorRenderModeResult* release_editor_render_mode_result();
+  ::sailor::editor::v1::EditorRenderModeResult* mutable_editor_render_mode_result();
+  void set_allocated_editor_render_mode_result(::sailor::editor::v1::EditorRenderModeResult* value);
+  void unsafe_arena_set_allocated_editor_render_mode_result(::sailor::editor::v1::EditorRenderModeResult* value);
+  ::sailor::editor::v1::EditorRenderModeResult* unsafe_arena_release_editor_render_mode_result();
+
+  private:
+  const ::sailor::editor::v1::EditorRenderModeResult& _internal_editor_render_mode_result() const;
+  ::sailor::editor::v1::EditorRenderModeResult* _internal_mutable_editor_render_mode_result();
+
+  public:
   void clear_result();
   ResultCase result_case() const;
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.ProtocolResponse)
@@ -12860,11 +13349,12 @@ class ProtocolResponse final : public ::google::protobuf::Message
   void set_has_vector4_result();
   void set_has_viewport_tool_state_result();
   void set_has_animator_state_result();
+  void set_has_editor_render_mode_result();
   inline bool has_result() const;
   inline void clear_has_result();
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      3, 18, 13,
+      3, 19, 14,
       63, 2>
       _table_;
 
@@ -12903,6 +13393,7 @@ class ProtocolResponse final : public ::google::protobuf::Message
       ::sailor::editor::v1::Vector4Result* vector4_result_;
       ::sailor::editor::v1::ViewportToolStateResult* viewport_tool_state_result_;
       ::sailor::editor::v1::AnimatorStateResult* animator_state_result_;
+      ::sailor::editor::v1::EditorRenderModeResult* editor_render_mode_result_;
     } result_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::uint32_t _oneof_case_[1];
@@ -17242,6 +17733,164 @@ inline ::sailor::editor::v1::EditorStatsModeRequest* ProtocolRequest::mutable_se
   return _msg;
 }
 
+// .sailor.editor.v1.EditorRenderModeRequest set_editor_render_mode = 65;
+inline bool ProtocolRequest::has_set_editor_render_mode() const {
+  return command_case() == kSetEditorRenderMode;
+}
+inline bool ProtocolRequest::_internal_has_set_editor_render_mode() const {
+  return command_case() == kSetEditorRenderMode;
+}
+inline void ProtocolRequest::set_has_set_editor_render_mode() {
+  _impl_._oneof_case_[0] = kSetEditorRenderMode;
+}
+inline void ProtocolRequest::clear_set_editor_render_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kSetEditorRenderMode) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.set_editor_render_mode_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.set_editor_render_mode_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::EditorRenderModeRequest* ProtocolRequest::release_set_editor_render_mode() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.set_editor_render_mode)
+  if (command_case() == kSetEditorRenderMode) {
+    clear_has_command();
+    auto* temp = _impl_.command_.set_editor_render_mode_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.set_editor_render_mode_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::EditorRenderModeRequest& ProtocolRequest::_internal_set_editor_render_mode() const {
+  return command_case() == kSetEditorRenderMode ? *_impl_.command_.set_editor_render_mode_ : reinterpret_cast<::sailor::editor::v1::EditorRenderModeRequest&>(::sailor::editor::v1::_EditorRenderModeRequest_default_instance_);
+}
+inline const ::sailor::editor::v1::EditorRenderModeRequest& ProtocolRequest::set_editor_render_mode() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.set_editor_render_mode)
+  return _internal_set_editor_render_mode();
+}
+inline ::sailor::editor::v1::EditorRenderModeRequest* ProtocolRequest::unsafe_arena_release_set_editor_render_mode() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.set_editor_render_mode)
+  if (command_case() == kSetEditorRenderMode) {
+    clear_has_command();
+    auto* temp = _impl_.command_.set_editor_render_mode_;
+    _impl_.command_.set_editor_render_mode_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_set_editor_render_mode(::sailor::editor::v1::EditorRenderModeRequest* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_set_editor_render_mode();
+    _impl_.command_.set_editor_render_mode_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.set_editor_render_mode)
+}
+inline ::sailor::editor::v1::EditorRenderModeRequest* ProtocolRequest::_internal_mutable_set_editor_render_mode() {
+  if (command_case() != kSetEditorRenderMode) {
+    clear_command();
+    set_has_set_editor_render_mode();
+    _impl_.command_.set_editor_render_mode_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::EditorRenderModeRequest>(GetArena());
+  }
+  return _impl_.command_.set_editor_render_mode_;
+}
+inline ::sailor::editor::v1::EditorRenderModeRequest* ProtocolRequest::mutable_set_editor_render_mode() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::EditorRenderModeRequest* _msg = _internal_mutable_set_editor_render_mode();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.set_editor_render_mode)
+  return _msg;
+}
+
+// .sailor.editor.v1.Empty get_editor_render_mode = 66;
+inline bool ProtocolRequest::has_get_editor_render_mode() const {
+  return command_case() == kGetEditorRenderMode;
+}
+inline bool ProtocolRequest::_internal_has_get_editor_render_mode() const {
+  return command_case() == kGetEditorRenderMode;
+}
+inline void ProtocolRequest::set_has_get_editor_render_mode() {
+  _impl_._oneof_case_[0] = kGetEditorRenderMode;
+}
+inline void ProtocolRequest::clear_get_editor_render_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (command_case() == kGetEditorRenderMode) {
+    if (GetArena() == nullptr) {
+      delete _impl_.command_.get_editor_render_mode_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.command_.get_editor_render_mode_);
+    }
+    clear_has_command();
+  }
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::release_get_editor_render_mode() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolRequest.get_editor_render_mode)
+  if (command_case() == kGetEditorRenderMode) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_editor_render_mode_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.command_.get_editor_render_mode_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::Empty& ProtocolRequest::_internal_get_editor_render_mode() const {
+  return command_case() == kGetEditorRenderMode ? *_impl_.command_.get_editor_render_mode_ : reinterpret_cast<::sailor::editor::v1::Empty&>(::sailor::editor::v1::_Empty_default_instance_);
+}
+inline const ::sailor::editor::v1::Empty& ProtocolRequest::get_editor_render_mode() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolRequest.get_editor_render_mode)
+  return _internal_get_editor_render_mode();
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::unsafe_arena_release_get_editor_render_mode() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolRequest.get_editor_render_mode)
+  if (command_case() == kGetEditorRenderMode) {
+    clear_has_command();
+    auto* temp = _impl_.command_.get_editor_render_mode_;
+    _impl_.command_.get_editor_render_mode_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolRequest::unsafe_arena_set_allocated_get_editor_render_mode(::sailor::editor::v1::Empty* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_command();
+  if (value) {
+    set_has_get_editor_render_mode();
+    _impl_.command_.get_editor_render_mode_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolRequest.get_editor_render_mode)
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::_internal_mutable_get_editor_render_mode() {
+  if (command_case() != kGetEditorRenderMode) {
+    clear_command();
+    set_has_get_editor_render_mode();
+    _impl_.command_.get_editor_render_mode_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::Empty>(GetArena());
+  }
+  return _impl_.command_.get_editor_render_mode_;
+}
+inline ::sailor::editor::v1::Empty* ProtocolRequest::mutable_get_editor_render_mode() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::Empty* _msg = _internal_mutable_get_editor_render_mode();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolRequest.get_editor_render_mode)
+  return _msg;
+}
+
 inline bool ProtocolRequest::has_command() const {
   return command_case() != COMMAND_NOT_SET;
 }
@@ -18418,6 +19067,85 @@ inline ::sailor::editor::v1::AnimatorStateResult* ProtocolResponse::mutable_anim
   return _msg;
 }
 
+// .sailor.editor.v1.EditorRenderModeResult editor_render_mode_result = 23;
+inline bool ProtocolResponse::has_editor_render_mode_result() const {
+  return result_case() == kEditorRenderModeResult;
+}
+inline bool ProtocolResponse::_internal_has_editor_render_mode_result() const {
+  return result_case() == kEditorRenderModeResult;
+}
+inline void ProtocolResponse::set_has_editor_render_mode_result() {
+  _impl_._oneof_case_[0] = kEditorRenderModeResult;
+}
+inline void ProtocolResponse::clear_editor_render_mode_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (result_case() == kEditorRenderModeResult) {
+    if (GetArena() == nullptr) {
+      delete _impl_.result_.editor_render_mode_result_;
+    } else if (::google::protobuf::internal::DebugHardenClearOneofMessageOnArena()) {
+      ::google::protobuf::internal::MaybePoisonAfterClear(_impl_.result_.editor_render_mode_result_);
+    }
+    clear_has_result();
+  }
+}
+inline ::sailor::editor::v1::EditorRenderModeResult* ProtocolResponse::release_editor_render_mode_result() {
+  // @@protoc_insertion_point(field_release:sailor.editor.v1.ProtocolResponse.editor_render_mode_result)
+  if (result_case() == kEditorRenderModeResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.editor_render_mode_result_;
+    if (GetArena() != nullptr) {
+      temp = ::google::protobuf::internal::DuplicateIfNonNull(temp);
+    }
+    _impl_.result_.editor_render_mode_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline const ::sailor::editor::v1::EditorRenderModeResult& ProtocolResponse::_internal_editor_render_mode_result() const {
+  return result_case() == kEditorRenderModeResult ? *_impl_.result_.editor_render_mode_result_ : reinterpret_cast<::sailor::editor::v1::EditorRenderModeResult&>(::sailor::editor::v1::_EditorRenderModeResult_default_instance_);
+}
+inline const ::sailor::editor::v1::EditorRenderModeResult& ProtocolResponse::editor_render_mode_result() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.ProtocolResponse.editor_render_mode_result)
+  return _internal_editor_render_mode_result();
+}
+inline ::sailor::editor::v1::EditorRenderModeResult* ProtocolResponse::unsafe_arena_release_editor_render_mode_result() {
+  // @@protoc_insertion_point(field_unsafe_arena_release:sailor.editor.v1.ProtocolResponse.editor_render_mode_result)
+  if (result_case() == kEditorRenderModeResult) {
+    clear_has_result();
+    auto* temp = _impl_.result_.editor_render_mode_result_;
+    _impl_.result_.editor_render_mode_result_ = nullptr;
+    return temp;
+  } else {
+    return nullptr;
+  }
+}
+inline void ProtocolResponse::unsafe_arena_set_allocated_editor_render_mode_result(::sailor::editor::v1::EditorRenderModeResult* value) {
+  // We rely on the oneof clear method to free the earlier contents
+  // of this oneof. We can directly use the pointer we're given to
+  // set the new value.
+  clear_result();
+  if (value) {
+    set_has_editor_render_mode_result();
+    _impl_.result_.editor_render_mode_result_ = value;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:sailor.editor.v1.ProtocolResponse.editor_render_mode_result)
+}
+inline ::sailor::editor::v1::EditorRenderModeResult* ProtocolResponse::_internal_mutable_editor_render_mode_result() {
+  if (result_case() != kEditorRenderModeResult) {
+    clear_result();
+    set_has_editor_render_mode_result();
+    _impl_.result_.editor_render_mode_result_ =
+        ::google::protobuf::Message::DefaultConstruct<::sailor::editor::v1::EditorRenderModeResult>(GetArena());
+  }
+  return _impl_.result_.editor_render_mode_result_;
+}
+inline ::sailor::editor::v1::EditorRenderModeResult* ProtocolResponse::mutable_editor_render_mode_result() ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::sailor::editor::v1::EditorRenderModeResult* _msg = _internal_mutable_editor_render_mode_result();
+  // @@protoc_insertion_point(field_mutable:sailor.editor.v1.ProtocolResponse.editor_render_mode_result)
+  return _msg;
+}
+
 inline bool ProtocolResponse::has_result() const {
   return result_case() != RESULT_NOT_SET;
 }
@@ -19175,6 +19903,58 @@ inline ::sailor::editor::v1::EditorStatsMode EditorStatsModeRequest::_internal_m
   return static_cast<::sailor::editor::v1::EditorStatsMode>(_impl_.mode_);
 }
 inline void EditorStatsModeRequest::_internal_set_mode(::sailor::editor::v1::EditorStatsMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// EditorRenderModeRequest
+
+// .sailor.editor.v1.EditorRenderMode mode = 1;
+inline void EditorRenderModeRequest::clear_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = 0;
+}
+inline ::sailor::editor::v1::EditorRenderMode EditorRenderModeRequest::mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.EditorRenderModeRequest.mode)
+  return _internal_mode();
+}
+inline void EditorRenderModeRequest::set_mode(::sailor::editor::v1::EditorRenderMode value) {
+  _internal_set_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.EditorRenderModeRequest.mode)
+}
+inline ::sailor::editor::v1::EditorRenderMode EditorRenderModeRequest::_internal_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::EditorRenderMode>(_impl_.mode_);
+}
+inline void EditorRenderModeRequest::_internal_set_mode(::sailor::editor::v1::EditorRenderMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// EditorRenderModeResult
+
+// .sailor.editor.v1.EditorRenderMode mode = 1;
+inline void EditorRenderModeResult::clear_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = 0;
+}
+inline ::sailor::editor::v1::EditorRenderMode EditorRenderModeResult::mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.EditorRenderModeResult.mode)
+  return _internal_mode();
+}
+inline void EditorRenderModeResult::set_mode(::sailor::editor::v1::EditorRenderMode value) {
+  _internal_set_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.EditorRenderModeResult.mode)
+}
+inline ::sailor::editor::v1::EditorRenderMode EditorRenderModeResult::_internal_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::EditorRenderMode>(_impl_.mode_);
+}
+inline void EditorRenderModeResult::_internal_set_mode(::sailor::editor::v1::EditorRenderMode value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.mode_ = value;
 }
@@ -23829,6 +24609,12 @@ struct is_proto_enum<::sailor::editor::v1::EditorStatsMode> : std::true_type {};
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::EditorStatsMode>() {
   return ::sailor::editor::v1::EditorStatsMode_descriptor();
+}
+template <>
+struct is_proto_enum<::sailor::editor::v1::EditorRenderMode> : std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::EditorRenderMode>() {
+  return ::sailor::editor::v1::EditorRenderMode_descriptor();
 }
 
 }  // namespace protobuf

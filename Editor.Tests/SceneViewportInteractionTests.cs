@@ -5,6 +5,33 @@ namespace Editor.Tests;
 public sealed class SceneViewportInteractionTests
 {
     [Theory]
+    [InlineData("lit", SceneViewRenderMode.Lit)]
+    [InlineData("ambient_occlusion", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("Ambient Occlusion", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("AO", SceneViewRenderMode.AmbientOcclusion)]
+    [InlineData("csm", SceneViewRenderMode.Cascades)]
+    [InlineData("light-tiles", SceneViewRenderMode.LightTiles)]
+    public void RenderModeName_ParsesMcpValues(
+        string value,
+        SceneViewRenderMode expected)
+    {
+        Assert.True(SceneViewRenderModeNames.TryParse(value, out var mode));
+        Assert.Equal(expected, mode);
+        Assert.Contains(
+            SceneViewRenderModeNames.ToExternalName(mode),
+            SceneViewRenderModeNames.Supported);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("depth")]
+    [InlineData("ambient")]
+    public void RenderModeName_RejectsUnsupportedValues(string value)
+    {
+        Assert.False(SceneViewRenderModeNames.TryParse(value, out _));
+    }
+
+    [Theory]
     [InlineData('Q', EditorViewportTransformOperation.Select)]
     [InlineData('W', EditorViewportTransformOperation.Translate)]
     [InlineData('E', EditorViewportTransformOperation.Rotate)]

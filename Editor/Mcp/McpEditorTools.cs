@@ -3,6 +3,7 @@
 using ModelContextProtocol.Server;
 using SailorEditor.AI;
 using SailorEditor.Commands;
+using SailorEditor.Scene;
 using SailorEditor.Services;
 using SailorEditor.Workspace;
 
@@ -19,6 +20,11 @@ public sealed record McpEditorStateSnapshot(
     long WorkspaceEpoch,
     int UndoCount,
     int RedoCount);
+
+public sealed record McpEditorRenderModeSnapshot(
+    bool Succeeded,
+    string Mode,
+    string Message);
 
 internal sealed class McpEditorTools
 {
@@ -73,6 +79,27 @@ internal sealed class McpEditorTools
                 Name = "sailor_editor_get_state",
                 Description =
                     "Get the active Sailor Editor project, engine, world, selection and undo state.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (CancellationToken cancellationToken) =>
+                GetRenderModeAsync(cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_get_render_mode",
+                Description =
+                    "Get the active Scene View rendering mode. Canonical modes are lit, ambient_occlusion, cascades and light_tiles.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
+            (string mode, CancellationToken cancellationToken) =>
+                SetRenderModeAsync(mode, cancellationToken),
+            new()
+            {
+                Name = "sailor_editor_set_render_mode",
+                Description =
+                    "Set the transient Scene View rendering mode without changing the scene or project settings. " +
+                    "Accepted canonical modes are lit, ambient_occlusion, cascades and light_tiles.",
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
@@ -303,6 +330,54 @@ internal sealed class McpEditorTools
         CancellationToken cancellationToken = default) =>
         _editorThread.InvokeAsync(
             () => Task.FromResult(_sceneSnapshots.Build(includeYaml)),
+            cancellationToken);
+
+    public Task<McpEditorRenderModeSnapshot> GetRenderModeAsync(
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            async () =>
+            {
+                var mode = await _engine.GetEditorRenderModeAsync(
+                    cancellationToken);
+                return mode is not null
+                    ? new McpEditorRenderModeSnapshot(
+                        true,
+                        SceneViewRenderModeNames.ToExternalName(mode.Value),
+                        "Scene View render mode read successfully.")
+                    : new McpEditorRenderModeSnapshot(
+                        false,
+                        string.Empty,
+                        "The Engine is not running or rejected the render mode query.");
+            },
+            cancellationToken);
+
+    public Task<McpEditorRenderModeSnapshot> SetRenderModeAsync(
+        string mode,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            async () =>
+            {
+                if (!SceneViewRenderModeNames.TryParse(mode, out var parsed))
+                {
+                    return new McpEditorRenderModeSnapshot(
+                        false,
+                        string.Empty,
+                        "Unsupported render mode. Use one of: " +
+                        string.Join(", ", SceneViewRenderModeNames.Supported) + ".");
+                }
+
+                var succeeded = await _engine.SetEditorRenderModeAsync(
+                    parsed,
+                    cancellationToken);
+                return new McpEditorRenderModeSnapshot(
+                    succeeded,
+                    succeeded
+                        ? SceneViewRenderModeNames.ToExternalName(parsed)
+                        : string.Empty,
+                    succeeded
+                        ? "Scene View render mode updated."
+                        : "The Engine is not running or rejected the render mode command.");
+            },
             cancellationToken);
 
     public Task<McpGameObjectSnapshot?> GetSceneObjectAsync(

@@ -466,6 +466,41 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             nameof(ProtocolRequest.SetEditorStatsMode));
     }
 
+    public async Task<bool> SetEditorRenderModeAsync(
+        EditorRenderMode mode,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateEditorRenderMode(mode);
+
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetEditorRenderMode = new EditorRenderModeRequest
+                        {
+                            Mode = mode
+                        }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetEditorRenderMode));
+    }
+
+    public async Task<EditorRenderMode> GetEditorRenderModeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var result = RequireResult<EditorRenderModeResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetEditorRenderMode = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).EditorRenderModeResult,
+            nameof(ProtocolRequest.GetEditorRenderMode));
+        return ValidateEditorRenderMode(result.Mode);
+    }
+
     public async Task<bool> PreviewAudioAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)
@@ -1456,6 +1491,19 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
                 nameof(space),
                 space,
                 "The viewport transform space is unsupported.");
+
+    static EditorRenderMode ValidateEditorRenderMode(
+        EditorRenderMode mode)
+        => mode is
+            EditorRenderMode.Lit or
+            EditorRenderMode.AmbientOcclusion or
+            EditorRenderMode.Cascades or
+            EditorRenderMode.LightTiles
+            ? mode
+            : throw new ArgumentOutOfRangeException(
+                nameof(mode),
+                mode,
+                "The Editor render mode is unsupported.");
 
     static void RequireEmpty(ProtocolResponse response, string commandName)
         => RequireResult<Empty>(response.EmptyResult, commandName);

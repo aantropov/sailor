@@ -66,13 +66,15 @@ message ProtocolRequest {
 		Empty get_editor_simulation_state = 62;
 		FileIdRequest preview_audio_asset = 63;
 		EditorStatsModeRequest set_editor_stats_mode = 64;
+		EditorRenderModeRequest set_editor_render_mode = 65;
+		Empty get_editor_render_mode = 66;
 	}
 
 	reserved 3 to 9;
 	reserved 50;
 	reserved "create_model_game_object";
 	reserved "resolve_viewport_drop_position";
-	reserved 65 to 99;
+	reserved 67 to 99;
 }
 
 message ProtocolResponse {
@@ -96,10 +98,11 @@ message ProtocolResponse {
 		Vector4Result vector4_result = 20;
 		ViewportToolStateResult viewport_tool_state_result = 21;
 		AnimatorStateResult animator_state_result = 22;
+		EditorRenderModeResult editor_render_mode_result = 23;
 	}
 
 	reserved 6 to 9;
-	reserved 23 to 99;
+	reserved 24 to 99;
 }
 
 message InitializeRequest {
@@ -150,6 +153,14 @@ message EditorSimulationRequest {
 
 message EditorStatsModeRequest {
 	EditorStatsMode mode = 1;
+}
+
+message EditorRenderModeRequest {
+	EditorRenderMode mode = 1;
+}
+
+message EditorRenderModeResult {
+	EditorRenderMode mode = 1;
 }
 
 message RemoteViewportRequest {
@@ -357,6 +368,14 @@ enum EditorStatsMode {
 	EDITOR_STATS_MODE_NONE = 1;
 	EDITOR_STATS_MODE_RENDER_STATS = 2;
 	EDITOR_STATS_MODE_RENDER_STATS_AND_QUERIES = 3;
+}
+
+enum EditorRenderMode {
+	EDITOR_RENDER_MODE_UNSPECIFIED = 0;
+	EDITOR_RENDER_MODE_LIT = 1;
+	EDITOR_RENDER_MODE_AMBIENT_OCCLUSION = 2;
+	EDITOR_RENDER_MODE_CASCADES = 3;
+	EDITOR_RENDER_MODE_LIGHT_TILES = 4;
 }
 
 message Vector4 {

@@ -529,9 +529,15 @@ glslFragment: |
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
 
-    // Total ambient lighting contribution. Screen-space AO only affects the
-    // diffuse portion similar to the glTF occlusion workflow.
-    return diffuseIBL * material.ao + specularIBL;
+    // Ambient occlusion applies to all indirect lighting. Use a view- and
+    // roughness-dependent approximation for specular IBL so smooth surfaces
+    // retain plausible reflections without leaking them into occluded areas.
+    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
+    float specularOcclusion = CalculateSpecularOcclusion(
+      ambientOcclusion,
+      cosLo,
+      material.roughness);
+    return diffuseIBL * ambientOcclusion + specularIBL * specularOcclusion;
   }
 
   // Constant normal incidence Fresnel factor for all dielectrics.

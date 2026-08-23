@@ -88,7 +88,8 @@ glslFragment: |
   vec3 GetViewSpacePos(vec2 uv)
   {
     float depth = texture(depthSampler, uv).r;
-    return ScreenSpaceToViewSpace(uv, depth, frame.invProjection).xyz;
+    vec2 projectionUv = FramebufferUvToSceneProjectionUv(uv);
+    return ScreenSpaceToViewSpace(projectionUv, depth, frame.invProjection).xyz;
   }
   
   vec3 GetViewSpaceNormal(vec2 uv, vec2 depthTextureSize)
@@ -109,11 +110,20 @@ glslFragment: |
     float depthDdx = TakeSmallerAbsDelta(depthLeft, depth, depthRight);
     float depthDdy = TakeSmallerAbsDelta(depthDown, depth, depthUp);
 
-    vec4 mid    = ScreenSpaceToViewSpace(uv, depth, frame.invProjection);
-    vec4 right  = ScreenSpaceToViewSpace(uvRight, depth + depthDdx, frame.invProjection) - mid;
-    vec4 up     = ScreenSpaceToViewSpace(uvUp, depth + depthDdy, frame.invProjection) - mid;
+    vec4 mid = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uv),
+      depth,
+      frame.invProjection);
+    vec4 right = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uvRight),
+      depth + depthDdx,
+      frame.invProjection) - mid;
+    vec4 framebufferDown = ScreenSpaceToViewSpace(
+      FramebufferUvToSceneProjectionUv(uvUp),
+      depth + depthDdy,
+      frame.invProjection) - mid;
 
-    return normalize(cross(up.xyz, right.xyz));
+    return normalize(cross(right.xyz, framebufferDown.xyz));
   }
   
   vec2 SnapTexel(vec2 uv, vec2 depthTextureSize)

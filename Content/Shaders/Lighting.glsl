@@ -151,6 +151,18 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
     return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 } 
 
+// Screen-space ambient occlusion describes the visibility of indirect light.
+// Diffuse IBL can use the visibility directly, while glossy reflections need
+// a view- and roughness-dependent approximation to avoid over-darkening.
+float CalculateSpecularOcclusion(float ambientOcclusion, float cosLo, float roughness)
+{
+  const float ao = clamp(ambientOcclusion, 0.0, 1.0);
+  const float nDotV = clamp(cosLo, 0.0, 1.0);
+  const float clampedRoughness = clamp(roughness, 0.0, 1.0);
+  const float exponent = exp2(-16.0 * clampedRoughness - 1.0);
+  return clamp(pow(nDotV + ao, exponent) - 1.0 + ao, 0.0, 1.0);
+}
+
 vec4 GaussianBlur_Evsm(sampler2D textureSampler, vec2 uv, vec2 texelSize, ivec2 radius)
 {
   const int stepCount = 12;

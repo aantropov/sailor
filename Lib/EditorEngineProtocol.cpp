@@ -64,6 +64,7 @@ namespace
 	using Sailor::Protocol::EditorEngineProtocolLatestVersion;
 	using Sailor::Protocol::EditorEngineProtocolStrictInstanceIdsVersion;
 	using Sailor::Protocol::EditorEngineProtocolVersion;
+	using sailor::editor::v1::EditorRenderMode;
 	using sailor::editor::v1::ProtocolRequest;
 	using sailor::editor::v1::ProtocolResponse;
 	using sailor::editor::v1::Vector4;
@@ -199,6 +200,47 @@ namespace
 	{
 		SetSuccess(response);
 		response.mutable_bool_result()->set_value(value);
+	}
+
+	bool TryGetSceneViewRenderMode(
+		EditorRenderMode protocolMode,
+		Sailor::RHI::ESceneViewRenderMode& outMode)
+	{
+		switch (protocolMode)
+		{
+		case sailor::editor::v1::EDITOR_RENDER_MODE_LIT:
+			outMode = Sailor::RHI::ESceneViewRenderMode::Lit;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_AMBIENT_OCCLUSION:
+			outMode = Sailor::RHI::ESceneViewRenderMode::AmbientOcclusion;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_CASCADES:
+			outMode = Sailor::RHI::ESceneViewRenderMode::Cascades;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES:
+			outMode = Sailor::RHI::ESceneViewRenderMode::LightTiles;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_UNSPECIFIED:
+		default:
+			return false;
+		}
+	}
+
+	EditorRenderMode ToProtocolRenderMode(
+		Sailor::RHI::ESceneViewRenderMode mode)
+	{
+		switch (mode)
+		{
+		case Sailor::RHI::ESceneViewRenderMode::AmbientOcclusion:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_AMBIENT_OCCLUSION;
+		case Sailor::RHI::ESceneViewRenderMode::Cascades:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_CASCADES;
+		case Sailor::RHI::ESceneViewRenderMode::LightTiles:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES;
+		case Sailor::RHI::ESceneViewRenderMode::Lit:
+		default:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_LIT;
+		}
 	}
 
 	void SetUInt32Result(ProtocolResponse& response, uint32_t value)
@@ -1151,6 +1193,29 @@ namespace
 			}
 			break;
 		}
+
+		case ProtocolRequest::kSetEditorRenderMode:
+		{
+			Sailor::RHI::ESceneViewRenderMode renderMode{};
+			if (!TryGetSceneViewRenderMode(
+					request.set_editor_render_mode().mode(),
+					renderMode))
+			{
+				SetError(response, "The Editor render mode is invalid.");
+				break;
+			}
+
+			SetBoolResult(
+				response,
+				Sailor::App::SetEditorRenderMode(renderMode));
+			break;
+		}
+
+		case ProtocolRequest::kGetEditorRenderMode:
+			SetSuccess(response);
+			response.mutable_editor_render_mode_result()->set_mode(
+				ToProtocolRenderMode(Sailor::App::GetEditorRenderMode()));
+			break;
 
 		case ProtocolRequest::kSetViewport:
 		{

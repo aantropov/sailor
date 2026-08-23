@@ -438,11 +438,14 @@ frame:
   - depthStencil: DepthBuffer
 
 ############################
-- name: Blit
+- name: DebugView
 ############################
+  string:
+  - shader: Shaders/Debug.shader
   renderTargets:
   - src: Main
   - dst: EditorOutput
+  - linearDepth: LinearDepth
 
 #############################
 - name: RenderImGui

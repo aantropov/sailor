@@ -181,6 +181,14 @@ vec4 ScreenSpaceToViewSpace(vec2 texCoord, float z, mat4 invProjection)
     return ClipSpaceToViewSpace(clip, invProjection);
 }
 
+// Scene geometry is rendered with a negative Vulkan viewport height, while
+// fullscreen post-process passes use a positive viewport. Convert a sampled
+// framebuffer UV before reconstructing the scene's projection-space position.
+vec2 FramebufferUvToSceneProjectionUv(vec2 framebufferUv)
+{
+  return vec2(framebufferUv.x, 1.0 - framebufferUv.y);
+}
+
 // Construct view frustum
 ViewFrustum CreateViewFrustum(ivec2 viewportSize, mat4 invProjection)
 {
