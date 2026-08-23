@@ -64,19 +64,34 @@ namespace
 		return XorShift32(s_rngState);
 	}
 
-	__forceinline uint32_t NextRandomRange(uint32_t maxExclusive)
+	__forceinline uint32_t NextRandomU32(uint32_t& randomState)
 	{
-		return maxExclusive > 0u ? (NextRandomU32() % maxExclusive) : 0u;
+		if (randomState == 0u)
+		{
+			randomState = 0x6d2b79f5u;
+		}
+		return XorShift32(randomState);
 	}
 
-	__forceinline float NextRandom01()
+	__forceinline uint32_t NextRandomRange(
+		uint32_t& randomState,
+		uint32_t maxExclusive)
 	{
-		return (float)(NextRandomU32() & 0x00FFFFFFu) / 16777216.0f;
+		return maxExclusive > 0u ?
+			(NextRandomU32(randomState) % maxExclusive) : 0u;
 	}
 
-	__forceinline vec2 NextRandomVec2_01()
+	__forceinline float NextRandom01(uint32_t& randomState)
 	{
-		return vec2(NextRandom01(), NextRandom01());
+		return static_cast<float>(
+			NextRandomU32(randomState) & 0x00ffffffu) / 16777216.0f;
+	}
+
+	__forceinline vec2 NextRandomVec2_01(uint32_t& randomState)
+	{
+		return vec2(
+			NextRandom01(randomState),
+			NextRandom01(randomState));
 	}
 
 	__forceinline vec3 ComputeRayOriginBias(const vec3& worldPoint, const vec3& geometricNormal, float biasBase, float biasScale)
@@ -90,6 +105,45 @@ namespace
 	{
 		const vec3 bias = ComputeRayOriginBias(worldPoint, geometricNormal, biasBase, biasScale);
 		return worldPoint + (glm::dot(rayDirection, geometricNormal) >= 0.0f ? bias : -bias);
+	}
+
+	const Raytracing::BVH* ResolveInstanceBlas(
+		const PathTracer::TLASInstance& instance)
+	{
+		if (instance.m_blas)
+		{
+			return instance.m_blas.GetRawPtr();
+		}
+		if (!instance.m_model ||
+			!instance.m_model->HasBLAS(instance.m_meshIndex))
+		{
+			return nullptr;
+		}
+		return instance.m_model->GetBLAS(instance.m_meshIndex).GetRawPtr();
+	}
+
+	const TVector<Math::Triangle>* ResolveInstanceTriangles(
+		const PathTracer::TLASInstance& instance)
+	{
+		if (instance.m_triangles && !instance.m_triangles->IsEmpty())
+		{
+			return instance.m_triangles.GetRawPtr();
+		}
+		if (!instance.m_model ||
+			!instance.m_model->HasBLAS(instance.m_meshIndex))
+		{
+			return nullptr;
+		}
+		const auto& triangles =
+			instance.m_model->GetBLASTriangles(instance.m_meshIndex);
+		return triangles.IsEmpty() ? nullptr : &triangles;
+	}
+
+	bool HasInstanceGeometry(const PathTracer::TLASInstance& instance)
+	{
+		return ResolveInstanceBlas(instance) != nullptr &&
+			ResolveInstanceTriangles(instance) != nullptr &&
+			instance.m_worldBounds.IsValid();
 	}
 
 	__forceinline vec2 ResolveHitTextureCoordinates(
@@ -346,7 +400,29 @@ namespace
 
 		auto addTexture = [&](const TexturePtr& pTexture, bool bLinear, bool bNormalMap, uint8_t channels, uint8_t& outTextureIndex) -> bool
 		{
-			if (!pTexture || !pTexture->HasCpuData() || pTexture->GetWidth() <= 0 || pTexture->GetHeight() <= 0)
+			if (!pTexture)
+			{
+				return false;
+			}
+			TVector<uint8_t> decodedData;
+			int32_t width = pTexture->GetWidth();
+			int32_t height = pTexture->GetHeight();
+			uint32_t mipLevels = 1u;
+			const TVector<uint8_t>* sourceData = &pTexture->GetDecodedData();
+			if (!pTexture->HasCpuData())
+			{
+				if (!TextureImporter::DecodeTextureCpu(
+						pTexture->GetFileId(),
+						decodedData,
+						width,
+						height,
+						mipLevels))
+				{
+					return false;
+				}
+				sourceData = &decodedData;
+			}
+			if (width <= 0 || height <= 0 || !sourceData || sourceData->IsEmpty())
 			{
 				return false;
 			}
@@ -360,34 +436,58 @@ namespace
 				outTextureIndex = static_cast<uint8_t>(outTextureMapping[key]);
 				return true;
 			}
+			// 0xff is the no-texture sentinel in Raytracing::Material, so the
+			// largest representable sampler table contains indices 0..254.
+			if (outTextures.Num() >= static_cast<size_t>(u8(-1)))
+			{
+				return false;
+			}
 
 			TSharedPtr<CombinedSampler2D> sampler = TSharedPtr<CombinedSampler2D>::Make();
-			sampler->m_width = pTexture->GetWidth();
-			sampler->m_height = pTexture->GetHeight();
+			sampler->m_width = width;
+			sampler->m_height = height;
 			sampler->m_channels = channels;
 			sampler->m_clamping = clamping == RHI::ETextureClamping::Repeat ? SamplerClamping::Repeat : SamplerClamping::Clamp;
 
-			const bool bIsFloatTexture = pTexture->GetRHI() && RHI::IsFloatFormat(pTexture->GetRHI()->GetFormat());
+			const size_t pixelCount = static_cast<size_t>(width) * height;
+			const bool bIsFloatTexture = sourceData->Num() ==
+				pixelCount * sizeof(glm::vec4);
 			if (bIsFloatTexture)
 			{
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, vec4>((vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+					sampler->Initialize<vec4, vec4>(
+						reinterpret_cast<const vec4*>(sourceData->GetData()),
+						bLinear,
+						bNormalMap);
 				}
 				else
 				{
-					sampler->Initialize<vec3, vec4>((vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+					sampler->Initialize<vec3, vec4>(
+						reinterpret_cast<const vec4*>(sourceData->GetData()),
+						bLinear,
+						bNormalMap);
 				}
 			}
 			else
 			{
+				if (sourceData->Num() != pixelCount * sizeof(glm::u8vec4))
+				{
+					return false;
+				}
 				if (channels == 4)
 				{
-					sampler->Initialize<vec4, u8vec4>((u8vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+					sampler->Initialize<vec4, u8vec4>(
+						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
+						bLinear,
+						bNormalMap);
 				}
 				else
 				{
-					sampler->Initialize<vec3, u8vec4>((u8vec4*)pTexture->GetDecodedData().GetData(), bLinear, bNormalMap);
+					sampler->Initialize<vec3, u8vec4>(
+						reinterpret_cast<const u8vec4*>(sourceData->GetData()),
+						bLinear,
+						bNormalMap);
 				}
 			}
 
@@ -412,6 +512,7 @@ namespace
 			glm::vec4 baseColorFactor(1.0f);
 			glm::vec4 emissiveFactor(0.0f);
 			glm::vec4 attenuationColor(1.0f);
+			glm::vec4 layerUvScale(1.0f);
 			float roughness = 1.0f;
 			float metallic = 1.0f;
 			float alphaCutoff = 0.5f;
@@ -427,6 +528,7 @@ namespace
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emissive", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.emission", emissiveFactor);
 			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.attenuationColor", attenuationColor);
+			ReadUniformValue(pMaterial->GetUniformsVec4(), "material.layerUvScale", layerUvScale);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughnessFactor", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.roughness", roughness);
 			ReadUniformValue(pMaterial->GetUniformsFloat(), "material.metallicFactor", metallic);
@@ -440,6 +542,11 @@ namespace
 
 			outMaterial.m_baseColorFactor = baseColorFactor;
 			outMaterial.m_emissiveFactor = glm::vec3(emissiveFactor);
+			for (glm::length_t layer = 0; layer < 4; ++layer)
+			{
+				outMaterial.m_layerUvScale[layer] =
+					std::isfinite(layerUvScale[layer]) ? layerUvScale[layer] : 1.0f;
+			}
 			outMaterial.m_roughnessFactor = roughness;
 			outMaterial.m_metallicFactor = metallic;
 			outMaterial.m_alphaCutoff = alphaCutoff;
@@ -491,6 +598,22 @@ namespace
 				else if (samplerName == "albedoSampler")
 				{
 					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_baseColorIndex);
+				}
+				else if (samplerName == "layer0Sampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[0]);
+				}
+				else if (samplerName == "layer1Sampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[1]);
+				}
+				else if (samplerName == "layer2Sampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[2]);
+				}
+				else if (samplerName == "layer3Sampler")
+				{
+					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[3]);
 				}
 				else if (samplerName == "normalSampler")
 				{
@@ -647,19 +770,23 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
-	const TVector<LightProxy>& lightProxies)
+	const TVector<LightProxy>& lightProxies,
+	bool bAddDefaultLightIfEmpty)
 {
 	m_tlasInstances = instances;
 	m_lightProxies = lightProxies;
+	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
 	m_tlasOctree.Clear();
 
+	bool bHasGeometry = false;
 	for (size_t i = 0; i < m_tlasInstances.Num(); i++)
 	{
 		const auto& instance = m_tlasInstances[i];
-		if (!instance.m_worldBounds.IsValid())
+		if (!HasInstanceGeometry(instance))
 		{
 			continue;
 		}
+		bHasGeometry = true;
 
 		const glm::ivec3 integerMin =
 			glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
@@ -692,7 +819,7 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		m_cachedMaterialsCount = (uint32_t)materials.Num();
 	}
 
-	if (m_lightProxies.Num() == 0)
+	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
 		DirectionalLight sun{};
 		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
@@ -705,7 +832,7 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		m_materials.Add(Material{});
 	}
 
-	return m_tlasInstances.Num() > 0;
+	return bHasGeometry;
 }
 
 void PathTracer::SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent)
@@ -883,7 +1010,7 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 	const uint32_t width = (std::max)(1u, (uint32_t)std::lround((double)height * (double)aspectRatio));
 	const float vFov = 2.0f * atan(tan(hFov * 0.5f) * (1.0f / aspectRatio));
 
-	if (m_lightProxies.Num() == 0)
+	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
 		DirectionalLight sun{};
 		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
@@ -944,12 +1071,15 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : NextRandomVec2_01();
+									uint32_t randomState = NextRandomU32();
+									const vec2 offset = sample == 0 ?
+										vec2(0.5f, 0.5f) :
+										NextRandomVec2_01(randomState);
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 									ray.SetDirection(glm::normalize(pixelDir));
 									TLASHit primaryHit{};
 									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f, randomState);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -1024,6 +1154,64 @@ bool PathTracer::RenderPreparedScene(const PathTracer::Params& params)
 		}
 	}
 
+	return true;
+}
+
+bool PathTracer::SamplePreparedSceneRay(
+	const vec3& origin,
+	const vec3& direction,
+	float maxDistance,
+	const Params& params,
+	uint32_t randomSeed,
+	PreparedRaySample& outSample) const
+{
+	outSample = {};
+	const float directionLength = glm::length(direction);
+	if (m_tlasInstances.IsEmpty() ||
+		!std::isfinite(directionLength) ||
+		directionLength <= 1e-6f ||
+		!std::isfinite(maxDistance) ||
+		maxDistance <= 0.0f)
+	{
+		return false;
+	}
+
+	const vec3 normalizedDirection = direction / directionLength;
+	const Math::Ray ray(origin, normalizedDirection);
+	TLASHit hit{};
+	outSample.m_bHit = IntersectScene(
+		ray,
+		hit,
+		maxDistance,
+		(uint32_t)-1,
+		(uint32_t)-1);
+	outSample.m_distance = outSample.m_bHit ?
+		hit.m_hit.m_rayLenght : maxDistance;
+	if (outSample.m_bHit)
+	{
+		uint32_t randomState = randomSeed ^ 0xa511e9b3u;
+		if (randomState == 0u)
+		{
+			randomState = 0x6d2b79f5u;
+		}
+		outSample.m_radiance = Raytrace(
+			ray,
+			params.m_maxBounces,
+			(uint32_t)-1,
+			(uint32_t)-1,
+			params,
+			1.0f,
+			1.0f,
+			randomState);
+	}
+	else if (params.m_bIncludeEnvironment)
+	{
+		outSample.m_radiance = m_bHasRuntimeEnvironment ?
+			SampleRuntimeEnvironment(normalizedDirection) :
+			m_bHasRuntimeDiffuseEnvironment ?
+				SampleRuntimeDiffuseEnvironment(normalizedDirection) :
+				params.m_ambient;
+	}
 	return true;
 }
 
@@ -1241,14 +1429,17 @@ void PathTracer::Run(const PathTracer::Params& params)
 								float alphaCoverage = 0.0f;
 								for (uint32_t sample = 0; sample < params.m_msaa; sample++)
 								{
-									const vec2 offset = sample == 0 ? vec2(0.5f, 0.5f) : NextRandomVec2_01();
+									uint32_t randomState = NextRandomU32();
+									const vec2 offset = sample == 0 ?
+										vec2(0.5f, 0.5f) :
+										NextRandomVec2_01(randomState);
 									const vec3 pixelDir = _pixel00Dir + ((float)(u + x) + offset.x) * _pixelDeltaU + ((float)(y + v) - offset.y) * _pixelDeltaV;
 
 									ray.SetDirection(glm::normalize(pixelDir));
 									TLASHit primaryHit{};
 									alphaCoverage += IntersectScene(ray, primaryHit, std::numeric_limits<float>::max(), (uint32_t)(-1), (uint32_t)(-1)) ? 1.0f : 0.0f;
 
-									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f);
+									accumulator += Raytrace(ray, params.m_maxBounces, (uint32_t)(-1), (uint32_t)(-1), params, 1.0f, 1.0f, randomState);
 								}
 
 								vec3 res = accumulator / (float)params.m_msaa;
@@ -1378,9 +1569,10 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 				return;
 			}
 			const auto& instance = m_tlasInstances[idx];
-			if (!instance.m_model ||
-				!instance.m_model->HasBLAS(instance.m_meshIndex) ||
-				!instance.m_worldBounds.IsValid())
+			const Raytracing::BVH* blas = ResolveInstanceBlas(instance);
+			const TVector<Math::Triangle>* triangles =
+				ResolveInstanceTriangles(instance);
+			if (!blas || !triangles || !instance.m_worldBounds.IsValid())
 			{
 				return;
 			}
@@ -1399,7 +1591,7 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 
 			Math::Ray localRay(localOrigin, glm::normalize(localDirRaw));
 			Math::RaycastHit localHit{};
-			if (!instance.m_model->GetBLAS(instance.m_meshIndex)->IntersectBVH(
+			if (!blas->IntersectBVH(
 					localRay,
 					localHit,
 					0,
@@ -1420,8 +1612,11 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 				return;
 			}
 
-			const auto& localTri = instance.m_model
-				->GetBLASTriangles(instance.m_meshIndex)[localHit.m_triangleIndex];
+			if (localHit.m_triangleIndex >= triangles->Num())
+			{
+				return;
+			}
+			const auto& localTri = (*triangles)[localHit.m_triangleIndex];
 			const glm::mat3 normalMatrix = glm::mat3(glm::transpose(instance.m_inverseWorldMatrix));
 			const vec3 localNormal = localHit.m_barycentricCoordinate.x * localTri.m_normals[0] +
 				localHit.m_barycentricCoordinate.y * localTri.m_normals[1] +
@@ -1452,8 +1647,7 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 const Math::Triangle& PathTracer::GetTriangle(const TLASHit& hit) const
 {
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
-	return instance.m_model
-		->GetBLASTriangles(instance.m_meshIndex)[hit.m_triangleIndex];
+	return (*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
 }
 
 void PathTracer::GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const
@@ -1523,8 +1717,8 @@ uint32_t PathTracer::ResolveMaterialIndex(const TLASHit& hit) const
 	}
 
 	const auto& instance = m_tlasInstances[hit.m_instanceIndex];
-	const auto& tri = instance.m_model
-		->GetBLASTriangles(instance.m_meshIndex)[hit.m_triangleIndex];
+	const auto& tri =
+		(*ResolveInstanceTriangles(instance))[hit.m_triangleIndex];
 	const int32_t idx = instance.m_materialBaseOffset + (int32_t)tri.m_materialIndex;
 	return (uint32_t)(std::max)(0, (std::min)(idx, (int32_t)m_materials.Num() - 1));
 }
@@ -1608,11 +1802,19 @@ vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Param
 	return att * SampleRuntimeEnvironment(toLight);
 }
 
-vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t ignoreInstance, uint32_t ignoreTriangle, const PathTracer::Params& params, float inAcc, float environmentIor) const
+vec3 PathTracer::Raytrace(
+	const Math::Ray& ray,
+	uint32_t bounceLimit,
+	uint32_t ignoreInstance,
+	uint32_t ignoreTriangle,
+	const PathTracer::Params& params,
+	float inAcc,
+	float environmentIor,
+	uint32_t& randomState) const
 {
 
-	uint32_t randSeedX = NextRandomRange(681u);
-	uint32_t randSeedY = NextRandomRange(681u);
+	uint32_t randSeedX = NextRandomRange(randomState, 681u);
+	uint32_t randSeedY = NextRandomRange(randomState, 681u);
 
 	vec3 res = vec3(0);
 	TLASHit hit{};
@@ -1637,7 +1839,14 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 		const auto material = m_materials[materialIndex];
 		const vec2 uvTransformed = (material.m_uvTransform * vec3(uv, 1));
 
-		const LightingModel::SampledData sample = GetMaterialData(materialIndex, uvTransformed);
+		const vec4 layerWeights =
+			hit.m_hit.m_barycentricCoordinate.x * tri.m_colors[0] +
+			hit.m_hit.m_barycentricCoordinate.y * tri.m_colors[1] +
+			hit.m_hit.m_barycentricCoordinate.z * tri.m_colors[2];
+		const LightingModel::SampledData sample = GetMaterialData(
+			materialIndex,
+			uvTransformed,
+			layerWeights);
 		const vec3 viewDirection = -normalize(ray.GetDirection());
 		const vec3 worldNormal = normalize(tbn * sample.m_normal);
 
@@ -1663,10 +1872,11 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			//const float angle = abs(glm::dot(newDirection, worldNormal));
 			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
 
-			return Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, inAcc, 1.0f);
+			return Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, inAcc, 1.0f, randomState);
 		}
 
 		// Direct lighting
+		if (params.m_bIncludeDirectLighting)
 		{
 			for (uint32_t i = 0; i < m_lightProxies.Num(); i++)
 			{
@@ -1689,8 +1899,13 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			}
 		}
 
-		// Ambient / environment lighting
-		if (params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f || m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment)
+		// Ambient / environment lighting and recursive indirect bounces.
+		// Recursive bounces must remain available when the environment is disabled:
+		// a bake may intentionally capture only lights and emissive materials.
+		const bool bHasEnvironmentLighting = params.m_bIncludeEnvironment &&
+			(params.m_ambient.x + params.m_ambient.y + params.m_ambient.z > 0.0f ||
+				m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment);
+		if (bHasEnvironmentLighting || bounceLimit > 0)
 		{
 			// Random ray
 			vec3 ambient1 = vec3(0, 0, 0);
@@ -1700,11 +1915,11 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			const uint32_t numExtraSamples = bIsFirstIntersection ? numSamples : 1;
 
 			// Hemisphere sampling loop
-			if (!bThickVolume)
+			if (bHasEnvironmentLighting && !bThickVolume)
 			{
 				for (uint32_t i = 0; i < ambientNumSamples; i++)
 				{
-					const vec2 randomSample = NextVec2_Linear();
+					const vec2 randomSample = NextVec2_Linear(randomState);
 					vec3 H = LightingModel::ImportanceSampleHemisphere(randomSample, worldNormal);
 					vec3 toLight = bThickVolume ? glm::sphericalRand(1.0f) : (2.0f * dot(viewDirection, H) * H - viewDirection);
 					Ray skyRay(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, toLight, params.m_rayBiasBase, params.m_rayBiasScale), toLight);
@@ -1720,7 +1935,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				}
 			}
 
-			ambient1 /= (float)ambientNumSamples;
+			if (bHasEnvironmentLighting)
+			{
+				ambient1 /= (float)ambientNumSamples;
+			}
 
 			// Importance sampling ray
 			vec3 ambient2 = vec3(0, 0, 0);
@@ -1749,7 +1967,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					attempt++)
 				{
 					direction = vec3(0);
-					const vec2 randomSample = NextVec2_BlueNoise(randSeedX, randSeedY);
+					const vec2 randomSample = NextVec2_BlueNoise(
+						randSeedX,
+						randSeedY,
+						randomState);
 					bSample = LightingModel::Sample(sample, worldNormal, viewDirection, environmentIor, toIor, term, pdf, bTransmissionRay, direction, randomSample);
 					bHasTransmissionRay |= bTransmissionRay;
 				}
@@ -1785,8 +2006,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 				TLASHit hitLight{};
 				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
 				{
-					const vec3 env = m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(direction) :
-						(m_bHasRuntimeDiffuseEnvironment ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient);
+					const vec3 env = bHasEnvironmentLighting ?
+						(m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(direction) :
+							(m_bHasRuntimeDiffuseEnvironment ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient)) :
+						vec3(0.0f);
 					vec3 value = glm::clamp(term * env, vec3(0, 0, 0), vec3(10, 10, 10));
 
 					// Ambient lighting
@@ -1813,7 +2036,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					const float newAcc = inAcc * length(term * lightAttenuation) * sample.m_baseColor.a;
 					if (newAcc > 0.01f)
 					{
-						raytraced = Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, newAcc, newEnvironmentIor);
+						raytraced = Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, params, newAcc, newEnvironmentIor, randomState);
 					}
 
 					vec3 value = glm::clamp(term * lightAttenuation * raytraced, vec3(0, 0, 0), vec3(10, 10, 10));
@@ -1822,7 +2045,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 					indirect += value;
 
 					// Ambient 2, Sky is reachable
-					if (!bThickVolume)
+					if (bHasEnvironmentLighting && !bThickVolume)
 					{
 						const uint32_t hitMaterialIndex =
 							ResolveMaterialIndex(hitLight);
@@ -1848,7 +2071,7 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			avgPdfLambert /= (float)indirectContribution;
 
 			const vec3 ambient = ambient1 + ambient2;
-			if (ambient.x + ambient.y + ambient.z > 0.0f)
+			if (bHasEnvironmentLighting && ambient.x + ambient.y + ambient.z > 0.0f)
 			{
 				const vec3 combinedAmbient = ambient1 * LightingModel::PowerHeuristic(ambientNumSamples, pdfHemisphere, (int32_t)indirectContribution, avgPdfLambert) +
 					ambient2 * LightingModel::PowerHeuristic((int32_t)indirectContribution, avgPdfLambert, ambientNumSamples, pdfHemisphere);
@@ -1861,7 +2084,10 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			}
 		}
 
-		res += sample.m_emissive;
+		if (params.m_bIncludeEmissive)
+		{
+			res += sample.m_emissive;
+		}
 
 		// Alpha Blending
 		if (bounceLimit > 0 && bHasAlphaBlending)
@@ -1876,25 +2102,29 @@ vec3 PathTracer::Raytrace(const Math::Ray& ray, uint32_t bounceLimit, uint32_t i
 			p.m_numAmbientSamples = std::max(1u, params.m_numAmbientSamples - numAmbientSamples);
 
 			res = res * sample.m_baseColor.a +
-				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor) * (1.0f - sample.m_baseColor.a);
+				Raytrace(newRay, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, p, inAcc * (1.0f - sample.m_baseColor.a), environmentIor, randomState) * (1.0f - sample.m_baseColor.a);
 		}
 	}
 	else
 	{
-		if (m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment)
+		if (params.m_bIncludeEnvironment &&
+			(m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment))
 		{
 			res = m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(ray.GetDirection()) : SampleRuntimeDiffuseEnvironment(ray.GetDirection());
 		}
 		else
 		{
-			res = params.m_ambient;
+			res = params.m_bIncludeEnvironment ? params.m_ambient : vec3(0.0f);
 		}
 	}
 
 	return res;
 }
 
-LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialIndex, glm::vec2 uv) const
+LightingModel::SampledData PathTracer::GetMaterialData(
+	const size_t& materialIndex,
+	glm::vec2 uv,
+	glm::vec4 layerWeights) const
 {
 	const auto& material = m_materials[materialIndex];
 
@@ -1908,7 +2138,39 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 	res.m_thicknessFactor = material.m_thicknessFactor;
 	res.m_ior = material.m_indexOfRefraction;
 
-	if (material.HasBaseTexture())
+	if (material.HasLayerColorTextures())
+	{
+		layerWeights = glm::max(layerWeights, glm::vec4(0.0f));
+		const float weightSum = glm::dot(layerWeights, glm::vec4(1.0f));
+		if (!std::isfinite(weightSum) || weightSum <= 0.0001f)
+		{
+			layerWeights = glm::vec4(1.0f, 0.0f, 0.0f, 0.0f);
+		}
+		else
+		{
+			layerWeights /= weightSum;
+		}
+
+		glm::vec4 layeredColor(0.0f);
+		float resolvedWeight = 0.0f;
+		for (glm::length_t layer = 0; layer < 4; ++layer)
+		{
+			if (!material.HasLayerColorTexture(layer) ||
+				layerWeights[layer] <= 0.0f)
+			{
+				continue;
+			}
+			layeredColor += layerWeights[layer] *
+				m_textures[material.m_layerColorIndices[layer]]->Sample<vec4>(
+					uv * material.m_layerUvScale[layer]);
+			resolvedWeight += layerWeights[layer];
+		}
+		if (resolvedWeight > 0.0001f)
+		{
+			res.m_baseColor *= layeredColor / resolvedWeight;
+		}
+	}
+	else if (material.HasBaseTexture())
 	{
 		res.m_baseColor *= m_textures[material.m_baseColorIndex]->Sample<vec4>(uv);
 	}
@@ -1961,12 +2223,15 @@ LightingModel::SampledData PathTracer::GetMaterialData(const size_t& materialInd
 	return res;
 }
 
-vec2 PathTracer::NextVec2_Linear()
+vec2 PathTracer::NextVec2_Linear(uint32_t& randomState)
 {
-	return NextRandomVec2_01();
+	return NextRandomVec2_01(randomState);
 }
 
-vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
+vec2 PathTracer::NextVec2_BlueNoise(
+	uint32_t& randSeedX,
+	uint32_t& randSeedY,
+	uint32_t& randomState)
 {
 	/*
 	static const vec2 BlueNoiseInDisk[64] = {
@@ -2098,12 +2363,12 @@ vec2 PathTracer::NextVec2_BlueNoise(uint32_t& randSeedX, uint32_t& randSeedY)
 
 	if (randSeedX >= 688)
 	{
-		randSeedX = NextRandomRange(681u);
+		randSeedX = NextRandomRange(randomState, 681u);
 	}
 
 	if (randSeedY >= 688)
 	{
-		randSeedY = NextRandomRange(681u);
+		randSeedY = NextRandomRange(randomState, 681u);
 	}
 
 	vec2 res = vec2(BlueNoiseData[randSeedX++], BlueNoiseData[randSeedY++]);

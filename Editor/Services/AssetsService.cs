@@ -2162,6 +2162,7 @@ namespace SailorEditor.Services
                 "Sailor::MaterialAssetInfo" => new MaterialFile(),
                 "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
                 "Sailor::LandscapeVegetationAssetInfo" => new LandscapeVegetationFile(),
+                "Sailor::ProbeVolumeAssetInfo" => new ProbeVolumeFile(),
                 _ => CreateAssetFileByExtension(extension)
             };
             assetFile.AssetInfoTypeName = assetInfoType;

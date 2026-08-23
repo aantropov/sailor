@@ -141,7 +141,20 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 		return {};
 	}
 
-	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(worldPrefab->GetName(), mask);
+	TSharedPtr<World> newWorld = TSharedPtr<World>::Make(
+		worldPrefab->GetName(),
+		mask);
+	std::string globalIlluminationDiagnostic;
+	if (!newWorld->SetGlobalIlluminationSettings(
+			worldPrefab->GetGlobalIlluminationSettings(),
+			globalIlluminationDiagnostic))
+	{
+		SAILOR_LOG_ERROR(
+			"Failed to initialize Global Illumination ECS for world '%s': %s",
+			worldPrefab->GetName().c_str(),
+			globalIlluminationDiagnostic.c_str());
+		return {};
+	}
 
 	for (const auto& prefab : worldPrefab->GetGameObjects())
 	{

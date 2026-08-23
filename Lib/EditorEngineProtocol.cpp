@@ -2,6 +2,9 @@
 #include "EditorEngineProtocolLifecycle.h"
 
 #include "Memory/UniquePtr.hpp"
+#include "Editor/GlobalIlluminationBakeController.h"
+#include "Editor/GlobalIlluminationEditorState.h"
+#include "Engine/GlobalIlluminationSettings.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
@@ -220,6 +223,30 @@ namespace
 		case sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES:
 			outMode = Sailor::RHI::ESceneViewRenderMode::LightTiles;
 			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationOnly;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationProbes;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationBricks;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationValidity;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationVisibility;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationResidency;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationAssetIdentity;
+			return true;
+		case sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK:
+			outMode = Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback;
+			return true;
 		case sailor::editor::v1::EDITOR_RENDER_MODE_UNSPECIFIED:
 		default:
 			return false;
@@ -237,9 +264,117 @@ namespace
 			return sailor::editor::v1::EDITOR_RENDER_MODE_CASCADES;
 		case Sailor::RHI::ESceneViewRenderMode::LightTiles:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_LIGHT_TILES;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationOnly:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ONLY;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationProbes:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_PROBES;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationBricks:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_BRICKS;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationValidity:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VALIDITY;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationVisibility:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_VISIBILITY;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationResidency:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_RESIDENCY;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationAssetIdentity:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_ASSET_IDENTITY;
+		case Sailor::RHI::ESceneViewRenderMode::GlobalIlluminationFallback:
+			return sailor::editor::v1::EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK;
 		case Sailor::RHI::ESceneViewRenderMode::Lit:
 		default:
 			return sailor::editor::v1::EDITOR_RENDER_MODE_LIT;
+		}
+	}
+
+	bool TryParseFileId(
+		const std::string& value,
+		bool bRequired,
+		Sailor::FileId& outFileId)
+	{
+		outFileId = {};
+		if (value.empty())
+		{
+			return !bRequired;
+		}
+		try
+		{
+			outFileId.Deserialize(YAML::Node(value));
+			return static_cast<bool>(outFileId);
+		}
+		catch (...)
+		{
+			outFileId = {};
+			return false;
+		}
+	}
+
+	sailor::editor::v1::ProbeVolumeBakeState ToProtocolBakeState(
+		Sailor::EEditorProbeVolumeBakeState state)
+	{
+		switch (state)
+		{
+		case Sailor::EEditorProbeVolumeBakeState::Idle:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_IDLE;
+		case Sailor::EEditorProbeVolumeBakeState::Preparing:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_PREPARING;
+		case Sailor::EEditorProbeVolumeBakeState::Baking:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_BAKING;
+		case Sailor::EEditorProbeVolumeBakeState::Saving:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_SAVING;
+		case Sailor::EEditorProbeVolumeBakeState::Succeeded:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_SUCCEEDED;
+		case Sailor::EEditorProbeVolumeBakeState::Failed:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_FAILED;
+		case Sailor::EEditorProbeVolumeBakeState::Cancelled:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_CANCELLED;
+		default:
+			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_UNSPECIFIED;
+		}
+	}
+
+	bool TryGetGlobalIlluminationProbeMode(
+		sailor::editor::v1::GlobalIlluminationProbeMode protocolMode,
+		Sailor::EGlobalIlluminationProbeMode& outMode)
+	{
+		switch (protocolMode)
+		{
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_BLEND:
+			outMode = Sailor::EGlobalIlluminationProbeMode::Blend;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE:
+			outMode = Sailor::EGlobalIlluminationProbeMode::Additive;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFIED:
+		default:
+			return false;
+		}
+	}
+
+	sailor::editor::v1::GlobalIlluminationProbeMode
+		ToProtocolGlobalIlluminationProbeMode(
+			Sailor::EGlobalIlluminationProbeMode mode)
+	{
+		return mode == Sailor::EGlobalIlluminationProbeMode::Additive
+			? sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE
+			: sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_MODE_BLEND;
+	}
+
+	sailor::editor::v1::GlobalIlluminationProbeResidency
+		ToProtocolGlobalIlluminationProbeResidency(
+			Sailor::EGlobalIlluminationProbeResidency residency)
+	{
+		switch (residency)
+		{
+		case Sailor::EGlobalIlluminationProbeResidency::Unloaded:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNLOADED;
+		case Sailor::EGlobalIlluminationProbeResidency::Loading:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_RESIDENCY_LOADING;
+		case Sailor::EGlobalIlluminationProbeResidency::Resident:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_RESIDENCY_RESIDENT;
+		case Sailor::EGlobalIlluminationProbeResidency::Failed:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_RESIDENCY_FAILED;
+		default:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNSPECIFIED;
 		}
 	}
 
@@ -1216,6 +1351,224 @@ namespace
 			response.mutable_editor_render_mode_result()->set_mode(
 				ToProtocolRenderMode(Sailor::App::GetEditorRenderMode()));
 			break;
+
+		case ProtocolRequest::kStartProbeVolumeBake:
+		{
+			const auto& bake = request.start_probe_volume_bake();
+			Sailor::EditorProbeVolumeBakeRequest nativeRequest;
+			if (!TryParseFileId(
+					bake.world_file_id(),
+					true,
+					nativeRequest.m_worldAsset) ||
+				!TryParseFileId(
+					bake.layout_source_file_id(),
+					false,
+					nativeRequest.m_layoutSource) ||
+				bake.output_virtual_path().empty() ||
+				bake.state_name().empty() ||
+				!bake.has_settings())
+			{
+				SetError(response, "The probe-volume bake request is invalid.");
+				break;
+			}
+
+			const auto& settings = bake.settings();
+			nativeRequest.m_outputVirtualPath = bake.output_virtual_path();
+			nativeRequest.m_stateName = bake.state_name();
+			nativeRequest.m_settings.m_raysPerProbe = settings.rays_per_probe();
+			nativeRequest.m_settings.m_bounceCount = settings.bounce_count();
+			nativeRequest.m_settings.m_randomSeed = settings.random_seed();
+			nativeRequest.m_settings.m_maxSubdivisionLevel =
+				settings.max_subdivision_level();
+			nativeRequest.m_settings.m_minProbeSpacing =
+				settings.min_probe_spacing();
+			nativeRequest.m_settings.m_normalBias = settings.normal_bias();
+			nativeRequest.m_settings.m_viewBias = settings.view_bias();
+			nativeRequest.m_settings.m_maxRayDistance =
+				settings.max_ray_distance();
+			nativeRequest.m_settings.m_bIncludeSky = settings.include_sky();
+			nativeRequest.m_settings.m_bIncludeEmissive =
+				settings.include_emissive();
+			nativeRequest.m_settings.m_bIncludeDirectLighting =
+				settings.include_direct_lighting();
+			nativeRequest.m_bAutoBounds = bake.auto_bounds();
+			nativeRequest.m_bOverwrite = bake.overwrite();
+
+			if ((bake.has_volume_min() && !IsFiniteVector4(bake.volume_min())) ||
+				(bake.has_volume_max() && !IsFiniteVector4(bake.volume_max())) ||
+				(bake.has_fallback_environment() &&
+					!IsFiniteVector4(bake.fallback_environment())))
+			{
+				SetError(response, "The probe-volume bake vectors must be finite.");
+				break;
+			}
+			if (bake.has_volume_min())
+			{
+				nativeRequest.m_volumeMin = {
+					bake.volume_min().x(),
+					bake.volume_min().y(),
+					bake.volume_min().z() };
+			}
+			if (bake.has_volume_max())
+			{
+				nativeRequest.m_volumeMax = {
+					bake.volume_max().x(),
+					bake.volume_max().y(),
+					bake.volume_max().z() };
+			}
+			if (bake.has_fallback_environment())
+			{
+				nativeRequest.m_fallbackEnvironment = {
+					bake.fallback_environment().x(),
+					bake.fallback_environment().y(),
+					bake.fallback_environment().z() };
+			}
+
+			std::string diagnostic;
+			if (!Sailor::App::StartEditorProbeVolumeBake(
+					nativeRequest,
+					diagnostic))
+			{
+				SetError(
+					response,
+					diagnostic.empty()
+						? "Failed to start the probe-volume bake."
+						: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kGetProbeVolumeBakeStatus:
+		{
+			Sailor::EditorProbeVolumeBakeStatus status;
+			if (!Sailor::App::GetEditorProbeVolumeBakeStatus(status))
+			{
+				SetError(response, "The probe-volume bake controller is unavailable.");
+				break;
+			}
+			SetSuccess(response);
+			auto* result = response.mutable_probe_volume_bake_status_result();
+			result->set_state(ToProtocolBakeState(status.m_state));
+			result->set_progress(status.m_progress);
+			result->set_completed_probes(status.m_completedProbes);
+			result->set_total_probes(status.m_totalProbes);
+			result->set_brick_count(status.m_brickCount);
+			result->set_probe_count(status.m_probeCount);
+			result->set_elapsed_seconds(status.m_elapsedSeconds);
+			result->set_layout_hash(status.m_layoutHash);
+			result->set_transport_hash(status.m_transportHash);
+			result->set_lighting_hash(status.m_lightingHash);
+			result->set_stage(status.m_stage);
+			result->set_output_virtual_path(status.m_outputVirtualPath);
+			result->set_diagnostic(status.m_diagnostic);
+			break;
+		}
+
+		case ProtocolRequest::kCancelProbeVolumeBake:
+		{
+			std::string diagnostic;
+			if (!Sailor::App::CancelEditorProbeVolumeBake(diagnostic))
+			{
+				SetError(
+					response,
+					diagnostic.empty()
+						? "Failed to cancel the probe-volume bake."
+						: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kSetGlobalIlluminationSettings:
+		{
+			Sailor::GlobalIlluminationWorldSettings nativeSettings;
+			const auto& protocolSettings =
+				request.set_global_illumination_settings();
+			bool bValid = true;
+			std::string diagnostic;
+			for (const auto& probe : protocolSettings.probes())
+			{
+				Sailor::GlobalIlluminationProbeBinding binding;
+				if (probe.name().empty() ||
+					!TryParseFileId(
+						probe.asset_file_id(),
+						true,
+						binding.m_asset) ||
+					!TryGetGlobalIlluminationProbeMode(
+						probe.mode(),
+						binding.m_mode) ||
+					!std::isfinite(probe.initial_weight()) ||
+					probe.initial_weight() < 0.0f)
+				{
+					bValid = false;
+					diagnostic =
+						"A Global Illumination ECS probe binding is invalid.";
+					break;
+				}
+				binding.m_initialWeight = probe.initial_weight();
+				binding.m_bPreload = probe.preload();
+				if (!nativeSettings.m_probes.Insert(
+						probe.name(),
+						std::move(binding)))
+				{
+					bValid = false;
+					diagnostic =
+						"Global Illumination ECS probe binding names must be unique.";
+					break;
+				}
+			}
+			if (!bValid ||
+				!Sailor::App::SetEditorGlobalIlluminationSettings(
+					std::move(nativeSettings),
+					diagnostic))
+			{
+				SetError(
+					response,
+					diagnostic.empty()
+						? "Failed to update Global Illumination ECS settings."
+						: diagnostic);
+				break;
+			}
+			SetBoolResult(response, true);
+			break;
+		}
+
+		case ProtocolRequest::kGetGlobalIlluminationState:
+		{
+			Sailor::EditorGlobalIlluminationState state;
+			if (!Sailor::App::GetEditorGlobalIlluminationState(state))
+			{
+				SetError(response, "Global Illumination ECS is unavailable.");
+				break;
+			}
+			SetSuccess(response);
+			auto* result = response.mutable_global_illumination_state_result();
+			result->set_max_probe_states_per_snapshot(
+				state.m_maxProbeStatesPerSnapshot);
+			result->set_diagnostic(state.m_diagnostic);
+			result->set_composition_count(state.m_compositionCount);
+			result->set_rejected_composition_count(
+				state.m_rejectedCompositionCount);
+			for (const Sailor::GlobalIlluminationProbeState& probe :
+				state.m_probes)
+			{
+				auto* protocolProbe = result->add_probes();
+				protocolProbe->set_name(probe.m_name);
+				protocolProbe->set_asset_file_id(probe.m_asset.ToString());
+				protocolProbe->set_mode(
+					ToProtocolGlobalIlluminationProbeMode(probe.m_mode));
+				protocolProbe->set_weight(probe.m_weight);
+				protocolProbe->set_residency(
+					ToProtocolGlobalIlluminationProbeResidency(
+						probe.m_residency));
+				protocolProbe->set_asset_revision(probe.m_assetRevision);
+				protocolProbe->set_diagnostic(probe.m_diagnostic);
+			}
+			break;
+		}
 
 		case ProtocolRequest::kSetViewport:
 		{

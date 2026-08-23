@@ -1702,6 +1702,8 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 		lightProxy.m_worldPosition = transform.GetWorldPosition();
 		lightProxy.m_direction = glm::normalize(transform.GetForwardVector());
 		lightProxy.m_intensity = light.m_intensity;
+		lightProxy.m_indirectLightingIntensity =
+			light.m_indirectLightingIntensity;
 		lightProxy.m_attenuation = light.m_attenuation;
 		lightProxy.m_bounds = glm::vec3(light.m_radius);
 		lightProxy.m_cutOff = vec2(glm::cos(glm::radians(light.m_cutOff.x)), glm::cos(glm::radians(light.m_cutOff.y)));

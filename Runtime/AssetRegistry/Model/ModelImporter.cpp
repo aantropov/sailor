@@ -3546,6 +3546,12 @@ bool Model::BuildBLASData(
 			tri.m_uvs2[0] = tri.m_uvs[0];
 			tri.m_uvs2[1] = tri.m_uvs[1];
 			tri.m_uvs2[2] = tri.m_uvs[2];
+			tri.m_colors[0] = Math::AllFinite(v0.m_color) ?
+				v0.m_color : glm::vec4(1.0f);
+			tri.m_colors[1] = Math::AllFinite(v1.m_color) ?
+				v1.m_color : glm::vec4(1.0f);
+			tri.m_colors[2] = Math::AllFinite(v2.m_color) ?
+				v2.m_color : glm::vec4(1.0f);
 
 			tri.m_materialIndex = static_cast<uint8_t>((std::max)(0, (std::min)(mesh.m_materialIndex, 255)));
 			tri.m_centroid = tri.m_vertices[0] / 3.0f +

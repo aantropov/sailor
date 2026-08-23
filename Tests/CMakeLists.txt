@@ -106,6 +106,10 @@ add_executable(GraphicsSettingsTests
     GraphicsSettingsTests.cpp
 )
 
+add_executable(GlobalIlluminationContractTests
+    GlobalIlluminationContractTests.cpp
+)
+
 add_library(WorkspaceModuleFixture SHARED
     WorkspaceModuleFixture.cpp
 )
@@ -242,6 +246,7 @@ target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
 target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
+target_compile_features(GlobalIlluminationContractTests PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
@@ -297,6 +302,7 @@ target_link_libraries(SkyComponentContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(PhysicsRuntimeTests PRIVATE Sailor::Runtime)
 target_link_libraries(AudioContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(GraphicsSettingsTests PRIVATE Sailor::Runtime)
+target_link_libraries(GlobalIlluminationContractTests PRIVATE Sailor::Runtime)
 target_link_libraries(AssetMountDiscoveryTests PRIVATE Sailor::Runtime)
 target_link_libraries(WorkspaceModuleContractTests PRIVATE
     Sailor::Runtime
@@ -347,6 +353,7 @@ if(WIN32)
     sailor_stage_workspace_test_runtime(PhysicsRuntimeTests)
     sailor_stage_workspace_test_runtime(AudioContractTests)
     sailor_stage_workspace_test_runtime(GraphicsSettingsTests)
+    sailor_stage_workspace_test_runtime(GlobalIlluminationContractTests)
     sailor_stage_workspace_test_runtime(RemoteViewportRuntimeTests)
     sailor_stage_workspace_test_runtime(EditorEngineProtocolTests)
     sailor_stage_workspace_test_runtime(EditorEngineWebSocketServerTests)
@@ -425,6 +432,9 @@ target_include_directories(AudioContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(GraphicsSettingsTests PRIVATE
+    ${SAILOR_RUNTIME_DIR}
+)
+target_include_directories(GlobalIlluminationContractTests PRIVATE
     ${SAILOR_RUNTIME_DIR}
 )
 target_include_directories(WorkspaceModuleFixture PRIVATE
@@ -597,6 +607,11 @@ add_test(
 add_test(
     NAME GraphicsSettingsTests
     COMMAND GraphicsSettingsTests
+)
+
+add_test(
+    NAME GlobalIlluminationContractTests
+    COMMAND GlobalIlluminationContractTests
 )
 
 add_test(

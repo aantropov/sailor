@@ -20,6 +20,7 @@ namespace Sailor::Raytracing
 		vec3 m_worldPosition{ 0.0f, 0.0f, 0.0f };
 		vec3 m_direction{ 0.0f, -1.0f, 0.0f };
 		vec3 m_intensity{ 1.0f, 1.0f, 1.0f };
+		float m_indirectLightingIntensity = 1.0f;
 		vec3 m_attenuation{ 1.0f, 0.022f, 0.0019f };
 		vec3 m_bounds{ 100.0f, 100.0f, 100.0f };
 		vec2 m_cutOff{ 0.0f, 0.0f };
@@ -30,6 +31,7 @@ namespace Sailor::Raytracing
 				m_worldPosition == rhs.m_worldPosition &&
 				m_direction == rhs.m_direction &&
 				m_intensity == rhs.m_intensity &&
+				m_indirectLightingIntensity == rhs.m_indirectLightingIntensity &&
 				m_attenuation == rhs.m_attenuation &&
 				m_bounds == rhs.m_bounds &&
 				m_cutOff == rhs.m_cutOff;

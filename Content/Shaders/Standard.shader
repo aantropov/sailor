@@ -3,6 +3,7 @@ includes:
 - Shaders/Constants.glsl
 - Shaders/Math.glsl
 - Shaders/Lighting.glsl
+- Shaders/GlobalIllumination.glsl
 
 defines:
 - ALPHA_CUTOUT
@@ -502,10 +503,24 @@ glslFragment: |
     return shadow * ((diffuseBRDF + specularBRDF) * Lradiance * cosLi) * falloff;    
   }
   
-  vec3 AmbientLighting(MaterialData material, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
+  vec3 AmbientLighting(
+    MaterialData material,
+    vec3 F0,
+    vec3 Lr,
+    vec3 normal,
+    float cosLo,
+    vec3 worldPosition)
   {
-    // Sample diffuse irradiance at normal direction.
-    vec3 irradiance = texture(g_irradianceCubemap, normal).rgb;
+    // Baked probes replace diffuse environment irradiance only. Specular IBL
+    // remains sourced from the pre-filtered environment cubemap.
+    const vec3 environmentIrradiance =
+      texture(g_irradianceCubemap, normal).rgb;
+    GlobalIlluminationSampleDebug globalIlluminationDebug;
+    const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
+      worldPosition,
+      normal,
+      environmentIrradiance,
+      globalIlluminationDebug);
     
     // Calculate Fresnel term for ambient lighting.
     // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
@@ -537,7 +552,16 @@ glslFragment: |
       ambientOcclusion,
       cosLo,
       material.roughness);
-    return diffuseIBL * ambientOcclusion + specularIBL * specularOcclusion;
+    vec3 indirectLighting = diffuseIBL * ambientOcclusion +
+      specularIBL * specularOcclusion;
+    if(globalIlluminationHeader.stateAndDebug.z ==
+      GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
+    {
+      indirectLighting = diffuseIBL * ambientOcclusion;
+    }
+    return ApplyGlobalIlluminationDebug(
+      indirectLighting,
+      globalIlluminationDebug);
   }
   
   // Constant normal incidence Fresnel factor for all dielectrics.
@@ -596,11 +620,19 @@ glslFragment: |
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
     
-    const vec3 indirectLighting = AmbientLighting(material, F0, Lr, normal, cosLo);
+    const vec3 indirectLighting = AmbientLighting(
+      material,
+      F0,
+      Lr,
+      normal,
+      cosLo,
+      vin.worldPosition);
     outColor.xyz = indirectLighting;
     
-    for(int i = 0; i < numLights; i++)
+    if(!GlobalIlluminationDebugSuppressesDirectLighting())
     {
+      for(int i = 0; i < numLights; i++)
+      {
     #ifdef SUPPORT_LIGHTS_OVERFLOW
         uint index = lightsOverflow ? uint(i) : culledLights.indices[offset + i];
     #else
@@ -614,6 +646,7 @@ glslFragment: |
         }
 
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
+      }
     }
 
     outColor.xyz = indirectLighting +

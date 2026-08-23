@@ -321,8 +321,12 @@ namespace
 			std::string(GetSceneViewRenderModeShaderDefine(
 				ESceneViewRenderMode::LightTiles)) == "LIGHT_TILES" &&
 			std::string(GetSceneViewRenderModeShaderDefine(
-				ESceneViewRenderMode::Lit)).empty(),
-			"each Scene View render mode must resolve to its immutable shader variant");
+				ESceneViewRenderMode::Lit)).empty() &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::GlobalIlluminationVisibility)).empty() &&
+			IsValidSceneViewRenderMode(
+				ESceneViewRenderMode::GlobalIlluminationFallback),
+			"Scene View modes must resolve to immutable variants or GI runtime metadata");
 	}
 }
 

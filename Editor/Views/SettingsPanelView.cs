@@ -921,6 +921,7 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _skyResolution;
         readonly Entry _vegetationInstanceBudget;
         readonly Entry _lodBias;
+        readonly Entry _maxGiProbeStatesPerSnapshot;
 
         public GraphicsPresetEditor(
             GraphicsQualityLevel quality,
@@ -957,6 +958,8 @@ public sealed class SettingsPanelView : ContentView
             _vegetationInstanceBudget = CreateEntry(
                 draft.VegetationInstanceBudget);
             _lodBias = CreateEntry(draft.LodBias);
+            _maxGiProbeStatesPerSnapshot = CreateEntry(
+                draft.MaxGiProbeStatesPerSnapshot);
         }
 
         public GraphicsQualityLevel Quality { get; }
@@ -976,7 +979,8 @@ public sealed class SettingsPanelView : ContentView
                 _cloudsResolutionMultiplier.Text ?? string.Empty,
                 _skyResolution.Text ?? string.Empty,
                 _vegetationInstanceBudget.Text ?? string.Empty,
-                _lodBias.Text ?? string.Empty);
+                _lodBias.Text ?? string.Empty,
+                _maxGiProbeStatesPerSnapshot.Text ?? string.Empty);
 
         public View CreateView(bool initiallyExpanded, bool isActive)
         {
@@ -996,7 +1000,11 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("Clouds Resolution Multiplier", "0.0625–2.0", _cloudsResolutionMultiplier),
                     CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
                     CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
-                    CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias)
+                    CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias),
+                    CreatePresetField(
+                        "GI Probe States / Snapshot",
+                        "Maximum simultaneous Blend + Additive baked states, 0 disables probe GI",
+                        _maxGiProbeStatesPerSnapshot)
                 }
             };
 
@@ -1110,6 +1118,12 @@ public sealed class SettingsPanelView : ContentView
                 "LOD bias",
                 issues,
                 out var lodBias);
+            valid &= TryParseInt(
+                _maxGiProbeStatesPerSnapshot.Text,
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                "Maximum GI probe states per snapshot",
+                issues,
+                out var maxGiProbeStatesPerSnapshot);
 
             var msaaSamples = _msaaSamples.SelectedItem is int msaa
                 ? msaa
@@ -1135,7 +1149,8 @@ public sealed class SettingsPanelView : ContentView
                 CloudsResolutionMultiplier = cloudsResolutionMultiplier,
                 SkyResolution = skyResolution,
                 VegetationInstanceBudget = vegetationInstanceBudget,
-                LodBias = lodBias
+                LodBias = lodBias,
+                MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
             };
             return valid;
         }

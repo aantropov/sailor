@@ -14,6 +14,8 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
+#include "AssetRegistry/GlobalIllumination/ProbeVolumeAssetInfo.h"
+#include "AssetRegistry/GlobalIllumination/ProbeVolumeImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
@@ -624,6 +626,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
+	auto probeVolumeInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ProbeVolumeAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
 	auto worldPrefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<WorldPrefabAssetInfoHandler>::Make(assetRegistry));
 
@@ -635,6 +638,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<ProbeVolumeImporter>::Make(probeVolumeInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
@@ -1231,6 +1235,7 @@ void App::Shutdown()
 	}
 
 	RemoveSubmodule<FrameGraphImporter>();
+	RemoveSubmodule<ProbeVolumeImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<AnimationImporter>();

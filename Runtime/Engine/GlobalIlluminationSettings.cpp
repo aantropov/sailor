@@ -1,0 +1,208 @@
+#include "Engine/GlobalIlluminationSettings.h"
+
+#include <algorithm>
+#include <cmath>
+
+using namespace Sailor;
+
+const char* Sailor::GlobalIlluminationProbeModeToString(
+	EGlobalIlluminationProbeMode mode) noexcept
+{
+	switch (mode)
+	{
+	case EGlobalIlluminationProbeMode::Additive:
+		return "Additive";
+	case EGlobalIlluminationProbeMode::Blend:
+	default:
+		return "Blend";
+	}
+}
+
+bool Sailor::TryParseGlobalIlluminationProbeMode(
+	const std::string& value,
+	EGlobalIlluminationProbeMode& outMode) noexcept
+{
+	if (value == "Blend")
+	{
+		outMode = EGlobalIlluminationProbeMode::Blend;
+		return true;
+	}
+	if (value == "Additive")
+	{
+		outMode = EGlobalIlluminationProbeMode::Additive;
+		return true;
+	}
+	return false;
+}
+
+bool GlobalIlluminationWorldSettings::Validate(
+	std::string& outDiagnostic) const noexcept
+{
+	outDiagnostic.clear();
+	for (const auto& entry : m_probes)
+	{
+		const std::string& name = entry.m_first;
+		const GlobalIlluminationProbeBinding& binding = *entry.m_second;
+		if (name.empty())
+		{
+			outDiagnostic = "a global-illumination probe binding has an empty name";
+			return false;
+		}
+		if (!binding.m_asset)
+		{
+			outDiagnostic = "global-illumination probe binding '" + name +
+				"' has no .probes asset";
+			return false;
+		}
+		if (binding.m_mode != EGlobalIlluminationProbeMode::Blend &&
+			binding.m_mode != EGlobalIlluminationProbeMode::Additive)
+		{
+			outDiagnostic = "global-illumination probe binding '" + name +
+				"' has an invalid composition mode";
+			return false;
+		}
+		if (!std::isfinite(binding.m_initialWeight) ||
+			binding.m_initialWeight < 0.0f)
+		{
+			outDiagnostic = "global-illumination probe binding '" + name +
+				"' has an invalid initial weight";
+			return false;
+		}
+	}
+	return true;
+}
+
+YAML::Node GlobalIlluminationWorldSettings::Serialize() const
+{
+	YAML::Node globalIllumination(YAML::NodeType::Map);
+	YAML::Node probes(YAML::NodeType::Map);
+
+	struct SortedBinding final
+	{
+		std::string m_name{};
+		const GlobalIlluminationProbeBinding* m_binding = nullptr;
+	};
+	TVector<SortedBinding> sortedBindings;
+	sortedBindings.Reserve(m_probes.Num());
+	for (const auto& entry : m_probes)
+	{
+		sortedBindings.Add({ entry.m_first, entry.m_second });
+	}
+	std::sort(
+		sortedBindings.begin(),
+		sortedBindings.end(),
+		[](const SortedBinding& lhs, const SortedBinding& rhs)
+		{
+			return lhs.m_name < rhs.m_name;
+		});
+
+	for (const SortedBinding& sorted : sortedBindings)
+	{
+		const std::string& name = sorted.m_name;
+		const GlobalIlluminationProbeBinding& binding = *sorted.m_binding;
+		YAML::Node bindingNode(YAML::NodeType::Map);
+		YAML::Node assetNode(YAML::NodeType::Map);
+		assetNode["fileId"] = binding.m_asset.Serialize();
+		bindingNode["asset"] = assetNode;
+		bindingNode["mode"] =
+			GlobalIlluminationProbeModeToString(binding.m_mode);
+		bindingNode["initialWeight"] = binding.m_initialWeight;
+		if (binding.m_bPreload)
+		{
+			bindingNode["preload"] = true;
+		}
+		probes[name] = bindingNode;
+	}
+
+	globalIllumination["probes"] = probes;
+	return globalIllumination;
+}
+
+bool GlobalIlluminationWorldSettings::Deserialize(
+	const YAML::Node& worldRoot,
+	std::string& outDiagnostic) noexcept
+{
+	m_probes.Clear();
+	outDiagnostic.clear();
+	try
+	{
+		const YAML::Node giNode = worldRoot["globalIllumination"];
+		if (!giNode)
+		{
+			return true;
+		}
+		if (!giNode.IsMap())
+		{
+			outDiagnostic = "globalIllumination must be a map";
+			return false;
+		}
+		const YAML::Node probesNode = giNode["probes"];
+		if (!probesNode)
+		{
+			return true;
+		}
+		if (!probesNode.IsMap())
+		{
+			outDiagnostic = "globalIllumination.probes must be a name-to-binding map";
+			return false;
+		}
+
+		for (const auto& yamlEntry : probesNode)
+		{
+			const std::string name = yamlEntry.first.as<std::string>();
+			const YAML::Node bindingNode = yamlEntry.second;
+			if (name.empty() || !bindingNode.IsMap())
+			{
+				outDiagnostic = "a globalIllumination.probes entry has an empty name or invalid binding";
+				return false;
+			}
+			const YAML::Node assetNode = bindingNode["asset"];
+			const YAML::Node fileIdNode = assetNode && assetNode.IsMap()
+				? assetNode["fileId"]
+				: YAML::Node();
+			if (!fileIdNode || !fileIdNode.IsScalar())
+			{
+				outDiagnostic = "global-illumination probe binding '" + name +
+					"' must reference asset.fileId";
+				return false;
+			}
+
+			GlobalIlluminationProbeBinding binding;
+			binding.m_asset.Deserialize(fileIdNode);
+			const std::string mode = bindingNode["mode"]
+				? bindingNode["mode"].as<std::string>()
+				: std::string("Blend");
+			if (!TryParseGlobalIlluminationProbeMode(mode, binding.m_mode))
+			{
+				outDiagnostic = "global-illumination probe binding '" + name +
+					"' mode must be Blend or Additive";
+				return false;
+			}
+			binding.m_initialWeight = bindingNode["initialWeight"]
+				? bindingNode["initialWeight"].as<float>()
+				: 0.0f;
+			binding.m_bPreload = bindingNode["preload"]
+				? bindingNode["preload"].as<bool>()
+				: false;
+			if (!m_probes.Insert(name, std::move(binding)))
+			{
+				outDiagnostic = "global-illumination probe binding names must be unique";
+				return false;
+			}
+		}
+		return Validate(outDiagnostic);
+	}
+	catch (const std::exception& exception)
+	{
+		m_probes.Clear();
+		outDiagnostic = std::string("cannot parse globalIllumination settings: ") +
+			exception.what();
+		return false;
+	}
+	catch (...)
+	{
+		m_probes.Clear();
+		outDiagnostic = "cannot parse globalIllumination settings: unknown failure";
+		return false;
+	}
+}

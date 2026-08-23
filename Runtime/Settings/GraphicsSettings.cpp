@@ -55,7 +55,8 @@ namespace
 		float cloudsResolutionMultiplier,
 		uint32_t skyResolution,
 		uint32_t vegetationInstanceBudget,
-		int32_t lodBias)
+		int32_t lodBias,
+		uint32_t maxGiProbeStatesPerSnapshot)
 	{
 		GraphicsQualityProfile profile;
 		profile.m_resolutionFactor = resolutionFactor;
@@ -70,6 +71,7 @@ namespace
 		profile.m_skyResolution = skyResolution;
 		profile.m_vegetationInstanceBudget = vegetationInstanceBudget;
 		profile.m_lodBias = lodBias;
+		profile.m_maxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot;
 		return profile;
 	}
 
@@ -446,6 +448,7 @@ namespace
 		const YAML::Node& presets,
 		EGraphicsQuality quality,
 		const std::string& source,
+		bool bAllowMissingGiProbeStateBudget,
 		GraphicsQualityProfile& outProfile,
 		std::string& outDiagnostic)
 	{
@@ -717,6 +720,32 @@ namespace
 			return false;
 		}
 
+		const YAML::Node giBudget = FindField(
+			profile,
+			"maxGiProbeStatesPerSnapshot");
+		if (bAllowMissingGiProbeStateBudget && !giBudget.IsDefined())
+		{
+			return true;
+		}
+		if (!ReadUint32(
+				profile,
+				"maxGiProbeStatesPerSnapshot",
+				source,
+				profilePath + ".maxGiProbeStatesPerSnapshot",
+				outProfile.m_maxGiProbeStatesPerSnapshot,
+				outDiagnostic) ||
+			outProfile.m_maxGiProbeStatesPerSnapshot > 16u)
+		{
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = InvalidField(
+					source,
+					profilePath + ".maxGiProbeStatesPerSnapshot",
+					"must be in the range [0, 16]");
+			}
+			return false;
+		}
+
 		return true;
 	}
 
@@ -807,7 +836,8 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		1.0f,
 		512u,
 		65536u,
-		-1);
+		-1,
+		4u);
 	m_presets[QualityIndex(EGraphicsQuality::High)] = MakeProfile(
 		1.0f,
 		120u,
@@ -820,7 +850,8 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		0.75f,
 		256u,
 		32768u,
-		0);
+		0,
+		3u);
 	m_presets[QualityIndex(EGraphicsQuality::Medium)] = MakeProfile(
 		0.85f,
 		120u,
@@ -833,7 +864,8 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		0.5f,
 		256u,
 		16384u,
-		0);
+		0,
+		2u);
 	m_presets[QualityIndex(EGraphicsQuality::Low)] = MakeProfile(
 		0.7f,
 		120u,
@@ -846,7 +878,8 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		0.25f,
 		128u,
 		8192u,
-		1);
+		1,
+		2u);
 	m_presets[QualityIndex(EGraphicsQuality::VeryLow)] = MakeProfile(
 		0.5f,
 		120u,
@@ -859,7 +892,8 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		0.125f,
 		64u,
 		2048u,
-		2);
+		2,
+		1u);
 }
 
 bool Sailor::Settings::GraphicsQualityProfile::IsShadowCascadeActive(
@@ -1057,11 +1091,14 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		return result;
 	}
-	if (parsedSettings.m_version != GraphicsSettingsVersion)
+	const bool bLegacyProjectSettings = parsedSettings.m_version ==
+		LegacyProjectGraphicsSettingsVersion;
+	if (!bLegacyProjectSettings &&
+		parsedSettings.m_version != ProjectGraphicsSettingsVersion)
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
 		result.m_diagnostic = source + " has unsupported settingsVersion (expected " +
-			Quote(std::to_string(GraphicsSettingsVersion)) + ", actual " +
+			Quote(std::to_string(ProjectGraphicsSettingsVersion)) + ", actual " +
 			Quote(std::to_string(parsedSettings.m_version)) + "); using built-in defaults.";
 		return result;
 	}
@@ -1107,6 +1144,7 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 				presets,
 				quality,
 				source,
+				bLegacyProjectSettings,
 				parsedSettings.m_presets[QualityIndex(quality)],
 				result.m_diagnostic))
 		{
@@ -1114,10 +1152,14 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 			return result;
 		}
 	}
+	parsedSettings.m_version = ProjectGraphicsSettingsVersion;
 
 	result.m_settings = std::move(parsedSettings);
 	result.m_status = EGraphicsSettingsLoadStatus::Loaded;
-	result.m_diagnostic = "Loaded " + source + ".";
+	result.m_diagnostic = bLegacyProjectSettings
+		? "Loaded " + source +
+			" and supplied default GI probe-state budgets while migrating settingsVersion 1 to 2."
+		: "Loaded " + source + ".";
 	return result;
 }
 
@@ -1154,11 +1196,11 @@ Sailor::Settings::EditorGraphicsSettingsLoadResult Sailor::Settings::ParseEditor
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		return result;
 	}
-	if (parsedSettings.m_version != GraphicsSettingsVersion)
+	if (parsedSettings.m_version != EditorGraphicsSettingsVersion)
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
 		result.m_diagnostic = source + " has unsupported settingsVersion (expected " +
-			Quote(std::to_string(GraphicsSettingsVersion)) + ", actual " +
+			Quote(std::to_string(EditorGraphicsSettingsVersion)) + ", actual " +
 			Quote(std::to_string(parsedSettings.m_version)) + "); using editor defaults.";
 		return result;
 	}

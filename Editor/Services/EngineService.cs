@@ -2999,6 +2999,227 @@ namespace SailorEditor.Services
             return succeeded ? FromProtocolRenderMode(mode) : null;
         }
 
+        public Task<bool> StartProbeVolumeBakeAsync(
+            ProbeVolumeBakeRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(request.Settings);
+            var settings = request.Settings;
+            var protocolSettings =
+                new Protocol.Generated.ProbeVolumeBakeSettings
+                {
+                    RaysPerProbe = settings.RaysPerProbe,
+                    BounceCount = settings.BounceCount,
+                    RandomSeed = settings.RandomSeed,
+                    MaxSubdivisionLevel = settings.MaxSubdivisionLevel,
+                    MinProbeSpacing = settings.MinProbeSpacing,
+                    NormalBias = settings.NormalBias,
+                    ViewBias = settings.ViewBias,
+                    MaxRayDistance = settings.MaxRayDistance,
+                    IncludeSky = settings.IncludeSky,
+                    IncludeEmissive = settings.IncludeEmissive,
+                    IncludeDirectLighting = settings.IncludeDirectLighting
+                };
+            var protocolRequest = new StartProbeVolumeBakeRequest
+            {
+                WorldFileId = request.WorldAsset?.Value ?? string.Empty,
+                OutputVirtualPath = request.OutputVirtualPath ?? string.Empty,
+                StateName = request.StateName ?? string.Empty,
+                LayoutSourceFileId = request.LayoutSource?.Value ?? string.Empty,
+                Settings = protocolSettings,
+                AutoBounds = request.AutoBounds,
+                VolumeMin = ToProtocolVector(request.VolumeMin),
+                VolumeMax = ToProtocolVector(request.VolumeMax),
+                FallbackEnvironment = ToProtocolVector(
+                    request.FallbackEnvironment),
+                Overwrite = request.Overwrite
+            };
+            return InvokeRunningInteropAsync(
+                token => protocolClient.StartProbeVolumeBakeAsync(
+                    protocolRequest,
+                    token),
+                cancellationToken: cancellationToken);
+        }
+
+        public async Task<ProbeVolumeBakeStatus?> GetProbeVolumeBakeStatusAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Protocol.Generated.ProbeVolumeBakeStatusResult? protocolStatus = null;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    protocolStatus = await protocolClient
+                        .GetProbeVolumeBakeStatusAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!succeeded || protocolStatus is null)
+            {
+                return null;
+            }
+            return new ProbeVolumeBakeStatus(
+                FromProtocolBakeState(protocolStatus.State),
+                protocolStatus.Progress,
+                protocolStatus.CompletedProbes,
+                protocolStatus.TotalProbes,
+                protocolStatus.BrickCount,
+                protocolStatus.ProbeCount,
+                protocolStatus.ElapsedSeconds,
+                protocolStatus.LayoutHash,
+                protocolStatus.TransportHash,
+                protocolStatus.LightingHash,
+                protocolStatus.Stage,
+                protocolStatus.OutputVirtualPath,
+                protocolStatus.Diagnostic);
+        }
+
+        public Task<bool> CancelProbeVolumeBakeAsync(
+            CancellationToken cancellationToken = default)
+            => InvokeRunningInteropAsync(
+                token => protocolClient.CancelProbeVolumeBakeAsync(token),
+                cancellationToken: cancellationToken);
+
+        public async Task<bool> SetGlobalIlluminationSettingsAsync(
+            IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(bindings);
+            var protocolSettings = new SetGlobalIlluminationSettingsRequest();
+            foreach (var binding in bindings.OrderBy(
+                static value => value.Name,
+                StringComparer.Ordinal))
+            {
+                protocolSettings.Probes.Add(
+                    new Protocol.Generated.GlobalIlluminationProbeBinding
+                    {
+                        Name = binding.Name ?? string.Empty,
+                        AssetFileId = binding.Asset?.Value ?? string.Empty,
+                        Mode = ToProtocolGlobalIlluminationMode(binding.Mode),
+                        InitialWeight = binding.InitialWeight,
+                        Preload = binding.Preload
+                    });
+            }
+            var succeeded = await InvokeRunningInteropAsync(
+                token => protocolClient.SetGlobalIlluminationSettingsAsync(
+                    protocolSettings,
+                    token),
+                invalidateQueuedWorldSnapshots: true,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded)
+            {
+                await RefreshCurrentWorldAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            return succeeded;
+        }
+
+        public async Task<GlobalIlluminationRuntimeState?>
+            GetGlobalIlluminationStateAsync(
+                CancellationToken cancellationToken = default)
+        {
+            Protocol.Generated.GlobalIlluminationStateResult? protocolState = null;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    protocolState = await protocolClient
+                        .GetGlobalIlluminationStateAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!succeeded || protocolState is null)
+            {
+                return null;
+            }
+            return new GlobalIlluminationRuntimeState(
+                protocolState.MaxProbeStatesPerSnapshot,
+                protocolState.Probes.Select(
+                    static probe => new GlobalIlluminationProbeRuntimeState(
+                        probe.Name,
+                        new FileId(probe.AssetFileId),
+                        FromProtocolGlobalIlluminationMode(probe.Mode),
+                        probe.Weight,
+                        FromProtocolGlobalIlluminationResidency(
+                            probe.Residency),
+                        probe.AssetRevision,
+                        probe.Diagnostic)).ToArray(),
+                protocolState.Diagnostic,
+                protocolState.CompositionCount,
+                protocolState.RejectedCompositionCount);
+        }
+
+        static Protocol.Generated.Vector4 ToProtocolVector(
+            System.Numerics.Vector3 value) => new()
+        {
+            X = value.X,
+            Y = value.Y,
+            Z = value.Z
+        };
+
+        static ProbeVolumeBakeLifecycleState FromProtocolBakeState(
+            Protocol.Generated.ProbeVolumeBakeState state) => state switch
+        {
+            Protocol.Generated.ProbeVolumeBakeState.Idle =>
+                ProbeVolumeBakeLifecycleState.Idle,
+            Protocol.Generated.ProbeVolumeBakeState.Preparing =>
+                ProbeVolumeBakeLifecycleState.Preparing,
+            Protocol.Generated.ProbeVolumeBakeState.Baking =>
+                ProbeVolumeBakeLifecycleState.Baking,
+            Protocol.Generated.ProbeVolumeBakeState.Saving =>
+                ProbeVolumeBakeLifecycleState.Saving,
+            Protocol.Generated.ProbeVolumeBakeState.Succeeded =>
+                ProbeVolumeBakeLifecycleState.Succeeded,
+            Protocol.Generated.ProbeVolumeBakeState.Failed =>
+                ProbeVolumeBakeLifecycleState.Failed,
+            Protocol.Generated.ProbeVolumeBakeState.Cancelled =>
+                ProbeVolumeBakeLifecycleState.Cancelled,
+            _ => throw new InvalidDataException(
+                $"Unknown probe-volume bake state: {state}.")
+        };
+
+        static Protocol.Generated.GlobalIlluminationProbeMode
+            ToProtocolGlobalIlluminationMode(
+                GlobalIlluminationCompositionMode mode) => mode switch
+        {
+            GlobalIlluminationCompositionMode.Blend =>
+                Protocol.Generated.GlobalIlluminationProbeMode.Blend,
+            GlobalIlluminationCompositionMode.Additive =>
+                Protocol.Generated.GlobalIlluminationProbeMode.Additive,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+
+        static GlobalIlluminationCompositionMode
+            FromProtocolGlobalIlluminationMode(
+                Protocol.Generated.GlobalIlluminationProbeMode mode) =>
+            mode switch
+            {
+                Protocol.Generated.GlobalIlluminationProbeMode.Blend =>
+                    GlobalIlluminationCompositionMode.Blend,
+                Protocol.Generated.GlobalIlluminationProbeMode.Additive =>
+                    GlobalIlluminationCompositionMode.Additive,
+                _ => throw new InvalidDataException(
+                    $"Unknown Global Illumination ECS probe mode: {mode}.")
+            };
+
+        static GlobalIlluminationResidency
+            FromProtocolGlobalIlluminationResidency(
+                Protocol.Generated.GlobalIlluminationProbeResidency residency)
+            => residency switch
+            {
+                Protocol.Generated.GlobalIlluminationProbeResidency.Unloaded =>
+                    GlobalIlluminationResidency.Unloaded,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Loading =>
+                    GlobalIlluminationResidency.Loading,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Resident =>
+                    GlobalIlluminationResidency.Resident,
+                Protocol.Generated.GlobalIlluminationProbeResidency.Failed =>
+                    GlobalIlluminationResidency.Failed,
+                _ => throw new InvalidDataException(
+                    $"Unknown Global Illumination ECS residency: {residency}.")
+            };
+
         static EditorRenderMode ToProtocolRenderMode(SceneViewRenderMode mode)
             => mode switch
             {
@@ -3007,6 +3228,22 @@ namespace SailorEditor.Services
                     EditorRenderMode.AmbientOcclusion,
                 SceneViewRenderMode.Cascades => EditorRenderMode.Cascades,
                 SceneViewRenderMode.LightTiles => EditorRenderMode.LightTiles,
+                SceneViewRenderMode.GlobalIlluminationOnly =>
+                    EditorRenderMode.GlobalIlluminationOnly,
+                SceneViewRenderMode.GlobalIlluminationProbes =>
+                    EditorRenderMode.GlobalIlluminationProbes,
+                SceneViewRenderMode.GlobalIlluminationBricks =>
+                    EditorRenderMode.GlobalIlluminationBricks,
+                SceneViewRenderMode.GlobalIlluminationValidity =>
+                    EditorRenderMode.GlobalIlluminationValidity,
+                SceneViewRenderMode.GlobalIlluminationVisibility =>
+                    EditorRenderMode.GlobalIlluminationVisibility,
+                SceneViewRenderMode.GlobalIlluminationResidency =>
+                    EditorRenderMode.GlobalIlluminationResidency,
+                SceneViewRenderMode.GlobalIlluminationAssetIdentity =>
+                    EditorRenderMode.GlobalIlluminationAssetIdentity,
+                SceneViewRenderMode.GlobalIlluminationFallback =>
+                    EditorRenderMode.GlobalIlluminationFallback,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 
@@ -3018,6 +3255,22 @@ namespace SailorEditor.Services
                     SceneViewRenderMode.AmbientOcclusion,
                 EditorRenderMode.Cascades => SceneViewRenderMode.Cascades,
                 EditorRenderMode.LightTiles => SceneViewRenderMode.LightTiles,
+                EditorRenderMode.GlobalIlluminationOnly =>
+                    SceneViewRenderMode.GlobalIlluminationOnly,
+                EditorRenderMode.GlobalIlluminationProbes =>
+                    SceneViewRenderMode.GlobalIlluminationProbes,
+                EditorRenderMode.GlobalIlluminationBricks =>
+                    SceneViewRenderMode.GlobalIlluminationBricks,
+                EditorRenderMode.GlobalIlluminationValidity =>
+                    SceneViewRenderMode.GlobalIlluminationValidity,
+                EditorRenderMode.GlobalIlluminationVisibility =>
+                    SceneViewRenderMode.GlobalIlluminationVisibility,
+                EditorRenderMode.GlobalIlluminationResidency =>
+                    SceneViewRenderMode.GlobalIlluminationResidency,
+                EditorRenderMode.GlobalIlluminationAssetIdentity =>
+                    SceneViewRenderMode.GlobalIlluminationAssetIdentity,
+                EditorRenderMode.GlobalIlluminationFallback =>
+                    SceneViewRenderMode.GlobalIlluminationFallback,
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
 

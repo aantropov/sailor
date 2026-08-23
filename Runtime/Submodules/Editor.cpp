@@ -23,6 +23,7 @@
 #include "Math/Math.h"
 #include "Math/Transform.h"
 #include "Editor/EditorViewportController.h"
+#include "Editor/GlobalIlluminationBakeController.h"
 #if defined(_WIN32)
 #include <libloaderapi.h>
 #endif
@@ -277,6 +278,7 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 	m_editorHwnd(editorHwnd),
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
+	m_probeVolumeBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),
 	m_managedMutationState(TUniquePtr<EditorManagedMutationState>::Make())
 {
 
@@ -284,6 +286,9 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 
 Editor::~Editor()
 {
+	std::string diagnostic;
+	m_probeVolumeBakeController->Cancel(diagnostic);
+	m_probeVolumeBakeController->Wait();
 	StopAudioPreview();
 }
 
@@ -336,6 +341,12 @@ void Editor::StopAudioPreview()
 
 void Editor::SetWorld(World* world)
 {
+	std::string diagnostic;
+	if (m_probeVolumeBakeController->GetStatus().IsRunning())
+	{
+		m_probeVolumeBakeController->Cancel(diagnostic);
+		m_probeVolumeBakeController->Wait();
+	}
 	m_world = world;
 	m_simulationSnapshot.clear();
 	m_bSimulationEnabled = false;
@@ -343,6 +354,27 @@ void Editor::SetWorld(World* world)
 	m_managedMutationState->m_objectRevisions.Clear();
 	m_viewportController->Reset();
 	m_viewportController->SetManagedMutationRevisions(0, 0);
+}
+
+bool Editor::StartProbeVolumeBake(
+	const EditorProbeVolumeBakeRequest& request,
+	std::string& outDiagnostic)
+{
+	return m_probeVolumeBakeController &&
+		m_probeVolumeBakeController->Start(m_world, request, outDiagnostic);
+}
+
+bool Editor::CancelProbeVolumeBake(std::string& outDiagnostic)
+{
+	return m_probeVolumeBakeController &&
+		m_probeVolumeBakeController->Cancel(outDiagnostic);
+}
+
+EditorProbeVolumeBakeStatus Editor::GetProbeVolumeBakeStatus() const
+{
+	return m_probeVolumeBakeController
+		? m_probeVolumeBakeController->GetStatus()
+		: EditorProbeVolumeBakeStatus{};
 }
 
 bool Editor::SetSimulationEnabled(bool bEnabled)

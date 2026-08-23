@@ -9,7 +9,15 @@ namespace Sailor::RHI
 		Lit = 0,
 		AmbientOcclusion,
 		Cascades,
-		LightTiles
+		LightTiles,
+		GlobalIlluminationOnly,
+		GlobalIlluminationProbes,
+		GlobalIlluminationBricks,
+		GlobalIlluminationValidity,
+		GlobalIlluminationVisibility,
+		GlobalIlluminationResidency,
+		GlobalIlluminationAssetIdentity,
+		GlobalIlluminationFallback
 	};
 
 	constexpr bool IsValidSceneViewRenderMode(ESceneViewRenderMode mode) noexcept
@@ -17,7 +25,15 @@ namespace Sailor::RHI
 		return mode == ESceneViewRenderMode::Lit ||
 			mode == ESceneViewRenderMode::AmbientOcclusion ||
 			mode == ESceneViewRenderMode::Cascades ||
-			mode == ESceneViewRenderMode::LightTiles;
+			mode == ESceneViewRenderMode::LightTiles ||
+			mode == ESceneViewRenderMode::GlobalIlluminationOnly ||
+			mode == ESceneViewRenderMode::GlobalIlluminationProbes ||
+			mode == ESceneViewRenderMode::GlobalIlluminationBricks ||
+			mode == ESceneViewRenderMode::GlobalIlluminationValidity ||
+			mode == ESceneViewRenderMode::GlobalIlluminationVisibility ||
+			mode == ESceneViewRenderMode::GlobalIlluminationResidency ||
+			mode == ESceneViewRenderMode::GlobalIlluminationAssetIdentity ||
+			mode == ESceneViewRenderMode::GlobalIlluminationFallback;
 	}
 
 	constexpr const char* GetSceneViewRenderModeShaderDefine(

@@ -25,7 +25,9 @@ namespace Sailor::Settings
 #pragma warning(disable: 4251)
 #endif
 
-	inline constexpr uint32_t GraphicsSettingsVersion = 1u;
+	inline constexpr uint32_t ProjectGraphicsSettingsVersion = 2u;
+	inline constexpr uint32_t LegacyProjectGraphicsSettingsVersion = 1u;
+	inline constexpr uint32_t EditorGraphicsSettingsVersion = 1u;
 	inline constexpr uint32_t NumGraphicsQualityPresets = 5u;
 	inline constexpr uint32_t MaxShadowCascades = 4u;
 
@@ -91,6 +93,7 @@ namespace Sailor::Settings
 		uint32_t m_skyResolution = 256u;
 		uint32_t m_vegetationInstanceBudget = 32768u;
 		int32_t m_lodBias = 0;
+		uint32_t m_maxGiProbeStatesPerSnapshot = 3u;
 
 		bool IsShadowCascadeActive(uint32_t cascadeIndex) const noexcept;
 		uint32_t GetShadowCascadeResolution(uint32_t cascadeIndex) const noexcept;
@@ -100,7 +103,7 @@ namespace Sailor::Settings
 	{
 		GraphicsSettings();
 
-		uint32_t m_version = GraphicsSettingsVersion;
+		uint32_t m_version = ProjectGraphicsSettingsVersion;
 		EGraphicsQuality m_defaultQuality = EGraphicsQuality::High;
 		std::array<GraphicsQualityProfile, NumGraphicsQualityPresets> m_presets{};
 
@@ -109,7 +112,7 @@ namespace Sailor::Settings
 
 	struct SAILOR_SHARED_API EditorGraphicsSettings final
 	{
-		uint32_t m_version = GraphicsSettingsVersion;
+		uint32_t m_version = EditorGraphicsSettingsVersion;
 		EGraphicsQualitySelection m_selectedQuality = EGraphicsQualitySelection::ProjectDefault;
 		ERenderStatsMode m_statsMode = ERenderStatsMode::None;
 	};

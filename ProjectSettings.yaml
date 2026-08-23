@@ -1,4 +1,4 @@
-settingsVersion: 1
+settingsVersion: 2
 graphics:
   defaultQuality: High
   presets:
@@ -19,6 +19,7 @@ graphics:
       skyResolution: 512
       vegetationInstanceBudget: 65536
       lodBias: -1
+      maxGiProbeStatesPerSnapshot: 4
     High:
       resolutionFactor: 1
       fpsCap: 120
@@ -36,6 +37,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 32768
       lodBias: 0
+      maxGiProbeStatesPerSnapshot: 3
     Medium:
       resolutionFactor: 0.85
       fpsCap: 120
@@ -52,6 +54,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 16384
       lodBias: 0
+      maxGiProbeStatesPerSnapshot: 2
     Low:
       resolutionFactor: 0.7
       fpsCap: 120
@@ -67,6 +70,7 @@ graphics:
       skyResolution: 128
       vegetationInstanceBudget: 8192
       lodBias: 1
+      maxGiProbeStatesPerSnapshot: 2
     VeryLow:
       resolutionFactor: 0.5
       fpsCap: 120
@@ -81,4 +85,5 @@ graphics:
       skyResolution: 64
       vegetationInstanceBudget: 2048
       lodBias: 2
+      maxGiProbeStatesPerSnapshot: 1
 ...

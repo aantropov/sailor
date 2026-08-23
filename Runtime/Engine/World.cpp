@@ -9,6 +9,7 @@
 #include "YamlExceptionBoundary.h"
 #include <Components/TestComponent.h>
 #include <ECS/TransformECS.h>
+#include <ECS/GlobalIlluminationECS.h>
 #include <Submodules/Editor.h>
 
 using namespace Sailor;
@@ -100,6 +101,25 @@ World::World(
 	}
 
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
+}
+
+bool World::SetGlobalIlluminationSettings(
+	GlobalIlluminationWorldSettings settings,
+	std::string& outDiagnostic)
+{
+	if (!settings.Validate(outDiagnostic))
+	{
+		return false;
+	}
+	if (auto* globalIllumination = GetECS<GlobalIlluminationECS>();
+		globalIllumination &&
+		!globalIllumination->ApplyWorldSettings(settings, outDiagnostic))
+	{
+		return false;
+	}
+	m_globalIllumination = std::move(settings);
+	outDiagnostic = "updated world Global Illumination ECS settings";
+	return true;
 }
 
 ObjectPtr World::GetObjectByInstanceId(const InstanceId& instanceId) const

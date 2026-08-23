@@ -501,6 +501,74 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         return ValidateEditorRenderMode(result.Mode);
     }
 
+    public async Task<bool> StartProbeVolumeBakeAsync(
+        StartProbeVolumeBakeRequest bake,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bake);
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        StartProbeVolumeBake = bake.Clone()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.StartProbeVolumeBake));
+    }
+
+    public async Task<ProbeVolumeBakeStatusResult> GetProbeVolumeBakeStatusAsync(
+        CancellationToken cancellationToken = default)
+        => RequireResult<ProbeVolumeBakeStatusResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetProbeVolumeBakeStatus = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).ProbeVolumeBakeStatusResult,
+            nameof(ProtocolRequest.GetProbeVolumeBakeStatus));
+
+    public async Task<bool> CancelProbeVolumeBakeAsync(
+        CancellationToken cancellationToken = default)
+        => ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        CancelProbeVolumeBake = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.CancelProbeVolumeBake));
+
+    public async Task<bool> SetGlobalIlluminationSettingsAsync(
+        SetGlobalIlluminationSettingsRequest settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return ReadBool(
+            await SendAsync(
+                    new ProtocolRequest
+                    {
+                        SetGlobalIlluminationSettings = settings.Clone()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false),
+            nameof(ProtocolRequest.SetGlobalIlluminationSettings));
+    }
+
+    public async Task<GlobalIlluminationStateResult> GetGlobalIlluminationStateAsync(
+        CancellationToken cancellationToken = default)
+        => RequireResult<GlobalIlluminationStateResult>(
+            (await SendAsync(
+                    new ProtocolRequest
+                    {
+                        GetGlobalIlluminationState = new Empty()
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false)).GlobalIlluminationStateResult,
+            nameof(ProtocolRequest.GetGlobalIlluminationState));
+
     public async Task<bool> PreviewAudioAssetAsync(
         string fileId,
         CancellationToken cancellationToken = default)
@@ -1498,7 +1566,15 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             EditorRenderMode.Lit or
             EditorRenderMode.AmbientOcclusion or
             EditorRenderMode.Cascades or
-            EditorRenderMode.LightTiles
+            EditorRenderMode.LightTiles or
+            EditorRenderMode.GlobalIlluminationOnly or
+            EditorRenderMode.GlobalIlluminationProbes or
+            EditorRenderMode.GlobalIlluminationBricks or
+            EditorRenderMode.GlobalIlluminationValidity or
+            EditorRenderMode.GlobalIlluminationVisibility or
+            EditorRenderMode.GlobalIlluminationResidency or
+            EditorRenderMode.GlobalIlluminationAssetIdentity or
+            EditorRenderMode.GlobalIlluminationFallback
             ? mode
             : throw new ArgumentOutOfRangeException(
                 nameof(mode),

@@ -867,6 +867,7 @@ namespace SailorEditor.Services
             Current.Prefabs.Clear();
 
             Current.Name = world.Name;
+            Current.GlobalIllumination = world.GlobalIllumination ?? new();
 
             var worldKey = GetWorldKey(world);
             if (!worldCaches.TryGetValue(worldKey, out var cache))

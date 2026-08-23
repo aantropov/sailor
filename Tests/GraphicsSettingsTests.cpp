@@ -14,6 +14,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::Settings;
@@ -118,9 +119,30 @@ namespace
 		return source;
 	}
 
+	std::string EraseLinesContaining(
+		std::string source,
+		const std::string& marker)
+	{
+		size_t markerPosition = source.find(marker);
+		while (markerPosition != std::string::npos)
+		{
+			const size_t lineStart = source.rfind('\n', markerPosition);
+			const size_t eraseStart = lineStart == std::string::npos
+				? 0u
+				: lineStart + 1u;
+			const size_t lineEnd = source.find('\n', markerPosition);
+			const size_t eraseEnd = lineEnd == std::string::npos
+				? source.size()
+				: lineEnd + 1u;
+			source.erase(eraseStart, eraseEnd - eraseStart);
+			markerPosition = source.find(marker, eraseStart);
+		}
+		return source;
+	}
+
 	const std::string& ValidProjectSettings()
 	{
-		static const std::string settings = R"YAML(settingsVersion: 1
+		static const std::string settings = R"YAML(settingsVersion: 2
 unknownRoot: retained
 graphics:
   defaultQuality: Medium
@@ -138,6 +160,7 @@ graphics:
       cloudsResolutionMultiplier: 1.0
       skyResolution: 512
       lodBias: -1
+      maxGiProbeStatesPerSnapshot: 4
       futureField: retained
     High:
       resolutionFactor: 1.0
@@ -151,6 +174,7 @@ graphics:
       cloudsResolutionMultiplier: 0.75
       skyResolution: 256
       lodBias: 0
+      maxGiProbeStatesPerSnapshot: 3
     Medium:
       resolutionFactor: 0.85
       fpsCap: 120
@@ -164,6 +188,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 12345
       lodBias: 0
+      maxGiProbeStatesPerSnapshot: 2
     Low:
       resolutionFactor: 0.7
       fpsCap: 120
@@ -176,6 +201,7 @@ graphics:
       cloudsResolutionMultiplier: 0.25
       skyResolution: 128
       lodBias: +1
+      maxGiProbeStatesPerSnapshot: 2
     VeryLow:
       resolutionFactor: 0.5
       fpsCap: 120
@@ -188,6 +214,7 @@ graphics:
       cloudsResolutionMultiplier: 0.125
       skyResolution: 64
       lodBias: +2
+      maxGiProbeStatesPerSnapshot: 1
 )YAML";
 		return settings;
 	}
@@ -228,8 +255,11 @@ graphics:
 	void TestBuiltInDefaultsAndPolicies()
 	{
 		const GraphicsSettings defaults;
-		Require(defaults.m_version == GraphicsSettingsVersion,
+		Require(defaults.m_version == ProjectGraphicsSettingsVersion,
 			"built-in settings should use the current version");
+		Require(EditorGraphicsSettings{}.m_version ==
+			EditorGraphicsSettingsVersion,
+			"cache-side Editor settings should retain their independent version");
 		Require(defaults.m_defaultQuality == EGraphicsQuality::High,
 			"built-in project default should be High");
 
@@ -248,7 +278,8 @@ graphics:
 		Require(ultra.m_bSupportSoftShadows &&
 			IsNear(ultra.m_cloudsResolutionMultiplier, 1.0f) &&
 			ultra.m_skyResolution == 512u &&
-			ultra.m_vegetationInstanceBudget == 65536u && ultra.m_lodBias == -1,
+			ultra.m_vegetationInstanceBudget == 65536u && ultra.m_lodBias == -1 &&
+			ultra.m_maxGiProbeStatesPerSnapshot == 4u,
 			"Ultra should match the remaining planned defaults");
 
 		const GraphicsQualityProfile& high = defaults.GetProfile(EGraphicsQuality::High);
@@ -260,7 +291,8 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 2048u, 1024u, 1024u } &&
 			high.m_bSupportSoftShadows && IsNear(high.m_cloudsResolutionMultiplier, 0.75f) &&
 			high.m_skyResolution == 256u &&
-			high.m_vegetationInstanceBudget == 32768u && high.m_lodBias == 0,
+			high.m_vegetationInstanceBudget == 32768u && high.m_lodBias == 0 &&
+			high.m_maxGiProbeStatesPerSnapshot == 3u,
 			"High should match the complete planned defaults");
 
 		const GraphicsQualityProfile& medium = defaults.GetProfile(EGraphicsQuality::Medium);
@@ -272,7 +304,8 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 1024u, 512u, 0u } &&
 			medium.m_bSupportSoftShadows && IsNear(medium.m_cloudsResolutionMultiplier, 0.5f) &&
 			medium.m_skyResolution == 256u &&
-			medium.m_vegetationInstanceBudget == 16384u && medium.m_lodBias == 0,
+			medium.m_vegetationInstanceBudget == 16384u && medium.m_lodBias == 0 &&
+			medium.m_maxGiProbeStatesPerSnapshot == 2u,
 			"Medium should match the complete planned defaults");
 
 		const GraphicsQualityProfile& low = defaults.GetProfile(EGraphicsQuality::Low);
@@ -284,7 +317,8 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 1024u, 512u, 0u, 0u } &&
 			!low.m_bSupportSoftShadows && IsNear(low.m_cloudsResolutionMultiplier, 0.25f) &&
 			low.m_skyResolution == 128u &&
-			low.m_vegetationInstanceBudget == 8192u && low.m_lodBias == 1,
+			low.m_vegetationInstanceBudget == 8192u && low.m_lodBias == 1 &&
+			low.m_maxGiProbeStatesPerSnapshot == 2u,
 			"Low should match the complete planned defaults");
 
 		const GraphicsQualityProfile& veryLow = defaults.GetProfile(EGraphicsQuality::VeryLow);
@@ -297,7 +331,8 @@ graphics:
 			!veryLow.m_bSupportSoftShadows &&
 			IsNear(veryLow.m_cloudsResolutionMultiplier, 0.125f) &&
 			veryLow.m_skyResolution == 64u &&
-			veryLow.m_vegetationInstanceBudget == 2048u && veryLow.m_lodBias == 2,
+			veryLow.m_vegetationInstanceBudget == 2048u && veryLow.m_lodBias == 2 &&
+			veryLow.m_maxGiProbeStatesPerSnapshot == 1u,
 			"VeryLow should match the planned fallback values");
 
 		const GraphicsExtent renderExtent = ResolveRenderDimensions(1919u, 1079u, 0.5f);
@@ -360,16 +395,41 @@ graphics:
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_vegetationInstanceBudget == 12345u &&
 					parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_vegetationInstanceBudget == 65536u,
 					"vegetation budgets should deserialize when present and use quality defaults when omitted");
+				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_maxGiProbeStatesPerSnapshot == 4u,
+					"GI probe-state snapshot budget should deserialize per quality profile");
 				Require(IsNear(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_shadowBias, 1.25f),
 					"shadow bias should deserialize with the quality profile");
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_shadowCascadeResolutions[3] == 0u,
 					"inactive cascade storage should be cleared");
 			});
 
+		RunTest("ProjectParsing.LegacyGiBudgetMigration", []()
+			{
+				std::string legacy = ReplaceFirst(
+					ValidProjectSettings(),
+					"settingsVersion: 2",
+					"settingsVersion: 1");
+				legacy = EraseLinesContaining(
+					std::move(legacy),
+					"maxGiProbeStatesPerSnapshot:");
+				const ProjectGraphicsSettingsLoadResult parsed =
+					ParseProjectGraphicsSettings(
+						legacy,
+						"legacy project fixture");
+				Require(parsed.IsLoaded() &&
+					parsed.m_settings.m_version ==
+						ProjectGraphicsSettingsVersion &&
+					parsed.m_settings.GetProfile(
+						EGraphicsQuality::Ultra).m_maxGiProbeStatesPerSnapshot == 4u &&
+					parsed.m_settings.GetProfile(
+						EGraphicsQuality::VeryLow).m_maxGiProbeStatesPerSnapshot == 1u,
+					"version-1 project settings must migrate with per-quality GI defaults");
+			});
+
 		RunTest("ProjectParsing.UnsupportedVersion", []()
 			{
 				const ProjectGraphicsSettingsLoadResult unsupported = ParseProjectGraphicsSettings(
-					ReplaceFirst(ValidProjectSettings(), "settingsVersion: 1", "settingsVersion: 2"),
+					ReplaceFirst(ValidProjectSettings(), "settingsVersion: 2", "settingsVersion: 3"),
 					"future project fixture");
 				Require(unsupported.m_status == EGraphicsSettingsLoadStatus::UnsupportedVersion,
 					"future project version should be distinguished from corrupt data");
@@ -380,7 +440,7 @@ graphics:
 		RunTest("ProjectParsing.MultipleDocuments", []()
 			{
 				const ProjectGraphicsSettingsLoadResult multipleDocuments = ParseProjectGraphicsSettings(
-					ValidProjectSettings() + "---\nsettingsVersion: 1\n",
+					ValidProjectSettings() + "---\nsettingsVersion: 2\n",
 					"multiple project documents");
 				Require(multipleDocuments.m_status == EGraphicsSettingsLoadStatus::Invalid &&
 					multipleDocuments.m_diagnostic.find("exactly one YAML document") != std::string::npos,
@@ -426,6 +486,12 @@ graphics:
 		RequireInvalidProjectField(
 			ReplaceFirst(ValidProjectSettings(), "lodBias: -1", "lodBias: -9"),
 			"graphics.presets.Ultra.lodBias");
+		RequireInvalidProjectField(
+			ReplaceFirst(
+				ValidProjectSettings(),
+				"maxGiProbeStatesPerSnapshot: 4",
+				"maxGiProbeStatesPerSnapshot: 17"),
+			"graphics.presets.Ultra.maxGiProbeStatesPerSnapshot");
 		RequireInvalidProjectField(
 			ReplaceFirst(
 				ValidProjectSettings(),

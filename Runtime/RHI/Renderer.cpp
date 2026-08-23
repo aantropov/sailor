@@ -19,6 +19,7 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "ECS/CameraECS.h"
 #include "ECS/LightingECS.h"
+#include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/AnimationECS.h"
 #include "ECS/PathTracerECS.h"
@@ -414,6 +415,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		if (auto* pathTracerEcs = world->GetECS<PathTracerECS>())
 		{
 			pathTracerEcs->CopySceneView(rhiSceneView);
+		}
+		if (auto* globalIlluminationEcs = world->GetECS<GlobalIlluminationECS>())
+		{
+			rhiSceneView->m_globalIllumination =
+				globalIlluminationEcs->GetActiveSnapshot();
 		}
 		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 

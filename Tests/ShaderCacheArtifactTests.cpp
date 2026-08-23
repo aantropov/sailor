@@ -160,6 +160,36 @@ namespace
 				", binding " + std::to_string(binding));
 	}
 
+	void RequireSpirvStorageBufferBinding(
+		const RHI::ShaderByteCode& byteCode,
+		uint32_t set,
+		uint32_t binding)
+	{
+		SpvReflectShaderModule module{};
+		Require(
+			spvReflectCreateShaderModule(
+				byteCode.Num() * sizeof(byteCode[0]),
+				&byteCode[0],
+				&module) == SPV_REFLECT_RESULT_SUCCESS,
+			"compiled shader artifact should support SPIR-V reflection");
+
+		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
+		const SpvReflectDescriptorBinding* reflected =
+			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const bool bMatches =
+			result == SPV_REFLECT_RESULT_SUCCESS &&
+			reflected &&
+			reflected->descriptor_type ==
+				SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		spvReflectDestroyShaderModule(&module);
+
+		Require(
+			bMatches,
+			std::string("compiled shader artifact should expose a storage buffer at set ") +
+				std::to_string(set) +
+				", binding " + std::to_string(binding));
+	}
+
 	void WriteWords(const std::filesystem::path& path, const TVector<uint32_t>& words)
 	{
 		std::string diagnostic;
@@ -1076,9 +1106,19 @@ namespace
 			return byteCode;
 		};
 
-		for (const char* shaderPath : shaderPaths)
+		for (size_t shaderIndex = 0u;
+			shaderIndex < shaderPaths.size();
+			++shaderIndex)
 		{
-			compileRuntimeFragment(shaderPath, {});
+			const RHI::ShaderByteCode byteCode =
+				compileRuntimeFragment(shaderPaths[shaderIndex], {});
+			if (shaderIndex < 3u)
+			{
+				for (uint32_t binding = 12u; binding <= 17u; ++binding)
+				{
+					RequireSpirvStorageBufferBinding(byteCode, 1u, binding);
+				}
+			}
 		}
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",

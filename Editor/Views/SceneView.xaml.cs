@@ -688,7 +688,25 @@ namespace SailorEditor.Views
                     SceneViewRenderMode.AmbientOcclusion,
                     "Ambient Occlusion"),
                 new(SceneViewRenderMode.Cascades, "Cascades"),
-                new(SceneViewRenderMode.LightTiles, "Light Tiles")
+                new(SceneViewRenderMode.LightTiles, "Light Tiles"),
+                new(SceneViewRenderMode.GlobalIlluminationOnly, "GI Only"),
+                new(SceneViewRenderMode.GlobalIlluminationProbes, "GI Probes"),
+                new(SceneViewRenderMode.GlobalIlluminationBricks, "GI Bricks"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationValidity,
+                    "GI Validity / Relocation"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationVisibility,
+                    "GI Visibility / Weights"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationResidency,
+                    "GI Residency"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationAssetIdentity,
+                    "GI Asset Identity"),
+                new(
+                    SceneViewRenderMode.GlobalIlluminationFallback,
+                    "GI Fallback")
             ];
 
         void UpdateRestartEngineButton(EngineLifecycleState state)

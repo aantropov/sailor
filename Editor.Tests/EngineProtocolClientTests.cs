@@ -266,6 +266,14 @@ public sealed class EngineProtocolClientTests
     [InlineData(EditorRenderMode.AmbientOcclusion)]
     [InlineData(EditorRenderMode.Cascades)]
     [InlineData(EditorRenderMode.LightTiles)]
+    [InlineData(EditorRenderMode.GlobalIlluminationOnly)]
+    [InlineData(EditorRenderMode.GlobalIlluminationProbes)]
+    [InlineData(EditorRenderMode.GlobalIlluminationBricks)]
+    [InlineData(EditorRenderMode.GlobalIlluminationValidity)]
+    [InlineData(EditorRenderMode.GlobalIlluminationVisibility)]
+    [InlineData(EditorRenderMode.GlobalIlluminationResidency)]
+    [InlineData(EditorRenderMode.GlobalIlluminationAssetIdentity)]
+    [InlineData(EditorRenderMode.GlobalIlluminationFallback)]
     public async Task SetEditorRenderModeAsync_SendsExplicitTypedMode(
         EditorRenderMode mode)
     {

@@ -51,6 +51,7 @@ public sealed record GraphicsQualityPresetSettings
     public int SkyResolution { get; init; }
     public int VegetationInstanceBudget { get; init; }
     public int LodBias { get; init; }
+    public int MaxGiProbeStatesPerSnapshot { get; init; }
 }
 
 public sealed record GraphicsQualityPresets
@@ -94,7 +95,8 @@ public sealed record ProjectGraphicsSettings
 
 public sealed record ProjectSettingsDocument
 {
-    public const int CurrentVersion = 1;
+    public const int CurrentVersion = 2;
+    public const int LegacyVersion = 1;
 
     public int SettingsVersion { get; init; } = CurrentVersion;
     public ProjectGraphicsSettings Graphics { get; init; } = new();
@@ -131,7 +133,8 @@ public static class GraphicsSettingsDefaults
             CloudsResolutionMultiplier = 1.0,
             SkyResolution = 512,
             VegetationInstanceBudget = 65536,
-            LodBias = -1
+            LodBias = -1,
+            MaxGiProbeStatesPerSnapshot = 4
         },
         High = new GraphicsQualityPresetSettings
         {
@@ -146,7 +149,8 @@ public static class GraphicsSettingsDefaults
             CloudsResolutionMultiplier = 0.75,
             SkyResolution = 256,
             VegetationInstanceBudget = 32768,
-            LodBias = 0
+            LodBias = 0,
+            MaxGiProbeStatesPerSnapshot = 3
         },
         Medium = new GraphicsQualityPresetSettings
         {
@@ -161,7 +165,8 @@ public static class GraphicsSettingsDefaults
             CloudsResolutionMultiplier = 0.5,
             SkyResolution = 256,
             VegetationInstanceBudget = 16384,
-            LodBias = 0
+            LodBias = 0,
+            MaxGiProbeStatesPerSnapshot = 2
         },
         Low = new GraphicsQualityPresetSettings
         {
@@ -176,7 +181,8 @@ public static class GraphicsSettingsDefaults
             CloudsResolutionMultiplier = 0.25,
             SkyResolution = 128,
             VegetationInstanceBudget = 8192,
-            LodBias = 1
+            LodBias = 1,
+            MaxGiProbeStatesPerSnapshot = 2
         },
         VeryLow = new GraphicsQualityPresetSettings
         {
@@ -191,7 +197,8 @@ public static class GraphicsSettingsDefaults
             CloudsResolutionMultiplier = 0.125,
             SkyResolution = 64,
             VegetationInstanceBudget = 2048,
-            LodBias = 2
+            LodBias = 2,
+            MaxGiProbeStatesPerSnapshot = 1
         }
     };
 
@@ -402,6 +409,15 @@ public static class GraphicsSettingsValidator
         {
             AddRangeIssue(issues, $"{path}.lodBias", "LOD bias", "-8 and 8");
         }
+
+        if (preset.MaxGiProbeStatesPerSnapshot is < 0 or > 16)
+        {
+            AddRangeIssue(
+                issues,
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                "Maximum GI probe states per snapshot",
+                "0 and 16");
+        }
     }
 
     static bool IsPowerOfTwoInRange(int value)
@@ -541,6 +557,7 @@ public static class GraphicsSettingsYamlCodec
 
         var issues = new List<GraphicsSettingsValidationIssue>();
         var version = ReadInt(root, "settingsVersion", "settingsVersion", issues);
+        var legacyVersion = version == ProjectSettingsDocument.LegacyVersion;
         var graphics = ReadMapping(root, "graphics", "graphics", issues);
         var defaultQuality = ReadEnum<GraphicsQualityLevel>(
             graphics,
@@ -560,13 +577,16 @@ public static class GraphicsSettingsYamlCodec
                 quality.ToString(),
                 $"graphics.presets.{quality}",
                 GraphicsSettingsDefaults.Presets.Get(quality),
+                legacyVersion,
                 issues);
             presets = presets.With(quality, preset);
         }
 
         var parsed = new ProjectSettingsDocument
         {
-            SettingsVersion = version,
+            SettingsVersion = legacyVersion
+                ? ProjectSettingsDocument.CurrentVersion
+                : version,
             Graphics = new ProjectGraphicsSettings
             {
                 DefaultQuality = defaultQuality,
@@ -575,7 +595,14 @@ public static class GraphicsSettingsYamlCodec
         };
         issues.AddRange(GraphicsSettingsValidator.Validate(parsed).Issues);
         if (issues.Count == 0)
+        {
+            if (legacyVersion)
+            {
+                diagnostics.Add(
+                    $"{source}: migrated settingsVersion 1 to 2 using the default GI probe-state budgets.");
+            }
             return parsed;
+        }
 
         AddDiagnostics(diagnostics, source, issues);
         return GraphicsSettingsDefaults.Project;
@@ -684,6 +711,7 @@ public static class GraphicsSettingsYamlCodec
         string key,
         string path,
         GraphicsQualityPresetSettings defaults,
+        bool allowMissingGiProbeStateBudget,
         ICollection<GraphicsSettingsValidationIssue> issues)
     {
         var preset = ReadMapping(parent, key, path, issues);
@@ -705,7 +733,19 @@ public static class GraphicsSettingsYamlCodec
                 $"{path}.vegetationInstanceBudget",
                 defaults.VegetationInstanceBudget,
                 issues),
-            LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues)
+            LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues),
+            MaxGiProbeStatesPerSnapshot = allowMissingGiProbeStateBudget
+                ? ReadOptionalInt(
+                    preset,
+                    "maxGiProbeStatesPerSnapshot",
+                    $"{path}.maxGiProbeStatesPerSnapshot",
+                    defaults.MaxGiProbeStatesPerSnapshot,
+                    issues)
+                : ReadInt(
+                    preset,
+                    "maxGiProbeStatesPerSnapshot",
+                    $"{path}.maxGiProbeStatesPerSnapshot",
+                    issues)
         };
     }
 
@@ -729,6 +769,10 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(preset, "skyResolution", settings.SkyResolution);
         SetScalar(preset, "vegetationInstanceBudget", settings.VegetationInstanceBudget);
         SetScalar(preset, "lodBias", settings.LodBias);
+        SetScalar(
+            preset,
+            "maxGiProbeStatesPerSnapshot",
+            settings.MaxGiProbeStatesPerSnapshot);
     }
 
     static YamlMappingNode ReadMapping(
@@ -792,23 +836,11 @@ public static class GraphicsSettingsYamlCodec
         ICollection<GraphicsSettingsValidationIssue> issues)
     {
         if (parent is null ||
-            !parent.Children.TryGetValue(new YamlScalarNode(key), out var node))
+            !parent.Children.ContainsKey(new YamlScalarNode(key)))
         {
             return defaultValue;
         }
-        if (node is YamlScalarNode scalar &&
-            scalar.Value is not null &&
-            int.TryParse(
-                scalar.Value,
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var parsed))
-        {
-            return parsed;
-        }
-
-        issues.Add(new GraphicsSettingsValidationIssue(path, "An integer value is required."));
-        return 0;
+        return ReadInt(parent, key, path, issues);
     }
 
     static double ReadDouble(

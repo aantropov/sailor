@@ -48,6 +48,7 @@ namespace
 		TVector<uint32_t> m_lodFirstIndices{};
 		TVector<uint32_t> m_lodIndexCounts{};
 		TVector<LandscapeVegetationInstance> m_vegetation{};
+		TVector<Math::Triangle> m_bakeTriangles{};
 		Math::AABB m_localBounds{};
 	};
 
@@ -466,6 +467,31 @@ namespace
 		}
 
 		BuildLandscapeLodGeometry(data, result);
+
+		result.m_bakeTriangles.Reserve(result.m_collisionIndices.Num() / 3u);
+		for (size_t index = 0u;
+			index + 2u < result.m_collisionIndices.Num();
+			index += 3u)
+		{
+			Math::Triangle triangle{};
+			for (size_t vertex = 0u; vertex < 3u; ++vertex)
+			{
+				const auto& source = result.m_vertices[
+					result.m_collisionIndices[index + vertex]];
+				triangle.m_vertices[vertex] = source.m_position;
+				triangle.m_normals[vertex] = source.m_normal;
+				triangle.m_tangent[vertex] = source.m_tangent;
+				triangle.m_bitangent[vertex] = source.m_bitangent;
+				triangle.m_uvs[vertex] = source.m_texcoord;
+				triangle.m_uvs2[vertex] = source.m_texcoord;
+				triangle.m_colors[vertex] = source.m_color;
+			}
+			triangle.m_materialIndex = 0u;
+			triangle.m_centroid =
+				(triangle.m_vertices[0] + triangle.m_vertices[1] + triangle.m_vertices[2]) /
+				3.0f;
+			result.m_bakeTriangles.Add(std::move(triangle));
+		}
 
 		for (size_t profileIndex = 0u; profileIndex < data.m_vegetationProfiles.Num(); ++profileIndex)
 		{
@@ -1951,6 +1977,17 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 				static_cast<size_t>(data.m_chunkResolution + 1u) *
 				(data.m_chunkResolution + 1u);
 			chunk.m_heightSamples.Resize(terrainVertexCount);
+			chunk.m_bakeTriangles =
+				TSharedPtr<TVector<Math::Triangle>>::Make(std::move(cpu.m_bakeTriangles));
+			chunk.m_localBounds = cpu.m_localBounds;
+			chunk.m_bakeVegetation.Reserve(cpu.m_vegetation.Num());
+			for (const auto& placement : cpu.m_vegetation)
+			{
+				LandscapeBakeVegetationInstance bakeInstance;
+				bakeInstance.m_profileIndex = placement.m_profileIndex;
+				bakeInstance.m_localMatrix = placement.m_transform;
+				chunk.m_bakeVegetation.Add(std::move(bakeInstance));
+			}
 			TVector<glm::vec3> collisionVertices;
 			collisionVertices.Resize(terrainVertexCount);
 			for (size_t vertexIndex = 0u; vertexIndex < terrainVertexCount; ++vertexIndex)
@@ -3010,6 +3047,143 @@ void LandscapeECS::AppendSceneView(RHI::RHISceneViewPtr& sceneView) const
 		return;
 	}
 	sceneView->AddSceneVersion(m_publishedSceneVersion);
+}
+
+bool LandscapeECS::CollectBakeGeometrySnapshots(
+	TVector<LandscapeBakeGeometrySnapshot>& outSnapshots,
+	std::string& outDiagnostic) const
+{
+	outSnapshots.Clear();
+	outDiagnostic.clear();
+
+	for (size_t componentIndex = 0u; componentIndex < m_components.Num(); ++componentIndex)
+	{
+		if (!IsComponentRegistered(componentIndex))
+		{
+			continue;
+		}
+
+		const auto& data = m_components[componentIndex];
+		GameObjectPtr owner =
+			const_cast<ObjectPtr&>(data.GetOwner()).StaticCast<GameObject>();
+		if (!owner || owner->GetMobilityType() == EMobilityType::Dynamic)
+		{
+			continue;
+		}
+
+		const std::string landscapeId = owner->GetInstanceId().ToString();
+		const size_t expectedChunks =
+			static_cast<size_t>(data.m_chunksX) * data.m_chunksZ;
+		if (data.IsDirty() || data.m_chunks.Num() != expectedChunks)
+		{
+			outDiagnostic = "landscape '" + owner->GetName() +
+				"' is still rebuilding; wait for its chunks and resources before baking";
+			return false;
+		}
+		if (!data.m_runtimeMaterial || !data.m_runtimeMaterial->IsReady())
+		{
+			outDiagnostic = "landscape '" + owner->GetName() +
+				"' material is not ready for baking";
+			return false;
+		}
+
+		const glm::mat4 ownerMatrix =
+			owner->GetTransformComponent().GetCachedWorldMatrix();
+		for (size_t chunkIndex = 0u; chunkIndex < data.m_chunks.Num(); ++chunkIndex)
+		{
+			const auto& chunk = data.m_chunks[chunkIndex];
+			if (!chunk.m_bakeTriangles || chunk.m_bakeTriangles->IsEmpty() ||
+				!chunk.m_localBounds.IsValid() || chunk.m_buildRevision == 0u)
+			{
+				outDiagnostic = "landscape '" + owner->GetName() +
+					"' has an incomplete CPU bake snapshot; rebuild the landscape before baking";
+				return false;
+			}
+
+			LandscapeBakeGeometrySnapshot terrain;
+			terrain.m_sourceId = "landscape:" + landscapeId +
+				":chunk:" + std::to_string(chunkIndex);
+			terrain.m_triangles = chunk.m_bakeTriangles;
+			terrain.m_worldMatrix = ownerMatrix;
+			terrain.m_worldBounds = chunk.m_localBounds;
+			terrain.m_worldBounds.Apply(ownerMatrix);
+			terrain.m_materials.Add(data.m_runtimeMaterial);
+			terrain.m_sourceRevision = chunk.m_buildRevision;
+			outSnapshots.Add(std::move(terrain));
+
+			for (size_t instanceIndex = 0u;
+				instanceIndex < chunk.m_bakeVegetation.Num();
+				++instanceIndex)
+			{
+				const auto& placement = chunk.m_bakeVegetation[instanceIndex];
+				if (placement.m_profileIndex >= data.m_vegetationProfiles.Num())
+				{
+					outDiagnostic = "landscape '" + owner->GetName() +
+						"' contains an invalid vegetation bake profile";
+					return false;
+				}
+
+				const auto& profile =
+					data.m_vegetationProfiles[placement.m_profileIndex];
+				if (!profile.m_model || !profile.m_model->IsStructurallyReady())
+				{
+					outDiagnostic = "vegetation profile " +
+						std::to_string(placement.m_profileIndex) + " on landscape '" +
+						owner->GetName() + "' is not ready for baking";
+					return false;
+				}
+				if (profile.m_materialFileId &&
+					(!profile.m_material || !profile.m_material->IsReady()))
+				{
+					outDiagnostic = "vegetation material for profile " +
+						std::to_string(placement.m_profileIndex) + " on landscape '" +
+						owner->GetName() + "' is not ready for baking";
+					return false;
+				}
+				if (!profile.m_materialFileId && !profile.m_bModelMaterialsRequested)
+				{
+					outDiagnostic = "vegetation model materials for profile " +
+						std::to_string(placement.m_profileIndex) + " on landscape '" +
+						owner->GetName() + "' are not ready for baking";
+					return false;
+				}
+				for (const MaterialPtr& material : profile.m_modelMaterials)
+				{
+					if (material && !material->IsReady())
+					{
+						outDiagnostic = "vegetation model material for profile " +
+							std::to_string(placement.m_profileIndex) + " on landscape '" +
+							owner->GetName() + "' is not ready for baking";
+						return false;
+					}
+				}
+
+				LandscapeBakeGeometrySnapshot vegetation;
+				vegetation.m_sourceId = "landscape:" + landscapeId +
+					":chunk:" + std::to_string(chunkIndex) +
+					":profile:" + std::to_string(placement.m_profileIndex) +
+					":instance:" + std::to_string(instanceIndex);
+				vegetation.m_model = profile.m_model;
+				vegetation.m_meshIndex = profile.m_meshIndex;
+				vegetation.m_worldMatrix = ownerMatrix * placement.m_localMatrix;
+				vegetation.m_worldBounds =
+					profile.m_model->GetBoundsAABB(profile.m_meshIndex);
+				vegetation.m_worldBounds.Apply(vegetation.m_worldMatrix);
+				if (profile.m_materialFileId)
+				{
+					vegetation.m_materials.Add(profile.m_material);
+				}
+				else
+				{
+					vegetation.m_materials = profile.m_modelMaterials;
+				}
+				vegetation.m_sourceRevision = chunk.m_buildRevision;
+				outSnapshots.Add(std::move(vegetation));
+			}
+		}
+	}
+
+	return true;
 }
 
 void LandscapeECS::EndPlay()

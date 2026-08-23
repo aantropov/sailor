@@ -6,6 +6,7 @@
 #include "Engine/Frame.h"
 #include "Engine/Types.h"
 #include "Engine/InstanceId.h"
+#include "Engine/GlobalIlluminationSettings.h"
 #include "AssetRegistry/FileId.h"
 #include "Containers/Map.h"
 #include "RHI/DebugContext.h"
@@ -87,6 +88,13 @@ namespace Sailor
 		SAILOR_API bool IsPhysicsSimulationEnabled() const { return m_bPhysicsSimulationEnabled; }
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
+		SAILOR_API const GlobalIlluminationWorldSettings& GetGlobalIlluminationSettings() const
+		{
+			return m_globalIllumination;
+		}
+		SAILOR_API bool SetGlobalIlluminationSettings(
+			GlobalIlluminationWorldSettings settings,
+			std::string& outDiagnostic);
 
 		SAILOR_API void ResolveExternalDependencies();
 		SAILOR_API void SetEditorSelection(const TVector<InstanceId>& selection);
@@ -149,6 +157,7 @@ namespace Sailor
 
 		size_t m_currentFrame;
 		std::string m_name;
+		GlobalIlluminationWorldSettings m_globalIllumination{};
 
 		TVector<GameObjectPtr> m_objects;
 		TMap<InstanceId, ObjectPtr> m_objectsMap;

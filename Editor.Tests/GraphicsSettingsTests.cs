@@ -22,6 +22,9 @@ public sealed class GraphicsSettingsTests
         Assert.Equal(2048, project.Graphics.Presets.VeryLow.VegetationInstanceBudget);
         Assert.Equal(0.125, project.Graphics.Presets.VeryLow.CloudsResolutionMultiplier);
         Assert.Equal(2, project.Graphics.Presets.VeryLow.LodBias);
+        Assert.Equal(4, project.Graphics.Presets.Ultra.MaxGiProbeStatesPerSnapshot);
+        Assert.Equal(3, project.Graphics.Presets.High.MaxGiProbeStatesPerSnapshot);
+        Assert.Equal(1, project.Graphics.Presets.VeryLow.MaxGiProbeStatesPerSnapshot);
         Assert.True(GraphicsSettingsValidator.Validate(project).IsValid);
         Assert.True(GraphicsSettingsValidator.Validate(GraphicsSettingsDefaults.Editor).IsValid);
 
@@ -32,6 +35,40 @@ public sealed class GraphicsSettingsTests
         Assert.Contains("VeryLow:", yaml);
         Assert.Contains("supportSoftShadows: true", yaml);
         Assert.Contains("vegetationInstanceBudget: 32768", yaml);
+        Assert.Contains("maxGiProbeStatesPerSnapshot: 4", yaml);
+    }
+
+    [Fact]
+    public void LegacyProjectSettings_MigrateWithQualitySpecificGiBudgets()
+    {
+        var root = LoadRoot(
+            GraphicsSettingsYamlCodec.SerializeProject(
+                GraphicsSettingsDefaults.Project));
+        root.Children[new YamlScalarNode("settingsVersion")] =
+            new YamlScalarNode("1");
+        var graphics = Assert.IsType<YamlMappingNode>(
+            root.Children[new YamlScalarNode("graphics")]);
+        var presets = Assert.IsType<YamlMappingNode>(
+            graphics.Children[new YamlScalarNode("presets")]);
+        foreach (var quality in Enum.GetValues<GraphicsQualityLevel>())
+        {
+            var preset = Assert.IsType<YamlMappingNode>(
+                presets.Children[new YamlScalarNode(quality.ToString())]);
+            preset.Children.Remove(
+                new YamlScalarNode("maxGiProbeStatesPerSnapshot"));
+        }
+        var diagnostics = new List<string>();
+
+        var migrated = GraphicsSettingsYamlCodec.ParseProject(
+            Save(root),
+            diagnostics,
+            "legacy project fixture");
+
+        Assert.Equal(ProjectSettingsDocument.CurrentVersion, migrated.SettingsVersion);
+        Assert.Equal(4, migrated.Graphics.Presets.Ultra.MaxGiProbeStatesPerSnapshot);
+        Assert.Equal(1, migrated.Graphics.Presets.VeryLow.MaxGiProbeStatesPerSnapshot);
+        Assert.Contains(diagnostics, value =>
+            value.Contains("migrated settingsVersion 1 to 2", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -49,7 +86,8 @@ public sealed class GraphicsSettingsTests
             CloudsResolutionMultiplier = 3.0,
             SkyResolution = 96,
             VegetationInstanceBudget = 1048577,
-            LodBias = 9
+            LodBias = 9,
+            MaxGiProbeStatesPerSnapshot = 17
         };
         var document = GraphicsSettingsDefaults.Project with
         {
@@ -74,6 +112,9 @@ public sealed class GraphicsSettingsTests
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.skyResolution");
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.vegetationInstanceBudget");
         Assert.Contains(result.Issues, x => x.Path == "graphics.presets.High.lodBias");
+        Assert.Contains(
+            result.Issues,
+            x => x.Path == "graphics.presets.High.maxGiProbeStatesPerSnapshot");
     }
 
     [Fact]
@@ -133,7 +174,8 @@ public sealed class GraphicsSettingsTests
                     loaded.Project.Graphics.Presets.Ultra with
                     {
                         ResolutionFactor = 0.95,
-                        ShadowBias = 1.25
+                        ShadowBias = 1.25,
+                        MaxGiProbeStatesPerSnapshot = 2
                     })
             }
         };
@@ -156,6 +198,11 @@ public sealed class GraphicsSettingsTests
         Assert.Equal("kept", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("futureUltraOption")]).Value);
         Assert.Equal("0.95", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("resolutionFactor")]).Value);
         Assert.Equal("1.25", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("shadowBias")]).Value);
+        Assert.Equal(
+            "2",
+            Assert.IsType<YamlScalarNode>(
+                savedUltra.Children[new YamlScalarNode(
+                    "maxGiProbeStatesPerSnapshot")]).Value);
     }
 
     [Fact]
@@ -213,6 +260,7 @@ public sealed class GraphicsSettingsTests
         var editorYaml = await File.ReadAllTextAsync(workspace.Paths.EditorSettingsPath);
         Assert.Contains("selectedQuality: Ultra", editorYaml);
         Assert.Contains("statsMode: RenderStatsAndQueries", editorYaml);
+        Assert.Contains("settingsVersion: 1", editorYaml);
         var savedEditorRoot = LoadRoot(editorYaml);
         Assert.Equal(
             "preserved",
@@ -553,7 +601,8 @@ public sealed class GraphicsSettingsTests
             draft.GetPreset(GraphicsQualityLevel.Ultra) with
             {
                 ResolutionFactor = "unfinished-value",
-                ShadowBias = "bias-in-progress"
+                ShadowBias = "bias-in-progress",
+                MaxGiProbeStatesPerSnapshot = "too-many"
             });
 
         var afterSearchRefresh = session.GetOrCreate(snapshot);
@@ -585,6 +634,10 @@ public sealed class GraphicsSettingsTests
         Assert.Contains(
             issues,
             issue => issue.Path == "graphics.presets.Ultra.shadowBias");
+        Assert.Contains(
+            issues,
+            issue => issue.Path ==
+                "graphics.presets.Ultra.maxGiProbeStatesPerSnapshot");
 
         var reverted = session.Replace(snapshot);
         Assert.False(reverted.IsDirty);
@@ -594,6 +647,10 @@ public sealed class GraphicsSettingsTests
         Assert.Equal(
             "0",
             reverted.GetPreset(GraphicsQualityLevel.Ultra).ShadowBias);
+        Assert.Equal(
+            "4",
+            reverted.GetPreset(GraphicsQualityLevel.Ultra)
+                .MaxGiProbeStatesPerSnapshot);
     }
 
     static YamlMappingNode LoadRoot(string yaml)

@@ -2,6 +2,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/Renderer.h"
 #include "RHI/GraphicsDriver.h"
+#include "RHI/GlobalIllumination.h"
 #include "RHI/Shader.h"
 #include "RHI/VertexDescription.h"
 #include "RHI/RenderTarget.h"
@@ -12,6 +13,7 @@
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Settings/GraphicsSettings.h"
 #include "Tasks/Tasks.h"
+#include "Core/LogMacros.h"
 
 #include <atomic>
 #include <limits>
@@ -60,6 +62,7 @@ namespace
 		RHIShaderBindingSetPtr m_lightsBindings{};
 		RHIShaderBindingSetPtr m_lightsTemplate{};
 		RHIShaderBindingSetPtr m_sharedLightsStorage{};
+		RHIShaderBindingSetPtr m_sharedGlobalIlluminationStorage{};
 		RHIShaderBindingSetPtr m_frameBindings{};
 		RHIShaderBindingSetPtr m_lightCullingBindings{};
 		RHITexturePtr m_lightCullingDepth{};
@@ -82,18 +85,32 @@ namespace
 		{
 			m_uploadedLightingRevision = InvalidContentHash;
 			m_uploadedAnimationRevision = InvalidContentHash;
+			m_uploadedGlobalIlluminationLayout = InvalidContentHash;
+			m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
+			m_uploadedGlobalIlluminationStates = InvalidContentHash;
+			m_uploadedGlobalIlluminationHeader = InvalidContentHash;
 			m_lightsSource.Clear();
 			m_bonesSource.Clear();
 		}
 
 		RHIShaderBindingSetPtr m_lightsStorage{};
 		RHIShaderBindingSetPtr m_boneBindings{};
+		RHIShaderBindingSetPtr m_globalIlluminationStorage{};
 		TSharedPtr<TVector<RHILightShaderData>> m_lightsSource{};
 		TSharedPtr<TVector<glm::mat4>> m_bonesSource{};
 		size_t m_lightCapacity = 0u;
 		size_t m_boneCapacity = 0u;
+		size_t m_globalIlluminationNodeCapacity = 0u;
+		size_t m_globalIlluminationBrickCapacity = 0u;
+		size_t m_globalIlluminationProbeCapacity = 0u;
+		size_t m_globalIlluminationCoefficientCapacity = 0u;
+		size_t m_globalIlluminationStateCapacity = 0u;
 		uint64_t m_uploadedLightingRevision = InvalidContentHash;
 		uint64_t m_uploadedAnimationRevision = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationLayout = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationCoefficients = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationStates = InvalidContentHash;
+		uint64_t m_uploadedGlobalIlluminationHeader = InvalidContentHash;
 	};
 
 	size_t GrowSubmissionCapacity(size_t currentCapacity, size_t requiredCapacity)
@@ -125,6 +142,45 @@ namespace
 		result ^= values.Num();
 		result *= 1099511628211ull;
 		return result;
+	}
+
+	template<typename T>
+	uint64_t HashSubmissionValue(const T& value)
+	{
+		uint64_t result = 1469598103934665603ull;
+		const auto* bytes = reinterpret_cast<const uint8_t*>(&value);
+		for (size_t index = 0u; index < sizeof(T); ++index)
+		{
+			result ^= bytes[index];
+			result *= 1099511628211ull;
+		}
+		return result;
+	}
+
+	EGlobalIlluminationDebugVisualization ResolveGlobalIlluminationDebug(
+		ESceneViewRenderMode renderMode) noexcept
+	{
+		switch (renderMode)
+		{
+		case ESceneViewRenderMode::GlobalIlluminationOnly:
+			return EGlobalIlluminationDebugVisualization::IndirectOnly;
+		case ESceneViewRenderMode::GlobalIlluminationProbes:
+			return EGlobalIlluminationDebugVisualization::Probes;
+		case ESceneViewRenderMode::GlobalIlluminationBricks:
+			return EGlobalIlluminationDebugVisualization::Bricks;
+		case ESceneViewRenderMode::GlobalIlluminationValidity:
+			return EGlobalIlluminationDebugVisualization::Validity;
+		case ESceneViewRenderMode::GlobalIlluminationVisibility:
+			return EGlobalIlluminationDebugVisualization::Visibility;
+		case ESceneViewRenderMode::GlobalIlluminationResidency:
+			return EGlobalIlluminationDebugVisualization::Residency;
+		case ESceneViewRenderMode::GlobalIlluminationAssetIdentity:
+			return EGlobalIlluminationDebugVisualization::AssetIdentity;
+		case ESceneViewRenderMode::GlobalIlluminationFallback:
+			return EGlobalIlluminationDebugVisualization::Fallback;
+		default:
+			return EGlobalIlluminationDebugVisualization::Lit;
+		}
 	}
 
 	void CloneTextureBindings(
@@ -287,6 +343,266 @@ namespace
 			sharedResources->m_uploadedLightingRevision = snapshot.m_lightingRevision;
 		}
 
+		const RHIGlobalIlluminationSnapshotPtr globalIllumination =
+			snapshot.m_globalIllumination;
+		bool bHasGlobalIllumination = globalIllumination &&
+			globalIllumination->m_layout &&
+			!globalIllumination->m_states.IsEmpty();
+		size_t numGlobalIlluminationNodes = 0u;
+		size_t numGlobalIlluminationBricks = 0u;
+		size_t numGlobalIlluminationProbes = 0u;
+		size_t numGlobalIlluminationCoefficients = 0u;
+		size_t numGlobalIlluminationStates = 0u;
+		if (bHasGlobalIllumination)
+		{
+			numGlobalIlluminationBricks =
+				globalIllumination->m_layout->m_bricks.Num();
+			numGlobalIlluminationProbes =
+				globalIllumination->m_layout->m_probes.Num();
+			numGlobalIlluminationStates =
+				globalIllumination->m_states.Num();
+			bHasGlobalIllumination = numGlobalIlluminationBricks > 0u &&
+				numGlobalIlluminationProbes > 0u &&
+				numGlobalIlluminationStates > 0u &&
+				numGlobalIlluminationStates <=
+					globalIllumination->m_qualityBudget &&
+				numGlobalIlluminationProbes <=
+					(std::numeric_limits<size_t>::max)() /
+						numGlobalIlluminationStates;
+			if (bHasGlobalIllumination)
+			{
+				numGlobalIlluminationNodes =
+					numGlobalIlluminationBricks * 2u - 1u;
+				numGlobalIlluminationCoefficients =
+					numGlobalIlluminationProbes *
+					numGlobalIlluminationStates;
+			}
+		}
+
+		const bool bRecreateGlobalIlluminationStorage =
+			!sharedResources->m_globalIlluminationStorage ||
+			sharedResources->m_globalIlluminationNodeCapacity <
+				numGlobalIlluminationNodes ||
+			sharedResources->m_globalIlluminationBrickCapacity <
+				numGlobalIlluminationBricks ||
+			sharedResources->m_globalIlluminationProbeCapacity <
+				numGlobalIlluminationProbes ||
+			sharedResources->m_globalIlluminationCoefficientCapacity <
+				numGlobalIlluminationCoefficients ||
+			sharedResources->m_globalIlluminationStateCapacity <
+				numGlobalIlluminationStates;
+		if (bRecreateGlobalIlluminationStorage)
+		{
+			sharedResources->m_globalIlluminationNodeCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationNodeCapacity,
+					numGlobalIlluminationNodes);
+			sharedResources->m_globalIlluminationBrickCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationBrickCapacity,
+					numGlobalIlluminationBricks);
+			sharedResources->m_globalIlluminationProbeCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationProbeCapacity,
+					numGlobalIlluminationProbes);
+			sharedResources->m_globalIlluminationCoefficientCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationCoefficientCapacity,
+					numGlobalIlluminationCoefficients);
+			sharedResources->m_globalIlluminationStateCapacity =
+				GrowSubmissionCapacity(
+					sharedResources->m_globalIlluminationStateCapacity,
+					numGlobalIlluminationStates);
+			sharedResources->m_globalIlluminationStorage =
+				driver->CreateShaderBindings();
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationHeader",
+				sizeof(RHIGlobalIlluminationGpuHeader),
+				1u,
+				0u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationBvh",
+				sizeof(RHIGlobalIlluminationGpuBvhNode),
+				sharedResources->m_globalIlluminationNodeCapacity,
+				1u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationBricks",
+				sizeof(RHIGlobalIlluminationGpuBrick),
+				sharedResources->m_globalIlluminationBrickCapacity,
+				2u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationProbes",
+				sizeof(RHIGlobalIlluminationGpuProbe),
+				sharedResources->m_globalIlluminationProbeCapacity,
+				3u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationCoefficients",
+				sizeof(RHIGlobalIlluminationGpuCoefficients),
+				sharedResources->m_globalIlluminationCoefficientCapacity,
+				4u,
+				true);
+			driver->AddSsboToShaderBindings(
+				sharedResources->m_globalIlluminationStorage,
+				"globalIlluminationStates",
+				sizeof(RHIGlobalIlluminationGpuState),
+				sharedResources->m_globalIlluminationStateCapacity,
+				5u,
+				true);
+			sharedResources->m_globalIlluminationStorage
+				->RecalculateCompatibility();
+			sharedResources->m_uploadedGlobalIlluminationLayout =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationCoefficients =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationStates =
+				InvalidContentHash;
+			sharedResources->m_uploadedGlobalIlluminationHeader =
+				InvalidContentHash;
+		}
+
+		if (bUploadSharedPayload)
+		{
+			bool bGlobalIlluminationPayloadReady = bHasGlobalIllumination;
+			std::string globalIlluminationDiagnostic;
+			if (bHasGlobalIllumination)
+			{
+				const uint64_t layoutSignature =
+					ComputeGlobalIlluminationLayoutSignature(*globalIllumination);
+				if (sharedResources->m_uploadedGlobalIlluminationLayout !=
+					layoutSignature)
+				{
+					RHIGlobalIlluminationGpuLayout gpuLayout;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuLayout(
+							*globalIllumination->m_layout,
+							gpuLayout,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationBvh"),
+							gpuLayout.m_nodes.GetData(),
+							gpuLayout.m_nodes.Num() *
+								sizeof(RHIGlobalIlluminationGpuBvhNode),
+							0u);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationBricks"),
+							gpuLayout.m_bricks.GetData(),
+							gpuLayout.m_bricks.Num() *
+								sizeof(RHIGlobalIlluminationGpuBrick),
+							0u);
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationProbes"),
+							gpuLayout.m_probes.GetData(),
+							gpuLayout.m_probes.Num() *
+								sizeof(RHIGlobalIlluminationGpuProbe),
+							0u);
+						sharedResources->m_uploadedGlobalIlluminationLayout =
+							layoutSignature;
+					}
+				}
+
+				const uint64_t coefficientSignature =
+					ComputeGlobalIlluminationCoefficientSignature(
+						*globalIllumination);
+				if (bGlobalIlluminationPayloadReady &&
+					sharedResources->m_uploadedGlobalIlluminationCoefficients !=
+						coefficientSignature)
+				{
+					TVector<RHIGlobalIlluminationGpuCoefficients> coefficients;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuCoefficients(
+							*globalIllumination,
+							coefficients,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding(
+									"globalIlluminationCoefficients"),
+							coefficients.GetData(),
+							coefficients.Num() *
+								sizeof(RHIGlobalIlluminationGpuCoefficients),
+							0u);
+						sharedResources
+							->m_uploadedGlobalIlluminationCoefficients =
+							coefficientSignature;
+					}
+				}
+
+				const uint64_t stateSignature =
+					ComputeGlobalIlluminationStateSignature(*globalIllumination);
+				if (bGlobalIlluminationPayloadReady &&
+					sharedResources->m_uploadedGlobalIlluminationStates !=
+						stateSignature)
+				{
+					TVector<RHIGlobalIlluminationGpuState> states;
+					bGlobalIlluminationPayloadReady =
+						BuildGlobalIlluminationGpuStates(
+							*globalIllumination,
+							states,
+							globalIlluminationDiagnostic);
+					if (bGlobalIlluminationPayloadReady)
+					{
+						commands->UpdateShaderBinding(
+							transferCommandList,
+							sharedResources->m_globalIlluminationStorage
+								->GetOrAddShaderBinding("globalIlluminationStates"),
+							states.GetData(),
+							states.Num() *
+								sizeof(RHIGlobalIlluminationGpuState),
+							0u);
+						sharedResources->m_uploadedGlobalIlluminationStates =
+							stateSignature;
+					}
+				}
+			}
+
+			if (bHasGlobalIllumination && !bGlobalIlluminationPayloadReady)
+			{
+				SAILOR_LOG_ERROR(
+					"Cannot publish Global Illumination ECS GPU snapshot: %s.",
+					globalIlluminationDiagnostic.c_str());
+			}
+			const RHIGlobalIlluminationGpuHeader header =
+				BuildGlobalIlluminationGpuHeader(
+					bGlobalIlluminationPayloadReady
+						? globalIllumination.GetRawPtr()
+						: nullptr,
+					ResolveGlobalIlluminationDebug(snapshot.m_renderMode));
+			const uint64_t headerHash = HashSubmissionValue(header);
+			if (sharedResources->m_uploadedGlobalIlluminationHeader !=
+				headerHash)
+			{
+				commands->UpdateShaderBinding(
+					transferCommandList,
+					sharedResources->m_globalIlluminationStorage
+						->GetOrAddShaderBinding("globalIlluminationHeader"),
+					&header,
+					sizeof(header),
+					0u);
+				sharedResources->m_uploadedGlobalIlluminationHeader =
+					headerHash;
+			}
+		}
+
 		size_t frameGraphSamplerHash = 0u;
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_irradianceCubemap")));
 		HashCombine(frameGraphSamplerHash, Sailor::GetHash(owner->GetSampler("g_brdfSampler")));
@@ -296,6 +612,8 @@ namespace
 			bRecreateLightCulling ||
 			resources->m_lightsTemplate != lightsTemplate ||
 			resources->m_sharedLightsStorage != sharedResources->m_lightsStorage ||
+			resources->m_sharedGlobalIlluminationStorage !=
+				sharedResources->m_globalIlluminationStorage ||
 			resources->m_lightsTemplateRevision != lightsTemplateRevision ||
 			resources->m_frameGraphSamplerHash != frameGraphSamplerHash ||
 			resources->m_shadowMatrixCapacity < numShadowMatrices ||
@@ -347,6 +665,42 @@ namespace
 				resources->m_shadowAtlasTileCapacity,
 				11u,
 				true);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationHeader"),
+				"globalIlluminationHeader",
+				12u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationBvh"),
+				"globalIlluminationBvh",
+				13u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationBricks"),
+				"globalIlluminationBricks",
+				14u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationProbes"),
+				"globalIlluminationProbes",
+				15u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationCoefficients"),
+				"globalIlluminationCoefficients",
+				16u);
+			driver->AddShaderBinding(
+				resources->m_lightsBindings,
+				sharedResources->m_globalIlluminationStorage
+					->GetOrAddShaderBinding("globalIlluminationStates"),
+				"globalIlluminationStates",
+				17u);
 			CloneTextureBindings(lightsTemplate, resources->m_lightsBindings);
 			if (auto texture = owner->GetSampler("g_irradianceCubemap"))
 			{
@@ -391,6 +745,8 @@ namespace
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;
 			resources->m_sharedLightsStorage = sharedResources->m_lightsStorage;
+			resources->m_sharedGlobalIlluminationStorage =
+				sharedResources->m_globalIlluminationStorage;
 			resources->m_lightsTemplateRevision = lightsTemplateRevision;
 			resources->m_frameGraphSamplerHash = frameGraphSamplerHash;
 			resources->m_shadowMatricesHash = InvalidContentHash;

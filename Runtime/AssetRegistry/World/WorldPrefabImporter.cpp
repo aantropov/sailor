@@ -129,6 +129,10 @@ YAML::Node WorldPrefab::Serialize() const
 
 	YAML::Node outData;
 	::Serialize(outData, "name", m_name);
+	if (!m_globalIllumination.m_probes.IsEmpty())
+	{
+		outData["globalIllumination"] = m_globalIllumination.Serialize();
+	}
 
 	TVector<YAML::Node> nodes;
 	for (const auto& prefab : m_gameObjects)
@@ -162,8 +166,15 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 	m_bIsReady.store(false, std::memory_order_release);
 	m_loadDiagnostic.clear();
 	m_name.clear();
+	m_globalIllumination.m_probes.Clear();
 	m_gameObjects.Clear();
 	::Deserialize(inData, "name", m_name);
+	if (!m_globalIllumination.Deserialize(inData, m_loadDiagnostic))
+	{
+		m_loadDiagnostic = "invalid world global illumination settings: " +
+			m_loadDiagnostic;
+		return;
+	}
 
 	if (!inData["prefabs"] || !inData["prefabs"].IsSequence())
 	{
@@ -1284,6 +1295,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 {
 	auto res = App::GetSubmodule<WorldPrefabImporter>()->Create();
 	res->m_name = world->GetName();
+	res->m_globalIllumination = world->GetGlobalIlluminationSettings();
 
 	TVector<PendingPrefabLinkUpdate> pendingLinkUpdates;
 

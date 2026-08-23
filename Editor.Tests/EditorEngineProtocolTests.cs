@@ -128,6 +128,8 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(
             23,
             ProtocolResponse.EditorRenderModeResultFieldNumber);
+        Assert.Equal(5, (int)EditorRenderMode.GlobalIlluminationOnly);
+        Assert.Equal(12, (int)EditorRenderMode.GlobalIlluminationFallback);
     }
 
 }
