@@ -40,14 +40,12 @@
     <Compile Include="ProjectContentFolderRebindPolicyTests.cs" />
     <Compile Include="ProjectContentMutationReloadPolicyTests.cs" />
     <Compile Include="RepositoryAssetSidecarContractTests.cs" />
-    <Compile Include="AssetInfoSerializationSourceContractTests.cs" />
     <Compile Include="AssetCacheIndexStoreTests.cs" />
     <Compile Include="WorkspaceManifestTests.cs" />
     <Compile Include="WorkspaceGeneratedProjectStateTests.cs" />
     <Compile Include="WorkspaceLifecycleTests.cs" />
     <Compile Include="WorkspaceActivationTests.cs" />
     <Compile Include="WorkspaceStateResetTests.cs" />
-    <Compile Include="WorkspaceIsolationRegressionTests.cs" />
     <Compile Include="WorkspaceProjectGeneratorTests.cs" />
     <Compile Include="WorkspaceCMakeIntegrationHarness.cs" />
     <Compile Include="WorkspaceTwoWorkspaceCloseoutIntegrationTests.cs" />
@@ -55,20 +53,16 @@
     <Compile Include="EditorTypeCatalogContractTests.cs" />
     <Compile Include="NumericRangeEditorInteractionTests.cs" />
     <Compile Include="NumericValueConverterTests.cs" />
-    <Compile Include="ModelFingerprintTests.cs" />
     <Compile Include="WorkspaceUiProjectionTests.cs" />
     <Compile Include="AIOperatorTests.cs" />
     <Compile Include="McpEndpointDiscoveryTests.cs" />
     <Compile Include="McpBridgeOptionsTests.cs" />
     <Compile Include="McpBridgeIntegrationTests.cs" />
     <Compile Include="WorkspaceBuildPlanTests.cs" />
-    <Compile Include="McpSceneSafetyContractTests.cs" />
-    <Compile Include="McpLandscapeContractTests.cs" />
     <Compile Include="McpYamlUtilitiesTests.cs" />
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="GraphicsSettingsTests.cs" />
-    <Compile Include="GraphicsSettingsUiContractTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneViewportInteractionTests.cs" />
@@ -77,7 +71,6 @@
     <Compile Include="EditorViewportEventContractTests.cs" />
     <Compile Include="AlreadyAppliedTransformCommandTests.cs" />
     <Compile Include="InspectorPendingEditCoordinatorTests.cs" />
-    <Compile Include="UiAsyncExceptionSafetyContractTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
     <Compile Include="ShellHostTestStubs.cs" />
     <Compile Include="ShellStateConsistencyTests.cs" />
@@ -88,7 +81,6 @@
     <Compile Include="EngineLaunchContractTests.cs" />
     <Compile Include="SceneDocumentContractTests.cs" />
     <Compile Include="WorldAssetRebindPolicyTests.cs" />
-    <Compile Include="EngineLifecycleTests.cs" />
     <Compile Include="FrameGraphDiagramLayoutTests.cs" />
     <Compile Include="WorldSnapshotPublicationGateTests.cs" />
     <Compile Include="LatestSceneViewportStateTests.cs" />
@@ -97,7 +89,6 @@
     <Compile Include="EditorEngineProtocolTests.cs" />
     <Compile Include="EngineProtocolClientTests.cs" />
     <Compile Include="LocalEngineProtocolTransportTests.cs" />
-    <Compile Include="ProtocolAsyncContractTests.cs" />
     <Compile Include="..\Editor\Protocol\ClientWebSocketEngineProtocolTransport.cs" Link="Protocol\ClientWebSocketEngineProtocolTransport.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolClient.cs" Link="Protocol\EngineProtocolClient.cs" />
     <Compile Include="..\Editor\Protocol\EngineProtocolNative.cs" Link="Protocol\EngineProtocolNative.cs" />

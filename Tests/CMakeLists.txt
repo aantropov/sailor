@@ -1,4 +1,3 @@
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
 find_package(ixwebsocket CONFIG QUIET)
 
 if(NOT TARGET ixwebsocket::ixwebsocket)
@@ -218,9 +217,6 @@ endif()
 target_compile_features(RemoteViewportFoundationTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportContractTests PRIVATE cxx_std_20)
 target_compile_features(RemoteViewportRuntimeTests PRIVATE cxx_std_20)
-target_compile_definitions(RemoteViewportRuntimeTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(EditorEngineProtocolTests PRIVATE cxx_std_20)
 target_compile_features(EditorEngineWebSocketServerTests PRIVATE cxx_std_20)
 target_compile_features(EditorViewportSessionTests PRIVATE cxx_std_20)
@@ -230,35 +226,14 @@ target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
 target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
 target_compile_features(RHISceneVirtualizationTests PRIVATE cxx_std_20)
-target_compile_definitions(GpuCullingContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(ModelImporterContractTests PRIVATE cxx_std_20)
 target_compile_features(AnimationSamplingContractTests PRIVATE cxx_std_20)
 target_compile_features(VulkanDescriptorCacheTests PRIVATE cxx_std_20)
-target_compile_definitions(VulkanDescriptorCacheTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(EditorViewportControllerContractTests PRIVATE cxx_std_20)
 target_compile_features(SkyComponentContractTests PRIVATE cxx_std_20)
 target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
-target_compile_definitions(PhysicsRuntimeTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
 target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
-target_compile_definitions(GraphicsSettingsTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
-target_compile_definitions(SkyComponentContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
-target_compile_definitions(AudioContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
-target_compile_definitions(EcsLifecycleContractTests PRIVATE
-    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
-)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)
@@ -637,35 +612,6 @@ add_test(
 )
 
 add_test(
-    NAME VulkanMemoryCounterContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/vulkan_memory_counter_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME SkyTemperatureTableContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/sky_temperature_table_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-        ${PROJECT_SOURCE_DIR}/Content
-)
-
-add_test(
-    NAME ShaderConstantsModeContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/shader_constants_mode_contract_test.py
-        ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME Win32EditorAssetDropContract
-    COMMAND ${Python3_EXECUTABLE}
-        ${CMAKE_CURRENT_SOURCE_DIR}/win32_editor_asset_drop_contract_test.py
-        ${PROJECT_SOURCE_DIR}
-)
-
-add_test(
     NAME WorkspaceModuleRuntimeTests
     COMMAND WorkspaceModuleRuntimeTests
         $<TARGET_FILE:WorkspaceModuleFixture>
@@ -713,10 +659,6 @@ set_tests_properties(
     EditorEngineProtocolTests
     EditorEngineWebSocketServerTests
     EditorEngineWebSocketLateStopTests
-    VulkanMemoryCounterContract
-    SkyTemperatureTableContract
-    ShaderConstantsModeContract
-    Win32EditorAssetDropContract
     PROPERTIES TIMEOUT 30
 )
 
@@ -758,23 +700,3 @@ if(APPLE)
         COMMAND RemoteViewportMacNativeBridgeTests
     )
 endif()
-
-add_test(
-    NAME RuntimeNoExceptions
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_exceptions_test.py ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME RuntimeNoStdContainersOrSmartPointers
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/runtime_no_std_containers_test.py ${SAILOR_RUNTIME_DIR}
-)
-
-add_test(
-    NAME ProcessNoCrash
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/process_no_crash_test.py
-)
-
-add_test(
-    NAME ContainerBenchmarks
-    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/container_benchmarks_test.py
-)

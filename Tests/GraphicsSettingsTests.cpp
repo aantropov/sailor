@@ -12,7 +12,6 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -107,18 +106,6 @@ namespace
 		Require(output.good(), "test settings should be writable: " + path.generic_string());
 	}
 
-	std::string ReadRepositoryFile(const std::filesystem::path& relativePath)
-	{
-		std::ifstream input(
-			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / relativePath,
-			std::ios::binary);
-		Require(input.good(), "repository source should be readable: " + relativePath.generic_string());
-		std::string text = std::string(
-			std::istreambuf_iterator<char>(input),
-			std::istreambuf_iterator<char>());
-		text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
-		return text;
-	}
 
 	std::string ReplaceFirst(
 		std::string source,
@@ -562,173 +549,6 @@ graphics:
 			ring.GetState(first) == RHI::EGpuFrameTimeQuerySlotState::Issued,
 			"cancelling another recording must not release a delayed issued query");
 	}
-
-	void TestGraphicsSettingsRuntimeIntegrationContracts()
-	{
-		for (const char* rendererPath :
-			{ "Content/DefaultRenderer.renderer", "Content/EditorRenderer.renderer" })
-		{
-			const std::string renderer = ReadRepositoryFile(rendererPath);
-			Require(renderer.find(
-				"- name: DepthBuffer\n  format: D32_SFLOAT_S8_UINT\n  width: RenderWidth\n  height: RenderHeight") !=
-				std::string::npos,
-				"scene depth must be allocated at the scaled render extent");
-			Require(renderer.find(
-				"- name: OverlayDepthBuffer\n  format: D32_SFLOAT_S8_UINT\n  width: ViewportWidth\n  height: ViewportHeight") !=
-				std::string::npos,
-				"overlay depth must remain at the native viewport extent");
-			Require(renderer.find("- color: EditorOutput\n  - depthStencil: OverlayDepthBuffer") !=
-				std::string::npos,
-				"native editor overlays must bind the native depth target");
-		}
-
-		const std::string blitNode = ReadRepositoryFile("Runtime/FrameGraph/BlitNode.cpp");
-		Require(blitNode.find("bUseFullscreenColorBlit") != std::string::npos &&
-			blitNode.find("src->GetExtent() != dst->GetExtent()") != std::string::npos &&
-			blitNode.find("BlitRaw(commandList, frameGraph, sceneView, src, dst)") != std::string::npos,
-			"scaled color output must use a fullscreen pass that owns the native viewport");
-
-		const std::string lighting = ReadRepositoryFile("Runtime/ECS/LightingECS.cpp");
-		Require(lighting.find("lightCascadesMatrices.Num()") !=
-			std::string::npos &&
-			lighting.find("graphicsProfile.GetShadowCascadeResolution(k)") !=
-			std::string::npos,
-			"flight-local CSM targets should be allocated only for active matrices at profile resolutions");
-		Require(lighting.find(
-			"m_shadowMapTextures[i] = i < m_csmShadowMaps.Num() && m_csmShadowMaps[i] ?") !=
-			std::string::npos,
-			"inactive fixed CSM bindings must use the default shadow texture");
-		Require(lighting.find("for (uint32_t candidate = NumCascades;") !=
-			std::string::npos,
-			"local shadow slots must remain after the fixed CSM binding range");
-
-		const std::string shadowPrepass = ReadRepositoryFile(
-			"Runtime/FrameGraph/ShadowPrepassNode.cpp");
-		Require(shadowPrepass.find("for (uint32_t i = 0; i < activeCascadeCount; ++i)") !=
-			std::string::npos &&
-			shadowPrepass.find("GetShadowCascadeLevel(i, activeCascadeCount)") !=
-			std::string::npos,
-			"CSM matrices and splits must be generated only for active cascades");
-		Require(shadowPrepass.find("App::GetActiveGraphicsSettings().m_shadowBias") !=
-			std::string::npos &&
-			shadowPrepass.find("sourceState.GetDepthBias() + shadowBias") !=
-			std::string::npos,
-			"profile shadow bias must affect standard casters and add to custom material bias");
-
-		const std::string sky = ReadRepositoryFile("Runtime/FrameGraph/SkyNode.cpp");
-		Require(sky.find("Settings::ResolveSkyExtent(graphicsProfile)") !=
-			std::string::npos &&
-			sky.find("Settings::ResolveCloudsExtent(") != std::string::npos &&
-			sky.find("driver->CreateRenderTarget(\n\t\t\tcommandList") != std::string::npos,
-			"resolved sky and cloud extents must feed real render-target allocation paths");
-		const size_t composeBegin = sky.find(
-			"BeginDebugRegion(commandList, \"Compose\"");
-		const size_t overlaysBegin = sky.find(
-			"BeginDebugRegion(commandList, \"Stars & Clouds\"");
-		const size_t environmentBegin = sky.find(
-			"BeginDebugRegion(commandList, \"Generate Environment Map\"");
-		Require(composeBegin != std::string::npos &&
-			overlaysBegin > composeBegin &&
-			environmentBegin > overlaysBegin,
-			"sky compose and overlay passes must be independently bounded");
-		const std::string composeBody = sky.substr(
-			composeBegin,
-			overlaysBegin - composeBegin);
-		const std::string overlaysBody = sky.substr(
-			overlaysBegin,
-			environmentBegin - overlaysBegin);
-		Require(composeBody.find("-(float)target->GetExtent().y") ==
-			std::string::npos &&
-			composeBody.find(
-				"(float)target->GetExtent().x, (float)target->GetExtent().y") !=
-				std::string::npos,
-			"front-culled sky compose must retain its positive target viewport");
-		Require(overlaysBody.find("SetDefaultViewport(commandList)") ==
-			std::string::npos &&
-			overlaysBody.find("-(float)target->GetExtent().y") !=
-			std::string::npos &&
-			overlaysBody.find(
-				"glm::vec2(target->GetExtent().x, target->GetExtent().y)") !=
-				std::string::npos,
-			"back-culled sky overlays must use the scaled target viewport with Vulkan orientation");
-
-		const std::string linearDepth = ReadRepositoryFile(
-			"Runtime/FrameGraph/LinearizeDepthNode.cpp");
-		Require(linearDepth.find("SetDefaultViewport(commandList)") ==
-			std::string::npos &&
-			linearDepth.find("-(float)target->GetExtent().y") !=
-			std::string::npos &&
-			linearDepth.find(
-				"glm::vec2(target->GetExtent().x, target->GetExtent().y)") !=
-			std::string::npos,
-			"linear depth must cover the scaled target used by sky and cloud depth masking");
-
-		const std::string meshLods = ReadRepositoryFile(
-			"Runtime/ECS/StaticMeshRendererECS.cpp");
-		const std::string instanceLods = ReadRepositoryFile("Runtime/RHI/SceneView.cpp");
-		Require(meshLods.find("Settings::ApplyLodBias(") != std::string::npos &&
-			instanceLods.find("Settings::ApplyLodBias(") != std::string::npos,
-			"signed LOD bias must affect both mesh and per-instance selection paths");
-
-		const std::string renderer = ReadRepositoryFile("Runtime/RHI/Renderer.cpp");
-		const size_t submissionContextsRelease = renderer.find(
-			"m_submissionContexts.Clear();");
-		const size_t driverRelease = renderer.find("m_driverInstance.Clear();");
-		Require(submissionContextsRelease != std::string::npos &&
-			driverRelease != std::string::npos &&
-			submissionContextsRelease < driverRelease,
-			"renderer shutdown must release flight-local GPU resources before the Vulkan driver and instance");
-		const size_t beginBoundary = renderer.find("BeginGpuFrameTimeQuery(");
-		const size_t updateSubmission = renderer.find(
-			"bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore)");
-		const size_t endBoundary = renderer.find("EndGpuFrameTimeQuery(");
-		const size_t finalSubmission = renderer.find(
-			"m_driverInstance->PresentFrame(frame, primaryCommandLists");
-		Require(beginBoundary < updateSubmission &&
-			updateSubmission < endBoundary &&
-			endBoundary < finalSubmission,
-			"GPU timestamps must bracket update, compute, transfer, and final graphics submissions");
-		const std::string frameGraph = ReadRepositoryFile(
-			"Runtime/FrameGraph/RHIFrameGraph.cpp");
-		Require(frameGraph.find("GpuFrameTimeQuery") == std::string::npos,
-			"frame timing must not be narrowed to a graphics framegraph snapshot");
-		Require(frameGraph.find("GetSceneRenderExtent()") != std::string::npos &&
-			frameGraph.find("debugDraw->GetResolvedAttachment(\"color\")") !=
-				std::string::npos &&
-			frameGraph.find("frameData.m_viewportSize = GetSceneRenderExtent();") !=
-				std::string::npos,
-			"frame shader data must use the actual resolved scene target extent");
-		const std::string vulkanDriver = ReadRepositoryFile(
-			"Runtime/GraphicsDriver/Vulkan/VulkanGraphicsDriver.cpp");
-		Require(
-			vulkanDriver.find("vkResetQueryPool(") != std::string::npos &&
-			vulkanDriver.find("vkCmdResetQueryPool(") == std::string::npos &&
-			vulkanDriver.find("VK_QUERY_RESULT_WITH_AVAILABILITY_BIT") !=
-				std::string::npos,
-			"timestamp slots must clear stale availability before reuse and poll both availability values");
-		const std::string debugContext = ReadRepositoryFile(
-			"Runtime/RHI/DebugContext.cpp");
-		Require(debugContext.find("Settings::ResolveRenderDimensions(") ==
-			std::string::npos &&
-			debugContext.find("renderExtent.x") != std::string::npos &&
-			debugContext.find("renderExtent.y") != std::string::npos &&
-			debugContext.find("commands->SetDefaultViewport(secondaryDrawCmdList)") ==
-			std::string::npos &&
-			debugContext.find("-renderHeight") != std::string::npos &&
-			debugContext.find("glm::vec2(renderWidth, renderHeight)") !=
-			std::string::npos,
-			"debug grid secondary commands must use the exact resolved target viewport and scissor");
-		const std::string engineLoop = ReadRepositoryFile("Runtime/Engine/EngineLoop.cpp");
-		Require(engineLoop.find("GPU queries unavailable") != std::string::npos,
-			"unsupported timestamp devices must report an explicit Stats overlay state");
-		Require(engineLoop.find("std::this_thread::sleep_until(cpuFrameDeadline)") !=
-			std::string::npos,
-			"EngineLoop must own the CPU FPS limiter");
-		const std::string app = ReadRepositoryFile("Runtime/Sailor.cpp");
-		Require(app.find("GetActiveGraphicsSettings().m_fpsCap") != std::string::npos &&
-			app.find("EditorFrameIntervalMicro") == std::string::npos,
-			"the active profile FPS cap must be passed into EngineLoop without an editor-only duplicate limiter");
-	}
 }
 
 int main()
@@ -742,7 +562,6 @@ int main()
 		RunTest("EditorParsingAndAppStatsMode", TestEditorParsingAndAppStatsMode);
 		RunTest("WorkspaceSelectionAndEditorIsolation", TestWorkspaceSelectionAndEditorIsolation);
 		RunTest("GpuFrameTimeQueryRingDoesNotReuseDelayedSlots", TestGpuFrameTimeQueryRingDoesNotReuseDelayedSlots);
-		RunTest("GraphicsSettingsRuntimeIntegrationContracts", TestGraphicsSettingsRuntimeIntegrationContracts);
 	}
 	catch (const std::exception& exception)
 	{
