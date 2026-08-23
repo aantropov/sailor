@@ -247,6 +247,9 @@ target_compile_features(PhysicsRuntimeTests PRIVATE cxx_std_20)
 target_compile_features(AudioContractTests PRIVATE cxx_std_20)
 target_compile_features(GraphicsSettingsTests PRIVATE cxx_std_20)
 target_compile_features(GlobalIlluminationContractTests PRIVATE cxx_std_20)
+target_compile_definitions(GlobalIlluminationContractTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(WorkspaceModuleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleIncompatibleFixture PRIVATE cxx_std_20)
 target_compile_features(WorkspaceModuleMissingEntryFixture PRIVATE cxx_std_20)

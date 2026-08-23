@@ -491,6 +491,16 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
                 ReadVector(boundsMaxEntry!, "Manual bounds max"),
                 ReadVector(environmentEntry!, "Fallback environment"),
                 overwrite!.IsChecked);
+
+            SetBakeStatus("Saving the level before baking...", false);
+            var save = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
+            if (save.Outcome != SceneSaveOutcome.Saved)
+                throw new InvalidOperationException(
+                    save.Error ?? "The level could not be saved before baking.");
+            if (!IsCurrentWorld() || worldService.CurrentWorldAsset?.FileId is null)
+                throw new InvalidOperationException(
+                    "The saved level is no longer the active world asset.");
+
             handledSuccess = false;
             if (!await engineService.StartProbeVolumeBakeAsync(request))
                 throw new InvalidOperationException("The native bake controller rejected the request.");

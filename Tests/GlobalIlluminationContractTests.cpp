@@ -2,9 +2,14 @@
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeBaker.h"
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeComposition.h"
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
+#include "AssetRegistry/Material/MaterialImporter.h"
+#include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
 #include "Engine/GlobalIlluminationSettings.h"
+#include "Editor/GlobalIlluminationBakeController.h"
+#include "Memory/ObjectAllocator.hpp"
 #include "RHI/GlobalIllumination.h"
 #include "Raytracing/PathTracer.h"
+#include "Raytracing/ProbeVolumePathTracer.h"
 
 #include <bit>
 #include <chrono>
@@ -142,6 +147,125 @@ namespace
 		return data;
 	}
 
+	MaterialPtr MakeDiffuseFixtureMaterial(
+		const Memory::ObjectAllocatorPtr& allocator,
+		const glm::vec3& color)
+	{
+		MaterialPtr material = MaterialPtr::Make(allocator, FileId::Invalid);
+		material->SetUniform(
+			"material.baseColorFactor",
+			glm::vec4(color, 1.0f));
+		material->SetUniform("material.metallicFactor", 0.0f);
+		material->SetUniform("material.roughnessFactor", 1.0f);
+		return material;
+	}
+
+	struct EveningLandscapeRaytracingFixture final
+	{
+		Memory::ObjectAllocatorPtr m_allocator{};
+		TVector<MaterialPtr> m_materials{};
+		TVector<Raytracing::PathTracer::TLASInstance> m_instances{};
+		TVector<Raytracing::LightProxy> m_lights{};
+		TSharedPtr<TVector<Math::Triangle>> m_triangles{};
+		TSharedPtr<Raytracing::BVH> m_blas{};
+		Math::AABB m_bounds{};
+	};
+
+	EveningLandscapeRaytracingFixture
+	MakeEveningLandscapeRaytracingFixture()
+	{
+		using namespace GlobalIlluminationLandscapeTestScene;
+		EveningLandscapeRaytracingFixture fixture;
+		fixture.m_allocator = Memory::ObjectAllocatorPtr::Make(
+			Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		fixture.m_materials.Add(MakeDiffuseFixtureMaterial(
+			fixture.m_allocator,
+			glm::vec3(0.34f, 0.40f, 0.24f)));
+		fixture.m_materials.Add(MakeDiffuseFixtureMaterial(
+			fixture.m_allocator,
+			glm::vec3(0.10f, 0.12f, 0.16f)));
+		fixture.m_materials.Add(MakeDiffuseFixtureMaterial(
+			fixture.m_allocator,
+			glm::vec3(0.92f, 0.24f, 0.055f)));
+		fixture.m_materials.Add(MakeDiffuseFixtureMaterial(
+			fixture.m_allocator,
+			glm::vec3(0.56f, 0.66f, 0.78f)));
+
+		TVector<Math::Triangle> triangles;
+		BuildBakeTriangles(triangles, fixture.m_bounds);
+		fixture.m_triangles =
+			TSharedPtr<TVector<Math::Triangle>>::Make(std::move(triangles));
+		fixture.m_blas = TSharedPtr<Raytracing::BVH>::Make(
+			static_cast<uint32_t>(fixture.m_triangles->Num()));
+		fixture.m_blas->BuildBVH(*fixture.m_triangles);
+
+		Raytracing::PathTracer::TLASInstance instance;
+		instance.m_triangles = fixture.m_triangles;
+		instance.m_blas = fixture.m_blas;
+		instance.m_worldBounds = fixture.m_bounds;
+		instance.m_worldMatrix = glm::mat4(1.0f);
+		instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		instance.m_materialBaseOffset = 0;
+		fixture.m_instances.Add(std::move(instance));
+
+		Raytracing::LightProxy light;
+		light.m_type = ELightType::Directional;
+		light.m_direction = GetEveningLightDirection();
+		light.m_intensity = GetEveningLightIntensity();
+		light.m_indirectLightingIntensity = 1.0f;
+		fixture.m_lights.Add(std::move(light));
+		return fixture;
+	}
+
+	ProbeVolumeData MakeEveningLandscapeBounceVolume()
+	{
+		EveningLandscapeRaytracingFixture fixture =
+			MakeEveningLandscapeRaytracingFixture();
+		ProbeVolumeBakeSettings settings;
+		settings.m_raysPerProbe = 256u;
+		settings.m_bounceCount = 3u;
+		settings.m_randomSeed = 155u;
+		settings.m_maxSubdivisionLevel = 2u;
+		settings.m_minProbeSpacing = 5.0f;
+		settings.m_normalBias = 0.04f;
+		settings.m_viewBias = 0.02f;
+		settings.m_maxRayDistance = 120.0f;
+		settings.m_bIncludeSky = false;
+		settings.m_bIncludeEmissive = false;
+		settings.m_bIncludeDirectLighting = true;
+
+		Raytracing::ProbeVolumePathTracer pathTracer;
+		Require(pathTracer.Initialize(
+				fixture.m_instances,
+				fixture.m_materials,
+				fixture.m_lights,
+				settings,
+				glm::vec3(0.0f)),
+			"the evening landscape fixture must initialize the CPU path tracer");
+
+		ProbeVolumeBakeRequest request;
+		request.m_stateName = "Evening Landscape Bounce";
+		request.m_bakerVersion =
+			"Sailor deterministic evening-landscape visual fixture/1";
+		request.m_volumeMin = glm::vec3(-22.0f, -6.0f, -18.0f);
+		request.m_volumeMax = glm::vec3(22.0f, 16.0f, 18.0f);
+		request.m_settings = settings;
+		request.m_sceneGeometryBounds.Add(fixture.m_bounds);
+		request.m_sourceWorldHash = 0x155e11e71a9d5ca9ull;
+		ProbeVolumeBakeResult result = ProbeVolumeBaker::Bake(request, pathTracer);
+		Require(result.IsSuccess(),
+			"the evening landscape visual fixture must bake: " +
+				result.m_diagnostic);
+		result.m_data->m_diagnostics.m_message =
+			"Evening landscape: the receiver's sun ray is occluded by the ridge; "
+			"stored irradiance comes from reflected light, including the sunlit cliff.";
+		result.m_data->m_diagnostics.m_bakeDurationSeconds = 0.0f;
+		std::string diagnostic;
+		Require(result.m_data->Validate(diagnostic),
+			"the generated evening landscape state must validate: " + diagnostic);
+		return std::move(*result.m_data);
+	}
+
 	int GenerateVisualAssets(const std::filesystem::path& outputDirectory)
 	{
 		std::error_code error;
@@ -192,6 +316,30 @@ namespace
 					loaded.m_diagnostic << std::endl;
 				return 1;
 			}
+		}
+
+		const std::filesystem::path eveningLandscapePath =
+			outputDirectory / "EveningLandscapeBounce.probes";
+		std::string diagnostic;
+		if (!ProbeVolumeBinary::SaveAtomic(
+				eveningLandscapePath,
+				MakeEveningLandscapeBounceVolume(),
+				diagnostic))
+		{
+			std::cerr << "Cannot generate EveningLandscapeBounce.probes: " <<
+				diagnostic << std::endl;
+			return 1;
+		}
+		const ProbeVolumeBinaryResult eveningLandscape =
+			ProbeVolumeBinary::Load(eveningLandscapePath);
+		if (!eveningLandscape.IsSuccess() ||
+			eveningLandscape.m_data->m_stateName !=
+				"Evening Landscape Bounce" ||
+			eveningLandscape.m_data->m_probes.Num() < 64u)
+		{
+			std::cerr << "Cannot verify EveningLandscapeBounce.probes: " <<
+				eveningLandscape.m_diagnostic << std::endl;
+			return 1;
 		}
 		std::cout << "Generated deterministic GI visual fixtures in " <<
 			outputDirectory << std::endl;
@@ -522,6 +670,208 @@ namespace
 			"unknown world composition modes must fail atomically");
 	}
 
+	void TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs()
+	{
+		const YAML::Node saved = YAML::Load(R"yaml(
+name: BakeWorld
+prefabs:
+  - gameObjects:
+      - name: Static Geometry
+        components: [0]
+    components:
+      - typename: Sailor::MeshRendererComponent
+        overrideProperties:
+          meshIndex: 0
+)yaml");
+		YAML::Node current = YAML::Clone(saved);
+		current["prefabs"].push_back(YAML::Load(R"yaml(
+gameObjects:
+  - name: Editor Camera
+    position: [10, 20, 30, 1]
+    components: [0, 1]
+components:
+  - typename: Sailor::CameraComponent
+    overrideProperties:
+      fov: 90
+  - typename: Sailor::EditorComponent
+    overrideProperties: {}
+)yaml"));
+
+		std::string diagnostic;
+		Require(AreWorldDocumentsEquivalentForProbeBake(
+				saved,
+				current,
+				diagnostic),
+			"an injected editor camera must not make a saved level look dirty: " +
+				diagnostic);
+
+		current["prefabs"][0]["components"][0]["overrideProperties"]
+			["meshIndex"] = 1;
+		Require(!AreWorldDocumentsEquivalentForProbeBake(
+				saved,
+				current,
+				diagnostic),
+			"a real level edit must still fail the saved-world bake preflight");
+	}
+
+	void TestEveningLandscapeFixtureProvesSecondaryLighting()
+	{
+		using namespace GlobalIlluminationLandscapeTestScene;
+		EveningLandscapeRaytracingFixture fixture =
+			MakeEveningLandscapeRaytracingFixture();
+		const glm::vec3 toLight = -GetEveningLightDirection();
+		Math::RaycastHit receiverOccluder;
+		Require(fixture.m_blas->IntersectBVH(
+				Math::Ray(GetReceiverEvidencePoint(), toLight),
+				receiverOccluder,
+				0u,
+				120.0f),
+			"the evening ridge must geometrically block direct sun at the receiver");
+		Math::RaycastHit cliffOccluder;
+		Require(!fixture.m_blas->IntersectBVH(
+				Math::Ray(GetBounceCliffEvidencePoint(), toLight),
+				cliffOccluder,
+				0u,
+				120.0f),
+			"the upper warm cliff must remain directly exposed to the evening sun");
+
+#if defined(SAILOR_TEST_SOURCE_DIR)
+		const std::filesystem::path fixturePath =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) /
+			"Content/Tests/Visual/EveningLandscapeBounce.probes";
+#else
+		const std::filesystem::path fixturePath =
+			"Content/Tests/Visual/EveningLandscapeBounce.probes";
+#endif
+		const ProbeVolumeBinaryResult loaded =
+			ProbeVolumeBinary::Load(fixturePath);
+		Require(loaded.IsSuccess(),
+			"the tracked evening landscape bake must load: " +
+				loaded.m_diagnostic);
+		Require(loaded.m_data->m_stateName == "Evening Landscape Bounce" &&
+			loaded.m_data->m_bakeSettings.m_bounceCount >= 2u &&
+			!loaded.m_data->m_bakeSettings.m_bIncludeSky &&
+			loaded.m_data->m_bakeSettings.m_bIncludeDirectLighting,
+			"the visual fixture must be a light-driven multi-bounce evening state, "
+			"not an ambient color fill");
+
+		glm::vec3 receiverIrradiance{};
+		Require(SampleProbeVolumeIrradiance(
+				*loaded.m_data,
+				GetReceiverEvidencePoint(),
+				glm::vec3(0.0f, 1.0f, 0.0f),
+				receiverIrradiance),
+			"the occluded receiver must be covered by the baked probe topology");
+		const float receiverEnergy = glm::dot(
+			receiverIrradiance,
+			glm::vec3(0.2126f, 0.7152f, 0.0722f));
+		Require(receiverEnergy > 0.015f,
+			"an occluded receiver must retain measurable reflected irradiance");
+
+		float minimumDcEnergy = (std::numeric_limits<float>::max)();
+		float maximumDcEnergy = 0.0f;
+		for (const ProbeVolumeSample& probe : loaded.m_data->m_probes)
+		{
+			const float energy = glm::dot(
+				glm::max(probe.m_irradiance[0], glm::vec3(0.0f)),
+				glm::vec3(0.2126f, 0.7152f, 0.0722f));
+			minimumDcEnergy = (std::min)(minimumDcEnergy, energy);
+			maximumDcEnergy = (std::max)(maximumDcEnergy, energy);
+		}
+		Require(maximumDcEnergy > minimumDcEnergy * 1.35f + 0.01f,
+			"the baked state must contain spatially varying irradiance from scene "
+			"topology instead of one uniform SH color");
+	}
+
+	void TestEveningLandscapeVisualWorldIsSavedBakeableLevel()
+	{
+#if defined(SAILOR_TEST_SOURCE_DIR)
+		const std::filesystem::path worldPath =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) /
+			"Content/Tests/Visual/GlobalIlluminationLandscapeEveningBounce.world";
+#else
+		const std::filesystem::path worldPath =
+			"Content/Tests/Visual/GlobalIlluminationLandscapeEveningBounce.world";
+#endif
+		const YAML::Node world = YAML::LoadFile(worldPath.string());
+		Require(world["name"].as<std::string>() ==
+			"GlobalIlluminationLandscapeEveningBounce",
+			"the visual fixture must be a named, reusable level asset");
+
+		GlobalIlluminationWorldSettings globalIllumination;
+		std::string diagnostic;
+		Require(globalIllumination.Deserialize(world, diagnostic),
+			"the evening landscape world GI map must deserialize: " + diagnostic);
+		const GlobalIlluminationProbeBinding* binding = nullptr;
+		Require(globalIllumination.m_probes.Find(
+				"Evening Landscape Bounce",
+				binding) &&
+			binding &&
+			binding->m_asset == ParseFileId(
+				"15500000-0000-4000-8000-000000000005") &&
+			binding->m_mode == EGlobalIlluminationProbeMode::Blend &&
+			IsNear(binding->m_initialWeight, 1.0f) &&
+			binding->m_bPreload,
+			"the saved level must bind its one baked evening state at full weight");
+
+		bool bHasLandscape = false;
+		bool bHasVisualTest = false;
+		bool bHasEveningLight = false;
+		bool bHasCamera = false;
+		uint32_t savedTopologyCount = 0u;
+		for (const YAML::Node& prefab : world["prefabs"])
+		{
+			const YAML::Node gameObjects = prefab["gameObjects"];
+			const YAML::Node components = prefab["components"];
+			if (!gameObjects || gameObjects.size() == 0u ||
+				!components || components.size() == 0u)
+			{
+				continue;
+			}
+			const std::string name = gameObjects[0]["name"].as<std::string>();
+			const std::string typeName =
+				components[0]["typename"].as<std::string>();
+			const YAML::Node properties = components[0]["overrideProperties"];
+			bHasVisualTest |= typeName ==
+				"Sailor::GlobalIlluminationLandscapeVisualTestComponent";
+			bHasCamera |= typeName == "Sailor::CameraComponent";
+			if (typeName == "Sailor::LandscapeComponent")
+			{
+				bHasLandscape =
+					gameObjects[0]["position"][1].as<float>() ==
+						GlobalIlluminationLandscapeTestScene::LandscapeWorldY &&
+					properties["chunksX"].as<uint32_t>() ==
+						GlobalIlluminationLandscapeTestScene::LandscapeChunksX &&
+					properties["chunksZ"].as<uint32_t>() ==
+						GlobalIlluminationLandscapeTestScene::LandscapeChunksZ &&
+					properties["sculptStamps"].size() ==
+						GlobalIlluminationLandscapeTestScene::
+							GetLandscapeSculptStamps().Num();
+			}
+			if (typeName == "Sailor::LightComponent")
+			{
+				bHasEveningLight = name == "Evening Sun" &&
+					IsNear(
+						properties["indirectLightingIntensity"].as<float>(),
+						1.0f);
+			}
+			if (typeName == "Sailor::MeshRendererComponent")
+			{
+				for (const auto& expected :
+					GlobalIlluminationLandscapeTestScene::GetBoxes())
+				{
+					savedTopologyCount += name == expected.m_name ? 1u : 0u;
+				}
+			}
+		}
+		Require(bHasLandscape && bHasVisualTest && bHasEveningLight &&
+			bHasCamera && savedTopologyCount ==
+				GlobalIlluminationLandscapeTestScene::GetBoxes().Num(),
+			"the visual world must save the landscape, evening light, camera, "
+			"validation component, and all occlusion/bounce topology; runtime-only "
+			"spawned geometry is not accepted");
+	}
+
 	void TestGpuPackingAndWeightOnlyUpdates()
 	{
 		ProbeVolumeDataPtr day = ProbeVolumeDataPtr::Make();
@@ -813,6 +1163,15 @@ int main(int argc, char** argv)
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
 		RunTest("SphericalHarmonicsAndSpatialSampling", TestSphericalHarmonicsAndSpatialSampling);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
+		RunTest(
+			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
+			TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs);
+		RunTest(
+			"EveningLandscapeFixtureProvesSecondaryLighting",
+			TestEveningLandscapeFixtureProvesSecondaryLighting);
+		RunTest(
+			"EveningLandscapeVisualWorldIsSavedBakeableLevel",
+			TestEveningLandscapeVisualWorldIsSavedBakeableLevel);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
 		RunTest("DeterministicBakeSeedsAndReusedLayoutValidation", TestDeterministicBakeSeedsAndReusedLayoutValidation);

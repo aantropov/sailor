@@ -351,6 +351,48 @@ namespace
 		return true;
 	}
 
+	bool IsEditorOnlyPrefab(const YAML::Node& prefab)
+	{
+		const YAML::Node components = prefab["components"];
+		if (!components || !components.IsSequence())
+		{
+			return false;
+		}
+		for (const YAML::Node& component : components)
+		{
+			const YAML::Node typeName = component["typename"];
+			if (typeName &&
+				typeName.IsScalar() &&
+				typeName.Scalar() == "Sailor::EditorComponent")
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	YAML::Node MakeProbeBakeComparableWorldDocument(
+		const YAML::Node& source)
+	{
+		YAML::Node result = YAML::Clone(source);
+		const YAML::Node prefabs = result["prefabs"];
+		if (!prefabs || !prefabs.IsSequence())
+		{
+			return result;
+		}
+
+		YAML::Node filteredPrefabs(YAML::NodeType::Sequence);
+		for (const YAML::Node& prefab : prefabs)
+		{
+			if (!IsEditorOnlyPrefab(prefab))
+			{
+				filteredPrefabs.push_back(YAML::Clone(prefab));
+			}
+		}
+		result["prefabs"] = std::move(filteredPrefabs);
+		return result;
+	}
+
 	bool IsSavedWorldSnapshot(
 		World* world,
 		WorldPrefabAssetInfoPtr worldAssetInfo,
@@ -419,25 +461,15 @@ namespace
 			return false;
 		}
 
-		std::string normalizedSavedWorld;
-		std::string normalizedCurrentWorld;
-		if (!External::TryDumpYaml(
-				savedWorld->Serialize(),
-				normalizedSavedWorld,
-				yamlDiagnostic) ||
-			!External::TryDumpYaml(
+		if (!AreWorldDocumentsEquivalentForProbeBake(
+				savedDocument,
 				currentWorld->Serialize(),
-				normalizedCurrentWorld,
 				yamlDiagnostic))
 		{
-			outDiagnostic = "the current and saved worlds cannot be compared: " +
-				yamlDiagnostic;
-			return false;
-		}
-		if (normalizedSavedWorld != normalizedCurrentWorld)
-		{
 			outDiagnostic =
-				"the current level has unsaved changes or does not match the selected .world asset; save it before baking";
+				yamlDiagnostic.empty()
+					? "the current level has unsaved changes or does not match the selected .world asset; save it before baking"
+					: yamlDiagnostic;
 			return false;
 		}
 		return true;
@@ -776,6 +808,37 @@ namespace
 		scene.m_sourceWorldHash = sourceHash;
 		return true;
 	}
+}
+
+bool Sailor::AreWorldDocumentsEquivalentForProbeBake(
+	const YAML::Node& savedDocument,
+	const YAML::Node& currentDocument,
+	std::string& outDiagnostic)
+{
+	outDiagnostic.clear();
+	std::string normalizedSavedWorld;
+	std::string normalizedCurrentWorld;
+	std::string yamlDiagnostic;
+	if (!External::TryDumpYaml(
+			MakeProbeBakeComparableWorldDocument(savedDocument),
+			normalizedSavedWorld,
+			yamlDiagnostic) ||
+		!External::TryDumpYaml(
+			MakeProbeBakeComparableWorldDocument(currentDocument),
+			normalizedCurrentWorld,
+			yamlDiagnostic))
+	{
+		outDiagnostic = "the current and saved worlds cannot be compared: " +
+			yamlDiagnostic;
+		return false;
+	}
+	if (normalizedSavedWorld != normalizedCurrentWorld)
+	{
+		outDiagnostic =
+			"the current level has unsaved changes or does not match the selected .world asset; save it before baking";
+		return false;
+	}
+	return true;
 }
 
 GlobalIlluminationBakeController::GlobalIlluminationBakeController() :

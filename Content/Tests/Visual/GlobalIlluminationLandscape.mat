@@ -1,0 +1,22 @@
+bEnableDepthTest: true
+bEnableZWrite: true
+bSupportMultisampling: true
+bCustomDepthShader: false
+depthBias: 0
+renderQueue: Opaque
+defines:
+- SUPPORT_LIGHTS_OVERFLOW
+cullMode: Back
+blendMode: None
+fillMode: Fill
+shaderUid: "{545C0F94-89A0-4D44-9894-852C7AD24BDB}"
+samplers: ~
+uniformsVec4:
+  material.albedo: [0.92, 0.82, 0.52, 1]
+  material.ambient: [0, 0, 0, 0]
+  material.emission: [0, 0, 0, 0]
+  material.layerUvScale: [1, 0.8, 1.4, 1]
+uniformsFloat:
+  material.metallic: 0
+  material.roughness: 1
+  material.ao: 1

@@ -10,9 +10,19 @@
 #include <cstdint>
 #include <string>
 
+namespace YAML
+{
+	class Node;
+}
+
 namespace Sailor
 {
 	class World;
+
+	SAILOR_SHARED_API bool AreWorldDocumentsEquivalentForProbeBake(
+		const YAML::Node& savedDocument,
+		const YAML::Node& currentDocument,
+		std::string& outDiagnostic);
 
 	enum class EEditorProbeVolumeBakeState : uint8_t
 	{
