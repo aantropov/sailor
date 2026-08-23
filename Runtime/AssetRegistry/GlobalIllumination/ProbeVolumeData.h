@@ -105,8 +105,8 @@ namespace Sailor
 		TVector<ProbeVolumeBrick> m_bricks{};
 		TVector<ProbeVolumeSample> m_probes{};
 
-		SAILOR_SHARED_API bool Validate(std::string& outDiagnostic) const;
-		SAILOR_SHARED_API bool IsCompositionCompatibleWith(
+		bool Validate(std::string& outDiagnostic) const;
+		bool IsCompositionCompatibleWith(
 			const ProbeVolumeData& rhs,
 			std::string& outDiagnostic) const;
 	};
