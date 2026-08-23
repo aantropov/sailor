@@ -56,12 +56,15 @@ namespace SailorEditor.Views
         readonly object viewportToolStateLock = new();
         readonly SemaphoreSlim viewportToolStateGate = new(1, 1);
         readonly SemaphoreSlim graphicsSettingsGate = new(1, 1);
+        readonly SemaphoreSlim renderModeGate = new(1, 1);
         SceneViewportToolState viewportToolState =
             SceneViewportToolShortcuts.Default;
+        SceneViewRenderMode renderMode = SceneViewRenderMode.Lit;
         long lastViewportIntegrationTickMs = -1;
         long lastViewportStatusTickMs = -1;
         bool lifecycleSubscribed;
         bool updatingGraphicsPickers;
+        bool updatingRenderModePicker;
 #if WINDOWS || MACCATALYST
         static readonly bool UseNativeViewportHost = true;
 #else
@@ -93,6 +96,9 @@ namespace SailorEditor.Views
                 .Select(option => option.DisplayName)
                 .ToList();
             StatsModePicker.ItemsSource = StatsModeOptions
+                .Select(option => option.DisplayName)
+                .ToList();
+            RenderModePicker.ItemsSource = RenderModeOptions
                 .Select(option => option.DisplayName)
                 .ToList();
 
@@ -166,6 +172,7 @@ namespace SailorEditor.Views
                 SubscribeToEngineLifecycle();
                 _ = RefreshViewportToolStateAsync();
                 _ = RefreshGraphicsSettingsAsync(reload: false);
+                _ = RefreshRenderModeAsync();
 #if MACCATALYST
                 if (!UseNativeViewportHost)
                 {
@@ -344,6 +351,7 @@ namespace SailorEditor.Views
 
             engineService.OnLifecycleStateChanged += OnEngineLifecycleStateChanged;
             engineService.OnEditorViewportEvents += OnEditorViewportEvents;
+            engineService.OnEditorRenderModeChanged += OnEditorRenderModeChanged;
             graphicsSettingsService.SettingsChanged += OnGraphicsSettingsChanged;
             workspaceUiService.ProjectionChanged += OnWorkspaceProjectionChanged;
             viewportEventRevisionGate.Reset();
@@ -357,6 +365,7 @@ namespace SailorEditor.Views
 
             engineService.OnLifecycleStateChanged -= OnEngineLifecycleStateChanged;
             engineService.OnEditorViewportEvents -= OnEditorViewportEvents;
+            engineService.OnEditorRenderModeChanged -= OnEditorRenderModeChanged;
             graphicsSettingsService.SettingsChanged -= OnGraphicsSettingsChanged;
             workspaceUiService.ProjectionChanged -= OnWorkspaceProjectionChanged;
             lifecycleSubscribed = false;
@@ -374,7 +383,11 @@ namespace SailorEditor.Views
             QueueViewportRetry(TimeSpan.FromSeconds(1));
             UpdateViewportIntegration();
             _ = RefreshViewportToolStateAsync();
+            _ = ReapplyRenderModeAsync();
         }
+
+        void OnEditorRenderModeChanged(SceneViewRenderMode mode) =>
+            Dispatcher.Dispatch(() => UpdateRenderModePicker(mode));
 
         async void OnRestartEngineClicked(object sender, EventArgs e)
         {
@@ -430,6 +443,21 @@ namespace SailorEditor.Views
                 StatsModeOptions[StatsModePicker.SelectedIndex].Value);
         }
 
+        async void OnRenderModeSelectedIndexChanged(
+            object sender,
+            EventArgs e)
+        {
+            if (updatingRenderModePicker ||
+                RenderModePicker.SelectedIndex < 0 ||
+                RenderModePicker.SelectedIndex >= RenderModeOptions.Length)
+            {
+                return;
+            }
+
+            await ApplyRenderModeAsync(
+                RenderModeOptions[RenderModePicker.SelectedIndex].Value);
+        }
+
         async Task ApplyQualitySelectionAsync(
             EditorQualitySelection selection)
         {
@@ -481,6 +509,90 @@ namespace SailorEditor.Views
             {
                 SetGraphicsPickersEnabled(true);
                 graphicsSettingsGate.Release();
+            }
+        }
+
+        async Task ApplyRenderModeAsync(SceneViewRenderMode mode)
+        {
+            await renderModeGate.WaitAsync();
+            RenderModePicker.IsEnabled = false;
+            try
+            {
+                if (await engineService.SetEditorRenderModeAsync(mode))
+                {
+                    renderMode = mode;
+                }
+                else
+                {
+                    Console.WriteLine(
+                        "[SceneView] Rendering mode command was rejected by the Engine.");
+                    await RefreshRenderModeAsync();
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to apply rendering mode: {exception}");
+                await RefreshRenderModeAsync();
+            }
+            finally
+            {
+                RenderModePicker.IsEnabled = true;
+                renderModeGate.Release();
+            }
+        }
+
+        async Task RefreshRenderModeAsync()
+        {
+            try
+            {
+                var current = await engineService.GetEditorRenderModeAsync();
+                if (current is not null)
+                {
+                    Dispatcher.Dispatch(() => UpdateRenderModePicker(current.Value));
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to read rendering mode: {exception}");
+            }
+        }
+
+        async Task ReapplyRenderModeAsync()
+        {
+            await renderModeGate.WaitAsync();
+            try
+            {
+                if (!await engineService.SetEditorRenderModeAsync(renderMode))
+                {
+                    await RefreshRenderModeAsync();
+                }
+            }
+            catch (Exception exception)
+            {
+                Console.Error.WriteLine(
+                    $"[SceneView] Failed to restore rendering mode: {exception}");
+            }
+            finally
+            {
+                renderModeGate.Release();
+            }
+        }
+
+        void UpdateRenderModePicker(SceneViewRenderMode mode)
+        {
+            renderMode = mode;
+            updatingRenderModePicker = true;
+            try
+            {
+                RenderModePicker.SelectedIndex = Array.FindIndex(
+                    RenderModeOptions,
+                    option => option.Value == mode);
+            }
+            finally
+            {
+                updatingRenderModePicker = false;
             }
         }
 
@@ -566,6 +678,17 @@ namespace SailorEditor.Views
                 new(
                     GraphicsStatsMode.RenderStatsAndQueries,
                     "Render stats + queries")
+            ];
+
+        static readonly GraphicsPickerOption<SceneViewRenderMode>[]
+            RenderModeOptions =
+            [
+                new(SceneViewRenderMode.Lit, "Lit"),
+                new(
+                    SceneViewRenderMode.AmbientOcclusion,
+                    "Ambient Occlusion"),
+                new(SceneViewRenderMode.Cascades, "Cascades"),
+                new(SceneViewRenderMode.LightTiles, "Light Tiles")
             ];
 
         void UpdateRestartEngineButton(EngineLifecycleState state)

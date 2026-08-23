@@ -529,9 +529,15 @@ glslFragment: |
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
 
-    // Total ambient lighting contribution. Screen-space AO only affects the
-    // diffuse portion similar to the glTF occlusion workflow.
-    return diffuseIBL * material.ao + specularIBL;
+    // Ambient occlusion applies to all indirect lighting. Use a view- and
+    // roughness-dependent approximation for specular IBL so smooth surfaces
+    // retain plausible reflections without leaking them into occluded areas.
+    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
+    float specularOcclusion = CalculateSpecularOcclusion(
+      ambientOcclusion,
+      cosLo,
+      material.roughness);
+    return diffuseIBL * ambientOcclusion + specularIBL * specularOcclusion;
   }
 
   // Constant normal incidence Fresnel factor for all dielectrics.
@@ -540,7 +546,8 @@ glslFragment: |
   void main()
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
-    const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
+    const vec2 viewportUv = gl_FragCoord.xy *
+      rcp(vec2(textureSize(g_aoSampler, 0)));
 
     MaterialData material = GetMaterialData();
     vec4 layerWeights = max(vin.color, vec4(0.0));
@@ -587,7 +594,8 @@ glslFragment: |
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
 
-    outColor.xyz = AmbientLighting(material, F0, Lr, normal, cosLo);
+    const vec3 indirectLighting = AmbientLighting(material, F0, Lr, normal, cosLo);
+    outColor.xyz = indirectLighting;
 
     for(int i = 0; i < numLights; i++)
     {
@@ -605,6 +613,10 @@ glslFragment: |
 
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
     }
+
+    outColor.xyz = indirectLighting +
+      (outColor.xyz - indirectLighting) *
+      CalculateDirectLightingOcclusion(material.ao);
 
     outColor.a = material.albedo.a;
   }

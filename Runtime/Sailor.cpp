@@ -71,6 +71,7 @@ namespace
 {
 	Settings::GraphicsSettingsState g_graphicsSettingsState{};
 	std::atomic<Settings::ERenderStatsMode> g_renderStatsMode{ Settings::ERenderStatsMode::None };
+	std::atomic<RHI::ESceneViewRenderMode> g_editorRenderMode{ RHI::ESceneViewRenderMode::Lit };
 }
 
 App::~App() = default;
@@ -124,6 +125,22 @@ bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
 	}
 
 	g_renderStatsMode.store(mode, std::memory_order_release);
+	return true;
+}
+
+RHI::ESceneViewRenderMode App::GetEditorRenderMode()
+{
+	return g_editorRenderMode.load(std::memory_order_acquire);
+}
+
+bool App::SetEditorRenderMode(RHI::ESceneViewRenderMode mode)
+{
+	if (!RHI::IsValidSceneViewRenderMode(mode))
+	{
+		return false;
+	}
+
+	g_editorRenderMode.store(mode, std::memory_order_release);
 	return true;
 }
 
@@ -413,6 +430,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	EditorRuntime::ResetForAppLifecycle();
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
+	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
 
 	{
 		const std::lock_guard<std::mutex> shutdownLock(g_engineShutdownMutex);
@@ -1248,6 +1266,7 @@ void App::Shutdown()
 	s_pInstance = nullptr;
 	g_graphicsSettingsState = Settings::GraphicsSettingsState{};
 	g_renderStatsMode.store(Settings::ERenderStatsMode::None, std::memory_order_release);
+	g_editorRenderMode.store(RHI::ESceneViewRenderMode::Lit, std::memory_order_release);
 }
 
 bool App::IsRendererInitialized()

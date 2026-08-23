@@ -14,6 +14,7 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <spirv_reflect.h>
 #include <yaml-cpp/yaml.h>
 
 namespace
@@ -127,6 +128,36 @@ namespace
 		{
 			Require(actual[index] == expected[index], context + " should preserve every word");
 		}
+	}
+
+	void RequireSpirvCombinedImageSamplerBinding(
+		const RHI::ShaderByteCode& byteCode,
+		uint32_t set,
+		uint32_t binding)
+	{
+		SpvReflectShaderModule module{};
+		Require(
+			spvReflectCreateShaderModule(
+				byteCode.Num() * sizeof(byteCode[0]),
+				&byteCode[0],
+				&module) == SPV_REFLECT_RESULT_SUCCESS,
+			"compiled shader artifact should support SPIR-V reflection");
+
+		SpvReflectResult result = SPV_REFLECT_RESULT_SUCCESS;
+		const SpvReflectDescriptorBinding* reflected =
+			spvReflectGetDescriptorBinding(&module, binding, set, &result);
+		const bool bMatches =
+			result == SPV_REFLECT_RESULT_SUCCESS &&
+			reflected &&
+			reflected->descriptor_type ==
+				SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		spvReflectDestroyShaderModule(&module);
+
+		Require(
+			bMatches,
+			std::string("compiled shader artifact should expose a combined image sampler at set ") +
+				std::to_string(set) +
+				", binding " + std::to_string(binding));
 	}
 
 	void WriteWords(const std::filesystem::path& path, const TVector<uint32_t>& words)
@@ -981,20 +1012,29 @@ namespace
 	{
 		const std::filesystem::path contentRoot =
 			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
-		const std::array<const char*, 3> shaderPaths =
+		const std::array<const char*, 5> shaderPaths =
 		{
 			"Shaders/Standard.shader",
 			"Shaders/Standard_glTF.shader",
-			"Shaders/Landscape.shader"
+			"Shaders/Landscape.shader",
+			"Shaders/HBAO.shader",
+			"Shaders/HBAO_Blur.shader"
 		};
 
-		for (const char* shaderPath : shaderPaths)
+		auto compileRuntimeFragment = [&contentRoot](
+			const char* shaderPath,
+			std::initializer_list<const char*> permutationDefines)
+			-> RHI::ShaderByteCode
 		{
 			const std::filesystem::path sourcePath = contentRoot / shaderPath;
 			ShaderAsset shader;
 			shader.Deserialize(YAML::Load(ReadText(sourcePath)));
 
 			std::string source = shader.GetGlslCommonCode() + "\n#define FRAGMENT\n";
+			for (const char* define : permutationDefines)
+			{
+				source += std::string("#define ") + define + "\n";
+			}
 #if defined(__APPLE__)
 			source += "#define SAILOR_TEXTURE_REMAP\n";
 #endif
@@ -1033,7 +1073,28 @@ namespace
 				std::string("runtime fragment shader should compile: ") + shaderPath);
 			Require(!byteCode.IsEmpty(),
 				std::string("runtime fragment shader should produce SPIR-V: ") + shaderPath);
+			return byteCode;
+		};
+
+		for (const char* shaderPath : shaderPaths)
+		{
+			compileRuntimeFragment(shaderPath, {});
 		}
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "DISABLE_SCREEN_SPACE_AO" });
+		const RHI::ShaderByteCode debugAoByteCode = compileRuntimeFragment(
+			"Shaders/Debug.shader",
+			{ "AO" });
+		RequireSpirvCombinedImageSamplerBinding(
+			debugAoByteCode,
+			2u,
+			8u);
+		compileRuntimeFragment("Shaders/Debug.shader", { "CASCADES" });
+		compileRuntimeFragment("Shaders/Debug.shader", { "LIGHT_TILES" });
 
 		const char* computeShaderPath = "Shaders/ComputeLightCulling.shader";
 		ShaderAsset computeShader;

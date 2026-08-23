@@ -121,7 +121,7 @@ frame:
   string:
   - Tag: Opaque
   - ClearDepth: true
-  - GPUCulling: true
+  - GPUCulling: false
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
@@ -130,7 +130,7 @@ frame:
 - name: DepthPrepass
   string:
   - Tag: Masked
-  - GPUCulling: true
+  - GPUCulling: false
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer

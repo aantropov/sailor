@@ -301,11 +301,28 @@ namespace
 		auto context = RHIRenderSubmissionContextPtr::Make();
 		context->BeginSubmission(11ull, 1u);
 		view.SetSubmissionContext(context);
+		view.m_renderMode = ESceneViewRenderMode::Cascades;
 		view.PrepareSnapshots();
 
 		Require(view.m_snapshots.Num() == 1u &&
-			view.m_snapshots[0].m_submissionContext == context,
+			view.m_snapshots[0].m_submissionContext == context &&
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades,
 			"preparing a camera snapshot must retain the acquired flight submission context");
+		view.m_renderMode = ESceneViewRenderMode::AmbientOcclusion;
+		Require(
+			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades,
+			"a prepared frame snapshot must keep its render mode when the next frame changes");
+
+		Require(
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::AmbientOcclusion)) == "AO" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::Cascades)) == "CASCADES" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::LightTiles)) == "LIGHT_TILES" &&
+			std::string(GetSceneViewRenderModeShaderDefine(
+				ESceneViewRenderMode::Lit)).empty(),
+			"each Scene View render mode must resolve to its immutable shader variant");
 	}
 }
 

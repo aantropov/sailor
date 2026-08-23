@@ -5,6 +5,7 @@
 #include "Engine/Types.h"
 #include "RHI/Mesh.h"
 #include "RHI/Material.h"
+#include "RHI/RenderDebugView.h"
 #include "RHI/RenderSubmission.h"
 #include "RHI/Scene.h"
 #include "RHI/Lighting.h"
@@ -373,6 +374,7 @@ namespace Sailor::RHI
 		RHIRenderSubmissionContextPtr m_submissionContext{};
 		TSharedPtr<TVector<RHISceneVersionPtr>> m_sceneVersions{};
 		uint64_t m_sceneRevision = 0ull;
+		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 		float m_deltaTime = 0.0f;
 		uint64_t m_frame = 0ull;
 		uint32_t m_cameraIndex = 0u;
@@ -431,6 +433,7 @@ namespace Sailor::RHI
 		TVector<RHISceneVersionPtr> m_virtualSceneVersions{};
 		TSharedPtr<TVector<RHISceneVersionPtr>> m_retainedSceneVersions{};
 		uint64_t m_sceneRevision = 0ull;
+		ESceneViewRenderMode m_renderMode = ESceneViewRenderMode::Lit;
 
 		uint32_t m_totalNumLights = 0;
 		RHI::RHIShaderBindingSetPtr m_rhiLightsData{};

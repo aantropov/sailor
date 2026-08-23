@@ -825,10 +825,16 @@ glslFragment: |
     
     // Total specular IBL contribution.
     vec3 specularIBL = (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
-    
-    // Total ambient lighting contribution. Occlusion affects only the diffuse
-    // portion as per glTF 2.0 specification.
-    return diffuseIBL * material.occlusionStrength + specularIBL;
+
+    // Apply visibility directly to diffuse IBL and use a view- and
+    // roughness-aware approximation for specular IBL. The bounded analytic
+    // contact term is composed separately after direct-light accumulation.
+    float ambientOcclusion = clamp(material.occlusionStrength, 0.0, 1.0);
+    float specularOcclusion = CalculateSpecularOcclusion(
+      ambientOcclusion,
+      cosLo,
+      material.roughnessFactor);
+    return diffuseIBL * ambientOcclusion + specularIBL * specularOcclusion;
   }
 
   #ifdef CLEAR_COAT
@@ -875,12 +881,16 @@ glslFragment: |
     return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
   }
 
-  vec3 ClearCoatAmbientLighting(float roughness, vec3 F0, vec3 Lr, vec3 normal, float cosLo)
+  vec3 ClearCoatAmbientLighting(float roughness, vec3 F0, vec3 Lr, vec3 normal, float cosLo, float ambientOcclusion)
   {
     int specularTextureLevels = textureQueryLevels(g_envCubemap);
     vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
     vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
-    return (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance;
+    float specularOcclusion = CalculateSpecularOcclusion(
+      ambientOcclusion,
+      cosLo,
+      roughness);
+    return (F0 * specularBRDF.x + specularBRDF.y) * specularIrradiance * specularOcclusion;
   }
   #endif
 
@@ -928,12 +938,16 @@ glslFragment: |
     return shadow * (specularBRDF * Lradiance * cosLi) * falloff;
   }
 
-  vec3 SheenAmbientLighting(float roughness, vec3 color, vec3 Lr, vec3 normal, float cosLo)
+  vec3 SheenAmbientLighting(float roughness, vec3 color, vec3 Lr, vec3 normal, float cosLo, float ambientOcclusion)
   {
     int specularTextureLevels = textureQueryLevels(g_envCubemap);
     vec3 specularIrradiance = textureLod(g_envCubemap, Lr, roughness * specularTextureLevels).rgb;
     vec2 specularBRDF = texture(g_brdfSampler, vec2(cosLo, roughness)).rg;
-    return (color * specularBRDF.x + specularBRDF.y) * specularIrradiance;
+    float specularOcclusion = CalculateSpecularOcclusion(
+      ambientOcclusion,
+      cosLo,
+      roughness);
+    return (color * specularBRDF.x + specularBRDF.y) * specularIrradiance * specularOcclusion;
   }
   #endif
   
@@ -943,7 +957,8 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
-    const vec2 viewportUv = gl_FragCoord.xy * rcp(frame.viewportSize);
+    const vec2 viewportUv = gl_FragCoord.xy *
+      rcp(vec2(textureSize(g_aoSampler, 0)));
     
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
@@ -959,10 +974,11 @@ glslFragment: |
       material.roughnessFactor = material.roughnessFactor * orm.g;
     }
 
-    float occlusion = 1.0;
+    float screenSpaceOcclusion = 1.0;
   #ifndef DISABLE_SCREEN_SPACE_AO
-    occlusion = texture(g_aoSampler, viewportUv).r;
+    screenSpaceOcclusion = texture(g_aoSampler, viewportUv).r;
   #endif
+    float occlusion = screenSpaceOcclusion;
     if(material.occlusionSampler != 0)
     {
       float occlusionTex = texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.occlusionSampler))], vin.texcoord).r;
@@ -1081,11 +1097,13 @@ glslFragment: |
     
     outColor.xyz += AmbientLighting(material, F0, Lr, normal, cosLo);
   #ifdef CLEAR_COAT
-    outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC);
+    outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC, material.occlusionStrength);
   #endif
   #ifdef SHEEN
-    outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo);
+    outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo, material.occlusionStrength);
   #endif
+
+    const vec3 nonAnalyticLighting = outColor.xyz;
     
     for(int i = 0; i < numLights; i++)
     {
@@ -1109,6 +1127,10 @@ glslFragment: |
         outColor.xyz += SheenLighting(light.instance[index], material.sheenRoughnessFactor, material.sheenColorFactor.rgb, -viewDirection, cosLo, normal, vin.worldPosition);
   #endif
     }
+
+    outColor.xyz = nonAnalyticLighting +
+      (outColor.xyz - nonAnalyticLighting) *
+      CalculateDirectLightingOcclusion(screenSpaceOcclusion);
 
   #ifdef TRANSMISSION
     float dielectricFresnel =

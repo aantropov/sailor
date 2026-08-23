@@ -969,6 +969,7 @@ void RHISceneView::Clear()
 	m_virtualSceneVersions.Clear(false);
 	m_retainedSceneVersions.Clear();
 	m_sceneRevision = 0ull;
+	m_renderMode = ESceneViewRenderMode::Lit;
 	m_shadowCastersRevision = 0ull;
 	m_bHasCustomDepthShadowCasters = false;
 	m_pathTracerProxies.Clear(false);
@@ -982,6 +983,7 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_submissionContext.Clear();
 	m_sceneVersions.Clear();
 	m_sceneRevision = 0ull;
+	m_renderMode = ESceneViewRenderMode::Lit;
 	m_deltaTime = 0.0f;
 	m_frame = 0ull;
 	m_cameraIndex = 0u;
@@ -1275,6 +1277,7 @@ void RHISceneView::PrepareSnapshots()
 		res.m_submissionContext = m_submissionContext;
 		res.m_sceneVersions = GetRetainedSceneVersions();
 		res.m_sceneRevision = m_sceneRevision;
+		res.m_renderMode = m_renderMode;
 
 		Math::Frustum frustum;
 

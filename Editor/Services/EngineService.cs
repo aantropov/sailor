@@ -232,6 +232,7 @@ namespace SailorEditor.Services
         public event Action<AssetReloadCompletion> OnAssetReloadCompleted = delegate { };
         public event Action<IReadOnlyList<EditorViewportEvent>> OnEditorViewportEvents = delegate { };
         public event Action<bool> OnEditorSimulationStateChanged = delegate { };
+        public event Action<SceneViewRenderMode> OnEditorRenderModeChanged = delegate { };
 
         public string EngineContentDirectory => Path.Combine(repoRoot, "Content");
 
@@ -2965,6 +2966,60 @@ namespace SailorEditor.Services
                     ToProtocolStatsMode(mode),
                     token),
                 cancellationToken: cancellationToken);
+
+        public async Task<bool> SetEditorRenderModeAsync(
+            SceneViewRenderMode mode,
+            CancellationToken cancellationToken = default)
+        {
+            var succeeded = await InvokeRunningInteropAsync(
+                token => protocolClient.SetEditorRenderModeAsync(
+                    ToProtocolRenderMode(mode),
+                    token),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (succeeded)
+            {
+                OnEditorRenderModeChanged?.Invoke(mode);
+            }
+            return succeeded;
+        }
+
+        public async Task<SceneViewRenderMode?> GetEditorRenderModeAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var mode = EditorRenderMode.Unspecified;
+            var succeeded = await InvokeRunningInteropAsync(
+                async token =>
+                {
+                    mode = await protocolClient
+                        .GetEditorRenderModeAsync(token)
+                        .ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return succeeded ? FromProtocolRenderMode(mode) : null;
+        }
+
+        static EditorRenderMode ToProtocolRenderMode(SceneViewRenderMode mode)
+            => mode switch
+            {
+                SceneViewRenderMode.Lit => EditorRenderMode.Lit,
+                SceneViewRenderMode.AmbientOcclusion =>
+                    EditorRenderMode.AmbientOcclusion,
+                SceneViewRenderMode.Cascades => EditorRenderMode.Cascades,
+                SceneViewRenderMode.LightTiles => EditorRenderMode.LightTiles,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+
+        static SceneViewRenderMode FromProtocolRenderMode(EditorRenderMode mode)
+            => mode switch
+            {
+                EditorRenderMode.Lit => SceneViewRenderMode.Lit,
+                EditorRenderMode.AmbientOcclusion =>
+                    SceneViewRenderMode.AmbientOcclusion,
+                EditorRenderMode.Cascades => SceneViewRenderMode.Cascades,
+                EditorRenderMode.LightTiles => SceneViewRenderMode.LightTiles,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
 
         static EditorStatsMode ToProtocolStatsMode(GraphicsStatsMode mode)
             => mode switch

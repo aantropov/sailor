@@ -419,6 +419,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 		rhiSceneView->m_deltaTime = frame.GetDeltaTime();
 		rhiSceneView->m_currentTime = frame.GetWorld()->GetTime();
+		rhiSceneView->m_renderMode = App::GetEditorRenderMode();
 	}
 
 	const uint64_t sceneRevision = rhiSceneView->m_sceneRevision;

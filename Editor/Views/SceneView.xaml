@@ -10,7 +10,7 @@
                 Stroke="#2A2A2A"
                 StrokeThickness="1"
                 Padding="3,2">
-            <Grid ColumnDefinitions="*,Auto,Auto,Auto"
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto"
                   ColumnSpacing="4">
                 <HorizontalStackLayout Spacing="3"
                                        Grid.Column="0"
@@ -60,6 +60,22 @@
                 <HorizontalStackLayout Grid.Column="1"
                                        Spacing="4"
                                        VerticalOptions="Center">
+                    <Label Text="Mode"
+                           FontSize="11"
+                           VerticalTextAlignment="Center" />
+                    <Picker x:Name="RenderModePicker"
+                            WidthRequest="138"
+                            HeightRequest="26"
+                            MinimumHeightRequest="26"
+                            FontSize="11"
+                            AutomationProperties.Name="Scene View Rendering Mode"
+                            ToolTipProperties.Text="Scene View rendering visualization"
+                            SelectedIndexChanged="OnRenderModeSelectedIndexChanged" />
+                </HorizontalStackLayout>
+
+                <HorizontalStackLayout Grid.Column="2"
+                                       Spacing="4"
+                                       VerticalOptions="Center">
                     <Label Text="Quality"
                            FontSize="11"
                            VerticalTextAlignment="Center" />
@@ -73,7 +89,7 @@
                             SelectedIndexChanged="OnQualitySelectedIndexChanged" />
                 </HorizontalStackLayout>
 
-                <HorizontalStackLayout Grid.Column="2"
+                <HorizontalStackLayout Grid.Column="3"
                                        Spacing="4"
                                        VerticalOptions="Center">
                     <Label Text="Stats"
@@ -89,7 +105,7 @@
                             SelectedIndexChanged="OnStatsModeSelectedIndexChanged" />
                 </HorizontalStackLayout>
 
-                <Border Grid.Column="3"
+                <Border Grid.Column="4"
                         Stroke="#3B3F46"
                         StrokeThickness="1"
                         BackgroundColor="#2A2E35"

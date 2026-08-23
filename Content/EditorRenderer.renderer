@@ -121,7 +121,7 @@ frame:
   string:
   - Tag: Opaque
   - ClearDepth: true
-  - GPUCulling: true
+  - GPUCulling: false
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
@@ -130,7 +130,7 @@ frame:
 - name: DepthPrepass
   string:
   - Tag: Masked
-  - GPUCulling: true
+  - GPUCulling: false
   - VirtualizeInstancePayloads: true
   renderTargets:
   - depthStencil: DepthBuffer
@@ -438,11 +438,14 @@ frame:
   - depthStencil: DepthBuffer
 
 ############################
-- name: Blit
+- name: DebugView
 ############################
+  string:
+  - shader: Shaders/Debug.shader
   renderTargets:
   - src: Main
   - dst: EditorOutput
+  - linearDepth: LinearDepth
 
 #############################
 - name: RenderImGui

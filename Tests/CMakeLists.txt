@@ -225,6 +225,9 @@ target_compile_features(InstanceIdContractTests PRIVATE cxx_std_20)
 target_compile_features(EcsLifecycleContractTests PRIVATE cxx_std_20)
 target_compile_features(BoundsContractTests PRIVATE cxx_std_20)
 target_compile_features(GpuCullingContractTests PRIVATE cxx_std_20)
+target_compile_definitions(GpuCullingContractTests PRIVATE
+    SAILOR_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+)
 target_compile_features(RHISceneVirtualizationTests PRIVATE cxx_std_20)
 target_compile_features(ModelImporterContractTests PRIVATE cxx_std_20)
 target_compile_features(AnimationSamplingContractTests PRIVATE cxx_std_20)

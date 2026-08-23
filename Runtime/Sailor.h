@@ -9,6 +9,7 @@
 #include "Platform/Win32/Window.h"
 #include "Containers/Containers.h"
 #include "Math/Math.h"
+#include "RHI/RenderDebugView.h"
 #include "Settings/GraphicsSettings.h"
 #include "Workspace/WorkspaceContext.h"
 #include <functional>
@@ -59,6 +60,8 @@ namespace Sailor
 		SAILOR_API static Settings::EGraphicsQuality GetActiveGraphicsQuality();
 		SAILOR_API static Settings::ERenderStatsMode GetRenderStatsMode();
 		SAILOR_API static bool SetRenderStatsMode(Settings::ERenderStatsMode mode);
+		SAILOR_API static RHI::ESceneViewRenderMode GetEditorRenderMode();
+		SAILOR_API static bool SetEditorRenderMode(RHI::ESceneViewRenderMode mode);
 
 		SAILOR_API static void Initialize(const char** commandLineArgs = nullptr, int32_t num = 0);
 		SAILOR_API static void Start();
