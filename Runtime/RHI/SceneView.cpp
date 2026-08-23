@@ -62,6 +62,27 @@ namespace
 		HashCombine(result, std::hash<glm::mat4>{}(matrix));
 	}
 
+	int32_t ResolveInstanceLodBias(
+		const RHIInstancedMeshGroup& group,
+		size_t instanceIndex)
+	{
+		return instanceIndex < group.m_instanceLodBiases.Num() ?
+			group.m_instanceLodBiases[instanceIndex] : 0;
+	}
+
+	float ResolveInstanceDistanceScale(
+		const TVector<float>& scales,
+		size_t instanceIndex)
+	{
+		if (instanceIndex >= scales.Num() ||
+			!std::isfinite(scales[instanceIndex]) ||
+			scales[instanceIndex] <= 0.0f)
+		{
+			return 1.0f;
+		}
+		return scales[instanceIndex];
+	}
+
 	void HashMaterialVersion(size_t& result, const RHIMaterialPtr& material)
 	{
 		if (!material)
@@ -125,6 +146,9 @@ namespace
 			HashCombine(
 				geometryRevision,
 				group.m_instanceTransforms.Num(),
+				group.m_instanceLodBiases.Num(),
+				group.m_instanceCullDistanceScales.Num(),
+				group.m_instanceShadowDistanceScales.Num(),
 				group.m_meshes.Num(),
 				group.m_bCastShadows,
 				std::hash<float>{}(group.m_maxShadowDistance));
@@ -139,6 +163,18 @@ namespace
 			for (const auto& matrix : group.m_instanceTransforms)
 			{
 				HashMatrix(geometryRevision, matrix);
+			}
+			for (int32_t lodBias : group.m_instanceLodBiases)
+			{
+				HashCombine(geometryRevision, lodBias);
+			}
+			for (float scale : group.m_instanceCullDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
+			}
+			for (float scale : group.m_instanceShadowDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
 			}
 		}
 		resource.m_geometryRevision = geometryRevision;
@@ -460,9 +496,15 @@ RHIMeshPtr RHIVisibleSceneProxy::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = source->m_lodPolicy.Resolve(
+	uint32_t lod = source->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, viewMatrix, projectionMatrix),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		source->m_lodPolicy.m_minLod,
+		source->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -498,7 +540,10 @@ bool RHIVisibleSceneProxy::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceCullDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 const RHIShadowCasterProxy* RHIVisibleShadowCaster::GetSource() const
@@ -657,9 +702,15 @@ RHIMeshPtr RHIVisibleShadowCaster::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = topology->m_lodPolicy.Resolve(
+	uint32_t lod = topology->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, glm::mat4(1.0f), shadowViewProjection),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		topology->m_lodPolicy.m_minLod,
+		topology->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -695,7 +746,10 @@ bool RHIVisibleShadowCaster::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceShadowDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 float Sailor::RHI::CalculateScreenCoverage(

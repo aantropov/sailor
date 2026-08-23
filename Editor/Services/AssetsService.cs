@@ -389,7 +389,7 @@ namespace SailorEditor.Services
                 try
                 {
                     created = await MainThread.InvokeOnMainThreadAsync(() =>
-                        PublishCreatedAnimationAsset(
+                        PublishCreatedAsset(
                             sourcePath,
                             targetFolder,
                             fileId));
@@ -422,6 +422,126 @@ namespace SailorEditor.Services
             }
         }
 
+        public async Task<LandscapeVegetationFile?> CreateLandscapeVegetationAssetAsync(
+            string baseName,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(CurrentProjectRootPath))
+            {
+                return null;
+            }
+
+            var destinationDirectory = Path.Combine(
+                CurrentProjectRootPath,
+                "Landscape",
+                "Vegetation");
+            if (!ProjectContentPathPolicy.IsInsideRoot(
+                    CurrentProjectRootPath,
+                    destinationDirectory))
+            {
+                return null;
+            }
+            Directory.CreateDirectory(destinationDirectory);
+
+            var filename = GetUniqueAssetName(
+                destinationDirectory,
+                string.IsNullOrWhiteSpace(baseName) ? "Landscape" : baseName.Trim(),
+                ".vegetation");
+            var sourcePath = Path.Combine(destinationDirectory, filename);
+            var fileId = new FileId(
+                Guid.NewGuid().ToString().ToUpperInvariant());
+            var metadataContents = SerializeLandscapeVegetationAssetInfo(
+                fileId,
+                filename);
+
+            await _assetSaveLock.WaitAsync(cancellationToken)
+                .ConfigureAwait(false);
+            try
+            {
+                ProjectContentAssetWriteTransaction transaction;
+                (FileSystemWatcher Watcher, bool Enabled)[] watcherStates;
+                lock (_watcherLock)
+                {
+                    watcherStates = _contentWatchers
+                        .Select(watcher =>
+                            (watcher, watcher.EnableRaisingEvents))
+                        .ToArray();
+                    foreach (var watcherState in watcherStates)
+                    {
+                        watcherState.Watcher.EnableRaisingEvents = false;
+                    }
+                }
+
+                try
+                {
+                    transaction = _fileOperations.BeginWriteAssetPair(
+                        CurrentProjectRootPath,
+                        sourcePath,
+                        string.Empty,
+                        metadataContents,
+                        fileId.Value,
+                        overwrite: false);
+                }
+                finally
+                {
+                    lock (_watcherLock)
+                    {
+                        foreach (var watcherState in watcherStates)
+                        {
+                            if (_contentWatchers.Contains(watcherState.Watcher))
+                            {
+                                watcherState.Watcher.EnableRaisingEvents =
+                                    watcherState.Enabled;
+                            }
+                        }
+                    }
+                }
+
+                if (!transaction.Result.Succeeded)
+                {
+                    return null;
+                }
+
+                AssetFile? created;
+                try
+                {
+                    created = await MainThread.InvokeOnMainThreadAsync(() =>
+                        PublishCreatedAsset(
+                            sourcePath,
+                            targetFolder: null,
+                            fileId));
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+                if (created is not LandscapeVegetationFile vegetation)
+                {
+                    transaction.Rollback();
+                    return null;
+                }
+
+                var commit = transaction.Commit();
+                if (!commit.Succeeded)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(Refresh);
+                    return null;
+                }
+
+                if (_engineService.IsRunning)
+                {
+                    await _engineService.RequestAssetReloadAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                return vegetation;
+            }
+            finally
+            {
+                _assetSaveLock.Release();
+            }
+        }
+
         AssetFile? FindAssetBySourcePath(string sourcePath) =>
             Files.FirstOrDefault(asset =>
                 asset.Asset is not null &&
@@ -429,7 +549,7 @@ namespace SailorEditor.Services
                     asset.Asset.FullName,
                     sourcePath));
 
-        AssetFile? PublishCreatedAnimationAsset(
+        AssetFile? PublishCreatedAsset(
             string sourcePath,
             AssetFolder? targetFolder,
             FileId expectedFileId)
@@ -540,6 +660,16 @@ namespace SailorEditor.Services
             };
             return SaveYaml(root);
         }
+
+        static string SerializeLandscapeVegetationAssetInfo(
+            FileId fileId,
+            string filename) => SaveYaml(
+            new YamlMappingNode
+            {
+                { "assetInfoType", "Sailor::LandscapeVegetationAssetInfo" },
+                { "fileId", fileId.Value },
+                { "filename", filename }
+            });
 
         static string CreateAnimationSetSource() => SaveYaml(
             new YamlMappingNode
@@ -2031,6 +2161,7 @@ namespace SailorEditor.Services
                 "Sailor::ShaderAssetInfo" => new ShaderFile(),
                 "Sailor::MaterialAssetInfo" => new MaterialFile(),
                 "Sailor::FrameGraphAssetInfo" => new FrameGraphFile(),
+                "Sailor::LandscapeVegetationAssetInfo" => new LandscapeVegetationFile(),
                 _ => CreateAssetFileByExtension(extension)
             };
             assetFile.AssetInfoTypeName = assetInfoType;
@@ -2086,6 +2217,7 @@ namespace SailorEditor.Services
             ".shader" => new ShaderFile(),
             ".mat" => new MaterialFile(),
             ".renderer" => new FrameGraphFile(),
+            ".vegetation" => new LandscapeVegetationFile(),
             ".glsl" => new ShaderLibraryFile(),
             _ => new AssetFile()
         };

@@ -80,10 +80,34 @@ public partial class ComponentTemplate
             }
         };
 
+        var saveVegetation = new Button
+        {
+            Text = "Save Vegetation"
+        };
+        ToolTipProperties.SetText(
+            saveVegetation,
+            "Create or update the binary vegetation asset referenced by this Landscape");
+        saveVegetation.Clicked += async (_, _) =>
+        {
+            saveVegetation.IsEnabled = false;
+            var previousText = saveVegetation.Text;
+            saveVegetation.Text = "Saving…";
+            try
+            {
+                await SaveLandscapeVegetationAsync(component);
+            }
+            finally
+            {
+                saveVegetation.Text = previousText;
+                saveVegetation.IsEnabled = true;
+            }
+        };
+
         var toolbar = new Grid
         {
             ColumnDefinitions =
             {
+                new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star)
@@ -93,6 +117,7 @@ public partial class ComponentTemplate
         toolbar.Add(generate, 0, 0);
         toolbar.Add(regenerate, 1, 0);
         toolbar.Add(flatten, 2, 0);
+        toolbar.Add(saveVegetation, 3, 0);
         Templates.AddGridRow(props, toolbar, GridLength.Auto);
         Grid.SetColumnSpan(toolbar, props.ColumnDefinitions.Count);
 
@@ -104,6 +129,60 @@ public partial class ComponentTemplate
         };
         Templates.AddGridRow(props, hint, GridLength.Auto);
         Grid.SetColumnSpan(hint, props.ColumnDefinitions.Count);
+    }
+
+    static async Task SaveLandscapeVegetationAsync(Component component)
+    {
+        var shell = MauiProgram.GetService<EditorShellHost>();
+        if (!component.OverrideProperties.TryGetValue(
+                "vegetation",
+                out var vegetationProperty) ||
+            vegetationProperty is not Observable<FileId> vegetation)
+        {
+            shell.SetStatus("Landscape vegetation property is unavailable.");
+            return;
+        }
+
+        if (vegetation.Value is null || vegetation.Value.IsEmpty())
+        {
+            var world = MauiProgram.GetService<WorldService>();
+            var ownerName = world.FindOwner(component)?.Name ?? "Landscape";
+            var created = await MauiProgram.GetService<AssetsService>()
+                .CreateLandscapeVegetationAssetAsync(ownerName);
+            if (created?.FileId is null || created.FileId.IsEmpty())
+            {
+                shell.SetStatus("Failed to create the Landscape vegetation asset.");
+                return;
+            }
+
+            var linked = await component.ApplyInspectorBatchAsync(() =>
+                vegetation.Value = new FileId(created.FileId.Value));
+            if (!linked)
+            {
+                shell.SetStatus("Vegetation asset was created, but the Landscape link failed.");
+                return;
+            }
+        }
+
+        if (!component.OverrideProperties.TryGetValue(
+                "saveVegetation",
+                out var actionProperty) ||
+            actionProperty is not Observable<bool> action)
+        {
+            shell.SetStatus("Landscape Save Vegetation action is unavailable.");
+            return;
+        }
+
+        var requested = await component.ApplyInspectorBatchAsync(() =>
+            action.Value = true);
+        await component.ApplyInspectorBatchAsync(() =>
+            action.Value = false);
+        if (!requested)
+        {
+            shell.SetStatus("Failed to request the Landscape vegetation save.");
+            return;
+        }
+        shell.SetStatus($"Vegetation save requested for {vegetation.Value.Value}.");
     }
 
     static async Task RebuildLandscapeAsync(Component component, bool advanceSeed)
@@ -288,7 +367,7 @@ public partial class ComponentTemplate
                     component, instancesPerChunk.Values[index], value => MathF.Max(0.0f, MathF.Round(value))));
                 var residencyPicker = new Picker
                 {
-                    ItemsSource = new[] { "Persistent", "Grass (budgeted)" },
+                    ItemsSource = new[] { "Persistent", "Frame budget" },
                     SelectedIndex = Math.Clamp((int)residency.Values[index].Value, 0, 1),
                     FontSize = 12,
                     BindingContext = component

@@ -10,6 +10,7 @@
 #include "AssetRegistry/Animation/AnimationControllerImporter.h"
 #include "AssetRegistry/Audio/AudioAssetInfo.h"
 #include "AssetRegistry/Audio/AudioImporter.h"
+#include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
@@ -619,6 +620,8 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	auto animationControllerInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationControllerAssetInfoHandler>::Make(assetRegistry));
 	auto animationSetInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AnimationSetAssetInfoHandler>::Make(assetRegistry));
 	auto audioInfoHandler = s_pInstance->AddSubmodule(TSubmodule<AudioAssetInfoHandler>::Make(assetRegistry));
+	auto landscapeVegetationInfoHandler = s_pInstance->AddSubmodule(
+		TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));

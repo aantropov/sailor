@@ -83,6 +83,9 @@ namespace Sailor::RHI
 	struct RHIInstancedMeshGroup
 	{
 		TVector<glm::mat4> m_instanceTransforms{};
+		TVector<int32_t> m_instanceLodBiases{};
+		TVector<float> m_instanceCullDistanceScales{};
+		TVector<float> m_instanceShadowDistanceScales{};
 		TVector<RHIMeshPtr> m_meshes{};
 		TVector<glm::mat4> m_meshTransforms{};
 		TVector<RHIMaterialPtr> m_materials{};

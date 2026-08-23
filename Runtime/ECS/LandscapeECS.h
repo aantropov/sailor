@@ -2,6 +2,7 @@
 
 #include "ECS/ECS.h"
 #include "ECS/LandscapeStreaming.h"
+#include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "RHI/SceneView.h"
 
 namespace Sailor
@@ -61,6 +62,14 @@ namespace Sailor
 		EMobilityType m_mobility = EMobilityType::Static;
 	};
 
+	struct LandscapeVegetationRenderInstances final
+	{
+		TVector<glm::mat4> m_transforms{};
+		TVector<int32_t> m_lodBiases{};
+		TVector<float> m_cullDistanceScales{};
+		TVector<float> m_shadowDistanceScales{};
+	};
+
 	struct LandscapeChunk final
 	{
 		RHI::RHISceneProxyResourcePtr m_resource{};
@@ -92,6 +101,9 @@ namespace Sailor
 			const TVector<FileId>& materialMasks);
 		SAILOR_API void SetAuthoredStamps(const TVector<float>& sculptStamps,
 			const TVector<float>& paintStamps);
+		SAILOR_API void SetVegetationAsset(const FileId& vegetationAsset);
+		SAILOR_API void RequestVegetationAssetReload();
+		SAILOR_API void RequestSaveVegetation();
 		SAILOR_API void RequestFullRebuild();
 		SAILOR_API void SetVegetationProfiles(
 			const TVector<FileId>& models,
@@ -138,6 +150,11 @@ namespace Sailor
 		TVector<FileId> m_materialMasks{};
 		TVector<float> m_sculptStamps{};
 		TVector<float> m_paintStamps{};
+		FileId m_vegetationAsset{};
+		LandscapeVegetationAssetData m_vegetationAssetData{};
+		bool m_bVegetationAssetLoaded = false;
+		bool m_bReloadVegetationAsset = false;
+		bool m_bSaveVegetationRequested = false;
 		TVector<LandscapeVegetationProfile> m_vegetationProfiles{};
 		TVector<LandscapeChunk> m_chunks{};
 		TVector<uint32_t> m_physicsBodies{};
@@ -170,7 +187,7 @@ namespace Sailor
 			size_t m_profileIndex = 0u;
 			uint32_t m_instanceCount = 0u;
 			uint64_t m_viewRevision = 0u;
-			Tasks::TaskPtr<TVector<glm::mat4>> m_task{};
+			Tasks::TaskPtr<LandscapeVegetationRenderInstances> m_task{};
 		};
 
 		void DestroyPhysicsBodies(LandscapeData& component);

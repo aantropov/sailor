@@ -2,6 +2,8 @@
 
 using System.Text.Json;
 using SailorEditor.Commands;
+using SailorEditor.Services;
+using SailorEditor.Utility;
 
 namespace SailorEditor.Mcp;
 
@@ -11,13 +13,69 @@ internal sealed class McpLandscapeOperations
 
     readonly McpSceneBatchExecutor _sceneBatch;
     readonly ICommandHistoryService _history;
+    readonly WorldService _world;
+    readonly AssetsService _assets;
 
     public McpLandscapeOperations(
         McpSceneBatchExecutor sceneBatch,
-        ICommandHistoryService history)
+        ICommandHistoryService history,
+        WorldService world,
+        AssetsService assets)
     {
         _sceneBatch = sceneBatch;
         _history = history;
+        _world = world;
+        _assets = assets;
+    }
+
+    public McpLandscapeVegetationSnapshot GetVegetation(
+        string targetComponentId,
+        long offset,
+        int limit)
+    {
+        if (string.IsNullOrWhiteSpace(targetComponentId) ||
+            !_world.TryGetComponent(
+                new SailorEngine.InstanceId(targetComponentId.Trim()),
+                out var component) ||
+            !string.Equals(
+                component.Typename?.Name,
+                LandscapeComponentType,
+                StringComparison.Ordinal))
+        {
+            return LandscapeVegetationBinary.Failure(
+                string.Empty,
+                string.Empty,
+                "A valid LandscapeComponent instance ID is required.");
+        }
+        if (!component.OverrideProperties.TryGetValue(
+                "vegetation",
+                out var property) ||
+            property is not Observable<SailorEngine.FileId> vegetation ||
+            vegetation.Value is null ||
+            vegetation.Value.IsEmpty())
+        {
+            return LandscapeVegetationBinary.Failure(
+                string.Empty,
+                string.Empty,
+                "The LandscapeComponent does not reference a vegetation asset.");
+        }
+
+        var fileId = vegetation.Value.Value;
+        if (!_assets.Assets.TryGetValue(vegetation.Value, out var asset) ||
+            asset is not SailorEditor.ViewModels.LandscapeVegetationFile ||
+            asset.Asset is null)
+        {
+            return LandscapeVegetationBinary.Failure(
+                fileId,
+                string.Empty,
+                "The referenced vegetation asset is not available in the active project.");
+        }
+        return LandscapeVegetationBinary.ReadPage(
+            asset.Asset.FullName,
+            fileId,
+            asset.Asset.FullName,
+            offset,
+            limit);
     }
 
     public Task<McpSceneBatchResult> ApplyAsync(
@@ -224,6 +282,7 @@ internal sealed class McpLandscapeOperations
             ["lodDistances"] = JsonSerializer.SerializeToElement(request.LodDistances),
             ["lodSkirtDepth"] = JsonSerializer.SerializeToElement(request.LodSkirtDepth),
             ["grassResidencyHysteresis"] = JsonSerializer.SerializeToElement(request.GrassResidencyHysteresis),
+            ["vegetation"] = JsonSerializer.SerializeToElement(request.VegetationFileId ?? string.Empty),
             ["sculptStamps"] = JsonSerializer.SerializeToElement(sculptValues),
             ["paintStamps"] = JsonSerializer.SerializeToElement(paintValues),
             ["vegetationModels"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.ModelFileId)),
@@ -247,6 +306,7 @@ internal sealed class McpLandscapeOperations
             ["vegetationColliderOffsetY"] = JsonSerializer.SerializeToElement(vegetation.Select(value => value.ColliderOffsetY)),
             ["regenerate"] = JsonSerializer.SerializeToElement(false),
             ["flatten"] = JsonSerializer.SerializeToElement(false),
+            ["saveVegetation"] = JsonSerializer.SerializeToElement(false),
         };
 
         if (string.IsNullOrWhiteSpace(request.TargetComponentId))

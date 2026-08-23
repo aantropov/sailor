@@ -67,6 +67,7 @@ public sealed record McpLandscapeApplyRequest
     public float[] LodDistances { get; init; } = [96.0f, 192.0f];
     public float LodSkirtDepth { get; init; } = 2.0f;
     public float GrassResidencyHysteresis { get; init; } = 12.0f;
+    public string VegetationFileId { get; init; } = string.Empty;
     public McpLandscapeVegetationProfile[] Vegetation { get; init; } = [];
     public McpLandscapeSculptStamp[] Sculpt { get; init; } = [];
     public McpLandscapePaintStamp[] Paint { get; init; } = [];

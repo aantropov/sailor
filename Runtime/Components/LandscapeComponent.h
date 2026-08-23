@@ -49,6 +49,8 @@ namespace Sailor
 		SAILOR_API void SetSculptStamps(const TVector<float>& value);
 		SAILOR_API const TVector<float>& GetPaintStamps() const { return m_paintStamps; }
 		SAILOR_API void SetPaintStamps(const TVector<float>& value);
+		SAILOR_API const FileId& GetVegetation() const { return m_vegetation; }
+		SAILOR_API void SetVegetation(const FileId& value);
 		SAILOR_API const TVector<FileId>& GetVegetationModels() const { return m_vegetationModels; }
 		SAILOR_API void SetVegetationModels(const TVector<FileId>& value);
 		SAILOR_API const TVector<FileId>& GetVegetationMaterials() const { return m_vegetationMaterials; }
@@ -91,6 +93,8 @@ namespace Sailor
 		SAILOR_API void SetRegenerate(bool value);
 		SAILOR_API bool GetFlatten() const { return m_bFlatten; }
 		SAILOR_API void SetFlatten(bool value);
+		SAILOR_API bool GetSaveVegetation() const { return false; }
+		SAILOR_API void SetSaveVegetation(bool value);
 
 		SAILOR_API size_t GetComponentIndex() const { return m_handle; }
 
@@ -116,6 +120,7 @@ namespace Sailor
 		float m_grassResidencyHysteresis = 12.0f;
 		TVector<float> m_sculptStamps{};
 		TVector<float> m_paintStamps{};
+		FileId m_vegetation{};
 		TVector<FileId> m_vegetationModels{};
 		TVector<FileId> m_vegetationMaterials{};
 		TVector<float> m_vegetationMeshIndex{};
@@ -178,6 +183,8 @@ REFL_AUTO(
 	func(SetSculptStamps, property("sculptStamps")),
 	func(GetPaintStamps, property("paintStamps")),
 	func(SetPaintStamps, property("paintStamps")),
+	func(GetVegetation, property("vegetation")),
+	func(SetVegetation, property("vegetation")),
 	func(GetVegetationModels, property("vegetationModels")),
 	func(SetVegetationModels, property("vegetationModels")),
 	func(GetVegetationMaterials, property("vegetationMaterials")),
@@ -219,5 +226,7 @@ REFL_AUTO(
 	func(GetRegenerate, property("regenerate")),
 	func(SetRegenerate, property("regenerate")),
 	func(GetFlatten, property("flatten")),
-	func(SetFlatten, property("flatten"))
+	func(SetFlatten, property("flatten")),
+	func(GetSaveVegetation, property("saveVegetation")),
+	func(SetSaveVegetation, property("saveVegetation"))
 )

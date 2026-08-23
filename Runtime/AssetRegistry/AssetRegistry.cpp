@@ -6,6 +6,7 @@
 #include "AssetRegistry/Animation/AnimationControllerAssetInfo.h"
 #include "AssetRegistry/AssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
+#include "AssetRegistry/Landscape/LandscapeVegetationAsset.h"
 #include "AssetRegistry/Material/MaterialAssetInfo.h"
 #include "AssetRegistry/Model/ModelAssetInfo.h"
 #include "AssetRegistry/Prefab/PrefabAssetInfo.h"
@@ -774,6 +775,10 @@ IAssetInfoHandler* AssetRegistry::GetAssetInfoHandler(
 	if (assetInfoType == "Sailor::FrameGraphAssetInfo")
 	{
 		return App::GetSubmodule<FrameGraphAssetInfoHandler>();
+	}
+	if (assetInfoType == "Sailor::LandscapeVegetationAssetInfo")
+	{
+		return App::GetSubmodule<LandscapeVegetationAssetInfoHandler>();
 	}
 	if (assetInfoType == "Sailor::MaterialAssetInfo")
 	{

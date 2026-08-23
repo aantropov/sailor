@@ -20,6 +20,7 @@ void LandscapeComponent::Initialize()
 	data.SetLayerTextures(m_layerTextures);
 	data.SetImportMaps(m_heightmapTexture, m_materialMasks);
 	data.SetAuthoredStamps(m_sculptStamps, m_paintStamps);
+	data.SetVegetationAsset(m_vegetation);
 	data.SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
 		m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
 		m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
@@ -62,6 +63,7 @@ void LandscapeComponent::MarkDirty()
 		data->SetLayerTextures(m_layerTextures);
 		data->SetImportMaps(m_heightmapTexture, m_materialMasks);
 		data->SetAuthoredStamps(m_sculptStamps, m_paintStamps);
+		data->SetVegetationAsset(m_vegetation);
 		data->SetVegetationProfiles(m_vegetationModels, m_vegetationMaterials,
 			m_vegetationMeshIndex, m_vegetationInstancesPerChunk,
 			m_vegetationResidency, m_vegetationPriority, m_vegetationMinScale,
@@ -101,6 +103,7 @@ void LandscapeComponent::SetLodSkirtDepth(float value) { m_lodSkirtDepth = std::
 void LandscapeComponent::SetGrassResidencyHysteresis(float value) { m_grassResidencyHysteresis = std::isfinite(value) ? (std::clamp)(value, 0.0f, 512.0f) : 12.0f; MarkDirty(); }
 void LandscapeComponent::SetSculptStamps(const TVector<float>& value) { m_sculptStamps = value; m_sculptStamps.Resize(m_sculptStamps.Num() / 5u * 5u); MarkDirty(); }
 void LandscapeComponent::SetPaintStamps(const TVector<float>& value) { m_paintStamps = value; m_paintStamps.Resize(m_paintStamps.Num() / 5u * 5u); MarkDirty(); }
+void LandscapeComponent::SetVegetation(const FileId& value) { m_vegetation = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationModels(const TVector<FileId>& value) { m_vegetationModels = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMaterials(const TVector<FileId>& value) { m_vegetationMaterials = value; MarkDirty(); }
 void LandscapeComponent::SetVegetationMeshIndex(const TVector<float>& value) { m_vegetationMeshIndex = value; MarkDirty(); }
@@ -127,8 +130,18 @@ void LandscapeComponent::SetRegenerate(bool value)
 	{
 		if (auto* data = TryGetData())
 		{
-			data->RequestFullRebuild();
+			data->RequestVegetationAssetReload();
 		}
 	}
 }
 void LandscapeComponent::SetFlatten(bool value) { m_bFlatten = false; if (value) { m_heightScale = 0.0f; MarkDirty(); } }
+void LandscapeComponent::SetSaveVegetation(bool value)
+{
+	if (value)
+	{
+		if (auto* data = TryGetData())
+		{
+			data->RequestSaveVegetation();
+		}
+	}
+}
