@@ -5,6 +5,7 @@
 #include "Memory/SharedPtr.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include <glm/glm.hpp>
@@ -32,6 +33,26 @@ namespace Sailor::RHI
 
 	using RHIGlobalIlluminationSnapshotPtr =
 		TSharedPtr<RHIGlobalIlluminationSnapshot>;
+
+	struct SAILOR_SHARED_API RHIGlobalIlluminationRenderStats final
+	{
+		uint64_t m_activeRevision = 0u;
+		// Unique immutable baked payload referenced by the active CPU snapshot.
+		uint64_t m_cpuPayloadBytes = 0u;
+		// Requested SSBO capacity owned by the current submission flight.
+		uint64_t m_gpuAllocatedBytes = 0u;
+		// Transient packed and uploaded bytes recorded for the current frame.
+		uint64_t m_copiedCpuBytes = 0u;
+		uint64_t m_uploadedGpuBytes = 0u;
+		uint32_t m_flightSlot = (std::numeric_limits<uint32_t>::max)();
+		// Complete snapshots are atomic: every brick is resident or none are.
+		uint32_t m_loadedBricks = 0u;
+		uint32_t m_totalBricks = 0u;
+		uint32_t m_probeCount = 0u;
+		uint32_t m_stateCount = 0u;
+		uint32_t m_qualityBudget = 0u;
+		bool m_bActive = false;
+	};
 
 	enum class EGlobalIlluminationDebugVisualization : uint32_t
 	{
@@ -109,6 +130,9 @@ namespace Sailor::RHI
 		const RHIGlobalIlluminationSnapshot& snapshot) noexcept;
 	SAILOR_SHARED_API uint64_t ComputeGlobalIlluminationStateSignature(
 		const RHIGlobalIlluminationSnapshot& snapshot) noexcept;
+	SAILOR_SHARED_API RHIGlobalIlluminationRenderStats
+		BuildGlobalIlluminationRenderStats(
+			const RHIGlobalIlluminationSnapshot* snapshot) noexcept;
 	SAILOR_SHARED_API RHIGlobalIlluminationGpuHeader
 		BuildGlobalIlluminationGpuHeader(
 			const RHIGlobalIlluminationSnapshot* snapshot,

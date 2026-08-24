@@ -304,6 +304,10 @@ namespace
 		context->BeginSubmission(11ull, 1u);
 		view.SetSubmissionContext(context);
 		view.m_renderMode = ESceneViewRenderMode::Cascades;
+		auto firstGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		firstGlobalIllumination->m_generation = 41u;
+		view.m_globalIllumination = firstGlobalIllumination;
 		view.PrepareSnapshots();
 
 		Require(view.m_snapshots.Num() == 1u &&
@@ -314,6 +318,14 @@ namespace
 		Require(
 			view.m_snapshots[0].m_renderMode == ESceneViewRenderMode::Cascades,
 			"a prepared frame snapshot must keep its render mode when the next frame changes");
+		auto secondGlobalIllumination =
+			RHIGlobalIlluminationSnapshotPtr::Make();
+		secondGlobalIllumination->m_generation = 42u;
+		view.m_globalIllumination = secondGlobalIllumination;
+		Require(
+			view.m_snapshots[0].m_globalIllumination == firstGlobalIllumination &&
+			view.m_snapshots[0].m_globalIllumination->m_generation == 41u,
+			"an in-flight camera snapshot must retain its exact immutable GI revision");
 
 		Require(
 			std::string(GetSceneViewRenderModeShaderDefine(

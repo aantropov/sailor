@@ -48,6 +48,18 @@ namespace
 		uint32_t m_flightSlot = 0u;
 		RHIRenderSubmissionContextPtr m_context{};
 	};
+
+	struct GlobalIlluminationRenderStatsStorage final
+	{
+		SpinLock m_lock;
+		RHIGlobalIlluminationRenderStats m_stats{};
+	};
+
+	GlobalIlluminationRenderStatsStorage& GetGlobalIlluminationRenderStatsStorage()
+	{
+		static GlobalIlluminationRenderStatsStorage storage;
+		return storage;
+	}
 }
 
 void IDelayedInitialization::TraceVisit(class TRefPtr<RHIResource> visitor, bool& bShouldRemoveFromList)
@@ -86,6 +98,7 @@ bool IDelayedInitialization::IsReady() const
 
 Renderer::Renderer(Win32::Window* pViewport, RHI::EMsaaSamples msaaSamples, bool bIsDebug)
 {
+	UpdateGlobalIlluminationRenderStats({});
 	m_pViewport = pViewport;
 	m_msaaSamples = msaaSamples;
 	m_bIsInitialized = false;
@@ -222,6 +235,25 @@ void Renderer::UpdateMemoryStats()
 		std::memory_order_relaxed);
 	m_stats.m_texturesMemoryUsage.store(texturesOccupiedSpace, std::memory_order_relaxed);
 #endif
+}
+
+RHIGlobalIlluminationRenderStats
+Renderer::GetGlobalIlluminationRenderStats() const
+{
+	auto& storage = GetGlobalIlluminationRenderStatsStorage();
+	storage.m_lock.Lock();
+	RHIGlobalIlluminationRenderStats result = storage.m_stats;
+	storage.m_lock.Unlock();
+	return result;
+}
+
+void Renderer::UpdateGlobalIlluminationRenderStats(
+	const RHIGlobalIlluminationRenderStats& stats)
+{
+	auto& storage = GetGlobalIlluminationRenderStatsStorage();
+	storage.m_lock.Lock();
+	storage.m_stats = stats;
+	storage.m_lock.Unlock();
 }
 
 RHI::EFormat Renderer::GetColorFormat() const
@@ -637,6 +669,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						bFrameSubmitsSucceeded = updateFrameRHI(chainSemaphore);
 					}
 					DrawCallStats drawCallStats;
+					RHIGlobalIlluminationRenderStats globalIlluminationStats;
 
 					if (bFrameSubmitsSucceeded && bCanRenderFrame &&
 						!m_bFrameGraphOutdated && !m_pViewport->IsIconic())
@@ -678,6 +711,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 							{
 								bFrameGraphProcessed = true;
 								drawCallStats = rhiFrameGraph->GetDrawCallStats();
+								globalIlluminationStats =
+									rhiFrameGraph->GetGlobalIlluminationRenderStats();
 							}
 						}
 					}
@@ -785,6 +820,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					if (bFrameCompleted)
 					{
 						bSubmissionResourcesSucceeded = bFrameGraphProcessed;
+						UpdateGlobalIlluminationRenderStats(
+							globalIlluminationStats);
 						m_stats.m_numBatches.store(drawCallStats.m_numBatches, std::memory_order_relaxed);
 						m_stats.m_numInstances.store(drawCallStats.m_numInstances, std::memory_order_relaxed);
 						totalFramesCount++;
@@ -810,6 +847,7 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 					}
 					else
 					{
+						UpdateGlobalIlluminationRenderStats({});
 						if (submissionBeginState->m_context)
 						{
 							submissionBeginState->m_context->InvalidateSubmissionResources();

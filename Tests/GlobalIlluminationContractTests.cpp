@@ -1007,6 +1007,23 @@ components:
 		eveningState.m_mode = EGlobalIlluminationProbeMode::Blend;
 		snapshot.m_states.Add(eveningState);
 
+		const RHI::RHIGlobalIlluminationRenderStats renderStats =
+			RHI::BuildGlobalIlluminationRenderStats(&snapshot);
+		const uint64_t expectedCpuPayloadBytes = 2u * (
+			sizeof(ProbeVolumeBrick) +
+			8u * sizeof(ProbeVolumeSample));
+		Require(renderStats.m_bActive &&
+			renderStats.m_activeRevision == 7u &&
+			renderStats.m_loadedBricks == 1u &&
+			renderStats.m_totalBricks == 1u &&
+			renderStats.m_probeCount == 8u &&
+			renderStats.m_stateCount == 2u &&
+			renderStats.m_qualityBudget == 2u &&
+			renderStats.m_cpuPayloadBytes == expectedCpuPayloadBytes &&
+			renderStats.m_gpuAllocatedBytes == 0u &&
+			renderStats.m_uploadedGpuBytes == 0u,
+			"render stats must report unique immutable CPU payloads and active GI counts");
+
 		std::string diagnostic;
 		RHI::RHIGlobalIlluminationGpuLayout layout;
 		Require(RHI::BuildGlobalIlluminationGpuLayout(

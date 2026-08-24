@@ -21,9 +21,10 @@
 #include "Settings/GraphicsSettings.h"
 
 #include <imgui.h>
-#include <cstdio>
-#include <thread>
 #include <chrono>
+#include <cstdio>
+#include <limits>
+#include <thread>
 
 using namespace Sailor;
 
@@ -38,6 +39,7 @@ namespace
 		float csmShadowMemoryMb,
 		float localShadowMemoryMb,
 		float shadowMemoryBudgetMb,
+		const RHI::RHIGlobalIlluminationRenderStats& globalIlluminationStats,
 		const RHI::Stats& stats,
 		const char* gpuQueryText)
 	{
@@ -48,12 +50,37 @@ namespace
 		}
 
 		constexpr float BytesToMb = 1.0f / (1024.0f * 1024.0f);
-		char text[640];
+		constexpr float BytesToKb = 1.0f / 1024.0f;
+		const uint32_t globalIlluminationFlightSlot =
+			globalIlluminationStats.m_flightSlot;
+		char globalIlluminationFlight[16];
+		if (globalIlluminationFlightSlot ==
+			(std::numeric_limits<uint32_t>::max)())
+		{
+			std::snprintf(
+				globalIlluminationFlight,
+				sizeof(globalIlluminationFlight),
+				"-");
+		}
+		else
+		{
+			std::snprintf(
+				globalIlluminationFlight,
+				sizeof(globalIlluminationFlight),
+				"%u",
+				globalIlluminationFlightSlot);
+		}
+
+		char text[1024];
 		std::snprintf(
 			text,
 			sizeof(text),
 			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
 			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
+			"GI %s rev %llu flight %s\n"
+			"  States %u / %u, bricks %u / %u, probes %u\n"
+			"  CPU payload %.2f MB, GPU/flight %.2f MB\n"
+			"  Copy %.1f KB, upload %.1f KB\n"
 			"GPU memory\n  Materials %.1f MB\n  Textures %.1f MB\n  Meshes %.1f MB\n  General %.1f MB%s%s",
 			cpuFps,
 			gpuFps,
@@ -63,6 +90,19 @@ namespace
 			shadowMemoryBudgetMb,
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
+			globalIlluminationStats.m_bActive ? "active" : "fallback",
+			static_cast<unsigned long long>(
+				globalIlluminationStats.m_activeRevision),
+			globalIlluminationFlight,
+			globalIlluminationStats.m_stateCount,
+			globalIlluminationStats.m_qualityBudget,
+			globalIlluminationStats.m_loadedBricks,
+			globalIlluminationStats.m_totalBricks,
+			globalIlluminationStats.m_probeCount,
+			globalIlluminationStats.m_cpuPayloadBytes * BytesToMb,
+			globalIlluminationStats.m_gpuAllocatedBytes * BytesToMb,
+			globalIlluminationStats.m_copiedCpuBytes * BytesToKb,
+			globalIlluminationStats.m_uploadedGpuBytes * BytesToKb,
 			stats.m_materialsMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_texturesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
 			stats.m_meshesMemoryUsage.load(std::memory_order_relaxed) * BytesToMb,
@@ -266,6 +306,8 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		}
 
 		const auto& stats = renderer->GetStats();
+		const RHI::RHIGlobalIlluminationRenderStats globalIlluminationStats =
+			renderer->GetGlobalIlluminationRenderStats();
 		char gpuQueryText[96]{};
 		if (statsMode == Settings::ERenderStatsMode::RenderStatsAndQueries)
 		{
@@ -305,6 +347,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
 			shadowMemoryBudgetMb,
+			globalIlluminationStats,
 			stats,
 			gpuQueryText);
 	}

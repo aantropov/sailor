@@ -195,6 +195,68 @@ uint64_t Sailor::RHI::ComputeGlobalIlluminationStateSignature(
 	return hash;
 }
 
+RHIGlobalIlluminationRenderStats
+Sailor::RHI::BuildGlobalIlluminationRenderStats(
+	const RHIGlobalIlluminationSnapshot* snapshot) noexcept
+{
+	RHIGlobalIlluminationRenderStats stats;
+	if (!snapshot)
+	{
+		return stats;
+	}
+
+	stats.m_activeRevision = snapshot->m_generation;
+	stats.m_stateCount = static_cast<uint32_t>(snapshot->m_states.Num());
+	stats.m_qualityBudget = snapshot->m_qualityBudget;
+	if (snapshot->m_layout)
+	{
+		stats.m_totalBricks = static_cast<uint32_t>(
+			snapshot->m_layout->m_bricks.Num());
+		stats.m_probeCount = static_cast<uint32_t>(
+			snapshot->m_layout->m_probes.Num());
+	}
+
+	auto countPayload = [&stats](const ProbeVolumeDataPtr& data)
+	{
+		if (!data)
+		{
+			return;
+		}
+		stats.m_cpuPayloadBytes +=
+			static_cast<uint64_t>(data->m_bricks.Num()) *
+				sizeof(ProbeVolumeBrick) +
+			static_cast<uint64_t>(data->m_probes.Num()) *
+				sizeof(ProbeVolumeSample);
+	};
+	countPayload(snapshot->m_layout);
+	for (size_t stateIndex = 0u;
+		stateIndex < snapshot->m_states.Num();
+		++stateIndex)
+	{
+		const ProbeVolumeDataPtr& data = snapshot->m_states[stateIndex].m_data;
+		bool bAlreadyCounted = data && data == snapshot->m_layout;
+		for (size_t previousIndex = 0u;
+			!bAlreadyCounted && previousIndex < stateIndex;
+			++previousIndex)
+		{
+			bAlreadyCounted = data ==
+				snapshot->m_states[previousIndex].m_data;
+		}
+		if (!bAlreadyCounted)
+		{
+			countPayload(data);
+		}
+	}
+
+	stats.m_bActive = snapshot->m_layout &&
+		stats.m_totalBricks > 0u &&
+		stats.m_probeCount > 0u &&
+		stats.m_stateCount > 0u &&
+		stats.m_stateCount <= stats.m_qualityBudget;
+	stats.m_loadedBricks = stats.m_bActive ? stats.m_totalBricks : 0u;
+	return stats;
+}
+
 RHIGlobalIlluminationGpuHeader
 Sailor::RHI::BuildGlobalIlluminationGpuHeader(
 	const RHIGlobalIlluminationSnapshot* snapshot,

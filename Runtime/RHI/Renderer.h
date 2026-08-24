@@ -46,6 +46,8 @@ namespace Sailor::RHI
 		SAILOR_API void WaitIdle();
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
+		SAILOR_API RHIGlobalIlluminationRenderStats
+			GetGlobalIlluminationRenderStats() const;
 
 		SAILOR_API static TUniquePtr<IGraphicsDriver>& GetDriver();
 		SAILOR_API static IGraphicsDriverCommands* GetDriverCommands();
@@ -63,6 +65,8 @@ namespace Sailor::RHI
 
 	protected:
 		void UpdateMemoryStats();
+		void UpdateGlobalIlluminationRenderStats(
+			const RHIGlobalIlluminationRenderStats& stats);
 
 		RHI::EMsaaSamples m_msaaSamples;
 
