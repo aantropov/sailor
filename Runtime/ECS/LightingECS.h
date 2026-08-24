@@ -167,6 +167,8 @@ namespace Sailor
 		SAILOR_API virtual uint32_t GetOrder() const override { return 150; }
 
 		SAILOR_API void GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const;
+		SAILOR_API void GetGlobalIlluminationBakeLightProxies(
+			TVector<Raytracing::LightProxy>& outLights) const;
 		void FillLightingData(RHI::RHISceneViewPtr& sceneView);
 
 		float GetShadowsOccupiedMemoryMb() const { return m_shadowMapsMb; }
@@ -182,6 +184,9 @@ namespace Sailor
 		}
 
 	protected:
+		void CollectLightProxies(
+			TVector<Raytracing::LightProxy>& outLights,
+			bool bGlobalIlluminationBakeContributorsOnly) const;
 
 		SAILOR_API void PrepareCSMPasses(
 			const RHI::RHISceneViewPtr& sceneView,

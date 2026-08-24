@@ -765,7 +765,7 @@ namespace
 
 		if (auto* lighting = world->GetECS<LightingECS>())
 		{
-			lighting->GetLightProxies(scene.m_lights);
+			lighting->GetGlobalIlluminationBakeLightProxies(scene.m_lights);
 		}
 		for (const Raytracing::LightProxy& light : scene.m_lights)
 		{
@@ -809,13 +809,6 @@ namespace
 		scene.m_sourceWorldHash = sourceHash;
 		return true;
 	}
-}
-
-bool Sailor::IsGlobalIlluminationBakeContributor(
-	EMobilityType mobility) noexcept
-{
-	return mobility == EMobilityType::Static ||
-		mobility == EMobilityType::Stationary;
 }
 
 bool Sailor::AreWorldDocumentsEquivalentForProbeBake(

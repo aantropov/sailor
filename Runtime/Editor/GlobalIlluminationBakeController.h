@@ -3,7 +3,7 @@
 #include "AssetRegistry/FileId.h"
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
 #include "Core/SpinLock.h"
-#include "Engine/Types.h"
+#include "Engine/GlobalIlluminationSettings.h"
 #include "Memory/SharedPtr.hpp"
 #include "Tasks/Tasks.h"
 
@@ -24,9 +24,6 @@ namespace Sailor
 		const YAML::Node& savedDocument,
 		const YAML::Node& currentDocument,
 		std::string& outDiagnostic);
-	SAILOR_SHARED_API bool IsGlobalIlluminationBakeContributor(
-		EMobilityType mobility) noexcept;
-
 	enum class EEditorProbeVolumeBakeState : uint8_t
 	{
 		Idle = 0u,

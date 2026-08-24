@@ -6,6 +6,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
+#include "Engine/GlobalIlluminationSettings.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "Settings/GraphicsSettings.h"
 
@@ -1676,6 +1677,19 @@ void LightingECS::FillLightingData(RHI::RHISceneViewPtr& sceneView)
 
 void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) const
 {
+	CollectLightProxies(outLights, false);
+}
+
+void LightingECS::GetGlobalIlluminationBakeLightProxies(
+	TVector<Raytracing::LightProxy>& outLights) const
+{
+	CollectLightProxies(outLights, true);
+}
+
+void LightingECS::CollectLightProxies(
+	TVector<Raytracing::LightProxy>& outLights,
+	bool bGlobalIlluminationBakeContributorsOnly) const
+{
 	outLights.Clear();
 	const size_t numGpuLightSlots = GetGpuLightSlotsCount(m_components.Num());
 	outLights.Reserve(numGpuLightSlots);
@@ -1691,6 +1705,11 @@ void LightingECS::GetLightProxies(TVector<Raytracing::LightProxy>& outLights) co
 		GameObject* pOwner = light.m_owner ?
 			static_cast<GameObject*>(light.m_owner.GetRawPtr()) : nullptr;
 		if (!pOwner)
+		{
+			continue;
+		}
+		if (bGlobalIlluminationBakeContributorsOnly &&
+			!IsGlobalIlluminationBakeContributor(pOwner->GetMobilityType()))
 		{
 			continue;
 		}

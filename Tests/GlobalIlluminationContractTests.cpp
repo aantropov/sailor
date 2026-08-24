@@ -4,14 +4,21 @@
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
+#include "Components/LightComponent.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
+#include "ECS/LightingECS.h"
+#include "ECS/StaticMeshRendererECS.h"
+#include "ECS/TransformECS.h"
 #include "Engine/GlobalIlluminationSettings.h"
+#include "Engine/GameObject.h"
+#include "Engine/World.h"
 #include "Editor/GlobalIlluminationBakeController.h"
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/GlobalIllumination.h"
 #include "Raytracing/PathTracer.h"
 #include "Raytracing/ProbeVolumePathTracer.h"
 
+#include <algorithm>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -28,6 +35,24 @@ using namespace Sailor;
 
 namespace
 {
+	class GlobalIlluminationMobilityTestWorld final : public World
+	{
+	public:
+		GlobalIlluminationMobilityTestWorld() :
+			World("GlobalIlluminationMobilityContractTests", 0, CreateEcs())
+		{}
+
+	private:
+		static TVector<ECS::TBaseSystemPtr> CreateEcs()
+		{
+			TVector<ECS::TBaseSystemPtr> systems;
+			systems.Add(TUniquePtr<TransformECS>::Make());
+			systems.Add(TUniquePtr<StaticMeshRendererECS>::Make());
+			systems.Add(TUniquePtr<LightingECS>::Make());
+			return systems;
+		}
+	};
+
 	const char* g_currentTestName = "startup";
 
 	[[noreturn]] void ReportTermination() noexcept
@@ -1339,10 +1364,51 @@ components:
 		Require(
 			IsGlobalIlluminationBakeContributor(EMobilityType::Static) &&
 			IsGlobalIlluminationBakeContributor(EMobilityType::Stationary),
-			"static and stationary mesh renderers must contribute to baked global illumination");
+			"static and stationary scene objects must contribute geometry and lights to baked global illumination");
 		Require(
 			!IsGlobalIlluminationBakeContributor(EMobilityType::Dynamic),
-			"dynamic mesh renderers must not contribute bake geometry");
+			"dynamic scene objects must not contribute bake geometry or lights");
+
+		GlobalIlluminationMobilityTestWorld world;
+		const auto addLight = [&world](
+			const char* name,
+			EMobilityType mobility,
+			float intensity)
+		{
+			GameObjectPtr gameObject = world.Instantiate(name);
+			gameObject->SetMobilityType(mobility);
+			auto light = gameObject->AddComponent<LightComponent>();
+			light->SetIntensity(glm::vec3(intensity));
+		};
+		addLight("StaticLight", EMobilityType::Static, 1.0f);
+		addLight("StationaryLight", EMobilityType::Stationary, 2.0f);
+		addLight("DynamicLight", EMobilityType::Dynamic, 3.0f);
+
+		LightingECS* lighting = world.GetECS<LightingECS>();
+		TVector<Raytracing::LightProxy> allLights;
+		TVector<Raytracing::LightProxy> bakeLights;
+		lighting->GetLightProxies(allLights);
+		lighting->GetGlobalIlluminationBakeLightProxies(bakeLights);
+		const auto containsIntensity = [](const auto& lights, float intensity)
+		{
+			return std::any_of(
+				lights.begin(),
+				lights.end(),
+				[intensity](const Raytracing::LightProxy& light)
+				{
+					return light.m_intensity == glm::vec3(intensity);
+				});
+		};
+		Require(
+			allLights.Num() == 3u && containsIntensity(allLights, 3.0f),
+			"the generic path-tracer light collection must retain dynamic lights");
+		Require(
+			bakeLights.Num() == 2u &&
+				containsIntensity(bakeLights, 1.0f) &&
+				containsIntensity(bakeLights, 2.0f) &&
+				!containsIntensity(bakeLights, 3.0f),
+			"the GI bake light collection must include Static and Stationary lights and exclude Dynamic lights");
+		world.Clear();
 	}
 }
 

@@ -3,6 +3,7 @@
 #include "AssetRegistry/FileId.h"
 #include "Containers/Map.h"
 #include "Core/Defines.h"
+#include "Engine/Types.h"
 
 #include <cstdint>
 #include <string>
@@ -11,6 +12,13 @@
 
 namespace Sailor
 {
+	constexpr bool IsGlobalIlluminationBakeContributor(
+		EMobilityType mobility) noexcept
+	{
+		return mobility == EMobilityType::Static ||
+			mobility == EMobilityType::Stationary;
+	}
+
 	enum class EGlobalIlluminationProbeMode : uint8_t
 	{
 		Blend = 0,
