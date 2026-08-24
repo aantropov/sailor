@@ -80,6 +80,7 @@ namespace Sailor::RHI
 			TVector<RHIRenderSubmissionContextPtr> m_submissionContexts{};
 			std::atomic<uint64_t> m_nextSubmissionId = 1ull;
 			uint64_t m_frameGraphResourceGeneration = 0ull;
+			bool m_bUseDriverDepthBuffer = false;
 			bool m_bIsInitialized = false;
 		};
 	};
