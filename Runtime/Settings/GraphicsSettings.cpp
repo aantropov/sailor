@@ -54,6 +54,7 @@ namespace
 		bool bSupportSoftShadows,
 		float cloudsResolutionMultiplier,
 		uint32_t skyResolution,
+		uint32_t vegetationInstanceBudget,
 		int32_t lodBias)
 	{
 		GraphicsQualityProfile profile;
@@ -67,6 +68,7 @@ namespace
 		profile.m_bSupportSoftShadows = bSupportSoftShadows;
 		profile.m_cloudsResolutionMultiplier = cloudsResolutionMultiplier;
 		profile.m_skyResolution = skyResolution;
+		profile.m_vegetationInstanceBudget = vegetationInstanceBudget;
 		profile.m_lodBias = lodBias;
 		return profile;
 	}
@@ -261,6 +263,37 @@ namespace
 		YAML::Node field;
 		if (!ReadScalar(parent, fieldName, source, fieldPath, field, outDiagnostic))
 		{
+			return false;
+		}
+
+		const std::string scalar = field.Scalar();
+		const char* begin = scalar.data();
+		const char* end = begin + scalar.size();
+		const auto parsed = std::from_chars(begin, end, outValue);
+		if (scalar.empty() || parsed.ec != std::errc() || parsed.ptr != end)
+		{
+			outDiagnostic = InvalidField(source, fieldPath, "must be an unsigned 32-bit integer");
+			return false;
+		}
+		return true;
+	}
+
+	bool ReadOptionalUint32(
+		const YAML::Node& parent,
+		const char* fieldName,
+		const std::string& source,
+		const std::string& fieldPath,
+		uint32_t& outValue,
+		std::string& outDiagnostic)
+	{
+		const YAML::Node field = FindField(parent, fieldName);
+		if (!field.IsDefined())
+		{
+			return true;
+		}
+		if (!field.IsScalar())
+		{
+			outDiagnostic = InvalidField(source, fieldPath, "must be an unsigned 32-bit integer");
 			return false;
 		}
 
@@ -665,6 +698,25 @@ namespace
 			return false;
 		}
 
+		if (!ReadOptionalUint32(
+				profile,
+				"vegetationInstanceBudget",
+				source,
+				profilePath + ".vegetationInstanceBudget",
+				outProfile.m_vegetationInstanceBudget,
+				outDiagnostic) ||
+			outProfile.m_vegetationInstanceBudget > 1048576u)
+		{
+			if (outDiagnostic.empty())
+			{
+				outDiagnostic = InvalidField(
+					source,
+					profilePath + ".vegetationInstanceBudget",
+					"must be in the range [0, 1048576]");
+			}
+			return false;
+		}
+
 		return true;
 	}
 
@@ -754,6 +806,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		1.0f,
 		512u,
+		65536u,
 		-1);
 	m_presets[QualityIndex(EGraphicsQuality::High)] = MakeProfile(
 		1.0f,
@@ -766,6 +819,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		0.75f,
 		256u,
+		32768u,
 		0);
 	m_presets[QualityIndex(EGraphicsQuality::Medium)] = MakeProfile(
 		0.85f,
@@ -778,6 +832,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		0.5f,
 		256u,
+		16384u,
 		0);
 	m_presets[QualityIndex(EGraphicsQuality::Low)] = MakeProfile(
 		0.7f,
@@ -790,6 +845,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		false,
 		0.25f,
 		128u,
+		8192u,
 		1);
 	m_presets[QualityIndex(EGraphicsQuality::VeryLow)] = MakeProfile(
 		0.5f,
@@ -802,6 +858,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		false,
 		0.125f,
 		64u,
+		2048u,
 		2);
 }
 

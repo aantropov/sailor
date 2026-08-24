@@ -157,6 +157,25 @@ internal sealed class McpEditorTools
                 UseStructuredContent = true,
             }),
         McpServerTool.Create(
+            (string targetComponentId,
+                long offset,
+                int limit,
+                CancellationToken cancellationToken) =>
+                GetLandscapeVegetationAsync(
+                    targetComponentId,
+                    offset,
+                    limit,
+                    cancellationToken),
+            new()
+            {
+                Name = "sailor_landscape_get_vegetation",
+                Description =
+                    "Read the binary vegetation asset referenced by a LandscapeComponent and return its exact fileId, " +
+                    "versioned binary format and a paged list of per-instance matrices/settings. " +
+                    "Matrices are Landscape-local and column-major. offset is a global instance index; limit is clamped to 1..4096.",
+                UseStructuredContent = true,
+            }),
+        McpServerTool.Create(
             (McpLandscapeApplyRequest request, CancellationToken cancellationToken) =>
                 ApplyLandscapeAsync(request, cancellationToken),
             new()
@@ -166,6 +185,7 @@ internal sealed class McpEditorTools
                     "Create or fully author a LandscapeComponent from a level description. " +
                     "Resolve material, texture and model fileIds with sailor_assets_list/get first. " +
                     "The request replaces terrain stamps and all vegetation profiles atomically. " +
+                    "Set vegetationFileId to link an existing Landscape.vegetation binary asset. " +
                     "A vegetation materialFileId is optional; leave it empty to use the GLB materials. " +
                     "Vegetation shadows accept None, NearOnly, or All. Leave targetComponentId empty to create a new Landscape GameObject. " +
                     "Pass the current workspace epoch and confirm=true; the complete edit is one undo entry.",
@@ -185,7 +205,7 @@ internal sealed class McpEditorTools
             {
                 Name = "sailor_landscape_regenerate",
                 Description =
-                    "Regenerate terrain, vegetation, render proxies and collision for an existing LandscapeComponent. " +
+                    "Reload its linked Landscape.vegetation asset, then regenerate terrain, vegetation, render proxies and collision. " +
                     "Requires its component instance ID, the current workspace epoch and confirm=true.",
                 UseStructuredContent = true,
             }),
@@ -427,6 +447,18 @@ internal sealed class McpEditorTools
                 expectedWorkspaceEpoch,
                 targetComponentId,
                 cancellationToken),
+            cancellationToken);
+
+    public Task<McpLandscapeVegetationSnapshot> GetLandscapeVegetationAsync(
+        string targetComponentId,
+        long offset,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        _editorThread.InvokeAsync(
+            () => Task.FromResult(_landscapeOperations.GetVegetation(
+                targetComponentId,
+                offset,
+                limit)),
             cancellationToken);
 
     public Task<object> UndoAsync(

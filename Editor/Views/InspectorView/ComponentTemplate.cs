@@ -247,7 +247,12 @@ public partial class ComponentTemplate : DataTemplate
                                 Vec4 vec4 => Templates.Vec4Editor((Component vm) => vec4),
                                 Vec3 vec3 => Templates.Vec3Editor((Component vm) => vec3),
                                 Vec2 vec2 => Templates.Vec2Editor((Component vm) => vec2),
-                                Observable<FileId> observableFileId => Templates.FileIdEditor(component.OverrideProperties[property.Key], nameof(Observable<FileId>.Value), (Observable<FileId> vm) => vm.Value, (vm, value) => vm.Value = value),
+                                Observable<FileId> observableFileId => Templates.FileIdEditor(
+                                    component.OverrideProperties[property.Key],
+                                    nameof(Observable<FileId>.Value),
+                                    (Observable<FileId> vm) => vm.Value,
+                                    (vm, value) => vm.Value = value,
+                                    ResolveFileIdSupportedType(component, property.Key)),
                                 ObservableFileIdList fileIds => Templates.FileIdListEditor(
                                     fileIds,
                                     ResolveFileIdListSupportedType(
@@ -371,14 +376,15 @@ public partial class ComponentTemplate : DataTemplate
                     "layerTextures" or "heightmapTexture" or "materialMasks" or
                     "vegetationModels" or "vegetationMaterials" or
                     "vegetationMeshIndex" or
-                    "vegetationInstancesPerChunk" or "vegetationMinScale" or
+                    "vegetationInstancesPerChunk" or "vegetationResidency" or
+                    "vegetationPriority" or "vegetationMinScale" or
                     "vegetationMaxScale" or "vegetationGroundOffset" or
                     "vegetationShadowMode" or "vegetationShadowDistance" or
                     "vegetationMinLod" or "vegetationMaxLod" or
                     "vegetationLod1ScreenCoverage" or "vegetationLod2ScreenCoverage" or
                     "vegetationCullDistance" or "vegetationColliderRadius" or
                     "vegetationColliderHeight" or "vegetationColliderOffsetY" or
-                    "regenerate" or "flatten")
+                    "regenerate" or "flatten" or "saveVegetation")
                 {
                     continue;
                 }
@@ -429,6 +435,21 @@ public partial class ComponentTemplate : DataTemplate
                 propertyName == "layerTextures"
                 ? typeof(TextureFile)
                 : null;
+    }
+
+    static Type ResolveFileIdSupportedType(
+        Component component,
+        string propertyName)
+    {
+        if (component.Typename.Name != "Sailor::LandscapeComponent")
+        {
+            return null;
+        }
+        return propertyName switch
+        {
+            "vegetation" => typeof(LandscapeVegetationFile),
+            _ => null
+        };
     }
 
     static Command CreateContextMenuCommand(

@@ -17,6 +17,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 1
       skyResolution: 512
+      vegetationInstanceBudget: 65536
       lodBias: -1
     High:
       resolutionFactor: 1
@@ -33,6 +34,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.75
       skyResolution: 256
+      vegetationInstanceBudget: 32768
       lodBias: 0
     Medium:
       resolutionFactor: 0.85
@@ -48,6 +50,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.5
       skyResolution: 256
+      vegetationInstanceBudget: 16384
       lodBias: 0
     Low:
       resolutionFactor: 0.7
@@ -62,6 +65,7 @@ graphics:
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.5
       skyResolution: 128
+      vegetationInstanceBudget: 8192
       lodBias: 1
     VeryLow:
       resolutionFactor: 0.5
@@ -75,5 +79,6 @@ graphics:
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.125
       skyResolution: 64
+      vegetationInstanceBudget: 2048
       lodBias: 2
 ...

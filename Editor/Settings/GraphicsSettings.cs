@@ -49,6 +49,7 @@ public sealed record GraphicsQualityPresetSettings
     public bool SupportSoftShadows { get; init; }
     public double CloudsResolutionMultiplier { get; init; }
     public int SkyResolution { get; init; }
+    public int VegetationInstanceBudget { get; init; }
     public int LodBias { get; init; }
 }
 
@@ -129,6 +130,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 1.0,
             SkyResolution = 512,
+            VegetationInstanceBudget = 65536,
             LodBias = -1
         },
         High = new GraphicsQualityPresetSettings
@@ -143,6 +145,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.75,
             SkyResolution = 256,
+            VegetationInstanceBudget = 32768,
             LodBias = 0
         },
         Medium = new GraphicsQualityPresetSettings
@@ -157,6 +160,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.5,
             SkyResolution = 256,
+            VegetationInstanceBudget = 16384,
             LodBias = 0
         },
         Low = new GraphicsQualityPresetSettings
@@ -171,6 +175,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.25,
             SkyResolution = 128,
+            VegetationInstanceBudget = 8192,
             LodBias = 1
         },
         VeryLow = new GraphicsQualityPresetSettings
@@ -185,6 +190,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.125,
             SkyResolution = 64,
+            VegetationInstanceBudget = 2048,
             LodBias = 2
         }
     };
@@ -383,6 +389,15 @@ public static class GraphicsSettingsValidator
                 "Sky resolution must be a power of two between 32 and 8192."));
         }
 
+        if (preset.VegetationInstanceBudget is < 0 or > 1048576)
+        {
+            AddRangeIssue(
+                issues,
+                $"{path}.vegetationInstanceBudget",
+                "Vegetation instance budget",
+                "0 and 1048576");
+        }
+
         if (preset.LodBias is < -8 or > 8)
         {
             AddRangeIssue(issues, $"{path}.lodBias", "LOD bias", "-8 and 8");
@@ -544,6 +559,7 @@ public static class GraphicsSettingsYamlCodec
                 presetsNode,
                 quality.ToString(),
                 $"graphics.presets.{quality}",
+                GraphicsSettingsDefaults.Presets.Get(quality),
                 issues);
             presets = presets.With(quality, preset);
         }
@@ -667,6 +683,7 @@ public static class GraphicsSettingsYamlCodec
         YamlMappingNode parent,
         string key,
         string path,
+        GraphicsQualityPresetSettings defaults,
         ICollection<GraphicsSettingsValidationIssue> issues)
     {
         var preset = ReadMapping(parent, key, path, issues);
@@ -682,6 +699,12 @@ public static class GraphicsSettingsYamlCodec
             SupportSoftShadows = ReadBool(preset, "supportSoftShadows", $"{path}.supportSoftShadows", issues),
             CloudsResolutionMultiplier = ReadDouble(preset, "cloudsResolutionMultiplier", $"{path}.cloudsResolutionMultiplier", issues),
             SkyResolution = ReadInt(preset, "skyResolution", $"{path}.skyResolution", issues),
+            VegetationInstanceBudget = ReadOptionalInt(
+                preset,
+                "vegetationInstanceBudget",
+                $"{path}.vegetationInstanceBudget",
+                defaults.VegetationInstanceBudget,
+                issues),
             LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues)
         };
     }
@@ -704,6 +727,7 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(preset, "supportSoftShadows", settings.SupportSoftShadows);
         SetScalar(preset, "cloudsResolutionMultiplier", settings.CloudsResolutionMultiplier);
         SetScalar(preset, "skyResolution", settings.SkyResolution);
+        SetScalar(preset, "vegetationInstanceBudget", settings.VegetationInstanceBudget);
         SetScalar(preset, "lodBias", settings.LodBias);
     }
 
@@ -757,6 +781,33 @@ public static class GraphicsSettingsYamlCodec
 
         if (value is not null)
             issues.Add(new GraphicsSettingsValidationIssue(path, "An integer value is required."));
+        return 0;
+    }
+
+    static int ReadOptionalInt(
+        YamlMappingNode? parent,
+        string key,
+        string path,
+        int defaultValue,
+        ICollection<GraphicsSettingsValidationIssue> issues)
+    {
+        if (parent is null ||
+            !parent.Children.TryGetValue(new YamlScalarNode(key), out var node))
+        {
+            return defaultValue;
+        }
+        if (node is YamlScalarNode scalar &&
+            scalar.Value is not null &&
+            int.TryParse(
+                scalar.Value,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed))
+        {
+            return parsed;
+        }
+
+        issues.Add(new GraphicsSettingsValidationIssue(path, "An integer value is required."));
         return 0;
     }
 

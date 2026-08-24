@@ -393,6 +393,7 @@ public partial class AssetFile : ObservableObject, ICloneable
             AnimationSetFile => "Sailor::AnimationSetAssetInfo",
             AudioFile => "Sailor::AudioAssetInfo",
             FrameGraphFile => "Sailor::FrameGraphAssetInfo",
+            LandscapeVegetationFile => "Sailor::LandscapeVegetationAssetInfo",
             MaterialFile => "Sailor::MaterialAssetInfo",
             ModelFile => "Sailor::ModelAssetInfo",
             PrefabFile => "Sailor::PrefabAssetInfo",

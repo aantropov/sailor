@@ -52,9 +52,14 @@ namespace Sailor::RHI
 		uint32_t m_minLod = 0u;
 		uint32_t m_maxLod = 2u;
 		TVector<float> m_screenCoverageThresholds{ 0.25f, 0.05f };
+		TVector<float> m_cameraDistanceThresholds{};
 		float m_maxCameraDistance = (std::numeric_limits<float>::infinity)();
 
 		SAILOR_API uint32_t Resolve(float screenCoverage, uint32_t numAvailableLods) const;
+		SAILOR_API uint32_t Resolve(
+			float screenCoverage,
+			float cameraDistance,
+			uint32_t numAvailableLods) const;
 	};
 
 	struct RHIShadowCasterProxy
@@ -78,6 +83,9 @@ namespace Sailor::RHI
 	struct RHIInstancedMeshGroup
 	{
 		TVector<glm::mat4> m_instanceTransforms{};
+		TVector<int32_t> m_instanceLodBiases{};
+		TVector<float> m_instanceCullDistanceScales{};
+		TVector<float> m_instanceShadowDistanceScales{};
 		TVector<RHIMeshPtr> m_meshes{};
 		TVector<glm::mat4> m_meshTransforms{};
 		TVector<RHIMaterialPtr> m_materials{};
@@ -168,6 +176,7 @@ namespace Sailor::RHI
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
 		float m_screenCoverage = 1.0f;
+		float m_cameraDistance = 0.0f;
 
 		SAILOR_API const RHISceneViewProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -203,6 +212,7 @@ namespace Sailor::RHI
 		// The owning RHISceneVersion is retained by the submission snapshot.
 		const RHISceneInstanceRecord* m_record = nullptr;
 		const RHISceneProxyResource* m_resource = nullptr;
+		float m_cameraDistance = 0.0f;
 
 		SAILOR_API const RHIShadowCasterProxy* GetSource() const;
 		SAILOR_API const glm::mat4& GetWorldMatrix() const;
@@ -237,7 +247,7 @@ namespace Sailor::RHI
 
 	static_assert(sizeof(RHIVisibleSceneProxy) <= sizeof(void*) * 4u,
 		"Visible scene records must remain lightweight immutable references.");
-	static_assert(sizeof(RHIVisibleShadowCaster) <= sizeof(void*) * 3u,
+	static_assert(sizeof(RHIVisibleShadowCaster) <= sizeof(void*) * 4u,
 		"Visible shadow records must remain lightweight immutable references.");
 
 	/**
@@ -413,9 +423,12 @@ namespace Sailor::RHI
 			const Math::Frustum& frustum,
 			TVector<RHIVisibleSceneProxy>& outVisibleProxies,
 			bool bSkipMaterials) const;
-		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(const Math::Frustum& frustum) const;
+		SAILOR_API TVector<RHIVisibleShadowCaster> TraceShadowCasters(
+			const Math::Frustum& frustum,
+			const glm::vec3& lodReferencePosition) const;
 		SAILOR_API void TraceShadowCasters(
 			const Math::Frustum& frustum,
+			const glm::vec3& lodReferencePosition,
 			TVector<RHIVisibleShadowCaster>& outVisibleCasters) const;
 		SAILOR_API void PrepareSnapshots();
 		SAILOR_API void PrepareDebugDrawCommandLists(

@@ -89,6 +89,7 @@ namespace Sailor::Settings
 		bool m_bSupportSoftShadows = false;
 		float m_cloudsResolutionMultiplier = 0.5f;
 		uint32_t m_skyResolution = 256u;
+		uint32_t m_vegetationInstanceBudget = 32768u;
 		int32_t m_lodBias = 0;
 
 		bool IsShadowCascadeActive(uint32_t cascadeIndex) const noexcept;

@@ -62,6 +62,27 @@ namespace
 		HashCombine(result, std::hash<glm::mat4>{}(matrix));
 	}
 
+	int32_t ResolveInstanceLodBias(
+		const RHIInstancedMeshGroup& group,
+		size_t instanceIndex)
+	{
+		return instanceIndex < group.m_instanceLodBiases.Num() ?
+			group.m_instanceLodBiases[instanceIndex] : 0;
+	}
+
+	float ResolveInstanceDistanceScale(
+		const TVector<float>& scales,
+		size_t instanceIndex)
+	{
+		if (instanceIndex >= scales.Num() ||
+			!std::isfinite(scales[instanceIndex]) ||
+			scales[instanceIndex] <= 0.0f)
+		{
+			return 1.0f;
+		}
+		return scales[instanceIndex];
+	}
+
 	void HashMaterialVersion(size_t& result, const RHIMaterialPtr& material)
 	{
 		if (!material)
@@ -108,6 +129,10 @@ namespace
 		{
 			HashCombine(geometryRevision, std::hash<float>{}(threshold));
 		}
+		for (float threshold : proxy.m_lodPolicy.m_cameraDistanceThresholds)
+		{
+			HashCombine(geometryRevision, std::hash<float>{}(threshold));
+		}
 		for (const auto& mesh : proxy.m_meshes)
 		{
 			HashCombine(geometryRevision, mesh);
@@ -121,6 +146,9 @@ namespace
 			HashCombine(
 				geometryRevision,
 				group.m_instanceTransforms.Num(),
+				group.m_instanceLodBiases.Num(),
+				group.m_instanceCullDistanceScales.Num(),
+				group.m_instanceShadowDistanceScales.Num(),
 				group.m_meshes.Num(),
 				group.m_bCastShadows,
 				std::hash<float>{}(group.m_maxShadowDistance));
@@ -135,6 +163,18 @@ namespace
 			for (const auto& matrix : group.m_instanceTransforms)
 			{
 				HashMatrix(geometryRevision, matrix);
+			}
+			for (int32_t lodBias : group.m_instanceLodBiases)
+			{
+				HashCombine(geometryRevision, lodBias);
+			}
+			for (float scale : group.m_instanceCullDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
+			}
+			for (float scale : group.m_instanceShadowDistanceScales)
+			{
+				HashCombine(geometryRevision, std::hash<float>{}(scale));
 			}
 		}
 		resource.m_geometryRevision = geometryRevision;
@@ -394,6 +434,7 @@ RHIMeshPtr RHIVisibleSceneProxy::ResolveMesh(const RHIMeshPtr& sourceMesh) const
 	{
 		const uint32_t lod = source->m_lodPolicy.Resolve(
 			m_screenCoverage,
+			m_cameraDistance,
 			mesh->GetNumLods());
 		if (lod > 0u)
 		{
@@ -455,9 +496,15 @@ RHIMeshPtr RHIVisibleSceneProxy::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = source->m_lodPolicy.Resolve(
+	uint32_t lod = source->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, viewMatrix, projectionMatrix),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		source->m_lodPolicy.m_minLod,
+		source->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -493,7 +540,10 @@ bool RHIVisibleSceneProxy::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceCullDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 const RHIShadowCasterProxy* RHIVisibleShadowCaster::GetSource() const
@@ -594,7 +644,10 @@ RHIMeshPtr RHIVisibleShadowCaster::ResolveMesh(
 		GetWorldBounds(),
 		glm::mat4(1.0f),
 		shadowViewProjection);
-	const uint32_t lod = topology->m_lodPolicy.Resolve(coverage, mesh->GetNumLods());
+	const uint32_t lod = topology->m_lodPolicy.Resolve(
+		coverage,
+		m_cameraDistance,
+		mesh->GetNumLods());
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -649,9 +702,15 @@ RHIMeshPtr RHIVisibleShadowCaster::ResolveInstancedMesh(
 		group,
 		instanceIndex,
 		meshIndex));
-	const uint32_t lod = topology->m_lodPolicy.Resolve(
+	uint32_t lod = topology->m_lodPolicy.Resolve(
 		CalculateScreenCoverage(worldBounds, glm::mat4(1.0f), shadowViewProjection),
 		mesh->GetNumLods());
+	lod = Settings::ApplyLodBias(
+		lod,
+		mesh->GetNumLods(),
+		topology->m_lodPolicy.m_minLod,
+		topology->m_lodPolicy.m_maxLod,
+		ResolveInstanceLodBias(group, instanceIndex));
 	if (lod > 0u)
 	{
 		if (auto lodMesh = mesh->GetLod(lod))
@@ -687,7 +746,10 @@ bool RHIVisibleShadowCaster::IsInstancedMeshWithinDistance(
 		cameraPosition,
 		worldBounds.m_min,
 		worldBounds.m_max);
-	return glm::distance(cameraPosition, closestPoint) <= maxDistance;
+	const float instanceMaxDistance = maxDistance * ResolveInstanceDistanceScale(
+		group.m_instanceShadowDistanceScales,
+		instanceIndex);
+	return glm::distance(cameraPosition, closestPoint) <= instanceMaxDistance;
 }
 
 float Sailor::RHI::CalculateScreenCoverage(
@@ -768,6 +830,14 @@ float Sailor::RHI::CalculateScreenCoverage(
 
 uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableLods) const
 {
+	return Resolve(screenCoverage, 0.0f, numAvailableLods);
+}
+
+uint32_t RHI::RHILodPolicy::Resolve(
+	float screenCoverage,
+	float cameraDistance,
+	uint32_t numAvailableLods) const
+{
 	if (numAvailableLods == 0u)
 	{
 		return 0u;
@@ -777,15 +847,32 @@ uint32_t RHI::RHILodPolicy::Resolve(float screenCoverage, uint32_t numAvailableL
 	const uint32_t minLod = (std::min)(m_minLod, highestAvailableLod);
 	const uint32_t maxLod = (std::max)(minLod, (std::min)(m_maxLod, highestAvailableLod));
 	uint32_t selectedLod = 0u;
-	const float coverage = (std::clamp)(screenCoverage, 0.0f, 1.0f);
-	for (size_t index = 0u; index < m_screenCoverageThresholds.Num(); ++index)
+	if (!m_cameraDistanceThresholds.IsEmpty())
 	{
-		if (!std::isfinite(m_screenCoverageThresholds[index]) ||
-			coverage >= m_screenCoverageThresholds[index])
+		const float distance = std::isfinite(cameraDistance) ?
+			(std::max)(cameraDistance, 0.0f) :
+			(std::numeric_limits<float>::infinity)();
+		for (float threshold : m_cameraDistanceThresholds)
 		{
-			break;
+			if (!std::isfinite(threshold) || distance < threshold)
+			{
+				break;
+			}
+			++selectedLod;
 		}
-		selectedLod = static_cast<uint32_t>(index + 1u);
+	}
+	else
+	{
+		const float coverage = (std::clamp)(screenCoverage, 0.0f, 1.0f);
+		for (size_t index = 0u; index < m_screenCoverageThresholds.Num(); ++index)
+		{
+			if (!std::isfinite(m_screenCoverageThresholds[index]) ||
+				coverage >= m_screenCoverageThresholds[index])
+			{
+				break;
+			}
+			selectedLod = static_cast<uint32_t>(index + 1u);
+		}
 	}
 	const int32_t lodBias = App::GetInstance() ?
 		App::GetActiveGraphicsSettings().m_lodBias : 0;
@@ -1191,15 +1278,18 @@ void RHISceneView::TraceScene(
 
 }
 
-TVector<RHIVisibleShadowCaster> RHISceneView::TraceShadowCasters(const Math::Frustum& frustum) const
+TVector<RHIVisibleShadowCaster> RHISceneView::TraceShadowCasters(
+	const Math::Frustum& frustum,
+	const glm::vec3& lodReferencePosition) const
 {
 	TVector<RHIVisibleShadowCaster> result;
-	TraceShadowCasters(frustum, result);
+	TraceShadowCasters(frustum, lodReferencePosition, result);
 	return result;
 }
 
 void RHISceneView::TraceShadowCasters(
 	const Math::Frustum& frustum,
+	const glm::vec3& lodReferencePosition,
 	TVector<RHIVisibleShadowCaster>& result) const
 {
 	SAILOR_PROFILE_FUNCTION();
@@ -1226,7 +1316,9 @@ void RHISceneView::TraceShadowCasters(
 			continue;
 		}
 
-		auto appendHandle = [&result, &sceneVersion = spatialVersion->m_sceneVersion](
+		auto appendHandle = [&result,
+			&lodReferencePosition,
+			&sceneVersion = spatialVersion->m_sceneVersion](
 			const RenderInstanceHandle& handle)
 			{
 				const RHISceneInstanceRecord* record = nullptr;
@@ -1246,6 +1338,13 @@ void RHISceneView::TraceShadowCasters(
 				visible.m_handle = handle;
 				visible.m_record = record;
 				visible.m_resource = resource;
+				const glm::vec3 closest = glm::clamp(
+					lodReferencePosition,
+					record->m_worldBounds.m_min,
+					record->m_worldBounds.m_max);
+				visible.m_cameraDistance = glm::distance(
+					lodReferencePosition,
+					closest);
 				result.Add(std::move(visible));
 		};
 		if (spatialVersion->m_dynamicOctree)
@@ -1321,13 +1420,17 @@ void RHISceneView::PrepareSnapshots()
 			auto& proxy = res.m_proxies[visibleProxyReadIndex];
 			const auto* source = proxy.GetSource();
 			bool bKeepProxy = source != nullptr;
-			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
+			if (source)
 			{
 				const glm::vec3 closest = glm::clamp(
 					cameraPosition,
 					proxy.GetWorldBounds().m_min,
 					proxy.GetWorldBounds().m_max);
-				bKeepProxy = glm::distance(cameraPosition, closest) <=
+				proxy.m_cameraDistance = glm::distance(cameraPosition, closest);
+			}
+			if (source && std::isfinite(source->m_lodPolicy.m_maxCameraDistance))
+			{
+				bKeepProxy = proxy.m_cameraDistance <=
 					source->m_lodPolicy.m_maxCameraDistance;
 			}
 			if (!bKeepProxy)
