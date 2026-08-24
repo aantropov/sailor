@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -1159,6 +1160,10 @@ namespace
 		const LightingECS::LightShaderData invalidShaderData{};
 		Require(invalidShaderData.m_type == LightingECS::LightShaderData::InvalidType,
 			"released GPU light payload should use an explicit invalid marker");
+		Require(offsetof(LightingECS::LightShaderData, m_shadowBias) == 12u,
+			"the profile shadow bias must occupy the existing std430 light padding");
+		Require(invalidShaderData.m_shadowBias == 0.0f,
+			"an invalid GPU light payload should not introduce receiver bias");
 
 		const size_t reused = system.RegisterComponent();
 		Require(reused == released, "released sparse light slot should be reused");

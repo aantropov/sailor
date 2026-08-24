@@ -341,13 +341,19 @@ glslFragment: |
       return 1.0f;
     }
 
+    const uint cascadeShadowType = GetDirectionalCascadeShadowType(
+      light.shadowType,
+      cascadeLayer);
     const vec3 shadowReceiverPosition = OffsetDirectionalShadowReceiver(
       worldPosition,
       surfaceNormal,
-      surfaceToLightDirection);
+      surfaceToLightDirection,
+      GetDirectionalShadowReceiverBiasScale(
+        cascadeShadowType,
+        light.shadowBias));
     const mat4 cascadeLightMatrix = lightsMatrices.instance[cascadeLayer];
     float shadow = CalculateDirectionalShadow(
-      GetDirectionalCascadeShadowType(light.shadowType, cascadeLayer),
+      cascadeShadowType,
       shadowMaps[cascadeLayer],
       cascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
       cascadeLayer);
@@ -361,11 +367,21 @@ glslFragment: |
     if(cascadeBlend > 0.0f)
     {
       const int nextCascadeLayer = cascadeLayer + 1;
+      const uint nextCascadeShadowType = GetDirectionalCascadeShadowType(
+        light.shadowType,
+        nextCascadeLayer);
+      const vec3 nextShadowReceiverPosition = OffsetDirectionalShadowReceiver(
+        worldPosition,
+        surfaceNormal,
+        surfaceToLightDirection,
+        GetDirectionalShadowReceiverBiasScale(
+          nextCascadeShadowType,
+          light.shadowBias));
       const mat4 nextCascadeLightMatrix = lightsMatrices.instance[nextCascadeLayer];
       const float nextShadow = CalculateDirectionalShadow(
-        GetDirectionalCascadeShadowType(light.shadowType, nextCascadeLayer),
+        nextCascadeShadowType,
         shadowMaps[nextCascadeLayer],
-        nextCascadeLightMatrix * vec4(shadowReceiverPosition, 1.0f),
+        nextCascadeLightMatrix * vec4(nextShadowReceiverPosition, 1.0f),
         nextCascadeLayer);
       shadow = mix(shadow, nextShadow, cascadeBlend);
     }
@@ -420,7 +436,8 @@ glslFragment: |
       surfaceNormal,
       surfaceToLightDirection,
       length(light.worldPosition - worldPosition),
-      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u);
+      (packedShadowIndex & SOFT_SHADOW_MAP_BIT) != 0u,
+      light.shadowBias);
   }
   
   const float Epsilon = 0.00001;

@@ -993,7 +993,7 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("FPS Cap", "Maximum CPU frames per second, 1–1000", _fpsCap),
                     CreatePresetField("MSAA", "Supported sample count", _msaaSamples),
                     CreatePresetField("Shadow Quality Cap", "Global cap over authored light quality", _shadowQuality),
-                    CreatePresetField("PCF Shadow Bias", "Vulkan PCF caster depth bias, -16–16", _shadowBias),
+                    CreatePresetField("PCF Shadow Bias", "PCF caster and receiver bias, -16–16", _shadowBias),
                     CreatePresetField("Shadow Cascade Count", "Active directional cascades, 1–4", _shadowCascadeCount),
                     CreatePresetField("Cascade Resolutions", "Comma-separated powers of two, one per active cascade", _shadowCascadeResolutions),
                     CreatePresetField("Soft Shadows", "Enable soft shadow filtering", _supportSoftShadows),

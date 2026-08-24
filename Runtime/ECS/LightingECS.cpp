@@ -271,6 +271,7 @@ Tasks::ITaskPtr LightingECS::Tick(float deltaTime)
 					graphicsProfile.m_shadowCascadeCount,
 					1u,
 					NumCascades);
+				shaderData.m_shadowBias = graphicsProfile.m_shadowBias;
 				shaderData.m_attenuation = data.m_attenuation;
 				shaderData.m_bounds = glm::vec3(data.m_radius);
 				shaderData.m_intensity = data.m_intensity;
