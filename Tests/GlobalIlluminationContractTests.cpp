@@ -1333,6 +1333,17 @@ components:
 			IsNear(sampled.m_baseColor.a, 1.0f),
 			"the bake path tracer must normalize vertex layer weights and sample landscape layers");
 	}
+
+	void TestMobilityContributionPolicy()
+	{
+		Require(
+			IsGlobalIlluminationBakeContributor(EMobilityType::Static) &&
+			IsGlobalIlluminationBakeContributor(EMobilityType::Stationary),
+			"static and stationary mesh renderers must contribute to baked global illumination");
+		Require(
+			!IsGlobalIlluminationBakeContributor(EMobilityType::Dynamic),
+			"dynamic mesh renderers must not contribute bake geometry");
+	}
 }
 
 int main(int argc, char** argv)
@@ -1366,6 +1377,7 @@ int main(int argc, char** argv)
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
 		RunTest("FloatTextureNormalizationAndLandscapeLayerSampling", TestFloatTextureNormalizationAndLandscapeLayerSampling);
+		RunTest("MobilityContributionPolicy", TestMobilityContributionPolicy);
 	}
 	catch (const std::exception& exception)
 	{

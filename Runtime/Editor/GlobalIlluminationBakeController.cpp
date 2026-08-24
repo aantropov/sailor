@@ -558,7 +558,8 @@ namespace
 		for (const GameObjectPtr& gameObject : world->GetGameObjects())
 		{
 			if (!gameObject ||
-				gameObject->GetMobilityType() == EMobilityType::Dynamic)
+				!IsGlobalIlluminationBakeContributor(
+					gameObject->GetMobilityType()))
 			{
 				continue;
 			}
@@ -808,6 +809,13 @@ namespace
 		scene.m_sourceWorldHash = sourceHash;
 		return true;
 	}
+}
+
+bool Sailor::IsGlobalIlluminationBakeContributor(
+	EMobilityType mobility) noexcept
+{
+	return mobility == EMobilityType::Static ||
+		mobility == EMobilityType::Stationary;
 }
 
 bool Sailor::AreWorldDocumentsEquivalentForProbeBake(
