@@ -264,7 +264,13 @@ public partial class ComponentTemplate : DataTemplate
                             };
                     }
 
-                    Templates.AddGridRowWithLabel(props, property.Key, propertyEditor, GridLength.Auto);
+                    Templates.AddGridRowWithLabel(
+                        props,
+                        FormatInspectorPropertyName(
+                            component.Typename.Name,
+                            property.Key),
+                        propertyEditor,
+                        GridLength.Auto);
                 }
 
                 if (component.Typename.Name == "Sailor::LandscapeComponent")
@@ -363,6 +369,16 @@ public partial class ComponentTemplate : DataTemplate
         return !string.IsNullOrWhiteSpace(typeName) && typeName.StartsWith(prefix, StringComparison.Ordinal)
             ? typeName[prefix.Length..]
             : typeName;
+    }
+
+    static string FormatInspectorPropertyName(
+        string componentTypeName,
+        string propertyName)
+    {
+        return componentTypeName == "Sailor::LightComponent" &&
+            propertyName == "indirectLightingIntensity"
+                ? "GI Intensity"
+                : propertyName;
     }
 
     static IEnumerable<KeyValuePair<string, ObservableObject>> EnumerateInspectorProperties(

@@ -921,6 +921,7 @@ public sealed class SettingsPanelView : ContentView
         readonly Entry _skyResolution;
         readonly Entry _vegetationInstanceBudget;
         readonly Entry _lodBias;
+        readonly Switch _enableGlobalIllumination;
         readonly Entry _maxGiProbeStatesPerSnapshot;
 
         public GraphicsPresetEditor(
@@ -958,6 +959,14 @@ public sealed class SettingsPanelView : ContentView
             _vegetationInstanceBudget = CreateEntry(
                 draft.VegetationInstanceBudget);
             _lodBias = CreateEntry(draft.LodBias);
+            _enableGlobalIllumination = new Switch
+            {
+                IsToggled = draft.EnableGlobalIllumination,
+                Scale = 0.8,
+                HeightRequest = 30,
+                HorizontalOptions = LayoutOptions.End
+            };
+            _enableGlobalIllumination.Toggled += (_, _) => _changed();
             _maxGiProbeStatesPerSnapshot = CreateEntry(
                 draft.MaxGiProbeStatesPerSnapshot);
         }
@@ -980,6 +989,7 @@ public sealed class SettingsPanelView : ContentView
                 _skyResolution.Text ?? string.Empty,
                 _vegetationInstanceBudget.Text ?? string.Empty,
                 _lodBias.Text ?? string.Empty,
+                _enableGlobalIllumination.IsToggled,
                 _maxGiProbeStatesPerSnapshot.Text ?? string.Empty);
 
         public View CreateView(bool initiallyExpanded, bool isActive)
@@ -1001,6 +1011,10 @@ public sealed class SettingsPanelView : ContentView
                     CreatePresetField("Sky Resolution", "Power of two, 32–8192", _skyResolution),
                     CreatePresetField("Vegetation Instance Budget", "Global active grass instances, 0–1048576", _vegetationInstanceBudget),
                     CreatePresetField("LOD Bias", "Signed index shift, -8 (finer) to +8 (coarser)", _lodBias),
+                    CreatePresetField(
+                        "Global Illumination",
+                        "Enable diffuse environment and baked probe GI",
+                        _enableGlobalIllumination),
                     CreatePresetField(
                         "GI Probe States / Snapshot",
                         "Maximum simultaneous Blend + Additive baked states, 0 disables probe GI",
@@ -1150,6 +1164,7 @@ public sealed class SettingsPanelView : ContentView
                 SkyResolution = skyResolution,
                 VegetationInstanceBudget = vegetationInstanceBudget,
                 LodBias = lodBias,
+                EnableGlobalIllumination = _enableGlobalIllumination.IsToggled,
                 MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
             };
             return valid;

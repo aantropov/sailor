@@ -7,6 +7,9 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <mutex>
+#include <thread>
+#include <vector>
 
 using namespace Sailor;
 
@@ -594,6 +597,13 @@ namespace
 				"a .probes bake requires non-zero ray and bounce counts";
 			return false;
 		}
+		if (request.m_threadCount == 0u ||
+			request.m_threadCount > ProbeVolumeMaxBakeThreadCount)
+		{
+			outDiagnostic =
+				"a .probes bake requires a supported non-zero thread count";
+			return false;
+		}
 		if (request.m_settings.m_raysPerProbe >
 				ProbeVolumeMaxRaysPerProbe ||
 			request.m_settings.m_bounceCount >
@@ -678,47 +688,161 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 		effectiveRequest.m_settings = data->m_bakeSettings;
 		effectiveRequest.m_volumeMin = data->m_volumeMin;
 		effectiveRequest.m_volumeMax = data->m_volumeMax;
+		const uint32_t totalProbes = static_cast<uint32_t>(
+			data->m_probes.Num());
+		const uint32_t threadCount = (std::min)(
+			request.m_threadCount,
+			totalProbes);
 		ProbeVolumeBakeProgress progress;
-		progress.m_totalProbes = static_cast<uint32_t>(data->m_probes.Num());
-		progress.m_stage = bReuseTransport ?
+		progress.m_totalProbes = totalProbes;
+		progress.m_stage = (bReuseTransport ?
 			"Baking lighting with reused layout" :
-			"Baking adaptive probe volume";
+			"Baking adaptive probe volume") +
+			std::string(" (") + std::to_string(threadCount) +
+			(threadCount == 1u ? " thread)" : " threads)");
 		if (request.m_progress)
 		{
 			request.m_progress(progress);
 		}
 
-		for (uint32_t probeIndex = 0u;
-			probeIndex < data->m_probes.Num();
-			++probeIndex)
+		std::atomic<uint32_t> nextProbeIndex{ 0u };
+		std::atomic<bool> stopWorkers{ false };
+		std::atomic<EProbeVolumeBakeStatus> workerStatus{
+			EProbeVolumeBakeStatus::Success };
+		std::mutex failureMutex;
+		std::string failureDiagnostic;
+		std::mutex progressMutex;
+		uint32_t completedProbes = 0u;
+
+		const auto recordFailure = [&workerStatus,
+			&stopWorkers,
+			&failureMutex,
+			&failureDiagnostic](
+				EProbeVolumeBakeStatus status,
+				std::string diagnostic)
 		{
-			if (IsCancelled(effectiveRequest))
+			EProbeVolumeBakeStatus expected = EProbeVolumeBakeStatus::Success;
+			if (workerStatus.compare_exchange_strong(
+					expected,
+					status,
+					std::memory_order_acq_rel))
 			{
-				result.m_status = EProbeVolumeBakeStatus::Cancelled;
-				result.m_diagnostic = "probe-volume bake was cancelled";
-				return result;
+				const std::lock_guard<std::mutex> lock(failureMutex);
+				failureDiagnostic = std::move(diagnostic);
 			}
-			if (!BakeProbe(
-					effectiveRequest,
-					sampler,
-					probeIndex,
-					bReuseTransport,
-					data->m_probes[probeIndex],
-					result.m_diagnostic))
+			stopWorkers.store(true, std::memory_order_release);
+		};
+
+		const auto bakeWorker = [&]()
+		{
+			try
 			{
-				result.m_status = IsCancelled(effectiveRequest) ?
-					EProbeVolumeBakeStatus::Cancelled :
-					EProbeVolumeBakeStatus::SamplingFailed;
-				return result;
+				while (!stopWorkers.load(std::memory_order_acquire))
+				{
+					if (IsCancelled(effectiveRequest))
+					{
+						stopWorkers.store(true, std::memory_order_release);
+						return;
+					}
+					const uint32_t probeIndex = nextProbeIndex.fetch_add(
+						1u,
+						std::memory_order_relaxed);
+					if (probeIndex >= totalProbes)
+					{
+						return;
+					}
+
+					std::string diagnostic;
+					if (!BakeProbe(
+							effectiveRequest,
+							sampler,
+							probeIndex,
+							bReuseTransport,
+							data->m_probes[probeIndex],
+							diagnostic))
+					{
+						if (IsCancelled(effectiveRequest))
+						{
+							stopWorkers.store(true, std::memory_order_release);
+						}
+						else
+						{
+							recordFailure(
+								EProbeVolumeBakeStatus::SamplingFailed,
+								std::move(diagnostic));
+						}
+						return;
+					}
+
+					if (stopWorkers.load(std::memory_order_acquire))
+					{
+						return;
+					}
+					const std::lock_guard<std::mutex> lock(progressMutex);
+					++completedProbes;
+					if (request.m_progress)
+					{
+						ProbeVolumeBakeProgress workerProgress = progress;
+						workerProgress.m_completedProbes = completedProbes;
+						workerProgress.m_fraction = static_cast<float>(
+							completedProbes) / static_cast<float>(totalProbes);
+						request.m_progress(workerProgress);
+					}
+				}
 			}
-			progress.m_completedProbes = probeIndex + 1u;
-			progress.m_fraction = static_cast<float>(
-				progress.m_completedProbes) /
-				static_cast<float>(progress.m_totalProbes);
-			if (request.m_progress)
+			catch (const std::exception& exception)
 			{
-				request.m_progress(progress);
+				recordFailure(
+					EProbeVolumeBakeStatus::InvalidResult,
+					std::string("probe-volume bake worker failed: ") +
+						exception.what());
 			}
+			catch (...)
+			{
+				recordFailure(
+					EProbeVolumeBakeStatus::InvalidResult,
+					"probe-volume bake worker failed with an unknown error");
+			}
+		};
+
+		std::vector<std::thread> workers;
+		workers.reserve(threadCount > 0u ? threadCount - 1u : 0u);
+		try
+		{
+			for (uint32_t threadIndex = 1u;
+				threadIndex < threadCount;
+				++threadIndex)
+			{
+				workers.emplace_back(bakeWorker);
+			}
+		}
+		catch (...)
+		{
+			stopWorkers.store(true, std::memory_order_release);
+			for (std::thread& worker : workers)
+			{
+				worker.join();
+			}
+			throw;
+		}
+		bakeWorker();
+		for (std::thread& worker : workers)
+		{
+			worker.join();
+		}
+
+		if (IsCancelled(effectiveRequest))
+		{
+			result.m_status = EProbeVolumeBakeStatus::Cancelled;
+			result.m_diagnostic = "probe-volume bake was cancelled";
+			return result;
+		}
+		result.m_status = workerStatus.load(std::memory_order_acquire);
+		if (result.m_status != EProbeVolumeBakeStatus::Success)
+		{
+			const std::lock_guard<std::mutex> lock(failureMutex);
+			result.m_diagnostic = failureDiagnostic;
+			return result;
 		}
 
 		if (!bReuseTransport)

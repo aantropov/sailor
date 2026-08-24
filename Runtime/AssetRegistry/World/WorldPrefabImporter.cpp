@@ -129,7 +129,9 @@ YAML::Node WorldPrefab::Serialize() const
 
 	YAML::Node outData;
 	::Serialize(outData, "name", m_name);
-	if (!m_globalIllumination.m_probes.IsEmpty())
+	if (!m_globalIllumination.m_probes.IsEmpty() ||
+		m_globalIllumination.m_mode !=
+			EGlobalIlluminationMode::RealtimeAndBaked)
 	{
 		outData["globalIllumination"] = m_globalIllumination.Serialize();
 	}
@@ -166,7 +168,7 @@ void WorldPrefab::Deserialize(const YAML::Node& inData)
 	m_bIsReady.store(false, std::memory_order_release);
 	m_loadDiagnostic.clear();
 	m_name.clear();
-	m_globalIllumination.m_probes.Clear();
+	m_globalIllumination = {};
 	m_gameObjects.Clear();
 	::Deserialize(inData, "name", m_name);
 	if (!m_globalIllumination.Deserialize(inData, m_loadDiagnostic))

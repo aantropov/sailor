@@ -25,6 +25,7 @@ public sealed class GraphicsSettingsTests
         Assert.Equal(4, project.Graphics.Presets.Ultra.MaxGiProbeStatesPerSnapshot);
         Assert.Equal(3, project.Graphics.Presets.High.MaxGiProbeStatesPerSnapshot);
         Assert.Equal(1, project.Graphics.Presets.VeryLow.MaxGiProbeStatesPerSnapshot);
+        Assert.True(project.Graphics.Presets.Ultra.EnableGlobalIllumination);
         Assert.True(GraphicsSettingsValidator.Validate(project).IsValid);
         Assert.True(GraphicsSettingsValidator.Validate(GraphicsSettingsDefaults.Editor).IsValid);
 
@@ -35,6 +36,7 @@ public sealed class GraphicsSettingsTests
         Assert.Contains("VeryLow:", yaml);
         Assert.Contains("supportSoftShadows: true", yaml);
         Assert.Contains("vegetationInstanceBudget: 8192", yaml);
+        Assert.Contains("enableGlobalIllumination: true", yaml);
         Assert.Contains("maxGiProbeStatesPerSnapshot: 4", yaml);
     }
 
@@ -175,6 +177,7 @@ public sealed class GraphicsSettingsTests
                     {
                         ResolutionFactor = 0.95,
                         ShadowBias = 1.25,
+                        EnableGlobalIllumination = false,
                         MaxGiProbeStatesPerSnapshot = 2
                     })
             }
@@ -198,6 +201,11 @@ public sealed class GraphicsSettingsTests
         Assert.Equal("kept", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("futureUltraOption")]).Value);
         Assert.Equal("0.95", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("resolutionFactor")]).Value);
         Assert.Equal("1.25", Assert.IsType<YamlScalarNode>(savedUltra.Children[new YamlScalarNode("shadowBias")]).Value);
+        Assert.Equal(
+            "false",
+            Assert.IsType<YamlScalarNode>(
+                savedUltra.Children[new YamlScalarNode(
+                    "enableGlobalIllumination")]).Value);
         Assert.Equal(
             "2",
             Assert.IsType<YamlScalarNode>(

@@ -11,8 +11,14 @@ public class LayoutOperationsTests
         var layout = LayoutOperations.CreateDefaultLayout();
         var root = Assert.IsType<SplitNode>(layout.Root.Content);
 
+        Assert.Equal(LayoutOperations.CurrentLayoutVersion, layout.Version);
         Assert.Equal(3, root.Children.Count);
         Assert.Equal(3, root.SizeRatios.Count);
+        var rightTabs = Assert.IsType<TabGroupNode>(root.Children[2]);
+        Assert.Equal(
+            ["Inspector", "Lighting", "AI"],
+            rightTabs.Panels.Select(panel => panel.PanelTypeId.Value));
+        Assert.Equal(rightTabs.Panels[0].PanelId, rightTabs.ActivePanelId);
     }
 
     [Fact]
@@ -40,8 +46,35 @@ public class LayoutOperationsTests
 
         Assert.Equal(3, collapsedRoot.Children.Count);
         var remainingRightTabs = Assert.IsType<TabGroupNode>(collapsedRoot.Children[2]);
-        Assert.Single(remainingRightTabs.Panels);
-        Assert.Equal("AI", remainingRightTabs.Panels[0].PanelTypeId.Value);
+        Assert.Equal(2, remainingRightTabs.Panels.Count);
+        Assert.Equal(
+            ["Lighting", "AI"],
+            remainingRightTabs.Panels.Select(panel => panel.PanelTypeId.Value));
+    }
+
+    [Fact]
+    public void MigrateLayout_AddsLightingToLegacyRightInspectorGroupOnce()
+    {
+        var inspector = new PanelReference(PanelId.New(), KnownPanelTypes.Inspector);
+        var ai = new PanelReference(PanelId.New(), KnownPanelTypes.AI);
+        var legacy = new EditorLayout(
+            1,
+            new LayoutRoot(new TabGroupNode(
+                PanelRole.Tool,
+                [inspector, ai],
+                inspector.PanelId,
+                "right-inspector")));
+
+        var migrated = LayoutOperations.MigrateLayout(legacy);
+        var migratedAgain = LayoutOperations.MigrateLayout(migrated);
+        var tabs = Assert.IsType<TabGroupNode>(migrated.Root.Content);
+
+        Assert.Equal(LayoutOperations.CurrentLayoutVersion, migrated.Version);
+        Assert.Equal(
+            ["Inspector", "AI", "Lighting"],
+            tabs.Panels.Select(panel => panel.PanelTypeId.Value));
+        Assert.Equal(inspector.PanelId, tabs.ActivePanelId);
+        Assert.Equal(migrated, migratedAgain);
     }
 
     [Fact]

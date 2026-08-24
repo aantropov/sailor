@@ -93,6 +93,7 @@ namespace Sailor::Settings
 		uint32_t m_skyResolution = 256u;
 		uint32_t m_vegetationInstanceBudget = 8192u;
 		int32_t m_lodBias = 0;
+		bool m_bEnableGlobalIllumination = true;
 		uint32_t m_maxGiProbeStatesPerSnapshot = 3u;
 
 		bool IsShadowCascadeActive(uint32_t cascadeIndex) const noexcept;

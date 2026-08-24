@@ -58,7 +58,7 @@ REFL_AUTO(
 
 	func(GetIntensity, property("intensity"), SkipCDO()),
 	func(SetIntensity, property("intensity"), SkipCDO()),
-	func(GetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO()),
+	func(GetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO(), Range(0.0, 16.0)),
 	func(SetIndirectLightingIntensity, property("indirectLightingIntensity"), SkipCDO()),
 
 	func(GetAttenuation, property("attenuation"), SkipCDO()),

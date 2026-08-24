@@ -19,6 +19,7 @@ graphics:
       skyResolution: 512
       vegetationInstanceBudget: 16384
       lodBias: -1
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 4
     High:
       resolutionFactor: 1
@@ -37,6 +38,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 8192
       lodBias: 0
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 3
     Medium:
       resolutionFactor: 0.85
@@ -54,6 +56,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 4096
       lodBias: 0
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 2
     Low:
       resolutionFactor: 0.7
@@ -70,6 +73,7 @@ graphics:
       skyResolution: 128
       vegetationInstanceBudget: 2048
       lodBias: 1
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 2
     VeryLow:
       resolutionFactor: 0.5
@@ -85,5 +89,6 @@ graphics:
       skyResolution: 64
       vegetationInstanceBudget: 512
       lodBias: 2
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 1
 ...

@@ -461,10 +461,22 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 		{
 			pathTracerEcs->CopySceneView(rhiSceneView);
 		}
+		rhiSceneView->m_globalIlluminationMode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		rhiSceneView->m_bGlobalIlluminationEnabled = true;
+		rhiSceneView->m_globalIllumination.Clear();
 		if (auto* globalIlluminationEcs = world->GetECS<GlobalIlluminationECS>())
 		{
+			rhiSceneView->m_globalIlluminationMode =
+				globalIlluminationEcs->GetWorldSettings().m_mode;
+			rhiSceneView->m_bGlobalIlluminationEnabled =
+				globalIlluminationEcs->IsEnabled();
 			rhiSceneView->m_globalIllumination =
-				globalIlluminationEcs->GetActiveSnapshot();
+				rhiSceneView->m_bGlobalIlluminationEnabled &&
+				UsesBakedGlobalIllumination(
+					rhiSceneView->m_globalIlluminationMode)
+					? globalIlluminationEcs->GetActiveSnapshot()
+					: RHIGlobalIlluminationSnapshotPtr{};
 		}
 		world->GetECS<CameraECS>()->CopyCameraData(rhiSceneView);
 

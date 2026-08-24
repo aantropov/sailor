@@ -42,7 +42,11 @@ public sealed record ProbeVolumeBakeRequest(
     Vector3 VolumeMin = default,
     Vector3 VolumeMax = default,
     Vector3 FallbackEnvironment = default,
-    bool Overwrite = false);
+    bool Overwrite = false,
+    uint ThreadCount = 1)
+{
+    public const uint MaximumThreadCount = 64;
+}
 
 public sealed record ProbeVolumeBakeStatus(
     ProbeVolumeBakeLifecycleState State,
@@ -71,6 +75,13 @@ public enum GlobalIlluminationCompositionMode
     Additive
 }
 
+public enum GlobalIlluminationRuntimeMode
+{
+    Realtime = 0,
+    RealtimeAndBaked,
+    BakedOnly
+}
+
 public sealed record GlobalIlluminationBindingDescriptor(
     string Name,
     FileId Asset,
@@ -97,6 +108,8 @@ public sealed record GlobalIlluminationProbeRuntimeState(
 
 public sealed record GlobalIlluminationRuntimeState(
     uint MaxProbeStatesPerSnapshot,
+    GlobalIlluminationRuntimeMode Mode,
+    bool Enabled,
     IReadOnlyList<GlobalIlluminationProbeRuntimeState> Probes,
     string Diagnostic,
     ulong CompositionCount,

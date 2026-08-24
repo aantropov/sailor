@@ -25,6 +25,19 @@ namespace Sailor
 		Additive
 	};
 
+	enum class EGlobalIlluminationMode : uint8_t
+	{
+		Realtime = 0,
+		RealtimeAndBaked,
+		BakedOnly
+	};
+
+	constexpr bool UsesBakedGlobalIllumination(
+		EGlobalIlluminationMode mode) noexcept
+	{
+		return mode != EGlobalIlluminationMode::Realtime;
+	}
+
 	struct SAILOR_SHARED_API GlobalIlluminationProbeBinding final
 	{
 		FileId m_asset{};
@@ -36,6 +49,8 @@ namespace Sailor
 
 	struct SAILOR_SHARED_API GlobalIlluminationWorldSettings final
 	{
+		EGlobalIlluminationMode m_mode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
 		TMap<std::string, GlobalIlluminationProbeBinding> m_probes{};
 
 		bool Validate(std::string& outDiagnostic) const noexcept;
@@ -50,4 +65,9 @@ namespace Sailor
 	SAILOR_SHARED_API bool TryParseGlobalIlluminationProbeMode(
 		const std::string& value,
 		EGlobalIlluminationProbeMode& outMode) noexcept;
+	SAILOR_SHARED_API const char* GlobalIlluminationModeToString(
+		EGlobalIlluminationMode mode) noexcept;
+	SAILOR_SHARED_API bool TryParseGlobalIlluminationMode(
+		const std::string& value,
+		EGlobalIlluminationMode& outMode) noexcept;
 }

@@ -260,9 +260,16 @@ Sailor::RHI::BuildGlobalIlluminationRenderStats(
 RHIGlobalIlluminationGpuHeader
 Sailor::RHI::BuildGlobalIlluminationGpuHeader(
 	const RHIGlobalIlluminationSnapshot* snapshot,
-	EGlobalIlluminationDebugVisualization debugVisualization) noexcept
+	EGlobalIlluminationDebugVisualization debugVisualization,
+	EGlobalIlluminationMode mode,
+	bool bEnabled) noexcept
 {
 	RHIGlobalIlluminationGpuHeader header;
+	header.m_settings = glm::uvec4(
+		bEnabled ? 1u : 0u,
+		static_cast<uint32_t>(mode),
+		0u,
+		0u);
 	if (!snapshot || !snapshot->m_layout || snapshot->m_states.IsEmpty())
 	{
 		header.m_stateAndDebug.z = static_cast<uint32_t>(debugVisualization);

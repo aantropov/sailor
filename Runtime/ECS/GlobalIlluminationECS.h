@@ -53,6 +53,7 @@ namespace Sailor
 		SAILOR_API uint32_t GetOrder() const override { return 175u; }
 
 		SAILOR_API uint32_t GetMaxProbeStatesPerSnapshot() const noexcept;
+		SAILOR_API bool IsEnabled() const noexcept;
 		SAILOR_API const GlobalIlluminationWorldSettings& GetWorldSettings() const noexcept
 		{
 			return m_worldSettings;
@@ -130,6 +131,7 @@ namespace Sailor
 		std::atomic<uint64_t> m_rejectedCompositionCount{ 0u };
 		uint32_t m_observedQualityBudget =
 			(std::numeric_limits<uint32_t>::max)();
+		bool m_bObservedEnabled = true;
 		bool m_bInitialized = false;
 		bool m_bCompositionDirty = true;
 	};

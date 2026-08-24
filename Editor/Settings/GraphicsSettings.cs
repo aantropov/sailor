@@ -51,6 +51,7 @@ public sealed record GraphicsQualityPresetSettings
     public int SkyResolution { get; init; }
     public int VegetationInstanceBudget { get; init; }
     public int LodBias { get; init; }
+    public bool EnableGlobalIllumination { get; init; } = true;
     public int MaxGiProbeStatesPerSnapshot { get; init; }
 }
 
@@ -734,6 +735,12 @@ public static class GraphicsSettingsYamlCodec
                 defaults.VegetationInstanceBudget,
                 issues),
             LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues),
+            EnableGlobalIllumination = ReadOptionalBool(
+                preset,
+                "enableGlobalIllumination",
+                $"{path}.enableGlobalIllumination",
+                defaults.EnableGlobalIllumination,
+                issues),
             MaxGiProbeStatesPerSnapshot = allowMissingGiProbeStateBudget
                 ? ReadOptionalInt(
                     preset,
@@ -769,6 +776,10 @@ public static class GraphicsSettingsYamlCodec
         SetScalar(preset, "skyResolution", settings.SkyResolution);
         SetScalar(preset, "vegetationInstanceBudget", settings.VegetationInstanceBudget);
         SetScalar(preset, "lodBias", settings.LodBias);
+        SetScalar(
+            preset,
+            "enableGlobalIllumination",
+            settings.EnableGlobalIllumination);
         SetScalar(
             preset,
             "maxGiProbeStatesPerSnapshot",
@@ -874,6 +885,21 @@ public static class GraphicsSettingsYamlCodec
         if (value is not null)
             issues.Add(new GraphicsSettingsValidationIssue(path, "A boolean value is required."));
         return false;
+    }
+
+    static bool ReadOptionalBool(
+        YamlMappingNode? parent,
+        string key,
+        string path,
+        bool defaultValue,
+        ICollection<GraphicsSettingsValidationIssue> issues)
+    {
+        if (parent is null ||
+            !parent.Children.ContainsKey(new YamlScalarNode(key)))
+        {
+            return defaultValue;
+        }
+        return ReadBool(parent, key, path, issues);
     }
 
     static T ReadEnum<T>(

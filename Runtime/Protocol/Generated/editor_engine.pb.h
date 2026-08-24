@@ -466,6 +466,41 @@ inline bool GlobalIlluminationProbeMode_Parse(absl::string_view name, GlobalIllu
   return ::google::protobuf::internal::ParseNamedEnum<GlobalIlluminationProbeMode>(
       GlobalIlluminationProbeMode_descriptor(), name, value);
 }
+enum GlobalIlluminationMode : int {
+  GLOBAL_ILLUMINATION_MODE_UNSPECIFIED = 0,
+  GLOBAL_ILLUMINATION_MODE_REALTIME = 1,
+  GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 2,
+  GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 3,
+  GlobalIlluminationMode_INT_MIN_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::min(),
+  GlobalIlluminationMode_INT_MAX_SENTINEL_DO_NOT_USE_ =
+      std::numeric_limits<::int32_t>::max(),
+};
+
+bool GlobalIlluminationMode_IsValid(int value);
+extern const uint32_t GlobalIlluminationMode_internal_data_[];
+constexpr GlobalIlluminationMode GlobalIlluminationMode_MIN = static_cast<GlobalIlluminationMode>(0);
+constexpr GlobalIlluminationMode GlobalIlluminationMode_MAX = static_cast<GlobalIlluminationMode>(3);
+constexpr int GlobalIlluminationMode_ARRAYSIZE = 3 + 1;
+const ::google::protobuf::EnumDescriptor*
+GlobalIlluminationMode_descriptor();
+template <typename T>
+const std::string& GlobalIlluminationMode_Name(T value) {
+  static_assert(std::is_same<T, GlobalIlluminationMode>::value ||
+                    std::is_integral<T>::value,
+                "Incorrect type passed to GlobalIlluminationMode_Name().");
+  return GlobalIlluminationMode_Name(static_cast<GlobalIlluminationMode>(value));
+}
+template <>
+inline const std::string& GlobalIlluminationMode_Name(GlobalIlluminationMode value) {
+  return ::google::protobuf::internal::NameOfDenseEnum<GlobalIlluminationMode_descriptor,
+                                                 0, 3>(
+      static_cast<int>(value));
+}
+inline bool GlobalIlluminationMode_Parse(absl::string_view name, GlobalIlluminationMode* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<GlobalIlluminationMode>(
+      GlobalIlluminationMode_descriptor(), name, value);
+}
 enum GlobalIlluminationProbeResidency : int {
   GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNSPECIFIED = 0,
   GLOBAL_ILLUMINATION_PROBE_RESIDENCY_UNLOADED = 1,
@@ -11454,6 +11489,7 @@ class StartProbeVolumeBakeRequest final : public ::google::protobuf::Message
     kFallbackEnvironmentFieldNumber = 9,
     kAutoBoundsFieldNumber = 6,
     kOverwriteFieldNumber = 10,
+    kThreadCountFieldNumber = 11,
   };
   // string world_file_id = 1;
   void clear_world_file_id() ;
@@ -11599,12 +11635,23 @@ class StartProbeVolumeBakeRequest final : public ::google::protobuf::Message
   void _internal_set_overwrite(bool value);
 
   public:
+  // optional uint32 thread_count = 11;
+  bool has_thread_count() const;
+  void clear_thread_count() ;
+  ::uint32_t thread_count() const;
+  void set_thread_count(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_thread_count() const;
+  void _internal_set_thread_count(::uint32_t value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.StartProbeVolumeBakeRequest)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      4, 10, 4,
+      4, 11, 4,
       124, 2>
       _table_;
 
@@ -11634,6 +11681,7 @@ class StartProbeVolumeBakeRequest final : public ::google::protobuf::Message
     ::sailor::editor::v1::Vector4* fallback_environment_;
     bool auto_bounds_;
     bool overwrite_;
+    ::uint32_t thread_count_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -11788,6 +11836,7 @@ class SetGlobalIlluminationSettingsRequest final : public ::google::protobuf::Me
   // accessors -------------------------------------------------------
   enum : int {
     kProbesFieldNumber = 1,
+    kModeFieldNumber = 2,
   };
   // repeated .sailor.editor.v1.GlobalIlluminationProbeBinding probes = 1;
   int probes_size() const;
@@ -11806,12 +11855,23 @@ class SetGlobalIlluminationSettingsRequest final : public ::google::protobuf::Me
   const ::sailor::editor::v1::GlobalIlluminationProbeBinding& probes(int index) const;
   ::sailor::editor::v1::GlobalIlluminationProbeBinding* add_probes();
   const ::google::protobuf::RepeatedPtrField<::sailor::editor::v1::GlobalIlluminationProbeBinding>& probes() const;
+  // optional .sailor.editor.v1.GlobalIlluminationMode mode = 2;
+  bool has_mode() const;
+  void clear_mode() ;
+  ::sailor::editor::v1::GlobalIlluminationMode mode() const;
+  void set_mode(::sailor::editor::v1::GlobalIlluminationMode value);
+
+  private:
+  ::sailor::editor::v1::GlobalIlluminationMode _internal_mode() const;
+  void _internal_set_mode(::sailor::editor::v1::GlobalIlluminationMode value);
+
+  public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.SetGlobalIlluminationSettingsRequest)
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      0, 1, 1,
+      1, 2, 1,
       0, 2>
       _table_;
 
@@ -11829,8 +11889,10 @@ class SetGlobalIlluminationSettingsRequest final : public ::google::protobuf::Me
     inline explicit Impl_(::google::protobuf::internal::InternalVisibility visibility,
                           ::google::protobuf::Arena* arena, const Impl_& from,
                           const SetGlobalIlluminationSettingsRequest& from_msg);
-    ::google::protobuf::RepeatedPtrField< ::sailor::editor::v1::GlobalIlluminationProbeBinding > probes_;
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
+    ::google::protobuf::RepeatedPtrField< ::sailor::editor::v1::GlobalIlluminationProbeBinding > probes_;
+    int mode_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
   union { Impl_ _impl_; };
@@ -12230,9 +12292,11 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   enum : int {
     kProbesFieldNumber = 2,
     kDiagnosticFieldNumber = 3,
+    kMaxProbeStatesPerSnapshotFieldNumber = 1,
+    kModeFieldNumber = 6,
     kCompositionCountFieldNumber = 4,
     kRejectedCompositionCountFieldNumber = 5,
-    kMaxProbeStatesPerSnapshotFieldNumber = 1,
+    kEnabledFieldNumber = 7,
   };
   // repeated .sailor.editor.v1.GlobalIlluminationProbeState probes = 2;
   int probes_size() const;
@@ -12267,6 +12331,26 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   std::string* _internal_mutable_diagnostic();
 
   public:
+  // uint32 max_probe_states_per_snapshot = 1;
+  void clear_max_probe_states_per_snapshot() ;
+  ::uint32_t max_probe_states_per_snapshot() const;
+  void set_max_probe_states_per_snapshot(::uint32_t value);
+
+  private:
+  ::uint32_t _internal_max_probe_states_per_snapshot() const;
+  void _internal_set_max_probe_states_per_snapshot(::uint32_t value);
+
+  public:
+  // .sailor.editor.v1.GlobalIlluminationMode mode = 6;
+  void clear_mode() ;
+  ::sailor::editor::v1::GlobalIlluminationMode mode() const;
+  void set_mode(::sailor::editor::v1::GlobalIlluminationMode value);
+
+  private:
+  ::sailor::editor::v1::GlobalIlluminationMode _internal_mode() const;
+  void _internal_set_mode(::sailor::editor::v1::GlobalIlluminationMode value);
+
+  public:
   // uint64 composition_count = 4;
   void clear_composition_count() ;
   ::uint64_t composition_count() const;
@@ -12287,14 +12371,14 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   void _internal_set_rejected_composition_count(::uint64_t value);
 
   public:
-  // uint32 max_probe_states_per_snapshot = 1;
-  void clear_max_probe_states_per_snapshot() ;
-  ::uint32_t max_probe_states_per_snapshot() const;
-  void set_max_probe_states_per_snapshot(::uint32_t value);
+  // bool enabled = 7;
+  void clear_enabled() ;
+  bool enabled() const;
+  void set_enabled(bool value);
 
   private:
-  ::uint32_t _internal_max_probe_states_per_snapshot() const;
-  void _internal_set_max_probe_states_per_snapshot(::uint32_t value);
+  bool _internal_enabled() const;
+  void _internal_set_enabled(bool value);
 
   public:
   // @@protoc_insertion_point(class_scope:sailor.editor.v1.GlobalIlluminationStateResult)
@@ -12302,7 +12386,7 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
   static const ::google::protobuf::internal::TcParseTable<
-      3, 5, 1,
+      3, 7, 1,
       65, 2>
       _table_;
 
@@ -12322,9 +12406,11 @@ class GlobalIlluminationStateResult final : public ::google::protobuf::Message
                           const GlobalIlluminationStateResult& from_msg);
     ::google::protobuf::RepeatedPtrField< ::sailor::editor::v1::GlobalIlluminationProbeState > probes_;
     ::google::protobuf::internal::ArenaStringPtr diagnostic_;
+    ::uint32_t max_probe_states_per_snapshot_;
+    int mode_;
     ::uint64_t composition_count_;
     ::uint64_t rejected_composition_count_;
-    ::uint32_t max_probe_states_per_snapshot_;
+    bool enabled_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     PROTOBUF_TSAN_DECLARE_MEMBER
   };
@@ -23664,6 +23750,34 @@ inline void StartProbeVolumeBakeRequest::_internal_set_overwrite(bool value) {
   _impl_.overwrite_ = value;
 }
 
+// optional uint32 thread_count = 11;
+inline bool StartProbeVolumeBakeRequest::has_thread_count() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000010u) != 0;
+  return value;
+}
+inline void StartProbeVolumeBakeRequest::clear_thread_count() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.thread_count_ = 0u;
+  _impl_._has_bits_[0] &= ~0x00000010u;
+}
+inline ::uint32_t StartProbeVolumeBakeRequest::thread_count() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.StartProbeVolumeBakeRequest.thread_count)
+  return _internal_thread_count();
+}
+inline void StartProbeVolumeBakeRequest::set_thread_count(::uint32_t value) {
+  _internal_set_thread_count(value);
+  _impl_._has_bits_[0] |= 0x00000010u;
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.StartProbeVolumeBakeRequest.thread_count)
+}
+inline ::uint32_t StartProbeVolumeBakeRequest::_internal_thread_count() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.thread_count_;
+}
+inline void StartProbeVolumeBakeRequest::_internal_set_thread_count(::uint32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.thread_count_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // ProbeVolumeBakeStatusResult
@@ -24251,6 +24365,34 @@ SetGlobalIlluminationSettingsRequest::_internal_mutable_probes() {
   return &_impl_.probes_;
 }
 
+// optional .sailor.editor.v1.GlobalIlluminationMode mode = 2;
+inline bool SetGlobalIlluminationSettingsRequest::has_mode() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000001u) != 0;
+  return value;
+}
+inline void SetGlobalIlluminationSettingsRequest::clear_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = 0;
+  _impl_._has_bits_[0] &= ~0x00000001u;
+}
+inline ::sailor::editor::v1::GlobalIlluminationMode SetGlobalIlluminationSettingsRequest::mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.SetGlobalIlluminationSettingsRequest.mode)
+  return _internal_mode();
+}
+inline void SetGlobalIlluminationSettingsRequest::set_mode(::sailor::editor::v1::GlobalIlluminationMode value) {
+  _internal_set_mode(value);
+  _impl_._has_bits_[0] |= 0x00000001u;
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.SetGlobalIlluminationSettingsRequest.mode)
+}
+inline ::sailor::editor::v1::GlobalIlluminationMode SetGlobalIlluminationSettingsRequest::_internal_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::GlobalIlluminationMode>(_impl_.mode_);
+}
+inline void SetGlobalIlluminationSettingsRequest::_internal_set_mode(::sailor::editor::v1::GlobalIlluminationMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // GlobalIlluminationProbeState
@@ -24652,6 +24794,50 @@ inline ::uint64_t GlobalIlluminationStateResult::_internal_rejected_composition_
 inline void GlobalIlluminationStateResult::_internal_set_rejected_composition_count(::uint64_t value) {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.rejected_composition_count_ = value;
+}
+
+// .sailor.editor.v1.GlobalIlluminationMode mode = 6;
+inline void GlobalIlluminationStateResult::clear_mode() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = 0;
+}
+inline ::sailor::editor::v1::GlobalIlluminationMode GlobalIlluminationStateResult::mode() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.GlobalIlluminationStateResult.mode)
+  return _internal_mode();
+}
+inline void GlobalIlluminationStateResult::set_mode(::sailor::editor::v1::GlobalIlluminationMode value) {
+  _internal_set_mode(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.GlobalIlluminationStateResult.mode)
+}
+inline ::sailor::editor::v1::GlobalIlluminationMode GlobalIlluminationStateResult::_internal_mode() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return static_cast<::sailor::editor::v1::GlobalIlluminationMode>(_impl_.mode_);
+}
+inline void GlobalIlluminationStateResult::_internal_set_mode(::sailor::editor::v1::GlobalIlluminationMode value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.mode_ = value;
+}
+
+// bool enabled = 7;
+inline void GlobalIlluminationStateResult::clear_enabled() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.enabled_ = false;
+}
+inline bool GlobalIlluminationStateResult::enabled() const {
+  // @@protoc_insertion_point(field_get:sailor.editor.v1.GlobalIlluminationStateResult.enabled)
+  return _internal_enabled();
+}
+inline void GlobalIlluminationStateResult::set_enabled(bool value) {
+  _internal_set_enabled(value);
+  // @@protoc_insertion_point(field_set:sailor.editor.v1.GlobalIlluminationStateResult.enabled)
+}
+inline bool GlobalIlluminationStateResult::_internal_enabled() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.enabled_;
+}
+inline void GlobalIlluminationStateResult::_internal_set_enabled(bool value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.enabled_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -29322,6 +29508,12 @@ struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationProbeMode> : std::t
 template <>
 inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::GlobalIlluminationProbeMode>() {
   return ::sailor::editor::v1::GlobalIlluminationProbeMode_descriptor();
+}
+template <>
+struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationMode> : std::true_type {};
+template <>
+inline const EnumDescriptor* GetEnumDescriptor<::sailor::editor::v1::GlobalIlluminationMode>() {
+  return ::sailor::editor::v1::GlobalIlluminationMode_descriptor();
 }
 template <>
 struct is_proto_enum<::sailor::editor::v1::GlobalIlluminationProbeResidency> : std::true_type {};

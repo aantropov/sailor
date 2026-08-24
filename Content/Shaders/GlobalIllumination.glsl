@@ -14,6 +14,10 @@ const uint GLOBAL_ILLUMINATION_DEBUG_RESIDENCY = 6u;
 const uint GLOBAL_ILLUMINATION_DEBUG_ASSET_IDENTITY = 7u;
 const uint GLOBAL_ILLUMINATION_DEBUG_FALLBACK = 8u;
 
+const uint GLOBAL_ILLUMINATION_MODE_REALTIME = 0u;
+const uint GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 1u;
+const uint GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 2u;
+
 struct GlobalIlluminationBvhNode
 {
   vec4 minAndLeft;
@@ -50,6 +54,7 @@ layout(std430, set = 1, binding = 12) readonly buffer GlobalIlluminationHeaderSS
 {
   uvec4 counts;
   uvec4 stateAndDebug;
+  uvec4 settings;
   vec4 volumeMin;
   vec4 volumeMax;
   uvec4 identity;
@@ -90,6 +95,18 @@ struct GlobalIlluminationSampleDebug
   float averageVisibility;
   float dominantStateHue;
 };
+
+void InitializeGlobalIlluminationSampleDebug(
+  out GlobalIlluminationSampleDebug debugInfo)
+{
+  debugInfo.usedProbeVolume = false;
+  debugInfo.traversalComplete = true;
+  debugInfo.brickIndex = 0u;
+  debugInfo.dominantProbeIndex = 0u;
+  debugInfo.averageValidity = 0.0;
+  debugInfo.averageVisibility = 0.0;
+  debugInfo.dominantStateHue = 0.0;
+}
 
 bool GlobalIlluminationContains(vec3 boundsMin, vec3 boundsMax, vec3 position)
 {
@@ -309,13 +326,7 @@ bool SampleGlobalIllumination(
   out GlobalIlluminationSampleDebug debugInfo)
 {
   irradiance = vec3(0.0);
-  debugInfo.usedProbeVolume = false;
-  debugInfo.traversalComplete = true;
-  debugInfo.brickIndex = 0u;
-  debugInfo.dominantProbeIndex = 0u;
-  debugInfo.averageValidity = 0.0;
-  debugInfo.averageVisibility = 0.0;
-  debugInfo.dominantStateHue = 0.0;
+  InitializeGlobalIlluminationSampleDebug(debugInfo);
 
   if(globalIlluminationHeader.counts.x == 0u ||
     globalIlluminationHeader.stateAndDebug.x == 0u)
@@ -441,6 +452,16 @@ vec3 ResolveGlobalIlluminationDiffuseIrradiance(
   vec3 environmentIrradiance,
   out GlobalIlluminationSampleDebug debugInfo)
 {
+  InitializeGlobalIlluminationSampleDebug(debugInfo);
+  if(globalIlluminationHeader.settings.x == 0u)
+  {
+    return vec3(0.0);
+  }
+  const uint mode = globalIlluminationHeader.settings.y;
+  if(mode == GLOBAL_ILLUMINATION_MODE_REALTIME)
+  {
+    return environmentIrradiance;
+  }
   vec3 probeIrradiance = vec3(0.0);
   if(SampleGlobalIllumination(
     worldPosition,
@@ -450,7 +471,9 @@ vec3 ResolveGlobalIlluminationDiffuseIrradiance(
   {
     return probeIrradiance;
   }
-  return environmentIrradiance;
+  return mode == GLOBAL_ILLUMINATION_MODE_BAKED_ONLY
+    ? vec3(0.0)
+    : environmentIrradiance;
 }
 
 bool GlobalIlluminationDebugSuppressesDirectLighting()

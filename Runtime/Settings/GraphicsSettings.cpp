@@ -370,6 +370,44 @@ namespace
 		return true;
 	}
 
+	bool ReadOptionalBool(
+		const YAML::Node& parent,
+		const char* fieldName,
+		const std::string& source,
+		const std::string& fieldPath,
+		bool& outValue,
+		std::string& outDiagnostic)
+	{
+		const YAML::Node field = FindField(parent, fieldName);
+		if (!field.IsDefined())
+		{
+			return true;
+		}
+		if (!field.IsScalar())
+		{
+			outDiagnostic = InvalidField(
+				source,
+				fieldPath,
+				"must be a boolean");
+			return false;
+		}
+
+		std::string yamlDiagnostic;
+		if (!External::TryConvertYaml(field, outValue, yamlDiagnostic))
+		{
+			outDiagnostic = InvalidField(
+				source,
+				fieldPath,
+				"must be a boolean");
+			if (!yamlDiagnostic.empty())
+			{
+				outDiagnostic += " YAML detail: " + yamlDiagnostic;
+			}
+			return false;
+		}
+		return true;
+	}
+
 	bool ReadString(
 		const YAML::Node& parent,
 		const char* fieldName,
@@ -723,6 +761,16 @@ namespace
 		const YAML::Node giBudget = FindField(
 			profile,
 			"maxGiProbeStatesPerSnapshot");
+		if (!ReadOptionalBool(
+				profile,
+				"enableGlobalIllumination",
+				source,
+				profilePath + ".enableGlobalIllumination",
+				outProfile.m_bEnableGlobalIllumination,
+				outDiagnostic))
+		{
+			return false;
+		}
 		if (bAllowMissingGiProbeStateBudget && !giBudget.IsDefined())
 		{
 			return true;

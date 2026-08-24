@@ -4,17 +4,20 @@ namespace SailorEditor.Layout;
 
 public static class LayoutOperations
 {
+    public const int CurrentLayoutVersion = 2;
+
     public static EditorLayout CreateDefaultLayout()
     {
         var contentPanel = new PanelReference(PanelId.New(), new PanelTypeId("Content"));
         var hierarchyPanel = new PanelReference(PanelId.New(), new PanelTypeId("Hierarchy"));
         var inspectorPanel = new PanelReference(PanelId.New(), new PanelTypeId("Inspector"));
+        var lightingPanel = new PanelReference(PanelId.New(), new PanelTypeId("Lighting"));
         var scenePanel = new PanelReference(PanelId.New(), new PanelTypeId("Scene"));
         var consolePanel = new PanelReference(PanelId.New(), new PanelTypeId("Console"));
         var aiPanel = new PanelReference(PanelId.New(), new PanelTypeId("AI"));
 
         return new EditorLayout(
-            1,
+            CurrentLayoutVersion,
             new LayoutRoot(
                 new SplitNode(
                     SplitOrientation.Horizontal,
@@ -35,11 +38,36 @@ public static class LayoutOperations
                             ],
                             [0.72, 0.28],
                             MinSizes: [280, 140]),
-                        new TabGroupNode(PanelRole.Tool, [inspectorPanel, aiPanel], inspectorPanel.PanelId, "right-inspector")
+                        new TabGroupNode(PanelRole.Tool, [inspectorPanel, lightingPanel, aiPanel], inspectorPanel.PanelId, "right-inspector")
                     ],
                     [0.22, 0.56, 0.22],
                     MinSizes: [220, 320, 220])),
             new WindowBounds(80, 80, 1600, 900));
+    }
+
+    public static EditorLayout MigrateLayout(EditorLayout layout)
+    {
+        if (layout.Version >= CurrentLayoutVersion)
+            return layout;
+
+        var root = layout.Root.Content;
+        if (layout.Version < 2 && !ContainsPanelType(root, KnownPanelTypes.Lighting))
+        {
+            root = ReplaceNode(
+                root,
+                node => node is TabGroupNode tabs &&
+                    tabs.GroupId == "right-inspector",
+                node => AddPanelToGroup(
+                    (TabGroupNode)node,
+                    new PanelReference(PanelId.New(), KnownPanelTypes.Lighting),
+                    activate: false));
+        }
+
+        return layout with
+        {
+            Version = CurrentLayoutVersion,
+            Root = new LayoutRoot(root)
+        };
     }
 
     public static TabGroupNode AddPanelToGroup(TabGroupNode group, PanelReference panel, bool activate = true)
@@ -134,6 +162,18 @@ public static class LayoutOperations
         panel = null!;
         groupId = null;
         return false;
+    }
+
+    static bool ContainsPanelType(LayoutNode node, PanelTypeId panelTypeId)
+    {
+        return node switch
+        {
+            TabGroupNode tabs => tabs.Panels.Any(panel =>
+                panel.PanelTypeId == panelTypeId),
+            SplitNode split => split.Children.Any(child =>
+                ContainsPanelType(child, panelTypeId)),
+            _ => false
+        };
     }
 
     static LayoutNode Cleanup(LayoutNode node)

@@ -350,6 +350,43 @@ namespace
 		}
 	}
 
+	bool TryGetGlobalIlluminationMode(
+		sailor::editor::v1::GlobalIlluminationMode protocolMode,
+		Sailor::EGlobalIlluminationMode& outMode)
+	{
+		switch (protocolMode)
+		{
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME:
+			outMode = Sailor::EGlobalIlluminationMode::Realtime;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED:
+			outMode = Sailor::EGlobalIlluminationMode::RealtimeAndBaked;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED_ONLY:
+			outMode = Sailor::EGlobalIlluminationMode::BakedOnly;
+			return true;
+		case sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_UNSPECIFIED:
+		default:
+			return false;
+		}
+	}
+
+	sailor::editor::v1::GlobalIlluminationMode
+		ToProtocolGlobalIlluminationMode(
+			Sailor::EGlobalIlluminationMode mode)
+	{
+		switch (mode)
+		{
+		case Sailor::EGlobalIlluminationMode::Realtime:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME;
+		case Sailor::EGlobalIlluminationMode::BakedOnly:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_BAKED_ONLY;
+		case Sailor::EGlobalIlluminationMode::RealtimeAndBaked:
+		default:
+			return sailor::editor::v1::GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED;
+		}
+	}
+
 	sailor::editor::v1::GlobalIlluminationProbeMode
 		ToProtocolGlobalIlluminationProbeMode(
 			Sailor::EGlobalIlluminationProbeMode mode)
@@ -1393,6 +1430,8 @@ namespace
 				settings.include_direct_lighting();
 			nativeRequest.m_bAutoBounds = bake.auto_bounds();
 			nativeRequest.m_bOverwrite = bake.overwrite();
+			nativeRequest.m_threadCount = bake.has_thread_count() ?
+				bake.thread_count() : 1u;
 
 			if ((bake.has_volume_min() && !IsFiniteVector4(bake.volume_min())) ||
 				(bake.has_volume_max() && !IsFiniteVector4(bake.volume_max())) ||
@@ -1489,8 +1528,20 @@ namespace
 				request.set_global_illumination_settings();
 			bool bValid = true;
 			std::string diagnostic;
+			if (protocolSettings.has_mode() &&
+				!TryGetGlobalIlluminationMode(
+					protocolSettings.mode(),
+					nativeSettings.m_mode))
+			{
+				bValid = false;
+				diagnostic = "The Global Illumination mode is invalid.";
+			}
 			for (const auto& probe : protocolSettings.probes())
 			{
+				if (!bValid)
+				{
+					break;
+				}
 				Sailor::GlobalIlluminationProbeBinding binding;
 				if (probe.name().empty() ||
 					!TryParseFileId(
@@ -1552,6 +1603,9 @@ namespace
 			result->set_composition_count(state.m_compositionCount);
 			result->set_rejected_composition_count(
 				state.m_rejectedCompositionCount);
+			result->set_mode(
+				ToProtocolGlobalIlluminationMode(state.m_mode));
+			result->set_enabled(state.m_bEnabled);
 			for (const Sailor::GlobalIlluminationProbeState& probe :
 				state.m_probes)
 			{

@@ -51,6 +51,9 @@ namespace Sailor::RHI
 		uint32_t m_probeCount = 0u;
 		uint32_t m_stateCount = 0u;
 		uint32_t m_qualityBudget = 0u;
+		EGlobalIlluminationMode m_mode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		bool m_bEnabled = true;
 		bool m_bActive = false;
 	};
 
@@ -73,6 +76,8 @@ namespace Sailor::RHI
 		glm::uvec4 m_counts{};
 		// state count, BVH root, debug visualization, quality budget
 		glm::uvec4 m_stateAndDebug{};
+		// diffuse GI enabled, world mode, reserved, reserved
+		glm::uvec4 m_settings{};
 		glm::vec4 m_volumeMin{};
 		glm::vec4 m_volumeMax{};
 		// generation low/high, lighting hash low/high
@@ -136,7 +141,9 @@ namespace Sailor::RHI
 	SAILOR_SHARED_API RHIGlobalIlluminationGpuHeader
 		BuildGlobalIlluminationGpuHeader(
 			const RHIGlobalIlluminationSnapshot* snapshot,
-			EGlobalIlluminationDebugVisualization debugVisualization) noexcept;
+			EGlobalIlluminationDebugVisualization debugVisualization,
+			EGlobalIlluminationMode mode,
+			bool bEnabled) noexcept;
 	SAILOR_SHARED_API bool BuildGlobalIlluminationGpuLayout(
 		const ProbeVolumeData& data,
 		RHIGlobalIlluminationGpuLayout& outLayout,
@@ -150,7 +157,7 @@ namespace Sailor::RHI
 		TVector<RHIGlobalIlluminationGpuState>& outStates,
 		std::string& outDiagnostic) noexcept;
 
-	static_assert(sizeof(RHIGlobalIlluminationGpuHeader) == 80u);
+	static_assert(sizeof(RHIGlobalIlluminationGpuHeader) == 96u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBvhNode) == 32u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBrick) == 48u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 64u);

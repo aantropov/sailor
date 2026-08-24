@@ -871,6 +871,7 @@ static class GraphicsSettingsEquality
             left.SkyResolution == right.SkyResolution &&
             left.VegetationInstanceBudget == right.VegetationInstanceBudget &&
             left.LodBias == right.LodBias &&
+            left.EnableGlobalIllumination == right.EnableGlobalIllumination &&
             left.MaxGiProbeStatesPerSnapshot ==
                 right.MaxGiProbeStatesPerSnapshot;
 }

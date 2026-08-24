@@ -195,6 +195,7 @@ message StartProbeVolumeBakeRequest {
 	Vector4 volume_max = 8;
 	Vector4 fallback_environment = 9;
 	bool overwrite = 10;
+	optional uint32 thread_count = 11;
 }
 
 message ProbeVolumeBakeStatusResult {
@@ -223,6 +224,7 @@ message GlobalIlluminationProbeBinding {
 
 message SetGlobalIlluminationSettingsRequest {
 	repeated GlobalIlluminationProbeBinding probes = 1;
+	optional GlobalIlluminationMode mode = 2;
 }
 
 message GlobalIlluminationProbeState {
@@ -241,6 +243,8 @@ message GlobalIlluminationStateResult {
 	string diagnostic = 3;
 	uint64 composition_count = 4;
 	uint64 rejected_composition_count = 5;
+	GlobalIlluminationMode mode = 6;
+	bool enabled = 7;
 }
 
 message RemoteViewportRequest {
@@ -481,6 +485,13 @@ enum GlobalIlluminationProbeMode {
 	GLOBAL_ILLUMINATION_PROBE_MODE_UNSPECIFIED = 0;
 	GLOBAL_ILLUMINATION_PROBE_MODE_BLEND = 1;
 	GLOBAL_ILLUMINATION_PROBE_MODE_ADDITIVE = 2;
+}
+
+enum GlobalIlluminationMode {
+	GLOBAL_ILLUMINATION_MODE_UNSPECIFIED = 0;
+	GLOBAL_ILLUMINATION_MODE_REALTIME = 1;
+	GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 2;
+	GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 3;
 }
 
 enum GlobalIlluminationProbeResidency {

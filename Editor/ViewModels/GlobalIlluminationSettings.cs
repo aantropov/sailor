@@ -9,6 +9,13 @@ public enum GlobalIlluminationProbeMode
     Additive
 }
 
+public enum GlobalIlluminationMode
+{
+    Realtime = 0,
+    RealtimeAndBaked,
+    BakedOnly
+}
+
 public sealed partial class GlobalIlluminationProbeAssetReference : ObservableObject
 {
     [ObservableProperty]
@@ -32,5 +39,7 @@ public sealed partial class GlobalIlluminationProbeBinding : ObservableObject
 
 public sealed class GlobalIlluminationWorldSettings
 {
+    public GlobalIlluminationMode Mode { get; set; } =
+        GlobalIlluminationMode.RealtimeAndBaked;
     public Dictionary<string, GlobalIlluminationProbeBinding> Probes { get; set; } = [];
 }

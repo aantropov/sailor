@@ -374,6 +374,10 @@ namespace
 		{
 			*globalIlluminationStats = BuildGlobalIlluminationRenderStats(
 				globalIllumination.GetRawPtr());
+			globalIlluminationStats->m_mode =
+				snapshot.m_globalIlluminationMode;
+			globalIlluminationStats->m_bEnabled =
+				snapshot.m_bGlobalIlluminationEnabled;
 			globalIlluminationStats->m_flightSlot =
 				snapshot.m_submissionContext->GetFlightSlot();
 			if (!globalIllumination)
@@ -668,7 +672,9 @@ namespace
 					bGlobalIlluminationPayloadReady
 						? globalIllumination.GetRawPtr()
 						: nullptr,
-					ResolveGlobalIlluminationDebug(snapshot.m_renderMode));
+					ResolveGlobalIlluminationDebug(snapshot.m_renderMode),
+					snapshot.m_globalIlluminationMode,
+					snapshot.m_bGlobalIlluminationEnabled);
 			const uint64_t headerHash = HashSubmissionValue(header);
 			if (sharedResources->m_uploadedGlobalIlluminationHeader !=
 				headerHash)
@@ -691,7 +697,8 @@ namespace
 			if (globalIlluminationStats)
 			{
 				globalIlluminationStats->m_bActive =
-					bGlobalIlluminationPayloadReady;
+					bGlobalIlluminationPayloadReady &&
+					globalIlluminationStats->m_bEnabled;
 				globalIlluminationStats->m_loadedBricks =
 					bGlobalIlluminationPayloadReady
 						? globalIlluminationStats->m_totalBricks

@@ -188,6 +188,7 @@ graphics:
       skyResolution: 256
       vegetationInstanceBudget: 12345
       lodBias: 0
+      enableGlobalIllumination: false
       maxGiProbeStatesPerSnapshot: 2
     Low:
       resolutionFactor: 0.7
@@ -279,6 +280,7 @@ graphics:
 			IsNear(ultra.m_cloudsResolutionMultiplier, 1.0f) &&
 			ultra.m_skyResolution == 512u &&
 			ultra.m_vegetationInstanceBudget == 16384u && ultra.m_lodBias == -1 &&
+			ultra.m_bEnableGlobalIllumination &&
 			ultra.m_maxGiProbeStatesPerSnapshot == 4u,
 			"Ultra should match the remaining planned defaults");
 
@@ -397,6 +399,9 @@ graphics:
 					"vegetation budgets should deserialize when present and use quality defaults when omitted");
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_maxGiProbeStatesPerSnapshot == 4u,
 					"GI probe-state snapshot budget should deserialize per quality profile");
+				Require(!parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_bEnableGlobalIllumination &&
+					parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_bEnableGlobalIllumination,
+					"quality profiles should independently enable or disable diffuse GI");
 				Require(IsNear(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_shadowBias, 1.25f),
 					"shadow bias should deserialize with the quality profile");
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_shadowCascadeResolutions[3] == 0u,
@@ -486,6 +491,12 @@ graphics:
 		RequireInvalidProjectField(
 			ReplaceFirst(ValidProjectSettings(), "lodBias: -1", "lodBias: -9"),
 			"graphics.presets.Ultra.lodBias");
+		RequireInvalidProjectField(
+			ReplaceFirst(
+				ValidProjectSettings(),
+				"enableGlobalIllumination: false",
+				"enableGlobalIllumination: maybe"),
+			"graphics.presets.Medium.enableGlobalIllumination");
 		RequireInvalidProjectField(
 			ReplaceFirst(
 				ValidProjectSettings(),

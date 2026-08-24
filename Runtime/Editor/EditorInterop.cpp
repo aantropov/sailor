@@ -654,6 +654,8 @@ bool App::GetEditorGlobalIlluminationState(
 			}
 			outState.m_maxProbeStatesPerSnapshot =
 				globalIllumination->GetMaxProbeStatesPerSnapshot();
+			outState.m_mode = globalIllumination->GetWorldSettings().m_mode;
+			outState.m_bEnabled = globalIllumination->IsEnabled();
 			outState.m_probes = globalIllumination->GetProbeStates();
 			outState.m_diagnostic = globalIllumination->GetDiagnostic();
 			outState.m_compositionCount =

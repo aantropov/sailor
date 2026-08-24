@@ -20,6 +20,12 @@ void GlobalIlluminationECS::BeginPlay()
 Tasks::ITaskPtr GlobalIlluminationECS::Tick(float)
 {
 	InitializeFromWorld();
+	const bool bEnabled = IsEnabled();
+	if (bEnabled != m_bObservedEnabled)
+	{
+		m_bObservedEnabled = bEnabled;
+		m_bCompositionDirty = true;
+	}
 	const uint32_t qualityBudget = GetMaxProbeStatesPerSnapshot();
 	if (qualityBudget != m_observedQualityBudget)
 	{
@@ -30,6 +36,10 @@ Tasks::ITaskPtr GlobalIlluminationECS::Tick(float)
 		{
 			ClearActiveSnapshot();
 		}
+	}
+	if (!bEnabled || !UsesBakedGlobalIllumination(m_worldSettings.m_mode))
+	{
+		return nullptr;
 	}
 	RefreshResidency();
 	RecomposeIfNeeded();
@@ -57,12 +67,18 @@ void GlobalIlluminationECS::EndPlay()
 	m_bInitialized = false;
 	m_bCompositionDirty = true;
 	m_observedQualityBudget = (std::numeric_limits<uint32_t>::max)();
+	m_bObservedEnabled = true;
 	ECS::TSystem<GlobalIlluminationECS, GlobalIlluminationECSData>::EndPlay();
 }
 
 uint32_t GlobalIlluminationECS::GetMaxProbeStatesPerSnapshot() const noexcept
 {
 	return App::GetActiveGraphicsSettings().m_maxGiProbeStatesPerSnapshot;
+}
+
+bool GlobalIlluminationECS::IsEnabled() const noexcept
+{
+	return App::GetActiveGraphicsSettings().m_bEnableGlobalIllumination;
 }
 
 bool GlobalIlluminationECS::ApplyWorldSettings(
@@ -128,7 +144,8 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 	for (const auto& entry : m_bindings)
 	{
 		RuntimeBinding& binding = *entry.m_second;
-		if ((binding.m_bPreload || binding.m_weight > 0.0f) &&
+		if (IsEnabled() && UsesBakedGlobalIllumination(settings.m_mode) &&
+			(binding.m_bPreload || binding.m_weight > 0.0f) &&
 			!binding.m_asset)
 		{
 			std::string loadDiagnostic;
@@ -358,7 +375,8 @@ void GlobalIlluminationECS::InitializeFromWorld()
 	{
 		const std::string& name = entry.m_first;
 		RuntimeBinding& binding = *entry.m_second;
-		if (binding.m_bPreload || binding.m_weight > 0.0f)
+		if (IsEnabled() && UsesBakedGlobalIllumination(m_worldSettings.m_mode) &&
+			(binding.m_bPreload || binding.m_weight > 0.0f))
 		{
 			std::string loadDiagnostic;
 			StartLoad(name, binding, loadDiagnostic);

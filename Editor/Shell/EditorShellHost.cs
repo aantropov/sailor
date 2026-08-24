@@ -55,7 +55,19 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
             StatusText = "Layout restore failed. Loaded default layout.";
         }
 
-        ApplyLayout(layout);
+        var migratedLayout = LayoutOperations.MigrateLayout(layout);
+        ApplyLayout(migratedLayout);
+        if (!Equals(migratedLayout, layout))
+        {
+            try
+            {
+                await _layoutStore.SaveAsync(migratedLayout, cancellationToken);
+            }
+            catch
+            {
+                StatusText = "Layout migrated, but the updated layout could not be saved.";
+            }
+        }
     }
 
     public void ApplyLayout(EditorLayout layout)
@@ -227,6 +239,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
         "Scene" => "center-docs",
         "Console" => "bottom-console",
         "Inspector" => "right-inspector",
+        "Lighting" => "right-inspector",
         "Hierarchy" => "left-bottom",
         "Content" => "left-top",
         "EditorPerformance" => "bottom-console",

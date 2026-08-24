@@ -10,6 +10,8 @@
 
 namespace Sailor
 {
+	inline constexpr uint32_t ProbeVolumeMaxBakeThreadCount = 64u;
+
 	struct SAILOR_SHARED_API ProbeVolumeBakeRaySample final
 	{
 		glm::vec3 m_radiance{};
@@ -21,6 +23,8 @@ namespace Sailor
 	{
 	public:
 		virtual ~IProbeVolumeBakeRaySampler() = default;
+		// Bake may call Sample concurrently when the request uses more than one
+		// thread. Implementations must treat their prepared scene as immutable.
 		virtual bool Sample(
 			const glm::vec3& origin,
 			const glm::vec3& direction,
@@ -47,6 +51,7 @@ namespace Sailor
 		ProbeVolumeBakeSettings m_settings{};
 		TVector<Math::AABB> m_sceneGeometryBounds{};
 		uint64_t m_sourceWorldHash = 0u;
+		uint32_t m_threadCount = 1u;
 		const ProbeVolumeData* m_layoutSource = nullptr;
 		const std::atomic<bool>* m_cancel = nullptr;
 		std::function<void(const ProbeVolumeBakeProgress&)> m_progress{};

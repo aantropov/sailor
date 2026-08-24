@@ -72,12 +72,21 @@ namespace
 		}
 
 		char text[1024];
+		const char* globalIlluminationStatus =
+			!globalIlluminationStats.m_bEnabled
+				? "disabled"
+				: globalIlluminationStats.m_mode ==
+					EGlobalIlluminationMode::Realtime
+					? "realtime"
+					: globalIlluminationStats.m_bActive
+						? "baked"
+						: "fallback";
 		std::snprintf(
 			text,
 			sizeof(text),
 			"CPU %u FPS\nGPU %u FPS\nBatches %u\nInstances %u\n"
 			"Shadows %.1f / %.0f MB\n  CSM %.1f MB\n  Local %.1f MB\n"
-			"GI %s rev %llu flight %s\n"
+			"GI %s (%s) rev %llu flight %s\n"
 			"  States %u / %u, bricks %u / %u, probes %u\n"
 			"  CPU payload %.2f MB, GPU/flight %.2f MB\n"
 			"  Copy %.1f KB, upload %.1f KB\n"
@@ -90,7 +99,9 @@ namespace
 			shadowMemoryBudgetMb,
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
-			globalIlluminationStats.m_bActive ? "active" : "fallback",
+			globalIlluminationStatus,
+			GlobalIlluminationModeToString(
+				globalIlluminationStats.m_mode),
 			static_cast<unsigned long long>(
 				globalIlluminationStats.m_activeRevision),
 			globalIlluminationFlight,

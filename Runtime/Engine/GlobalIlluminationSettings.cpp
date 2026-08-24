@@ -35,10 +35,54 @@ bool Sailor::TryParseGlobalIlluminationProbeMode(
 	return false;
 }
 
+const char* Sailor::GlobalIlluminationModeToString(
+	EGlobalIlluminationMode mode) noexcept
+{
+	switch (mode)
+	{
+	case EGlobalIlluminationMode::Realtime:
+		return "Realtime";
+	case EGlobalIlluminationMode::BakedOnly:
+		return "BakedOnly";
+	case EGlobalIlluminationMode::RealtimeAndBaked:
+	default:
+		return "RealtimeAndBaked";
+	}
+}
+
+bool Sailor::TryParseGlobalIlluminationMode(
+	const std::string& value,
+	EGlobalIlluminationMode& outMode) noexcept
+{
+	if (value == "Realtime")
+	{
+		outMode = EGlobalIlluminationMode::Realtime;
+		return true;
+	}
+	if (value == "RealtimeAndBaked")
+	{
+		outMode = EGlobalIlluminationMode::RealtimeAndBaked;
+		return true;
+	}
+	if (value == "BakedOnly")
+	{
+		outMode = EGlobalIlluminationMode::BakedOnly;
+		return true;
+	}
+	return false;
+}
+
 bool GlobalIlluminationWorldSettings::Validate(
 	std::string& outDiagnostic) const noexcept
 {
 	outDiagnostic.clear();
+	if (m_mode != EGlobalIlluminationMode::Realtime &&
+		m_mode != EGlobalIlluminationMode::RealtimeAndBaked &&
+		m_mode != EGlobalIlluminationMode::BakedOnly)
+	{
+		outDiagnostic = "global-illumination mode is invalid";
+		return false;
+	}
 	for (const auto& entry : m_probes)
 	{
 		const std::string& name = entry.m_first;
@@ -76,6 +120,7 @@ YAML::Node GlobalIlluminationWorldSettings::Serialize() const
 {
 	YAML::Node globalIllumination(YAML::NodeType::Map);
 	YAML::Node probes(YAML::NodeType::Map);
+	globalIllumination["mode"] = GlobalIlluminationModeToString(m_mode);
 
 	struct SortedBinding final
 	{
@@ -122,6 +167,7 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 	const YAML::Node& worldRoot,
 	std::string& outDiagnostic) noexcept
 {
+	m_mode = EGlobalIlluminationMode::RealtimeAndBaked;
 	m_probes.Clear();
 	outDiagnostic.clear();
 	try
@@ -134,6 +180,14 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 		if (!giNode.IsMap())
 		{
 			outDiagnostic = "globalIllumination must be a map";
+			return false;
+		}
+		const std::string globalMode = giNode["mode"]
+			? giNode["mode"].as<std::string>()
+			: std::string("RealtimeAndBaked");
+		if (!TryParseGlobalIlluminationMode(globalMode, m_mode))
+		{
+			outDiagnostic = "globalIllumination.mode must be Realtime, RealtimeAndBaked, or BakedOnly";
 			return false;
 		}
 		const YAML::Node probesNode = giNode["probes"];
@@ -194,6 +248,7 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 	}
 	catch (const std::exception& exception)
 	{
+		m_mode = EGlobalIlluminationMode::RealtimeAndBaked;
 		m_probes.Clear();
 		outDiagnostic = std::string("cannot parse globalIllumination settings: ") +
 			exception.what();
@@ -201,6 +256,7 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 	}
 	catch (...)
 	{
+		m_mode = EGlobalIlluminationMode::RealtimeAndBaked;
 		m_probes.Clear();
 		outDiagnostic = "cannot parse globalIllumination settings: unknown failure";
 		return false;

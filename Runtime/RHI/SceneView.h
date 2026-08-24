@@ -412,6 +412,9 @@ namespace Sailor::RHI
 		RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		bool m_bGlobalIlluminationEnabled = true;
 		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		Tasks::TaskPtr<RHICommandListPtr> m_debugDrawSecondaryCmdList{};
@@ -458,6 +461,9 @@ namespace Sailor::RHI
 		RHI::RHIShaderBindingSetPtr m_boneMatrices{};
 		TSharedPtr<TVector<glm::mat4>> m_cpuBoneMatrices{};
 		uint64_t m_animationRevision = 0ull;
+		EGlobalIlluminationMode m_globalIlluminationMode =
+			EGlobalIlluminationMode::RealtimeAndBaked;
+		bool m_bGlobalIlluminationEnabled = true;
 		RHIGlobalIlluminationSnapshotPtr m_globalIllumination{};
 
 		// For each camera

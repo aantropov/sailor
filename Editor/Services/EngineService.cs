@@ -3033,7 +3033,8 @@ namespace SailorEditor.Services
                 VolumeMax = ToProtocolVector(request.VolumeMax),
                 FallbackEnvironment = ToProtocolVector(
                     request.FallbackEnvironment),
-                Overwrite = request.Overwrite
+                Overwrite = request.Overwrite,
+                ThreadCount = request.ThreadCount
             };
             return InvokeRunningInteropAsync(
                 token => protocolClient.StartProbeVolumeBakeAsync(
@@ -3082,11 +3083,15 @@ namespace SailorEditor.Services
                 cancellationToken: cancellationToken);
 
         public async Task<bool> SetGlobalIlluminationSettingsAsync(
+            GlobalIlluminationRuntimeMode mode,
             IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(bindings);
-            var protocolSettings = new SetGlobalIlluminationSettingsRequest();
+            var protocolSettings = new SetGlobalIlluminationSettingsRequest
+            {
+                Mode = ToProtocolGlobalIlluminationRuntimeMode(mode)
+            };
             foreach (var binding in bindings.OrderBy(
                 static value => value.Name,
                 StringComparer.Ordinal))
@@ -3096,7 +3101,7 @@ namespace SailorEditor.Services
                     {
                         Name = binding.Name ?? string.Empty,
                         AssetFileId = binding.Asset?.Value ?? string.Empty,
-                        Mode = ToProtocolGlobalIlluminationMode(binding.Mode),
+                        Mode = ToProtocolGlobalIlluminationProbeMode(binding.Mode),
                         InitialWeight = binding.InitialWeight,
                         Preload = binding.Preload
                     });
@@ -3135,11 +3140,13 @@ namespace SailorEditor.Services
             }
             return new GlobalIlluminationRuntimeState(
                 protocolState.MaxProbeStatesPerSnapshot,
+                FromProtocolGlobalIlluminationRuntimeMode(protocolState.Mode),
+                protocolState.Enabled,
                 protocolState.Probes.Select(
                     static probe => new GlobalIlluminationProbeRuntimeState(
                         probe.Name,
                         new FileId(probe.AssetFileId),
-                        FromProtocolGlobalIlluminationMode(probe.Mode),
+                        FromProtocolGlobalIlluminationProbeMode(probe.Mode),
                         probe.Weight,
                         FromProtocolGlobalIlluminationResidency(
                             probe.Residency),
@@ -3180,7 +3187,7 @@ namespace SailorEditor.Services
         };
 
         static Protocol.Generated.GlobalIlluminationProbeMode
-            ToProtocolGlobalIlluminationMode(
+            ToProtocolGlobalIlluminationProbeMode(
                 GlobalIlluminationCompositionMode mode) => mode switch
         {
             GlobalIlluminationCompositionMode.Blend =>
@@ -3191,7 +3198,7 @@ namespace SailorEditor.Services
         };
 
         static GlobalIlluminationCompositionMode
-            FromProtocolGlobalIlluminationMode(
+            FromProtocolGlobalIlluminationProbeMode(
                 Protocol.Generated.GlobalIlluminationProbeMode mode) =>
             mode switch
             {
@@ -3202,6 +3209,35 @@ namespace SailorEditor.Services
                 _ => throw new InvalidDataException(
                     $"Unknown Global Illumination ECS probe mode: {mode}.")
             };
+
+        static Protocol.Generated.GlobalIlluminationMode
+            ToProtocolGlobalIlluminationRuntimeMode(
+                GlobalIlluminationRuntimeMode mode) => mode switch
+        {
+            GlobalIlluminationRuntimeMode.Realtime =>
+                Protocol.Generated.GlobalIlluminationMode.Realtime,
+            GlobalIlluminationRuntimeMode.RealtimeAndBaked =>
+                Protocol.Generated.GlobalIlluminationMode.RealtimeAndBaked,
+            GlobalIlluminationRuntimeMode.BakedOnly =>
+                Protocol.Generated.GlobalIlluminationMode.BakedOnly,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
+
+        static GlobalIlluminationRuntimeMode
+            FromProtocolGlobalIlluminationRuntimeMode(
+                Protocol.Generated.GlobalIlluminationMode mode) => mode switch
+        {
+            Protocol.Generated.GlobalIlluminationMode.Realtime =>
+                GlobalIlluminationRuntimeMode.Realtime,
+            Protocol.Generated.GlobalIlluminationMode.RealtimeAndBaked =>
+                GlobalIlluminationRuntimeMode.RealtimeAndBaked,
+            Protocol.Generated.GlobalIlluminationMode.BakedOnly =>
+                GlobalIlluminationRuntimeMode.BakedOnly,
+            Protocol.Generated.GlobalIlluminationMode.Unspecified =>
+                GlobalIlluminationRuntimeMode.RealtimeAndBaked,
+            _ => throw new InvalidDataException(
+                $"Unknown Global Illumination runtime mode: {mode}.")
+        };
 
         static GlobalIlluminationResidency
             FromProtocolGlobalIlluminationResidency(

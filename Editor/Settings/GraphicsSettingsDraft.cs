@@ -15,6 +15,7 @@ public sealed record GraphicsQualityPresetDraft(
     string SkyResolution,
     string VegetationInstanceBudget,
     string LodBias,
+    bool EnableGlobalIllumination,
     string MaxGiProbeStatesPerSnapshot)
 {
     public static GraphicsQualityPresetDraft FromSettings(
@@ -32,6 +33,7 @@ public sealed record GraphicsQualityPresetDraft(
             settings.SkyResolution.ToString(CultureInfo.InvariantCulture),
             settings.VegetationInstanceBudget.ToString(CultureInfo.InvariantCulture),
             settings.LodBias.ToString(CultureInfo.InvariantCulture),
+            settings.EnableGlobalIllumination,
             settings.MaxGiProbeStatesPerSnapshot.ToString(
                 CultureInfo.InvariantCulture));
 
@@ -110,6 +112,7 @@ public sealed record GraphicsQualityPresetDraft(
             SkyResolution = skyResolution,
             VegetationInstanceBudget = vegetationInstanceBudget,
             LodBias = lodBias,
+            EnableGlobalIllumination = EnableGlobalIllumination,
             MaxGiProbeStatesPerSnapshot = maxGiProbeStatesPerSnapshot
         };
         return valid;

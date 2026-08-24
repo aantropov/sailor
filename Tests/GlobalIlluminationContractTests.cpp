@@ -22,12 +22,16 @@
 #include <bit>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
+#include <set>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <glm/gtc/packing.hpp>
 
@@ -471,6 +475,117 @@ namespace
 		}
 	};
 
+	class ConcurrentSeedDrivenBakeRaySampler final :
+		public IProbeVolumeBakeRaySampler
+	{
+	public:
+		explicit ConcurrentSeedDrivenBakeRaySampler(uint32_t expectedThreads) :
+			m_expectedThreads(expectedThreads)
+		{}
+
+		bool Sample(
+			const glm::vec3&,
+			const glm::vec3&,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			{
+				std::unique_lock<std::mutex> lock(m_mutex);
+				m_threads.insert(std::this_thread::get_id());
+				if (m_threads.size() >= m_expectedThreads)
+				{
+					m_released = true;
+					m_condition.notify_all();
+				}
+				else if (!m_condition.wait_for(
+						lock,
+						std::chrono::seconds(2),
+						[this]() { return m_released; }))
+				{
+					outDiagnostic =
+						"the configured bake threads did not execute concurrently";
+					return false;
+				}
+			}
+
+			const float value = static_cast<float>(randomSeed & 0xffffu) /
+				65535.0f;
+			outSample.m_radiance = glm::vec3(
+				value,
+				value * value,
+				1.0f - value);
+			outSample.m_distance = maxDistance;
+			outSample.m_bHit = false;
+			outDiagnostic.clear();
+			return true;
+		}
+
+		size_t GetObservedThreadCount() const
+		{
+			const std::lock_guard<std::mutex> lock(m_mutex);
+			return m_threads.size();
+		}
+
+	private:
+		uint32_t m_expectedThreads = 1u;
+		mutable std::mutex m_mutex;
+		mutable std::condition_variable m_condition;
+		mutable std::set<std::thread::id> m_threads;
+		mutable bool m_released = false;
+	};
+
+	bool HasSameFloatBits(float lhs, float rhs)
+	{
+		return std::bit_cast<uint32_t>(lhs) == std::bit_cast<uint32_t>(rhs);
+	}
+
+	bool HasSameVectorBits(const glm::vec2& lhs, const glm::vec2& rhs)
+	{
+		return HasSameFloatBits(lhs.x, rhs.x) &&
+			HasSameFloatBits(lhs.y, rhs.y);
+	}
+
+	bool HasSameVectorBits(const glm::vec3& lhs, const glm::vec3& rhs)
+	{
+		return HasSameFloatBits(lhs.x, rhs.x) &&
+			HasSameFloatBits(lhs.y, rhs.y) &&
+			HasSameFloatBits(lhs.z, rhs.z);
+	}
+
+	bool HasSameProbeBits(
+		const ProbeVolumeSample& lhs,
+		const ProbeVolumeSample& rhs)
+	{
+		if (!HasSameVectorBits(lhs.m_position, rhs.m_position) ||
+			!HasSameVectorBits(lhs.m_relocationOffset, rhs.m_relocationOffset) ||
+			!HasSameFloatBits(lhs.m_validity, rhs.m_validity) ||
+			lhs.m_flags != rhs.m_flags)
+		{
+			return false;
+		}
+		for (size_t index = 0u; index < lhs.m_irradiance.size(); ++index)
+		{
+			if (!HasSameVectorBits(
+					lhs.m_irradiance[index],
+					rhs.m_irradiance[index]))
+			{
+				return false;
+			}
+		}
+		for (size_t index = 0u; index < lhs.m_visibility.size(); ++index)
+		{
+			if (!HasSameVectorBits(
+					lhs.m_visibility[index],
+					rhs.m_visibility[index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	class BoundaryRelocationSampler final : public IProbeVolumeBakeRaySampler
 	{
 	public:
@@ -710,6 +825,7 @@ namespace
 	void TestWorldBindingRoundTripAndModes()
 	{
 		GlobalIlluminationWorldSettings source;
+		source.m_mode = EGlobalIlluminationMode::BakedOnly;
 		GlobalIlluminationProbeBinding day;
 		day.m_asset = ParseFileId("11111111-1111-1111-1111-111111111111");
 		day.m_mode = EGlobalIlluminationProbeMode::Blend;
@@ -728,11 +844,24 @@ namespace
 		std::string diagnostic;
 		Require(parsed.Deserialize(root, diagnostic),
 			"world GI settings should round-trip: " + diagnostic);
-		Require(parsed.m_probes.Num() == 2u &&
+		Require(parsed.m_mode == EGlobalIlluminationMode::BakedOnly &&
+			parsed.m_probes.Num() == 2u &&
 			parsed.m_probes["Day"].m_mode == EGlobalIlluminationProbeMode::Blend &&
 			parsed.m_probes["Lamps"].m_mode == EGlobalIlluminationProbeMode::Additive &&
 			parsed.m_probes["Lamps"].m_bPreload,
 			"each named .probes binding must retain its independent Blend/Additive role");
+
+		YAML::Node legacyRoot = YAML::Clone(root);
+		legacyRoot["globalIllumination"].remove("mode");
+		Require(parsed.Deserialize(legacyRoot, diagnostic) &&
+			parsed.m_mode == EGlobalIlluminationMode::RealtimeAndBaked,
+			"worlds without an explicit GI mode must retain realtime fallback compatibility");
+
+		root["globalIllumination"]["mode"] = "ReflectionsOnly";
+		Require(!parsed.Deserialize(root, diagnostic) &&
+			diagnostic.find("RealtimeAndBaked") != std::string::npos,
+			"unknown world GI modes must fail atomically");
+		root["globalIllumination"]["mode"] = "BakedOnly";
 
 		root["globalIllumination"]["probes"]["Lamps"]["mode"] = "Multiply";
 		Require(!parsed.Deserialize(root, diagnostic) &&
@@ -782,6 +911,25 @@ components:
 				current,
 				diagnostic),
 			"a real level edit must still fail the saved-world bake preflight");
+	}
+
+	void TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture()
+	{
+		GlobalIlluminationBakeController controller;
+		EditorProbeVolumeBakeRequest request;
+		request.m_threadCount = 0u;
+		std::string diagnostic;
+		Require(
+			!controller.Start(nullptr, request, diagnostic) &&
+				diagnostic.find("between 1 and") != std::string::npos,
+			"the editor bake controller must reject zero threads before capturing a scene");
+
+		request.m_threadCount = ProbeVolumeMaxBakeThreadCount + 1u;
+		diagnostic.clear();
+		Require(
+			!controller.Start(nullptr, request, diagnostic) &&
+				diagnostic.find("between 1 and") != std::string::npos,
+			"the editor bake controller must reject excessive threads before capturing a scene");
 	}
 
 	void TestEveningLandscapeFixtureProvesSecondaryLighting()
@@ -1086,9 +1234,14 @@ components:
 		const RHI::RHIGlobalIlluminationGpuHeader header =
 			RHI::BuildGlobalIlluminationGpuHeader(
 				&snapshot,
-				RHI::EGlobalIlluminationDebugVisualization::IndirectOnly);
+				RHI::EGlobalIlluminationDebugVisualization::IndirectOnly,
+				EGlobalIlluminationMode::BakedOnly,
+				false);
 		Require(header.m_counts == glm::uvec4(1u, 1u, 1u, 8u) &&
 			header.m_stateAndDebug.x == 2u &&
+			header.m_settings.x == 0u &&
+			header.m_settings.y == static_cast<uint32_t>(
+				EGlobalIlluminationMode::BakedOnly) &&
 			header.m_stateAndDebug.z == static_cast<uint32_t>(
 				RHI::EGlobalIlluminationDebugVisualization::IndirectOnly),
 			"GPU header must expose resident counts and the selected GI debug mode");
@@ -1190,6 +1343,42 @@ components:
 				second.m_data->m_probes[0].m_irradiance,
 			"the same bake randomSeed must reproduce transport and lighting output");
 
+		ProbeVolumeBakeRequest parallel = request;
+		parallel.m_threadCount = 4u;
+		std::string parallelStage;
+		parallel.m_progress = [&parallelStage](
+			const ProbeVolumeBakeProgress& progress)
+		{
+			parallelStage = progress.m_stage;
+		};
+		const ConcurrentSeedDrivenBakeRaySampler parallelSampler(4u);
+		const ProbeVolumeBakeResult parallelResult = ProbeVolumeBaker::Bake(
+			parallel,
+			parallelSampler);
+		Require(parallelResult.IsSuccess(),
+			"four-thread seed-driven bake should succeed: " +
+				parallelResult.m_diagnostic);
+		bool bSameProbeBits = first.m_data->m_probes.Num() ==
+			parallelResult.m_data->m_probes.Num();
+		for (size_t probeIndex = 0u;
+			bSameProbeBits && probeIndex < first.m_data->m_probes.Num();
+			++probeIndex)
+		{
+			bSameProbeBits = HasSameProbeBits(
+				first.m_data->m_probes[probeIndex],
+				parallelResult.m_data->m_probes[probeIndex]);
+		}
+		Require(
+			parallelSampler.GetObservedThreadCount() == 4u &&
+			parallelStage.find("(4 threads)") != std::string::npos &&
+			first.m_data->m_layoutHash == parallelResult.m_data->m_layoutHash &&
+			first.m_data->m_transportHash ==
+				parallelResult.m_data->m_transportHash &&
+			first.m_data->m_lightingHash ==
+				parallelResult.m_data->m_lightingHash &&
+			bSameProbeBits,
+			"configured bake threads must execute concurrently without changing deterministic output");
+
 		ProbeVolumeBakeRequest differentSeed = request;
 		differentSeed.m_settings.m_randomSeed += 1u;
 		const ProbeVolumeBakeResult different = ProbeVolumeBaker::Bake(
@@ -1215,6 +1404,18 @@ components:
 			sampler);
 		Require(excessive.m_status == EProbeVolumeBakeStatus::InvalidRequest,
 			"layout reuse must not bypass supported sampling limits");
+
+		ProbeVolumeBakeRequest invalidThreads = request;
+		invalidThreads.m_threadCount = 0u;
+		Require(
+			ProbeVolumeBaker::Bake(invalidThreads, sampler).m_status ==
+				EProbeVolumeBakeStatus::InvalidRequest,
+			"a zero bake thread count must fail closed");
+		invalidThreads.m_threadCount = ProbeVolumeMaxBakeThreadCount + 1u;
+		Require(
+			ProbeVolumeBaker::Bake(invalidThreads, sampler).m_status ==
+				EProbeVolumeBakeStatus::InvalidRequest,
+			"a bake thread count above the supported limit must fail closed");
 	}
 
 	void TestRelocationClampingPreservesEffectiveOffset()
@@ -1446,6 +1647,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
 			TestProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs);
+		RunTest(
+			"BakeControllerRejectsInvalidThreadCountBeforeSceneCapture",
+			TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture);
 		RunTest(
 			"EveningLandscapeFixtureProvesSecondaryLighting",
 			TestEveningLandscapeFixtureProvesSecondaryLighting);

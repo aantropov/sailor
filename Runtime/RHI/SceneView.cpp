@@ -1043,6 +1043,9 @@ void RHISceneView::Clear()
 	m_lightingRevision = 0ull;
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
+	m_globalIlluminationMode =
+		EGlobalIlluminationMode::RealtimeAndBaked;
+	m_bGlobalIlluminationEnabled = true;
 	m_globalIllumination.Clear();
 
 	m_drawImGui.Clear();
@@ -1095,6 +1098,9 @@ void RHISceneViewSnapshot::ResetForReuse()
 	m_boneMatrices.Clear();
 	m_cpuBoneMatrices.Clear();
 	m_animationRevision = 0ull;
+	m_globalIlluminationMode =
+		EGlobalIlluminationMode::RealtimeAndBaked;
+	m_bGlobalIlluminationEnabled = true;
 	m_globalIllumination.Clear();
 	m_debugDrawSecondaryCmdList.Clear();
 	m_drawImGui.Clear();
@@ -1412,6 +1418,9 @@ void RHISceneView::PrepareSnapshots()
 		res.m_lightingRevision = m_lightingRevision;
 		res.m_cpuBoneMatrices = m_cpuBoneMatrices;
 		res.m_animationRevision = m_animationRevision;
+		res.m_globalIlluminationMode = m_globalIlluminationMode;
+		res.m_bGlobalIlluminationEnabled =
+			m_bGlobalIlluminationEnabled;
 		res.m_globalIllumination = m_globalIllumination;
 		TraceScene(frustum, res.m_proxies, false);
 		const glm::vec3 cameraPosition = glm::vec3(m_cameraTransforms[i].m_position);

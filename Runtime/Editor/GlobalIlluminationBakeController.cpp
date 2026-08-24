@@ -863,6 +863,14 @@ bool GlobalIlluminationBakeController::Start(
 		outDiagnostic = "a probe-volume bake is already running";
 		return false;
 	}
+	if (request.m_threadCount == 0u ||
+		request.m_threadCount > ProbeVolumeMaxBakeThreadCount)
+	{
+		outDiagnostic =
+			"a probe-volume bake requires a thread count between 1 and " +
+			std::to_string(ProbeVolumeMaxBakeThreadCount);
+		return false;
+	}
 
 	auto state = TSharedPtr<SharedState>::Make();
 	state->m_status.m_state = EEditorProbeVolumeBakeState::Preparing;
@@ -1005,6 +1013,7 @@ bool GlobalIlluminationBakeController::Start(
 				bakeRequest.m_settings = effectiveSettings;
 				bakeRequest.m_sceneGeometryBounds = scene->m_geometryBounds;
 				bakeRequest.m_sourceWorldHash = scene->m_sourceWorldHash;
+				bakeRequest.m_threadCount = request.m_threadCount;
 				bakeRequest.m_layoutSource = scene->m_layoutSource.GetRawPtr();
 				bakeRequest.m_cancel = &state->m_cancel;
 				bakeRequest.m_progress =
