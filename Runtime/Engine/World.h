@@ -88,10 +88,7 @@ namespace Sailor
 		SAILOR_API bool IsPhysicsSimulationEnabled() const { return m_bPhysicsSimulationEnabled; }
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
-		SAILOR_API const GlobalIlluminationWorldSettings& GetGlobalIlluminationSettings() const
-		{
-			return m_globalIllumination;
-		}
+		SAILOR_API const GlobalIlluminationWorldSettings& GetGlobalIlluminationSettings() const;
 		SAILOR_API bool SetGlobalIlluminationSettings(
 			GlobalIlluminationWorldSettings settings,
 			std::string& outDiagnostic);
@@ -157,7 +154,6 @@ namespace Sailor
 
 		size_t m_currentFrame;
 		std::string m_name;
-		GlobalIlluminationWorldSettings m_globalIllumination{};
 
 		TVector<GameObjectPtr> m_objects;
 		TMap<InstanceId, ObjectPtr> m_objectsMap;

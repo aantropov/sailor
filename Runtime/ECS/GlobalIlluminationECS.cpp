@@ -122,6 +122,7 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 	}
 
 	m_bindings = std::move(nextBindings);
+	m_worldSettings = settings;
 	m_bInitialized = true;
 	m_bCompositionDirty = true;
 	for (const auto& entry : m_bindings)
@@ -343,9 +344,7 @@ void GlobalIlluminationECS::InitializeFromWorld()
 		return;
 	}
 	m_bInitialized = true;
-	const GlobalIlluminationWorldSettings& settings =
-		GetWorld()->GetGlobalIlluminationSettings();
-	for (const auto& entry : settings.m_probes)
+	for (const auto& entry : m_worldSettings.m_probes)
 	{
 		RuntimeBinding binding;
 		binding.m_assetId = entry.m_second->m_asset;

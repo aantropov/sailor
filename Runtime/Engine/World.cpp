@@ -103,6 +103,20 @@ World::World(
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
 }
 
+const GlobalIlluminationWorldSettings&
+World::GetGlobalIlluminationSettings() const
+{
+	static const GlobalIlluminationWorldSettings emptySettings{};
+	const ECS::TBaseSystemPtr* system = nullptr;
+	if (!m_ecs.Find(GlobalIlluminationECS::GetComponentStaticType(), system) ||
+		!system || !system->GetRawPtr())
+	{
+		return emptySettings;
+	}
+	return static_cast<const GlobalIlluminationECS*>(
+		system->GetRawPtr())->GetWorldSettings();
+}
+
 bool World::SetGlobalIlluminationSettings(
 	GlobalIlluminationWorldSettings settings,
 	std::string& outDiagnostic)
@@ -111,13 +125,19 @@ bool World::SetGlobalIlluminationSettings(
 	{
 		return false;
 	}
-	if (auto* globalIllumination = GetECS<GlobalIlluminationECS>();
-		globalIllumination &&
-		!globalIllumination->ApplyWorldSettings(settings, outDiagnostic))
+	ECS::TBaseSystemPtr* system = nullptr;
+	if (!m_ecs.Find(GlobalIlluminationECS::GetComponentStaticType(), system) ||
+		!system || !system->GetRawPtr())
+	{
+		outDiagnostic = "Global Illumination ECS is unavailable";
+		return false;
+	}
+	auto* globalIllumination = static_cast<GlobalIlluminationECS*>(
+		system->GetRawPtr());
+	if (!globalIllumination->ApplyWorldSettings(settings, outDiagnostic))
 	{
 		return false;
 	}
-	m_globalIllumination = std::move(settings);
 	outDiagnostic = "updated world Global Illumination ECS settings";
 	return true;
 }

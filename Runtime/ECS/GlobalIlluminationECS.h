@@ -53,6 +53,10 @@ namespace Sailor
 		SAILOR_API uint32_t GetOrder() const override { return 175u; }
 
 		SAILOR_API uint32_t GetMaxProbeStatesPerSnapshot() const noexcept;
+		SAILOR_API const GlobalIlluminationWorldSettings& GetWorldSettings() const noexcept
+		{
+			return m_worldSettings;
+		}
 		SAILOR_API bool ApplyWorldSettings(
 			const GlobalIlluminationWorldSettings& settings,
 			std::string& outDiagnostic);
@@ -117,6 +121,7 @@ namespace Sailor
 		void ClearActiveSnapshot();
 
 		TMap<std::string, RuntimeBinding> m_bindings{};
+		GlobalIlluminationWorldSettings m_worldSettings{};
 		mutable SpinLock m_snapshotLock;
 		GlobalIlluminationSnapshotPtr m_activeSnapshot{};
 		std::string m_diagnostic{};
