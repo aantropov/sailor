@@ -36,6 +36,13 @@ namespace Sailor::RHI
 			mode == ESceneViewRenderMode::GlobalIlluminationFallback;
 	}
 
+	constexpr bool IsSceneViewDebugVisualization(
+		ESceneViewRenderMode mode) noexcept
+	{
+		return IsValidSceneViewRenderMode(mode) &&
+			mode != ESceneViewRenderMode::Lit;
+	}
+
 	constexpr const char* GetSceneViewRenderModeShaderDefine(
 		ESceneViewRenderMode mode) noexcept
 	{

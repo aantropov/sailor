@@ -10,7 +10,10 @@
 #include "MaterialUtils.h"
 #include "LightingModel.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 
 using namespace Sailor;
 
@@ -19,6 +22,36 @@ namespace Sailor::Raytracing
 	class PathTracer
 	{
 	public:
+		enum class EScenePreparationStage : uint8_t
+		{
+			Geometry = 0u,
+			Materials
+		};
+
+		struct ScenePreparationProgress final
+		{
+			EScenePreparationStage m_stage =
+				EScenePreparationStage::Geometry;
+			size_t m_completed = 0u;
+			size_t m_total = 0u;
+		};
+
+		struct ScenePreparationStats final
+		{
+			size_t m_instanceCount = 0u;
+			size_t m_geometryInstanceCount = 0u;
+			size_t m_builtBlasCount = 0u;
+			size_t m_reusedBlasCount = 0u;
+			size_t m_materialSlotCount = 0u;
+			size_t m_uniqueMaterialCount = 0u;
+			size_t m_reusedMaterialCount = 0u;
+			size_t m_textureReferenceCount = 0u;
+			size_t m_uniqueTextureCount = 0u;
+			size_t m_decodedTextureCount = 0u;
+		};
+
+		using ScenePreparationProgressCallback =
+			std::function<bool(const ScenePreparationProgress&)>;
 
 		struct TLASInstance
 		{
@@ -72,7 +105,8 @@ namespace Sailor::Raytracing
 		bool InitializeScene(const TVector<TLASInstance>& instances,
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies,
-			bool bAddDefaultLightIfEmpty = true);
+			bool bAddDefaultLightIfEmpty = true,
+			const ScenePreparationProgressCallback& progress = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
 		void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
@@ -90,6 +124,10 @@ namespace Sailor::Raytracing
 			return m_bMaterialsFullyResolved;
 		}
 		double GetLastRaytraceTimeMs() const { return m_lastRaytraceTimeMs; }
+		const ScenePreparationStats& GetLastScenePreparationStats() const
+		{
+			return m_lastScenePreparationStats;
+		}
 		const TVector<u8vec4>& GetLastRenderedImage() const { return m_lastRenderedImage; }
 		glm::uvec2 GetLastRenderedExtent() const { return m_lastRenderedExtent; }
 
@@ -148,6 +186,7 @@ namespace Sailor::Raytracing
 		size_t m_cachedMaterialsSignature = 0;
 		uint32_t m_cachedMaterialsCount = 0;
 		bool m_bMaterialsFullyResolved = false;
+		ScenePreparationStats m_lastScenePreparationStats{};
 		double m_lastRaytraceTimeMs = 0.0;
 		TVector<u8vec4> m_lastRenderedImage{};
 		glm::uvec2 m_lastRenderedExtent{ 0, 0 };

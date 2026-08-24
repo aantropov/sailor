@@ -16,6 +16,7 @@
 #include <glm/gtc/random.hpp>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <thread>
 
@@ -390,52 +391,127 @@ namespace
 		const TVector<MaterialPtr>& runtimeMaterials,
 		TVector<Raytracing::Material>& outMaterials,
 		TVector<TSharedPtr<CombinedSampler2D>>& outTextures,
-		TMap<std::string, uint32_t>& outTextureMapping)
+		TMap<std::string, uint32_t>& outTextureMapping,
+		const PathTracer::ScenePreparationProgressCallback& progress,
+		PathTracer::ScenePreparationStats& stats)
 	{
+		struct CpuTextureSnapshot final
+		{
+			TVector<uint8_t> m_data{};
+			int32_t m_width = 0;
+			int32_t m_height = 0;
+		};
+
 		bool bAllTexturesResolved = true;
 
 		outMaterials.Resize(runtimeMaterials.Num());
 		outTextures.Clear();
 		outTextureMapping.Clear();
+		stats.m_materialSlotCount = runtimeMaterials.Num();
+		TMap<const Sailor::Material*, Raytracing::Material>
+			convertedMaterials;
+		TMap<std::string, TSharedPtr<CpuTextureSnapshot>> cpuTextureSnapshots;
+
+		auto reportMaterialProgress = [&](size_t completed) -> bool
+		{
+			if (!progress)
+			{
+				return true;
+			}
+			PathTracer::ScenePreparationProgress update;
+			update.m_stage = PathTracer::EScenePreparationStage::Materials;
+			update.m_completed = completed;
+			update.m_total = runtimeMaterials.Num();
+			return progress(update);
+		};
+		if (!reportMaterialProgress(0u))
+		{
+			return false;
+		}
 
 		auto addTexture = [&](const TexturePtr& pTexture, bool bLinear, bool bNormalMap, uint8_t channels, uint8_t& outTextureIndex) -> bool
 		{
+			++stats.m_textureReferenceCount;
 			if (!pTexture)
 			{
 				return false;
 			}
-			TVector<uint8_t> decodedData;
-			int32_t width = pTexture->GetWidth();
-			int32_t height = pTexture->GetHeight();
-			uint32_t mipLevels = 1u;
-			const TVector<uint8_t>* sourceData = &pTexture->GetDecodedData();
-			if (!pTexture->HasCpuData())
+
+			TexturePtr texture = pTexture;
+			const FileId fileId = pTexture->GetFileId();
+			if (fileId)
 			{
-				if (!TextureImporter::DecodeTextureCpu(
-						pTexture->GetFileId(),
-						decodedData,
-						width,
-						height,
-						mipLevels))
+				if (auto* textureImporter = App::GetSubmodule<TextureImporter>())
 				{
-					return false;
+					TexturePtr loadedTexture =
+						textureImporter->GetLoadedTexture(fileId);
+					if (loadedTexture &&
+						(loadedTexture->HasCpuData() || !texture->HasCpuData()))
+					{
+						texture = loadedTexture;
+					}
 				}
-				sourceData = &decodedData;
-			}
-			if (width <= 0 || height <= 0 || !sourceData || sourceData->IsEmpty())
-			{
-				return false;
 			}
 
-			const RHI::ETextureClamping clamping = pTexture->GetRHI() ? pTexture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
+			const RHI::ETextureClamping clamping = texture->GetRHI() ? texture->GetRHI()->GetClamping() : RHI::ETextureClamping::Repeat;
 			const char* clampingKey = clamping == RHI::ETextureClamping::Repeat ? "r" : "c";
-			const std::string key = pTexture->GetFileId().ToString() + "_" + std::to_string(channels) + "_" + std::to_string((int)bLinear) + "_" + std::to_string((int)bNormalMap) + "_" + clampingKey;
+			const std::string sourceKey = fileId ?
+				fileId.ToString() :
+				"runtime:" + std::to_string(
+					reinterpret_cast<uintptr_t>(texture.GetRawPtr()));
+			const std::string key = sourceKey + "_" +
+				std::to_string(channels) + "_" +
+				std::to_string((int)bLinear) + "_" +
+				std::to_string((int)bNormalMap) + "_" + clampingKey;
 
 			if (outTextureMapping.ContainsKey(key))
 			{
 				outTextureIndex = static_cast<uint8_t>(outTextureMapping[key]);
 				return true;
 			}
+
+			TSharedPtr<CpuTextureSnapshot>* cachedSnapshot = nullptr;
+			if (!cpuTextureSnapshots.Find(sourceKey, cachedSnapshot))
+			{
+					auto snapshot = TSharedPtr<CpuTextureSnapshot>::Make();
+					snapshot->m_width = texture->GetWidth();
+					snapshot->m_height = texture->GetHeight();
+					if (texture->HasCpuData())
+					{
+						snapshot->m_data = texture->GetDecodedData();
+					}
+					else
+					{
+						uint32_t mipLevels = 1u;
+						if (!fileId || !TextureImporter::DecodeTextureCpu(
+								fileId,
+								snapshot->m_data,
+								snapshot->m_width,
+								snapshot->m_height,
+								mipLevels))
+					{
+						return false;
+					}
+					++stats.m_decodedTextureCount;
+				}
+				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
+					snapshot->m_data.IsEmpty())
+				{
+					return false;
+				}
+				cpuTextureSnapshots.Add(sourceKey, snapshot);
+				++stats.m_uniqueTextureCount;
+				cpuTextureSnapshots.Find(sourceKey, cachedSnapshot);
+			}
+			if (!cachedSnapshot || !*cachedSnapshot)
+			{
+				return false;
+			}
+			const auto& snapshot = **cachedSnapshot;
+			const TVector<uint8_t>* sourceData = &snapshot.m_data;
+			const int32_t width = snapshot.m_width;
+			const int32_t height = snapshot.m_height;
+
 			// 0xff is the no-texture sentinel in Raytracing::Material, so the
 			// largest representable sampler table contains indices 0..254.
 			if (outTextures.Num() >= static_cast<size_t>(u8(-1)))
@@ -502,10 +578,32 @@ namespace
 		{
 			Raytracing::Material outMaterial{};
 			const MaterialPtr pMaterial = runtimeMaterials[i];
+			auto reportCompletedMaterial = [&]() -> bool
+			{
+				const size_t completed = i + 1u;
+				return completed % 64u != 0u &&
+					completed != runtimeMaterials.Num() ?
+					true : reportMaterialProgress(completed);
+			};
 
 			if (!pMaterial)
 			{
 				outMaterials[i] = outMaterial;
+				if (!reportCompletedMaterial())
+				{
+					return false;
+				}
+				continue;
+			}
+			Raytracing::Material* cachedMaterial = nullptr;
+			if (convertedMaterials.Find(pMaterial.GetRawPtr(), cachedMaterial))
+			{
+				outMaterials[i] = *cachedMaterial;
+				++stats.m_reusedMaterialCount;
+				if (!reportCompletedMaterial())
+				{
+					return false;
+				}
 				continue;
 			}
 
@@ -650,6 +748,12 @@ namespace
 			}
 
 			outMaterials[i] = outMaterial;
+			convertedMaterials.Add(pMaterial.GetRawPtr(), outMaterial);
+			++stats.m_uniqueMaterialCount;
+			if (!reportCompletedMaterial())
+			{
+				return false;
+			}
 		}
 
 		return bAllTexturesResolved;
@@ -771,36 +875,96 @@ void PathTracer::ParseCommandLineArgs(PathTracer::Params& res, const char** args
 bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lightProxies,
-	bool bAddDefaultLightIfEmpty)
+	bool bAddDefaultLightIfEmpty,
+	const ScenePreparationProgressCallback& progress)
 {
 	m_tlasInstances = instances;
 	m_lightProxies = lightProxies;
 	m_bAddDefaultLightIfEmpty = bAddDefaultLightIfEmpty;
 	m_tlasOctree.Clear();
+	m_lastScenePreparationStats = {};
+	m_lastScenePreparationStats.m_instanceCount = m_tlasInstances.Num();
+
+	auto reportGeometryProgress = [&](size_t completed) -> bool
+	{
+		if (!progress)
+		{
+			return true;
+		}
+		ScenePreparationProgress update;
+		update.m_stage = EScenePreparationStage::Geometry;
+		update.m_completed = completed;
+		update.m_total = m_tlasInstances.Num();
+		return progress(update);
+	};
+	if (!reportGeometryProgress(0u))
+	{
+		return false;
+	}
 
 	bool bHasGeometry = false;
+	TMap<const TVector<Math::Triangle>*, TSharedPtr<BVH>> preparedBlas;
 	for (size_t i = 0; i < m_tlasInstances.Num(); i++)
 	{
-		const auto& instance = m_tlasInstances[i];
-		if (!HasInstanceGeometry(instance))
+		auto& instance = m_tlasInstances[i];
+		const auto* triangles = instance.m_triangles.GetRawPtr();
+		if (triangles && instance.m_blas &&
+			!preparedBlas.ContainsKey(triangles))
 		{
-			continue;
+			preparedBlas.Add(triangles, instance.m_blas);
 		}
-		bHasGeometry = true;
+		if (!ResolveInstanceBlas(instance) && triangles &&
+			!triangles->IsEmpty() && instance.m_worldBounds.IsValid())
+		{
+			TSharedPtr<BVH>* cachedBlas = nullptr;
+			if (preparedBlas.Find(triangles, cachedBlas) &&
+				cachedBlas && *cachedBlas)
+			{
+				instance.m_blas = *cachedBlas;
+				++m_lastScenePreparationStats.m_reusedBlasCount;
+			}
+			else
+			{
+				if (triangles->Num() >
+					(std::numeric_limits<uint32_t>::max)())
+				{
+					return false;
+				}
+				instance.m_blas = TSharedPtr<BVH>::Make(
+					static_cast<uint32_t>(triangles->Num()));
+				instance.m_blas->BuildBVH(*triangles);
+				preparedBlas.Add(triangles, instance.m_blas);
+				++m_lastScenePreparationStats.m_builtBlasCount;
+			}
+		}
 
-		const glm::ivec3 integerMin =
-			glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
-		const glm::ivec3 integerMax =
-			glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
-		const glm::ivec3 integerCenter =
-			(integerMin + integerMax) / 2;
-		const glm::ivec3 integerExtents = glm::max(
-			integerCenter - integerMin,
-			integerMax - integerCenter);
-		m_tlasOctree.Update(
-			integerCenter,
-			glm::max(integerExtents, glm::ivec3(1)),
-			i);
+		if (HasInstanceGeometry(instance))
+		{
+			bHasGeometry = true;
+			++m_lastScenePreparationStats.m_geometryInstanceCount;
+
+			const glm::ivec3 integerMin =
+				glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
+			const glm::ivec3 integerMax =
+				glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
+			const glm::ivec3 integerCenter =
+				(integerMin + integerMax) / 2;
+			const glm::ivec3 integerExtents = glm::max(
+				integerCenter - integerMin,
+				integerMax - integerCenter);
+			m_tlasOctree.Update(
+				integerCenter,
+				glm::max(integerExtents, glm::ivec3(1)),
+				i);
+		}
+
+		const size_t completed = i + 1u;
+		if ((completed % 64u == 0u ||
+			completed == m_tlasInstances.Num()) &&
+			!reportGeometryProgress(completed))
+		{
+			return false;
+		}
 	}
 
 	const size_t materialsSignature = ComputeMaterialsSignature(materials);
@@ -814,9 +978,31 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		m_materials.Clear();
 		m_textures.Clear();
 		m_textureMapping.Clear();
-		m_bMaterialsFullyResolved = BuildRaytracingMaterialsFromRuntimeMaterials(materials, m_materials, m_textures, m_textureMapping);
+		m_bMaterialsFullyResolved =
+			BuildRaytracingMaterialsFromRuntimeMaterials(
+				materials,
+				m_materials,
+				m_textures,
+				m_textureMapping,
+				progress,
+				m_lastScenePreparationStats);
 		m_cachedMaterialsSignature = materialsSignature;
 		m_cachedMaterialsCount = (uint32_t)materials.Num();
+	}
+	else
+	{
+		m_lastScenePreparationStats.m_materialSlotCount = materials.Num();
+		if (progress)
+		{
+			ScenePreparationProgress update;
+			update.m_stage = EScenePreparationStage::Materials;
+			update.m_completed = materials.Num();
+			update.m_total = materials.Num();
+			if (!progress(update))
+			{
+				return false;
+			}
+		}
 	}
 
 	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
@@ -1308,7 +1494,14 @@ void PathTracer::Run(const PathTracer::Params& params)
 		}
 	}
 
-	BuildRaytracingMaterialsFromRuntimeMaterials(runtimeMaterials, m_materials, m_textures, m_textureMapping);
+	m_lastScenePreparationStats = {};
+	BuildRaytracingMaterialsFromRuntimeMaterials(
+		runtimeMaterials,
+		m_materials,
+		m_textures,
+		m_textureMapping,
+		{},
+		m_lastScenePreparationStats);
 	if (m_materials.Num() == 0)
 	{
 		m_materials.Add(Material{});

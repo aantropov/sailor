@@ -902,36 +902,6 @@ bool GlobalIlluminationBakeController::Start(
 					[](EditorProbeVolumeBakeStatus& status)
 					{
 						status.m_state = EEditorProbeVolumeBakeState::Baking;
-						status.m_stage = "Building CPU acceleration structures";
-					});
-				for (auto& instance : scene->m_instances)
-				{
-					if (state->m_cancel.load(std::memory_order_acquire))
-					{
-						Cancelled(
-							state,
-							"probe-volume bake was cancelled while preparing geometry");
-						return;
-					}
-					if (instance.m_blas)
-					{
-						continue;
-					}
-					if (!instance.m_triangles || instance.m_triangles->IsEmpty() ||
-						instance.m_triangles->Num() >
-							(std::numeric_limits<uint32_t>::max)())
-					{
-						Fail(state, "an immutable bake geometry snapshot is invalid");
-						return;
-					}
-					instance.m_blas = TSharedPtr<Raytracing::BVH>::Make(
-						static_cast<uint32_t>(instance.m_triangles->Num()));
-					instance.m_blas->BuildBVH(*instance.m_triangles);
-				}
-				UpdateStatus(
-					state,
-					[](EditorProbeVolumeBakeStatus& status)
-					{
 						status.m_stage = "Preparing CPU path tracer";
 					});
 
@@ -958,16 +928,65 @@ bool GlobalIlluminationBakeController::Start(
 						"a bake material changed after the immutable scene snapshot was captured; restart the bake");
 					return;
 				}
+				auto reportPreparation =
+					[state, started](
+						const Raytracing::PathTracer::ScenePreparationProgress&
+							progress) -> bool
+					{
+						if (state->m_cancel.load(std::memory_order_acquire))
+						{
+							return false;
+						}
+						const bool bPreparingGeometry = progress.m_stage ==
+							Raytracing::PathTracer::EScenePreparationStage::Geometry;
+						const float stageFraction = progress.m_total > 0u ?
+							static_cast<float>(progress.m_completed) /
+								static_cast<float>(progress.m_total) : 1.0f;
+						const float progressBase = bPreparingGeometry ? 0.0f : 0.06f;
+						const float progressRange = bPreparingGeometry ? 0.06f : 0.04f;
+						const std::string stage =
+							(bPreparingGeometry ?
+								"Preparing bake geometry (" :
+								"Preparing bake materials (") +
+							std::to_string(progress.m_completed) + "/" +
+							std::to_string(progress.m_total) + ")";
+						UpdateStatus(
+							state,
+							[&stage, started, progressBase, progressRange,
+								stageFraction](EditorProbeVolumeBakeStatus& status)
+							{
+								status.m_state =
+									EEditorProbeVolumeBakeState::Baking;
+								status.m_progress = progressBase +
+									progressRange * stageFraction;
+								status.m_stage = stage;
+								status.m_elapsedSeconds =
+									std::chrono::duration<float>(
+										std::chrono::steady_clock::now() - started)
+										.count();
+							});
+						return !state->m_cancel.load(std::memory_order_acquire);
+					};
 				if (!sampler.Initialize(
 						scene->m_instances,
 						scene->m_materials,
 						scene->m_lights,
 						effectiveSettings,
-						request.m_fallbackEnvironment))
+						request.m_fallbackEnvironment,
+						reportPreparation))
 				{
-					Fail(
-						state,
-						"the CPU path tracer could not prepare the bake scene or decode all material textures");
+					if (state->m_cancel.load(std::memory_order_acquire))
+					{
+						Cancelled(
+							state,
+							"probe-volume bake was cancelled while preparing the CPU path tracer");
+					}
+					else
+					{
+						Fail(
+							state,
+							"the CPU path tracer could not prepare the bake scene or decode all material textures");
+					}
 					return;
 				}
 				if (!MaterialsMatchSnapshot(*scene))
@@ -995,7 +1014,8 @@ bool GlobalIlluminationBakeController::Start(
 							[&progress, started](EditorProbeVolumeBakeStatus& status)
 							{
 								status.m_state = EEditorProbeVolumeBakeState::Baking;
-								status.m_progress = progress.m_fraction;
+								status.m_progress = 0.1f +
+									0.9f * progress.m_fraction;
 								status.m_completedProbes = progress.m_completedProbes;
 								status.m_totalProbes = progress.m_totalProbes;
 								status.m_stage = progress.m_stage;

@@ -10,7 +10,8 @@ bool ProbeVolumePathTracer::Initialize(
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lights,
 	const ProbeVolumeBakeSettings& settings,
-	const glm::vec3& fallbackEnvironment)
+	const glm::vec3& fallbackEnvironment,
+	const PathTracer::ScenePreparationProgressCallback& progress)
 {
 	TVector<LightProxy> bakedLights;
 	bakedLights.Reserve(lights.Num());
@@ -43,7 +44,8 @@ bool ProbeVolumePathTracer::Initialize(
 		instances,
 		materials,
 		bakedLights,
-		false);
+		false,
+		progress);
 	m_bInitialized = bHasGeometry &&
 		m_pathTracer.ArePreparedMaterialsFullyResolved();
 	return m_bInitialized;

@@ -3,6 +3,7 @@
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeComposition.h"
 #include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
+#include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
 #include "Engine/GlobalIlluminationSettings.h"
 #include "Editor/GlobalIlluminationBakeController.h"
@@ -159,6 +160,24 @@ namespace
 		material->SetUniform("material.roughnessFactor", 1.0f);
 		return material;
 	}
+
+	class CpuTextureFixture final : public Texture
+	{
+	public:
+		explicit CpuTextureFixture(FileId fileId) : Texture(fileId) {}
+
+		void SetPixel(const glm::u8vec4& pixel)
+		{
+			m_width = 1;
+			m_height = 1;
+			m_mipLevels = 1u;
+			m_decodedData.Resize(4u);
+			for (glm::length_t component = 0; component < 4; ++component)
+			{
+				m_decodedData[component] = pixel[component];
+			}
+		}
+	};
 
 	bool IntersectsBakeTriangles(
 		const TVector<Math::Triangle>& triangles,
@@ -1188,6 +1207,107 @@ components:
 			"a moved probe must store the post-clamp offset used by debug and transport identity");
 	}
 
+	void TestPathTracerPreparationDeduplicationAndProgress()
+	{
+		EveningLandscapeRaytracingFixture fixture =
+			MakeEveningLandscapeRaytracingFixture();
+		fixture.m_instances[0].m_blas.Clear();
+		fixture.m_instances.Add(fixture.m_instances[0]);
+		auto cpuTextureFixture = TObjectPtr<CpuTextureFixture>::Make(
+			fixture.m_allocator,
+			FileId::Invalid);
+		cpuTextureFixture->SetPixel(glm::u8vec4(64u, 128u, 192u, 255u));
+		const TexturePtr sharedTexture = cpuTextureFixture;
+		fixture.m_materials[0]->SetSampler(
+			"baseColorSampler",
+			sharedTexture);
+		fixture.m_materials[1]->SetSampler(
+			"baseColorSampler",
+			sharedTexture);
+
+		TVector<MaterialPtr> duplicatedMaterials;
+		for (const MaterialPtr& material : fixture.m_materials)
+		{
+			duplicatedMaterials.Add(material);
+			duplicatedMaterials.Add(material);
+		}
+
+		bool bSawGeometryStart = false;
+		bool bSawGeometryComplete = false;
+		bool bSawMaterialsStart = false;
+		bool bSawMaterialsComplete = false;
+		ProbeVolumeBakeSettings settings;
+		Raytracing::ProbeVolumePathTracer pathTracer;
+		Require(
+			pathTracer.Initialize(
+				fixture.m_instances,
+				duplicatedMaterials,
+				fixture.m_lights,
+				settings,
+				glm::vec3(0.0f),
+				[&](
+					const Raytracing::PathTracer::ScenePreparationProgress&
+						progress)
+				{
+					if (progress.m_stage == Raytracing::PathTracer::
+						EScenePreparationStage::Geometry)
+					{
+						bSawGeometryStart |= progress.m_completed == 0u;
+						bSawGeometryComplete |=
+							progress.m_completed == fixture.m_instances.Num() &&
+							progress.m_total == fixture.m_instances.Num();
+					}
+					else
+					{
+						bSawMaterialsStart |= progress.m_completed == 0u;
+						bSawMaterialsComplete |=
+							progress.m_completed == duplicatedMaterials.Num() &&
+							progress.m_total == duplicatedMaterials.Num();
+					}
+					return true;
+				}),
+			"path-tracer preparation must accept immutable geometry without prebuilt BLAS instances");
+		Require(
+			bSawGeometryStart && bSawGeometryComplete &&
+			bSawMaterialsStart && bSawMaterialsComplete,
+			"path-tracer preparation must report live geometry and material progress");
+
+		const auto& stats = pathTracer.GetLastScenePreparationStats();
+		Require(
+			stats.m_instanceCount == 2u &&
+			stats.m_geometryInstanceCount == 2u &&
+			stats.m_builtBlasCount == 1u &&
+			stats.m_reusedBlasCount == 1u,
+			"identical vegetation geometry snapshots must build one shared CPU BLAS");
+		Require(
+			stats.m_materialSlotCount == duplicatedMaterials.Num() &&
+			stats.m_uniqueMaterialCount == fixture.m_materials.Num() &&
+			stats.m_reusedMaterialCount == fixture.m_materials.Num(),
+			"repeated material slots must reuse one prepared material per loaded object");
+		Require(
+			stats.m_textureReferenceCount == 2u &&
+			stats.m_uniqueTextureCount == 1u &&
+			stats.m_decodedTextureCount == 0u,
+			"distinct materials sharing one resident texture must snapshot its CPU pixels once");
+
+		bool bCancellationRequested = false;
+		Raytracing::ProbeVolumePathTracer cancelledPathTracer;
+		Require(
+			!cancelledPathTracer.Initialize(
+				fixture.m_instances,
+				duplicatedMaterials,
+				fixture.m_lights,
+				settings,
+				glm::vec3(0.0f),
+				[&](const Raytracing::PathTracer::ScenePreparationProgress&)
+				{
+					bCancellationRequested = true;
+					return false;
+				}) &&
+			bCancellationRequested,
+			"path-tracer preparation must stop when its progress callback requests cancellation");
+	}
+
 	void TestFloatTextureNormalizationAndLandscapeLayerSampling()
 	{
 		Raytracing::CombinedSampler2D floatTexture;
@@ -1242,6 +1362,9 @@ int main(int argc, char** argv)
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
 		RunTest("DeterministicBakeSeedsAndReusedLayoutValidation", TestDeterministicBakeSeedsAndReusedLayoutValidation);
 		RunTest("RelocationClampingPreservesEffectiveOffset", TestRelocationClampingPreservesEffectiveOffset);
+		RunTest(
+			"PathTracerPreparationDeduplicationAndProgress",
+			TestPathTracerPreparationDeduplicationAndProgress);
 		RunTest("FloatTextureNormalizationAndLandscapeLayerSampling", TestFloatTextureNormalizationAndLandscapeLayerSampling);
 	}
 	catch (const std::exception& exception)
