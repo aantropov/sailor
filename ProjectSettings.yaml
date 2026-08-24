@@ -17,7 +17,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 1
       skyResolution: 512
-      vegetationInstanceBudget: 65536
+      vegetationInstanceBudget: 16384
       lodBias: -1
       maxGiProbeStatesPerSnapshot: 4
     High:
@@ -35,7 +35,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.75
       skyResolution: 256
-      vegetationInstanceBudget: 32768
+      vegetationInstanceBudget: 8192
       lodBias: 0
       maxGiProbeStatesPerSnapshot: 3
     Medium:
@@ -52,7 +52,7 @@ graphics:
       supportSoftShadows: true
       cloudsResolutionMultiplier: 0.5
       skyResolution: 256
-      vegetationInstanceBudget: 16384
+      vegetationInstanceBudget: 4096
       lodBias: 0
       maxGiProbeStatesPerSnapshot: 2
     Low:
@@ -68,7 +68,7 @@ graphics:
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.5
       skyResolution: 128
-      vegetationInstanceBudget: 8192
+      vegetationInstanceBudget: 2048
       lodBias: 1
       maxGiProbeStatesPerSnapshot: 2
     VeryLow:
@@ -83,7 +83,7 @@ graphics:
       supportSoftShadows: false
       cloudsResolutionMultiplier: 0.125
       skyResolution: 64
-      vegetationInstanceBudget: 2048
+      vegetationInstanceBudget: 512
       lodBias: 2
       maxGiProbeStatesPerSnapshot: 1
 ...

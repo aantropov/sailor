@@ -278,7 +278,7 @@ graphics:
 		Require(ultra.m_bSupportSoftShadows &&
 			IsNear(ultra.m_cloudsResolutionMultiplier, 1.0f) &&
 			ultra.m_skyResolution == 512u &&
-			ultra.m_vegetationInstanceBudget == 65536u && ultra.m_lodBias == -1 &&
+			ultra.m_vegetationInstanceBudget == 16384u && ultra.m_lodBias == -1 &&
 			ultra.m_maxGiProbeStatesPerSnapshot == 4u,
 			"Ultra should match the remaining planned defaults");
 
@@ -291,7 +291,7 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 2048u, 1024u, 1024u } &&
 			high.m_bSupportSoftShadows && IsNear(high.m_cloudsResolutionMultiplier, 0.75f) &&
 			high.m_skyResolution == 256u &&
-			high.m_vegetationInstanceBudget == 32768u && high.m_lodBias == 0 &&
+			high.m_vegetationInstanceBudget == 8192u && high.m_lodBias == 0 &&
 			high.m_maxGiProbeStatesPerSnapshot == 3u,
 			"High should match the complete planned defaults");
 
@@ -304,7 +304,7 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 2048u, 1024u, 512u, 0u } &&
 			medium.m_bSupportSoftShadows && IsNear(medium.m_cloudsResolutionMultiplier, 0.5f) &&
 			medium.m_skyResolution == 256u &&
-			medium.m_vegetationInstanceBudget == 16384u && medium.m_lodBias == 0 &&
+			medium.m_vegetationInstanceBudget == 4096u && medium.m_lodBias == 0 &&
 			medium.m_maxGiProbeStatesPerSnapshot == 2u,
 			"Medium should match the complete planned defaults");
 
@@ -317,7 +317,7 @@ graphics:
 				std::array<uint32_t, MaxShadowCascades>{ 1024u, 512u, 0u, 0u } &&
 			!low.m_bSupportSoftShadows && IsNear(low.m_cloudsResolutionMultiplier, 0.25f) &&
 			low.m_skyResolution == 128u &&
-			low.m_vegetationInstanceBudget == 8192u && low.m_lodBias == 1 &&
+			low.m_vegetationInstanceBudget == 2048u && low.m_lodBias == 1 &&
 			low.m_maxGiProbeStatesPerSnapshot == 2u,
 			"Low should match the complete planned defaults");
 
@@ -331,7 +331,7 @@ graphics:
 			!veryLow.m_bSupportSoftShadows &&
 			IsNear(veryLow.m_cloudsResolutionMultiplier, 0.125f) &&
 			veryLow.m_skyResolution == 64u &&
-			veryLow.m_vegetationInstanceBudget == 2048u && veryLow.m_lodBias == 2 &&
+			veryLow.m_vegetationInstanceBudget == 512u && veryLow.m_lodBias == 2 &&
 			veryLow.m_maxGiProbeStatesPerSnapshot == 1u,
 			"VeryLow should match the planned fallback values");
 
@@ -393,7 +393,7 @@ graphics:
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_fpsCap == 120u,
 					"FPS cap should deserialize with the active quality profile");
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Medium).m_vegetationInstanceBudget == 12345u &&
-					parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_vegetationInstanceBudget == 65536u,
+					parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_vegetationInstanceBudget == 16384u,
 					"vegetation budgets should deserialize when present and use quality defaults when omitted");
 				Require(parsed.m_settings.GetProfile(EGraphicsQuality::Ultra).m_maxGiProbeStatesPerSnapshot == 4u,
 					"GI probe-state snapshot budget should deserialize per quality profile");

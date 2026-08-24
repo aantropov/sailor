@@ -132,7 +132,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 1.0,
             SkyResolution = 512,
-            VegetationInstanceBudget = 65536,
+            VegetationInstanceBudget = 16384,
             LodBias = -1,
             MaxGiProbeStatesPerSnapshot = 4
         },
@@ -148,7 +148,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.75,
             SkyResolution = 256,
-            VegetationInstanceBudget = 32768,
+            VegetationInstanceBudget = 8192,
             LodBias = 0,
             MaxGiProbeStatesPerSnapshot = 3
         },
@@ -164,7 +164,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = true,
             CloudsResolutionMultiplier = 0.5,
             SkyResolution = 256,
-            VegetationInstanceBudget = 16384,
+            VegetationInstanceBudget = 4096,
             LodBias = 0,
             MaxGiProbeStatesPerSnapshot = 2
         },
@@ -180,7 +180,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.25,
             SkyResolution = 128,
-            VegetationInstanceBudget = 8192,
+            VegetationInstanceBudget = 2048,
             LodBias = 1,
             MaxGiProbeStatesPerSnapshot = 2
         },
@@ -196,7 +196,7 @@ public static class GraphicsSettingsDefaults
             SupportSoftShadows = false,
             CloudsResolutionMultiplier = 0.125,
             SkyResolution = 64,
-            VegetationInstanceBudget = 2048,
+            VegetationInstanceBudget = 512,
             LodBias = 2,
             MaxGiProbeStatesPerSnapshot = 1
         }

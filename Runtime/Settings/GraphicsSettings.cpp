@@ -835,7 +835,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		1.0f,
 		512u,
-		65536u,
+		16384u,
 		-1,
 		4u);
 	m_presets[QualityIndex(EGraphicsQuality::High)] = MakeProfile(
@@ -849,7 +849,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		0.75f,
 		256u,
-		32768u,
+		8192u,
 		0,
 		3u);
 	m_presets[QualityIndex(EGraphicsQuality::Medium)] = MakeProfile(
@@ -863,7 +863,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		true,
 		0.5f,
 		256u,
-		16384u,
+		4096u,
 		0,
 		2u);
 	m_presets[QualityIndex(EGraphicsQuality::Low)] = MakeProfile(
@@ -877,7 +877,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		false,
 		0.25f,
 		128u,
-		8192u,
+		2048u,
 		1,
 		2u);
 	m_presets[QualityIndex(EGraphicsQuality::VeryLow)] = MakeProfile(
@@ -891,7 +891,7 @@ Sailor::Settings::GraphicsSettings::GraphicsSettings()
 		false,
 		0.125f,
 		64u,
-		2048u,
+		512u,
 		2,
 		1u);
 }

@@ -17,9 +17,9 @@ public sealed class GraphicsSettingsTests
         Assert.Equal([4096, 2048, 2048, 1024], project.Graphics.Presets.Ultra.ShadowCascadeResolutions);
         Assert.Equal(0.85, project.Graphics.Presets.Medium.ResolutionFactor);
         Assert.Equal(GraphicsShadowQuality.Medium, project.Graphics.Presets.Medium.ShadowQuality);
-        Assert.Equal(65536, project.Graphics.Presets.Ultra.VegetationInstanceBudget);
-        Assert.Equal(32768, project.Graphics.Presets.High.VegetationInstanceBudget);
-        Assert.Equal(2048, project.Graphics.Presets.VeryLow.VegetationInstanceBudget);
+        Assert.Equal(16384, project.Graphics.Presets.Ultra.VegetationInstanceBudget);
+        Assert.Equal(8192, project.Graphics.Presets.High.VegetationInstanceBudget);
+        Assert.Equal(512, project.Graphics.Presets.VeryLow.VegetationInstanceBudget);
         Assert.Equal(0.125, project.Graphics.Presets.VeryLow.CloudsResolutionMultiplier);
         Assert.Equal(2, project.Graphics.Presets.VeryLow.LodBias);
         Assert.Equal(4, project.Graphics.Presets.Ultra.MaxGiProbeStatesPerSnapshot);
@@ -34,7 +34,7 @@ public sealed class GraphicsSettingsTests
         Assert.Contains("shadowBias: 1.25", yaml);
         Assert.Contains("VeryLow:", yaml);
         Assert.Contains("supportSoftShadows: true", yaml);
-        Assert.Contains("vegetationInstanceBudget: 32768", yaml);
+        Assert.Contains("vegetationInstanceBudget: 8192", yaml);
         Assert.Contains("maxGiProbeStatesPerSnapshot: 4", yaml);
     }
 
@@ -135,7 +135,7 @@ public sealed class GraphicsSettingsTests
         var snapshot = await new GraphicsSettingsService(() => workspace.Paths)
             .EnsureLoadedAsync();
 
-        Assert.Equal(16384, snapshot.Project.Graphics.Presets.Medium.VegetationInstanceBudget);
+        Assert.Equal(4096, snapshot.Project.Graphics.Presets.Medium.VegetationInstanceBudget);
         Assert.DoesNotContain(
             snapshot.Diagnostics,
             value => value.Contains("vegetationInstanceBudget", StringComparison.Ordinal));
