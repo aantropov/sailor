@@ -71,6 +71,7 @@
     <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="GraphicsSettingsTests.cs" />
     <Compile Include="ProbeVolumeBinaryMetadataTests.cs" />
+    <Compile Include="ProbeVolumeBakeOutputPolicyTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneViewportInteractionTests.cs" />
@@ -117,6 +118,7 @@
     <Compile Include="..\Editor\Settings\GraphicsSettingsDraft.cs" Link="Settings\GraphicsSettingsDraft.cs" />
     <Compile Include="..\Editor\Settings\GraphicsSettingsService.cs" Link="Settings\GraphicsSettingsService.cs" />
     <Compile Include="..\Editor\Services\GlobalIlluminationContracts.cs" Link="Services\GlobalIlluminationContracts.cs" />
+    <Compile Include="..\Editor\Services\ProbeVolumeBakeOutputPolicy.cs" Link="Services\ProbeVolumeBakeOutputPolicy.cs" />
     <Compile Include="..\Editor\ViewModels\ProbeVolumeBinaryMetadata.cs" Link="ViewModels\ProbeVolumeBinaryMetadata.cs" />
     <Compile Include="..\Editor\Content\ProjectContentAssetResolutionPolicy.cs" Link="Content\ProjectContentAssetResolutionPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />

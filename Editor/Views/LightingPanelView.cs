@@ -467,8 +467,12 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
             LineBreakMode = LineBreakMode.WordWrap
         });
 
-        stateNameEntry = TextEntry("Day");
-        outputPathEntry = TextEntry(DefaultOutputPath("Day"));
+        var defaultStateName = ProbeVolumeBakeOutputPolicy.FindAvailableStateName(
+            "Day",
+            bindings.Select(binding => binding.Name),
+            StateOutputExists);
+        stateNameEntry = TextEntry(defaultStateName);
+        outputPathEntry = TextEntry(DefaultOutputPath(defaultStateName));
         card.Children.Add(Labeled("State name", stateNameEntry));
         card.Children.Add(Labeled("Output (Content-relative)", outputPathEntry));
         card.Children.Add(Labeled(
@@ -575,6 +579,15 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
             var outputPath = outputPathEntry!.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(stateName) || string.IsNullOrEmpty(outputPath))
                 throw new InvalidOperationException("State name and output path are required.");
+            if (!ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+                    assetsService.CurrentProjectRootPath,
+                    outputPath,
+                    overwrite!.IsChecked,
+                    out _,
+                    out var outputError))
+            {
+                throw new InvalidOperationException(outputError);
+            }
 
             var settings = new ProbeVolumeBakeSettings(
                 ReadUInt(
@@ -832,6 +845,21 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     string DefaultOutputPath(string state) =>
         $"Lighting/{Path.GetFileNameWithoutExtension(worldFile?.Asset?.Name) ?? "Level"}_{state}.probes";
+
+    bool StateOutputExists(string state)
+    {
+        if (!ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+                assetsService.CurrentProjectRootPath,
+                DefaultOutputPath(state),
+                overwrite: true,
+                out var physicalPath,
+                out _))
+        {
+            return false;
+        }
+
+        return File.Exists(physicalPath) || File.Exists(physicalPath + ".asset");
+    }
 
     static uint ReadUInt(
         Entry entry,
