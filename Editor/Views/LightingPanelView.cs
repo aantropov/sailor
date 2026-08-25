@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.ComponentModel;
 using SailorEditor.Content;
 using SailorEditor.Helpers;
 using SailorEditor.Services;
@@ -25,7 +26,7 @@ public sealed class LightingPanelView : ContentView
     }
 }
 
-sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
+sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 {
     sealed record GlobalIlluminationModeOption(
         GlobalIlluminationRuntimeMode Value,
@@ -41,13 +42,22 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
         new(GlobalIlluminationRuntimeMode.BakedOnly, "Baked Only")
     ];
 
-    sealed class BindingDraft
+    sealed partial class BindingDraft : ObservableObject
     {
-        public string Name { get; set; } = string.Empty;
-        public FileId Asset { get; set; } = new();
-        public GlobalIlluminationCompositionMode Mode { get; set; }
-        public float InitialWeight { get; set; }
-        public bool Preload { get; set; }
+        [ObservableProperty]
+        string name = string.Empty;
+
+        [ObservableProperty]
+        FileId asset = new();
+
+        [ObservableProperty]
+        GlobalIlluminationCompositionMode mode;
+
+        [ObservableProperty]
+        float initialWeight;
+
+        [ObservableProperty]
+        bool preload;
     }
 
     readonly EngineService engineService;
@@ -55,6 +65,7 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
     readonly AssetsService assetsService;
     readonly List<BindingDraft> bindings = [];
     readonly Observable<FileId> layoutSource = new(new FileId());
+    readonly ProbeVolumeBakeStatusGate bakeStatusGate = new();
     readonly IDispatcherTimer statusTimer;
 
     WorldFile? worldFile;
@@ -568,6 +579,8 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     async Task StartBakeAsync(bool reuseLayout)
     {
+        var launchStage = "Validating bake request";
+        bakeStatusGate.BeginLaunch();
         try
         {
             if (!IsCurrentWorld() || worldService.CurrentWorldAsset?.FileId is null)
@@ -638,6 +651,7 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
             SetBakeRunning(true);
             if (cancelBakeButton is not null)
                 cancelBakeButton.IsEnabled = false;
+            launchStage = "Saving the level before baking";
             SetBakeStatus("Saving the level before baking...", false);
             var save = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
             if (save.Outcome != SceneSaveOutcome.Saved)
@@ -647,6 +661,7 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
                 throw new InvalidOperationException(
                     "The saved level is no longer the active world asset.");
 
+            launchStage = "Starting the native bake controller";
             if (!await engineService.StartProbeVolumeBakeAsync(request))
                 throw new InvalidOperationException("The native bake controller rejected the request.");
             bakeLaunchPending = false;
@@ -656,7 +671,8 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
         {
             bakeUiOperationActive = false;
             bakeLaunchPending = false;
-            SetBakeStatus(exception.Message, true);
+            bakeStatusGate.PreserveTerminalStatus();
+            SetBakeStatus($"{launchStage} failed: {exception.Message}", true);
             SetBakeRunning(false);
         }
     }
@@ -669,6 +685,7 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
         catch (Exception exception)
         {
+            bakeStatusGate.PreserveTerminalStatus();
             SetBakeStatus(exception.Message, true);
         }
     }
@@ -690,6 +707,8 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
             if (status is null)
                 return;
             if (bakeLaunchPending)
+                return;
+            if (!bakeStatusGate.ShouldApplyPolledStatus(status.IsRunning))
                 return;
             var shouldComplete =
                 bakeUiOperationActive &&
@@ -717,16 +736,19 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
                 finally
                 {
                     bakeUiOperationActive = false;
+                    bakeStatusGate.PreserveTerminalStatus();
                     SetBakeRunning(false);
                 }
             }
             else if (bakeUiOperationActive && !status.IsRunning)
             {
                 bakeUiOperationActive = false;
+                bakeStatusGate.PreserveTerminalStatus();
             }
         }
         catch (Exception exception)
         {
+            bakeStatusGate.PreserveTerminalStatus();
             SetBakeStatus(exception.Message, true);
         }
         finally
@@ -743,6 +765,10 @@ sealed class GlobalIlluminationEditorPanel : VerticalStackLayout
         var physicalPath = Path.GetFullPath(Path.Combine(
             assetsService.CurrentProjectRootPath,
             status.OutputVirtualPath));
+        var outputDirectory = Path.GetDirectoryName(physicalPath) ??
+            throw new InvalidOperationException(
+                "The baked .probes output directory could not be resolved.");
+        await assetsService.ResolveFolderAsync(outputDirectory);
         var asset = assetsService.Files
             .OfType<ProbeVolumeFile>()
             .FirstOrDefault(candidate =>

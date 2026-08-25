@@ -21,6 +21,7 @@ public static class WorldAssetRebindPolicy
         TAsset? currentAsset,
         bool hasStableFileId,
         TAsset? refreshedAsset,
+        bool hasPersistedBackingFiles,
         bool currentIsUntitled,
         bool currentIsDirty)
         where TAsset : class
@@ -33,6 +34,11 @@ public static class WorldAssetRebindPolicy
         if (refreshedAsset is not null)
         {
             return new(refreshedAsset, currentIsUntitled, currentIsDirty);
+        }
+
+        if (hasPersistedBackingFiles)
+        {
+            return new(currentAsset, currentIsUntitled, null);
         }
 
         return new(null, true, null);

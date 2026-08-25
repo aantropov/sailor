@@ -72,6 +72,7 @@
     <Compile Include="GraphicsSettingsTests.cs" />
     <Compile Include="ProbeVolumeBinaryMetadataTests.cs" />
     <Compile Include="ProbeVolumeBakeOutputPolicyTests.cs" />
+    <Compile Include="ProbeVolumeBakeStatusGateTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />
     <Compile Include="SceneViewportInteractionTests.cs" />
@@ -80,6 +81,8 @@
     <Compile Include="EditorViewportEventContractTests.cs" />
     <Compile Include="AlreadyAppliedTransformCommandTests.cs" />
     <Compile Include="InspectorPendingEditCoordinatorTests.cs" />
+    <Compile Include="InspectorSaveCommitGateTests.cs" />
+    <Compile Include="InspectorEditableTestStub.cs" />
     <Compile Include="InspectorPropertyPresentationTests.cs" />
     <Compile Include="GameObjectMobilityPolicyTests.cs" />
     <Compile Include="SceneTestServiceStubs.cs" />
@@ -119,6 +122,7 @@
     <Compile Include="..\Editor\Settings\GraphicsSettingsService.cs" Link="Settings\GraphicsSettingsService.cs" />
     <Compile Include="..\Editor\Services\GlobalIlluminationContracts.cs" Link="Services\GlobalIlluminationContracts.cs" />
     <Compile Include="..\Editor\Services\ProbeVolumeBakeOutputPolicy.cs" Link="Services\ProbeVolumeBakeOutputPolicy.cs" />
+    <Compile Include="..\Editor\Services\ProbeVolumeBakeStatusGate.cs" Link="Services\ProbeVolumeBakeStatusGate.cs" />
     <Compile Include="..\Editor\ViewModels\ProbeVolumeBinaryMetadata.cs" Link="ViewModels\ProbeVolumeBinaryMetadata.cs" />
     <Compile Include="..\Editor\Content\ProjectContentAssetResolutionPolicy.cs" Link="Content\ProjectContentAssetResolutionPolicy.cs" />
     <Compile Include="..\Editor\Content\ProjectContentModels.cs" Link="Content\ProjectContentModels.cs" />
@@ -173,6 +177,7 @@
     <Compile Include="..\Editor\Workflow\WorkflowProjections.cs" Link="Workflow\WorkflowProjections.cs" />
     <Compile Include="..\Editor\Workflow\InspectorAutoCommitController.cs" Link="Workflow\InspectorAutoCommitController.cs" />
     <Compile Include="..\Editor\Workflow\InspectorPendingEditCoordinator.cs" Link="Workflow\InspectorPendingEditCoordinator.cs" />
+    <Compile Include="..\Editor\Workflow\InspectorSaveCommitGate.cs" Link="Workflow\InspectorSaveCommitGate.cs" />
     <Compile Include="..\Editor\Workflow\FrameGraphDiagramLayout.cs" Link="Workflow\FrameGraphDiagramLayout.cs" />
     <Compile Include="..\Editor\Utility\EditorDragDrop.cs" Link="Utility\EditorDragDrop.cs" />
     <Compile Include="..\Editor\Utility\EditorPerf.cs" Link="Utility\EditorPerf.cs" />

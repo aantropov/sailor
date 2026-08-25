@@ -1699,6 +1699,93 @@ components:
 			"changing a light GI mode in the Editor must affect both paths immediately");
 		world.Clear();
 	}
+
+	void TestPointLightModeChangesBakedRadiance()
+	{
+		using namespace GlobalIlluminationLandscapeTestScene;
+
+		EveningLandscapeRaytracingFixture fixture =
+			MakeEveningLandscapeRaytracingFixture();
+		fixture.m_lights.Clear();
+
+		GlobalIlluminationMobilityTestWorld world;
+		GameObjectPtr pointLightObject = world.Instantiate("PointLight");
+		pointLightObject->SetMobilityType(EMobilityType::Stationary);
+		auto pointLight = pointLightObject->AddComponent<LightComponent>();
+		pointLight->SetLightType(ELightType::Point);
+		pointLight->SetIntensity(glm::vec3(40.0f));
+		pointLight->SetIndirectLightingIntensity(1.0f);
+		pointLight->SetAttenuation(glm::vec3(1.0f, 0.0f, 0.0f));
+		pointLight->SetRadius(20.0f);
+
+		const glm::vec3 receiver(
+			20.5f,
+			SampleLandscapeHeight(20.5f, 20.5f),
+			20.5f);
+		pointLightObject->GetTransformComponent().SetPosition(
+			receiver + glm::vec3(0.0f, 6.0f, 0.0f));
+		world.GetECS<TransformECS>()->Tick(0.0f);
+
+		ProbeVolumeBakeSettings settings;
+		settings.m_bounceCount = 0u;
+		settings.m_normalBias = 0.001f;
+		settings.m_viewBias = 0.0f;
+		settings.m_bIncludeSky = false;
+		settings.m_bIncludeEmissive = false;
+		settings.m_bIncludeDirectLighting = true;
+
+		const auto sampleMode = [&](ELightGlobalIlluminationMode mode)
+		{
+			pointLight->SetGlobalIlluminationMode(mode);
+			TVector<Raytracing::LightProxy> bakeLights;
+			world.GetECS<LightingECS>()
+				->GetGlobalIlluminationBakeLightProxies(bakeLights);
+
+			Raytracing::ProbeVolumePathTracer pathTracer;
+			Require(pathTracer.Initialize(
+					fixture.m_instances,
+					fixture.m_materials,
+					bakeLights,
+					settings,
+					glm::vec3(0.0f)),
+				"the point-light GI fixture must initialize the CPU path tracer");
+
+			ProbeVolumeBakeRaySample sample;
+			std::string diagnostic;
+			Require(pathTracer.Sample(
+					receiver + glm::vec3(0.0f, 3.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					20.0f,
+					155u,
+					sample,
+					diagnostic),
+				"the point-light GI fixture must sample the landscape: " +
+					diagnostic);
+			Require(sample.m_bHit,
+				"the point-light GI fixture ray must hit the landscape");
+			return std::pair<size_t, glm::vec3>(
+				bakeLights.Num(),
+				sample.m_radiance);
+		};
+
+		const auto [realtimeLightCount, realtimeRadiance] = sampleMode(
+			ELightGlobalIlluminationMode::Realtime);
+		const auto [bakedLightCount, bakedRadiance] = sampleMode(
+			ELightGlobalIlluminationMode::RealtimeAndBaked);
+		Require(
+			realtimeLightCount == 0u &&
+				glm::length(realtimeRadiance) <= 0.000001f,
+			"Realtime point lights must not contribute radiance to a GI bake");
+		Require(
+			bakedLightCount == 1u &&
+				std::isfinite(bakedRadiance.x) &&
+				std::isfinite(bakedRadiance.y) &&
+				std::isfinite(bakedRadiance.z) &&
+				glm::length(bakedRadiance) > 0.01f,
+			"Realtime + Baked point lights must contribute actual baked radiance");
+
+		world.Clear();
+	}
 }
 
 int main(int argc, char** argv)
@@ -1738,6 +1825,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"MobilityAndLightModeContributionPolicy",
 			TestMobilityAndLightModeContributionPolicy);
+		RunTest(
+			"PointLightModeChangesBakedRadiance",
+			TestPointLightModeChangesBakedRadiance);
 	}
 	catch (const std::exception& exception)
 	{

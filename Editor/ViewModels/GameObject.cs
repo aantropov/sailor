@@ -18,6 +18,7 @@ namespace SailorEditor.ViewModels;
 public interface IInspectorEditable
 {
     bool HasPendingInspectorChanges { get; }
+    bool HasInFlightInspectorCommit { get; }
     Task<bool> CommitInspectorChangesAsync(
         CancellationToken cancellationToken = default);
 }
@@ -154,6 +155,12 @@ public partial class GameObject : ObservableObject, ICloneable, IInspectorEditab
         HasPendingGameObjectChanges ||
         GetComponentsSafely().Any(component =>
             component.HasPendingInspectorChanges);
+
+    [YamlIgnore]
+    public bool HasInFlightInspectorCommit =>
+        Volatile.Read(ref pendingInspectorCommits) != 0 ||
+        GetComponentsSafely().Any(component =>
+            component.HasInFlightInspectorCommit);
 
     [YamlIgnore]
     bool HasPendingGameObjectChanges =>
