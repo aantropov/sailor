@@ -8,6 +8,7 @@
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Components/MeshRendererComponent.h"
+#include "Core/LogMacros.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
 #include "ECS/TransformECS.h"
@@ -57,6 +58,14 @@ namespace
 		Math::AABB m_localBounds{};
 		uint64_t m_contentHash = 0u;
 	};
+
+	void LogBakeWarning(const std::string& diagnostic)
+	{
+		if (!diagnostic.empty())
+		{
+			SAILOR_LOG("[Warning] GI bake: %s", diagnostic.c_str());
+		}
+	}
 
 	void UpdateStatus(
 		const TSharedPtr<GlobalIlluminationBakeController::SharedState>& state,
@@ -301,6 +310,8 @@ namespace
 			return false;
 		}
 		instance.m_materialBaseOffset = static_cast<int32_t>(materialCount);
+		TVector<MaterialPtr> resolvedMaterials;
+		resolvedMaterials.Reserve(requiredMaterialSlots);
 		for (uint32_t materialIndex = 0u;
 			materialIndex < requiredMaterialSlots;
 			++materialIndex)
@@ -308,10 +319,19 @@ namespace
 			MaterialPtr material = materialIndex < sourceMaterials.Num() ?
 				sourceMaterials[materialIndex] :
 				(sourceMaterials.IsEmpty() ? MaterialPtr{} : *sourceMaterials.Last());
-			if (material)
+			if (material && !material->IsReady())
 			{
-				material->IsReady();
+				const std::string fileId = material->GetFileId().ToString();
+				outDiagnostic =
+					"material slot " + std::to_string(materialIndex) +
+					(fileId.empty() ? std::string() : " ('" + fileId + "')") +
+					" is not ready for baking";
+				return false;
 			}
+			resolvedMaterials.Add(material);
+		}
+		for (const MaterialPtr& material : resolvedMaterials)
+		{
 			scene.m_materials.Add(material);
 		}
 		return true;
@@ -592,16 +612,20 @@ namespace
 		{
 			ModelPtr model = candidate.m_renderer->GetModel();
 			const int32_t meshIndex = candidate.m_renderer->GetMeshIndex();
+			const std::string sourceName =
+				"static mesh '" + candidate.m_gameObject->GetName() + "'";
 			FrozenModelGeometry geometry;
 			if (!ResolveFrozenModelGeometry(
 					model,
 					meshIndex,
-					"static mesh '" + candidate.m_gameObject->GetName() + "'",
+					sourceName,
 					frozenModelGeometry,
 					geometry,
 					outDiagnostic))
 			{
-				return false;
+				LogBakeWarning("skipped " + outDiagnostic);
+				outDiagnostic.clear();
+				continue;
 			}
 
 			const glm::mat4 worldMatrix = candidate.m_gameObject
@@ -611,9 +635,10 @@ namespace
 				!std::isfinite(determinant) ||
 				std::abs(determinant) <= 1e-8f)
 			{
-				outDiagnostic = "static mesh '" + candidate.m_gameObject->GetName() +
-					"' has a non-invertible world transform";
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName +
+					": the world transform is non-invertible");
+				continue;
 			}
 
 			Raytracing::PathTracer::TLASInstance instance;
@@ -627,22 +652,26 @@ namespace
 			instance.m_inverseWorldMatrix = glm::inverse(worldMatrix);
 			instance.m_worldBounds = geometry.m_localBounds;
 			instance.m_worldBounds.Apply(worldMatrix);
+			instance.m_debugName = sourceName;
 			if (!instance.m_worldBounds.IsValid())
 			{
-				outDiagnostic = "static mesh '" + candidate.m_gameObject->GetName() +
-					"' has invalid world bounds";
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName + ": the world bounds are invalid");
+				continue;
 			}
 			TVector<MaterialPtr>& materials =
 				candidate.m_renderer->GetMaterials();
 			if (!AppendInstanceMaterials(
-				instance.m_triangles,
-				materials,
-				scene,
-				instance,
-				outDiagnostic))
+					instance.m_triangles,
+					materials,
+					scene,
+					instance,
+					outDiagnostic))
 			{
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName + ": " + outDiagnostic);
+				outDiagnostic.clear();
+				continue;
 			}
 
 			scene.m_instances.Add(std::move(instance));
@@ -659,12 +688,15 @@ namespace
 		}
 
 		TVector<LandscapeBakeGeometrySnapshot> landscapeSnapshots;
-		if (auto* landscape = world->GetECS<LandscapeECS>();
-			landscape && !landscape->CollectBakeGeometrySnapshots(
+		if (auto* landscape = world->GetECS<LandscapeECS>(); landscape &&
+			!landscape->CollectBakeGeometrySnapshots(
 				landscapeSnapshots,
 				outDiagnostic))
 		{
-			return false;
+			LogBakeWarning(
+				"skipped landscape bake geometry: " + outDiagnostic);
+			landscapeSnapshots.Clear();
+			outDiagnostic.clear();
 		}
 		std::sort(
 			landscapeSnapshots.begin(),
@@ -676,6 +708,9 @@ namespace
 			});
 		for (const LandscapeBakeGeometrySnapshot& snapshot : landscapeSnapshots)
 		{
+			const std::string sourceName = snapshot.m_model ?
+				"vegetation '" + snapshot.m_sourceId + "'" :
+				"bake geometry '" + snapshot.m_sourceId + "'";
 			const float determinant = glm::determinant(
 				glm::mat3(snapshot.m_worldMatrix));
 			if (!IsFiniteMatrix(snapshot.m_worldMatrix) ||
@@ -683,9 +718,10 @@ namespace
 				std::abs(determinant) <= 1e-8f ||
 				!snapshot.m_worldBounds.IsValid())
 			{
-				outDiagnostic = "bake geometry '" + snapshot.m_sourceId +
-					"' has an invalid transform or bounds";
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName +
+					": the transform or bounds are invalid");
+				continue;
 			}
 
 			FrozenModelGeometry geometry;
@@ -694,12 +730,14 @@ namespace
 				if (!ResolveFrozenModelGeometry(
 						snapshot.m_model,
 						snapshot.m_meshIndex,
-						"vegetation '" + snapshot.m_sourceId + "'",
+						sourceName,
 						frozenModelGeometry,
 						geometry,
 						outDiagnostic))
 				{
-					return false;
+					LogBakeWarning("skipped " + outDiagnostic);
+					outDiagnostic.clear();
+					continue;
 				}
 			}
 			else if (snapshot.m_triangles &&
@@ -709,9 +747,10 @@ namespace
 			}
 			else
 			{
-				outDiagnostic = "bake geometry '" + snapshot.m_sourceId +
-					"' has no immutable CPU triangles";
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName +
+					": immutable CPU triangles are unavailable");
+				continue;
 			}
 
 			Raytracing::PathTracer::TLASInstance instance;
@@ -723,14 +762,18 @@ namespace
 			instance.m_worldMatrix = snapshot.m_worldMatrix;
 			instance.m_inverseWorldMatrix = glm::inverse(snapshot.m_worldMatrix);
 			instance.m_worldBounds = snapshot.m_worldBounds;
+			instance.m_debugName = sourceName;
 			if (!AppendInstanceMaterials(
-				instance.m_triangles,
-				snapshot.m_materials,
-				scene,
-				instance,
-				outDiagnostic))
+					instance.m_triangles,
+					snapshot.m_materials,
+					scene,
+					instance,
+					outDiagnostic))
 			{
-				return false;
+				LogBakeWarning(
+					"skipped " + sourceName + ": " + outDiagnostic);
+				outDiagnostic.clear();
+				continue;
 			}
 			scene.m_instances.Add(std::move(instance));
 			scene.m_geometryBounds.Add(snapshot.m_worldBounds);
@@ -759,7 +802,7 @@ namespace
 		if (scene.m_instances.IsEmpty() || !worldBounds.IsValid())
 		{
 			outDiagnostic =
-				"the current world has no non-dynamic bakeable geometry";
+				"the current world has no valid non-dynamic bakeable geometry after unavailable meshes and materials were skipped";
 			return false;
 		}
 
@@ -994,7 +1037,7 @@ bool GlobalIlluminationBakeController::Start(
 					{
 						Fail(
 							state,
-							"the CPU path tracer could not prepare the bake scene or decode all material textures");
+							"the CPU path tracer could not prepare any valid bake geometry after unavailable meshes and materials were skipped");
 					}
 					return;
 				}

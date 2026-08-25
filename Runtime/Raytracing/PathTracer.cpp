@@ -420,10 +420,13 @@ namespace
 	bool BuildRaytracingMaterialsFromRuntimeMaterials(
 		const TVector<MaterialPtr>& runtimeMaterials,
 		TVector<Raytracing::Material>& outMaterials,
+		TVector<uint8_t>& outResolvedMaterialSlots,
 		TVector<TSharedPtr<CombinedSampler2D>>& outTextures,
 		TMap<std::string, uint32_t>& outTextureMapping,
 		const PathTracer::ScenePreparationProgressCallback& progress,
-		PathTracer::ScenePreparationStats& stats)
+		const PathTracer::ScenePreparationWarningCallback& warning,
+		PathTracer::ScenePreparationStats& stats,
+		bool& outAllTexturesResolved)
 	{
 		struct CpuTextureSnapshot final
 		{
@@ -432,14 +435,16 @@ namespace
 			int32_t m_height = 0;
 		};
 
-		bool bAllTexturesResolved = true;
+		outAllTexturesResolved = true;
 
 		outMaterials.Resize(runtimeMaterials.Num());
+		outResolvedMaterialSlots.Resize(runtimeMaterials.Num());
 		outTextures.Clear();
 		outTextureMapping.Clear();
 		stats.m_materialSlotCount = runtimeMaterials.Num();
 		TMap<const Sailor::Material*, Raytracing::Material>
 			convertedMaterials;
+		TMap<const Sailor::Material*, uint8_t> convertedMaterialResolution;
 		TMap<std::string, TSharedPtr<CpuTextureSnapshot>> cpuTextureSnapshots;
 
 		auto reportMaterialProgress = [&](size_t completed) -> bool
@@ -459,11 +464,18 @@ namespace
 			return false;
 		}
 
-		auto addTexture = [&](const TexturePtr& pTexture, bool bLinear, bool bNormalMap, uint8_t channels, uint8_t& outTextureIndex) -> bool
+		auto addTexture = [&](const TexturePtr& pTexture,
+			bool bLinear,
+			bool bNormalMap,
+			uint8_t channels,
+			uint8_t& outTextureIndex,
+			std::string& outDiagnostic) -> bool
 		{
+			outDiagnostic.clear();
 			++stats.m_textureReferenceCount;
 			if (!pTexture)
 			{
+				outDiagnostic = "the texture reference is null";
 				return false;
 			}
 
@@ -503,23 +515,26 @@ namespace
 			TSharedPtr<CpuTextureSnapshot>* cachedSnapshot = nullptr;
 			if (!cpuTextureSnapshots.Find(sourceKey, cachedSnapshot))
 			{
-					auto snapshot = TSharedPtr<CpuTextureSnapshot>::Make();
-					snapshot->m_width = texture->GetWidth();
-					snapshot->m_height = texture->GetHeight();
-					if (texture->HasCpuData())
+				auto snapshot = TSharedPtr<CpuTextureSnapshot>::Make();
+				snapshot->m_width = texture->GetWidth();
+				snapshot->m_height = texture->GetHeight();
+				if (texture->HasCpuData())
+				{
+					snapshot->m_data = texture->GetDecodedData();
+				}
+				else
+				{
+					uint32_t mipLevels = 1u;
+					if (!fileId || !TextureImporter::DecodeTextureCpu(
+							fileId,
+							snapshot->m_data,
+							snapshot->m_width,
+							snapshot->m_height,
+							mipLevels))
 					{
-						snapshot->m_data = texture->GetDecodedData();
-					}
-					else
-					{
-						uint32_t mipLevels = 1u;
-						if (!fileId || !TextureImporter::DecodeTextureCpu(
-								fileId,
-								snapshot->m_data,
-								snapshot->m_width,
-								snapshot->m_height,
-								mipLevels))
-					{
+						outDiagnostic = fileId ?
+							"the texture could not be decoded on the CPU" :
+							"the runtime texture has no resident CPU pixels or file id";
 						return false;
 					}
 					++stats.m_decodedTextureCount;
@@ -527,6 +542,8 @@ namespace
 				if (snapshot->m_width <= 0 || snapshot->m_height <= 0 ||
 					snapshot->m_data.IsEmpty())
 				{
+					outDiagnostic =
+						"the decoded texture has invalid dimensions or no pixel data";
 					return false;
 				}
 				cpuTextureSnapshots.Add(sourceKey, snapshot);
@@ -535,6 +552,7 @@ namespace
 			}
 			if (!cachedSnapshot || !*cachedSnapshot)
 			{
+				outDiagnostic = "the CPU texture snapshot is unavailable";
 				return false;
 			}
 			const auto& snapshot = **cachedSnapshot;
@@ -546,6 +564,8 @@ namespace
 			// largest representable sampler table contains indices 0..254.
 			if (outTextures.Num() >= static_cast<size_t>(u8(-1)))
 			{
+				outDiagnostic =
+					"the CPU path tracer texture-table limit was exceeded";
 				return false;
 			}
 
@@ -579,6 +599,8 @@ namespace
 			{
 				if (sourceData->Num() != pixelCount * sizeof(glm::u8vec4))
 				{
+					outDiagnostic =
+						"the decoded texture pixel format or byte count is unsupported";
 					return false;
 				}
 				if (channels == 4)
@@ -619,6 +641,7 @@ namespace
 			if (!pMaterial)
 			{
 				outMaterials[i] = outMaterial;
+				outResolvedMaterialSlots[i] = 1u;
 				if (!reportCompletedMaterial())
 				{
 					return false;
@@ -629,6 +652,14 @@ namespace
 			if (convertedMaterials.Find(pMaterial.GetRawPtr(), cachedMaterial))
 			{
 				outMaterials[i] = *cachedMaterial;
+				uint8_t* cachedResolution = nullptr;
+				convertedMaterialResolution.Find(
+					pMaterial.GetRawPtr(),
+					cachedResolution);
+				outResolvedMaterialSlots[i] = cachedResolution ?
+					*cachedResolution : 0u;
+				outAllTexturesResolved &=
+					outResolvedMaterialSlots[i] != 0u;
 				++stats.m_reusedMaterialCount;
 				if (!reportCompletedMaterial())
 				{
@@ -714,6 +745,43 @@ namespace
 				outMaterial.m_blendMode = BlendMode::Opaque;
 			}
 
+			bool bMaterialResolved = true;
+			const std::string materialFileId = pMaterial->GetFileId().ToString();
+			const std::string materialName = materialFileId.empty() ?
+				"runtime material slot " + std::to_string(i) :
+				"material '" + materialFileId + "'";
+			auto prepareTexture = [&](const std::string& samplerName,
+				const TexturePtr& texture,
+				bool bLinear,
+				bool bNormalMap,
+				uint8_t channels,
+				uint8_t& outTextureIndex)
+			{
+				std::string diagnostic;
+				if (addTexture(
+						texture,
+						bLinear,
+						bNormalMap,
+						channels,
+						outTextureIndex,
+						diagnostic))
+				{
+					return;
+				}
+				bMaterialResolved = false;
+				if (warning)
+				{
+					const std::string textureFileId = texture ?
+						texture->GetFileId().ToString() : std::string();
+					warning(
+						"could not prepare " + materialName +
+						" sampler '" + samplerName + "'" +
+						(textureFileId.empty() ? std::string() :
+							" texture '" + textureFileId + "'") +
+						": " + diagnostic);
+				}
+			};
+
 			for (const auto& sampler : pMaterial->GetSamplers())
 			{
 				const std::string& samplerName = sampler.m_first;
@@ -721,64 +789,69 @@ namespace
 
 				if (samplerName == "baseColorSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_baseColorIndex);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_baseColorIndex);
 				}
 				else if (samplerName == "albedoSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_baseColorIndex);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_baseColorIndex);
 				}
 				else if (samplerName == "layer0Sampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[0]);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[0]);
 				}
 				else if (samplerName == "layer1Sampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[1]);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[1]);
 				}
 				else if (samplerName == "layer2Sampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[2]);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[2]);
 				}
 				else if (samplerName == "layer3Sampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 4, outMaterial.m_layerColorIndices[3]);
+					prepareTexture(samplerName, pTexture, true, false, 4, outMaterial.m_layerColorIndices[3]);
 				}
 				else if (samplerName == "normalSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, true, 3, outMaterial.m_normalIndex);
+					prepareTexture(samplerName, pTexture, false, true, 3, outMaterial.m_normalIndex);
 				}
 				else if (samplerName == "ormSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_metallicRoughnessIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_metallicRoughnessIndex);
 				}
 				else if (samplerName == "emissiveSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, true, false, 3, outMaterial.m_emissiveIndex);
+					prepareTexture(samplerName, pTexture, true, false, 3, outMaterial.m_emissiveIndex);
 				}
 				else if (samplerName == "occlusionSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_occlusionIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_occlusionIndex);
 				}
 				else if (samplerName == "roughnessSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_roughnessIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_roughnessIndex);
 				}
 				else if (samplerName == "metalnessSampler" || samplerName == "metallicSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_metallicIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_metallicIndex);
 				}
 				else if (samplerName == "transmissionSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_transmissionIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_transmissionIndex);
 				}
 				else if (samplerName == "thicknessSampler")
 				{
-					bAllTexturesResolved &= addTexture(pTexture, false, false, 3, outMaterial.m_thicknessIndex);
+					prepareTexture(samplerName, pTexture, false, false, 3, outMaterial.m_thicknessIndex);
 				}
 			}
 
 			outMaterials[i] = outMaterial;
+			outResolvedMaterialSlots[i] = bMaterialResolved ? 1u : 0u;
+			outAllTexturesResolved &= bMaterialResolved;
 			convertedMaterials.Add(pMaterial.GetRawPtr(), outMaterial);
+			convertedMaterialResolution.Add(
+				pMaterial.GetRawPtr(),
+				outResolvedMaterialSlots[i]);
 			++stats.m_uniqueMaterialCount;
 			if (!reportCompletedMaterial())
 			{
@@ -786,7 +859,7 @@ namespace
 			}
 		}
 
-		return bAllTexturesResolved;
+		return true;
 	}
 
 	size_t ComputeMaterialsSignature(const TVector<MaterialPtr>& materials)
@@ -906,7 +979,9 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lightProxies,
 	bool bAddDefaultLightIfEmpty,
-	const ScenePreparationProgressCallback& progress)
+	const ScenePreparationProgressCallback& progress,
+	bool bSkipUnresolvedMaterialInstances,
+	const ScenePreparationWarningCallback& warning)
 {
 	m_tlasInstances = instances;
 	m_lightProxies = lightProxies;
@@ -932,7 +1007,6 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		return false;
 	}
 
-	bool bHasGeometry = false;
 	TMap<const TVector<Math::Triangle>*, TSharedPtr<BVH>> preparedBlas;
 	for (size_t i = 0; i < m_tlasInstances.Num(); i++)
 	{
@@ -968,26 +1042,6 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 			}
 		}
 
-		if (HasInstanceGeometry(instance))
-		{
-			bHasGeometry = true;
-			++m_lastScenePreparationStats.m_geometryInstanceCount;
-
-			const glm::ivec3 integerMin =
-				glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
-			const glm::ivec3 integerMax =
-				glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
-			const glm::ivec3 integerCenter =
-				(integerMin + integerMax) / 2;
-			const glm::ivec3 integerExtents = glm::max(
-				integerCenter - integerMin,
-				integerMax - integerCenter);
-			m_tlasOctree.Update(
-				integerCenter,
-				glm::max(integerExtents, glm::ivec3(1)),
-				i);
-		}
-
 		const size_t completed = i + 1u;
 		if ((completed % 64u == 0u ||
 			completed == m_tlasInstances.Num()) &&
@@ -1006,16 +1060,25 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	if (bNeedRebuildMaterials)
 	{
 		m_materials.Clear();
+		m_resolvedMaterialSlots.Clear();
 		m_textures.Clear();
 		m_textureMapping.Clear();
-		m_bMaterialsFullyResolved =
-			BuildRaytracingMaterialsFromRuntimeMaterials(
+		bool bAllTexturesResolved = true;
+		if (!BuildRaytracingMaterialsFromRuntimeMaterials(
 				materials,
 				m_materials,
+				m_resolvedMaterialSlots,
 				m_textures,
 				m_textureMapping,
 				progress,
-				m_lastScenePreparationStats);
+				warning,
+				m_lastScenePreparationStats,
+				bAllTexturesResolved))
+		{
+			m_bMaterialsFullyResolved = false;
+			return false;
+		}
+		m_bMaterialsFullyResolved = bAllTexturesResolved;
 		m_cachedMaterialsSignature = materialsSignature;
 		m_cachedMaterialsCount = (uint32_t)materials.Num();
 	}
@@ -1035,17 +1098,112 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		}
 	}
 
+	if (m_materials.Num() == 0)
+	{
+		m_materials.Add(Material{});
+		m_resolvedMaterialSlots.Add(1u);
+		m_bMaterialsFullyResolved = true;
+	}
+
+	bool bHasGeometry = false;
+	for (size_t i = 0u; i < m_tlasInstances.Num(); ++i)
+	{
+		const TLASInstance& instance = m_tlasInstances[i];
+		if (!HasInstanceGeometry(instance))
+		{
+			if (bSkipUnresolvedMaterialInstances)
+			{
+				++m_lastScenePreparationStats.m_skippedInstanceCount;
+				if (warning)
+				{
+					warning(
+						"skipped " +
+						(instance.m_debugName.empty() ?
+							"mesh instance " + std::to_string(i) :
+							instance.m_debugName) +
+						": CPU raytracing geometry is unavailable");
+				}
+			}
+			continue;
+		}
+
+		bool bSkipInstance = false;
+		uint32_t unresolvedLocalSlot = 0u;
+		int64_t unresolvedGlobalSlot = -1;
+		if (bSkipUnresolvedMaterialInstances)
+		{
+			const auto* triangles = ResolveInstanceTriangles(instance);
+			for (const Math::Triangle& triangle : *triangles)
+			{
+				const int64_t globalSlot =
+					static_cast<int64_t>(instance.m_materialBaseOffset) +
+					static_cast<int64_t>(triangle.m_materialIndex);
+				if (globalSlot < 0 ||
+					globalSlot >= static_cast<int64_t>(
+						m_resolvedMaterialSlots.Num()) ||
+					m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
+				{
+					bSkipInstance = true;
+					unresolvedLocalSlot = triangle.m_materialIndex;
+					unresolvedGlobalSlot = globalSlot;
+					break;
+				}
+			}
+		}
+
+		if (bSkipInstance)
+		{
+			++m_lastScenePreparationStats.m_skippedInstanceCount;
+			if (warning)
+			{
+				std::string materialIdentity =
+					"material slot " + std::to_string(unresolvedLocalSlot);
+				if (unresolvedGlobalSlot >= 0 &&
+					unresolvedGlobalSlot < static_cast<int64_t>(materials.Num()))
+				{
+					const MaterialPtr& material =
+						materials[static_cast<size_t>(unresolvedGlobalSlot)];
+					const std::string fileId = material ?
+						material->GetFileId().ToString() : std::string();
+					if (!fileId.empty())
+					{
+						materialIdentity += " ('" + fileId + "')";
+					}
+				}
+				warning(
+					"skipped " +
+					(instance.m_debugName.empty() ?
+						"mesh instance " + std::to_string(i) :
+						instance.m_debugName) +
+					" because " + materialIdentity +
+					" could not be prepared");
+			}
+			continue;
+		}
+
+		bHasGeometry = true;
+		++m_lastScenePreparationStats.m_geometryInstanceCount;
+		const glm::ivec3 integerMin =
+			glm::ivec3(glm::floor(instance.m_worldBounds.m_min));
+		const glm::ivec3 integerMax =
+			glm::ivec3(glm::ceil(instance.m_worldBounds.m_max));
+		const glm::ivec3 integerCenter =
+			(integerMin + integerMax) / 2;
+		const glm::ivec3 integerExtents = glm::max(
+			integerCenter - integerMin,
+			integerMax - integerCenter);
+		m_tlasOctree.Update(
+			integerCenter,
+			glm::max(integerExtents, glm::ivec3(1)),
+			i);
+	}
+
 	if (m_bAddDefaultLightIfEmpty && m_lightProxies.Num() == 0)
 	{
 		DirectionalLight sun{};
 		sun.m_direction = glm::normalize(vec3(-0.7f, -1.0f, -0.2f));
 		sun.m_intensity = vec3(1.0f);
 		m_lightProxies.Add(MakeDirectionalLightProxy(sun));
-	}
-
-	if (m_materials.Num() == 0)
-	{
-		m_materials.Add(Material{});
 	}
 
 	return bHasGeometry;
@@ -1526,16 +1684,23 @@ void PathTracer::Run(const PathTracer::Params& params)
 	}
 
 	m_lastScenePreparationStats = {};
+	bool bAllTexturesResolved = true;
 	BuildRaytracingMaterialsFromRuntimeMaterials(
 		runtimeMaterials,
 		m_materials,
+		m_resolvedMaterialSlots,
 		m_textures,
 		m_textureMapping,
 		{},
-		m_lastScenePreparationStats);
+		{},
+		m_lastScenePreparationStats,
+		bAllTexturesResolved);
+	m_bMaterialsFullyResolved = bAllTexturesResolved;
 	if (m_materials.Num() == 0)
 	{
 		m_materials.Add(Material{});
+		m_resolvedMaterialSlots.Add(1u);
+		m_bMaterialsFullyResolved = true;
 	}
 
 	Raytracing::PathTracer::TLASInstance instance{};

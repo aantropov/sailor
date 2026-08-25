@@ -15,7 +15,8 @@ namespace Sailor::Raytracing
 			const TVector<LightProxy>& lights,
 			const ProbeVolumeBakeSettings& settings,
 			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f),
-			const PathTracer::ScenePreparationProgressCallback& progress = {});
+			const PathTracer::ScenePreparationProgressCallback& progress = {},
+			const PathTracer::ScenePreparationWarningCallback& warning = {});
 
 		void SetEnvironmentLinear(
 			const TVector<glm::vec4>& image,

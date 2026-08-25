@@ -34,6 +34,7 @@
 #include <thread>
 
 #include <glm/gtc/packing.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 using namespace Sailor;
 
@@ -1551,6 +1552,156 @@ components:
 			"path-tracer preparation must stop when its progress callback requests cancellation");
 	}
 
+	void TestProbeBakeSkipsUnavailableMeshAndMaterialInstances()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		MaterialPtr validMaterial = MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(0.8f));
+		MaterialPtr unresolvedMaterial = MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(0.8f));
+		unresolvedMaterial->SetSampler(
+			"baseColorSampler",
+			TObjectPtr<CpuTextureFixture>::Make(
+				allocator,
+				FileId::Invalid));
+		TVector<MaterialPtr> materials;
+		materials.Add(validMaterial);
+		materials.Add(unresolvedMaterial);
+
+		Math::Triangle triangle{};
+		triangle.m_vertices[0] = glm::vec3(-0.75f, 0.0f, -0.75f);
+		triangle.m_vertices[1] = glm::vec3(0.0f, 0.0f, 0.75f);
+		triangle.m_vertices[2] = glm::vec3(0.75f, 0.0f, -0.75f);
+		triangle.m_centroid =
+			(triangle.m_vertices[0] + triangle.m_vertices[1] +
+				triangle.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			triangle.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
+			triangle.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			triangle.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
+			triangle.m_colors[vertexIndex] = vertexIndex == 0u ?
+				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+		}
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(triangle);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(1u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB localBounds;
+		for (const glm::vec3& vertex : triangle.m_vertices)
+		{
+			localBounds.Extend(vertex);
+		}
+
+		const auto makeInstance = [&](float x,
+			int32_t materialBaseOffset,
+			const std::string& debugName)
+		{
+			Raytracing::PathTracer::TLASInstance instance;
+			instance.m_triangles = triangles;
+			instance.m_blas = blas;
+			instance.m_worldMatrix = glm::translate(
+				glm::mat4(1.0f),
+				glm::vec3(x, 0.0f, 0.0f));
+			instance.m_inverseWorldMatrix = glm::inverse(
+				instance.m_worldMatrix);
+			instance.m_worldBounds = localBounds;
+			instance.m_worldBounds.Apply(instance.m_worldMatrix);
+			instance.m_materialBaseOffset = materialBaseOffset;
+			instance.m_debugName = debugName;
+			return instance;
+		};
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(makeInstance(-2.0f, 0, "valid mesh 'Receiver'"));
+		instances.Add(makeInstance(2.0f, 1, "static mesh 'Broken Mesh'"));
+		auto unavailableMesh = makeInstance(
+			6.0f,
+			0,
+			"static mesh 'Unavailable Mesh'");
+		unavailableMesh.m_blas.Clear();
+		unavailableMesh.m_triangles.Clear();
+		instances.Add(std::move(unavailableMesh));
+
+		Raytracing::LightProxy light;
+		light.m_type = ELightType::Directional;
+		light.m_direction = glm::vec3(0.0f, -1.0f, 0.0f);
+		light.m_intensity = glm::vec3(2.0f);
+		TVector<Raytracing::LightProxy> lights;
+		lights.Add(light);
+
+		TVector<std::string> warnings;
+		ProbeVolumeBakeSettings settings;
+		settings.m_bIncludeSky = false;
+		settings.m_bIncludeEmissive = false;
+		settings.m_bIncludeDirectLighting = true;
+		settings.m_bounceCount = 0u;
+		Raytracing::ProbeVolumePathTracer pathTracer;
+		Require(pathTracer.Initialize(
+				instances,
+				materials,
+				lights,
+				settings,
+				glm::vec3(0.0f),
+				{},
+				[&warnings](const std::string& warning)
+				{
+					warnings.Add(warning);
+				}),
+			"probe bake must continue when another mesh has an unresolved material texture");
+
+		const auto& stats = pathTracer.GetLastScenePreparationStats();
+		Require(
+			stats.m_instanceCount == 3u &&
+			stats.m_geometryInstanceCount == 1u &&
+			stats.m_skippedInstanceCount == 2u,
+			"only valid mesh instances must remain in the bake scene");
+		bool bNamedSamplerWarning = false;
+		bool bNamedMeshWarning = false;
+		bool bNamedUnavailableMeshWarning = false;
+		for (const std::string& warning : warnings)
+		{
+			bNamedSamplerWarning |=
+				warning.find("baseColorSampler") != std::string::npos;
+			bNamedMeshWarning |=
+				warning.find("Broken Mesh") != std::string::npos;
+			bNamedUnavailableMeshWarning |=
+				warning.find("Unavailable Mesh") != std::string::npos;
+		}
+		Require(
+			bNamedSamplerWarning && bNamedMeshWarning &&
+			bNamedUnavailableMeshWarning,
+			"warnings must identify failed sampler, material mesh, and unavailable mesh");
+
+		ProbeVolumeBakeRaySample validSample;
+		ProbeVolumeBakeRaySample skippedSample;
+		std::string diagnostic;
+		Require(pathTracer.Sample(
+				glm::vec3(-2.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				1u,
+				validSample,
+				diagnostic) &&
+			validSample.m_bHit,
+			"valid geometry must remain available to the continuing bake");
+		Require(pathTracer.Sample(
+				glm::vec3(2.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				2u,
+				skippedSample,
+				diagnostic) &&
+			!skippedSample.m_bHit &&
+			glm::length(skippedSample.m_radiance) <= 0.000001f,
+			"the mesh using the unresolved material must not leak fallback shading into the bake");
+	}
+
 	void TestFloatTextureNormalizationAndLandscapeLayerSampling()
 	{
 		Raytracing::CombinedSampler2D floatTexture;
@@ -2111,6 +2262,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
+		RunTest(
+			"ProbeBakeSkipsUnavailableMeshAndMaterialInstances",
+			TestProbeBakeSkipsUnavailableMeshAndMaterialInstances);
 		RunTest("FloatTextureNormalizationAndLandscapeLayerSampling", TestFloatTextureNormalizationAndLandscapeLayerSampling);
 		RunTest(
 			"MobilityAndLightModeContributionPolicy",

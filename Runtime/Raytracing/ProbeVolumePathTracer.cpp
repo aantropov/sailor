@@ -1,5 +1,7 @@
 #include "Raytracing/ProbeVolumePathTracer.h"
 
+#include "Core/LogMacros.h"
+
 #include <cmath>
 
 using namespace Sailor;
@@ -11,7 +13,8 @@ bool ProbeVolumePathTracer::Initialize(
 	const TVector<LightProxy>& lights,
 	const ProbeVolumeBakeSettings& settings,
 	const glm::vec3& fallbackEnvironment,
-	const PathTracer::ScenePreparationProgressCallback& progress)
+	const PathTracer::ScenePreparationProgressCallback& progress,
+	const PathTracer::ScenePreparationWarningCallback& warning)
 {
 	TVector<LightProxy> bakedLights;
 	bakedLights.Reserve(lights.Num());
@@ -40,14 +43,24 @@ bool ProbeVolumePathTracer::Initialize(
 	m_params.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
 	m_params.m_bIncludeEnvironment = settings.m_bIncludeSky;
 	m_params.m_bIncludeEmissive = settings.m_bIncludeEmissive;
+	const auto reportWarning = [&warning](const std::string& diagnostic)
+	{
+		if (warning)
+		{
+			warning(diagnostic);
+			return;
+		}
+		SAILOR_LOG("[Warning] GI bake: %s", diagnostic.c_str());
+	};
 	const bool bHasGeometry = m_pathTracer.InitializeScene(
 		instances,
 		materials,
 		bakedLights,
 		false,
-		progress);
-	m_bInitialized = bHasGeometry &&
-		m_pathTracer.ArePreparedMaterialsFullyResolved();
+		progress,
+		true,
+		reportWarning);
+	m_bInitialized = bHasGeometry;
 	return m_bInitialized;
 }
 

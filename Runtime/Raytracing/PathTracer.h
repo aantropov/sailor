@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <string>
 
 using namespace Sailor;
 
@@ -40,6 +41,7 @@ namespace Sailor::Raytracing
 		{
 			size_t m_instanceCount = 0u;
 			size_t m_geometryInstanceCount = 0u;
+			size_t m_skippedInstanceCount = 0u;
 			size_t m_builtBlasCount = 0u;
 			size_t m_reusedBlasCount = 0u;
 			size_t m_materialSlotCount = 0u;
@@ -52,6 +54,8 @@ namespace Sailor::Raytracing
 
 		using ScenePreparationProgressCallback =
 			std::function<bool(const ScenePreparationProgress&)>;
+		using ScenePreparationWarningCallback =
+			std::function<void(const std::string&)>;
 
 		struct TLASInstance
 		{
@@ -65,6 +69,7 @@ namespace Sailor::Raytracing
 			glm::mat4 m_worldMatrix{ 1.0f };
 			glm::mat4 m_inverseWorldMatrix{ 1.0f };
 			int32_t m_materialBaseOffset = 0;
+			std::string m_debugName{};
 		};
 
 		struct Params
@@ -106,7 +111,9 @@ namespace Sailor::Raytracing
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies,
 			bool bAddDefaultLightIfEmpty = true,
-			const ScenePreparationProgressCallback& progress = {});
+			const ScenePreparationProgressCallback& progress = {},
+			bool bSkipUnresolvedMaterialInstances = false,
+			const ScenePreparationWarningCallback& warning = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
 		void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
@@ -181,6 +188,7 @@ namespace Sailor::Raytracing
 		TVector<TLASInstance> m_tlasInstances{};
 		TOctree<size_t> m_tlasOctree{ glm::ivec3(0, 0, 0), 16536 * 16, 4 };
 		TVector<Material> m_materials{};
+		TVector<uint8_t> m_resolvedMaterialSlots{};
 		TVector<TSharedPtr<CombinedSampler2D>> m_textures{};
 		TMap<std::string, uint32_t> m_textureMapping{};
 		size_t m_cachedMaterialsSignature = 0;
