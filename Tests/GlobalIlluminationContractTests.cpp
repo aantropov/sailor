@@ -1786,6 +1786,194 @@ components:
 
 		world.Clear();
 	}
+
+	void TestPointLightRayIntersectionsMatchRealtimeAttenuation()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		TVector<MaterialPtr> materials;
+		materials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(0.8f)));
+
+		Math::Triangle floor{};
+		floor.m_vertices[0] = glm::vec3(-100.0f, 0.0f, -100.0f);
+		floor.m_vertices[1] = glm::vec3(0.0f, 0.0f, 100.0f);
+		floor.m_vertices[2] = glm::vec3(100.0f, 0.0f, -100.0f);
+		floor.m_centroid =
+			(floor.m_vertices[0] + floor.m_vertices[1] +
+				floor.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			floor.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
+			floor.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			floor.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
+			floor.m_colors[vertexIndex] = vertexIndex == 0u ?
+				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+		}
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(floor);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(1u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB floorBounds;
+		for (const glm::vec3& vertex : floor.m_vertices)
+		{
+			floorBounds.Extend(vertex);
+		}
+
+		Raytracing::PathTracer::TLASInstance floorInstance;
+		floorInstance.m_triangles = triangles;
+		floorInstance.m_blas = blas;
+		floorInstance.m_worldBounds = floorBounds;
+		floorInstance.m_worldMatrix = glm::mat4(1.0f);
+		floorInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		floorInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(floorInstance));
+
+		Raytracing::LightProxy pointLight;
+		pointLight.m_type = ELightType::Point;
+		pointLight.m_worldPosition = glm::vec3(12.0f, 5.0f, 0.0f);
+		pointLight.m_intensity = glm::vec3(7.0f, 5.0f, 3.0f);
+		pointLight.m_attenuation = glm::vec3(1.0f, 0.5f, 0.25f);
+		pointLight.m_bounds = glm::vec3(10.0f);
+		TVector<Raytracing::LightProxy> lights;
+		lights.Add(pointLight);
+
+		Raytracing::PathTracer pathTracer;
+		Require(pathTracer.InitializeScene(
+				instances,
+				materials,
+				lights,
+				false),
+			"the Point Light ray-intersection fixture must initialize");
+		Require(pathTracer.ArePreparedMaterialsFullyResolved(),
+			"the Point Light ray-intersection fixture must resolve its material");
+
+		Raytracing::PathTracer::Params params{};
+		params.m_numSamples = 1u;
+		params.m_numAmbientSamples = 1u;
+		params.m_maxBounces = 0u;
+		params.m_msaa = 1u;
+		params.m_ambient = glm::vec3(0.0f);
+		params.m_bIncludeDirectLighting = true;
+		params.m_bIncludeEnvironment = false;
+		params.m_bIncludeEmissive = false;
+		params.m_bIncludePointLightRayIntersections = true;
+
+		const auto sampleRay = [&](float perpendicularDistance,
+			float maxDistance,
+			uint32_t randomSeed)
+		{
+			Raytracing::PathTracer::PreparedRaySample sample;
+			Require(pathTracer.SamplePreparedSceneRay(
+					glm::vec3(-8.0f, 5.0f + perpendicularDistance, 0.0f),
+					glm::vec3(1.0f, 0.0f, 0.0f),
+					maxDistance,
+					params,
+					randomSeed,
+					sample),
+				"the CPU baker must accept a Point Light range test ray");
+			Require(!sample.m_bHit,
+				"the Point Light range test ray must not hit geometry");
+			return sample.m_radiance;
+		};
+
+		const auto expectedAttenuation = [&](float distance)
+		{
+			const float normalizedDistance = glm::clamp(
+				distance / pointLight.m_bounds.x,
+				0.0f,
+				1.0f);
+			const float edgeProgress = glm::clamp(
+				(normalizedDistance - 0.9f) / 0.1f,
+				0.0f,
+				1.0f);
+			const float rangeWindow = 1.0f -
+				edgeProgress * edgeProgress *
+					(3.0f - 2.0f * edgeProgress);
+			return rangeWindow / std::max(
+				pointLight.m_attenuation.x +
+					pointLight.m_attenuation.y * distance +
+					pointLight.m_attenuation.z * distance * distance,
+				0.00001f);
+		};
+
+		const glm::vec3 innerRadiance = sampleRay(1.0f, 40.0f, 11u);
+		const glm::vec3 expectedInner =
+			pointLight.m_intensity * expectedAttenuation(1.0f);
+		Require(glm::length(innerRadiance - expectedInner) <= 0.0001f,
+			"a ray crossing a Point Light range must use the realtime shader attenuation");
+
+		const glm::vec3 edgeRadiance = sampleRay(9.5f, 40.0f, 12u);
+		const glm::vec3 expectedEdge =
+			pointLight.m_intensity * expectedAttenuation(9.5f);
+		Require(glm::length(edgeRadiance - expectedEdge) <= 0.0001f,
+			"the CPU baker must match the shader's smooth 90-100 percent range window");
+		Require(glm::length(sampleRay(10.0f, 40.0f, 13u)) <= 0.000001f,
+			"Point Light radiance must reach zero at the authored radius");
+		Require(glm::length(sampleRay(1.0f, 5.0f, 14u)) <= 0.000001f,
+			"a Point Light behind the visible ray segment must not leak into the bake");
+		Require(glm::length(sampleRay(-6.0f, 40.0f, 15u)) <= 0.000001f,
+			"geometry between a ray intersection and the Point Light must cast a bake shadow");
+
+		Raytracing::PathTracer::PreparedRaySample awaySample;
+		Require(pathTracer.SamplePreparedSceneRay(
+				glm::vec3(11.0f, 5.0f, 0.0f),
+				glm::vec3(-1.0f, 0.0f, 0.0f),
+				40.0f,
+				params,
+				16u,
+				awaySample),
+			"the CPU baker must accept a ray starting inside the Point Light range");
+		Require(!awaySample.m_bHit &&
+			glm::length(awaySample.m_radiance) <= 0.000001f,
+			"a ray pointing away from a Point Light must not create isotropic bake radiance");
+
+		Raytracing::PathTracer::Params disabledParams = params;
+		disabledParams.m_maxBounces = 1u;
+		disabledParams.m_bIncludePointLightRayIntersections = false;
+		Raytracing::PathTracer::Params enabledParams = disabledParams;
+		enabledParams.m_bIncludePointLightRayIntersections = true;
+		float strongestSecondaryContribution = 0.0f;
+		float strongestDisabledContribution = 0.0f;
+		for (uint32_t seed = 1u; seed <= 256u; ++seed)
+		{
+			Raytracing::PathTracer::PreparedRaySample disabledSample;
+			Raytracing::PathTracer::PreparedRaySample enabledSample;
+			Require(pathTracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 5.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					10.0f,
+					disabledParams,
+					seed,
+					disabledSample) &&
+				pathTracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 5.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					10.0f,
+					enabledParams,
+					seed,
+					enabledSample),
+				"the secondary Point Light fixture must sample the floor");
+			Require(disabledSample.m_bHit && enabledSample.m_bHit,
+				"the secondary Point Light fixture must start at the floor");
+			strongestDisabledContribution = std::max(
+				strongestDisabledContribution,
+				glm::length(disabledSample.m_radiance));
+			strongestSecondaryContribution = std::max(
+				strongestSecondaryContribution,
+				glm::length(enabledSample.m_radiance));
+		}
+		Require(strongestDisabledContribution <= 0.000001f,
+			"the fixture must not receive direct or environment lighting");
+		Require(strongestSecondaryContribution > 0.01f,
+			"a secondary CPU bake ray crossing a Point Light range must carry its radiance");
+	}
 }
 
 int main(int argc, char** argv)
@@ -1828,6 +2016,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"PointLightModeChangesBakedRadiance",
 			TestPointLightModeChangesBakedRadiance);
+		RunTest(
+			"PointLightRayIntersectionsMatchRealtimeAttenuation",
+			TestPointLightRayIntersectionsMatchRealtimeAttenuation);
 	}
 	catch (const std::exception& exception)
 	{

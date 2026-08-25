@@ -40,6 +40,7 @@ bool ProbeVolumePathTracer::Initialize(
 	m_params.m_bIncludeDirectLighting = settings.m_bIncludeDirectLighting;
 	m_params.m_bIncludeEnvironment = settings.m_bIncludeSky;
 	m_params.m_bIncludeEmissive = settings.m_bIncludeEmissive;
+	m_params.m_bIncludePointLightRayIntersections = true;
 	const bool bHasGeometry = m_pathTracer.InitializeScene(
 		instances,
 		materials,
