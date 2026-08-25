@@ -883,6 +883,7 @@ namespace
 		result.m_profileIndex = profileIndex;
 		result.m_instanceCount = instanceCount;
 		result.m_revision = revision;
+		result.m_residency = profile.m_residency;
 		result.m_mobility = mobility;
 		return EVegetationProxyBuildResult::Success;
 	}
@@ -1708,6 +1709,26 @@ void LandscapeECS::BeginPlay()
 	PublishSceneVersion();
 }
 
+void LandscapeECS::MarkDirty(GameObjectPtr owner)
+{
+	if (!owner)
+	{
+		return;
+	}
+
+	for (const auto& component : owner->GetComponents())
+	{
+		if (auto landscape = component.DynamicCast<LandscapeComponent>())
+		{
+			const size_t componentIndex = landscape->GetComponentIndex();
+			if (IsComponentRegistered(componentIndex))
+			{
+				m_components[componentIndex].RequestFullRebuild();
+			}
+		}
+	}
+}
+
 void LandscapeECS::OnComponentUnregistered(size_t, LandscapeData& component)
 {
 	DestroyPhysicsBodies(component);
@@ -1958,6 +1979,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 		size_t vegetationProfilesWithoutRenderData = 0u;
 		bool bVegetationResourcesPending = false;
 		const glm::mat4 ownerMatrix = owner->GetTransformComponent().GetCachedWorldMatrix();
+		const EMobilityType ownerMobility = owner->GetMobilityType();
 		const Math::Transform ownerTransform = Math::Transform::FromMatrix(ownerMatrix);
 		auto* physics = GetWorld()->GetECS<PhysicsECS>();
 		for (size_t taskIndex = 0u; taskIndex < tasks.Num(); ++taskIndex)
@@ -2067,6 +2089,9 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 
 			RHI::RHISceneViewProxy proxy;
 			proxy.m_staticMeshEcs = LandscapeProxyId(componentIndex, chunkIndex);
+			proxy.m_mobility = ResolveLandscapeProxyMobility(
+				ownerMobility,
+				ELandscapeVegetationResidency::Persistent);
 			proxy.m_worldMatrix = ownerMatrix;
 			proxy.m_worldAabb = cpu.m_localBounds;
 			proxy.m_worldAabb.Apply(ownerMatrix);
@@ -2087,6 +2112,7 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 			AppendDepthMaterialMetadata(proxy, data.m_runtimeMaterial);
 			auto shadowCaster = RHI::RHIShadowCasterProxyPtr::Make();
 			shadowCaster->m_staticMeshEcs = proxy.m_staticMeshEcs;
+			shadowCaster->m_mobility = proxy.m_mobility;
 			shadowCaster->m_lodPolicy = proxy.m_lodPolicy;
 			shadowCaster->m_skeletonOffset = (std::numeric_limits<uint32_t>::max)();
 			shadowCaster->m_frame = proxy.m_frame;
@@ -2142,7 +2168,9 @@ Tasks::ITaskPtr LandscapeECS::Tick(float)
 					ownerMatrix,
 					proxy.m_frame,
 					std::move(instances),
-					EMobilityType::Static,
+					ResolveLandscapeProxyMobility(
+						ownerMobility,
+						profile.m_residency),
 					data.m_buildRevision + 1u,
 					vegetationRenderProxy);
 				if (buildResult == EVegetationProxyBuildResult::Pending)
@@ -2208,7 +2236,7 @@ bool LandscapeECS::UpdateGrassResidency(
 		{
 			for (const auto& proxy : chunk.m_vegetationProxies)
 			{
-				if (proxy.m_mobility == EMobilityType::Dynamic &&
+				if (IsLandscapeGrassProxy(proxy) &&
 					proxy.m_profileIndex == profileIndex)
 				{
 					return &proxy;
@@ -2298,7 +2326,7 @@ bool LandscapeECS::UpdateGrassResidency(
 			bool bChunkResident = false;
 			for (const auto& proxy : chunk.m_vegetationProxies)
 			{
-				bChunkResident |= proxy.m_mobility == EMobilityType::Dynamic;
+				bChunkResident |= IsLandscapeGrassProxy(proxy);
 			}
 			const Math::AABB& worldBounds = chunk.m_resource->m_proxy.m_worldAabb;
 			bool bOverlapsCameraFrustum = false;
@@ -2654,7 +2682,7 @@ bool LandscapeECS::UpdateGrassResidency(
 			nextProxies.Reserve(chunk.m_vegetationProxies.Num());
 			for (const auto& proxy : chunk.m_vegetationProxies)
 			{
-				if (proxy.m_mobility != EMobilityType::Dynamic)
+				if (!IsLandscapeGrassProxy(proxy))
 				{
 					nextProxies.Add(proxy);
 				}
@@ -2729,7 +2757,9 @@ bool LandscapeECS::UpdateGrassResidency(
 					ownerMatrix,
 					frame,
 					std::move(instances),
-					EMobilityType::Dynamic,
+					ResolveLandscapeProxyMobility(
+						owner->GetMobilityType(),
+						profile.m_residency),
 					revision,
 					streamedProxy);
 				if (buildResult != EVegetationProxyBuildResult::Success)
@@ -2788,30 +2818,44 @@ void LandscapeECS::PublishSceneVersion()
 	version->m_scene = m_rhiScene;
 	TSet<size_t> activeProducerKeys;
 	size_t staticSpatialHash = 1469598103934665603ull;
+	size_t stationarySpatialHash = 1099511628211ull;
 	size_t dynamicSpatialHash = 1099511628211ull;
 	bool bHasStaticSpatialEntries = false;
+	bool bHasStationarySpatialEntries = false;
 	bool bHasDynamicSpatialEntries = false;
 	auto hashSpatialEntry = [&staticSpatialHash,
+		&stationarySpatialHash,
 		&dynamicSpatialHash,
 		&bHasStaticSpatialEntries,
+		&bHasStationarySpatialEntries,
 		&bHasDynamicSpatialEntries](
 		const RHI::RenderInstanceHandle& handle,
 		const glm::ivec3& center,
 		const glm::ivec3& extents,
 		EMobilityType mobility)
 		{
-			if (mobility == EMobilityType::Dynamic)
+			size_t* spatialHash = nullptr;
+			switch (mobility)
 			{
-				bHasDynamicSpatialEntries = true;
-			}
-			else
-			{
+			case EMobilityType::Static:
 				bHasStaticSpatialEntries = true;
+				spatialHash = &staticSpatialHash;
+				break;
+			case EMobilityType::Stationary:
+				bHasStationarySpatialEntries = true;
+				spatialHash = &stationarySpatialHash;
+				break;
+			case EMobilityType::Dynamic:
+				bHasDynamicSpatialEntries = true;
+				spatialHash = &dynamicSpatialHash;
+				break;
 			}
-			size_t& spatialHash = mobility == EMobilityType::Dynamic ?
-				dynamicSpatialHash : staticSpatialHash;
+			if (!spatialHash)
+			{
+				return;
+			}
 			HashCombine(
-				spatialHash,
+				*spatialHash,
 				handle.m_slot,
 				handle.m_generation,
 				center.x,
@@ -2841,7 +2885,12 @@ void LandscapeECS::PublishSceneVersion()
 				m_publishedBuildRevisions.Find(producerKey, publishedRevision) &&
 				publishedRevision && *publishedRevision == buildRevision)
 			{
-				return *handle;
+				RHI::RHISceneInstanceRecord currentRecord;
+				if (m_rhiScene->ResolveCurrent(*handle, currentRecord) &&
+					currentRecord.m_mobility == mobility)
+				{
+					return *handle;
+				}
 			}
 
 			RHI::RHISceneInstanceRecord record;
@@ -2864,7 +2913,8 @@ void LandscapeECS::PublishSceneVersion()
 					RHI::ToMask(RHI::ESceneChangeBit::ReplaceChunkRange) |
 					RHI::ToMask(RHI::ESceneChangeBit::MeshOrLodTopology) |
 					RHI::ToMask(RHI::ESceneChangeBit::Material) |
-					RHI::ToMask(RHI::ESceneChangeBit::ShadowState));
+					RHI::ToMask(RHI::ESceneChangeBit::ShadowState) |
+					RHI::ToMask(RHI::ESceneChangeBit::Mobility));
 			}
 			else
 			{
@@ -2885,17 +2935,19 @@ void LandscapeECS::PublishSceneVersion()
 		const auto& data = m_components[componentIndex];
 		for (const auto& chunk : data.m_chunks)
 		{
+			const EMobilityType chunkMobility = chunk.m_resource ?
+				chunk.m_resource->m_proxy.m_mobility : EMobilityType::Dynamic;
 			const auto chunkHandle = publishProxy(
 				chunk.m_resource,
 				chunk.m_buildRevision,
-				EMobilityType::Static);
+				chunkMobility);
 			if (chunkHandle.IsValid())
 			{
 				hashSpatialEntry(
 					chunkHandle,
 					chunk.m_octreeCenter,
 					chunk.m_octreeExtents,
-					EMobilityType::Static);
+					chunkMobility);
 			}
 			for (const auto& vegetation : chunk.m_vegetationProxies)
 			{
@@ -2940,9 +2992,12 @@ void LandscapeECS::PublishSceneVersion()
 
 		const bool bStaticSpatialChanged = !m_publishedSceneVersion ||
 			m_staticSpatialHash != staticSpatialHash;
+		const bool bStationarySpatialChanged = !m_publishedSceneVersion ||
+			m_stationarySpatialHash != stationarySpatialHash;
 		const bool bDynamicSpatialChanged = !m_publishedSceneVersion ||
 			m_dynamicSpatialHash != dynamicSpatialHash;
-		if (bStaticSpatialChanged || bDynamicSpatialChanged)
+		if (bStaticSpatialChanged || bStationarySpatialChanged ||
+			bDynamicSpatialChanged)
 		{
 			++m_spatialRevision;
 		}
@@ -2986,7 +3041,8 @@ void LandscapeECS::PublishSceneVersion()
 					}
 					for (const auto& chunk : m_components[componentIndex].m_chunks)
 					{
-						if (mobility == EMobilityType::Static)
+						if (chunk.m_resource &&
+							chunk.m_resource->m_proxy.m_mobility == mobility)
 						{
 							appendSpatialEntry(
 								chunk.m_resource,
@@ -3018,6 +3074,18 @@ void LandscapeECS::PublishSceneVersion()
 		{
 			version->m_staticOctree = m_publishedSceneVersion->m_staticOctree;
 		}
+		if (bStationarySpatialChanged)
+		{
+			rebuildSpatialTree(
+				EMobilityType::Stationary,
+				bHasStationarySpatialEntries,
+				version->m_stationaryOctree);
+		}
+		else
+		{
+			version->m_stationaryOctree =
+				m_publishedSceneVersion->m_stationaryOctree;
+		}
 		if (bDynamicSpatialChanged)
 		{
 			rebuildSpatialTree(
@@ -3030,6 +3098,7 @@ void LandscapeECS::PublishSceneVersion()
 			version->m_dynamicOctree = m_publishedSceneVersion->m_dynamicOctree;
 		}
 		m_staticSpatialHash = staticSpatialHash;
+		m_stationarySpatialHash = stationarySpatialHash;
 		m_dynamicSpatialHash = dynamicSpatialHash;
 		version->m_sceneVersion = m_rhiScene->PublishVersion(
 			Material::GetGlobalContentRevision(),
@@ -3197,6 +3266,7 @@ void LandscapeECS::EndPlay()
 	m_sceneVersionRevision = 0u;
 	m_spatialRevision = 0u;
 	m_staticSpatialHash = 0u;
+	m_stationarySpatialHash = 0u;
 	m_dynamicSpatialHash = 0u;
 	m_publishedSceneVersion.Clear();
 	m_rhiScene.Clear();

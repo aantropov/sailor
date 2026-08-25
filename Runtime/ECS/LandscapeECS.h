@@ -25,6 +25,14 @@ namespace Sailor
 		Grass
 	};
 
+	constexpr EMobilityType ResolveLandscapeProxyMobility(
+		EMobilityType ownerMobility,
+		ELandscapeVegetationResidency residency) noexcept
+	{
+		return residency == ELandscapeVegetationResidency::Grass ?
+			EMobilityType::Dynamic : ownerMobility;
+	}
+
 	struct LandscapeVegetationProfile final
 	{
 		FileId m_modelFileId{};
@@ -62,8 +70,16 @@ namespace Sailor
 		uint32_t m_instanceCount = 0u;
 		uint64_t m_revision = 0u;
 		uint64_t m_viewRevision = 0u;
+		ELandscapeVegetationResidency m_residency =
+			ELandscapeVegetationResidency::Persistent;
 		EMobilityType m_mobility = EMobilityType::Static;
 	};
+
+	constexpr bool IsLandscapeGrassProxy(
+		const LandscapeVegetationRenderProxy& proxy) noexcept
+	{
+		return proxy.m_residency == ELandscapeVegetationResidency::Grass;
+	}
 
 	struct LandscapeVegetationRenderInstances final
 	{
@@ -197,6 +213,7 @@ namespace Sailor
 		SAILOR_API virtual void BeginPlay() override;
 		SAILOR_API virtual Tasks::ITaskPtr Tick(float deltaTime) override;
 		SAILOR_API virtual void EndPlay() override;
+		SAILOR_API void MarkDirty(GameObjectPtr owner);
 		SAILOR_API void AppendSceneView(RHI::RHISceneViewPtr& sceneView) const;
 		SAILOR_API bool CollectBakeGeometrySnapshots(
 			TVector<LandscapeBakeGeometrySnapshot>& outSnapshots,
@@ -227,6 +244,7 @@ namespace Sailor
 		uint64_t m_sceneVersionRevision = 0u;
 		uint64_t m_spatialRevision = 0u;
 		size_t m_staticSpatialHash = 0u;
+		size_t m_stationarySpatialHash = 0u;
 		size_t m_dynamicSpatialHash = 0u;
 		RHI::RHISpatialSceneVersionPtr m_publishedSceneVersion{};
 		RHI::RHIScenePtr m_rhiScene{};
