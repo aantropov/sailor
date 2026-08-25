@@ -662,6 +662,14 @@ bool WorldPrefab::BuildLinkedOverrides(
 			gameObjectOverride["name"] = expandedGameObject->m_name;
 		}
 
+		if (expandedGameObject->m_mobilityType !=
+			sourceGameObject.m_mobilityType)
+		{
+			gameObjectOverride["mobilityType"] =
+				SerializeEnum<EMobilityType>(
+					expandedGameObject->m_mobilityType);
+		}
+
 		if (!Utils::AreYamlNodesEqual(
 				YAML::Node(expandedGameObject->m_position),
 				YAML::Node(sourceGameObject.m_position)))
@@ -901,6 +909,27 @@ bool WorldPrefab::BuildUpdatedLinkedOverrides(
 			{
 				gameObjectOverride["name"] =
 					YAML::Clone(priorGameObjectOverride["name"]);
+			}
+
+			const bool bMobilityChangedFromBaseline =
+				baselineGameObject &&
+				expandedGameObject->m_mobilityType !=
+					baselineGameObject->m_mobilityType;
+			if (bMobilityChangedFromBaseline)
+			{
+				if (expandedGameObject->m_mobilityType !=
+					sourceGameObject.m_mobilityType)
+				{
+					gameObjectOverride["mobilityType"] =
+						SerializeEnum<EMobilityType>(
+							expandedGameObject->m_mobilityType);
+				}
+			}
+			else if (priorGameObjectOverride["mobilityType"])
+			{
+				gameObjectOverride["mobilityType"] =
+					YAML::Clone(
+						priorGameObjectOverride["mobilityType"]);
 			}
 
 			auto mergeTransformOverride = [
@@ -1515,6 +1544,8 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 				nextEffectiveBaseline->m_gameObjects[
 					sourceGameObjectIndex];
 			baselineGameObject.m_name = liveGameObject->m_name;
+			baselineGameObject.m_mobilityType =
+				liveGameObject->m_mobilityType;
 			baselineGameObject.m_position =
 				liveGameObject->m_position;
 			baselineGameObject.m_rotation =

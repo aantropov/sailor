@@ -698,6 +698,7 @@ YAML::Node Reflection::ExportEngineTypes()
 	nodes.Clear();
 	nodes.Add(ReflectEnumValues<EMobilityType>());
 	nodes.Add(ReflectEnumValues<ELightType>());
+	nodes.Add(ReflectEnumValues<ELightGlobalIlluminationMode>());
 	nodes.Add(ReflectEnumValues<ELightShadowQuality>());
 	nodes.Add(ReflectEnumValues<ELightShadowFilter>());
 	nodes.Add(ReflectEnumValues<EAnimationPlayMode>());

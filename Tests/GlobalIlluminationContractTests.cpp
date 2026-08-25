@@ -1577,7 +1577,7 @@ components:
 			"the bake path tracer must normalize vertex layer weights and sample landscape layers");
 	}
 
-	void TestMobilityContributionPolicy()
+	void TestMobilityAndLightModeContributionPolicy()
 	{
 		Require(
 			IsGlobalIlluminationBakeContributor(EMobilityType::Static) &&
@@ -1586,26 +1586,81 @@ components:
 		Require(
 			!IsGlobalIlluminationBakeContributor(EMobilityType::Dynamic),
 			"dynamic scene objects must not contribute bake geometry or lights");
+		Require(
+			ContributesToRealtimeLighting(
+				ELightGlobalIlluminationMode::Realtime) &&
+			!ContributesToBakedGlobalIllumination(
+				ELightGlobalIlluminationMode::Realtime) &&
+			ContributesToRealtimeLighting(
+				ELightGlobalIlluminationMode::RealtimeAndBaked) &&
+			ContributesToBakedGlobalIllumination(
+				ELightGlobalIlluminationMode::RealtimeAndBaked) &&
+			!ContributesToRealtimeLighting(
+				ELightGlobalIlluminationMode::BakedOnly) &&
+			ContributesToBakedGlobalIllumination(
+				ELightGlobalIlluminationMode::BakedOnly),
+			"per-light GI modes must map to the expected realtime and baked paths");
+
+		const auto& properties =
+			LightComponent::GetStaticTypeInfo().Properties();
+		Require(
+			properties.ContainsKey("globalIlluminationMode") &&
+			properties["globalIlluminationMode"] ==
+				"enum Sailor::ELightGlobalIlluminationMode",
+			"the light GI mode must be exported as an Editor-compatible enum");
 
 		GlobalIlluminationMobilityTestWorld world;
 		const auto addLight = [&world](
 			const char* name,
 			EMobilityType mobility,
-			float intensity)
+			float intensity,
+			ELightGlobalIlluminationMode mode)
 		{
 			GameObjectPtr gameObject = world.Instantiate(name);
 			gameObject->SetMobilityType(mobility);
 			auto light = gameObject->AddComponent<LightComponent>();
+			Require(
+				light->GetGlobalIlluminationMode() ==
+					ELightGlobalIlluminationMode::RealtimeAndBaked,
+				"new lights must preserve the legacy realtime plus baked behavior");
 			light->SetIntensity(glm::vec3(intensity));
+			light->SetGlobalIlluminationMode(mode);
+			return light;
 		};
-		addLight("StaticLight", EMobilityType::Static, 1.0f);
-		addLight("StationaryLight", EMobilityType::Stationary, 2.0f);
-		addLight("DynamicLight", EMobilityType::Dynamic, 3.0f);
+		auto realtimeLight = addLight(
+			"RealtimeLight",
+			EMobilityType::Stationary,
+			1.0f,
+			ELightGlobalIlluminationMode::Realtime);
+		addLight(
+			"RealtimeAndBakedLight",
+			EMobilityType::Stationary,
+			2.0f,
+			ELightGlobalIlluminationMode::RealtimeAndBaked);
+		addLight(
+			"BakedOnlyLight",
+			EMobilityType::Stationary,
+			3.0f,
+			ELightGlobalIlluminationMode::BakedOnly);
+		addLight(
+			"DynamicRealtimeAndBakedLight",
+			EMobilityType::Dynamic,
+			4.0f,
+			ELightGlobalIlluminationMode::RealtimeAndBaked);
+
+		const ReflectedData reflectedRealtimeLight =
+			realtimeLight->GetReflectedData();
+		Require(
+			reflectedRealtimeLight.GetProperties().ContainsKey(
+				"globalIlluminationMode") &&
+			reflectedRealtimeLight.GetProperties()[
+				"globalIlluminationMode"].as<std::string>() == "Realtime",
+			"the selected per-light GI mode must serialize into the world override");
 
 		LightingECS* lighting = world.GetECS<LightingECS>();
-		TVector<Raytracing::LightProxy> allLights;
+		TVector<Raytracing::LightProxy> realtimeLights;
 		TVector<Raytracing::LightProxy> bakeLights;
-		lighting->GetLightProxies(allLights);
+		lighting->GetLightProxies(realtimeLights);
 		lighting->GetGlobalIlluminationBakeLightProxies(bakeLights);
 		const auto containsIntensity = [](const auto& lights, float intensity)
 		{
@@ -1618,14 +1673,30 @@ components:
 				});
 		};
 		Require(
-			allLights.Num() == 3u && containsIntensity(allLights, 3.0f),
-			"the generic path-tracer light collection must retain dynamic lights");
+			realtimeLights.Num() == 3u &&
+				containsIntensity(realtimeLights, 1.0f) &&
+				containsIntensity(realtimeLights, 2.0f) &&
+				!containsIntensity(realtimeLights, 3.0f) &&
+				containsIntensity(realtimeLights, 4.0f),
+			"realtime lighting must exclude Baked Only while retaining dynamic realtime lights");
 		Require(
 			bakeLights.Num() == 2u &&
-				containsIntensity(bakeLights, 1.0f) &&
 				containsIntensity(bakeLights, 2.0f) &&
-				!containsIntensity(bakeLights, 3.0f),
-			"the GI bake light collection must include Static and Stationary lights and exclude Dynamic lights");
+				containsIntensity(bakeLights, 3.0f) &&
+				!containsIntensity(bakeLights, 1.0f) &&
+				!containsIntensity(bakeLights, 4.0f),
+			"GI bake lighting must honor per-light mode and still exclude Dynamic lights");
+
+		realtimeLight->SetGlobalIlluminationMode(
+			ELightGlobalIlluminationMode::BakedOnly);
+		lighting->GetLightProxies(realtimeLights);
+		lighting->GetGlobalIlluminationBakeLightProxies(bakeLights);
+		Require(
+			realtimeLights.Num() == 2u &&
+				!containsIntensity(realtimeLights, 1.0f) &&
+				bakeLights.Num() == 3u &&
+				containsIntensity(bakeLights, 1.0f),
+			"changing a light GI mode in the Editor must affect both paths immediately");
 		world.Clear();
 	}
 }
@@ -1664,7 +1735,9 @@ int main(int argc, char** argv)
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
 		RunTest("FloatTextureNormalizationAndLandscapeLayerSampling", TestFloatTextureNormalizationAndLandscapeLayerSampling);
-		RunTest("MobilityContributionPolicy", TestMobilityContributionPolicy);
+		RunTest(
+			"MobilityAndLightModeContributionPolicy",
+			TestMobilityAndLightModeContributionPolicy);
 	}
 	catch (const std::exception& exception)
 	{

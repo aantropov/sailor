@@ -32,6 +32,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <HorizontalStackLayout Grid.Row="0"
@@ -68,15 +69,21 @@
             <Entry Grid.Column="2" Text="{Binding Scale.Z, Converter={StaticResource FloatValueConverter}}" VerticalOptions="Center" HorizontalOptions="Fill" ReturnType="Done" Completed="OnEntryCompleted" Unfocused="OnEntryUnfocused" Keyboard="Numeric"/>
         </Grid>
 
+        <Label Text="Mobility" VerticalOptions="Center" Grid.Row="5" Grid.Column="0"/>
+        <Picker ItemsSource="{Binding MobilityTypes}" Grid.Row="5" Grid.Column="1">
+            <Picker.Behaviors>
+                <controls:EnumPickerBehavior Values="{Binding MobilityTypes}" Value="{Binding MobilityType, Mode=TwoWay}"/>
+            </Picker.Behaviors>
+        </Picker>
 
-        <Label Text="Components" FontAttributes="Bold" Grid.Row="5" Grid.ColumnSpan="2" />
+        <Label Text="Components" FontAttributes="Bold" Grid.Row="6" Grid.ColumnSpan="2" />
 
-        <HorizontalStackLayout Grid.Row="6" Grid.ColumnSpan="2">
+        <HorizontalStackLayout Grid.Row="7" Grid.ColumnSpan="2">
             <Button Text="Add Component"
                     Clicked="OnAddComponentClicked" />
         </HorizontalStackLayout>
 
-        <CollectionView Grid.Row="7" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
+        <CollectionView Grid.Row="8" Grid.ColumnSpan="2" ItemsSource="{Binding Components}" ItemTemplate="{StaticResource ComponentTemplateSelector}" />
 
     </Grid>
 </DataTemplate>

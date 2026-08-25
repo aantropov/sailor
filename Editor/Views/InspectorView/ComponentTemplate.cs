@@ -189,7 +189,12 @@ public partial class ComponentTemplate : DataTemplate
                         if (engineTypes.Enums.TryGetValue(enumProp.Typename, out var enumValues))
                         {
                             propertyEditor = Templates.EnumPicker(enumValues,
-                                (Component vm) => observableString.Value, (vm, value) => observableString.Value = value);
+                                (Component vm) => observableString.Value,
+                                (vm, value) => observableString.Value = value,
+                                value => InspectorPropertyPresentation.FormatEnumValue(
+                                    component.Typename.Name,
+                                    property.Key,
+                                    value));
                         }
                         else
                         {
@@ -266,7 +271,7 @@ public partial class ComponentTemplate : DataTemplate
 
                     Templates.AddGridRowWithLabel(
                         props,
-                        FormatInspectorPropertyName(
+                        InspectorPropertyPresentation.FormatPropertyName(
                             component.Typename.Name,
                             property.Key),
                         propertyEditor,
@@ -369,16 +374,6 @@ public partial class ComponentTemplate : DataTemplate
         return !string.IsNullOrWhiteSpace(typeName) && typeName.StartsWith(prefix, StringComparison.Ordinal)
             ? typeName[prefix.Length..]
             : typeName;
-    }
-
-    static string FormatInspectorPropertyName(
-        string componentTypeName,
-        string propertyName)
-    {
-        return componentTypeName == "Sailor::LightComponent" &&
-            propertyName == "indirectLightingIntensity"
-                ? "GI Intensity"
-                : propertyName;
     }
 
     static IEnumerable<KeyValuePair<string, ObservableObject>> EnumerateInspectorProperties(

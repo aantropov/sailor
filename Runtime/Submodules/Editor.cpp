@@ -620,7 +620,7 @@ bool Editor::UpdateObject(const InstanceId& instanceId, const std::string& strYa
 			reflected.Deserialize(inData);
 
 			go->SetName(reflected.m_name);
-			//go->SetMobilityType(reflected.m_mobilityType);
+			go->SetMobilityType(reflected.m_mobilityType);
 
 			auto& transform = go->GetTransformComponent();
 			transform.SetPosition(reflected.m_position);

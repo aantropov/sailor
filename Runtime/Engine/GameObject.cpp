@@ -32,15 +32,33 @@ TransformComponent& GameObject::GetTransformComponent()
 
 void GameObject::SetMobilityType(EMobilityType type)
 {
-	if (m_type == type)
+	if (!IsValidMobilityType(type))
 	{
 		return;
 	}
 
-	m_type = type;
-	if (m_self && m_pWorld)
+	if (m_parent &&
+		!IsMobilityHierarchyValid(m_parent->m_type, type))
 	{
-		m_pWorld->GetECS<StaticMeshRendererECS>()->MarkDirty(m_self);
+		type = m_parent->m_type;
+	}
+
+	if (m_type != type)
+	{
+		m_type = type;
+		if (m_self && m_pWorld)
+		{
+			m_pWorld->GetECS<StaticMeshRendererECS>()->MarkDirty(m_self);
+		}
+	}
+
+	for (auto& child : m_children)
+	{
+		if (child &&
+			!IsMobilityHierarchyValid(m_type, child->m_type))
+		{
+			child->SetMobilityType(m_type);
+		}
 	}
 }
 
@@ -96,6 +114,8 @@ void GameObject::SetParentInternal(
 	{
 		GetTransformComponent().SetNewParent(nullptr);
 	}
+
+	SetMobilityType(m_type);
 }
 
 bool GameObject::RemoveComponent(ComponentPtr component)

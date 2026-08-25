@@ -87,6 +87,18 @@ void LightComponent::SetIndirectLightingIntensity(float value)
 	}
 }
 
+void LightComponent::SetGlobalIlluminationMode(
+	ELightGlobalIlluminationMode value)
+{
+	LightData& lightData = GetData();
+
+	if (value != lightData.m_globalIlluminationMode)
+	{
+		lightData.m_globalIlluminationMode = value;
+		lightData.MarkDirty();
+	}
+}
+
 void LightComponent::SetAttenuation(const glm::vec3& value)
 {
 	LightData& lightData = GetData();

@@ -374,6 +374,8 @@ bool World::RegisterPrefabInstance(
 			}
 
 			baselineGameObject.m_name = liveGameObject->GetName();
+			baselineGameObject.m_mobilityType =
+				liveGameObject->GetMobilityType();
 			baselineGameObject.m_position =
 				liveGameObject->GetTransformComponent().GetPosition();
 			baselineGameObject.m_rotation =
@@ -1226,6 +1228,8 @@ GameObjectPtr World::Instantiate(
 
 		GameObjectPtr gameObject = NewGameObject(prefab->m_gameObjects[j].m_name, gameObjectId);
 		gameObjects.Add(gameObject);
+		gameObject->SetMobilityType(
+			prefab->m_gameObjects[j].m_mobilityType);
 
 		auto& transform = gameObject->GetTransformComponent();
 		transform.SetPosition(prefab->m_gameObjects[j].m_position);

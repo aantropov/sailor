@@ -144,12 +144,25 @@ public sealed class UpdateGameObjectCommand : IHistoryCoalescibleCommand
         string yaml,
         CancellationToken cancellationToken)
     {
-        if (!await MauiProgram.GetService<EngineService>()
+        var engine = MauiProgram.GetService<EngineService>();
+        if (!await engine
                 .CommitChangesAsync(
                     _instanceId,
                     yaml,
                     cancellationToken))
             return CommandResult.Failure();
+
+        var previousYaml = string.Equals(yaml, _afterYaml, StringComparison.Ordinal)
+            ? _beforeYaml
+            : _afterYaml;
+        if (GameObjectMobilityPolicy.HasMobilityChange(previousYaml, yaml))
+        {
+            return await engine.RefreshCurrentWorldAuthoritativelyAsync(
+                    cancellationToken)
+                ? CommandResult.Success()
+                : CommandResult.Failure(
+                    "Mobility changed in the engine, but the authoritative hierarchy refresh failed.");
+        }
 
         return MauiProgram.GetService<WorldService>().ApplyGameObjectYamlLocal(_instanceId, yaml)
             ? CommandResult.Success()

@@ -1251,6 +1251,117 @@ namespace
 		return fileId;
 	}
 
+	void TestGameObjectMobilityHierarchyAndPersistence()
+	{
+		PrefabTestWorld world;
+		auto parent = world.Instantiate("MobilityParent");
+		auto child = world.Instantiate("MobilityChild");
+		auto grandChild = world.Instantiate("MobilityGrandChild");
+
+		child->SetMobilityType(EMobilityType::Static);
+		child->SetParent(parent);
+		Require(child->GetMobilityType() == EMobilityType::Stationary,
+			"parenting must promote a less-movable child to the parent's mobility");
+
+		grandChild->SetMobilityType(EMobilityType::Static);
+		grandChild->SetParent(child);
+		Require(grandChild->GetMobilityType() == EMobilityType::Stationary,
+			"parenting must preserve the mobility invariant at every hierarchy level");
+
+		parent->SetMobilityType(EMobilityType::Dynamic);
+		Require(child->GetMobilityType() == EMobilityType::Dynamic &&
+			grandChild->GetMobilityType() == EMobilityType::Dynamic,
+			"making a parent more movable must promote its full descendant hierarchy");
+
+		child->SetMobilityType(EMobilityType::Static);
+		Require(child->GetMobilityType() == EMobilityType::Dynamic,
+			"a child cannot be made less movable than its parent");
+
+		child->SetParent(GameObjectPtr());
+		child->SetMobilityType(EMobilityType::Static);
+		Require(child->GetMobilityType() == EMobilityType::Static &&
+			grandChild->GetMobilityType() == EMobilityType::Dynamic,
+			"detached hierarchies may lower their root mobility without lowering more-movable descendants");
+		world.Clear();
+
+		auto persistedRoot = world.Instantiate("PersistedStaticRoot");
+		auto persistedChild = world.Instantiate("PersistedStationaryChild");
+		auto persistedGrandChild = world.Instantiate("PersistedDynamicGrandChild");
+		persistedRoot->SetMobilityType(EMobilityType::Static);
+		persistedChild->SetMobilityType(EMobilityType::Stationary);
+		persistedGrandChild->SetMobilityType(EMobilityType::Dynamic);
+		persistedChild->SetParent(persistedRoot);
+		persistedGrandChild->SetParent(persistedChild);
+
+		const InstanceId persistedRootId = persistedRoot->GetInstanceId();
+		PrefabPtr captured = PrefabDocumentTestAsset::Capture(
+			world,
+			persistedRoot);
+		const YAML::Node serialized = captured->Serialize();
+		Require(serialized["gameObjects"][0]["mobilityType"].as<std::string>() ==
+				"Static" &&
+			serialized["gameObjects"][1]["mobilityType"].as<std::string>() ==
+				"Stationary" &&
+			serialized["gameObjects"][2]["mobilityType"].as<std::string>() ==
+				"Dynamic",
+			"prefab serialization must preserve GameObject mobility for the full hierarchy");
+
+		world.DestroyImmediate(persistedRoot);
+		GameObjectPtr restoredRoot = world.Instantiate(
+			DeserializePrefab(world, serialized),
+			true);
+		Require(restoredRoot &&
+			restoredRoot->GetInstanceId() == persistedRootId &&
+			restoredRoot->GetMobilityType() == EMobilityType::Static &&
+			restoredRoot->GetChildren().Num() == 1 &&
+			restoredRoot->GetChildren()[0]->GetMobilityType() ==
+				EMobilityType::Stationary &&
+			restoredRoot->GetChildren()[0]->GetChildren().Num() == 1 &&
+			restoredRoot->GetChildren()[0]->GetChildren()[0]->GetMobilityType() ==
+				EMobilityType::Dynamic,
+			"prefab instantiation must restore GameObject mobility without component-owned state");
+
+		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
+		YAML::Node legacyNode = MakePrefabNode({ noParent, 0 });
+		legacyNode["gameObjects"][0].remove("mobilityType");
+		legacyNode["gameObjects"][1].remove("mobilityType");
+		PrefabPtr legacyPrefab = DeserializePrefab(world, legacyNode);
+		std::string diagnostic;
+		Require(legacyPrefab->ValidateForInstantiation(diagnostic),
+			"legacy prefab YAML without mobility must remain valid: " + diagnostic);
+		GameObjectPtr legacyRoot = world.Instantiate(legacyPrefab);
+		Require(legacyRoot &&
+			legacyRoot->GetMobilityType() == EMobilityType::Stationary &&
+			legacyRoot->GetChildren()[0]->GetMobilityType() ==
+				EMobilityType::Stationary,
+			"legacy prefab YAML must default every GameObject to Stationary");
+
+		YAML::Node invalidHierarchy = MakePrefabNode({ noParent, 0 });
+		invalidHierarchy["gameObjects"][0]["mobilityType"] = "Dynamic";
+		invalidHierarchy["gameObjects"][1]["mobilityType"] = "Static";
+		Prefab invalidPrefab{ FileId() };
+		invalidPrefab.Deserialize(invalidHierarchy);
+		Require(!invalidPrefab.ValidateForInstantiation(diagnostic) &&
+			diagnostic.find("less movable") != std::string::npos,
+			"serialized hierarchies with a less-movable child must be rejected before instantiation");
+
+		auto edited = world.Instantiate("EditorMobility");
+		edited->SetMobilityType(EMobilityType::Dynamic);
+		YAML::Node editedYaml = PrefabDocumentTestAsset::Capture(
+			world,
+			edited)->Serialize()["gameObjects"][0];
+		editedYaml["mobilityType"] = "Static";
+		Editor editor(nullptr, 0, nullptr);
+		editor.SetWorld(&world);
+		Require(editor.UpdateObject(
+				edited->GetInstanceId(),
+				YAML::Dump(editedYaml)) &&
+			edited->GetMobilityType() == EMobilityType::Static,
+			"the editor GameObject update path must apply authored mobility");
+
+		world.Clear();
+	}
+
 	void TestMeshRendererMaterialOverridesAreReflectedAndPersisted()
 	{
 		auto areOverridesEquivalent = [](const TVector<FileId>& lhs, const TVector<FileId>& rhs)
@@ -1482,6 +1593,7 @@ namespace
 		TMap<InstanceId, YAML::Node> gameObjectOverrides;
 		YAML::Node childOverride;
 		childOverride["name"] = "OverriddenChild";
+		childOverride["mobilityType"] = "Dynamic";
 		childOverride["position"] = glm::vec4(7.0f, 8.0f, 9.0f, 0.0f);
 		gameObjectOverrides[DeserializeInstanceId(sourceChildId)] =
 			childOverride;
@@ -1586,9 +1698,10 @@ namespace
 			child->GetInstanceId(),
 			"linked component identity should embed its mapped live owner");
 		Require(child->GetName() == "OverriddenChild" &&
+			child->GetMobilityType() == EMobilityType::Dynamic &&
 			child->GetTransformComponent().GetPosition() ==
 				glm::vec4(7.0f, 8.0f, 9.0f, 1.0f),
-			"linked instantiate should apply name and transform overrides");
+			"linked instantiate should apply name, mobility, and transform overrides");
 
 		const PrefabInstanceLink* registeredLink = nullptr;
 		Require(world.TryGetPrefabInstance(
@@ -1795,6 +1908,7 @@ namespace
 
 		YAML::Node evolvedSourceNode = YAML::Clone(sourceNode);
 		evolvedSourceNode["gameObjects"][0]["name"] = "SourceV2";
+		evolvedSourceNode["gameObjects"][0]["mobilityType"] = "Dynamic";
 		evolvedSourceNode["gameObjects"][0]["position"] =
 			glm::vec4(5.0f, 6.0f, 7.0f, 0.0f);
 		evolvedSourceNode["components"][0]["overrideProperties"]["m_value"] =
@@ -1838,6 +1952,7 @@ namespace
 
 		YAML::Node editedExpandedNode = YAML::Clone(expandedNode);
 		editedExpandedNode["gameObjects"][0]["name"] = "InstanceEdit";
+		editedExpandedNode["gameObjects"][0]["mobilityType"] = "Static";
 		editedExpandedNode["components"][0]["overrideProperties"]["m_value"] =
 			3.0f;
 		PrefabPtr editedExpanded =
@@ -1859,6 +1974,8 @@ namespace
 		Require(gameObjectOverrides.ContainsKey(sourceRoot) &&
 			gameObjectOverrides[sourceRoot]["name"].as<std::string>() ==
 				"InstanceEdit" &&
+			gameObjectOverrides[sourceRoot]["mobilityType"].as<std::string>() ==
+				"Static" &&
 			componentOverrides.ContainsKey(sourceComponent) &&
 			componentOverrides[sourceComponent].GetProperties()[
 				"m_value"].as<float>() == 3.0f,
@@ -1867,6 +1984,7 @@ namespace
 		TMap<InstanceId, YAML::Node> priorGameObjectOverrides;
 		YAML::Node priorGameObjectOverride;
 		priorGameObjectOverride["name"] = "PinnedName";
+		priorGameObjectOverride["mobilityType"] = "Static";
 		priorGameObjectOverrides[sourceRoot] =
 			priorGameObjectOverride;
 		TMap<InstanceId, ReflectedData> priorComponentOverrides;
@@ -1894,6 +2012,8 @@ namespace
 		YAML::Node overriddenExpandedNode = YAML::Clone(expandedNode);
 		overriddenExpandedNode["gameObjects"][0]["name"] =
 			"PinnedName";
+		overriddenExpandedNode["gameObjects"][0]["mobilityType"] =
+			"Static";
 		overriddenExpandedNode["components"][0]["overrideProperties"]["m_value"] =
 			2.0f;
 		PrefabPtr overriddenExpanded =
@@ -1911,6 +2031,8 @@ namespace
 		Require(gameObjectOverrides.ContainsKey(sourceRoot) &&
 			gameObjectOverrides[sourceRoot]["name"].as<std::string>() ==
 				"PinnedName" &&
+			gameObjectOverrides[sourceRoot]["mobilityType"].as<std::string>() ==
+				"Static" &&
 			componentOverrides.ContainsKey(sourceComponent) &&
 			componentOverrides[sourceComponent].GetProperties()[
 				"m_value"].as<float>() == 2.0f,
@@ -3598,6 +3720,7 @@ int main()
 		{ "LocalLightShadowContract", TestLocalLightShadowContract },
 		{ "CsmSnapshotInvalidatesWhenCascadeProjectionMoves", TestCsmSnapshotInvalidatesWhenCascadeProjectionMoves },
 		{ "CsmShadowTargetFormatTracksShadowMode", TestCsmShadowTargetFormatTracksShadowMode },
+		{ "GameObjectMobilityHierarchyAndPersistence", TestGameObjectMobilityHierarchyAndPersistence },
 		{ "MeshRendererMaterialOverridesAreReflectedAndPersisted", TestMeshRendererMaterialOverridesAreReflectedAndPersisted },
 		{ "AnimationGpuBoneLayoutContract", TestAnimationGpuBoneLayoutContract },
 		{ "AnimationRelayoutMarksEveryOwnedMeshDirty", TestAnimationRelayoutMarksEveryOwnedMeshDirty },

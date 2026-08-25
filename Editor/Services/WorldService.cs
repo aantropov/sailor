@@ -1126,6 +1126,7 @@ namespace SailorEditor.Services
             {
                 Name = gameObject.Name,
                 InstanceId = new InstanceId(gameObject.InstanceId.Value),
+                MobilityType = gameObject.MobilityType,
                 ParentIndex = gameObject.ParentIndex,
                 Position = new Vec4(gameObject.Position),
                 Rotation = new Rotation(gameObject.Rotation),

@@ -30,6 +30,21 @@ namespace Sailor
 		Dynamic = 2
 	};
 
+	constexpr bool IsValidMobilityType(EMobilityType mobility) noexcept
+	{
+		return mobility == EMobilityType::Static ||
+			mobility == EMobilityType::Stationary ||
+			mobility == EMobilityType::Dynamic;
+	}
+
+	constexpr bool IsMobilityHierarchyValid(
+		EMobilityType parentMobility,
+		EMobilityType childMobility) noexcept
+	{
+		return static_cast<uint8_t>(childMobility) >=
+			static_cast<uint8_t>(parentMobility);
+	}
+
 	enum class ELightType : uint8_t
 	{
 		Directional = 0,
@@ -37,6 +52,27 @@ namespace Sailor
 		Spot,
 		Area
 	};
+
+	enum class ELightGlobalIlluminationMode : uint8_t
+	{
+		Realtime = 0,
+		RealtimeAndBaked,
+		BakedOnly
+	};
+
+	constexpr bool ContributesToRealtimeLighting(
+		ELightGlobalIlluminationMode mode) noexcept
+	{
+		return mode == ELightGlobalIlluminationMode::Realtime ||
+			mode == ELightGlobalIlluminationMode::RealtimeAndBaked;
+	}
+
+	constexpr bool ContributesToBakedGlobalIllumination(
+		ELightGlobalIlluminationMode mode) noexcept
+	{
+		return mode == ELightGlobalIlluminationMode::RealtimeAndBaked ||
+			mode == ELightGlobalIlluminationMode::BakedOnly;
+	}
 
 	enum class ELightShadowQuality : uint8_t
 	{
