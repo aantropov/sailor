@@ -91,9 +91,6 @@ namespace Sailor::Raytracing
 			bool m_bIncludeDirectLighting = true;
 			bool m_bIncludeEnvironment = true;
 			bool m_bIncludeEmissive = true;
-			// Probe baking can treat the authored Point Light range as a virtual
-			// ray target because analytic point lights have no geometry to hit.
-			bool m_bIncludePointLightRayIntersections = false;
 		};
 
 		struct PreparedRaySample final
@@ -105,7 +102,7 @@ namespace Sailor::Raytracing
 
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
 
-		bool InitializeScene(const TVector<TLASInstance>& instances,
+		SAILOR_SHARED_API bool InitializeScene(const TVector<TLASInstance>& instances,
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lightProxies,
 			bool bAddDefaultLightIfEmpty = true,
@@ -115,7 +112,7 @@ namespace Sailor::Raytracing
 		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
 		bool RenderPreparedScene(const Params& params);
-		bool SamplePreparedSceneRay(
+		SAILOR_SHARED_API bool SamplePreparedSceneRay(
 			const vec3& origin,
 			const vec3& direction,
 			float maxDistance,
@@ -169,11 +166,6 @@ namespace Sailor::Raytracing
 		bool IsThickVolumeAtHit(
 			const TLASHit& hit,
 			uint32_t materialIndex) const;
-		vec3 EvaluatePointLightRayIntersections(
-			const Math::Ray& ray,
-			float maxRayDistance,
-			uint32_t ignoreInstance,
-			uint32_t ignoreTriangle) const;
 
 		vec3 TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor,
 			uint32_t ignoreInstance, uint32_t ignoreTriangle) const;

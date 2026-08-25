@@ -339,69 +339,6 @@ namespace
 		return attenuation * rangeWindow;
 	}
 
-	bool EvaluatePointLightRayIntersection(
-		const LightProxy& light,
-		const Math::Ray& ray,
-		float maxRayDistance,
-		glm::vec3& outClosestPoint,
-		glm::vec3& outRadiance)
-	{
-		outClosestPoint = ray.GetOrigin();
-		outRadiance = glm::vec3(0.0f);
-		if (light.m_type != ELightType::Point ||
-			light.m_bounds.x <= 0.0f ||
-			maxRayDistance <= 0.0f)
-		{
-			return false;
-		}
-
-		const glm::vec3 rayDirection = ray.GetDirection();
-		const float directionLengthSquared = glm::dot(
-			rayDirection,
-			rayDirection);
-		if (!std::isfinite(directionLengthSquared) ||
-			directionLengthSquared <= 0.0000001f)
-		{
-			return false;
-		}
-
-		// Point lights do not have renderable geometry. Use the closest point on
-		// the visible ray segment as the shader-equivalent world position when
-		// the segment crosses the authored light range.
-		const glm::vec3 originToLight =
-			light.m_worldPosition - ray.GetOrigin();
-		const float closestRayDistance =
-			glm::dot(originToLight, rayDirection) /
-				directionLengthSquared;
-		if (closestRayDistance < 0.0f ||
-			closestRayDistance > maxRayDistance)
-		{
-			return false;
-		}
-		outClosestPoint =
-			ray.GetOrigin() + rayDirection * closestRayDistance;
-		const float distanceToLight = glm::length(
-			light.m_worldPosition - outClosestPoint);
-		if (!std::isfinite(distanceToLight) ||
-			distanceToLight > light.m_bounds.x)
-		{
-			return false;
-		}
-
-		const float attenuation = CalculateLocalLightRangeAttenuation(
-			light,
-			distanceToLight);
-		if (!std::isfinite(attenuation) || attenuation <= 0.0f)
-		{
-			return false;
-		}
-
-		outRadiance = light.m_intensity * attenuation;
-		return std::isfinite(outRadiance.x) &&
-			std::isfinite(outRadiance.y) &&
-			std::isfinite(outRadiance.z);
-	}
-
 	bool EvaluateDirectLight(const LightProxy& light,
 		const glm::vec3& worldPoint,
 		glm::vec3& outDirectionToLight,
@@ -1484,25 +1421,13 @@ bool PathTracer::SamplePreparedSceneRay(
 			1.0f,
 			randomState);
 	}
-	else
+	else if (params.m_bIncludeEnvironment)
 	{
-		if (params.m_bIncludeDirectLighting &&
-			params.m_bIncludePointLightRayIntersections)
-		{
-			outSample.m_radiance += EvaluatePointLightRayIntersections(
-				ray,
-				maxDistance,
-				(uint32_t)-1,
-				(uint32_t)-1);
-		}
-		if (params.m_bIncludeEnvironment)
-		{
-			outSample.m_radiance += m_bHasRuntimeEnvironment ?
-				SampleRuntimeEnvironment(normalizedDirection) :
-				m_bHasRuntimeDiffuseEnvironment ?
-					SampleRuntimeDiffuseEnvironment(normalizedDirection) :
-					params.m_ambient;
-		}
+		outSample.m_radiance = m_bHasRuntimeEnvironment ?
+			SampleRuntimeEnvironment(normalizedDirection) :
+			m_bHasRuntimeDiffuseEnvironment ?
+				SampleRuntimeDiffuseEnvironment(normalizedDirection) :
+				params.m_ambient;
 	}
 	return true;
 }
@@ -2049,52 +1974,6 @@ bool PathTracer::IsThickVolumeAtHit(
 	return material.m_thicknessFactor > 0.0f;
 }
 
-vec3 PathTracer::EvaluatePointLightRayIntersections(
-	const Math::Ray& ray,
-	float maxRayDistance,
-	uint32_t ignoreInstance,
-	uint32_t ignoreTriangle) const
-{
-	vec3 radiance(0.0f);
-	for (const LightProxy& light : m_lightProxies)
-	{
-		vec3 closestPoint{};
-		vec3 lightRadiance{};
-		if (!EvaluatePointLightRayIntersection(
-				light,
-				ray,
-				maxRayDistance,
-				closestPoint,
-				lightRadiance))
-		{
-			continue;
-		}
-
-		const vec3 toLight = light.m_worldPosition - closestPoint;
-		const float distanceToLight = glm::length(toLight);
-		if (distanceToLight > 0.0001f)
-		{
-			const vec3 directionToLight = toLight / distanceToLight;
-			const Math::Ray visibilityRay(
-				closestPoint + directionToLight * 0.0001f,
-				directionToLight);
-			TLASHit occluder{};
-			if (IntersectScene(
-					visibilityRay,
-					occluder,
-					distanceToLight,
-					ignoreInstance,
-					ignoreTriangle))
-			{
-				continue;
-			}
-		}
-
-		radiance += lightRadiance;
-	}
-	return radiance;
-}
-
 vec3 PathTracer::TraceSky(vec3 startPoint, vec3 toLight, const PathTracer::Params& params, float currentIor, uint32_t ignoreInstance, uint32_t ignoreTriangle) const
 {
 	vec3 att = vec3(1, 1, 1);
@@ -2163,7 +2042,6 @@ vec3 PathTracer::Raytrace(
 	uint32_t randSeedY = NextRandomRange(randomState, 681u);
 
 	vec3 res = vec3(0);
-	vec3 segmentRadiance = vec3(0);
 	TLASHit hit{};
 	const bool bHitScene = IntersectScene(
 		ray,
@@ -2171,18 +2049,6 @@ vec3 PathTracer::Raytrace(
 		maxRayDistance,
 		ignoreInstance,
 		ignoreTriangle);
-	const float visibleRayDistance = bHitScene ?
-		hit.m_hit.m_rayLenght : maxRayDistance;
-	if (params.m_bIncludeDirectLighting &&
-		params.m_bIncludePointLightRayIntersections)
-	{
-		segmentRadiance = EvaluatePointLightRayIntersections(
-			ray,
-			visibleRayDistance,
-			ignoreInstance,
-			ignoreTriangle);
-	}
-
 	if (bHitScene)
 	{
 		const bool bIsFirstIntersection = bounceLimit == params.m_maxBounces;
@@ -2229,7 +2095,7 @@ vec3 PathTracer::Raytrace(
 
 			if (newDirection == vec3(0, 0, 0) || bounceLimit == 0)
 			{
-				return segmentRadiance;
+				return vec3(0.0f);
 			}
 
 			Ray rayToLight(OffsetRayOrigin(hit.m_hit.m_point, faceNormal, newDirection, params.m_rayBiasBase, params.m_rayBiasScale), newDirection);
@@ -2237,10 +2103,11 @@ vec3 PathTracer::Raytrace(
 			//const float angle = abs(glm::dot(newDirection, worldNormal));
 			//vec3 term = LightingModel::CalculateVolumetricBTDF(viewDirection, worldNormal, newDirection, sample, environmentIor) * angle;
 
-			return segmentRadiance + Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), params, inAcc, 1.0f, randomState);
+			return Raytrace(rayToLight, bounceLimit - 1, hit.m_instanceIndex, hit.m_triangleIndex, std::numeric_limits<float>::max(), params, inAcc, 1.0f, randomState);
 		}
 
-		// Direct lighting
+		// Analytic local-light range is a surface-lighting cutoff, not emissive
+		// geometry in otherwise empty space.
 		if (params.m_bIncludeDirectLighting)
 		{
 			for (uint32_t i = 0; i < m_lightProxies.Num(); i++)
@@ -2371,19 +2238,10 @@ vec3 PathTracer::Raytrace(
 				TLASHit hitLight{};
 				if (!IntersectScene(rayToLight, hitLight, std::numeric_limits<float>().max(), hit.m_instanceIndex, hit.m_triangleIndex))
 				{
-					vec3 env = bHasEnvironmentLighting ?
+					const vec3 env = bHasEnvironmentLighting ?
 						(m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(direction) :
 							(m_bHasRuntimeDiffuseEnvironment ? SampleRuntimeDiffuseEnvironment(direction) : params.m_ambient)) :
 						vec3(0.0f);
-					if (params.m_bIncludeDirectLighting &&
-						params.m_bIncludePointLightRayIntersections)
-					{
-						env += EvaluatePointLightRayIntersections(
-							rayToLight,
-							std::numeric_limits<float>::max(),
-							hit.m_instanceIndex,
-							hit.m_triangleIndex);
-					}
 					vec3 value = glm::clamp(term * env, vec3(0, 0, 0), vec3(10, 10, 10));
 
 					// Ambient lighting
@@ -2437,20 +2295,6 @@ vec3 PathTracer::Raytrace(
 						}
 					}
 				}
-				else if (params.m_bIncludeDirectLighting &&
-					params.m_bIncludePointLightRayIntersections)
-				{
-					const vec3 rayLight = EvaluatePointLightRayIntersections(
-						rayToLight,
-						hitLight.m_hit.m_rayLenght,
-						hit.m_instanceIndex,
-						hit.m_triangleIndex);
-					indirect += glm::clamp(
-						term * rayLight,
-						vec3(0, 0, 0),
-						vec3(10, 10, 10));
-				}
-
 				indirectContribution += 1.0f;
 			}
 
@@ -2497,15 +2341,15 @@ vec3 PathTracer::Raytrace(
 		if (params.m_bIncludeEnvironment &&
 			(m_bHasRuntimeEnvironment || m_bHasRuntimeDiffuseEnvironment))
 		{
-			res += m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(ray.GetDirection()) : SampleRuntimeDiffuseEnvironment(ray.GetDirection());
+			res = m_bHasRuntimeEnvironment ? SampleRuntimeEnvironment(ray.GetDirection()) : SampleRuntimeDiffuseEnvironment(ray.GetDirection());
 		}
 		else
 		{
-			res += params.m_bIncludeEnvironment ? params.m_ambient : vec3(0.0f);
+			res = params.m_bIncludeEnvironment ? params.m_ambient : vec3(0.0f);
 		}
 	}
 
-	return segmentRadiance + res;
+	return res;
 }
 
 LightingModel::SampledData PathTracer::GetMaterialData(
