@@ -1106,6 +1106,8 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 	}
 
 	bool bHasGeometry = false;
+	TMap<const TVector<Math::Triangle>*, TVector<uint32_t>>
+		referencedMaterialSlots;
 	for (size_t i = 0u; i < m_tlasInstances.Num(); ++i)
 	{
 		const TLASInstance& instance = m_tlasInstances[i];
@@ -1133,18 +1135,33 @@ bool PathTracer::InitializeScene(const TVector<TLASInstance>& instances,
 		if (bSkipUnresolvedMaterialInstances)
 		{
 			const auto* triangles = ResolveInstanceTriangles(instance);
-			for (const Math::Triangle& triangle : *triangles)
+			auto& localMaterialSlots = referencedMaterialSlots[triangles];
+			if (localMaterialSlots.IsEmpty())
+			{
+				for (const Math::Triangle& triangle : *triangles)
+				{
+					if (std::find(
+							localMaterialSlots.begin(),
+							localMaterialSlots.end(),
+							triangle.m_materialIndex) ==
+						localMaterialSlots.end())
+					{
+						localMaterialSlots.Add(triangle.m_materialIndex);
+					}
+				}
+			}
+			for (uint32_t localMaterialSlot : localMaterialSlots)
 			{
 				const int64_t globalSlot =
 					static_cast<int64_t>(instance.m_materialBaseOffset) +
-					static_cast<int64_t>(triangle.m_materialIndex);
+					static_cast<int64_t>(localMaterialSlot);
 				if (globalSlot < 0 ||
 					globalSlot >= static_cast<int64_t>(
 						m_resolvedMaterialSlots.Num()) ||
 					m_resolvedMaterialSlots[static_cast<size_t>(globalSlot)] == 0u)
 				{
 					bSkipInstance = true;
-					unresolvedLocalSlot = triangle.m_materialIndex;
+					unresolvedLocalSlot = localMaterialSlot;
 					unresolvedGlobalSlot = globalSlot;
 					break;
 				}
