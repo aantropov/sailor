@@ -70,6 +70,7 @@
     <Compile Include="SettingsContractsTests.cs" />
     <Compile Include="UnifiedSettingsStoreTests.cs" />
     <Compile Include="GraphicsSettingsTests.cs" />
+    <Compile Include="GlobalIlluminationBindingInputPolicyTests.cs" />
     <Compile Include="ProbeVolumeBinaryMetadataTests.cs" />
     <Compile Include="ProbeVolumeBakeOutputPolicyTests.cs" />
     <Compile Include="ProbeVolumeBakeStatusGateTests.cs" />

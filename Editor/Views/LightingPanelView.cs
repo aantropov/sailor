@@ -54,7 +54,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         GlobalIlluminationCompositionMode mode;
 
         [ObservableProperty]
-        float initialWeight;
+        string initialWeightText = "0";
 
         [ObservableProperty]
         bool preload;
@@ -222,15 +222,14 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
 
         LoadBindings();
-        Children.Add(BuildBindingsCard());
-        Children.Add(BuildBakeCard());
         runtimeStatus = new Label
         {
             FontSize = 11,
             TextColor = Color.FromArgb("#929AA5"),
             LineBreakMode = LineBreakMode.WordWrap
         };
-        Children.Add(runtimeStatus);
+        Children.Add(BuildBindingsCard());
+        Children.Add(BuildBakeCard());
         if (Handler is not null)
         {
             statusTimer.Start();
@@ -267,7 +266,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 Mode = source.Mode == GlobalIlluminationProbeMode.Additive
                     ? GlobalIlluminationCompositionMode.Additive
                     : GlobalIlluminationCompositionMode.Blend,
-                InitialWeight = source.InitialWeight,
+                InitialWeightText = source.InitialWeight.ToString(
+                    CultureInfo.InvariantCulture),
                 Preload = source.Preload
             });
         }
@@ -343,8 +343,12 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             if (await ApplyBindingsAsync())
                 await worldService.SaveCurrentWorldAsync(confirmExisting: false);
         }));
-        actions.Children.Add(ActionButton("Refresh Runtime", RefreshRuntimeStateAsync));
+        actions.Children.Add(ActionButton(
+            "Refresh Runtime",
+            () => RefreshRuntimeStateAsync("Refreshing runtime state", "Refreshed")));
         card.Children.Add(actions);
+        if (runtimeStatus is not null)
+            card.Children.Add(runtimeStatus);
         return card;
     }
 
@@ -410,7 +414,9 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             row.Children.Add(Labeled("Composition", mode));
             row.Children.Add(Labeled(
                 "Initial weight",
-                FloatEntry(draft.InitialWeight, value => draft.InitialWeight = value)));
+                FloatTextEntry(
+                    draft.InitialWeightText,
+                    value => draft.InitialWeightText = value)));
             row.Children.Add(Labeled(
                 "Preload",
                 BoolEditor(draft.Preload, value => draft.Preload = value)));
@@ -422,6 +428,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     {
         try
         {
+            SetRuntimeStatus("Applying Global Illumination settings...", false);
             var names = new HashSet<string>(StringComparer.Ordinal);
             var descriptors = new List<GlobalIlluminationBindingDescriptor>();
             foreach (var draft in bindings)
@@ -431,13 +438,17 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                     throw new InvalidOperationException("Probe state names must be non-empty and unique.");
                 if (draft.Asset is null || draft.Asset.IsEmpty())
                     throw new InvalidOperationException($"Probe state '{name}' has no .probes asset.");
-                if (!float.IsFinite(draft.InitialWeight) || draft.InitialWeight < 0.0f)
+                if (!GlobalIlluminationBindingInputPolicy.TryParseInitialWeight(
+                        draft.InitialWeightText,
+                        out var initialWeight))
+                {
                     throw new InvalidOperationException($"Probe state '{name}' has an invalid weight.");
+                }
                 descriptors.Add(new GlobalIlluminationBindingDescriptor(
                     name,
                     draft.Asset,
                     draft.Mode,
-                    draft.InitialWeight,
+                    initialWeight,
                     draft.Preload));
             }
 
@@ -452,7 +463,9 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 worldService.CurrentWorldAsset.IsDirty = true;
             if (worldFile is not null)
                 worldFile.IsDirty = true;
-            await RefreshRuntimeStateAsync();
+            await RefreshRuntimeStateAsync(
+                "Reading applied runtime state",
+                "Applied");
             return true;
         }
         catch (Exception exception)
@@ -789,10 +802,11 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         existing.Mode = bakedMode!.SelectedItem is GlobalIlluminationCompositionMode mode
             ? mode
             : GlobalIlluminationCompositionMode.Blend;
-        existing.InitialWeight = ReadFloat(
-            bakedWeight!,
-            "Binding weight",
-            positive: false);
+        existing.InitialWeightText = ReadFloat(
+                bakedWeight!,
+                "Binding weight",
+                positive: false)
+            .ToString(CultureInfo.InvariantCulture);
         existing.Preload = bakedPreload!.IsChecked;
         RebuildBindingRows();
         if (!await ApplyBindingsAsync())
@@ -805,21 +819,33 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             false);
     }
 
-    async Task RefreshRuntimeStateAsync()
+    async Task RefreshRuntimeStateAsync(
+        string pendingStatus = "",
+        string successPrefix = "")
     {
         try
         {
+            if (!string.IsNullOrWhiteSpace(pendingStatus))
+                SetRuntimeStatus($"{pendingStatus}...", false);
             var state = await engineService.GetGlobalIlluminationStateAsync();
             if (state is null)
+            {
+                SetRuntimeStatus(
+                    "Global Illumination runtime state is unavailable.",
+                    true);
                 return;
+            }
             var probes = state.Probes.Count == 0
                 ? "no states"
                 : string.Join(
                     ", ",
                     state.Probes.Select(probe =>
                         $"{probe.Name}={probe.Weight:0.###} {probe.Mode}/{probe.Residency}"));
+            var prefix = string.IsNullOrWhiteSpace(successPrefix)
+                ? string.Empty
+                : $"{successPrefix} {DateTime.Now:HH:mm:ss}: ";
             SetRuntimeStatus(
-                $"{state.Mode}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}",
+                $"{prefix}{state.Mode}; profile GI {(state.Enabled ? "enabled" : "disabled")}; budget {state.MaxProbeStatesPerSnapshot}; {probes}. {state.Diagnostic}",
                 state.Probes.Any(probe => probe.Residency == GlobalIlluminationResidency.Failed));
         }
         catch (Exception exception)
@@ -975,7 +1001,10 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     {
         var entry = new Entry { Text = value, ReturnType = ReturnType.Done };
         if (changed is not null)
-            entry.Unfocused += (_, _) => changed(entry.Text ?? string.Empty);
+        {
+            entry.TextChanged += (_, args) =>
+                changed(args.NewTextValue ?? string.Empty);
+        }
         return entry;
     }
 
@@ -986,27 +1015,23 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         ReturnType = ReturnType.Done
     };
 
-    static Entry FloatEntry(float value, Action<float>? changed = null)
+    static Entry FloatEntry(float value) => new()
+    {
+        Text = value.ToString(CultureInfo.InvariantCulture),
+        Keyboard = Keyboard.Numeric,
+        ReturnType = ReturnType.Done
+    };
+
+    static Entry FloatTextEntry(string value, Action<string> changed)
     {
         var entry = new Entry
         {
-            Text = value.ToString(CultureInfo.InvariantCulture),
+            Text = value,
             Keyboard = Keyboard.Numeric,
             ReturnType = ReturnType.Done
         };
-        if (changed is not null)
-        {
-            entry.Unfocused += (_, _) =>
-            {
-                if (float.TryParse(
-                    entry.Text,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out var parsed) &&
-                    float.IsFinite(parsed))
-                    changed(parsed);
-            };
-        }
+        entry.TextChanged += (_, args) =>
+            changed(args.NewTextValue ?? string.Empty);
         return entry;
     }
 

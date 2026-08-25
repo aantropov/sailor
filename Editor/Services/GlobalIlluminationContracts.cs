@@ -1,4 +1,5 @@
 using SailorEngine;
+using System.Globalization;
 using System.Numerics;
 
 namespace SailorEditor.Services;
@@ -88,6 +89,22 @@ public sealed record GlobalIlluminationBindingDescriptor(
     GlobalIlluminationCompositionMode Mode,
     float InitialWeight,
     bool Preload);
+
+public static class GlobalIlluminationBindingInputPolicy
+{
+    public static bool TryParseInitialWeight(
+        string text,
+        out float initialWeight)
+    {
+        return float.TryParse(
+                text,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out initialWeight) &&
+            float.IsFinite(initialWeight) &&
+            initialWeight >= 0.0f;
+    }
+}
 
 public enum GlobalIlluminationResidency
 {
