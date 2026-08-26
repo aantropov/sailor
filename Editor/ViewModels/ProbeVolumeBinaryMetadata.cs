@@ -25,6 +25,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
     float NormalBias,
     float ViewBias,
     float MaxRayDistance,
+    float SkyIndirectIntensity,
     bool IncludeSky,
     bool IncludeEmissive,
     bool IncludeDirectLighting,
@@ -40,7 +41,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
     ulong PayloadChecksum,
     long FileBytes)
 {
-    const uint SupportedFormatVersion = 1;
+    const uint SupportedFormatVersion = 2;
     const uint SupportedSphericalHarmonicsOrder = 2;
     const uint SupportedCompression = 0;
     const uint EndianMarker = 0x01020304;
@@ -50,7 +51,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
     const uint MaxProbeCount = 16 * 1024 * 1024;
     const ulong MaxPayloadBytes = 8UL * 1024 * 1024 * 1024;
     const ulong BrickRecordBytes = 48;
-    const ulong ProbeRecordBytes = 188;
+    const ulong ProbeRecordBytes = 212;
     static ReadOnlySpan<byte> Magic => "SLRPROBE"u8;
 
     public static ProbeVolumeBinaryMetadata Read(FileInfo asset)
@@ -111,6 +112,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
         var normalBias = reader.ReadSingle();
         var viewBias = reader.ReadSingle();
         var maxRayDistance = reader.ReadSingle();
+        var skyIndirectIntensity = reader.ReadSingle();
         var flags = reader.ReadUInt32();
         var brickCount = reader.ReadUInt32();
         var probeCount = reader.ReadUInt32();
@@ -154,6 +156,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
             !float.IsFinite(normalBias) || normalBias < 0 ||
             !float.IsFinite(viewBias) || viewBias < 0 ||
             !float.IsFinite(maxRayDistance) || maxRayDistance <= 0 ||
+            !float.IsFinite(skyIndirectIntensity) || skyIndirectIntensity < 0 ||
             !float.IsFinite(averageValidity) || averageValidity is < 0 or > 1 ||
             !float.IsFinite(bakeDurationSeconds) || bakeDurationSeconds < 0)
         {
@@ -190,6 +193,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
             normalBias,
             viewBias,
             maxRayDistance,
+            skyIndirectIntensity,
             (flags & 1u) != 0,
             (flags & 2u) != 0,
             (flags & 4u) != 0,

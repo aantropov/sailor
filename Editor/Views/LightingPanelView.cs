@@ -39,7 +39,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     [
         new(GlobalIlluminationRuntimeMode.Realtime, "Realtime"),
         new(GlobalIlluminationRuntimeMode.RealtimeAndBaked, "Realtime + Baked"),
-        new(GlobalIlluminationRuntimeMode.BakedOnly, "Baked Only")
+        new(GlobalIlluminationRuntimeMode.BakedOnly, "Baked Indirect")
     ];
 
     sealed partial class BindingDraft : ObservableObject
@@ -59,6 +59,13 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         [ObservableProperty]
         bool preload;
     }
+
+    sealed record BindingDraftSnapshot(
+        string Name,
+        FileId Asset,
+        GlobalIlluminationCompositionMode Mode,
+        string InitialWeightText,
+        bool Preload);
 
     readonly EngineService engineService;
     readonly WorldService worldService;
@@ -294,7 +301,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         card.Children.Add(Labeled("GI mode", globalIlluminationMode));
         card.Children.Add(new Label
         {
-            Text = "Realtime uses live diffuse environment lighting. Realtime + Baked uses probes with live fallback. Baked Only uses probes with a black diffuse fallback. Direct lights and specular reflections stay realtime.",
+            Text = "Realtime uses the live SkyComponent cubemaps. Baked modes use probes for diffuse indirect lighting and directional environment-specular occlusion, with the same live cubemaps as fallback. Direct lights stay realtime.",
             FontSize = 11,
             TextColor = Color.FromArgb("#929AA5"),
             LineBreakMode = LineBreakMode.WordWrap
@@ -424,34 +431,41 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
     }
 
-    async Task<bool> ApplyBindingsAsync()
+    Task<bool> ApplyBindingsAsync() => ApplyBindingsCoreAsync(refreshRuntime: true);
+
+    List<GlobalIlluminationBindingDescriptor> BuildBindingDescriptors()
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var descriptors = new List<GlobalIlluminationBindingDescriptor>();
+        foreach (var draft in bindings)
+        {
+            var name = draft.Name.Trim();
+            if (string.IsNullOrEmpty(name) || !names.Add(name))
+                throw new InvalidOperationException("Probe state names must be non-empty and unique.");
+            if (draft.Asset is null || draft.Asset.IsEmpty())
+                throw new InvalidOperationException($"Probe state '{name}' has no .probes asset.");
+            if (!GlobalIlluminationBindingInputPolicy.TryParseInitialWeight(
+                    draft.InitialWeightText,
+                    out var initialWeight))
+            {
+                throw new InvalidOperationException($"Probe state '{name}' has an invalid weight.");
+            }
+            descriptors.Add(new GlobalIlluminationBindingDescriptor(
+                name,
+                draft.Asset,
+                draft.Mode,
+                initialWeight,
+                draft.Preload));
+        }
+        return descriptors;
+    }
+
+    async Task<bool> ApplyBindingsCoreAsync(bool refreshRuntime)
     {
         try
         {
             SetRuntimeStatus("Applying Global Illumination settings...", false);
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            var descriptors = new List<GlobalIlluminationBindingDescriptor>();
-            foreach (var draft in bindings)
-            {
-                var name = draft.Name.Trim();
-                if (string.IsNullOrEmpty(name) || !names.Add(name))
-                    throw new InvalidOperationException("Probe state names must be non-empty and unique.");
-                if (draft.Asset is null || draft.Asset.IsEmpty())
-                    throw new InvalidOperationException($"Probe state '{name}' has no .probes asset.");
-                if (!GlobalIlluminationBindingInputPolicy.TryParseInitialWeight(
-                        draft.InitialWeightText,
-                        out var initialWeight))
-                {
-                    throw new InvalidOperationException($"Probe state '{name}' has an invalid weight.");
-                }
-                descriptors.Add(new GlobalIlluminationBindingDescriptor(
-                    name,
-                    draft.Asset,
-                    draft.Mode,
-                    initialWeight,
-                    draft.Preload));
-            }
-
+            var descriptors = BuildBindingDescriptors();
             if (!await engineService.SetGlobalIlluminationSettingsAsync(
                     selectedGlobalIlluminationMode,
                     descriptors))
@@ -463,9 +477,12 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 worldService.CurrentWorldAsset.IsDirty = true;
             if (worldFile is not null)
                 worldFile.IsDirty = true;
-            await RefreshRuntimeStateAsync(
-                "Reading applied runtime state",
-                "Applied");
+            if (refreshRuntime)
+            {
+                await RefreshRuntimeStateAsync(
+                    "Reading applied runtime state",
+                    "Applied");
+            }
             return true;
         }
         catch (Exception exception)
@@ -526,7 +543,8 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             1,
             4));
         seedEntry = UIntEntry(0);
-        subdivisionEntry = UIntEntry(3);
+        subdivisionEntry = UIntEntry(
+            ProbeVolumeBakeSettings.MaximumSubdivisionLevel);
         spacingEntry = FloatEntry(1.0f);
         normalBiasEntry = FloatEntry(0.05f);
         viewBiasEntry = FloatEntry(0.05f);
@@ -538,7 +556,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         card.Children.Add(Labeled("Indirect bounces", bouncesEntry));
         card.Children.Add(Labeled("Bake threads", threadCountEntry));
         card.Children.Add(Labeled("Random seed", seedEntry));
-        card.Children.Add(Labeled("Max subdivision", subdivisionEntry));
+        card.Children.Add(Labeled("Subdivision limit", subdivisionEntry));
         card.Children.Add(Labeled("Min probe spacing", spacingEntry));
         card.Children.Add(Labeled("Normal bias", normalBiasEntry));
         card.Children.Add(Labeled("View bias", viewBiasEntry));
@@ -629,7 +647,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 ReadUInt(seedEntry!, "Random seed", positive: false),
                 ReadUInt(
                     subdivisionEntry!,
-                    "Max subdivision",
+                    "Subdivision limit",
                     positive: false,
                     maximum: ProbeVolumeBakeSettings.MaximumSubdivisionLevel),
                 ReadFloat(spacingEntry!, "Min probe spacing", positive: true),
@@ -734,10 +752,12 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 ? $" {status.CompletedProbes}/{status.TotalProbes} probes"
                 : string.Empty;
             SetBakeStatus(
-                $"{status.State}: {status.Stage}{counts} ({status.ElapsedSeconds:0.0}s)" +
-                (string.IsNullOrWhiteSpace(status.Diagnostic)
-                    ? string.Empty
-                    : $"{Environment.NewLine}{status.Diagnostic}"),
+                shouldComplete
+                    ? $"Finalizing: validating and activating the baked state{counts}..."
+                    : $"{status.State}: {status.Stage}{counts} ({status.ElapsedSeconds:0.0}s)" +
+                        (string.IsNullOrWhiteSpace(status.Diagnostic)
+                            ? string.Empty
+                            : $"{Environment.NewLine}{status.Diagnostic}"),
                 status.State == ProbeVolumeBakeLifecycleState.Failed);
             if (shouldComplete)
             {
@@ -792,31 +812,235 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         if (asset is null)
             throw new InvalidOperationException("The baked .probes file was not discovered as an asset.");
 
+        var metadata = ProbeVolumeBinaryMetadata.Read(asset.Asset);
+        if (metadata.LayoutHash != status.LayoutHash ||
+            metadata.TransportHash != status.TransportHash ||
+            metadata.LightingHash != status.LightingHash)
+        {
+            throw new InvalidOperationException(
+                "The saved .probes identity does not match the completed native bake.");
+        }
+
         var name = stateNameEntry!.Text?.Trim() ?? string.Empty;
-        var existing = bindings.FirstOrDefault(binding =>
-            string.Equals(binding.Name, name, StringComparison.Ordinal));
-        existing ??= new BindingDraft { Name = name };
-        if (!bindings.Contains(existing))
-            bindings.Add(existing);
-        existing.Asset = asset.FileId;
-        existing.Mode = bakedMode!.SelectedItem is GlobalIlluminationCompositionMode mode
-            ? mode
-            : GlobalIlluminationCompositionMode.Blend;
-        existing.InitialWeightText = ReadFloat(
+        var previousBindings = CaptureBindingDrafts();
+        var previousMode = selectedGlobalIlluminationMode;
+        var currentWorldWasDirty = worldService.CurrentWorldAsset?.IsDirty ?? false;
+        var inspectedWorldWasDirty = worldFile?.IsDirty ?? false;
+        var bindingsMutated = false;
+        try
+        {
+            var existing = bindings.FirstOrDefault(binding =>
+                string.Equals(binding.Name, name, StringComparison.Ordinal));
+            existing ??= new BindingDraft { Name = name };
+            if (!bindings.Contains(existing))
+                bindings.Add(existing);
+            bindingsMutated = true;
+            existing.Asset = asset.FileId;
+            existing.Mode = bakedMode!.SelectedItem is GlobalIlluminationCompositionMode mode
+                ? mode
+                : GlobalIlluminationCompositionMode.Blend;
+            var targetWeight = ReadFloat(
                 bakedWeight!,
                 "Binding weight",
-                positive: false)
-            .ToString(CultureInfo.InvariantCulture);
-        existing.Preload = bakedPreload!.IsChecked;
+                positive: false);
+            existing.InitialWeightText = targetWeight.ToString(
+                CultureInfo.InvariantCulture);
+            existing.Preload = bakedPreload!.IsChecked;
+
+            var targetIdentity = ToCompositionIdentity(metadata);
+            var activeStates = new List<ProbeVolumeBindingCompositionState>();
+            foreach (var binding in bindings)
+            {
+                if (string.Equals(binding.Name, name, StringComparison.Ordinal))
+                    continue;
+                if (!GlobalIlluminationBindingInputPolicy.TryParseInitialWeight(
+                        binding.InitialWeightText,
+                        out var weight))
+                {
+                    throw new InvalidOperationException(
+                        $"Probe state '{binding.Name}' has an invalid weight.");
+                }
+                if (weight == 0.0f)
+                    continue;
+                var boundAsset = ResolveProbeVolumeAsset(binding);
+                var boundMetadata = ProbeVolumeBinaryMetadata.Read(boundAsset.Asset);
+                activeStates.Add(new ProbeVolumeBindingCompositionState(
+                    binding.Name,
+                    weight,
+                    ToCompositionIdentity(boundMetadata)));
+            }
+
+            var deactivated = ProbeVolumeBakeBindingPolicy.FindIncompatibleActiveStates(
+                name,
+                targetWeight,
+                targetIdentity,
+                activeStates);
+            foreach (var binding in bindings.Where(binding =>
+                deactivated.Contains(binding.Name, StringComparer.Ordinal)))
+            {
+                binding.InitialWeightText = "0";
+            }
+            RebuildBindingRows();
+
+            var baseline = await engineService.GetGlobalIlluminationStateAsync() ??
+                throw new InvalidOperationException(
+                    "The bake succeeded, but its runtime activation baseline is unavailable.");
+            if (!await ApplyBindingsCoreAsync(refreshRuntime: false))
+            {
+                throw new InvalidOperationException(
+                    "The bake succeeded, but the level binding was rejected.");
+            }
+
+            var activationRequired =
+                targetWeight > 0.0f &&
+                selectedGlobalIlluminationMode != GlobalIlluminationRuntimeMode.Realtime &&
+                baseline.Enabled;
+            if (activationRequired)
+            {
+                await WaitForBakedStateActivationAsync(
+                    name,
+                    asset.FileId.Value,
+                    baseline);
+            }
+
+            var save = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
+            if (save.Outcome != SceneSaveOutcome.Saved)
+            {
+                throw new InvalidOperationException(
+                    save.Error ?? "The baked binding could not be saved to the level.");
+            }
+            var deactivatedMessage = deactivated.Count == 0
+                ? string.Empty
+                : $" Deactivated incompatible states: {string.Join(", ", deactivated)}.";
+            var activationMessage = activationRequired
+                ? " Runtime composition verified."
+                : " Runtime activation is not required by the current GI mode or weight.";
+            SetBakeStatus(
+                $"Succeeded: {status.ProbeCount} probes in {status.BrickCount} bricks. Bound '{name}' and saved the level.{deactivatedMessage}{activationMessage}",
+                false);
+        }
+        catch (Exception exception)
+        {
+            if (!bindingsMutated)
+                throw;
+            var rollbackDiagnostic = await RestoreBindingsAfterFailedBakeAsync(
+                previousBindings,
+                previousMode,
+                currentWorldWasDirty,
+                inspectedWorldWasDirty);
+            throw new InvalidOperationException(
+                string.IsNullOrEmpty(rollbackDiagnostic)
+                    ? $"{exception.Message} Previous level bindings were restored."
+                    : $"{exception.Message} Binding rollback also failed: {rollbackDiagnostic}",
+                exception);
+        }
+    }
+
+    static ProbeVolumeCompositionIdentity ToCompositionIdentity(
+        ProbeVolumeBinaryMetadata metadata) => new(
+            metadata.LayoutHash,
+            metadata.RepresentationHash,
+            metadata.TransportHash);
+
+    ProbeVolumeFile ResolveProbeVolumeAsset(BindingDraft binding)
+    {
+        var asset = assetsService.Files
+            .OfType<ProbeVolumeFile>()
+            .FirstOrDefault(candidate => string.Equals(
+                candidate.FileId?.Value,
+                binding.Asset?.Value,
+                StringComparison.Ordinal));
+        return asset ?? throw new InvalidOperationException(
+            $"Probe state '{binding.Name}' does not resolve to a readable .probes asset.");
+    }
+
+    List<BindingDraftSnapshot> CaptureBindingDrafts() => bindings.Select(binding =>
+        new BindingDraftSnapshot(
+            binding.Name,
+            new FileId(binding.Asset?.Value ?? string.Empty),
+            binding.Mode,
+            binding.InitialWeightText,
+            binding.Preload)).ToList();
+
+    void RestoreBindingDrafts(IReadOnlyCollection<BindingDraftSnapshot> snapshots)
+    {
+        bindings.Clear();
+        bindings.AddRange(snapshots.Select(snapshot => new BindingDraft
+        {
+            Name = snapshot.Name,
+            Asset = new FileId(snapshot.Asset?.Value ?? string.Empty),
+            Mode = snapshot.Mode,
+            InitialWeightText = snapshot.InitialWeightText,
+            Preload = snapshot.Preload
+        }));
         RebuildBindingRows();
-        if (!await ApplyBindingsAsync())
-            throw new InvalidOperationException("The bake succeeded, but the level binding was rejected.");
-        var save = await worldService.SaveCurrentWorldAsync(confirmExisting: false);
-        if (save.Outcome != SceneSaveOutcome.Saved)
-            throw new InvalidOperationException(save.Error ?? "The baked binding could not be saved to the level.");
-        SetBakeStatus(
-            $"Succeeded: {status.ProbeCount} probes in {status.BrickCount} bricks. Bound '{name}' and saved the level.",
+    }
+
+    async Task<string> RestoreBindingsAfterFailedBakeAsync(
+        IReadOnlyCollection<BindingDraftSnapshot> previousBindings,
+        GlobalIlluminationRuntimeMode previousMode,
+        bool currentWorldWasDirty,
+        bool inspectedWorldWasDirty)
+    {
+        try
+        {
+            selectedGlobalIlluminationMode = previousMode;
+            RestoreBindingDrafts(previousBindings);
+            if (!await engineService.SetGlobalIlluminationSettingsAsync(
+                    previousMode,
+                    BuildBindingDescriptors()))
+            {
+                return "the Global Illumination ECS rejected the previous bindings";
+            }
+            if (worldService.CurrentWorldAsset is not null)
+                worldService.CurrentWorldAsset.IsDirty = currentWorldWasDirty;
+            if (worldFile is not null)
+                worldFile.IsDirty = inspectedWorldWasDirty;
+            await RefreshRuntimeStateAsync(
+                "Reading restored runtime state",
+                "Restored");
+            return string.Empty;
+        }
+        catch (Exception exception)
+        {
+            return exception.Message;
+        }
+    }
+
+    async Task WaitForBakedStateActivationAsync(
+        string targetName,
+        string targetAssetFileId,
+        GlobalIlluminationRuntimeState baseline)
+    {
+        SetRuntimeStatus(
+            $"Waiting for baked state '{targetName}' to become active...",
             false);
+        const int ActivationTimeoutSeconds = 30;
+        var deadline = DateTime.UtcNow +
+            TimeSpan.FromSeconds(ActivationTimeoutSeconds);
+        ProbeVolumeBakeActivationAssessment? lastAssessment = null;
+        while (DateTime.UtcNow < deadline)
+        {
+            var current = await engineService.GetGlobalIlluminationStateAsync();
+            lastAssessment = ProbeVolumeBakeBindingPolicy.AssessActivation(
+                targetName,
+                targetAssetFileId,
+                activationRequired: true,
+                baseline,
+                current);
+            if (lastAssessment.State == ProbeVolumeBakeActivationState.Succeeded)
+            {
+                await RefreshRuntimeStateAsync(
+                    "Reading verified runtime state",
+                    "Baked state active");
+                return;
+            }
+            if (lastAssessment.State == ProbeVolumeBakeActivationState.Rejected)
+                throw new InvalidOperationException(lastAssessment.Diagnostic);
+            await Task.Delay(100);
+        }
+        throw new TimeoutException(
+            $"The baked state was not activated within {ActivationTimeoutSeconds} seconds. {lastAssessment?.Diagnostic}".Trim());
     }
 
     async Task RefreshRuntimeStateAsync(

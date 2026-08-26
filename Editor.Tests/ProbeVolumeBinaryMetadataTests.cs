@@ -39,6 +39,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         Assert.Equal(17u, metadata.RaysPerProbe);
         Assert.Equal(0.05f, metadata.NormalBias);
         Assert.Equal(0.07f, metadata.ViewBias);
+        Assert.Equal(1.25f, metadata.SkyIndirectIntensity);
         Assert.Equal(0x1111222233334444UL, metadata.LayoutHash);
         Assert.Equal(0x5555666677778888UL, metadata.RepresentationHash);
         Assert.Equal(1u, metadata.BrickCount);
@@ -167,6 +168,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
                 payload.Write(0.05f);
                 payload.Write(0.07f);
                 payload.Write(250.0f);
+                payload.Write(1.25f);
                 payload.Write(5u);
                 payload.Write(1u);
                 payload.Write(probeCount);
@@ -177,7 +179,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
                 WriteString(payload, stateName);
                 WriteString(payload, "Test Baker");
                 WriteString(payload, "All good");
-                payload.Write(new byte[48 + 188]);
+                payload.Write(new byte[48 + 212]);
             }
 
             var payloadBytes = payloadStream.ToArray();
@@ -188,7 +190,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
             using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
             {
                 writer.Write("SLRPROBE"u8);
-                writer.Write(1u);
+                writer.Write(2u);
                 writer.Write(0x01020304u);
                 writer.Write(40u);
                 writer.Write(headerFlags);

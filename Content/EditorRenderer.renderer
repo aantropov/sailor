@@ -247,8 +247,9 @@ frame:
   - data.occlusionRadius: 1.5
   - data.occlusionPower: 1.5
   - data.occlusionAttenuation: 1
-  - data.occlusionBias: 0.05
+  - data.occlusionBias: 0.25
   - data.noiseScale: 25
+  - data.normalBias: 0.15
   renderTargets:
   - color: AO
   - depthSampler: HalfDepth
@@ -290,6 +291,7 @@ frame:
   string:
   - Tag: Opaque
   - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
@@ -314,6 +316,7 @@ frame:
   string:
   - Tag: Masked
   - GPUCulling: true
+  - OcclusionCulling: true
   - VirtualizeInstancePayloads: true
   renderTargets:
   - color: Main
@@ -393,7 +396,7 @@ frame:
 #############################
   string:
   - toneMappingShader: Shaders/Tonemapping.shader
-  - toneMappingDefines: UNCHARTED2 LUMINANCE
+  - toneMappingDefines: ACES
   vec4:
   - data.exposure: [1.0, 0, 0, 0]
   - data.whitePoint: [1.4, 1.5, 1.4, 0]

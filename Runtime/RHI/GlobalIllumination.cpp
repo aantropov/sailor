@@ -352,6 +352,17 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			probe.m_visibility45 = glm::vec4(
 				source.m_visibility[4],
 				source.m_visibility[5]);
+			probe.m_environmentVisibility0123 = glm::vec4(
+				source.m_environmentVisibility[0],
+				source.m_environmentVisibility[1],
+				source.m_environmentVisibility[2],
+				source.m_environmentVisibility[3]);
+			probe.m_environmentVisibility45 = glm::vec4(
+				source.m_environmentVisibility[4],
+				source.m_environmentVisibility[5],
+				EncodeUint(
+					source.m_flags & ProbeVolumeBlockedDirectionMask),
+				0.0f);
 			outLayout.m_probes.Add(probe);
 		}
 

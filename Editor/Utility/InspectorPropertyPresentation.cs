@@ -3,12 +3,19 @@ namespace SailorEditor.Utility;
 public static class InspectorPropertyPresentation
 {
     const string LightComponentTypeName = "Sailor::LightComponent";
+    const string SkyComponentTypeName = "Sailor::SkyComponent";
     const string GlobalIlluminationModePropertyName = "globalIlluminationMode";
 
     public static string FormatPropertyName(
         string componentTypeName,
         string propertyName)
     {
+        if (componentTypeName == SkyComponentTypeName &&
+            propertyName == "giIndirectIntensity")
+        {
+            return "GI Indirect Intensity";
+        }
+
         if (componentTypeName != LightComponentTypeName)
         {
             return propertyName;
@@ -37,7 +44,7 @@ public static class InspectorPropertyPresentation
         {
             "Realtime" => "Realtime",
             "RealtimeAndBaked" => "Realtime + Baked",
-            "BakedOnly" => "Baked Only",
+            "BakedOnly" => "Baked Indirect",
             _ => value
         };
     }

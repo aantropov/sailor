@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -20,6 +21,7 @@
 #include "FrameGraph/SkyParameters.h"
 #include "Engine/World.h"
 #include "FrameGraph/SkyNode.h"
+#include "Raytracing/SkyEnvironmentGenerator.h"
 
 using namespace Sailor;
 
@@ -338,6 +340,7 @@ namespace
 		auto sky = owner->AddComponent<SkyComponent>();
 		Require(
 			IsNear(sky->GetSunAngle(), 60.0f) &&
+				IsNear(sky->GetGiIndirectIntensity(), 1.0f) &&
 				IsNear(
 					sky->GetSkyParameters().m_lightDirection,
 					ExpectedLightDirection(60.0f)) &&
@@ -374,6 +377,7 @@ namespace
 		RequireRange(type, "cloudsHorizonBlend", 0.0, 20.0);
 		RequireRange(type, "sunIntensity", 0.0, 800.0);
 		RequireRange(type, "ambient", 0.0, 10.0);
+		RequireRange(type, "giIndirectIntensity", 0.0, 16.0);
 		RequireRange(type, "scatteringSteps", 1.0, 10.0);
 		RequireRange(type, "scatteringDensity", 0.1, 1.0);
 		RequireRange(type, "scatteringIntensity", 0.01, 1.0);
@@ -408,6 +412,8 @@ namespace
 					as<float>() == 0.56f &&
 				cdo.GetProperties()["sunIntensity"].
 					as<float>() == 500.0f &&
+				cdo.GetProperties()["giIndirectIntensity"].
+					as<float>() == 1.0f &&
 				cdo.GetProperties()["scatteringSteps"].
 					as<int32_t>() == 5 &&
 				IsNullObjectReference(
@@ -512,6 +518,22 @@ namespace
 			0.0f,
 			10.0f,
 			"ambient");
+		const SkyParameters skyBeforeGiIntensity =
+			component.GetSkyParameters();
+		RequireFloatClamp(
+			component,
+			&SkyComponent::SetGiIndirectIntensity,
+			&SkyComponent::GetGiIndirectIntensity,
+			0.0f,
+			16.0f,
+			"giIndirectIntensity");
+		Require(
+			component.GetSkyParameters() == skyBeforeGiIntensity,
+			"GI indirect intensity must remain a bake-only SkyComponent control");
+		component.SetGiIndirectIntensity(
+			(std::numeric_limits<float>::quiet_NaN)());
+		Require(IsNear(component.GetGiIndirectIntensity(), 0.0f),
+			"non-finite GI indirect intensity should resolve to zero");
 		RequireIntClamp(
 			component,
 			&SkyComponent::SetScatteringSteps,
@@ -615,6 +637,143 @@ namespace
 				lhsFallback == rhsFallback &&
 				lhsFallback.GetHash() == rhsFallback.GetHash(),
 			"below-horizon directions should share the fallback environment key");
+	}
+
+	void TestTransientBakeEnvironmentUsesClearSkyParameters()
+	{
+		SkyParameters source;
+		source.m_lightDirection = ExpectedLightDirection(23.5f);
+		const glm::uvec2 extent(24u, 12u);
+		TVector<glm::vec4> environment;
+		uint32_t finalCompletedRows = 0u;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				source,
+				extent,
+				environment,
+				[&finalCompletedRows](
+					uint32_t completedRows,
+					uint32_t)
+				{
+					finalCompletedRows = completedRows;
+					return true;
+				}),
+			"the probe baker should generate a transient longitude sky map");
+		Require(
+			environment.Num() ==
+				static_cast<size_t>(extent.x) * extent.y &&
+			finalCompletedRows == extent.y,
+			"the transient sky map should fill every requested equirectangular texel");
+
+		float strongestSky = 0.0f;
+		for (uint32_t y = 0u; y < extent.y; ++y)
+		{
+			for (uint32_t x = 0u; x < extent.x; ++x)
+			{
+				const glm::vec4 sample = environment[x + y * extent.x];
+				Require(
+					std::isfinite(sample.x) &&
+					std::isfinite(sample.y) &&
+					std::isfinite(sample.z) &&
+					sample.x >= 0.0f && sample.y >= 0.0f &&
+					sample.z >= 0.0f && sample.w == 1.0f,
+					"the transient clear-sky radiance should stay finite and non-negative");
+				strongestSky = std::max(
+					strongestSky,
+					glm::length(glm::vec3(sample)));
+				if (y >= extent.y / 2u)
+				{
+					Require(
+						glm::length(glm::vec3(sample)) <= 0.000001f,
+						"the no-cloud bake map should keep the opaque lower hemisphere black");
+				}
+			}
+		}
+		Require(strongestSky > 0.01f,
+			"the upper hemisphere should contain atmospheric lighting");
+
+		SkyParameters cloudOnlyChanges = source;
+		cloudOnlyChanges.m_cloudsDensity = 1.0f;
+		cloudOnlyChanges.m_cloudsCoverage = 2.0f;
+		cloudOnlyChanges.m_sunIntensity = 800.0f;
+		cloudOnlyChanges.m_ambient = 10.0f;
+		cloudOnlyChanges.m_scatteringSteps = 10;
+		cloudOnlyChanges.m_scatteringDensity = 1.0f;
+		cloudOnlyChanges.m_scatteringIntensity = 1.0f;
+		cloudOnlyChanges.m_scatteringPhase = 1.0f;
+		TVector<glm::vec4> withoutClouds;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				cloudOnlyChanges,
+				extent,
+				withoutClouds),
+			"cloud parameters should not prevent clear-sky map generation");
+		Require(withoutClouds.Num() == environment.Num(),
+			"cloud-free map variants should keep the same extent");
+		for (size_t index = 0u; index < environment.Num(); ++index)
+		{
+			Require(
+				withoutClouds[index] == environment[index],
+				"cloud and cloud-scattering controls must not enter the bake sky map");
+		}
+
+		SkyParameters movedSun = source;
+		movedSun.m_lightDirection = ExpectedLightDirection(70.0f);
+		TVector<glm::vec4> movedEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				movedSun,
+				extent,
+				movedEnvironment),
+			"a second sun direction should generate another transient map");
+		bool bLightingChanged = false;
+		for (size_t index = 0u; index < environment.Num(); ++index)
+		{
+			bLightingChanged |= glm::length(
+				glm::vec3(movedEnvironment[index] - environment[index])) >
+				0.0001f;
+		}
+		Require(bLightingChanged,
+			"the transient sky map should follow the SkyComponent sun direction");
+
+		SkyParameters afterSunset = source;
+		afterSunset.m_lightDirection = ExpectedLightDirection(-6.75f);
+		TVector<glm::vec4> afterSunsetEnvironment;
+		Require(
+			Raytracing::GenerateSkyEnvironmentEquirectangular(
+				afterSunset,
+				extent,
+				afterSunsetEnvironment),
+			"an after-sunset SkyComponent should generate a transient map");
+		const auto integratedLuminance = [](const TVector<glm::vec4>& image)
+		{
+			double result = 0.0;
+			for (const glm::vec4& pixel : image)
+			{
+				result +=
+					0.2126 * static_cast<double>(pixel.r) +
+					0.7152 * static_cast<double>(pixel.g) +
+					0.0722 * static_cast<double>(pixel.b);
+			}
+			return result;
+		};
+		Require(
+			integratedLuminance(afterSunsetEnvironment) <
+				integratedLuminance(environment) * 0.25,
+			"the clear-sky bake environment must become substantially darker after sunset");
+
+		TVector<glm::vec4> cancelled;
+		Require(
+			!Raytracing::GenerateSkyEnvironmentEquirectangular(
+				source,
+				extent,
+				cancelled,
+				[](uint32_t completedRows, uint32_t)
+				{
+					return completedRows < 2u;
+				}) &&
+			cancelled.IsEmpty(),
+			"cancelling transient sky generation should release its partial texture");
 	}
 
 	void TestSkyNodeMailboxHandoff()
@@ -877,6 +1036,7 @@ namespace
 		sourceSky->SetSunAngle(35.0f);
 		sourceSky->SetCloudsCoverage(1.25f);
 		sourceSky->SetAmbient(2.5f);
+		sourceSky->SetGiIndirectIntensity(0.35f);
 		sourceSky->SetDirectionalLightIntensity(
 			glm::vec3(7.0f, 8.0f, 9.0f));
 		source->Tick(0.0f);
@@ -899,6 +1059,7 @@ namespace
 				IsNear(firstSky->GetSunAngle(), 35.0f) &&
 				IsNear(firstSky->GetCloudsCoverage(), 1.25f) &&
 				IsNear(firstSky->GetAmbient(), 2.5f) &&
+				IsNear(firstSky->GetGiIndirectIntensity(), 0.35f) &&
 				IsNear(
 					firstSky->GetDirectionalLightIntensity(),
 					glm::vec3(7.0f, 8.0f, 9.0f)),
@@ -939,6 +1100,7 @@ int main()
 		{ "ReflectionMetadataRangesAndStableLightType", TestReflectionMetadataRangesAndStableLightType },
 		{ "SettersClampAndUpdateDirection", TestSettersClampAndUpdateDirection },
 		{ "EnvironmentKeyHashEquality", TestEnvironmentKeyHashEquality },
+		{ "TransientBakeEnvironmentUsesClearSkyParameters", TestTransientBakeEnvironmentUsesClearSkyParameters },
 		{ "SkyNodeMailboxHandoff", TestSkyNodeMailboxHandoff },
 		{ "EnvironmentCubemapOrientation", TestEnvironmentCubemapOrientation },
 		{ "ExplicitDirectionalLightSynchronization", TestExplicitDirectionalLightSynchronization },

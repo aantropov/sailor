@@ -17,6 +17,10 @@ const uint GLOBAL_ILLUMINATION_DEBUG_FALLBACK = 8u;
 const uint GLOBAL_ILLUMINATION_MODE_REALTIME = 0u;
 const uint GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 1u;
 const uint GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 2u;
+const float GLOBAL_ILLUMINATION_BLOCKING_DISTANCE_TOLERANCE = 0.0001;
+const float GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE = 0.0001;
+const uint GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_SHIFT = 8u;
+const uint GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_MASK = 0x3f00u;
 
 struct GlobalIlluminationBvhNode
 {
@@ -37,6 +41,8 @@ struct GlobalIlluminationProbe
   vec4 visibility01;
   vec4 visibility23;
   vec4 visibility45;
+  vec4 environmentVisibility0123;
+  vec4 environmentVisibility45;
 };
 
 struct GlobalIlluminationCoefficients
@@ -119,21 +125,6 @@ uint GlobalIlluminationFlattenIndex(uvec3 coordinate, uvec3 counts)
   return coordinate.x + counts.x * (coordinate.y + counts.y * coordinate.z);
 }
 
-uint GlobalIlluminationVisibilityDirectionIndex(vec3 direction)
-{
-  const vec3 absoluteDirection = abs(direction);
-  if(absoluteDirection.x >= absoluteDirection.y &&
-    absoluteDirection.x >= absoluteDirection.z)
-  {
-    return direction.x >= 0.0 ? 0u : 1u;
-  }
-  if(absoluteDirection.y >= absoluteDirection.z)
-  {
-    return direction.y >= 0.0 ? 2u : 3u;
-  }
-  return direction.z >= 0.0 ? 4u : 5u;
-}
-
 vec2 GlobalIlluminationVisibilityMoments(
   GlobalIlluminationProbe probe,
   uint directionIndex)
@@ -146,6 +137,62 @@ vec2 GlobalIlluminationVisibilityMoments(
   return probe.visibility45.zw;
 }
 
+bool GlobalIlluminationDirectionBlocked(
+  GlobalIlluminationProbe probe,
+  uint directionIndex)
+{
+  const uint blockedDirections =
+    floatBitsToUint(probe.environmentVisibility45.z) &
+    GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_MASK;
+  return (blockedDirections &
+    (1u << (GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_SHIFT +
+      directionIndex))) != 0u;
+}
+
+float GlobalIlluminationEnvironmentVisibility(
+  vec3 positiveDirectionVisibility,
+  vec3 negativeDirectionVisibility,
+  vec3 sourceDirection)
+{
+  const vec3 direction = length(sourceDirection) > 0.000001
+    ? normalize(sourceDirection)
+    : vec3(0.0, 1.0, 0.0);
+  const vec3 axisWeights = abs(direction);
+  const float totalAxisWeight =
+    axisWeights.x + axisWeights.y + axisWeights.z;
+  const vec3 directionalVisibility = vec3(
+    direction.x >= 0.0
+      ? positiveDirectionVisibility.x
+      : negativeDirectionVisibility.x,
+    direction.y >= 0.0
+      ? positiveDirectionVisibility.y
+      : negativeDirectionVisibility.y,
+    direction.z >= 0.0
+      ? positiveDirectionVisibility.z
+      : negativeDirectionVisibility.z);
+  return clamp(dot(
+    axisWeights,
+    directionalVisibility) / totalAxisWeight,
+    0.0,
+    1.0);
+}
+
+float GlobalIlluminationEnvironmentVisibility(
+  GlobalIlluminationProbe probe,
+  vec3 sourceDirection)
+{
+  return GlobalIlluminationEnvironmentVisibility(
+    vec3(
+      probe.environmentVisibility0123.x,
+      probe.environmentVisibility0123.z,
+      probe.environmentVisibility45.x),
+    vec3(
+      probe.environmentVisibility0123.y,
+      probe.environmentVisibility0123.w,
+      probe.environmentVisibility45.y),
+    sourceDirection);
+}
+
 float GlobalIlluminationVisibilityWeight(
   GlobalIlluminationProbe probe,
   vec3 worldPosition)
@@ -156,22 +203,34 @@ float GlobalIlluminationVisibilityWeight(
   {
     return 1.0;
   }
-  const vec2 moments = GlobalIlluminationVisibilityMoments(
-    probe,
-    GlobalIlluminationVisibilityDirectionIndex(delta / distanceToProbe));
-  if(moments.x <= 0.0 && moments.y <= 0.0)
+  const uvec3 directionIndices = uvec3(
+    delta.x >= 0.0 ? 0u : 1u,
+    delta.y >= 0.0 ? 2u : 3u,
+    delta.z >= 0.0 ? 4u : 5u);
+  for(uint axis = 0u; axis < 3u; ++axis)
   {
-    return 1.0;
+    const uint directionIndex = directionIndices[axis];
+    const float clearance = GlobalIlluminationVisibilityMoments(
+      probe,
+      directionIndex).x;
+    if(GlobalIlluminationDirectionBlocked(probe, directionIndex) &&
+      abs(delta[axis]) > clearance +
+        GLOBAL_ILLUMINATION_BLOCKING_DISTANCE_TOLERANCE)
+    {
+      return 0.0;
+    }
   }
-  if(distanceToProbe <= moments.x)
-  {
-    return 1.0;
-  }
-  const float variance = max(moments.y - moments.x * moments.x, 0.00001);
-  const float difference = distanceToProbe - moments.x;
-  const float chebyshev = variance /
-    (variance + difference * difference);
-  return chebyshev * chebyshev * chebyshev;
+  return 1.0;
+}
+
+float GlobalIlluminationSurfaceFacingWeight(
+  GlobalIlluminationProbe probe,
+  vec3 worldPosition,
+  vec3 worldNormal)
+{
+  const vec3 surfaceToProbe = probe.positionAndValidity.xyz - worldPosition;
+  return dot(worldNormal, surfaceToProbe) <
+    -GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE ? 0.0 : 1.0;
 }
 
 bool GlobalIlluminationFindBrick(
@@ -256,30 +315,30 @@ bool GlobalIlluminationFindBrick(
 }
 
 float GlobalIlluminationCoefficientComponent(
-  uint stateIndex,
-  uint probeIndex,
-  uint coefficientIndex,
-  uint colorChannel)
+	uint stateIndex,
+	uint probeIndex,
+	uint coefficientIndex,
+	uint colorChannel)
 {
-  const uint probeCount = globalIlluminationHeader.counts.w;
-  const uint packedComponentIndex = coefficientIndex * 3u + colorChannel;
-  const uint packedPairIndex = packedComponentIndex / 2u;
-  const uint coefficientArrayIndex = stateIndex * probeCount + probeIndex;
-  if(coefficientArrayIndex >= uint(globalIlluminationCoefficients.instance.length()))
-  {
-    return 0.0;
-  }
-  const uvec4 packedGroup = globalIlluminationCoefficients
-    .instance[coefficientArrayIndex].packed[packedPairIndex / 4u];
-  const uint packedPair = packedGroup[packedPairIndex % 4u];
-  const vec2 values = unpackHalf2x16(packedPair);
-  return (packedComponentIndex & 1u) == 0u ? values.x : values.y;
+	const uint probeCount = globalIlluminationHeader.counts.w;
+	const uint packedComponentIndex = coefficientIndex * 3u + colorChannel;
+	const uint packedPairIndex = packedComponentIndex / 2u;
+	const uint coefficientArrayIndex = stateIndex * probeCount + probeIndex;
+	if(coefficientArrayIndex >= uint(globalIlluminationCoefficients.instance.length()))
+	{
+		return 0.0;
+	}
+	const uvec4 packedGroup = globalIlluminationCoefficients
+		.instance[coefficientArrayIndex].packed[packedPairIndex / 4u];
+	const uint packedPair = packedGroup[packedPairIndex % 4u];
+	const vec2 values = unpackHalf2x16(packedPair);
+	return (packedComponentIndex & 1u) == 0u ? values.x : values.y;
 }
 
 vec3 GlobalIlluminationEvaluateProbe(
-  uint stateIndex,
-  uint probeIndex,
-  vec3 sourceNormal)
+	uint stateIndex,
+	uint probeIndex,
+	vec3 sourceNormal)
 {
   const vec3 normal = length(sourceNormal) > 0.000001
     ? normalize(sourceNormal)
@@ -287,7 +346,7 @@ vec3 GlobalIlluminationEvaluateProbe(
   const float x = normal.x;
   const float y = normal.y;
   const float z = normal.z;
-  const float basis[9] = float[9](
+	const float basis[9] = float[9](
     0.2820947918,
     0.4886025119 * y,
     0.4886025119 * z,
@@ -299,18 +358,18 @@ vec3 GlobalIlluminationEvaluateProbe(
     0.5462742153 * (x * x - y * y));
 
   vec3 irradiance = vec3(0.0);
-  for(uint coefficientIndex = 0u; coefficientIndex < 9u; ++coefficientIndex)
-  {
-    const vec3 coefficient = vec3(
-      GlobalIlluminationCoefficientComponent(
-        stateIndex, probeIndex, coefficientIndex, 0u),
-      GlobalIlluminationCoefficientComponent(
-        stateIndex, probeIndex, coefficientIndex, 1u),
-      GlobalIlluminationCoefficientComponent(
-        stateIndex, probeIndex, coefficientIndex, 2u));
-    irradiance += coefficient * basis[coefficientIndex];
-  }
-  return irradiance;
+	for(uint coefficientIndex = 0u; coefficientIndex < 9u; ++coefficientIndex)
+	{
+		const vec3 coefficient = vec3(
+			GlobalIlluminationCoefficientComponent(
+				stateIndex, probeIndex, coefficientIndex, 0u),
+			GlobalIlluminationCoefficientComponent(
+				stateIndex, probeIndex, coefficientIndex, 1u),
+			GlobalIlluminationCoefficientComponent(
+				stateIndex, probeIndex, coefficientIndex, 2u));
+		irradiance += coefficient * basis[coefficientIndex];
+	}
+	return irradiance;
 }
 
 vec3 GlobalIlluminationHueToRgb(float hue)
@@ -320,12 +379,18 @@ vec3 GlobalIlluminationHueToRgb(float hue)
 }
 
 bool SampleGlobalIllumination(
-  vec3 worldPosition,
-  vec3 worldNormal,
-  out vec3 irradiance,
-  out GlobalIlluminationSampleDebug debugInfo)
+	vec3 worldPosition,
+	vec3 worldNormal,
+	vec3 surfaceToCamera,
+	vec3 environmentDirection,
+	out vec3 irradiance,
+	out float environmentVisibility,
+	out GlobalIlluminationSampleDebug debugInfo)
 {
-  irradiance = vec3(0.0);
+	irradiance = vec3(0.0);
+	environmentVisibility = 1.0;
+	vec3 positiveDirectionVisibility = vec3(0.0);
+	vec3 negativeDirectionVisibility = vec3(0.0);
   InitializeGlobalIlluminationSampleDebug(debugInfo);
 
   if(globalIlluminationHeader.counts.x == 0u ||
@@ -337,8 +402,12 @@ bool SampleGlobalIllumination(
   const vec3 normal = length(worldNormal) > 0.000001
     ? normalize(worldNormal)
     : vec3(0.0, 1.0, 0.0);
+  const vec3 viewDirection = length(surfaceToCamera) > 0.000001
+    ? normalize(surfaceToCamera)
+    : vec3(0.0);
   const vec3 samplingPosition = worldPosition +
-    normal * globalIlluminationHeader.volumeMin.w;
+    normal * globalIlluminationHeader.volumeMin.w +
+    viewDirection * globalIlluminationHeader.volumeMax.w;
   uint brickIndex = 0u;
   if(!GlobalIlluminationFindBrick(
     samplingPosition,
@@ -369,7 +438,8 @@ bool SampleGlobalIllumination(
   const vec3 fraction = fract(cell);
   const uint firstProbeIndex = floatBitsToUint(brick.maxAndFirstProbe.w);
 
-  float totalWeight = 0.0;
+  float totalInterpolationWeight = 0.0;
+  float totalVisibleWeight = 0.0;
   float dominantProbeWeight = -1.0;
   const uint stateCount = min(
     globalIlluminationHeader.stateAndDebug.x,
@@ -414,7 +484,22 @@ bool SampleGlobalIllumination(
         const float visibility = GlobalIlluminationVisibilityWeight(
           probe,
           samplingPosition);
-        const float spatialWeight = trilinearWeight * validity * visibility;
+        const float interpolationWeight = trilinearWeight * validity;
+        const float spatialWeight = interpolationWeight * visibility *
+          GlobalIlluminationSurfaceFacingWeight(
+            probe,
+            worldPosition,
+            normal);
+        totalInterpolationWeight += interpolationWeight;
+        totalVisibleWeight += spatialWeight;
+        positiveDirectionVisibility += vec3(
+          probe.environmentVisibility0123.x,
+          probe.environmentVisibility0123.z,
+          probe.environmentVisibility45.x) * spatialWeight;
+        negativeDirectionVisibility += vec3(
+          probe.environmentVisibility0123.y,
+          probe.environmentVisibility0123.w,
+          probe.environmentVisibility45.y) * spatialWeight;
         if(spatialWeight > dominantProbeWeight)
         {
           dominantProbeWeight = spatialWeight;
@@ -422,40 +507,66 @@ bool SampleGlobalIllumination(
         }
         debugInfo.averageValidity += trilinearWeight * validity;
         debugInfo.averageVisibility += trilinearWeight * visibility;
-        for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
-        {
-          const float stateWeight =
-            globalIlluminationStates.instance[stateIndex].parameters.x;
-          irradiance += GlobalIlluminationEvaluateProbe(
-            stateIndex,
-            probeIndex,
-            normal) * spatialWeight * stateWeight;
-        }
-        totalWeight += spatialWeight;
+		for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
+		{
+			const float stateWeight =
+				globalIlluminationStates.instance[stateIndex].parameters.x;
+			irradiance += GlobalIlluminationEvaluateProbe(
+				stateIndex,
+				probeIndex,
+				normal) * spatialWeight * stateWeight;
+		}
       }
     }
   }
 
-  if(totalWeight <= 0.000001)
+  if(totalInterpolationWeight <= 0.000001)
   {
-    irradiance = vec3(0.0);
     return false;
   }
-  irradiance = max(irradiance / totalWeight, vec3(0.0));
-  debugInfo.usedProbeVolume = true;
-  return true;
+	if(totalVisibleWeight <= 0.000001)
+	{
+    // The volume has valid probes, but none has a visible path to this
+    // surface. Keep a valid black baked result instead of falling back to the
+		// gray environment irradiance used by RealtimeAndBaked mode.
+		environmentVisibility = 0.0;
+		debugInfo.usedProbeVolume = true;
+		return true;
+	}
+  // Visibility selects probes on the same side of nearby geometry. The SH
+  // payload already contains the physical occlusion; multiplying the final
+  // energy by the trilinear visibility coverage exposes brick-shaped bands.
+	irradiance = max(irradiance / totalVisibleWeight, vec3(0.0));
+	positiveDirectionVisibility = clamp(
+    positiveDirectionVisibility / totalVisibleWeight,
+    vec3(0.0),
+    vec3(1.0));
+	negativeDirectionVisibility = clamp(
+		negativeDirectionVisibility / totalVisibleWeight,
+		vec3(0.0),
+		vec3(1.0));
+	environmentVisibility = GlobalIlluminationEnvironmentVisibility(
+		positiveDirectionVisibility,
+		negativeDirectionVisibility,
+		environmentDirection);
+	debugInfo.usedProbeVolume = true;
+	return true;
 }
 
 vec3 ResolveGlobalIlluminationDiffuseIrradiance(
   vec3 worldPosition,
   vec3 worldNormal,
+  vec3 surfaceToCamera,
+  vec3 environmentDirection,
   vec3 environmentIrradiance,
+  out float environmentVisibility,
   out GlobalIlluminationSampleDebug debugInfo)
 {
+  environmentVisibility = 1.0;
   InitializeGlobalIlluminationSampleDebug(debugInfo);
   if(globalIlluminationHeader.settings.x == 0u)
   {
-    return vec3(0.0);
+    return environmentIrradiance;
   }
   const uint mode = globalIlluminationHeader.settings.y;
   if(mode == GLOBAL_ILLUMINATION_MODE_REALTIME)
@@ -466,14 +577,19 @@ vec3 ResolveGlobalIlluminationDiffuseIrradiance(
   if(SampleGlobalIllumination(
     worldPosition,
     worldNormal,
+    surfaceToCamera,
+    environmentDirection,
     probeIrradiance,
+    environmentVisibility,
     debugInfo))
   {
     return probeIrradiance;
   }
-  return mode == GLOBAL_ILLUMINATION_MODE_BAKED_ONLY
-    ? vec3(0.0)
-    : environmentIrradiance;
+  // Missing, disabled, non-resident, or out-of-volume GI always preserves the
+  // pre-GI SkyComponent cubemap path. A valid black sample above is baked
+  // occlusion and is deliberately not treated as fallback.
+  environmentVisibility = 1.0;
+  return environmentIrradiance;
 }
 
 bool GlobalIlluminationDebugSuppressesDirectLighting()

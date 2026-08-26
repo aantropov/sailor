@@ -17,6 +17,7 @@ namespace Sailor
 		glm::vec3 m_radiance{};
 		float m_distance = 0.0f;
 		bool m_bHit = false;
+		bool m_bBackFace = false;
 	};
 
 	class SAILOR_SHARED_API IProbeVolumeBakeRaySampler
@@ -32,6 +33,22 @@ namespace Sailor
 			uint32_t randomSeed,
 			ProbeVolumeBakeRaySample& outSample,
 			std::string& outDiagnostic) const = 0;
+		virtual bool SampleVisibility(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const
+		{
+			return Sample(
+				origin,
+				direction,
+				maxDistance,
+				randomSeed,
+				outSample,
+				outDiagnostic);
+		}
 	};
 
 	struct SAILOR_SHARED_API ProbeVolumeBakeProgress final
@@ -45,7 +62,7 @@ namespace Sailor
 	struct SAILOR_SHARED_API ProbeVolumeBakeRequest final
 	{
 		std::string m_stateName{};
-		std::string m_bakerVersion{ "Sailor ProbeVolumeBaker/1" };
+		std::string m_bakerVersion{ ProbeVolumeCurrentBakerVersion };
 		glm::vec3 m_volumeMin{};
 		glm::vec3 m_volumeMax{};
 		ProbeVolumeBakeSettings m_settings{};

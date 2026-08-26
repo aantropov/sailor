@@ -8,6 +8,7 @@
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "Components/MeshRendererComponent.h"
+#include "Components/SkyComponent.h"
 #include "Core/LogMacros.h"
 #include "ECS/LandscapeECS.h"
 #include "ECS/LightingECS.h"
@@ -16,6 +17,7 @@
 #include "Engine/World.h"
 #include "Math/Math.h"
 #include "Raytracing/ProbeVolumePathTracer.h"
+#include "Raytracing/SkyEnvironmentGenerator.h"
 #include "Tasks/Scheduler.h"
 #include "YamlExceptionBoundary.h"
 
@@ -39,10 +41,13 @@ namespace
 		TVector<Raytracing::LightProxy> m_lights{};
 		TVector<Math::AABB> m_geometryBounds{};
 		ProbeVolumeDataPtr m_layoutSource{};
+		SkyParameters m_skyParameters{};
 		std::filesystem::path m_outputPath{};
 		glm::vec3 m_volumeMin{};
 		glm::vec3 m_volumeMax{};
+		float m_skyIndirectIntensity = 1.0f;
 		uint64_t m_sourceWorldHash = 0u;
+		bool m_bHasSkyEnvironment = false;
 	};
 
 	struct MeshCandidate final
@@ -574,6 +579,45 @@ namespace
 			}
 		}
 
+		if (request.m_settings.m_bIncludeSky)
+		{
+			std::string selectedSkyInstanceId;
+			std::string selectedSkyName;
+			uint32_t skyComponentCount = 0u;
+			for (const GameObjectPtr& gameObject : world->GetGameObjects())
+			{
+				if (!gameObject)
+				{
+					continue;
+				}
+				const auto sky = gameObject->GetComponent<SkyComponent>();
+				if (!sky)
+				{
+					continue;
+				}
+
+				++skyComponentCount;
+				const std::string instanceId =
+					gameObject->GetInstanceId().ToString();
+				if (!scene.m_bHasSkyEnvironment ||
+					instanceId < selectedSkyInstanceId)
+				{
+					scene.m_skyParameters = sky->GetSkyParameters();
+					scene.m_skyIndirectIntensity =
+						sky->GetGiIndirectIntensity();
+					scene.m_bHasSkyEnvironment = true;
+					selectedSkyInstanceId = instanceId;
+					selectedSkyName = gameObject->GetName();
+				}
+			}
+			if (skyComponentCount > 1u)
+			{
+				LogBakeWarning(
+					"multiple SkyComponents are present; the transient bake "
+					"environment uses '" + selectedSkyName + "'");
+			}
+		}
+
 		TVector<MeshCandidate> candidates;
 		for (const GameObjectPtr& gameObject : world->GetGameObjects())
 		{
@@ -824,6 +868,22 @@ namespace
 			HashVec2(sourceHash, light.m_cutOff);
 		}
 		HashVec3(sourceHash, request.m_fallbackEnvironment);
+		HashValue(sourceHash, scene.m_bHasSkyEnvironment);
+		if (scene.m_bHasSkyEnvironment)
+		{
+			constexpr uint32_t SkyEnvironmentGeneratorVersion = 1u;
+			HashValue(sourceHash, SkyEnvironmentGeneratorVersion);
+			HashValue(
+				sourceHash,
+				Raytracing::ProbeBakeSkyEnvironmentWidth);
+			HashValue(
+				sourceHash,
+				Raytracing::ProbeBakeSkyEnvironmentHeight);
+			HashVec4(
+				sourceHash,
+				scene.m_skyParameters.m_lightDirection);
+			HashValue(sourceHash, scene.m_skyIndirectIntensity);
+		}
 		scene.m_materialRevisions.Reserve(scene.m_materials.Num());
 		for (const MaterialPtr& material : scene.m_materials)
 		{
@@ -971,6 +1031,9 @@ bool GlobalIlluminationBakeController::Start(
 					effectiveSettings.m_maxRayDistance =
 						scene->m_layoutSource->m_bakeSettings.m_maxRayDistance;
 				}
+				effectiveSettings.m_skyIndirectIntensity =
+					scene->m_bHasSkyEnvironment ?
+						scene->m_skyIndirectIntensity : 1.0f;
 
 				Raytracing::ProbeVolumePathTracer sampler;
 				if (!MaterialsMatchSnapshot(*scene))
@@ -1040,6 +1103,83 @@ bool GlobalIlluminationBakeController::Start(
 							"the CPU path tracer could not prepare any valid bake geometry after unavailable meshes and materials were skipped");
 					}
 					return;
+				}
+
+				if (effectiveSettings.m_bIncludeSky &&
+					scene->m_bHasSkyEnvironment)
+				{
+					TVector<glm::vec4> transientSkyEnvironment;
+					const glm::uvec2 environmentExtent(
+						Raytracing::ProbeBakeSkyEnvironmentWidth,
+						Raytracing::ProbeBakeSkyEnvironmentHeight);
+					const bool bGenerated =
+						Raytracing::GenerateSkyEnvironmentEquirectangular(
+							scene->m_skyParameters,
+							environmentExtent,
+							transientSkyEnvironment,
+							[state, started](
+								uint32_t completedRows,
+								uint32_t totalRows)
+							{
+								if (state->m_cancel.load(
+										std::memory_order_acquire))
+								{
+									return false;
+								}
+								if (completedRows % 8u == 0u ||
+									completedRows == totalRows)
+								{
+									const std::string stage =
+										"Generating transient SkyComponent "
+										"environment (" +
+										std::to_string(completedRows) + "/" +
+										std::to_string(totalRows) + ")";
+									UpdateStatus(
+										state,
+										[&stage, started](
+											EditorProbeVolumeBakeStatus& status)
+										{
+											status.m_state =
+												EEditorProbeVolumeBakeState::Baking;
+											status.m_progress = 0.1f;
+											status.m_stage = stage;
+											status.m_elapsedSeconds =
+												std::chrono::duration<float>(
+													std::chrono::steady_clock::now() -
+													started).count();
+										});
+								}
+								return true;
+							});
+					if (!bGenerated)
+					{
+						if (state->m_cancel.load(
+								std::memory_order_acquire))
+						{
+							Cancelled(
+								state,
+								"probe-volume bake was cancelled while "
+								"generating its transient sky environment");
+						}
+						else
+						{
+							Fail(
+								state,
+								"the transient SkyComponent environment "
+								"could not be generated");
+						}
+						return;
+					}
+					for (glm::vec4& pixel : transientSkyEnvironment)
+					{
+						pixel = glm::vec4(
+							glm::max(glm::vec3(pixel), glm::vec3(0.0f)) *
+								effectiveSettings.m_skyIndirectIntensity,
+							pixel.a);
+					}
+					sampler.SetEnvironmentLinear(
+						transientSkyEnvironment,
+						environmentExtent);
 				}
 				if (!MaterialsMatchSnapshot(*scene))
 				{

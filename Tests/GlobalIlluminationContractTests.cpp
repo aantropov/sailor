@@ -19,6 +19,7 @@
 #include "Raytracing/ProbeVolumePathTracer.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -120,6 +121,13 @@ namespace
 					for (glm::vec2& visibility : probe.m_visibility)
 					{
 						visibility = glm::vec2(100.0f, 10000.0f);
+					}
+					for (uint32_t directionIndex = 0u;
+						directionIndex < ProbeVolumeVisibilityDirectionCount;
+						++directionIndex)
+					{
+						probe.m_environmentVisibility[directionIndex] =
+							0.1f * static_cast<float>(directionIndex + 1u);
 					}
 					data.m_probes.Add(std::move(probe));
 				}
@@ -443,14 +451,21 @@ namespace
 			ProbeVolumeBakeRaySample& outSample,
 			std::string&) const override
 		{
+			m_lastMaxDistance.store(maxDistance, std::memory_order_relaxed);
 			outSample.m_radiance = m_radiance;
 			outSample.m_distance = maxDistance;
 			outSample.m_bHit = false;
 			return true;
 		}
 
+		float GetLastMaxDistance() const noexcept
+		{
+			return m_lastMaxDistance.load(std::memory_order_relaxed);
+		}
+
 	private:
 		glm::vec3 m_radiance{};
+		mutable std::atomic<float> m_lastMaxDistance{ 0.0f };
 	};
 
 	class SeedDrivenBakeRaySampler final : public IProbeVolumeBakeRaySampler
@@ -583,6 +598,28 @@ namespace
 			{
 				return false;
 			}
+			if (!HasSameFloatBits(
+					lhs.m_environmentVisibility[index],
+					rhs.m_environmentVisibility[index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool HasSameIrradianceBits(
+		const ProbeVolumeSample& lhs,
+		const ProbeVolumeSample& rhs)
+	{
+		for (size_t index = 0u; index < lhs.m_irradiance.size(); ++index)
+		{
+			if (!HasSameVectorBits(
+					lhs.m_irradiance[index],
+					rhs.m_irradiance[index]))
+			{
+				return false;
+			}
 		}
 		return true;
 	}
@@ -604,6 +641,208 @@ namespace
 			outSample.m_radiance = glm::vec3(0.25f);
 			outSample.m_distance = bPositiveXAxis ? 0.0f : maxDistance;
 			outSample.m_bHit = bPositiveXAxis;
+			return true;
+		}
+	};
+
+	class ObliqueNearWallBakeRaySampler final :
+		public IProbeVolumeBakeRaySampler
+	{
+	public:
+		bool Sample(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			if (!SampleVisibility(
+					origin,
+					direction,
+					maxDistance,
+					randomSeed,
+					outSample,
+					outDiagnostic))
+			{
+				return false;
+			}
+			outSample.m_radiance = glm::vec3(0.25f);
+			return true;
+		}
+
+		bool SampleVisibility(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			outSample = {};
+			outSample.m_distance = maxDistance;
+			const glm::vec3 wallNormal = glm::normalize(
+				glm::vec3(1.0f, 0.0f, 1.0f));
+			const float alignment = glm::dot(direction, -wallNormal);
+			// Model a small diagonal wall patch. None of the six signed-axis rays
+			// can see it, while the fixed spherical transport directions can.
+			if (alignment > 0.8f)
+			{
+				const float signedDistance =
+					0.05f + glm::dot(origin, wallNormal);
+				const float hitDistance = signedDistance / alignment;
+				if (hitDistance >= 0.0f && hitDistance <= maxDistance)
+				{
+					outSample.m_bHit = true;
+					outSample.m_distance = hitDistance;
+				}
+			}
+			outDiagnostic.clear();
+			return true;
+		}
+	};
+
+	class HalfSpaceBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	{
+	public:
+		bool Sample(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			if (!SampleVisibility(
+					origin,
+					direction,
+					maxDistance,
+					randomSeed,
+					outSample,
+					outDiagnostic))
+			{
+				return false;
+			}
+			outSample.m_radiance = glm::vec3(0.25f);
+			return true;
+		}
+
+		bool SampleVisibility(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			outSample = {};
+			outSample.m_distance = maxDistance;
+			const bool bFromNegativeSide = origin.x < -0.0001f &&
+				direction.x > 0.0001f;
+			const bool bFromPositiveSide = origin.x > 0.0001f &&
+				direction.x < -0.0001f;
+			if (bFromNegativeSide || bFromPositiveSide)
+			{
+				const float distance = -origin.x / direction.x;
+				if (distance >= 0.0f && distance <= maxDistance)
+				{
+					outSample.m_bHit = true;
+					outSample.m_distance = distance;
+					outSample.m_bBackFace = bFromNegativeSide;
+				}
+			}
+			outDiagnostic.clear();
+			return true;
+		}
+	};
+
+	class FullyEmbeddedBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	{
+	public:
+		bool Sample(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			if (!SampleVisibility(
+					origin,
+					direction,
+					maxDistance,
+					randomSeed,
+					outSample,
+					outDiagnostic))
+			{
+				return false;
+			}
+			outSample.m_radiance = glm::vec3(100.0f);
+			return true;
+		}
+
+		bool SampleVisibility(
+			const glm::vec3&,
+			const glm::vec3&,
+			float maxDistance,
+			uint32_t,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			outSample = {};
+			outSample.m_bHit = true;
+			outSample.m_bBackFace = true;
+			outSample.m_distance = (std::min)(0.1f, maxDistance);
+			outDiagnostic.clear();
+			return true;
+		}
+	};
+
+	class DirectionalDistanceBakeRaySampler final :
+		public IProbeVolumeBakeRaySampler
+	{
+	public:
+		bool Sample(
+			const glm::vec3&,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override
+		{
+			outSample = {};
+			outSample.m_radiance = glm::vec3(0.25f);
+			outSample.m_bHit = true;
+			outSample.m_distance = (std::min)(
+				maxDistance,
+				1.25f + direction.x * 0.25f + direction.z * 0.125f);
+			outDiagnostic.clear();
+			return true;
+		}
+	};
+
+	class InspectablePathTracer final : public Raytracing::PathTracer
+	{
+	public:
+		bool IntersectIgnoring(
+			const Math::Ray& ray,
+			uint32_t ignoreInstance,
+			uint32_t ignoreTriangle,
+			uint32_t& outTriangle,
+			float& outDistance) const
+		{
+			TLASHit hit;
+			if (!IntersectScene(
+					ray,
+					hit,
+					100.0f,
+					ignoreInstance,
+					ignoreTriangle))
+			{
+				return false;
+			}
+			outTriangle = hit.m_triangleIndex;
+			outDistance = hit.m_hit.m_rayLenght;
 			return true;
 		}
 	};
@@ -642,7 +881,9 @@ namespace
 
 	void TestBinaryRoundTripDeterminismAndCorruption()
 	{
-		const ProbeVolumeData source = MakeVolume(2.0f, 11u);
+		ProbeVolumeData source = MakeVolume(2.0f, 11u);
+		source.m_bakeSettings.m_skyIndirectIntensity = 1.75f;
+		source.m_probes[7].m_flags |= ProbeVolumeBlockedDirectionBit(5u);
 		std::string diagnostic;
 		Require(source.Validate(diagnostic), "test volume must be valid: " + diagnostic);
 
@@ -661,7 +902,11 @@ namespace
 			roundTrip.m_data->m_bricks[0].m_probeCounts == glm::uvec3(2u) &&
 			roundTrip.m_data->m_lightingHash == 11u &&
 			roundTrip.m_data->m_stateName == "Test State" &&
-			roundTrip.m_data->m_probes[7].m_irradiance[0] == glm::vec3(2.0f),
+			IsNear(roundTrip.m_data->m_bakeSettings.m_skyIndirectIntensity, 1.75f) &&
+			roundTrip.m_data->m_probes[7].m_irradiance[0] == glm::vec3(2.0f) &&
+			HasSameProbeBits(
+				source.m_probes[7],
+				roundTrip.m_data->m_probes[7]),
 			"round-trip must preserve settings, adaptive layout, hashes, and L2 SH");
 
 		TVector<uint8_t> corrupted = first;
@@ -709,6 +954,13 @@ namespace
 			second,
 			diagnostic),
 			"a .probes file must reject unsupported bake-setting ranges");
+		ProbeVolumeData invalidSkyIndirectIntensity = source;
+		invalidSkyIndirectIntensity.m_bakeSettings.m_skyIndirectIntensity = -0.01f;
+		Require(!ProbeVolumeBinary::Serialize(
+			invalidSkyIndirectIntensity,
+			second,
+			diagnostic),
+			"a .probes file must reject a negative sky intensity");
 
 		ProbeVolumeData overflowingGrid = source;
 		overflowingGrid.m_bricks[0].m_probeCounts = glm::uvec3(
@@ -804,7 +1056,7 @@ namespace
 		Require(SampleProbeVolumeIrradiance(
 			data,
 			glm::vec3(0.5f),
-			glm::vec3(0.0f, 1.0f, 0.0f),
+			glm::vec3(0.0f),
 			sampled,
 			&debug),
 			"center of a valid adaptive brick should sample");
@@ -814,13 +1066,161 @@ namespace
 		float normalizedWeight = 0.0f;
 		for (float weight : debug.m_weights) normalizedWeight += weight;
 		Require(IsNear(normalizedWeight, 1.0f),
-			"debug visibility weights must expose the normalized interpolation used by shading");
+			"debug visibility weights must expose the attenuated interpolation coefficients used by shading");
+
+		const float unoccludedIrradiance = sampled.x;
+		for (ProbeVolumeSample& probe : data.m_probes)
+		{
+			for (glm::vec2& visibility : probe.m_visibility)
+			{
+				visibility = glm::vec2(0.5f, 0.3839746f);
+			}
+		}
+		Require(SampleProbeVolumeIrradiance(
+			data,
+			glm::vec3(0.5f),
+			glm::vec3(0.0f),
+			sampled,
+			&debug) &&
+			IsNear(sampled.x, unoccludedIrradiance),
+			"visibility must select same-side probes without exposing the "
+			"trilinear cell as an energy mask");
+		float attenuatedWeight = 0.0f;
+		for (float weight : debug.m_weights) attenuatedWeight += weight;
+		Require(IsNear(attenuatedWeight, 1.0f),
+			"selected probe weights must normalize after visibility rejection");
+
+		for (ProbeVolumeSample& probe : data.m_probes)
+		{
+			for (glm::vec2& visibility : probe.m_visibility)
+			{
+				visibility = glm::vec2(0.05f, 0.002501f);
+			}
+			probe.m_flags |= ProbeVolumeBlockedDirectionMask;
+		}
+		Require(SampleProbeVolumeIrradiance(
+			data,
+			glm::vec3(0.5f),
+			glm::vec3(0.0f),
+			sampled,
+			&debug) &&
+			glm::length(sampled) <= 0.000001f,
+			"a surface with no visible probe support must resolve to baked "
+			"black instead of amplifying numerical visibility or requesting "
+			"the gray environment fallback");
+
+		ProbeVolumeData directional;
+		directional.m_volumeMin = glm::vec3(-2.0f);
+		directional.m_volumeMax = glm::vec3(2.0f);
+		ProbeVolumeBrick directionalBrick;
+		directionalBrick.m_min = directional.m_volumeMin;
+		directionalBrick.m_max = directional.m_volumeMax;
+		directionalBrick.m_probeCounts = glm::uvec3(2u, 1u, 1u);
+		directionalBrick.m_probeCount = 2u;
+		directional.m_bricks.Add(directionalBrick);
+		ProbeVolumeSample directionalProbe;
+		directionalProbe.m_irradiance[0] = glm::vec3(1.0f);
+		for (glm::vec2& visibility : directionalProbe.m_visibility)
+		{
+			visibility = glm::vec2(2.0f, 4.0f);
+		}
+		directionalProbe.m_visibility[2u] = glm::vec2(0.1f, 0.01001f);
+		directional.m_probes.Add(directionalProbe);
+		ProbeVolumeSample referenceProbe;
+		referenceProbe.m_position = glm::vec3(2.0f, 0.0f, 0.0f);
+		referenceProbe.m_irradiance[0] = glm::vec3(1.0f);
+		for (glm::vec2& visibility : referenceProbe.m_visibility)
+		{
+			visibility = glm::vec2(2.0f, 4.0f);
+		}
+		directional.m_probes.Add(referenceProbe);
+		glm::vec3 xDominant{};
+		glm::vec3 yDominant{};
+		Require(SampleProbeVolumeIrradiance(
+			directional,
+			glm::vec3(1.0f, 0.99f, 0.0f),
+			glm::vec3(0.0f),
+			xDominant) &&
+			SampleProbeVolumeIrradiance(
+				directional,
+				glm::vec3(0.99f, 1.0f, 0.0f),
+				glm::vec3(0.0f),
+				yDominant),
+			"directional visibility fixtures should sample inside their brick");
+		const float fullDirectionalIrradiance = 0.2820947918f;
+		Require(
+			IsNear(xDominant.x, fullDirectionalIrradiance) &&
+			IsNear(yDominant.x, fullDirectionalIrradiance) &&
+			std::abs(xDominant.x - yDominant.x) <
+				fullDirectionalIrradiance * 0.02f,
+			"clearance values without blocker bits must not create circular "
+			"attenuation or an axis-lobe boundary");
 		Require(!SampleProbeVolumeIrradiance(
 			data,
 			glm::vec3(2.0f),
 			glm::vec3(0.0f, 1.0f, 0.0f),
 			sampled),
 			"positions outside all bricks must select the environment fallback");
+	}
+
+	void TestBlockedAndWrongSideProbeRejection()
+	{
+		ProbeVolumeData data;
+		data.m_volumeMin = glm::vec3(-1.0f);
+		data.m_volumeMax = glm::vec3(1.0f);
+		ProbeVolumeBrick brick;
+		brick.m_min = data.m_volumeMin;
+		brick.m_max = data.m_volumeMax;
+		brick.m_probeCounts = glm::uvec3(1u, 1u, 2u);
+		brick.m_probeCount = 2u;
+		data.m_bricks.Add(brick);
+
+		ProbeVolumeSample leakingProbe;
+		leakingProbe.m_position = glm::vec3(0.0f, 0.0f, -1.0f);
+		leakingProbe.m_irradiance[0] = glm::vec3(100.0f);
+		for (glm::vec2& visibility : leakingProbe.m_visibility)
+		{
+			visibility = glm::vec2(2.0f, 4.0f);
+		}
+		leakingProbe.m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
+		leakingProbe.m_flags |= ProbeVolumeBlockedDirectionBit(4u);
+		data.m_probes.Add(leakingProbe);
+
+		ProbeVolumeSample referenceProbe;
+		referenceProbe.m_position = glm::vec3(0.0f, 0.0f, 1.0f);
+		referenceProbe.m_irradiance[0] = glm::vec3(1.0f);
+		for (glm::vec2& visibility : referenceProbe.m_visibility)
+		{
+			visibility = glm::vec2(2.0f, 4.0f);
+		}
+		data.m_probes.Add(referenceProbe);
+
+		glm::vec3 sampled{};
+		ProbeVolumeSampleDebugInfo debug;
+		const glm::vec3 obliqueSurface(0.75f, 0.0f, 0.0f);
+		Require(SampleProbeVolumeIrradiance(
+			data,
+			obliqueSurface,
+			glm::vec3(0.0f),
+			sampled,
+			&debug),
+			"a surface between two valid probes should sample");
+		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
+			"a probe behind a baked blocking direction must be rejected as a "
+			"complete candidate, including for an oblique probe-to-surface ray");
+
+		data.m_probes[0].m_flags &= ~ProbeVolumeBlockedDirectionMask;
+		data.m_probes[0].m_visibility[4u] = glm::vec2(2.0f, 4.0f);
+		Require(SampleProbeVolumeIrradiance(
+			data,
+			glm::vec3(0.0f),
+			glm::vec3(0.0f, 0.0f, 1.0f),
+			sampled,
+			&debug),
+			"normal-side selection fixture should sample");
+		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
+			"a bright probe behind the shaded surface must not win over a "
+			"same-side reference probe");
 	}
 
 	void TestWorldBindingRoundTripAndModes()
@@ -982,7 +1382,8 @@ components:
 			glm::vec3(0.2126f, 0.7152f, 0.0722f));
 		Require(
 			receiverEnergy > MinimumReceiverIrradianceEnergy,
-			"an occluded receiver must retain measurable reflected irradiance");
+			"an occluded receiver must retain measurable reflected irradiance; "
+			"sampled energy was " + std::to_string(receiverEnergy));
 
 		float minimumDcEnergy = (std::numeric_limits<float>::max)();
 		float maximumDcEnergy = 0.0f;
@@ -1131,12 +1532,163 @@ components:
 			"occlusion/bounce topology; runtime-only spawned geometry is not accepted");
 	}
 
+	void TestGIBakeQualityLabCoversCanonicalCases()
+	{
+#if defined(SAILOR_TEST_SOURCE_DIR)
+		const std::filesystem::path sourceRoot = SAILOR_TEST_SOURCE_DIR;
+#else
+		const std::filesystem::path sourceRoot = ".";
+#endif
+		const YAML::Node world = YAML::LoadFile((sourceRoot /
+			"Content/Tests/Visual/GIBakeQualityLab.world").string());
+		Require(world["name"].as<std::string>() == "GIBakeQualityLab",
+			"the GI quality lab must remain a named reusable visual-test level");
+
+		GlobalIlluminationWorldSettings globalIllumination;
+		std::string diagnostic;
+		Require(globalIllumination.Deserialize(world, diagnostic) &&
+			globalIllumination.m_mode ==
+				EGlobalIlluminationMode::RealtimeAndBaked &&
+			globalIllumination.m_probes.IsEmpty(),
+			"the reusable GI quality lab must not check in local baked states: " +
+				diagnostic);
+
+		std::set<std::string> names;
+		std::set<std::string> materialIds;
+		uint32_t colorBleedObjects = 0u;
+		uint32_t corridorObjects = 0u;
+		uint32_t lightTrapObjects = 0u;
+		uint32_t skyTubeObjects = 0u;
+		uint32_t colorBleedLights = 0u;
+		uint32_t corridorLights = 0u;
+		uint32_t enclosedLights = 0u;
+		bool bHasCloudlessSky = false;
+		bool bSkyReferencesDirectionalLight = false;
+		for (const YAML::Node& prefab : world["prefabs"])
+		{
+			const YAML::Node gameObjects = prefab["gameObjects"];
+			if (!gameObjects || gameObjects.size() == 0u)
+			{
+				continue;
+			}
+			const std::string name = gameObjects[0]["name"].as<std::string>();
+			names.insert(name);
+			const bool bColorBleed = name.starts_with("A_ColorBleed_");
+			const bool bCorridor = name.starts_with("B_Corridor_");
+			const bool bLightTrap = name.starts_with("C_LightTrap_");
+			const bool bSkyTube = name.starts_with("D_SkyTube_");
+			colorBleedObjects += bColorBleed ? 1u : 0u;
+			corridorObjects += bCorridor ? 1u : 0u;
+			lightTrapObjects += bLightTrap ? 1u : 0u;
+			skyTubeObjects += bSkyTube ? 1u : 0u;
+
+			for (const YAML::Node& component : prefab["components"])
+			{
+				const std::string typeName =
+					component["typename"].as<std::string>();
+				const YAML::Node properties = component["overrideProperties"];
+				if (typeName == "Sailor::LightComponent")
+				{
+					colorBleedLights += bColorBleed ? 1u : 0u;
+					corridorLights += bCorridor ? 1u : 0u;
+					enclosedLights += (bLightTrap || bSkyTube) ? 1u : 0u;
+				}
+				else if (typeName == "Sailor::SkyComponent")
+				{
+					bHasCloudlessSky =
+						IsNear(properties["cloudsDensity"].as<float>(), 0.0f) &&
+						IsNear(properties["cloudsCoverage"].as<float>(), 0.0f) &&
+						properties["giIndirectIntensity"].as<float>() > 0.0f;
+					const YAML::Node directionalLight =
+						properties["m_directionalLight"];
+					bSkyReferencesDirectionalLight = directionalLight &&
+						directionalLight["instanceId"] &&
+						!directionalLight["instanceId"].as<std::string>().empty();
+				}
+				else if (typeName == "Sailor::MeshRendererComponent")
+				{
+					Require(properties["model"]["fileId"].as<std::string>() ==
+						"2387902B-538E-4191-93D6-53503B5571B1",
+						"every GI quality-lab case must use the same Box primitive");
+					const YAML::Node overrides = properties["overrideMaterials"];
+					Require(overrides && overrides.size() == 1u,
+						"every GI quality-lab primitive must name one controlled material");
+					materialIds.insert(overrides[0].as<std::string>());
+				}
+			}
+		}
+
+		const std::array<const char*, 12> requiredObjects =
+		{
+			"A_ColorBleed_RedLeftWall",
+			"A_ColorBleed_WhiteReferenceBlock",
+			"A_ColorBleed_NeutralPoint",
+			"B_Corridor_HalfWidthBaffle",
+			"B_Corridor_WarmPointAtEnd",
+			"C_LightTrap_FrontWallLeft",
+			"C_LightTrap_FrontWallRight",
+			"C_LightTrap_TransverseBaffle",
+			"C_LightTrap_DiffuseReference",
+			"C_LightTrap_GlossyReference",
+			"D_SkyTube_ApertureLeftStrip",
+			"D_SkyTube_ApertureReferenceBlock"
+		};
+		for (const char* requiredObject : requiredObjects)
+		{
+			Require(names.contains(requiredObject),
+				std::string("GI quality lab is missing case geometry: ") +
+					requiredObject);
+		}
+		Require(colorBleedObjects >= 8u && corridorObjects >= 8u &&
+			lightTrapObjects >= 11u && skyTubeObjects >= 9u &&
+			colorBleedLights == 1u && corridorLights == 1u &&
+			enclosedLights == 0u && bHasCloudlessSky &&
+			bSkyReferencesDirectionalLight,
+			"the lab must retain color bleed, end-lit corridor, indirect-only light trap, and sky-aperture cases");
+
+		const std::array<const char*, 4> materialPaths =
+		{
+			"Content/Tests/Visual/GIBakeQualityLab/MatteWhite.mat",
+			"Content/Tests/Visual/GIBakeQualityLab/MatteRed.mat",
+			"Content/Tests/Visual/GIBakeQualityLab/GlossyWhite.mat",
+			"Content/Tests/Visual/GIBakeQualityLab/WarmEmitter.mat"
+		};
+		for (const char* relativePath : materialPaths)
+		{
+			const YAML::Node material = YAML::LoadFile(
+				(sourceRoot / relativePath).string());
+			Require(material["shaderUid"].as<std::string>().find(
+					"1A4BA353-FDA4-4F65-941F-D9FFEE4630A0") !=
+					std::string::npos &&
+				material["samplers"].IsMap() &&
+				material["samplers"].size() == 0u &&
+				material["uniformsVec4"]["material.baseColorFactor"] &&
+				material["uniformsVec4"]["material.emissiveFactor"] &&
+				material["uniformsFloat"]["material.roughnessFactor"] &&
+				material["uniformsFloat"]["material.metallicFactor"] &&
+				material["uniformsFloat"]["material.normalScale"] &&
+				material["uniformsFloat"]["material.occlusionStrength"] &&
+				!material["uniformsVec4"]["material.albedo"] &&
+				!material["uniformsFloat"]["material.roughness"],
+				std::string("GI quality-lab textureless material must use the canonical Standard_glTF schema: ") +
+					relativePath);
+		}
+		Require(materialIds == std::set<std::string>{
+				"D1A60000-0000-4000-8000-000000000101",
+				"D1A60000-0000-4000-8000-000000000102",
+				"D1A60000-0000-4000-8000-000000000103",
+				"D1A60000-0000-4000-8000-000000000104" },
+			"the visual lab must use only its four controlled PBR reference materials");
+	}
+
 	void TestGpuPackingAndWeightOnlyUpdates()
 	{
 		ProbeVolumeDataPtr day = ProbeVolumeDataPtr::Make();
 		ProbeVolumeDataPtr evening = ProbeVolumeDataPtr::Make();
 		*day = MakeVolume(1.0f, 41u);
 		*evening = MakeVolume(3.0f, 42u);
+		const uint32_t blockedDirection = ProbeVolumeBlockedDirectionBit(5u);
+		day->m_probes[0].m_flags |= blockedDirection;
 
 		RHI::RHIGlobalIlluminationSnapshot snapshot;
 		snapshot.m_generation = 7u;
@@ -1186,6 +1738,17 @@ components:
 			(std::bit_cast<uint32_t>(layout.m_nodes[0].m_minAndLeft.w) &
 				0x80000000u) != 0u,
 			"single adaptive brick must produce one encoded BVH leaf");
+		Require(
+			layout.m_probes[0].m_environmentVisibility0123 ==
+				glm::vec4(0.1f, 0.2f, 0.3f, 0.4f) &&
+			layout.m_probes[0].m_environmentVisibility45.x == 0.5f &&
+			layout.m_probes[0].m_environmentVisibility45.y == 0.6f &&
+			std::bit_cast<uint32_t>(
+				layout.m_probes[0].m_environmentVisibility45.z) ==
+				blockedDirection &&
+			layout.m_probes[0].m_environmentVisibility45.w == 0.0f,
+			"GPU probe layout must preserve all six environment lobes and pack "
+			"the six blocking bits into the unused transport component");
 
 		TVector<RHI::RHIGlobalIlluminationGpuCoefficients> coefficients;
 		Require(RHI::BuildGlobalIlluminationGpuCoefficients(
@@ -1241,6 +1804,8 @@ components:
 		Require(header.m_counts == glm::uvec4(1u, 1u, 1u, 8u) &&
 			header.m_stateAndDebug.x == 2u &&
 			header.m_settings.x == 0u &&
+			IsNear(header.m_volumeMin.w, day->m_bakeSettings.m_normalBias) &&
+			IsNear(header.m_volumeMax.w, day->m_bakeSettings.m_viewBias) &&
 			header.m_settings.y == static_cast<uint32_t>(
 				EGlobalIlluminationMode::BakedOnly) &&
 			header.m_stateAndDebug.z == static_cast<uint32_t>(
@@ -1281,6 +1846,117 @@ components:
 			IsNear(finalProgress, 1.0f),
 			"geometry-local refinement must replace one level-one brick with eight level-two bricks");
 		Require(IsNear(
+				daylight.GetLastMaxDistance(),
+				request.m_settings.m_maxRayDistance),
+			"radiance rays must retain the scene-scale maxRayDistance");
+		float smallestVisibilitySupport =
+			(std::numeric_limits<float>::max)();
+		float largestVisibilitySupport = 0.0f;
+		for (const ProbeVolumeBrick& brick : day.m_data->m_bricks)
+		{
+			const glm::uvec3 cellCounts = glm::max(
+				brick.m_probeCounts,
+				glm::uvec3(2u)) - glm::uvec3(1u);
+			const float expectedVisibilityMaxDistance = glm::length(
+				(brick.m_max - brick.m_min) / glm::vec3(cellCounts)) +
+				request.m_settings.m_minProbeSpacing * 0.45f +
+				request.m_settings.m_normalBias +
+				request.m_settings.m_viewBias;
+			smallestVisibilitySupport = (std::min)(
+				smallestVisibilitySupport,
+				expectedVisibilityMaxDistance);
+			largestVisibilitySupport = (std::max)(
+				largestVisibilitySupport,
+				expectedVisibilityMaxDistance);
+			for (uint32_t probeOffset = 0u;
+				probeOffset < brick.m_probeCount;
+				++probeOffset)
+			{
+				const ProbeVolumeSample& probe = day.m_data->m_probes[
+					brick.m_firstProbeIndex + probeOffset];
+				for (const glm::vec2& visibility : probe.m_visibility)
+				{
+					Require(
+						IsNear(
+							visibility.x,
+							expectedVisibilityMaxDistance,
+							0.001f) &&
+						IsNear(
+							visibility.y,
+							expectedVisibilityMaxDistance *
+								expectedVisibilityMaxDistance,
+							0.001f),
+						"visibility misses must be clamped to their owning "
+						"brick interpolation support");
+				}
+				for (const float environmentVisibility :
+					probe.m_environmentVisibility)
+				{
+					Require(IsNear(environmentVisibility, 1.0f),
+						"transport rays that miss geometry must preserve the full sky-specular path");
+				}
+			}
+		}
+		Require(largestVisibilitySupport > smallestVisibilitySupport * 1.5f,
+			"coarse adaptive bricks must retain a larger visibility support "
+			"than fine bricks");
+		const auto findSubdivisionLevel = [&day](size_t probeIndex)
+		{
+			for (const ProbeVolumeBrick& brick : day.m_data->m_bricks)
+			{
+				if (probeIndex >= brick.m_firstProbeIndex &&
+					probeIndex < brick.m_firstProbeIndex + brick.m_probeCount)
+				{
+					return brick.m_subdivisionLevel;
+				}
+			}
+			return (std::numeric_limits<uint32_t>::max)();
+		};
+		bool bFoundSharedProbe = false;
+		bool bFoundCrossLevelSharedProbe = false;
+		for (size_t lhsIndex = 0u;
+			lhsIndex < day.m_data->m_probes.Num();
+			++lhsIndex)
+		{
+			for (size_t rhsIndex = lhsIndex + 1u;
+				rhsIndex < day.m_data->m_probes.Num();
+				++rhsIndex)
+			{
+				if (HasSameVectorBits(
+						day.m_data->m_probes[lhsIndex].m_position,
+						day.m_data->m_probes[rhsIndex].m_position))
+				{
+					bFoundSharedProbe = true;
+					const uint32_t lhsLevel = findSubdivisionLevel(lhsIndex);
+					const uint32_t rhsLevel = findSubdivisionLevel(rhsIndex);
+					Require(HasSameIrradianceBits(
+							day.m_data->m_probes[lhsIndex],
+							day.m_data->m_probes[rhsIndex]),
+						"bricks sharing a corner must use one canonical radiance sample");
+					if (lhsLevel == rhsLevel)
+					{
+						Require(HasSameProbeBits(
+								day.m_data->m_probes[lhsIndex],
+								day.m_data->m_probes[rhsIndex]),
+							"same-level bricks sharing a corner must use one "
+							"canonical transport sample");
+					}
+					else
+					{
+						bFoundCrossLevelSharedProbe = true;
+						Require(!HasSameVectorBits(
+								day.m_data->m_probes[lhsIndex].m_visibility[0u],
+								day.m_data->m_probes[rhsIndex].m_visibility[0u]),
+							"cross-level shared corners must preserve their "
+							"different local visibility support");
+					}
+				}
+			}
+		}
+		Require(bFoundSharedProbe && bFoundCrossLevelSharedProbe,
+			"adaptive fixture must contain same-position brick corners across "
+			"adaptive levels");
+		Require(IsNear(
 			day.m_data->m_probes[0].m_irradiance[0].x,
 			4.0f * 3.14159265358979323846f *
 				0.2820947918f,
@@ -1305,6 +1981,32 @@ components:
 			day.m_data->m_lightingHash != night.m_data->m_lightingHash,
 			"reused layout/transport must stay Blend-compatible while lighting changes");
 
+		ProbeVolumeBakeRequest dimSky = request;
+		dimSky.m_stateName = "Dim Sky";
+		dimSky.m_layoutSource = day.m_data.GetRawPtr();
+		dimSky.m_settings.m_skyIndirectIntensity = 0.25f;
+		const ProbeVolumeBakeResult dimSkyResult = ProbeVolumeBaker::Bake(
+			dimSky,
+			daylight);
+		Require(dimSkyResult.IsSuccess() &&
+			dimSkyResult.m_data->m_layoutHash == day.m_data->m_layoutHash &&
+			dimSkyResult.m_data->m_transportHash == day.m_data->m_transportHash &&
+			dimSkyResult.m_data->m_lightingHash != day.m_data->m_lightingHash,
+			"Sky GI indirect intensity must change lighting identity without invalidating reusable geometry transport");
+
+		ProbeVolumeData outdatedLayout = *day.m_data;
+		outdatedLayout.m_bakerVersion = "Sailor ProbeVolumeBaker/2";
+		ProbeVolumeBakeRequest outdatedReuse = reused;
+		outdatedReuse.m_layoutSource = &outdatedLayout;
+		const ProbeVolumeBakeResult rejectedOutdated = ProbeVolumeBaker::Bake(
+			outdatedReuse,
+			moonlight);
+		Require(
+			rejectedOutdated.m_status == EProbeVolumeBakeStatus::InvalidRequest &&
+			rejectedOutdated.m_diagnostic.find("Bake New") != std::string::npos,
+			"layout reuse must reject transport produced before the current "
+			"visibility semantics");
+
 		std::atomic<bool> cancel{ true };
 		ProbeVolumeBakeRequest cancelled = request;
 		cancelled.m_stateName = "Cancelled";
@@ -1315,6 +2017,130 @@ components:
 		Require(cancelledResult.m_status == EProbeVolumeBakeStatus::Cancelled &&
 			!cancelledResult.m_data,
 			"cancelled bakes must never publish partial .probes data");
+	}
+
+	void TestAnisotropicAdaptiveSubdivisionHonorsSpacing()
+	{
+		ProbeVolumeBakeRequest request;
+		request.m_stateName = "Anisotropic";
+		request.m_volumeMin = glm::vec3(0.0f);
+		request.m_volumeMax = glm::vec3(16.0f, 1.0f, 16.0f);
+		request.m_settings.m_raysPerProbe = 1u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 4u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		Math::AABB geometry;
+		geometry.Extend(glm::vec3(2.1f, 0.2f, 2.1f));
+		geometry.Extend(glm::vec3(2.2f, 0.8f, 2.2f));
+		request.m_sceneGeometryBounds.Add(geometry);
+
+		ProbeVolumeBakeRequest tooCoarse = request;
+		tooCoarse.m_settings.m_maxSubdivisionLevel = 3u;
+		const ConstantBakeRaySampler daylight(glm::vec3(1.0f));
+		const ProbeVolumeBakeResult rejected = ProbeVolumeBaker::Bake(
+			tooCoarse,
+			daylight);
+		Require(
+			rejected.m_status == EProbeVolumeBakeStatus::InvalidRequest &&
+				rejected.m_diagnostic.find("use at least level 4") !=
+					std::string::npos,
+			"a subdivision cap must not silently turn one-metre spacing into "
+			"multi-metre probes");
+
+		const ProbeVolumeBakeResult baked = ProbeVolumeBaker::Bake(
+			request,
+			daylight);
+		Require(baked.IsSuccess(),
+			"anisotropic adaptive bake should succeed: " + baked.m_diagnostic);
+		bool bFoundFinestBrick = false;
+		for (const ProbeVolumeBrick& brick : baked.m_data->m_bricks)
+		{
+			const glm::vec3 extent = brick.m_max - brick.m_min;
+			Require(IsNear(extent.y, 1.0f),
+				"an unsplit short axis must retain the complete volume extent");
+			if (brick.m_subdivisionLevel == 4u)
+			{
+				bFoundFinestBrick = true;
+				Require(
+					extent.x <= 1.0001f && extent.z <= 1.0001f,
+					"a short Y axis must not stop X/Z refinement at eight metres");
+			}
+		}
+		Require(bFoundFinestBrick,
+			"geometry-local anisotropic refinement should reach requested spacing");
+	}
+
+	void TestGeometryNeighborhoodRefinementAndWallRepulsion()
+	{
+		ProbeVolumeBakeRequest adaptiveRequest;
+		adaptiveRequest.m_stateName = "Geometry Neighborhood";
+		adaptiveRequest.m_volumeMin = glm::vec3(0.0f);
+		adaptiveRequest.m_volumeMax = glm::vec3(4.0f);
+		adaptiveRequest.m_settings.m_raysPerProbe = 1u;
+		adaptiveRequest.m_settings.m_bounceCount = 1u;
+		adaptiveRequest.m_settings.m_maxSubdivisionLevel = 2u;
+		adaptiveRequest.m_settings.m_minProbeSpacing = 1.0f;
+		Math::AABB nearbyGeometry;
+		nearbyGeometry.Extend(glm::vec3(-0.75f, 1.8f, 1.8f));
+		nearbyGeometry.Extend(glm::vec3(-0.5f, 2.2f, 2.2f));
+		adaptiveRequest.m_sceneGeometryBounds.Add(nearbyGeometry);
+
+		const ConstantBakeRaySampler daylight(glm::vec3(1.0f));
+		const ProbeVolumeBakeResult adaptive = ProbeVolumeBaker::Bake(
+			adaptiveRequest,
+			daylight);
+		Require(adaptive.IsSuccess(),
+			"geometry-neighborhood bake should succeed: " +
+				adaptive.m_diagnostic);
+		bool bFoundFinestBrick = false;
+		for (const ProbeVolumeBrick& brick : adaptive.m_data->m_bricks)
+		{
+			bFoundFinestBrick |= brick.m_subdivisionLevel == 2u;
+		}
+		Require(
+			bFoundFinestBrick &&
+			adaptive.m_data->m_bricks.Num() > 1u &&
+			adaptive.m_data->m_bricks.Num() < 64u,
+			"adaptive layout must refine the probe shell next to geometry without "
+			"uniformly refining the whole volume");
+
+		ProbeVolumeBakeRequest relocationRequest;
+		relocationRequest.m_stateName = "Oblique Wall";
+		relocationRequest.m_volumeMin = glm::vec3(0.0f);
+		relocationRequest.m_volumeMax = glm::vec3(1.0f);
+		relocationRequest.m_settings.m_raysPerProbe = 1u;
+		relocationRequest.m_settings.m_bounceCount = 1u;
+		relocationRequest.m_settings.m_maxSubdivisionLevel = 0u;
+		relocationRequest.m_settings.m_minProbeSpacing = 1.0f;
+		const ObliqueNearWallBakeRaySampler wallSampler;
+		const ProbeVolumeBakeResult relocated = ProbeVolumeBaker::Bake(
+			relocationRequest,
+			wallSampler);
+		Require(relocated.IsSuccess(),
+			"oblique-wall relocation bake should succeed: " +
+				relocated.m_diagnostic);
+
+		const uint32_t relocatedFlag = static_cast<uint32_t>(
+			EProbeVolumeSampleFlag::Relocated);
+		bool bMovedAwayFromObliqueWall = false;
+		for (const ProbeVolumeSample& probe : relocated.m_data->m_probes)
+		{
+			const glm::vec3 nominalPosition =
+				probe.m_position - probe.m_relocationOffset;
+			if (IsNear(nominalPosition.x, 0.0f) &&
+				IsNear(nominalPosition.z, 0.0f) &&
+				probe.m_position.x > 0.05f &&
+				probe.m_position.z > 0.05f &&
+				(probe.m_flags & relocatedFlag) != 0u)
+			{
+				bMovedAwayFromObliqueWall = true;
+			}
+			Require(glm::length(probe.m_relocationOffset) <= 0.4501f,
+				"geometry-aware wall repulsion must preserve the relocation cap");
+		}
+		Require(bMovedAwayFromObliqueWall,
+			"a nearby oblique wall missed by signed-axis rays must push its probes "
+			"into free space");
 	}
 
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
@@ -1406,6 +2232,13 @@ components:
 		Require(excessive.m_status == EProbeVolumeBakeStatus::InvalidRequest,
 			"layout reuse must not bypass supported sampling limits");
 
+		invalidReuse.m_settings.m_raysPerProbe = request.m_settings.m_raysPerProbe;
+		invalidReuse.m_settings.m_skyIndirectIntensity = -1.0f;
+		Require(
+			ProbeVolumeBaker::Bake(invalidReuse, sampler).m_status ==
+				EProbeVolumeBakeStatus::InvalidRequest,
+			"layout reuse must not bypass sky-intensity validation");
+
 		ProbeVolumeBakeRequest invalidThreads = request;
 		invalidThreads.m_threadCount = 0u;
 		Require(
@@ -1449,6 +2282,238 @@ components:
 			IsNear(moved.m_relocationOffset.x, -0.25f) &&
 			(moved.m_flags & relocatedFlag) != 0u,
 			"a moved probe must store the post-clamp offset used by debug and transport identity");
+	}
+
+	void TestEmbeddedProbeClassificationAndStableTransport()
+	{
+		ProbeVolumeBakeRequest request;
+		request.m_stateName = "Half Space";
+		request.m_volumeMin = glm::vec3(-0.1f, 0.0f, 0.0f);
+		request.m_volumeMax = glm::vec3(0.9f, 1.0f, 1.0f);
+		request.m_settings.m_raysPerProbe = 8u;
+		request.m_settings.m_bounceCount = 1u;
+		request.m_settings.m_maxSubdivisionLevel = 0u;
+		request.m_settings.m_minProbeSpacing = 1.0f;
+		request.m_settings.m_maxRayDistance = 10.0f;
+
+		const HalfSpaceBakeRaySampler halfSpaceSampler;
+		const ProbeVolumeBakeResult halfSpace = ProbeVolumeBaker::Bake(
+			request,
+			halfSpaceSampler);
+		Require(halfSpace.IsSuccess(),
+			"half-space relocation bake should succeed: " +
+				halfSpace.m_diagnostic);
+		const uint32_t relocatedFlag = static_cast<uint32_t>(
+			EProbeVolumeSampleFlag::Relocated);
+		for (uint32_t probeIndex = 0u;
+			probeIndex < halfSpace.m_data->m_probes.Num();
+			++probeIndex)
+		{
+			const ProbeVolumeSample& probe =
+				halfSpace.m_data->m_probes[probeIndex];
+			Require(probe.m_validity > 0.99f,
+				"probes that can be moved outside a back-facing half-space must remain valid");
+			if ((probeIndex & 1u) == 0u)
+			{
+				Require(
+					probe.m_position.x > 0.0f &&
+					probe.m_relocationOffset.x > 0.1f &&
+					(probe.m_flags & relocatedFlag) != 0u,
+					"an embedded probe must cross its closest back-facing surface "
+					"instead of remaining inside geometry");
+			}
+		}
+
+		ProbeVolumeBakeRequest embeddedRequest = request;
+		embeddedRequest.m_stateName = "Embedded";
+		embeddedRequest.m_volumeMin = glm::vec3(0.0f);
+		embeddedRequest.m_volumeMax = glm::vec3(1.0f);
+		const FullyEmbeddedBakeRaySampler embeddedSampler;
+		const ProbeVolumeBakeResult embedded = ProbeVolumeBaker::Bake(
+			embeddedRequest,
+			embeddedSampler);
+		Require(embedded.IsSuccess(),
+			"fully embedded classification bake should succeed: " +
+				embedded.m_diagnostic);
+		for (const ProbeVolumeSample& probe : embedded.m_data->m_probes)
+		{
+			float irradianceEnergy = 0.0f;
+			for (const glm::vec3& coefficient : probe.m_irradiance)
+			{
+				irradianceEnergy += glm::length(coefficient);
+			}
+			Require(
+				probe.m_validity == 0.0f &&
+				(probe.m_flags & static_cast<uint32_t>(
+					EProbeVolumeSampleFlag::Valid)) == 0u &&
+				irradianceEnergy <= 0.000001f,
+				"a probe still surrounded by back faces must be invalid and must "
+				"not publish a black or bright irradiance sample");
+		}
+
+		ProbeVolumeBakeRequest stableRequest = embeddedRequest;
+		stableRequest.m_stateName = "Stable Transport";
+		const DirectionalDistanceBakeRaySampler directionalSampler;
+		const ProbeVolumeBakeResult stable = ProbeVolumeBaker::Bake(
+			stableRequest,
+			directionalSampler);
+		Require(stable.IsSuccess(),
+			"directional transport bake should succeed: " +
+				stable.m_diagnostic);
+		for (size_t probeIndex = 1u;
+			probeIndex < stable.m_data->m_probes.Num();
+			++probeIndex)
+		{
+			for (uint32_t directionIndex = 0u;
+				directionIndex < ProbeVolumeVisibilityDirectionCount;
+				++directionIndex)
+			{
+				Require(HasSameVectorBits(
+						stable.m_data->m_probes[0].m_visibility[directionIndex],
+						stable.m_data->m_probes[probeIndex].m_visibility[directionIndex]),
+					"visibility transport must use the same fixed directional estimator "
+					"at neighbouring probes instead of random per-probe lobes");
+				Require(
+					IsNear(
+						stable.m_data->m_probes[0].m_environmentVisibility[directionIndex],
+						0.0f) &&
+					HasSameFloatBits(
+						stable.m_data->m_probes[0].m_environmentVisibility[directionIndex],
+						stable.m_data->m_probes[probeIndex].m_environmentVisibility[directionIndex]),
+					"geometry hits must close the corresponding deterministic sky-specular transport lobe");
+			}
+		}
+		for (const ProbeVolumeSample& probe : stable.m_data->m_probes)
+		{
+			const std::array<float, ProbeVolumeVisibilityDirectionCount>
+				expectedClearances
+			{
+				1.5f,
+				1.0f,
+				1.25f,
+				1.25f,
+				1.375f,
+				1.125f
+			};
+			for (uint32_t directionIndex = 0u;
+				directionIndex < ProbeVolumeVisibilityDirectionCount;
+				++directionIndex)
+			{
+				const float expected = expectedClearances[directionIndex];
+				Require(
+					IsNear(probe.m_visibility[directionIndex].x, expected) &&
+					IsNear(
+						probe.m_visibility[directionIndex].y,
+						expected * expected),
+					"local blocker transport must store the exact signed-axis "
+					"clearance and its square");
+			}
+			Require(
+				(probe.m_flags & ProbeVolumeBlockedDirectionMask) ==
+					ProbeVolumeBlockedDirectionMask,
+				"a deterministic local hit along every signed axis must bake "
+				"all six blocking-direction bits");
+		}
+	}
+
+	void TestPathTracerBackfacesAndIgnoredTriangleTraversal()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		TVector<MaterialPtr> materials;
+		materials.Add(MakeDiffuseFixtureMaterial(
+			allocator,
+			glm::vec3(0.8f)));
+
+		const auto makeTriangle = [](float height)
+		{
+			Math::Triangle triangle{};
+			triangle.m_vertices[0] = glm::vec3(-1.0f, height, -1.0f);
+			triangle.m_vertices[1] = glm::vec3(0.0f, height, 1.0f);
+			triangle.m_vertices[2] = glm::vec3(1.0f, height, -1.0f);
+			triangle.m_centroid =
+				(triangle.m_vertices[0] + triangle.m_vertices[1] +
+					triangle.m_vertices[2]) / 3.0f;
+			for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+			{
+				triangle.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
+				triangle.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+				triangle.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
+				triangle.m_colors[vertexIndex] = vertexIndex == 0u ?
+					glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+			}
+			return triangle;
+		};
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(makeTriangle(1.0f));
+		triangles->Add(makeTriangle(0.0f));
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(2u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB bounds;
+		for (const Math::Triangle& triangle : *triangles)
+		{
+			for (const glm::vec3& vertex : triangle.m_vertices)
+			{
+				bounds.Extend(vertex);
+			}
+		}
+
+		Raytracing::PathTracer::TLASInstance instance;
+		instance.m_triangles = triangles;
+		instance.m_blas = blas;
+		instance.m_worldBounds = bounds;
+		instance.m_worldMatrix = glm::mat4(1.0f);
+		instance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		instance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(instance));
+
+		InspectablePathTracer pathTracer;
+		Require(pathTracer.InitializeScene(
+				instances,
+				materials,
+				{},
+				false),
+			"the backface traversal fixture must initialize");
+		Raytracing::PathTracer::PreparedRaySample front;
+		Raytracing::PathTracer::PreparedRaySample back;
+		Require(
+			pathTracer.SamplePreparedSceneVisibility(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				front) &&
+			front.m_bHit &&
+			!front.m_bBackFace &&
+			pathTracer.SamplePreparedSceneVisibility(
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				glm::vec3(0.0f, 1.0f, 0.0f),
+				4.0f,
+				back) &&
+			back.m_bHit &&
+			back.m_bBackFace,
+			"visibility rays must distinguish front-facing geometry from probes "
+			"tracing outward through back faces");
+
+		uint32_t triangleIndex = (std::numeric_limits<uint32_t>::max)();
+		float distance = 0.0f;
+		Require(
+			pathTracer.IntersectIgnoring(
+				Math::Ray(
+					glm::vec3(0.0f, 2.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f)),
+				0u,
+				0u,
+				triangleIndex,
+				distance) &&
+			triangleIndex == 1u &&
+			IsNear(distance, 2.0f),
+			"ignoring the source triangle must continue through the same BLAS "
+			"instead of making its entire mesh transparent");
 	}
 
 	void TestPathTracerPreparationDeduplicationAndProgress()
@@ -2048,14 +3113,13 @@ components:
 			return sample.m_radiance;
 		};
 
-		Raytracing::LightingModel::SampledData surface{};
-		surface.m_baseColor = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-		surface.m_orm = glm::vec3(0.0f, 1.0f, 0.0f);
-		surface.m_normal = glm::vec3(0.0f, 0.0f, 1.0f);
-		surface.m_bIsOpaque = true;
-		const glm::vec3 up(0.0f, 1.0f, 0.0f);
-		const glm::vec3 directBrdf =
-			Raytracing::LightingModel::CalculateBRDF(up, up, up, surface);
+		// The fixture uses a rough, non-metallic 0.8-gray surface with aligned
+		// normal, view, and light directions. Evaluate that closed-form BRDF in
+		// the test instead of reaching through the Windows DLL boundary to the
+		// intentionally internal LightingModel implementation.
+		constexpr float Pi = 3.14159265358979323846f;
+		const glm::vec3 directBrdf(
+			(0.96f * 0.8f + 0.04f / 4.001f) / Pi);
 		const auto expectedDirect = [&](float distance, float radius)
 		{
 			return directBrdf * pointLight.m_intensity *
@@ -2227,6 +3291,165 @@ components:
 		Require(strongestSecondaryContribution > 0.01f,
 			"a real secondary surface inside Point Light radius must carry baked radiance");
 	}
+
+	void TestEnvironmentMissIsCountedOnce()
+	{
+		Memory::ObjectAllocatorPtr allocator =
+			Memory::ObjectAllocatorPtr::Make(
+				Memory::EAllocationPolicy::SharedMemory_MultiThreaded);
+		const glm::vec3 baseColor(0.8f, 0.6f, 0.4f);
+		TVector<MaterialPtr> materials;
+		auto mirrorMaterial = MakeDiffuseFixtureMaterial(allocator, baseColor);
+		mirrorMaterial->SetUniform("material.metallicFactor", 1.0f);
+		mirrorMaterial->SetUniform("material.roughnessFactor", 0.0f);
+		materials.Add(mirrorMaterial);
+
+		Math::Triangle floor{};
+		floor.m_vertices[0] = glm::vec3(-100.0f, 0.0f, -100.0f);
+		floor.m_vertices[1] = glm::vec3(0.0f, 0.0f, 100.0f);
+		floor.m_vertices[2] = glm::vec3(100.0f, 0.0f, -100.0f);
+		floor.m_centroid =
+			(floor.m_vertices[0] + floor.m_vertices[1] +
+				floor.m_vertices[2]) / 3.0f;
+		for (uint32_t vertexIndex = 0u; vertexIndex < 3u; ++vertexIndex)
+		{
+			floor.m_normals[vertexIndex] = glm::vec3(0.0f, 1.0f, 0.0f);
+			floor.m_tangent[vertexIndex] = glm::vec3(1.0f, 0.0f, 0.0f);
+			floor.m_bitangent[vertexIndex] = glm::vec3(0.0f, 0.0f, -1.0f);
+			floor.m_colors[vertexIndex] = vertexIndex == 0u ?
+				glm::vec4(1.0f, 0.0f, 0.0f, 0.0f) : glm::vec4(0.0f);
+		}
+
+		auto triangles = TSharedPtr<TVector<Math::Triangle>>::Make();
+		triangles->Add(floor);
+		auto blas = TSharedPtr<Raytracing::BVH>::Make(1u);
+		GlobalIlluminationLandscapeTestScene::BuildBakeBlas(
+			*blas,
+			*triangles);
+		Math::AABB floorBounds;
+		for (const glm::vec3& vertex : floor.m_vertices)
+		{
+			floorBounds.Extend(vertex);
+		}
+
+		Raytracing::PathTracer::TLASInstance floorInstance;
+		floorInstance.m_triangles = triangles;
+		floorInstance.m_blas = blas;
+		floorInstance.m_worldBounds = floorBounds;
+		floorInstance.m_worldMatrix = glm::mat4(1.0f);
+		floorInstance.m_inverseWorldMatrix = glm::mat4(1.0f);
+		floorInstance.m_materialBaseOffset = 0;
+		TVector<Raytracing::PathTracer::TLASInstance> instances;
+		instances.Add(std::move(floorInstance));
+
+		Raytracing::PathTracer pathTracer;
+		Require(
+			pathTracer.InitializeScene(
+				instances,
+				materials,
+				{},
+				false),
+			"the constant-environment fixture should initialize");
+		const glm::vec3 environmentRadiance(0.25f, 0.20f, 0.15f);
+		TVector<glm::vec4> environment;
+		environment.Add(glm::vec4(environmentRadiance, 1.0f));
+		pathTracer.SetRuntimeEnvironmentLinear(environment, glm::uvec2(1u));
+
+		Raytracing::PathTracer::Params params{};
+		params.m_numSamples = 256u;
+		params.m_numAmbientSamples = 4096u;
+		params.m_maxBounces = 0u;
+		params.m_msaa = 1u;
+		params.m_ambient = glm::vec3(0.0f);
+		params.m_bRunTasksInline = true;
+		params.m_bIncludeDirectLighting = false;
+		params.m_bIncludeEnvironment = true;
+		params.m_bIncludeEmissive = false;
+
+		Raytracing::PathTracer::PreparedRaySample sample;
+		Require(
+			pathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				params,
+				155u,
+				sample) &&
+			sample.m_bHit,
+			"the constant-environment fixture ray should hit its receiver");
+
+		Require(
+			std::isfinite(sample.m_radiance.x) &&
+			std::isfinite(sample.m_radiance.y) &&
+			std::isfinite(sample.m_radiance.z) &&
+			glm::all(glm::greaterThanEqual(
+				sample.m_radiance,
+				glm::vec3(0.0f))),
+			"a sampled constant environment should stay finite and non-negative");
+		Require(
+			glm::length(sample.m_radiance) > 0.05f,
+			"the mirror receiver should retain a visible environment contribution");
+
+		// A passive perfect conductor under a constant environment cannot return
+		// more radiance than that environment. Adding the importance-sampled miss
+		// to both the MIS ambient and recursive estimators violates this bound.
+		const glm::vec3 energyCeiling = environmentRadiance * 1.05f;
+		Require(
+			glm::all(glm::lessThanEqual(
+				sample.m_radiance,
+				energyCeiling)),
+			"an environment miss must enter only the MIS estimator; radiance " +
+				std::to_string(sample.m_radiance.x) + ", " +
+				std::to_string(sample.m_radiance.y) + ", " +
+				std::to_string(sample.m_radiance.z) + " exceeds ceiling " +
+				std::to_string(energyCeiling.x) + ", " +
+				std::to_string(energyCeiling.y) + ", " +
+				std::to_string(energyCeiling.z));
+
+		TVector<MaterialPtr> seededMaterials;
+		seededMaterials.Add(MakeDiffuseFixtureMaterial(allocator, baseColor));
+		Raytracing::PathTracer seededPathTracer;
+		Require(
+			seededPathTracer.InitializeScene(
+				instances,
+				seededMaterials,
+				{},
+				false),
+			"the seeded bake-ray fixture should initialize");
+		seededPathTracer.SetRuntimeEnvironmentLinear(
+			environment,
+			glm::uvec2(1u));
+		Raytracing::PathTracer::Params seededParams = params;
+		seededParams.m_numSamples = 8u;
+		seededParams.m_numAmbientSamples = 8u;
+		Raytracing::PathTracer::PreparedRaySample seededReference;
+		Require(
+			seededPathTracer.SamplePreparedSceneRay(
+				glm::vec3(0.0f, 2.0f, 0.0f),
+				glm::vec3(0.0f, -1.0f, 0.0f),
+				4.0f,
+				seededParams,
+				0x12345678u,
+				seededReference) &&
+			seededReference.m_bHit,
+			"the seeded bake ray should hit its receiver");
+		for (uint32_t repetition = 0u; repetition < 16u; ++repetition)
+		{
+			Raytracing::PathTracer::PreparedRaySample repeated;
+			Require(
+				seededPathTracer.SamplePreparedSceneRay(
+					glm::vec3(0.0f, 2.0f, 0.0f),
+					glm::vec3(0.0f, -1.0f, 0.0f),
+					4.0f,
+					seededParams,
+					0x12345678u,
+					repeated) &&
+				HasSameVectorBits(
+					repeated.m_radiance,
+					seededReference.m_radiance),
+				"a prepared GI bake ray must derive every material-lobe decision from its explicit random seed");
+		}
+	}
 }
 
 int main(int argc, char** argv)
@@ -2242,6 +3465,9 @@ int main(int argc, char** argv)
 		RunTest("AtomicFileAndPortableIdentityBoundary", TestAtomicFileAndPortableIdentityBoundary);
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
 		RunTest("SphericalHarmonicsAndSpatialSampling", TestSphericalHarmonicsAndSpatialSampling);
+		RunTest(
+			"BlockedAndWrongSideProbeRejection",
+			TestBlockedAndWrongSideProbeRejection);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",
@@ -2255,10 +3481,25 @@ int main(int argc, char** argv)
 		RunTest(
 			"EveningLandscapeVisualWorldIsSavedBakeableLevel",
 			TestEveningLandscapeVisualWorldIsSavedBakeableLevel);
+		RunTest(
+			"GIBakeQualityLabCoversCanonicalCases",
+			TestGIBakeQualityLabCoversCanonicalCases);
 		RunTest("GpuPackingAndWeightOnlyUpdates", TestGpuPackingAndWeightOnlyUpdates);
 		RunTest("AdaptiveBakerAndLayoutReuse", TestAdaptiveBakerAndLayoutReuse);
+		RunTest(
+			"AnisotropicAdaptiveSubdivisionHonorsSpacing",
+			TestAnisotropicAdaptiveSubdivisionHonorsSpacing);
+		RunTest(
+			"GeometryNeighborhoodRefinementAndWallRepulsion",
+			TestGeometryNeighborhoodRefinementAndWallRepulsion);
 		RunTest("DeterministicBakeSeedsAndReusedLayoutValidation", TestDeterministicBakeSeedsAndReusedLayoutValidation);
 		RunTest("RelocationClampingPreservesEffectiveOffset", TestRelocationClampingPreservesEffectiveOffset);
+		RunTest(
+			"EmbeddedProbeClassificationAndStableTransport",
+			TestEmbeddedProbeClassificationAndStableTransport);
+		RunTest(
+			"PathTracerBackfacesAndIgnoredTriangleTraversal",
+			TestPathTracerBackfacesAndIgnoredTriangleTraversal);
 		RunTest(
 			"PathTracerPreparationDeduplicationAndProgress",
 			TestPathTracerPreparationDeduplicationAndProgress);
@@ -2275,6 +3516,9 @@ int main(int argc, char** argv)
 		RunTest(
 			"PointLightRadiusAttenuationAndSecondaryBounce",
 			TestPointLightRadiusAttenuationAndSecondaryBounce);
+		RunTest(
+			"EnvironmentMissIsCountedOnce",
+			TestEnvironmentMissIsCountedOnce);
 	}
 	catch (const std::exception& exception)
 	{

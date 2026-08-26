@@ -200,6 +200,7 @@ namespace
 			!reader.ReadFloat(settings.m_normalBias) ||
 			!reader.ReadFloat(settings.m_viewBias) ||
 			!reader.ReadFloat(settings.m_maxRayDistance) ||
+			!reader.ReadFloat(settings.m_skyIndirectIntensity) ||
 			!reader.ReadU32(flags))
 		{
 			return false;
@@ -220,6 +221,7 @@ namespace
 		writer.WriteFloat(settings.m_normalBias);
 		writer.WriteFloat(settings.m_viewBias);
 		writer.WriteFloat(settings.m_maxRayDistance);
+		writer.WriteFloat(settings.m_skyIndirectIntensity);
 		uint32_t flags = 0u;
 		flags |= settings.m_bIncludeSky ? 1u << 0u : 0u;
 		flags |= settings.m_bIncludeEmissive ? 1u << 1u : 0u;
@@ -263,7 +265,7 @@ bool ProbeVolumeBinary::Serialize(
 
 		Writer payload;
 		payload.m_bytes.Reserve(
-			256u + data.m_bricks.Num() * 40u + data.m_probes.Num() * 160u);
+			256u + data.m_bricks.Num() * 48u + data.m_probes.Num() * 212u);
 		payload.WriteU32(OneBakedState);
 		payload.WriteU32(data.m_shOrder);
 		payload.WriteU32(static_cast<uint32_t>(data.m_compression));
@@ -313,6 +315,11 @@ bool ProbeVolumeBinary::Serialize(
 			for (const glm::vec2& visibility : probe.m_visibility)
 			{
 				payload.WriteVec2(visibility);
+			}
+			for (const float environmentVisibility :
+				probe.m_environmentVisibility)
+			{
+				payload.WriteFloat(environmentVisibility);
 			}
 		}
 
@@ -475,7 +482,7 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 		}
 
 		constexpr size_t BrickBytes = 48u;
-		constexpr size_t ProbeBytes = 188u;
+		constexpr size_t ProbeBytes = 212u;
 		const uint64_t expectedRecordBytes =
 			static_cast<uint64_t>(brickCount) * BrickBytes +
 			static_cast<uint64_t>(probeCount) * ProbeBytes;
@@ -527,6 +534,15 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 				{
 					return Fail(EProbeVolumeBinaryStatus::Truncated,
 						"the .probes visibility table is truncated");
+				}
+			}
+			for (float& environmentVisibility :
+				probe.m_environmentVisibility)
+			{
+				if (!payload.ReadFloat(environmentVisibility))
+				{
+					return Fail(EProbeVolumeBinaryStatus::Truncated,
+						"the .probes environment-visibility table is truncated");
 				}
 			}
 		}

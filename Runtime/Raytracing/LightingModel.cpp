@@ -2,7 +2,6 @@
 #include "Containers/Vector.h"
 #include "Core/Utils.h"
 #include "Math/Math.h"
-#include <glm/gtc/random.hpp>
 #include "MaterialUtils.h"
 
 using namespace glm;
@@ -299,7 +298,7 @@ vec3 LightingModel::CalculateRefraction(const vec3& rayDirection, const vec3& wo
 	}
 }
 
-bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, float fromIor, float toIor, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample)
+bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, const vec3& viewDirection, float fromIor, float toIor, vec3& outTerm, float& outPdf, bool& bOutTransmissionRay, vec3& inOutDirection, vec2 randomSample, vec2 selectionSample)
 {
 	const bool bFullMetallic = sample.m_orm.z == 1.0f;
 	const bool bMirror = bFullMetallic && sample.m_orm.y <= 0.001f;
@@ -307,8 +306,8 @@ bool LightingModel::Sample(const SampledData& sample, const vec3& worldNormal, c
 	const bool bHasTransmission = !bFullMetallic && sample.m_transmission > 0.0f;
 	const bool bIsThickVolume = bHasTransmission && sample.m_thicknessFactor > 0.0f;
 
-	const bool bSpecular = bOnlySpecularRay || glm::linearRand(0.0f, 1.0f) > 0.5f;
-	bOutTransmissionRay = bHasTransmission && (glm::linearRand(0.0f, 1.0f) > 0.5f);
+	const bool bSpecular = bOnlySpecularRay || selectionSample.x > 0.5f;
+	bOutTransmissionRay = bHasTransmission && selectionSample.y > 0.5f;
 
 	const float importanceRoughness = bSpecular ? sample.m_orm.y : 1.0f;
 	const bool bSpecularBeckman = importanceRoughness < 0.2f;

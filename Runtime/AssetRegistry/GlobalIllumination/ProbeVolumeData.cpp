@@ -64,6 +64,9 @@ uint64_t Sailor::ComputeProbeVolumeRepresentationHash(
 	const uint32_t visibilityDirectionCount =
 		ProbeVolumeVisibilityDirectionCount;
 	HashValue(hash, visibilityDirectionCount);
+	const uint32_t environmentVisibilityDirectionCount =
+		ProbeVolumeVisibilityDirectionCount;
+	HashValue(hash, environmentVisibilityDirectionCount);
 	return hash;
 }
 
@@ -122,6 +125,12 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 			"the probe volume must identify its baked state and baker version";
 		return false;
 	}
+	if (!IsProbeVolumeBakerVersionSupported(m_bakerVersion))
+	{
+		outDiagnostic =
+			"the probe volume uses obsolete visibility transport; use Bake New";
+		return false;
+	}
 	if (!std::isfinite(m_diagnostics.m_averageValidity) ||
 		m_diagnostics.m_averageValidity < 0.0f ||
 		m_diagnostics.m_averageValidity > 1.0f ||
@@ -161,7 +170,9 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 		!std::isfinite(m_bakeSettings.m_viewBias) ||
 		m_bakeSettings.m_viewBias < 0.0f ||
 		!std::isfinite(m_bakeSettings.m_maxRayDistance) ||
-		m_bakeSettings.m_maxRayDistance <= 0.0f)
+		m_bakeSettings.m_maxRayDistance <= 0.0f ||
+		!std::isfinite(m_bakeSettings.m_skyIndirectIntensity) ||
+		m_bakeSettings.m_skyIndirectIntensity < 0.0f)
 	{
 		outDiagnostic = "the probe volume has invalid bake settings";
 		return false;
@@ -223,7 +234,8 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 	{
 		constexpr uint32_t KnownProbeFlags =
 			EProbeVolumeSampleFlag::Valid |
-			EProbeVolumeSampleFlag::Relocated;
+			EProbeVolumeSampleFlag::Relocated |
+			ProbeVolumeBlockedDirectionMask;
 		if (!IsFinite(probe.m_position) ||
 			!IsFinite(probe.m_relocationOffset) ||
 			glm::any(glm::lessThan(probe.m_position, m_volumeMin)) ||
@@ -252,6 +264,18 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 				visibility.y < 0.0f)
 			{
 				outDiagnostic = "a probe has invalid visibility moments";
+				return false;
+			}
+		}
+		for (const float environmentVisibility :
+			probe.m_environmentVisibility)
+		{
+			if (!std::isfinite(environmentVisibility) ||
+				environmentVisibility < 0.0f ||
+				environmentVisibility > 1.0f)
+			{
+				outDiagnostic =
+					"a probe has invalid directional environment visibility";
 				return false;
 			}
 		}

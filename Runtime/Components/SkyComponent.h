@@ -54,6 +54,9 @@ namespace Sailor
 		SAILOR_API float GetAmbient() const { return m_skyParams.m_ambient; }
 		SAILOR_API void SetAmbient(float value);
 
+		SAILOR_API float GetGiIndirectIntensity() const { return m_giIndirectIntensity; }
+		SAILOR_API void SetGiIndirectIntensity(float value);
+
 		SAILOR_API int32_t GetScatteringSteps() const { return m_skyParams.m_scatteringSteps; }
 		SAILOR_API void SetScatteringSteps(int32_t value);
 
@@ -89,6 +92,7 @@ namespace Sailor
 		TObjectPtr<LightComponent> m_directionalLight{};
 		glm::vec3 m_directionalLightIntensity = glm::vec3(17.0f);
 		float m_sunAngleDegrees = 60.0f;
+		float m_giIndirectIntensity = 1.0f;
 	};
 }
 
@@ -132,6 +136,9 @@ REFL_AUTO(
 
 	func(GetAmbient, property("ambient"), Range(0.0, 10.0)),
 	func(SetAmbient, property("ambient")),
+
+	func(GetGiIndirectIntensity, property("giIndirectIntensity"), Range(0.0, 16.0)),
+	func(SetGiIndirectIntensity, property("giIndirectIntensity")),
 
 	func(GetScatteringSteps, property("scatteringSteps"), Range(1.0, 10.0)),
 	func(SetScatteringSteps, property("scatteringSteps")),

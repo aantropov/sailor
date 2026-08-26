@@ -106,6 +106,10 @@ namespace Sailor::RHI
 		glm::vec4 m_visibility01{};
 		glm::vec4 m_visibility23{};
 		glm::vec4 m_visibility45{};
+		glm::vec4 m_environmentVisibility0123{};
+		// XY are environment visibility for +Z/-Z. Z stores the six blocked
+		// direction bits through uintBitsToFloat/floatBitsToUint.
+		glm::vec4 m_environmentVisibility45{};
 	};
 
 	struct alignas(16) RHIGlobalIlluminationGpuCoefficients final
@@ -160,7 +164,7 @@ namespace Sailor::RHI
 	static_assert(sizeof(RHIGlobalIlluminationGpuHeader) == 96u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBvhNode) == 32u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBrick) == 48u);
-	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 64u);
+	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 96u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuCoefficients) == 64u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuState) == 32u);
 }

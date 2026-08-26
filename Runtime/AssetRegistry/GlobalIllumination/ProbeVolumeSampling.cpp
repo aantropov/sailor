@@ -8,6 +8,9 @@ using namespace Sailor;
 
 namespace
 {
+	constexpr float BlockingDistanceTolerance = 0.0001f;
+	constexpr float SurfacePlaneTolerance = 0.0001f;
+
 	bool Contains(const ProbeVolumeBrick& brick, const glm::vec3& position) noexcept
 	{
 		return glm::all(glm::greaterThanEqual(position, brick.m_min)) &&
@@ -22,18 +25,28 @@ namespace
 			(coordinate.y + counts.y * coordinate.z);
 	}
 
-	uint32_t VisibilityDirectionIndex(const glm::vec3& direction) noexcept
+	bool BlockingDirectionRejectsProbe(
+		const ProbeVolumeSample& probe,
+		const glm::vec3& delta,
+		const std::array<uint32_t, 3u>& directionIndices) noexcept
 	{
-		const glm::vec3 absolute = glm::abs(direction);
-		if (absolute.x >= absolute.y && absolute.x >= absolute.z)
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
 		{
-			return direction.x >= 0.0f ? 0u : 1u;
+			const uint32_t directionIndex = directionIndices[axis];
+			if (!IsProbeVolumeDirectionBlocked(
+					probe.m_flags,
+					directionIndex))
+			{
+				continue;
+			}
+			const float clearance = probe.m_visibility[directionIndex].x;
+			if (!std::isfinite(clearance) ||
+				std::abs(delta[axis]) > clearance + BlockingDistanceTolerance)
+			{
+				return true;
+			}
 		}
-		if (absolute.y >= absolute.z)
-		{
-			return direction.y >= 0.0f ? 2u : 3u;
-		}
-		return direction.z >= 0.0f ? 4u : 5u;
+		return false;
 	}
 
 	float VisibilityWeight(
@@ -46,23 +59,41 @@ namespace
 		{
 			return 1.0f;
 		}
-		const glm::vec2 moments = probe.m_visibility[
-			VisibilityDirectionIndex(delta / distance)];
-		if (moments.x <= 0.0f && moments.y <= 0.0f)
+		const std::array<uint32_t, 3u> directionIndices
+		{
+			delta.x >= 0.0f ? 0u : 1u,
+			delta.y >= 0.0f ? 2u : 3u,
+			delta.z >= 0.0f ? 4u : 5u
+		};
+		if (BlockingDirectionRejectsProbe(
+				probe,
+				delta,
+				directionIndices))
+		{
+			return 0.0f;
+		}
+		return 1.0f;
+	}
+
+	float SurfaceFacingWeight(
+		const ProbeVolumeSample& probe,
+		const glm::vec3& worldPosition,
+		const glm::vec3& worldNormal) noexcept
+	{
+		const float normalLength = glm::length(worldNormal);
+		if (!std::isfinite(normalLength) || normalLength <= 1e-6f)
 		{
 			return 1.0f;
 		}
-		if (distance <= moments.x)
+		const glm::vec3 surfaceToProbe = probe.m_position - worldPosition;
+		if (!std::isfinite(surfaceToProbe.x) ||
+			!std::isfinite(surfaceToProbe.y) ||
+			!std::isfinite(surfaceToProbe.z))
 		{
-			return 1.0f;
+			return 0.0f;
 		}
-		const float variance = (std::max)(
-			moments.y - moments.x * moments.x,
-			1e-5f);
-		const float difference = distance - moments.x;
-		const float chebyshev = variance /
-			(variance + difference * difference);
-		return chebyshev * chebyshev * chebyshev;
+		return glm::dot(worldNormal / normalLength, surfaceToProbe) <
+			-SurfacePlaneTolerance ? 0.0f : 1.0f;
 	}
 }
 
@@ -162,7 +193,8 @@ bool Sailor::SampleProbeVolumeIrradiance(
 
 	std::array<glm::vec3,
 		ProbeVolumeSphericalHarmonicsCoefficientCount> blended{};
-	float totalWeight = 0.0f;
+	float totalInterpolationWeight = 0.0f;
+	float totalVisibleWeight = 0.0f;
 	uint32_t cornerIndex = 0u;
 	for (uint32_t z = 0u; z < 2u; ++z)
 	{
@@ -185,41 +217,62 @@ bool Sailor::SampleProbeVolumeIrradiance(
 					(x ? fraction.x : 1.0f - fraction.x) *
 					(y ? fraction.y : 1.0f - fraction.y) *
 					(z ? fraction.z : 1.0f - fraction.z);
-				const float weight = trilinearWeight *
-					glm::clamp(probe.m_validity, 0.0f, 1.0f) *
-					VisibilityWeight(probe, worldPosition);
+				const float interpolationWeight = trilinearWeight *
+					glm::clamp(probe.m_validity, 0.0f, 1.0f);
+				const float visibility = VisibilityWeight(
+					probe,
+					worldPosition);
+				const float visibleWeight = interpolationWeight * visibility *
+					SurfaceFacingWeight(
+						probe,
+						worldPosition,
+						worldNormal);
+				totalInterpolationWeight += interpolationWeight;
 				for (uint32_t coefficientIndex = 0u;
 					coefficientIndex < ProbeVolumeSphericalHarmonicsCoefficientCount;
 					++coefficientIndex)
 				{
 					blended[coefficientIndex] +=
-						probe.m_irradiance[coefficientIndex] * weight;
+						probe.m_irradiance[coefficientIndex] * visibleWeight;
 				}
-				totalWeight += weight;
+				totalVisibleWeight += visibleWeight;
 				if (outDebugInfo)
 				{
 					outDebugInfo->m_probeIndices[cornerIndex] = probeIndex;
-					outDebugInfo->m_weights[cornerIndex] = weight;
+					outDebugInfo->m_weights[cornerIndex] = visibleWeight;
 				}
 			}
 		}
 	}
-	if (!std::isfinite(totalWeight) || totalWeight <= 1e-6f)
+	if (!std::isfinite(totalInterpolationWeight) ||
+		totalInterpolationWeight <= 1e-6f ||
+		!std::isfinite(totalVisibleWeight))
 	{
 		return false;
 	}
+	if (totalVisibleWeight <= 1e-6f)
+	{
+		// Valid probes exist, but every path to this surface is occluded. This
+		// is a valid black baked result, not a request for gray environment GI.
+		if (outDebugInfo)
+		{
+			outDebugInfo->m_brickIndex = selectedBrickIndex;
+			outDebugInfo->m_totalUnnormalizedWeight = 0.0f;
+		}
+		return true;
+	}
 	for (glm::vec3& coefficient : blended)
 	{
-		coefficient /= totalWeight;
+		coefficient /= totalVisibleWeight;
 	}
 	outIrradiance = EvaluateProbeIrradianceSH(blended, worldNormal);
 	if (outDebugInfo)
 	{
 		outDebugInfo->m_brickIndex = selectedBrickIndex;
-		outDebugInfo->m_totalUnnormalizedWeight = totalWeight;
+		outDebugInfo->m_totalUnnormalizedWeight = totalVisibleWeight;
 		for (float& weight : outDebugInfo->m_weights)
 		{
-			weight /= totalWeight;
+			weight /= totalVisibleWeight;
 		}
 	}
 	return true;

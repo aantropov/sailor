@@ -182,6 +182,7 @@ message ProbeVolumeBakeSettings {
 	bool include_sky = 9;
 	bool include_emissive = 10;
 	bool include_direct_lighting = 11;
+	reserved 12;
 }
 
 message StartProbeVolumeBakeRequest {

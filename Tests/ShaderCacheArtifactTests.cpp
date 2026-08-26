@@ -1038,6 +1038,93 @@ namespace
 			"native nested GLSL include text should remain opaque to the YAML include resolver");
 	}
 
+	void TestStandardGltfTexturelessSamplerFallbacks()
+	{
+		const std::filesystem::path shaderPath =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) /
+			"Content/Shaders/Standard_glTF.shader";
+		ShaderAsset shader;
+		shader.Deserialize(YAML::Load(ReadText(shaderPath)));
+		const std::string& fragment = shader.GetGlslFragmentCode();
+		const std::array<const char*, 12> optionalSamplers =
+		{
+			"baseColorSampler",
+			"normalSampler",
+			"ormSampler",
+			"occlusionSampler",
+			"emissiveSampler",
+			"clearcoatSampler",
+			"clearcoatRoughnessSampler",
+			"clearcoatNormalSampler",
+			"sheenColorSampler",
+			"sheenRoughnessSampler",
+			"transmissionSampler",
+			"thicknessSampler"
+		};
+		for (const char* sampler : optionalSamplers)
+		{
+			const std::string guard =
+				std::string("if(material.") + sampler + " != 0)";
+			Require(fragment.find(guard) != std::string::npos,
+				std::string("Standard_glTF must treat sampler zero as the neutral fallback for ") +
+					sampler);
+		}
+		Require(
+			fragment.find("normal = normalize(vin.normal);") !=
+				std::string::npos,
+			"a textureless Standard_glTF material must use its geometric normal instead of the debug texture in slot zero");
+		Require(
+			fragment.find(
+				"material.roughnessFactor = material.roughnessFactor * orm.g;") !=
+				std::string::npos &&
+			fragment.find(
+				"material.metallicFactor = material.metallicFactor * orm.b;") !=
+				std::string::npos,
+			"the optional glTF ORM map must use the standard roughness and metallic channels when it is present");
+	}
+
+	void TestHbaoBiasConfiguration()
+	{
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		ShaderAsset hbao;
+		hbao.Deserialize(YAML::Load(ReadText(
+			contentRoot / "Shaders/HBAO.shader")));
+		const std::string& hbaoFragment = hbao.GetGlslFragmentCode();
+		Require(
+			hbaoFragment.find("float normalBias;") != std::string::npos &&
+			hbaoFragment.find(
+				"viewSpacePosition += viewSpaceNormal * data.normalBias;") !=
+				std::string::npos &&
+			hbaoFragment.find("const uint NumDirections = 8") !=
+				std::string::npos &&
+			hbaoFragment.find("const uint NumSamples = 8") !=
+				std::string::npos &&
+			hbaoFragment.find("noiseSampler") != std::string::npos,
+			"HBAO must expose a configurable normal offset instead of relying on "
+			"a fixed world-space epsilon while preserving the optimized kernel");
+
+		const std::array<const char*, 2u> rendererPaths
+		{
+			"EditorRenderer.renderer",
+			"DefaultRenderer.renderer"
+		};
+		for (const char* rendererPath : rendererPaths)
+		{
+			const std::string renderer = ReadText(contentRoot / rendererPath);
+			Require(
+				renderer.find("- data.occlusionBias: 0.25") !=
+						std::string::npos &&
+				renderer.find("- data.normalBias: 0.15") !=
+						std::string::npos &&
+				renderer.find("- noiseSampler: g_noiseSampler") !=
+						std::string::npos,
+				std::string(rendererPath) +
+					" must configure the tuned HBAO biases without replacing its "
+					"existing noise input");
+		}
+	}
+
 	void TestRuntimeLightingShadersCompile()
 	{
 		const std::filesystem::path contentRoot =
@@ -1126,6 +1213,13 @@ namespace
 		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "DISABLE_SCREEN_SPACE_AO" });
+		const RHI::ShaderByteCode hbaoByteCode = compileRuntimeFragment(
+			"Shaders/HBAO.shader",
+			{});
+		RequireSpirvCombinedImageSamplerBinding(hbaoByteCode, 1u, 1u);
+		RequireSpirvCombinedImageSamplerBinding(hbaoByteCode, 1u, 2u);
+		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "VERTICAL" });
+		compileRuntimeFragment("Shaders/HBAO_Blur.shader", { "HORIZONTAL" });
 		const RHI::ShaderByteCode debugAoByteCode = compileRuntimeFragment(
 			"Shaders/Debug.shader",
 			{ "AO" });
@@ -1388,6 +1482,8 @@ int main()
 		TestShaderCompilerFailureLifecycle();
 		TestShaderDependencyFingerprintTracksTimestampAndWinner();
 		TestMissingYamlIncludeFailsWithoutPartialSource();
+		TestStandardGltfTexturelessSamplerFallbacks();
+		TestHbaoBiasConfiguration();
 		TestRuntimeLightingShadersCompile();
 		TestShadowCasterPermutationsCompile();
 		TestShaderSourceNormalization();

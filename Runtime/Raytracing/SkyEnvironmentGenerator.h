@@ -1,0 +1,27 @@
+#pragma once
+
+#include "Memory/MallocAllocator.hpp"
+#include "Memory/LockFreeHeapAllocator.h"
+#include "FrameGraph/SkyParameters.h"
+#include "Containers/Vector.h"
+
+#include <cstdint>
+#include <functional>
+
+namespace Sailor::Raytracing
+{
+	constexpr uint32_t ProbeBakeSkyEnvironmentWidth = 128u;
+	constexpr uint32_t ProbeBakeSkyEnvironmentHeight = 64u;
+
+	using SkyEnvironmentProgressCallback =
+		std::function<bool(uint32_t completedRows, uint32_t totalRows)>;
+
+	// Generates the same clear-atmosphere lighting used by the runtime sky
+	// environment. Clouds, stars, and the explicit sun disk are intentionally
+	// excluded: clouds are dynamic, while direct sun comes from LightComponent.
+	SAILOR_SHARED_API bool GenerateSkyEnvironmentEquirectangular(
+		const SkyParameters& parameters,
+		const glm::uvec2& extent,
+		TVector<glm::vec4>& outEnvironment,
+		const SkyEnvironmentProgressCallback& progress = {});
+}

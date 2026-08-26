@@ -35,6 +35,13 @@ namespace Sailor::Raytracing
 			uint32_t randomSeed,
 			ProbeVolumeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override;
+		bool SampleVisibility(
+			const glm::vec3& origin,
+			const glm::vec3& direction,
+			float maxDistance,
+			uint32_t randomSeed,
+			ProbeVolumeBakeRaySample& outSample,
+			std::string& outDiagnostic) const override;
 
 	private:
 		PathTracer m_pathTracer{};

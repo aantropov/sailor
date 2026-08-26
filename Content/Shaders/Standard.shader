@@ -533,10 +533,15 @@ glslFragment: |
     const vec3 environmentIrradiance =
       texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
+    float environmentVisibility = 1.0;
+    const vec3 surfaceToCamera = 2.0 * cosLo * normal - Lr;
     const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
       worldPosition,
       normal,
+      surfaceToCamera,
+      Lr,
       environmentIrradiance,
+      environmentVisibility,
       globalIlluminationDebug);
     
     // Calculate Fresnel term for ambient lighting.
@@ -566,7 +571,7 @@ glslFragment: |
     // retain plausible reflections without leaking them into occluded areas.
     float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
+      min(ambientOcclusion, environmentVisibility),
       cosLo,
       material.roughness);
     vec3 indirectLighting = diffuseIBL * ambientOcclusion +
@@ -591,13 +596,27 @@ glslFragment: |
       rcp(vec2(textureSize(g_aoSampler, 0)));
     
     MaterialData material = GetMaterialData();
-    material.albedo = material.albedo * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord) * vin.color;
-    material.metallic = material.metallic * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
-    material.roughness = material.roughness * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.roughnessSampler))], vin.texcoord).r;
+    if(material.albedoSampler != 0u)
+    {
+      material.albedo *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord);
+    }
+    material.albedo *= vin.color;
+    if(material.metalnessSampler != 0u)
+    {
+      material.metallic *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
+    }
+    if(material.roughnessSampler != 0u)
+    {
+      material.roughness *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.roughnessSampler))], vin.texcoord).r;
+    }
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    vec3 normal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
-    normal = normalize(vin.tangentBasis * normal);
+    vec3 normal = normalize(vin.normal);
+    if(material.normalSampler != 0u)
+    {
+      const vec3 tangentNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
+      normal = normalize(vin.tangentBasis * tangentNormal);
+    }
     
     //outColor.xyz = AmbientLighting(material, vin.normal, vin.worldPosition, viewDirection);
     outColor.xyz = vec3(0);

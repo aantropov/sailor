@@ -103,6 +103,7 @@ namespace Sailor::Raytracing
 			vec3 m_radiance{};
 			float m_distance = 0.0f;
 			bool m_bHit = false;
+			bool m_bBackFace = false;
 		};
 
 		static void ParseCommandLineArgs(Params& params, const char** args, int32_t num);
@@ -125,6 +126,11 @@ namespace Sailor::Raytracing
 			float maxDistance,
 			const Params& params,
 			uint32_t randomSeed,
+			PreparedRaySample& outSample) const;
+		SAILOR_SHARED_API bool SamplePreparedSceneVisibility(
+			const vec3& origin,
+			const vec3& direction,
+			float maxDistance,
 			PreparedRaySample& outSample) const;
 		bool ArePreparedMaterialsFullyResolved() const
 		{
@@ -156,6 +162,7 @@ namespace Sailor::Raytracing
 		struct TLASHit
 		{
 			Math::RaycastHit m_hit{};
+			vec3 m_geometricNormal{};
 			uint32_t m_instanceIndex = (uint32_t)-1;
 			uint32_t m_triangleIndex = (uint32_t)-1;
 			uint32_t m_materialIndex = 0;

@@ -1556,28 +1556,18 @@ bool PathTracer::SamplePreparedSceneRay(
 	uint32_t randomSeed,
 	PreparedRaySample& outSample) const
 {
-	outSample = {};
-	const float directionLength = glm::length(direction);
-	if (m_tlasInstances.IsEmpty() ||
-		!std::isfinite(directionLength) ||
-		directionLength <= 1e-6f ||
-		!std::isfinite(maxDistance) ||
-		maxDistance <= 0.0f)
+	if (!SamplePreparedSceneVisibility(
+			origin,
+			direction,
+			maxDistance,
+			outSample))
 	{
 		return false;
 	}
 
+	const float directionLength = glm::length(direction);
 	const vec3 normalizedDirection = direction / directionLength;
 	const Math::Ray ray(origin, normalizedDirection);
-	TLASHit hit{};
-	outSample.m_bHit = IntersectScene(
-		ray,
-		hit,
-		maxDistance,
-		(uint32_t)-1,
-		(uint32_t)-1);
-	outSample.m_distance = outSample.m_bHit ?
-		hit.m_hit.m_rayLenght : maxDistance;
 	if (outSample.m_bHit)
 	{
 		uint32_t randomState = randomSeed ^ 0xa511e9b3u;
@@ -1604,6 +1594,39 @@ bool PathTracer::SamplePreparedSceneRay(
 				SampleRuntimeDiffuseEnvironment(normalizedDirection) :
 				params.m_ambient;
 	}
+	return true;
+}
+
+bool PathTracer::SamplePreparedSceneVisibility(
+	const vec3& origin,
+	const vec3& direction,
+	float maxDistance,
+	PreparedRaySample& outSample) const
+{
+	outSample = {};
+	const float directionLength = glm::length(direction);
+	if (m_tlasInstances.IsEmpty() ||
+		!std::isfinite(directionLength) ||
+		directionLength <= 1e-6f ||
+		!std::isfinite(maxDistance) ||
+		maxDistance <= 0.0f)
+	{
+		return false;
+	}
+
+	const vec3 normalizedDirection = direction / directionLength;
+	const Math::Ray ray(origin, normalizedDirection);
+	TLASHit hit{};
+	outSample.m_bHit = IntersectScene(
+		ray,
+		hit,
+		maxDistance,
+		(uint32_t)-1,
+		(uint32_t)-1);
+	outSample.m_distance = outSample.m_bHit ?
+		hit.m_hit.m_rayLenght : maxDistance;
+	outSample.m_bBackFace = outSample.m_bHit &&
+		glm::dot(hit.m_geometricNormal, normalizedDirection) > 0.0f;
 	return true;
 }
 
@@ -1997,16 +2020,14 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 
 			Math::Ray localRay(localOrigin, glm::normalize(localDirRaw));
 			Math::RaycastHit localHit{};
+			const uint32_t ignoredLocalTriangle = idx == ignoreInstance ?
+				ignoreTriangle : (uint32_t)-1;
 			if (!blas->IntersectBVH(
 					localRay,
 					localHit,
 					0,
-					FLT_MAX))
-			{
-				return;
-			}
-
-			if (idx == ignoreInstance && localHit.m_triangleIndex == ignoreTriangle)
+					FLT_MAX,
+					ignoredLocalTriangle))
 			{
 				return;
 			}
@@ -2032,6 +2053,17 @@ bool PathTracer::IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, floa
 			bestHit.m_hit.m_point = worldPoint;
 			bestHit.m_hit.m_normal = glm::normalize(normalMatrix * localNormal);
 			bestHit.m_hit.m_rayLenght = worldDistance;
+			const vec3 worldVertex0 = vec3(
+				instance.m_worldMatrix * vec4(localTri.m_vertices[0], 1.0f));
+			const vec3 worldVertex1 = vec3(
+				instance.m_worldMatrix * vec4(localTri.m_vertices[1], 1.0f));
+			const vec3 worldVertex2 = vec3(
+				instance.m_worldMatrix * vec4(localTri.m_vertices[2], 1.0f));
+			bestHit.m_geometricNormal = Math::SafeNormalize(
+				glm::cross(
+					worldVertex1 - worldVertex0,
+					worldVertex2 - worldVertex0),
+				bestHit.m_hit.m_normal);
 			bestHit.m_instanceIndex = (uint32_t)idx;
 			bestHit.m_triangleIndex = localHit.m_triangleIndex;
 			bestHit.m_materialIndex = ResolveMaterialIndex(bestHit);
@@ -2385,7 +2417,19 @@ vec3 PathTracer::Raytrace(
 						randSeedX,
 						randSeedY,
 						randomState);
-					bSample = LightingModel::Sample(sample, worldNormal, viewDirection, environmentIor, toIor, term, pdf, bTransmissionRay, direction, randomSample);
+					const vec2 selectionSample = NextRandomVec2_01(randomState);
+					bSample = LightingModel::Sample(
+						sample,
+						worldNormal,
+						viewDirection,
+						environmentIor,
+						toIor,
+						term,
+						pdf,
+						bTransmissionRay,
+						direction,
+						randomSample,
+						selectionSample);
 					bHasTransmissionRay |= bTransmissionRay;
 				}
 
@@ -2430,8 +2474,10 @@ vec3 PathTracer::Raytrace(
 					ambient2 += value;
 					avgPdfLambert += pdf;
 
-					// Indirect lighting with the correct pdf in case of miss
-					indirect += value;
+					// A miss reaches the environment directly from this surface.
+					// It already belongs to the MIS ambient estimator above; adding
+					// it to the recursive estimator would count the same sky path
+					// twice.
 				}
 				else if (bounceLimit > 0)
 				{

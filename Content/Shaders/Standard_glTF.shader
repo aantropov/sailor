@@ -820,17 +820,23 @@ glslFragment: |
     vec3 Lr,
     vec3 normal,
     float cosLo,
-    vec3 worldPosition)
+    vec3 worldPosition,
+    out float environmentVisibility)
   {
     // Baked probes replace diffuse environment irradiance only. Specular IBL
     // remains sourced from the pre-filtered environment cubemap.
     const vec3 environmentIrradiance =
       texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
+    environmentVisibility = 1.0;
+    const vec3 surfaceToCamera = 2.0 * cosLo * normal - Lr;
     const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
       worldPosition,
       normal,
+      surfaceToCamera,
+      Lr,
       environmentIrradiance,
+      environmentVisibility,
       globalIlluminationDebug);
     
     // Calculate Fresnel term for ambient lighting.
@@ -863,7 +869,7 @@ glslFragment: |
     // contact term is composed separately after direct-light accumulation.
     float ambientOcclusion = clamp(material.occlusionStrength, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
+      min(ambientOcclusion, environmentVisibility),
       cosLo,
       material.roughnessFactor);
     vec3 indirectLighting = diffuseIBL * ambientOcclusion +
@@ -1136,20 +1142,22 @@ glslFragment: |
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
     
+    float environmentVisibility = 1.0;
     outColor.xyz += AmbientLighting(
       material,
       F0,
       Lr,
       normal,
       cosLo,
-      vin.worldPosition);
+      vin.worldPosition,
+      environmentVisibility);
     if(!GlobalIlluminationDebugSuppressesDirectLighting())
     {
   #ifdef CLEAR_COAT
-      outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC, material.occlusionStrength);
+      outColor.xyz += material.clearcoatFactor * ClearCoatAmbientLighting(material.clearcoatRoughnessFactor, Fdielectric, LrCC, clearcoatNormal, cosLoCC, min(material.occlusionStrength, environmentVisibility));
   #endif
   #ifdef SHEEN
-      outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo, material.occlusionStrength);
+      outColor.xyz += SheenAmbientLighting(material.sheenRoughnessFactor, material.sheenColorFactor.rgb, Lr, normal, cosLo, min(material.occlusionStrength, environmentVisibility));
   #endif
     }
 

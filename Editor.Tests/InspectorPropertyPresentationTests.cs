@@ -22,7 +22,7 @@ public sealed class InspectorPropertyPresentationTests
     [Theory]
     [InlineData("Realtime", "Realtime")]
     [InlineData("RealtimeAndBaked", "Realtime + Baked")]
-    [InlineData("BakedOnly", "Baked Only")]
+    [InlineData("BakedOnly", "Baked Indirect")]
     public void FormatEnumValue_UsesFriendlyLightGiModeLabels(
         string value,
         string expected)
@@ -33,6 +33,16 @@ public sealed class InspectorPropertyPresentationTests
                 "Sailor::LightComponent",
                 "globalIlluminationMode",
                 value));
+    }
+
+    [Fact]
+    public void FormatPropertyName_UsesSkyGiIndirectIntensityLabel()
+    {
+        Assert.Equal(
+            "GI Indirect Intensity",
+            InspectorPropertyPresentation.FormatPropertyName(
+                "Sailor::SkyComponent",
+                "giIndirectIntensity"));
     }
 
     [Fact]

@@ -235,6 +235,12 @@ void SkyComponent::SetAmbient(float value)
 	m_skyParams.m_ambient = glm::clamp(value, 0.0f, 10.0f);
 }
 
+void SkyComponent::SetGiIndirectIntensity(float value)
+{
+	m_giIndirectIntensity = std::isfinite(value) ?
+		glm::clamp(value, 0.0f, 16.0f) : 0.0f;
+}
+
 void SkyComponent::SetScatteringSteps(int32_t value)
 {
 	m_skyParams.m_scatteringSteps = glm::clamp(value, 1, 10);

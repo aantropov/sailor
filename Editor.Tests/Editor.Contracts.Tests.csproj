@@ -73,6 +73,7 @@
     <Compile Include="GlobalIlluminationBindingInputPolicyTests.cs" />
     <Compile Include="ProbeVolumeBinaryMetadataTests.cs" />
     <Compile Include="ProbeVolumeBakeOutputPolicyTests.cs" />
+    <Compile Include="ProbeVolumeBakeBindingPolicyTests.cs" />
     <Compile Include="ProbeVolumeBakeStatusGateTests.cs" />
     <Compile Include="WorkflowProjectionTests.cs" />
     <Compile Include="SceneViewportLifecycleTests.cs" />

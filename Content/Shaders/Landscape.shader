@@ -533,10 +533,15 @@ glslFragment: |
     const vec3 environmentIrradiance =
       texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
+    float environmentVisibility = 1.0;
+    const vec3 surfaceToCamera = 2.0 * cosLo * normal - Lr;
     const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
       worldPosition,
       normal,
+      surfaceToCamera,
+      Lr,
       environmentIrradiance,
+      environmentVisibility,
       globalIlluminationDebug);
 
     // Calculate Fresnel term for ambient lighting.
@@ -566,7 +571,7 @@ glslFragment: |
     // retain plausible reflections without leaking them into occluded areas.
     float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
-      ambientOcclusion,
+      min(ambientOcclusion, environmentVisibility),
       cosLo,
       material.roughness);
     vec3 indirectLighting = diffuseIBL * ambientOcclusion +

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <limits>
 #include <mutex>
@@ -18,6 +19,9 @@ namespace
 	constexpr float Pi = 3.14159265358979323846f;
 	constexpr uint32_t MaxBakeBrickCount = 1024u * 1024u;
 	constexpr uint32_t MaxBakeProbeCount = 16u * 1024u * 1024u;
+	constexpr uint32_t ProbeTransportRayCount = 64u;
+	constexpr uint32_t MaxProbeRelocationIterations = 4u;
+	constexpr float MaxValidBackfaceRatio = 0.25f;
 
 	const std::array<glm::vec3, ProbeVolumeVisibilityDirectionCount>
 		VisibilityDirections
@@ -107,6 +111,11 @@ namespace
 			{
 				HashVec2(hash, moments);
 			}
+			for (const float environmentVisibility :
+				probe.m_environmentVisibility)
+			{
+				HashValue(hash, environmentVisibility);
+			}
 		}
 		return hash;
 	}
@@ -118,6 +127,7 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_raysPerProbe);
 		HashValue(hash, data.m_bakeSettings.m_bounceCount);
 		HashValue(hash, data.m_bakeSettings.m_randomSeed);
+		HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
 		for (const ProbeVolumeSample& probe : data.m_probes)
 		{
 			for (const glm::vec3& coefficient : probe.m_irradiance)
@@ -128,24 +138,256 @@ namespace
 		return hash;
 	}
 
-	bool Intersects(
-		const glm::vec3& min,
-		const glm::vec3& max,
-		const Math::AABB& bounds) noexcept
+	uint32_t CanonicalFloatBits(float value) noexcept
 	{
-		return bounds.IsValid() &&
-			glm::all(glm::lessThanEqual(min, bounds.m_max)) &&
-			glm::all(glm::greaterThanEqual(max, bounds.m_min));
+		return value == 0.0f ? 0u : std::bit_cast<uint32_t>(value);
 	}
 
-	bool IntersectsGeometry(
+	struct SharedProbeEntry final
+	{
+		std::array<uint32_t, 3u> m_positionBits{};
+		uint32_t m_subdivisionLevel = 0u;
+		uint32_t m_probeIndex = 0u;
+	};
+
+	bool SharedProbeEntryLess(
+		const SharedProbeEntry& lhs,
+		const SharedProbeEntry& rhs) noexcept
+	{
+		for (size_t axis = 0u; axis < lhs.m_positionBits.size(); ++axis)
+		{
+			if (lhs.m_positionBits[axis] != rhs.m_positionBits[axis])
+			{
+				return lhs.m_positionBits[axis] < rhs.m_positionBits[axis];
+			}
+		}
+		if (lhs.m_subdivisionLevel != rhs.m_subdivisionLevel)
+		{
+			return lhs.m_subdivisionLevel < rhs.m_subdivisionLevel;
+		}
+		return lhs.m_probeIndex < rhs.m_probeIndex;
+	}
+
+	bool HasSameNominalPosition(
+		const SharedProbeEntry& lhs,
+		const SharedProbeEntry& rhs) noexcept
+	{
+		return lhs.m_positionBits == rhs.m_positionBits;
+	}
+
+	bool HasSameTransportSupport(
+		const SharedProbeEntry& lhs,
+		const SharedProbeEntry& rhs) noexcept
+	{
+		return HasSameNominalPosition(lhs, rhs) &&
+			lhs.m_subdivisionLevel == rhs.m_subdivisionLevel;
+	}
+
+	void CanonicalizeSharedProbeSamples(
+		ProbeVolumeData& data,
+		bool bCanonicalizeTransport)
+	{
+		std::vector<SharedProbeEntry> entries;
+		entries.reserve(data.m_probes.Num());
+		for (const ProbeVolumeBrick& brick : data.m_bricks)
+		{
+			for (uint32_t z = 0u; z < brick.m_probeCounts.z; ++z)
+			{
+				for (uint32_t y = 0u; y < brick.m_probeCounts.y; ++y)
+				{
+					for (uint32_t x = 0u; x < brick.m_probeCounts.x; ++x)
+					{
+						const uint32_t probeIndex = brick.m_firstProbeIndex + x +
+							brick.m_probeCounts.x *
+							(y + brick.m_probeCounts.y * z);
+						if (probeIndex >= data.m_probes.Num())
+						{
+							continue;
+						}
+						const glm::vec3 fraction(
+							brick.m_probeCounts.x > 1u ?
+								static_cast<float>(x) /
+								static_cast<float>(brick.m_probeCounts.x - 1u) : 0.0f,
+							brick.m_probeCounts.y > 1u ?
+								static_cast<float>(y) /
+								static_cast<float>(brick.m_probeCounts.y - 1u) : 0.0f,
+							brick.m_probeCounts.z > 1u ?
+								static_cast<float>(z) /
+								static_cast<float>(brick.m_probeCounts.z - 1u) : 0.0f);
+						const glm::vec3 nominalPosition = glm::mix(
+							brick.m_min,
+							brick.m_max,
+							fraction);
+						entries.push_back({
+							{
+								CanonicalFloatBits(nominalPosition.x),
+								CanonicalFloatBits(nominalPosition.y),
+								CanonicalFloatBits(nominalPosition.z)
+							},
+							brick.m_subdivisionLevel,
+							probeIndex });
+					}
+				}
+			}
+		}
+		std::sort(entries.begin(), entries.end(), SharedProbeEntryLess);
+
+		for (size_t begin = 0u; begin < entries.size();)
+		{
+			size_t end = begin + 1u;
+			while (end < entries.size() &&
+				HasSameNominalPosition(entries[begin], entries[end]))
+			{
+				++end;
+			}
+			const size_t sampleCount = end - begin;
+			if (sampleCount > 1u)
+			{
+				std::array<glm::dvec3,
+					ProbeVolumeSphericalHarmonicsCoefficientCount> irradiance{};
+				for (size_t entryIndex = begin; entryIndex < end; ++entryIndex)
+				{
+					const ProbeVolumeSample& probe =
+						data.m_probes[entries[entryIndex].m_probeIndex];
+					for (size_t coefficientIndex = 0u;
+						coefficientIndex < irradiance.size();
+						++coefficientIndex)
+					{
+						irradiance[coefficientIndex] +=
+							glm::dvec3(probe.m_irradiance[coefficientIndex]);
+					}
+				}
+
+				const double inverseSampleCount =
+					1.0 / static_cast<double>(sampleCount);
+				std::array<glm::vec3,
+					ProbeVolumeSphericalHarmonicsCoefficientCount>
+					canonicalIrradiance{};
+				for (size_t coefficientIndex = 0u;
+					coefficientIndex < irradiance.size();
+					++coefficientIndex)
+				{
+					canonicalIrradiance[coefficientIndex] = glm::vec3(
+						irradiance[coefficientIndex] * inverseSampleCount);
+				}
+				if (!bCanonicalizeTransport)
+				{
+					for (size_t entryIndex = begin; entryIndex < end; ++entryIndex)
+					{
+						data.m_probes[entries[entryIndex].m_probeIndex].m_irradiance =
+							canonicalIrradiance;
+					}
+					begin = end;
+					continue;
+				}
+
+				// A corner shared by different adaptive levels has different local
+				// support. Its radiance estimate is common, but averaging its locally
+				// clamped transport would make both levels incorrect.
+				for (size_t transportBegin = begin;
+					transportBegin < end;)
+				{
+					size_t transportEnd = transportBegin + 1u;
+					while (transportEnd < end && HasSameTransportSupport(
+						entries[transportBegin],
+						entries[transportEnd]))
+					{
+						++transportEnd;
+					}
+					const size_t transportSampleCount =
+						transportEnd - transportBegin;
+					glm::dvec3 position{};
+					glm::dvec3 relocation{};
+					double validity = 0.0;
+					std::array<glm::dvec2,
+						ProbeVolumeVisibilityDirectionCount> visibility{};
+					std::array<double,
+						ProbeVolumeVisibilityDirectionCount>
+						environmentVisibility{};
+					uint32_t flags = 0u;
+					for (size_t entryIndex = transportBegin;
+						entryIndex < transportEnd;
+						++entryIndex)
+					{
+						const ProbeVolumeSample& probe =
+							data.m_probes[entries[entryIndex].m_probeIndex];
+						position += glm::dvec3(probe.m_position);
+						relocation += glm::dvec3(probe.m_relocationOffset);
+						validity += static_cast<double>(probe.m_validity);
+						flags |= probe.m_flags;
+						for (size_t directionIndex = 0u;
+							directionIndex < visibility.size();
+							++directionIndex)
+						{
+							visibility[directionIndex] +=
+								glm::dvec2(probe.m_visibility[directionIndex]);
+							environmentVisibility[directionIndex] +=
+								static_cast<double>(
+									probe.m_environmentVisibility[directionIndex]);
+						}
+					}
+
+					const double inverseTransportSampleCount =
+						1.0 / static_cast<double>(transportSampleCount);
+					ProbeVolumeSample canonical =
+						data.m_probes[entries[transportBegin].m_probeIndex];
+					canonical.m_irradiance = canonicalIrradiance;
+					canonical.m_position = glm::vec3(
+						position * inverseTransportSampleCount);
+					canonical.m_relocationOffset = glm::vec3(
+						relocation * inverseTransportSampleCount);
+					canonical.m_validity = static_cast<float>(
+						validity * inverseTransportSampleCount);
+					for (size_t directionIndex = 0u;
+						directionIndex < visibility.size();
+						++directionIndex)
+					{
+						canonical.m_visibility[directionIndex] = glm::vec2(
+							visibility[directionIndex] * inverseTransportSampleCount);
+						canonical.m_environmentVisibility[directionIndex] =
+							static_cast<float>(
+								environmentVisibility[directionIndex] *
+								inverseTransportSampleCount);
+					}
+					const uint32_t validityAndRelocationFlags =
+						static_cast<uint32_t>(EProbeVolumeSampleFlag::Valid) |
+						static_cast<uint32_t>(EProbeVolumeSampleFlag::Relocated);
+					canonical.m_flags = flags & ~validityAndRelocationFlags;
+					if (canonical.m_validity > 0.05f)
+					{
+						canonical.m_flags |= static_cast<uint32_t>(
+							EProbeVolumeSampleFlag::Valid);
+					}
+					if (glm::length(canonical.m_relocationOffset) > 1e-6f)
+					{
+						canonical.m_flags |= static_cast<uint32_t>(
+							EProbeVolumeSampleFlag::Relocated);
+					}
+					for (size_t entryIndex = transportBegin;
+						entryIndex < transportEnd;
+						++entryIndex)
+					{
+						data.m_probes[entries[entryIndex].m_probeIndex] = canonical;
+					}
+					transportBegin = transportEnd;
+				}
+			}
+			begin = end;
+		}
+	}
+
+	bool IntersectsGeometryNeighborhood(
 		const glm::vec3& min,
 		const glm::vec3& max,
+		float margin,
 		const TVector<Math::AABB>& geometryBounds) noexcept
 	{
+		const glm::vec3 expansion((std::max)(margin, 0.0f));
 		for (const Math::AABB& bounds : geometryBounds)
 		{
-			if (Intersects(min, max, bounds))
+			if (bounds.IsValid() &&
+				glm::all(glm::lessThanEqual(min, bounds.m_max + expansion)) &&
+				glm::all(glm::greaterThanEqual(max, bounds.m_min - expansion)))
 			{
 				return true;
 			}
@@ -202,6 +444,13 @@ namespace
 	{
 		if (request.m_layoutSource)
 		{
+			if (request.m_layoutSource->m_bakerVersion != request.m_bakerVersion)
+			{
+				outDiagnostic =
+					"layout source transport was produced by a different baker "
+					"version; use Bake New before reusing its layout";
+				return false;
+			}
 			std::string sourceDiagnostic;
 			if (!request.m_layoutSource->Validate(sourceDiagnostic))
 			{
@@ -240,13 +489,22 @@ namespace
 			uint32_t subdivisionLevel) -> bool
 		{
 			const glm::vec3 childExtent = (max - min) * 0.5f;
-			const bool bCanSubdivide =
-				subdivisionLevel < request.m_settings.m_maxSubdivisionLevel &&
-				glm::all(glm::greaterThanEqual(
-					childExtent,
-					glm::vec3(request.m_settings.m_minProbeSpacing)));
-			const bool bShouldSubdivide = bCanSubdivide &&
-				IntersectsGeometry(min, max, request.m_sceneGeometryBounds);
+			const glm::bvec3 splitAxes =
+				subdivisionLevel < request.m_settings.m_maxSubdivisionLevel ?
+					glm::greaterThanEqual(
+						childExtent,
+						glm::vec3(request.m_settings.m_minProbeSpacing)) :
+					glm::bvec3(false);
+			// Keep one finest-spacing shell of probes around geometry. Testing only
+			// the exact renderer bounds leaves the first probe row outside a wall at
+			// the coarse parent spacing, which is precisely where interpolation needs
+			// enough samples to distinguish an open side from an occluded side.
+			const bool bShouldSubdivide = glm::any(splitAxes) &&
+				IntersectsGeometryNeighborhood(
+					min,
+					max,
+					request.m_settings.m_minProbeSpacing,
+					request.m_sceneGeometryBounds);
 			if (!bShouldSubdivide)
 			{
 				return AppendBrick(
@@ -258,21 +516,25 @@ namespace
 			}
 
 			const glm::vec3 center = (min + max) * 0.5f;
-			for (uint32_t z = 0u; z < 2u; ++z)
+			const glm::uvec3 childCounts(
+				splitAxes.x ? 2u : 1u,
+				splitAxes.y ? 2u : 1u,
+				splitAxes.z ? 2u : 1u);
+			for (uint32_t z = 0u; z < childCounts.z; ++z)
 			{
-				for (uint32_t y = 0u; y < 2u; ++y)
+				for (uint32_t y = 0u; y < childCounts.y; ++y)
 				{
-					for (uint32_t x = 0u; x < 2u; ++x)
+					for (uint32_t x = 0u; x < childCounts.x; ++x)
 					{
 						const glm::bvec3 upper(x != 0u, y != 0u, z != 0u);
 						const glm::vec3 childMin(
-							upper.x ? center.x : min.x,
-							upper.y ? center.y : min.y,
-							upper.z ? center.z : min.z);
+							splitAxes.x && upper.x ? center.x : min.x,
+							splitAxes.y && upper.y ? center.y : min.y,
+							splitAxes.z && upper.z ? center.z : min.z);
 						const glm::vec3 childMax(
-							upper.x ? max.x : center.x,
-							upper.y ? max.y : center.y,
-							upper.z ? max.z : center.z);
+							!splitAxes.x || upper.x ? max.x : center.x,
+							!splitAxes.y || upper.y ? max.y : center.y,
+							!splitAxes.z || upper.z ? max.z : center.z);
 						if (!appendNode(
 							childMin,
 							childMax,
@@ -292,6 +554,82 @@ namespace
 		}
 		data.m_layoutHash = ComputeProbeVolumeLayoutHash(data);
 		return true;
+	}
+
+	uint32_t CalculateRequiredSubdivisionLevel(
+		glm::vec3 extent,
+		float minProbeSpacing) noexcept
+	{
+		uint32_t level = 0u;
+		for (; level < ProbeVolumeMaxSubdivisionLevel; ++level)
+		{
+			const glm::bvec3 splitAxes = glm::greaterThanEqual(
+				extent * 0.5f,
+				glm::vec3(minProbeSpacing));
+			if (!glm::any(splitAxes))
+			{
+				return level;
+			}
+			if (splitAxes.x) extent.x *= 0.5f;
+			if (splitAxes.y) extent.y *= 0.5f;
+			if (splitAxes.z) extent.z *= 0.5f;
+		}
+
+		return glm::any(glm::greaterThanEqual(
+			extent * 0.5f,
+			glm::vec3(minProbeSpacing))) ?
+			ProbeVolumeMaxSubdivisionLevel + 1u : level;
+	}
+
+	float CalculateVisibilityMaxDistance(
+		const ProbeVolumeData& data,
+		const ProbeVolumeBrick& brick) noexcept
+	{
+		const glm::uvec3 cellCounts = glm::max(
+			brick.m_probeCounts,
+			glm::uvec3(2u)) - glm::uvec3(1u);
+		const glm::vec3 cellExtent =
+			(brick.m_max - brick.m_min) / glm::vec3(cellCounts);
+		float cellDiagonal = glm::length(cellExtent);
+		if (!std::isfinite(cellDiagonal) || cellDiagonal <= 0.0f)
+		{
+			cellDiagonal = data.m_bakeSettings.m_maxRayDistance;
+		}
+
+		// Visibility only rejects probes across geometry inside their local
+		// interpolation support. Keeping path-tracing misses at the much larger
+		// radiance range makes the distance moments hundreds of metres wide and
+		// turns every local probe-to-surface query into "visible".
+		const float relocationAndSamplingMargin =
+			data.m_bakeSettings.m_minProbeSpacing * 0.45f +
+			data.m_bakeSettings.m_normalBias +
+			data.m_bakeSettings.m_viewBias;
+		return glm::clamp(
+			cellDiagonal + relocationAndSamplingMargin,
+			(std::min)(0.001f, data.m_bakeSettings.m_maxRayDistance),
+			data.m_bakeSettings.m_maxRayDistance);
+	}
+
+	std::vector<float> CalculateProbeVisibilityMaxDistances(
+		const ProbeVolumeData& data)
+	{
+		std::vector<float> result(
+			data.m_probes.Num(),
+			data.m_bakeSettings.m_maxRayDistance);
+		for (const ProbeVolumeBrick& brick : data.m_bricks)
+		{
+			const float maxDistance = CalculateVisibilityMaxDistance(data, brick);
+			const uint32_t endProbeIndex = (std::min)(
+				brick.m_firstProbeIndex + brick.m_probeCount,
+				static_cast<uint32_t>(result.size()));
+			for (uint32_t probeIndex = brick.m_firstProbeIndex;
+				probeIndex < endProbeIndex;
+				++probeIndex)
+			{
+				result[probeIndex] = maxDistance;
+			}
+		}
+		return result;
 	}
 
 	glm::vec3 FibonacciDirection(
@@ -357,7 +695,7 @@ namespace
 			++directionIndex)
 		{
 			ProbeVolumeBakeRaySample sample;
-			if (!sampler.Sample(
+			if (!sampler.SampleVisibility(
 					position,
 					VisibilityDirections[directionIndex],
 					maxDistance,
@@ -397,10 +735,178 @@ namespace
 			relocation * (maxRelocation / length) : relocation;
 	}
 
+	struct ProbeTransport final
+	{
+		std::array<double, ProbeVolumeVisibilityDirectionCount>
+			m_weights{};
+		std::array<double, ProbeVolumeVisibilityDirectionCount>
+			m_environmentVisibilitySums{};
+		uint32_t m_backfaceCount = 0u;
+		float m_closestBackfaceDistance =
+			(std::numeric_limits<float>::max)();
+		glm::vec3 m_closestBackfaceDirection{};
+		glm::vec3 m_frontFaceRepulsion{};
+		float m_frontFaceClearanceDeficit = 0.0f;
+	};
+
+	glm::vec3 CalculateWallRepulsion(
+		const ProbeTransport& transport) noexcept
+	{
+		const float directionLength = glm::length(
+			transport.m_frontFaceRepulsion);
+		if (!std::isfinite(directionLength) ||
+			directionLength <= 1e-6f ||
+			transport.m_frontFaceClearanceDeficit <= 1e-6f)
+		{
+			return glm::vec3(0.0f);
+		}
+		return transport.m_frontFaceRepulsion /
+			directionLength * transport.m_frontFaceClearanceDeficit;
+	}
+
+	bool SampleProbeTransport(
+		const ProbeVolumeBakeRequest& request,
+		const IProbeVolumeBakeRaySampler& sampler,
+		const glm::vec3& position,
+		float targetClearance,
+		uint32_t probeIndex,
+		uint32_t stream,
+		ProbeTransport& outTransport,
+		std::string& outDiagnostic)
+	{
+		outTransport = {};
+		for (uint32_t rayIndex = 0u;
+			rayIndex < ProbeTransportRayCount;
+			++rayIndex)
+		{
+			if (IsCancelled(request))
+			{
+				outDiagnostic = "probe-volume bake was cancelled";
+				return false;
+			}
+
+			// Transport directions deliberately do not rotate per probe. The
+			// radiance estimator remains decorrelated below, while fixed transport
+			// prevents random visibility islands from moving between neighbouring
+			// probes and duplicate brick corners.
+			const glm::vec3 direction = FibonacciDirection(
+				rayIndex,
+				ProbeTransportRayCount,
+				0u,
+				0u);
+			ProbeVolumeBakeRaySample sample;
+			if (!sampler.SampleVisibility(
+					position,
+					direction,
+					request.m_settings.m_maxRayDistance,
+					MixRandomSeed(
+						request.m_settings.m_randomSeed,
+						probeIndex,
+						rayIndex,
+						stream),
+					sample,
+					outDiagnostic))
+			{
+				return false;
+			}
+
+			const glm::vec3 axisWeights = glm::abs(direction);
+			for (uint32_t axis = 0u; axis < 3u; ++axis)
+			{
+				const uint32_t directionIndex = axis * 2u +
+					(direction[axis] >= 0.0f ? 0u : 1u);
+				const double weight = static_cast<double>(axisWeights[axis]);
+				outTransport.m_weights[directionIndex] += weight;
+				outTransport.m_environmentVisibilitySums[directionIndex] +=
+					weight * (sample.m_bHit ? 0.0 : 1.0);
+			}
+
+			if (sample.m_bHit && sample.m_bBackFace)
+			{
+				++outTransport.m_backfaceCount;
+				if (sample.m_distance <
+					outTransport.m_closestBackfaceDistance)
+				{
+					outTransport.m_closestBackfaceDistance =
+						sample.m_distance;
+					outTransport.m_closestBackfaceDirection = direction;
+				}
+			}
+			else if (sample.m_bHit &&
+				std::isfinite(sample.m_distance) &&
+				sample.m_distance < targetClearance)
+			{
+				const float clearanceDeficit =
+					targetClearance - (std::max)(sample.m_distance, 0.0f);
+				// A ray points from the probe towards the nearby surface, so its
+				// opposite direction is a local estimate of "away from the wall".
+				// Combining the fixed spherical directions also resolves corners and
+				// slanted walls that the six signed-axis clearance rays cannot see.
+				outTransport.m_frontFaceRepulsion -=
+					direction * clearanceDeficit;
+				outTransport.m_frontFaceClearanceDeficit = (std::max)(
+					outTransport.m_frontFaceClearanceDeficit,
+					clearanceDeficit);
+			}
+		}
+		return true;
+	}
+
+	bool IsEmbeddedProbe(const ProbeTransport& transport) noexcept
+	{
+		return static_cast<float>(transport.m_backfaceCount) /
+			static_cast<float>(ProbeTransportRayCount) >
+			MaxValidBackfaceRatio;
+	}
+
+	void StoreProbeVisibility(
+		const ProbeTransport& transport,
+		const std::array<float, ProbeVolumeVisibilityDirectionCount>&
+			clearanceDistances,
+		float fallbackDistance,
+		ProbeVolumeSample& probe) noexcept
+	{
+		probe.m_flags &= ~ProbeVolumeBlockedDirectionMask;
+		const float blockingEpsilon = (std::max)(
+			fallbackDistance * 0.0001f,
+			0.0001f);
+		for (uint32_t directionIndex = 0u;
+			directionIndex < ProbeVolumeVisibilityDirectionCount;
+			++directionIndex)
+		{
+			const float distance = glm::clamp(
+				clearanceDistances[directionIndex],
+				0.0f,
+				fallbackDistance);
+			probe.m_visibility[directionIndex] = glm::vec2(
+				distance,
+				distance * distance);
+			if (distance < fallbackDistance - blockingEpsilon)
+			{
+				probe.m_flags |= ProbeVolumeBlockedDirectionBit(
+					directionIndex);
+			}
+
+			const double weight = transport.m_weights[directionIndex];
+			if (weight > 0.0)
+			{
+				probe.m_environmentVisibility[directionIndex] =
+					static_cast<float>(
+						transport.m_environmentVisibilitySums[directionIndex] /
+							weight);
+			}
+			else
+			{
+				probe.m_environmentVisibility[directionIndex] = 1.0f;
+			}
+		}
+	}
+
 	bool BakeProbe(
 		const ProbeVolumeBakeRequest& request,
 		const IProbeVolumeBakeRaySampler& sampler,
 		uint32_t probeIndex,
+		float visibilityMaxDistance,
 		bool bReuseTransport,
 		ProbeVolumeSample& probe,
 		std::string& outDiagnostic)
@@ -409,6 +915,7 @@ namespace
 			clearanceDistances{};
 		if (!bReuseTransport)
 		{
+			const glm::vec3 originalPosition = probe.m_position;
 			if (!SampleVisibility(
 					sampler,
 					probe.m_position,
@@ -427,7 +934,6 @@ namespace
 				request.m_settings.m_minProbeSpacing);
 			if (glm::length(probe.m_relocationOffset) > 1e-6f)
 			{
-				const glm::vec3 originalPosition = probe.m_position;
 				probe.m_position = glm::clamp(
 					originalPosition + probe.m_relocationOffset,
 					request.m_volumeMin,
@@ -437,57 +943,132 @@ namespace
 				{
 					probe.m_flags |= static_cast<uint32_t>(
 						EProbeVolumeSampleFlag::Relocated);
-					if (!SampleVisibility(
-							sampler,
-							probe.m_position,
-							request.m_settings.m_maxRayDistance,
-							request.m_settings.m_randomSeed,
-							probeIndex,
-							1u,
-							clearanceDistances,
-							outDiagnostic))
-					{
-						return false;
-					}
 				}
 			}
 
 			const float targetClearance = (std::max)(
 				request.m_settings.m_minProbeSpacing * 0.25f,
 				0.001f);
-			float averageClearance = 0.0f;
-			for (uint32_t directionIndex = 0u;
-				directionIndex < ProbeVolumeVisibilityDirectionCount;
-				++directionIndex)
+			const float maxRelocation =
+				request.m_settings.m_minProbeSpacing * 0.45f;
+			ProbeTransport transport;
+			if (!SampleProbeTransport(
+					request,
+					sampler,
+					probe.m_position,
+					targetClearance,
+					probeIndex,
+					1u,
+					transport,
+					outDiagnostic))
 			{
-				const float distance = clearanceDistances[directionIndex];
-				averageClearance += distance;
+				return false;
 			}
-			averageClearance /=
-				static_cast<float>(ProbeVolumeVisibilityDirectionCount);
-			probe.m_validity = glm::clamp(
-				averageClearance / targetClearance,
-				0.0f,
-				1.0f);
-			if (probe.m_validity <= 0.05f)
+
+			for (uint32_t iteration = 0u;
+				iteration < MaxProbeRelocationIterations;
+				++iteration)
 			{
-				probe.m_flags &= ~static_cast<uint32_t>(
-					EProbeVolumeSampleFlag::Valid);
+				glm::vec3 relocationStep{};
+				if (IsEmbeddedProbe(transport))
+				{
+					if (!std::isfinite(
+							transport.m_closestBackfaceDistance) ||
+						transport.m_closestBackfaceDistance >=
+							(std::numeric_limits<float>::max)() ||
+						glm::length(
+							transport.m_closestBackfaceDirection) <= 1e-6f)
+					{
+						break;
+					}
+					relocationStep =
+						transport.m_closestBackfaceDirection *
+						(transport.m_closestBackfaceDistance +
+							targetClearance);
+				}
+				else
+				{
+					relocationStep = CalculateWallRepulsion(transport);
+					if (glm::length(relocationStep) <= 1e-6f)
+					{
+						break;
+					}
+				}
+
+				glm::vec3 requestedOffset =
+					probe.m_position - originalPosition + relocationStep;
+				const float requestedLength = glm::length(requestedOffset);
+				if (requestedLength > maxRelocation &&
+					requestedLength > 1e-6f)
+				{
+					requestedOffset *= maxRelocation / requestedLength;
+				}
+				const glm::vec3 relocatedPosition = glm::clamp(
+					originalPosition + requestedOffset,
+					request.m_volumeMin,
+					request.m_volumeMax);
+				if (glm::length(relocatedPosition - probe.m_position) <= 1e-6f)
+				{
+					break;
+				}
+				probe.m_position = relocatedPosition;
+				probe.m_relocationOffset =
+					probe.m_position - originalPosition;
+				probe.m_flags |= static_cast<uint32_t>(
+					EProbeVolumeSampleFlag::Relocated);
+				if (!SampleProbeTransport(
+						request,
+						sampler,
+						probe.m_position,
+						targetClearance,
+						probeIndex,
+						2u + iteration,
+						transport,
+						outDiagnostic))
+				{
+					return false;
+				}
 			}
-			else
+
+			probe.m_validity = IsEmbeddedProbe(transport) ? 0.0f : 1.0f;
+			if (probe.m_validity > 0.05f)
 			{
 				probe.m_flags |= static_cast<uint32_t>(
 					EProbeVolumeSampleFlag::Valid);
 			}
+			else
+			{
+				probe.m_flags &= ~static_cast<uint32_t>(
+					EProbeVolumeSampleFlag::Valid);
+			}
+			// Relocation changes the origin, so the six blocker rays must be
+			// sampled once more from the final position. These exact axis
+			// distances define planar rejection boundaries at runtime; deriving
+			// them from broad Fibonacci lobes creates circular visibility islands.
+			if (!SampleVisibility(
+					sampler,
+					probe.m_position,
+					visibilityMaxDistance,
+					request.m_settings.m_randomSeed,
+					probeIndex,
+					32u,
+					clearanceDistances,
+					outDiagnostic))
+			{
+				return false;
+			}
+			StoreProbeVisibility(
+				transport,
+				clearanceDistances,
+				visibilityMaxDistance,
+				probe);
 		}
 
 		probe.m_irradiance = {};
-		std::array<float, ProbeVolumeVisibilityDirectionCount>
-			visibilityDistanceSums{};
-		std::array<float, ProbeVolumeVisibilityDirectionCount>
-			visibilityDistanceSquaredSums{};
-		std::array<uint32_t, ProbeVolumeVisibilityDirectionCount>
-			visibilitySampleCounts{};
+		if (probe.m_validity <= 0.05f)
+		{
+			return true;
+		}
 		const uint32_t rayCount = request.m_settings.m_raysPerProbe;
 		const float projectionScale = 4.0f * Pi /
 			static_cast<float>(rayCount);
@@ -520,25 +1101,6 @@ namespace
 			}
 			const glm::vec3 radiance = IsFinite(sample.m_radiance) ?
 				glm::max(sample.m_radiance, glm::vec3(0.0f)) : glm::vec3(0.0f);
-			if (!bReuseTransport)
-			{
-				const glm::vec3 absoluteDirection = glm::abs(direction);
-				const uint32_t axis = absoluteDirection.x >= absoluteDirection.y &&
-					absoluteDirection.x >= absoluteDirection.z ? 0u :
-					absoluteDirection.y >= absoluteDirection.z ? 1u : 2u;
-				const uint32_t directionIndex = axis * 2u +
-					(direction[axis] >= 0.0f ? 0u : 1u);
-				const float distance = sample.m_bHit ?
-					glm::clamp(
-						sample.m_distance,
-						0.0f,
-						request.m_settings.m_maxRayDistance) :
-					request.m_settings.m_maxRayDistance;
-				visibilityDistanceSums[directionIndex] += distance;
-				visibilityDistanceSquaredSums[directionIndex] +=
-					distance * distance;
-				++visibilitySampleCounts[directionIndex];
-			}
 			float basis[ProbeVolumeSphericalHarmonicsCoefficientCount]{};
 			EvaluateSphericalHarmonicsBasis(direction, basis);
 			for (uint32_t coefficientIndex = 0u;
@@ -548,33 +1110,6 @@ namespace
 				probe.m_irradiance[coefficientIndex] += radiance *
 					basis[coefficientIndex] * projectionScale *
 					IrradianceConvolution(coefficientIndex);
-			}
-		}
-		if (!bReuseTransport)
-		{
-			for (uint32_t directionIndex = 0u;
-				directionIndex < ProbeVolumeVisibilityDirectionCount;
-				++directionIndex)
-			{
-				const uint32_t sampleCount =
-					visibilitySampleCounts[directionIndex];
-				if (sampleCount > 0u)
-				{
-					const float inverseSampleCount =
-						1.0f / static_cast<float>(sampleCount);
-					probe.m_visibility[directionIndex] = glm::vec2(
-						visibilityDistanceSums[directionIndex] *
-							inverseSampleCount,
-						visibilityDistanceSquaredSums[directionIndex] *
-							inverseSampleCount);
-				}
-				else
-				{
-					const float distance =
-						clearanceDistances[directionIndex];
-					probe.m_visibility[directionIndex] =
-						glm::vec2(distance, distance * distance);
-				}
 			}
 		}
 		return true;
@@ -615,6 +1150,13 @@ namespace
 				"a .probes bake exceeds the supported sampling limits";
 			return false;
 		}
+		if (!std::isfinite(request.m_settings.m_skyIndirectIntensity) ||
+			request.m_settings.m_skyIndirectIntensity < 0.0f)
+		{
+			outDiagnostic =
+				"a .probes bake requires a finite non-negative sky GI indirect intensity";
+			return false;
+		}
 		if (request.m_layoutSource)
 		{
 			return true;
@@ -642,6 +1184,31 @@ namespace
 		{
 			outDiagnostic = "a .probes bake requires valid sampling settings";
 			return false;
+		}
+		if (IntersectsGeometryNeighborhood(
+				request.m_volumeMin,
+				request.m_volumeMax,
+				request.m_settings.m_minProbeSpacing,
+				request.m_sceneGeometryBounds))
+		{
+			const uint32_t requiredSubdivisionLevel =
+				CalculateRequiredSubdivisionLevel(
+					volumeExtent,
+					request.m_settings.m_minProbeSpacing);
+			if (requiredSubdivisionLevel >
+				request.m_settings.m_maxSubdivisionLevel)
+			{
+				outDiagnostic =
+					"max subdivision level " +
+					std::to_string(
+						request.m_settings.m_maxSubdivisionLevel) +
+					" cannot honor min probe spacing " +
+					std::to_string(
+						request.m_settings.m_minProbeSpacing) +
+					" for these volume bounds; use at least level " +
+					std::to_string(requiredSubdivisionLevel);
+				return false;
+			}
 		}
 		return true;
 	}
@@ -690,6 +1257,8 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 		effectiveRequest.m_volumeMax = data->m_volumeMax;
 		const uint32_t totalProbes = static_cast<uint32_t>(
 			data->m_probes.Num());
+		const std::vector<float> visibilityMaxDistances =
+			CalculateProbeVisibilityMaxDistances(*data);
 		const uint32_t threadCount = (std::min)(
 			request.m_threadCount,
 			totalProbes);
@@ -757,6 +1326,7 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 							effectiveRequest,
 							sampler,
 							probeIndex,
+							visibilityMaxDistances[probeIndex],
 							bReuseTransport,
 							data->m_probes[probeIndex],
 							diagnostic))
@@ -845,6 +1415,7 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 			return result;
 		}
 
+		CanonicalizeSharedProbeSamples(*data, !bReuseTransport);
 		if (!bReuseTransport)
 		{
 			data->m_layoutHash = ComputeProbeVolumeLayoutHash(*data);

@@ -52,6 +52,7 @@ public sealed class ProbeVolumeFile : AssetFile
         Add(properties, "normalBias", metadata.NormalBias.ToString("0.###"));
         Add(properties, "viewBias", metadata.ViewBias.ToString("0.###"));
         Add(properties, "maxRayDistance", metadata.MaxRayDistance.ToString("0.###"));
+        Add(properties, "skyGiIndirectIntensity", metadata.SkyIndirectIntensity.ToString("0.###"));
         Add(properties, "includeSky", metadata.IncludeSky.ToString());
         Add(properties, "includeEmissive", metadata.IncludeEmissive.ToString());
         Add(properties, "includeDirectLighting", metadata.IncludeDirectLighting.ToString());
