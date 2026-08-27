@@ -16,6 +16,7 @@
 #include "Submodules/ImGuiApi.h"
 #include "RHI/Types.h"
 #include "RHI/CommandList.h"
+#include "RHI/GpuFrameTimeQueryRing.h"
 #include "RHI/Renderer.h"
 #include "RHI/Texture.h"
 #include "Settings/GraphicsSettings.h"
@@ -71,7 +72,7 @@ namespace
 				globalIlluminationFlightSlot);
 		}
 
-		char text[1024];
+		char text[2048];
 		const char* globalIlluminationStatus =
 			!globalIlluminationStats.m_bEnabled
 				? "disabled"
@@ -319,39 +320,66 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 		const auto& stats = renderer->GetStats();
 		const RHI::RHIGlobalIlluminationRenderStats globalIlluminationStats =
 			renderer->GetGlobalIlluminationRenderStats();
-		char gpuQueryText[96]{};
+		uint32_t displayedGpuFps =
+			stats.m_gpuFps.load(std::memory_order_relaxed);
+		std::string gpuQueryText;
 		if (statsMode == Settings::ERenderStatsMode::RenderStatsAndQueries)
 		{
 			if (!renderer->GetDriver()->SupportsGpuFrameTimeQueries())
 			{
-				std::snprintf(
-					gpuQueryText,
-					sizeof(gpuQueryText),
-					"GPU queries unavailable");
+				gpuQueryText = "GPU queries unavailable";
 			}
 			else
 			{
 				float gpuFrameTimeMs = 0.0f;
 				if (renderer->GetDriver()->TryGetGpuFrameTimeMs(gpuFrameTimeMs))
 				{
+					char frameTimeText[64]{};
+					const uint32_t measuredGpuFps =
+						RHI::CalculateGpuFramesPerSecond(gpuFrameTimeMs);
+					if (measuredGpuFps > 0u)
+					{
+						displayedGpuFps = measuredGpuFps;
+					}
 					std::snprintf(
-						gpuQueryText,
-						sizeof(gpuQueryText),
+						frameTimeText,
+						sizeof(frameTimeText),
 						"GPU frame %.2f ms",
 						gpuFrameTimeMs);
+					gpuQueryText = frameTimeText;
+
+					const TVector<RHI::GpuTiming> topGpuTimings =
+						renderer->GetSlowestGpuTimings();
+					if (topGpuTimings.IsEmpty())
+					{
+						gpuQueryText += "\nGPU nodes/ops pending";
+					}
+					else
+					{
+						gpuQueryText += "\nSlowest GPU nodes (avg):";
+						for (size_t i = 0u; i < topGpuTimings.Num(); ++i)
+						{
+							char timingText[128]{};
+							std::snprintf(
+								timingText,
+								sizeof(timingText),
+								"\n%zu. %.64s %.3f ms",
+								i + 1u,
+								topGpuTimings[i].m_name.c_str(),
+								topGpuTimings[i].m_durationMilliseconds);
+							gpuQueryText += timingText;
+						}
+					}
 				}
 				else
 				{
-					std::snprintf(
-						gpuQueryText,
-						sizeof(gpuQueryText),
-						"GPU query pending");
+					gpuQueryText = "GPU query pending";
 				}
 			}
 		}
 		DrawViewportStatsOverlay(
 			m_cpuFps,
-			stats.m_gpuFps.load(std::memory_order_relaxed),
+			displayedGpuFps,
 			stats.m_numBatches.load(std::memory_order_relaxed),
 			stats.m_numInstances.load(std::memory_order_relaxed),
 			shadowMemoryMb,
@@ -360,7 +388,7 @@ void EngineLoop::ProcessCpuFrame(FrameState& currentInputState)
 			shadowMemoryBudgetMb,
 			globalIlluminationStats,
 			stats,
-			gpuQueryText);
+			gpuQueryText.c_str());
 	}
 
 	auto& task = currentInputState.GetDrawImGuiTask();

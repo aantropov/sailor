@@ -802,10 +802,20 @@ namespace Sailor::RHI
 		alignas(16) glm::mat4 m_model;
 	};
 
+	struct GpuTiming
+	{
+		std::string m_name;
+		ECommandListQueue m_queue = ECommandListQueue::Graphics;
+		float m_durationMilliseconds = 0.0f;
+	};
+
 	struct GpuStats
 	{
 		TMap<RHI::RHITexturePtr, TMap<RHI::EImageLayout, uint32_t>> m_barriers;
+		TVector<GpuTiming> m_timings;
 	};
+
+	static constexpr uint32_t InvalidGpuTimestampQuery = ~0u;
 
 	struct DrawCallStats
 	{

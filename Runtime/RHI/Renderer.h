@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <atomic>
+#include <mutex>
 #include <thread>
 
 #include "Core/Defines.h"
@@ -15,6 +16,7 @@
 #include "Core/Submodule.h"
 #include "Tasks/Scheduler.h"
 #include "GraphicsDriver.h"
+#include "GpuFrameTimeQueryRing.h"
 #include "SceneView.h"
 
 namespace Sailor
@@ -46,6 +48,7 @@ namespace Sailor::RHI
 		SAILOR_API void WaitIdle();
 
 		SAILOR_API const Stats& GetStats() const { return m_stats; }
+		SAILOR_API TVector<GpuTiming> GetSlowestGpuTimings() const;
 		SAILOR_API RHIGlobalIlluminationRenderStats
 			GetGlobalIlluminationRenderStats() const;
 
@@ -65,6 +68,7 @@ namespace Sailor::RHI
 
 	protected:
 		void UpdateMemoryStats();
+		void PublishGpuTimings(const TVector<GpuTiming>& timings);
 		void UpdateGlobalIlluminationRenderStats(
 			const RHIGlobalIlluminationRenderStats& stats);
 
@@ -74,6 +78,18 @@ namespace Sailor::RHI
 		std::atomic<bool> m_bForceStop = false;
 
 		RHI::Stats m_stats{};
+
+		struct GpuTimingHistory final
+		{
+			std::string m_name;
+			TGpuTimingAverage<60u> m_average;
+			uint64_t m_lastSeenGeneration = 0u;
+		};
+
+		mutable std::mutex m_gpuTimingsMutex;
+		TVector<GpuTimingHistory> m_gpuTimingHistory;
+		TVector<GpuTiming> m_slowestGpuTimings;
+		uint64_t m_gpuTimingGeneration = 0u;
 
 		class Win32::Window* m_pViewport;
 

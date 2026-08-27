@@ -4,6 +4,7 @@
 #include "Mesh.h"
 #include "CommandList.h"
 #include "GraphicsDriver.h"
+#include "GpuFrameTimeQueryRing.h"
 #include "VertexDescription.h"
 #include "Engine/EngineLoop.h"
 #include "Engine/GameObject.h"
@@ -235,6 +236,87 @@ void Renderer::UpdateMemoryStats()
 		std::memory_order_relaxed);
 	m_stats.m_texturesMemoryUsage.store(texturesOccupiedSpace, std::memory_order_relaxed);
 #endif
+}
+
+TVector<GpuTiming> Renderer::GetSlowestGpuTimings() const
+{
+	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
+	return m_slowestGpuTimings;
+}
+
+void Renderer::PublishGpuTimings(const TVector<GpuTiming>& timings)
+{
+	if (timings.IsEmpty())
+	{
+		return;
+	}
+
+	TVector<GpuTiming> frameTimings;
+	frameTimings.Reserve(timings.Num());
+	for (const auto& timing : timings)
+	{
+		const size_t existing = frameTimings.FindIf(
+			[&timing](const GpuTiming& value)
+			{
+				return value.m_name == timing.m_name;
+			});
+		if (existing == static_cast<size_t>(-1))
+		{
+			frameTimings.Add(timing);
+		}
+		else
+		{
+			frameTimings[existing].m_durationMilliseconds +=
+				timing.m_durationMilliseconds;
+		}
+	}
+
+	const uint64_t generation = ++m_gpuTimingGeneration;
+	for (const auto& timing : frameTimings)
+	{
+		size_t history = m_gpuTimingHistory.FindIf(
+			[&timing](const GpuTimingHistory& value)
+			{
+				return value.m_name == timing.m_name;
+			});
+		if (history == static_cast<size_t>(-1))
+		{
+			history = m_gpuTimingHistory.Emplace();
+			m_gpuTimingHistory[history].m_name = timing.m_name;
+		}
+
+		m_gpuTimingHistory[history].m_average.AddSample(
+			timing.m_durationMilliseconds);
+		m_gpuTimingHistory[history].m_lastSeenGeneration = generation;
+	}
+
+	m_gpuTimingHistory.RemoveAll(
+		[generation](const GpuTimingHistory& history)
+		{
+			return history.m_lastSeenGeneration != generation;
+		});
+
+	TVector<GpuTiming> slowest;
+	slowest.Reserve(m_gpuTimingHistory.Num());
+	for (const auto& history : m_gpuTimingHistory)
+	{
+		GpuTiming timing;
+		timing.m_name = history.m_name;
+		timing.m_durationMilliseconds = history.m_average.GetAverage();
+		slowest.Emplace(std::move(timing));
+	}
+	slowest.Sort(
+		[](const GpuTiming& lhs, const GpuTiming& rhs)
+		{
+			return lhs.m_durationMilliseconds > rhs.m_durationMilliseconds;
+		});
+	if (slowest.Num() > 3u)
+	{
+		slowest.Resize(3u);
+	}
+
+	std::lock_guard<std::mutex> lock(m_gpuTimingsMutex);
+	m_slowestGpuTimings = std::move(slowest);
 }
 
 RHIGlobalIlluminationRenderStats
@@ -636,44 +718,8 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 						Settings::ERenderStatsMode::RenderStatsAndQueries &&
 						m_driverInstance->SupportsGpuFrameTimeQueries())
 					{
-						auto queryBeginCommandList = m_driverInstance->CreateCommandList(
-							false,
-							RHI::ECommandListQueue::Graphics);
-						m_driverInstance->SetDebugName(
-							queryBeginCommandList,
-							"GpuFrameTime:Begin");
-						GetDriverCommands()->BeginCommandList(
-							queryBeginCommandList,
-							true);
 						bGpuFrameTimeQueryStarted =
-							m_driverInstance->BeginGpuFrameTimeQuery(
-								queryBeginCommandList);
-						GetDriverCommands()->EndCommandList(queryBeginCommandList);
-
-						if (bGpuFrameTimeQueryStarted)
-						{
-							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
-							auto fence = RHIFencePtr::Make();
-							GetDriver()->SetDebugName(
-								signalSemaphore,
-								"GpuFrameTime:Begin");
-							GetDriver()->SetDebugName(fence, "GpuFrameTime:Begin");
-							if (!GetDriver()->SubmitCommandList(
-								queryBeginCommandList,
-								fence,
-								signalSemaphore,
-								chainSemaphore))
-							{
-								GetDriver()->CancelGpuFrameTimeQuery();
-								bGpuFrameTimeQueryStarted = false;
-								bFrameSubmitsSucceeded = false;
-								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit the GPU frame-time begin boundary.");
-							}
-							else
-							{
-								chainSemaphore = signalSemaphore;
-							}
-						}
+							m_driverInstance->BeginGpuFrameTimeQuery();
 					}
 
 					if (bFrameSubmitsSucceeded && !m_bForceStop)
@@ -725,6 +771,11 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 								drawCallStats = rhiFrameGraph->GetDrawCallStats();
 								globalIlluminationStats =
 									rhiFrameGraph->GetGlobalIlluminationRenderStats();
+								if (bGpuFrameTimeQueryStarted)
+								{
+									PublishGpuTimings(
+										rhiFrameGraph->GetGpuTimings());
+								}
 							}
 						}
 					}
@@ -754,46 +805,13 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 					if (bGpuFrameTimeQueryStarted)
 					{
-						auto queryEndCommandList = m_driverInstance->CreateCommandList(
-							false,
-							RHI::ECommandListQueue::Graphics);
-						m_driverInstance->SetDebugName(
-							queryEndCommandList,
-							"GpuFrameTime:End");
-						GetDriverCommands()->BeginCommandList(
-							queryEndCommandList,
-							true);
-						m_driverInstance->EndGpuFrameTimeQuery(queryEndCommandList);
-						GetDriverCommands()->EndCommandList(queryEndCommandList);
-
 						if (bFrameSubmitsSucceeded)
 						{
-							primaryCommandLists.Add(queryEndCommandList);
+							m_driverInstance->EndGpuFrameTimeQuery();
 						}
 						else
 						{
-							auto signalSemaphore = GetDriver()->CreateWaitSemaphore();
-							auto fence = RHIFencePtr::Make();
-							GetDriver()->SetDebugName(
-								signalSemaphore,
-								"GpuFrameTime:EndAfterFailure");
-							GetDriver()->SetDebugName(
-								fence,
-								"GpuFrameTime:EndAfterFailure");
-							if (GetDriver()->SubmitCommandList(
-								queryEndCommandList,
-								fence,
-								signalSemaphore,
-								chainSemaphore))
-							{
-								GetDriver()->CommitGpuFrameTimeQuery();
-								chainSemaphore = signalSemaphore;
-							}
-							else
-							{
-								GetDriver()->CancelGpuFrameTimeQuery();
-								SAILOR_LOG_ERROR("Renderer::PushFrame: failed to submit the GPU frame-time end boundary after a frame failure.");
-							}
+							m_driverInstance->CancelGpuFrameTimeQuery();
 						}
 					}
 
@@ -841,7 +859,23 @@ bool Renderer::PushFrame(const Sailor::FrameState& frame)
 
 						if (timer.ResultAccumulatedMs() > 1000)
 						{
-							m_stats.m_gpuFps.store(totalFramesCount, std::memory_order_relaxed);
+							uint32_t gpuFps = totalFramesCount;
+							if (App::GetRenderStatsMode() ==
+								Settings::ERenderStatsMode::RenderStatsAndQueries)
+							{
+								float gpuFrameTimeMs = 0.0f;
+								if (m_driverInstance->TryGetGpuFrameTimeMs(
+									gpuFrameTimeMs))
+								{
+									const uint32_t measuredGpuFps =
+										CalculateGpuFramesPerSecond(gpuFrameTimeMs);
+									if (measuredGpuFps > 0u)
+									{
+										gpuFps = measuredGpuFps;
+									}
+								}
+							}
+							m_stats.m_gpuFps.store(gpuFps, std::memory_order_relaxed);
 							totalFramesCount = 0;
 							timer.Clear();
 #if defined(SAILOR_BUILD_WITH_VULKAN)

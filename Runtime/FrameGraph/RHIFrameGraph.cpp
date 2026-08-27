@@ -1194,8 +1194,12 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 		driverCommands->BeginCommandList(cmdList, true);
+		uint32_t graphicsGpuFrameTimeRange =
+			driver->BeginGpuFrameTimeRange(cmdList);
 		driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 		driverCommands->BeginCommandList(transferCmdList, true);
+		uint32_t transferGpuFrameTimeRange =
+			driver->BeginGpuFrameTimeRange(transferCmdList);
 		driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 
 		PrepareViewSubmissionResources(
@@ -1267,12 +1271,49 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 			m_lastFrameGpuStats.m_barriers.Clear();
 		}
 
-		driver->StartGpuTracking();
+		const bool bExecuteQueries = driver->StartGpuTracking();
 
+		uint32_t nodeIndex = 0u;
 		for (auto& node : m_graph)
 		{
+			uint32_t graphicsTimestamp = RHI::InvalidGpuTimestampQuery;
+			uint32_t computeTimestamp = RHI::InvalidGpuTimestampQuery;
+			if (bExecuteQueries)
+			{
+				std::string timingName =
+					std::format("{:02d} {}", nodeIndex, node->GetTag());
+				std::string renderQueueTag;
+				if (node->TryGetString("Tag", renderQueueTag) &&
+					!renderQueueTag.empty())
+				{
+					timingName += "/" + renderQueueTag;
+				}
+				std::string shader;
+				if (node->TryGetString("shader", shader) && !shader.empty())
+				{
+					timingName += "/" + shader;
+				}
+
+				graphicsTimestamp = driverCommands->BeginGpuTimestamp(
+					cmdList,
+					timingName);
+				computeTimestamp = driverCommands->BeginGpuTimestamp(
+					transferCmdList,
+					timingName);
+			}
+
 			node->Process(frameRefPtr, transferCmdList, cmdList, snapshot);
+			if (bExecuteQueries)
+			{
+				driverCommands->EndGpuTimestamp(
+					transferCmdList,
+					computeTimestamp);
+				driverCommands->EndGpuTimestamp(
+					cmdList,
+					graphicsTimestamp);
+			}
 			m_drawCallStats += node->GetDrawCallStats();
+			++nodeIndex;
 
 			const uint32_t numRecordedCommands = transferCmdList->GetNumRecordedCommands() + cmdList->GetNumRecordedCommands();
 			const uint32_t gpuCost = transferCmdList->GetGPUCost() + cmdList->GetGPUCost();
@@ -1281,9 +1322,15 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 				SAILOR_PROFILE_SCOPE("Chaining command lists");
 
 				driverCommands->EndDebugRegion(cmdList);
+				driver->EndGpuFrameTimeRange(
+					cmdList,
+					graphicsGpuFrameTimeRange);
 				driverCommands->EndCommandList(cmdList);
 
 				driverCommands->EndDebugRegion(transferCmdList);
+				driver->EndGpuFrameTimeRange(
+					transferCmdList,
+					transferGpuFrameTimeRange);
 				driverCommands->EndCommandList(transferCmdList);
 
 				// Create tasks
@@ -1363,9 +1410,13 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 					driver->SetDebugName(transferCmdList, "FrameGraph:Transfer");
 
 					driverCommands->BeginCommandList(cmdList, true);
+					graphicsGpuFrameTimeRange =
+						driver->BeginGpuFrameTimeRange(cmdList);
 					driverCommands->BeginDebugRegion(cmdList, "FrameGraph:Graphics", glm::vec4(0.75f, 1.0f, 0.75f, 0.1f));
 
 					driverCommands->BeginCommandList(transferCmdList, true);
+					transferGpuFrameTimeRange =
+						driver->BeginGpuFrameTimeRange(transferCmdList);
 					driverCommands->BeginDebugRegion(transferCmdList, "FrameGraph:Transfer", glm::vec4(0.75f, 0.75f, 1.0f, 0.1f));
 				}
 			}
@@ -1373,9 +1424,15 @@ bool RHIFrameGraph::Process(RHI::RHISceneViewPtr rhiSceneView,
 		}
 
 		driverCommands->EndDebugRegion(cmdList);
+		driver->EndGpuFrameTimeRange(
+			cmdList,
+			graphicsGpuFrameTimeRange);
 		driverCommands->EndCommandList(cmdList);
 
 		driverCommands->EndDebugRegion(transferCmdList);
+		driver->EndGpuFrameTimeRange(
+			transferCmdList,
+			transferGpuFrameTimeRange);
 		driverCommands->EndCommandList(transferCmdList);
 
 		{

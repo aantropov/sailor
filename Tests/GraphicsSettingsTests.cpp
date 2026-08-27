@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -612,6 +613,12 @@ graphics:
 			RHI::TryResolveGpuFrameTimeMilliseconds(
 				0xfffffff0u, 0x10u, 32u, 1.0f, milliseconds),
 			"limited-width timestamp counters should still support a valid wrap");
+		Require(
+			RHI::CalculateGpuFramesPerSecond(40.0f) == 25u &&
+			RHI::CalculateGpuFramesPerSecond(0.0f) == 0u &&
+			RHI::CalculateGpuFramesPerSecond(
+				(std::numeric_limits<float>::quiet_NaN)()) == 0u,
+			"GPU FPS must be derived from the measured GPU frame duration");
 
 		RHI::TGpuFrameTimeQueryRing<2u> ring;
 		const uint32_t first = ring.Acquire();
@@ -638,6 +645,27 @@ graphics:
 			ring.GetState(first) == RHI::EGpuFrameTimeQuerySlotState::Issued,
 			"cancelling another recording must not release a delayed issued query");
 	}
+
+	void TestGpuTimingAverageUsesRollingWindow()
+	{
+		RHI::TGpuTimingAverage<3u> average;
+		Require(average.GetSampleCount() == 0u && average.GetAverage() == 0.0f,
+			"an empty GPU timing average should start at zero");
+		Require(!average.AddSample(-1.0f) &&
+			!average.AddSample((std::numeric_limits<float>::quiet_NaN)()),
+			"invalid GPU timings should not enter the average");
+
+		Require(average.AddSample(1.0f) &&
+			average.AddSample(2.0f) &&
+			average.AddSample(6.0f) &&
+			average.GetSampleCount() == 3u &&
+			IsNear(average.GetAverage(), 3.0f),
+			"GPU timing average should include all samples while warming up");
+		Require(average.AddSample(10.0f) &&
+			average.GetSampleCount() == 3u &&
+			IsNear(average.GetAverage(), 6.0f),
+			"GPU timing average should evict the oldest sample at capacity");
+	}
 }
 
 int main()
@@ -651,6 +679,7 @@ int main()
 		RunTest("EditorParsingAndAppStatsMode", TestEditorParsingAndAppStatsMode);
 		RunTest("WorkspaceSelectionAndEditorIsolation", TestWorkspaceSelectionAndEditorIsolation);
 		RunTest("GpuFrameTimeQueryRingDoesNotReuseDelayedSlots", TestGpuFrameTimeQueryRingDoesNotReuseDelayedSlots);
+		RunTest("GpuTimingAverageUsesRollingWindow", TestGpuTimingAverageUsesRollingWindow);
 	}
 	catch (const std::exception& exception)
 	{
