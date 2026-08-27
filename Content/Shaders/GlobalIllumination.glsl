@@ -1,4 +1,4 @@
-#ifdef FRAGMENT
+#if defined(FRAGMENT) || defined(COMPUTE)
 
 const uint GLOBAL_ILLUMINATION_LEAF_BIT = 0x80000000u;
 const uint GLOBAL_ILLUMINATION_MAX_TRAVERSAL_STEPS = 128u;
@@ -17,10 +17,8 @@ const uint GLOBAL_ILLUMINATION_DEBUG_FALLBACK = 8u;
 const uint GLOBAL_ILLUMINATION_MODE_REALTIME = 0u;
 const uint GLOBAL_ILLUMINATION_MODE_REALTIME_AND_BAKED = 1u;
 const uint GLOBAL_ILLUMINATION_MODE_BAKED_ONLY = 2u;
-const float GLOBAL_ILLUMINATION_BLOCKING_DISTANCE_TOLERANCE = 0.0001;
 const float GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE = 0.0001;
-const uint GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_SHIFT = 8u;
-const uint GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_MASK = 0x3f00u;
+const float GLOBAL_ILLUMINATION_NEIGHBOR_SUPPORT_SCALE = 0.5;
 
 struct GlobalIlluminationBvhNode
 {
@@ -32,15 +30,12 @@ struct GlobalIlluminationBrick
 {
   vec4 minAndSubdivision;
   vec4 maxAndFirstProbe;
-  uvec4 probeCountsAndCount;
+  uvec4 probeCountsAndValidCount;
 };
 
 struct GlobalIlluminationProbe
 {
   vec4 positionAndValidity;
-  vec4 visibility01;
-  vec4 visibility23;
-  vec4 visibility45;
   vec4 environmentVisibility0123;
   vec4 environmentVisibility45;
 };
@@ -48,6 +43,13 @@ struct GlobalIlluminationProbe
 struct GlobalIlluminationCoefficients
 {
   uvec4 packed[4];
+};
+
+struct GlobalIlluminationShBasis
+{
+  vec4 values0123;
+  vec4 values4567;
+  float value8;
 };
 
 struct GlobalIlluminationState
@@ -66,16 +68,21 @@ layout(std430, set = 1, binding = 12) readonly buffer GlobalIlluminationHeaderSS
   uvec4 identity;
 } globalIlluminationHeader;
 
+#ifdef COMPUTE
 layout(std430, set = 1, binding = 13) readonly buffer GlobalIlluminationBvhSSBO
 {
   GlobalIlluminationBvhNode instance[];
 } globalIlluminationBvh;
+#endif
 
+#ifdef COMPUTE
 layout(std430, set = 1, binding = 14) readonly buffer GlobalIlluminationBricksSSBO
 {
   GlobalIlluminationBrick instance[];
 } globalIlluminationBricks;
+#endif
 
+#ifdef FRAGMENT
 layout(std430, set = 1, binding = 15) readonly buffer GlobalIlluminationProbesSSBO
 {
   GlobalIlluminationProbe instance[];
@@ -90,11 +97,27 @@ layout(std430, set = 1, binding = 17) readonly buffer GlobalIlluminationStatesSS
 {
   GlobalIlluminationState instance[];
 } globalIlluminationStates;
+#endif
+
+#ifdef FRAGMENT
+layout(set = 1, binding = 18) uniform sampler2D g_globalIlluminationProbeCellMinSampler;
+layout(set = 1, binding = 19) uniform sampler2D g_globalIlluminationProbeCellMaxSampler;
+layout(set = 1, binding = 20) uniform sampler2D g_globalIlluminationProbeCellMetadataSampler;
+#endif
+
+struct GlobalIlluminationProbeCell
+{
+  vec3 boundsMin;
+  vec3 boundsMax;
+  uvec3 probeCounts;
+  uint firstProbeIndex;
+  uint brickIndex;
+  uint subdivision;
+};
 
 struct GlobalIlluminationSampleDebug
 {
   bool usedProbeVolume;
-  bool traversalComplete;
   uint brickIndex;
   uint dominantProbeIndex;
   float averageValidity;
@@ -106,7 +129,6 @@ void InitializeGlobalIlluminationSampleDebug(
   out GlobalIlluminationSampleDebug debugInfo)
 {
   debugInfo.usedProbeVolume = false;
-  debugInfo.traversalComplete = true;
   debugInfo.brickIndex = 0u;
   debugInfo.dominantProbeIndex = 0u;
   debugInfo.averageValidity = 0.0;
@@ -114,39 +136,68 @@ void InitializeGlobalIlluminationSampleDebug(
   debugInfo.dominantStateHue = 0.0;
 }
 
+bool GlobalIlluminationDebugUsesProbeData()
+{
+  return globalIlluminationHeader.stateAndDebug.z >
+    GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY;
+}
+
+float GlobalIlluminationNeighborSupportRadius()
+{
+  const float minProbeSpacing =
+    uintBitsToFloat(globalIlluminationHeader.settings.z);
+  if(isnan(minProbeSpacing) || isinf(minProbeSpacing) ||
+    minProbeSpacing <= 0.0)
+  {
+    return 0.0;
+  }
+  return minProbeSpacing * GLOBAL_ILLUMINATION_NEIGHBOR_SUPPORT_SCALE +
+    max(globalIlluminationHeader.volumeMin.w, 0.0) +
+    max(globalIlluminationHeader.volumeMax.w, 0.0);
+}
+
+float GlobalIlluminationBoundsTolerance(vec3 boundsMin, vec3 boundsMax)
+{
+  const vec3 maximumAbsoluteCoordinate = max(abs(boundsMin), abs(boundsMax));
+  const float coordinateScale = max(
+    1.0,
+    max(
+      maximumAbsoluteCoordinate.x,
+      max(maximumAbsoluteCoordinate.y, maximumAbsoluteCoordinate.z)));
+  return 0.00001 + coordinateScale * 0.000001;
+}
+
 bool GlobalIlluminationContains(vec3 boundsMin, vec3 boundsMax, vec3 position)
+{
+  const float tolerance =
+    GlobalIlluminationBoundsTolerance(boundsMin, boundsMax);
+  return all(greaterThanEqual(position, boundsMin - vec3(tolerance))) &&
+    all(lessThanEqual(position, boundsMax + vec3(tolerance)));
+}
+
+bool GlobalIlluminationContainsExact(
+  vec3 boundsMin,
+  vec3 boundsMax,
+  vec3 position)
 {
   return all(greaterThanEqual(position, boundsMin)) &&
     all(lessThanEqual(position, boundsMax));
 }
 
+float GlobalIlluminationDistanceSquaredToBounds(
+  vec3 position,
+  vec3 boundsMin,
+  vec3 boundsMax)
+{
+  const vec3 delta = max(
+    max(boundsMin - position, position - boundsMax),
+    vec3(0.0));
+  return dot(delta, delta);
+}
+
 uint GlobalIlluminationFlattenIndex(uvec3 coordinate, uvec3 counts)
 {
   return coordinate.x + counts.x * (coordinate.y + counts.y * coordinate.z);
-}
-
-vec2 GlobalIlluminationVisibilityMoments(
-  GlobalIlluminationProbe probe,
-  uint directionIndex)
-{
-  if(directionIndex == 0u) return probe.visibility01.xy;
-  if(directionIndex == 1u) return probe.visibility01.zw;
-  if(directionIndex == 2u) return probe.visibility23.xy;
-  if(directionIndex == 3u) return probe.visibility23.zw;
-  if(directionIndex == 4u) return probe.visibility45.xy;
-  return probe.visibility45.zw;
-}
-
-bool GlobalIlluminationDirectionBlocked(
-  GlobalIlluminationProbe probe,
-  uint directionIndex)
-{
-  const uint blockedDirections =
-    floatBitsToUint(probe.environmentVisibility45.z) &
-    GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_MASK;
-  return (blockedDirections &
-    (1u << (GLOBAL_ILLUMINATION_BLOCKED_DIRECTION_SHIFT +
-      directionIndex))) != 0u;
 }
 
 float GlobalIlluminationEnvironmentVisibility(
@@ -177,69 +228,31 @@ float GlobalIlluminationEnvironmentVisibility(
     1.0);
 }
 
-float GlobalIlluminationEnvironmentVisibility(
-  GlobalIlluminationProbe probe,
-  vec3 sourceDirection)
-{
-  return GlobalIlluminationEnvironmentVisibility(
-    vec3(
-      probe.environmentVisibility0123.x,
-      probe.environmentVisibility0123.z,
-      probe.environmentVisibility45.x),
-    vec3(
-      probe.environmentVisibility0123.y,
-      probe.environmentVisibility0123.w,
-      probe.environmentVisibility45.y),
-    sourceDirection);
-}
-
-float GlobalIlluminationVisibilityWeight(
-  GlobalIlluminationProbe probe,
-  vec3 worldPosition)
-{
-  const vec3 delta = worldPosition - probe.positionAndValidity.xyz;
-  const float distanceToProbe = length(delta);
-  if(distanceToProbe <= 0.00001)
-  {
-    return 1.0;
-  }
-  const uvec3 directionIndices = uvec3(
-    delta.x >= 0.0 ? 0u : 1u,
-    delta.y >= 0.0 ? 2u : 3u,
-    delta.z >= 0.0 ? 4u : 5u);
-  for(uint axis = 0u; axis < 3u; ++axis)
-  {
-    const uint directionIndex = directionIndices[axis];
-    const float clearance = GlobalIlluminationVisibilityMoments(
-      probe,
-      directionIndex).x;
-    if(GlobalIlluminationDirectionBlocked(probe, directionIndex) &&
-      abs(delta[axis]) > clearance +
-        GLOBAL_ILLUMINATION_BLOCKING_DISTANCE_TOLERANCE)
-    {
-      return 0.0;
-    }
-  }
-  return 1.0;
-}
-
 float GlobalIlluminationSurfaceFacingWeight(
   GlobalIlluminationProbe probe,
   vec3 worldPosition,
   vec3 worldNormal)
 {
   const vec3 surfaceToProbe = probe.positionAndValidity.xyz - worldPosition;
-  return dot(worldNormal, surfaceToProbe) <
-    -GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE ? 0.0 : 1.0;
+  const float signedPlaneDistance = dot(worldNormal, surfaceToProbe);
+  const float transitionWidth = max(
+    globalIlluminationHeader.volumeMin.w,
+    GLOBAL_ILLUMINATION_SURFACE_PLANE_TOLERANCE);
+  return smoothstep(
+    -transitionWidth,
+    transitionWidth,
+    signedPlaneDistance);
 }
 
-bool GlobalIlluminationFindBrick(
+#ifdef COMPUTE
+bool GlobalIlluminationFindBrickCandidates(
   vec3 worldPosition,
-  out uint selectedBrickIndex,
-  out bool traversalComplete)
+  float queryRadius,
+  out uvec4 encodedBrickIndices,
+  out uint selectedBrickCount)
 {
-  selectedBrickIndex = 0u;
-  traversalComplete = true;
+  encodedBrickIndices = uvec4(0u);
+  selectedBrickCount = 0u;
   if(globalIlluminationHeader.counts.x == 0u ||
     globalIlluminationHeader.counts.y == 0u ||
     globalIlluminationHeader.counts.z == 0u)
@@ -251,8 +264,14 @@ bool GlobalIlluminationFindBrick(
   uint stackSize = 1u;
   stack[0] = globalIlluminationHeader.stateAndDebug.y;
   uint steps = 0u;
-  bool found = false;
-  uint selectedSubdivision = 0u;
+  const float queryTolerance = GlobalIlluminationBoundsTolerance(
+    globalIlluminationHeader.volumeMin.xyz,
+    globalIlluminationHeader.volumeMax.xyz);
+  const float expandedQueryRadius = queryRadius + queryTolerance;
+  const float queryRadiusSquared =
+    expandedQueryRadius * expandedQueryRadius;
+  vec4 selectedDistanceSquared = vec4(3.402823466e+38);
+  uvec4 selectedSubdivisions = uvec4(0u);
   while(stackSize > 0u && steps < GLOBAL_ILLUMINATION_MAX_TRAVERSAL_STEPS)
   {
     const uint nodeIndex = stack[--stackSize];
@@ -260,15 +279,14 @@ bool GlobalIlluminationFindBrick(
     if(nodeIndex >= globalIlluminationHeader.counts.y ||
       nodeIndex >= uint(globalIlluminationBvh.instance.length()))
     {
-      traversalComplete = false;
       continue;
     }
     const GlobalIlluminationBvhNode node =
       globalIlluminationBvh.instance[nodeIndex];
-    if(!GlobalIlluminationContains(
+    if(GlobalIlluminationDistanceSquaredToBounds(
+      worldPosition,
       node.minAndLeft.xyz,
-      node.maxAndRight.xyz,
-      worldPosition))
+      node.maxAndRight.xyz) > queryRadiusSquared)
     {
       continue;
     }
@@ -280,163 +298,196 @@ bool GlobalIlluminationFindBrick(
       if(brickIndex >= globalIlluminationHeader.counts.z ||
         brickIndex >= uint(globalIlluminationBricks.instance.length()))
       {
-        traversalComplete = false;
         continue;
       }
       const GlobalIlluminationBrick brick =
         globalIlluminationBricks.instance[brickIndex];
-      const uint subdivision = floatBitsToUint(brick.minAndSubdivision.w);
-      if(GlobalIlluminationContains(
-        brick.minAndSubdivision.xyz,
-        brick.maxAndFirstProbe.xyz,
-        worldPosition) &&
-        (!found || subdivision > selectedSubdivision))
+      if(brick.probeCountsAndValidCount.w == 0u)
       {
-        found = true;
-        selectedSubdivision = subdivision;
-        selectedBrickIndex = brickIndex;
+        continue;
       }
+      const uint subdivision = floatBitsToUint(brick.minAndSubdivision.w);
+      const float distanceSquared =
+        GlobalIlluminationDistanceSquaredToBounds(
+          worldPosition,
+          brick.minAndSubdivision.xyz,
+          brick.maxAndFirstProbe.xyz);
+      if(distanceSquared > queryRadiusSquared)
+      {
+        continue;
+      }
+
+      uint insertionIndex = 0u;
+      if(selectedBrickCount < 4u)
+      {
+        insertionIndex = selectedBrickCount++;
+      }
+      else
+      {
+        uint worstIndex = 0u;
+        for(uint candidateIndex = 1u; candidateIndex < 4u; ++candidateIndex)
+        {
+          const bool bCandidateIsWorse =
+            selectedDistanceSquared[candidateIndex] >
+              selectedDistanceSquared[worstIndex] ||
+            (abs(
+              selectedDistanceSquared[candidateIndex] -
+                selectedDistanceSquared[worstIndex]) <= 0.0000001 &&
+              selectedSubdivisions[candidateIndex] <
+                selectedSubdivisions[worstIndex]);
+          if(bCandidateIsWorse)
+          {
+            worstIndex = candidateIndex;
+          }
+        }
+        const bool bCandidateIsBetter =
+          distanceSquared < selectedDistanceSquared[worstIndex] ||
+          (abs(distanceSquared - selectedDistanceSquared[worstIndex]) <=
+              0.0000001 &&
+            subdivision > selectedSubdivisions[worstIndex]);
+        if(!bCandidateIsBetter)
+        {
+          continue;
+        }
+        insertionIndex = worstIndex;
+      }
+      encodedBrickIndices[insertionIndex] = brickIndex + 1u;
+      selectedDistanceSquared[insertionIndex] = distanceSquared;
+      selectedSubdivisions[insertionIndex] = subdivision;
       continue;
     }
 
     if(stackSize + 2u > GLOBAL_ILLUMINATION_MAX_BVH_STACK)
     {
-      traversalComplete = false;
       break;
     }
     stack[stackSize++] = floatBitsToUint(node.maxAndRight.w);
     stack[stackSize++] = leftOrLeaf;
   }
-  if(stackSize > 0u)
-  {
-    traversalComplete = false;
-  }
-  return found;
+  return selectedBrickCount > 0u;
 }
+#endif
 
-float GlobalIlluminationCoefficientComponent(
-	uint stateIndex,
-	uint probeIndex,
-	uint coefficientIndex,
-	uint colorChannel)
+#ifdef FRAGMENT
+GlobalIlluminationShBasis GlobalIlluminationBuildShBasis(vec3 normal)
 {
-	const uint probeCount = globalIlluminationHeader.counts.w;
-	const uint packedComponentIndex = coefficientIndex * 3u + colorChannel;
-	const uint packedPairIndex = packedComponentIndex / 2u;
-	const uint coefficientArrayIndex = stateIndex * probeCount + probeIndex;
-	if(coefficientArrayIndex >= uint(globalIlluminationCoefficients.instance.length()))
-	{
-		return 0.0;
-	}
-	const uvec4 packedGroup = globalIlluminationCoefficients
-		.instance[coefficientArrayIndex].packed[packedPairIndex / 4u];
-	const uint packedPair = packedGroup[packedPairIndex % 4u];
-	const vec2 values = unpackHalf2x16(packedPair);
-	return (packedComponentIndex & 1u) == 0u ? values.x : values.y;
-}
-
-vec3 GlobalIlluminationEvaluateProbe(
-	uint stateIndex,
-	uint probeIndex,
-	vec3 sourceNormal)
-{
-  const vec3 normal = length(sourceNormal) > 0.000001
-    ? normalize(sourceNormal)
-    : vec3(0.0, 1.0, 0.0);
   const float x = normal.x;
   const float y = normal.y;
   const float z = normal.z;
-	const float basis[9] = float[9](
+  GlobalIlluminationShBasis basis;
+  basis.values0123 = vec4(
     0.2820947918,
     0.4886025119 * y,
     0.4886025119 * z,
-    0.4886025119 * x,
+    0.4886025119 * x);
+  basis.values4567 = vec4(
     1.0925484306 * x * y,
     1.0925484306 * y * z,
     0.3153915653 * (3.0 * z * z - 1.0),
-    1.0925484306 * x * z,
-    0.5462742153 * (x * x - y * y));
+    1.0925484306 * x * z);
+  basis.value8 = 0.5462742153 * (x * x - y * y);
+  return basis;
+}
+
+vec3 GlobalIlluminationEvaluateProbe(
+  uint stateIndex,
+  uint probeIndex,
+  GlobalIlluminationShBasis basis)
+{
+  const uint coefficientArrayIndex =
+    stateIndex * globalIlluminationHeader.counts.w + probeIndex;
+  if(coefficientArrayIndex >=
+    uint(globalIlluminationCoefficients.instance.length()))
+  {
+    return vec3(0.0);
+  }
+  // Load the complete packed record once. The previous per-component helper
+  // could issue 27 dynamic SSBO reads for the same probe/state pair.
+  const GlobalIlluminationCoefficients coefficients =
+    globalIlluminationCoefficients.instance[coefficientArrayIndex];
 
   vec3 irradiance = vec3(0.0);
-	for(uint coefficientIndex = 0u; coefficientIndex < 9u; ++coefficientIndex)
-	{
-		const vec3 coefficient = vec3(
-			GlobalIlluminationCoefficientComponent(
-				stateIndex, probeIndex, coefficientIndex, 0u),
-			GlobalIlluminationCoefficientComponent(
-				stateIndex, probeIndex, coefficientIndex, 1u),
-			GlobalIlluminationCoefficientComponent(
-				stateIndex, probeIndex, coefficientIndex, 2u));
-		irradiance += coefficient * basis[coefficientIndex];
-	}
-	return irradiance;
+  const vec2 pair0 = unpackHalf2x16(coefficients.packed[0].x);
+  const vec2 pair1 = unpackHalf2x16(coefficients.packed[0].y);
+  irradiance += vec3(pair0, pair1.x) * basis.values0123.x;
+  const vec2 pair2 = unpackHalf2x16(coefficients.packed[0].z);
+  irradiance += vec3(pair1.y, pair2) * basis.values0123.y;
+  const vec2 pair3 = unpackHalf2x16(coefficients.packed[0].w);
+  const vec2 pair4 = unpackHalf2x16(coefficients.packed[1].x);
+  irradiance += vec3(pair3, pair4.x) * basis.values0123.z;
+  const vec2 pair5 = unpackHalf2x16(coefficients.packed[1].y);
+  irradiance += vec3(pair4.y, pair5) * basis.values0123.w;
+  const vec2 pair6 = unpackHalf2x16(coefficients.packed[1].z);
+  const vec2 pair7 = unpackHalf2x16(coefficients.packed[1].w);
+  irradiance += vec3(pair6, pair7.x) * basis.values4567.x;
+  const vec2 pair8 = unpackHalf2x16(coefficients.packed[2].x);
+  irradiance += vec3(pair7.y, pair8) * basis.values4567.y;
+  const vec2 pair9 = unpackHalf2x16(coefficients.packed[2].y);
+  const vec2 pair10 = unpackHalf2x16(coefficients.packed[2].z);
+  irradiance += vec3(pair9, pair10.x) * basis.values4567.z;
+  const vec2 pair11 = unpackHalf2x16(coefficients.packed[2].w);
+  irradiance += vec3(pair10.y, pair11) * basis.values4567.w;
+  const vec2 pair12 = unpackHalf2x16(coefficients.packed[3].x);
+  const vec2 pair13 = unpackHalf2x16(coefficients.packed[3].y);
+  irradiance += vec3(pair12, pair13.x) * basis.value8;
+  return irradiance;
 }
 
-vec3 GlobalIlluminationHueToRgb(float hue)
+bool SampleGlobalIlluminationFromProbeCell(
+  GlobalIlluminationProbeCell probeCell,
+  vec3 worldPosition,
+  vec3 shadingNormal,
+  vec3 geometricNormal,
+  vec3 samplingPosition,
+  vec3 environmentDirection,
+  out vec3 irradiance,
+  out float environmentVisibility,
+  out GlobalIlluminationSampleDebug debugInfo)
 {
-  const vec3 shifted = fract(hue + vec3(0.0, 0.6666667, 0.3333333));
-  return clamp(abs(shifted * 6.0 - 3.0) - 1.0, 0.0, 1.0);
-}
-
-bool SampleGlobalIllumination(
-	vec3 worldPosition,
-	vec3 worldNormal,
-	vec3 surfaceToCamera,
-	vec3 environmentDirection,
-	out vec3 irradiance,
-	out float environmentVisibility,
-	out GlobalIlluminationSampleDebug debugInfo)
-{
-	irradiance = vec3(0.0);
-	environmentVisibility = 1.0;
-	vec3 positiveDirectionVisibility = vec3(0.0);
-	vec3 negativeDirectionVisibility = vec3(0.0);
+  irradiance = vec3(0.0);
+  environmentVisibility = 1.0;
+  vec3 positiveDirectionVisibility = vec3(0.0);
+  vec3 negativeDirectionVisibility = vec3(0.0);
+  vec3 interpolationIrradiance = vec3(0.0);
+  vec3 interpolationPositiveDirectionVisibility = vec3(0.0);
+  vec3 interpolationNegativeDirectionVisibility = vec3(0.0);
   InitializeGlobalIlluminationSampleDebug(debugInfo);
 
   if(globalIlluminationHeader.counts.x == 0u ||
-    globalIlluminationHeader.stateAndDebug.x == 0u)
+    globalIlluminationHeader.stateAndDebug.x == 0u ||
+    probeCell.brickIndex >= globalIlluminationHeader.counts.z ||
+    probeCell.firstProbeIndex >= globalIlluminationHeader.counts.w)
   {
     return false;
   }
 
-  const vec3 normal = length(worldNormal) > 0.000001
-    ? normalize(worldNormal)
-    : vec3(0.0, 1.0, 0.0);
-  const vec3 viewDirection = length(surfaceToCamera) > 0.000001
-    ? normalize(surfaceToCamera)
-    : vec3(0.0);
-  const vec3 samplingPosition = worldPosition +
-    normal * globalIlluminationHeader.volumeMin.w +
-    viewDirection * globalIlluminationHeader.volumeMax.w;
-  uint brickIndex = 0u;
-  if(!GlobalIlluminationFindBrick(
-    samplingPosition,
-    brickIndex,
-    debugInfo.traversalComplete))
+  const GlobalIlluminationShBasis shBasis =
+    GlobalIlluminationBuildShBasis(shadingNormal);
+  const uint debugMode = globalIlluminationHeader.stateAndDebug.z;
+  const bool bTrackProbe =
+    debugMode == GLOBAL_ILLUMINATION_DEBUG_PROBES;
+  const bool bTrackValidity =
+    debugMode == GLOBAL_ILLUMINATION_DEBUG_VALIDITY;
+  const bool bTrackVisibility =
+    debugMode == GLOBAL_ILLUMINATION_DEBUG_VISIBILITY;
+  const bool bTrackState =
+    debugMode == GLOBAL_ILLUMINATION_DEBUG_ASSET_IDENTITY;
+  if(debugMode == GLOBAL_ILLUMINATION_DEBUG_BRICKS)
   {
-    return false;
+    debugInfo.brickIndex = probeCell.brickIndex;
   }
-  debugInfo.brickIndex = brickIndex;
-
-  const GlobalIlluminationBrick brick =
-    globalIlluminationBricks.instance[brickIndex];
-  const vec3 extent = brick.maxAndFirstProbe.xyz -
-    brick.minAndSubdivision.xyz;
-  const uvec3 probeCounts = brick.probeCountsAndCount.xyz;
-  if(any(lessThanEqual(extent, vec3(0.0))) || any(equal(probeCounts, uvec3(0u))))
-  {
-    return false;
-  }
+  const vec3 extent = probeCell.boundsMax - probeCell.boundsMin;
+  const uvec3 probeCounts = probeCell.probeCounts;
 
   const vec3 normalizedPosition = clamp(
-    (samplingPosition - brick.minAndSubdivision.xyz) / extent,
+    (samplingPosition - probeCell.boundsMin) / extent,
     vec3(0.0),
     vec3(1.0));
   const vec3 cell = normalizedPosition * vec3(max(probeCounts, uvec3(1u)) - uvec3(1u));
   const uvec3 lower = uvec3(floor(cell));
   const uvec3 upper = min(lower + uvec3(1u), probeCounts - uvec3(1u));
   const vec3 fraction = fract(cell);
-  const uint firstProbeIndex = floatBitsToUint(brick.maxAndFirstProbe.w);
+  const uint firstProbeIndex = probeCell.firstProbeIndex;
 
   float totalInterpolationWeight = 0.0;
   float totalVisibleWeight = 0.0;
@@ -444,16 +495,19 @@ bool SampleGlobalIllumination(
   const uint stateCount = min(
     globalIlluminationHeader.stateAndDebug.x,
     uint(globalIlluminationStates.instance.length()));
-  float dominantStateWeight = -1.0;
-  for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
+  if(bTrackState)
   {
-    const float stateWeight =
-      globalIlluminationStates.instance[stateIndex].parameters.x;
-    if(stateWeight > dominantStateWeight)
+    float dominantStateWeight = -1.0;
+    for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
     {
-      dominantStateWeight = stateWeight;
-      debugInfo.dominantStateHue =
-        globalIlluminationStates.instance[stateIndex].parameters.z;
+      const float stateWeight =
+        globalIlluminationStates.instance[stateIndex].parameters.x;
+      if(stateWeight > dominantStateWeight)
+      {
+        dominantStateWeight = stateWeight;
+        debugInfo.dominantStateHue =
+          globalIlluminationStates.instance[stateIndex].parameters.z;
+      }
     }
   }
 
@@ -481,41 +535,61 @@ bool SampleGlobalIllumination(
           (y != 0u ? fraction.y : 1.0 - fraction.y) *
           (z != 0u ? fraction.z : 1.0 - fraction.z);
         const float validity = clamp(probe.positionAndValidity.w, 0.0, 1.0);
-        const float visibility = GlobalIlluminationVisibilityWeight(
-          probe,
-          samplingPosition);
         const float interpolationWeight = trilinearWeight * validity;
-        const float spatialWeight = interpolationWeight * visibility *
+        const float surfaceFacingWeight =
           GlobalIlluminationSurfaceFacingWeight(
             probe,
             worldPosition,
-            normal);
-        totalInterpolationWeight += interpolationWeight;
-        totalVisibleWeight += spatialWeight;
-        positiveDirectionVisibility += vec3(
+            geometricNormal);
+        // Six signed-axis clearance rays cannot describe the finite extent of
+        // scene occluders. Extending any hit into a runtime rejection plane
+        // creates camera-moving rectangular holes. The baked SH already carries
+        // diffuse occlusion, so runtime visibility is receiver-side selection.
+        const float visibility = surfaceFacingWeight;
+        const float spatialWeight = interpolationWeight * visibility;
+        const vec3 probePositiveDirectionVisibility = vec3(
           probe.environmentVisibility0123.x,
           probe.environmentVisibility0123.z,
-          probe.environmentVisibility45.x) * spatialWeight;
-        negativeDirectionVisibility += vec3(
+          probe.environmentVisibility45.x);
+        const vec3 probeNegativeDirectionVisibility = vec3(
           probe.environmentVisibility0123.y,
           probe.environmentVisibility0123.w,
-          probe.environmentVisibility45.y) * spatialWeight;
-        if(spatialWeight > dominantProbeWeight)
+          probe.environmentVisibility45.y);
+        totalInterpolationWeight += interpolationWeight;
+        totalVisibleWeight += spatialWeight;
+        positiveDirectionVisibility +=
+          probePositiveDirectionVisibility * spatialWeight;
+        negativeDirectionVisibility +=
+          probeNegativeDirectionVisibility * spatialWeight;
+        interpolationPositiveDirectionVisibility +=
+          probePositiveDirectionVisibility * interpolationWeight;
+        interpolationNegativeDirectionVisibility +=
+          probeNegativeDirectionVisibility * interpolationWeight;
+        if(bTrackProbe && spatialWeight > dominantProbeWeight)
         {
           dominantProbeWeight = spatialWeight;
           debugInfo.dominantProbeIndex = probeIndex;
         }
-        debugInfo.averageValidity += trilinearWeight * validity;
-        debugInfo.averageVisibility += trilinearWeight * visibility;
-		for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
-		{
-			const float stateWeight =
-				globalIlluminationStates.instance[stateIndex].parameters.x;
-			irradiance += GlobalIlluminationEvaluateProbe(
-				stateIndex,
-				probeIndex,
-				normal) * spatialWeight * stateWeight;
-		}
+        if(bTrackValidity)
+        {
+          debugInfo.averageValidity += trilinearWeight * validity;
+        }
+        if(bTrackVisibility)
+        {
+          debugInfo.averageVisibility += trilinearWeight * visibility;
+        }
+        for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
+        {
+          const float stateWeight =
+            globalIlluminationStates.instance[stateIndex].parameters.x;
+          const vec3 stateIrradiance = GlobalIlluminationEvaluateProbe(
+            stateIndex,
+            probeIndex,
+            shBasis) * stateWeight;
+          irradiance += stateIrradiance * spatialWeight;
+          interpolationIrradiance +=
+            stateIrradiance * interpolationWeight;
+        }
       }
     }
   }
@@ -524,78 +598,63 @@ bool SampleGlobalIllumination(
   {
     return false;
   }
-	if(totalVisibleWeight <= 0.000001)
-	{
-    // The volume has valid probes, but none has a visible path to this
-    // surface. Keep a valid black baked result instead of falling back to the
-		// gray environment irradiance used by RealtimeAndBaked mode.
-		environmentVisibility = 0.0;
-		debugInfo.usedProbeVolume = true;
-		return true;
-	}
-  // Visibility selects probes on the same side of nearby geometry. The SH
-  // payload already contains the physical occlusion; multiplying the final
-  // energy by the trilinear visibility coverage exposes brick-shaped bands.
-	irradiance = max(irradiance / totalVisibleWeight, vec3(0.0));
-	positiveDirectionVisibility = clamp(
-    positiveDirectionVisibility / totalVisibleWeight,
+  const vec3 unfilteredIrradiance =
+    interpolationIrradiance / totalInterpolationWeight;
+  const vec3 unfilteredPositiveDirectionVisibility =
+    interpolationPositiveDirectionVisibility / totalInterpolationWeight;
+  const vec3 unfilteredNegativeDirectionVisibility =
+    interpolationNegativeDirectionVisibility / totalInterpolationWeight;
+  vec3 receiverIrradiance = unfilteredIrradiance;
+  vec3 receiverPositiveDirectionVisibility =
+    unfilteredPositiveDirectionVisibility;
+  vec3 receiverNegativeDirectionVisibility =
+    unfilteredNegativeDirectionVisibility;
+  if(totalVisibleWeight > 0.000001)
+  {
+    receiverIrradiance = irradiance / totalVisibleWeight;
+    receiverPositiveDirectionVisibility =
+      positiveDirectionVisibility / totalVisibleWeight;
+    receiverNegativeDirectionVisibility =
+      negativeDirectionVisibility / totalVisibleWeight;
+  }
+  // Surface-facing weights select probes on the receiver side, but zero
+  // coverage is still a valid resident probe sample. Fade to validity-only
+  // interpolation instead of exposing the bright environment fallback as a
+  // line at geometry and brick boundaries.
+  const float receiverCoverage = clamp(
+    totalVisibleWeight / totalInterpolationWeight,
+    0.0,
+    1.0);
+  const float receiverBlend = smoothstep(0.0, 0.05, receiverCoverage);
+  irradiance = max(mix(
+    unfilteredIrradiance,
+    receiverIrradiance,
+    receiverBlend), vec3(0.0));
+  positiveDirectionVisibility = clamp(mix(
+    unfilteredPositiveDirectionVisibility,
+    receiverPositiveDirectionVisibility,
+    receiverBlend),
     vec3(0.0),
     vec3(1.0));
-	negativeDirectionVisibility = clamp(
-		negativeDirectionVisibility / totalVisibleWeight,
-		vec3(0.0),
-		vec3(1.0));
-	environmentVisibility = GlobalIlluminationEnvironmentVisibility(
-		positiveDirectionVisibility,
-		negativeDirectionVisibility,
-		environmentDirection);
-	debugInfo.usedProbeVolume = true;
-	return true;
+  negativeDirectionVisibility = clamp(mix(
+    unfilteredNegativeDirectionVisibility,
+    receiverNegativeDirectionVisibility,
+    receiverBlend),
+    vec3(0.0),
+    vec3(1.0));
+  environmentVisibility = GlobalIlluminationEnvironmentVisibility(
+    positiveDirectionVisibility,
+    negativeDirectionVisibility,
+    environmentDirection);
+  debugInfo.usedProbeVolume = true;
+  return true;
 }
+#endif
 
-vec3 ResolveGlobalIlluminationDiffuseIrradiance(
-  vec3 worldPosition,
-  vec3 worldNormal,
-  vec3 surfaceToCamera,
-  vec3 environmentDirection,
-  vec3 environmentIrradiance,
-  out float environmentVisibility,
-  out GlobalIlluminationSampleDebug debugInfo)
+vec3 GlobalIlluminationHueToRgb(float hue)
 {
-  environmentVisibility = 1.0;
-  InitializeGlobalIlluminationSampleDebug(debugInfo);
-  if(globalIlluminationHeader.settings.x == 0u)
-  {
-    return environmentIrradiance;
-  }
-  const uint mode = globalIlluminationHeader.settings.y;
-  if(mode == GLOBAL_ILLUMINATION_MODE_REALTIME)
-  {
-    return environmentIrradiance;
-  }
-  vec3 probeIrradiance = vec3(0.0);
-  if(SampleGlobalIllumination(
-    worldPosition,
-    worldNormal,
-    surfaceToCamera,
-    environmentDirection,
-    probeIrradiance,
-    environmentVisibility,
-    debugInfo))
-  {
-    return probeIrradiance;
-  }
-  // Missing, disabled, non-resident, or out-of-volume GI always preserves the
-  // pre-GI SkyComponent cubemap path. A valid black sample above is baked
-  // occlusion and is deliberately not treated as fallback.
-  environmentVisibility = 1.0;
-  return environmentIrradiance;
-}
-
-bool GlobalIlluminationDebugSuppressesDirectLighting()
-{
-  return globalIlluminationHeader.stateAndDebug.z !=
-    GLOBAL_ILLUMINATION_DEBUG_LIT;
+  const vec3 shifted = fract(hue + vec3(0.0, 0.6666667, 0.3333333));
+  return clamp(abs(shifted * 6.0 - 3.0) - 1.0, 0.0, 1.0);
 }
 
 vec3 ApplyGlobalIlluminationDebug(
@@ -647,4 +706,350 @@ vec3 ApplyGlobalIlluminationDebug(
   return indirectLighting;
 }
 
+#ifdef FRAGMENT
+bool GlobalIlluminationProbeCellCandidateIsBetter(
+  uint containmentRank,
+  uint subdivision,
+  float distanceSquared,
+  float score,
+  uint otherContainmentRank,
+  uint otherSubdivision,
+  float otherDistanceSquared,
+  float otherScore)
+{
+  if(containmentRank != otherContainmentRank)
+  {
+    return containmentRank > otherContainmentRank;
+  }
+  if(abs(distanceSquared - otherDistanceSquared) > 0.000000000001)
+  {
+    return distanceSquared < otherDistanceSquared;
+  }
+  if(subdivision != otherSubdivision)
+  {
+    return subdivision > otherSubdivision;
+  }
+  return score > otherScore;
+}
+
+bool GlobalIlluminationDecodeProbeCell(
+  vec4 boundsMinAndFirstProbe,
+  vec4 boundsMaxAndBrick,
+  vec4 probeCountsAndSubdivision,
+  out GlobalIlluminationProbeCell probeCell)
+{
+  probeCell.boundsMin = vec3(0.0);
+  probeCell.boundsMax = vec3(0.0);
+  probeCell.probeCounts = uvec3(0u);
+  probeCell.firstProbeIndex = 0u;
+  probeCell.brickIndex = 0u;
+  probeCell.subdivision = 0u;
+  const uint firstProbeIndex =
+    uint(max(boundsMinAndFirstProbe.w, 0.0) + 0.5);
+  const uint encodedBrickIndex =
+    uint(max(boundsMaxAndBrick.w, 0.0) + 0.5);
+  const uvec3 probeCounts =
+    uvec3(max(probeCountsAndSubdivision.xyz, vec3(0.0)) + vec3(0.5));
+  const uint totalProbeCount = globalIlluminationHeader.counts.w;
+  if(totalProbeCount == 0u || encodedBrickIndex == 0u ||
+    encodedBrickIndex > globalIlluminationHeader.counts.z ||
+    any(lessThanEqual(
+      boundsMaxAndBrick.xyz,
+      boundsMinAndFirstProbe.xyz)) ||
+    any(equal(probeCounts, uvec3(0u))) ||
+    firstProbeIndex >= totalProbeCount ||
+    probeCounts.x > totalProbeCount / probeCounts.y)
+  {
+    return false;
+  }
+  const uint probeCountXY = probeCounts.x * probeCounts.y;
+  if(probeCountXY > totalProbeCount / probeCounts.z)
+  {
+    return false;
+  }
+  const uint cellProbeCount = probeCountXY * probeCounts.z;
+  if(cellProbeCount > totalProbeCount - firstProbeIndex)
+  {
+    return false;
+  }
+
+  probeCell.boundsMin = boundsMinAndFirstProbe.xyz;
+  probeCell.boundsMax = boundsMaxAndBrick.xyz;
+  probeCell.probeCounts = probeCounts;
+  probeCell.firstProbeIndex = firstProbeIndex;
+  probeCell.brickIndex = encodedBrickIndex - 1u;
+  probeCell.subdivision =
+    uint(max(probeCountsAndSubdivision.w, 0.0) + 0.5);
+  return true;
+}
+
+bool GlobalIlluminationReadSupportedProbeCell(
+  ivec2 pixel,
+  vec3 samplingPosition,
+  out GlobalIlluminationProbeCell probeCell,
+  out uint containmentRank,
+  out float distanceSquared)
+{
+  containmentRank = 0u;
+  distanceSquared = 3.402823466e+38;
+  if(!GlobalIlluminationDecodeProbeCell(
+    texelFetch(
+      g_globalIlluminationProbeCellMinSampler,
+      pixel,
+      0),
+    texelFetch(
+      g_globalIlluminationProbeCellMaxSampler,
+      pixel,
+      0),
+    texelFetch(
+      g_globalIlluminationProbeCellMetadataSampler,
+      pixel,
+      0),
+    probeCell))
+  {
+    return false;
+  }
+
+  distanceSquared = GlobalIlluminationDistanceSquaredToBounds(
+    samplingPosition,
+    probeCell.boundsMin,
+    probeCell.boundsMax);
+  const float neighborSupportRadius =
+    GlobalIlluminationNeighborSupportRadius() +
+    GlobalIlluminationBoundsTolerance(
+      probeCell.boundsMin,
+      probeCell.boundsMax);
+  if(distanceSquared > neighborSupportRadius * neighborSupportRadius)
+  {
+    return false;
+  }
+
+  containmentRank = GlobalIlluminationContainsExact(
+    probeCell.boundsMin,
+    probeCell.boundsMax,
+    samplingPosition)
+    ? 2u
+    : (GlobalIlluminationContains(
+        probeCell.boundsMin,
+        probeCell.boundsMax,
+        samplingPosition) ? 1u : 0u);
+  return true;
+}
+
+bool SelectGlobalIlluminationProbeCell(
+  vec2 screenUv,
+  vec3 samplingPosition,
+  out GlobalIlluminationProbeCell selectedProbeCell)
+{
+  selectedProbeCell.boundsMin = vec3(0.0);
+  selectedProbeCell.boundsMax = vec3(0.0);
+  selectedProbeCell.probeCounts = uvec3(0u);
+  selectedProbeCell.firstProbeIndex = 0u;
+  selectedProbeCell.brickIndex = 0u;
+  selectedProbeCell.subdivision = 0u;
+  const ivec2 cellExtent =
+    textureSize(g_globalIlluminationProbeCellMinSampler, 0);
+  if(globalIlluminationHeader.counts.z == 0u ||
+    any(lessThan(cellExtent, ivec2(2))))
+  {
+    // Passes without the authoritative probe-cell set bind one-pixel defaults
+    // and preserve environment IBL.
+    return false;
+  }
+
+  const vec2 clampedUv = clamp(
+    screenUv,
+    0.5 * rcp(vec2(cellExtent)),
+    vec2(1.0) - 0.5 * rcp(vec2(cellExtent)));
+  const vec2 texelPosition =
+    clampedUv * vec2(cellExtent) - vec2(0.5);
+  const ivec2 basePixel = ivec2(floor(texelPosition));
+  const vec2 fraction = fract(texelPosition);
+  const ivec2 primaryOffset = ivec2(
+    fraction.x >= 0.5 ? 1 : 0,
+    fraction.y >= 0.5 ? 1 : 0);
+  const ivec2 primaryPixel = clamp(
+    basePixel + primaryOffset,
+    ivec2(0),
+    cellExtent - ivec2(1));
+  bool foundProbeCell = false;
+  uint selectedContainmentRank = 0u;
+  uint selectedSubdivision = 0u;
+  float selectedDistanceSquared = 3.402823466e+38;
+  float selectedScore = -1.0;
+
+  GlobalIlluminationProbeCell primaryProbeCell;
+  uint primaryContainmentRank = 0u;
+  float primaryDistanceSquared = 3.402823466e+38;
+  if(GlobalIlluminationReadSupportedProbeCell(
+    primaryPixel,
+    samplingPosition,
+    primaryProbeCell,
+    primaryContainmentRank,
+    primaryDistanceSquared))
+  {
+    // The resolve pass already selected the best adaptive brick for this
+    // nearby surface. Exact world-space containment is the common path and
+    // needs only one three-texel metadata record in the material shader.
+    if(primaryContainmentRank == 2u)
+    {
+      selectedProbeCell = primaryProbeCell;
+      return true;
+    }
+    foundProbeCell = true;
+    selectedProbeCell = primaryProbeCell;
+    selectedContainmentRank = primaryContainmentRank;
+    selectedSubdivision = primaryProbeCell.subdivision;
+    selectedDistanceSquared = primaryDistanceSquared;
+    selectedScore = 1.0;
+  }
+
+  // Only discontinuities and empty low-resolution pixels need the other
+  // candidates. World-space containment chooses across geometry edges without
+  // reconstructing four view-space positions in every full-resolution pixel.
+  for(int y = 0; y < 2; ++y)
+  {
+    for(int x = 0; x < 2; ++x)
+    {
+      const ivec2 offset = ivec2(x, y);
+      if(all(equal(offset, primaryOffset)))
+      {
+        continue;
+      }
+      const ivec2 pixel = clamp(
+        basePixel + offset,
+        ivec2(0),
+        cellExtent - ivec2(1));
+      if(all(equal(pixel, primaryPixel)))
+      {
+        continue;
+      }
+      const float spatialWeight =
+        (x != 0 ? fraction.x : 1.0 - fraction.x) *
+        (y != 0 ? fraction.y : 1.0 - fraction.y);
+      GlobalIlluminationProbeCell probeCell;
+      uint containmentRank = 0u;
+      float distanceSquared = 3.402823466e+38;
+      if(!GlobalIlluminationReadSupportedProbeCell(
+        pixel,
+        samplingPosition,
+        probeCell,
+        containmentRank,
+        distanceSquared))
+      {
+        continue;
+      }
+      if(!foundProbeCell || GlobalIlluminationProbeCellCandidateIsBetter(
+        containmentRank,
+        probeCell.subdivision,
+        distanceSquared,
+        spatialWeight,
+        selectedContainmentRank,
+        selectedSubdivision,
+        selectedDistanceSquared,
+        selectedScore))
+      {
+        foundProbeCell = true;
+        selectedProbeCell = probeCell;
+        selectedContainmentRank = containmentRank;
+        selectedSubdivision = probeCell.subdivision;
+        selectedDistanceSquared = distanceSquared;
+        selectedScore = spatialWeight;
+      }
+    }
+  }
+  return foundProbeCell;
+}
+
+vec3 ResolveGlobalIlluminationDiffuseIrradiance(
+  vec2 screenUv,
+  vec3 worldPosition,
+  vec3 worldShadingNormal,
+  vec3 worldGeometricNormal,
+  vec3 surfaceToCamera,
+  vec3 environmentDirection,
+  vec3 environmentIrradiance,
+  out float environmentVisibility,
+  out GlobalIlluminationSampleDebug debugInfo)
+{
+  environmentVisibility = 1.0;
+  InitializeGlobalIlluminationSampleDebug(debugInfo);
+  const bool bDebugUsesProbeData =
+    GlobalIlluminationDebugUsesProbeData();
+  if(!bDebugUsesProbeData &&
+    globalIlluminationHeader.settings.x == 0u)
+  {
+    return environmentIrradiance;
+  }
+  const uint mode = globalIlluminationHeader.settings.y;
+  if(!bDebugUsesProbeData &&
+    mode == GLOBAL_ILLUMINATION_MODE_REALTIME)
+  {
+    return environmentIrradiance;
+  }
+  const float shadingNormalLengthSquared =
+    dot(worldShadingNormal, worldShadingNormal);
+  const vec3 shadingNormal = shadingNormalLengthSquared > 0.000001
+    ? worldShadingNormal * inversesqrt(shadingNormalLengthSquared)
+    : vec3(0.0, 1.0, 0.0);
+  const float geometricNormalLengthSquared =
+    dot(worldGeometricNormal, worldGeometricNormal);
+  const vec3 geometricNormal = geometricNormalLengthSquared > 0.000001
+    ? worldGeometricNormal * inversesqrt(geometricNormalLengthSquared)
+    : shadingNormal;
+  const float surfaceToCameraLengthSquared =
+    dot(surfaceToCamera, surfaceToCamera);
+  const vec3 viewBiasDirection = surfaceToCameraLengthSquared > 0.000001
+    ? surfaceToCamera * inversesqrt(surfaceToCameraLengthSquared)
+    : vec3(0.0);
+  const vec3 samplingPosition = worldPosition +
+    geometricNormal * globalIlluminationHeader.volumeMin.w +
+    viewBiasDirection * globalIlluminationHeader.volumeMax.w;
+  if(!GlobalIlluminationContains(
+    globalIlluminationHeader.volumeMin.xyz,
+    globalIlluminationHeader.volumeMax.xyz,
+    samplingPosition))
+  {
+    return bDebugUsesProbeData
+      ? ApplyGlobalIlluminationDebug(vec3(0.0), debugInfo)
+      : environmentIrradiance;
+  }
+  GlobalIlluminationProbeCell probeCell;
+  if(SelectGlobalIlluminationProbeCell(
+    screenUv,
+    samplingPosition,
+    probeCell))
+  {
+    vec3 probeIrradiance = vec3(0.0);
+    if(SampleGlobalIlluminationFromProbeCell(
+      probeCell,
+      worldPosition,
+      shadingNormal,
+      geometricNormal,
+      samplingPosition,
+      environmentDirection,
+      probeIrradiance,
+      environmentVisibility,
+      debugInfo))
+    {
+      return bDebugUsesProbeData
+        ? ApplyGlobalIlluminationDebug(probeIrradiance, debugInfo)
+        : probeIrradiance;
+    }
+  }
+  // Missing coarse selection preserves the pre-GI SkyComponent cubemap path.
+  // No BVH traversal is performed by a material shader.
+  environmentVisibility = 1.0;
+  return bDebugUsesProbeData
+    ? ApplyGlobalIlluminationDebug(vec3(0.0), debugInfo)
+    : environmentIrradiance;
+}
+
+bool GlobalIlluminationDebugSuppressesDirectLighting()
+{
+  return globalIlluminationHeader.stateAndDebug.z !=
+    GLOBAL_ILLUMINATION_DEBUG_LIT;
+}
+
+#endif
 #endif

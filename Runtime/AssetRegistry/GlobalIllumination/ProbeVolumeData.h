@@ -107,9 +107,9 @@ namespace Sailor
 		std::array<glm::vec3, ProbeVolumeSphericalHarmonicsCoefficientCount> m_irradiance{};
 		// Exact locally clamped clearance distance and its square for rays along
 		// +X, -X, +Y, -Y, +Z and -Z. A matching flag bit means that exact ray hit
-		// geometry inside this probe's owning-brick interpolation support.
-		// They are transport data and are selected from the compatible layout;
-		// they are never blended with lighting coefficients.
+		// geometry inside this probe's owning-brick interpolation support. These
+		// values preserve bake/layout diagnostics and compatibility, but runtime
+		// diffuse sampling must not extend six ray hits into infinite blocker planes.
 		std::array<glm::vec2, ProbeVolumeVisibilityDirectionCount> m_visibility{};
 		// Fraction of rays in each signed-axis lobe that reached the environment
 		// without intersecting scene geometry. Unlike the locally clamped moments

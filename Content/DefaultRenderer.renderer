@@ -64,6 +64,30 @@ renderTargets:
   format: D32_SFLOAT_S8_UINT
   width: RenderWidth/2
   height: RenderHeight/2
+
+- name: GlobalIlluminationProbeCellMin
+  format: R32G32B32A32_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: RenderWidth/2
+  height: RenderHeight/2
+  bIsCompatibleWithComputeShaders: true
+
+- name: GlobalIlluminationProbeCellMax
+  format: R32G32B32A32_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: RenderWidth/2
+  height: RenderHeight/2
+  bIsCompatibleWithComputeShaders: true
+
+- name: GlobalIlluminationProbeCellMetadata
+  format: R32G32B32A32_SFLOAT
+  filtration: Nearest
+  clamping: Clamp
+  width: RenderWidth/2
+  height: RenderHeight/2
+  bIsCompatibleWithComputeShaders: true
   
 - name: DepthHighZ
   format: R32_SFLOAT
@@ -236,6 +260,15 @@ frame:
   renderTargets:
   - src: HalfDepth
   - dst: DepthHighZ
+
+############################
+- name: GlobalIlluminationResolve
+############################
+  renderTargets:
+  - depthSampler: DepthHighZ
+  - probeCellMin: GlobalIlluminationProbeCellMin
+  - probeCellMax: GlobalIlluminationProbeCellMax
+  - probeCellMetadata: GlobalIlluminationProbeCellMetadata
   
 ############################
 - name: PostProcess
@@ -297,6 +330,9 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+  - globalIlluminationProbeCellMinSampler: GlobalIlluminationProbeCellMin
+  - globalIlluminationProbeCellMaxSampler: GlobalIlluminationProbeCellMax
+  - globalIlluminationProbeCellMetadataSampler: GlobalIlluminationProbeCellMetadata
 
 ############################
 - name: CPUPathTracerNode
@@ -322,6 +358,9 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
+  - globalIlluminationProbeCellMinSampler: GlobalIlluminationProbeCellMin
+  - globalIlluminationProbeCellMaxSampler: GlobalIlluminationProbeCellMax
+  - globalIlluminationProbeCellMetadataSampler: GlobalIlluminationProbeCellMetadata
 
 ############################
 - name: Blit

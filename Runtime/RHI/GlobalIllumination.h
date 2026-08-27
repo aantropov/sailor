@@ -76,7 +76,7 @@ namespace Sailor::RHI
 		glm::uvec4 m_counts{};
 		// state count, BVH root, debug visualization, quality budget
 		glm::uvec4 m_stateAndDebug{};
-		// diffuse GI enabled, world mode, reserved, reserved
+		// diffuse GI enabled, world mode, min probe spacing bits, reserved
 		glm::uvec4 m_settings{};
 		glm::vec4 m_volumeMin{};
 		glm::vec4 m_volumeMax{};
@@ -97,15 +97,13 @@ namespace Sailor::RHI
 		// W stores uint metadata through uintBitsToFloat/floatBitsToUint.
 		glm::vec4 m_minAndSubdivision{};
 		glm::vec4 m_maxAndFirstProbe{};
-		glm::uvec4 m_probeCountsAndCount{};
+		// XYZ contain grid dimensions; W contains the number of valid probes.
+		glm::uvec4 m_probeCountsAndValidCount{};
 	};
 
 	struct alignas(16) RHIGlobalIlluminationGpuProbe final
 	{
 		glm::vec4 m_positionAndValidity{};
-		glm::vec4 m_visibility01{};
-		glm::vec4 m_visibility23{};
-		glm::vec4 m_visibility45{};
 		glm::vec4 m_environmentVisibility0123{};
 		// XY are environment visibility for +Z/-Z. Z stores the six blocked
 		// direction bits through uintBitsToFloat/floatBitsToUint.
@@ -164,7 +162,7 @@ namespace Sailor::RHI
 	static_assert(sizeof(RHIGlobalIlluminationGpuHeader) == 96u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBvhNode) == 32u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuBrick) == 48u);
-	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 96u);
+	static_assert(sizeof(RHIGlobalIlluminationGpuProbe) == 48u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuCoefficients) == 64u);
 	static_assert(sizeof(RHIGlobalIlluminationGpuState) == 32u);
 }

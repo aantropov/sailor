@@ -10,6 +10,14 @@ For C++ code use tabs. For C# code use spaces.
 
 Use branch names only in English.
 
+Do not add tests that verify an implementation by searching raw source text for
+specific identifiers, snippets, function names, code paths, or flags. Tests
+should validate observable behavior, parsed structured configuration contracts,
+or compiled/reflected interfaces. Structured configuration tests may verify
+meaningful relationships across passes, such as a feature being enabled in a
+main pass and disabled in its prepass. If only raw source presence can be
+tested, do not add a test.
+
 ## Agent Workflow Infrastructure
 
 The agent workflow documentation lives in `Docs/Agents/`.

@@ -14,6 +14,7 @@
 #include "Core/SpinLock.h"
 
 #include <cmath>
+#include <initializer_list>
 #include <limits>
 
 using namespace Sailor;
@@ -29,13 +30,18 @@ const char* RenderSceneNode::m_name = "RenderScene";
 
 namespace
 {
-	RHIShaderBindingSetPtr CloneBindingsWithSampler(
-		const RHIShaderBindingSetPtr& source,
-		const std::string& samplerName,
-		const RHITexturePtr& sampler,
-		uint32_t samplerBinding)
+	struct SamplerOverride final
 	{
-		if (!source || !sampler)
+		const char* m_name;
+		RHITexturePtr m_texture;
+		uint32_t m_binding;
+	};
+
+	RHIShaderBindingSetPtr CloneBindingsWithSamplers(
+		const RHIShaderBindingSetPtr& source,
+		std::initializer_list<SamplerOverride> overrides)
+	{
+		if (!source)
 		{
 			return source;
 		}
@@ -46,7 +52,13 @@ namespace
 		{
 			const auto& name = entry.m_first;
 			const auto& binding = entry.m_second;
-			if (!binding || name == samplerName)
+			bool bOverridden = false;
+			for (const SamplerOverride& samplerOverride : overrides)
+			{
+				bOverridden = bOverridden ||
+					(samplerOverride.m_texture && name == samplerOverride.m_name);
+			}
+			if (!binding || bOverridden)
 			{
 				continue;
 			}
@@ -76,13 +88,39 @@ namespace
 			}
 		}
 
-		driver->AddSamplerToShaderBindings(
-			result,
-			samplerName,
-			sampler,
-			samplerBinding);
+		for (const SamplerOverride& samplerOverride : overrides)
+		{
+			if (!samplerOverride.m_texture)
+			{
+				continue;
+			}
+			driver->AddSamplerToShaderBindings(
+				result,
+				samplerOverride.m_name,
+				samplerOverride.m_texture,
+				samplerOverride.m_binding);
+		}
 		result->RecalculateCompatibility();
 		return result;
+	}
+
+	RHITexturePtr GetBoundTexture(
+		const RHIShaderBindingSetPtr& bindings,
+		const std::string& samplerName)
+	{
+		if (!bindings)
+		{
+			return nullptr;
+		}
+
+		const auto& shaderBindings = bindings->GetShaderBindings();
+		const auto bindingIt = shaderBindings.Find(samplerName);
+		if (bindingIt == shaderBindings.end() || !bindingIt->m_second)
+		{
+			return nullptr;
+		}
+
+		return bindingIt->m_second->GetTextureBinding();
 	}
 }
 
@@ -1148,30 +1186,103 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	RHIShaderBindingSetPtr nodeLightsData = sceneView.m_rhiLightsData;
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
-	if (transmissionFramebuffer)
+	RHI::RHITexturePtr globalIlluminationProbeCellMinTexture =
+		GetResolvedAttachment("globalIlluminationProbeCellMinSampler");
+	RHI::RHITexturePtr globalIlluminationProbeCellMaxTexture =
+		GetResolvedAttachment("globalIlluminationProbeCellMaxSampler");
+	RHI::RHITexturePtr globalIlluminationProbeCellMetadataTexture =
+		GetResolvedAttachment("globalIlluminationProbeCellMetadataSampler");
+	const RHITexturePtr defaultTexture = driver->GetDefaultTexture();
+	const RHITexturePtr desiredTransmissionTexture = transmissionFramebuffer ?
+		transmissionFramebuffer : defaultTexture;
+	const RHITexturePtr desiredGlobalIlluminationProbeCellMinTexture =
+		globalIlluminationProbeCellMinTexture ?
+			globalIlluminationProbeCellMinTexture : defaultTexture;
+	const RHITexturePtr desiredGlobalIlluminationProbeCellMaxTexture =
+		globalIlluminationProbeCellMaxTexture ?
+			globalIlluminationProbeCellMaxTexture : defaultTexture;
+	const RHITexturePtr desiredGlobalIlluminationProbeCellMetadataTexture =
+		globalIlluminationProbeCellMetadataTexture ?
+			globalIlluminationProbeCellMetadataTexture : defaultTexture;
+	const bool bNeedsTransmissionOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_transmissionFramebufferSampler") != desiredTransmissionTexture;
+	const bool bNeedsGlobalIlluminationProbeCellMinOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_globalIlluminationProbeCellMinSampler") !=
+			desiredGlobalIlluminationProbeCellMinTexture;
+	const bool bNeedsGlobalIlluminationProbeCellMaxOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_globalIlluminationProbeCellMaxSampler") !=
+			desiredGlobalIlluminationProbeCellMaxTexture;
+	const bool bNeedsGlobalIlluminationProbeCellMetadataOverride =
+		GetBoundTexture(
+			sceneView.m_rhiLightsData,
+			"g_globalIlluminationProbeCellMetadataSampler") !=
+			desiredGlobalIlluminationProbeCellMetadataTexture;
+	if (bNeedsTransmissionOverride ||
+		bNeedsGlobalIlluminationProbeCellMinOverride ||
+		bNeedsGlobalIlluminationProbeCellMaxOverride ||
+		bNeedsGlobalIlluminationProbeCellMetadataOverride)
 	{
-		constexpr const char* transmissionSamplerName = "g_transmissionFramebufferSampler";
 		const uint64_t sourceRevision = sceneView.m_rhiLightsData ?
 			sceneView.m_rhiLightsData->GetDescriptorRevision() : 0ull;
 		const bool bCloneOutdated = !resources->m_nodeLightsBindings ||
 			resources->m_nodeLightsSource != sceneView.m_rhiLightsData ||
 			resources->m_nodeLightsSourceRevision != sourceRevision ||
-			resources->m_transmissionTexture != transmissionFramebuffer;
+			resources->m_transmissionTexture != transmissionFramebuffer ||
+			resources->m_globalIlluminationProbeCellMinTexture !=
+				globalIlluminationProbeCellMinTexture ||
+			resources->m_globalIlluminationProbeCellMaxTexture !=
+				globalIlluminationProbeCellMaxTexture ||
+			resources->m_globalIlluminationProbeCellMetadataTexture !=
+				globalIlluminationProbeCellMetadataTexture;
 		if (bCloneOutdated)
 		{
-			resources->m_nodeLightsBindings = CloneBindingsWithSampler(
+			resources->m_nodeLightsBindings = CloneBindingsWithSamplers(
 				sceneView.m_rhiLightsData,
-				transmissionSamplerName,
-				transmissionFramebuffer,
-				10u);
+				{
+					{ "g_transmissionFramebufferSampler",
+						desiredTransmissionTexture, 10u },
+					{ "g_globalIlluminationProbeCellMinSampler",
+						desiredGlobalIlluminationProbeCellMinTexture, 18u },
+					{ "g_globalIlluminationProbeCellMaxSampler",
+						desiredGlobalIlluminationProbeCellMaxTexture, 19u },
+					{ "g_globalIlluminationProbeCellMetadataSampler",
+						desiredGlobalIlluminationProbeCellMetadataTexture, 20u }
+				});
 			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
 			resources->m_nodeLightsSourceRevision = sourceRevision;
 			resources->m_transmissionTexture = transmissionFramebuffer;
+			resources->m_globalIlluminationProbeCellMinTexture =
+				globalIlluminationProbeCellMinTexture;
+			resources->m_globalIlluminationProbeCellMaxTexture =
+				globalIlluminationProbeCellMaxTexture;
+			resources->m_globalIlluminationProbeCellMetadataTexture =
+				globalIlluminationProbeCellMetadataTexture;
 		}
 		nodeLightsData = resources->m_nodeLightsBindings;
+	}
+	if (transmissionFramebuffer)
+	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
-
+	for (const RHITexturePtr& texture :
+		{ globalIlluminationProbeCellMinTexture,
+			globalIlluminationProbeCellMaxTexture,
+			globalIlluminationProbeCellMetadataTexture })
+	{
+		if (texture)
+		{
+			commands->ImageMemoryBarrier(
+				commandList,
+				texture,
+				RHI::EImageLayout::ShaderReadOnlyOptimal);
+		}
+	}
 	std::string gpuCullingSetting;
 	TryGetString("GPUCulling", gpuCullingSetting);
 	const bool bGpuCullingRequested = gpuCullingSetting == "true";

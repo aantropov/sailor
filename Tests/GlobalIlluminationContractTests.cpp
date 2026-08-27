@@ -13,6 +13,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Editor/GlobalIlluminationBakeController.h"
+#include "FrameGraph/FrameGraphNode.h"
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/GlobalIllumination.h"
 #include "Raytracing/PathTracer.h"
@@ -27,7 +28,9 @@
 #include <cstdlib>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <mutex>
 #include <set>
 #include <stdexcept>
@@ -36,6 +39,7 @@
 
 #include <glm/gtc/packing.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <yaml-cpp/yaml.h>
 
 using namespace Sailor;
 
@@ -74,6 +78,191 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	void TestGlobalIlluminationResolveNodeRegistration()
+	{
+		Framegraph::FrameGraphBuilder builder;
+		Require(
+			builder.CreateNode("GlobalIlluminationResolve").IsValid(),
+			"the runtime library must register the GlobalIlluminationResolve framegraph node");
+	}
+
+	std::string ReadContractText(const std::filesystem::path& path)
+	{
+		std::ifstream input(path, std::ios::binary);
+		Require(input.is_open(),
+			"GI framegraph contract should be readable: " + path.generic_string());
+		return std::string(
+			std::istreambuf_iterator<char>(input),
+			std::istreambuf_iterator<char>());
+	}
+
+	std::string GetSequenceMapping(
+		const YAML::Node& sequence,
+		const char* key)
+	{
+		if (!sequence || !sequence.IsSequence())
+		{
+			return {};
+		}
+		for (const YAML::Node& entry : sequence)
+		{
+			const YAML::Node value = entry[key];
+			if (value && value.IsScalar())
+			{
+				return value.as<std::string>();
+			}
+		}
+		return {};
+	}
+
+	void TestGlobalIlluminationFrameGraphProbeCellContract()
+	{
+#if defined(SAILOR_TEST_SOURCE_DIR)
+		const std::filesystem::path contentRoot =
+			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) / "Content";
+		const char* rendererPaths[] =
+		{
+			"DefaultRenderer.renderer",
+			"EditorRenderer.renderer"
+		};
+		const char* probeCellTargets[] =
+		{
+			"GlobalIlluminationProbeCellMin",
+			"GlobalIlluminationProbeCellMax",
+			"GlobalIlluminationProbeCellMetadata"
+		};
+
+		for (const char* rendererPath : rendererPaths)
+		{
+			const YAML::Node renderer = YAML::Load(
+				ReadContractText(contentRoot / rendererPath));
+			const YAML::Node renderTargets = renderer["renderTargets"];
+			const YAML::Node frame = renderer["frame"];
+			Require(renderTargets && renderTargets.IsSequence() &&
+				frame && frame.IsSequence(),
+				std::string(rendererPath) +
+					" should expose render-target and frame sequences");
+
+			for (const char* targetName : probeCellTargets)
+			{
+				YAML::Node target;
+				for (const YAML::Node& candidate : renderTargets)
+				{
+					if (candidate["name"] &&
+						candidate["name"].as<std::string>() == targetName)
+					{
+						target = candidate;
+						break;
+					}
+				}
+				Require(target &&
+					target["format"].as<std::string>() ==
+						"R32G32B32A32_SFLOAT" &&
+					target["width"].as<std::string>() == "RenderWidth/2" &&
+					target["height"].as<std::string>() == "RenderHeight/2" &&
+					target["bIsCompatibleWithComputeShaders"].as<bool>(),
+					std::string(rendererPath) + " must define quarter-area compute " +
+						targetName);
+			}
+			YAML::Node depthHighZ;
+			for (const YAML::Node& candidate : renderTargets)
+			{
+				if (candidate["name"] &&
+					candidate["name"].as<std::string>() == "DepthHighZ")
+				{
+					depthHighZ = candidate;
+					break;
+				}
+			}
+			Require(depthHighZ &&
+				depthHighZ["format"].as<std::string>() == "R32_SFLOAT" &&
+				depthHighZ["width"].as<std::string>() == "RenderWidth/2" &&
+				depthHighZ["height"].as<std::string>() == "RenderHeight/2",
+				std::string(rendererPath) +
+					" GI resolve depth must match the probe-cell extent");
+
+			uint32_t resolvePasses = 0u;
+			uint32_t mainConsumers = 0u;
+			size_t resolvePassIndex = frame.size();
+			size_t firstMainConsumerIndex = frame.size();
+			for (size_t passIndex = 0u; passIndex < frame.size(); ++passIndex)
+			{
+				const YAML::Node pass = frame[passIndex];
+				const std::string name = pass["name"] ?
+					pass["name"].as<std::string>() : std::string{};
+				const YAML::Node attachments = pass["renderTargets"];
+				if (name == "GlobalIlluminationResolve")
+				{
+					++resolvePasses;
+					resolvePassIndex = passIndex;
+					Require(
+						GetSequenceMapping(attachments, "depthSampler") == "DepthHighZ" &&
+						GetSequenceMapping(attachments, "probeCellMin") ==
+							"GlobalIlluminationProbeCellMin" &&
+						GetSequenceMapping(attachments, "probeCellMax") ==
+							"GlobalIlluminationProbeCellMax" &&
+						GetSequenceMapping(attachments, "probeCellMetadata") ==
+							"GlobalIlluminationProbeCellMetadata",
+						std::string(rendererPath) +
+							" GI resolve must write the complete probe-cell set");
+					continue;
+				}
+
+				const std::string tag =
+					GetSequenceMapping(pass["string"], "Tag");
+				if (name != "RenderScene")
+				{
+					continue;
+				}
+				if (tag == "Opaque" || tag == "Masked")
+				{
+					++mainConsumers;
+					firstMainConsumerIndex =
+						(std::min)(firstMainConsumerIndex, passIndex);
+					Require(
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMinSampler") ==
+								"GlobalIlluminationProbeCellMin" &&
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMaxSampler") ==
+								"GlobalIlluminationProbeCellMax" &&
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMetadataSampler") ==
+								"GlobalIlluminationProbeCellMetadata" &&
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationDepthSampler").empty(),
+						std::string(rendererPath) + " " + tag +
+							" must consume the authoritative probe-cell set without a full-resolution depth binding");
+				}
+				else
+				{
+					Require(
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMinSampler").empty() &&
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMaxSampler").empty() &&
+						GetSequenceMapping(
+							attachments,
+							"globalIlluminationProbeCellMetadataSampler").empty(),
+						std::string(rendererPath) + " " + tag +
+							" must not consume the main-pass probe-cell targets");
+				}
+			}
+
+			Require(resolvePasses == 1u && mainConsumers == 2u &&
+				resolvePassIndex < firstMainConsumerIndex,
+				std::string(rendererPath) +
+					" must resolve GI once before opaque and masked consumers");
+		}
+#endif
 	}
 
 	bool IsNear(float lhs, float rhs, float tolerance = 0.0001f)
@@ -1066,7 +1255,7 @@ namespace
 		float normalizedWeight = 0.0f;
 		for (float weight : debug.m_weights) normalizedWeight += weight;
 		Require(IsNear(normalizedWeight, 1.0f),
-			"debug visibility weights must expose the attenuated interpolation coefficients used by shading");
+			"debug weights must expose the normalized receiver-side interpolation coefficients used by shading");
 
 		const float unoccludedIrradiance = sampled.x;
 		for (ProbeVolumeSample& probe : data.m_probes)
@@ -1083,12 +1272,11 @@ namespace
 			sampled,
 			&debug) &&
 			IsNear(sampled.x, unoccludedIrradiance),
-			"visibility must select same-side probes without exposing the "
-			"trilinear cell as an energy mask");
+			"clearance moments without blocker metadata must not alter receiver-side interpolation");
 		float attenuatedWeight = 0.0f;
 		for (float weight : debug.m_weights) attenuatedWeight += weight;
 		Require(IsNear(attenuatedWeight, 1.0f),
-			"selected probe weights must normalize after visibility rejection");
+			"selected receiver-side probe weights must normalize before shading");
 
 		for (ProbeVolumeSample& probe : data.m_probes)
 		{
@@ -1104,10 +1292,13 @@ namespace
 			glm::vec3(0.0f),
 			sampled,
 			&debug) &&
-			glm::length(sampled) <= 0.000001f,
-			"a surface with no visible probe support must resolve to baked "
-			"black instead of amplifying numerical visibility or requesting "
-			"the gray environment fallback");
+			IsNear(sampled.x, unoccludedIrradiance),
+			"six-axis blocker metadata must not become infinite runtime planes "
+			"that create black holes");
+		float rescueWeight = 0.0f;
+		for (float weight : debug.m_weights) rescueWeight += weight;
+		Require(IsNear(rescueWeight, 1.0f),
+			"receiver-side weights must remain normalized when blocker metadata is present");
 
 		ProbeVolumeData directional;
 		directional.m_volumeMin = glm::vec3(-2.0f);
@@ -1163,7 +1354,7 @@ namespace
 			"positions outside all bricks must select the environment fallback");
 	}
 
-	void TestBlockedAndWrongSideProbeRejection()
+	void TestReceiverPlaneProbeRejection()
 	{
 		ProbeVolumeData data;
 		data.m_volumeMin = glm::vec3(-1.0f);
@@ -1205,9 +1396,9 @@ namespace
 			sampled,
 			&debug),
 			"a surface between two valid probes should sample");
-		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
-			"a probe behind a baked blocking direction must be rejected as a "
-			"complete candidate, including for an oblique probe-to-surface ray");
+		Require(IsNear(sampled.x, 50.5f * 0.2820947918f, 0.0001f),
+			"a signed-axis clearance hit must not be extended into an infinite "
+			"runtime plane across an oblique receiver");
 
 		data.m_probes[0].m_flags &= ~ProbeVolumeBlockedDirectionMask;
 		data.m_probes[0].m_visibility[4u] = glm::vec2(2.0f, 4.0f);
@@ -1221,6 +1412,29 @@ namespace
 		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
 			"a bright probe behind the shaded surface must not win over a "
 			"same-side reference probe");
+
+		data.m_probes[0].m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
+		data.m_probes[0].m_flags |= ProbeVolumeBlockedDirectionBit(4u);
+		data.m_probes[1].m_visibility[5u] = glm::vec2(0.25f, 0.0625f);
+		data.m_probes[1].m_flags |= ProbeVolumeBlockedDirectionBit(5u);
+		Require(SampleProbeVolumeIrradiance(
+			data,
+			glm::vec3(0.0f),
+			glm::vec3(0.0f, 0.0f, 1.0f),
+			sampled,
+			&debug),
+			"surface-facing rescue should handle a fully blocked interpolation cell");
+		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
+			"the fully blocked rescue path must still reject a bright probe "
+			"behind the shaded surface");
+		Require(!SampleProbeVolumeIrradiance(
+			data,
+			glm::vec3(0.75f, 0.0f, 0.0f),
+			glm::vec3(1.0f, 0.0f, 0.0f),
+			sampled,
+			&debug),
+			"a cell without any surface-facing probe must request the "
+			"environment fallback instead of sampling behind the surface");
 	}
 
 	void TestWorldBindingRoundTripAndModes()
@@ -1735,9 +1949,23 @@ components:
 		Require(layout.m_nodes.Num() == 1u &&
 			layout.m_bricks.Num() == 1u &&
 			layout.m_probes.Num() == 8u &&
+			layout.m_bricks[0].m_probeCountsAndValidCount ==
+				glm::uvec4(2u, 2u, 2u, 8u) &&
 			(std::bit_cast<uint32_t>(layout.m_nodes[0].m_minAndLeft.w) &
 				0x80000000u) != 0u,
-			"single adaptive brick must produce one encoded BVH leaf");
+			"single adaptive brick must produce one encoded BVH leaf and expose "
+			"its valid probe count");
+		ProbeVolumeData partiallyInvalid = *day;
+		partiallyInvalid.m_probes[
+			partiallyInvalid.m_probes.Num() - 1u].m_validity = 0.0f;
+		RHI::RHIGlobalIlluminationGpuLayout partiallyInvalidLayout;
+		Require(RHI::BuildGlobalIlluminationGpuLayout(
+				partiallyInvalid,
+				partiallyInvalidLayout,
+				diagnostic) &&
+			partiallyInvalidLayout.m_bricks[0].m_probeCountsAndValidCount.w == 7u,
+			"GPU brick metadata must exclude invalid probes so selection can "
+			"fall back to neighboring bricks");
 		Require(
 			layout.m_probes[0].m_environmentVisibility0123 ==
 				glm::vec4(0.1f, 0.2f, 0.3f, 0.4f) &&
@@ -1804,6 +2032,9 @@ components:
 		Require(header.m_counts == glm::uvec4(1u, 1u, 1u, 8u) &&
 			header.m_stateAndDebug.x == 2u &&
 			header.m_settings.x == 0u &&
+			IsNear(
+				std::bit_cast<float>(header.m_settings.z),
+				day->m_bakeSettings.m_minProbeSpacing) &&
 			IsNear(header.m_volumeMin.w, day->m_bakeSettings.m_normalBias) &&
 			IsNear(header.m_volumeMax.w, day->m_bakeSettings.m_viewBias) &&
 			header.m_settings.y == static_cast<uint32_t>(
@@ -3461,13 +3692,19 @@ int main(int argc, char** argv)
 	}
 	try
 	{
+		RunTest(
+			"GlobalIlluminationResolveNodeRegistration",
+			TestGlobalIlluminationResolveNodeRegistration);
+		RunTest(
+			"GlobalIlluminationFrameGraphProbeCellContract",
+			TestGlobalIlluminationFrameGraphProbeCellContract);
 		RunTest("BinaryRoundTripDeterminismAndCorruption", TestBinaryRoundTripDeterminismAndCorruption);
 		RunTest("AtomicFileAndPortableIdentityBoundary", TestAtomicFileAndPortableIdentityBoundary);
 		RunTest("BlendAndAdditiveComposition", TestBlendAndAdditiveComposition);
 		RunTest("SphericalHarmonicsAndSpatialSampling", TestSphericalHarmonicsAndSpatialSampling);
 		RunTest(
-			"BlockedAndWrongSideProbeRejection",
-			TestBlockedAndWrongSideProbeRejection);
+			"ReceiverPlaneProbeRejection",
+			TestReceiverPlaneProbeRejection);
 		RunTest("WorldBindingRoundTripAndModes", TestWorldBindingRoundTripAndModes);
 		RunTest(
 			"ProbeBakeSavedWorldComparisonIgnoresEditorOnlyPrefabs",

@@ -8,7 +8,6 @@ using namespace Sailor;
 
 namespace
 {
-	constexpr float BlockingDistanceTolerance = 0.0001f;
 	constexpr float SurfacePlaneTolerance = 0.0001f;
 
 	bool Contains(const ProbeVolumeBrick& brick, const glm::vec3& position) noexcept
@@ -23,56 +22,6 @@ namespace
 	{
 		return coordinate.x + counts.x *
 			(coordinate.y + counts.y * coordinate.z);
-	}
-
-	bool BlockingDirectionRejectsProbe(
-		const ProbeVolumeSample& probe,
-		const glm::vec3& delta,
-		const std::array<uint32_t, 3u>& directionIndices) noexcept
-	{
-		for (uint32_t axis = 0u; axis < 3u; ++axis)
-		{
-			const uint32_t directionIndex = directionIndices[axis];
-			if (!IsProbeVolumeDirectionBlocked(
-					probe.m_flags,
-					directionIndex))
-			{
-				continue;
-			}
-			const float clearance = probe.m_visibility[directionIndex].x;
-			if (!std::isfinite(clearance) ||
-				std::abs(delta[axis]) > clearance + BlockingDistanceTolerance)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-
-	float VisibilityWeight(
-		const ProbeVolumeSample& probe,
-		const glm::vec3& worldPosition) noexcept
-	{
-		const glm::vec3 delta = worldPosition - probe.m_position;
-		const float distance = glm::length(delta);
-		if (!std::isfinite(distance) || distance <= 1e-5f)
-		{
-			return 1.0f;
-		}
-		const std::array<uint32_t, 3u> directionIndices
-		{
-			delta.x >= 0.0f ? 0u : 1u,
-			delta.y >= 0.0f ? 2u : 3u,
-			delta.z >= 0.0f ? 4u : 5u
-		};
-		if (BlockingDirectionRejectsProbe(
-				probe,
-				delta,
-				directionIndices))
-		{
-			return 0.0f;
-		}
-		return 1.0f;
 	}
 
 	float SurfaceFacingWeight(
@@ -219,14 +168,16 @@ bool Sailor::SampleProbeVolumeIrradiance(
 					(z ? fraction.z : 1.0f - fraction.z);
 				const float interpolationWeight = trilinearWeight *
 					glm::clamp(probe.m_validity, 0.0f, 1.0f);
-				const float visibility = VisibilityWeight(
+				const float surfaceFacingWeight = SurfaceFacingWeight(
 					probe,
-					worldPosition);
-				const float visibleWeight = interpolationWeight * visibility *
-					SurfaceFacingWeight(
-						probe,
-						worldPosition,
-						worldNormal);
+					worldPosition,
+					worldNormal);
+				// Six signed-axis clearance rays cannot represent finite scene
+				// occluders without extending hits into visible rejection planes.
+				// Diffuse occlusion is already baked into SH, so runtime visibility
+				// is receiver-side selection.
+				const float visibility = surfaceFacingWeight;
+				const float visibleWeight = interpolationWeight * visibility;
 				totalInterpolationWeight += interpolationWeight;
 				for (uint32_t coefficientIndex = 0u;
 					coefficientIndex < ProbeVolumeSphericalHarmonicsCoefficientCount;
@@ -252,14 +203,7 @@ bool Sailor::SampleProbeVolumeIrradiance(
 	}
 	if (totalVisibleWeight <= 1e-6f)
 	{
-		// Valid probes exist, but every path to this surface is occluded. This
-		// is a valid black baked result, not a request for gray environment GI.
-		if (outDebugInfo)
-		{
-			outDebugInfo->m_brickIndex = selectedBrickIndex;
-			outDebugInfo->m_totalUnnormalizedWeight = 0.0f;
-		}
-		return true;
+		return false;
 	}
 	for (glm::vec3& coefficient : blended)
 	{

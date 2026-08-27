@@ -525,8 +525,10 @@ glslFragment: |
     vec3 F0,
     vec3 Lr,
     vec3 normal,
+    vec3 geometricNormal,
+    vec3 worldPosition,
     float cosLo,
-    vec3 worldPosition)
+    vec2 screenUv)
   {
     // Baked probes replace diffuse environment irradiance only. Specular IBL
     // remains sourced from the pre-filtered environment cubemap.
@@ -534,15 +536,20 @@ glslFragment: |
       texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
     float environmentVisibility = 1.0;
-    const vec3 surfaceToCamera = 2.0 * cosLo * normal - Lr;
     const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
+      screenUv,
       worldPosition,
       normal,
-      surfaceToCamera,
+      geometricNormal,
+      normalize(frame.cameraPosition.xyz - worldPosition),
       Lr,
       environmentIrradiance,
       environmentVisibility,
       globalIlluminationDebug);
+    if(GlobalIlluminationDebugUsesProbeData())
+    {
+      return irradiance;
+    }
     
     // Calculate Fresnel term for ambient lighting.
     // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
@@ -592,8 +599,11 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
+    // gl_FragCoord is expressed in the full scene render extent. AO and the
+    // resolved GI target are lower-resolution resources, so their texture size
+    // must not be used to normalize the screen coordinate.
     const vec2 viewportUv = gl_FragCoord.xy *
-      rcp(vec2(textureSize(g_aoSampler, 0)));
+      rcp(vec2(frame.viewportSize));
     
     MaterialData material = GetMaterialData();
     if(material.albedoSampler != 0u)
@@ -611,7 +621,8 @@ glslFragment: |
     }
     material.ao = texture(g_aoSampler, viewportUv).r;
     
-    vec3 normal = normalize(vin.normal);
+    const vec3 geometricNormal = normalize(vin.normal);
+    vec3 normal = geometricNormal;
     if(material.normalSampler != 0u)
     {
       const vec3 tangentNormal = normalize(2.0 * texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.normalSampler))], vin.texcoord).rgb - 1.0);
@@ -661,8 +672,10 @@ glslFragment: |
       F0,
       Lr,
       normal,
+      geometricNormal,
+      vin.worldPosition,
       cosLo,
-      vin.worldPosition);
+      viewportUv);
     outColor.xyz = indirectLighting;
     
     if(!GlobalIlluminationDebugSuppressesDirectLighting())

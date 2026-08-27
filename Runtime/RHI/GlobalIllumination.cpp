@@ -295,6 +295,8 @@ Sailor::RHI::BuildGlobalIlluminationGpuHeader(
 	header.m_volumeMax = glm::vec4(
 		layout.m_volumeMax,
 		layout.m_bakeSettings.m_viewBias);
+	header.m_settings.z =
+		std::bit_cast<uint32_t>(layout.m_bakeSettings.m_minProbeSpacing);
 	header.m_identity = glm::uvec4(
 		static_cast<uint32_t>(snapshot->m_generation),
 		static_cast<uint32_t>(snapshot->m_generation >> 32u),
@@ -330,9 +332,18 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			brick.m_maxAndFirstProbe = glm::vec4(
 				source.m_max,
 				EncodeUint(source.m_firstProbeIndex));
-			brick.m_probeCountsAndCount = glm::uvec4(
+			uint32_t validProbeCount = 0u;
+			for (uint32_t probeOffset = 0u;
+				probeOffset < source.m_probeCount;
+				++probeOffset)
+			{
+				const ProbeVolumeSample& probe = data.m_probes[
+					source.m_firstProbeIndex + probeOffset];
+				validProbeCount += probe.m_validity > 0.000001f ? 1u : 0u;
+			}
+			brick.m_probeCountsAndValidCount = glm::uvec4(
 				source.m_probeCounts,
-				source.m_probeCount);
+				validProbeCount);
 			outLayout.m_bricks.Add(brick);
 		}
 
@@ -343,15 +354,6 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 			probe.m_positionAndValidity = glm::vec4(
 				source.m_position,
 				source.m_validity);
-			probe.m_visibility01 = glm::vec4(
-				source.m_visibility[0],
-				source.m_visibility[1]);
-			probe.m_visibility23 = glm::vec4(
-				source.m_visibility[2],
-				source.m_visibility[3]);
-			probe.m_visibility45 = glm::vec4(
-				source.m_visibility[4],
-				source.m_visibility[5]);
 			probe.m_environmentVisibility0123 = glm::vec4(
 				source.m_environmentVisibility[0],
 				source.m_environmentVisibility[1],

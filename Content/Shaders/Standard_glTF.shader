@@ -819,8 +819,10 @@ glslFragment: |
     vec3 F0,
     vec3 Lr,
     vec3 normal,
-    float cosLo,
+    vec3 geometricNormal,
     vec3 worldPosition,
+    float cosLo,
+    vec2 screenUv,
     out float environmentVisibility)
   {
     // Baked probes replace diffuse environment irradiance only. Specular IBL
@@ -829,15 +831,20 @@ glslFragment: |
       texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
     environmentVisibility = 1.0;
-    const vec3 surfaceToCamera = 2.0 * cosLo * normal - Lr;
     const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
+      screenUv,
       worldPosition,
       normal,
-      surfaceToCamera,
+      geometricNormal,
+      normalize(frame.cameraPosition.xyz - worldPosition),
       Lr,
       environmentIrradiance,
       environmentVisibility,
       globalIlluminationDebug);
+    if(GlobalIlluminationDebugUsesProbeData())
+    {
+      return irradiance;
+    }
     
     // Calculate Fresnel term for ambient lighting.
     // Since we use pre-filtered cubemap(s) and irradiance is coming from many directions
@@ -1004,8 +1011,11 @@ glslFragment: |
   void main() 
   {
     const vec3 viewDirection = normalize(vin.worldPosition - frame.cameraPosition.xyz);
+    // gl_FragCoord is expressed in the full scene render extent. AO and the
+    // resolved GI target are lower-resolution resources, so their texture size
+    // must not be used to normalize the screen coordinate.
     const vec2 viewportUv = gl_FragCoord.xy *
-      rcp(vec2(textureSize(g_aoSampler, 0)));
+      rcp(vec2(frame.viewportSize));
     
     MaterialData material = GetMaterialData();
     if(material.baseColorSampler != 0)
@@ -1075,6 +1085,7 @@ glslFragment: |
     material.attenuationColor = clamp(material.attenuationColor, vec4(0.0), vec4(1.0));
   #endif
 
+    const vec3 geometricNormal = normalize(vin.normal);
     vec3 normal;
     if(material.normalSampler != 0)
     {
@@ -1084,7 +1095,7 @@ glslFragment: |
     }
     else
     {
-      normal = normalize(vin.normal);
+      normal = geometricNormal;
     }
 
   #ifdef CLEAR_COAT
@@ -1148,8 +1159,10 @@ glslFragment: |
       F0,
       Lr,
       normal,
-      cosLo,
+      geometricNormal,
       vin.worldPosition,
+      cosLo,
+      viewportUv,
       environmentVisibility);
     if(!GlobalIlluminationDebugSuppressesDirectLighting())
     {
