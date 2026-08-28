@@ -23,12 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\Content\Tests\Visual\Day.probes"
-             Link="Fixtures\Day.probes"
-             CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
-  <ItemGroup>
     <Compile Include="GlobalUsings.cs" />
     <Compile Include="CommandContractsTests.cs" />
     <Compile Include="HistoryContractsTests.cs" />

@@ -55,6 +55,8 @@ Editor.Tests/obj/
 
 # Local/editor-generated files
 imgui.ini
+*.probes
+*.probes.asset
 *.ExecPlan.md
 Docs/Plans/
 Cache\\Temp.world

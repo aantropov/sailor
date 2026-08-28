@@ -55,19 +55,7 @@ public sealed class EditorShellHost : IEditorShellHost, INotifyPropertyChanged
             StatusText = "Layout restore failed. Loaded default layout.";
         }
 
-        var migratedLayout = LayoutOperations.MigrateLayout(layout);
-        ApplyLayout(migratedLayout);
-        if (!Equals(migratedLayout, layout))
-        {
-            try
-            {
-                await _layoutStore.SaveAsync(migratedLayout, cancellationToken);
-            }
-            catch
-            {
-                StatusText = "Layout migrated, but the updated layout could not be saved.";
-            }
-        }
+        ApplyLayout(layout);
     }
 
     public void ApplyLayout(EditorLayout layout)

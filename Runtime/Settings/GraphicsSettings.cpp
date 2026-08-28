@@ -370,44 +370,6 @@ namespace
 		return true;
 	}
 
-	bool ReadOptionalBool(
-		const YAML::Node& parent,
-		const char* fieldName,
-		const std::string& source,
-		const std::string& fieldPath,
-		bool& outValue,
-		std::string& outDiagnostic)
-	{
-		const YAML::Node field = FindField(parent, fieldName);
-		if (!field.IsDefined())
-		{
-			return true;
-		}
-		if (!field.IsScalar())
-		{
-			outDiagnostic = InvalidField(
-				source,
-				fieldPath,
-				"must be a boolean");
-			return false;
-		}
-
-		std::string yamlDiagnostic;
-		if (!External::TryConvertYaml(field, outValue, yamlDiagnostic))
-		{
-			outDiagnostic = InvalidField(
-				source,
-				fieldPath,
-				"must be a boolean");
-			if (!yamlDiagnostic.empty())
-			{
-				outDiagnostic += " YAML detail: " + yamlDiagnostic;
-			}
-			return false;
-		}
-		return true;
-	}
-
 	bool ReadString(
 		const YAML::Node& parent,
 		const char* fieldName,
@@ -486,7 +448,6 @@ namespace
 		const YAML::Node& presets,
 		EGraphicsQuality quality,
 		const std::string& source,
-		bool bAllowMissingGiProbeStateBudget,
 		GraphicsQualityProfile& outProfile,
 		std::string& outDiagnostic)
 	{
@@ -758,22 +719,16 @@ namespace
 			return false;
 		}
 
-		const YAML::Node giBudget = FindField(
-			profile,
-			"maxGiProbeStatesPerSnapshot");
-		if (!ReadOptionalBool(
+		if (!ReadConvertedScalar(
 				profile,
 				"enableGlobalIllumination",
 				source,
 				profilePath + ".enableGlobalIllumination",
+				"a boolean",
 				outProfile.m_bEnableGlobalIllumination,
 				outDiagnostic))
 		{
 			return false;
-		}
-		if (bAllowMissingGiProbeStateBudget && !giBudget.IsDefined())
-		{
-			return true;
 		}
 		if (!ReadUint32(
 				profile,
@@ -1139,10 +1094,7 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 		result.m_status = EGraphicsSettingsLoadStatus::Invalid;
 		return result;
 	}
-	const bool bLegacyProjectSettings = parsedSettings.m_version ==
-		LegacyProjectGraphicsSettingsVersion;
-	if (!bLegacyProjectSettings &&
-		parsedSettings.m_version != ProjectGraphicsSettingsVersion)
+	if (parsedSettings.m_version != ProjectGraphicsSettingsVersion)
 	{
 		result.m_status = EGraphicsSettingsLoadStatus::UnsupportedVersion;
 		result.m_diagnostic = source + " has unsupported settingsVersion (expected " +
@@ -1192,7 +1144,6 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 				presets,
 				quality,
 				source,
-				bLegacyProjectSettings,
 				parsedSettings.m_presets[QualityIndex(quality)],
 				result.m_diagnostic))
 		{
@@ -1200,14 +1151,9 @@ Sailor::Settings::ProjectGraphicsSettingsLoadResult Sailor::Settings::ParseProje
 			return result;
 		}
 	}
-	parsedSettings.m_version = ProjectGraphicsSettingsVersion;
-
 	result.m_settings = std::move(parsedSettings);
 	result.m_status = EGraphicsSettingsLoadStatus::Loaded;
-	result.m_diagnostic = bLegacyProjectSettings
-		? "Loaded " + source +
-			" and supplied default GI probe-state budgets while migrating settingsVersion 1 to 2."
-		: "Loaded " + source + ".";
+	result.m_diagnostic = "Loaded " + source + ".";
 	return result;
 }
 

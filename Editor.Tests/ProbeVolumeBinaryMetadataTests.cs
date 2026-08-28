@@ -6,27 +6,6 @@ namespace SailorEditor.Tests;
 public sealed class ProbeVolumeBinaryMetadataTests
 {
     [Fact]
-    public void ReadsNativeGeneratedVisualFixture()
-    {
-        var fixture = new FileInfo(Path.Combine(
-            AppContext.BaseDirectory,
-            "Fixtures",
-            "Day.probes"));
-
-        var metadata = ProbeVolumeBinaryMetadata.Read(fixture);
-
-        Assert.Equal(1u, metadata.BakedStateCount);
-        Assert.Equal("Day", metadata.StateName);
-        Assert.Equal("Sailor visual-test fixture generator", metadata.BakerVersion);
-        Assert.Equal(1u, metadata.BrickCount);
-        Assert.Equal(8u, metadata.ProbeCount);
-        Assert.NotEqual(0UL, metadata.LayoutHash);
-        Assert.NotEqual(0UL, metadata.RepresentationHash);
-        Assert.NotEqual(0UL, metadata.TransportHash);
-        Assert.NotEqual(0UL, metadata.LightingHash);
-    }
-
-    [Fact]
     public void ReadsOneStateMetadataAndValidatesChecksum()
     {
         using var asset = TestProbeAsset.Create();
@@ -190,7 +169,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
             using (var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
             {
                 writer.Write("SLRPROBE"u8);
-                writer.Write(2u);
+                writer.Write(1u);
                 writer.Write(0x01020304u);
                 writer.Write(40u);
                 writer.Write(headerFlags);

@@ -10,6 +10,17 @@ For C++ code use tabs. For C# code use spaces.
 
 Use branch names only in English.
 
+Until the project has its first public release, keep every project-owned asset
+format, generated-data schema, generator version, settings/layout schema, and
+editor/runtime protocol at version 1. When a pre-release schema changes, update
+all producers and consumers together and regenerate derived data; do not add
+legacy migrations, backward-compatibility paths, or version increments unless
+explicitly requested.
+
+Do not commit generated `.probes` files or their `.probes.asset` sidecars. Tests
+must generate any probe-volume payloads they need in a temporary location and
+must not depend on tracked `.probes` fixtures.
+
 Do not add tests that verify an implementation by searching raw source text for
 specific identifiers, snippets, function names, code paths, or flags. Tests
 should validate observable behavior, parsed structured configuration contracts,

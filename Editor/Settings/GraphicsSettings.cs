@@ -96,8 +96,7 @@ public sealed record ProjectGraphicsSettings
 
 public sealed record ProjectSettingsDocument
 {
-    public const int CurrentVersion = 2;
-    public const int LegacyVersion = 1;
+    public const int CurrentVersion = 1;
 
     public int SettingsVersion { get; init; } = CurrentVersion;
     public ProjectGraphicsSettings Graphics { get; init; } = new();
@@ -558,7 +557,6 @@ public static class GraphicsSettingsYamlCodec
 
         var issues = new List<GraphicsSettingsValidationIssue>();
         var version = ReadInt(root, "settingsVersion", "settingsVersion", issues);
-        var legacyVersion = version == ProjectSettingsDocument.LegacyVersion;
         var graphics = ReadMapping(root, "graphics", "graphics", issues);
         var defaultQuality = ReadEnum<GraphicsQualityLevel>(
             graphics,
@@ -578,16 +576,13 @@ public static class GraphicsSettingsYamlCodec
                 quality.ToString(),
                 $"graphics.presets.{quality}",
                 GraphicsSettingsDefaults.Presets.Get(quality),
-                legacyVersion,
                 issues);
             presets = presets.With(quality, preset);
         }
 
         var parsed = new ProjectSettingsDocument
         {
-            SettingsVersion = legacyVersion
-                ? ProjectSettingsDocument.CurrentVersion
-                : version,
+            SettingsVersion = version,
             Graphics = new ProjectGraphicsSettings
             {
                 DefaultQuality = defaultQuality,
@@ -596,14 +591,7 @@ public static class GraphicsSettingsYamlCodec
         };
         issues.AddRange(GraphicsSettingsValidator.Validate(parsed).Issues);
         if (issues.Count == 0)
-        {
-            if (legacyVersion)
-            {
-                diagnostics.Add(
-                    $"{source}: migrated settingsVersion 1 to 2 using the default GI probe-state budgets.");
-            }
             return parsed;
-        }
 
         AddDiagnostics(diagnostics, source, issues);
         return GraphicsSettingsDefaults.Project;
@@ -712,7 +700,6 @@ public static class GraphicsSettingsYamlCodec
         string key,
         string path,
         GraphicsQualityPresetSettings defaults,
-        bool allowMissingGiProbeStateBudget,
         ICollection<GraphicsSettingsValidationIssue> issues)
     {
         var preset = ReadMapping(parent, key, path, issues);
@@ -735,24 +722,16 @@ public static class GraphicsSettingsYamlCodec
                 defaults.VegetationInstanceBudget,
                 issues),
             LodBias = ReadInt(preset, "lodBias", $"{path}.lodBias", issues),
-            EnableGlobalIllumination = ReadOptionalBool(
+            EnableGlobalIllumination = ReadBool(
                 preset,
                 "enableGlobalIllumination",
                 $"{path}.enableGlobalIllumination",
-                defaults.EnableGlobalIllumination,
                 issues),
-            MaxGiProbeStatesPerSnapshot = allowMissingGiProbeStateBudget
-                ? ReadOptionalInt(
-                    preset,
-                    "maxGiProbeStatesPerSnapshot",
-                    $"{path}.maxGiProbeStatesPerSnapshot",
-                    defaults.MaxGiProbeStatesPerSnapshot,
-                    issues)
-                : ReadInt(
-                    preset,
-                    "maxGiProbeStatesPerSnapshot",
-                    $"{path}.maxGiProbeStatesPerSnapshot",
-                    issues)
+            MaxGiProbeStatesPerSnapshot = ReadInt(
+                preset,
+                "maxGiProbeStatesPerSnapshot",
+                $"{path}.maxGiProbeStatesPerSnapshot",
+                issues)
         };
     }
 
@@ -885,21 +864,6 @@ public static class GraphicsSettingsYamlCodec
         if (value is not null)
             issues.Add(new GraphicsSettingsValidationIssue(path, "A boolean value is required."));
         return false;
-    }
-
-    static bool ReadOptionalBool(
-        YamlMappingNode? parent,
-        string key,
-        string path,
-        bool defaultValue,
-        ICollection<GraphicsSettingsValidationIssue> issues)
-    {
-        if (parent is null ||
-            !parent.Children.ContainsKey(new YamlScalarNode(key)))
-        {
-            return defaultValue;
-        }
-        return ReadBool(parent, key, path, issues);
     }
 
     static T ReadEnum<T>(

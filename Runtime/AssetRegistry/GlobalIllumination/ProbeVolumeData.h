@@ -13,11 +13,11 @@
 
 namespace Sailor
 {
-	inline constexpr uint32_t ProbeVolumeFormatVersion = 2u;
+	inline constexpr uint32_t ProbeVolumeFormatVersion = 1u;
 	inline constexpr std::string_view ProbeVolumeBakerVersionPrefix =
 		"Sailor ProbeVolumeBaker/";
 	inline constexpr std::string_view ProbeVolumeCurrentBakerVersion =
-		"Sailor ProbeVolumeBaker/10";
+		"Sailor ProbeVolumeBaker/1";
 	inline constexpr uint32_t ProbeVolumeSphericalHarmonicsOrder = 2u;
 	inline constexpr uint32_t ProbeVolumeSphericalHarmonicsCoefficientCount = 9u;
 	inline constexpr uint32_t ProbeVolumeVisibilityDirectionCount = 6u;

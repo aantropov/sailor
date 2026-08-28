@@ -41,7 +41,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
     ulong PayloadChecksum,
     long FileBytes)
 {
-    const uint SupportedFormatVersion = 2;
+    const uint SupportedFormatVersion = 1;
     const uint SupportedSphericalHarmonicsOrder = 2;
     const uint SupportedCompression = 0;
     const uint EndianMarker = 0x01020304;

@@ -41,39 +41,6 @@ public sealed class GraphicsSettingsTests
     }
 
     [Fact]
-    public void LegacyProjectSettings_MigrateWithQualitySpecificGiBudgets()
-    {
-        var root = LoadRoot(
-            GraphicsSettingsYamlCodec.SerializeProject(
-                GraphicsSettingsDefaults.Project));
-        root.Children[new YamlScalarNode("settingsVersion")] =
-            new YamlScalarNode("1");
-        var graphics = Assert.IsType<YamlMappingNode>(
-            root.Children[new YamlScalarNode("graphics")]);
-        var presets = Assert.IsType<YamlMappingNode>(
-            graphics.Children[new YamlScalarNode("presets")]);
-        foreach (var quality in Enum.GetValues<GraphicsQualityLevel>())
-        {
-            var preset = Assert.IsType<YamlMappingNode>(
-                presets.Children[new YamlScalarNode(quality.ToString())]);
-            preset.Children.Remove(
-                new YamlScalarNode("maxGiProbeStatesPerSnapshot"));
-        }
-        var diagnostics = new List<string>();
-
-        var migrated = GraphicsSettingsYamlCodec.ParseProject(
-            Save(root),
-            diagnostics,
-            "legacy project fixture");
-
-        Assert.Equal(ProjectSettingsDocument.CurrentVersion, migrated.SettingsVersion);
-        Assert.Equal(4, migrated.Graphics.Presets.Ultra.MaxGiProbeStatesPerSnapshot);
-        Assert.Equal(1, migrated.Graphics.Presets.VeryLow.MaxGiProbeStatesPerSnapshot);
-        Assert.Contains(diagnostics, value =>
-            value.Contains("migrated settingsVersion 1 to 2", StringComparison.Ordinal));
-    }
-
-    [Fact]
     public void Validate_ReportsEveryGraphicsConstraintWithQualifiedPaths()
     {
         var invalidPreset = GraphicsSettingsDefaults.Presets.High with

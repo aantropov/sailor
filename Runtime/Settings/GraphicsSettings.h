@@ -25,8 +25,7 @@ namespace Sailor::Settings
 #pragma warning(disable: 4251)
 #endif
 
-	inline constexpr uint32_t ProjectGraphicsSettingsVersion = 2u;
-	inline constexpr uint32_t LegacyProjectGraphicsSettingsVersion = 1u;
+	inline constexpr uint32_t ProjectGraphicsSettingsVersion = 1u;
 	inline constexpr uint32_t EditorGraphicsSettingsVersion = 1u;
 	inline constexpr uint32_t NumGraphicsQualityPresets = 5u;
 	inline constexpr uint32_t MaxShadowCascades = 4u;

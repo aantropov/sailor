@@ -4,7 +4,7 @@ namespace SailorEditor.Layout;
 
 public static class LayoutOperations
 {
-    public const int CurrentLayoutVersion = 2;
+    public const int CurrentLayoutVersion = 1;
 
     public static EditorLayout CreateDefaultLayout()
     {
@@ -43,31 +43,6 @@ public static class LayoutOperations
                     [0.22, 0.56, 0.22],
                     MinSizes: [220, 320, 220])),
             new WindowBounds(80, 80, 1600, 900));
-    }
-
-    public static EditorLayout MigrateLayout(EditorLayout layout)
-    {
-        if (layout.Version >= CurrentLayoutVersion)
-            return layout;
-
-        var root = layout.Root.Content;
-        if (layout.Version < 2 && !ContainsPanelType(root, KnownPanelTypes.Lighting))
-        {
-            root = ReplaceNode(
-                root,
-                node => node is TabGroupNode tabs &&
-                    tabs.GroupId == "right-inspector",
-                node => AddPanelToGroup(
-                    (TabGroupNode)node,
-                    new PanelReference(PanelId.New(), KnownPanelTypes.Lighting),
-                    activate: false));
-        }
-
-        return layout with
-        {
-            Version = CurrentLayoutVersion,
-            Root = new LayoutRoot(root)
-        };
     }
 
     public static TabGroupNode AddPanelToGroup(TabGroupNode group, PanelReference panel, bool activate = true)
@@ -162,18 +137,6 @@ public static class LayoutOperations
         panel = null!;
         groupId = null;
         return false;
-    }
-
-    static bool ContainsPanelType(LayoutNode node, PanelTypeId panelTypeId)
-    {
-        return node switch
-        {
-            TabGroupNode tabs => tabs.Panels.Any(panel =>
-                panel.PanelTypeId == panelTypeId),
-            SplitNode split => split.Children.Any(child =>
-                ContainsPanelType(child, panelTypeId)),
-            _ => false
-        };
     }
 
     static LayoutNode Cleanup(LayoutNode node)

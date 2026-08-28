@@ -494,7 +494,7 @@ namespace
 		ProbeVolumeBakeRequest request;
 		request.m_stateName = "Evening Landscape Bounce";
 		request.m_bakerVersion =
-			"Sailor deterministic evening-landscape visual fixture/4";
+			"Sailor deterministic evening-landscape visual fixture/1";
 		request.m_volumeMin = glm::vec3(-22.0f, -6.0f, -18.0f);
 		request.m_volumeMax = glm::vec3(22.0f, 16.0f, 18.0f);
 		request.m_settings = settings;
@@ -1523,73 +1523,6 @@ components:
 			"the editor bake controller must reject excessive threads before capturing a scene");
 	}
 
-	void TestEveningLandscapeFixtureProvesSecondaryLighting()
-	{
-		using namespace GlobalIlluminationLandscapeTestScene;
-		EveningLandscapeRaytracingFixture fixture =
-			MakeEveningLandscapeRaytracingFixture();
-		const glm::vec3 toLight = -GetEveningLightDirection();
-		Require(IntersectsBakeTriangles(
-				*fixture.m_triangles,
-				Math::Ray(GetReceiverEvidencePoint(), toLight),
-				120.0f),
-			"the evening ridge must geometrically block direct sun at the receiver");
-		Require(!IntersectsBakeTriangles(
-				*fixture.m_triangles,
-				Math::Ray(GetBounceCliffEvidencePoint(), toLight),
-				120.0f),
-			"the upper warm cliff must remain directly exposed to the evening sun");
-
-#if defined(SAILOR_TEST_SOURCE_DIR)
-		const std::filesystem::path fixturePath =
-			std::filesystem::path(SAILOR_TEST_SOURCE_DIR) /
-			"Content/Tests/Visual/EveningLandscapeBounce.probes";
-#else
-		const std::filesystem::path fixturePath =
-			"Content/Tests/Visual/EveningLandscapeBounce.probes";
-#endif
-		const ProbeVolumeBinaryResult loaded =
-			ProbeVolumeBinary::Load(fixturePath);
-		Require(loaded.IsSuccess(),
-			"the tracked evening landscape bake must load: " +
-				loaded.m_diagnostic);
-		Require(loaded.m_data->m_stateName == "Evening Landscape Bounce" &&
-			loaded.m_data->m_bakeSettings.m_bounceCount >= 2u &&
-			!loaded.m_data->m_bakeSettings.m_bIncludeSky &&
-			loaded.m_data->m_bakeSettings.m_bIncludeDirectLighting,
-			"the visual fixture must be a light-driven multi-bounce evening state, "
-			"not an ambient color fill");
-
-		glm::vec3 receiverIrradiance{};
-		Require(SampleProbeVolumeIrradiance(
-				*loaded.m_data,
-				GetReceiverEvidencePoint(),
-				glm::vec3(0.0f, 1.0f, 0.0f),
-				receiverIrradiance),
-			"the occluded receiver must be covered by the baked probe topology");
-		const float receiverEnergy = glm::dot(
-			receiverIrradiance,
-			glm::vec3(0.2126f, 0.7152f, 0.0722f));
-		Require(
-			receiverEnergy > MinimumReceiverIrradianceEnergy,
-			"an occluded receiver must retain measurable reflected irradiance; "
-			"sampled energy was " + std::to_string(receiverEnergy));
-
-		float minimumDcEnergy = (std::numeric_limits<float>::max)();
-		float maximumDcEnergy = 0.0f;
-		for (const ProbeVolumeSample& probe : loaded.m_data->m_probes)
-		{
-			const float energy = glm::dot(
-				glm::max(probe.m_irradiance[0], glm::vec3(0.0f)),
-				glm::vec3(0.2126f, 0.7152f, 0.0722f));
-			minimumDcEnergy = (std::min)(minimumDcEnergy, energy);
-			maximumDcEnergy = (std::max)(maximumDcEnergy, energy);
-		}
-		Require(maximumDcEnergy > minimumDcEnergy * 1.35f + 0.01f,
-			"the baked state must contain spatially varying irradiance from scene "
-			"topology instead of one uniform SH color");
-	}
-
 	void TestEveningLandscapeVisualWorldIsSavedBakeableLevel()
 	{
 #if defined(SAILOR_TEST_SOURCE_DIR)
@@ -2264,19 +2197,6 @@ components:
 			dimSkyResult.m_data->m_transportHash == day.m_data->m_transportHash &&
 			dimSkyResult.m_data->m_lightingHash != day.m_data->m_lightingHash,
 			"Sky GI indirect intensity must change lighting identity without invalidating reusable geometry transport");
-
-		ProbeVolumeData outdatedLayout = *day.m_data;
-		outdatedLayout.m_bakerVersion = "Sailor ProbeVolumeBaker/2";
-		ProbeVolumeBakeRequest outdatedReuse = reused;
-		outdatedReuse.m_layoutSource = &outdatedLayout;
-		const ProbeVolumeBakeResult rejectedOutdated = ProbeVolumeBaker::Bake(
-			outdatedReuse,
-			moonlight);
-		Require(
-			rejectedOutdated.m_status == EProbeVolumeBakeStatus::InvalidRequest &&
-			rejectedOutdated.m_diagnostic.find("Bake New") != std::string::npos,
-			"layout reuse must reject transport produced before the current "
-			"visibility semantics");
 
 		std::atomic<bool> cancel{ true };
 		ProbeVolumeBakeRequest cancelled = request;
@@ -3752,9 +3672,6 @@ int main(int argc, char** argv)
 		RunTest(
 			"BakeControllerRejectsInvalidThreadCountBeforeSceneCapture",
 			TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture);
-		RunTest(
-			"EveningLandscapeFixtureProvesSecondaryLighting",
-			TestEveningLandscapeFixtureProvesSecondaryLighting);
 		RunTest(
 			"EveningLandscapeVisualWorldIsSavedBakeableLevel",
 			TestEveningLandscapeVisualWorldIsSavedBakeableLevel);

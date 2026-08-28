@@ -15,7 +15,6 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
-#include <utility>
 
 using namespace Sailor;
 using namespace Sailor::Settings;
@@ -120,30 +119,9 @@ namespace
 		return source;
 	}
 
-	std::string EraseLinesContaining(
-		std::string source,
-		const std::string& marker)
-	{
-		size_t markerPosition = source.find(marker);
-		while (markerPosition != std::string::npos)
-		{
-			const size_t lineStart = source.rfind('\n', markerPosition);
-			const size_t eraseStart = lineStart == std::string::npos
-				? 0u
-				: lineStart + 1u;
-			const size_t lineEnd = source.find('\n', markerPosition);
-			const size_t eraseEnd = lineEnd == std::string::npos
-				? source.size()
-				: lineEnd + 1u;
-			source.erase(eraseStart, eraseEnd - eraseStart);
-			markerPosition = source.find(marker, eraseStart);
-		}
-		return source;
-	}
-
 	const std::string& ValidProjectSettings()
 	{
-		static const std::string settings = R"YAML(settingsVersion: 2
+		static const std::string settings = R"YAML(settingsVersion: 1
 unknownRoot: retained
 graphics:
   defaultQuality: Medium
@@ -161,6 +139,7 @@ graphics:
       cloudsResolutionMultiplier: 1.0
       skyResolution: 512
       lodBias: -1
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 4
       futureField: retained
     High:
@@ -175,6 +154,7 @@ graphics:
       cloudsResolutionMultiplier: 0.75
       skyResolution: 256
       lodBias: 0
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 3
     Medium:
       resolutionFactor: 0.85
@@ -203,6 +183,7 @@ graphics:
       cloudsResolutionMultiplier: 0.25
       skyResolution: 128
       lodBias: +1
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 2
     VeryLow:
       resolutionFactor: 0.5
@@ -216,6 +197,7 @@ graphics:
       cloudsResolutionMultiplier: 0.125
       skyResolution: 64
       lodBias: +2
+      enableGlobalIllumination: true
       maxGiProbeStatesPerSnapshot: 1
 )YAML";
 		return settings;
@@ -409,33 +391,10 @@ graphics:
 					"inactive cascade storage should be cleared");
 			});
 
-		RunTest("ProjectParsing.LegacyGiBudgetMigration", []()
-			{
-				std::string legacy = ReplaceFirst(
-					ValidProjectSettings(),
-					"settingsVersion: 2",
-					"settingsVersion: 1");
-				legacy = EraseLinesContaining(
-					std::move(legacy),
-					"maxGiProbeStatesPerSnapshot:");
-				const ProjectGraphicsSettingsLoadResult parsed =
-					ParseProjectGraphicsSettings(
-						legacy,
-						"legacy project fixture");
-				Require(parsed.IsLoaded() &&
-					parsed.m_settings.m_version ==
-						ProjectGraphicsSettingsVersion &&
-					parsed.m_settings.GetProfile(
-						EGraphicsQuality::Ultra).m_maxGiProbeStatesPerSnapshot == 4u &&
-					parsed.m_settings.GetProfile(
-						EGraphicsQuality::VeryLow).m_maxGiProbeStatesPerSnapshot == 1u,
-					"version-1 project settings must migrate with per-quality GI defaults");
-			});
-
 		RunTest("ProjectParsing.UnsupportedVersion", []()
 			{
 				const ProjectGraphicsSettingsLoadResult unsupported = ParseProjectGraphicsSettings(
-					ReplaceFirst(ValidProjectSettings(), "settingsVersion: 2", "settingsVersion: 3"),
+					ReplaceFirst(ValidProjectSettings(), "settingsVersion: 1", "settingsVersion: 2"),
 					"future project fixture");
 				Require(unsupported.m_status == EGraphicsSettingsLoadStatus::UnsupportedVersion,
 					"future project version should be distinguished from corrupt data");
@@ -446,7 +405,7 @@ graphics:
 		RunTest("ProjectParsing.MultipleDocuments", []()
 			{
 				const ProjectGraphicsSettingsLoadResult multipleDocuments = ParseProjectGraphicsSettings(
-					ValidProjectSettings() + "---\nsettingsVersion: 2\n",
+					ValidProjectSettings() + "---\nsettingsVersion: 1\n",
 					"multiple project documents");
 				Require(multipleDocuments.m_status == EGraphicsSettingsLoadStatus::Invalid &&
 					multipleDocuments.m_diagnostic.find("exactly one YAML document") != std::string::npos,

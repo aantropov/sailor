@@ -53,31 +53,6 @@ public class LayoutOperationsTests
     }
 
     [Fact]
-    public void MigrateLayout_AddsLightingToLegacyRightInspectorGroupOnce()
-    {
-        var inspector = new PanelReference(PanelId.New(), KnownPanelTypes.Inspector);
-        var ai = new PanelReference(PanelId.New(), KnownPanelTypes.AI);
-        var legacy = new EditorLayout(
-            1,
-            new LayoutRoot(new TabGroupNode(
-                PanelRole.Tool,
-                [inspector, ai],
-                inspector.PanelId,
-                "right-inspector")));
-
-        var migrated = LayoutOperations.MigrateLayout(legacy);
-        var migratedAgain = LayoutOperations.MigrateLayout(migrated);
-        var tabs = Assert.IsType<TabGroupNode>(migrated.Root.Content);
-
-        Assert.Equal(LayoutOperations.CurrentLayoutVersion, migrated.Version);
-        Assert.Equal(
-            ["Inspector", "AI", "Lighting"],
-            tabs.Panels.Select(panel => panel.PanelTypeId.Value));
-        Assert.Equal(inspector.PanelId, tabs.ActivePanelId);
-        Assert.Equal(migrated, migratedAgain);
-    }
-
-    [Fact]
     public void Resize_NormalizesRatiosAfterDelta()
     {
         var split = new SplitNode(SplitOrientation.Horizontal, [new TabGroupNode(PanelRole.Tool, [], null), new TabGroupNode(PanelRole.Tool, [], null)], [0.5, 0.5]);
