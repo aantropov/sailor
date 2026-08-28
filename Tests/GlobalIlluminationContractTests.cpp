@@ -473,7 +473,7 @@ namespace
 		settings.m_raysPerProbe = 256u;
 		settings.m_bounceCount = 3u;
 		settings.m_randomSeed = 155u;
-		settings.m_maxSubdivisionLevel = 2u;
+		settings.m_maxSubdivisionLevel = 3u;
 		settings.m_minProbeSpacing = 5.0f;
 		settings.m_normalBias = 0.04f;
 		settings.m_viewBias = 0.02f;
@@ -494,7 +494,7 @@ namespace
 		ProbeVolumeBakeRequest request;
 		request.m_stateName = "Evening Landscape Bounce";
 		request.m_bakerVersion =
-			"Sailor deterministic evening-landscape visual fixture/3";
+			"Sailor deterministic evening-landscape visual fixture/4";
 		request.m_volumeMin = glm::vec3(-22.0f, -6.0f, -18.0f);
 		request.m_volumeMax = glm::vec3(22.0f, 16.0f, 18.0f);
 		request.m_settings = settings;
