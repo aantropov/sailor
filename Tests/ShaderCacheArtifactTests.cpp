@@ -1221,11 +1221,16 @@ namespace
 			{
 				RequireSpirvStorageBufferBinding(byteCode, 1u, 12u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 13u);
-				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 14u);
+				RequireSpirvStorageBufferBinding(byteCode, 1u, 14u);
 				for (uint32_t binding = 15u; binding <= 17u; ++binding)
 				{
 					RequireSpirvStorageBufferBinding(byteCode, 1u, binding);
 				}
+				RequireSpirvStorageBufferArrayStride(
+					byteCode,
+					1u,
+					14u,
+					sizeof(RHI::RHIGlobalIlluminationGpuBrick));
 				RequireSpirvStorageBufferArrayStride(
 					byteCode,
 					1u,
@@ -1241,13 +1246,12 @@ namespace
 					1u,
 					17u,
 					sizeof(RHI::RHIGlobalIlluminationGpuState));
-				for (uint32_t binding = 18u; binding <= 20u; ++binding)
-				{
-					RequireSpirvCombinedImageSamplerBinding(
-						byteCode,
-						1u,
-						binding);
-				}
+				RequireSpirvCombinedImageSamplerBinding(
+					byteCode,
+					1u,
+					18u);
+				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 19u);
+				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 20u);
 				RequireSpirvDescriptorBindingAbsent(byteCode, 1u, 21u);
 			}
 		}
@@ -1346,10 +1350,9 @@ namespace
 		}
 		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 1u, 3u);
 		RequireSpirvCombinedImageSamplerBinding(giResolveByteCode, 2u, 0u);
-		for (uint32_t binding = 1u; binding <= 3u; ++binding)
-		{
-			RequireSpirvStorageImageBinding(giResolveByteCode, 2u, binding);
-		}
+		RequireSpirvStorageImageBinding(giResolveByteCode, 2u, 1u);
+		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 2u);
+		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 3u);
 		RequireSpirvDescriptorBindingAbsent(giResolveByteCode, 2u, 4u);
 	}
 

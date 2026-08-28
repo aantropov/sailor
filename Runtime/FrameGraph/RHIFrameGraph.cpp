@@ -846,19 +846,9 @@ namespace
 					10u);
 				driver->AddSamplerToShaderBindings(
 					resources->m_lightsBindings,
-					"g_globalIlluminationProbeCellMinSampler",
+					"g_globalIlluminationProbeCellIndicesSampler",
 					texture,
 					18u);
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_globalIlluminationProbeCellMaxSampler",
-					texture,
-					19u);
-				driver->AddSamplerToShaderBindings(
-					resources->m_lightsBindings,
-					"g_globalIlluminationProbeCellMetadataSampler",
-					texture,
-					20u);
 			}
 			resources->m_lightsBindings->RecalculateCompatibility();
 			resources->m_lightsTemplate = lightsTemplate;

@@ -28,9 +28,7 @@ namespace Sailor::Framegraph
 		ShaderSetPtr m_shader{};
 		RHI::RHIShaderBindingSetPtr m_bindings{};
 		RHI::RHITexturePtr m_depthTexture{};
-		RHI::RHITexturePtr m_probeCellMinTexture{};
-		RHI::RHITexturePtr m_probeCellMaxTexture{};
-		RHI::RHITexturePtr m_probeCellMetadataTexture{};
+		RHI::RHITexturePtr m_probeCellIndicesTexture{};
 	};
 
 	template class TFrameGraphNode<GlobalIlluminationResolveNode>;

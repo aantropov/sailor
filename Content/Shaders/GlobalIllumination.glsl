@@ -75,7 +75,7 @@ layout(std430, set = 1, binding = 13) readonly buffer GlobalIlluminationBvhSSBO
 } globalIlluminationBvh;
 #endif
 
-#ifdef COMPUTE
+#if defined(COMPUTE) || defined(FRAGMENT)
 layout(std430, set = 1, binding = 14) readonly buffer GlobalIlluminationBricksSSBO
 {
   GlobalIlluminationBrick instance[];
@@ -100,9 +100,7 @@ layout(std430, set = 1, binding = 17) readonly buffer GlobalIlluminationStatesSS
 #endif
 
 #ifdef FRAGMENT
-layout(set = 1, binding = 18) uniform sampler2D g_globalIlluminationProbeCellMinSampler;
-layout(set = 1, binding = 19) uniform sampler2D g_globalIlluminationProbeCellMaxSampler;
-layout(set = 1, binding = 20) uniform sampler2D g_globalIlluminationProbeCellMetadataSampler;
+layout(set = 1, binding = 18) uniform sampler2D g_globalIlluminationProbeCellIndicesSampler;
 #endif
 
 struct GlobalIlluminationProbeCell
@@ -433,6 +431,33 @@ vec3 GlobalIlluminationEvaluateProbe(
   return irradiance;
 }
 
+vec3 GlobalIlluminationEvaluateProbeStates(
+  uint probeIndex,
+  GlobalIlluminationShBasis basis,
+  uint stateCount,
+  float singleStateWeight)
+{
+  if(stateCount == 1u)
+  {
+    return GlobalIlluminationEvaluateProbe(
+      0u,
+      probeIndex,
+      basis) * singleStateWeight;
+  }
+
+  vec3 irradiance = vec3(0.0);
+  for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
+  {
+    const float stateWeight =
+      globalIlluminationStates.instance[stateIndex].parameters.x;
+    irradiance += GlobalIlluminationEvaluateProbe(
+      stateIndex,
+      probeIndex,
+      basis) * stateWeight;
+  }
+  return irradiance;
+}
+
 bool SampleGlobalIlluminationFromProbeCell(
   GlobalIlluminationProbeCell probeCell,
   vec3 worldPosition,
@@ -448,7 +473,6 @@ bool SampleGlobalIlluminationFromProbeCell(
   environmentVisibility = 1.0;
   vec3 positiveDirectionVisibility = vec3(0.0);
   vec3 negativeDirectionVisibility = vec3(0.0);
-  vec3 interpolationIrradiance = vec3(0.0);
   vec3 interpolationPositiveDirectionVisibility = vec3(0.0);
   vec3 interpolationNegativeDirectionVisibility = vec3(0.0);
   InitializeGlobalIlluminationSampleDebug(debugInfo);
@@ -495,6 +519,9 @@ bool SampleGlobalIlluminationFromProbeCell(
   const uint stateCount = min(
     globalIlluminationHeader.stateAndDebug.x,
     uint(globalIlluminationStates.instance.length()));
+  const float singleStateWeight = stateCount == 1u
+    ? globalIlluminationStates.instance[0].parameters.x
+    : 0.0;
   if(bTrackState)
   {
     float dominantStateWeight = -1.0;
@@ -578,17 +605,13 @@ bool SampleGlobalIlluminationFromProbeCell(
         {
           debugInfo.averageVisibility += trilinearWeight * visibility;
         }
-        for(uint stateIndex = 0u; stateIndex < stateCount; ++stateIndex)
+        if(spatialWeight > 0.0)
         {
-          const float stateWeight =
-            globalIlluminationStates.instance[stateIndex].parameters.x;
-          const vec3 stateIrradiance = GlobalIlluminationEvaluateProbe(
-            stateIndex,
+          irradiance += GlobalIlluminationEvaluateProbeStates(
             probeIndex,
-            shBasis) * stateWeight;
-          irradiance += stateIrradiance * spatialWeight;
-          interpolationIrradiance +=
-            stateIrradiance * interpolationWeight;
+            shBasis,
+            stateCount,
+            singleStateWeight) * spatialWeight;
         }
       }
     }
@@ -598,8 +621,49 @@ bool SampleGlobalIlluminationFromProbeCell(
   {
     return false;
   }
-  const vec3 unfilteredIrradiance =
-    interpolationIrradiance / totalInterpolationWeight;
+  const float receiverCoverage = clamp(
+    totalVisibleWeight / totalInterpolationWeight,
+    0.0,
+    1.0);
+  const float receiverBlend = smoothstep(0.0, 0.05, receiverCoverage);
+  vec3 unfilteredIrradiance = vec3(0.0);
+  if(receiverBlend < 1.0 || totalVisibleWeight <= 0.000001)
+  {
+    for(uint z = 0u; z < 2u; ++z)
+    {
+      for(uint y = 0u; y < 2u; ++y)
+      {
+        for(uint x = 0u; x < 2u; ++x)
+        {
+          const uvec3 coordinate = uvec3(
+            x != 0u ? upper.x : lower.x,
+            y != 0u ? upper.y : lower.y,
+            z != 0u ? upper.z : lower.z);
+          const uint probeIndex = firstProbeIndex +
+            GlobalIlluminationFlattenIndex(coordinate, probeCounts);
+          const float trilinearWeight =
+            (x != 0u ? fraction.x : 1.0 - fraction.x) *
+            (y != 0u ? fraction.y : 1.0 - fraction.y) *
+            (z != 0u ? fraction.z : 1.0 - fraction.z);
+          const float validity = clamp(
+            globalIlluminationProbes.instance[probeIndex]
+              .positionAndValidity.w,
+            0.0,
+            1.0);
+          const float interpolationWeight = trilinearWeight * validity;
+          if(interpolationWeight > 0.0)
+          {
+            unfilteredIrradiance += GlobalIlluminationEvaluateProbeStates(
+              probeIndex,
+              shBasis,
+              stateCount,
+              singleStateWeight) * interpolationWeight;
+          }
+        }
+      }
+    }
+    unfilteredIrradiance /= totalInterpolationWeight;
+  }
   const vec3 unfilteredPositiveDirectionVisibility =
     interpolationPositiveDirectionVisibility / totalInterpolationWeight;
   const vec3 unfilteredNegativeDirectionVisibility =
@@ -617,15 +681,10 @@ bool SampleGlobalIlluminationFromProbeCell(
     receiverNegativeDirectionVisibility =
       negativeDirectionVisibility / totalVisibleWeight;
   }
-  // Surface-facing weights select probes on the receiver side, but zero
-  // coverage is still a valid resident probe sample. Fade to validity-only
-  // interpolation instead of exposing the bright environment fallback as a
-  // line at geometry and brick boundaries.
-  const float receiverCoverage = clamp(
-    totalVisibleWeight / totalInterpolationWeight,
-    0.0,
-    1.0);
-  const float receiverBlend = smoothstep(0.0, 0.05, receiverCoverage);
+  // Surface-facing weights select probes on the receiver side. Validity-only
+  // irradiance is evaluated lazily only inside the narrow low-coverage fade;
+  // ordinary receivers avoid loading and decoding probes with zero spatial
+  // weight while retaining the exact boundary fallback.
   irradiance = max(mix(
     unfilteredIrradiance,
     receiverIrradiance,
@@ -733,9 +792,7 @@ bool GlobalIlluminationProbeCellCandidateIsBetter(
 }
 
 bool GlobalIlluminationDecodeProbeCell(
-  vec4 boundsMinAndFirstProbe,
-  vec4 boundsMaxAndBrick,
-  vec4 probeCountsAndSubdivision,
+  uint encodedBrickIndex,
   out GlobalIlluminationProbeCell probeCell)
 {
   probeCell.boundsMin = vec3(0.0);
@@ -744,18 +801,26 @@ bool GlobalIlluminationDecodeProbeCell(
   probeCell.firstProbeIndex = 0u;
   probeCell.brickIndex = 0u;
   probeCell.subdivision = 0u;
-  const uint firstProbeIndex =
-    uint(max(boundsMinAndFirstProbe.w, 0.0) + 0.5);
-  const uint encodedBrickIndex =
-    uint(max(boundsMaxAndBrick.w, 0.0) + 0.5);
-  const uvec3 probeCounts =
-    uvec3(max(probeCountsAndSubdivision.xyz, vec3(0.0)) + vec3(0.5));
   const uint totalProbeCount = globalIlluminationHeader.counts.w;
   if(totalProbeCount == 0u || encodedBrickIndex == 0u ||
-    encodedBrickIndex > globalIlluminationHeader.counts.z ||
+    encodedBrickIndex > globalIlluminationHeader.counts.z)
+  {
+    return false;
+  }
+
+  const uint brickIndex = encodedBrickIndex - 1u;
+  if(brickIndex >= uint(globalIlluminationBricks.instance.length()))
+  {
+    return false;
+  }
+  const GlobalIlluminationBrick brick =
+    globalIlluminationBricks.instance[brickIndex];
+  const uint firstProbeIndex = floatBitsToUint(brick.maxAndFirstProbe.w);
+  const uvec3 probeCounts = brick.probeCountsAndValidCount.xyz;
+  if(brick.probeCountsAndValidCount.w == 0u ||
     any(lessThanEqual(
-      boundsMaxAndBrick.xyz,
-      boundsMinAndFirstProbe.xyz)) ||
+      brick.maxAndFirstProbe.xyz,
+      brick.minAndSubdivision.xyz)) ||
     any(equal(probeCounts, uvec3(0u))) ||
     firstProbeIndex >= totalProbeCount ||
     probeCounts.x > totalProbeCount / probeCounts.y)
@@ -773,18 +838,17 @@ bool GlobalIlluminationDecodeProbeCell(
     return false;
   }
 
-  probeCell.boundsMin = boundsMinAndFirstProbe.xyz;
-  probeCell.boundsMax = boundsMaxAndBrick.xyz;
+  probeCell.boundsMin = brick.minAndSubdivision.xyz;
+  probeCell.boundsMax = brick.maxAndFirstProbe.xyz;
   probeCell.probeCounts = probeCounts;
   probeCell.firstProbeIndex = firstProbeIndex;
-  probeCell.brickIndex = encodedBrickIndex - 1u;
-  probeCell.subdivision =
-    uint(max(probeCountsAndSubdivision.w, 0.0) + 0.5);
+  probeCell.brickIndex = brickIndex;
+  probeCell.subdivision = floatBitsToUint(brick.minAndSubdivision.w);
   return true;
 }
 
 bool GlobalIlluminationReadSupportedProbeCell(
-  ivec2 pixel,
+  uint encodedBrickIndex,
   vec3 samplingPosition,
   out GlobalIlluminationProbeCell probeCell,
   out uint containmentRank,
@@ -793,18 +857,7 @@ bool GlobalIlluminationReadSupportedProbeCell(
   containmentRank = 0u;
   distanceSquared = 3.402823466e+38;
   if(!GlobalIlluminationDecodeProbeCell(
-    texelFetch(
-      g_globalIlluminationProbeCellMinSampler,
-      pixel,
-      0),
-    texelFetch(
-      g_globalIlluminationProbeCellMaxSampler,
-      pixel,
-      0),
-    texelFetch(
-      g_globalIlluminationProbeCellMetadataSampler,
-      pixel,
-      0),
+    encodedBrickIndex,
     probeCell))
   {
     return false;
@@ -848,7 +901,7 @@ bool SelectGlobalIlluminationProbeCell(
   selectedProbeCell.brickIndex = 0u;
   selectedProbeCell.subdivision = 0u;
   const ivec2 cellExtent =
-    textureSize(g_globalIlluminationProbeCellMinSampler, 0);
+    textureSize(g_globalIlluminationProbeCellIndicesSampler, 0);
   if(globalIlluminationHeader.counts.z == 0u ||
     any(lessThan(cellExtent, ivec2(2))))
   {
@@ -859,19 +912,22 @@ bool SelectGlobalIlluminationProbeCell(
 
   const vec2 clampedUv = clamp(
     screenUv,
-    0.5 * rcp(vec2(cellExtent)),
-    vec2(1.0) - 0.5 * rcp(vec2(cellExtent)));
-  const vec2 texelPosition =
-    clampedUv * vec2(cellExtent) - vec2(0.5);
-  const ivec2 basePixel = ivec2(floor(texelPosition));
-  const vec2 fraction = fract(texelPosition);
-  const ivec2 primaryOffset = ivec2(
-    fraction.x >= 0.5 ? 1 : 0,
-    fraction.y >= 0.5 ? 1 : 0);
+    vec2(0.0),
+    vec2(0.99999994));
+  const vec2 texelPosition = clampedUv * vec2(cellExtent);
   const ivec2 primaryPixel = clamp(
-    basePixel + primaryOffset,
+    ivec2(floor(texelPosition)),
     ivec2(0),
     cellExtent - ivec2(1));
+  const vec2 subpixelPosition = fract(texelPosition);
+  const uint primaryChannel =
+    (subpixelPosition.x >= 0.5 ? 1u : 0u) +
+    (subpixelPosition.y >= 0.5 ? 2u : 0u);
+  const uvec4 primaryEncodedBrickIndices = uvec4(
+    max(texelFetch(
+      g_globalIlluminationProbeCellIndicesSampler,
+      primaryPixel,
+      0), vec4(0.0)) + vec4(0.5));
   bool foundProbeCell = false;
   uint selectedContainmentRank = 0u;
   uint selectedSubdivision = 0u;
@@ -882,15 +938,15 @@ bool SelectGlobalIlluminationProbeCell(
   uint primaryContainmentRank = 0u;
   float primaryDistanceSquared = 3.402823466e+38;
   if(GlobalIlluminationReadSupportedProbeCell(
-    primaryPixel,
+    primaryEncodedBrickIndices[primaryChannel],
     samplingPosition,
     primaryProbeCell,
     primaryContainmentRank,
     primaryDistanceSquared))
   {
-    // The resolve pass already selected the best adaptive brick for this
-    // nearby surface. Exact world-space containment is the common path and
-    // needs only one three-texel metadata record in the material shader.
+    // The common path is the exact brick selected from this fragment's own
+    // full-resolution depth sample, packed into one channel of a half-res
+    // texel. It never interpolates selection across depth layers.
     if(primaryContainmentRank == 2u)
     {
       selectedProbeCell = primaryProbeCell;
@@ -904,57 +960,115 @@ bool SelectGlobalIlluminationProbeCell(
     selectedScore = 1.0;
   }
 
-  // Only discontinuities and empty low-resolution pixels need the other
-  // candidates. World-space containment chooses across geometry edges without
-  // reconstructing four view-space positions in every full-resolution pixel.
-  for(int y = 0; y < 2; ++y)
+  // Geometric-normal bias can move a receiver over an adaptive brick boundary.
+  // The other subpixel channels are already resident in the same cache line,
+  // so prefer a containing neighbor before accepting a supported near cell.
+  for(uint candidateChannel = 0u; candidateChannel < 4u; ++candidateChannel)
   {
-    for(int x = 0; x < 2; ++x)
+    if(candidateChannel == primaryChannel ||
+      primaryEncodedBrickIndices[candidateChannel] ==
+        primaryEncodedBrickIndices[primaryChannel])
     {
-      const ivec2 offset = ivec2(x, y);
-      if(all(equal(offset, primaryOffset)))
+      continue;
+    }
+    GlobalIlluminationProbeCell probeCell;
+    uint containmentRank = 0u;
+    float distanceSquared = 3.402823466e+38;
+    if(!GlobalIlluminationReadSupportedProbeCell(
+      primaryEncodedBrickIndices[candidateChannel],
+      samplingPosition,
+      probeCell,
+      containmentRank,
+      distanceSquared))
+    {
+      continue;
+    }
+    if(containmentRank == 2u)
+    {
+      selectedProbeCell = probeCell;
+      return true;
+    }
+    if(!foundProbeCell || GlobalIlluminationProbeCellCandidateIsBetter(
+      containmentRank,
+      probeCell.subdivision,
+      distanceSquared,
+      0.5,
+      selectedContainmentRank,
+      selectedSubdivision,
+      selectedDistanceSquared,
+      selectedScore))
+    {
+      foundProbeCell = true;
+      selectedProbeCell = probeCell;
+      selectedContainmentRank = containmentRank;
+      selectedSubdivision = probeCell.subdivision;
+      selectedDistanceSquared = distanceSquared;
+      selectedScore = 0.5;
+    }
+  }
+
+  if(foundProbeCell && selectedContainmentRank > 0u)
+  {
+    return true;
+  }
+
+  // A masked depth/main-pass mismatch can still leave this exact channel
+  // empty. Search one packed texel around it only on that exceptional path.
+  for(int y = -1; y <= 1; ++y)
+  {
+    for(int x = -1; x <= 1; ++x)
+    {
+      if(x == 0 && y == 0)
       {
         continue;
       }
       const ivec2 pixel = clamp(
-        basePixel + offset,
+        primaryPixel + ivec2(x, y),
         ivec2(0),
         cellExtent - ivec2(1));
-      if(all(equal(pixel, primaryPixel)))
+      const uvec4 encodedBrickIndices = uvec4(
+        max(texelFetch(
+          g_globalIlluminationProbeCellIndicesSampler,
+          pixel,
+          0), vec4(0.0)) + vec4(0.5));
+      for(uint candidateChannel = 0u;
+        candidateChannel < 4u;
+        ++candidateChannel)
       {
-        continue;
-      }
-      const float spatialWeight =
-        (x != 0 ? fraction.x : 1.0 - fraction.x) *
-        (y != 0 ? fraction.y : 1.0 - fraction.y);
-      GlobalIlluminationProbeCell probeCell;
-      uint containmentRank = 0u;
-      float distanceSquared = 3.402823466e+38;
-      if(!GlobalIlluminationReadSupportedProbeCell(
-        pixel,
-        samplingPosition,
-        probeCell,
-        containmentRank,
-        distanceSquared))
-      {
-        continue;
-      }
-      if(!foundProbeCell || GlobalIlluminationProbeCellCandidateIsBetter(
-        containmentRank,
-        probeCell.subdivision,
-        distanceSquared,
-        spatialWeight,
-        selectedContainmentRank,
-        selectedSubdivision,
-        selectedDistanceSquared,
-        selectedScore))
-      {
-        foundProbeCell = true;
-        selectedProbeCell = probeCell;
-        selectedContainmentRank = containmentRank;
-        selectedSubdivision = probeCell.subdivision;
-        selectedDistanceSquared = distanceSquared;
-        selectedScore = spatialWeight;
+        GlobalIlluminationProbeCell probeCell;
+        uint containmentRank = 0u;
+        float distanceSquared = 3.402823466e+38;
+        if(!GlobalIlluminationReadSupportedProbeCell(
+          encodedBrickIndices[candidateChannel],
+          samplingPosition,
+          probeCell,
+          containmentRank,
+          distanceSquared))
+        {
+          continue;
+        }
+        if(containmentRank == 2u)
+        {
+          selectedProbeCell = probeCell;
+          return true;
+        }
+        if(!foundProbeCell || GlobalIlluminationProbeCellCandidateIsBetter(
+          containmentRank,
+          probeCell.subdivision,
+          distanceSquared,
+          0.0,
+          selectedContainmentRank,
+          selectedSubdivision,
+          selectedDistanceSquared,
+          selectedScore))
+        {
+          foundProbeCell = true;
+          selectedProbeCell = probeCell;
+          selectedContainmentRank = containmentRank;
+          selectedSubdivision = probeCell.subdivision;
+          selectedDistanceSquared = distanceSquared;
+          selectedScore = 0.0;
+        }
       }
     }
   }

@@ -127,12 +127,8 @@ namespace
 			"DefaultRenderer.renderer",
 			"EditorRenderer.renderer"
 		};
-		const char* probeCellTargets[] =
-		{
-			"GlobalIlluminationProbeCellMin",
-			"GlobalIlluminationProbeCellMax",
-			"GlobalIlluminationProbeCellMetadata"
-		};
+		const char* probeCellTarget =
+			"GlobalIlluminationProbeCellIndices";
 
 		for (const char* rendererPath : rendererPaths)
 		{
@@ -145,43 +141,41 @@ namespace
 				std::string(rendererPath) +
 					" should expose render-target and frame sequences");
 
-			for (const char* targetName : probeCellTargets)
-			{
-				YAML::Node target;
-				for (const YAML::Node& candidate : renderTargets)
-				{
-					if (candidate["name"] &&
-						candidate["name"].as<std::string>() == targetName)
-					{
-						target = candidate;
-						break;
-					}
-				}
-				Require(target &&
-					target["format"].as<std::string>() ==
-						"R32G32B32A32_SFLOAT" &&
-					target["width"].as<std::string>() == "RenderWidth/2" &&
-					target["height"].as<std::string>() == "RenderHeight/2" &&
-					target["bIsCompatibleWithComputeShaders"].as<bool>(),
-					std::string(rendererPath) + " must define quarter-area compute " +
-						targetName);
-			}
-			YAML::Node depthHighZ;
+			YAML::Node target;
 			for (const YAML::Node& candidate : renderTargets)
 			{
 				if (candidate["name"] &&
-					candidate["name"].as<std::string>() == "DepthHighZ")
+					candidate["name"].as<std::string>() == probeCellTarget)
 				{
-					depthHighZ = candidate;
+					target = candidate;
 					break;
 				}
 			}
-			Require(depthHighZ &&
-				depthHighZ["format"].as<std::string>() == "R32_SFLOAT" &&
-				depthHighZ["width"].as<std::string>() == "RenderWidth/2" &&
-				depthHighZ["height"].as<std::string>() == "RenderHeight/2",
+			Require(target &&
+				target["format"].as<std::string>() ==
+					"R32G32B32A32_SFLOAT" &&
+				target["width"].as<std::string>() == "RenderWidth/2" &&
+				target["height"].as<std::string>() == "RenderHeight/2" &&
+				target["bIsCompatibleWithComputeShaders"].as<bool>(),
 				std::string(rendererPath) +
-					" GI resolve depth must match the probe-cell extent");
+					" must define the quarter-area four-subpixel probe-cell index target");
+			YAML::Node depthBuffer;
+			for (const YAML::Node& candidate : renderTargets)
+			{
+				if (candidate["name"] &&
+					candidate["name"].as<std::string>() == "DepthBuffer")
+				{
+					depthBuffer = candidate;
+					break;
+				}
+			}
+			Require(depthBuffer &&
+				depthBuffer["format"].as<std::string>() ==
+					"D32_SFLOAT_S8_UINT" &&
+				depthBuffer["width"].as<std::string>() == "RenderWidth" &&
+				depthBuffer["height"].as<std::string>() == "RenderHeight",
+				std::string(rendererPath) +
+					" GI resolve must retain full-resolution scene depth");
 
 			uint32_t resolvePasses = 0u;
 			uint32_t mainConsumers = 0u;
@@ -198,15 +192,11 @@ namespace
 					++resolvePasses;
 					resolvePassIndex = passIndex;
 					Require(
-						GetSequenceMapping(attachments, "depthSampler") == "DepthHighZ" &&
-						GetSequenceMapping(attachments, "probeCellMin") ==
-							"GlobalIlluminationProbeCellMin" &&
-						GetSequenceMapping(attachments, "probeCellMax") ==
-							"GlobalIlluminationProbeCellMax" &&
-						GetSequenceMapping(attachments, "probeCellMetadata") ==
-							"GlobalIlluminationProbeCellMetadata",
+						GetSequenceMapping(attachments, "depthSampler") == "DepthBuffer" &&
+						GetSequenceMapping(attachments, "probeCellIndices") ==
+							probeCellTarget,
 						std::string(rendererPath) +
-							" GI resolve must write the complete probe-cell set");
+							" GI resolve must write the packed subpixel probe-cell indices");
 					continue;
 				}
 
@@ -224,16 +214,8 @@ namespace
 					Require(
 						GetSequenceMapping(
 							attachments,
-							"globalIlluminationProbeCellMinSampler") ==
-								"GlobalIlluminationProbeCellMin" &&
-						GetSequenceMapping(
-							attachments,
-							"globalIlluminationProbeCellMaxSampler") ==
-								"GlobalIlluminationProbeCellMax" &&
-						GetSequenceMapping(
-							attachments,
-							"globalIlluminationProbeCellMetadataSampler") ==
-								"GlobalIlluminationProbeCellMetadata" &&
+							"globalIlluminationProbeCellIndicesSampler") ==
+								probeCellTarget &&
 						GetSequenceMapping(
 							attachments,
 							"globalIlluminationDepthSampler").empty(),
@@ -245,13 +227,7 @@ namespace
 					Require(
 						GetSequenceMapping(
 							attachments,
-							"globalIlluminationProbeCellMinSampler").empty() &&
-						GetSequenceMapping(
-							attachments,
-							"globalIlluminationProbeCellMaxSampler").empty() &&
-						GetSequenceMapping(
-							attachments,
-							"globalIlluminationProbeCellMetadataSampler").empty(),
+							"globalIlluminationProbeCellIndicesSampler").empty(),
 						std::string(rendererPath) + " " + tag +
 							" must not consume the main-pass probe-cell targets");
 				}

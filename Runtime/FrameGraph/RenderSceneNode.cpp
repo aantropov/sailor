@@ -1186,47 +1186,25 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 
 	RHIShaderBindingSetPtr nodeLightsData = sceneView.m_rhiLightsData;
 	RHI::RHITexturePtr transmissionFramebuffer = GetResolvedAttachment("transmissionFramebuffer");
-	RHI::RHITexturePtr globalIlluminationProbeCellMinTexture =
-		GetResolvedAttachment("globalIlluminationProbeCellMinSampler");
-	RHI::RHITexturePtr globalIlluminationProbeCellMaxTexture =
-		GetResolvedAttachment("globalIlluminationProbeCellMaxSampler");
-	RHI::RHITexturePtr globalIlluminationProbeCellMetadataTexture =
-		GetResolvedAttachment("globalIlluminationProbeCellMetadataSampler");
+	RHI::RHITexturePtr globalIlluminationProbeCellIndicesTexture =
+		GetResolvedAttachment("globalIlluminationProbeCellIndicesSampler");
 	const RHITexturePtr defaultTexture = driver->GetDefaultTexture();
 	const RHITexturePtr desiredTransmissionTexture = transmissionFramebuffer ?
 		transmissionFramebuffer : defaultTexture;
-	const RHITexturePtr desiredGlobalIlluminationProbeCellMinTexture =
-		globalIlluminationProbeCellMinTexture ?
-			globalIlluminationProbeCellMinTexture : defaultTexture;
-	const RHITexturePtr desiredGlobalIlluminationProbeCellMaxTexture =
-		globalIlluminationProbeCellMaxTexture ?
-			globalIlluminationProbeCellMaxTexture : defaultTexture;
-	const RHITexturePtr desiredGlobalIlluminationProbeCellMetadataTexture =
-		globalIlluminationProbeCellMetadataTexture ?
-			globalIlluminationProbeCellMetadataTexture : defaultTexture;
+	const RHITexturePtr desiredGlobalIlluminationProbeCellIndicesTexture =
+		globalIlluminationProbeCellIndicesTexture ?
+			globalIlluminationProbeCellIndicesTexture : defaultTexture;
 	const bool bNeedsTransmissionOverride =
 		GetBoundTexture(
 			sceneView.m_rhiLightsData,
 			"g_transmissionFramebufferSampler") != desiredTransmissionTexture;
-	const bool bNeedsGlobalIlluminationProbeCellMinOverride =
+	const bool bNeedsGlobalIlluminationProbeCellIndicesOverride =
 		GetBoundTexture(
 			sceneView.m_rhiLightsData,
-			"g_globalIlluminationProbeCellMinSampler") !=
-			desiredGlobalIlluminationProbeCellMinTexture;
-	const bool bNeedsGlobalIlluminationProbeCellMaxOverride =
-		GetBoundTexture(
-			sceneView.m_rhiLightsData,
-			"g_globalIlluminationProbeCellMaxSampler") !=
-			desiredGlobalIlluminationProbeCellMaxTexture;
-	const bool bNeedsGlobalIlluminationProbeCellMetadataOverride =
-		GetBoundTexture(
-			sceneView.m_rhiLightsData,
-			"g_globalIlluminationProbeCellMetadataSampler") !=
-			desiredGlobalIlluminationProbeCellMetadataTexture;
+			"g_globalIlluminationProbeCellIndicesSampler") !=
+			desiredGlobalIlluminationProbeCellIndicesTexture;
 	if (bNeedsTransmissionOverride ||
-		bNeedsGlobalIlluminationProbeCellMinOverride ||
-		bNeedsGlobalIlluminationProbeCellMaxOverride ||
-		bNeedsGlobalIlluminationProbeCellMetadataOverride)
+		bNeedsGlobalIlluminationProbeCellIndicesOverride)
 	{
 		const uint64_t sourceRevision = sceneView.m_rhiLightsData ?
 			sceneView.m_rhiLightsData->GetDescriptorRevision() : 0ull;
@@ -1234,12 +1212,8 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 			resources->m_nodeLightsSource != sceneView.m_rhiLightsData ||
 			resources->m_nodeLightsSourceRevision != sourceRevision ||
 			resources->m_transmissionTexture != transmissionFramebuffer ||
-			resources->m_globalIlluminationProbeCellMinTexture !=
-				globalIlluminationProbeCellMinTexture ||
-			resources->m_globalIlluminationProbeCellMaxTexture !=
-				globalIlluminationProbeCellMaxTexture ||
-			resources->m_globalIlluminationProbeCellMetadataTexture !=
-				globalIlluminationProbeCellMetadataTexture;
+			resources->m_globalIlluminationProbeCellIndicesTexture !=
+				globalIlluminationProbeCellIndicesTexture;
 		if (bCloneOutdated)
 		{
 			resources->m_nodeLightsBindings = CloneBindingsWithSamplers(
@@ -1247,22 +1221,14 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 				{
 					{ "g_transmissionFramebufferSampler",
 						desiredTransmissionTexture, 10u },
-					{ "g_globalIlluminationProbeCellMinSampler",
-						desiredGlobalIlluminationProbeCellMinTexture, 18u },
-					{ "g_globalIlluminationProbeCellMaxSampler",
-						desiredGlobalIlluminationProbeCellMaxTexture, 19u },
-					{ "g_globalIlluminationProbeCellMetadataSampler",
-						desiredGlobalIlluminationProbeCellMetadataTexture, 20u }
+					{ "g_globalIlluminationProbeCellIndicesSampler",
+						desiredGlobalIlluminationProbeCellIndicesTexture, 18u }
 				});
 			resources->m_nodeLightsSource = sceneView.m_rhiLightsData;
 			resources->m_nodeLightsSourceRevision = sourceRevision;
 			resources->m_transmissionTexture = transmissionFramebuffer;
-			resources->m_globalIlluminationProbeCellMinTexture =
-				globalIlluminationProbeCellMinTexture;
-			resources->m_globalIlluminationProbeCellMaxTexture =
-				globalIlluminationProbeCellMaxTexture;
-			resources->m_globalIlluminationProbeCellMetadataTexture =
-				globalIlluminationProbeCellMetadataTexture;
+			resources->m_globalIlluminationProbeCellIndicesTexture =
+				globalIlluminationProbeCellIndicesTexture;
 		}
 		nodeLightsData = resources->m_nodeLightsBindings;
 	}
@@ -1270,18 +1236,12 @@ void RenderSceneNode::Process(RHIFrameGraphPtr frameGraph, RHI::RHICommandListPt
 	{
 		commands->ImageMemoryBarrier(commandList, transmissionFramebuffer, RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
-	for (const RHITexturePtr& texture :
-		{ globalIlluminationProbeCellMinTexture,
-			globalIlluminationProbeCellMaxTexture,
-			globalIlluminationProbeCellMetadataTexture })
+	if (globalIlluminationProbeCellIndicesTexture)
 	{
-		if (texture)
-		{
-			commands->ImageMemoryBarrier(
-				commandList,
-				texture,
-				RHI::EImageLayout::ShaderReadOnlyOptimal);
-		}
+		commands->ImageMemoryBarrier(
+			commandList,
+			globalIlluminationProbeCellIndicesTexture,
+			RHI::EImageLayout::ShaderReadOnlyOptimal);
 	}
 	std::string gpuCullingSetting;
 	TryGetString("GPUCulling", gpuCullingSetting);

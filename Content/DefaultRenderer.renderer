@@ -65,23 +65,7 @@ renderTargets:
   width: RenderWidth/2
   height: RenderHeight/2
 
-- name: GlobalIlluminationProbeCellMin
-  format: R32G32B32A32_SFLOAT
-  filtration: Nearest
-  clamping: Clamp
-  width: RenderWidth/2
-  height: RenderHeight/2
-  bIsCompatibleWithComputeShaders: true
-
-- name: GlobalIlluminationProbeCellMax
-  format: R32G32B32A32_SFLOAT
-  filtration: Nearest
-  clamping: Clamp
-  width: RenderWidth/2
-  height: RenderHeight/2
-  bIsCompatibleWithComputeShaders: true
-
-- name: GlobalIlluminationProbeCellMetadata
+- name: GlobalIlluminationProbeCellIndices
   format: R32G32B32A32_SFLOAT
   filtration: Nearest
   clamping: Clamp
@@ -265,10 +249,8 @@ frame:
 - name: GlobalIlluminationResolve
 ############################
   renderTargets:
-  - depthSampler: DepthHighZ
-  - probeCellMin: GlobalIlluminationProbeCellMin
-  - probeCellMax: GlobalIlluminationProbeCellMax
-  - probeCellMetadata: GlobalIlluminationProbeCellMetadata
+  - depthSampler: DepthBuffer
+  - probeCellIndices: GlobalIlluminationProbeCellIndices
   
 ############################
 - name: PostProcess
@@ -330,9 +312,7 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
-  - globalIlluminationProbeCellMinSampler: GlobalIlluminationProbeCellMin
-  - globalIlluminationProbeCellMaxSampler: GlobalIlluminationProbeCellMax
-  - globalIlluminationProbeCellMetadataSampler: GlobalIlluminationProbeCellMetadata
+  - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
 
 ############################
 - name: CPUPathTracerNode
@@ -358,9 +338,7 @@ frame:
   - color: Main
   - depthStencil: DepthBuffer
   - depthHighZ: DepthHighZ
-  - globalIlluminationProbeCellMinSampler: GlobalIlluminationProbeCellMin
-  - globalIlluminationProbeCellMaxSampler: GlobalIlluminationProbeCellMax
-  - globalIlluminationProbeCellMetadataSampler: GlobalIlluminationProbeCellMetadata
+  - globalIlluminationProbeCellIndicesSampler: GlobalIlluminationProbeCellIndices
 
 ############################
 - name: Blit
