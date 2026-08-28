@@ -116,7 +116,7 @@ namespace Sailor::Raytracing
 			bool bSkipUnresolvedMaterialInstances = false,
 			const ScenePreparationWarningCallback& warning = {});
 		void SetRuntimeEnvironment(const TVector<u8vec4>& image, const glm::uvec2& extent);
-		void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
+		SAILOR_SHARED_API void SetRuntimeEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void SetRuntimeDiffuseEnvironmentLinear(const TVector<vec4>& image, const glm::uvec2& extent);
 		void ClearRuntimeEnvironment();
 		bool RenderPreparedScene(const Params& params);
@@ -168,7 +168,7 @@ namespace Sailor::Raytracing
 			uint32_t m_materialIndex = 0;
 		};
 
-		bool IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, float maxRayLength = FLT_MAX,
+		SAILOR_SHARED_API bool IntersectScene(const Math::Ray& worldRay, TLASHit& outHit, float maxRayLength = FLT_MAX,
 			uint32_t ignoreInstance = (uint32_t)-1, uint32_t ignoreTriangle = (uint32_t)-1) const;
 		const Math::Triangle& GetTriangle(const TLASHit& hit) const;
 		SAILOR_SHARED_API void GetShadingBasis(const TLASHit& hit, vec3& outNormal, vec3& outTangent, vec3& outBitangent) const;
