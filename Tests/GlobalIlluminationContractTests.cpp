@@ -1927,6 +1927,9 @@ components:
 			layout.m_probes.Num() == 8u &&
 			layout.m_bricks[0].m_probeCountsAndValidCount ==
 				glm::uvec4(2u, 2u, 2u, 8u) &&
+			(std::bit_cast<uint32_t>(
+				layout.m_bricks[0].m_minAndSubdivision.w) &
+				RHI::GlobalIlluminationBrickFullyValidBit) != 0u &&
 			(std::bit_cast<uint32_t>(layout.m_nodes[0].m_minAndLeft.w) &
 				0x80000000u) != 0u,
 			"single adaptive brick must produce one encoded BVH leaf and expose "
@@ -1939,9 +1942,70 @@ components:
 				partiallyInvalid,
 				partiallyInvalidLayout,
 				diagnostic) &&
-			partiallyInvalidLayout.m_bricks[0].m_probeCountsAndValidCount.w == 7u,
+			partiallyInvalidLayout.m_bricks[0].m_probeCountsAndValidCount.w == 7u &&
+			(std::bit_cast<uint32_t>(partiallyInvalidLayout.m_bricks[0]
+				.m_minAndSubdivision.w) &
+				RHI::GlobalIlluminationBrickFullyValidBit) == 0u,
 			"GPU brick metadata must exclude invalid probes so selection can "
 			"fall back to neighboring bricks");
+
+		ProbeVolumeData adaptiveNeighbors = MakeVolume(1.0f, 43u);
+		adaptiveNeighbors.m_volumeMax = glm::vec3(2.0f, 1.0f, 1.0f);
+		adaptiveNeighbors.m_bricks.Clear();
+		adaptiveNeighbors.m_probes.Clear();
+		auto appendBrick = [&](float minX, float maxX, uint32_t subdivision)
+			{
+				ProbeVolumeBrick brick;
+				brick.m_min = glm::vec3(minX, 0.0f, 0.0f);
+				brick.m_max = glm::vec3(maxX, 1.0f, 1.0f);
+				brick.m_subdivisionLevel = subdivision;
+				brick.m_firstProbeIndex = static_cast<uint32_t>(
+					adaptiveNeighbors.m_probes.Num());
+				brick.m_probeCount = 8u;
+				brick.m_probeCounts = glm::uvec3(2u);
+				adaptiveNeighbors.m_bricks.Add(brick);
+				for (uint32_t z = 0u; z < 2u; ++z)
+				{
+					for (uint32_t y = 0u; y < 2u; ++y)
+					{
+						for (uint32_t x = 0u; x < 2u; ++x)
+						{
+							ProbeVolumeSample probe;
+							probe.m_position = glm::vec3(
+								x != 0u ? maxX : minX,
+								static_cast<float>(y),
+								static_cast<float>(z));
+							probe.m_irradiance[0] = glm::vec3(1.0f);
+							adaptiveNeighbors.m_probes.Add(std::move(probe));
+						}
+					}
+				}
+			};
+		appendBrick(0.0f, 1.0f, 0u);
+		appendBrick(1.0f, 2.0f, 1u);
+		adaptiveNeighbors.m_layoutHash =
+			ComputeProbeVolumeLayoutHash(adaptiveNeighbors);
+		RHI::RHIGlobalIlluminationGpuLayout adaptiveLayout;
+		Require(RHI::BuildGlobalIlluminationGpuLayout(
+				adaptiveNeighbors,
+				adaptiveLayout,
+				diagnostic) &&
+			adaptiveLayout.m_bricks.Num() == 2u,
+			"adaptive neighbor metadata should pack: " + diagnostic);
+		const auto adaptiveFaceMask = [&](size_t brickIndex)
+			{
+				const uint32_t metadata = std::bit_cast<uint32_t>(
+					adaptiveLayout.m_bricks[brickIndex]
+						.m_minAndSubdivision.w);
+				return (metadata &
+					RHI::GlobalIlluminationBrickAdaptiveFaceMask) >>
+					RHI::GlobalIlluminationBrickAdaptiveFaceShift;
+			};
+		Require(
+			adaptiveFaceMask(0u) == (1u << 1u) &&
+			adaptiveFaceMask(1u) == (1u << 0u),
+			"GPU brick metadata must mark both sides of an adaptive X-face so "
+			"fragment sampling can retain the full eight-probe path there");
 		Require(
 			layout.m_probes[0].m_environmentVisibility0123 ==
 				glm::vec4(0.1f, 0.2f, 0.3f, 0.4f) &&

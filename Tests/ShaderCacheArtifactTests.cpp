@@ -1256,6 +1256,12 @@ namespace
 			}
 		}
 		compileRuntimeFragment(
+			"Shaders/Standard.shader",
+			{ "ALPHA_CUTOUT" });
+		compileRuntimeFragment(
+			"Shaders/Standard_glTF.shader",
+			{ "ALPHA_CUTOUT" });
+		compileRuntimeFragment(
 			"Shaders/Standard_glTF.shader",
 			{ "CLEAR_COAT", "SHEEN", "TRANSMISSION" });
 		compileRuntimeFragment(

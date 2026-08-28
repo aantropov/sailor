@@ -12,6 +12,12 @@
 
 namespace Sailor::RHI
 {
+	constexpr uint32_t GlobalIlluminationBrickSubdivisionMask = 0x00ffffffu;
+	constexpr uint32_t GlobalIlluminationBrickAdaptiveFaceShift = 24u;
+	constexpr uint32_t GlobalIlluminationBrickAdaptiveFaceMask =
+		0x3fu << GlobalIlluminationBrickAdaptiveFaceShift;
+	constexpr uint32_t GlobalIlluminationBrickFullyValidBit = 1u << 30u;
+
 	struct SAILOR_SHARED_API RHIGlobalIlluminationState final
 	{
 		std::string m_name{};
@@ -94,7 +100,8 @@ namespace Sailor::RHI
 
 	struct alignas(16) RHIGlobalIlluminationGpuBrick final
 	{
-		// W stores uint metadata through uintBitsToFloat/floatBitsToUint.
+		// W stores the subdivision, adaptive-neighbor face mask, and fully-valid
+		// flag through uintBitsToFloat/floatBitsToUint.
 		glm::vec4 m_minAndSubdivision{};
 		glm::vec4 m_maxAndFirstProbe{};
 		// XYZ contain grid dimensions; W contains the number of valid probes.

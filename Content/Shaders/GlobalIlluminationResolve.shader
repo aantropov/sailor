@@ -99,7 +99,8 @@ glslCompute: |
             brick.maxAndFirstProbe.xyz,
             tracePosition) ? 1u : 0u);
       const uint subdivision =
-        floatBitsToUint(brick.minAndSubdivision.w);
+        floatBitsToUint(brick.minAndSubdivision.w) &
+        GLOBAL_ILLUMINATION_BRICK_SUBDIVISION_MASK;
       if(!foundBrick || ProbeCellCandidateIsBetter(
         containmentRank,
         subdivision,

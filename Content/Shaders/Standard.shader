@@ -527,25 +527,28 @@ glslFragment: |
     vec3 normal,
     vec3 geometricNormal,
     vec3 worldPosition,
+    vec3 surfaceToCamera,
     float cosLo,
     vec2 screenUv)
   {
     // Baked probes replace diffuse environment irradiance only. Specular IBL
     // remains sourced from the pre-filtered environment cubemap.
-    const vec3 environmentIrradiance =
-      texture(g_irradianceCubemap, normal).rgb;
     GlobalIlluminationSampleDebug globalIlluminationDebug;
     float environmentVisibility = 1.0;
-    const vec3 irradiance = ResolveGlobalIlluminationDiffuseIrradiance(
+    vec3 irradiance = vec3(0.0);
+    if(!TryResolveGlobalIlluminationDiffuseIrradiance(
       screenUv,
       worldPosition,
       normal,
       geometricNormal,
-      normalize(frame.cameraPosition.xyz - worldPosition),
+      surfaceToCamera,
       Lr,
-      environmentIrradiance,
+      irradiance,
       environmentVisibility,
-      globalIlluminationDebug);
+      globalIlluminationDebug))
+    {
+      irradiance = texture(g_irradianceCubemap, normal).rgb;
+    }
     if(GlobalIlluminationDebugUsesProbeData())
     {
       return irradiance;
@@ -562,6 +565,13 @@ glslFragment: |
     
     // Irradiance map contains exitant radiance assuming Lambertian BRDF, no need to scale by 1/PI here either.
     vec3 diffuseIBL = kd * material.albedo.xyz * irradiance;
+
+    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
+    if(globalIlluminationHeader.stateAndDebug.z ==
+      GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
+    {
+      return diffuseIBL * ambientOcclusion;
+    }
     
     // Sample pre-filtered specular reflection environment at correct mipmap level.
     int specularTextureLevels = textureQueryLevels(g_envCubemap);
@@ -576,18 +586,12 @@ glslFragment: |
     // Ambient occlusion applies to all indirect lighting. Use a view- and
     // roughness-dependent approximation for specular IBL so smooth surfaces
     // retain plausible reflections without leaking them into occluded areas.
-    float ambientOcclusion = clamp(material.ao, 0.0, 1.0);
     float specularOcclusion = CalculateSpecularOcclusion(
       min(ambientOcclusion, environmentVisibility),
       cosLo,
       material.roughness);
     vec3 indirectLighting = diffuseIBL * ambientOcclusion +
       specularIBL * specularOcclusion;
-    if(globalIlluminationHeader.stateAndDebug.z ==
-      GLOBAL_ILLUMINATION_DEBUG_INDIRECT_ONLY)
-    {
-      indirectLighting = diffuseIBL * ambientOcclusion;
-    }
     return ApplyGlobalIlluminationDebug(
       indirectLighting,
       globalIlluminationDebug);
@@ -611,6 +615,14 @@ glslFragment: |
       material.albedo *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.albedoSampler))], vin.texcoord);
     }
     material.albedo *= vin.color;
+
+  #ifdef ALPHA_CUTOUT
+    if(material.albedo.a < 0.5)
+    {
+      discard;
+    }
+  #endif
+
     if(material.metalnessSampler != 0u)
     {
       material.metallic *= texture(textureSamplers[nonuniformEXT(ResolveTextureSamplerIndex(material.metalnessSampler))], vin.texcoord).r;
@@ -641,31 +653,39 @@ glslFragment: |
     // Fresnel reflectance at normal incidence (for metals use albedo color).
     vec3 F0 = mix(Fdielectric, material.albedo.xyz, material.metallic);
     
-  #ifdef ALPHA_CUTOUT
-    if(material.albedo.a < 0.5)
-    {
-      discard;
-    }
-  #endif
-  
     //outColor.xyz += vec3(texture(g_envCubemap, R).xyz);
     //outColor.xyz *= max(0.1, dot(normalize(-vec3(-0.3, -0.5, 0.1)), vin.normal.xyz)) * 0.5;
   
-    const uint tileIndex = GetLightTileIndex(gl_FragCoord.xy, frame.viewportSize);
-    const uint gridLength = uint(lightsGrid.instance.length());
-    const bool hasLightTile = tileIndex < gridLength;
-    const uint offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0;
-    const uint listLength = uint(culledLights.indices.length());
-    const uint availableLights = offset < listLength ? listLength - offset : 0;
-    const uint packedNumLights = hasLightTile ? lightsGrid.instance[tileIndex].num : 0u;
-    const bool lightsOverflow = (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
-    const uint numLights = !hasLightTile ? 0u :
+    const bool bEvaluateDirectLighting =
+      !GlobalIlluminationDebugSuppressesDirectLighting();
+    uint offset = 0u;
+    bool lightsOverflow = false;
+    uint numLights = 0u;
+    if(bEvaluateDirectLighting)
+    {
+      const uint tileIndex = GetLightTileIndex(
+        gl_FragCoord.xy,
+        frame.viewportSize);
+      const uint gridLength = uint(lightsGrid.instance.length());
+      const bool hasLightTile = tileIndex < gridLength;
+      offset = hasLightTile ? lightsGrid.instance[tileIndex].offset : 0u;
+      const uint listLength = uint(culledLights.indices.length());
+      const uint availableLights = offset < listLength
+        ? listLength - offset
+        : 0u;
+      const uint packedNumLights = hasLightTile
+        ? lightsGrid.instance[tileIndex].num
+        : 0u;
+      lightsOverflow =
+        (packedNumLights & LIGHT_TILE_OVERFLOW_BIT) != 0u;
+      numLights = !hasLightTile ? 0u :
     #ifdef SUPPORT_LIGHTS_OVERFLOW
         (lightsOverflow ? min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(light.instance.length())) :
             min(packedNumLights & LIGHT_TILE_COUNT_MASK, availableLights));
     #else
         min(min(packedNumLights & LIGHT_TILE_COUNT_MASK, uint(LIGHTS_PER_TILE)), availableLights);
     #endif
+    }
     
     const vec3 indirectLighting = AmbientLighting(
       material,
@@ -674,11 +694,12 @@ glslFragment: |
       normal,
       geometricNormal,
       vin.worldPosition,
+      -viewDirection,
       cosLo,
       viewportUv);
     outColor.xyz = indirectLighting;
     
-    if(!GlobalIlluminationDebugSuppressesDirectLighting())
+    if(bEvaluateDirectLighting)
     {
       for(int i = 0; i < numLights; i++)
       {
@@ -696,11 +717,10 @@ glslFragment: |
 
         outColor.xyz += CalculateLighting(light.instance[index], index, material, F0, -viewDirection, cosLo, normal, vin.worldPosition);
       }
+      outColor.xyz = indirectLighting +
+        (outColor.xyz - indirectLighting) *
+        CalculateDirectLightingOcclusion(material.ao);
     }
-
-    outColor.xyz = indirectLighting +
-      (outColor.xyz - indirectLighting) *
-      CalculateDirectLightingOcclusion(material.ao);
 
     outColor.a = material.albedo.a;
   }

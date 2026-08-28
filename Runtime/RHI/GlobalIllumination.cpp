@@ -1,6 +1,7 @@
 #include "RHI/GlobalIllumination.h"
 
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cmath>
 #include <exception>
@@ -141,6 +142,109 @@ namespace
 		TVector<uint32_t> m_indices{};
 		TVector<RHIGlobalIlluminationGpuBvhNode> m_nodes{};
 	};
+
+	bool ContainsPoint(
+		const RHIGlobalIlluminationGpuBvhNode& node,
+		const glm::vec3& point) noexcept
+	{
+		return glm::all(glm::greaterThanEqual(point, glm::vec3(node.m_minAndLeft))) &&
+			glm::all(glm::lessThanEqual(point, glm::vec3(node.m_maxAndRight)));
+	}
+
+	bool HasDifferentSubdivisionNeighbor(
+		const ProbeVolumeData& data,
+		const TVector<RHIGlobalIlluminationGpuBvhNode>& nodes,
+		uint32_t brickIndex,
+		const glm::vec3& point) noexcept
+	{
+		if (nodes.IsEmpty() || brickIndex >= data.m_bricks.Num())
+		{
+			return true;
+		}
+
+		std::array<uint32_t, 128u> stack{};
+		size_t stackSize = 0u;
+		stack[stackSize++] = 0u;
+		while (stackSize > 0u)
+		{
+			const uint32_t nodeIndex = stack[--stackSize];
+			if (nodeIndex >= nodes.Num())
+			{
+				return true;
+			}
+			const RHIGlobalIlluminationGpuBvhNode& node = nodes[nodeIndex];
+			if (!ContainsPoint(node, point))
+			{
+				continue;
+			}
+
+			const uint32_t leftOrLeaf =
+				std::bit_cast<uint32_t>(node.m_minAndLeft.w);
+			if ((leftOrLeaf & LeafBit) != 0u)
+			{
+				const uint32_t neighborIndex = leftOrLeaf & ~LeafBit;
+				if (neighborIndex != brickIndex &&
+					neighborIndex < data.m_bricks.Num() &&
+					data.m_bricks[neighborIndex].m_subdivisionLevel !=
+						data.m_bricks[brickIndex].m_subdivisionLevel)
+				{
+					return true;
+				}
+				continue;
+			}
+
+			if (stackSize + 2u > stack.size())
+			{
+				return true;
+			}
+			stack[stackSize++] = std::bit_cast<uint32_t>(node.m_maxAndRight.w);
+			stack[stackSize++] = leftOrLeaf;
+		}
+		return false;
+	}
+
+	uint32_t FindAdaptiveFaceMask(
+		const ProbeVolumeData& data,
+		const TVector<RHIGlobalIlluminationGpuBvhNode>& nodes,
+		uint32_t brickIndex) noexcept
+	{
+		if (brickIndex >= data.m_bricks.Num())
+		{
+			return 0x3fu;
+		}
+		const ProbeVolumeBrick& brick = data.m_bricks[brickIndex];
+		const glm::vec3 center = (brick.m_min + brick.m_max) * 0.5f;
+		uint32_t result = 0u;
+		for (uint32_t axis = 0u; axis < 3u; ++axis)
+		{
+			glm::vec3 point = center;
+			point[axis] = std::nextafter(
+				brick.m_min[axis],
+				-(std::numeric_limits<float>::infinity)());
+			if (HasDifferentSubdivisionNeighbor(
+				data,
+				nodes,
+				brickIndex,
+				point))
+			{
+				result |= 1u << (axis * 2u);
+			}
+
+			point = center;
+			point[axis] = std::nextafter(
+				brick.m_max[axis],
+				(std::numeric_limits<float>::infinity)());
+			if (HasDifferentSubdivisionNeighbor(
+				data,
+				nodes,
+				brickIndex,
+				point))
+			{
+				result |= 1u << (axis * 2u + 1u);
+			}
+		}
+		return result;
+	}
 }
 
 uint64_t Sailor::RHI::ComputeGlobalIlluminationLayoutSignature(
@@ -323,16 +427,13 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 		builder.Build(0u, static_cast<uint32_t>(data.m_bricks.Num()));
 		outLayout.m_nodes = builder.TakeNodes();
 		outLayout.m_bricks.Reserve(data.m_bricks.Num());
-		for (const ProbeVolumeBrick& source : data.m_bricks)
+		for (uint32_t brickIndex = 0u;
+			brickIndex < data.m_bricks.Num();
+			++brickIndex)
 		{
-			RHIGlobalIlluminationGpuBrick brick;
-			brick.m_minAndSubdivision = glm::vec4(
-				source.m_min,
-				EncodeUint(source.m_subdivisionLevel));
-			brick.m_maxAndFirstProbe = glm::vec4(
-				source.m_max,
-				EncodeUint(source.m_firstProbeIndex));
+			const ProbeVolumeBrick& source = data.m_bricks[brickIndex];
 			uint32_t validProbeCount = 0u;
+			bool bAllProbesFullyValid = true;
 			for (uint32_t probeOffset = 0u;
 				probeOffset < source.m_probeCount;
 				++probeOffset)
@@ -340,7 +441,28 @@ bool Sailor::RHI::BuildGlobalIlluminationGpuLayout(
 				const ProbeVolumeSample& probe = data.m_probes[
 					source.m_firstProbeIndex + probeOffset];
 				validProbeCount += probe.m_validity > 0.000001f ? 1u : 0u;
+				bAllProbesFullyValid = bAllProbesFullyValid &&
+					probe.m_validity >= 0.999999f;
 			}
+			const uint32_t adaptiveFaceMask = FindAdaptiveFaceMask(
+				data,
+				outLayout.m_nodes,
+				brickIndex);
+			const uint32_t brickMetadata =
+				(source.m_subdivisionLevel &
+					GlobalIlluminationBrickSubdivisionMask) |
+				(adaptiveFaceMask <<
+					GlobalIlluminationBrickAdaptiveFaceShift) |
+				(bAllProbesFullyValid
+					? GlobalIlluminationBrickFullyValidBit
+					: 0u);
+			RHIGlobalIlluminationGpuBrick brick;
+			brick.m_minAndSubdivision = glm::vec4(
+				source.m_min,
+				EncodeUint(brickMetadata));
+			brick.m_maxAndFirstProbe = glm::vec4(
+				source.m_max,
+				EncodeUint(source.m_firstProbeIndex));
 			brick.m_probeCountsAndValidCount = glm::uvec4(
 				source.m_probeCounts,
 				validProbeCount);
