@@ -1,6 +1,6 @@
 namespace SailorEditor.Services;
 
-public sealed class ProbeVolumeBakeStatusGate
+public sealed class GIProbesBakeStatusGate
 {
     public bool IsPreservingTerminalStatus { get; private set; }
 

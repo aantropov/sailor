@@ -501,8 +501,8 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
         return ValidateEditorRenderMode(result.Mode);
     }
 
-    public async Task<bool> StartProbeVolumeBakeAsync(
-        StartProbeVolumeBakeRequest bake,
+    public async Task<bool> StartGIProbesBakeAsync(
+        StartGIProbesBakeRequest bake,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bake);
@@ -510,39 +510,39 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             await SendAsync(
                     new ProtocolRequest
                     {
-                        StartProbeVolumeBake = bake.Clone()
+                        StartGiProbesBake = bake.Clone()
                     },
                     cancellationToken)
                 .ConfigureAwait(false),
-            nameof(ProtocolRequest.StartProbeVolumeBake));
+            nameof(ProtocolRequest.StartGiProbesBake));
     }
 
-    public async Task<ProbeVolumeBakeStatusResult> GetProbeVolumeBakeStatusAsync(
+    public async Task<GIProbesBakeStatusResult> GetGIProbesBakeStatusAsync(
         CancellationToken cancellationToken = default)
-        => RequireResult<ProbeVolumeBakeStatusResult>(
+        => RequireResult<GIProbesBakeStatusResult>(
             (await SendAsync(
                     new ProtocolRequest
                     {
-                        GetProbeVolumeBakeStatus = new Empty()
+                        GetGiProbesBakeStatus = new Empty()
                     },
                     cancellationToken)
-                .ConfigureAwait(false)).ProbeVolumeBakeStatusResult,
-            nameof(ProtocolRequest.GetProbeVolumeBakeStatus));
+                .ConfigureAwait(false)).GiProbesBakeStatusResult,
+            nameof(ProtocolRequest.GetGiProbesBakeStatus));
 
-    public async Task<bool> CancelProbeVolumeBakeAsync(
+    public async Task<bool> CancelGIProbesBakeAsync(
         CancellationToken cancellationToken = default)
         => ReadBool(
             await SendAsync(
                     new ProtocolRequest
                     {
-                        CancelProbeVolumeBake = new Empty()
+                        CancelGiProbesBake = new Empty()
                     },
                     cancellationToken)
                 .ConfigureAwait(false),
-            nameof(ProtocolRequest.CancelProbeVolumeBake));
+            nameof(ProtocolRequest.CancelGiProbesBake));
 
-    public async Task<bool> SetGlobalIlluminationSettingsAsync(
-        SetGlobalIlluminationSettingsRequest settings,
+    public async Task<bool> SetGISettingsAsync(
+        SetGISettingsRequest settings,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -550,11 +550,11 @@ internal sealed class EngineProtocolClient : IDisposable, IAsyncDisposable
             await SendAsync(
                     new ProtocolRequest
                     {
-                        SetGlobalIlluminationSettings = settings.Clone()
+                        SetGiSettings = settings.Clone()
                     },
                     cancellationToken)
                 .ConfigureAwait(false),
-            nameof(ProtocolRequest.SetGlobalIlluminationSettings));
+            nameof(ProtocolRequest.SetGiSettings));
     }
 
     public async Task<GlobalIlluminationStateResult> GetGlobalIlluminationStateAsync(

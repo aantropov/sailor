@@ -121,7 +121,7 @@ struct GlobalIlluminationProbeCell
 
 struct GlobalIlluminationSampleDebug
 {
-  bool usedProbeVolume;
+  bool usedGIProbes;
   uint brickIndex;
   uint dominantProbeIndex;
   float averageValidity;
@@ -132,7 +132,7 @@ struct GlobalIlluminationSampleDebug
 void InitializeGlobalIlluminationSampleDebug(
   out GlobalIlluminationSampleDebug debugInfo)
 {
-  debugInfo.usedProbeVolume = false;
+  debugInfo.usedGIProbes = false;
   debugInfo.brickIndex = 0u;
   debugInfo.dominantProbeIndex = 0u;
   debugInfo.averageValidity = 0.0;
@@ -760,7 +760,7 @@ bool SampleGlobalIlluminationFromProbeCell(
   {
     irradiance = tetrahedralIrradiance;
     environmentVisibility = tetrahedralEnvironmentVisibility;
-    debugInfo.usedProbeVolume = true;
+    debugInfo.usedGIProbes = true;
     return true;
   }
 
@@ -1020,7 +1020,7 @@ bool SampleGlobalIlluminationFromProbeCell(
     positiveDirectionVisibility,
     negativeDirectionVisibility,
     environmentDirection);
-  debugInfo.usedProbeVolume = true;
+  debugInfo.usedGIProbes = true;
   return true;
 }
 #endif
@@ -1044,12 +1044,12 @@ vec3 ApplyGlobalIlluminationDebug(
   if(mode == GLOBAL_ILLUMINATION_DEBUG_PROBES)
   {
     const float hue = fract(float(debugInfo.dominantProbeIndex) * 0.61803398875);
-    return debugInfo.usedProbeVolume ? GlobalIlluminationHueToRgb(hue) : vec3(0.02);
+    return debugInfo.usedGIProbes ? GlobalIlluminationHueToRgb(hue) : vec3(0.02);
   }
   if(mode == GLOBAL_ILLUMINATION_DEBUG_BRICKS)
   {
     const float hue = fract(float(debugInfo.brickIndex) * 0.754877666);
-    return debugInfo.usedProbeVolume ? GlobalIlluminationHueToRgb(hue) : vec3(0.02);
+    return debugInfo.usedGIProbes ? GlobalIlluminationHueToRgb(hue) : vec3(0.02);
   }
   if(mode == GLOBAL_ILLUMINATION_DEBUG_VALIDITY)
   {
@@ -1067,13 +1067,13 @@ vec3 ApplyGlobalIlluminationDebug(
   }
   if(mode == GLOBAL_ILLUMINATION_DEBUG_ASSET_IDENTITY)
   {
-    return debugInfo.usedProbeVolume
+    return debugInfo.usedGIProbes
       ? GlobalIlluminationHueToRgb(debugInfo.dominantStateHue)
       : vec3(0.02);
   }
   if(mode == GLOBAL_ILLUMINATION_DEBUG_FALLBACK)
   {
-    return debugInfo.usedProbeVolume
+    return debugInfo.usedGIProbes
       ? vec3(0.1, 0.8, 0.2)
       : vec3(0.9, 0.05, 0.7);
   }

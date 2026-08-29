@@ -33,9 +33,7 @@ void DebugViewNode::Process(
 	ResetDrawCallStats();
 	EnsurePasses();
 
-	const ESceneViewRenderMode mode = IsValidSceneViewRenderMode(sceneView.m_renderMode)
-		? sceneView.m_renderMode
-		: ESceneViewRenderMode::Lit;
+	const ESceneViewRenderMode mode = sceneView.m_renderMode;
 	PostProcessNode* debugPass = GetDebugPass(mode);
 	if (debugPass && debugPass->IsShaderReady())
 	{

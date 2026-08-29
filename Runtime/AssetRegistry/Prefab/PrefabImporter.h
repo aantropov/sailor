@@ -51,6 +51,7 @@ namespace Sailor
 		private:
 
 			bool m_bHasParentIndex = true;
+			bool m_bHasMobilityType = true;
 
 			friend class Prefab;
 		};

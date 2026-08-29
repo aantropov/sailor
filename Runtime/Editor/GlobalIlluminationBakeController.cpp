@@ -1,9 +1,9 @@
 #include "Editor/GlobalIlluminationBakeController.h"
 
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBinary.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBaker.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeImporter.h"
+#include "GlobalIllumination/GIProbesBaker.h"
+#include "GlobalIllumination/GIProbesBinary.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabAssetInfo.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
@@ -16,7 +16,7 @@
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Math/Math.h"
-#include "Raytracing/ProbeVolumePathTracer.h"
+#include "Raytracing/GIProbesPathTracer.h"
 #include "Raytracing/SkyEnvironmentGenerator.h"
 #include "Tasks/Scheduler.h"
 #include "YamlExceptionBoundary.h"
@@ -40,7 +40,7 @@ namespace
 		TVector<uint64_t> m_materialRevisions{};
 		TVector<Raytracing::LightProxy> m_lights{};
 		TVector<Math::AABB> m_geometryBounds{};
-		ProbeVolumeDataPtr m_layoutSource{};
+		GIProbesDataPtr m_layoutSource{};
 		SkyParameters m_skyParameters{};
 		std::filesystem::path m_outputPath{};
 		glm::vec3 m_volumeMin{};
@@ -74,7 +74,7 @@ namespace
 
 	void UpdateStatus(
 		const TSharedPtr<GlobalIlluminationBakeController::SharedState>& state,
-		const std::function<void(EditorProbeVolumeBakeStatus&)>& update)
+		const std::function<void(EditorGIProbesBakeStatus&)>& update)
 	{
 		state->m_lock.Lock();
 		update(state->m_status);
@@ -87,9 +87,9 @@ namespace
 	{
 		UpdateStatus(
 			state,
-			[&diagnostic](EditorProbeVolumeBakeStatus& status)
+			[&diagnostic](EditorGIProbesBakeStatus& status)
 			{
-				status.m_state = EEditorProbeVolumeBakeState::Failed;
+				status.m_state = EEditorGIProbesBakeState::Failed;
 				status.m_stage = "Failed";
 				status.m_diagnostic = std::move(diagnostic);
 			});
@@ -101,9 +101,9 @@ namespace
 	{
 		UpdateStatus(
 			state,
-			[&diagnostic](EditorProbeVolumeBakeStatus& status)
+			[&diagnostic](EditorGIProbesBakeStatus& status)
 			{
-				status.m_state = EEditorProbeVolumeBakeState::Cancelled;
+				status.m_state = EEditorGIProbesBakeState::Cancelled;
 				status.m_stage = "Cancelled";
 				status.m_diagnostic = std::move(diagnostic);
 			});
@@ -478,7 +478,7 @@ namespace
 		if (!currentWorld || !currentWorld->IsReady())
 		{
 			outDiagnostic =
-				"the current world cannot be serialized for probe-volume baking";
+				"the current world cannot be serialized for GI probe baking";
 			if (currentWorld && !currentWorld->GetLoadDiagnostic().empty())
 			{
 				outDiagnostic += ": " + currentWorld->GetLoadDiagnostic();
@@ -502,7 +502,7 @@ namespace
 
 	bool GatherScene(
 		World* world,
-		const EditorProbeVolumeBakeRequest& request,
+		const EditorGIProbesBakeRequest& request,
 		ProbeBakeScene& scene,
 		std::string& outDiagnostic)
 	{
@@ -519,7 +519,7 @@ namespace
 		if (!worldAssetInfo)
 		{
 			outDiagnostic =
-				"probe-volume baking requires the current world to be saved as a registered .world asset";
+				"GI probe baking requires the current world to be saved as a registered .world asset";
 			return false;
 		}
 		if (!IsSavedWorldSnapshot(world, worldAssetInfo, outDiagnostic))
@@ -528,13 +528,13 @@ namespace
 		}
 		if (request.m_stateName.empty())
 		{
-			outDiagnostic = "probe-volume state name cannot be empty";
+			outDiagnostic = "GI probe state name cannot be empty";
 			return false;
 		}
 		if (!IsFinite(request.m_fallbackEnvironment))
 		{
 			outDiagnostic =
-				"the probe-volume fallback environment must contain finite values";
+				"the GI probe fallback environment must contain finite values";
 			return false;
 		}
 		if (!IsProbesPath(request.m_outputVirtualPath) ||
@@ -557,10 +557,10 @@ namespace
 
 		if (request.m_layoutSource)
 		{
-			auto* importer = App::GetSubmodule<ProbeVolumeImporter>();
-			ProbeVolumeAssetPtr layoutAsset;
+			auto* importer = App::GetSubmodule<GIProbesImporter>();
+			GIProbesAssetPtr layoutAsset;
 			if (!importer ||
-				!importer->LoadProbeVolume_Immediate(
+				!importer->LoadGIProbes_Immediate(
 					request.m_layoutSource,
 					layoutAsset) ||
 				!layoutAsset ||
@@ -958,25 +958,25 @@ GlobalIlluminationBakeController::~GlobalIlluminationBakeController()
 
 bool GlobalIlluminationBakeController::Start(
 	World* world,
-	const EditorProbeVolumeBakeRequest& request,
+	const EditorGIProbesBakeRequest& request,
 	std::string& outDiagnostic)
 {
 	if (GetStatus().IsRunning())
 	{
-		outDiagnostic = "a probe-volume bake is already running";
+		outDiagnostic = "a GI probe bake is already running";
 		return false;
 	}
 	if (request.m_threadCount == 0u ||
-		request.m_threadCount > ProbeVolumeMaxBakeThreadCount)
+		request.m_threadCount > GIProbesMaxBakeThreadCount)
 	{
 		outDiagnostic =
-			"a probe-volume bake requires a thread count between 1 and " +
-			std::to_string(ProbeVolumeMaxBakeThreadCount);
+			"a GI probe bake requires a thread count between 1 and " +
+			std::to_string(GIProbesMaxBakeThreadCount);
 		return false;
 	}
 
 	auto state = TSharedPtr<SharedState>::Make();
-	state->m_status.m_state = EEditorProbeVolumeBakeState::Preparing;
+	state->m_status.m_state = EEditorGIProbesBakeState::Preparing;
 	state->m_status.m_stage = "Preparing immutable scene snapshot";
 	state->m_status.m_outputVirtualPath = request.m_outputVirtualPath;
 	m_state = state;
@@ -998,7 +998,7 @@ bool GlobalIlluminationBakeController::Start(
 	}
 
 	m_task = Tasks::CreateTask(
-		"Bake adaptive irradiance probe volume",
+		"Bake adaptive irradiance GI probes",
 		[state, scene, request]()
 		{
 			const auto started = std::chrono::steady_clock::now();
@@ -1006,18 +1006,18 @@ bool GlobalIlluminationBakeController::Start(
 			{
 				if (state->m_cancel.load(std::memory_order_acquire))
 				{
-					Cancelled(state, "probe-volume bake was cancelled before sampling");
+					Cancelled(state, "GI probe bake was cancelled before sampling");
 					return;
 				}
 				UpdateStatus(
 					state,
-					[](EditorProbeVolumeBakeStatus& status)
+					[](EditorGIProbesBakeStatus& status)
 					{
-						status.m_state = EEditorProbeVolumeBakeState::Baking;
+						status.m_state = EEditorGIProbesBakeState::Baking;
 						status.m_stage = "Preparing CPU path tracer";
 					});
 
-				ProbeVolumeBakeSettings effectiveSettings = request.m_settings;
+				GIProbesBakeSettings effectiveSettings = request.m_settings;
 				if (scene->m_layoutSource)
 				{
 					effectiveSettings.m_maxSubdivisionLevel =
@@ -1035,7 +1035,7 @@ bool GlobalIlluminationBakeController::Start(
 					scene->m_bHasSkyEnvironment ?
 						scene->m_skyIndirectIntensity : 1.0f;
 
-				Raytracing::ProbeVolumePathTracer sampler;
+				Raytracing::GIProbesPathTracer sampler;
 				if (!MaterialsMatchSnapshot(*scene))
 				{
 					Fail(
@@ -1068,10 +1068,10 @@ bool GlobalIlluminationBakeController::Start(
 						UpdateStatus(
 							state,
 							[&stage, started, progressBase, progressRange,
-								stageFraction](EditorProbeVolumeBakeStatus& status)
+								stageFraction](EditorGIProbesBakeStatus& status)
 							{
 								status.m_state =
-									EEditorProbeVolumeBakeState::Baking;
+									EEditorGIProbesBakeState::Baking;
 								status.m_progress = progressBase +
 									progressRange * stageFraction;
 								status.m_stage = stage;
@@ -1094,7 +1094,7 @@ bool GlobalIlluminationBakeController::Start(
 					{
 						Cancelled(
 							state,
-							"probe-volume bake was cancelled while preparing the CPU path tracer");
+							"GI probe bake was cancelled while preparing the CPU path tracer");
 					}
 					else
 					{
@@ -1137,10 +1137,10 @@ bool GlobalIlluminationBakeController::Start(
 									UpdateStatus(
 										state,
 										[&stage, started](
-											EditorProbeVolumeBakeStatus& status)
+											EditorGIProbesBakeStatus& status)
 										{
 											status.m_state =
-												EEditorProbeVolumeBakeState::Baking;
+												EEditorGIProbesBakeState::Baking;
 											status.m_progress = 0.1f;
 											status.m_stage = stage;
 											status.m_elapsedSeconds =
@@ -1158,7 +1158,7 @@ bool GlobalIlluminationBakeController::Start(
 						{
 							Cancelled(
 								state,
-								"probe-volume bake was cancelled while "
+								"GI probe bake was cancelled while "
 								"generating its transient sky environment");
 						}
 						else
@@ -1189,7 +1189,7 @@ bool GlobalIlluminationBakeController::Start(
 					return;
 				}
 
-				ProbeVolumeBakeRequest bakeRequest;
+				GIProbesBakeRequest bakeRequest;
 				bakeRequest.m_stateName = request.m_stateName;
 				bakeRequest.m_volumeMin = scene->m_volumeMin;
 				bakeRequest.m_volumeMax = scene->m_volumeMax;
@@ -1200,13 +1200,13 @@ bool GlobalIlluminationBakeController::Start(
 				bakeRequest.m_layoutSource = scene->m_layoutSource.GetRawPtr();
 				bakeRequest.m_cancel = &state->m_cancel;
 				bakeRequest.m_progress =
-					[state, started](const ProbeVolumeBakeProgress& progress)
+					[state, started](const GIProbesBakeProgress& progress)
 					{
 						UpdateStatus(
 							state,
-							[&progress, started](EditorProbeVolumeBakeStatus& status)
+							[&progress, started](EditorGIProbesBakeStatus& status)
 							{
-								status.m_state = EEditorProbeVolumeBakeState::Baking;
+								status.m_state = EEditorGIProbesBakeState::Baking;
 								status.m_progress = 0.1f +
 									0.9f * progress.m_fraction;
 								status.m_completedProbes = progress.m_completedProbes;
@@ -1218,11 +1218,11 @@ bool GlobalIlluminationBakeController::Start(
 							});
 					};
 
-				ProbeVolumeBakeResult result =
-					ProbeVolumeBaker::Bake(bakeRequest, sampler);
+				GIProbesBakeResult result =
+					GIProbesBaker::Bake(bakeRequest, sampler);
 				if (!result.IsSuccess())
 				{
-					if (result.m_status == EProbeVolumeBakeStatus::Cancelled ||
+					if (result.m_status == EGIProbesBakeStatus::Cancelled ||
 						state->m_cancel.load(std::memory_order_acquire))
 					{
 						Cancelled(state, std::move(result.m_diagnostic));
@@ -1238,18 +1238,18 @@ bool GlobalIlluminationBakeController::Start(
 				if (state->m_cancel.load(std::memory_order_acquire))
 				{
 					state->m_status.m_state =
-						EEditorProbeVolumeBakeState::Cancelled;
+						EEditorGIProbesBakeState::Cancelled;
 					state->m_status.m_stage = "Cancelled";
 					state->m_status.m_diagnostic =
-						"probe-volume bake was cancelled before its atomic commit";
+						"GI probe bake was cancelled before its atomic commit";
 					state->m_lock.Unlock();
 					return;
 				}
-				state->m_status.m_state = EEditorProbeVolumeBakeState::Saving;
+				state->m_status.m_state = EEditorGIProbesBakeState::Saving;
 				state->m_status.m_stage = "Saving one baked state atomically";
 				state->m_lock.Unlock();
 				std::string saveDiagnostic;
-				if (!ProbeVolumeBinary::SaveAtomic(
+				if (!GIProbesBinary::SaveAtomic(
 						scene->m_outputPath,
 						*result.m_data,
 						saveDiagnostic,
@@ -1262,9 +1262,9 @@ bool GlobalIlluminationBakeController::Start(
 				UpdateStatus(
 					state,
 					[&result, &saveDiagnostic, started](
-						EditorProbeVolumeBakeStatus& status)
+						EditorGIProbesBakeStatus& status)
 					{
-						status.m_state = EEditorProbeVolumeBakeState::Succeeded;
+						status.m_state = EEditorGIProbesBakeState::Succeeded;
 						status.m_progress = 1.0f;
 						status.m_stage = "Completed";
 						status.m_brickCount = static_cast<uint32_t>(
@@ -1284,45 +1284,45 @@ bool GlobalIlluminationBakeController::Start(
 			{
 				Fail(
 					state,
-					std::string("probe-volume bake failed: ") +
+					std::string("GI probe bake failed: ") +
 						exception.what());
 			}
 			catch (...)
 			{
-				Fail(state, "probe-volume bake failed: unknown error");
+				Fail(state, "GI probe bake failed: unknown error");
 			}
 		},
 		EThreadType::Background);
 	scheduler->Run(m_task);
-	outDiagnostic = "started background probe-volume bake";
+	outDiagnostic = "started background GI probe bake";
 	return true;
 }
 
 bool GlobalIlluminationBakeController::Cancel(std::string& outDiagnostic)
 {
 	m_state->m_lock.Lock();
-	const EEditorProbeVolumeBakeState state = m_state->m_status.m_state;
-	if (state == EEditorProbeVolumeBakeState::Saving)
+	const EEditorGIProbesBakeState state = m_state->m_status.m_state;
+	if (state == EEditorGIProbesBakeState::Saving)
 	{
 		m_state->m_lock.Unlock();
 		outDiagnostic =
-			"the probe-volume bake is already committing its output atomically";
+			"the GI probe bake is already committing its output atomically";
 		return false;
 	}
-	if (state != EEditorProbeVolumeBakeState::Preparing &&
-		state != EEditorProbeVolumeBakeState::Baking)
+	if (state != EEditorGIProbesBakeState::Preparing &&
+		state != EEditorGIProbesBakeState::Baking)
 	{
 		m_state->m_lock.Unlock();
-		outDiagnostic = "no probe-volume bake is running";
+		outDiagnostic = "no GI probe bake is running";
 		return false;
 	}
 	m_state->m_cancel.store(true, std::memory_order_release);
 	m_state->m_lock.Unlock();
-	outDiagnostic = "requested probe-volume bake cancellation";
+	outDiagnostic = "requested GI probe bake cancellation";
 	return true;
 }
 
-EditorProbeVolumeBakeStatus
+EditorGIProbesBakeStatus
 GlobalIlluminationBakeController::GetStatus() const
 {
 	if (!m_state)
@@ -1330,7 +1330,7 @@ GlobalIlluminationBakeController::GetStatus() const
 		return {};
 	}
 	m_state->m_lock.Lock();
-	EditorProbeVolumeBakeStatus status = m_state->m_status;
+	EditorGIProbesBakeStatus status = m_state->m_status;
 	m_state->m_lock.Unlock();
 	return status;
 }

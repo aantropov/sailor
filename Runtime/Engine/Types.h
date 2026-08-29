@@ -30,13 +30,6 @@ namespace Sailor
 		Dynamic = 2
 	};
 
-	constexpr bool IsValidMobilityType(EMobilityType mobility) noexcept
-	{
-		return mobility == EMobilityType::Static ||
-			mobility == EMobilityType::Stationary ||
-			mobility == EMobilityType::Dynamic;
-	}
-
 	constexpr bool IsMobilityHierarchyValid(
 		EMobilityType parentMobility,
 		EMobilityType childMobility) noexcept

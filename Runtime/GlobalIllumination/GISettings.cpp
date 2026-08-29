@@ -1,88 +1,14 @@
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 
 #include <algorithm>
 #include <cmath>
 
 using namespace Sailor;
 
-const char* Sailor::GlobalIlluminationProbeModeToString(
-	EGlobalIlluminationProbeMode mode) noexcept
-{
-	switch (mode)
-	{
-	case EGlobalIlluminationProbeMode::Additive:
-		return "Additive";
-	case EGlobalIlluminationProbeMode::Blend:
-	default:
-		return "Blend";
-	}
-}
-
-bool Sailor::TryParseGlobalIlluminationProbeMode(
-	const std::string& value,
-	EGlobalIlluminationProbeMode& outMode) noexcept
-{
-	if (value == "Blend")
-	{
-		outMode = EGlobalIlluminationProbeMode::Blend;
-		return true;
-	}
-	if (value == "Additive")
-	{
-		outMode = EGlobalIlluminationProbeMode::Additive;
-		return true;
-	}
-	return false;
-}
-
-const char* Sailor::GlobalIlluminationModeToString(
-	EGlobalIlluminationMode mode) noexcept
-{
-	switch (mode)
-	{
-	case EGlobalIlluminationMode::Realtime:
-		return "Realtime";
-	case EGlobalIlluminationMode::BakedOnly:
-		return "BakedOnly";
-	case EGlobalIlluminationMode::RealtimeAndBaked:
-	default:
-		return "RealtimeAndBaked";
-	}
-}
-
-bool Sailor::TryParseGlobalIlluminationMode(
-	const std::string& value,
-	EGlobalIlluminationMode& outMode) noexcept
-{
-	if (value == "Realtime")
-	{
-		outMode = EGlobalIlluminationMode::Realtime;
-		return true;
-	}
-	if (value == "RealtimeAndBaked")
-	{
-		outMode = EGlobalIlluminationMode::RealtimeAndBaked;
-		return true;
-	}
-	if (value == "BakedOnly")
-	{
-		outMode = EGlobalIlluminationMode::BakedOnly;
-		return true;
-	}
-	return false;
-}
-
-bool GlobalIlluminationWorldSettings::Validate(
+bool GISettings::Validate(
 	std::string& outDiagnostic) const noexcept
 {
 	outDiagnostic.clear();
-	if (m_mode != EGlobalIlluminationMode::Realtime &&
-		m_mode != EGlobalIlluminationMode::RealtimeAndBaked &&
-		m_mode != EGlobalIlluminationMode::BakedOnly)
-	{
-		outDiagnostic = "global-illumination mode is invalid";
-		return false;
-	}
 	for (const auto& entry : m_probes)
 	{
 		const std::string& name = entry.m_first;
@@ -98,13 +24,6 @@ bool GlobalIlluminationWorldSettings::Validate(
 				"' has no .probes asset";
 			return false;
 		}
-		if (binding.m_mode != EGlobalIlluminationProbeMode::Blend &&
-			binding.m_mode != EGlobalIlluminationProbeMode::Additive)
-		{
-			outDiagnostic = "global-illumination probe binding '" + name +
-				"' has an invalid composition mode";
-			return false;
-		}
 		if (!std::isfinite(binding.m_initialWeight) ||
 			binding.m_initialWeight < 0.0f)
 		{
@@ -116,11 +35,11 @@ bool GlobalIlluminationWorldSettings::Validate(
 	return true;
 }
 
-YAML::Node GlobalIlluminationWorldSettings::Serialize() const
+YAML::Node GISettings::Serialize() const
 {
 	YAML::Node globalIllumination(YAML::NodeType::Map);
 	YAML::Node probes(YAML::NodeType::Map);
-	globalIllumination["mode"] = GlobalIlluminationModeToString(m_mode);
+	globalIllumination["mode"] = std::string(magic_enum::enum_name(m_mode));
 
 	struct SortedBinding final
 	{
@@ -149,8 +68,7 @@ YAML::Node GlobalIlluminationWorldSettings::Serialize() const
 		YAML::Node assetNode(YAML::NodeType::Map);
 		assetNode["fileId"] = binding.m_asset.Serialize();
 		bindingNode["asset"] = assetNode;
-		bindingNode["mode"] =
-			GlobalIlluminationProbeModeToString(binding.m_mode);
+		bindingNode["mode"] = std::string(magic_enum::enum_name(binding.m_mode));
 		bindingNode["initialWeight"] = binding.m_initialWeight;
 		if (binding.m_bPreload)
 		{
@@ -163,7 +81,7 @@ YAML::Node GlobalIlluminationWorldSettings::Serialize() const
 	return globalIllumination;
 }
 
-bool GlobalIlluminationWorldSettings::Deserialize(
+bool GISettings::Deserialize(
 	const YAML::Node& worldRoot,
 	std::string& outDiagnostic) noexcept
 {
@@ -182,14 +100,21 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 			outDiagnostic = "globalIllumination must be a map";
 			return false;
 		}
-		const std::string globalMode = giNode["mode"]
-			? giNode["mode"].as<std::string>()
-			: std::string("RealtimeAndBaked");
-		if (!TryParseGlobalIlluminationMode(globalMode, m_mode))
+		const YAML::Node globalModeNode = giNode["mode"];
+		if (!globalModeNode || !globalModeNode.IsScalar())
+		{
+			outDiagnostic = "globalIllumination.mode is required";
+			return false;
+		}
+		const std::string globalMode = globalModeNode.as<std::string>();
+		const auto parsedGlobalMode =
+			magic_enum::enum_cast<EGlobalIlluminationMode>(globalMode);
+		if (!parsedGlobalMode)
 		{
 			outDiagnostic = "globalIllumination.mode must be Realtime, RealtimeAndBaked, or BakedOnly";
 			return false;
 		}
+		m_mode = *parsedGlobalMode;
 		const YAML::Node probesNode = giNode["probes"];
 		if (!probesNode)
 		{
@@ -223,15 +148,23 @@ bool GlobalIlluminationWorldSettings::Deserialize(
 
 			GlobalIlluminationProbeBinding binding;
 			binding.m_asset.Deserialize(fileIdNode);
-			const std::string mode = bindingNode["mode"]
-				? bindingNode["mode"].as<std::string>()
-				: std::string("Blend");
-			if (!TryParseGlobalIlluminationProbeMode(mode, binding.m_mode))
+			const YAML::Node modeNode = bindingNode["mode"];
+			if (!modeNode || !modeNode.IsScalar())
+			{
+				outDiagnostic = "global-illumination probe binding '" + name +
+					"' mode is required";
+				return false;
+			}
+			const std::string mode = modeNode.as<std::string>();
+			const auto parsedProbeMode =
+				magic_enum::enum_cast<EGlobalIlluminationProbeMode>(mode);
+			if (!parsedProbeMode)
 			{
 				outDiagnostic = "global-illumination probe binding '" + name +
 					"' mode must be Blend or Additive";
 				return false;
 			}
+			binding.m_mode = *parsedProbeMode;
 			binding.m_initialWeight = bindingNode["initialWeight"]
 				? bindingNode["initialWeight"].as<float>()
 				: 0.0f;

@@ -1,6 +1,6 @@
 #include "Components/Tests/GlobalIlluminationLandscapeVisualTestComponent.h"
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
+#include "GlobalIllumination/GIProbesSampling.h"
 #include "Components/Tests/GlobalIlluminationLandscapeTestScene.h"
 #include "ECS/GlobalIlluminationECS.h"
 #include "ECS/LandscapeECS.h"
@@ -137,7 +137,7 @@ bool GlobalIlluminationLandscapeVisualTestComponent::
 	}
 
 	glm::vec3 irradiance{};
-	if (!SampleProbeVolumeIrradiance(
+	if (!SampleGIProbesIrradiance(
 			*state.m_data,
 			GlobalIlluminationLandscapeTestScene::GetReceiverEvidencePoint(),
 			glm::vec3(0.0f, 1.0f, 0.0f),

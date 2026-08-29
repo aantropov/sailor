@@ -68,10 +68,10 @@ message ProtocolRequest {
 		EditorStatsModeRequest set_editor_stats_mode = 64;
 		EditorRenderModeRequest set_editor_render_mode = 65;
 		Empty get_editor_render_mode = 66;
-		StartProbeVolumeBakeRequest start_probe_volume_bake = 67;
-		Empty get_probe_volume_bake_status = 68;
-		Empty cancel_probe_volume_bake = 69;
-		SetGlobalIlluminationSettingsRequest set_global_illumination_settings = 70;
+		StartGIProbesBakeRequest start_gi_probes_bake = 67;
+		Empty get_gi_probes_bake_status = 68;
+		Empty cancel_gi_probes_bake = 69;
+		SetGISettingsRequest set_gi_settings = 70;
 		Empty get_global_illumination_state = 71;
 	}
 
@@ -104,7 +104,7 @@ message ProtocolResponse {
 		ViewportToolStateResult viewport_tool_state_result = 21;
 		AnimatorStateResult animator_state_result = 22;
 		EditorRenderModeResult editor_render_mode_result = 23;
-		ProbeVolumeBakeStatusResult probe_volume_bake_status_result = 24;
+		GIProbesBakeStatusResult gi_probes_bake_status_result = 24;
 		GlobalIlluminationStateResult global_illumination_state_result = 25;
 	}
 
@@ -170,7 +170,7 @@ message EditorRenderModeResult {
 	EditorRenderMode mode = 1;
 }
 
-message ProbeVolumeBakeSettings {
+message GIProbesBakeSettings {
 	uint32 rays_per_probe = 1;
 	uint32 bounce_count = 2;
 	uint32 random_seed = 3;
@@ -185,12 +185,12 @@ message ProbeVolumeBakeSettings {
 	reserved 12;
 }
 
-message StartProbeVolumeBakeRequest {
+message StartGIProbesBakeRequest {
 	string world_file_id = 1;
 	string output_virtual_path = 2;
 	string state_name = 3;
 	string layout_source_file_id = 4;
-	ProbeVolumeBakeSettings settings = 5;
+	GIProbesBakeSettings settings = 5;
 	bool auto_bounds = 6;
 	Vector4 volume_min = 7;
 	Vector4 volume_max = 8;
@@ -199,8 +199,8 @@ message StartProbeVolumeBakeRequest {
 	optional uint32 thread_count = 11;
 }
 
-message ProbeVolumeBakeStatusResult {
-	ProbeVolumeBakeState state = 1;
+message GIProbesBakeStatusResult {
+	GIProbesBakeState state = 1;
 	float progress = 2;
 	uint32 completed_probes = 3;
 	uint32 total_probes = 4;
@@ -223,7 +223,7 @@ message GlobalIlluminationProbeBinding {
 	bool preload = 5;
 }
 
-message SetGlobalIlluminationSettingsRequest {
+message SetGISettingsRequest {
 	repeated GlobalIlluminationProbeBinding probes = 1;
 	optional GlobalIlluminationMode mode = 2;
 }
@@ -471,15 +471,15 @@ enum EditorRenderMode {
 	EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK = 12;
 }
 
-enum ProbeVolumeBakeState {
-	PROBE_VOLUME_BAKE_STATE_UNSPECIFIED = 0;
-	PROBE_VOLUME_BAKE_STATE_IDLE = 1;
-	PROBE_VOLUME_BAKE_STATE_PREPARING = 2;
-	PROBE_VOLUME_BAKE_STATE_BAKING = 3;
-	PROBE_VOLUME_BAKE_STATE_SAVING = 4;
-	PROBE_VOLUME_BAKE_STATE_SUCCEEDED = 5;
-	PROBE_VOLUME_BAKE_STATE_FAILED = 6;
-	PROBE_VOLUME_BAKE_STATE_CANCELLED = 7;
+enum GIProbesBakeState {
+	GI_PROBES_BAKE_STATE_UNSPECIFIED = 0;
+	GI_PROBES_BAKE_STATE_IDLE = 1;
+	GI_PROBES_BAKE_STATE_PREPARING = 2;
+	GI_PROBES_BAKE_STATE_BAKING = 3;
+	GI_PROBES_BAKE_STATE_SAVING = 4;
+	GI_PROBES_BAKE_STATE_SUCCEEDED = 5;
+	GI_PROBES_BAKE_STATE_FAILED = 6;
+	GI_PROBES_BAKE_STATE_CANCELLED = 7;
 }
 
 enum GlobalIlluminationProbeMode {

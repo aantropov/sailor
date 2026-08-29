@@ -365,19 +365,6 @@ namespace
 			status == Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion;
 	}
 
-	const char* CacheLoadStatusName(Workspace::EWorkspaceCacheLoadStatus status) noexcept
-	{
-		switch (status)
-		{
-		case Workspace::EWorkspaceCacheLoadStatus::Missing: return "Missing";
-		case Workspace::EWorkspaceCacheLoadStatus::Loaded: return "Loaded";
-		case Workspace::EWorkspaceCacheLoadStatus::StaleIdentity: return "StaleIdentity";
-		case Workspace::EWorkspaceCacheLoadStatus::Corrupt: return "Corrupt";
-		case Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion: return "UnsupportedVersion";
-		case Workspace::EWorkspaceCacheLoadStatus::IoFailure: return "IoFailure";
-		default: return "Unknown";
-		}
-	}
 }
 
 ShaderCache::ShaderCache() = default;
@@ -1230,7 +1217,7 @@ void ShaderCache::LoadCache()
 		m_lastLoadResult = std::move(loadResult);
 		SAILOR_LOG_ERROR(
 			"Shader cache reload status=%s: %s Read-only I/O quarantine remains active until a fully successful reload or ClearAll.",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -1245,7 +1232,7 @@ void ShaderCache::LoadCache()
 		m_lastLoadResult = std::move(loadResult);
 		SAILOR_LOG_ERROR(
 			"Shader cache load status=%s: %s Existing cache metadata and artifact directories were preserved.",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -1329,7 +1316,7 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 			"The shader cache and owned artifact directories were reset to an empty current envelope.");
 		SAILOR_LOG(
 			"Shader cache load status=%s: %s",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -1345,7 +1332,7 @@ void ShaderCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult lo
 		"The shader cache reset was incomplete: " + m_lastSaveDiagnostic);
 	SAILOR_LOG_ERROR(
 		"Shader cache load status=%s: %s",
-		CacheLoadStatusName(m_lastLoadResult.m_status),
+		std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 		m_lastLoadResult.m_diagnostic.c_str());
 }
 

@@ -72,7 +72,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     readonly AssetsService assetsService;
     readonly List<BindingDraft> bindings = [];
     readonly Observable<FileId> layoutSource = new(new FileId());
-    readonly ProbeVolumeBakeStatusGate bakeStatusGate = new();
+    readonly GIProbesBakeStatusGate bakeStatusGate = new();
     readonly IDispatcherTimer statusTimer;
 
     WorldFile? worldFile;
@@ -405,7 +405,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                     nameof(BindingDraft.Asset),
                     static value => value.Asset,
                     static (value, asset) => value.Asset = asset,
-                    typeof(ProbeVolumeFile))));
+                    typeof(GIProbesFile))));
 
             var mode = new Picker
             {
@@ -466,7 +466,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         {
             SetRuntimeStatus("Applying Global Illumination settings...", false);
             var descriptors = BuildBindingDescriptors();
-            if (!await engineService.SetGlobalIlluminationSettingsAsync(
+            if (!await engineService.SetGISettingsAsync(
                     selectedGlobalIlluminationMode,
                     descriptors))
             {
@@ -508,7 +508,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             LineBreakMode = LineBreakMode.WordWrap
         });
 
-        var defaultStateName = ProbeVolumeBakeOutputPolicy.FindAvailableStateName(
+        var defaultStateName = GIProbesBakeOutputPolicy.FindAvailableStateName(
             "Day",
             bindings.Select(binding => binding.Name),
             StateOutputExists);
@@ -523,7 +523,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 nameof(Observable<FileId>.Value),
                 static value => value.Value,
                 static (value, asset) => value.Value = asset,
-                typeof(ProbeVolumeFile))));
+                typeof(GIProbesFile))));
 
         bakedMode = new Picker
         {
@@ -544,7 +544,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             4));
         seedEntry = UIntEntry(0);
         subdivisionEntry = UIntEntry(
-            ProbeVolumeBakeSettings.MaximumSubdivisionLevel);
+            GIProbesBakeSettings.MaximumSubdivisionLevel);
         spacingEntry = FloatEntry(1.0f);
         normalBiasEntry = FloatEntry(0.05f);
         viewBiasEntry = FloatEntry(0.05f);
@@ -623,7 +623,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             var outputPath = outputPathEntry!.Text?.Trim() ?? string.Empty;
             if (string.IsNullOrEmpty(stateName) || string.IsNullOrEmpty(outputPath))
                 throw new InvalidOperationException("State name and output path are required.");
-            if (!ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+            if (!GIProbesBakeOutputPolicy.TryResolveWriteTarget(
                     assetsService.CurrentProjectRootPath,
                     outputPath,
                     overwrite!.IsChecked,
@@ -633,23 +633,23 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 throw new InvalidOperationException(outputError);
             }
 
-            var settings = new ProbeVolumeBakeSettings(
+            var settings = new GIProbesBakeSettings(
                 ReadUInt(
                     raysEntry!,
                     "Rays / probe",
                     positive: true,
-                    maximum: ProbeVolumeBakeSettings.MaximumRaysPerProbe),
+                    maximum: GIProbesBakeSettings.MaximumRaysPerProbe),
                 ReadUInt(
                     bouncesEntry!,
                     "Indirect bounces",
                     positive: true,
-                    maximum: ProbeVolumeBakeSettings.MaximumBounceCount),
+                    maximum: GIProbesBakeSettings.MaximumBounceCount),
                 ReadUInt(seedEntry!, "Random seed", positive: false),
                 ReadUInt(
                     subdivisionEntry!,
                     "Subdivision limit",
                     positive: false,
-                    maximum: ProbeVolumeBakeSettings.MaximumSubdivisionLevel),
+                    maximum: GIProbesBakeSettings.MaximumSubdivisionLevel),
                 ReadFloat(spacingEntry!, "Min probe spacing", positive: true),
                 ReadFloat(normalBiasEntry!, "Normal bias", positive: false),
                 ReadFloat(viewBiasEntry!, "View bias", positive: false),
@@ -657,7 +657,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 includeSky!.IsChecked,
                 includeEmissive!.IsChecked,
                 includeDirect!.IsChecked);
-            var request = new ProbeVolumeBakeRequest(
+            var request = new GIProbesBakeRequest(
                 worldService.CurrentWorldAsset.FileId,
                 outputPath,
                 stateName,
@@ -674,7 +674,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                     threadCountEntry!,
                     "Bake threads",
                     positive: true,
-                    maximum: ProbeVolumeBakeRequest.MaximumThreadCount));
+                    maximum: GIProbesBakeRequest.MaximumThreadCount));
 
             bakeUiOperationActive = true;
             bakeLaunchPending = true;
@@ -693,7 +693,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                     "The saved level is no longer the active world asset.");
 
             launchStage = "Starting the native bake controller";
-            if (!await engineService.StartProbeVolumeBakeAsync(request))
+            if (!await engineService.StartGIProbesBakeAsync(request))
                 throw new InvalidOperationException("The native bake controller rejected the request.");
             bakeLaunchPending = false;
             await PollStatusAsync();
@@ -712,7 +712,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
     {
         try
         {
-            await engineService.CancelProbeVolumeBakeAsync();
+            await engineService.CancelGIProbesBakeAsync();
         }
         catch (Exception exception)
         {
@@ -734,7 +734,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         polling = true;
         try
         {
-            var status = await engineService.GetProbeVolumeBakeStatusAsync();
+            var status = await engineService.GetGIProbesBakeStatusAsync();
             if (status is null)
                 return;
             if (bakeLaunchPending)
@@ -743,7 +743,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 return;
             var shouldComplete =
                 bakeUiOperationActive &&
-                status.State == ProbeVolumeBakeLifecycleState.Succeeded &&
+                status.State == GIProbesBakeLifecycleState.Succeeded &&
                 !handledSuccess;
             SetBakeRunning(status.IsRunning || shouldComplete);
             if (bakeProgress is not null)
@@ -758,7 +758,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                         (string.IsNullOrWhiteSpace(status.Diagnostic)
                             ? string.Empty
                             : $"{Environment.NewLine}{status.Diagnostic}"),
-                status.State == ProbeVolumeBakeLifecycleState.Failed);
+                status.State == GIProbesBakeLifecycleState.Failed);
             if (shouldComplete)
             {
                 handledSuccess = true;
@@ -790,7 +790,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
     }
 
-    async Task CompleteBakeAsync(ProbeVolumeBakeStatus status)
+    async Task CompleteBakeAsync(GIProbesBakeStatus status)
     {
         if (!await engineService.RequestAssetReloadAsync())
             throw new InvalidOperationException("The bake succeeded, but the asset registry reload failed.");
@@ -803,7 +803,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 "The baked .probes output directory could not be resolved.");
         await assetsService.ResolveFolderAsync(outputDirectory);
         var asset = assetsService.Files
-            .OfType<ProbeVolumeFile>()
+            .OfType<GIProbesFile>()
             .FirstOrDefault(candidate =>
                 candidate.Asset is not null &&
                 ProjectContentPathPolicy.IsSamePath(
@@ -812,7 +812,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         if (asset is null)
             throw new InvalidOperationException("The baked .probes file was not discovered as an asset.");
 
-        var metadata = ProbeVolumeBinaryMetadata.Read(asset.Asset);
+        var metadata = GIProbesBinaryMetadata.Read(asset.Asset);
         if (metadata.LayoutHash != status.LayoutHash ||
             metadata.TransportHash != status.TransportHash ||
             metadata.LightingHash != status.LightingHash)
@@ -848,7 +848,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
             existing.Preload = bakedPreload!.IsChecked;
 
             var targetIdentity = ToCompositionIdentity(metadata);
-            var activeStates = new List<ProbeVolumeBindingCompositionState>();
+            var activeStates = new List<GIProbesBindingCompositionState>();
             foreach (var binding in bindings)
             {
                 if (string.Equals(binding.Name, name, StringComparison.Ordinal))
@@ -862,15 +862,15 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
                 }
                 if (weight == 0.0f)
                     continue;
-                var boundAsset = ResolveProbeVolumeAsset(binding);
-                var boundMetadata = ProbeVolumeBinaryMetadata.Read(boundAsset.Asset);
-                activeStates.Add(new ProbeVolumeBindingCompositionState(
+                var boundAsset = ResolveGIProbesAsset(binding);
+                var boundMetadata = GIProbesBinaryMetadata.Read(boundAsset.Asset);
+                activeStates.Add(new GIProbesBindingCompositionState(
                     binding.Name,
                     weight,
                     ToCompositionIdentity(boundMetadata)));
             }
 
-            var deactivated = ProbeVolumeBakeBindingPolicy.FindIncompatibleActiveStates(
+            var deactivated = GIProbesBakeBindingPolicy.FindIncompatibleActiveStates(
                 name,
                 targetWeight,
                 targetIdentity,
@@ -936,16 +936,16 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         }
     }
 
-    static ProbeVolumeCompositionIdentity ToCompositionIdentity(
-        ProbeVolumeBinaryMetadata metadata) => new(
+    static GIProbesCompositionIdentity ToCompositionIdentity(
+        GIProbesBinaryMetadata metadata) => new(
             metadata.LayoutHash,
             metadata.RepresentationHash,
             metadata.TransportHash);
 
-    ProbeVolumeFile ResolveProbeVolumeAsset(BindingDraft binding)
+    GIProbesFile ResolveGIProbesAsset(BindingDraft binding)
     {
         var asset = assetsService.Files
-            .OfType<ProbeVolumeFile>()
+            .OfType<GIProbesFile>()
             .FirstOrDefault(candidate => string.Equals(
                 candidate.FileId?.Value,
                 binding.Asset?.Value,
@@ -986,7 +986,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         {
             selectedGlobalIlluminationMode = previousMode;
             RestoreBindingDrafts(previousBindings);
-            if (!await engineService.SetGlobalIlluminationSettingsAsync(
+            if (!await engineService.SetGISettingsAsync(
                     previousMode,
                     BuildBindingDescriptors()))
             {
@@ -1018,24 +1018,24 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
         const int ActivationTimeoutSeconds = 30;
         var deadline = DateTime.UtcNow +
             TimeSpan.FromSeconds(ActivationTimeoutSeconds);
-        ProbeVolumeBakeActivationAssessment? lastAssessment = null;
+        GIProbesBakeActivationAssessment? lastAssessment = null;
         while (DateTime.UtcNow < deadline)
         {
             var current = await engineService.GetGlobalIlluminationStateAsync();
-            lastAssessment = ProbeVolumeBakeBindingPolicy.AssessActivation(
+            lastAssessment = GIProbesBakeBindingPolicy.AssessActivation(
                 targetName,
                 targetAssetFileId,
                 activationRequired: true,
                 baseline,
                 current);
-            if (lastAssessment.State == ProbeVolumeBakeActivationState.Succeeded)
+            if (lastAssessment.State == GIProbesBakeActivationState.Succeeded)
             {
                 await RefreshRuntimeStateAsync(
                     "Reading verified runtime state",
                     "Baked state active");
                 return;
             }
-            if (lastAssessment.State == ProbeVolumeBakeActivationState.Rejected)
+            if (lastAssessment.State == GIProbesBakeActivationState.Rejected)
                 throw new InvalidOperationException(lastAssessment.Diagnostic);
             await Task.Delay(100);
         }
@@ -1124,7 +1124,7 @@ sealed partial class GlobalIlluminationEditorPanel : VerticalStackLayout
 
     bool StateOutputExists(string state)
     {
-        if (!ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+        if (!GIProbesBakeOutputPolicy.TryResolveWriteTarget(
                 assetsService.CurrentProjectRootPath,
                 DefaultOutputPath(state),
                 overwrite: true,

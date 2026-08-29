@@ -1,4 +1,4 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeComposition.h"
+#include "GlobalIllumination/GIProbesComposition.h"
 
 #include <bit>
 #include <cmath>
@@ -7,24 +7,24 @@ using namespace Sailor;
 
 namespace
 {
-	ProbeVolumeCompositionPlan FailPlan(
-		EProbeVolumeCompositionStatus status,
+	GIProbesCompositionPlan FailPlan(
+		EGIProbesCompositionStatus status,
 		std::string diagnostic)
 	{
-		ProbeVolumeCompositionPlan result;
+		GIProbesCompositionPlan result;
 		result.m_status = status;
 		result.m_diagnostic = std::move(diagnostic);
 		return result;
 	}
 
 	bool ValidateTrustedAssetMetadata(
-		const ProbeVolumeData& data,
+		const GIProbesData& data,
 		std::string& outDiagnostic) noexcept
 	{
 		outDiagnostic.clear();
-		if (data.m_formatVersion != ProbeVolumeFormatVersion ||
-			data.m_shOrder != ProbeVolumeSphericalHarmonicsOrder ||
-			data.m_compression != EProbeVolumeCompression::Float32)
+		if (data.m_formatVersion != GIProbesFormatVersion ||
+			data.m_shOrder != GIProbeSphericalHarmonicsOrder ||
+			data.m_compression != EGIProbesCompression::Float32)
 		{
 			outDiagnostic = "probe representation metadata is unsupported";
 			return false;
@@ -69,33 +69,26 @@ namespace
 	}
 }
 
-ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
-	const TVector<ProbeVolumeCompositionInput>& inputs,
+GIProbesCompositionPlan GIProbesComposer::BuildPlan(
+	const TVector<GIProbesCompositionInput>& inputs,
 	uint32_t maxStatesPerSnapshot,
-	EProbeVolumeCompositionValidation validation) noexcept
+	EGIProbesCompositionValidation validation) noexcept
 {
 	try
 	{
-		TVector<const ProbeVolumeCompositionInput*> active;
+		TVector<const GIProbesCompositionInput*> active;
 		active.Reserve(inputs.Num());
-		for (const ProbeVolumeCompositionInput& input : inputs)
+		for (const GIProbesCompositionInput& input : inputs)
 		{
 			if (!std::isfinite(input.m_weight) || input.m_weight < 0.0f)
 			{
 				return FailPlan(
-					EProbeVolumeCompositionStatus::InvalidInput,
+					EGIProbesCompositionStatus::InvalidInput,
 					"probe state '" + input.m_name + "' has an invalid weight");
 			}
 			if (input.m_weight <= 0.0f)
 			{
 				continue;
-			}
-			if (input.m_mode != EGlobalIlluminationProbeMode::Blend &&
-				input.m_mode != EGlobalIlluminationProbeMode::Additive)
-			{
-				return FailPlan(
-					EProbeVolumeCompositionStatus::InvalidInput,
-					"probe state '" + input.m_name + "' has an invalid mode");
 			}
 			active.Add(&input);
 		}
@@ -103,23 +96,23 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		if (active.IsEmpty())
 		{
 			return FailPlan(
-				EProbeVolumeCompositionStatus::Disabled,
+				EGIProbesCompositionStatus::Disabled,
 				"no probe states have a positive weight");
 		}
 		if (maxStatesPerSnapshot == 0u || active.Num() > maxStatesPerSnapshot)
 		{
 			return FailPlan(
-				EProbeVolumeCompositionStatus::BudgetExceeded,
+				EGIProbesCompositionStatus::BudgetExceeded,
 				"the requested probe-state mixture exceeds the active quality budget");
 		}
 
-		const ProbeVolumeCompositionInput* reference = nullptr;
-		for (const ProbeVolumeCompositionInput* input : active)
+		const GIProbesCompositionInput* reference = nullptr;
+		for (const GIProbesCompositionInput* input : active)
 		{
 			if (!input->m_data)
 			{
 				return FailPlan(
-					EProbeVolumeCompositionStatus::MissingData,
+					EGIProbesCompositionStatus::MissingData,
 					"probe state '" + input->m_name + "' is not resident");
 			}
 			if (!reference ||
@@ -131,25 +124,25 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		}
 
 		std::string validationDiagnostic;
-		const auto validate = [&](const ProbeVolumeData& data)
+		const auto validate = [&](const GIProbesData& data)
 		{
-			return validation == EProbeVolumeCompositionValidation::Full
+			return validation == EGIProbesCompositionValidation::Full
 				? data.Validate(validationDiagnostic)
 				: ValidateTrustedAssetMetadata(data, validationDiagnostic);
 		};
 		if (!validate(*reference->m_data))
 		{
 			return FailPlan(
-				EProbeVolumeCompositionStatus::InvalidInput,
+				EGIProbesCompositionStatus::InvalidInput,
 				"probe state '" + reference->m_name + "' is invalid: " +
 				validationDiagnostic);
 		}
-		for (const ProbeVolumeCompositionInput* input : active)
+		for (const GIProbesCompositionInput* input : active)
 		{
 			if (input != reference && !validate(*input->m_data))
 			{
 				return FailPlan(
-					EProbeVolumeCompositionStatus::InvalidInput,
+					EGIProbesCompositionStatus::InvalidInput,
 					"probe state '" + input->m_name + "' is invalid: " +
 					validationDiagnostic);
 			}
@@ -159,7 +152,7 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 					validationDiagnostic))
 			{
 				return FailPlan(
-					EProbeVolumeCompositionStatus::Incompatible,
+					EGIProbesCompositionStatus::Incompatible,
 					"probe state '" + input->m_name +
 					"' is incompatible with '" + reference->m_name +
 					"': " + validationDiagnostic);
@@ -167,7 +160,7 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		}
 
 		float blendWeightSum = 0.0f;
-		for (const ProbeVolumeCompositionInput* input : active)
+		for (const GIProbesCompositionInput* input : active)
 		{
 			if (input->m_mode == EGlobalIlluminationProbeMode::Blend)
 			{
@@ -177,11 +170,11 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		if (!std::isfinite(blendWeightSum))
 		{
 			return FailPlan(
-				EProbeVolumeCompositionStatus::InvalidInput,
+				EGIProbesCompositionStatus::InvalidInput,
 				"the sum of Blend probe-state weights is not finite");
 		}
 
-		ProbeVolumeCompositionPlan result;
+		GIProbesCompositionPlan result;
 		result.m_layout = reference->m_data;
 		result.m_states.Reserve(active.Num());
 		result.m_names.Reserve(active.Num());
@@ -189,7 +182,7 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		result.m_effectiveWeights.Reserve(active.Num());
 		result.m_modes.Reserve(active.Num());
 		uint64_t lightingHash = 1469598103934665603ull;
-		for (const ProbeVolumeCompositionInput* input : active)
+		for (const GIProbesCompositionInput* input : active)
 		{
 			const float effectiveWeight =
 				input->m_mode == EGlobalIlluminationProbeMode::Blend
@@ -212,32 +205,32 @@ ProbeVolumeCompositionPlan ProbeVolumeComposer::BuildPlan(
 		result.m_diagnostic =
 			"Prepared Global Illumination ECS snapshot from " +
 			std::to_string(active.Num()) + " baked state(s).";
-		result.m_status = EProbeVolumeCompositionStatus::Success;
+		result.m_status = EGIProbesCompositionStatus::Success;
 		return result;
 	}
 	catch (const std::exception& exception)
 	{
 		return FailPlan(
-			EProbeVolumeCompositionStatus::InvalidInput,
+			EGIProbesCompositionStatus::InvalidInput,
 			std::string("cannot prepare probe states: ") + exception.what());
 	}
 	catch (...)
 	{
 		return FailPlan(
-			EProbeVolumeCompositionStatus::InvalidInput,
+			EGIProbesCompositionStatus::InvalidInput,
 			"cannot prepare probe states: unknown failure");
 	}
 }
 
-ProbeVolumeCompositionResult ProbeVolumeComposer::Compose(
-	const TVector<ProbeVolumeCompositionInput>& inputs,
+GIProbesCompositionResult GIProbesComposer::Compose(
+	const TVector<GIProbesCompositionInput>& inputs,
 	uint32_t maxStatesPerSnapshot) noexcept
 {
-	ProbeVolumeCompositionPlan plan = BuildPlan(
+	GIProbesCompositionPlan plan = BuildPlan(
 		inputs,
 		maxStatesPerSnapshot,
-		EProbeVolumeCompositionValidation::Full);
-	ProbeVolumeCompositionResult result;
+		EGIProbesCompositionValidation::Full);
+	GIProbesCompositionResult result;
 	result.m_status = plan.m_status;
 	result.m_diagnostic = plan.m_diagnostic;
 	if (!plan.IsSuccess())
@@ -247,9 +240,9 @@ ProbeVolumeCompositionResult ProbeVolumeComposer::Compose(
 
 	try
 	{
-		ProbeVolumeDataPtr composed = ProbeVolumeDataPtr::Make();
+		GIProbesDataPtr composed = GIProbesDataPtr::Make();
 		*composed = *plan.m_layout;
-		for (ProbeVolumeSample& probe : composed->m_probes)
+		for (GIProbe& probe : composed->m_probes)
 		{
 			for (glm::vec3& coefficient : probe.m_irradiance)
 			{
@@ -261,14 +254,14 @@ ProbeVolumeCompositionResult ProbeVolumeComposer::Compose(
 			stateIndex < plan.m_states.Num();
 			++stateIndex)
 		{
-			const ProbeVolumeData& state = *plan.m_states[stateIndex];
+			const GIProbesData& state = *plan.m_states[stateIndex];
 			const float effectiveWeight = plan.m_effectiveWeights[stateIndex];
 			for (size_t probeIndex = 0u;
 				probeIndex < composed->m_probes.Num();
 				++probeIndex)
 			{
 				for (uint32_t coefficientIndex = 0u;
-					coefficientIndex < ProbeVolumeSphericalHarmonicsCoefficientCount;
+					coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
 					++coefficientIndex)
 				{
 					composed->m_probes[probeIndex].m_irradiance[coefficientIndex] +=
@@ -283,7 +276,7 @@ ProbeVolumeCompositionResult ProbeVolumeComposer::Compose(
 		composed->m_diagnostics.m_message =
 			"Composed by Global Illumination ECS from " +
 			std::to_string(plan.m_states.Num()) + " baked state(s).";
-		result.m_status = EProbeVolumeCompositionStatus::Success;
+		result.m_status = EGIProbesCompositionStatus::Success;
 		result.m_diagnostic = composed->m_diagnostics.m_message;
 		result.m_data = std::move(composed);
 		result.m_names = std::move(plan.m_names);
@@ -293,14 +286,14 @@ ProbeVolumeCompositionResult ProbeVolumeComposer::Compose(
 	}
 	catch (const std::exception& exception)
 	{
-		result.m_status = EProbeVolumeCompositionStatus::InvalidInput;
+		result.m_status = EGIProbesCompositionStatus::InvalidInput;
 		result.m_diagnostic =
 			std::string("cannot compose probe states: ") + exception.what();
 		return result;
 	}
 	catch (...)
 	{
-		result.m_status = EProbeVolumeCompositionStatus::InvalidInput;
+		result.m_status = EGIProbesCompositionStatus::InvalidInput;
 		result.m_diagnostic =
 			"cannot compose probe states: unknown failure";
 		return result;

@@ -5,25 +5,25 @@
 
 namespace Sailor
 {
-	class ProbeVolumeAssetInfo final : public AssetInfo
+	class GIProbesAssetInfo final : public AssetInfo
 	{
-		SAILOR_REFLECTABLE(ProbeVolumeAssetInfo)
+		SAILOR_REFLECTABLE(GIProbesAssetInfo)
 
 	public:
-		SAILOR_API ~ProbeVolumeAssetInfo() override = default;
+		SAILOR_API ~GIProbesAssetInfo() override = default;
 		SAILOR_API YAML::Node Serialize() const override;
 		SAILOR_API void Deserialize(const YAML::Node& inData) override;
 		SAILOR_API IAssetInfoHandler* GetHandler() override;
 	};
 
-	using ProbeVolumeAssetInfoPtr = ProbeVolumeAssetInfo*;
+	using GIProbesAssetInfoPtr = GIProbesAssetInfo*;
 
-	class ProbeVolumeAssetInfoHandler final :
-		public TSubmodule<ProbeVolumeAssetInfoHandler>,
+	class GIProbesAssetInfoHandler final :
+		public TSubmodule<GIProbesAssetInfoHandler>,
 		public IAssetInfoHandler
 	{
 	public:
-		SAILOR_API explicit ProbeVolumeAssetInfoHandler(AssetRegistry* assetRegistry);
+		SAILOR_API explicit GIProbesAssetInfoHandler(AssetRegistry* assetRegistry);
 		SAILOR_API void GetDefaultMeta(YAML::Node& outDefaultYaml) const override;
 		SAILOR_API AssetInfoPtr CreateAssetInfo() const override;
 		SAILOR_API IAssetFactory* GetFactory() override;
@@ -31,7 +31,7 @@ namespace Sailor
 }
 
 REFL_AUTO(
-	type(Sailor::ProbeVolumeAssetInfo, bases<Sailor::AssetInfo>),
+	type(Sailor::GIProbesAssetInfo, bases<Sailor::AssetInfo>),
 	field(m_fileId),
 	field(m_assetFilename)
 )

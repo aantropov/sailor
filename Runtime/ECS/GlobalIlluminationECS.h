@@ -1,10 +1,10 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeComposition.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeImporter.h"
+#include "GlobalIllumination/GIProbesComposition.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "Core/SpinLock.h"
 #include "ECS/ECS.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "RHI/GlobalIllumination.h"
 
 #include <atomic>
@@ -54,12 +54,12 @@ namespace Sailor
 
 		SAILOR_API uint32_t GetMaxProbeStatesPerSnapshot() const noexcept;
 		SAILOR_API bool IsEnabled() const noexcept;
-		SAILOR_API const GlobalIlluminationWorldSettings& GetWorldSettings() const noexcept
+		SAILOR_API const GISettings& GetWorldSettings() const noexcept
 		{
 			return m_worldSettings;
 		}
 		SAILOR_API bool ApplyWorldSettings(
-			const GlobalIlluminationWorldSettings& settings,
+			const GISettings& settings,
 			std::string& outDiagnostic);
 		SAILOR_API bool SetProbeWeight(
 			const std::string& name,
@@ -99,8 +99,8 @@ namespace Sailor
 				EGlobalIlluminationProbeMode::Blend;
 			float m_weight = 0.0f;
 			bool m_bPreload = false;
-			ProbeVolumeAssetPtr m_asset{};
-			Tasks::TaskPtr<ProbeVolumeAssetPtr> m_loadTask{};
+			GIProbesAssetPtr m_asset{};
+			Tasks::TaskPtr<GIProbesAssetPtr> m_loadTask{};
 			bool m_bRuntimeRetained = false;
 			EGlobalIlluminationProbeResidency m_residency =
 				EGlobalIlluminationProbeResidency::Unloaded;
@@ -122,7 +122,7 @@ namespace Sailor
 		void ClearActiveSnapshot();
 
 		TMap<std::string, RuntimeBinding> m_bindings{};
-		GlobalIlluminationWorldSettings m_worldSettings{};
+		GISettings m_worldSettings{};
 		mutable SpinLock m_snapshotLock;
 		GlobalIlluminationSnapshotPtr m_activeSnapshot{};
 		std::string m_diagnostic{};

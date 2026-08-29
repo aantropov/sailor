@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "GlobalIllumination/GIProbesData.h"
 #include "Core/Defines.h"
 #include "Math/Bounds.h"
 
@@ -10,9 +10,9 @@
 
 namespace Sailor
 {
-	inline constexpr uint32_t ProbeVolumeMaxBakeThreadCount = 64u;
+	inline constexpr uint32_t GIProbesMaxBakeThreadCount = 64u;
 
-	struct SAILOR_SHARED_API ProbeVolumeBakeRaySample final
+	struct SAILOR_SHARED_API GIProbeBakeRaySample final
 	{
 		glm::vec3 m_radiance{};
 		float m_distance = 0.0f;
@@ -20,10 +20,10 @@ namespace Sailor
 		bool m_bBackFace = false;
 	};
 
-	class SAILOR_SHARED_API IProbeVolumeBakeRaySampler
+	class SAILOR_SHARED_API IGIProbeBakeRaySampler
 	{
 	public:
-		virtual ~IProbeVolumeBakeRaySampler() = default;
+		virtual ~IGIProbeBakeRaySampler() = default;
 		// Bake may call Sample concurrently when the request uses more than one
 		// thread. Implementations must treat their prepared scene as immutable.
 		virtual bool Sample(
@@ -31,14 +31,14 @@ namespace Sailor
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const = 0;
 		virtual bool SampleVisibility(
 			const glm::vec3& origin,
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const
 		{
 			return Sample(
@@ -51,7 +51,7 @@ namespace Sailor
 		}
 	};
 
-	struct SAILOR_SHARED_API ProbeVolumeBakeProgress final
+	struct SAILOR_SHARED_API GIProbesBakeProgress final
 	{
 		uint32_t m_completedProbes = 0u;
 		uint32_t m_totalProbes = 0u;
@@ -59,22 +59,22 @@ namespace Sailor
 		std::string m_stage{};
 	};
 
-	struct SAILOR_SHARED_API ProbeVolumeBakeRequest final
+	struct SAILOR_SHARED_API GIProbesBakeRequest final
 	{
 		std::string m_stateName{};
-		std::string m_bakerVersion{ ProbeVolumeCurrentBakerVersion };
+		std::string m_bakerVersion{ GIProbesCurrentBakerVersion };
 		glm::vec3 m_volumeMin{};
 		glm::vec3 m_volumeMax{};
-		ProbeVolumeBakeSettings m_settings{};
+		GIProbesBakeSettings m_settings{};
 		TVector<Math::AABB> m_sceneGeometryBounds{};
 		uint64_t m_sourceWorldHash = 0u;
 		uint32_t m_threadCount = 1u;
-		const ProbeVolumeData* m_layoutSource = nullptr;
+		const GIProbesData* m_layoutSource = nullptr;
 		const std::atomic<bool>* m_cancel = nullptr;
-		std::function<void(const ProbeVolumeBakeProgress&)> m_progress{};
+		std::function<void(const GIProbesBakeProgress&)> m_progress{};
 	};
 
-	enum class EProbeVolumeBakeStatus : uint8_t
+	enum class EGIProbesBakeStatus : uint8_t
 	{
 		Success = 0u,
 		InvalidRequest,
@@ -83,24 +83,24 @@ namespace Sailor
 		InvalidResult
 	};
 
-	struct SAILOR_SHARED_API ProbeVolumeBakeResult final
+	struct SAILOR_SHARED_API GIProbesBakeResult final
 	{
-		EProbeVolumeBakeStatus m_status =
-			EProbeVolumeBakeStatus::InvalidRequest;
-		ProbeVolumeDataPtr m_data{};
+		EGIProbesBakeStatus m_status =
+			EGIProbesBakeStatus::InvalidRequest;
+		GIProbesDataPtr m_data{};
 		std::string m_diagnostic{};
 
 		bool IsSuccess() const noexcept
 		{
-			return m_status == EProbeVolumeBakeStatus::Success && m_data;
+			return m_status == EGIProbesBakeStatus::Success && m_data;
 		}
 	};
 
-	class SAILOR_SHARED_API ProbeVolumeBaker final
+	class SAILOR_SHARED_API GIProbesBaker final
 	{
 	public:
-		static ProbeVolumeBakeResult Bake(
-			const ProbeVolumeBakeRequest& request,
-			const IProbeVolumeBakeRaySampler& sampler) noexcept;
+		static GIProbesBakeResult Bake(
+			const GIProbesBakeRequest& request,
+			const IGIProbeBakeRaySampler& sampler) noexcept;
 	};
 }

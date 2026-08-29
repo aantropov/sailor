@@ -2,6 +2,7 @@ name: EmptyWorldStartupShutdown
 prefabs:
   - gameObjects:
       - name: EmptyWorldStartupShutdown
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -32,6 +33,7 @@ prefabs:
           instanceId: 71FF0747009317C8_D90C929A09C1F02781C7
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 0
           - 130
@@ -61,6 +63,7 @@ prefabs:
           instanceId: 93F034F9784C5265_1C686F709829826082C8
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 300

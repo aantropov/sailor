@@ -1,5 +1,6 @@
 name: GlobalIlluminationDayEveningNight
 globalIllumination:
+  mode: RealtimeAndBaked
   probes:
     Day:
       asset:
@@ -28,6 +29,7 @@ globalIllumination:
 prefabs:
   - gameObjects:
       - name: GlobalIlluminationDayEveningNight
+        mobilityType: Stationary
         position: [0, 0, 0, 1]
         rotation: [0, 0, 0, 1]
         scale: [1, 1, 1, 1]

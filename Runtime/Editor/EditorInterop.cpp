@@ -572,8 +572,8 @@ bool App::PreviewEditorAudioAsset(const char* strFileId)
 		});
 }
 
-bool App::StartEditorProbeVolumeBake(
-	const EditorProbeVolumeBakeRequest& request,
+bool App::StartEditorGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
 	std::string& outDiagnostic)
 {
 	return ExecuteOnEngineMainThread<bool>(
@@ -586,11 +586,11 @@ bool App::StartEditorProbeVolumeBake(
 				outDiagnostic = "the Editor submodule is unavailable";
 				return false;
 			}
-			return editor->StartProbeVolumeBake(request, outDiagnostic);
+			return editor->StartGIProbesBake(request, outDiagnostic);
 		});
 }
 
-bool App::CancelEditorProbeVolumeBake(std::string& outDiagnostic)
+bool App::CancelEditorGIProbesBake(std::string& outDiagnostic)
 {
 	auto* editor = GetSubmodule<Editor>();
 	if (!editor)
@@ -598,11 +598,11 @@ bool App::CancelEditorProbeVolumeBake(std::string& outDiagnostic)
 		outDiagnostic = "the Editor submodule is unavailable";
 		return false;
 	}
-	return editor->CancelProbeVolumeBake(outDiagnostic);
+	return editor->CancelGIProbesBake(outDiagnostic);
 }
 
-bool App::GetEditorProbeVolumeBakeStatus(
-	EditorProbeVolumeBakeStatus& outStatus)
+bool App::GetEditorGIProbesBakeStatus(
+	EditorGIProbesBakeStatus& outStatus)
 {
 	const auto* editor = GetSubmodule<Editor>();
 	if (!editor)
@@ -610,12 +610,12 @@ bool App::GetEditorProbeVolumeBakeStatus(
 		outStatus = {};
 		return false;
 	}
-	outStatus = editor->GetProbeVolumeBakeStatus();
+	outStatus = editor->GetGIProbesBakeStatus();
 	return true;
 }
 
-bool App::SetEditorGlobalIlluminationSettings(
-	GlobalIlluminationWorldSettings settings,
+bool App::SetEditorGISettings(
+	GISettings settings,
 	std::string& outDiagnostic)
 {
 	return ExecuteOnEngineMainThread<bool>(
@@ -629,7 +629,7 @@ bool App::SetEditorGlobalIlluminationSettings(
 				outDiagnostic = "the current Editor world is unavailable";
 				return false;
 			}
-			return world->SetGlobalIlluminationSettings(
+			return world->SetGISettings(
 				std::move(settings),
 				outDiagnostic);
 		});

@@ -2,6 +2,7 @@ name: PointShadow
 prefabs:
   - gameObjects:
       - name: PointShadow
+        mobilityType: Stationary
         position: [0, 0, 0, 1]
         rotation: [0, 0, 0, 1]
         scale: [1, 1, 1, 1]

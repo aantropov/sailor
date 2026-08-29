@@ -77,8 +77,10 @@ YAML::Node Prefab::ReflectedGameObject::Serialize() const
 void Prefab::ReflectedGameObject::Deserialize(const YAML::Node& inData)
 {
 	DESERIALIZE_PROPERTY(inData, m_name);
-	m_mobilityType = EMobilityType::Stationary;
-	DESERIALIZE_PROPERTY(inData, m_mobilityType);
+	m_bHasMobilityType = Sailor::Deserialize(
+		inData,
+		"mobilityType",
+		m_mobilityType);
 	DESERIALIZE_PROPERTY(inData, m_position);
 	DESERIALIZE_PROPERTY(inData, m_rotation);
 	DESERIALIZE_PROPERTY(inData, m_scale);
@@ -290,18 +292,17 @@ bool Prefab::ValidateForInstantiation(std::string& outDiagnostic) const
 				" has no parentIndex";
 			return false;
 		}
+		if (!gameObject.m_bHasMobilityType)
+		{
+			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
+				" has no mobilityType";
+			return false;
+		}
 
 		if (!gameObject.m_instanceId.IsGameObjectId())
 		{
 			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
 				" has an invalid instanceId";
-			return false;
-		}
-
-		if (!IsValidMobilityType(gameObject.m_mobilityType))
-		{
-			outDiagnostic = "game object " + std::to_string(gameObjectIndex) +
-				" has an invalid mobility type";
 			return false;
 		}
 

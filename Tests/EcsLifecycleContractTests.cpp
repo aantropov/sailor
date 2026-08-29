@@ -1322,19 +1322,13 @@ namespace
 			"prefab instantiation must restore GameObject mobility without component-owned state");
 
 		constexpr uint32_t noParent = static_cast<uint32_t>(-1);
-		YAML::Node legacyNode = MakePrefabNode({ noParent, 0 });
-		legacyNode["gameObjects"][0].remove("mobilityType");
-		legacyNode["gameObjects"][1].remove("mobilityType");
-		PrefabPtr legacyPrefab = DeserializePrefab(world, legacyNode);
+		YAML::Node missingMobility = MakePrefabNode({ noParent, 0 });
+		missingMobility["gameObjects"][0].remove("mobilityType");
+		PrefabPtr incompletePrefab = DeserializePrefab(world, missingMobility);
 		std::string diagnostic;
-		Require(legacyPrefab->ValidateForInstantiation(diagnostic),
-			"legacy prefab YAML without mobility must remain valid: " + diagnostic);
-		GameObjectPtr legacyRoot = world.Instantiate(legacyPrefab);
-		Require(legacyRoot &&
-			legacyRoot->GetMobilityType() == EMobilityType::Stationary &&
-			legacyRoot->GetChildren()[0]->GetMobilityType() ==
-				EMobilityType::Stationary,
-			"legacy prefab YAML must default every GameObject to Stationary");
+		Require(!incompletePrefab->ValidateForInstantiation(diagnostic) &&
+			diagnostic.find("mobilityType") != std::string::npos,
+			"prefab YAML must provide mobilityType for every GameObject");
 
 		YAML::Node invalidHierarchy = MakePrefabNode({ noParent, 0 });
 		invalidHierarchy["gameObjects"][0]["mobilityType"] = "Dynamic";

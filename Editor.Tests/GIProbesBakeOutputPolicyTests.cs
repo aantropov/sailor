@@ -3,7 +3,7 @@ using SailorEditor.Services;
 
 namespace SailorEditor.Tests;
 
-public sealed class ProbeVolumeBakeOutputPolicyTests
+public sealed class GIProbesBakeOutputPolicyTests
 {
     [Fact]
     public void AvailableStateName_SkipsBoundStatesAndExistingOutputs()
@@ -13,7 +13,7 @@ public sealed class ProbeVolumeBakeOutputPolicyTests
             "Day2"
         };
 
-        var stateName = ProbeVolumeBakeOutputPolicy.FindAvailableStateName(
+        var stateName = GIProbesBakeOutputPolicy.FindAvailableStateName(
             "Day",
             ["Day"],
             existingOutputs.Contains);
@@ -29,7 +29,7 @@ public sealed class ProbeVolumeBakeOutputPolicyTests
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllText(outputPath, "existing bake");
 
-        var resolved = ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+        var resolved = GIProbesBakeOutputPolicy.TryResolveWriteTarget(
             content.Path,
             "Lighting/Day.probes",
             overwrite: false,
@@ -50,7 +50,7 @@ public sealed class ProbeVolumeBakeOutputPolicyTests
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
         File.WriteAllText(outputPath, "existing bake");
 
-        var resolved = ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+        var resolved = GIProbesBakeOutputPolicy.TryResolveWriteTarget(
             content.Path,
             "Lighting/Day.probes",
             overwrite: true,
@@ -68,7 +68,7 @@ public sealed class ProbeVolumeBakeOutputPolicyTests
     {
         using var content = TemporaryContentRoot.Create();
 
-        var resolved = ProbeVolumeBakeOutputPolicy.TryResolveWriteTarget(
+        var resolved = GIProbesBakeOutputPolicy.TryResolveWriteTarget(
             content.Path,
             output,
             overwrite: false,

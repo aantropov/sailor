@@ -18,7 +18,7 @@ legacy migrations, backward-compatibility paths, or version increments unless
 explicitly requested.
 
 Do not commit generated `.probes` files or their `.probes.asset` sidecars. Tests
-must generate any probe-volume payloads they need in a temporary location and
+must generate any GI probes payloads they need in a temporary location and
 must not depend on tracked `.probes` fixtures.
 
 Do not add tests that verify an implementation by searching raw source text for

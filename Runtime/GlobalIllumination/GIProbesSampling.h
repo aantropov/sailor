@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "GlobalIllumination/GIProbesData.h"
 
 #include <array>
 #include <cstdint>
@@ -8,7 +8,7 @@
 
 namespace Sailor
 {
-	struct SAILOR_SHARED_API ProbeVolumeSampleDebugInfo final
+	struct SAILOR_SHARED_API GIProbeDebugInfo final
 	{
 		uint32_t m_brickIndex = (std::numeric_limits<uint32_t>::max)();
 		std::array<uint32_t, 8u> m_probeIndices{};
@@ -18,13 +18,13 @@ namespace Sailor
 
 	SAILOR_SHARED_API glm::vec3 EvaluateProbeIrradianceSH(
 		const std::array<glm::vec3,
-			ProbeVolumeSphericalHarmonicsCoefficientCount>& coefficients,
+			GIProbeSphericalHarmonicsCoefficientCount>& coefficients,
 		const glm::vec3& normal) noexcept;
 
-	SAILOR_SHARED_API bool SampleProbeVolumeIrradiance(
-		const ProbeVolumeData& data,
+	SAILOR_SHARED_API bool SampleGIProbesIrradiance(
+		const GIProbesData& data,
 		const glm::vec3& worldPosition,
 		const glm::vec3& worldNormal,
 		glm::vec3& outIrradiance,
-		ProbeVolumeSampleDebugInfo* outDebugInfo = nullptr) noexcept;
+		GIProbeDebugInfo* outDebugInfo = nullptr) noexcept;
 }

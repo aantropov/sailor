@@ -2,6 +2,7 @@ name: PhysicsFrictionRamps
 prefabs:
   - gameObjects:
       - name: Camera
+        mobilityType: Stationary
         position:
           - 200
           - 180
@@ -31,6 +32,7 @@ prefabs:
           instanceId: A1550000000000000000000000000001_A1550000000000000001
   - gameObjects:
       - name: Sun
+        mobilityType: Stationary
         position:
           - 0
           - 250
@@ -63,6 +65,7 @@ prefabs:
           instanceId: A1550000000000000000000000000002_A1550000000000000002
   - gameObjects:
       - name: StaticGround
+        mobilityType: Stationary
         position:
           - 0
           - -10
@@ -112,6 +115,7 @@ prefabs:
           instanceId: A1550000000000000000000000000005_A1550000000000000003
   - gameObjects:
       - name: Ramp_Friction_000
+        mobilityType: Stationary
         position:
           - 0
           - 40
@@ -161,6 +165,7 @@ prefabs:
           instanceId: A1550000000000000000000000000008_A1550000000000000004
   - gameObjects:
       - name: Slider_Friction_000
+        mobilityType: Stationary
         position:
           - -45
           - 80
@@ -211,6 +216,7 @@ prefabs:
           instanceId: A155000000000000000000000000000B_A1550000000000000005
   - gameObjects:
       - name: Ramp_Friction_025
+        mobilityType: Stationary
         position:
           - 0
           - 40
@@ -260,6 +266,7 @@ prefabs:
           instanceId: A155000000000000000000000000000E_A1550000000000000006
   - gameObjects:
       - name: Slider_Friction_025
+        mobilityType: Stationary
         position:
           - -45
           - 80
@@ -310,6 +317,7 @@ prefabs:
           instanceId: A1550000000000000000000000000011_A1550000000000000007
   - gameObjects:
       - name: Ramp_Friction_050
+        mobilityType: Stationary
         position:
           - 0
           - 40
@@ -359,6 +367,7 @@ prefabs:
           instanceId: A1550000000000000000000000000014_A1550000000000000008
   - gameObjects:
       - name: Slider_Friction_050
+        mobilityType: Stationary
         position:
           - -45
           - 80
@@ -409,6 +418,7 @@ prefabs:
           instanceId: A1550000000000000000000000000017_A1550000000000000009
   - gameObjects:
       - name: Ramp_Friction_075
+        mobilityType: Stationary
         position:
           - 0
           - 40
@@ -458,6 +468,7 @@ prefabs:
           instanceId: A155000000000000000000000000001A_A155000000000000000A
   - gameObjects:
       - name: Slider_Friction_075
+        mobilityType: Stationary
         position:
           - -45
           - 80
@@ -508,6 +519,7 @@ prefabs:
           instanceId: A155000000000000000000000000001D_A155000000000000000B
   - gameObjects:
       - name: Ramp_Friction_100
+        mobilityType: Stationary
         position:
           - 0
           - 40
@@ -557,6 +569,7 @@ prefabs:
           instanceId: A1550000000000000000000000000020_A155000000000000000C
   - gameObjects:
       - name: Slider_Friction_100
+        mobilityType: Stationary
         position:
           - -45
           - 80

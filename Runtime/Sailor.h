@@ -16,10 +16,10 @@
 
 namespace Sailor
 {
-	struct EditorProbeVolumeBakeRequest;
-	struct EditorProbeVolumeBakeStatus;
+	struct EditorGIProbesBakeRequest;
+	struct EditorGIProbesBakeStatus;
 	struct EditorGlobalIlluminationState;
-	struct GlobalIlluminationWorldSettings;
+	struct GISettings;
 
 	namespace Workspace
 	{
@@ -111,15 +111,15 @@ namespace Sailor
 		SAILOR_API static bool SetEditorSimulationEnabled(bool bEnabled);
 		SAILOR_API static bool IsEditorSimulationEnabled();
 		SAILOR_API static bool PreviewEditorAudioAsset(const char* strFileId);
-		SAILOR_API static bool StartEditorProbeVolumeBake(
-			const EditorProbeVolumeBakeRequest& request,
+		SAILOR_API static bool StartEditorGIProbesBake(
+			const EditorGIProbesBakeRequest& request,
 			std::string& outDiagnostic);
-		SAILOR_API static bool CancelEditorProbeVolumeBake(
+		SAILOR_API static bool CancelEditorGIProbesBake(
 			std::string& outDiagnostic);
-		SAILOR_API static bool GetEditorProbeVolumeBakeStatus(
-			EditorProbeVolumeBakeStatus& outStatus);
-		SAILOR_API static bool SetEditorGlobalIlluminationSettings(
-			GlobalIlluminationWorldSettings settings,
+		SAILOR_API static bool GetEditorGIProbesBakeStatus(
+			EditorGIProbesBakeStatus& outStatus);
+		SAILOR_API static bool SetEditorGISettings(
+			GISettings settings,
 			std::string& outDiagnostic);
 		SAILOR_API static bool GetEditorGlobalIlluminationState(
 			EditorGlobalIlluminationState& outState);

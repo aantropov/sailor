@@ -25,7 +25,7 @@ namespace SailorEditor.Protocol.Generated {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
             "ChNlZGl0b3JfZW5naW5lLnByb3RvEhBzYWlsb3IuZWRpdG9yLnYxIgcKBUVt",
-            "cHR5IvEhCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
+            "cHR5IsQhCg9Qcm90b2NvbFJlcXVlc3QSGAoQcHJvdG9jb2xfdmVyc2lvbhgB",
             "IAEoDRISCgpyZXF1ZXN0X2lkGAIgASgEEjkKCmluaXRpYWxpemUYCiABKAsy",
             "Iy5zYWlsb3IuZWRpdG9yLnYxLkluaXRpYWxpemVSZXF1ZXN0SAASKAoFc3Rh",
             "cnQYCyABKAsyFy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SAASJwoEc3RvcBgM",
@@ -111,17 +111,16 @@ namespace SailorEditor.Protocol.Generated {
             "ZGVSZXF1ZXN0SAASSwoWc2V0X2VkaXRvcl9yZW5kZXJfbW9kZRhBIAEoCzIp",
             "LnNhaWxvci5lZGl0b3IudjEuRWRpdG9yUmVuZGVyTW9kZVJlcXVlc3RIABI5",
             "ChZnZXRfZWRpdG9yX3JlbmRlcl9tb2RlGEIgASgLMhcuc2FpbG9yLmVkaXRv",
-            "ci52MS5FbXB0eUgAElAKF3N0YXJ0X3Byb2JlX3ZvbHVtZV9iYWtlGEMgASgL",
-            "Mi0uc2FpbG9yLmVkaXRvci52MS5TdGFydFByb2JlVm9sdW1lQmFrZVJlcXVl",
-            "c3RIABI/ChxnZXRfcHJvYmVfdm9sdW1lX2Jha2Vfc3RhdHVzGEQgASgLMhcu",
-            "c2FpbG9yLmVkaXRvci52MS5FbXB0eUgAEjsKGGNhbmNlbF9wcm9iZV92b2x1",
-            "bWVfYmFrZRhFIAEoCzIXLnNhaWxvci5lZGl0b3IudjEuRW1wdHlIABJiCiBz",
-            "ZXRfZ2xvYmFsX2lsbHVtaW5hdGlvbl9zZXR0aW5ncxhGIAEoCzI2LnNhaWxv",
-            "ci5lZGl0b3IudjEuU2V0R2xvYmFsSWxsdW1pbmF0aW9uU2V0dGluZ3NSZXF1",
+            "ci52MS5FbXB0eUgAEkoKFHN0YXJ0X2dpX3Byb2Jlc19iYWtlGEMgASgLMiou",
+            "c2FpbG9yLmVkaXRvci52MS5TdGFydEdJUHJvYmVzQmFrZVJlcXVlc3RIABI8",
+            "ChlnZXRfZ2lfcHJvYmVzX2Jha2Vfc3RhdHVzGEQgASgLMhcuc2FpbG9yLmVk",
+            "aXRvci52MS5FbXB0eUgAEjgKFWNhbmNlbF9naV9wcm9iZXNfYmFrZRhFIAEo",
+            "CzIXLnNhaWxvci5lZGl0b3IudjEuRW1wdHlIABJBCg9zZXRfZ2lfc2V0dGlu",
+            "Z3MYRiABKAsyJi5zYWlsb3IuZWRpdG9yLnYxLlNldEdJU2V0dGluZ3NSZXF1",
             "ZXN0SAASQAodZ2V0X2dsb2JhbF9pbGx1bWluYXRpb25fc3RhdGUYRyABKAsy",
             "Fy5zYWlsb3IuZWRpdG9yLnYxLkVtcHR5SABCCQoHY29tbWFuZEoECAMQCkoE",
             "CDIQM0oECEgQZFIYY3JlYXRlX21vZGVsX2dhbWVfb2JqZWN0Uh5yZXNvbHZl",
-            "X3ZpZXdwb3J0X2Ryb3BfcG9zaXRpb24i5AkKEFByb3RvY29sUmVzcG9uc2US",
+            "X3ZpZXdwb3J0X2Ryb3BfcG9zaXRpb24i3gkKEFByb3RvY29sUmVzcG9uc2US",
             "GAoQcHJvdG9jb2xfdmVyc2lvbhgBIAEoDRISCgpyZXF1ZXN0X2lkGAIgASgE",
             "Eg8KB3N1Y2Nlc3MYAyABKAgSDQoFZXJyb3IYBCABKAkSJAocc3VwcG9ydHNf",
             "c3RyaWN0X2luc3RhbmNlX2lkcxgFIAEoCBIvCgxlbXB0eV9yZXN1bHQYCiAB",
@@ -144,223 +143,221 @@ namespace SailorEditor.Protocol.Generated {
             "d3BvcnRUb29sU3RhdGVSZXN1bHRIABJGChVhbmltYXRvcl9zdGF0ZV9yZXN1",
             "bHQYFiABKAsyJS5zYWlsb3IuZWRpdG9yLnYxLkFuaW1hdG9yU3RhdGVSZXN1",
             "bHRIABJNChllZGl0b3JfcmVuZGVyX21vZGVfcmVzdWx0GBcgASgLMiguc2Fp",
-            "bG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2RlUmVzdWx0SAASWAofcHJv",
-            "YmVfdm9sdW1lX2Jha2Vfc3RhdHVzX3Jlc3VsdBgYIAEoCzItLnNhaWxvci5l",
-            "ZGl0b3IudjEuUHJvYmVWb2x1bWVCYWtlU3RhdHVzUmVzdWx0SAASWwogZ2xv",
-            "YmFsX2lsbHVtaW5hdGlvbl9zdGF0ZV9yZXN1bHQYGSABKAsyLy5zYWlsb3Iu",
-            "ZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0SABCCAoG",
-            "cmVzdWx0SgQIBhAKSgQIGhBkIiYKEUluaXRpYWxpemVSZXF1ZXN0EhEKCWFy",
-            "Z3VtZW50cxgBIAMoCSIhCgxDb3VudFJlcXVlc3QSEQoJbWF4X2NvdW50GAEg",
-            "ASgNIiAKDUZpbGVJZFJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCSLnAQoaQ3Jl",
-            "YXRlTW9kZWxJbnN0YW5jZVJlcXVlc3QSFQoNbW9kZWxfZmlsZV9pZBgBIAEo",
-            "CRIMCgRuYW1lGAIgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgDIAEoCRIY",
-            "ChBjcmVhdGVfaGllcmFyY2h5GAQgASgIEhwKFGFwcGx5X3dvcmxkX3Bvc2l0",
-            "aW9uGAUgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAYgASgLMhkuc2FpbG9yLmVk",
-            "aXRvci52MS5WZWN0b3I0Eh0KFXByZWZlcnJlZF9pbnN0YW5jZV9pZBgHIAEo",
-            "CSIoChFJbnN0YW5jZUlkUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCSIo",
-            "ChFWaWV3cG9ydElkUmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBCJgChNW",
-            "aWV3cG9ydFJlY3RSZXF1ZXN0EhQKDHdpbmRvd19wb3NfeBgBIAEoDRIUCgx3",
-            "aW5kb3dfcG9zX3kYAiABKA0SDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQg",
-            "ASgNIiwKC1NpemVSZXF1ZXN0Eg0KBXdpZHRoGAEgASgNEg4KBmhlaWdodBgC",
-            "IAEoDSIqChdFZGl0b3JTaW11bGF0aW9uUmVxdWVzdBIPCgdlbmFibGVkGAEg",
-            "ASgIIkkKFkVkaXRvclN0YXRzTW9kZVJlcXVlc3QSLwoEbW9kZRgBIAEoDjIh",
-            "LnNhaWxvci5lZGl0b3IudjEuRWRpdG9yU3RhdHNNb2RlIksKF0VkaXRvclJl",
-            "bmRlck1vZGVSZXF1ZXN0EjAKBG1vZGUYASABKA4yIi5zYWlsb3IuZWRpdG9y",
-            "LnYxLkVkaXRvclJlbmRlck1vZGUiSgoWRWRpdG9yUmVuZGVyTW9kZVJlc3Vs",
-            "dBIwCgRtb2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52MS5FZGl0b3JSZW5k",
-            "ZXJNb2RlIq4CChdQcm9iZVZvbHVtZUJha2VTZXR0aW5ncxIWCg5yYXlzX3Bl",
-            "cl9wcm9iZRgBIAEoDRIUCgxib3VuY2VfY291bnQYAiABKA0SEwoLcmFuZG9t",
-            "X3NlZWQYAyABKA0SHQoVbWF4X3N1YmRpdmlzaW9uX2xldmVsGAQgASgNEhkK",
-            "EW1pbl9wcm9iZV9zcGFjaW5nGAUgASgCEhMKC25vcm1hbF9iaWFzGAYgASgC",
-            "EhEKCXZpZXdfYmlhcxgHIAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAggASgC",
-            "EhMKC2luY2x1ZGVfc2t5GAkgASgIEhgKEGluY2x1ZGVfZW1pc3NpdmUYCiAB",
-            "KAgSHwoXaW5jbHVkZV9kaXJlY3RfbGlnaHRpbmcYCyABKAhKBAgMEA0irAMK",
-            "G1N0YXJ0UHJvYmVWb2x1bWVCYWtlUmVxdWVzdBIVCg13b3JsZF9maWxlX2lk",
-            "GAEgASgJEhsKE291dHB1dF92aXJ0dWFsX3BhdGgYAiABKAkSEgoKc3RhdGVf",
-            "bmFtZRgDIAEoCRIdChVsYXlvdXRfc291cmNlX2ZpbGVfaWQYBCABKAkSOwoI",
-            "c2V0dGluZ3MYBSABKAsyKS5zYWlsb3IuZWRpdG9yLnYxLlByb2JlVm9sdW1l",
-            "QmFrZVNldHRpbmdzEhMKC2F1dG9fYm91bmRzGAYgASgIEi0KCnZvbHVtZV9t",
-            "aW4YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSLQoKdm9sdW1l",
-            "X21heBgIIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBI3ChRmYWxs",
-            "YmFja19lbnZpcm9ubWVudBgJIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVj",
-            "dG9yNBIRCglvdmVyd3JpdGUYCiABKAgSGQoMdGhyZWFkX2NvdW50GAsgASgN",
-            "SACIAQFCDwoNX3RocmVhZF9jb3VudCLdAgobUHJvYmVWb2x1bWVCYWtlU3Rh",
-            "dHVzUmVzdWx0EjUKBXN0YXRlGAEgASgOMiYuc2FpbG9yLmVkaXRvci52MS5Q",
-            "cm9iZVZvbHVtZUJha2VTdGF0ZRIQCghwcm9ncmVzcxgCIAEoAhIYChBjb21w",
-            "bGV0ZWRfcHJvYmVzGAMgASgNEhQKDHRvdGFsX3Byb2JlcxgEIAEoDRITCgti",
-            "cmlja19jb3VudBgFIAEoDRITCgtwcm9iZV9jb3VudBgGIAEoDRIXCg9lbGFw",
-            "c2VkX3NlY29uZHMYByABKAISEwoLbGF5b3V0X2hhc2gYCCABKAQSFgoOdHJh",
-            "bnNwb3J0X2hhc2gYCSABKAQSFQoNbGlnaHRpbmdfaGFzaBgKIAEoBBINCgVz",
-            "dGFnZRgLIAEoCRIbChNvdXRwdXRfdmlydHVhbF9wYXRoGAwgASgJEhIKCmRp",
-            "YWdub3N0aWMYDSABKAkiqwEKHkdsb2JhbElsbHVtaW5hdGlvblByb2JlQmlu",
-            "ZGluZxIMCgRuYW1lGAEgASgJEhUKDWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoE",
-            "bW9kZRgDIAEoDjItLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0",
-            "aW9uUHJvYmVNb2RlEhYKDmluaXRpYWxfd2VpZ2h0GAQgASgCEg8KB3ByZWxv",
-            "YWQYBSABKAgirgEKJFNldEdsb2JhbElsbHVtaW5hdGlvblNldHRpbmdzUmVx",
-            "dWVzdBJACgZwcm9iZXMYASADKAsyMC5zYWlsb3IuZWRpdG9yLnYxLkdsb2Jh",
-            "bElsbHVtaW5hdGlvblByb2JlQmluZGluZxI7CgRtb2RlGAIgASgOMiguc2Fp",
-            "bG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Nb2RlSACIAQFCBwoF",
-            "X21vZGUigwIKHEdsb2JhbElsbHVtaW5hdGlvblByb2JlU3RhdGUSDAoEbmFt",
-            "ZRgBIAEoCRIVCg1hc3NldF9maWxlX2lkGAIgASgJEjsKBG1vZGUYAyABKA4y",
-            "LS5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlTW9k",
-            "ZRIOCgZ3ZWlnaHQYBCABKAISRQoJcmVzaWRlbmN5GAUgASgOMjIuc2FpbG9y",
-            "LmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25Qcm9iZVJlc2lkZW5jeRIW",
-            "Cg5hc3NldF9yZXZpc2lvbhgGIAEoBBISCgpkaWFnbm9zdGljGAcgASgJIqIC",
-            "Ch1HbG9iYWxJbGx1bWluYXRpb25TdGF0ZVJlc3VsdBIlCh1tYXhfcHJvYmVf",
-            "c3RhdGVzX3Blcl9zbmFwc2hvdBgBIAEoDRI+CgZwcm9iZXMYAiADKAsyLi5z",
-            "YWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlU3RhdGUS",
-            "EgoKZGlhZ25vc3RpYxgDIAEoCRIZChFjb21wb3NpdGlvbl9jb3VudBgEIAEo",
-            "BBIiChpyZWplY3RlZF9jb21wb3NpdGlvbl9jb3VudBgFIAEoBBI2CgRtb2Rl",
-            "GAYgASgOMiguc2FpbG9yLmVkaXRvci52MS5HbG9iYWxJbGx1bWluYXRpb25N",
-            "b2RlEg8KB2VuYWJsZWQYByABKAgimQEKFVJlbW90ZVZpZXdwb3J0UmVxdWVz",
-            "dBITCgt2aWV3cG9ydF9pZBgBIAEoBBIUCgx3aW5kb3dfcG9zX3gYAiABKA0S",
-            "FAoMd2luZG93X3Bvc195GAMgASgNEg0KBXdpZHRoGAQgASgNEg4KBmhlaWdo",
-            "dBgFIAEoDRIPCgd2aXNpYmxlGAYgASgIEg8KB2ZvY3VzZWQYByABKAgiZQoZ",
-            "UmVtb3RlVmlld3BvcnRIb3N0UmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEo",
-            "BBIYChBob3N0X2hhbmRsZV9raW5kGAIgASgNEhkKEWhvc3RfaGFuZGxlX3Zh",
-            "bHVlGAMgASgEIvwBChpSZW1vdGVWaWV3cG9ydElucHV0UmVxdWVzdBITCgt2",
-            "aWV3cG9ydF9pZBgBIAEoBBIMCgRraW5kGAIgASgNEhEKCXBvaW50ZXJfeBgD",
-            "IAEoAhIRCglwb2ludGVyX3kYBCABKAISFQoNd2hlZWxfZGVsdGFfeBgFIAEo",
-            "AhIVCg13aGVlbF9kZWx0YV95GAYgASgCEhAKCGtleV9jb2RlGAcgASgNEg4K",
-            "BmJ1dHRvbhgIIAEoDRIRCgltb2RpZmllcnMYCSABKA0SDwoHcHJlc3NlZBgK",
-            "IAEoCBIPCgdmb2N1c2VkGAsgASgIEhAKCGNhcHR1cmVkGAwgASgIIkMKHk1h",
-            "bmFnZWRNdXRhdGlvblJldmlzaW9uUmVxdWVzdBIMCgRraW5kGAEgASgNEhMK",
-            "C2luc3RhbmNlX2lkGAIgASgJIkAKE1VwZGF0ZU9iamVjdFJlcXVlc3QSEwoL",
-            "aW5zdGFuY2VfaWQYASABKAkSFAoMeWFtbF9jaGFuZ2VzGAIgASgJImYKFVJl",
-            "cGFyZW50T2JqZWN0UmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIaChJw",
-            "YXJlbnRfaW5zdGFuY2VfaWQYAiABKAkSHAoUa2VlcF93b3JsZF90cmFuc2Zv",
-            "cm0YAyABKAgiVAoXQ3JlYXRlR2FtZU9iamVjdFJlcXVlc3QSGgoScGFyZW50",
-            "X2luc3RhbmNlX2lkGAEgASgJEh0KFXByZWZlcnJlZF9pbnN0YW5jZV9pZBgC",
-            "IAEoCSJmChNBZGRDb21wb25lbnRSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEg",
-            "ASgJEhsKE2NvbXBvbmVudF90eXBlX25hbWUYAiABKAkSHQoVcHJlZmVycmVk",
-            "X2luc3RhbmNlX2lkGAMgASgJIuYBChhBbmltYXRvclBhcmFtZXRlclJlcXVl",
-            "c3QSEwoLaW5zdGFuY2VfaWQYASABKAkSDAoEbmFtZRgCIAEoCRIVCgtmbG9h",
-            "dF92YWx1ZRgDIAEoAkgAEhMKCWludF92YWx1ZRgEIAEoEUgAEhQKCmJvb2xf",
-            "dmFsdWUYBSABKAhIABIqCgd0cmlnZ2VyGAYgASgLMhcuc2FpbG9yLmVkaXRv",
-            "ci52MS5FbXB0eUgAEjAKDXJlc2V0X3RyaWdnZXIYByABKAsyFy5zYWlsb3Iu",
-            "ZWRpdG9yLnYxLkVtcHR5SABCBwoFdmFsdWUiRwoYSW5zdGFudGlhdGVQcmVm",
-            "YWJSZXF1ZXN0Eg8KB2ZpbGVfaWQYASABKAkSGgoScGFyZW50X2luc3RhbmNl",
-            "X2lkGAIgASgJInAKIEluc3RhbnRpYXRlUHJlZmFiRnJvbVlhbWxSZXF1ZXN0",
-            "EhMKC3ByZWZhYl95YW1sGAEgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgC",
-            "IAEoCRIbChNzdHJpY3RfaW5zdGFuY2VfaWRzGAMgASgIIlUKElZpZXdwb3J0",
-            "UmF5UmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBBIUCgxub3JtYWxpemVk",
-            "X3gYAiABKAISFAoMbm9ybWFsaXplZF95GAMgASgCIqABCiBJbnN0YW50aWF0",
-            "ZVByZWZhYkluc3RhbmNlUmVxdWVzdBIPCgdmaWxlX2lkGAEgASgJEhoKEnBh",
-            "cmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRhcHBseV93b3JsZF9wb3NpdGlv",
-            "bhgDIAEoCBIxCg53b3JsZF9wb3NpdGlvbhgEIAEoCzIZLnNhaWxvci5lZGl0",
-            "b3IudjEuVmVjdG9yNCJBChVWaWV3cG9ydE9iamVjdFJlcXVlc3QSEwoLdmll",
-            "d3BvcnRfaWQYASABKAQSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoRUHJlZmFi",
-            "TGlua1JlcXVlc3QSEwoLaW5zdGFuY2VfaWQYASABKAkSDwoHZmlsZV9pZBgC",
-            "IAEoCSKpAQoYVmlld3BvcnRUb29sU3RhdGVSZXF1ZXN0EhMKC3ZpZXdwb3J0",
-            "X2lkGAEgASgEEj8KCW9wZXJhdGlvbhgCIAEoDjIsLnNhaWxvci5lZGl0b3Iu",
-            "djEuVmlld3BvcnRUcmFuc2Zvcm1PcGVyYXRpb24SNwoFc3BhY2UYAyABKA4y",
-            "KC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3JtU3BhY2UiKAoQ",
-            "U2VsZWN0aW9uUmVxdWVzdBIUCgxpbnN0YW5jZV9pZHMYASADKAkiJQoVU2hv",
-            "d01haW5XaW5kb3dSZXF1ZXN0EgwKBHNob3cYASABKAgiiAEKHFJlbmRlclBh",
-            "dGhUcmFjZWRJbWFnZVJlcXVlc3QSEwoLb3V0cHV0X3BhdGgYASABKAkSEwoL",
-            "aW5zdGFuY2VfaWQYAiABKAkSDgoGaGVpZ2h0GAMgASgNEhkKEXNhbXBsZXNf",
-            "cGVyX3BpeGVsGAQgASgNEhMKC21heF9ib3VuY2VzGAUgASgNIhsKCkJvb2xS",
-            "ZXN1bHQSDQoFdmFsdWUYASABKAgiHAoLSW50MzJSZXN1bHQSDQoFdmFsdWUY",
-            "ASABKAUiHQoMVUludDMyUmVzdWx0Eg0KBXZhbHVlGAEgASgNIh0KDFVJbnQ2",
-            "NFJlc3VsdBINCgV2YWx1ZRgBIAEoBCIwCgxTdHJpbmdSZXN1bHQSEQoJaGFz",
-            "X3ZhbHVlGAEgASgIEg0KBXZhbHVlGAIgASgJIiIKEFN0cmluZ0xpc3RSZXN1",
-            "bHQSDgoGdmFsdWVzGAEgAygJIoQBChZBc3NldFJlbG9hZFN0YXRlUmVzdWx0",
-            "EhEKCWF2YWlsYWJsZRgBIAEoCBIaChJyZXF1ZXN0X2dlbmVyYXRpb24YAiAB",
-            "KAQSHAoUY29tcGxldGVkX2dlbmVyYXRpb24YAyABKAQSHQoVc3VjY2Vzc2Z1",
-            "bF9nZW5lcmF0aW9uGAQgASgEIjoKEEluc3RhbmNlSWRSZXN1bHQSEQoJc3Vj",
-            "Y2VlZGVkGAEgASgIEhMKC2luc3RhbmNlX2lkGAIgASgJIjkKDVZlY3RvcjRS",
-            "ZXN1bHQSKAoFdmFsdWUYASABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3Rv",
-            "cjQikwEKF1ZpZXdwb3J0VG9vbFN0YXRlUmVzdWx0Ej8KCW9wZXJhdGlvbhgB",
-            "IAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1PcGVy",
-            "YXRpb24SNwoFc3BhY2UYAiABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdw",
-            "b3J0VHJhbnNmb3JtU3BhY2UiqAIKE0FuaW1hdG9yU3RhdGVSZXN1bHQSFgoO",
-            "aGFzX2NvbnRyb2xsZXIYASABKAgSGwoTY29udHJvbGxlcl9yZXZpc2lvbhgC",
-            "IAEoBBIXCg9hY3RpdmVfc3RhdGVfaWQYAyABKAQSGQoRYWN0aXZlX3N0YXRl",
-            "X25hbWUYBCABKAkSGQoRYWN0aXZlX3N0YXRlX3RpbWUYBSABKAISFQoNdHJh",
-            "bnNpdGlvbmluZxgGIAEoCBIcChRkZXN0aW5hdGlvbl9zdGF0ZV9pZBgHIAEo",
-            "BBIeChZkZXN0aW5hdGlvbl9zdGF0ZV9uYW1lGAggASgJEh4KFmRlc3RpbmF0",
-            "aW9uX3N0YXRlX3RpbWUYCSABKAISGAoQdHJhbnNpdGlvbl9hbHBoYRgKIAEo",
-            "AiI1CgdWZWN0b3I0EgkKAXgYASABKAISCQoBeRgCIAEoAhIJCgF6GAMgASgC",
-            "EgkKAXcYBCABKAIiNgoWVmlld3BvcnRTZWxlY3Rpb25FdmVudBIcChRzZWxl",
-            "Y3RlZF9pbnN0YW5jZV9pZBgBIAEoCSLWAwoWVmlld3BvcnRUcmFuc2Zvcm1F",
-            "dmVudBITCgtpbnN0YW5jZV9pZBgBIAEoCRI/CglvcGVyYXRpb24YAiABKA4y",
-            "LC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0VHJhbnNmb3JtT3BlcmF0aW9u",
-            "EjcKBXNwYWNlGAMgASgOMiguc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRy",
-            "YW5zZm9ybVNwYWNlEjIKD2JlZm9yZV9wb3NpdGlvbhgEIAEoCzIZLnNhaWxv",
-            "ci5lZGl0b3IudjEuVmVjdG9yNBIyCg9iZWZvcmVfcm90YXRpb24YBSABKAsy",
-            "GS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSLwoMYmVmb3JlX3NjYWxlGAYg",
-            "ASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjEKDmFmdGVyX3Bvc2l0",
-            "aW9uGAcgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjEKDmFmdGVy",
-            "X3JvdGF0aW9uGAggASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0Ei4K",
-            "C2FmdGVyX3NjYWxlGAkgASgLMhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0",
-            "IlUKFlZpZXdwb3J0QXNzZXREcm9wRXZlbnQSDwoHZmlsZV9pZBgBIAEoCRIU",
-            "Cgxub3JtYWxpemVkX3gYAiABKAISFAoMbm9ybWFsaXplZF95GAMgASgCIi0K",
-            "GVZpZXdwb3J0VG9vbFNob3J0Y3V0RXZlbnQSEAoIa2V5X2NvZGUYASABKA0i",
-            "2QIKDVZpZXdwb3J0RXZlbnQSEAoIcmV2aXNpb24YASABKAQSIQoZbWFuYWdl",
-            "ZF9tdXRhdGlvbl9yZXZpc2lvbhgCIAEoBBI9CglzZWxlY3Rpb24YCiABKAsy",
-            "KC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0U2VsZWN0aW9uRXZlbnRIABI9",
-            "Cgl0cmFuc2Zvcm0YCyABKAsyKC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0",
-            "VHJhbnNmb3JtRXZlbnRIABI+Cgphc3NldF9kcm9wGAwgASgLMiguc2FpbG9y",
-            "LmVkaXRvci52MS5WaWV3cG9ydEFzc2V0RHJvcEV2ZW50SAASRAoNdG9vbF9z",
-            "aG9ydGN1dBgNIAEoCzIrLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUb29s",
-            "U2hvcnRjdXRFdmVudEgAQgkKB3BheWxvYWRKBAgDEAoiSwoYVmlld3BvcnRF",
-            "dmVudEJhdGNoUmVzdWx0Ei8KBmV2ZW50cxgBIAMoCzIfLnNhaWxvci5lZGl0",
-            "b3IudjEuVmlld3BvcnRFdmVudCrwAQoaVmlld3BvcnRUcmFuc2Zvcm1PcGVy",
-            "YXRpb24SLAooVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9VTlNQRUNJ",
-            "RklFRBAAEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fU0VMRUNU",
-            "EAESKgomVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9UUkFOU0xBVEUQ",
-            "AhInCiNWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1JPVEFURRADEiYK",
-            "IlZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fU0NBTEUQBCqKAQoWVmll",
-            "d3BvcnRUcmFuc2Zvcm1TcGFjZRIoCiRWSUVXUE9SVF9UUkFOU0ZPUk1fU1BB",
-            "Q0VfVU5TUEVDSUZJRUQQABIiCh5WSUVXUE9SVF9UUkFOU0ZPUk1fU1BBQ0Vf",
-            "V09STEQQARIiCh5WSUVXUE9SVF9UUkFOU0ZPUk1fU1BBQ0VfTE9DQUwQAiqk",
-            "AQoPRWRpdG9yU3RhdHNNb2RlEiEKHUVESVRPUl9TVEFUU19NT0RFX1VOU1BF",
-            "Q0lGSUVEEAASGgoWRURJVE9SX1NUQVRTX01PREVfTk9ORRABEiIKHkVESVRP",
-            "Ul9TVEFUU19NT0RFX1JFTkRFUl9TVEFUUxACEi4KKkVESVRPUl9TVEFUU19N",
-            "T0RFX1JFTkRFUl9TVEFUU19BTkRfUVVFUklFUxADKuoEChBFZGl0b3JSZW5k",
-            "ZXJNb2RlEiIKHkVESVRPUl9SRU5ERVJfTU9ERV9VTlNQRUNJRklFRBAAEhoK",
-            "FkVESVRPUl9SRU5ERVJfTU9ERV9MSVQQARIoCiRFRElUT1JfUkVOREVSX01P",
-            "REVfQU1CSUVOVF9PQ0NMVVNJT04QAhIfChtFRElUT1JfUkVOREVSX01PREVf",
-            "Q0FTQ0FERVMQAxIiCh5FRElUT1JfUkVOREVSX01PREVfTElHSFRfVElMRVMQ",
-            "BBIvCitFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9P",
-            "TkxZEAUSMQotRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJ",
-            "T05fUFJPQkVTEAYSMQotRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExV",
-            "TUlOQVRJT05fQlJJQ0tTEAcSMwovRURJVE9SX1JFTkRFUl9NT0RFX0dMT0JB",
-            "TF9JTExVTUlOQVRJT05fVkFMSURJVFkQCBI1CjFFRElUT1JfUkVOREVSX01P",
-            "REVfR0xPQkFMX0lMTFVNSU5BVElPTl9WSVNJQklMSVRZEAkSNAowRURJVE9S",
-            "X1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fUkVTSURFTkNZEAoS",
-            "OQo1RURJVE9SX1JFTkRFUl9NT0RFX0dMT0JBTF9JTExVTUlOQVRJT05fQVNT",
-            "RVRfSURFTlRJVFkQCxIzCi9FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lM",
-            "TFVNSU5BVElPTl9GQUxMQkFDSxAMKsICChRQcm9iZVZvbHVtZUJha2VTdGF0",
-            "ZRInCiNQUk9CRV9WT0xVTUVfQkFLRV9TVEFURV9VTlNQRUNJRklFRBAAEiAK",
-            "HFBST0JFX1ZPTFVNRV9CQUtFX1NUQVRFX0lETEUQARIlCiFQUk9CRV9WT0xV",
-            "TUVfQkFLRV9TVEFURV9QUkVQQVJJTkcQAhIiCh5QUk9CRV9WT0xVTUVfQkFL",
-            "RV9TVEFURV9CQUtJTkcQAxIiCh5QUk9CRV9WT0xVTUVfQkFLRV9TVEFURV9T",
-            "QVZJTkcQBBIlCiFQUk9CRV9WT0xVTUVfQkFLRV9TVEFURV9TVUNDRUVERUQQ",
-            "BRIiCh5QUk9CRV9WT0xVTUVfQkFLRV9TVEFURV9GQUlMRUQQBhIlCiFQUk9C",
-            "RV9WT0xVTUVfQkFLRV9TVEFURV9DQU5DRUxMRUQQByqkAQobR2xvYmFsSWxs",
-            "dW1pbmF0aW9uUHJvYmVNb2RlEi4KKkdMT0JBTF9JTExVTUlOQVRJT05fUFJP",
-            "QkVfTU9ERV9VTlNQRUNJRklFRBAAEigKJEdMT0JBTF9JTExVTUlOQVRJT05f",
-            "UFJPQkVfTU9ERV9CTEVORBABEisKJ0dMT0JBTF9JTExVTUlOQVRJT05fUFJP",
-            "QkVfTU9ERV9BRERJVElWRRACKsMBChZHbG9iYWxJbGx1bWluYXRpb25Nb2Rl",
-            "EigKJEdMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9VTlNQRUNJRklFRBAAEiUK",
-            "IUdMT0JBTF9JTExVTUlOQVRJT05fTU9ERV9SRUFMVElNRRABEi8KK0dMT0JB",
-            "TF9JTExVTUlOQVRJT05fTU9ERV9SRUFMVElNRV9BTkRfQkFLRUQQAhInCiNH",
-            "TE9CQUxfSUxMVU1JTkFUSU9OX01PREVfQkFLRURfT05MWRADKpwCCiBHbG9i",
-            "YWxJbGx1bWluYXRpb25Qcm9iZVJlc2lkZW5jeRIzCi9HTE9CQUxfSUxMVU1J",
-            "TkFUSU9OX1BST0JFX1JFU0lERU5DWV9VTlNQRUNJRklFRBAAEjAKLEdMT0JB",
-            "TF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURFTkNZX1VOTE9BREVEEAESLwor",
-            "R0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9SRVNJREVOQ1lfTE9BRElORxAC",
-            "EjAKLEdMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURFTkNZX1JFU0lE",
-            "RU5UEAMSLgoqR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9SRVNJREVOQ1lf",
-            "RkFJTEVEEARCIqoCH1NhaWxvckVkaXRvci5Qcm90b2NvbC5HZW5lcmF0ZWRi",
-            "BnByb3RvMw=="));
+            "bG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2RlUmVzdWx0SAASUgocZ2lf",
+            "cHJvYmVzX2Jha2Vfc3RhdHVzX3Jlc3VsdBgYIAEoCzIqLnNhaWxvci5lZGl0",
+            "b3IudjEuR0lQcm9iZXNCYWtlU3RhdHVzUmVzdWx0SAASWwogZ2xvYmFsX2ls",
+            "bHVtaW5hdGlvbl9zdGF0ZV9yZXN1bHQYGSABKAsyLy5zYWlsb3IuZWRpdG9y",
+            "LnYxLkdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0SABCCAoGcmVzdWx0",
+            "SgQIBhAKSgQIGhBkIiYKEUluaXRpYWxpemVSZXF1ZXN0EhEKCWFyZ3VtZW50",
+            "cxgBIAMoCSIhCgxDb3VudFJlcXVlc3QSEQoJbWF4X2NvdW50GAEgASgNIiAK",
+            "DUZpbGVJZFJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCSLnAQoaQ3JlYXRlTW9k",
+            "ZWxJbnN0YW5jZVJlcXVlc3QSFQoNbW9kZWxfZmlsZV9pZBgBIAEoCRIMCgRu",
+            "YW1lGAIgASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgDIAEoCRIYChBjcmVh",
+            "dGVfaGllcmFyY2h5GAQgASgIEhwKFGFwcGx5X3dvcmxkX3Bvc2l0aW9uGAUg",
+            "ASgIEjEKDndvcmxkX3Bvc2l0aW9uGAYgASgLMhkuc2FpbG9yLmVkaXRvci52",
+            "MS5WZWN0b3I0Eh0KFXByZWZlcnJlZF9pbnN0YW5jZV9pZBgHIAEoCSIoChFJ",
+            "bnN0YW5jZUlkUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCSIoChFWaWV3",
+            "cG9ydElkUmVxdWVzdBITCgt2aWV3cG9ydF9pZBgBIAEoBCJgChNWaWV3cG9y",
+            "dFJlY3RSZXF1ZXN0EhQKDHdpbmRvd19wb3NfeBgBIAEoDRIUCgx3aW5kb3df",
+            "cG9zX3kYAiABKA0SDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNIiwK",
+            "C1NpemVSZXF1ZXN0Eg0KBXdpZHRoGAEgASgNEg4KBmhlaWdodBgCIAEoDSIq",
+            "ChdFZGl0b3JTaW11bGF0aW9uUmVxdWVzdBIPCgdlbmFibGVkGAEgASgIIkkK",
+            "FkVkaXRvclN0YXRzTW9kZVJlcXVlc3QSLwoEbW9kZRgBIAEoDjIhLnNhaWxv",
+            "ci5lZGl0b3IudjEuRWRpdG9yU3RhdHNNb2RlIksKF0VkaXRvclJlbmRlck1v",
+            "ZGVSZXF1ZXN0EjAKBG1vZGUYASABKA4yIi5zYWlsb3IuZWRpdG9yLnYxLkVk",
+            "aXRvclJlbmRlck1vZGUiSgoWRWRpdG9yUmVuZGVyTW9kZVJlc3VsdBIwCgRt",
+            "b2RlGAEgASgOMiIuc2FpbG9yLmVkaXRvci52MS5FZGl0b3JSZW5kZXJNb2Rl",
+            "IqsCChRHSVByb2Jlc0Jha2VTZXR0aW5ncxIWCg5yYXlzX3Blcl9wcm9iZRgB",
+            "IAEoDRIUCgxib3VuY2VfY291bnQYAiABKA0SEwoLcmFuZG9tX3NlZWQYAyAB",
+            "KA0SHQoVbWF4X3N1YmRpdmlzaW9uX2xldmVsGAQgASgNEhkKEW1pbl9wcm9i",
+            "ZV9zcGFjaW5nGAUgASgCEhMKC25vcm1hbF9iaWFzGAYgASgCEhEKCXZpZXdf",
+            "YmlhcxgHIAEoAhIYChBtYXhfcmF5X2Rpc3RhbmNlGAggASgCEhMKC2luY2x1",
+            "ZGVfc2t5GAkgASgIEhgKEGluY2x1ZGVfZW1pc3NpdmUYCiABKAgSHwoXaW5j",
+            "bHVkZV9kaXJlY3RfbGlnaHRpbmcYCyABKAhKBAgMEA0ipgMKGFN0YXJ0R0lQ",
+            "cm9iZXNCYWtlUmVxdWVzdBIVCg13b3JsZF9maWxlX2lkGAEgASgJEhsKE291",
+            "dHB1dF92aXJ0dWFsX3BhdGgYAiABKAkSEgoKc3RhdGVfbmFtZRgDIAEoCRId",
+            "ChVsYXlvdXRfc291cmNlX2ZpbGVfaWQYBCABKAkSOAoIc2V0dGluZ3MYBSAB",
+            "KAsyJi5zYWlsb3IuZWRpdG9yLnYxLkdJUHJvYmVzQmFrZVNldHRpbmdzEhMK",
+            "C2F1dG9fYm91bmRzGAYgASgIEi0KCnZvbHVtZV9taW4YByABKAsyGS5zYWls",
+            "b3IuZWRpdG9yLnYxLlZlY3RvcjQSLQoKdm9sdW1lX21heBgIIAEoCzIZLnNh",
+            "aWxvci5lZGl0b3IudjEuVmVjdG9yNBI3ChRmYWxsYmFja19lbnZpcm9ubWVu",
+            "dBgJIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIRCglvdmVyd3Jp",
+            "dGUYCiABKAgSGQoMdGhyZWFkX2NvdW50GAsgASgNSACIAQFCDwoNX3RocmVh",
+            "ZF9jb3VudCLXAgoYR0lQcm9iZXNCYWtlU3RhdHVzUmVzdWx0EjIKBXN0YXRl",
+            "GAEgASgOMiMuc2FpbG9yLmVkaXRvci52MS5HSVByb2Jlc0Jha2VTdGF0ZRIQ",
+            "Cghwcm9ncmVzcxgCIAEoAhIYChBjb21wbGV0ZWRfcHJvYmVzGAMgASgNEhQK",
+            "DHRvdGFsX3Byb2JlcxgEIAEoDRITCgticmlja19jb3VudBgFIAEoDRITCgtw",
+            "cm9iZV9jb3VudBgGIAEoDRIXCg9lbGFwc2VkX3NlY29uZHMYByABKAISEwoL",
+            "bGF5b3V0X2hhc2gYCCABKAQSFgoOdHJhbnNwb3J0X2hhc2gYCSABKAQSFQoN",
+            "bGlnaHRpbmdfaGFzaBgKIAEoBBINCgVzdGFnZRgLIAEoCRIbChNvdXRwdXRf",
+            "dmlydHVhbF9wYXRoGAwgASgJEhIKCmRpYWdub3N0aWMYDSABKAkiqwEKHkds",
+            "b2JhbElsbHVtaW5hdGlvblByb2JlQmluZGluZxIMCgRuYW1lGAEgASgJEhUK",
+            "DWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoEbW9kZRgDIAEoDjItLnNhaWxvci5l",
+            "ZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVNb2RlEhYKDmluaXRp",
+            "YWxfd2VpZ2h0GAQgASgCEg8KB3ByZWxvYWQYBSABKAgingEKFFNldEdJU2V0",
+            "dGluZ3NSZXF1ZXN0EkAKBnByb2JlcxgBIAMoCzIwLnNhaWxvci5lZGl0b3Iu",
+            "djEuR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVCaW5kaW5nEjsKBG1vZGUYAiAB",
+            "KA4yKC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvbk1vZGVI",
+            "AIgBAUIHCgVfbW9kZSKDAgocR2xvYmFsSWxsdW1pbmF0aW9uUHJvYmVTdGF0",
+            "ZRIMCgRuYW1lGAEgASgJEhUKDWFzc2V0X2ZpbGVfaWQYAiABKAkSOwoEbW9k",
+            "ZRgDIAEoDjItLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9u",
+            "UHJvYmVNb2RlEg4KBndlaWdodBgEIAEoAhJFCglyZXNpZGVuY3kYBSABKA4y",
+            "Mi5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVtaW5hdGlvblByb2JlUmVz",
+            "aWRlbmN5EhYKDmFzc2V0X3JldmlzaW9uGAYgASgEEhIKCmRpYWdub3N0aWMY",
+            "ByABKAkiogIKHUdsb2JhbElsbHVtaW5hdGlvblN0YXRlUmVzdWx0EiUKHW1h",
+            "eF9wcm9iZV9zdGF0ZXNfcGVyX3NuYXBzaG90GAEgASgNEj4KBnByb2JlcxgC",
+            "IAMoCzIuLnNhaWxvci5lZGl0b3IudjEuR2xvYmFsSWxsdW1pbmF0aW9uUHJv",
+            "YmVTdGF0ZRISCgpkaWFnbm9zdGljGAMgASgJEhkKEWNvbXBvc2l0aW9uX2Nv",
+            "dW50GAQgASgEEiIKGnJlamVjdGVkX2NvbXBvc2l0aW9uX2NvdW50GAUgASgE",
+            "EjYKBG1vZGUYBiABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLkdsb2JhbElsbHVt",
+            "aW5hdGlvbk1vZGUSDwoHZW5hYmxlZBgHIAEoCCKZAQoVUmVtb3RlVmlld3Bv",
+            "cnRSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDHdpbmRvd19wb3Nf",
+            "eBgCIAEoDRIUCgx3aW5kb3dfcG9zX3kYAyABKA0SDQoFd2lkdGgYBCABKA0S",
+            "DgoGaGVpZ2h0GAUgASgNEg8KB3Zpc2libGUYBiABKAgSDwoHZm9jdXNlZBgH",
+            "IAEoCCJlChlSZW1vdGVWaWV3cG9ydEhvc3RSZXF1ZXN0EhMKC3ZpZXdwb3J0",
+            "X2lkGAEgASgEEhgKEGhvc3RfaGFuZGxlX2tpbmQYAiABKA0SGQoRaG9zdF9o",
+            "YW5kbGVfdmFsdWUYAyABKAQi/AEKGlJlbW90ZVZpZXdwb3J0SW5wdXRSZXF1",
+            "ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEgwKBGtpbmQYAiABKA0SEQoJcG9p",
+            "bnRlcl94GAMgASgCEhEKCXBvaW50ZXJfeRgEIAEoAhIVCg13aGVlbF9kZWx0",
+            "YV94GAUgASgCEhUKDXdoZWVsX2RlbHRhX3kYBiABKAISEAoIa2V5X2NvZGUY",
+            "ByABKA0SDgoGYnV0dG9uGAggASgNEhEKCW1vZGlmaWVycxgJIAEoDRIPCgdw",
+            "cmVzc2VkGAogASgIEg8KB2ZvY3VzZWQYCyABKAgSEAoIY2FwdHVyZWQYDCAB",
+            "KAgiQwoeTWFuYWdlZE11dGF0aW9uUmV2aXNpb25SZXF1ZXN0EgwKBGtpbmQY",
+            "ASABKA0SEwoLaW5zdGFuY2VfaWQYAiABKAkiQAoTVXBkYXRlT2JqZWN0UmVx",
+            "dWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIUCgx5YW1sX2NoYW5nZXMYAiAB",
+            "KAkiZgoVUmVwYXJlbnRPYmplY3RSZXF1ZXN0EhMKC2luc3RhbmNlX2lkGAEg",
+            "ASgJEhoKEnBhcmVudF9pbnN0YW5jZV9pZBgCIAEoCRIcChRrZWVwX3dvcmxk",
+            "X3RyYW5zZm9ybRgDIAEoCCJUChdDcmVhdGVHYW1lT2JqZWN0UmVxdWVzdBIa",
+            "ChJwYXJlbnRfaW5zdGFuY2VfaWQYASABKAkSHQoVcHJlZmVycmVkX2luc3Rh",
+            "bmNlX2lkGAIgASgJImYKE0FkZENvbXBvbmVudFJlcXVlc3QSEwoLaW5zdGFu",
+            "Y2VfaWQYASABKAkSGwoTY29tcG9uZW50X3R5cGVfbmFtZRgCIAEoCRIdChVw",
+            "cmVmZXJyZWRfaW5zdGFuY2VfaWQYAyABKAki5gEKGEFuaW1hdG9yUGFyYW1l",
+            "dGVyUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIMCgRuYW1lGAIgASgJ",
+            "EhUKC2Zsb2F0X3ZhbHVlGAMgASgCSAASEwoJaW50X3ZhbHVlGAQgASgRSAAS",
+            "FAoKYm9vbF92YWx1ZRgFIAEoCEgAEioKB3RyaWdnZXIYBiABKAsyFy5zYWls",
+            "b3IuZWRpdG9yLnYxLkVtcHR5SAASMAoNcmVzZXRfdHJpZ2dlchgHIAEoCzIX",
+            "LnNhaWxvci5lZGl0b3IudjEuRW1wdHlIAEIHCgV2YWx1ZSJHChhJbnN0YW50",
+            "aWF0ZVByZWZhYlJlcXVlc3QSDwoHZmlsZV9pZBgBIAEoCRIaChJwYXJlbnRf",
+            "aW5zdGFuY2VfaWQYAiABKAkicAogSW5zdGFudGlhdGVQcmVmYWJGcm9tWWFt",
+            "bFJlcXVlc3QSEwoLcHJlZmFiX3lhbWwYASABKAkSGgoScGFyZW50X2luc3Rh",
+            "bmNlX2lkGAIgASgJEhsKE3N0cmljdF9pbnN0YW5jZV9pZHMYAyABKAgiVQoS",
+            "Vmlld3BvcnRSYXlSZXF1ZXN0EhMKC3ZpZXdwb3J0X2lkGAEgASgEEhQKDG5v",
+            "cm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kYAyABKAIioAEKIElu",
+            "c3RhbnRpYXRlUHJlZmFiSW5zdGFuY2VSZXF1ZXN0Eg8KB2ZpbGVfaWQYASAB",
+            "KAkSGgoScGFyZW50X2luc3RhbmNlX2lkGAIgASgJEhwKFGFwcGx5X3dvcmxk",
+            "X3Bvc2l0aW9uGAMgASgIEjEKDndvcmxkX3Bvc2l0aW9uGAQgASgLMhkuc2Fp",
+            "bG9yLmVkaXRvci52MS5WZWN0b3I0IkEKFVZpZXdwb3J0T2JqZWN0UmVxdWVz",
+            "dBITCgt2aWV3cG9ydF9pZBgBIAEoBBITCgtpbnN0YW5jZV9pZBgCIAEoCSI5",
+            "ChFQcmVmYWJMaW5rUmVxdWVzdBITCgtpbnN0YW5jZV9pZBgBIAEoCRIPCgdm",
+            "aWxlX2lkGAIgASgJIqkBChhWaWV3cG9ydFRvb2xTdGF0ZVJlcXVlc3QSEwoL",
+            "dmlld3BvcnRfaWQYASABKAQSPwoJb3BlcmF0aW9uGAIgASgOMiwuc2FpbG9y",
+            "LmVkaXRvci52MS5WaWV3cG9ydFRyYW5zZm9ybU9wZXJhdGlvbhI3CgVzcGFj",
+            "ZRgDIAEoDjIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1T",
+            "cGFjZSIoChBTZWxlY3Rpb25SZXF1ZXN0EhQKDGluc3RhbmNlX2lkcxgBIAMo",
+            "CSIlChVTaG93TWFpbldpbmRvd1JlcXVlc3QSDAoEc2hvdxgBIAEoCCKIAQoc",
+            "UmVuZGVyUGF0aFRyYWNlZEltYWdlUmVxdWVzdBITCgtvdXRwdXRfcGF0aBgB",
+            "IAEoCRITCgtpbnN0YW5jZV9pZBgCIAEoCRIOCgZoZWlnaHQYAyABKA0SGQoR",
+            "c2FtcGxlc19wZXJfcGl4ZWwYBCABKA0SEwoLbWF4X2JvdW5jZXMYBSABKA0i",
+            "GwoKQm9vbFJlc3VsdBINCgV2YWx1ZRgBIAEoCCIcCgtJbnQzMlJlc3VsdBIN",
+            "CgV2YWx1ZRgBIAEoBSIdCgxVSW50MzJSZXN1bHQSDQoFdmFsdWUYASABKA0i",
+            "HQoMVUludDY0UmVzdWx0Eg0KBXZhbHVlGAEgASgEIjAKDFN0cmluZ1Jlc3Vs",
+            "dBIRCgloYXNfdmFsdWUYASABKAgSDQoFdmFsdWUYAiABKAkiIgoQU3RyaW5n",
+            "TGlzdFJlc3VsdBIOCgZ2YWx1ZXMYASADKAkihAEKFkFzc2V0UmVsb2FkU3Rh",
+            "dGVSZXN1bHQSEQoJYXZhaWxhYmxlGAEgASgIEhoKEnJlcXVlc3RfZ2VuZXJh",
+            "dGlvbhgCIAEoBBIcChRjb21wbGV0ZWRfZ2VuZXJhdGlvbhgDIAEoBBIdChVz",
+            "dWNjZXNzZnVsX2dlbmVyYXRpb24YBCABKAQiOgoQSW5zdGFuY2VJZFJlc3Vs",
+            "dBIRCglzdWNjZWVkZWQYASABKAgSEwoLaW5zdGFuY2VfaWQYAiABKAkiOQoN",
+            "VmVjdG9yNFJlc3VsdBIoCgV2YWx1ZRgBIAEoCzIZLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmVjdG9yNCKTAQoXVmlld3BvcnRUb29sU3RhdGVSZXN1bHQSPwoJb3Bl",
+            "cmF0aW9uGAEgASgOMiwuc2FpbG9yLmVkaXRvci52MS5WaWV3cG9ydFRyYW5z",
+            "Zm9ybU9wZXJhdGlvbhI3CgVzcGFjZRgCIAEoDjIoLnNhaWxvci5lZGl0b3Iu",
+            "djEuVmlld3BvcnRUcmFuc2Zvcm1TcGFjZSKoAgoTQW5pbWF0b3JTdGF0ZVJl",
+            "c3VsdBIWCg5oYXNfY29udHJvbGxlchgBIAEoCBIbChNjb250cm9sbGVyX3Jl",
+            "dmlzaW9uGAIgASgEEhcKD2FjdGl2ZV9zdGF0ZV9pZBgDIAEoBBIZChFhY3Rp",
+            "dmVfc3RhdGVfbmFtZRgEIAEoCRIZChFhY3RpdmVfc3RhdGVfdGltZRgFIAEo",
+            "AhIVCg10cmFuc2l0aW9uaW5nGAYgASgIEhwKFGRlc3RpbmF0aW9uX3N0YXRl",
+            "X2lkGAcgASgEEh4KFmRlc3RpbmF0aW9uX3N0YXRlX25hbWUYCCABKAkSHgoW",
+            "ZGVzdGluYXRpb25fc3RhdGVfdGltZRgJIAEoAhIYChB0cmFuc2l0aW9uX2Fs",
+            "cGhhGAogASgCIjUKB1ZlY3RvcjQSCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkK",
+            "AXoYAyABKAISCQoBdxgEIAEoAiI2ChZWaWV3cG9ydFNlbGVjdGlvbkV2ZW50",
+            "EhwKFHNlbGVjdGVkX2luc3RhbmNlX2lkGAEgASgJItYDChZWaWV3cG9ydFRy",
+            "YW5zZm9ybUV2ZW50EhMKC2luc3RhbmNlX2lkGAEgASgJEj8KCW9wZXJhdGlv",
+            "bhgCIAEoDjIsLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRUcmFuc2Zvcm1P",
+            "cGVyYXRpb24SNwoFc3BhY2UYAyABKA4yKC5zYWlsb3IuZWRpdG9yLnYxLlZp",
+            "ZXdwb3J0VHJhbnNmb3JtU3BhY2USMgoPYmVmb3JlX3Bvc2l0aW9uGAQgASgL",
+            "Mhkuc2FpbG9yLmVkaXRvci52MS5WZWN0b3I0EjIKD2JlZm9yZV9yb3RhdGlv",
+            "bhgFIAEoCzIZLnNhaWxvci5lZGl0b3IudjEuVmVjdG9yNBIvCgxiZWZvcmVf",
+            "c2NhbGUYBiABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQSMQoOYWZ0",
+            "ZXJfcG9zaXRpb24YByABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZlY3RvcjQS",
+            "MQoOYWZ0ZXJfcm90YXRpb24YCCABKAsyGS5zYWlsb3IuZWRpdG9yLnYxLlZl",
+            "Y3RvcjQSLgoLYWZ0ZXJfc2NhbGUYCSABKAsyGS5zYWlsb3IuZWRpdG9yLnYx",
+            "LlZlY3RvcjQiVQoWVmlld3BvcnRBc3NldERyb3BFdmVudBIPCgdmaWxlX2lk",
+            "GAEgASgJEhQKDG5vcm1hbGl6ZWRfeBgCIAEoAhIUCgxub3JtYWxpemVkX3kY",
+            "AyABKAIiLQoZVmlld3BvcnRUb29sU2hvcnRjdXRFdmVudBIQCghrZXlfY29k",
+            "ZRgBIAEoDSLZAgoNVmlld3BvcnRFdmVudBIQCghyZXZpc2lvbhgBIAEoBBIh",
+            "ChltYW5hZ2VkX211dGF0aW9uX3JldmlzaW9uGAIgASgEEj0KCXNlbGVjdGlv",
+            "bhgKIAEoCzIoLnNhaWxvci5lZGl0b3IudjEuVmlld3BvcnRTZWxlY3Rpb25F",
+            "dmVudEgAEj0KCXRyYW5zZm9ybRgLIAEoCzIoLnNhaWxvci5lZGl0b3IudjEu",
+            "Vmlld3BvcnRUcmFuc2Zvcm1FdmVudEgAEj4KCmFzc2V0X2Ryb3AYDCABKAsy",
+            "KC5zYWlsb3IuZWRpdG9yLnYxLlZpZXdwb3J0QXNzZXREcm9wRXZlbnRIABJE",
+            "Cg10b29sX3Nob3J0Y3V0GA0gASgLMisuc2FpbG9yLmVkaXRvci52MS5WaWV3",
+            "cG9ydFRvb2xTaG9ydGN1dEV2ZW50SABCCQoHcGF5bG9hZEoECAMQCiJLChhW",
+            "aWV3cG9ydEV2ZW50QmF0Y2hSZXN1bHQSLwoGZXZlbnRzGAEgAygLMh8uc2Fp",
+            "bG9yLmVkaXRvci52MS5WaWV3cG9ydEV2ZW50KvABChpWaWV3cG9ydFRyYW5z",
+            "Zm9ybU9wZXJhdGlvbhIsCihWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9O",
+            "X1VOU1BFQ0lGSUVEEAASJwojVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElP",
+            "Tl9TRUxFQ1QQARIqCiZWSUVXUE9SVF9UUkFOU0ZPUk1fT1BFUkFUSU9OX1RS",
+            "QU5TTEFURRACEicKI1ZJRVdQT1JUX1RSQU5TRk9STV9PUEVSQVRJT05fUk9U",
+            "QVRFEAMSJgoiVklFV1BPUlRfVFJBTlNGT1JNX09QRVJBVElPTl9TQ0FMRRAE",
+            "KooBChZWaWV3cG9ydFRyYW5zZm9ybVNwYWNlEigKJFZJRVdQT1JUX1RSQU5T",
+            "Rk9STV9TUEFDRV9VTlNQRUNJRklFRBAAEiIKHlZJRVdQT1JUX1RSQU5TRk9S",
+            "TV9TUEFDRV9XT1JMRBABEiIKHlZJRVdQT1JUX1RSQU5TRk9STV9TUEFDRV9M",
+            "T0NBTBACKqQBCg9FZGl0b3JTdGF0c01vZGUSIQodRURJVE9SX1NUQVRTX01P",
+            "REVfVU5TUEVDSUZJRUQQABIaChZFRElUT1JfU1RBVFNfTU9ERV9OT05FEAES",
+            "IgoeRURJVE9SX1NUQVRTX01PREVfUkVOREVSX1NUQVRTEAISLgoqRURJVE9S",
+            "X1NUQVRTX01PREVfUkVOREVSX1NUQVRTX0FORF9RVUVSSUVTEAMq6gQKEEVk",
+            "aXRvclJlbmRlck1vZGUSIgoeRURJVE9SX1JFTkRFUl9NT0RFX1VOU1BFQ0lG",
+            "SUVEEAASGgoWRURJVE9SX1JFTkRFUl9NT0RFX0xJVBABEigKJEVESVRPUl9S",
+            "RU5ERVJfTU9ERV9BTUJJRU5UX09DQ0xVU0lPThACEh8KG0VESVRPUl9SRU5E",
+            "RVJfTU9ERV9DQVNDQURFUxADEiIKHkVESVRPUl9SRU5ERVJfTU9ERV9MSUdI",
+            "VF9USUxFUxAEEi8KK0VESVRPUl9SRU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1J",
+            "TkFUSU9OX09OTFkQBRIxCi1FRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lM",
+            "TFVNSU5BVElPTl9QUk9CRVMQBhIxCi1FRElUT1JfUkVOREVSX01PREVfR0xP",
+            "QkFMX0lMTFVNSU5BVElPTl9CUklDS1MQBxIzCi9FRElUT1JfUkVOREVSX01P",
+            "REVfR0xPQkFMX0lMTFVNSU5BVElPTl9WQUxJRElUWRAIEjUKMUVESVRPUl9S",
+            "RU5ERVJfTU9ERV9HTE9CQUxfSUxMVU1JTkFUSU9OX1ZJU0lCSUxJVFkQCRI0",
+            "CjBFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5BVElPTl9SRVNJ",
+            "REVOQ1kQChI5CjVFRElUT1JfUkVOREVSX01PREVfR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9BU1NFVF9JREVOVElUWRALEjMKL0VESVRPUl9SRU5ERVJfTU9ERV9H",
+            "TE9CQUxfSUxMVU1JTkFUSU9OX0ZBTExCQUNLEAwqpwIKEUdJUHJvYmVzQmFr",
+            "ZVN0YXRlEiQKIEdJX1BST0JFU19CQUtFX1NUQVRFX1VOU1BFQ0lGSUVEEAAS",
+            "HQoZR0lfUFJPQkVTX0JBS0VfU1RBVEVfSURMRRABEiIKHkdJX1BST0JFU19C",
+            "QUtFX1NUQVRFX1BSRVBBUklORxACEh8KG0dJX1BST0JFU19CQUtFX1NUQVRF",
+            "X0JBS0lORxADEh8KG0dJX1BST0JFU19CQUtFX1NUQVRFX1NBVklORxAEEiIK",
+            "HkdJX1BST0JFU19CQUtFX1NUQVRFX1NVQ0NFRURFRBAFEh8KG0dJX1BST0JF",
+            "U19CQUtFX1NUQVRFX0ZBSUxFRBAGEiIKHkdJX1BST0JFU19CQUtFX1NUQVRF",
+            "X0NBTkNFTExFRBAHKqQBChtHbG9iYWxJbGx1bWluYXRpb25Qcm9iZU1vZGUS",
+            "LgoqR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX1VOU1BFQ0lGSUVE",
+            "EAASKAokR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0JMRU5EEAES",
+            "KwonR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9CRV9NT0RFX0FERElUSVZFEAIq",
+            "wwEKFkdsb2JhbElsbHVtaW5hdGlvbk1vZGUSKAokR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9NT0RFX1VOU1BFQ0lGSUVEEAASJQohR0xPQkFMX0lMTFVNSU5BVElP",
+            "Tl9NT0RFX1JFQUxUSU1FEAESLworR0xPQkFMX0lMTFVNSU5BVElPTl9NT0RF",
+            "X1JFQUxUSU1FX0FORF9CQUtFRBACEicKI0dMT0JBTF9JTExVTUlOQVRJT05f",
+            "TU9ERV9CQUtFRF9PTkxZEAMqnAIKIEdsb2JhbElsbHVtaW5hdGlvblByb2Jl",
+            "UmVzaWRlbmN5EjMKL0dMT0JBTF9JTExVTUlOQVRJT05fUFJPQkVfUkVTSURF",
+            "TkNZX1VOU1BFQ0lGSUVEEAASMAosR0xPQkFMX0lMTFVNSU5BVElPTl9QUk9C",
+            "RV9SRVNJREVOQ1lfVU5MT0FERUQQARIvCitHTE9CQUxfSUxMVU1JTkFUSU9O",
+            "X1BST0JFX1JFU0lERU5DWV9MT0FESU5HEAISMAosR0xPQkFMX0lMTFVNSU5B",
+            "VElPTl9QUk9CRV9SRVNJREVOQ1lfUkVTSURFTlQQAxIuCipHTE9CQUxfSUxM",
+            "VU1JTkFUSU9OX1BST0JFX1JFU0lERU5DWV9GQUlMRUQQBEIiqgIfU2FpbG9y",
+            "RWRpdG9yLlByb3RvY29sLkdlbmVyYXRlZGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), }, null, new pbr::GeneratedClrTypeInfo[] {
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::SailorEditor.Protocol.Generated.ViewportTransformOperation), typeof(global::SailorEditor.Protocol.Generated.ViewportTransformSpace), typeof(global::SailorEditor.Protocol.Generated.EditorStatsMode), typeof(global::SailorEditor.Protocol.Generated.EditorRenderMode), typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeState), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationMode), typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeResidency), }, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.Empty), global::SailorEditor.Protocol.Generated.Empty.Parser, null, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartProbeVolumeBake", "GetProbeVolumeBakeStatus", "CancelProbeVolumeBake", "SetGlobalIlluminationSettings", "GetGlobalIlluminationState" }, new[]{ "Command" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "ProbeVolumeBakeStatusResult", "GlobalIlluminationStateResult" }, new[]{ "Result" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolRequest), global::SailorEditor.Protocol.Generated.ProtocolRequest.Parser, new[]{ "ProtocolVersion", "RequestId", "Initialize", "Start", "Stop", "Shutdown", "RequestAssetReload", "GetAssetReloadState", "GetExitCode", "GetMessages", "SerializeCurrentWorld", "SerializeEditorTypes", "SerializeWorkspaceCacheIdentity", "LoadEditorWorld", "CreateEditorWorld", "SetViewport", "SetEditorRenderTargetSize", "UpsertRemoteViewport", "DestroyRemoteViewport", "GetRemoteViewportState", "GetRemoteViewportDiagnostics", "RetryRemoteViewport", "SetRemoteViewportMacHostHandle", "SendRemoteViewportInput", "PullEditorViewportEvents", "GetEditorManagedMutationRevision", "UpdateObject", "ReparentObject", "CreateGameObject", "DestroyObject", "ResetComponentToDefaults", "AddComponent", "RemoveComponent", "InstantiatePrefab", "InstantiatePrefabFromYaml", "SetEditorSelection", "ShowMainWindow", "RenderPathTracedImage", "SerializeEngineTypes", "IsEngineMainThreadReady", "IsEngineRunning", "TraceViewportRay", "InstantiatePrefabInstance", "FocusEditorCamera", "SetPrefabLink", "BreakPrefabLink", "SetViewportToolState", "GetViewportToolState", "UpdateAsset", "CreateModelInstance", "SetAnimatorParameter", "GetAnimatorState", "SetEditorSimulation", "GetEditorSimulationState", "PreviewAudioAsset", "SetEditorStatsMode", "SetEditorRenderMode", "GetEditorRenderMode", "StartGiProbesBake", "GetGiProbesBakeStatus", "CancelGiProbesBake", "SetGiSettings", "GetGlobalIlluminationState" }, new[]{ "Command" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProtocolResponse), global::SailorEditor.Protocol.Generated.ProtocolResponse.Parser, new[]{ "ProtocolVersion", "RequestId", "Success", "Error", "SupportsStrictInstanceIds", "EmptyResult", "BoolResult", "Int32Result", "Uint32Result", "Uint64Result", "StringResult", "StringListResult", "AssetReloadStateResult", "InstanceIdResult", "ViewportEventBatchResult", "Vector4Result", "ViewportToolStateResult", "AnimatorStateResult", "EditorRenderModeResult", "GiProbesBakeStatusResult", "GlobalIlluminationStateResult" }, new[]{ "Result" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.InitializeRequest), global::SailorEditor.Protocol.Generated.InitializeRequest.Parser, new[]{ "Arguments" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.CountRequest), global::SailorEditor.Protocol.Generated.CountRequest.Parser, new[]{ "MaxCount" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.FileIdRequest), global::SailorEditor.Protocol.Generated.FileIdRequest.Parser, new[]{ "FileId" }, null, null, null, null),
@@ -373,11 +370,11 @@ namespace SailorEditor.Protocol.Generated {
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorStatsModeRequest), global::SailorEditor.Protocol.Generated.EditorStatsModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeRequest), global::SailorEditor.Protocol.Generated.EditorRenderModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.EditorRenderModeResult), global::SailorEditor.Protocol.Generated.EditorRenderModeResult.Parser, new[]{ "Mode" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings), global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings.Parser, new[]{ "RaysPerProbe", "BounceCount", "RandomSeed", "MaxSubdivisionLevel", "MinProbeSpacing", "NormalBias", "ViewBias", "MaxRayDistance", "IncludeSky", "IncludeEmissive", "IncludeDirectLighting" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest), global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest.Parser, new[]{ "WorldFileId", "OutputVirtualPath", "StateName", "LayoutSourceFileId", "Settings", "AutoBounds", "VolumeMin", "VolumeMax", "FallbackEnvironment", "Overwrite", "ThreadCount" }, new[]{ "ThreadCount" }, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult), global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult.Parser, new[]{ "State", "Progress", "CompletedProbes", "TotalProbes", "BrickCount", "ProbeCount", "ElapsedSeconds", "LayoutHash", "TransportHash", "LightingHash", "Stage", "OutputVirtualPath", "Diagnostic" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeSettings), global::SailorEditor.Protocol.Generated.GIProbesBakeSettings.Parser, new[]{ "RaysPerProbe", "BounceCount", "RandomSeed", "MaxSubdivisionLevel", "MinProbeSpacing", "NormalBias", "ViewBias", "MaxRayDistance", "IncludeSky", "IncludeEmissive", "IncludeDirectLighting" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest), global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest.Parser, new[]{ "WorldFileId", "OutputVirtualPath", "StateName", "LayoutSourceFileId", "Settings", "AutoBounds", "VolumeMin", "VolumeMax", "FallbackEnvironment", "Overwrite", "ThreadCount" }, new[]{ "ThreadCount" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult), global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult.Parser, new[]{ "State", "Progress", "CompletedProbes", "TotalProbes", "BrickCount", "ProbeCount", "ElapsedSeconds", "LayoutHash", "TransportHash", "LightingHash", "Stage", "OutputVirtualPath", "Diagnostic" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeBinding.Parser, new[]{ "Name", "AssetFileId", "Mode", "InitialWeight", "Preload" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest), global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest.Parser, new[]{ "Probes", "Mode" }, new[]{ "Mode" }, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.SetGISettingsRequest), global::SailorEditor.Protocol.Generated.SetGISettingsRequest.Parser, new[]{ "Probes", "Mode" }, new[]{ "Mode" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState), global::SailorEditor.Protocol.Generated.GlobalIlluminationProbeState.Parser, new[]{ "Name", "AssetFileId", "Mode", "Weight", "Residency", "AssetRevision", "Diagnostic" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult), global::SailorEditor.Protocol.Generated.GlobalIlluminationStateResult.Parser, new[]{ "MaxProbeStatesPerSnapshot", "Probes", "Diagnostic", "CompositionCount", "RejectedCompositionCount", "Mode", "Enabled" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::SailorEditor.Protocol.Generated.RemoteViewportRequest), global::SailorEditor.Protocol.Generated.RemoteViewportRequest.Parser, new[]{ "ViewportId", "WindowPosX", "WindowPosY", "Width", "Height", "Visible", "Focused" }, null, null, null, null),
@@ -460,15 +457,15 @@ namespace SailorEditor.Protocol.Generated {
     [pbr::OriginalName("EDITOR_RENDER_MODE_GLOBAL_ILLUMINATION_FALLBACK")] GlobalIlluminationFallback = 12,
   }
 
-  public enum ProbeVolumeBakeState {
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_UNSPECIFIED")] Unspecified = 0,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_IDLE")] Idle = 1,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_PREPARING")] Preparing = 2,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_BAKING")] Baking = 3,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_SAVING")] Saving = 4,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_SUCCEEDED")] Succeeded = 5,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_FAILED")] Failed = 6,
-    [pbr::OriginalName("PROBE_VOLUME_BAKE_STATE_CANCELLED")] Cancelled = 7,
+  public enum GIProbesBakeState {
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_UNSPECIFIED")] Unspecified = 0,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_IDLE")] Idle = 1,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_PREPARING")] Preparing = 2,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_BAKING")] Baking = 3,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_SAVING")] Saving = 4,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_SUCCEEDED")] Succeeded = 5,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_FAILED")] Failed = 6,
+    [pbr::OriginalName("GI_PROBES_BAKE_STATE_CANCELLED")] Cancelled = 7,
   }
 
   public enum GlobalIlluminationProbeMode {
@@ -862,17 +859,17 @@ namespace SailorEditor.Protocol.Generated {
         case CommandOneofCase.GetEditorRenderMode:
           GetEditorRenderMode = other.GetEditorRenderMode.Clone();
           break;
-        case CommandOneofCase.StartProbeVolumeBake:
-          StartProbeVolumeBake = other.StartProbeVolumeBake.Clone();
+        case CommandOneofCase.StartGiProbesBake:
+          StartGiProbesBake = other.StartGiProbesBake.Clone();
           break;
-        case CommandOneofCase.GetProbeVolumeBakeStatus:
-          GetProbeVolumeBakeStatus = other.GetProbeVolumeBakeStatus.Clone();
+        case CommandOneofCase.GetGiProbesBakeStatus:
+          GetGiProbesBakeStatus = other.GetGiProbesBakeStatus.Clone();
           break;
-        case CommandOneofCase.CancelProbeVolumeBake:
-          CancelProbeVolumeBake = other.CancelProbeVolumeBake.Clone();
+        case CommandOneofCase.CancelGiProbesBake:
+          CancelGiProbesBake = other.CancelGiProbesBake.Clone();
           break;
-        case CommandOneofCase.SetGlobalIlluminationSettings:
-          SetGlobalIlluminationSettings = other.SetGlobalIlluminationSettings.Clone();
+        case CommandOneofCase.SetGiSettings:
+          SetGiSettings = other.SetGiSettings.Clone();
           break;
         case CommandOneofCase.GetGlobalIlluminationState:
           GetGlobalIlluminationState = other.GetGlobalIlluminationState.Clone();
@@ -1584,51 +1581,51 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "start_probe_volume_bake" field.</summary>
-    public const int StartProbeVolumeBakeFieldNumber = 67;
+    /// <summary>Field number for the "start_gi_probes_bake" field.</summary>
+    public const int StartGiProbesBakeFieldNumber = 67;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest StartProbeVolumeBake {
-      get { return commandCase_ == CommandOneofCase.StartProbeVolumeBake ? (global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest) command_ : null; }
+    public global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest StartGiProbesBake {
+      get { return commandCase_ == CommandOneofCase.StartGiProbesBake ? (global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest) command_ : null; }
       set {
         command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.StartProbeVolumeBake;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.StartGiProbesBake;
       }
     }
 
-    /// <summary>Field number for the "get_probe_volume_bake_status" field.</summary>
-    public const int GetProbeVolumeBakeStatusFieldNumber = 68;
+    /// <summary>Field number for the "get_gi_probes_bake_status" field.</summary>
+    public const int GetGiProbesBakeStatusFieldNumber = 68;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.Empty GetProbeVolumeBakeStatus {
-      get { return commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
+    public global::SailorEditor.Protocol.Generated.Empty GetGiProbesBakeStatus {
+      get { return commandCase_ == CommandOneofCase.GetGiProbesBakeStatus ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
       set {
         command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetProbeVolumeBakeStatus;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.GetGiProbesBakeStatus;
       }
     }
 
-    /// <summary>Field number for the "cancel_probe_volume_bake" field.</summary>
-    public const int CancelProbeVolumeBakeFieldNumber = 69;
+    /// <summary>Field number for the "cancel_gi_probes_bake" field.</summary>
+    public const int CancelGiProbesBakeFieldNumber = 69;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.Empty CancelProbeVolumeBake {
-      get { return commandCase_ == CommandOneofCase.CancelProbeVolumeBake ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
+    public global::SailorEditor.Protocol.Generated.Empty CancelGiProbesBake {
+      get { return commandCase_ == CommandOneofCase.CancelGiProbesBake ? (global::SailorEditor.Protocol.Generated.Empty) command_ : null; }
       set {
         command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.CancelProbeVolumeBake;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.CancelGiProbesBake;
       }
     }
 
-    /// <summary>Field number for the "set_global_illumination_settings" field.</summary>
-    public const int SetGlobalIlluminationSettingsFieldNumber = 70;
+    /// <summary>Field number for the "set_gi_settings" field.</summary>
+    public const int SetGiSettingsFieldNumber = 70;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest SetGlobalIlluminationSettings {
-      get { return commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings ? (global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest) command_ : null; }
+    public global::SailorEditor.Protocol.Generated.SetGISettingsRequest SetGiSettings {
+      get { return commandCase_ == CommandOneofCase.SetGiSettings ? (global::SailorEditor.Protocol.Generated.SetGISettingsRequest) command_ : null; }
       set {
         command_ = value;
-        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.SetGlobalIlluminationSettings;
+        commandCase_ = value == null ? CommandOneofCase.None : CommandOneofCase.SetGiSettings;
       }
     }
 
@@ -1704,10 +1701,10 @@ namespace SailorEditor.Protocol.Generated {
       SetEditorStatsMode = 64,
       SetEditorRenderMode = 65,
       GetEditorRenderMode = 66,
-      StartProbeVolumeBake = 67,
-      GetProbeVolumeBakeStatus = 68,
-      CancelProbeVolumeBake = 69,
-      SetGlobalIlluminationSettings = 70,
+      StartGiProbesBake = 67,
+      GetGiProbesBakeStatus = 68,
+      CancelGiProbesBake = 69,
+      SetGiSettings = 70,
       GetGlobalIlluminationState = 71,
     }
     private CommandOneofCase commandCase_ = CommandOneofCase.None;
@@ -1797,10 +1794,10 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(SetEditorStatsMode, other.SetEditorStatsMode)) return false;
       if (!object.Equals(SetEditorRenderMode, other.SetEditorRenderMode)) return false;
       if (!object.Equals(GetEditorRenderMode, other.GetEditorRenderMode)) return false;
-      if (!object.Equals(StartProbeVolumeBake, other.StartProbeVolumeBake)) return false;
-      if (!object.Equals(GetProbeVolumeBakeStatus, other.GetProbeVolumeBakeStatus)) return false;
-      if (!object.Equals(CancelProbeVolumeBake, other.CancelProbeVolumeBake)) return false;
-      if (!object.Equals(SetGlobalIlluminationSettings, other.SetGlobalIlluminationSettings)) return false;
+      if (!object.Equals(StartGiProbesBake, other.StartGiProbesBake)) return false;
+      if (!object.Equals(GetGiProbesBakeStatus, other.GetGiProbesBakeStatus)) return false;
+      if (!object.Equals(CancelGiProbesBake, other.CancelGiProbesBake)) return false;
+      if (!object.Equals(SetGiSettings, other.SetGiSettings)) return false;
       if (!object.Equals(GetGlobalIlluminationState, other.GetGlobalIlluminationState)) return false;
       if (CommandCase != other.CommandCase) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -1868,10 +1865,10 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.SetEditorStatsMode) hash ^= SetEditorStatsMode.GetHashCode();
       if (commandCase_ == CommandOneofCase.SetEditorRenderMode) hash ^= SetEditorRenderMode.GetHashCode();
       if (commandCase_ == CommandOneofCase.GetEditorRenderMode) hash ^= GetEditorRenderMode.GetHashCode();
-      if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) hash ^= StartProbeVolumeBake.GetHashCode();
-      if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) hash ^= GetProbeVolumeBakeStatus.GetHashCode();
-      if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) hash ^= CancelProbeVolumeBake.GetHashCode();
-      if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) hash ^= SetGlobalIlluminationSettings.GetHashCode();
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) hash ^= StartGiProbesBake.GetHashCode();
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) hash ^= GetGiProbesBakeStatus.GetHashCode();
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) hash ^= CancelGiProbesBake.GetHashCode();
+      if (commandCase_ == CommandOneofCase.SetGiSettings) hash ^= SetGiSettings.GetHashCode();
       if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) hash ^= GetGlobalIlluminationState.GetHashCode();
       hash ^= (int) commandCase_;
       if (_unknownFields != null) {
@@ -2124,21 +2121,21 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(146, 4);
         output.WriteMessage(GetEditorRenderMode);
       }
-      if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) {
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
         output.WriteRawTag(154, 4);
-        output.WriteMessage(StartProbeVolumeBake);
+        output.WriteMessage(StartGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) {
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
         output.WriteRawTag(162, 4);
-        output.WriteMessage(GetProbeVolumeBakeStatus);
+        output.WriteMessage(GetGiProbesBakeStatus);
       }
-      if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) {
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
         output.WriteRawTag(170, 4);
-        output.WriteMessage(CancelProbeVolumeBake);
+        output.WriteMessage(CancelGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) {
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
         output.WriteRawTag(178, 4);
-        output.WriteMessage(SetGlobalIlluminationSettings);
+        output.WriteMessage(SetGiSettings);
       }
       if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
         output.WriteRawTag(186, 4);
@@ -2386,21 +2383,21 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(146, 4);
         output.WriteMessage(GetEditorRenderMode);
       }
-      if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) {
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
         output.WriteRawTag(154, 4);
-        output.WriteMessage(StartProbeVolumeBake);
+        output.WriteMessage(StartGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) {
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
         output.WriteRawTag(162, 4);
-        output.WriteMessage(GetProbeVolumeBakeStatus);
+        output.WriteMessage(GetGiProbesBakeStatus);
       }
-      if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) {
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
         output.WriteRawTag(170, 4);
-        output.WriteMessage(CancelProbeVolumeBake);
+        output.WriteMessage(CancelGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) {
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
         output.WriteRawTag(178, 4);
-        output.WriteMessage(SetGlobalIlluminationSettings);
+        output.WriteMessage(SetGiSettings);
       }
       if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
         output.WriteRawTag(186, 4);
@@ -2590,17 +2587,17 @@ namespace SailorEditor.Protocol.Generated {
       if (commandCase_ == CommandOneofCase.GetEditorRenderMode) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetEditorRenderMode);
       }
-      if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(StartProbeVolumeBake);
+      if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(StartGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetProbeVolumeBakeStatus);
+      if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetGiProbesBakeStatus);
       }
-      if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(CancelProbeVolumeBake);
+      if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(CancelGiProbesBake);
       }
-      if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(SetGlobalIlluminationSettings);
+      if (commandCase_ == CommandOneofCase.SetGiSettings) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(SetGiSettings);
       }
       if (commandCase_ == CommandOneofCase.GetGlobalIlluminationState) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(GetGlobalIlluminationState);
@@ -2960,29 +2957,29 @@ namespace SailorEditor.Protocol.Generated {
           }
           GetEditorRenderMode.MergeFrom(other.GetEditorRenderMode);
           break;
-        case CommandOneofCase.StartProbeVolumeBake:
-          if (StartProbeVolumeBake == null) {
-            StartProbeVolumeBake = new global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest();
+        case CommandOneofCase.StartGiProbesBake:
+          if (StartGiProbesBake == null) {
+            StartGiProbesBake = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
           }
-          StartProbeVolumeBake.MergeFrom(other.StartProbeVolumeBake);
+          StartGiProbesBake.MergeFrom(other.StartGiProbesBake);
           break;
-        case CommandOneofCase.GetProbeVolumeBakeStatus:
-          if (GetProbeVolumeBakeStatus == null) {
-            GetProbeVolumeBakeStatus = new global::SailorEditor.Protocol.Generated.Empty();
+        case CommandOneofCase.GetGiProbesBakeStatus:
+          if (GetGiProbesBakeStatus == null) {
+            GetGiProbesBakeStatus = new global::SailorEditor.Protocol.Generated.Empty();
           }
-          GetProbeVolumeBakeStatus.MergeFrom(other.GetProbeVolumeBakeStatus);
+          GetGiProbesBakeStatus.MergeFrom(other.GetGiProbesBakeStatus);
           break;
-        case CommandOneofCase.CancelProbeVolumeBake:
-          if (CancelProbeVolumeBake == null) {
-            CancelProbeVolumeBake = new global::SailorEditor.Protocol.Generated.Empty();
+        case CommandOneofCase.CancelGiProbesBake:
+          if (CancelGiProbesBake == null) {
+            CancelGiProbesBake = new global::SailorEditor.Protocol.Generated.Empty();
           }
-          CancelProbeVolumeBake.MergeFrom(other.CancelProbeVolumeBake);
+          CancelGiProbesBake.MergeFrom(other.CancelGiProbesBake);
           break;
-        case CommandOneofCase.SetGlobalIlluminationSettings:
-          if (SetGlobalIlluminationSettings == null) {
-            SetGlobalIlluminationSettings = new global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest();
+        case CommandOneofCase.SetGiSettings:
+          if (SetGiSettings == null) {
+            SetGiSettings = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
           }
-          SetGlobalIlluminationSettings.MergeFrom(other.SetGlobalIlluminationSettings);
+          SetGiSettings.MergeFrom(other.SetGiSettings);
           break;
         case CommandOneofCase.GetGlobalIlluminationState:
           if (GetGlobalIlluminationState == null) {
@@ -3524,39 +3521,39 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 538: {
-            global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest();
-            if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) {
-              subBuilder.MergeFrom(StartProbeVolumeBake);
+            global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
+            if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+              subBuilder.MergeFrom(StartGiProbesBake);
             }
             input.ReadMessage(subBuilder);
-            StartProbeVolumeBake = subBuilder;
+            StartGiProbesBake = subBuilder;
             break;
           }
           case 546: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
-            if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) {
-              subBuilder.MergeFrom(GetProbeVolumeBakeStatus);
+            if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+              subBuilder.MergeFrom(GetGiProbesBakeStatus);
             }
             input.ReadMessage(subBuilder);
-            GetProbeVolumeBakeStatus = subBuilder;
+            GetGiProbesBakeStatus = subBuilder;
             break;
           }
           case 554: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
-            if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) {
-              subBuilder.MergeFrom(CancelProbeVolumeBake);
+            if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+              subBuilder.MergeFrom(CancelGiProbesBake);
             }
             input.ReadMessage(subBuilder);
-            CancelProbeVolumeBake = subBuilder;
+            CancelGiProbesBake = subBuilder;
             break;
           }
           case 562: {
-            global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest();
-            if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) {
-              subBuilder.MergeFrom(SetGlobalIlluminationSettings);
+            global::SailorEditor.Protocol.Generated.SetGISettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
+            if (commandCase_ == CommandOneofCase.SetGiSettings) {
+              subBuilder.MergeFrom(SetGiSettings);
             }
             input.ReadMessage(subBuilder);
-            SetGlobalIlluminationSettings = subBuilder;
+            SetGiSettings = subBuilder;
             break;
           }
           case 570: {
@@ -4100,39 +4097,39 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 538: {
-            global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartProbeVolumeBakeRequest();
-            if (commandCase_ == CommandOneofCase.StartProbeVolumeBake) {
-              subBuilder.MergeFrom(StartProbeVolumeBake);
+            global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest subBuilder = new global::SailorEditor.Protocol.Generated.StartGIProbesBakeRequest();
+            if (commandCase_ == CommandOneofCase.StartGiProbesBake) {
+              subBuilder.MergeFrom(StartGiProbesBake);
             }
             input.ReadMessage(subBuilder);
-            StartProbeVolumeBake = subBuilder;
+            StartGiProbesBake = subBuilder;
             break;
           }
           case 546: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
-            if (commandCase_ == CommandOneofCase.GetProbeVolumeBakeStatus) {
-              subBuilder.MergeFrom(GetProbeVolumeBakeStatus);
+            if (commandCase_ == CommandOneofCase.GetGiProbesBakeStatus) {
+              subBuilder.MergeFrom(GetGiProbesBakeStatus);
             }
             input.ReadMessage(subBuilder);
-            GetProbeVolumeBakeStatus = subBuilder;
+            GetGiProbesBakeStatus = subBuilder;
             break;
           }
           case 554: {
             global::SailorEditor.Protocol.Generated.Empty subBuilder = new global::SailorEditor.Protocol.Generated.Empty();
-            if (commandCase_ == CommandOneofCase.CancelProbeVolumeBake) {
-              subBuilder.MergeFrom(CancelProbeVolumeBake);
+            if (commandCase_ == CommandOneofCase.CancelGiProbesBake) {
+              subBuilder.MergeFrom(CancelGiProbesBake);
             }
             input.ReadMessage(subBuilder);
-            CancelProbeVolumeBake = subBuilder;
+            CancelGiProbesBake = subBuilder;
             break;
           }
           case 562: {
-            global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGlobalIlluminationSettingsRequest();
-            if (commandCase_ == CommandOneofCase.SetGlobalIlluminationSettings) {
-              subBuilder.MergeFrom(SetGlobalIlluminationSettings);
+            global::SailorEditor.Protocol.Generated.SetGISettingsRequest subBuilder = new global::SailorEditor.Protocol.Generated.SetGISettingsRequest();
+            if (commandCase_ == CommandOneofCase.SetGiSettings) {
+              subBuilder.MergeFrom(SetGiSettings);
             }
             input.ReadMessage(subBuilder);
-            SetGlobalIlluminationSettings = subBuilder;
+            SetGiSettings = subBuilder;
             break;
           }
           case 570: {
@@ -4234,8 +4231,8 @@ namespace SailorEditor.Protocol.Generated {
         case ResultOneofCase.EditorRenderModeResult:
           EditorRenderModeResult = other.EditorRenderModeResult.Clone();
           break;
-        case ResultOneofCase.ProbeVolumeBakeStatusResult:
-          ProbeVolumeBakeStatusResult = other.ProbeVolumeBakeStatusResult.Clone();
+        case ResultOneofCase.GiProbesBakeStatusResult:
+          GiProbesBakeStatusResult = other.GiProbesBakeStatusResult.Clone();
           break;
         case ResultOneofCase.GlobalIlluminationStateResult:
           GlobalIlluminationStateResult = other.GlobalIlluminationStateResult.Clone();
@@ -4479,15 +4476,15 @@ namespace SailorEditor.Protocol.Generated {
       }
     }
 
-    /// <summary>Field number for the "probe_volume_bake_status_result" field.</summary>
-    public const int ProbeVolumeBakeStatusResultFieldNumber = 24;
+    /// <summary>Field number for the "gi_probes_bake_status_result" field.</summary>
+    public const int GiProbesBakeStatusResultFieldNumber = 24;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult ProbeVolumeBakeStatusResult {
-      get { return resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult ? (global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult) result_ : null; }
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult GiProbesBakeStatusResult {
+      get { return resultCase_ == ResultOneofCase.GiProbesBakeStatusResult ? (global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult) result_ : null; }
       set {
         result_ = value;
-        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.ProbeVolumeBakeStatusResult;
+        resultCase_ = value == null ? ResultOneofCase.None : ResultOneofCase.GiProbesBakeStatusResult;
       }
     }
 
@@ -4521,7 +4518,7 @@ namespace SailorEditor.Protocol.Generated {
       ViewportToolStateResult = 21,
       AnimatorStateResult = 22,
       EditorRenderModeResult = 23,
-      ProbeVolumeBakeStatusResult = 24,
+      GiProbesBakeStatusResult = 24,
       GlobalIlluminationStateResult = 25,
     }
     private ResultOneofCase resultCase_ = ResultOneofCase.None;
@@ -4572,7 +4569,7 @@ namespace SailorEditor.Protocol.Generated {
       if (!object.Equals(ViewportToolStateResult, other.ViewportToolStateResult)) return false;
       if (!object.Equals(AnimatorStateResult, other.AnimatorStateResult)) return false;
       if (!object.Equals(EditorRenderModeResult, other.EditorRenderModeResult)) return false;
-      if (!object.Equals(ProbeVolumeBakeStatusResult, other.ProbeVolumeBakeStatusResult)) return false;
+      if (!object.Equals(GiProbesBakeStatusResult, other.GiProbesBakeStatusResult)) return false;
       if (!object.Equals(GlobalIlluminationStateResult, other.GlobalIlluminationStateResult)) return false;
       if (ResultCase != other.ResultCase) return false;
       return Equals(_unknownFields, other._unknownFields);
@@ -4601,7 +4598,7 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.ViewportToolStateResult) hash ^= ViewportToolStateResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.AnimatorStateResult) hash ^= AnimatorStateResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.EditorRenderModeResult) hash ^= EditorRenderModeResult.GetHashCode();
-      if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) hash ^= ProbeVolumeBakeStatusResult.GetHashCode();
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) hash ^= GiProbesBakeStatusResult.GetHashCode();
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) hash ^= GlobalIlluminationStateResult.GetHashCode();
       hash ^= (int) resultCase_;
       if (_unknownFields != null) {
@@ -4698,9 +4695,9 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(186, 1);
         output.WriteMessage(EditorRenderModeResult);
       }
-      if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) {
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
         output.WriteRawTag(194, 1);
-        output.WriteMessage(ProbeVolumeBakeStatusResult);
+        output.WriteMessage(GiProbesBakeStatusResult);
       }
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
         output.WriteRawTag(202, 1);
@@ -4792,9 +4789,9 @@ namespace SailorEditor.Protocol.Generated {
         output.WriteRawTag(186, 1);
         output.WriteMessage(EditorRenderModeResult);
       }
-      if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) {
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
         output.WriteRawTag(194, 1);
-        output.WriteMessage(ProbeVolumeBakeStatusResult);
+        output.WriteMessage(GiProbesBakeStatusResult);
       }
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
         output.WriteRawTag(202, 1);
@@ -4867,8 +4864,8 @@ namespace SailorEditor.Protocol.Generated {
       if (resultCase_ == ResultOneofCase.EditorRenderModeResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(EditorRenderModeResult);
       }
-      if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) {
-        size += 2 + pb::CodedOutputStream.ComputeMessageSize(ProbeVolumeBakeStatusResult);
+      if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(GiProbesBakeStatusResult);
       }
       if (resultCase_ == ResultOneofCase.GlobalIlluminationStateResult) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(GlobalIlluminationStateResult);
@@ -4985,11 +4982,11 @@ namespace SailorEditor.Protocol.Generated {
           }
           EditorRenderModeResult.MergeFrom(other.EditorRenderModeResult);
           break;
-        case ResultOneofCase.ProbeVolumeBakeStatusResult:
-          if (ProbeVolumeBakeStatusResult == null) {
-            ProbeVolumeBakeStatusResult = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult();
+        case ResultOneofCase.GiProbesBakeStatusResult:
+          if (GiProbesBakeStatusResult == null) {
+            GiProbesBakeStatusResult = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
           }
-          ProbeVolumeBakeStatusResult.MergeFrom(other.ProbeVolumeBakeStatusResult);
+          GiProbesBakeStatusResult.MergeFrom(other.GiProbesBakeStatusResult);
           break;
         case ResultOneofCase.GlobalIlluminationStateResult:
           if (GlobalIlluminationStateResult == null) {
@@ -5165,12 +5162,12 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 194: {
-            global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult();
-            if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) {
-              subBuilder.MergeFrom(ProbeVolumeBakeStatusResult);
+            global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
+            if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+              subBuilder.MergeFrom(GiProbesBakeStatusResult);
             }
             input.ReadMessage(subBuilder);
-            ProbeVolumeBakeStatusResult = subBuilder;
+            GiProbesBakeStatusResult = subBuilder;
             break;
           }
           case 202: {
@@ -5348,12 +5345,12 @@ namespace SailorEditor.Protocol.Generated {
             break;
           }
           case 194: {
-            global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeStatusResult();
-            if (resultCase_ == ResultOneofCase.ProbeVolumeBakeStatusResult) {
-              subBuilder.MergeFrom(ProbeVolumeBakeStatusResult);
+            global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult subBuilder = new global::SailorEditor.Protocol.Generated.GIProbesBakeStatusResult();
+            if (resultCase_ == ResultOneofCase.GiProbesBakeStatusResult) {
+              subBuilder.MergeFrom(GiProbesBakeStatusResult);
             }
             input.ReadMessage(subBuilder);
-            ProbeVolumeBakeStatusResult = subBuilder;
+            GiProbesBakeStatusResult = subBuilder;
             break;
           }
           case 202: {
@@ -8117,16 +8114,16 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class ProbeVolumeBakeSettings : pb::IMessage<ProbeVolumeBakeSettings>
+  public sealed partial class GIProbesBakeSettings : pb::IMessage<GIProbesBakeSettings>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
   {
-    private static readonly pb::MessageParser<ProbeVolumeBakeSettings> _parser = new pb::MessageParser<ProbeVolumeBakeSettings>(() => new ProbeVolumeBakeSettings());
+    private static readonly pb::MessageParser<GIProbesBakeSettings> _parser = new pb::MessageParser<GIProbesBakeSettings>(() => new GIProbesBakeSettings());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<ProbeVolumeBakeSettings> Parser { get { return _parser; } }
+    public static pb::MessageParser<GIProbesBakeSettings> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -8142,7 +8139,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeSettings() {
+    public GIProbesBakeSettings() {
       OnConstruction();
     }
 
@@ -8150,7 +8147,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeSettings(ProbeVolumeBakeSettings other) : this() {
+    public GIProbesBakeSettings(GIProbesBakeSettings other) : this() {
       raysPerProbe_ = other.raysPerProbe_;
       bounceCount_ = other.bounceCount_;
       randomSeed_ = other.randomSeed_;
@@ -8167,8 +8164,8 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeSettings Clone() {
-      return new ProbeVolumeBakeSettings(this);
+    public GIProbesBakeSettings Clone() {
+      return new GIProbesBakeSettings(this);
     }
 
     /// <summary>Field number for the "rays_per_probe" field.</summary>
@@ -8306,12 +8303,12 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
-      return Equals(other as ProbeVolumeBakeSettings);
+      return Equals(other as GIProbesBakeSettings);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(ProbeVolumeBakeSettings other) {
+    public bool Equals(GIProbesBakeSettings other) {
       if (ReferenceEquals(other, null)) {
         return false;
       }
@@ -8514,7 +8511,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(ProbeVolumeBakeSettings other) {
+    public void MergeFrom(GIProbesBakeSettings other) {
       if (other == null) {
         return;
       }
@@ -8685,17 +8682,17 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class StartProbeVolumeBakeRequest : pb::IMessage<StartProbeVolumeBakeRequest>
+  public sealed partial class StartGIProbesBakeRequest : pb::IMessage<StartGIProbesBakeRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
   {
-    private static readonly pb::MessageParser<StartProbeVolumeBakeRequest> _parser = new pb::MessageParser<StartProbeVolumeBakeRequest>(() => new StartProbeVolumeBakeRequest());
+    private static readonly pb::MessageParser<StartGIProbesBakeRequest> _parser = new pb::MessageParser<StartGIProbesBakeRequest>(() => new StartGIProbesBakeRequest());
     private pb::UnknownFieldSet _unknownFields;
     private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<StartProbeVolumeBakeRequest> Parser { get { return _parser; } }
+    public static pb::MessageParser<StartGIProbesBakeRequest> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -8711,7 +8708,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public StartProbeVolumeBakeRequest() {
+    public StartGIProbesBakeRequest() {
       OnConstruction();
     }
 
@@ -8719,7 +8716,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public StartProbeVolumeBakeRequest(StartProbeVolumeBakeRequest other) : this() {
+    public StartGIProbesBakeRequest(StartGIProbesBakeRequest other) : this() {
       _hasBits0 = other._hasBits0;
       worldFileId_ = other.worldFileId_;
       outputVirtualPath_ = other.outputVirtualPath_;
@@ -8737,8 +8734,8 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public StartProbeVolumeBakeRequest Clone() {
-      return new StartProbeVolumeBakeRequest(this);
+    public StartGIProbesBakeRequest Clone() {
+      return new StartGIProbesBakeRequest(this);
     }
 
     /// <summary>Field number for the "world_file_id" field.</summary>
@@ -8791,10 +8788,10 @@ namespace SailorEditor.Protocol.Generated {
 
     /// <summary>Field number for the "settings" field.</summary>
     public const int SettingsFieldNumber = 5;
-    private global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings settings_;
+    private global::SailorEditor.Protocol.Generated.GIProbesBakeSettings settings_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings Settings {
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeSettings Settings {
       get { return settings_; }
       set {
         settings_ = value;
@@ -8891,12 +8888,12 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
-      return Equals(other as StartProbeVolumeBakeRequest);
+      return Equals(other as StartGIProbesBakeRequest);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(StartProbeVolumeBakeRequest other) {
+    public bool Equals(StartGIProbesBakeRequest other) {
       if (ReferenceEquals(other, null)) {
         return false;
       }
@@ -9099,7 +9096,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(StartProbeVolumeBakeRequest other) {
+    public void MergeFrom(StartGIProbesBakeRequest other) {
       if (other == null) {
         return;
       }
@@ -9117,7 +9114,7 @@ namespace SailorEditor.Protocol.Generated {
       }
       if (other.settings_ != null) {
         if (settings_ == null) {
-          Settings = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings();
+          Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
         }
         Settings.MergeFrom(other.Settings);
       }
@@ -9185,7 +9182,7 @@ namespace SailorEditor.Protocol.Generated {
           }
           case 42: {
             if (settings_ == null) {
-              Settings = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings();
+              Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
             }
             input.ReadMessage(Settings);
             break;
@@ -9260,7 +9257,7 @@ namespace SailorEditor.Protocol.Generated {
           }
           case 42: {
             if (settings_ == null) {
-              Settings = new global::SailorEditor.Protocol.Generated.ProbeVolumeBakeSettings();
+              Settings = new global::SailorEditor.Protocol.Generated.GIProbesBakeSettings();
             }
             input.ReadMessage(Settings);
             break;
@@ -9306,16 +9303,16 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class ProbeVolumeBakeStatusResult : pb::IMessage<ProbeVolumeBakeStatusResult>
+  public sealed partial class GIProbesBakeStatusResult : pb::IMessage<GIProbesBakeStatusResult>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
   {
-    private static readonly pb::MessageParser<ProbeVolumeBakeStatusResult> _parser = new pb::MessageParser<ProbeVolumeBakeStatusResult>(() => new ProbeVolumeBakeStatusResult());
+    private static readonly pb::MessageParser<GIProbesBakeStatusResult> _parser = new pb::MessageParser<GIProbesBakeStatusResult>(() => new GIProbesBakeStatusResult());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<ProbeVolumeBakeStatusResult> Parser { get { return _parser; } }
+    public static pb::MessageParser<GIProbesBakeStatusResult> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -9331,7 +9328,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeStatusResult() {
+    public GIProbesBakeStatusResult() {
       OnConstruction();
     }
 
@@ -9339,7 +9336,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeStatusResult(ProbeVolumeBakeStatusResult other) : this() {
+    public GIProbesBakeStatusResult(GIProbesBakeStatusResult other) : this() {
       state_ = other.state_;
       progress_ = other.progress_;
       completedProbes_ = other.completedProbes_;
@@ -9358,16 +9355,16 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public ProbeVolumeBakeStatusResult Clone() {
-      return new ProbeVolumeBakeStatusResult(this);
+    public GIProbesBakeStatusResult Clone() {
+      return new GIProbesBakeStatusResult(this);
     }
 
     /// <summary>Field number for the "state" field.</summary>
     public const int StateFieldNumber = 1;
-    private global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState state_ = global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified;
+    private global::SailorEditor.Protocol.Generated.GIProbesBakeState state_ = global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState State {
+    public global::SailorEditor.Protocol.Generated.GIProbesBakeState State {
       get { return state_; }
       set {
         state_ = value;
@@ -9521,12 +9518,12 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
-      return Equals(other as ProbeVolumeBakeStatusResult);
+      return Equals(other as GIProbesBakeStatusResult);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(ProbeVolumeBakeStatusResult other) {
+    public bool Equals(GIProbesBakeStatusResult other) {
       if (ReferenceEquals(other, null)) {
         return false;
       }
@@ -9553,7 +9550,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (State != global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified) hash ^= State.GetHashCode();
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) hash ^= State.GetHashCode();
       if (Progress != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(Progress);
       if (CompletedProbes != 0) hash ^= CompletedProbes.GetHashCode();
       if (TotalProbes != 0) hash ^= TotalProbes.GetHashCode();
@@ -9584,7 +9581,7 @@ namespace SailorEditor.Protocol.Generated {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (State != global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified) {
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
         output.WriteRawTag(8);
         output.WriteEnum((int) State);
       }
@@ -9646,7 +9643,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (State != global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified) {
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
         output.WriteRawTag(8);
         output.WriteEnum((int) State);
       }
@@ -9708,7 +9705,7 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (State != global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified) {
+      if (State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
         size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) State);
       }
       if (Progress != 0F) {
@@ -9755,11 +9752,11 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(ProbeVolumeBakeStatusResult other) {
+    public void MergeFrom(GIProbesBakeStatusResult other) {
       if (other == null) {
         return;
       }
-      if (other.State != global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState.Unspecified) {
+      if (other.State != global::SailorEditor.Protocol.Generated.GIProbesBakeState.Unspecified) {
         State = other.State;
       }
       if (other.Progress != 0F) {
@@ -9818,7 +9815,7 @@ namespace SailorEditor.Protocol.Generated {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
           case 8: {
-            State = (global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState) input.ReadEnum();
+            State = (global::SailorEditor.Protocol.Generated.GIProbesBakeState) input.ReadEnum();
             break;
           }
           case 21: {
@@ -9889,7 +9886,7 @@ namespace SailorEditor.Protocol.Generated {
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
           case 8: {
-            State = (global::SailorEditor.Protocol.Generated.ProbeVolumeBakeState) input.ReadEnum();
+            State = (global::SailorEditor.Protocol.Generated.GIProbesBakeState) input.ReadEnum();
             break;
           }
           case 21: {
@@ -10294,17 +10291,17 @@ namespace SailorEditor.Protocol.Generated {
   }
 
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class SetGlobalIlluminationSettingsRequest : pb::IMessage<SetGlobalIlluminationSettingsRequest>
+  public sealed partial class SetGISettingsRequest : pb::IMessage<SetGISettingsRequest>
   #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       , pb::IBufferMessage
   #endif
   {
-    private static readonly pb::MessageParser<SetGlobalIlluminationSettingsRequest> _parser = new pb::MessageParser<SetGlobalIlluminationSettingsRequest>(() => new SetGlobalIlluminationSettingsRequest());
+    private static readonly pb::MessageParser<SetGISettingsRequest> _parser = new pb::MessageParser<SetGISettingsRequest>(() => new SetGISettingsRequest());
     private pb::UnknownFieldSet _unknownFields;
     private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<SetGlobalIlluminationSettingsRequest> Parser { get { return _parser; } }
+    public static pb::MessageParser<SetGISettingsRequest> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
@@ -10320,7 +10317,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public SetGlobalIlluminationSettingsRequest() {
+    public SetGISettingsRequest() {
       OnConstruction();
     }
 
@@ -10328,7 +10325,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public SetGlobalIlluminationSettingsRequest(SetGlobalIlluminationSettingsRequest other) : this() {
+    public SetGISettingsRequest(SetGISettingsRequest other) : this() {
       _hasBits0 = other._hasBits0;
       probes_ = other.probes_.Clone();
       mode_ = other.mode_;
@@ -10337,8 +10334,8 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public SetGlobalIlluminationSettingsRequest Clone() {
-      return new SetGlobalIlluminationSettingsRequest(this);
+    public SetGISettingsRequest Clone() {
+      return new SetGISettingsRequest(this);
     }
 
     /// <summary>Field number for the "probes" field.</summary>
@@ -10382,12 +10379,12 @@ namespace SailorEditor.Protocol.Generated {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
-      return Equals(other as SetGlobalIlluminationSettingsRequest);
+      return Equals(other as SetGISettingsRequest);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(SetGlobalIlluminationSettingsRequest other) {
+    public bool Equals(SetGISettingsRequest other) {
       if (ReferenceEquals(other, null)) {
         return false;
       }
@@ -10465,7 +10462,7 @@ namespace SailorEditor.Protocol.Generated {
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(SetGlobalIlluminationSettingsRequest other) {
+    public void MergeFrom(SetGISettingsRequest other) {
       if (other == null) {
         return;
       }

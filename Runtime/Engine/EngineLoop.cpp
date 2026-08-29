@@ -25,6 +25,7 @@
 #include <chrono>
 #include <cstdio>
 #include <limits>
+#include <string>
 #include <thread>
 
 using namespace Sailor;
@@ -82,6 +83,8 @@ namespace
 					: globalIlluminationStats.m_bActive
 						? "baked"
 						: "fallback";
+		const std::string globalIlluminationModeName(
+			magic_enum::enum_name(globalIlluminationStats.m_mode));
 		std::snprintf(
 			text,
 			sizeof(text),
@@ -101,8 +104,7 @@ namespace
 			csmShadowMemoryMb,
 			localShadowMemoryMb,
 			globalIlluminationStatus,
-			GlobalIlluminationModeToString(
-				globalIlluminationStats.m_mode),
+			globalIlluminationModeName.c_str(),
 			static_cast<unsigned long long>(
 				globalIlluminationStats.m_activeRevision),
 			globalIlluminationFlight,
@@ -197,8 +199,8 @@ TSharedPtr<World> EngineLoop::InstantiateWorld(WorldPrefabPtr worldPrefab, EWorl
 		worldPrefab->GetName(),
 		mask);
 	std::string globalIlluminationDiagnostic;
-	if (!newWorld->SetGlobalIlluminationSettings(
-			worldPrefab->GetGlobalIlluminationSettings(),
+	if (!newWorld->SetGISettings(
+			worldPrefab->GetGISettings(),
 			globalIlluminationDiagnostic))
 	{
 		SAILOR_LOG_ERROR(

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "GlobalIllumination/GIProbesData.h"
 #include "Core/Defines.h"
 
 #include <cstddef>
@@ -10,7 +10,7 @@
 
 namespace Sailor
 {
-	enum class EProbeVolumeBinaryStatus : uint8_t
+	enum class EGIProbesBinaryStatus : uint8_t
 	{
 		Success = 0,
 		IoFailure,
@@ -22,33 +22,33 @@ namespace Sailor
 		InvalidPayload
 	};
 
-	struct SAILOR_SHARED_API ProbeVolumeBinaryResult final
+	struct SAILOR_SHARED_API GIProbesBinaryResult final
 	{
-		EProbeVolumeBinaryStatus m_status = EProbeVolumeBinaryStatus::InvalidPayload;
+		EGIProbesBinaryStatus m_status = EGIProbesBinaryStatus::InvalidPayload;
 		std::string m_diagnostic{};
-		ProbeVolumeDataPtr m_data{};
+		GIProbesDataPtr m_data{};
 
 		bool IsSuccess() const noexcept
 		{
-			return m_status == EProbeVolumeBinaryStatus::Success && m_data;
+			return m_status == EGIProbesBinaryStatus::Success && m_data;
 		}
 	};
 
-	class SAILOR_SHARED_API ProbeVolumeBinary final
+	class SAILOR_SHARED_API GIProbesBinary final
 	{
 	public:
 		static bool Serialize(
-			const ProbeVolumeData& data,
+			const GIProbesData& data,
 			TVector<uint8_t>& outBytes,
 			std::string& outDiagnostic) noexcept;
-		static ProbeVolumeBinaryResult Deserialize(
+		static GIProbesBinaryResult Deserialize(
 			const uint8_t* bytes,
 			size_t size) noexcept;
-		static ProbeVolumeBinaryResult Load(
+		static GIProbesBinaryResult Load(
 			const std::filesystem::path& path) noexcept;
 		static bool SaveAtomic(
 			const std::filesystem::path& path,
-			const ProbeVolumeData& data,
+			const GIProbesData& data,
 			std::string& outDiagnostic,
 			bool bOverwrite = true) noexcept;
 	};

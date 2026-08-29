@@ -1,4 +1,4 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBinary.h"
+#include "GlobalIllumination/GIProbesBinary.h"
 
 #include "Workspace/WorkspaceCacheContract.h"
 
@@ -79,7 +79,7 @@ namespace
 			if (value.size() > MaxStringBytes ||
 				value.size() > std::numeric_limits<uint32_t>::max())
 			{
-				outDiagnostic = "a probe-volume metadata string exceeds the format limit";
+				outDiagnostic = "a GI probe metadata string exceeds the format limit";
 				return false;
 			}
 			WriteU32(static_cast<uint32_t>(value.size()));
@@ -179,17 +179,17 @@ namespace
 		size_t m_offset = 0u;
 	};
 
-	ProbeVolumeBinaryResult Fail(
-		EProbeVolumeBinaryStatus status,
+	GIProbesBinaryResult Fail(
+		EGIProbesBinaryStatus status,
 		std::string diagnostic)
 	{
-		ProbeVolumeBinaryResult result;
+		GIProbesBinaryResult result;
 		result.m_status = status;
 		result.m_diagnostic = std::move(diagnostic);
 		return result;
 	}
 
-	bool ReadBakeSettings(Reader& reader, ProbeVolumeBakeSettings& settings)
+	bool ReadBakeSettings(Reader& reader, GIProbesBakeSettings& settings)
 	{
 		uint32_t flags = 0u;
 		if (!reader.ReadU32(settings.m_raysPerProbe) ||
@@ -211,7 +211,7 @@ namespace
 		return (flags & ~0x7u) == 0u;
 	}
 
-	void WriteBakeSettings(Writer& writer, const ProbeVolumeBakeSettings& settings)
+	void WriteBakeSettings(Writer& writer, const GIProbesBakeSettings& settings)
 	{
 		writer.WriteU32(settings.m_raysPerProbe);
 		writer.WriteU32(settings.m_bounceCount);
@@ -230,8 +230,8 @@ namespace
 	}
 }
 
-bool ProbeVolumeBinary::Serialize(
-	const ProbeVolumeData& source,
+bool GIProbesBinary::Serialize(
+	const GIProbesData& source,
 	TVector<uint8_t>& outBytes,
 	std::string& outDiagnostic) noexcept
 {
@@ -239,10 +239,10 @@ bool ProbeVolumeBinary::Serialize(
 	outDiagnostic.clear();
 	try
 	{
-		ProbeVolumeData data = source;
-		data.m_formatVersion = ProbeVolumeFormatVersion;
-		data.m_layoutHash = ComputeProbeVolumeLayoutHash(data);
-		data.m_representationHash = ComputeProbeVolumeRepresentationHash(
+		GIProbesData data = source;
+		data.m_formatVersion = GIProbesFormatVersion;
+		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
+		data.m_representationHash = ComputeGIProbesRepresentationHash(
 			data.m_formatVersion,
 			data.m_shOrder,
 			data.m_compression);
@@ -253,13 +253,13 @@ bool ProbeVolumeBinary::Serialize(
 		if (data.m_transportHash == 0u || data.m_lightingHash == 0u)
 		{
 			outDiagnostic =
-				"the probe volume is missing transport or lighting identity";
+				"the GI probe data is missing transport or lighting identity";
 			return false;
 		}
 		if (data.m_bricks.Num() > MaxBrickCount ||
 			data.m_probes.Num() > MaxProbeCount)
 		{
-			outDiagnostic = "the probe volume exceeds the binary format limits";
+			outDiagnostic = "the GI probe data exceeds the binary format limits";
 			return false;
 		}
 
@@ -291,7 +291,7 @@ bool ProbeVolumeBinary::Serialize(
 			return false;
 		}
 
-		for (const ProbeVolumeBrick& brick : data.m_bricks)
+		for (const GIProbeBrick& brick : data.m_bricks)
 		{
 			payload.WriteVec3(brick.m_min);
 			payload.WriteVec3(brick.m_max);
@@ -302,7 +302,7 @@ bool ProbeVolumeBinary::Serialize(
 			payload.WriteU32(brick.m_probeCounts.y);
 			payload.WriteU32(brick.m_probeCounts.z);
 		}
-		for (const ProbeVolumeSample& probe : data.m_probes)
+		for (const GIProbe& probe : data.m_probes)
 		{
 			payload.WriteVec3(probe.m_position);
 			payload.WriteVec3(probe.m_relocationOffset);
@@ -325,14 +325,14 @@ bool ProbeVolumeBinary::Serialize(
 
 		if (payload.m_bytes.Num() > MaxPayloadBytes)
 		{
-			outDiagnostic = "the serialized probe volume exceeds the maximum payload size";
+			outDiagnostic = "the serialized GI probe data exceeds the maximum payload size";
 			return false;
 		}
 
 		Writer file;
 		file.m_bytes.Reserve(FixedHeaderSize + payload.m_bytes.Num());
 		file.m_bytes.AddRange(Magic.data(), Magic.size());
-		file.WriteU32(ProbeVolumeFormatVersion);
+		file.WriteU32(GIProbesFormatVersion);
 		file.WriteU32(EndianMarker);
 		file.WriteU32(FixedHeaderSize);
 		file.WriteU32(0u);
@@ -340,24 +340,24 @@ bool ProbeVolumeBinary::Serialize(
 		file.WriteU64(Checksum(payload.m_bytes.GetData(), payload.m_bytes.Num()));
 		file.m_bytes.AddRange(payload.m_bytes);
 		outBytes = std::move(file.m_bytes);
-		outDiagnostic = "serialized one baked probe-volume state";
+		outDiagnostic = "serialized one baked GI probe state";
 		return true;
 	}
 	catch (const std::exception& exception)
 	{
-		outDiagnostic = std::string("cannot serialize probe volume: ") + exception.what();
+		outDiagnostic = std::string("cannot serialize GI probe data: ") + exception.what();
 		outBytes.Clear();
 		return false;
 	}
 	catch (...)
 	{
-		outDiagnostic = "cannot serialize probe volume: unknown failure";
+		outDiagnostic = "cannot serialize GI probe data: unknown failure";
 		outBytes.Clear();
 		return false;
 	}
 }
 
-ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
+GIProbesBinaryResult GIProbesBinary::Deserialize(
 	const uint8_t* bytes,
 	size_t size) noexcept
 {
@@ -365,12 +365,12 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 	{
 		if (!bytes || size < FixedHeaderSize)
 		{
-			return Fail(EProbeVolumeBinaryStatus::Truncated,
+			return Fail(EGIProbesBinaryStatus::Truncated,
 				"the .probes file is smaller than its fixed header");
 		}
 		if (!std::equal(Magic.begin(), Magic.end(), bytes))
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidMagic,
+			return Fail(EGIProbesBinaryStatus::InvalidMagic,
 				"the .probes file has an invalid magic value");
 		}
 
@@ -388,22 +388,22 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			!header.ReadU64(payloadSize) ||
 			!header.ReadU64(payloadChecksum))
 		{
-			return Fail(EProbeVolumeBinaryStatus::Truncated,
+			return Fail(EGIProbesBinaryStatus::Truncated,
 				"the .probes fixed header is truncated");
 		}
-		if (version != ProbeVolumeFormatVersion)
+		if (version != GIProbesFormatVersion)
 		{
-			return Fail(EProbeVolumeBinaryStatus::UnsupportedVersion,
+			return Fail(EGIProbesBinaryStatus::UnsupportedVersion,
 				"the .probes format version is unsupported");
 		}
 		if (endian != EndianMarker)
 		{
-			return Fail(EProbeVolumeBinaryStatus::UnsupportedEndianness,
+			return Fail(EGIProbesBinaryStatus::UnsupportedEndianness,
 				"the .probes file does not use the required little-endian encoding");
 		}
 		if (headerFlags != 0u)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes fixed header contains unsupported flags");
 		}
 		if (headerSize != FixedHeaderSize ||
@@ -411,19 +411,19 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			payloadSize > size - headerSize ||
 			payloadSize != size - headerSize)
 		{
-			return Fail(EProbeVolumeBinaryStatus::Truncated,
+			return Fail(EGIProbesBinaryStatus::Truncated,
 				"the .probes payload size does not match the file size");
 		}
 
 		const uint8_t* payloadBytes = bytes + headerSize;
 		if (Checksum(payloadBytes, static_cast<size_t>(payloadSize)) != payloadChecksum)
 		{
-			return Fail(EProbeVolumeBinaryStatus::ChecksumMismatch,
+			return Fail(EGIProbesBinaryStatus::ChecksumMismatch,
 				"the .probes payload checksum does not match");
 		}
 
 		Reader payload(payloadBytes, static_cast<size_t>(payloadSize));
-		ProbeVolumeDataPtr data = ProbeVolumeDataPtr::Make();
+		GIProbesDataPtr data = GIProbesDataPtr::Make();
 		uint32_t bakedStateCount = 0u;
 		uint32_t compression = 0u;
 		uint32_t payloadFlags = 0u;
@@ -451,19 +451,19 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			!payload.ReadString(data->m_bakerVersion) ||
 			!payload.ReadString(data->m_diagnostics.m_message))
 		{
-			return Fail(EProbeVolumeBinaryStatus::Truncated,
+			return Fail(EGIProbesBinaryStatus::Truncated,
 				"the .probes metadata payload is truncated or oversized");
 		}
 		data->m_formatVersion = version;
-		data->m_compression = static_cast<EProbeVolumeCompression>(compression);
+		data->m_compression = static_cast<EGIProbesCompression>(compression);
 		if (payloadFlags != 0u)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes payload contains unsupported flags");
 		}
 		if (bakedStateCount != OneBakedState)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"a .probes file must contain exactly one baked lighting state");
 		}
 		if (data->m_layoutHash == 0u ||
@@ -471,13 +471,13 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			data->m_transportHash == 0u ||
 			data->m_lightingHash == 0u)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes payload is missing required identity hashes");
 		}
 		if (brickCount == 0u || brickCount > MaxBrickCount ||
 			probeCount == 0u || probeCount > MaxProbeCount)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes brick or probe count exceeds the supported limits");
 		}
 
@@ -488,12 +488,12 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			static_cast<uint64_t>(probeCount) * ProbeBytes;
 		if (expectedRecordBytes != payload.Remaining())
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes record counts do not match the payload size");
 		}
 
 		data->m_bricks.Resize(brickCount);
-		for (ProbeVolumeBrick& brick : data->m_bricks)
+		for (GIProbeBrick& brick : data->m_bricks)
 		{
 			if (!payload.ReadVec3(brick.m_min) ||
 				!payload.ReadVec3(brick.m_max) ||
@@ -504,27 +504,27 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 				!payload.ReadU32(brick.m_probeCounts.y) ||
 				!payload.ReadU32(brick.m_probeCounts.z))
 			{
-				return Fail(EProbeVolumeBinaryStatus::Truncated,
+				return Fail(EGIProbesBinaryStatus::Truncated,
 					"the .probes brick table is truncated");
 			}
 		}
 
 		data->m_probes.Resize(probeCount);
-		for (ProbeVolumeSample& probe : data->m_probes)
+		for (GIProbe& probe : data->m_probes)
 		{
 			if (!payload.ReadVec3(probe.m_position) ||
 				!payload.ReadVec3(probe.m_relocationOffset) ||
 				!payload.ReadFloat(probe.m_validity) ||
 				!payload.ReadU32(probe.m_flags))
 			{
-				return Fail(EProbeVolumeBinaryStatus::Truncated,
+				return Fail(EGIProbesBinaryStatus::Truncated,
 					"the .probes sample table is truncated");
 			}
 			for (glm::vec3& coefficient : probe.m_irradiance)
 			{
 				if (!payload.ReadVec3(coefficient))
 				{
-					return Fail(EProbeVolumeBinaryStatus::Truncated,
+					return Fail(EGIProbesBinaryStatus::Truncated,
 						"the .probes spherical-harmonics table is truncated");
 				}
 			}
@@ -532,7 +532,7 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			{
 				if (!payload.ReadVec2(visibility))
 				{
-					return Fail(EProbeVolumeBinaryStatus::Truncated,
+					return Fail(EGIProbesBinaryStatus::Truncated,
 						"the .probes visibility table is truncated");
 				}
 			}
@@ -541,43 +541,43 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Deserialize(
 			{
 				if (!payload.ReadFloat(environmentVisibility))
 				{
-					return Fail(EProbeVolumeBinaryStatus::Truncated,
+					return Fail(EGIProbesBinaryStatus::Truncated,
 						"the .probes environment-visibility table is truncated");
 				}
 			}
 		}
 		if (payload.Remaining() != 0u)
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"the .probes payload has unexpected trailing records");
 		}
 
 		std::string validationDiagnostic;
 		if (!data->Validate(validationDiagnostic))
 		{
-			return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+			return Fail(EGIProbesBinaryStatus::InvalidPayload,
 				"invalid .probes payload: " + validationDiagnostic);
 		}
 
-		ProbeVolumeBinaryResult result;
-		result.m_status = EProbeVolumeBinaryStatus::Success;
-		result.m_diagnostic = "loaded one baked probe-volume state";
+		GIProbesBinaryResult result;
+		result.m_status = EGIProbesBinaryStatus::Success;
+		result.m_diagnostic = "loaded one baked GI probe state";
 		result.m_data = std::move(data);
 		return result;
 	}
 	catch (const std::exception& exception)
 	{
-		return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+		return Fail(EGIProbesBinaryStatus::InvalidPayload,
 			std::string("cannot parse .probes payload: ") + exception.what());
 	}
 	catch (...)
 	{
-		return Fail(EProbeVolumeBinaryStatus::InvalidPayload,
+		return Fail(EGIProbesBinaryStatus::InvalidPayload,
 			"cannot parse .probes payload: unknown failure");
 	}
 }
 
-ProbeVolumeBinaryResult ProbeVolumeBinary::Load(
+GIProbesBinaryResult GIProbesBinary::Load(
 	const std::filesystem::path& path) noexcept
 {
 	try
@@ -585,13 +585,13 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Load(
 		std::ifstream stream(path, std::ios::binary | std::ios::ate);
 		if (!stream.is_open())
 		{
-			return Fail(EProbeVolumeBinaryStatus::IoFailure,
+			return Fail(EGIProbesBinaryStatus::IoFailure,
 				"cannot open .probes file '" + path.generic_string() + "'");
 		}
 		const std::streampos end = stream.tellg();
 		if (end < 0 || static_cast<uint64_t>(end) > MaxPayloadBytes + FixedHeaderSize)
 		{
-			return Fail(EProbeVolumeBinaryStatus::IoFailure,
+			return Fail(EGIProbesBinaryStatus::IoFailure,
 				"the .probes file size is invalid or exceeds the supported limit");
 		}
 		TVector<uint8_t> bytes;
@@ -605,26 +605,26 @@ ProbeVolumeBinaryResult ProbeVolumeBinary::Load(
 		}
 		if (!stream.good() && !stream.eof())
 		{
-			return Fail(EProbeVolumeBinaryStatus::IoFailure,
+			return Fail(EGIProbesBinaryStatus::IoFailure,
 				"cannot read .probes file '" + path.generic_string() + "'");
 		}
 		return Deserialize(bytes.GetData(), bytes.Num());
 	}
 	catch (const std::exception& exception)
 	{
-		return Fail(EProbeVolumeBinaryStatus::IoFailure,
+		return Fail(EGIProbesBinaryStatus::IoFailure,
 			std::string("cannot load .probes file: ") + exception.what());
 	}
 	catch (...)
 	{
-		return Fail(EProbeVolumeBinaryStatus::IoFailure,
+		return Fail(EGIProbesBinaryStatus::IoFailure,
 			"cannot load .probes file: unknown failure");
 	}
 }
 
-bool ProbeVolumeBinary::SaveAtomic(
+bool GIProbesBinary::SaveAtomic(
 	const std::filesystem::path& path,
-	const ProbeVolumeData& data,
+	const GIProbesData& data,
 	std::string& outDiagnostic,
 	bool bOverwrite) noexcept
 {

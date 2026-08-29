@@ -1,5 +1,6 @@
 name: GlobalIlluminationLandscapeEveningBounce
 globalIllumination:
+  mode: RealtimeAndBaked
   probes:
     Evening Landscape Bounce:
       asset:
@@ -10,6 +11,7 @@ globalIllumination:
 prefabs:
   - gameObjects:
       - name: GlobalIlluminationLandscapeEveningBounce
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -48,6 +50,7 @@ prefabs:
           instanceId: 15500000000040008000000000000011_15515515515515515511
   - gameObjects:
       - name: Evening Landscape
+        mobilityType: Stationary
         position:
           - 0
           - -4
@@ -133,6 +136,7 @@ prefabs:
           flatten: false
   - gameObjects:
       - name: Evening Shadow Ridge
+        mobilityType: Stationary
         position:
           - 1.5
           - 1
@@ -170,6 +174,7 @@ prefabs:
           fileId: ""
   - gameObjects:
       - name: Sunlit Bounce Cliff
+        mobilityType: Stationary
         position:
           - 14
           - 4
@@ -207,6 +212,7 @@ prefabs:
           fileId: ""
   - gameObjects:
       - name: Shadow Valley Receiver
+        mobilityType: Stationary
         position:
           - 3.5
           - -1.5
@@ -244,6 +250,7 @@ prefabs:
           fileId: ""
   - gameObjects:
       - name: Shadow Valley Lintel
+        mobilityType: Stationary
         position:
           - 3.5
           - 3.5
@@ -281,6 +288,7 @@ prefabs:
           fileId: ""
   - gameObjects:
       - name: Evening Sun
+        mobilityType: Stationary
         position:
           - -40
           - 35
@@ -324,6 +332,7 @@ prefabs:
           fileId: ""
   - gameObjects:
       - name: Evening Sky
+        mobilityType: Stationary
         position:
           - 0
           - 0
@@ -375,6 +384,7 @@ prefabs:
           sunShaftsDistance: 60
   - gameObjects:
       - name: Evening GI Camera
+        mobilityType: Stationary
         position:
           - 3
           - 13

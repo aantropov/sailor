@@ -47,7 +47,7 @@ namespace Sailor
 		bool m_bPreload = false;
 	};
 
-	struct SAILOR_SHARED_API GlobalIlluminationWorldSettings final
+	struct SAILOR_SHARED_API GISettings final
 	{
 		EGlobalIlluminationMode m_mode =
 			EGlobalIlluminationMode::RealtimeAndBaked;
@@ -60,14 +60,4 @@ namespace Sailor
 			std::string& outDiagnostic) noexcept;
 	};
 
-	SAILOR_SHARED_API const char* GlobalIlluminationProbeModeToString(
-		EGlobalIlluminationProbeMode mode) noexcept;
-	SAILOR_SHARED_API bool TryParseGlobalIlluminationProbeMode(
-		const std::string& value,
-		EGlobalIlluminationProbeMode& outMode) noexcept;
-	SAILOR_SHARED_API const char* GlobalIlluminationModeToString(
-		EGlobalIlluminationMode mode) noexcept;
-	SAILOR_SHARED_API bool TryParseGlobalIlluminationMode(
-		const std::string& value,
-		EGlobalIlluminationMode& outMode) noexcept;
 }

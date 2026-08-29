@@ -125,11 +125,6 @@ namespace
 		return kind == EAssetMountKind::Workspace ? 1 : 0;
 	}
 
-	const char* KindName(EAssetMountKind kind)
-	{
-		return kind == EAssetMountKind::Workspace ? "Workspace" : "Engine";
-	}
-
 	template<typename TCandidate>
 	bool IsPreferred(const TCandidate& left, const TCandidate& right)
 	{
@@ -262,8 +257,9 @@ namespace
 				diagnostic.m_winnerKind = winner.m_kind;
 				diagnostic.m_conflictingKind = conflicting.m_kind;
 				diagnostic.m_message = "Duplicate asset mount root '" + PathDisplay(winner.m_root) +
-					"' keeps " + KindName(winner.m_kind) + " and discards " +
-					KindName(conflicting.m_kind) + ".";
+					"' keeps " + std::string(magic_enum::enum_name(winner.m_kind)) +
+					" and discards " +
+					std::string(magic_enum::enum_name(conflicting.m_kind)) + ".";
 				diagnostics.Add(std::move(diagnostic));
 			}
 			begin = end;
@@ -288,8 +284,10 @@ namespace
 				diagnostic.m_winnerKind = left.m_kind;
 				diagnostic.m_conflictingKind = right.m_kind;
 				diagnostic.m_message = "Asset mount roots overlap and cannot be activated: " +
-					std::string(KindName(left.m_kind)) + " '" + PathDisplay(left.m_root) +
-					"' and " + KindName(right.m_kind) + " '" + PathDisplay(right.m_root) + "'.";
+					std::string(magic_enum::enum_name(left.m_kind)) + " '" +
+					PathDisplay(left.m_root) + "' and " +
+					std::string(magic_enum::enum_name(right.m_kind)) + " '" +
+					PathDisplay(right.m_root) + "'.";
 				diagnostics.Add(std::move(diagnostic));
 			}
 		}
@@ -453,9 +451,9 @@ namespace
 			? "virtual path"
 			: "FileId";
 		diagnostic.m_message = "Asset " + std::string(collisionName) + " collision '" + key +
-			"' keeps " + KindName(winner.m_mount.m_kind) + " '" +
+			"' keeps " + std::string(magic_enum::enum_name(winner.m_mount.m_kind)) + " '" +
 			PathDisplay(winner.m_physicalPath) + "' (FileId '" + winner.m_fileId +
-			"') over " + KindName(conflicting.m_mount.m_kind) + " '" +
+			"') over " + std::string(magic_enum::enum_name(conflicting.m_mount.m_kind)) + " '" +
 			PathDisplay(conflicting.m_physicalPath) + "' (FileId '" + conflicting.m_fileId + "').";
 		return diagnostic;
 	}

@@ -14,7 +14,7 @@
 #include "WorldPrefabAssetInfo.h"
 #include "Tasks/Scheduler.h"
 #include "Engine/Object.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Memory/ObjectPtr.hpp"
 #include "Memory/ObjectAllocator.hpp"
 #include "Core/Reflection.h"
@@ -42,7 +42,7 @@ namespace Sailor
 
 		SAILOR_API const std::string& GetName() const { return m_name; }
 		SAILOR_API const TVector<PrefabPtr>& GetGameObjects() const { return m_gameObjects; }
-		SAILOR_API const GlobalIlluminationWorldSettings& GetGlobalIlluminationSettings() const
+		SAILOR_API const GISettings& GetGISettings() const
 		{
 			return m_globalIllumination;
 		}
@@ -93,7 +93,7 @@ namespace Sailor
 
 		std::string m_name{};
 		std::string m_loadDiagnostic{};
-		GlobalIlluminationWorldSettings m_globalIllumination{};
+		GISettings m_globalIllumination{};
 		TVector<PrefabPtr> m_gameObjects;
 
 		friend class WorldPrefabImporter;

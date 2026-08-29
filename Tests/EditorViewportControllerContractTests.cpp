@@ -397,7 +397,7 @@ namespace
 			"invalid target bounds must be rejected");
 	}
 
-	void TestTransformToolStateIsValidatedAtomically()
+	void TestTransformToolStateIsAppliedAtomically()
 	{
 		EditorViewport::EditorViewportController controller{};
 		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Translate,
@@ -411,21 +411,6 @@ namespace
 		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
 			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
 			"accepted operation and space values must be applied together");
-
-		Require(!controller.SetTransformToolState(
-			static_cast<EditorViewport::ETransformOperation>(255),
-			EditorViewport::ETransformSpace::World),
-			"an unknown transform operation must be rejected");
-		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
-			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
-			"a rejected operation must leave the full tool state unchanged");
-		Require(!controller.SetTransformToolState(
-			EditorViewport::ETransformOperation::Scale,
-			static_cast<EditorViewport::ETransformSpace>(255)),
-			"an unknown transform space must be rejected");
-		Require(controller.GetOperation() == EditorViewport::ETransformOperation::Rotate &&
-			controller.GetSpace() == EditorViewport::ETransformSpace::Local,
-			"a rejected space must leave the full tool state unchanged");
 	}
 
 	void TestAssetDropEventUsesValidatedViewportQueue()
@@ -703,7 +688,7 @@ int main()
 		{ "CalculateFramedCameraPositionPreservesViewDirection", TestCalculateFramedCameraPositionPreservesViewDirection },
 		{ "CalculateFramedCameraPositionAccountsForViewportAspect", TestCalculateFramedCameraPositionAccountsForViewportAspect },
 		{ "CalculateFramedCameraPositionRejectsInvalidInput", TestCalculateFramedCameraPositionRejectsInvalidInput },
-			{ "TransformToolStateIsValidatedAtomically", TestTransformToolStateIsValidatedAtomically },
+			{ "TransformToolStateIsAppliedAtomically", TestTransformToolStateIsAppliedAtomically },
 			{ "AssetDropEventUsesValidatedViewportQueue", TestAssetDropEventUsesValidatedViewportQueue },
 			{ "ToolShortcutEventUsesValidatedViewportQueue", TestToolShortcutEventUsesValidatedViewportQueue },
 		{ "ConvertWorldToLocalTransformUnderParent", TestConvertWorldToLocalTransformUnderParent },

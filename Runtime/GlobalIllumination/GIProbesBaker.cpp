@@ -1,4 +1,4 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBaker.h"
+#include "GlobalIllumination/GIProbesBaker.h"
 
 #include "Containers/Hash.h"
 #include "Core/Utils.h"
@@ -23,7 +23,7 @@ namespace
 	constexpr uint32_t MaxProbeRelocationIterations = 4u;
 	constexpr float MaxValidBackfaceRatio = 0.25f;
 
-	const std::array<glm::vec3, ProbeVolumeVisibilityDirectionCount>
+	const std::array<glm::vec3, GIProbeVisibilityDirectionCount>
 		VisibilityDirections
 	{
 		glm::vec3(1.0f, 0.0f, 0.0f),
@@ -41,7 +41,7 @@ namespace
 			std::isfinite(value.z);
 	}
 
-	bool IsCancelled(const ProbeVolumeBakeRequest& request) noexcept
+	bool IsCancelled(const GIProbesBakeRequest& request) noexcept
 	{
 		return request.m_cancel &&
 			request.m_cancel->load(std::memory_order_acquire);
@@ -93,7 +93,7 @@ namespace
 		HashValue(hash, value.z);
 	}
 
-	uint64_t ComputeTransportHash(const ProbeVolumeData& data) noexcept
+	uint64_t ComputeTransportHash(const GIProbesData& data) noexcept
 	{
 		uint64_t hash = 1469598103934665603ull;
 		HashValue(hash, data.m_layoutHash);
@@ -102,7 +102,7 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_normalBias);
 		HashValue(hash, data.m_bakeSettings.m_viewBias);
 		HashValue(hash, data.m_bakeSettings.m_maxRayDistance);
-		for (const ProbeVolumeSample& probe : data.m_probes)
+		for (const GIProbe& probe : data.m_probes)
 		{
 			HashVec3(hash, probe.m_relocationOffset);
 			HashValue(hash, probe.m_validity);
@@ -120,7 +120,7 @@ namespace
 		return hash;
 	}
 
-	uint64_t ComputeLightingHash(const ProbeVolumeData& data) noexcept
+	uint64_t ComputeLightingHash(const GIProbesData& data) noexcept
 	{
 		uint64_t hash = 1469598103934665603ull;
 		HashValue(hash, data.m_layoutHash);
@@ -128,7 +128,7 @@ namespace
 		HashValue(hash, data.m_bakeSettings.m_bounceCount);
 		HashValue(hash, data.m_bakeSettings.m_randomSeed);
 		HashValue(hash, data.m_bakeSettings.m_skyIndirectIntensity);
-		for (const ProbeVolumeSample& probe : data.m_probes)
+		for (const GIProbe& probe : data.m_probes)
 		{
 			for (const glm::vec3& coefficient : probe.m_irradiance)
 			{
@@ -184,12 +184,12 @@ namespace
 	}
 
 	void CanonicalizeSharedProbeSamples(
-		ProbeVolumeData& data,
+		GIProbesData& data,
 		bool bCanonicalizeTransport)
 	{
 		std::vector<SharedProbeEntry> entries;
 		entries.reserve(data.m_probes.Num());
-		for (const ProbeVolumeBrick& brick : data.m_bricks)
+		for (const GIProbeBrick& brick : data.m_bricks)
 		{
 			for (uint32_t z = 0u; z < brick.m_probeCounts.z; ++z)
 			{
@@ -244,10 +244,10 @@ namespace
 			if (sampleCount > 1u)
 			{
 				std::array<glm::dvec3,
-					ProbeVolumeSphericalHarmonicsCoefficientCount> irradiance{};
+					GIProbeSphericalHarmonicsCoefficientCount> irradiance{};
 				for (size_t entryIndex = begin; entryIndex < end; ++entryIndex)
 				{
-					const ProbeVolumeSample& probe =
+					const GIProbe& probe =
 						data.m_probes[entries[entryIndex].m_probeIndex];
 					for (size_t coefficientIndex = 0u;
 						coefficientIndex < irradiance.size();
@@ -261,7 +261,7 @@ namespace
 				const double inverseSampleCount =
 					1.0 / static_cast<double>(sampleCount);
 				std::array<glm::vec3,
-					ProbeVolumeSphericalHarmonicsCoefficientCount>
+					GIProbeSphericalHarmonicsCoefficientCount>
 					canonicalIrradiance{};
 				for (size_t coefficientIndex = 0u;
 					coefficientIndex < irradiance.size();
@@ -300,16 +300,16 @@ namespace
 					glm::dvec3 relocation{};
 					double validity = 0.0;
 					std::array<glm::dvec2,
-						ProbeVolumeVisibilityDirectionCount> visibility{};
+						GIProbeVisibilityDirectionCount> visibility{};
 					std::array<double,
-						ProbeVolumeVisibilityDirectionCount>
+						GIProbeVisibilityDirectionCount>
 						environmentVisibility{};
 					uint32_t flags = 0u;
 					for (size_t entryIndex = transportBegin;
 						entryIndex < transportEnd;
 						++entryIndex)
 					{
-						const ProbeVolumeSample& probe =
+						const GIProbe& probe =
 							data.m_probes[entries[entryIndex].m_probeIndex];
 						position += glm::dvec3(probe.m_position);
 						relocation += glm::dvec3(probe.m_relocationOffset);
@@ -329,7 +329,7 @@ namespace
 
 					const double inverseTransportSampleCount =
 						1.0 / static_cast<double>(transportSampleCount);
-					ProbeVolumeSample canonical =
+					GIProbe canonical =
 						data.m_probes[entries[transportBegin].m_probeIndex];
 					canonical.m_irradiance = canonicalIrradiance;
 					canonical.m_position = glm::vec3(
@@ -350,18 +350,18 @@ namespace
 								inverseTransportSampleCount);
 					}
 					const uint32_t validityAndRelocationFlags =
-						static_cast<uint32_t>(EProbeVolumeSampleFlag::Valid) |
-						static_cast<uint32_t>(EProbeVolumeSampleFlag::Relocated);
+						static_cast<uint32_t>(EGIProbeFlag::Valid) |
+						static_cast<uint32_t>(EGIProbeFlag::Relocated);
 					canonical.m_flags = flags & ~validityAndRelocationFlags;
 					if (canonical.m_validity > 0.05f)
 					{
 						canonical.m_flags |= static_cast<uint32_t>(
-							EProbeVolumeSampleFlag::Valid);
+							EGIProbeFlag::Valid);
 					}
 					if (glm::length(canonical.m_relocationOffset) > 1e-6f)
 					{
 						canonical.m_flags |= static_cast<uint32_t>(
-							EProbeVolumeSampleFlag::Relocated);
+							EGIProbeFlag::Relocated);
 					}
 					for (size_t entryIndex = transportBegin;
 						entryIndex < transportEnd;
@@ -396,7 +396,7 @@ namespace
 	}
 
 	bool AppendBrick(
-		ProbeVolumeData& data,
+		GIProbesData& data,
 		const glm::vec3& min,
 		const glm::vec3& max,
 		uint32_t subdivisionLevel,
@@ -409,7 +409,7 @@ namespace
 			return false;
 		}
 
-		ProbeVolumeBrick brick;
+		GIProbeBrick brick;
 		brick.m_min = min;
 		brick.m_max = max;
 		brick.m_subdivisionLevel = subdivisionLevel;
@@ -424,7 +424,7 @@ namespace
 			{
 				for (uint32_t x = 0u; x < 2u; ++x)
 				{
-					ProbeVolumeSample probe;
+					GIProbe probe;
 					const glm::vec3 fraction(
 						static_cast<float>(x),
 						static_cast<float>(y),
@@ -438,8 +438,8 @@ namespace
 	}
 
 	bool BuildAdaptiveLayout(
-		const ProbeVolumeBakeRequest& request,
-		ProbeVolumeData& data,
+		const GIProbesBakeRequest& request,
+		GIProbesData& data,
 		std::string& outDiagnostic)
 	{
 		if (request.m_layoutSource)
@@ -471,7 +471,7 @@ namespace
 				request.m_layoutSource->m_bakeSettings.m_maxRayDistance;
 			data.m_bricks = request.m_layoutSource->m_bricks;
 			data.m_probes = request.m_layoutSource->m_probes;
-			for (ProbeVolumeSample& probe : data.m_probes)
+			for (GIProbe& probe : data.m_probes)
 			{
 				probe.m_irradiance = {};
 			}
@@ -552,7 +552,7 @@ namespace
 		{
 			return false;
 		}
-		data.m_layoutHash = ComputeProbeVolumeLayoutHash(data);
+		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
 		return true;
 	}
 
@@ -561,7 +561,7 @@ namespace
 		float minProbeSpacing) noexcept
 	{
 		uint32_t level = 0u;
-		for (; level < ProbeVolumeMaxSubdivisionLevel; ++level)
+		for (; level < GIProbesMaxSubdivisionLevel; ++level)
 		{
 			const glm::bvec3 splitAxes = glm::greaterThanEqual(
 				extent * 0.5f,
@@ -578,12 +578,12 @@ namespace
 		return glm::any(glm::greaterThanEqual(
 			extent * 0.5f,
 			glm::vec3(minProbeSpacing))) ?
-			ProbeVolumeMaxSubdivisionLevel + 1u : level;
+			GIProbesMaxSubdivisionLevel + 1u : level;
 	}
 
 	float CalculateVisibilityMaxDistance(
-		const ProbeVolumeData& data,
-		const ProbeVolumeBrick& brick) noexcept
+		const GIProbesData& data,
+		const GIProbeBrick& brick) noexcept
 	{
 		const glm::uvec3 cellCounts = glm::max(
 			brick.m_probeCounts,
@@ -611,12 +611,12 @@ namespace
 	}
 
 	std::vector<float> CalculateProbeVisibilityMaxDistances(
-		const ProbeVolumeData& data)
+		const GIProbesData& data)
 	{
 		std::vector<float> result(
 			data.m_probes.Num(),
 			data.m_bakeSettings.m_maxRayDistance);
-		for (const ProbeVolumeBrick& brick : data.m_bricks)
+		for (const GIProbeBrick& brick : data.m_bricks)
 		{
 			const float maxDistance = CalculateVisibilityMaxDistance(data, brick);
 			const uint32_t endProbeIndex = (std::min)(
@@ -681,20 +681,20 @@ namespace
 	}
 
 	bool SampleVisibility(
-		const IProbeVolumeBakeRaySampler& sampler,
+		const IGIProbeBakeRaySampler& sampler,
 		const glm::vec3& position,
 		float maxDistance,
 		uint32_t baseSeed,
 		uint32_t probeIndex,
 		uint32_t stream,
-		std::array<float, ProbeVolumeVisibilityDirectionCount>& outDistances,
+		std::array<float, GIProbeVisibilityDirectionCount>& outDistances,
 		std::string& outDiagnostic)
 	{
 		for (uint32_t directionIndex = 0u;
-			directionIndex < ProbeVolumeVisibilityDirectionCount;
+			directionIndex < GIProbeVisibilityDirectionCount;
 			++directionIndex)
 		{
-			ProbeVolumeBakeRaySample sample;
+			GIProbeBakeRaySample sample;
 			if (!sampler.SampleVisibility(
 					position,
 					VisibilityDirections[directionIndex],
@@ -716,7 +716,7 @@ namespace
 	}
 
 	glm::vec3 CalculateRelocation(
-		const std::array<float, ProbeVolumeVisibilityDirectionCount>& distances,
+		const std::array<float, GIProbeVisibilityDirectionCount>& distances,
 		float spacing) noexcept
 	{
 		const float targetClearance = (std::max)(spacing * 0.25f, 0.001f);
@@ -737,9 +737,9 @@ namespace
 
 	struct ProbeTransport final
 	{
-		std::array<double, ProbeVolumeVisibilityDirectionCount>
+		std::array<double, GIProbeVisibilityDirectionCount>
 			m_weights{};
-		std::array<double, ProbeVolumeVisibilityDirectionCount>
+		std::array<double, GIProbeVisibilityDirectionCount>
 			m_environmentVisibilitySums{};
 		uint32_t m_backfaceCount = 0u;
 		float m_closestBackfaceDistance =
@@ -765,8 +765,8 @@ namespace
 	}
 
 	bool SampleProbeTransport(
-		const ProbeVolumeBakeRequest& request,
-		const IProbeVolumeBakeRaySampler& sampler,
+		const GIProbesBakeRequest& request,
+		const IGIProbeBakeRaySampler& sampler,
 		const glm::vec3& position,
 		float targetClearance,
 		uint32_t probeIndex,
@@ -781,7 +781,7 @@ namespace
 		{
 			if (IsCancelled(request))
 			{
-				outDiagnostic = "probe-volume bake was cancelled";
+				outDiagnostic = "GI probe bake was cancelled";
 				return false;
 			}
 
@@ -794,7 +794,7 @@ namespace
 				ProbeTransportRayCount,
 				0u,
 				0u);
-			ProbeVolumeBakeRaySample sample;
+			GIProbeBakeRaySample sample;
 			if (!sampler.SampleVisibility(
 					position,
 					direction,
@@ -861,17 +861,17 @@ namespace
 
 	void StoreProbeVisibility(
 		const ProbeTransport& transport,
-		const std::array<float, ProbeVolumeVisibilityDirectionCount>&
+		const std::array<float, GIProbeVisibilityDirectionCount>&
 			clearanceDistances,
 		float fallbackDistance,
-		ProbeVolumeSample& probe) noexcept
+		GIProbe& probe) noexcept
 	{
-		probe.m_flags &= ~ProbeVolumeBlockedDirectionMask;
+		probe.m_flags &= ~GIProbeBlockedDirectionMask;
 		const float blockingEpsilon = (std::max)(
 			fallbackDistance * 0.0001f,
 			0.0001f);
 		for (uint32_t directionIndex = 0u;
-			directionIndex < ProbeVolumeVisibilityDirectionCount;
+			directionIndex < GIProbeVisibilityDirectionCount;
 			++directionIndex)
 		{
 			const float distance = glm::clamp(
@@ -883,7 +883,7 @@ namespace
 				distance * distance);
 			if (distance < fallbackDistance - blockingEpsilon)
 			{
-				probe.m_flags |= ProbeVolumeBlockedDirectionBit(
+				probe.m_flags |= GIProbeBlockedDirectionBit(
 					directionIndex);
 			}
 
@@ -903,15 +903,15 @@ namespace
 	}
 
 	bool BakeProbe(
-		const ProbeVolumeBakeRequest& request,
-		const IProbeVolumeBakeRaySampler& sampler,
+		const GIProbesBakeRequest& request,
+		const IGIProbeBakeRaySampler& sampler,
 		uint32_t probeIndex,
 		float visibilityMaxDistance,
 		bool bReuseTransport,
-		ProbeVolumeSample& probe,
+		GIProbe& probe,
 		std::string& outDiagnostic)
 	{
-		std::array<float, ProbeVolumeVisibilityDirectionCount>
+		std::array<float, GIProbeVisibilityDirectionCount>
 			clearanceDistances{};
 		if (!bReuseTransport)
 		{
@@ -942,7 +942,7 @@ namespace
 				if (glm::length(probe.m_relocationOffset) > 1e-6f)
 				{
 					probe.m_flags |= static_cast<uint32_t>(
-						EProbeVolumeSampleFlag::Relocated);
+						EGIProbeFlag::Relocated);
 				}
 			}
 
@@ -1015,7 +1015,7 @@ namespace
 				probe.m_relocationOffset =
 					probe.m_position - originalPosition;
 				probe.m_flags |= static_cast<uint32_t>(
-					EProbeVolumeSampleFlag::Relocated);
+					EGIProbeFlag::Relocated);
 				if (!SampleProbeTransport(
 						request,
 						sampler,
@@ -1034,12 +1034,12 @@ namespace
 			if (probe.m_validity > 0.05f)
 			{
 				probe.m_flags |= static_cast<uint32_t>(
-					EProbeVolumeSampleFlag::Valid);
+					EGIProbeFlag::Valid);
 			}
 			else
 			{
 				probe.m_flags &= ~static_cast<uint32_t>(
-					EProbeVolumeSampleFlag::Valid);
+					EGIProbeFlag::Valid);
 			}
 			// Relocation changes the origin, so the six blocker rays must be
 			// sampled once more from the final position. These exact axis
@@ -1076,7 +1076,7 @@ namespace
 		{
 			if (IsCancelled(request))
 			{
-				outDiagnostic = "probe-volume bake was cancelled";
+				outDiagnostic = "GI probe bake was cancelled";
 				return false;
 			}
 			const glm::vec3 direction = FibonacciDirection(
@@ -1084,7 +1084,7 @@ namespace
 				rayCount,
 				request.m_settings.m_randomSeed,
 				probeIndex);
-			ProbeVolumeBakeRaySample sample;
+			GIProbeBakeRaySample sample;
 			if (!sampler.Sample(
 					probe.m_position,
 					direction,
@@ -1101,10 +1101,10 @@ namespace
 			}
 			const glm::vec3 radiance = IsFinite(sample.m_radiance) ?
 				glm::max(sample.m_radiance, glm::vec3(0.0f)) : glm::vec3(0.0f);
-			float basis[ProbeVolumeSphericalHarmonicsCoefficientCount]{};
+			float basis[GIProbeSphericalHarmonicsCoefficientCount]{};
 			EvaluateSphericalHarmonicsBasis(direction, basis);
 			for (uint32_t coefficientIndex = 0u;
-				coefficientIndex < ProbeVolumeSphericalHarmonicsCoefficientCount;
+				coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
 				++coefficientIndex)
 			{
 				probe.m_irradiance[coefficientIndex] += radiance *
@@ -1116,7 +1116,7 @@ namespace
 	}
 
 	bool ValidateRequest(
-		const ProbeVolumeBakeRequest& request,
+		const GIProbesBakeRequest& request,
 		std::string& outDiagnostic)
 	{
 		outDiagnostic.clear();
@@ -1133,18 +1133,18 @@ namespace
 			return false;
 		}
 		if (request.m_threadCount == 0u ||
-			request.m_threadCount > ProbeVolumeMaxBakeThreadCount)
+			request.m_threadCount > GIProbesMaxBakeThreadCount)
 		{
 			outDiagnostic =
 				"a .probes bake requires a supported non-zero thread count";
 			return false;
 		}
 		if (request.m_settings.m_raysPerProbe >
-				ProbeVolumeMaxRaysPerProbe ||
+				GIProbesMaxRaysPerProbe ||
 			request.m_settings.m_bounceCount >
-				ProbeVolumeMaxBounceCount ||
+				GIProbesMaxBounceCount ||
 			request.m_settings.m_maxSubdivisionLevel >
-				ProbeVolumeMaxSubdivisionLevel)
+				GIProbesMaxSubdivisionLevel)
 		{
 			outDiagnostic =
 				"a .probes bake exceeds the supported sampling limits";
@@ -1214,44 +1214,44 @@ namespace
 	}
 }
 
-ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
-	const ProbeVolumeBakeRequest& request,
-	const IProbeVolumeBakeRaySampler& sampler) noexcept
+GIProbesBakeResult GIProbesBaker::Bake(
+	const GIProbesBakeRequest& request,
+	const IGIProbeBakeRaySampler& sampler) noexcept
 {
-	ProbeVolumeBakeResult result;
+	GIProbesBakeResult result;
 	try
 	{
 		if (!ValidateRequest(request, result.m_diagnostic))
 		{
-			result.m_status = EProbeVolumeBakeStatus::InvalidRequest;
+			result.m_status = EGIProbesBakeStatus::InvalidRequest;
 			return result;
 		}
 		if (IsCancelled(request))
 		{
-			result.m_status = EProbeVolumeBakeStatus::Cancelled;
-			result.m_diagnostic = "probe-volume bake was cancelled before layout generation";
+			result.m_status = EGIProbesBakeStatus::Cancelled;
+			result.m_diagnostic = "GI probe bake was cancelled before layout generation";
 			return result;
 		}
 
 		Utils::Timer timer;
 		timer.Start();
-		ProbeVolumeDataPtr data = ProbeVolumeDataPtr::Make();
+		GIProbesDataPtr data = GIProbesDataPtr::Make();
 		data->m_bakeSettings = request.m_settings;
 		data->m_stateName = request.m_stateName;
 		data->m_bakerVersion = request.m_bakerVersion;
 		data->m_sourceWorldHash = request.m_sourceWorldHash;
-		data->m_representationHash = ComputeProbeVolumeRepresentationHash(
+		data->m_representationHash = ComputeGIProbesRepresentationHash(
 			data->m_formatVersion,
 			data->m_shOrder,
 			data->m_compression);
 		if (!BuildAdaptiveLayout(request, *data, result.m_diagnostic))
 		{
-			result.m_status = EProbeVolumeBakeStatus::InvalidRequest;
+			result.m_status = EGIProbesBakeStatus::InvalidRequest;
 			return result;
 		}
 
 		const bool bReuseTransport = request.m_layoutSource != nullptr;
-		ProbeVolumeBakeRequest effectiveRequest = request;
+		GIProbesBakeRequest effectiveRequest = request;
 		effectiveRequest.m_settings = data->m_bakeSettings;
 		effectiveRequest.m_volumeMin = data->m_volumeMin;
 		effectiveRequest.m_volumeMax = data->m_volumeMax;
@@ -1262,11 +1262,11 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 		const uint32_t threadCount = (std::min)(
 			request.m_threadCount,
 			totalProbes);
-		ProbeVolumeBakeProgress progress;
+		GIProbesBakeProgress progress;
 		progress.m_totalProbes = totalProbes;
 		progress.m_stage = (bReuseTransport ?
 			"Baking lighting with reused layout" :
-			"Baking adaptive probe volume") +
+			"Baking adaptive GI probes") +
 			std::string(" (") + std::to_string(threadCount) +
 			(threadCount == 1u ? " thread)" : " threads)");
 		if (request.m_progress)
@@ -1276,8 +1276,8 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 
 		std::atomic<uint32_t> nextProbeIndex{ 0u };
 		std::atomic<bool> stopWorkers{ false };
-		std::atomic<EProbeVolumeBakeStatus> workerStatus{
-			EProbeVolumeBakeStatus::Success };
+		std::atomic<EGIProbesBakeStatus> workerStatus{
+			EGIProbesBakeStatus::Success };
 		std::mutex failureMutex;
 		std::string failureDiagnostic;
 		std::mutex progressMutex;
@@ -1287,10 +1287,10 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 			&stopWorkers,
 			&failureMutex,
 			&failureDiagnostic](
-				EProbeVolumeBakeStatus status,
+				EGIProbesBakeStatus status,
 				std::string diagnostic)
 		{
-			EProbeVolumeBakeStatus expected = EProbeVolumeBakeStatus::Success;
+			EGIProbesBakeStatus expected = EGIProbesBakeStatus::Success;
 			if (workerStatus.compare_exchange_strong(
 					expected,
 					status,
@@ -1338,7 +1338,7 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 						else
 						{
 							recordFailure(
-								EProbeVolumeBakeStatus::SamplingFailed,
+								EGIProbesBakeStatus::SamplingFailed,
 								std::move(diagnostic));
 						}
 						return;
@@ -1352,7 +1352,7 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 					++completedProbes;
 					if (request.m_progress)
 					{
-						ProbeVolumeBakeProgress workerProgress = progress;
+						GIProbesBakeProgress workerProgress = progress;
 						workerProgress.m_completedProbes = completedProbes;
 						workerProgress.m_fraction = static_cast<float>(
 							completedProbes) / static_cast<float>(totalProbes);
@@ -1363,15 +1363,15 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 			catch (const std::exception& exception)
 			{
 				recordFailure(
-					EProbeVolumeBakeStatus::InvalidResult,
-					std::string("probe-volume bake worker failed: ") +
+					EGIProbesBakeStatus::InvalidResult,
+					std::string("GI probe bake worker failed: ") +
 						exception.what());
 			}
 			catch (...)
 			{
 				recordFailure(
-					EProbeVolumeBakeStatus::InvalidResult,
-					"probe-volume bake worker failed with an unknown error");
+					EGIProbesBakeStatus::InvalidResult,
+					"GI probe bake worker failed with an unknown error");
 			}
 		};
 
@@ -1403,12 +1403,12 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 
 		if (IsCancelled(effectiveRequest))
 		{
-			result.m_status = EProbeVolumeBakeStatus::Cancelled;
-			result.m_diagnostic = "probe-volume bake was cancelled";
+			result.m_status = EGIProbesBakeStatus::Cancelled;
+			result.m_diagnostic = "GI probe bake was cancelled";
 			return result;
 		}
 		result.m_status = workerStatus.load(std::memory_order_acquire);
-		if (result.m_status != EProbeVolumeBakeStatus::Success)
+		if (result.m_status != EGIProbesBakeStatus::Success)
 		{
 			const std::lock_guard<std::mutex> lock(failureMutex);
 			result.m_diagnostic = failureDiagnostic;
@@ -1418,21 +1418,21 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 		CanonicalizeSharedProbeSamples(*data, !bReuseTransport);
 		if (!bReuseTransport)
 		{
-			data->m_layoutHash = ComputeProbeVolumeLayoutHash(*data);
+			data->m_layoutHash = ComputeGIProbesLayoutHash(*data);
 			data->m_transportHash = ComputeTransportHash(*data);
 		}
 		data->m_lightingHash = ComputeLightingHash(*data);
 		float validity = 0.0f;
-		for (const ProbeVolumeSample& probe : data->m_probes)
+		for (const GIProbe& probe : data->m_probes)
 		{
 			validity += probe.m_validity;
 			if ((probe.m_flags & static_cast<uint32_t>(
-				EProbeVolumeSampleFlag::Valid)) == 0u)
+				EGIProbeFlag::Valid)) == 0u)
 			{
 				++data->m_diagnostics.m_invalidProbeCount;
 			}
 			if ((probe.m_flags & static_cast<uint32_t>(
-				EProbeVolumeSampleFlag::Relocated)) != 0u)
+				EGIProbeFlag::Relocated)) != 0u)
 			{
 				++data->m_diagnostics.m_relocatedProbeCount;
 			}
@@ -1449,30 +1449,30 @@ ProbeVolumeBakeResult ProbeVolumeBaker::Bake(
 		std::string validationDiagnostic;
 		if (!data->Validate(validationDiagnostic))
 		{
-			result.m_status = EProbeVolumeBakeStatus::InvalidResult;
+			result.m_status = EGIProbesBakeStatus::InvalidResult;
 			result.m_diagnostic = "baker produced invalid .probes data: " +
 				validationDiagnostic;
 			return result;
 		}
 
-		result.m_status = EProbeVolumeBakeStatus::Success;
+		result.m_status = EGIProbesBakeStatus::Success;
 		result.m_data = std::move(data);
 		result.m_diagnostic = result.m_data->m_diagnostics.m_message;
 		return result;
 	}
 	catch (const std::exception& exception)
 	{
-		result.m_status = EProbeVolumeBakeStatus::InvalidResult;
+		result.m_status = EGIProbesBakeStatus::InvalidResult;
 		result.m_data.Clear();
-		result.m_diagnostic = std::string("probe-volume bake failed: ") +
+		result.m_diagnostic = std::string("GI probe bake failed: ") +
 			exception.what();
 		return result;
 	}
 	catch (...)
 	{
-		result.m_status = EProbeVolumeBakeStatus::InvalidResult;
+		result.m_status = EGIProbesBakeStatus::InvalidResult;
 		result.m_data.Clear();
-		result.m_diagnostic = "probe-volume bake failed with an unknown error";
+		result.m_diagnostic = "GI probe bake failed with an unknown error";
 		return result;
 	}
 }

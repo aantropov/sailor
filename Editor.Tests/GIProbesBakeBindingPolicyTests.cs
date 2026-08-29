@@ -3,14 +3,14 @@ using SailorEngine;
 
 namespace SailorEditor.Tests;
 
-public sealed class ProbeVolumeBakeBindingPolicyTests
+public sealed class GIProbesBakeBindingPolicyTests
 {
-    static readonly ProbeVolumeCompositionIdentity TargetIdentity = new(10, 20, 30);
+    static readonly GIProbesCompositionIdentity TargetIdentity = new(10, 20, 30);
 
     [Fact]
     public void IncompatibleActiveStates_CompareTheFullCompositionIdentity()
     {
-        ProbeVolumeBindingCompositionState[] states =
+        GIProbesBindingCompositionState[] states =
         [
             new("Target", 1.0f, new(99, 99, 99)),
             new("Compatible", 1.0f, TargetIdentity),
@@ -20,7 +20,7 @@ public sealed class ProbeVolumeBakeBindingPolicyTests
             new("Disabled", 0.0f, new(1, 2, 3))
         ];
 
-        var incompatible = ProbeVolumeBakeBindingPolicy.FindIncompatibleActiveStates(
+        var incompatible = GIProbesBakeBindingPolicy.FindIncompatibleActiveStates(
             "Target",
             1.0f,
             TargetIdentity,
@@ -34,7 +34,7 @@ public sealed class ProbeVolumeBakeBindingPolicyTests
     [Fact]
     public void ZeroWeightTarget_DoesNotDeactivateExistingLighting()
     {
-        var incompatible = ProbeVolumeBakeBindingPolicy.FindIncompatibleActiveStates(
+        var incompatible = GIProbesBakeBindingPolicy.FindIncompatibleActiveStates(
             "Target",
             0.0f,
             TargetIdentity,
@@ -57,12 +57,12 @@ public sealed class ProbeVolumeBakeBindingPolicyTests
             probes: [Probe("Night", "{NIGHT}", GlobalIlluminationResidency.Resident)]);
 
         Assert.Equal(
-            ProbeVolumeBakeActivationState.Pending,
-            ProbeVolumeBakeBindingPolicy.AssessActivation(
+            GIProbesBakeActivationState.Pending,
+            GIProbesBakeBindingPolicy.AssessActivation(
                 "Night", "{NIGHT}", true, baseline, pending).State);
         Assert.Equal(
-            ProbeVolumeBakeActivationState.Succeeded,
-            ProbeVolumeBakeBindingPolicy.AssessActivation(
+            GIProbesBakeActivationState.Succeeded,
+            GIProbesBakeBindingPolicy.AssessActivation(
                 "Night", "{NIGHT}", true, baseline, active).State);
     }
 
@@ -75,14 +75,14 @@ public sealed class ProbeVolumeBakeBindingPolicyTests
             rejected: 3,
             diagnostic: "preserved the last complete snapshot: probe layout hashes differ");
 
-        var assessment = ProbeVolumeBakeBindingPolicy.AssessActivation(
+        var assessment = GIProbesBakeBindingPolicy.AssessActivation(
             "Night",
             "{NIGHT}",
             true,
             baseline,
             rejected);
 
-        Assert.Equal(ProbeVolumeBakeActivationState.Rejected, assessment.State);
+        Assert.Equal(GIProbesBakeActivationState.Rejected, assessment.State);
         Assert.Contains("preserved", assessment.Diagnostic, StringComparison.Ordinal);
     }
 
@@ -91,14 +91,14 @@ public sealed class ProbeVolumeBakeBindingPolicyTests
     {
         var baseline = RuntimeState(compositions: 4, rejected: 2);
 
-        var assessment = ProbeVolumeBakeBindingPolicy.AssessActivation(
+        var assessment = GIProbesBakeBindingPolicy.AssessActivation(
             "Night",
             "{NIGHT}",
             false,
             baseline,
             current: null);
 
-        Assert.Equal(ProbeVolumeBakeActivationState.NotRequired, assessment.State);
+        Assert.Equal(GIProbesBakeActivationState.NotRequired, assessment.State);
     }
 
     static GlobalIlluminationRuntimeState RuntimeState(

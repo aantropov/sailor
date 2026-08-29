@@ -2999,15 +2999,15 @@ namespace SailorEditor.Services
             return succeeded ? FromProtocolRenderMode(mode) : null;
         }
 
-        public Task<bool> StartProbeVolumeBakeAsync(
-            ProbeVolumeBakeRequest request,
+        public Task<bool> StartGIProbesBakeAsync(
+            GIProbesBakeRequest request,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
             ArgumentNullException.ThrowIfNull(request.Settings);
             var settings = request.Settings;
             var protocolSettings =
-                new Protocol.Generated.ProbeVolumeBakeSettings
+                new Protocol.Generated.GIProbesBakeSettings
                 {
                     RaysPerProbe = settings.RaysPerProbe,
                     BounceCount = settings.BounceCount,
@@ -3021,7 +3021,7 @@ namespace SailorEditor.Services
                     IncludeEmissive = settings.IncludeEmissive,
                     IncludeDirectLighting = settings.IncludeDirectLighting
                 };
-            var protocolRequest = new StartProbeVolumeBakeRequest
+            var protocolRequest = new StartGIProbesBakeRequest
             {
                 WorldFileId = request.WorldAsset?.Value ?? string.Empty,
                 OutputVirtualPath = request.OutputVirtualPath ?? string.Empty,
@@ -3037,21 +3037,21 @@ namespace SailorEditor.Services
                 ThreadCount = request.ThreadCount
             };
             return InvokeRunningInteropAsync(
-                token => protocolClient.StartProbeVolumeBakeAsync(
+                token => protocolClient.StartGIProbesBakeAsync(
                     protocolRequest,
                     token),
                 cancellationToken: cancellationToken);
         }
 
-        public async Task<ProbeVolumeBakeStatus?> GetProbeVolumeBakeStatusAsync(
+        public async Task<GIProbesBakeStatus?> GetGIProbesBakeStatusAsync(
             CancellationToken cancellationToken = default)
         {
-            Protocol.Generated.ProbeVolumeBakeStatusResult? protocolStatus = null;
+            Protocol.Generated.GIProbesBakeStatusResult? protocolStatus = null;
             var succeeded = await InvokeRunningInteropAsync(
                 async token =>
                 {
                     protocolStatus = await protocolClient
-                        .GetProbeVolumeBakeStatusAsync(token)
+                        .GetGIProbesBakeStatusAsync(token)
                         .ConfigureAwait(false);
                     return true;
                 },
@@ -3060,7 +3060,7 @@ namespace SailorEditor.Services
             {
                 return null;
             }
-            return new ProbeVolumeBakeStatus(
+            return new GIProbesBakeStatus(
                 FromProtocolBakeState(protocolStatus.State),
                 protocolStatus.Progress,
                 protocolStatus.CompletedProbes,
@@ -3076,19 +3076,19 @@ namespace SailorEditor.Services
                 protocolStatus.Diagnostic);
         }
 
-        public Task<bool> CancelProbeVolumeBakeAsync(
+        public Task<bool> CancelGIProbesBakeAsync(
             CancellationToken cancellationToken = default)
             => InvokeRunningInteropAsync(
-                token => protocolClient.CancelProbeVolumeBakeAsync(token),
+                token => protocolClient.CancelGIProbesBakeAsync(token),
                 cancellationToken: cancellationToken);
 
-        public async Task<bool> SetGlobalIlluminationSettingsAsync(
+        public async Task<bool> SetGISettingsAsync(
             GlobalIlluminationRuntimeMode mode,
             IReadOnlyCollection<GlobalIlluminationBindingDescriptor> bindings,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(bindings);
-            var protocolSettings = new SetGlobalIlluminationSettingsRequest
+            var protocolSettings = new SetGISettingsRequest
             {
                 Mode = ToProtocolGlobalIlluminationRuntimeMode(mode)
             };
@@ -3107,7 +3107,7 @@ namespace SailorEditor.Services
                     });
             }
             var succeeded = await InvokeRunningInteropAsync(
-                token => protocolClient.SetGlobalIlluminationSettingsAsync(
+                token => protocolClient.SetGISettingsAsync(
                     protocolSettings,
                     token),
                 invalidateQueuedWorldSnapshots: true,
@@ -3165,25 +3165,25 @@ namespace SailorEditor.Services
             Z = value.Z
         };
 
-        static ProbeVolumeBakeLifecycleState FromProtocolBakeState(
-            Protocol.Generated.ProbeVolumeBakeState state) => state switch
+        static GIProbesBakeLifecycleState FromProtocolBakeState(
+            Protocol.Generated.GIProbesBakeState state) => state switch
         {
-            Protocol.Generated.ProbeVolumeBakeState.Idle =>
-                ProbeVolumeBakeLifecycleState.Idle,
-            Protocol.Generated.ProbeVolumeBakeState.Preparing =>
-                ProbeVolumeBakeLifecycleState.Preparing,
-            Protocol.Generated.ProbeVolumeBakeState.Baking =>
-                ProbeVolumeBakeLifecycleState.Baking,
-            Protocol.Generated.ProbeVolumeBakeState.Saving =>
-                ProbeVolumeBakeLifecycleState.Saving,
-            Protocol.Generated.ProbeVolumeBakeState.Succeeded =>
-                ProbeVolumeBakeLifecycleState.Succeeded,
-            Protocol.Generated.ProbeVolumeBakeState.Failed =>
-                ProbeVolumeBakeLifecycleState.Failed,
-            Protocol.Generated.ProbeVolumeBakeState.Cancelled =>
-                ProbeVolumeBakeLifecycleState.Cancelled,
+            Protocol.Generated.GIProbesBakeState.Idle =>
+                GIProbesBakeLifecycleState.Idle,
+            Protocol.Generated.GIProbesBakeState.Preparing =>
+                GIProbesBakeLifecycleState.Preparing,
+            Protocol.Generated.GIProbesBakeState.Baking =>
+                GIProbesBakeLifecycleState.Baking,
+            Protocol.Generated.GIProbesBakeState.Saving =>
+                GIProbesBakeLifecycleState.Saving,
+            Protocol.Generated.GIProbesBakeState.Succeeded =>
+                GIProbesBakeLifecycleState.Succeeded,
+            Protocol.Generated.GIProbesBakeState.Failed =>
+                GIProbesBakeLifecycleState.Failed,
+            Protocol.Generated.GIProbesBakeState.Cancelled =>
+                GIProbesBakeLifecycleState.Cancelled,
             _ => throw new InvalidDataException(
-                $"Unknown probe-volume bake state: {state}.")
+                $"Unknown GI probe bake state: {state}.")
         };
 
         static Protocol.Generated.GlobalIlluminationProbeMode

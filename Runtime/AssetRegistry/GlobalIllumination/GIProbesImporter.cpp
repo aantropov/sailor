@@ -1,30 +1,30 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeImporter.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 
 #include "AssetRegistry/AssetRegistry.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBinary.h"
+#include "GlobalIllumination/GIProbesBinary.h"
 #include "Core/LogMacros.h"
 
 #include <limits>
 
 using namespace Sailor;
 
-ProbeVolumeAsset::ProbeVolumeAsset(FileId uid) : Object(std::move(uid))
+GIProbesAsset::GIProbesAsset(FileId uid) : Object(std::move(uid))
 {}
 
-bool ProbeVolumeAsset::IsReady() const
+bool GIProbesAsset::IsReady() const
 {
 	return m_bReady.load(std::memory_order_acquire);
 }
 
-uint64_t ProbeVolumeAsset::GetRevision() const noexcept
+uint64_t GIProbesAsset::GetRevision() const noexcept
 {
 	return m_revision.load(std::memory_order_acquire);
 }
 
-ProbeVolumeAssetSnapshot ProbeVolumeAsset::GetSnapshot() const
+GIProbesAssetSnapshot GIProbesAsset::GetSnapshot() const
 {
 	m_lock.Lock();
-	ProbeVolumeAssetSnapshot snapshot;
+	GIProbesAssetSnapshot snapshot;
 	snapshot.m_data = m_data;
 	snapshot.m_revision = m_revision.load(std::memory_order_relaxed);
 	snapshot.m_diagnostic = m_diagnostic;
@@ -32,8 +32,8 @@ ProbeVolumeAssetSnapshot ProbeVolumeAsset::GetSnapshot() const
 	return snapshot;
 }
 
-void ProbeVolumeAsset::ApplyLoadResult(
-	ProbeVolumeDataPtr data,
+void GIProbesAsset::ApplyLoadResult(
+	GIProbesDataPtr data,
 	std::string diagnostic)
 {
 	m_lock.Lock();
@@ -44,8 +44,8 @@ void ProbeVolumeAsset::ApplyLoadResult(
 	m_lock.Unlock();
 }
 
-ProbeVolumeImporter::ProbeVolumeImporter(
-	ProbeVolumeAssetInfoHandler* infoHandler) :
+GIProbesImporter::GIProbesImporter(
+	GIProbesAssetInfoHandler* infoHandler) :
 	m_infoHandler(infoHandler)
 {
 	m_allocator = Memory::ObjectAllocatorPtr::Make(
@@ -56,7 +56,7 @@ ProbeVolumeImporter::ProbeVolumeImporter(
 	}
 }
 
-ProbeVolumeImporter::~ProbeVolumeImporter()
+GIProbesImporter::~GIProbesImporter()
 {
 	if (m_infoHandler)
 	{
@@ -68,10 +68,10 @@ ProbeVolumeImporter::~ProbeVolumeImporter()
 	}
 }
 
-void ProbeVolumeImporter::OnImportAsset(AssetInfoPtr)
+void GIProbesImporter::OnImportAsset(AssetInfoPtr)
 {}
 
-void ProbeVolumeImporter::OnUpdateAssetInfo(
+void GIProbesImporter::OnUpdateAssetInfo(
 	AssetInfoPtr assetInfo,
 	bool bWasExpired)
 {
@@ -83,8 +83,8 @@ void ProbeVolumeImporter::OnUpdateAssetInfo(
 	const FileId uid = assetInfo->GetFileId();
 	if (auto it = m_loadedAssets.Find(uid); it != m_loadedAssets.end())
 	{
-		ProbeVolumeAssetPtr asset = (*it).m_second;
-		if (asset && ImportProbeVolume(uid, asset))
+		GIProbesAssetPtr asset = (*it).m_second;
+		if (asset && ImportGIProbes(uid, asset))
 		{
 #ifdef SAILOR_EDITOR
 			asset->TraceHotReload(nullptr);
@@ -93,36 +93,36 @@ void ProbeVolumeImporter::OnUpdateAssetInfo(
 	}
 }
 
-bool ProbeVolumeImporter::LoadAsset(
+bool GIProbesImporter::LoadAsset(
 	FileId uid,
 	TObjectPtr<Object>& out,
 	bool bImmediate)
 {
-	ProbeVolumeAssetPtr asset;
+	GIProbesAssetPtr asset;
 	if (bImmediate)
 	{
-		const bool bLoaded = LoadProbeVolume_Immediate(uid, asset);
+		const bool bLoaded = LoadGIProbes_Immediate(uid, asset);
 		out = asset;
 		return bLoaded;
 	}
 
-	Tasks::TaskPtr<ProbeVolumeAssetPtr> task = LoadProbeVolume(uid, asset);
+	Tasks::TaskPtr<GIProbesAssetPtr> task = LoadGIProbes(uid, asset);
 	out = asset;
 	return task.IsValid();
 }
 
-Tasks::TaskPtr<ProbeVolumeAssetPtr> ProbeVolumeImporter::LoadProbeVolume(
+Tasks::TaskPtr<GIProbesAssetPtr> GIProbesImporter::LoadGIProbes(
 	FileId uid,
-	ProbeVolumeAssetPtr& outAsset)
+	GIProbesAssetPtr& outAsset)
 {
 	auto& promise = m_promises.At_Lock(uid, nullptr);
-	auto& loadedAsset = m_loadedAssets.At_Lock(uid, ProbeVolumeAssetPtr{});
+	auto& loadedAsset = m_loadedAssets.At_Lock(uid, GIProbesAssetPtr{});
 	if (loadedAsset)
 	{
 		outAsset = loadedAsset;
 		auto result = promise
 			? promise
-			: Tasks::TaskPtr<ProbeVolumeAssetPtr>::Make(outAsset);
+			: Tasks::TaskPtr<GIProbesAssetPtr>::Make(outAsset);
 		m_loadedAssets.Unlock(uid);
 		m_promises.Unlock(uid);
 		return result;
@@ -130,13 +130,13 @@ Tasks::TaskPtr<ProbeVolumeAssetPtr> ProbeVolumeImporter::LoadProbeVolume(
 
 	if (!promise)
 	{
-		ProbeVolumeAssetPtr asset = ProbeVolumeAssetPtr::Make(m_allocator, uid);
-		promise = Tasks::CreateTaskWithResult<ProbeVolumeAssetPtr>(
-			"Load Probe Volume",
+		GIProbesAssetPtr asset = GIProbesAssetPtr::Make(m_allocator, uid);
+		promise = Tasks::CreateTaskWithResult<GIProbesAssetPtr>(
+			"Load GI Probes",
 			[this, uid, asset]() mutable
 			{
-				ProbeVolumeAssetPtr imported = asset;
-				ImportProbeVolume(uid, imported);
+				GIProbesAssetPtr imported = asset;
+				ImportGIProbes(uid, imported);
 				return imported;
 			},
 			EThreadType::Worker);
@@ -153,11 +153,11 @@ Tasks::TaskPtr<ProbeVolumeAssetPtr> ProbeVolumeImporter::LoadProbeVolume(
 	return promise;
 }
 
-bool ProbeVolumeImporter::LoadProbeVolume_Immediate(
+bool GIProbesImporter::LoadGIProbes_Immediate(
 	FileId uid,
-	ProbeVolumeAssetPtr& outAsset)
+	GIProbesAssetPtr& outAsset)
 {
-	Tasks::TaskPtr<ProbeVolumeAssetPtr> task = LoadProbeVolume(uid, outAsset);
+	Tasks::TaskPtr<GIProbesAssetPtr> task = LoadGIProbes(uid, outAsset);
 	if (!task)
 	{
 		return false;
@@ -166,7 +166,7 @@ bool ProbeVolumeImporter::LoadProbeVolume_Immediate(
 	return outAsset && outAsset->IsReady();
 }
 
-void ProbeVolumeImporter::RetainRuntimeProbeVolume(FileId uid)
+void GIProbesImporter::RetainRuntimeGIProbes(FileId uid)
 {
 	if (!uid)
 	{
@@ -180,7 +180,7 @@ void ProbeVolumeImporter::RetainRuntimeProbeVolume(FileId uid)
 	m_runtimeRetentions.Unlock(uid);
 }
 
-void ProbeVolumeImporter::ReleaseRuntimeProbeVolume(FileId uid)
+void GIProbesImporter::ReleaseRuntimeGIProbes(FileId uid)
 {
 	if (!uid || !m_runtimeRetentions.ContainsKey(uid))
 	{
@@ -195,11 +195,11 @@ void ProbeVolumeImporter::ReleaseRuntimeProbeVolume(FileId uid)
 	m_runtimeRetentions.Unlock(uid);
 	if (bCanEvict)
 	{
-		TryEvictReleasedProbeVolume(uid);
+		TryEvictReleasedGIProbes(uid);
 	}
 }
 
-void ProbeVolumeImporter::TryEvictReleasedProbeVolume(FileId uid)
+void GIProbesImporter::TryEvictReleasedGIProbes(FileId uid)
 {
 	if (!m_runtimeRetentions.ContainsKey(uid))
 	{
@@ -213,7 +213,7 @@ void ProbeVolumeImporter::TryEvictReleasedProbeVolume(FileId uid)
 		return;
 	}
 
-	Tasks::TaskPtr<ProbeVolumeAssetPtr> promise;
+	Tasks::TaskPtr<GIProbesAssetPtr> promise;
 	if (m_promises.ContainsKey(uid))
 	{
 		promise = m_promises.At_Lock(uid);
@@ -228,28 +228,28 @@ void ProbeVolumeImporter::TryEvictReleasedProbeVolume(FileId uid)
 	m_runtimeRetentions.Remove(uid);
 }
 
-bool ProbeVolumeImporter::ImportProbeVolume(
+bool GIProbesImporter::ImportGIProbes(
 	FileId uid,
-	ProbeVolumeAssetPtr& outAsset)
+	GIProbesAssetPtr& outAsset)
 {
-	ProbeVolumeAssetInfoPtr info = App::GetSubmodule<AssetRegistry>()
-		->GetAssetInfoPtr<ProbeVolumeAssetInfoPtr>(uid);
+	GIProbesAssetInfoPtr info = App::GetSubmodule<AssetRegistry>()
+		->GetAssetInfoPtr<GIProbesAssetInfoPtr>(uid);
 	if (!info)
 	{
 		return false;
 	}
 
-	ProbeVolumeBinaryResult result = ProbeVolumeBinary::Load(
+	GIProbesBinaryResult result = GIProbesBinary::Load(
 		info->GetAssetFilepath());
 	if (!outAsset)
 	{
-		outAsset = ProbeVolumeAssetPtr::Make(m_allocator, uid);
+		outAsset = GIProbesAssetPtr::Make(m_allocator, uid);
 	}
 	outAsset->ApplyLoadResult(result.m_data, result.m_diagnostic);
 	if (!result.IsSuccess())
 	{
 		SAILOR_LOG_ERROR(
-			"Cannot load probe volume '%s': %s.",
+			"Cannot load GI probes '%s': %s.",
 			info->GetAssetFilepath().c_str(),
 			result.m_diagnostic.c_str());
 		return false;
@@ -257,7 +257,7 @@ bool ProbeVolumeImporter::ImportProbeVolume(
 	return true;
 }
 
-void ProbeVolumeImporter::CollectGarbage()
+void GIProbesImporter::CollectGarbage()
 {
 	TVector<FileId> completed;
 	m_promises.LockAll();
@@ -265,7 +265,7 @@ void ProbeVolumeImporter::CollectGarbage()
 	m_promises.UnlockAll();
 	for (const FileId& id : ids)
 	{
-		Tasks::TaskPtr<ProbeVolumeAssetPtr> promise = m_promises.At_Lock(id);
+		Tasks::TaskPtr<GIProbesAssetPtr> promise = m_promises.At_Lock(id);
 		if (!promise || promise->IsFinished())
 		{
 			completed.Add(id);
@@ -282,6 +282,6 @@ void ProbeVolumeImporter::CollectGarbage()
 	m_runtimeRetentions.UnlockAll();
 	for (const FileId& id : retainedIds)
 	{
-		TryEvictReleasedProbeVolume(id);
+		TryEvictReleasedGIProbes(id);
 	}
 }

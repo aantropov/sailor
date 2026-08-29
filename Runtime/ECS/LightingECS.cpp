@@ -6,7 +6,7 @@
 #include "RHI/SceneView.h"
 #include "RHI/DebugContext.h"
 #include "Engine/GameObject.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "FrameGraph/ShadowPrepassNode.h"
 #include "Settings/GraphicsSettings.h"
 

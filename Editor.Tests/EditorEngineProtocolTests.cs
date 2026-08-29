@@ -123,7 +123,7 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(64, ProtocolRequest.SetEditorStatsModeFieldNumber);
         Assert.Equal(65, ProtocolRequest.SetEditorRenderModeFieldNumber);
         Assert.Equal(66, ProtocolRequest.GetEditorRenderModeFieldNumber);
-        Assert.Equal(70, ProtocolRequest.SetGlobalIlluminationSettingsFieldNumber);
+        Assert.Equal(70, ProtocolRequest.SetGiSettingsFieldNumber);
         Assert.Equal(71, ProtocolRequest.GetGlobalIlluminationStateFieldNumber);
         Assert.Equal(10, ProtocolResponse.EmptyResultFieldNumber);
         Assert.Equal(19, ProtocolResponse.ViewportEventBatchResultFieldNumber);
@@ -135,7 +135,7 @@ public sealed class EditorEngineProtocolTests
         Assert.Equal(1, (int)GlobalIlluminationMode.Realtime);
         Assert.Equal(2, (int)GlobalIlluminationMode.RealtimeAndBaked);
         Assert.Equal(3, (int)GlobalIlluminationMode.BakedOnly);
-        Assert.Equal(2, SetGlobalIlluminationSettingsRequest.ModeFieldNumber);
+        Assert.Equal(2, SetGISettingsRequest.ModeFieldNumber);
         Assert.Equal(6, GlobalIlluminationStateResult.ModeFieldNumber);
         Assert.Equal(7, GlobalIlluminationStateResult.EnabledFieldNumber);
     }

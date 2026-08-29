@@ -149,10 +149,6 @@ namespace Sailor::Settings
 		const GraphicsQualityProfile& GetActiveProfile() const noexcept;
 	};
 
-	SAILOR_SHARED_API const char* ToString(EGraphicsQuality quality) noexcept;
-	SAILOR_SHARED_API const char* ToString(EGraphicsQualitySelection selection) noexcept;
-	SAILOR_SHARED_API const char* ToString(ERenderStatsMode mode) noexcept;
-	SAILOR_SHARED_API bool IsValidRenderStatsMode(ERenderStatsMode mode) noexcept;
 	SAILOR_SHARED_API EGraphicsQuality ResolveQualitySelection(
 		EGraphicsQualitySelection selection,
 		EGraphicsQuality projectDefault) noexcept;

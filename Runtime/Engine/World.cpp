@@ -103,10 +103,10 @@ World::World(
 	m_pDebugContext = TUniquePtr<RHI::DebugContext>::Make();
 }
 
-const GlobalIlluminationWorldSettings&
-World::GetGlobalIlluminationSettings() const
+const GISettings&
+World::GetGISettings() const
 {
-	static const GlobalIlluminationWorldSettings emptySettings{};
+	static const GISettings emptySettings{};
 	const ECS::TBaseSystemPtr* system = nullptr;
 	if (!m_ecs.Find(GlobalIlluminationECS::GetComponentStaticType(), system) ||
 		!system || !system->GetRawPtr())
@@ -117,8 +117,8 @@ World::GetGlobalIlluminationSettings() const
 		system->GetRawPtr())->GetWorldSettings();
 }
 
-bool World::SetGlobalIlluminationSettings(
-	GlobalIlluminationWorldSettings settings,
+bool World::SetGISettings(
+	GISettings settings,
 	std::string& outDiagnostic)
 {
 	if (!settings.Validate(outDiagnostic))

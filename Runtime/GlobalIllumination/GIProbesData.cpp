@@ -1,4 +1,4 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "GlobalIllumination/GIProbesData.h"
 
 #include "Containers/Hash.h"
 
@@ -48,10 +48,10 @@ namespace
 	}
 }
 
-uint64_t Sailor::ComputeProbeVolumeRepresentationHash(
+uint64_t Sailor::ComputeGIProbesRepresentationHash(
 	uint32_t formatVersion,
 	uint32_t shOrder,
-	EProbeVolumeCompression compression) noexcept
+	EGIProbesCompression compression) noexcept
 {
 	uint64_t hash = 1469598103934665603ull;
 	HashValue(hash, formatVersion);
@@ -59,19 +59,19 @@ uint64_t Sailor::ComputeProbeVolumeRepresentationHash(
 	const uint32_t compressionValue = static_cast<uint32_t>(compression);
 	HashValue(hash, compressionValue);
 	const uint32_t coefficientCount =
-		ProbeVolumeSphericalHarmonicsCoefficientCount;
+		GIProbeSphericalHarmonicsCoefficientCount;
 	HashValue(hash, coefficientCount);
 	const uint32_t visibilityDirectionCount =
-		ProbeVolumeVisibilityDirectionCount;
+		GIProbeVisibilityDirectionCount;
 	HashValue(hash, visibilityDirectionCount);
 	const uint32_t environmentVisibilityDirectionCount =
-		ProbeVolumeVisibilityDirectionCount;
+		GIProbeVisibilityDirectionCount;
 	HashValue(hash, environmentVisibilityDirectionCount);
 	return hash;
 }
 
-uint64_t Sailor::ComputeProbeVolumeLayoutHash(
-	const ProbeVolumeData& data) noexcept
+uint64_t Sailor::ComputeGIProbesLayoutHash(
+	const GIProbesData& data) noexcept
 {
 	uint64_t hash = 1469598103934665603ull;
 	HashVec3(hash, data.m_volumeMin);
@@ -81,7 +81,7 @@ uint64_t Sailor::ComputeProbeVolumeLayoutHash(
 	HashValue(hash, numBricks);
 	HashValue(hash, numProbes);
 
-	for (const ProbeVolumeBrick& brick : data.m_bricks)
+	for (const GIProbeBrick& brick : data.m_bricks)
 	{
 		HashVec3(hash, brick.m_min);
 		HashVec3(hash, brick.m_max);
@@ -93,7 +93,7 @@ uint64_t Sailor::ComputeProbeVolumeLayoutHash(
 		HashValue(hash, brick.m_probeCounts.z);
 	}
 
-	for (const ProbeVolumeSample& probe : data.m_probes)
+	for (const GIProbe& probe : data.m_probes)
 	{
 		HashVec3(hash, probe.m_position);
 	}
@@ -101,34 +101,34 @@ uint64_t Sailor::ComputeProbeVolumeLayoutHash(
 	return hash;
 }
 
-bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
+bool GIProbesData::Validate(std::string& outDiagnostic) const
 {
 	outDiagnostic.clear();
-	if (m_formatVersion != ProbeVolumeFormatVersion)
+	if (m_formatVersion != GIProbesFormatVersion)
 	{
-		outDiagnostic = "unsupported probe-volume data version";
+		outDiagnostic = "unsupported GI probes data version";
 		return false;
 	}
-	if (m_shOrder != ProbeVolumeSphericalHarmonicsOrder)
+	if (m_shOrder != GIProbeSphericalHarmonicsOrder)
 	{
 		outDiagnostic = "only order-2 spherical harmonics are supported";
 		return false;
 	}
-	if (m_compression != EProbeVolumeCompression::Float32)
+	if (m_compression != EGIProbesCompression::Float32)
 	{
-		outDiagnostic = "unsupported probe-volume coefficient compression";
+		outDiagnostic = "unsupported GI probes coefficient compression";
 		return false;
 	}
 	if (m_stateName.empty() || m_bakerVersion.empty())
 	{
 		outDiagnostic =
-			"the probe volume must identify its baked state and baker version";
+			"the GI probe data must identify its baked state and baker version";
 		return false;
 	}
-	if (!IsProbeVolumeBakerVersionSupported(m_bakerVersion))
+	if (!IsGIProbesBakerVersionSupported(m_bakerVersion))
 	{
 		outDiagnostic =
-			"the probe volume uses obsolete visibility transport; use Bake New";
+			"the GI probe data uses obsolete visibility transport; use Bake New";
 		return false;
 	}
 	if (!std::isfinite(m_diagnostics.m_averageValidity) ||
@@ -137,7 +137,7 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 		!std::isfinite(m_diagnostics.m_bakeDurationSeconds) ||
 		m_diagnostics.m_bakeDurationSeconds < 0.0f)
 	{
-		outDiagnostic = "the probe volume has invalid bake diagnostics";
+		outDiagnostic = "the GI probe data has invalid bake diagnostics";
 		return false;
 	}
 	if (m_probes.IsEmpty() || m_probes.Num() > MaxProbeCount)
@@ -154,15 +154,15 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 		!IsFinite(m_volumeMax) ||
 		glm::any(glm::lessThanEqual(m_volumeMax, m_volumeMin)))
 	{
-		outDiagnostic = "the probe volume has invalid bounds";
+		outDiagnostic = "the GI probe data has invalid bounds";
 		return false;
 	}
 	if (m_bakeSettings.m_raysPerProbe == 0u ||
-		m_bakeSettings.m_raysPerProbe > ProbeVolumeMaxRaysPerProbe ||
+		m_bakeSettings.m_raysPerProbe > GIProbesMaxRaysPerProbe ||
 		m_bakeSettings.m_bounceCount == 0u ||
-		m_bakeSettings.m_bounceCount > ProbeVolumeMaxBounceCount ||
+		m_bakeSettings.m_bounceCount > GIProbesMaxBounceCount ||
 		m_bakeSettings.m_maxSubdivisionLevel >
-			ProbeVolumeMaxSubdivisionLevel ||
+			GIProbesMaxSubdivisionLevel ||
 		!std::isfinite(m_bakeSettings.m_minProbeSpacing) ||
 		m_bakeSettings.m_minProbeSpacing <= 0.0f ||
 		!std::isfinite(m_bakeSettings.m_normalBias) ||
@@ -174,12 +174,12 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 		!std::isfinite(m_bakeSettings.m_skyIndirectIntensity) ||
 		m_bakeSettings.m_skyIndirectIntensity < 0.0f)
 	{
-		outDiagnostic = "the probe volume has invalid bake settings";
+		outDiagnostic = "the GI probe data has invalid bake settings";
 		return false;
 	}
 
 	uint64_t coveredProbeCount = 0u;
-	for (const ProbeVolumeBrick& brick : m_bricks)
+	for (const GIProbeBrick& brick : m_bricks)
 	{
 		if (!IsFinite(brick.m_min) ||
 			!IsFinite(brick.m_max) ||
@@ -226,16 +226,16 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 	if (m_diagnostics.m_invalidProbeCount > m_probes.Num() ||
 		m_diagnostics.m_relocatedProbeCount > m_probes.Num())
 	{
-		outDiagnostic = "the probe-volume diagnostic counts exceed the probe count";
+		outDiagnostic = "the GI probe diagnostic counts exceed the probe count";
 		return false;
 	}
 
-	for (const ProbeVolumeSample& probe : m_probes)
+	for (const GIProbe& probe : m_probes)
 	{
 		constexpr uint32_t KnownProbeFlags =
-			EProbeVolumeSampleFlag::Valid |
-			EProbeVolumeSampleFlag::Relocated |
-			ProbeVolumeBlockedDirectionMask;
+			EGIProbeFlag::Valid |
+			EGIProbeFlag::Relocated |
+			GIProbeBlockedDirectionMask;
 		if (!IsFinite(probe.m_position) ||
 			!IsFinite(probe.m_relocationOffset) ||
 			glm::any(glm::lessThan(probe.m_position, m_volumeMin)) ||
@@ -281,14 +281,14 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 		}
 	}
 
-	const uint64_t expectedLayoutHash = ComputeProbeVolumeLayoutHash(*this);
+	const uint64_t expectedLayoutHash = ComputeGIProbesLayoutHash(*this);
 	if (m_layoutHash != 0u && m_layoutHash != expectedLayoutHash)
 	{
 		outDiagnostic = "the stored layout hash does not match the spatial payload";
 		return false;
 	}
 	const uint64_t expectedRepresentationHash =
-		ComputeProbeVolumeRepresentationHash(
+		ComputeGIProbesRepresentationHash(
 			m_formatVersion,
 			m_shOrder,
 			m_compression);
@@ -302,20 +302,20 @@ bool ProbeVolumeData::Validate(std::string& outDiagnostic) const
 	return true;
 }
 
-bool ProbeVolumeData::IsCompositionCompatibleWith(
-	const ProbeVolumeData& rhs,
+bool GIProbesData::IsCompositionCompatibleWith(
+	const GIProbesData& rhs,
 	std::string& outDiagnostic) const
 {
 	outDiagnostic.clear();
 	const uint64_t lhsRepresentation = m_representationHash != 0u
 		? m_representationHash
-		: ComputeProbeVolumeRepresentationHash(
+		: ComputeGIProbesRepresentationHash(
 			m_formatVersion,
 			m_shOrder,
 			m_compression);
 	const uint64_t rhsRepresentation = rhs.m_representationHash != 0u
 		? rhs.m_representationHash
-		: ComputeProbeVolumeRepresentationHash(
+		: ComputeGIProbesRepresentationHash(
 			rhs.m_formatVersion,
 			rhs.m_shOrder,
 			rhs.m_compression);
@@ -327,10 +327,10 @@ bool ProbeVolumeData::IsCompositionCompatibleWith(
 
 	const uint64_t lhsLayout = m_layoutHash != 0u
 		? m_layoutHash
-		: ComputeProbeVolumeLayoutHash(*this);
+		: ComputeGIProbesLayoutHash(*this);
 	const uint64_t rhsLayout = rhs.m_layoutHash != 0u
 		? rhs.m_layoutHash
-		: ComputeProbeVolumeLayoutHash(rhs);
+		: ComputeGIProbesLayoutHash(rhs);
 	if (lhsLayout != rhsLayout)
 	{
 		outDiagnostic = "probe layout hashes differ";

@@ -60,7 +60,7 @@ namespace Sailor::Raytracing
 		struct TLASInstance
 		{
 			ModelPtr m_model{};
-			// Optional immutable geometry snapshot. Probe-volume baking uses it so
+			// Optional immutable geometry snapshot. GI probes baking uses it so
 			// model hot reloads cannot mutate an in-flight bake.
 			TSharedPtr<BVH> m_blas{};
 			TSharedPtr<TVector<Math::Triangle>> m_triangles{};

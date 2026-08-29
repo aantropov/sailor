@@ -1,4 +1,4 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
+#include "GlobalIllumination/GIProbesSampling.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,7 @@ namespace
 {
 	constexpr float SurfacePlaneTolerance = 0.0001f;
 
-	bool Contains(const ProbeVolumeBrick& brick, const glm::vec3& position) noexcept
+	bool Contains(const GIProbeBrick& brick, const glm::vec3& position) noexcept
 	{
 		return glm::all(glm::greaterThanEqual(position, brick.m_min)) &&
 			glm::all(glm::lessThanEqual(position, brick.m_max));
@@ -25,7 +25,7 @@ namespace
 	}
 
 	float SurfaceFacingWeight(
-		const ProbeVolumeSample& probe,
+		const GIProbe& probe,
 		const glm::vec3& worldPosition,
 		const glm::vec3& worldNormal) noexcept
 	{
@@ -48,7 +48,7 @@ namespace
 
 glm::vec3 Sailor::EvaluateProbeIrradianceSH(
 	const std::array<glm::vec3,
-		ProbeVolumeSphericalHarmonicsCoefficientCount>& coefficients,
+		GIProbeSphericalHarmonicsCoefficientCount>& coefficients,
 	const glm::vec3& sourceNormal) noexcept
 {
 	glm::vec3 normal = sourceNormal;
@@ -64,7 +64,7 @@ glm::vec3 Sailor::EvaluateProbeIrradianceSH(
 	const float x = normal.x;
 	const float y = normal.y;
 	const float z = normal.z;
-	const float basis[ProbeVolumeSphericalHarmonicsCoefficientCount]
+	const float basis[GIProbeSphericalHarmonicsCoefficientCount]
 	{
 		0.2820947918f,
 		0.4886025119f * y,
@@ -78,7 +78,7 @@ glm::vec3 Sailor::EvaluateProbeIrradianceSH(
 	};
 	glm::vec3 irradiance(0.0f);
 	for (uint32_t index = 0u;
-		index < ProbeVolumeSphericalHarmonicsCoefficientCount;
+		index < GIProbeSphericalHarmonicsCoefficientCount;
 		++index)
 	{
 		irradiance += coefficients[index] * basis[index];
@@ -86,28 +86,28 @@ glm::vec3 Sailor::EvaluateProbeIrradianceSH(
 	return glm::max(irradiance, glm::vec3(0.0f));
 }
 
-bool Sailor::SampleProbeVolumeIrradiance(
-	const ProbeVolumeData& data,
+bool Sailor::SampleGIProbesIrradiance(
+	const GIProbesData& data,
 	const glm::vec3& worldPosition,
 	const glm::vec3& worldNormal,
 	glm::vec3& outIrradiance,
-	ProbeVolumeSampleDebugInfo* outDebugInfo) noexcept
+	GIProbeDebugInfo* outDebugInfo) noexcept
 {
 	outIrradiance = glm::vec3(0.0f);
 	if (outDebugInfo)
 	{
-		*outDebugInfo = ProbeVolumeSampleDebugInfo{};
+		*outDebugInfo = GIProbeDebugInfo{};
 	}
 	if (data.m_bricks.IsEmpty() || data.m_probes.IsEmpty())
 	{
 		return false;
 	}
 
-	const ProbeVolumeBrick* selectedBrick = nullptr;
+	const GIProbeBrick* selectedBrick = nullptr;
 	uint32_t selectedBrickIndex = 0u;
 	for (uint32_t index = 0u; index < data.m_bricks.Num(); ++index)
 	{
-		const ProbeVolumeBrick& candidate = data.m_bricks[index];
+		const GIProbeBrick& candidate = data.m_bricks[index];
 		if (Contains(candidate, worldPosition) &&
 			(!selectedBrick ||
 				candidate.m_subdivisionLevel > selectedBrick->m_subdivisionLevel))
@@ -141,7 +141,7 @@ bool Sailor::SampleProbeVolumeIrradiance(
 	const glm::vec3 fraction = glm::fract(cell);
 
 	std::array<glm::vec3,
-		ProbeVolumeSphericalHarmonicsCoefficientCount> blended{};
+		GIProbeSphericalHarmonicsCoefficientCount> blended{};
 	float totalInterpolationWeight = 0.0f;
 	float totalVisibleWeight = 0.0f;
 	uint32_t cornerIndex = 0u;
@@ -161,7 +161,7 @@ bool Sailor::SampleProbeVolumeIrradiance(
 				{
 					return false;
 				}
-				const ProbeVolumeSample& probe = data.m_probes[probeIndex];
+				const GIProbe& probe = data.m_probes[probeIndex];
 				const float trilinearWeight =
 					(x ? fraction.x : 1.0f - fraction.x) *
 					(y ? fraction.y : 1.0f - fraction.y) *
@@ -180,7 +180,7 @@ bool Sailor::SampleProbeVolumeIrradiance(
 				const float visibleWeight = interpolationWeight * visibility;
 				totalInterpolationWeight += interpolationWeight;
 				for (uint32_t coefficientIndex = 0u;
-					coefficientIndex < ProbeVolumeSphericalHarmonicsCoefficientCount;
+					coefficientIndex < GIProbeSphericalHarmonicsCoefficientCount;
 					++coefficientIndex)
 				{
 					blended[coefficientIndex] +=

@@ -4,7 +4,7 @@
 #include "Memory/UniquePtr.hpp"
 #include "Editor/GlobalIlluminationBakeController.h"
 #include "Editor/GlobalIlluminationEditorState.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Protocol/Generated/editor_engine.pb.h"
 #include "Sailor.h"
 #include "Settings/GraphicsSettings.h"
@@ -308,27 +308,27 @@ namespace
 		}
 	}
 
-	sailor::editor::v1::ProbeVolumeBakeState ToProtocolBakeState(
-		Sailor::EEditorProbeVolumeBakeState state)
+	sailor::editor::v1::GIProbesBakeState ToProtocolBakeState(
+		Sailor::EEditorGIProbesBakeState state)
 	{
 		switch (state)
 		{
-		case Sailor::EEditorProbeVolumeBakeState::Idle:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_IDLE;
-		case Sailor::EEditorProbeVolumeBakeState::Preparing:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_PREPARING;
-		case Sailor::EEditorProbeVolumeBakeState::Baking:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_BAKING;
-		case Sailor::EEditorProbeVolumeBakeState::Saving:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_SAVING;
-		case Sailor::EEditorProbeVolumeBakeState::Succeeded:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_SUCCEEDED;
-		case Sailor::EEditorProbeVolumeBakeState::Failed:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_FAILED;
-		case Sailor::EEditorProbeVolumeBakeState::Cancelled:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_CANCELLED;
+		case Sailor::EEditorGIProbesBakeState::Idle:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_IDLE;
+		case Sailor::EEditorGIProbesBakeState::Preparing:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_PREPARING;
+		case Sailor::EEditorGIProbesBakeState::Baking:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_BAKING;
+		case Sailor::EEditorGIProbesBakeState::Saving:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_SAVING;
+		case Sailor::EEditorGIProbesBakeState::Succeeded:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_SUCCEEDED;
+		case Sailor::EEditorGIProbesBakeState::Failed:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_FAILED;
+		case Sailor::EEditorGIProbesBakeState::Cancelled:
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_CANCELLED;
 		default:
-			return sailor::editor::v1::PROBE_VOLUME_BAKE_STATE_UNSPECIFIED;
+			return sailor::editor::v1::GI_PROBES_BAKE_STATE_UNSPECIFIED;
 		}
 	}
 
@@ -1389,10 +1389,10 @@ namespace
 				ToProtocolRenderMode(Sailor::App::GetEditorRenderMode()));
 			break;
 
-		case ProtocolRequest::kStartProbeVolumeBake:
+		case ProtocolRequest::kStartGiProbesBake:
 		{
-			const auto& bake = request.start_probe_volume_bake();
-			Sailor::EditorProbeVolumeBakeRequest nativeRequest;
+			const auto& bake = request.start_gi_probes_bake();
+			Sailor::EditorGIProbesBakeRequest nativeRequest;
 			if (!TryParseFileId(
 					bake.world_file_id(),
 					true,
@@ -1405,7 +1405,7 @@ namespace
 				bake.state_name().empty() ||
 				!bake.has_settings())
 			{
-				SetError(response, "The probe-volume bake request is invalid.");
+				SetError(response, "The GI probe bake request is invalid.");
 				break;
 			}
 
@@ -1438,7 +1438,7 @@ namespace
 				(bake.has_fallback_environment() &&
 					!IsFiniteVector4(bake.fallback_environment())))
 			{
-				SetError(response, "The probe-volume bake vectors must be finite.");
+				SetError(response, "The GI probe bake vectors must be finite.");
 				break;
 			}
 			if (bake.has_volume_min())
@@ -1464,14 +1464,14 @@ namespace
 			}
 
 			std::string diagnostic;
-			if (!Sailor::App::StartEditorProbeVolumeBake(
+			if (!Sailor::App::StartEditorGIProbesBake(
 					nativeRequest,
 					diagnostic))
 			{
 				SetError(
 					response,
 					diagnostic.empty()
-						? "Failed to start the probe-volume bake."
+						? "Failed to start the GI probe bake."
 						: diagnostic);
 				break;
 			}
@@ -1479,16 +1479,16 @@ namespace
 			break;
 		}
 
-		case ProtocolRequest::kGetProbeVolumeBakeStatus:
+		case ProtocolRequest::kGetGiProbesBakeStatus:
 		{
-			Sailor::EditorProbeVolumeBakeStatus status;
-			if (!Sailor::App::GetEditorProbeVolumeBakeStatus(status))
+			Sailor::EditorGIProbesBakeStatus status;
+			if (!Sailor::App::GetEditorGIProbesBakeStatus(status))
 			{
-				SetError(response, "The probe-volume bake controller is unavailable.");
+				SetError(response, "The GI probe bake controller is unavailable.");
 				break;
 			}
 			SetSuccess(response);
-			auto* result = response.mutable_probe_volume_bake_status_result();
+			auto* result = response.mutable_gi_probes_bake_status_result();
 			result->set_state(ToProtocolBakeState(status.m_state));
 			result->set_progress(status.m_progress);
 			result->set_completed_probes(status.m_completedProbes);
@@ -1505,15 +1505,15 @@ namespace
 			break;
 		}
 
-		case ProtocolRequest::kCancelProbeVolumeBake:
+		case ProtocolRequest::kCancelGiProbesBake:
 		{
 			std::string diagnostic;
-			if (!Sailor::App::CancelEditorProbeVolumeBake(diagnostic))
+			if (!Sailor::App::CancelEditorGIProbesBake(diagnostic))
 			{
 				SetError(
 					response,
 					diagnostic.empty()
-						? "Failed to cancel the probe-volume bake."
+						? "Failed to cancel the GI probe bake."
 						: diagnostic);
 				break;
 			}
@@ -1521,11 +1521,11 @@ namespace
 			break;
 		}
 
-		case ProtocolRequest::kSetGlobalIlluminationSettings:
+		case ProtocolRequest::kSetGiSettings:
 		{
-			Sailor::GlobalIlluminationWorldSettings nativeSettings;
+			Sailor::GISettings nativeSettings;
 			const auto& protocolSettings =
-				request.set_global_illumination_settings();
+				request.set_gi_settings();
 			bool bValid = true;
 			std::string diagnostic;
 			if (protocolSettings.has_mode() &&
@@ -1572,7 +1572,7 @@ namespace
 				}
 			}
 			if (!bValid ||
-				!Sailor::App::SetEditorGlobalIlluminationSettings(
+				!Sailor::App::SetEditorGISettings(
 					std::move(nativeSettings),
 					diagnostic))
 			{

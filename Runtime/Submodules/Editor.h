@@ -25,8 +25,8 @@ namespace Sailor
 	class Prefab;
 	class Model;
 	class GlobalIlluminationBakeController;
-	struct EditorProbeVolumeBakeRequest;
-	struct EditorProbeVolumeBakeStatus;
+	struct EditorGIProbesBakeRequest;
+	struct EditorGIProbesBakeStatus;
 	struct EditorManagedMutationState;
 	namespace EditorViewport
 	{
@@ -53,13 +53,13 @@ namespace Sailor
 		bool IsSimulationEnabled() const { return m_bSimulationEnabled; }
 		bool PreviewAudioAsset(const class FileId& fileId);
 		void StopAudioPreview();
-		SAILOR_SHARED_API bool StartProbeVolumeBake(
-			const EditorProbeVolumeBakeRequest& request,
+		SAILOR_SHARED_API bool StartGIProbesBake(
+			const EditorGIProbesBakeRequest& request,
 			std::string& outDiagnostic);
-		SAILOR_SHARED_API bool CancelProbeVolumeBake(
+		SAILOR_SHARED_API bool CancelGIProbesBake(
 			std::string& outDiagnostic);
-		SAILOR_SHARED_API EditorProbeVolumeBakeStatus
-			GetProbeVolumeBakeStatus() const;
+		SAILOR_SHARED_API EditorGIProbesBakeStatus
+			GetGIProbesBakeStatus() const;
 		void TickViewportTools();
 		void CancelViewportInteraction();
 		bool PullViewportEvent(std::string& outEvent);
@@ -153,7 +153,7 @@ namespace Sailor
 		bool m_bSimulationEnabled = false;
 		AudioVoiceId m_audioPreviewVoiceId = InvalidAudioVoiceId;
 		TUniquePtr<EditorViewport::EditorViewportController> m_viewportController{};
-		TUniquePtr<GlobalIlluminationBakeController> m_probeVolumeBakeController{};
+		TUniquePtr<GlobalIlluminationBakeController> m_giProbesBakeController{};
 		uint64_t m_managedSelectionMutationRevision = 0;
 		TUniquePtr<EditorManagedMutationState> m_managedMutationState{};
 	};

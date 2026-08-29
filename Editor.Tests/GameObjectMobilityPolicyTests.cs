@@ -28,22 +28,11 @@ public sealed class GameObjectMobilityPolicyTests
     [InlineData("stationary", "Stationary")]
     [InlineData("Dynamic", "Dynamic")]
     [InlineData("invalid", "Stationary")]
-    public void Normalize_PreservesKnownValuesAndDefaultsLegacyData(
+    public void Normalize_CanonicalizesKnownValuesAndUsesStationaryForInvalidInput(
         string? value,
         string expected)
     {
         Assert.Equal(expected, GameObjectMobilityPolicy.Normalize(value));
-    }
-
-    [Fact]
-    public void HasMobilityChange_TreatsMissingLegacyValueAsStationary()
-    {
-        const string legacy = "name: Legacy\n";
-        const string unchanged = "name: Current\nmobilityType: Stationary\n";
-        const string changed = "name: Current\nmobilityType: Dynamic\n";
-
-        Assert.False(GameObjectMobilityPolicy.HasMobilityChange(legacy, unchanged));
-        Assert.True(GameObjectMobilityPolicy.HasMobilityChange(legacy, changed));
     }
 
     [Theory]

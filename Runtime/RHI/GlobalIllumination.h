@@ -1,7 +1,7 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
+#include "GlobalIllumination/GIProbesData.h"
 #include "Memory/SharedPtr.hpp"
 
 #include <cstdint>
@@ -22,7 +22,7 @@ namespace Sailor::RHI
 	{
 		std::string m_name{};
 		FileId m_asset{};
-		ProbeVolumeDataPtr m_data{};
+		GIProbesDataPtr m_data{};
 		float m_effectiveWeight = 0.0f;
 		EGlobalIlluminationProbeMode m_mode =
 			EGlobalIlluminationProbeMode::Blend;
@@ -32,7 +32,7 @@ namespace Sailor::RHI
 	{
 		uint64_t m_generation = 0u;
 		uint64_t m_lightingHash = 0u;
-		ProbeVolumeDataPtr m_layout{};
+		GIProbesDataPtr m_layout{};
 		TVector<RHIGlobalIlluminationState> m_states{};
 		uint32_t m_qualityBudget = 0u;
 	};
@@ -154,7 +154,7 @@ namespace Sailor::RHI
 			EGlobalIlluminationMode mode,
 			bool bEnabled) noexcept;
 	SAILOR_SHARED_API bool BuildGlobalIlluminationGpuLayout(
-		const ProbeVolumeData& data,
+		const GIProbesData& data,
 		RHIGlobalIlluminationGpuLayout& outLayout,
 		std::string& outDiagnostic) noexcept;
 	SAILOR_SHARED_API bool BuildGlobalIlluminationGpuCoefficients(

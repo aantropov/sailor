@@ -2,7 +2,7 @@ using SailorEditor.Workspace;
 
 namespace SailorEditor.Services;
 
-public static class ProbeVolumeBakeOutputPolicy
+public static class GIProbesBakeOutputPolicy
 {
     public const string Extension = ".probes";
 
@@ -24,7 +24,7 @@ public static class ProbeVolumeBakeOutputPolicy
         }
 
         throw new InvalidOperationException(
-            $"No available probe-volume state name starts with '{prefix}'.");
+            $"No available GI probe state name starts with '{prefix}'.");
     }
 
     public static bool TryResolveWriteTarget(

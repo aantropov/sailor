@@ -1,19 +1,19 @@
 #pragma once
 
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBaker.h"
+#include "GlobalIllumination/GIProbesBaker.h"
 #include "Raytracing/PathTracer.h"
 
 namespace Sailor::Raytracing
 {
-	class SAILOR_SHARED_API ProbeVolumePathTracer final :
-		public IProbeVolumeBakeRaySampler
+	class SAILOR_SHARED_API GIProbesPathTracer final :
+		public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Initialize(
 			const TVector<PathTracer::TLASInstance>& instances,
 			const TVector<MaterialPtr>& materials,
 			const TVector<LightProxy>& lights,
-			const ProbeVolumeBakeSettings& settings,
+			const GIProbesBakeSettings& settings,
 			const glm::vec3& fallbackEnvironment = glm::vec3(0.03f),
 			const PathTracer::ScenePreparationProgressCallback& progress = {},
 			const PathTracer::ScenePreparationWarningCallback& warning = {});
@@ -33,14 +33,14 @@ namespace Sailor::Raytracing
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override;
 		bool SampleVisibility(
 			const glm::vec3& origin,
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override;
 
 	private:

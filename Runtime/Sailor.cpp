@@ -14,8 +14,8 @@
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/FrameGraph/FrameGraphAssetInfo.h"
 #include "AssetRegistry/FrameGraph/FrameGraphImporter.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeAssetInfo.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeImporter.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesImporter.h"
 #include "AssetRegistry/Prefab/PrefabImporter.h"
 #include "AssetRegistry/World/WorldPrefabImporter.h"
 #include "Core/Reflection.h"
@@ -122,11 +122,6 @@ Settings::ERenderStatsMode App::GetRenderStatsMode()
 
 bool App::SetRenderStatsMode(Settings::ERenderStatsMode mode)
 {
-	if (!Settings::IsValidRenderStatsMode(mode))
-	{
-		return false;
-	}
-
 	g_renderStatsMode.store(mode, std::memory_order_release);
 	return true;
 }
@@ -138,11 +133,6 @@ RHI::ESceneViewRenderMode App::GetEditorRenderMode()
 
 bool App::SetEditorRenderMode(RHI::ESceneViewRenderMode mode)
 {
-	if (!RHI::IsValidSceneViewRenderMode(mode))
-	{
-		return false;
-	}
-
 	g_editorRenderMode.store(mode, std::memory_order_release);
 	return true;
 }
@@ -525,13 +515,17 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 			SAILOR_LOG_ERROR("%s", g_graphicsSettingsState.m_editorDiagnostic.c_str());
 		}
 	}
+	const std::string activeQualityName(
+		magic_enum::enum_name(g_graphicsSettingsState.m_activeQuality));
+	const std::string renderStatsModeName(
+		magic_enum::enum_name(GetRenderStatsMode()));
 	SAILOR_LOG(
 		"Active graphics quality: %s (FPS cap %u, MSAA %ux, PCF shadow bias %.3f, stats mode %s).",
-		Settings::ToString(g_graphicsSettingsState.m_activeQuality),
+		activeQualityName.c_str(),
 		g_graphicsSettingsState.GetActiveProfile().m_fpsCap,
 		g_graphicsSettingsState.GetActiveProfile().m_msaaSamples,
 		g_graphicsSettingsState.GetActiveProfile().m_shadowBias,
-		Settings::ToString(GetRenderStatsMode()));
+		renderStatsModeName.c_str());
 
 	bool bWorkspaceModuleActivationFailed = false;
 	s_pInstance->m_pWorkspaceModuleManager = TUniquePtr<Workspace::WorkspaceModuleManager>::Make();
@@ -626,7 +620,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 		TSubmodule<LandscapeVegetationAssetInfoHandler>::Make(assetRegistry));
 	auto materialInfoHandler = s_pInstance->AddSubmodule(TSubmodule<MaterialAssetInfoHandler>::Make(assetRegistry));
 	auto frameGraphInfoHandler = s_pInstance->AddSubmodule(TSubmodule<FrameGraphAssetInfoHandler>::Make(assetRegistry));
-	auto probeVolumeInfoHandler = s_pInstance->AddSubmodule(TSubmodule<ProbeVolumeAssetInfoHandler>::Make(assetRegistry));
+	auto giProbesInfoHandler = s_pInstance->AddSubmodule(TSubmodule<GIProbesAssetInfoHandler>::Make(assetRegistry));
 	auto prefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<PrefabAssetInfoHandler>::Make(assetRegistry));
 	auto worldPrefabInfoHandler = s_pInstance->AddSubmodule(TSubmodule<WorldPrefabAssetInfoHandler>::Make(assetRegistry));
 
@@ -638,7 +632,7 @@ void App::Initialize(const char** commandLineArgs, int32_t num)
 	s_pInstance->AddSubmodule(TSubmodule<AudioImporter>::Make(audioInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<MaterialImporter>::Make(materialInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphImporter>::Make(frameGraphInfoHandler));
-	s_pInstance->AddSubmodule(TSubmodule<ProbeVolumeImporter>::Make(probeVolumeInfoHandler));
+	s_pInstance->AddSubmodule(TSubmodule<GIProbesImporter>::Make(giProbesInfoHandler));
 	s_pInstance->AddSubmodule(TSubmodule<ECS::ECSFactory>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<FrameGraphBuilder>::Make());
 	s_pInstance->AddSubmodule(TSubmodule<PrefabImporter>::Make(prefabInfoHandler));
@@ -1235,7 +1229,7 @@ void App::Shutdown()
 	}
 
 	RemoveSubmodule<FrameGraphImporter>();
-	RemoveSubmodule<ProbeVolumeImporter>();
+	RemoveSubmodule<GIProbesImporter>();
 	RemoveSubmodule<MaterialImporter>();
 	RemoveSubmodule<ModelImporter>();
 	RemoveSubmodule<AnimationImporter>();

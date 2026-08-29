@@ -2,12 +2,12 @@ using SailorEditor.Services;
 
 namespace SailorEditor.Tests;
 
-public sealed class ProbeVolumeBakeStatusGateTests
+public sealed class GIProbesBakeStatusGateTests
 {
     [Fact]
     public void LaunchFailure_PreservesDiagnosticInsteadOfApplyingIdlePoll()
     {
-        var gate = new ProbeVolumeBakeStatusGate();
+        var gate = new GIProbesBakeStatusGate();
 
         gate.BeginLaunch();
         gate.PreserveTerminalStatus();
@@ -19,7 +19,7 @@ public sealed class ProbeVolumeBakeStatusGateTests
     [Fact]
     public void RunningBake_ReleasesPreservedDiagnostic()
     {
-        var gate = new ProbeVolumeBakeStatusGate();
+        var gate = new GIProbesBakeStatusGate();
         gate.PreserveTerminalStatus();
 
         Assert.True(gate.ShouldApplyPolledStatus(isRunning: true));
@@ -29,7 +29,7 @@ public sealed class ProbeVolumeBakeStatusGateTests
     [Fact]
     public void NewLaunch_ReleasesPreviousTerminalDiagnostic()
     {
-        var gate = new ProbeVolumeBakeStatusGate();
+        var gate = new GIProbesBakeStatusGate();
         gate.PreserveTerminalStatus();
 
         gate.BeginLaunch();

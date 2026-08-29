@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace SailorEditor.Services;
 
-public enum ProbeVolumeBakeLifecycleState
+public enum GIProbesBakeLifecycleState
 {
     Idle = 0,
     Preparing,
@@ -15,7 +15,7 @@ public enum ProbeVolumeBakeLifecycleState
     Cancelled
 }
 
-public sealed record ProbeVolumeBakeSettings(
+public sealed record GIProbesBakeSettings(
     uint RaysPerProbe = 256,
     uint BounceCount = 3,
     uint RandomSeed = 0,
@@ -33,11 +33,11 @@ public sealed record ProbeVolumeBakeSettings(
     public const uint MaximumSubdivisionLevel = 16;
 }
 
-public sealed record ProbeVolumeBakeRequest(
+public sealed record GIProbesBakeRequest(
     FileId WorldAsset,
     string OutputVirtualPath,
     string StateName,
-    ProbeVolumeBakeSettings Settings,
+    GIProbesBakeSettings Settings,
     FileId? LayoutSource = null,
     bool AutoBounds = true,
     Vector3 VolumeMin = default,
@@ -49,8 +49,8 @@ public sealed record ProbeVolumeBakeRequest(
     public const uint MaximumThreadCount = 64;
 }
 
-public sealed record ProbeVolumeBakeStatus(
-    ProbeVolumeBakeLifecycleState State,
+public sealed record GIProbesBakeStatus(
+    GIProbesBakeLifecycleState State,
     float Progress,
     uint CompletedProbes,
     uint TotalProbes,
@@ -65,9 +65,9 @@ public sealed record ProbeVolumeBakeStatus(
     string Diagnostic)
 {
     public bool IsRunning => State is
-        ProbeVolumeBakeLifecycleState.Preparing or
-        ProbeVolumeBakeLifecycleState.Baking or
-        ProbeVolumeBakeLifecycleState.Saving;
+        GIProbesBakeLifecycleState.Preparing or
+        GIProbesBakeLifecycleState.Baking or
+        GIProbesBakeLifecycleState.Saving;
 }
 
 public enum GlobalIlluminationCompositionMode
@@ -106,7 +106,7 @@ public static class GlobalIlluminationBindingInputPolicy
     }
 }
 
-public readonly record struct ProbeVolumeCompositionIdentity(
+public readonly record struct GIProbesCompositionIdentity(
     ulong LayoutHash,
     ulong RepresentationHash,
     ulong TransportHash)
@@ -117,12 +117,12 @@ public readonly record struct ProbeVolumeCompositionIdentity(
         TransportHash != 0;
 }
 
-public sealed record ProbeVolumeBindingCompositionState(
+public sealed record GIProbesBindingCompositionState(
     string Name,
     float Weight,
-    ProbeVolumeCompositionIdentity Identity);
+    GIProbesCompositionIdentity Identity);
 
-public enum ProbeVolumeBakeActivationState
+public enum GIProbesBakeActivationState
 {
     NotRequired = 0,
     Pending,
@@ -130,17 +130,17 @@ public enum ProbeVolumeBakeActivationState
     Rejected
 }
 
-public sealed record ProbeVolumeBakeActivationAssessment(
-    ProbeVolumeBakeActivationState State,
+public sealed record GIProbesBakeActivationAssessment(
+    GIProbesBakeActivationState State,
     string Diagnostic);
 
-public static class ProbeVolumeBakeBindingPolicy
+public static class GIProbesBakeBindingPolicy
 {
     public static IReadOnlyList<string> FindIncompatibleActiveStates(
         string targetName,
         float targetWeight,
-        ProbeVolumeCompositionIdentity targetIdentity,
-        IReadOnlyCollection<ProbeVolumeBindingCompositionState> states)
+        GIProbesCompositionIdentity targetIdentity,
+        IReadOnlyCollection<GIProbesBindingCompositionState> states)
     {
         ArgumentNullException.ThrowIfNull(states);
         if (string.IsNullOrWhiteSpace(targetName))
@@ -173,7 +173,7 @@ public static class ProbeVolumeBakeBindingPolicy
         return incompatible.Order(StringComparer.Ordinal).ToArray();
     }
 
-    public static ProbeVolumeBakeActivationAssessment AssessActivation(
+    public static GIProbesBakeActivationAssessment AssessActivation(
         string targetName,
         string targetAssetFileId,
         bool activationRequired,
@@ -183,8 +183,8 @@ public static class ProbeVolumeBakeBindingPolicy
         ArgumentNullException.ThrowIfNull(baseline);
         if (!activationRequired)
         {
-            return new ProbeVolumeBakeActivationAssessment(
-                ProbeVolumeBakeActivationState.NotRequired,
+            return new GIProbesBakeActivationAssessment(
+                GIProbesBakeActivationState.NotRequired,
                 "Runtime activation is not required for the current GI mode or zero binding weight.");
         }
         if (string.IsNullOrWhiteSpace(targetName) ||
@@ -194,14 +194,14 @@ public static class ProbeVolumeBakeBindingPolicy
         }
         if (current is null)
         {
-            return new ProbeVolumeBakeActivationAssessment(
-                ProbeVolumeBakeActivationState.Pending,
+            return new GIProbesBakeActivationAssessment(
+                GIProbesBakeActivationState.Pending,
                 "Global Illumination runtime state is unavailable.");
         }
         if (current.RejectedCompositionCount > baseline.RejectedCompositionCount)
         {
-            return new ProbeVolumeBakeActivationAssessment(
-                ProbeVolumeBakeActivationState.Rejected,
+            return new GIProbesBakeActivationAssessment(
+                GIProbesBakeActivationState.Rejected,
                 string.IsNullOrWhiteSpace(current.Diagnostic)
                     ? "Global Illumination rejected the baked probe composition."
                     : current.Diagnostic);
@@ -211,8 +211,8 @@ public static class ProbeVolumeBakeBindingPolicy
             string.Equals(probe.Name, targetName, StringComparison.Ordinal));
         if (target?.Residency == GlobalIlluminationResidency.Failed)
         {
-            return new ProbeVolumeBakeActivationAssessment(
-                ProbeVolumeBakeActivationState.Rejected,
+            return new GIProbesBakeActivationAssessment(
+                GIProbesBakeActivationState.Rejected,
                 string.IsNullOrWhiteSpace(target.Diagnostic)
                     ? $"Probe state '{targetName}' failed to become resident."
                     : target.Diagnostic);
@@ -228,13 +228,13 @@ public static class ProbeVolumeBakeBindingPolicy
             target.Weight <= 0.0f ||
             target.Residency != GlobalIlluminationResidency.Resident)
         {
-            return new ProbeVolumeBakeActivationAssessment(
-                ProbeVolumeBakeActivationState.Pending,
+            return new GIProbesBakeActivationAssessment(
+                GIProbesBakeActivationState.Pending,
                 current.Diagnostic ?? string.Empty);
         }
 
-        return new ProbeVolumeBakeActivationAssessment(
-            ProbeVolumeBakeActivationState.Succeeded,
+        return new GIProbesBakeActivationAssessment(
+            GIProbesBakeActivationState.Succeeded,
             current.Diagnostic ?? string.Empty);
     }
 }

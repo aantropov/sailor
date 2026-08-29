@@ -1,9 +1,9 @@
 #pragma once
 
 #include "AssetRegistry/FileId.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "GlobalIllumination/GIProbesData.h"
 #include "Core/SpinLock.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Memory/SharedPtr.hpp"
 #include "Tasks/Tasks.h"
 
@@ -24,7 +24,7 @@ namespace Sailor
 		const YAML::Node& savedDocument,
 		const YAML::Node& currentDocument,
 		std::string& outDiagnostic);
-	enum class EEditorProbeVolumeBakeState : uint8_t
+	enum class EEditorGIProbesBakeState : uint8_t
 	{
 		Idle = 0u,
 		Preparing,
@@ -35,13 +35,13 @@ namespace Sailor
 		Cancelled
 	};
 
-	struct SAILOR_SHARED_API EditorProbeVolumeBakeRequest final
+	struct SAILOR_SHARED_API EditorGIProbesBakeRequest final
 	{
 		FileId m_worldAsset{};
 		std::string m_outputVirtualPath{};
 		std::string m_stateName{};
 		FileId m_layoutSource{};
-		ProbeVolumeBakeSettings m_settings{};
+		GIProbesBakeSettings m_settings{};
 		uint32_t m_threadCount = 1u;
 		glm::vec3 m_volumeMin{};
 		glm::vec3 m_volumeMax{};
@@ -50,10 +50,10 @@ namespace Sailor
 		bool m_bOverwrite = false;
 	};
 
-	struct SAILOR_SHARED_API EditorProbeVolumeBakeStatus final
+	struct SAILOR_SHARED_API EditorGIProbesBakeStatus final
 	{
-		EEditorProbeVolumeBakeState m_state =
-			EEditorProbeVolumeBakeState::Idle;
+		EEditorGIProbesBakeState m_state =
+			EEditorGIProbesBakeState::Idle;
 		float m_progress = 0.0f;
 		uint32_t m_completedProbes = 0u;
 		uint32_t m_totalProbes = 0u;
@@ -69,9 +69,9 @@ namespace Sailor
 
 		bool IsRunning() const noexcept
 		{
-			return m_state == EEditorProbeVolumeBakeState::Preparing ||
-				m_state == EEditorProbeVolumeBakeState::Baking ||
-				m_state == EEditorProbeVolumeBakeState::Saving;
+			return m_state == EEditorGIProbesBakeState::Preparing ||
+				m_state == EEditorGIProbesBakeState::Baking ||
+				m_state == EEditorGIProbesBakeState::Saving;
 		}
 	};
 
@@ -88,10 +88,10 @@ namespace Sailor
 
 		bool Start(
 			World* world,
-			const EditorProbeVolumeBakeRequest& request,
+			const EditorGIProbesBakeRequest& request,
 			std::string& outDiagnostic);
 		bool Cancel(std::string& outDiagnostic);
-		EditorProbeVolumeBakeStatus GetStatus() const;
+		EditorGIProbesBakeStatus GetStatus() const;
 		void Wait();
 
 		// Shared with the single serialized Background task. Exposed only so
@@ -99,7 +99,7 @@ namespace Sailor
 		struct SharedState final
 		{
 			mutable SpinLock m_lock;
-			EditorProbeVolumeBakeStatus m_status{};
+			EditorGIProbesBakeStatus m_status{};
 			std::atomic<bool> m_cancel{ false };
 		};
 

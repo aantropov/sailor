@@ -34,11 +34,6 @@ TransformComponent& GameObject::GetTransformComponent()
 
 void GameObject::SetMobilityType(EMobilityType type)
 {
-	if (!IsValidMobilityType(type))
-	{
-		return;
-	}
-
 	if (m_parent &&
 		!IsMobilityHierarchyValid(m_parent->m_type, type))
 	{

@@ -5,7 +5,7 @@ using SailorEditor.Services;
 
 namespace SailorEditor.ViewModels;
 
-internal sealed record ProbeVolumeBinaryMetadata(
+internal sealed record GIProbesBinaryMetadata(
     uint FormatVersion,
     uint BakedStateCount,
     uint SphericalHarmonicsOrder,
@@ -54,7 +54,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
     const ulong ProbeRecordBytes = 212;
     static ReadOnlySpan<byte> Magic => "SLRPROBE"u8;
 
-    public static ProbeVolumeBinaryMetadata Read(FileInfo asset)
+    public static GIProbesBinaryMetadata Read(FileInfo asset)
     {
         ArgumentNullException.ThrowIfNull(asset);
         using var stream = new FileStream(
@@ -148,10 +148,10 @@ internal sealed record ProbeVolumeBinaryMetadata(
             volumeMin.Y >= volumeMax.Y ||
             volumeMin.Z >= volumeMax.Z ||
             raysPerProbe == 0 ||
-            raysPerProbe > ProbeVolumeBakeSettings.MaximumRaysPerProbe ||
+            raysPerProbe > GIProbesBakeSettings.MaximumRaysPerProbe ||
             bounceCount == 0 ||
-            bounceCount > ProbeVolumeBakeSettings.MaximumBounceCount ||
-            maxSubdivisionLevel > ProbeVolumeBakeSettings.MaximumSubdivisionLevel ||
+            bounceCount > GIProbesBakeSettings.MaximumBounceCount ||
+            maxSubdivisionLevel > GIProbesBakeSettings.MaximumSubdivisionLevel ||
             !float.IsFinite(minProbeSpacing) || minProbeSpacing <= 0 ||
             !float.IsFinite(normalBias) || normalBias < 0 ||
             !float.IsFinite(viewBias) || viewBias < 0 ||
@@ -173,7 +173,7 @@ internal sealed record ProbeVolumeBinaryMetadata(
                 "The .probes metadata is missing required identity or diagnostics.");
         }
 
-        return new ProbeVolumeBinaryMetadata(
+        return new GIProbesBinaryMetadata(
             formatVersion,
             bakedStateCount,
             shOrder,

@@ -278,7 +278,7 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 	m_editorHwnd(editorHwnd),
 	m_pMainWindow(pMainWindow),
 	m_viewportController(TUniquePtr<EditorViewport::EditorViewportController>::Make()),
-	m_probeVolumeBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),
+	m_giProbesBakeController(TUniquePtr<GlobalIlluminationBakeController>::Make()),
 	m_managedMutationState(TUniquePtr<EditorManagedMutationState>::Make())
 {
 
@@ -287,8 +287,8 @@ Editor::Editor(HWND editorHwnd, uint32_t editorPort, Sailor::Win32::Window* pMai
 Editor::~Editor()
 {
 	std::string diagnostic;
-	m_probeVolumeBakeController->Cancel(diagnostic);
-	m_probeVolumeBakeController->Wait();
+	m_giProbesBakeController->Cancel(diagnostic);
+	m_giProbesBakeController->Wait();
 	StopAudioPreview();
 }
 
@@ -342,10 +342,10 @@ void Editor::StopAudioPreview()
 void Editor::SetWorld(World* world)
 {
 	std::string diagnostic;
-	if (m_probeVolumeBakeController->GetStatus().IsRunning())
+	if (m_giProbesBakeController->GetStatus().IsRunning())
 	{
-		m_probeVolumeBakeController->Cancel(diagnostic);
-		m_probeVolumeBakeController->Wait();
+		m_giProbesBakeController->Cancel(diagnostic);
+		m_giProbesBakeController->Wait();
 	}
 	m_world = world;
 	m_simulationSnapshot.clear();
@@ -356,25 +356,25 @@ void Editor::SetWorld(World* world)
 	m_viewportController->SetManagedMutationRevisions(0, 0);
 }
 
-bool Editor::StartProbeVolumeBake(
-	const EditorProbeVolumeBakeRequest& request,
+bool Editor::StartGIProbesBake(
+	const EditorGIProbesBakeRequest& request,
 	std::string& outDiagnostic)
 {
-	return m_probeVolumeBakeController &&
-		m_probeVolumeBakeController->Start(m_world, request, outDiagnostic);
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Start(m_world, request, outDiagnostic);
 }
 
-bool Editor::CancelProbeVolumeBake(std::string& outDiagnostic)
+bool Editor::CancelGIProbesBake(std::string& outDiagnostic)
 {
-	return m_probeVolumeBakeController &&
-		m_probeVolumeBakeController->Cancel(outDiagnostic);
+	return m_giProbesBakeController &&
+		m_giProbesBakeController->Cancel(outDiagnostic);
 }
 
-EditorProbeVolumeBakeStatus Editor::GetProbeVolumeBakeStatus() const
+EditorGIProbesBakeStatus Editor::GetGIProbesBakeStatus() const
 {
-	return m_probeVolumeBakeController
-		? m_probeVolumeBakeController->GetStatus()
-		: EditorProbeVolumeBakeStatus{};
+	return m_giProbesBakeController
+		? m_giProbesBakeController->GetStatus()
+		: EditorGIProbesBakeStatus{};
 }
 
 bool Editor::SetSimulationEnabled(bool bEnabled)

@@ -3,14 +3,14 @@ using System.Text;
 
 namespace SailorEditor.Tests;
 
-public sealed class ProbeVolumeBinaryMetadataTests
+public sealed class GIProbesBinaryMetadataTests
 {
     [Fact]
     public void ReadsOneStateMetadataAndValidatesChecksum()
     {
         using var asset = TestProbeAsset.Create();
 
-        var metadata = ProbeVolumeBinaryMetadata.Read(asset.File);
+        var metadata = GIProbesBinaryMetadata.Read(asset.File);
 
         Assert.Equal(1u, metadata.BakedStateCount);
         Assert.Equal("Evening", metadata.StateName);
@@ -37,7 +37,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         File.WriteAllBytes(asset.File.FullName, bytes);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("checksum", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -48,7 +48,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(bakedStateCount: 2);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("exactly one", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -59,7 +59,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(probeCount: 2);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("record counts", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -70,7 +70,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(stateName: string.Empty);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("identity", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -81,7 +81,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(headerFlags: 1);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("flags", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -92,7 +92,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(payloadFlags: 1);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("flags", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
@@ -103,7 +103,7 @@ public sealed class ProbeVolumeBinaryMetadataTests
         using var asset = TestProbeAsset.Create(raysPerProbe: 65537);
 
         var exception = Assert.Throws<InvalidDataException>(
-            () => ProbeVolumeBinaryMetadata.Read(asset.File));
+            () => GIProbesBinaryMetadata.Read(asset.File));
 
         Assert.Contains("invalid values", exception.Message, StringComparison.OrdinalIgnoreCase);
     }

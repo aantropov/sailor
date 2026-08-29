@@ -347,9 +347,7 @@ namespace
 			std::string(GetSceneViewRenderModeShaderDefine(
 				ESceneViewRenderMode::Lit)).empty() &&
 			std::string(GetSceneViewRenderModeShaderDefine(
-				ESceneViewRenderMode::GlobalIlluminationVisibility)).empty() &&
-			IsValidSceneViewRenderMode(
-				ESceneViewRenderMode::GlobalIlluminationFallback),
+				ESceneViewRenderMode::GlobalIlluminationVisibility)).empty(),
 			"Scene View modes must resolve to immutable variants or GI runtime metadata");
 		Require(
 			!IsSceneViewDebugVisualization(ESceneViewRenderMode::Lit) &&

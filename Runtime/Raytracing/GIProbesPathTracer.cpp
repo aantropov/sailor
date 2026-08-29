@@ -1,4 +1,4 @@
-#include "Raytracing/ProbeVolumePathTracer.h"
+#include "Raytracing/GIProbesPathTracer.h"
 
 #include "Core/LogMacros.h"
 
@@ -7,11 +7,11 @@
 using namespace Sailor;
 using namespace Sailor::Raytracing;
 
-bool ProbeVolumePathTracer::Initialize(
+bool GIProbesPathTracer::Initialize(
 	const TVector<PathTracer::TLASInstance>& instances,
 	const TVector<MaterialPtr>& materials,
 	const TVector<LightProxy>& lights,
-	const ProbeVolumeBakeSettings& settings,
+	const GIProbesBakeSettings& settings,
 	const glm::vec3& fallbackEnvironment,
 	const PathTracer::ScenePreparationProgressCallback& progress,
 	const PathTracer::ScenePreparationWarningCallback& warning)
@@ -65,25 +65,25 @@ bool ProbeVolumePathTracer::Initialize(
 	return m_bInitialized;
 }
 
-void ProbeVolumePathTracer::SetEnvironmentLinear(
+void GIProbesPathTracer::SetEnvironmentLinear(
 	const TVector<glm::vec4>& image,
 	const glm::uvec2& extent)
 {
 	m_pathTracer.SetRuntimeEnvironmentLinear(image, extent);
 }
 
-bool ProbeVolumePathTracer::Sample(
+bool GIProbesPathTracer::Sample(
 	const glm::vec3& origin,
 	const glm::vec3& direction,
 	float maxDistance,
 	uint32_t randomSeed,
-	ProbeVolumeBakeRaySample& outSample,
+	GIProbeBakeRaySample& outSample,
 	std::string& outDiagnostic) const
 {
 	outSample = {};
 	if (!m_bInitialized)
 	{
-		outDiagnostic = "probe-volume path tracer has no prepared scene";
+		outDiagnostic = "GI probe path tracer has no prepared scene";
 		return false;
 	}
 
@@ -96,7 +96,7 @@ bool ProbeVolumePathTracer::Sample(
 		randomSeed,
 		sample))
 	{
-		outDiagnostic = "probe-volume path tracer rejected a bake ray";
+		outDiagnostic = "GI probe path tracer rejected a bake ray";
 		return false;
 	}
 	outSample.m_radiance = sample.m_radiance;
@@ -107,18 +107,18 @@ bool ProbeVolumePathTracer::Sample(
 	return true;
 }
 
-bool ProbeVolumePathTracer::SampleVisibility(
+bool GIProbesPathTracer::SampleVisibility(
 	const glm::vec3& origin,
 	const glm::vec3& direction,
 	float maxDistance,
 	uint32_t,
-	ProbeVolumeBakeRaySample& outSample,
+	GIProbeBakeRaySample& outSample,
 	std::string& outDiagnostic) const
 {
 	outSample = {};
 	if (!m_bInitialized)
 	{
-		outDiagnostic = "probe-volume path tracer has no prepared scene";
+		outDiagnostic = "GI probe path tracer has no prepared scene";
 		return false;
 	}
 
@@ -129,7 +129,7 @@ bool ProbeVolumePathTracer::SampleVisibility(
 			maxDistance,
 			sample))
 	{
-		outDiagnostic = "probe-volume path tracer rejected a visibility ray";
+		outDiagnostic = "GI probe path tracer rejected a visibility ray";
 		return false;
 	}
 	outSample.m_distance = sample.m_distance;

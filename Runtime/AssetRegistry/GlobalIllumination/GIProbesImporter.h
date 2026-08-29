@@ -1,8 +1,8 @@
 #pragma once
 
 #include "AssetRegistry/AssetFactory.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeAssetInfo.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeData.h"
+#include "AssetRegistry/GlobalIllumination/GIProbesAssetInfo.h"
+#include "GlobalIllumination/GIProbesData.h"
 #include "Containers/ConcurrentMap.h"
 #include "Core/SpinLock.h"
 #include "Core/Submodule.h"
@@ -15,46 +15,46 @@
 
 namespace Sailor
 {
-	struct ProbeVolumeAssetSnapshot final
+	struct GIProbesAssetSnapshot final
 	{
-		ProbeVolumeDataPtr m_data{};
+		GIProbesDataPtr m_data{};
 		uint64_t m_revision = 0u;
 		std::string m_diagnostic{};
 	};
 
-	class ProbeVolumeAsset final : public Object
+	class GIProbesAsset final : public Object
 	{
 	public:
-		SAILOR_API explicit ProbeVolumeAsset(FileId uid);
+		SAILOR_API explicit GIProbesAsset(FileId uid);
 		SAILOR_API bool IsReady() const override;
 		SAILOR_API uint64_t GetRevision() const noexcept;
-		SAILOR_API ProbeVolumeAssetSnapshot GetSnapshot() const;
+		SAILOR_API GIProbesAssetSnapshot GetSnapshot() const;
 
 	private:
 		void ApplyLoadResult(
-			ProbeVolumeDataPtr data,
+			GIProbesDataPtr data,
 			std::string diagnostic);
 
 		mutable SpinLock m_lock;
-		ProbeVolumeDataPtr m_data{};
+		GIProbesDataPtr m_data{};
 		std::string m_diagnostic{};
 		std::atomic<uint64_t> m_revision{ 0u };
 		std::atomic<bool> m_bReady{ false };
 
-		friend class ProbeVolumeImporter;
+		friend class GIProbesImporter;
 	};
 
-	using ProbeVolumeAssetPtr = TObjectPtr<ProbeVolumeAsset>;
+	using GIProbesAssetPtr = TObjectPtr<GIProbesAsset>;
 
-	class ProbeVolumeImporter final :
-		public TSubmodule<ProbeVolumeImporter>,
+	class GIProbesImporter final :
+		public TSubmodule<GIProbesImporter>,
 		public IAssetInfoHandlerListener,
 		public IAssetFactory
 	{
 	public:
-		SAILOR_API explicit ProbeVolumeImporter(
-			ProbeVolumeAssetInfoHandler* infoHandler);
-		SAILOR_API ~ProbeVolumeImporter() override;
+		SAILOR_API explicit GIProbesImporter(
+			GIProbesAssetInfoHandler* infoHandler);
+		SAILOR_API ~GIProbesImporter() override;
 
 		SAILOR_API void OnImportAsset(AssetInfoPtr assetInfo) override;
 		SAILOR_API void OnUpdateAssetInfo(
@@ -64,26 +64,26 @@ namespace Sailor
 			FileId uid,
 			TObjectPtr<Object>& out,
 			bool bImmediate = true) override;
-		SAILOR_API Tasks::TaskPtr<ProbeVolumeAssetPtr> LoadProbeVolume(
+		SAILOR_API Tasks::TaskPtr<GIProbesAssetPtr> LoadGIProbes(
 			FileId uid,
-			ProbeVolumeAssetPtr& outAsset);
-		SAILOR_API bool LoadProbeVolume_Immediate(
+			GIProbesAssetPtr& outAsset);
+		SAILOR_API bool LoadGIProbes_Immediate(
 			FileId uid,
-			ProbeVolumeAssetPtr& outAsset);
-		SAILOR_API void RetainRuntimeProbeVolume(FileId uid);
-		SAILOR_API void ReleaseRuntimeProbeVolume(FileId uid);
+			GIProbesAssetPtr& outAsset);
+		SAILOR_API void RetainRuntimeGIProbes(FileId uid);
+		SAILOR_API void ReleaseRuntimeGIProbes(FileId uid);
 		SAILOR_API void CollectGarbage() override;
 
 	private:
-		bool ImportProbeVolume(FileId uid, ProbeVolumeAssetPtr& outAsset);
-		void TryEvictReleasedProbeVolume(FileId uid);
+		bool ImportGIProbes(FileId uid, GIProbesAssetPtr& outAsset);
+		void TryEvictReleasedGIProbes(FileId uid);
 
-		TConcurrentMap<FileId, Tasks::TaskPtr<ProbeVolumeAssetPtr>> m_promises{};
-		TConcurrentMap<FileId, ProbeVolumeAssetPtr> m_loadedAssets{};
+		TConcurrentMap<FileId, Tasks::TaskPtr<GIProbesAssetPtr>> m_promises{};
+		TConcurrentMap<FileId, GIProbesAssetPtr> m_loadedAssets{};
 		// Entries exist only for assets explicitly retained by runtime GI
 		// bindings. A zero count is a pending eviction once loading completes.
 		TConcurrentMap<FileId, uint32_t> m_runtimeRetentions{};
 		Memory::ObjectAllocatorPtr m_allocator;
-		ProbeVolumeAssetInfoHandler* m_infoHandler = nullptr;
+		GIProbesAssetInfoHandler* m_infoHandler = nullptr;
 	};
 }

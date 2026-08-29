@@ -105,23 +105,6 @@ namespace
 		return worldMatrix;
 	}
 
-	const char* ToString(ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case ETransformOperation::Select: return "Select";
-		case ETransformOperation::Translate: return "Translate";
-		case ETransformOperation::Rotate: return "Rotate";
-		case ETransformOperation::Scale: return "Scale";
-		default: return "Select";
-		}
-	}
-
-	const char* ToString(ETransformSpace space)
-	{
-		return space == ETransformSpace::Local ? "Local" : "World";
-	}
-
 	ImGuizmo::OPERATION ToImGuizmoOperation(ETransformOperation operation)
 	{
 		switch (operation)
@@ -130,32 +113,6 @@ namespace
 		case ETransformOperation::Scale: return ImGuizmo::SCALE;
 		case ETransformOperation::Translate:
 		default: return ImGuizmo::TRANSLATE;
-		}
-	}
-
-	bool IsValidTransformOperation(ETransformOperation operation)
-	{
-		switch (operation)
-		{
-		case ETransformOperation::Select:
-		case ETransformOperation::Translate:
-		case ETransformOperation::Rotate:
-		case ETransformOperation::Scale:
-			return true;
-		default:
-			return false;
-		}
-	}
-
-	bool IsValidTransformSpace(ETransformSpace space)
-	{
-		switch (space)
-		{
-		case ETransformSpace::World:
-		case ETransformSpace::Local:
-			return true;
-		default:
-			return false;
 		}
 	}
 
@@ -765,9 +722,7 @@ bool EditorViewportController::SetTransformToolState(
 	ETransformOperation operation,
 	ETransformSpace space)
 {
-	if (m_wasUsingGizmo ||
-		!IsValidTransformOperation(operation) ||
-		!IsValidTransformSpace(space))
+	if (m_wasUsingGizmo)
 	{
 		return false;
 	}
@@ -1059,8 +1014,8 @@ void EditorViewportController::QueueTransformEvent(
 	event["revision"] = ++m_eventRevision;
 	event["managedMutationRevision"] = m_dragManagedObjectMutationRevision;
 	event["instanceId"] = instanceId.ToString();
-	event["operation"] = ToString(operation);
-	event["space"] = ToString(space);
+	event["operation"] = std::string(magic_enum::enum_name(operation));
+	event["space"] = std::string(magic_enum::enum_name(space));
 	event["beforePosition"] = beforeTransform.m_position;
 	event["beforeRotation"] = beforeTransform.m_rotation;
 	event["beforeScale"] = beforeTransform.m_scale;

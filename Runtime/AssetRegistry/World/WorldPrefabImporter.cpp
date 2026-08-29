@@ -1326,7 +1326,7 @@ WorldPrefabPtr WorldPrefab::FromWorld(WorldPtr world)
 {
 	auto res = App::GetSubmodule<WorldPrefabImporter>()->Create();
 	res->m_name = world->GetName();
-	res->m_globalIllumination = world->GetGlobalIlluminationSettings();
+	res->m_globalIllumination = world->GetGISettings();
 
 	TVector<PendingPrefabLinkUpdate> pendingLinkUpdates;
 

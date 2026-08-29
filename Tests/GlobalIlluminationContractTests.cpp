@@ -1,7 +1,7 @@
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBinary.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeBaker.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeComposition.h"
-#include "AssetRegistry/GlobalIllumination/ProbeVolumeSampling.h"
+#include "GlobalIllumination/GIProbesBaker.h"
+#include "GlobalIllumination/GIProbesBinary.h"
+#include "GlobalIllumination/GIProbesComposition.h"
+#include "GlobalIllumination/GIProbesSampling.h"
 #include "AssetRegistry/Material/MaterialImporter.h"
 #include "AssetRegistry/Texture/TextureImporter.h"
 #include "Components/LightComponent.h"
@@ -9,7 +9,7 @@
 #include "ECS/LightingECS.h"
 #include "ECS/StaticMeshRendererECS.h"
 #include "ECS/TransformECS.h"
-#include "Engine/GlobalIlluminationSettings.h"
+#include "GlobalIllumination/GISettings.h"
 #include "Engine/GameObject.h"
 #include "Engine/World.h"
 #include "Editor/GlobalIlluminationBakeController.h"
@@ -17,7 +17,7 @@
 #include "Memory/ObjectAllocator.hpp"
 #include "RHI/GlobalIllumination.h"
 #include "Raytracing/PathTracer.h"
-#include "Raytracing/ProbeVolumePathTracer.h"
+#include "Raytracing/GIProbesPathTracer.h"
 
 #include <algorithm>
 #include <array>
@@ -255,9 +255,9 @@ namespace
 		std::cout << "[       OK ] " << name << std::endl;
 	}
 
-	ProbeVolumeData MakeVolume(float coefficient, uint64_t lightingHash)
+	GIProbesData MakeVolume(float coefficient, uint64_t lightingHash)
 	{
-		ProbeVolumeData data;
+		GIProbesData data;
 		data.m_volumeMin = glm::vec3(0.0f);
 		data.m_volumeMax = glm::vec3(1.0f);
 		data.m_transportHash = 0x12345678ull;
@@ -267,7 +267,7 @@ namespace
 		data.m_bakerVersion = "GlobalIlluminationContractTests";
 		data.m_diagnostics.m_averageValidity = 1.0f;
 
-		ProbeVolumeBrick brick;
+		GIProbeBrick brick;
 		brick.m_min = data.m_volumeMin;
 		brick.m_max = data.m_volumeMax;
 		brick.m_probeCounts = glm::uvec3(2u);
@@ -280,7 +280,7 @@ namespace
 			{
 				for (uint32_t x = 0u; x < 2u; ++x)
 				{
-					ProbeVolumeSample probe;
+					GIProbe probe;
 					probe.m_position = glm::vec3(x, y, z);
 					probe.m_irradiance[0] = glm::vec3(coefficient);
 					for (glm::vec2& visibility : probe.m_visibility)
@@ -288,7 +288,7 @@ namespace
 						visibility = glm::vec2(100.0f, 10000.0f);
 					}
 					for (uint32_t directionIndex = 0u;
-						directionIndex < ProbeVolumeVisibilityDirectionCount;
+						directionIndex < GIProbeVisibilityDirectionCount;
 						++directionIndex)
 					{
 						probe.m_environmentVisibility[directionIndex] =
@@ -298,20 +298,20 @@ namespace
 				}
 			}
 		}
-		data.m_layoutHash = ComputeProbeVolumeLayoutHash(data);
-		data.m_representationHash = ComputeProbeVolumeRepresentationHash(
+		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
+		data.m_representationHash = ComputeGIProbesRepresentationHash(
 			data.m_formatVersion,
 			data.m_shOrder,
 			data.m_compression);
 		return data;
 	}
 
-	ProbeVolumeData MakeVisualVolume(
+	GIProbesData MakeVisualVolume(
 		const char* stateName,
 		const glm::vec3& irradiance,
 		uint64_t lightingHash)
 	{
-		ProbeVolumeData data = MakeVolume(0.0f, lightingHash);
+		GIProbesData data = MakeVolume(0.0f, lightingHash);
 		data.m_stateName = stateName;
 		data.m_bakerVersion = "Sailor visual-test fixture generator";
 		data.m_sourceWorldHash = 0x155155155ull;
@@ -347,7 +347,7 @@ namespace
 				}
 			}
 		}
-		data.m_layoutHash = ComputeProbeVolumeLayoutHash(data);
+		data.m_layoutHash = ComputeGIProbesLayoutHash(data);
 		return data;
 	}
 
@@ -465,11 +465,11 @@ namespace
 		return fixture;
 	}
 
-	ProbeVolumeData MakeEveningLandscapeBounceVolume()
+	GIProbesData MakeEveningLandscapeBounceVolume()
 	{
 		EveningLandscapeRaytracingFixture fixture =
 			MakeEveningLandscapeRaytracingFixture();
-		ProbeVolumeBakeSettings settings;
+		GIProbesBakeSettings settings;
 		settings.m_raysPerProbe = 256u;
 		settings.m_bounceCount = 3u;
 		settings.m_randomSeed = 155u;
@@ -482,7 +482,7 @@ namespace
 		settings.m_bIncludeEmissive = false;
 		settings.m_bIncludeDirectLighting = true;
 
-		Raytracing::ProbeVolumePathTracer pathTracer;
+		Raytracing::GIProbesPathTracer pathTracer;
 		Require(pathTracer.Initialize(
 				fixture.m_instances,
 				fixture.m_materials,
@@ -491,7 +491,7 @@ namespace
 				glm::vec3(0.0f)),
 			"the evening landscape fixture must initialize the CPU path tracer");
 
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Evening Landscape Bounce";
 		request.m_bakerVersion =
 			"Sailor deterministic evening-landscape visual fixture/1";
@@ -500,7 +500,7 @@ namespace
 		request.m_settings = settings;
 		request.m_sceneGeometryBounds.Add(fixture.m_bounds);
 		request.m_sourceWorldHash = 0x155e11e71a9d5ca3ull;
-		ProbeVolumeBakeResult result = ProbeVolumeBaker::Bake(request, pathTracer);
+		GIProbesBakeResult result = GIProbesBaker::Bake(request, pathTracer);
 		Require(result.IsSuccess(),
 			"the evening landscape visual fixture must bake: " +
 				result.m_diagnostic);
@@ -542,7 +542,7 @@ namespace
 			std::string diagnostic;
 			const std::filesystem::path outputPath =
 				outputDirectory / fixture.m_filename;
-			if (!ProbeVolumeBinary::SaveAtomic(
+			if (!GIProbesBinary::SaveAtomic(
 					outputPath,
 					MakeVisualVolume(
 						fixture.m_stateName,
@@ -554,8 +554,8 @@ namespace
 					diagnostic << std::endl;
 				return 1;
 			}
-			const ProbeVolumeBinaryResult loaded =
-				ProbeVolumeBinary::Load(outputPath);
+			const GIProbesBinaryResult loaded =
+				GIProbesBinary::Load(outputPath);
 			if (!loaded.IsSuccess() ||
 				loaded.m_data->m_stateName != fixture.m_stateName ||
 				loaded.m_data->m_lightingHash != fixture.m_lightingHash)
@@ -569,7 +569,7 @@ namespace
 		const std::filesystem::path eveningLandscapePath =
 			outputDirectory / "EveningLandscapeBounce.probes";
 		std::string diagnostic;
-		if (!ProbeVolumeBinary::SaveAtomic(
+		if (!GIProbesBinary::SaveAtomic(
 				eveningLandscapePath,
 				MakeEveningLandscapeBounceVolume(),
 				diagnostic))
@@ -578,8 +578,8 @@ namespace
 				diagnostic << std::endl;
 			return 1;
 		}
-		const ProbeVolumeBinaryResult eveningLandscape =
-			ProbeVolumeBinary::Load(eveningLandscapePath);
+		const GIProbesBinaryResult eveningLandscape =
+			GIProbesBinary::Load(eveningLandscapePath);
 		if (!eveningLandscape.IsSuccess() ||
 			eveningLandscape.m_data->m_stateName !=
 				"Evening Landscape Bounce" ||
@@ -601,7 +601,7 @@ namespace
 		return result;
 	}
 
-	class ConstantBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	class ConstantBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
 		explicit ConstantBakeRaySampler(glm::vec3 radiance) :
@@ -613,7 +613,7 @@ namespace
 			const glm::vec3&,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string&) const override
 		{
 			m_lastMaxDistance.store(maxDistance, std::memory_order_relaxed);
@@ -633,7 +633,7 @@ namespace
 		mutable std::atomic<float> m_lastMaxDistance{ 0.0f };
 	};
 
-	class SeedDrivenBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	class SeedDrivenBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -641,7 +641,7 @@ namespace
 			const glm::vec3&,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string&) const override
 		{
 			const float value = static_cast<float>(randomSeed & 0xffffu) /
@@ -657,7 +657,7 @@ namespace
 	};
 
 	class ConcurrentSeedDrivenBakeRaySampler final :
-		public IProbeVolumeBakeRaySampler
+		public IGIProbeBakeRaySampler
 	{
 	public:
 		explicit ConcurrentSeedDrivenBakeRaySampler(uint32_t expectedThreads) :
@@ -669,7 +669,7 @@ namespace
 			const glm::vec3&,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			{
@@ -736,8 +736,8 @@ namespace
 	}
 
 	bool HasSameProbeBits(
-		const ProbeVolumeSample& lhs,
-		const ProbeVolumeSample& rhs)
+		const GIProbe& lhs,
+		const GIProbe& rhs)
 	{
 		if (!HasSameVectorBits(lhs.m_position, rhs.m_position) ||
 			!HasSameVectorBits(lhs.m_relocationOffset, rhs.m_relocationOffset) ||
@@ -774,8 +774,8 @@ namespace
 	}
 
 	bool HasSameIrradianceBits(
-		const ProbeVolumeSample& lhs,
-		const ProbeVolumeSample& rhs)
+		const GIProbe& lhs,
+		const GIProbe& rhs)
 	{
 		for (size_t index = 0u; index < lhs.m_irradiance.size(); ++index)
 		{
@@ -789,7 +789,7 @@ namespace
 		return true;
 	}
 
-	class BoundaryRelocationSampler final : public IProbeVolumeBakeRaySampler
+	class BoundaryRelocationSampler final : public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -797,7 +797,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string&) const override
 		{
 			const bool bPositiveXAxis = direction.x > 0.9999f &&
@@ -811,7 +811,7 @@ namespace
 	};
 
 	class ObliqueNearWallBakeRaySampler final :
-		public IProbeVolumeBakeRaySampler
+		public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -819,7 +819,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			if (!SampleVisibility(
@@ -841,7 +841,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			outSample = {};
@@ -867,7 +867,7 @@ namespace
 		}
 	};
 
-	class HalfSpaceBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	class HalfSpaceBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -875,7 +875,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			if (!SampleVisibility(
@@ -897,7 +897,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			outSample = {};
@@ -921,7 +921,7 @@ namespace
 		}
 	};
 
-	class FullyEmbeddedBakeRaySampler final : public IProbeVolumeBakeRaySampler
+	class FullyEmbeddedBakeRaySampler final : public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -929,7 +929,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t randomSeed,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			if (!SampleVisibility(
@@ -951,7 +951,7 @@ namespace
 			const glm::vec3&,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			outSample = {};
@@ -964,7 +964,7 @@ namespace
 	};
 
 	class DirectionalDistanceBakeRaySampler final :
-		public IProbeVolumeBakeRaySampler
+		public IGIProbeBakeRaySampler
 	{
 	public:
 		bool Sample(
@@ -972,7 +972,7 @@ namespace
 			const glm::vec3& direction,
 			float maxDistance,
 			uint32_t,
-			ProbeVolumeBakeRaySample& outSample,
+			GIProbeBakeRaySample& outSample,
 			std::string& outDiagnostic) const override
 		{
 			outSample = {};
@@ -1046,21 +1046,21 @@ namespace
 
 	void TestBinaryRoundTripDeterminismAndCorruption()
 	{
-		ProbeVolumeData source = MakeVolume(2.0f, 11u);
+		GIProbesData source = MakeVolume(2.0f, 11u);
 		source.m_bakeSettings.m_skyIndirectIntensity = 1.75f;
-		source.m_probes[7].m_flags |= ProbeVolumeBlockedDirectionBit(5u);
+		source.m_probes[7].m_flags |= GIProbeBlockedDirectionBit(5u);
 		std::string diagnostic;
 		Require(source.Validate(diagnostic), "test volume must be valid: " + diagnostic);
 
 		TVector<uint8_t> first;
 		TVector<uint8_t> second;
-		Require(ProbeVolumeBinary::Serialize(source, first, diagnostic),
+		Require(GIProbesBinary::Serialize(source, first, diagnostic),
 			"valid volume should serialize: " + diagnostic);
-		Require(ProbeVolumeBinary::Serialize(source, second, diagnostic) && first == second,
+		Require(GIProbesBinary::Serialize(source, second, diagnostic) && first == second,
 			"the same bake state must serialize to deterministic bytes");
 
-		const ProbeVolumeBinaryResult roundTrip =
-			ProbeVolumeBinary::Deserialize(first.GetData(), first.Num());
+		const GIProbesBinaryResult roundTrip =
+			GIProbesBinary::Deserialize(first.GetData(), first.Num());
 		Require(roundTrip.IsSuccess(), "serialized volume should round-trip: " + roundTrip.m_diagnostic);
 		Require(roundTrip.m_data->m_probes.Num() == 8u &&
 			roundTrip.m_data->m_bricks.Num() == 1u &&
@@ -1076,67 +1076,67 @@ namespace
 
 		TVector<uint8_t> corrupted = first;
 		corrupted[corrupted.Num() - 1u] ^= 0x40u;
-		const ProbeVolumeBinaryResult rejected =
-			ProbeVolumeBinary::Deserialize(corrupted.GetData(), corrupted.Num());
-		Require(rejected.m_status == EProbeVolumeBinaryStatus::ChecksumMismatch,
+		const GIProbesBinaryResult rejected =
+			GIProbesBinary::Deserialize(corrupted.GetData(), corrupted.Num());
+		Require(rejected.m_status == EGIProbesBinaryStatus::ChecksumMismatch,
 			"payload corruption must be detected before publication");
 
-		const ProbeVolumeBinaryResult truncated =
-			ProbeVolumeBinary::Deserialize(first.GetData(), first.Num() - 1u);
-		Require(truncated.m_status == EProbeVolumeBinaryStatus::Truncated,
+		const GIProbesBinaryResult truncated =
+			GIProbesBinary::Deserialize(first.GetData(), first.Num() - 1u);
+		Require(truncated.m_status == EGIProbesBinaryStatus::Truncated,
 			"truncated payload must be rejected without partial data");
 
 		TVector<uint8_t> unsupportedHeader = first;
 		unsupportedHeader[20u] = 1u;
-		const ProbeVolumeBinaryResult unsupportedHeaderResult =
-			ProbeVolumeBinary::Deserialize(
+		const GIProbesBinaryResult unsupportedHeaderResult =
+			GIProbesBinary::Deserialize(
 				unsupportedHeader.GetData(),
 				unsupportedHeader.Num());
 		Require(
 			unsupportedHeaderResult.m_status ==
-				EProbeVolumeBinaryStatus::InvalidPayload,
+				EGIProbesBinaryStatus::InvalidPayload,
 			"unknown fixed-header flags must be rejected explicitly");
 
-		ProbeVolumeData unidentified = source;
+		GIProbesData unidentified = source;
 		unidentified.m_stateName.clear();
-		Require(!ProbeVolumeBinary::Serialize(
+		Require(!GIProbesBinary::Serialize(
 			unidentified,
 			second,
 			diagnostic),
 			"a .probes file must identify its one baked state");
-		ProbeVolumeData unhashed = source;
+		GIProbesData unhashed = source;
 		unhashed.m_transportHash = 0u;
-		Require(!ProbeVolumeBinary::Serialize(
+		Require(!GIProbesBinary::Serialize(
 			unhashed,
 			second,
 			diagnostic),
 			"a .probes file must carry transport identity for safe composition");
-		ProbeVolumeData excessiveSettings = source;
+		GIProbesData excessiveSettings = source;
 		excessiveSettings.m_bakeSettings.m_maxSubdivisionLevel =
-			ProbeVolumeMaxSubdivisionLevel + 1u;
-		Require(!ProbeVolumeBinary::Serialize(
+			GIProbesMaxSubdivisionLevel + 1u;
+		Require(!GIProbesBinary::Serialize(
 			excessiveSettings,
 			second,
 			diagnostic),
 			"a .probes file must reject unsupported bake-setting ranges");
-		ProbeVolumeData invalidSkyIndirectIntensity = source;
+		GIProbesData invalidSkyIndirectIntensity = source;
 		invalidSkyIndirectIntensity.m_bakeSettings.m_skyIndirectIntensity = -0.01f;
-		Require(!ProbeVolumeBinary::Serialize(
+		Require(!GIProbesBinary::Serialize(
 			invalidSkyIndirectIntensity,
 			second,
 			diagnostic),
 			"a .probes file must reject a negative sky intensity");
 
-		ProbeVolumeData overflowingGrid = source;
+		GIProbesData overflowingGrid = source;
 		overflowingGrid.m_bricks[0].m_probeCounts = glm::uvec3(
 			(std::numeric_limits<uint32_t>::max)());
 		Require(!overflowingGrid.Validate(diagnostic) &&
 			diagnostic.find("overflows") != std::string::npos,
 			"malicious brick dimensions must not wrap their probe-grid product");
 
-		ProbeVolumeData outsideVolume = source;
+		GIProbesData outsideVolume = source;
 		outsideVolume.m_probes[0].m_position.x = -1.0f;
-		outsideVolume.m_layoutHash = ComputeProbeVolumeLayoutHash(outsideVolume);
+		outsideVolume.m_layoutHash = ComputeGIProbesLayoutHash(outsideVolume);
 		Require(!outsideVolume.Validate(diagnostic),
 			"a .probes payload must reject samples outside its declared volume");
 	}
@@ -1150,23 +1150,23 @@ namespace
 		const std::filesystem::path firstPath = directory / "Day.probes";
 		const std::filesystem::path copyPath = directory / "CopiedDay.probes";
 		std::string diagnostic;
-		const ProbeVolumeData source = MakeVolume(1.0f, 21u);
-		Require(ProbeVolumeBinary::SaveAtomic(firstPath, source, diagnostic),
+		const GIProbesData source = MakeVolume(1.0f, 21u);
+		Require(GIProbesBinary::SaveAtomic(firstPath, source, diagnostic),
 			"atomic .probes save should succeed: " + diagnostic);
-		const ProbeVolumeData replacement = MakeVolume(2.0f, 22u);
-		Require(!ProbeVolumeBinary::SaveAtomic(
+		const GIProbesData replacement = MakeVolume(2.0f, 22u);
+		Require(!GIProbesBinary::SaveAtomic(
 			firstPath,
 			replacement,
 			diagnostic,
 			false),
 			"Overwrite=false must atomically reject an existing .probes target");
-		const ProbeVolumeBinaryResult preserved =
-			ProbeVolumeBinary::Load(firstPath);
+		const GIProbesBinaryResult preserved =
+			GIProbesBinary::Load(firstPath);
 		Require(
 			preserved.IsSuccess() && preserved.m_data->m_lightingHash == 21u,
 			"a rejected no-overwrite save must preserve the complete existing state");
 		std::filesystem::copy_file(firstPath, copyPath);
-		const ProbeVolumeBinaryResult copied = ProbeVolumeBinary::Load(copyPath);
+		const GIProbesBinaryResult copied = GIProbesBinary::Load(copyPath);
 		Require(copied.IsSuccess() && copied.m_data->m_lightingHash == 21u,
 			"a copied binary must remain independently loadable without an embedded FileId");
 		std::error_code error;
@@ -1175,18 +1175,18 @@ namespace
 
 	void TestBlendAndAdditiveComposition()
 	{
-		ProbeVolumeDataPtr day = ProbeVolumeDataPtr::Make();
-		ProbeVolumeDataPtr evening = ProbeVolumeDataPtr::Make();
-		ProbeVolumeDataPtr lamps = ProbeVolumeDataPtr::Make();
+		GIProbesDataPtr day = GIProbesDataPtr::Make();
+		GIProbesDataPtr evening = GIProbesDataPtr::Make();
+		GIProbesDataPtr lamps = GIProbesDataPtr::Make();
 		*day = MakeVolume(1.0f, 1u);
 		*evening = MakeVolume(3.0f, 2u);
 		*lamps = MakeVolume(2.0f, 3u);
 
-		TVector<ProbeVolumeCompositionInput> inputs;
+		TVector<GIProbesCompositionInput> inputs;
 		inputs.Add({ "Day", day, EGlobalIlluminationProbeMode::Blend, 1.0f });
 		inputs.Add({ "Evening", evening, EGlobalIlluminationProbeMode::Blend, 3.0f });
 		inputs.Add({ "Lamps", lamps, EGlobalIlluminationProbeMode::Additive, 0.5f });
-		ProbeVolumeCompositionResult result = ProbeVolumeComposer::Compose(inputs, 3u);
+		GIProbesCompositionResult result = GIProbesComposer::Compose(inputs, 3u);
 		Require(result.IsSuccess(), "compatible Blend/Additive states should compose: " + result.m_diagnostic);
 		Require(IsNear(result.m_data->m_probes[0].m_irradiance[0].x, 3.5f),
 			"Blend must normalize to 2.5 and Additive must contribute an unnormalized 1.0");
@@ -1195,30 +1195,30 @@ namespace
 			IsNear(result.m_effectiveWeights[2], 0.5f),
 			"snapshot must expose effective normalized Blend and raw Additive weights");
 
-		const ProbeVolumeCompositionResult overBudget =
-			ProbeVolumeComposer::Compose(inputs, 2u);
-		Require(overBudget.m_status == EProbeVolumeCompositionStatus::BudgetExceeded &&
+		const GIProbesCompositionResult overBudget =
+			GIProbesComposer::Compose(inputs, 2u);
+		Require(overBudget.m_status == EGIProbesCompositionStatus::BudgetExceeded &&
 			!overBudget.m_data,
 			"quality budget overflow must reject the complete mixture without dropping Additive states");
 
 		lamps->m_transportHash += 1u;
-		const ProbeVolumeCompositionResult incompatible =
-			ProbeVolumeComposer::Compose(inputs, 3u);
-		Require(incompatible.m_status == EProbeVolumeCompositionStatus::Incompatible,
+		const GIProbesCompositionResult incompatible =
+			GIProbesComposer::Compose(inputs, 3u);
+		Require(incompatible.m_status == EGIProbesCompositionStatus::Incompatible,
 			"different transport/visibility states must not be blended");
 	}
 
 	void TestSphericalHarmonicsAndSpatialSampling()
 	{
-		ProbeVolumeData data = MakeVolume(0.0f, 31u);
+		GIProbesData data = MakeVolume(0.0f, 31u);
 		for (uint32_t index = 0u; index < data.m_probes.Num(); ++index)
 		{
 			data.m_probes[index].m_irradiance[0] =
 				glm::vec3(static_cast<float>(index + 1u));
 		}
 		glm::vec3 sampled{};
-		ProbeVolumeSampleDebugInfo debug;
-		Require(SampleProbeVolumeIrradiance(
+		GIProbeDebugInfo debug;
+		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.5f),
 			glm::vec3(0.0f),
@@ -1234,14 +1234,14 @@ namespace
 			"debug weights must expose the normalized receiver-side interpolation coefficients used by shading");
 
 		const float unoccludedIrradiance = sampled.x;
-		for (ProbeVolumeSample& probe : data.m_probes)
+		for (GIProbe& probe : data.m_probes)
 		{
 			for (glm::vec2& visibility : probe.m_visibility)
 			{
 				visibility = glm::vec2(0.5f, 0.3839746f);
 			}
 		}
-		Require(SampleProbeVolumeIrradiance(
+		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.5f),
 			glm::vec3(0.0f),
@@ -1254,15 +1254,15 @@ namespace
 		Require(IsNear(attenuatedWeight, 1.0f),
 			"selected receiver-side probe weights must normalize before shading");
 
-		for (ProbeVolumeSample& probe : data.m_probes)
+		for (GIProbe& probe : data.m_probes)
 		{
 			for (glm::vec2& visibility : probe.m_visibility)
 			{
 				visibility = glm::vec2(0.05f, 0.002501f);
 			}
-			probe.m_flags |= ProbeVolumeBlockedDirectionMask;
+			probe.m_flags |= GIProbeBlockedDirectionMask;
 		}
-		Require(SampleProbeVolumeIrradiance(
+		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.5f),
 			glm::vec3(0.0f),
@@ -1276,16 +1276,16 @@ namespace
 		Require(IsNear(rescueWeight, 1.0f),
 			"receiver-side weights must remain normalized when blocker metadata is present");
 
-		ProbeVolumeData directional;
+		GIProbesData directional;
 		directional.m_volumeMin = glm::vec3(-2.0f);
 		directional.m_volumeMax = glm::vec3(2.0f);
-		ProbeVolumeBrick directionalBrick;
+		GIProbeBrick directionalBrick;
 		directionalBrick.m_min = directional.m_volumeMin;
 		directionalBrick.m_max = directional.m_volumeMax;
 		directionalBrick.m_probeCounts = glm::uvec3(2u, 1u, 1u);
 		directionalBrick.m_probeCount = 2u;
 		directional.m_bricks.Add(directionalBrick);
-		ProbeVolumeSample directionalProbe;
+		GIProbe directionalProbe;
 		directionalProbe.m_irradiance[0] = glm::vec3(1.0f);
 		for (glm::vec2& visibility : directionalProbe.m_visibility)
 		{
@@ -1293,7 +1293,7 @@ namespace
 		}
 		directionalProbe.m_visibility[2u] = glm::vec2(0.1f, 0.01001f);
 		directional.m_probes.Add(directionalProbe);
-		ProbeVolumeSample referenceProbe;
+		GIProbe referenceProbe;
 		referenceProbe.m_position = glm::vec3(2.0f, 0.0f, 0.0f);
 		referenceProbe.m_irradiance[0] = glm::vec3(1.0f);
 		for (glm::vec2& visibility : referenceProbe.m_visibility)
@@ -1303,12 +1303,12 @@ namespace
 		directional.m_probes.Add(referenceProbe);
 		glm::vec3 xDominant{};
 		glm::vec3 yDominant{};
-		Require(SampleProbeVolumeIrradiance(
+		Require(SampleGIProbesIrradiance(
 			directional,
 			glm::vec3(1.0f, 0.99f, 0.0f),
 			glm::vec3(0.0f),
 			xDominant) &&
-			SampleProbeVolumeIrradiance(
+			SampleGIProbesIrradiance(
 				directional,
 				glm::vec3(0.99f, 1.0f, 0.0f),
 				glm::vec3(0.0f),
@@ -1322,7 +1322,7 @@ namespace
 				fullDirectionalIrradiance * 0.02f,
 			"clearance values without blocker bits must not create circular "
 			"attenuation or an axis-lobe boundary");
-		Require(!SampleProbeVolumeIrradiance(
+		Require(!SampleGIProbesIrradiance(
 			data,
 			glm::vec3(2.0f),
 			glm::vec3(0.0f, 1.0f, 0.0f),
@@ -1332,17 +1332,17 @@ namespace
 
 	void TestReceiverPlaneProbeRejection()
 	{
-		ProbeVolumeData data;
+		GIProbesData data;
 		data.m_volumeMin = glm::vec3(-1.0f);
 		data.m_volumeMax = glm::vec3(1.0f);
-		ProbeVolumeBrick brick;
+		GIProbeBrick brick;
 		brick.m_min = data.m_volumeMin;
 		brick.m_max = data.m_volumeMax;
 		brick.m_probeCounts = glm::uvec3(1u, 1u, 2u);
 		brick.m_probeCount = 2u;
 		data.m_bricks.Add(brick);
 
-		ProbeVolumeSample leakingProbe;
+		GIProbe leakingProbe;
 		leakingProbe.m_position = glm::vec3(0.0f, 0.0f, -1.0f);
 		leakingProbe.m_irradiance[0] = glm::vec3(100.0f);
 		for (glm::vec2& visibility : leakingProbe.m_visibility)
@@ -1350,10 +1350,10 @@ namespace
 			visibility = glm::vec2(2.0f, 4.0f);
 		}
 		leakingProbe.m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
-		leakingProbe.m_flags |= ProbeVolumeBlockedDirectionBit(4u);
+		leakingProbe.m_flags |= GIProbeBlockedDirectionBit(4u);
 		data.m_probes.Add(leakingProbe);
 
-		ProbeVolumeSample referenceProbe;
+		GIProbe referenceProbe;
 		referenceProbe.m_position = glm::vec3(0.0f, 0.0f, 1.0f);
 		referenceProbe.m_irradiance[0] = glm::vec3(1.0f);
 		for (glm::vec2& visibility : referenceProbe.m_visibility)
@@ -1363,9 +1363,9 @@ namespace
 		data.m_probes.Add(referenceProbe);
 
 		glm::vec3 sampled{};
-		ProbeVolumeSampleDebugInfo debug;
+		GIProbeDebugInfo debug;
 		const glm::vec3 obliqueSurface(0.75f, 0.0f, 0.0f);
-		Require(SampleProbeVolumeIrradiance(
+		Require(SampleGIProbesIrradiance(
 			data,
 			obliqueSurface,
 			glm::vec3(0.0f),
@@ -1376,9 +1376,9 @@ namespace
 			"a signed-axis clearance hit must not be extended into an infinite "
 			"runtime plane across an oblique receiver");
 
-		data.m_probes[0].m_flags &= ~ProbeVolumeBlockedDirectionMask;
+		data.m_probes[0].m_flags &= ~GIProbeBlockedDirectionMask;
 		data.m_probes[0].m_visibility[4u] = glm::vec2(2.0f, 4.0f);
-		Require(SampleProbeVolumeIrradiance(
+		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.0f),
 			glm::vec3(0.0f, 0.0f, 1.0f),
@@ -1390,10 +1390,10 @@ namespace
 			"same-side reference probe");
 
 		data.m_probes[0].m_visibility[4u] = glm::vec2(0.25f, 0.0625f);
-		data.m_probes[0].m_flags |= ProbeVolumeBlockedDirectionBit(4u);
+		data.m_probes[0].m_flags |= GIProbeBlockedDirectionBit(4u);
 		data.m_probes[1].m_visibility[5u] = glm::vec2(0.25f, 0.0625f);
-		data.m_probes[1].m_flags |= ProbeVolumeBlockedDirectionBit(5u);
-		Require(SampleProbeVolumeIrradiance(
+		data.m_probes[1].m_flags |= GIProbeBlockedDirectionBit(5u);
+		Require(SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.0f),
 			glm::vec3(0.0f, 0.0f, 1.0f),
@@ -1403,7 +1403,7 @@ namespace
 		Require(IsNear(sampled.x, 0.2820947918f, 0.0001f),
 			"the fully blocked rescue path must still reject a bright probe "
 			"behind the shaded surface");
-		Require(!SampleProbeVolumeIrradiance(
+		Require(!SampleGIProbesIrradiance(
 			data,
 			glm::vec3(0.75f, 0.0f, 0.0f),
 			glm::vec3(1.0f, 0.0f, 0.0f),
@@ -1415,7 +1415,7 @@ namespace
 
 	void TestWorldBindingRoundTripAndModes()
 	{
-		GlobalIlluminationWorldSettings source;
+		GISettings source;
 		source.m_mode = EGlobalIlluminationMode::BakedOnly;
 		GlobalIlluminationProbeBinding day;
 		day.m_asset = ParseFileId("11111111-1111-1111-1111-111111111111");
@@ -1431,7 +1431,7 @@ namespace
 
 		YAML::Node root;
 		root["globalIllumination"] = source.Serialize();
-		GlobalIlluminationWorldSettings parsed;
+		GISettings parsed;
 		std::string diagnostic;
 		Require(parsed.Deserialize(root, diagnostic),
 			"world GI settings should round-trip: " + diagnostic);
@@ -1442,11 +1442,11 @@ namespace
 			parsed.m_probes["Lamps"].m_bPreload,
 			"each named .probes binding must retain its independent Blend/Additive role");
 
-		YAML::Node legacyRoot = YAML::Clone(root);
-		legacyRoot["globalIllumination"].remove("mode");
-		Require(parsed.Deserialize(legacyRoot, diagnostic) &&
-			parsed.m_mode == EGlobalIlluminationMode::RealtimeAndBaked,
-			"worlds without an explicit GI mode must retain realtime fallback compatibility");
+		YAML::Node incompleteRoot = YAML::Clone(root);
+		incompleteRoot["globalIllumination"].remove("mode");
+		Require(!parsed.Deserialize(incompleteRoot, diagnostic) &&
+			diagnostic.find("mode is required") != std::string::npos,
+			"world GI settings must provide an explicit mode");
 
 		root["globalIllumination"]["mode"] = "ReflectionsOnly";
 		Require(!parsed.Deserialize(root, diagnostic) &&
@@ -1507,7 +1507,7 @@ components:
 	void TestBakeControllerRejectsInvalidThreadCountBeforeSceneCapture()
 	{
 		GlobalIlluminationBakeController controller;
-		EditorProbeVolumeBakeRequest request;
+		EditorGIProbesBakeRequest request;
 		request.m_threadCount = 0u;
 		std::string diagnostic;
 		Require(
@@ -1515,7 +1515,7 @@ components:
 				diagnostic.find("between 1 and") != std::string::npos,
 			"the editor bake controller must reject zero threads before capturing a scene");
 
-		request.m_threadCount = ProbeVolumeMaxBakeThreadCount + 1u;
+		request.m_threadCount = GIProbesMaxBakeThreadCount + 1u;
 		diagnostic.clear();
 		Require(
 			!controller.Start(nullptr, request, diagnostic) &&
@@ -1538,7 +1538,7 @@ components:
 			"GlobalIlluminationLandscapeEveningBounce",
 			"the visual fixture must be a named, reusable level asset");
 
-		GlobalIlluminationWorldSettings globalIllumination;
+		GISettings globalIllumination;
 		std::string diagnostic;
 		Require(globalIllumination.Deserialize(world, diagnostic),
 			"the evening landscape world GI map must deserialize: " + diagnostic);
@@ -1667,7 +1667,7 @@ components:
 		Require(world["name"].as<std::string>() == "GIBakeQualityLab",
 			"the GI quality lab must remain a named reusable visual-test level");
 
-		GlobalIlluminationWorldSettings globalIllumination;
+		GISettings globalIllumination;
 		std::string diagnostic;
 		Require(globalIllumination.Deserialize(world, diagnostic) &&
 			globalIllumination.m_mode ==
@@ -1806,11 +1806,11 @@ components:
 
 	void TestGpuPackingAndWeightOnlyUpdates()
 	{
-		ProbeVolumeDataPtr day = ProbeVolumeDataPtr::Make();
-		ProbeVolumeDataPtr evening = ProbeVolumeDataPtr::Make();
+		GIProbesDataPtr day = GIProbesDataPtr::Make();
+		GIProbesDataPtr evening = GIProbesDataPtr::Make();
 		*day = MakeVolume(1.0f, 41u);
 		*evening = MakeVolume(3.0f, 42u);
-		const uint32_t blockedDirection = ProbeVolumeBlockedDirectionBit(5u);
+		const uint32_t blockedDirection = GIProbeBlockedDirectionBit(5u);
 		day->m_probes[0].m_flags |= blockedDirection;
 
 		RHI::RHIGlobalIlluminationSnapshot snapshot;
@@ -1834,8 +1834,8 @@ components:
 		const RHI::RHIGlobalIlluminationRenderStats renderStats =
 			RHI::BuildGlobalIlluminationRenderStats(&snapshot);
 		const uint64_t expectedCpuPayloadBytes = 2u * (
-			sizeof(ProbeVolumeBrick) +
-			8u * sizeof(ProbeVolumeSample));
+			sizeof(GIProbeBrick) +
+			8u * sizeof(GIProbe));
 		Require(renderStats.m_bActive &&
 			renderStats.m_activeRevision == 7u &&
 			renderStats.m_loadedBricks == 1u &&
@@ -1867,7 +1867,7 @@ components:
 				0x80000000u) != 0u,
 			"single adaptive brick must produce one encoded BVH leaf and expose "
 			"its valid probe count");
-		ProbeVolumeData partiallyInvalid = *day;
+		GIProbesData partiallyInvalid = *day;
 		partiallyInvalid.m_probes[
 			partiallyInvalid.m_probes.Num() - 1u].m_validity = 0.0f;
 		RHI::RHIGlobalIlluminationGpuLayout partiallyInvalidLayout;
@@ -1882,13 +1882,13 @@ components:
 			"GPU brick metadata must exclude invalid probes so selection can "
 			"fall back to neighboring bricks");
 
-		ProbeVolumeData adaptiveNeighbors = MakeVolume(1.0f, 43u);
+		GIProbesData adaptiveNeighbors = MakeVolume(1.0f, 43u);
 		adaptiveNeighbors.m_volumeMax = glm::vec3(2.0f, 1.0f, 1.0f);
 		adaptiveNeighbors.m_bricks.Clear();
 		adaptiveNeighbors.m_probes.Clear();
 		auto appendBrick = [&](float minX, float maxX, uint32_t subdivision)
 			{
-				ProbeVolumeBrick brick;
+				GIProbeBrick brick;
 				brick.m_min = glm::vec3(minX, 0.0f, 0.0f);
 				brick.m_max = glm::vec3(maxX, 1.0f, 1.0f);
 				brick.m_subdivisionLevel = subdivision;
@@ -1903,7 +1903,7 @@ components:
 					{
 						for (uint32_t x = 0u; x < 2u; ++x)
 						{
-							ProbeVolumeSample probe;
+							GIProbe probe;
 							probe.m_position = glm::vec3(
 								x != 0u ? maxX : minX,
 								static_cast<float>(y),
@@ -1917,7 +1917,7 @@ components:
 		appendBrick(0.0f, 1.0f, 0u);
 		appendBrick(1.0f, 2.0f, 1u);
 		adaptiveNeighbors.m_layoutHash =
-			ComputeProbeVolumeLayoutHash(adaptiveNeighbors);
+			ComputeGIProbesLayoutHash(adaptiveNeighbors);
 		RHI::RHIGlobalIlluminationGpuLayout adaptiveLayout;
 		Require(RHI::BuildGlobalIlluminationGpuLayout(
 				adaptiveNeighbors,
@@ -2019,7 +2019,7 @@ components:
 
 	void TestAdaptiveBakerAndLayoutReuse()
 	{
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Day";
 		request.m_volumeMin = glm::vec3(0.0f);
 		request.m_volumeMax = glm::vec3(4.0f);
@@ -2033,13 +2033,13 @@ components:
 		geometry.Extend(glm::vec3(0.5f));
 		request.m_sceneGeometryBounds.Add(geometry);
 		float finalProgress = 0.0f;
-		request.m_progress = [&](const ProbeVolumeBakeProgress& progress)
+		request.m_progress = [&](const GIProbesBakeProgress& progress)
 		{
 			finalProgress = progress.m_fraction;
 		};
 
 		const ConstantBakeRaySampler daylight(glm::vec3(1.0f));
-		const ProbeVolumeBakeResult day = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult day = GIProbesBaker::Bake(
 			request,
 			daylight);
 		Require(day.IsSuccess(),
@@ -2056,7 +2056,7 @@ components:
 		float smallestVisibilitySupport =
 			(std::numeric_limits<float>::max)();
 		float largestVisibilitySupport = 0.0f;
-		for (const ProbeVolumeBrick& brick : day.m_data->m_bricks)
+		for (const GIProbeBrick& brick : day.m_data->m_bricks)
 		{
 			const glm::uvec3 cellCounts = glm::max(
 				brick.m_probeCounts,
@@ -2076,7 +2076,7 @@ components:
 				probeOffset < brick.m_probeCount;
 				++probeOffset)
 			{
-				const ProbeVolumeSample& probe = day.m_data->m_probes[
+				const GIProbe& probe = day.m_data->m_probes[
 					brick.m_firstProbeIndex + probeOffset];
 				for (const glm::vec2& visibility : probe.m_visibility)
 				{
@@ -2106,7 +2106,7 @@ components:
 			"than fine bricks");
 		const auto findSubdivisionLevel = [&day](size_t probeIndex)
 		{
-			for (const ProbeVolumeBrick& brick : day.m_data->m_bricks)
+			for (const GIProbeBrick& brick : day.m_data->m_bricks)
 			{
 				if (probeIndex >= brick.m_firstProbeIndex &&
 					probeIndex < brick.m_firstProbeIndex + brick.m_probeCount)
@@ -2167,12 +2167,12 @@ components:
 			0.001f),
 			"baker must project radiance and include the white Lambertian 1 / PI normalization");
 
-		ProbeVolumeBakeRequest reused = request;
+		GIProbesBakeRequest reused = request;
 		reused.m_stateName = "Night";
 		reused.m_layoutSource = day.m_data.GetRawPtr();
 		reused.m_progress = {};
 		const ConstantBakeRaySampler moonlight(glm::vec3(0.2f, 0.3f, 0.5f));
-		const ProbeVolumeBakeResult night = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult night = GIProbesBaker::Bake(
 			reused,
 			moonlight);
 		Require(night.IsSuccess(),
@@ -2185,11 +2185,11 @@ components:
 			day.m_data->m_lightingHash != night.m_data->m_lightingHash,
 			"reused layout/transport must stay Blend-compatible while lighting changes");
 
-		ProbeVolumeBakeRequest dimSky = request;
+		GIProbesBakeRequest dimSky = request;
 		dimSky.m_stateName = "Dim Sky";
 		dimSky.m_layoutSource = day.m_data.GetRawPtr();
 		dimSky.m_settings.m_skyIndirectIntensity = 0.25f;
-		const ProbeVolumeBakeResult dimSkyResult = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult dimSkyResult = GIProbesBaker::Bake(
 			dimSky,
 			daylight);
 		Require(dimSkyResult.IsSuccess() &&
@@ -2199,20 +2199,20 @@ components:
 			"Sky GI indirect intensity must change lighting identity without invalidating reusable geometry transport");
 
 		std::atomic<bool> cancel{ true };
-		ProbeVolumeBakeRequest cancelled = request;
+		GIProbesBakeRequest cancelled = request;
 		cancelled.m_stateName = "Cancelled";
 		cancelled.m_cancel = &cancel;
-		const ProbeVolumeBakeResult cancelledResult = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult cancelledResult = GIProbesBaker::Bake(
 			cancelled,
 			daylight);
-		Require(cancelledResult.m_status == EProbeVolumeBakeStatus::Cancelled &&
+		Require(cancelledResult.m_status == EGIProbesBakeStatus::Cancelled &&
 			!cancelledResult.m_data,
 			"cancelled bakes must never publish partial .probes data");
 	}
 
 	void TestAnisotropicAdaptiveSubdivisionHonorsSpacing()
 	{
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Anisotropic";
 		request.m_volumeMin = glm::vec3(0.0f);
 		request.m_volumeMax = glm::vec3(16.0f, 1.0f, 16.0f);
@@ -2225,26 +2225,26 @@ components:
 		geometry.Extend(glm::vec3(2.2f, 0.8f, 2.2f));
 		request.m_sceneGeometryBounds.Add(geometry);
 
-		ProbeVolumeBakeRequest tooCoarse = request;
+		GIProbesBakeRequest tooCoarse = request;
 		tooCoarse.m_settings.m_maxSubdivisionLevel = 3u;
 		const ConstantBakeRaySampler daylight(glm::vec3(1.0f));
-		const ProbeVolumeBakeResult rejected = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult rejected = GIProbesBaker::Bake(
 			tooCoarse,
 			daylight);
 		Require(
-			rejected.m_status == EProbeVolumeBakeStatus::InvalidRequest &&
+			rejected.m_status == EGIProbesBakeStatus::InvalidRequest &&
 				rejected.m_diagnostic.find("use at least level 4") !=
 					std::string::npos,
 			"a subdivision cap must not silently turn one-metre spacing into "
 			"multi-metre probes");
 
-		const ProbeVolumeBakeResult baked = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult baked = GIProbesBaker::Bake(
 			request,
 			daylight);
 		Require(baked.IsSuccess(),
 			"anisotropic adaptive bake should succeed: " + baked.m_diagnostic);
 		bool bFoundFinestBrick = false;
-		for (const ProbeVolumeBrick& brick : baked.m_data->m_bricks)
+		for (const GIProbeBrick& brick : baked.m_data->m_bricks)
 		{
 			const glm::vec3 extent = brick.m_max - brick.m_min;
 			Require(IsNear(extent.y, 1.0f),
@@ -2263,7 +2263,7 @@ components:
 
 	void TestGeometryNeighborhoodRefinementAndWallRepulsion()
 	{
-		ProbeVolumeBakeRequest adaptiveRequest;
+		GIProbesBakeRequest adaptiveRequest;
 		adaptiveRequest.m_stateName = "Geometry Neighborhood";
 		adaptiveRequest.m_volumeMin = glm::vec3(0.0f);
 		adaptiveRequest.m_volumeMax = glm::vec3(4.0f);
@@ -2277,14 +2277,14 @@ components:
 		adaptiveRequest.m_sceneGeometryBounds.Add(nearbyGeometry);
 
 		const ConstantBakeRaySampler daylight(glm::vec3(1.0f));
-		const ProbeVolumeBakeResult adaptive = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult adaptive = GIProbesBaker::Bake(
 			adaptiveRequest,
 			daylight);
 		Require(adaptive.IsSuccess(),
 			"geometry-neighborhood bake should succeed: " +
 				adaptive.m_diagnostic);
 		bool bFoundFinestBrick = false;
-		for (const ProbeVolumeBrick& brick : adaptive.m_data->m_bricks)
+		for (const GIProbeBrick& brick : adaptive.m_data->m_bricks)
 		{
 			bFoundFinestBrick |= brick.m_subdivisionLevel == 2u;
 		}
@@ -2295,7 +2295,7 @@ components:
 			"adaptive layout must refine the probe shell next to geometry without "
 			"uniformly refining the whole volume");
 
-		ProbeVolumeBakeRequest relocationRequest;
+		GIProbesBakeRequest relocationRequest;
 		relocationRequest.m_stateName = "Oblique Wall";
 		relocationRequest.m_volumeMin = glm::vec3(0.0f);
 		relocationRequest.m_volumeMax = glm::vec3(1.0f);
@@ -2304,7 +2304,7 @@ components:
 		relocationRequest.m_settings.m_maxSubdivisionLevel = 0u;
 		relocationRequest.m_settings.m_minProbeSpacing = 1.0f;
 		const ObliqueNearWallBakeRaySampler wallSampler;
-		const ProbeVolumeBakeResult relocated = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult relocated = GIProbesBaker::Bake(
 			relocationRequest,
 			wallSampler);
 		Require(relocated.IsSuccess(),
@@ -2312,9 +2312,9 @@ components:
 				relocated.m_diagnostic);
 
 		const uint32_t relocatedFlag = static_cast<uint32_t>(
-			EProbeVolumeSampleFlag::Relocated);
+			EGIProbeFlag::Relocated);
 		bool bMovedAwayFromObliqueWall = false;
-		for (const ProbeVolumeSample& probe : relocated.m_data->m_probes)
+		for (const GIProbe& probe : relocated.m_data->m_probes)
 		{
 			const glm::vec3 nominalPosition =
 				probe.m_position - probe.m_relocationOffset;
@@ -2336,7 +2336,7 @@ components:
 
 	void TestDeterministicBakeSeedsAndReusedLayoutValidation()
 	{
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Deterministic";
 		request.m_volumeMin = glm::vec3(0.0f);
 		request.m_volumeMax = glm::vec3(1.0f);
@@ -2347,10 +2347,10 @@ components:
 		request.m_settings.m_minProbeSpacing = 1.0f;
 
 		const SeedDrivenBakeRaySampler sampler;
-		const ProbeVolumeBakeResult first = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult first = GIProbesBaker::Bake(
 			request,
 			sampler);
-		const ProbeVolumeBakeResult second = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult second = GIProbesBaker::Bake(
 			request,
 			sampler);
 		Require(first.IsSuccess() && second.IsSuccess(),
@@ -2361,16 +2361,16 @@ components:
 				second.m_data->m_probes[0].m_irradiance,
 			"the same bake randomSeed must reproduce transport and lighting output");
 
-		ProbeVolumeBakeRequest parallel = request;
+		GIProbesBakeRequest parallel = request;
 		parallel.m_threadCount = 4u;
 		std::string parallelStage;
 		parallel.m_progress = [&parallelStage](
-			const ProbeVolumeBakeProgress& progress)
+			const GIProbesBakeProgress& progress)
 		{
 			parallelStage = progress.m_stage;
 		};
 		const ConcurrentSeedDrivenBakeRaySampler parallelSampler(4u);
-		const ProbeVolumeBakeResult parallelResult = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult parallelResult = GIProbesBaker::Bake(
 			parallel,
 			parallelSampler);
 		Require(parallelResult.IsSuccess(),
@@ -2397,55 +2397,55 @@ components:
 			bSameProbeBits,
 			"configured bake threads must execute concurrently without changing deterministic output");
 
-		ProbeVolumeBakeRequest differentSeed = request;
+		GIProbesBakeRequest differentSeed = request;
 		differentSeed.m_settings.m_randomSeed += 1u;
-		const ProbeVolumeBakeResult different = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult different = GIProbesBaker::Bake(
 			differentSeed,
 			sampler);
 		Require(different.IsSuccess() &&
 			different.m_data->m_lightingHash != first.m_data->m_lightingHash,
 			"a different bake randomSeed must select a different sampling stream");
 
-		ProbeVolumeBakeRequest invalidReuse = request;
+		GIProbesBakeRequest invalidReuse = request;
 		invalidReuse.m_layoutSource = first.m_data.GetRawPtr();
 		invalidReuse.m_settings.m_raysPerProbe = 0u;
-		const ProbeVolumeBakeResult rejected = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult rejected = GIProbesBaker::Bake(
 			invalidReuse,
 			sampler);
-		Require(rejected.m_status == EProbeVolumeBakeStatus::InvalidRequest,
+		Require(rejected.m_status == EGIProbesBakeStatus::InvalidRequest,
 			"layout reuse must not bypass ray and bounce count validation");
 
 		invalidReuse.m_settings.m_raysPerProbe =
-			ProbeVolumeMaxRaysPerProbe + 1u;
-		const ProbeVolumeBakeResult excessive = ProbeVolumeBaker::Bake(
+			GIProbesMaxRaysPerProbe + 1u;
+		const GIProbesBakeResult excessive = GIProbesBaker::Bake(
 			invalidReuse,
 			sampler);
-		Require(excessive.m_status == EProbeVolumeBakeStatus::InvalidRequest,
+		Require(excessive.m_status == EGIProbesBakeStatus::InvalidRequest,
 			"layout reuse must not bypass supported sampling limits");
 
 		invalidReuse.m_settings.m_raysPerProbe = request.m_settings.m_raysPerProbe;
 		invalidReuse.m_settings.m_skyIndirectIntensity = -1.0f;
 		Require(
-			ProbeVolumeBaker::Bake(invalidReuse, sampler).m_status ==
-				EProbeVolumeBakeStatus::InvalidRequest,
+			GIProbesBaker::Bake(invalidReuse, sampler).m_status ==
+				EGIProbesBakeStatus::InvalidRequest,
 			"layout reuse must not bypass sky-intensity validation");
 
-		ProbeVolumeBakeRequest invalidThreads = request;
+		GIProbesBakeRequest invalidThreads = request;
 		invalidThreads.m_threadCount = 0u;
 		Require(
-			ProbeVolumeBaker::Bake(invalidThreads, sampler).m_status ==
-				EProbeVolumeBakeStatus::InvalidRequest,
+			GIProbesBaker::Bake(invalidThreads, sampler).m_status ==
+				EGIProbesBakeStatus::InvalidRequest,
 			"a zero bake thread count must fail closed");
-		invalidThreads.m_threadCount = ProbeVolumeMaxBakeThreadCount + 1u;
+		invalidThreads.m_threadCount = GIProbesMaxBakeThreadCount + 1u;
 		Require(
-			ProbeVolumeBaker::Bake(invalidThreads, sampler).m_status ==
-				EProbeVolumeBakeStatus::InvalidRequest,
+			GIProbesBaker::Bake(invalidThreads, sampler).m_status ==
+				EGIProbesBakeStatus::InvalidRequest,
 			"a bake thread count above the supported limit must fail closed");
 	}
 
 	void TestRelocationClampingPreservesEffectiveOffset()
 	{
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Relocation";
 		request.m_volumeMin = glm::vec3(0.0f);
 		request.m_volumeMax = glm::vec3(1.0f);
@@ -2455,16 +2455,16 @@ components:
 		request.m_settings.m_minProbeSpacing = 1.0f;
 
 		const BoundaryRelocationSampler sampler;
-		const ProbeVolumeBakeResult result = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult result = GIProbesBaker::Bake(
 			request,
 			sampler);
 		Require(result.IsSuccess(),
 			"boundary-relocation bake should succeed: " + result.m_diagnostic);
 
-		const ProbeVolumeSample& clamped = result.m_data->m_probes[0];
-		const ProbeVolumeSample& moved = result.m_data->m_probes[1];
+		const GIProbe& clamped = result.m_data->m_probes[0];
+		const GIProbe& moved = result.m_data->m_probes[1];
 		const uint32_t relocatedFlag = static_cast<uint32_t>(
-			EProbeVolumeSampleFlag::Relocated);
+			EGIProbeFlag::Relocated);
 		Require(clamped.m_position.x == 0.0f &&
 			clamped.m_relocationOffset == glm::vec3(0.0f) &&
 			(clamped.m_flags & relocatedFlag) == 0u,
@@ -2477,7 +2477,7 @@ components:
 
 	void TestEmbeddedProbeClassificationAndStableTransport()
 	{
-		ProbeVolumeBakeRequest request;
+		GIProbesBakeRequest request;
 		request.m_stateName = "Half Space";
 		request.m_volumeMin = glm::vec3(-0.1f, 0.0f, 0.0f);
 		request.m_volumeMax = glm::vec3(0.9f, 1.0f, 1.0f);
@@ -2488,19 +2488,19 @@ components:
 		request.m_settings.m_maxRayDistance = 10.0f;
 
 		const HalfSpaceBakeRaySampler halfSpaceSampler;
-		const ProbeVolumeBakeResult halfSpace = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult halfSpace = GIProbesBaker::Bake(
 			request,
 			halfSpaceSampler);
 		Require(halfSpace.IsSuccess(),
 			"half-space relocation bake should succeed: " +
 				halfSpace.m_diagnostic);
 		const uint32_t relocatedFlag = static_cast<uint32_t>(
-			EProbeVolumeSampleFlag::Relocated);
+			EGIProbeFlag::Relocated);
 		for (uint32_t probeIndex = 0u;
 			probeIndex < halfSpace.m_data->m_probes.Num();
 			++probeIndex)
 		{
-			const ProbeVolumeSample& probe =
+			const GIProbe& probe =
 				halfSpace.m_data->m_probes[probeIndex];
 			Require(probe.m_validity > 0.99f,
 				"probes that can be moved outside a back-facing half-space must remain valid");
@@ -2515,18 +2515,18 @@ components:
 			}
 		}
 
-		ProbeVolumeBakeRequest embeddedRequest = request;
+		GIProbesBakeRequest embeddedRequest = request;
 		embeddedRequest.m_stateName = "Embedded";
 		embeddedRequest.m_volumeMin = glm::vec3(0.0f);
 		embeddedRequest.m_volumeMax = glm::vec3(1.0f);
 		const FullyEmbeddedBakeRaySampler embeddedSampler;
-		const ProbeVolumeBakeResult embedded = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult embedded = GIProbesBaker::Bake(
 			embeddedRequest,
 			embeddedSampler);
 		Require(embedded.IsSuccess(),
 			"fully embedded classification bake should succeed: " +
 				embedded.m_diagnostic);
-		for (const ProbeVolumeSample& probe : embedded.m_data->m_probes)
+		for (const GIProbe& probe : embedded.m_data->m_probes)
 		{
 			float irradianceEnergy = 0.0f;
 			for (const glm::vec3& coefficient : probe.m_irradiance)
@@ -2536,16 +2536,16 @@ components:
 			Require(
 				probe.m_validity == 0.0f &&
 				(probe.m_flags & static_cast<uint32_t>(
-					EProbeVolumeSampleFlag::Valid)) == 0u &&
+					EGIProbeFlag::Valid)) == 0u &&
 				irradianceEnergy <= 0.000001f,
 				"a probe still surrounded by back faces must be invalid and must "
 				"not publish a black or bright irradiance sample");
 		}
 
-		ProbeVolumeBakeRequest stableRequest = embeddedRequest;
+		GIProbesBakeRequest stableRequest = embeddedRequest;
 		stableRequest.m_stateName = "Stable Transport";
 		const DirectionalDistanceBakeRaySampler directionalSampler;
-		const ProbeVolumeBakeResult stable = ProbeVolumeBaker::Bake(
+		const GIProbesBakeResult stable = GIProbesBaker::Bake(
 			stableRequest,
 			directionalSampler);
 		Require(stable.IsSuccess(),
@@ -2556,7 +2556,7 @@ components:
 			++probeIndex)
 		{
 			for (uint32_t directionIndex = 0u;
-				directionIndex < ProbeVolumeVisibilityDirectionCount;
+				directionIndex < GIProbeVisibilityDirectionCount;
 				++directionIndex)
 			{
 				Require(HasSameVectorBits(
@@ -2574,9 +2574,9 @@ components:
 					"geometry hits must close the corresponding deterministic sky-specular transport lobe");
 			}
 		}
-		for (const ProbeVolumeSample& probe : stable.m_data->m_probes)
+		for (const GIProbe& probe : stable.m_data->m_probes)
 		{
-			const std::array<float, ProbeVolumeVisibilityDirectionCount>
+			const std::array<float, GIProbeVisibilityDirectionCount>
 				expectedClearances
 			{
 				1.5f,
@@ -2587,7 +2587,7 @@ components:
 				1.125f
 			};
 			for (uint32_t directionIndex = 0u;
-				directionIndex < ProbeVolumeVisibilityDirectionCount;
+				directionIndex < GIProbeVisibilityDirectionCount;
 				++directionIndex)
 			{
 				const float expected = expectedClearances[directionIndex];
@@ -2600,8 +2600,8 @@ components:
 					"clearance and its square");
 			}
 			Require(
-				(probe.m_flags & ProbeVolumeBlockedDirectionMask) ==
-					ProbeVolumeBlockedDirectionMask,
+				(probe.m_flags & GIProbeBlockedDirectionMask) ==
+					GIProbeBlockedDirectionMask,
 				"a deterministic local hit along every signed axis must bake "
 				"all six blocking-direction bits");
 		}
@@ -2736,8 +2736,8 @@ components:
 		bool bSawGeometryComplete = false;
 		bool bSawMaterialsStart = false;
 		bool bSawMaterialsComplete = false;
-		ProbeVolumeBakeSettings settings;
-		Raytracing::ProbeVolumePathTracer pathTracer;
+		GIProbesBakeSettings settings;
+		Raytracing::GIProbesPathTracer pathTracer;
 		Require(
 			pathTracer.Initialize(
 				fixture.m_instances,
@@ -2791,7 +2791,7 @@ components:
 			"distinct materials sharing one resident texture must snapshot its CPU pixels once");
 
 		bool bCancellationRequested = false;
-		Raytracing::ProbeVolumePathTracer cancelledPathTracer;
+		Raytracing::GIProbesPathTracer cancelledPathTracer;
 		Require(
 			!cancelledPathTracer.Initialize(
 				fixture.m_instances,
@@ -2892,12 +2892,12 @@ components:
 		lights.Add(light);
 
 		TVector<std::string> warnings;
-		ProbeVolumeBakeSettings settings;
+		GIProbesBakeSettings settings;
 		settings.m_bIncludeSky = false;
 		settings.m_bIncludeEmissive = false;
 		settings.m_bIncludeDirectLighting = true;
 		settings.m_bounceCount = 0u;
-		Raytracing::ProbeVolumePathTracer pathTracer;
+		Raytracing::GIProbesPathTracer pathTracer;
 		Require(pathTracer.Initialize(
 				instances,
 				materials,
@@ -2934,8 +2934,8 @@ components:
 			bNamedUnavailableMeshWarning,
 			"warnings must identify failed sampler, material mesh, and unavailable mesh");
 
-		ProbeVolumeBakeRaySample validSample;
-		ProbeVolumeBakeRaySample skippedSample;
+		GIProbeBakeRaySample validSample;
+		GIProbeBakeRaySample skippedSample;
 		std::string diagnostic;
 		Require(pathTracer.Sample(
 				glm::vec3(-2.0f, 2.0f, 0.0f),
@@ -3029,7 +3029,7 @@ components:
 			Require(
 				light->GetGlobalIlluminationMode() ==
 					ELightGlobalIlluminationMode::RealtimeAndBaked,
-				"new lights must preserve the legacy realtime plus baked behavior");
+				"new lights must default to realtime plus baked behavior");
 			light->SetIntensity(glm::vec3(intensity));
 			light->SetGlobalIlluminationMode(mode);
 			return light;
@@ -3133,7 +3133,7 @@ components:
 			receiver + glm::vec3(0.0f, 6.0f, 0.0f));
 		world.GetECS<TransformECS>()->Tick(0.0f);
 
-		ProbeVolumeBakeSettings settings;
+		GIProbesBakeSettings settings;
 		settings.m_bounceCount = 0u;
 		settings.m_normalBias = 0.001f;
 		settings.m_viewBias = 0.0f;
@@ -3148,7 +3148,7 @@ components:
 			world.GetECS<LightingECS>()
 				->GetGlobalIlluminationBakeLightProxies(bakeLights);
 
-			Raytracing::ProbeVolumePathTracer pathTracer;
+			Raytracing::GIProbesPathTracer pathTracer;
 			Require(pathTracer.Initialize(
 					fixture.m_instances,
 					fixture.m_materials,
@@ -3157,7 +3157,7 @@ components:
 					glm::vec3(0.0f)),
 				"the point-light GI fixture must initialize the CPU path tracer");
 
-			ProbeVolumeBakeRaySample sample;
+			GIProbeBakeRaySample sample;
 			std::string diagnostic;
 			Require(pathTracer.Sample(
 					receiver + glm::vec3(0.0f, 3.0f, 0.0f),

@@ -49,15 +49,15 @@ Tasks::ITaskPtr GlobalIlluminationECS::Tick(float)
 
 void GlobalIlluminationECS::EndPlay()
 {
-	if (ProbeVolumeImporter* importer =
-		App::GetSubmodule<ProbeVolumeImporter>())
+	if (GIProbesImporter* importer =
+		App::GetSubmodule<GIProbesImporter>())
 	{
 		for (const auto& entry : m_bindings)
 		{
 			RuntimeBinding& binding = *entry.m_second;
 			if (binding.m_bRuntimeRetained)
 			{
-				importer->ReleaseRuntimeProbeVolume(binding.m_assetId);
+				importer->ReleaseRuntimeGIProbes(binding.m_assetId);
 				binding.m_bRuntimeRetained = false;
 			}
 		}
@@ -82,7 +82,7 @@ bool GlobalIlluminationECS::IsEnabled() const noexcept
 }
 
 bool GlobalIlluminationECS::ApplyWorldSettings(
-	const GlobalIlluminationWorldSettings& settings,
+	const GISettings& settings,
 	std::string& outDiagnostic)
 {
 	if (!settings.Validate(outDiagnostic))
@@ -117,8 +117,8 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 		nextBindings.Insert(name, std::move(binding));
 	}
 
-	if (ProbeVolumeImporter* importer =
-		App::GetSubmodule<ProbeVolumeImporter>())
+	if (GIProbesImporter* importer =
+		App::GetSubmodule<GIProbesImporter>())
 	{
 		for (const auto& entry : m_bindings)
 		{
@@ -132,7 +132,7 @@ bool GlobalIlluminationECS::ApplyWorldSettings(
 				replacement->m_bRuntimeRetained;
 			if (existing.m_bRuntimeRetained && !bTransferred)
 			{
-				importer->ReleaseRuntimeProbeVolume(existing.m_assetId);
+				importer->ReleaseRuntimeGIProbes(existing.m_assetId);
 			}
 		}
 	}
@@ -232,12 +232,6 @@ bool GlobalIlluminationECS::SetProbeMode(
 		outDiagnostic = "unknown global-illumination probe state '" + name + "'";
 		return false;
 	}
-	if (mode != EGlobalIlluminationProbeMode::Blend &&
-		mode != EGlobalIlluminationProbeMode::Additive)
-	{
-		outDiagnostic = "global-illumination probe mode must be Blend or Additive";
-		return false;
-	}
 	RuntimeBinding& binding = m_bindings[name];
 	if (binding.m_mode != mode)
 	{
@@ -283,10 +277,10 @@ bool GlobalIlluminationECS::UnloadProbe(
 	binding.m_bPreload = false;
 	if (binding.m_bRuntimeRetained)
 	{
-		if (ProbeVolumeImporter* importer =
-			App::GetSubmodule<ProbeVolumeImporter>())
+		if (GIProbesImporter* importer =
+			App::GetSubmodule<GIProbesImporter>())
 		{
-			importer->ReleaseRuntimeProbeVolume(binding.m_assetId);
+			importer->ReleaseRuntimeGIProbes(binding.m_assetId);
 		}
 		binding.m_bRuntimeRetained = false;
 	}
@@ -411,20 +405,20 @@ bool GlobalIlluminationECS::StartLoad(
 		outDiagnostic = "global-illumination probe state is already loading";
 		return true;
 	}
-	ProbeVolumeImporter* importer = App::GetSubmodule<ProbeVolumeImporter>();
+	GIProbesImporter* importer = App::GetSubmodule<GIProbesImporter>();
 	if (!importer || !binding.m_assetId)
 	{
 		binding.m_residency = EGlobalIlluminationProbeResidency::Failed;
-		binding.m_diagnostic = "no probe-volume importer or asset reference is available";
+		binding.m_diagnostic = "no GI probe importer or asset reference is available";
 		outDiagnostic = binding.m_diagnostic;
 		return false;
 	}
 	if (!binding.m_bRuntimeRetained)
 	{
-		importer->RetainRuntimeProbeVolume(binding.m_assetId);
+		importer->RetainRuntimeGIProbes(binding.m_assetId);
 		binding.m_bRuntimeRetained = true;
 	}
-	binding.m_loadTask = importer->LoadProbeVolume(
+	binding.m_loadTask = importer->LoadGIProbes(
 		binding.m_assetId,
 		binding.m_asset);
 	if (!binding.m_loadTask)
@@ -506,7 +500,7 @@ void GlobalIlluminationECS::RecomposeIfNeeded()
 		{
 			return lhs.m_name < rhs.m_name;
 		});
-	TVector<ProbeVolumeCompositionInput> inputs;
+	TVector<GIProbesCompositionInput> inputs;
 	inputs.Reserve(sortedBindings.Num());
 	for (const SortedBinding& sorted : sortedBindings)
 	{
@@ -532,7 +526,7 @@ void GlobalIlluminationECS::RecomposeIfNeeded()
 			}
 			return;
 		}
-		ProbeVolumeCompositionInput input;
+		GIProbesCompositionInput input;
 		input.m_name = name;
 		input.m_data = binding.m_asset->GetSnapshot().m_data;
 		input.m_mode = binding.m_mode;
@@ -541,11 +535,11 @@ void GlobalIlluminationECS::RecomposeIfNeeded()
 		inputs.Add(std::move(input));
 	}
 
-	ProbeVolumeCompositionPlan plan = ProbeVolumeComposer::BuildPlan(
+	GIProbesCompositionPlan plan = GIProbesComposer::BuildPlan(
 		inputs,
 		budget,
-		EProbeVolumeCompositionValidation::TrustedAssetMetadata);
-	if (plan.m_status == EProbeVolumeCompositionStatus::Disabled)
+		EGIProbesCompositionValidation::TrustedAssetMetadata);
+	if (plan.m_status == EGIProbesCompositionStatus::Disabled)
 	{
 		ClearActiveSnapshot();
 		m_bCompositionDirty = false;
@@ -627,7 +621,7 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 		return;
 	}
 
-	const ProbeVolumeData& layout = *snapshot->m_layout;
+	const GIProbesData& layout = *snapshot->m_layout;
 	if (mode == RHI::ESceneViewRenderMode::GlobalIlluminationBricks)
 	{
 		constexpr size_t MaxDebugBricks = 2048u;
@@ -638,7 +632,7 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 			brickIndex < layout.m_bricks.Num();
 			brickIndex += stride)
 		{
-			const ProbeVolumeBrick& brick = layout.m_bricks[brickIndex];
+			const GIProbeBrick& brick = layout.m_bricks[brickIndex];
 			const float level = layout.m_bakeSettings.m_maxSubdivisionLevel > 0u ?
 				static_cast<float>(brick.m_subdivisionLevel) /
 				static_cast<float>(layout.m_bakeSettings.m_maxSubdivisionLevel) : 0.0f;
@@ -674,11 +668,11 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 		probeIndex < layout.m_probes.Num();
 		probeIndex += stride)
 	{
-		const ProbeVolumeSample& probe = layout.m_probes[probeIndex];
+		const GIProbe& probe = layout.m_probes[probeIndex];
 		const bool bValid = (probe.m_flags & static_cast<uint32_t>(
-			EProbeVolumeSampleFlag::Valid)) != 0u;
+			EGIProbeFlag::Valid)) != 0u;
 		const bool bRelocated = (probe.m_flags & static_cast<uint32_t>(
-			EProbeVolumeSampleFlag::Relocated)) != 0u;
+			EGIProbeFlag::Relocated)) != 0u;
 		glm::vec4 color = bValid ?
 			glm::vec4(0.15f, 1.0f, 0.25f, 1.0f) :
 			glm::vec4(1.0f, 0.1f, 0.05f, 1.0f);
@@ -693,7 +687,7 @@ void GlobalIlluminationECS::DrawDebugVisualization() const
 		if (mode == RHI::ESceneViewRenderMode::GlobalIlluminationVisibility)
 		{
 			for (uint32_t directionIndex = 0u;
-				directionIndex < ProbeVolumeVisibilityDirectionCount;
+				directionIndex < GIProbeVisibilityDirectionCount;
 				++directionIndex)
 			{
 				const glm::vec2 moments = probe.m_visibility[directionIndex];

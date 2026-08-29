@@ -20,27 +20,10 @@ namespace Sailor::RHI
 		GlobalIlluminationFallback
 	};
 
-	constexpr bool IsValidSceneViewRenderMode(ESceneViewRenderMode mode) noexcept
-	{
-		return mode == ESceneViewRenderMode::Lit ||
-			mode == ESceneViewRenderMode::AmbientOcclusion ||
-			mode == ESceneViewRenderMode::Cascades ||
-			mode == ESceneViewRenderMode::LightTiles ||
-			mode == ESceneViewRenderMode::GlobalIlluminationOnly ||
-			mode == ESceneViewRenderMode::GlobalIlluminationProbes ||
-			mode == ESceneViewRenderMode::GlobalIlluminationBricks ||
-			mode == ESceneViewRenderMode::GlobalIlluminationValidity ||
-			mode == ESceneViewRenderMode::GlobalIlluminationVisibility ||
-			mode == ESceneViewRenderMode::GlobalIlluminationResidency ||
-			mode == ESceneViewRenderMode::GlobalIlluminationAssetIdentity ||
-			mode == ESceneViewRenderMode::GlobalIlluminationFallback;
-	}
-
 	constexpr bool IsSceneViewDebugVisualization(
 		ESceneViewRenderMode mode) noexcept
 	{
-		return IsValidSceneViewRenderMode(mode) &&
-			mode != ESceneViewRenderMode::Lit;
+		return mode != ESceneViewRenderMode::Lit;
 	}
 
 	constexpr const char* GetSceneViewRenderModeShaderDefine(

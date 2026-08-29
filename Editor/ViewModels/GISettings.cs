@@ -37,7 +37,7 @@ public sealed partial class GlobalIlluminationProbeBinding : ObservableObject
     bool preload;
 }
 
-public sealed class GlobalIlluminationWorldSettings
+public sealed class GISettings
 {
     public GlobalIlluminationMode Mode { get; set; } =
         GlobalIlluminationMode.RealtimeAndBaked;

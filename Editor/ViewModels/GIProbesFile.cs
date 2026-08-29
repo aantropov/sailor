@@ -4,7 +4,7 @@ using System.Numerics;
 
 namespace SailorEditor.ViewModels;
 
-public sealed class ProbeVolumeFile : AssetFile
+public sealed class GIProbesFile : AssetFile
 {
     public override Task Revert()
     {
@@ -29,7 +29,7 @@ public sealed class ProbeVolumeFile : AssetFile
     protected override void AddTransientAssetProperties(
         ObservableDictionary<string, ObservableObject> properties)
     {
-        var metadata = ProbeVolumeBinaryMetadata.Read(Asset);
+        var metadata = GIProbesBinaryMetadata.Read(Asset);
         Add(properties, "state", metadata.StateName);
         Add(properties, "formatVersion", metadata.FormatVersion.ToString());
         Add(properties, "bakedStates", metadata.BakedStateCount.ToString());

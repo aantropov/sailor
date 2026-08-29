@@ -21,7 +21,7 @@ public partial class World : AssetFile
     ObservableList<Prefab> prefabs = [];
 
     [ObservableProperty]
-    GlobalIlluminationWorldSettings globalIllumination = new();
+    GISettings globalIllumination = new();
 
     public override Task Save() => Save(new WorldYamlConverter());
 

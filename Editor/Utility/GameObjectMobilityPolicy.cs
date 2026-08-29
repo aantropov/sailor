@@ -62,7 +62,7 @@ public static class GameObjectMobilityPolicy
         if (stream.Documents.Count == 0 ||
             stream.Documents[0].RootNode is not YamlMappingNode mapping)
         {
-            return Stationary;
+            throw new InvalidDataException("GameObject YAML must contain a mapping.");
         }
 
         foreach (var property in mapping.Children)
@@ -71,11 +71,15 @@ public static class GameObjectMobilityPolicy
                 string.Equals(key.Value, "mobilityType", StringComparison.Ordinal) &&
                 property.Value is YamlScalarNode value)
             {
-                return Normalize(value.Value);
+                if (TryNormalize(value.Value, out var mobility))
+                    return mobility;
+
+                throw new InvalidDataException(
+                    "GameObject mobilityType must be Static, Stationary, or Dynamic.");
             }
         }
 
-        return Stationary;
+        throw new InvalidDataException("GameObject YAML must contain mobilityType.");
     }
 
     static int Rank(string mobility) => mobility switch

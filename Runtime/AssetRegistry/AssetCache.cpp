@@ -107,19 +107,6 @@ namespace
 		diagnostic += suffix;
 	}
 
-	const char* CacheLoadStatusName(Workspace::EWorkspaceCacheLoadStatus status) noexcept
-	{
-		switch (status)
-		{
-		case Workspace::EWorkspaceCacheLoadStatus::Missing: return "Missing";
-		case Workspace::EWorkspaceCacheLoadStatus::Loaded: return "Loaded";
-		case Workspace::EWorkspaceCacheLoadStatus::StaleIdentity: return "StaleIdentity";
-		case Workspace::EWorkspaceCacheLoadStatus::Corrupt: return "Corrupt";
-		case Workspace::EWorkspaceCacheLoadStatus::UnsupportedVersion: return "UnsupportedVersion";
-		case Workspace::EWorkspaceCacheLoadStatus::IoFailure: return "IoFailure";
-		default: return "Unknown";
-		}
-	}
 }
 
 std::string AssetCache::SerializeAssetCachePayload(const AssetCacheData& cache)
@@ -625,7 +612,7 @@ void AssetCache::LoadCache()
 		m_lastLoadResult = std::move(loadResult);
 		SAILOR_LOG_ERROR(
 			"Asset cache load status=%s: %s The existing cache file was preserved.",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 		return;
 	}
@@ -681,7 +668,7 @@ void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loa
 		AppendDiagnostic(m_lastLoadResult.m_diagnostic, "The cache was reset to an empty current envelope.");
 		SAILOR_LOG(
 			"Asset cache load status=%s: %s",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 	}
 	else
@@ -692,7 +679,7 @@ void AssetCache::ResetInvalidCacheLocked(Workspace::WorkspaceCacheLoadResult loa
 			"The cache could not be reset: " + diagnostic);
 		SAILOR_LOG_ERROR(
 			"Asset cache load status=%s: %s",
-			CacheLoadStatusName(m_lastLoadResult.m_status),
+			std::string(magic_enum::enum_name(m_lastLoadResult.m_status)).c_str(),
 			m_lastLoadResult.m_diagnostic.c_str());
 	}
 }
